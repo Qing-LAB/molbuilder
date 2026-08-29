@@ -1,24 +1,21 @@
-/* Transport-calculation tab core.
+/* Transport-calculation tab core — the COMPOSITE's describe surface
+ * (plans/transport-design.md § 4.1, P7b).
  *
- * Fetches the form schema from /api/transport/schema and renders
- * it into #transport-form-container via the shared form-schema
- * helper.  Generate is intentionally disabled — engine backends
- * (TranSIESTA, PySCF-NEGF) land in a follow-up phase; until then
- * the form is "configure now, generate later" UX so users can
- * prototype parameter combinations against the dataclass.
+ * ONE driver: the junction citation.  Picking the relaxed junction's
+ * finished attempt (the shared tree-picker; only run-N directories are
+ * choosable) sets everything downstream — the viewer loads the CITED
+ * calculation's own labeled structure, the chemistry analysis runs on
+ * it, and Describe writes the FINISHED task.json into the selected
+ * folder (no hand-over -- user ruling 2026-08-29: nothing is awaiting,
+ * so the tab selects and decides; the shared door in
+ * lib/task-handover.js still supplies the destination guards and the
+ * file-layer write).  There is no sidebar commit channel here: a
+ * second way to fill the viewer would be a second source for the
+ * composite's one fact (molview.md § 9.3a, one level up).
  *
- * Subscribes to projects.onCommit (dblclick = commit) so a
- * sidebar pick updates the visible structure-file context.  The
- * commit doesn't trigger a script render today — Generate stays
- * disabled — but the wire-up follows the universal interaction
- * model so when engines land the path is already correct.
- *
- * Persists collected form values to sessionStorage under
- * ``molbuilder.transport_form`` so refreshes don't wipe a
- * half-typed configuration.
- *
- * Design ref: docs/web/tabs.md (Transport tab —
- * Phase D form skeleton).
+ * The form (schema-driven from /api/transport/schema) persists to
+ * sessionStorage; the cited junction persists in the tab's own
+ * workspace note, so a reload restores the whole describe state.
  */
 import { mount } from "/static/lib/molview/index.js";
 
@@ -62,9 +59,8 @@ const WORKSPACE_TAG = "transport";
                 formSchema.renderForm(formContainer, schema);
                 _restoreFormValues(formContainer, schema, formSchema);
                 _wirePersistence(formContainer, schema, formSchema);
-                // Phase B.3 step 2: cache the schema for the
-                // Generate handler so it doesn't have to re-fetch
-                // on every click.
+                // Cached for the Send handler's changed-fields
+                // diff -- one fetch per page life.
                 _cachedSchema = schema;
                 _setStatus("Form loaded ("
                     + schema.sections.reduce(function (n, s) {
@@ -143,63 +139,32 @@ const WORKSPACE_TAG = "transport";
             }
         }
         container.addEventListener("input", function () {
-            // Mark the form dirty so the sidebar-commit handler can
-            // surface the unsaved-modifications modal before
-            // overwriting parameter edits.  Cleared after Generate.
-            _formDirty = true;
             if (debounceHandle) clearTimeout(debounceHandle);
             debounceHandle = setTimeout(persist, 250);
         });
-        container.addEventListener("change", function () {
-            _formDirty = true;
-            persist();
-        });
+        container.addEventListener("change", persist);
     }
 
-    // 2026-06-09 audit fix: form-dirty tracking parallel to Spectra's
-    // pattern.  Without this, a sidebar dblclick on a different
-    // structure would silently discard the user's parameter edits;
-    // the BOMB-3 comment in ``_wireCommitChannel`` explicitly named
-    // this gap.  Cleared on successful Generate (the form values
-    // landed in the .fdf — discarding the structure swap is OK).
-    var _formDirty = false;
-
-    // Current structure file (committed via sidebar dblclick).
-    // Drives the Generate button's enable state and the
-    // ``structure_path`` field on the /api/transport/render POST.
-    var _currentStructureFile = "";
-    // Viewer-is-truth (2026-07): the committed structure's labels (frozen atoms +
-    // electrode regions) live in the mounted MolView model (loaded from the sidecar
-    // by projects.parser.openMolecule); the Generate POST sources them from molview.data at send
-    // time, so there is no separate label cache here.  The labels ride INSIDE the
-    // structure envelope `exportFile()` produces (web-api.md § 1); the server
-    // rebuilds the Structure from that one object (`_shared.struct_from_body`)
-    // and the model validates the indices itself (`Structure._validate_regions`).
+    /* THE TAB'S TWO FACTS (P7b review, 2026-08-29): the citation, and
+     * the cited calculation's source file the viewer shows.  Both are
+     * the SERVER's answers (/api/transport/describe_attempt spells the
+     * citation and names the source), adopted whole -- the tab derives
+     * neither. */
+    var _junction = "";          // the citation string, "" until cited
+    var _junctionSource = "";    // sidebar-space path of the cited source
 
     /* The composite's send gate: a citation is the ONE thing the
-     * describe cannot go without (transport-design.md 4.1) -- the
-     * structure viewer above is an inspection aid, not an input. */
+     * describe cannot go without (transport-design.md 4.1). */
     function _refreshSendButton() {
         var btn = _$("transport-send-btn");
         if (!btn) return;
         btn.disabled = !_junction;
     }
 
-    function _refreshAutoDetectButton() {
+    function _refreshAnalyzeButton() {
         var btn = _$("auto-detect-btn");
         if (!btn) return;
-        btn.disabled = !_currentStructureFile;
-    }
-
-    function _setCurrentStructureReadout(path) {
-        var el = _$("transport-current-structure");
-        if (!el) return;
-        if (!path) {
-            el.textContent = "No structure committed yet.";
-            return;
-        }
-        var name = path.split("/").pop();
-        el.textContent = "Committed: " + name;
+        btn.disabled = !_junctionSource;
     }
 
     // The mounted MolView handle (null until the first structure is committed
@@ -216,10 +181,14 @@ const WORKSPACE_TAG = "transport";
         return { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 };
     }
 
-    function _writePanelNote(file) {
+    function _writePanelNote() {
         var ws = root.molbuilder && root.molbuilder.workspace;
         if (!ws || typeof ws.persist !== "function") return;
-        ws.persist(PANEL_TAG, { v: 1, structureFile: file || "" },
+        /* v2 (P7b review): the tab's fact is the CITATION -- the viewer
+         * persists the structure itself; the note is what re-drives the
+         * readout, the meta line and the send gate on a reload. */
+        ws.persist(PANEL_TAG, { v: 2, junction: _junction || "",
+                                source: _junctionSource || "" },
                    _panelIdentity(ws));
     }
 
@@ -280,13 +249,16 @@ const WORKSPACE_TAG = "transport";
             // The viewer is back; now the tab's own note, under its own tag.
             return Promise.resolve(ws.readState(_panelIdentity(ws)))
                 .then(function (note) {
-                    var f = note && note.v === 1 ? (note.structureFile || "") : "";
-                    if (!f) return;
-                    _currentStructureFile = f;
-                    _setCurrentStructureReadout(f);
-                    _refreshAutoDetectButton();
+                    if (!note || note.v !== 2 || !note.junction) return;
+                    _junction = note.junction;
+                    _junctionSource = note.source || "";
+                    var out = _$("transport-junction-readout");
+                    if (out) out.textContent = _junction;
+                    _refreshSendButton();
+                    _refreshAnalyzeButton();
+                    _refreshJunctionMeta();
                     _setStatus("Restored your last session: "
-                        + f.split("/").pop() + ".");
+                        + _junction + ".");
                 });
         }).catch(function (e) {
             if (root.console) {
@@ -333,92 +305,6 @@ const WORKSPACE_TAG = "transport";
         });
     }
 
-    /**
-     * Subscribe to the universal commit channel so a sidebar
-     * dblclick on a structure file updates the visible "current
-     * structure" context.  Single-click stays preview only.
-     *
-     * Phase B.3 step 2 (2026-06-10): committing a structure also
-     * enables the Generate button so the user can render the
-     * transiesta device .fdf.
-     */
-    function _wireCommitChannel() {
-        var runtime = root.molbuilder && root.molbuilder.runtime;
-        if (!runtime || typeof runtime.whenReady !== "function") return;
-        runtime.whenReady("projects").then(function (proj) {
-            if (!proj) return;
-            // BOMB-3 fix (2026-06-07): require ``onCommit``; do NOT
-            // fall back to ``onChange``.  ``onChange`` fires on EVERY
-            // sidebar click + fires-on-subscribe — using it as a
-            // fallback would clobber the status line on every preview
-            // click and re-build the geometry on every browse-click.
-            //
-            // 2026-06-09 audit fix: Transport now has form-dirty
-            // tracking (``_formDirty`` above) + the warning-modal
-            // gate (parallel to Spectra's _commitStructureForSpectra)
-            // so a sidebar swap no longer silently discards parameter
-            // edits.  The original BOMB-3 comment named this gap.
-            if (typeof proj.onCommit !== "function") return;
-            async function _commit(sel) {
-                var f = (sel && sel.file) ? String(sel.file) : "";
-                if (!f) return;
-                var lc = f.toLowerCase();
-                if (!lc.endsWith(".xyz") && !lc.endsWith(".pdb")) return;
-                // Form-dirty gate: ask the user before discarding
-                // unsaved parameter edits.  No-op when the form
-                // hasn't been touched (fresh mount, just after
-                // Generate, ...).
-                var modal = root.molbuilder
-                         && root.molbuilder.warningModal;
-                if (_formDirty && modal
-                        && typeof modal.confirmDiscardUnsaved === "function") {
-                    try {
-                        var proceed = await modal.confirmDiscardUnsaved();
-                        if (!proceed) return;
-                    } catch (_) { /* modal unavailable — proceed */ }
-                }
-                _formDirty = false;
-                _currentStructureFile = f;
-                _writePanelNote(f);
-                // Show the structure in the MolView inspection card (viewer +
-                // selection/cell panel + view toggles).  Fire-and-forget: runs in
-                // parallel with the auto-analyze below.  MolView reads the sidecar
-                // labels (frozen atoms + electrode regions) as part of the load, so
-                // the Generate POST sources them from molview.data — no separate
-                // sidecarLabels.fetch, no path-pointer indirection.
-                _showInMolview(f);
-                _setCurrentStructureReadout(f);
-                _refreshAutoDetectButton();
-                var name = f.split("/").pop();
-                _setStatus("Structure: " + name + " — inspect it here; "
-                    + "the composite cites a finished attempt below.");
-                // Phase 3-style auto-analyze: surface chemistry
-                // conclusions on commit so users see the open-
-                // shell-metal warn BEFORE clicking Generate.
-                // Forms are NOT mutated (TransportConfig has no
-                // charge/spin/method fields); analysis is
-                // informational only.
-                _autoAnalyzeOnCommit(f);
-            }
-            proj.onCommit(_commit);
-            // 2026-06-09 audit fix: mount-time getCurrentFile
-            // pickup.  Parallel to Spectra's pattern — if the user
-            // navigated here from another tab where a structure
-            // was already picked, surface it as a committed
-            // structure on this tab too (otherwise the readout sits
-            // at "No structure committed yet." even though the
-            // sidebar shows the file as the current pick).
-            if (typeof proj.getCurrentFile === "function") {
-                var initFile = proj.getCurrentFile();
-                if (initFile) {
-                    var initDir = (typeof proj.getCurrentDir === "function")
-                        ? proj.getCurrentDir() : "";
-                    _commit({ dir: initDir, file: initFile });
-                }
-            }
-        });
-    }
-
     // ---------- Auto-detect chemistry handler (Card 2) ---------- //
 
     var _autoDetectSeq = 0;
@@ -428,7 +314,7 @@ const WORKSPACE_TAG = "transport";
     // viewer.js's _autoDetectAbort pattern.
     var _autoDetectAbort = null;
 
-    function _autoAnalyzeOnCommit(path) {
+    function _analyzeStructure(path) {
         if (!path) return;
         var mySeq = ++_autoDetectSeq;
         if (_autoDetectAbort) _autoDetectAbort.abort();
@@ -456,7 +342,7 @@ const WORKSPACE_TAG = "transport";
                         b && b.error ? b.error
                             : "Analyze failed (HTTP " + resp.status + ").",
                         "error");
-                    _refreshAutoDetectButton();
+                    _refreshAnalyzeButton();
                     return;
                 }
                 _renderAutoDetectPanel(b);
@@ -470,9 +356,9 @@ const WORKSPACE_TAG = "transport";
                 if (chipApi && chipApi.render) chipApi.render(b);
                 _autoDetectSetStatus(
                     "Chemistry analyzed — review the rationale "
-                    + "panel before generating.",
+                    + "panel before sending.",
                     null);
-                _refreshAutoDetectButton();
+                _refreshAnalyzeButton();
             })
             .catch(function (e) {
                 // AbortError = J3 supersede.  Silent; the new
@@ -483,7 +369,7 @@ const WORKSPACE_TAG = "transport";
                     "Network error: "
                     + (e && e.message ? e.message : String(e)),
                     "error");
-                _refreshAutoDetectButton();
+                _refreshAnalyzeButton();
             });
     }
 
@@ -545,12 +431,10 @@ const WORKSPACE_TAG = "transport";
         var btn = _$("auto-detect-btn");
         if (!btn) return;
         btn.addEventListener("click", function () {
-            if (!_currentStructureFile) return;
-            _autoAnalyzeOnCommit(_currentStructureFile);
+            if (!_junctionSource) return;
+            _analyzeStructure(_junctionSource);
         });
     }
-
-    // ---------- Generate handler (Phase B.3 step 2) ---------- //
 
     /* =================================================================
      *  The COMPOSITE (P7b, transport-design.md § 4.1): cite the
@@ -560,13 +444,81 @@ const WORKSPACE_TAG = "transport";
 
     var _junction = "";        // the citation string, "" until chosen
 
-    /** tree-relative path -> the citation spelling
-     *  (project/topic/calc @ stage/run-N -- the calculation is depth 3,
-     *  the same rule the send door's own depth guard measures). */
-    function _citationFromRel(rel) {
-        var seg = String(rel || "").split("/").filter(Boolean);
-        if (seg.length < 4) return "";
-        return seg.slice(0, 3).join("/") + "@" + seg.slice(3).join("/");
+    /** One fetch answers everything about an attempt: the summary for
+     *  the meta line, the CITATION (the server spells it -- the tree
+     *  grammar has one home), and the cited calculation's source file.
+     *  ``rel`` is tree-relative (proj.relativeToProjects). */
+    function _describeAttempt(rel) {
+        return root.fetch("/api/transport/describe_attempt?path="
+                          + encodeURIComponent(rel.replace(/^\/+/, "")))
+            .then(function (r) { return r.json(); })
+            .then(function (b) {
+                if (!b || b.ok === false) {
+                    throw new Error((b && b.error) || "unreadable");
+                }
+                return b;
+            });
+    }
+
+    /** Adopt a described attempt as THE citation: readout, meta, send
+     *  gate, the workspace note -- and the viewer + chemistry analysis
+     *  follow it, because the citation is the tab's one driver
+     *  (user, 2026-08-29: the viewer responds to the active
+     *  calculation). */
+    function _adoptCitation(described, pickedPath, rel) {
+        _junction = described.citation || "";
+        if (!_junction) {
+            _setSendStatus("That folder is not an attempt inside a "
+                + "calculation (no task.json above it).");
+            return;
+        }
+        var out = _$("transport-junction-readout");
+        if (out) out.textContent = _junction;
+        var meta = _$("transport-junction-meta");
+        if (meta) {
+            meta.hidden = false;
+            meta.textContent = described.summary || "";
+        }
+        /* The cited source, in the sidebar's own path space: the picker
+         * hands back pickedPath whose tail is `rel`, so the root prefix
+         * is pickedPath minus rel -- no second spelling of the root. */
+        _junctionSource = "";
+        if (described.source && pickedPath && rel
+                && pickedPath.length > rel.length) {
+            var prefix = pickedPath.slice(0, pickedPath.length - rel.length);
+            _junctionSource = prefix + described.source;
+        }
+        _writePanelNote();
+        _refreshSendButton();
+        _refreshAnalyzeButton();
+        if (_junctionSource) {
+            _showInMolview(_junctionSource);
+            _analyzeStructure(_junctionSource);
+            _setStatus("Cited " + _junction.split("/").pop()
+                + " — the viewer shows the cited junction.");
+        } else {
+            _setStatus("Cited " + _junction + " — its source structure "
+                + "was not found beside the calculation, so the viewer "
+                + "keeps its last content.");
+        }
+    }
+
+    /** Re-fetch the meta line for a RESTORED citation (the note keeps
+     *  the strings; the summary is re-read so a junction that has
+     *  changed state since says so). */
+    function _refreshJunctionMeta() {
+        if (!_junction) return;
+        var rel = _junction.replace("@", "/");
+        var meta = _$("transport-junction-meta");
+        _describeAttempt(rel).then(function (b) {
+            if (meta) { meta.hidden = false;
+                        meta.textContent = b.summary || ""; }
+        }).catch(function (e) {
+            if (meta) { meta.hidden = false;
+                        meta.textContent = "Could not re-read the cited "
+                            + "attempt: "
+                            + (e && e.message ? e.message : String(e)); }
+        });
     }
 
     function _wireJunctionPicker() {
@@ -574,6 +526,10 @@ const WORKSPACE_TAG = "transport";
         if (!btn) return;
         btn.addEventListener("click", function () {
             var proj = root.molbuilder && root.molbuilder.projects;
+            function toRel(path) {
+                return (proj && proj.relativeToProjects)
+                    ? String(proj.relativeToProjects(path) || "") : path;
+            }
             /* THE one pop-out picker (lib/tree-picker.js): only run-N
              * attempt directories can be the answer, and the meta line
              * is the attempt's own .fdf -- the deck that actually ran
@@ -588,52 +544,17 @@ const WORKSPACE_TAG = "transport";
                         return /^run-\d+$/.test(entry.name || "");
                     },
                     describe: function (path) {
-                        var rel = (proj && proj.relativeToProjects)
-                            ? proj.relativeToProjects(path) : path;
-                        return root.fetch(
-                            "/api/transport/describe_attempt?path="
-                            + encodeURIComponent(rel))
-                            .then(function (r) { return r.json(); })
-                            .then(function (b) {
-                                if (!b || b.ok === false) {
-                                    throw new Error(
-                                        (b && b.error) || "unreadable");
-                                }
-                                return b.summary || "";
-                            });
+                        return _describeAttempt(toRel(path))
+                            .then(function (b) { return b.summary || ""; });
                     },
                     confirmLabel: "Cite this attempt",
                 });
             }).then(function (picked) {
                 if (!picked) return;
-                var proj = root.molbuilder && root.molbuilder.projects;
-                var rel = (proj && proj.relativeToProjects)
-                    ? proj.relativeToProjects(picked) : picked;
-                var cite = _citationFromRel(rel);
-                if (!cite) {
-                    _setSendStatus("That folder is not an attempt inside "
-                        + "a calculation (project/topic/calc/.../run-N).");
-                    return;
-                }
-                _junction = cite;
-                var out = _$("transport-junction-readout");
-                if (out) out.textContent = cite;
-                var meta = _$("transport-junction-meta");
-                if (meta) {
-                    meta.hidden = false;
-                    meta.textContent = "Reading the attempt\u2019s own "
-                        + ".fdf\u2026";
-                    root.fetch("/api/transport/describe_attempt?path="
-                               + encodeURIComponent(rel.replace(/^\/+/, "")))
-                        .then(function (r) { return r.json(); })
-                        .then(function (b) {
-                            meta.textContent = (b && b.summary)
-                                ? b.summary
-                                : ((b && b.error) || "");
-                        })
-                        .catch(function () { meta.textContent = ""; });
-                }
-                _refreshSendButton();
+                var rel = toRel(picked);
+                return _describeAttempt(rel).then(function (b) {
+                    _adoptCitation(b, picked, rel);
+                });
             }).catch(function (e) {
                 _setSendStatus("Picker failed: "
                     + (e && e.message ? e.message : String(e)));
@@ -730,14 +651,12 @@ const WORKSPACE_TAG = "transport";
             return;
         }
         _fetchAndRender(formContainer, formSchema);
-        _wireCommitChannel();
         _restoreSession();
         _wireJunctionPicker();
         _wireSendButton(formContainer);
         _wireAutoDetectButton();
         _refreshSendButton();
-        _refreshAutoDetectButton();
-        _setCurrentStructureReadout("");
+        _refreshAnalyzeButton();
     }
 
     if (root.document) {

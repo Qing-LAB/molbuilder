@@ -128,14 +128,24 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None) -> Path:
     return target
 
 
+def json_text(obj: Any) -> str:
+    """THE byte shape of every JSON artifact this package writes —
+    pretty, 2-space indent, trailing newline.  One spelling:
+    :func:`write_json` writes it to disk, and a surface that hands the
+    text to another writer (the transport tab's describe, whose browser
+    writes through the file layer) reads it from here, so the two roads
+    cannot produce different bytes."""
+    return json.dumps(obj, indent=2) + "\n"
+
+
 def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None) -> Path:
-    """Write ``obj`` as pretty JSON (2-space indent, trailing newline),
-    atomically and collision-safely via :func:`write_bytes`.  Serialisation
-    happens BEFORE the temp file exists, so an unserialisable object fails
+    """Write ``obj`` as pretty JSON (:func:`json_text`), atomically and
+    collision-safely via :func:`write_bytes`.  Serialisation happens
+    BEFORE the temp file exists, so an unserialisable object fails
     clean — no temp created, the target untouched.  Returns the path."""
-    data = (json.dumps(obj, indent=2) + "\n").encode("utf-8")
+    data = json_text(obj).encode("utf-8")
     return write_bytes(path, data, tmp_dir=tmp_dir)
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "read_json",
-           "write_json", "write_bytes"]
+           "json_text", "write_json", "write_bytes"]

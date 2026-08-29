@@ -33,24 +33,28 @@ def _stripped(path: Path) -> str:
 
 
 def test_transport_reads_back_what_it_writes():
-    """The tab restores at INIT — not in the lazy commit-mount, which can
-    never fire on a reload — and its file note is written at commit under
-    the tab's own tag (workspace.md § 4, the modify:panel pattern)."""
+    """The tab restores at INIT, and its note is the CITATION (v2, P7b
+    review 2026-08-29: the citation is the tab's one fact -- the viewer
+    persists the structure itself), written at the moment of citing
+    under the tab's own tag (workspace.md § 4, the modify:panel
+    pattern)."""
     src = _stripped(TRANSPORT)
     init_body = src.split("function _init()", 1)[1]
     assert "_restoreSession()" in init_body, (
-        "transport never restores: drafts are written on every label edit "
-        "and read back by nothing (write-only persistence)")
+        "transport never restores: notes are written and read back by "
+        "nothing (write-only persistence)")
     # slice to the next TOP-LEVEL declaration (4-space indent) -- inline
     # anonymous functions are part of the body under test
     restore = src.split("function _restoreSession()", 1)[1].split(
         "\n    function ", 1)[0]
     assert ".load(0)" in restore, "the restore must adopt via load(0)"
-    commit = src.split("async function _commit(", 1)[1].split(
+    assert "note.junction" in restore, (
+        "the restore must re-adopt the cited junction")
+    adopt = src.split("function _adoptCitation(", 1)[1].split(
         "\n    function ", 1)[0]
-    assert "_writePanelNote(f)" in commit, (
-        "the committed file is the tab's own fact and must be noted at the "
-        "moment the tab commits it")
+    assert "_writePanelNote()" in adopt, (
+        "the citation is the tab's own fact and must be noted at the "
+        "moment it is adopted")
     assert 'WORKSPACE_TAG + ":panel"' in src, (
         "the note needs its OWN tag — the bare tag's identity is the "
         "viewer's")

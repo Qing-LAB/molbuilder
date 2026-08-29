@@ -1106,7 +1106,7 @@ def test_the_sidebar_cursor_is_not_in_the_payload():
     # header names its endpoints (fixed 2026-08-17), so splitting on the
     # bare path started the slice in the header and swept in an
     # unrelated `structure_path` from a different fetch.
-    body = src.split('fetch("/api/task-setup/handover"', 1)[1]\
+    body = src.split("const r = await fetch(url", 1)[1]\
               .split("out = await r.json()", 1)[0]
     # Comments out first — this file's own note explains what was removed, and
     # a test that matches its own explanation proves nothing.
@@ -2126,51 +2126,67 @@ def _cited_junction(*, concluded=True):
     return calc
 
 
-def test_transport_handover_is_one_file(web_client):
-    """Floor 2 is task.json alone, and the hand-over says so: no
-    template, no structure pair -- one file carrying the citation, the
-    bias, and the knobs as the device stage's overrides."""
+def test_transport_describe_answers_the_finished_description(web_client):
+    """No hand-over for the composite (user ruling 2026-08-29): nothing
+    is awaiting, so /api/transport/describe answers with the COMPLETE
+    task.json -- one file, readable by the shipped reader, knobs on the
+    device stage's overrides promoted through varies."""
+    import pathlib as _pl
+    import tempfile as _tf
     _cited_junction()
     try:
-        r = web_client.post("/api/task-setup/handover", json=dict(
-            engine="siesta", calculation="transport", name="T",
+        r = web_client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T",
             junction=_T_CITE, bias=[0.0, 0.2],
             overrides={"transmission_n_points": 101}))
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         assert out["ok"] is True
-        assert out["template_text"] is None
-        assert out["structure_files"] == []
-        h = _json.loads(out["handover_text"])
-        assert h["calculation"] == "transport"
-        assert h["slots"] == {"junction": _T_CITE}
-        assert h["bias"] == {"voltages_v": [0.0, 0.2]}
-        assert h["overrides"] == {"transmission_n_points": 101}
-        assert h["awaiting"] == [], (
-            "nothing structural is missing -- the stages are fixed")
-        # the id is FINAL (the stages are fixed, so it never re-derives)
-        from molbuilder.identity import run_id
-        from molbuilder.transport.stages import TRANSPORT_STAGES
-        assert h["run"]["id"] == run_id("T", _T_CITE,
-                                        stage_names=TRANSPORT_STAGES)
+        files = out["files"]
+        assert [f["name"] for f in files] == ["task.json"], (
+            "floor 2 is task.json ALONE")
+        # the text is a real description: the shipped reader accepts it
+        from molbuilder.task import read_task
+        with _tf.TemporaryDirectory() as td:
+            probe = _pl.Path(td) / "task.json"
+            probe.write_text(files[0]["text"])
+            task = read_task(probe)
+        assert task.calculation == "transport"
+        assert task.slots == {"junction": _T_CITE}
+        assert task.bias == (0.0, 0.2)
+        assert task.shape == "hierarchical"
+        assert [s.name for s in task.stages] == [
+            "seed", "electrode_L", "electrode_R", "device",
+            "transmission"]
+        dev = next(s for s in task.stages if s.name == "device")
+        assert dev.overrides == {"transmission_n_points": 101}
+        assert task.varies == ("transmission_n_points",)
     finally:
         _shutil.rmtree(ROOT / "projects/_t_transport",
                        ignore_errors=True)
 
 
-def test_transport_handover_refuses_a_citation_the_tree_lacks(web_client):
+def test_the_handover_door_refuses_transport_by_name(web_client):
     r = web_client.post("/api/task-setup/handover", json=dict(
         engine="siesta", calculation="transport", name="T",
+        junction=_T_CITE, bias=[0.0]))
+    assert r.status_code == 400
+    assert "/api/transport/describe" in r.get_json()["error"]
+
+
+def test_transport_describe_refuses_a_citation_the_tree_lacks(web_client):
+    r = web_client.post("/api/transport/describe", json=dict(
+        engine="siesta", name="T",
         junction="_t_nope/optimization/Gone@run-0", bias=[0.0]))
     assert r.status_code == 400
     assert "task.json" in r.get_json()["error"]
 
 
-def test_transport_handover_refuses_a_bias_off_equilibrium(web_client):
+def test_transport_describe_refuses_a_bias_off_equilibrium(web_client):
     _cited_junction()
     try:
-        r = web_client.post("/api/task-setup/handover", json=dict(
-            engine="siesta", calculation="transport", name="T",
+        r = web_client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T",
             junction=_T_CITE, bias=[0.2, 0.4]))
         assert r.status_code == 400
         assert "0.0" in r.get_json()["error"]
@@ -2218,28 +2234,22 @@ def test_describe_attempt_stays_inside_the_tree(web_client):
 import re as _re
 
 
-def test_the_viewer_proposes_the_transport_composite():
-    """`proposedFromHandover`'s transport arm (P7b): five fixed stages,
-    no structure key, the citation + bias carried through, the knobs on
-    the device stage's override bag promoted via `varies` -- and the
-    shape answered rather than asked (the codec's pairing rule)."""
+def test_the_viewer_carries_no_transport_handover_arm():
+    """No hand-over for the composite (user ruling 2026-08-29): the
+    Transport tab writes the finished task.json itself, so a transport
+    task.1st.json never exists and Task setup's PROPOSAL machinery must
+    carry no transport branch -- dead arms grow stale rulings.
+    (Description mode may still know the kind: the file-list panel
+    tells the transport truth about a SAVED description.)"""
     src = (ROOT / "molbuilder/web/static/task-setup/viewer.js").read_text()
-    arm = src.split('if (kind === "transport")', 1)
-    assert len(arm) == 2, "the transport arm is gone from the proposal"
-    body = arm[1].split("const stages = kind ===", 1)[0]
-    for stage in ("seed", "electrode_L", "electrode_R",
-                  "device", "transmission"):
-        assert f'"{stage}"' in body
-    assert '"hierarchical"' in body
-    # CODE, not prose -- the comment names the retired key to say why.
-    code = _re.sub(r"/\*.*?\*/", "", body, flags=_re.S)
-    code = _re.sub(r"^\s*//.*$", "", code, flags=_re.M)
-    assert "structure" not in code, (
-        "a transport proposal must not carry a structure key")
-    assert "Object.keys(overrides).sort()" in body, (
-        "the override names are promoted through varies (stages.md 6.2)")
-    assert '_shape = "hierarchical"' in src, (
-        "one shape is not a question -- the load path answers it")
+    proposal = src.split("function proposedFromHandover(", 1)[1].split(
+        "\nfunction ", 1)[0]
+    assert '"transport"' not in proposal, (
+        "a transport branch is back in the hand-over proposal -- the "
+        "tab describes directly (POST /api/transport/describe)")
+    shape = src.split("function setShape(", 1)[1].split(
+        "\nfunction ", 1)[0]
+    assert '"transport"' not in shape
 
 
 def test_the_transport_page_loads_the_handover_door():
@@ -2251,14 +2261,14 @@ def test_the_transport_page_loads_the_handover_door():
     assert "lib/task-handover.js" in tpl
 
 
-def test_transport_handover_refuses_a_sealed_override_by_name(web_client):
+def test_transport_describe_refuses_a_sealed_override_by_name(web_client):
     """The electronic contract is the citation's to say (ruling Q5) --
-    refused at the SEND door, from the same constant prep refuses from,
-    while changing it is still free."""
+    refused at the DESCRIBE door, from the same constant prep refuses
+    from, while changing it is still free."""
     _cited_junction()
     try:
-        r = web_client.post("/api/task-setup/handover", json=dict(
-            engine="siesta", calculation="transport", name="T",
+        r = web_client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T",
             junction=_T_CITE, bias=[0.0],
             overrides={"basis_size": "DZP"}))
         assert r.status_code == 400

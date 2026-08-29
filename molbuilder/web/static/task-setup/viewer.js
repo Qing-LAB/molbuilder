@@ -548,10 +548,28 @@ async function loadFolder(projects, dir) {
      * else's structure and not its own.  `prep` refuses on that, late; this
      * says it on the page where it can still be fixed. */
     let ref = {};
+    let docKind = "optimization";
     try {
         const doc = JSON.parse(taskText || overText || "{}");
         ref = (doc && doc.structure) || {};
+        docKind = (doc && doc.calculation) || "optimization";
     } catch (_) { /* a file that does not parse is refused further down */ }
+    /* THE COMPOSITE'S FOLDER IS task.json ALONE (transport-design.md
+     * 4.1): no template, no structure pair -- the contract and the
+     * geometry arrive from the citation at prep.  Listing "<label>.xyz
+     * ... not there yet" would be the page claiming files are missing
+     * that this kind never writes. */
+    for (const id of ["ts-f-tmpl", "ts-f-struct", "ts-f-side"]) {
+        const el = $(id);
+        const li = el && el.closest("li");
+        if (li) li.hidden = (docKind === "transport");
+    }
+    if (docKind === "transport" && taskText) {
+        markFile("ts-f-task", true,
+                 "already here — the WHOLE description (the composite "
+                 + "has no template; everything else derives from the "
+                 + "citation at prep)");
+    }
     const structName = String(ref.source || "").split("/").pop();
     const sideName = structName
         ? structName.replace(/\.[^.]+$/, "") + ".molstruct.json" : "";
@@ -567,21 +585,10 @@ async function loadFolder(projects, dir) {
     if (!taskText && overText) {
         let over = null;
         try { over = JSON.parse(overText); } catch (_) { /* shown raw below */ }
-        /* An EMPTY awaiting is a real answer (the transport composite
-         * arrives whole -- fixed stages, hierarchical by the codec);
-         * "Still needed: ." would read as a glitch. */
-        const _aw = (over && Array.isArray(over.awaiting))
-            ? over.awaiting : ["shape", "stages"];
-        const awaiting = _aw.length
-            ? "Still needed: " + _aw.join(" and ") + "."
-            : "Nothing is missing — review, then save.";
+        const awaiting = "Still needed: "
+            + ((over && Array.isArray(over.awaiting) && over.awaiting.length)
+               ? over.awaiting.join(" and ") : "shape and stages") + ".";
         _mode = "handover"; _handover = over;
-        /* One shape is not a question (the machine card's own rule):
-         * transport is hierarchical by the codec's pairing, so the
-         * chooser is answered rather than asked. */
-        if (over && over.calculation === "transport" && !_shape) {
-            _shape = "hierarchical";
-        }
         renderCameOver(over);
         $("ts-shape-card").hidden = false;
         setShape(_shape);                       // re-assert / repaint the choice
@@ -1609,32 +1616,6 @@ function proposedFromHandover(over, shape, varies, bench) {
     // precondition, not a rung) -- where an optimization proposes the
     // ordinary `coarse` start.
     const kind = (over && over.calculation) || "optimization";
-    if (kind === "transport") {
-        /* THE COMPOSITE (transport-design.md 4.1/4.2, P7b): the five
-         * stages are fixed, the shape is hierarchical by the codec's
-         * own pairing rule, there is NO structure block (the citation
-         * is the structure), and the transport-only knobs ride the
-         * device stage's override bag -- promoted through `varies`
-         * exactly as stages.md 6.2 demands. */
-        const overrides = (over && over.overrides) || {};
-        const out = {
-            schema: "molbuilder/task@1",
-            engine: (over && over.engine) || { name: "siesta" },
-            shape:  "hierarchical",
-            run:    { name: run.name || "", id: run.id || "",
-                      created: run.created || "" },
-            calculation: "transport",
-            slots:  (over && over.slots) || {},
-            varies: Object.keys(overrides).sort(),
-            stages: ["seed", "electrode_L", "electrode_R",
-                     "device", "transmission"].map((n) => ({
-                name: n, enabled: true,
-                overrides: (n === "device") ? overrides : {},
-            })),
-        };
-        if (over && over.bias) out.bias = over.bias;
-        return JSON.stringify(out, null, 2) + "\n";
-    }
     const stages = kind === "vibration"
         ? [{ name: "freq", enabled: true, overrides: {} }]
         : [{ name: "coarse", enabled: true, overrides: {} }];
@@ -2285,20 +2266,6 @@ function setShape(shape) {
     if (shape && _task && _task.schema === "molbuilder/task@1") {
         _task.shape = shape;
         syncFromModel();
-        refreshSave();
-        return;
-    }
-    if (_mode === "handover" && shape
-            && _handover && _handover.calculation === "transport") {
-        /* No column/sweep seeding: the composite's varies are its own
-         * override names, already in the hand-over; the proposal is
-         * complete as it stands. */
-        const text = proposedFromHandover(_handover, "hierarchical", []);
-        try { _task = JSON.parse(text); } catch (_) { _task = null; }
-        setEditorText(text).then(() => {
-            if (_task) { renderStages(_task); renderNext(_task);
-                         renderMachine(_task); refreshPickers(); }
-        });
         refreshSave();
         return;
     }

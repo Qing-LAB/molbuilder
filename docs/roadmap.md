@@ -174,7 +174,7 @@ each with its recorded home)*:
 | deferred | until |
 |---|---|
 | **the remote-HPC proof** (D7's cluster half: the described route through SLURM on Sol) | **after the immediate two** |
-| ~~the transport TAB rewire~~ **landed 2026-08-29** (P7b: the tab describes the composite — tree-picker slot selection with the fdf `describe` seam, bias + knob overrides through the one hand-over door — and Task setup saves the transport description; verified end-to-end in the browser lane) | **done — the transport board (transport-design.md § 7) is complete** |
+| ~~the transport TAB rewire~~ **landed 2026-08-29** (P7b + same-day review: the tab describes the composite — tree-picker slot selection with the fdf `describe` seam, the viewer following the active citation, bias + knob overrides — and writes the finished task.json ITSELF; no hand-over, by user ruling: nothing is awaiting.  Verified end-to-end in the browser lane) | **done — the transport board (transport-design.md § 7) is complete** |
 
 ---
 

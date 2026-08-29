@@ -469,15 +469,21 @@ single-point, or a relaxation if those layers are not frozen.
   `<label>.transport.json`), the electrode wizard, the `electrode`/`preflight`
   helper CLI, and the region-label-driven derivation.  The finite-bias scan
   ships with it (the `.TSDE`-chained walker).
-- **Web tab (rewired 2026-08-29, P7b):** the tab DESCRIBES the composite —
-  cite the junction through the shared tree-picker (only `run-N` attempts
-  choosable; the meta line reads the attempt's own `.fdf` via
-  `/api/transport/describe_attempt`), state the bias, and Send hands ONE
-  file (`task.1st.json`) to Task setup, which proposes the five fixed
-  stages and saves the real `task.json`.  Transport-only knobs changed in
-  the form ride as device-stage overrides; the electronic-contract fields
-  are sealed at both doors (the citation's to say).  The render endpoint
-  (`/api/transport/render`) remains as the engine's validation surface.
+- **Web tab (rewired 2026-08-29, P7b + same-day review):** the tab is the
+  composite's WHOLE describe surface — cite the junction through the
+  shared tree-picker (only `run-N` attempts choosable; the meta line reads
+  the attempt's own `.fdf` via `/api/transport/describe_attempt`, and the
+  VIEWER follows the citation: MolView loads the cited calculation's
+  labeled structure and the chemistry analysis runs on it), state the
+  bias, and **Describe writes the finished `task.json`** into the selected
+  folder (`POST /api/transport/describe` — the web spelling of `jobset
+  init --calculation transport`; no hand-over, because nothing is
+  awaiting).  Transport-only knobs changed in the form ride as
+  device-stage overrides; the electronic-contract fields are sealed at
+  both doors (the citation's to say).  Task setup reads the saved
+  description as the run surface (machine, queue, prep).  The render
+  endpoint (`/api/transport/render`) remains as the engine's validation
+  surface.
 - **Follow-up** (see `roadmap.md`): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **bias scan** (`bias_voltages_v` is a `List[float]`; today only the

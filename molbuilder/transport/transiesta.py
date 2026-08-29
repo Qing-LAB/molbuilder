@@ -1,139 +1,28 @@
-"""TranSIESTA engine for the Transport tab (Phase B.3, 2026-06-10).
+"""The TranSIESTA emitters — the transport composite's deck layer.
 
-Scope of THIS module — what's in vs deferred
-============================================
+Registered as ``"transiesta"`` in the :mod:`molbuilder.transport` engine
+registry.  Since the composite landed (2026-08-28/29,
+`plans/transport-design.md`) this module is the RENDER layer under it:
 
-**Shipped today (B.3 zero-bias scope):**
+* :meth:`TransiestaEngine.render_script` — the device/transmission deck
+  (modern SIESTA 4.1+/5.x NEGF syntax; ``TS.Voltage`` is the config's
+  first bias value, and a SCAN renders one deck per point through
+  `transport/stages.py`, never through this method alone).
+* :func:`_emit_geometry` / :func:`_emit_basis_and_xc` /
+  :func:`_emit_k_mesh` — the pieces the seed deck reuses.
+* :meth:`TransiestaEngine.preflight` — region/order/kz gates (the
+  composite's prep sorts first, so the order gate never fires on its
+  route; it still guards hand-built decks and the render endpoint).
+* :func:`electrode_hs_stem` — the ONE spelling of an electrode run's
+  identity, shared with the stage renderer.
 
-* ``TransiestaEngine`` class registered as ``"transiesta"`` in the
-  :mod:`molbuilder.transport` engine registry.
-* :meth:`TransiestaEngine.render_script` — emits a runnable device
-  ``.fdf`` at ZERO bias (``TS.Voltage = bias_voltages_v[0]``).
-  The script assumes the electrode ``.TSHS`` files already exist
-  in the run directory; see "Electrode .fdf workflow" below for
-  how to produce them.
-* :meth:`TransiestaEngine.preflight` — basic region-label
-  validation + the cross-engine ``check_open_shell_metal`` check.
-
-**Deferred to follow-up sessions:**
-
-* :meth:`TransiestaEngine.parse_output` — needs the
-  ``<job>.transport.json`` schema designed first.  Raises
-  ``NotImplementedError`` with a clear message today.
-* :meth:`TransiestaEngine.methods_fragment` — full manuscript-
-  ready paragraph; today returns a one-line placeholder.
-* Electrode ``.fdf`` generation (see below).
-* Bias-scan looping (see below).
-* PySCF-NEGF engine.
-
-Electrode .fdf workflow
-=======================
-
-TranSIESTA needs a ``.TSHS`` Hamiltonian file per electrode (left
-+ right).  Each is the output of a SEPARATE SIESTA run on a lead
-geometry (typically a few unit cells of the lead material — e.g.
-Au(111) slab for gold electrodes — with periodic boundary
-conditions along the transport direction).  The lead ``.fdf``
-must include ``TS.HSFileEnable = T`` so SIESTA writes the
-``.TSHS`` file on completion.
-
-**Current path (manual):**
-
-1. Build the lead geometry on the ``/molbuilder`` tab (Au(111)
-   slab, etc.).
-2. On ``/structure-optimization``, generate a SIESTA ``.fdf``;
-   manually add ``TS.HSFileEnable = T`` to the emitted file
-   (today's SIESTA emitter doesn't set this — a future cleanup).
-3. Run SIESTA on the lead.  It emits ``<jobname>.TSHS``.
-4. Rename to ``<device_jobname>_L_electrode.TSHS`` (or
-   ``_R_electrode.TSHS``) and copy into the device run directory.
-5. Repeat for the right electrode.
-6. Generate the device ``.fdf`` here.  ``TS.HSFileLeft`` and
-   ``TS.HSFileRight`` reference the files copied in step 4.
-
-**Planned (B.3 follow-up):** Add an "electrode wizard" step on
-the Transport tab that extracts the ``L-electrode`` /
-``R-electrode`` regions from the labeled device structure, plus a
-few periodic-image unit cells, and emits the matching SIESTA
-``.fdf`` automatically.  Tracked in memory
-``project_transport_electrode_bias_workflow.md``.
-
-Bias-scan workflow
-==================
-
-TranSIESTA's ``TS.Voltage`` is a single value per run.  T(E) at
-multiple bias values = multiple TranSIESTA runs (re-converge NEGF
-density at each bias point — expensive).
-
-``TransportConfig.bias_voltages_v`` is already a ``List[float]``.
-Today's engine emits ONLY ``bias_voltages_v[0]``; the preflight
-WARNs when ``len > 1``.
-
-**Current path (manual):** Generate a separate ``.fdf`` for each
-bias value by changing ``bias_voltages_v`` and re-clicking
-Generate.  Run each ``.fdf`` separately.  Post-process the per-
-run ``.TBT.AVTRANS_*`` files into a single I-V curve.
-
-**Planned (B.3 follow-up):** For ``len(bias_voltages_v) > 1``,
-emit ONE ``.fdf`` per bias point named ``<jobname>_V0.fdf``,
-``<jobname>_V1.fdf``, etc., plus a ``<jobname>_run.sh`` driver
-script that loops over them and post-processes the per-bias
-transmission files into a single ``<job>.transport.json``.
-Tracked in the same memory above.
-
-Runnable assumptions
-====================
-
-The device ``.fdf`` emitted by :meth:`render_script` is runnable
-**if and only if**:
-
-* ``<jobname>_L_electrode.TSHS`` and ``<jobname>_R_electrode.TSHS``
-  exist in the run directory (see Electrode workflow above).
-* SIESTA-MPI is built with TranSIESTA enabled.
-* Atomic pseudopotentials (``.psml`` files) for every species
-  present are reachable via the standard SIESTA pseudo-lookup
-  (project's ``pseudopotential/`` dir or ``$SIESTA_PP_PATH``).
-
-If any of these are missing, SIESTA fails at parse time with a
-clear error.  ``render_script`` doesn't try to predict the
-runtime; preflight catches structural issues that would block
-emission regardless.
-
-Four-env model + the runner shell script
-========================================
-
-molbuilder's :doc:`four-env model </README_install>` separates the
-host env from the per-backend envs.  TranSIESTA is part of the
-SIESTA suite, so the device ``.fdf`` runs in
-``molbuilder-siesta`` — the same env the standalone SIESTA
-optimization flow uses.
-
-The web blueprint pairs ``render_script``'s ``.fdf`` output with
-a ``<jobname>.run.sh`` shell wrapper produced by
-:func:`molbuilder.runwrap.render_run_wrapper`.  The wrapper does
-NOT need to be customised per engine; runwrap routes ``.fdf``
-extensions to the ``siesta`` category automatically + picks up
-``molbuilder-siesta`` via ``Capabilities.env_for_category('siesta')``.
-The wrapper handles the three conda-activation paths (already in
-env / conda on PATH / conda missing) and surfaces a clear error
-if the target env isn't installed.
-
-So a user's full lifecycle is:
-
-1. Generate the device ``.fdf`` from the Transport tab (this
-   engine's :meth:`render_script`) and save it to the run directory
-   (projects sidebar / ``/api/files/write``).
-2. User launches SIESTA/TranSIESTA under ``molbuilder-siesta`` --
-   e.g. ``mpirun -np <N> siesta <jobname>.fdf``.
-
-NOTE: unlike the Build tab, the Transport blueprint does NOT currently
-auto-emit a ``<jobname>.run.sh`` wrapper (``runwrap.write_run_wrapper``);
-the render endpoint returns only ``{script, filename}``.  Wiring the
-wrapper for transport is a deliberate follow-up, not a shipped feature.
-
-The conda env model is invisible to the engine's emitter; the
-runner ``.run.sh`` carries it.  Pinned in memory
-``project_four_env_model.md``.
+Electrode decks are the wizard's (`transport/wizard.py`), extracted
+from the cited junction's labeled blocks at prep — the manual
+copy-and-rename workflow this docstring once taught is retired with
+the `transport bundle` driver.  Bias scans are the composite's chain
+(`transport-design.md` § 4.3).  :meth:`parse_output` (the Results-tab
+protocol) still waits on the transmission inspector; the RECORD it
+will read exists (`transport/record.py`, ``<label>.transport.json``).
 """
 
 from __future__ import annotations
@@ -289,12 +178,10 @@ def _emit_header(cfg: TransportConfig, struct: Structure) -> List[str]:
         "#",
         "#  Assumes electrode .TSHS files exist in this directory:",
         *file_lines,
-        "#  See the SIESTA manual § 'TranSIESTA' for electrode-generation",
-        "#  workflow; molbuilder's automated electrode wizard ships in a",
-        "#  follow-up release.",
-        "#",
-        "#  Single bias point per .fdf (zero-bias today).  Bias-scan",
-        "#  generation lands alongside the .transport.json parser.",
+        "#  In the transport composite the electrode decks are DERIVED",
+        "#  from the cited junction's labeled blocks and these files are",
+        "#  gathered in at prep (transport-design.md 4.2); a bias scan",
+        "#  renders one deck per point, chained at launch.",
         "# ================================================================== #",
         "",
     ]
@@ -1007,11 +894,10 @@ class TransiestaEngine:
         ``project_transport_results_tab_framework.md``.
         """
         raise NotImplementedError(
-            "TranSIESTA parse_output is deferred to a follow-up release "
-            "alongside the <job>.transport.json schema design + the "
-            "/results inspector.  Today's engine ships render_script + "
-            "preflight only.  See molbuilder/transport/transiesta.py "
-            "module docstring for the deferred-scope plan."
+            "TranSIESTA parse_output waits on the /results transmission "
+            "inspector (roadmap 2).  The record it will read already "
+            "exists: `summarize run` writes <label>.transport.json "
+            "(transport/record.py, molbuilder/transport-result@1)."
         )
 
     @classmethod

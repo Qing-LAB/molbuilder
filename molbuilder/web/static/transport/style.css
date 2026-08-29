@@ -1,9 +1,9 @@
-/* Transport tab (/transport) -- PAGE sheet, loaded ONLY by
- * transport_calculation.html.  Page-specific layout for the generate row and
- * the generated-script preview card.  Everything shared lives in the lib
- * sheets (tokens / page-shell cards+buttons / form-schema fieldsets /
- * form-components .full-btn + .btn-like + .issues-panel) -- created 2026-07
- * when the template's inline styles + ownerless classes were pulled in here
+/* Transport tab (/transport-calculation) -- PAGE sheet, loaded ONLY by
+ * transport_calculation.html.  Page-specific layout for the cite/bias/send
+ * rows and the viewer host.  Everything shared lives in the lib sheets
+ * (tokens / page-shell cards+buttons / form-schema fieldsets /
+ * form-components .full-btn + .auto-detect-*) -- created 2026-07 when the
+ * template's inline styles + ownerless classes were pulled in here
  * (ui-design-contract: no inline styles, page sheets page-only). */
 
 .generate-row {
@@ -13,27 +13,9 @@
     margin-top: var(--space-md);
 }
 
-/* Generated-script preview: a <details> flavored with the shared .card
- * schema (page-shell.css owns the card face); only the preview-specific
- * innards live here. */
-.script-preview-card > summary {
-    cursor: pointer;
-    font-weight: 600;
-}
-.script-preview-actions {
-    display: flex;
-    gap: var(--space-sm);
-    margin: var(--space-sm) 0;
-}
-.script-preview-card pre {
-    max-height: 400px;
-    overflow: auto;
-    background: var(--bg-code);
-    padding: var(--space-sm2);
-    font-size: var(--text-sm);
-    font-family: var(--font-mono);
-    border-radius: var(--radius-sm);
-}
+/* (The generated-script preview rules that stood here died with the
+ * Generate lane, 2026-08-29 -- the composite tab renders nothing; prep
+ * does, on the machine that runs it.  P7b review.) */
 
 
 /* THE VIEWER IS WIDE CONTENT BELOW ITS OWN FLOOR (2026-08-23).

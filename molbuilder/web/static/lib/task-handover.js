@@ -123,7 +123,7 @@
             return;
         }
 
-        say("muted", "Rendering…");
+        say("muted", isTransport ? "Describing…" : "Rendering…");
         const req = {
             engine:    o.engine,
             name:      (dest.split("/").filter(Boolean).pop() || ""),
@@ -149,9 +149,17 @@
             req.structure = structure;
             req.params    = o.params || {};
         }
+        /* NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
+         * nothing is awaiting -- stages, shape and identity are fixed
+         * by design -- so the transport door answers with the FINISHED
+         * task.json and this module only writes it where the user
+         * chose.  Every other kind still hands to Task setup, which
+         * owns the questions those kinds leave open. */
+        const url = isTransport ? "/api/transport/describe"
+                                : "/api/task-setup/handover";
         let out;
         try {
-            const r = await fetch("/api/task-setup/handover", {
+            const r = await fetch(url, {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(req),
@@ -176,12 +184,11 @@
         /* The STRUCTURE goes first, and the order is deliberate: the hand-over
          * NAMES those files, so writing it before them would leave a folder
          * whose description points at nothing if the next write fails. */
-        const parts = (out.structure_files || []).map((f) => [f.name, f.text]);
-        parts.push([out.template_name, out.template_text],
-                   [out.handover_name, out.handover_text]);
-        /* A transport hand-over is ONE file (floor 2 = task.json alone):
-         * the server answers null for the template it does not have, and
-         * a null is nothing to write, not a file named "null". */
+        const parts = isTransport
+            ? (out.files || []).map((f) => [f.name, f.text])
+            : (out.structure_files || []).map((f) => [f.name, f.text])
+                  .concat([[out.template_name, out.template_text],
+                           [out.handover_name, out.handover_text]]);
         const toWrite = parts.filter(([n, x]) => n && typeof x === "string");
         for (const [name, text] of toWrite) {
             // safeSave(TEXT, FILENAME, opts) -- text first.
@@ -227,6 +234,19 @@
             return;
         }
 
+        if (isTransport) {
+            /* The tab decided; the description is DONE.  No navigation
+             * (user ruling 2026-08-29): the road is stated, and going
+             * anywhere is the person's move.  Task setup still reads
+             * the saved description like any other -- as the run
+             * surface, not a hand-over target. */
+            say("ok", "Described — wrote " + written.join(" and ")
+                + " into the selected folder.  Next: prep run seed "
+                + "(the CLI, or Task setup's prep buttons on this "
+                + "folder), then launch stage by stage; summarize run "
+                + "writes the I–V record.");
+            return;
+        }
         say("ok", "Wrote " + written.join(" and ")
             + " — opening Task setup…");
         // The sidebar's selection is shared through sessionStorage, so Task

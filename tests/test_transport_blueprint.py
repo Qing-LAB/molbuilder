@@ -1,9 +1,9 @@
-"""Transport-calculation blueprint tests (Phase D form skeleton).
+"""Transport-calculation blueprint tests.
 
-Pins the contract of the schema endpoint + the page template +
-the static JS module the page depends on.  Engine-backed
-rendering tests follow when transiesta_engine.py / pyscf_negf_
-engine.py land; today the surface is just the form.
+Pins the contract of the schema endpoint + the page template + the
+static JS module the page depends on.  The page is the COMPOSITE's
+describe surface since P7b (cite -> bias -> send); the engine-backed
+render endpoint stays as the registry's validation surface.
 """
 from __future__ import annotations
 
@@ -230,28 +230,18 @@ class TestTransportCoreJsServed:
         js = web.get("/static/lib/transport/core.js").data.decode()
         assert 'transport-form-container' in js
 
-    def test_core_js_subscribes_to_commit_channel_only(self, web):
-        """Per the universal interaction model (B.5.2): sidebar
-        dblclick = commit.  Pin that this tab subscribes to
-        ``onCommit`` and DOES NOT fall back to ``onChange``.
-
-        BOMB-3 fix (2026-06-07): the original code fell back to
-        ``onChange`` if ``onCommit`` was absent.  ``onChange``
-        fires on every preview click + fires-on-subscribe — using
-        it for transport would clobber the status line on every
-        browse-click and (once engines wire in) re-build the
-        geometry on every browse-click.  Build + Spectra tolerate
-        the fallback because they have form-dirty + warning-modal
-        gates upstream; Transport has neither, so the fallback was
-        actively wrong."""
+    def test_core_js_reads_no_sidebar_structure_channel(self, web):
+        """P7b review (user, 2026-08-29): the CITATION is the tab's one
+        driver -- the viewer shows the cited junction's structure, so a
+        sidebar commit channel would be a second source for the
+        composite's one fact (molview.md 9.3a, one level up).  The tab
+        subscribes to NEITHER commit nor change."""
+        import re
         js = web.get("/static/lib/transport/core.js").data.decode()
-        assert "onCommit" in js
-        # The onChange fallback path is intentionally absent.  The
-        # comment block documenting the BOMB-3 rationale mentions
-        # ``onChange`` in prose; pin against the actual call site
-        # using a fragment that wouldn't appear in a comment.
-        assert ".onChange(" not in js, (
-            "transport/core.js must NOT call proj.onChange — "
-            "BOMB-3 fix removed the fallback"
-        )
-        assert "proj.onChange.bind" not in js
+        code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+        code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+        assert "onCommit" not in code, (
+            "the sidebar commit channel is back -- the citation drives")
+        assert "onChange" not in code
+        assert "_adoptCitation" in code, (
+            "the cite flow is the one structure door")

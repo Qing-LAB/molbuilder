@@ -42,28 +42,36 @@
 <!-- ============================================================ -->
 <main class="app-grid">
 
-  {#- ===================== 1. Inspect ===================== -#}
-  <section class="card" id="inspect-card">
-    <h2>1. Inspect structure</h2>
+  {#- ===================== 1. The junction ===================== -#}
+  <section class="card" id="junction-card">
+    <h2>1. The junction</h2>
     <p class="hint">
-      Pick a relaxed device <code>.xyz</code> in the Projects
-      sidebar — double-click to commit.  The structure must
-      carry a matching <code>.molstruct.json</code> sidecar with
-      <code>L-electrode</code> / <code>R-electrode</code> /
-      <code>bridge</code> region labels.  Assign them on the
-      <a href="/molbuilder">Molbuilder</a> tab if your structure
-      doesn't have them yet.
+      Transport is an assembly built from ONE cited result: the relaxed
+      junction's <em>finished attempt</em>.  Pick it here — only
+      <code>run-N</code> attempt folders can be chosen, and the meta
+      line reads the attempt's own <code>.fdf</code>.  The viewer below
+      shows the CITED calculation's labeled structure (a different
+      bridge variation means citing a different finished attempt).
+      Labels are assigned where the junction is built — the
+      <a href="/molbuilder">Molbuilder</a> tab — never here.
     </p>
-    <div class="viewer-load-bar">
-      <span id="transport-current-structure" class="muted">
-        No structure committed yet.
+    <div class="generate-row">
+      <button id="transport-junction-btn" type="button"
+              title="Walk the projects tree and pick the junction relaxation's run-N attempt.  Only attempt directories can be chosen.">
+        Choose junction attempt…
+      </button>
+      <span id="transport-junction-readout" class="muted">
+        no junction cited yet
       </span>
+    </div>
+    <p id="transport-junction-meta" class="hint" hidden></p>
+    <div class="viewer-load-bar">
       <span id="transport-status" class="status" role="status"
             aria-live="polite"></span>
     </div>
-    {#- Empty host -> molview.mount builds the full fused card (viewer +
-        selection/cell panel + view toggles) here on first commit, for
-        checking labels / electrode regions / unit cell / alignment. -#}
+    {#- Empty host -> molview.mount builds the full fused card here when
+        a junction is cited: the viewer RESPONDS to the active citation
+        (user, 2026-08-29) -- check the labels, the regions, the cell. -#}
     <div id="transport-molview-host"></div>
   </section>
 
@@ -74,15 +82,13 @@
       Surfaces the open-shell-metal check (same as on
       <a href="/structure-optimization">Optimization</a> and
       <a href="/spectrum-calculation">Spectrum</a>) plus a region-
-      label summary.  Auto-fires when you commit a structure;
-      you can also re-run it from the button below.  No form
-      fields are mutated — TransportConfig has no
-      <code>(charge, spin, method)</code> triplet, so this step
-      is informational only.
+      label summary — run on the CITED junction's structure.
+      Auto-fires when you cite one; re-run it from the button below.
+      No form fields are mutated — this step is informational only.
     </p>
     <div class="auto-detect-bar">
       <button id="auto-detect-btn" type="button" disabled
-        title="Re-run the chemistry analysis on the loaded structure.  Disabled until a structure is committed.">
+        title="Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited.">
         Re-analyze chemistry
       </button>
       <span id="auto-detect-status" class="status" role="status"
@@ -114,49 +120,40 @@
 
   {#- ===================== 4. Generate ===================== -#}
   <section class="card" id="composite-card">
-    <h2>4. Describe the composite</h2>
+    <h2>4. Describe</h2>
     <p class="hint">
-      Transport is an assembly built from ONE cited result: pick the
-      relaxed junction's <em>finished attempt</em>, and prep derives
-      everything else — the sorted copy, both electrode cells, the
-      seed, the NEGF device and the TBtrans transmission — as five
-      stages of one calculation.  The electronic contract (basis, XC,
-      mesh) comes from the cited attempt's own <code>.fdf</code>; the
-      fields above travel only where they are transport's own
-      (transmission window, contour — changed values ride as stage
-      overrides).
+      This button writes the finished <code>task.json</code> into the
+      folder selected in the Projects sidebar — nothing is left to ask:
+      the five stages and the shape are fixed by design, and prep
+      derives everything else from the citation above (the sorted copy,
+      both electrode cells, the seed, the NEGF device, the TBtrans
+      transmission).  The electronic contract (basis, XC, mesh) comes
+      from the cited attempt's own <code>.fdf</code>; form fields you
+      changed travel as stage overrides where they are transport's own
+      (transmission window, contour).  More than one voltage is a scan:
+      one attempt ladder per point, launched as one chain job.
     </p>
     <div class="generate-row">
-      <button id="transport-junction-btn" type="button"
-              title="Walk the projects tree and pick the junction relaxation's run-N attempt.  Only attempt directories can be chosen.">
-        Choose junction attempt…
-      </button>
-      <span id="transport-junction-readout" class="muted">
-        no junction cited yet
-      </span>
-    </div>
-    <p id="transport-junction-meta" class="hint" hidden></p>
-    <div class="generate-row">
       <label for="transport-bias">Bias list (V):</label>
-      <input id="transport-bias" type="text" value="0.0" size="18"
+      <input id="transport-bias" type="text" value="0.0"
              title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan: one attempt ladder per point, launched as one chain job." />
     </div>
     <div class="generate-row">
       <button id="transport-send-btn" class="full-btn" disabled
-              title="Writes task.1st.json into the folder selected in the Projects sidebar; Task setup reviews it (allocation, the seed's enabled flag) and saves the real task.json.">
-        Send to Task setup
+              title="Writes the finished task.json into the folder selected in the Projects sidebar.  Prep it stage by stage from Task setup or the CLI.">
+        Describe this calculation
       </button>
       <span id="transport-send-status" class="muted"
             role="status" aria-live="polite"></span>
     </div>
-    {#- The road after sending — the composite's own quickstart. -#}
+    {#- The road after describing — the composite's own quickstart. -#}
     <details class="hint">
-      <summary>After sending: the five-stage road</summary>
+      <summary>After describing: the five-stage road</summary>
       <ol>
-        <li>Open <a href="/task-setup">Task setup</a> on that folder,
-            review, and save — <code>task.json</code> is the whole
-            floor 2 (no template: the contract arrives from the
-            citation at prep).</li>
+        <li><code>task.json</code> is the whole floor 2 (no template:
+            the contract arrives from the citation at prep).  Prep from
+            <a href="/task-setup">Task setup</a>'s buttons on that
+            folder, or the CLI.</li>
         <li><code>prep run seed</code> → launch; then
             <code>electrode_L</code>, <code>electrode_R</code>; then
             <code>device</code> (a bias scan launches as ONE chain job

@@ -1,20 +1,27 @@
 """Transport-calculation blueprint.
 
-Form-schema + script-render endpoints for the
-``/transport-calculation`` tab.  Phase B.3 step 2 (2026-06-10):
-the render endpoint dispatches via the
-:mod:`molbuilder.transport` engine registry so a new engine
-(``pyscf-negf``, ``inelastica``, ...) drops in without changes
-here.
+The ``/transport-calculation`` tab's server half.  The tab is the
+composite's WHOLE describe surface (user ruling 2026-08-29: no
+hand-over — nothing is awaiting, so the tab selects and decides):
 
-Routes:
-
-    GET  /api/transport/schema       form-rendering schema for
-                                     the TransportConfig dataclass
-    POST /api/transport/render       render the device .fdf for the
-                                     selected engine + structure;
-                                     also runs preflight and
-                                     returns the issues panel
+    GET  /api/transport/schema            form-rendering schema for
+                                          the TransportConfig dataclass
+    GET  /api/transport/describe_attempt  the slot picker's describe
+                                          seam: one line from a cited
+                                          attempt's own .fdf, plus the
+                                          server-spelled citation and
+                                          the calculation's source file
+    POST /api/transport/describe          the FINISHED task.json text —
+                                          the web spelling of `jobset
+                                          init --calculation transport`;
+                                          the browser writes it where
+                                          the user chose
+    POST /api/transport/render            validate + render a device
+                                          .fdf from a posted structure
+                                          (the engine registry's
+                                          validation surface; the
+                                          composite renders through
+                                          prep, never through this)
 
 Mirrors the contract of Build's ``/api/build/schema/<engine>`` and
 Spectra's ``/api/spectra/render``: the dataclass field metadata
@@ -65,6 +72,7 @@ def api_transport_describe_attempt() -> Any:
 
     from molbuilder.jobset.materialize import attempt_concluded
     from molbuilder.projects import OutsideRoot, contain, projects_root
+    from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.transport.preflight import parse_fdf_params
 
     raw = str(request.args.get("path") or "")
@@ -85,6 +93,38 @@ def api_transport_describe_attempt() -> Any:
                                  "never prepped, so it cannot be "
                                  "cited"}), 404
     deck = decks[0]
+
+    # THE CITATION IS THE SERVER'S TO SPELL (P7b review, 2026-08-29):
+    # walk up to the calculation (the dir holding task.json) and form
+    # `<calc>@<attempt>` here, so the client never re-implements the
+    # tree grammar.  The same walk finds the calculation's SOURCE pair,
+    # which is what the tab's viewer shows for the cited junction.
+    calc = None
+    for anc in attempt.parents:
+        if anc == root.parent:
+            break
+        if (anc / TASK_FILENAME).is_file():
+            calc = anc
+            break
+        if anc == root:
+            break
+    citation = None
+    source_rel = None
+    if calc is not None:
+        citation = (f"{calc.relative_to(root)}"
+                    f"@{attempt.relative_to(calc)}")
+        try:
+            from molbuilder.task import read_task
+            src_name = read_task(calc / TASK_FILENAME).structure.source
+            from molbuilder.workingcopy_structure import StructureCodec
+            cand = calc / Path(src_name).name
+            alt = cand.with_suffix(StructureCodec.GEOMETRY_SUFFIX)
+            for c in (cand, alt):
+                if c.is_file():
+                    source_rel = str(c.relative_to(root))
+                    break
+        except Exception:
+            source_rel = None
     concluded = attempt_concluded(attempt, deck.stem)
     p = parse_fdf_params(deck.read_text())
     bits = []
@@ -106,6 +146,8 @@ def api_transport_describe_attempt() -> Any:
         "concluded": bool(concluded),
         "summary": status + (" · " + " · ".join(bits) if bits else ""),
         "deck": deck.name,
+        "citation": citation,
+        "source": source_rel,
         "params": {
             "basis_size": p.basis_size,
             "mesh_cutoff_ry": p.mesh_cutoff_ry,
@@ -113,6 +155,111 @@ def api_transport_describe_attempt() -> Any:
             "kgrid": list(p.kgrid) if p.kgrid else None,
             "n_atoms": p.n_atoms,
         },
+    })
+
+
+# ===================================================================== #
+# /api/transport/describe  --  the tab writes the DESCRIPTION itself   #
+# ===================================================================== #
+
+
+@bp.route("/api/transport/describe", methods=["POST"])
+def api_transport_describe() -> Any:
+    """Render the transport calculation's COMPLETE ``task.json`` text.
+
+    There is no hand-over for the composite (user ruling 2026-08-29):
+    the other kinds hand to Task setup because that tab owns questions
+    they cannot answer — shape, stages, what varies.  Transport has
+    none open: the five stages and the hierarchical shape are fixed by
+    design, the identity derives from the citation, the knobs ride the
+    stages' override bags.  So this door answers with the finished
+    description, ONE file, and the browser writes it where the user
+    chose through the content-blind file layer (`web/projects.md` § 1 —
+    the same division of labour as every other tab's writes).
+
+    Validation is the shipped codec's: the ``Task`` construction below
+    is the same gate `read_task` and the CLI's ``jobset init`` run, and
+    the citation resolves through the same door prep composes through.
+    """
+    from molbuilder.persist import json_text
+    from molbuilder.projects import projects_root
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.task import Stage, Task, derive_run
+    from molbuilder.transport.compose import ComposeError, resolve_citation
+    from molbuilder.transport.stages import (SEALED_TRANSPORT_FIELDS,
+                                             TRANSPORT_STAGES)
+
+    body = request.get_json(silent=True) or {}
+    engine = str(body.get("engine") or "siesta").lower()
+    if engine != "siesta":
+        return jsonify({"ok": False,
+                        "error": "transport is SIESTA-first "
+                                 "(TranSIESTA)"}), 400
+    citation = str(body.get("junction") or "")
+    if not citation:
+        return jsonify({"ok": False,
+                        "error": "no junction citation -- pick the "
+                                 "relaxed junction's attempt first"}), 400
+    bias_raw = body.get("bias") or [0.0]
+    try:
+        bias = tuple(float(v) for v in bias_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False,
+                        "error": f"bias must be a list of volts, "
+                                 f"got {bias_raw!r}"}), 400
+    overrides = body.get("overrides") or {}
+    if not isinstance(overrides, dict):
+        return jsonify({"ok": False,
+                        "error": "overrides must be an object"}), 400
+    # Refused HERE, not at prep on the cluster: an unknown knob or a
+    # sealed one (the citation's to say) names itself while changing
+    # it is still free.  Same sets, same reason as config_for.
+    import dataclasses as _dc
+    _known = {f.name for f in _dc.fields(TransportConfig)}
+    for _name in overrides:
+        if _name not in _known:
+            return jsonify({"ok": False,
+                            "error": f"{_name!r} is not a transport "
+                                     f"parameter"}), 400
+        if _name in SEALED_TRANSPORT_FIELDS:
+            return jsonify({"ok": False,
+                            "error": f"{_name!r} is the citation's to "
+                                     f"say (the electronic contract "
+                                     f"arrives from the cited "
+                                     f"junction's own deck) or the "
+                                     f"description's own field -- "
+                                     f"reset it in the form; cite a "
+                                     f"junction that ran with the "
+                                     f"values you want"}), 400
+    typed = str(body.get("name") or "") or "transport"
+
+    try:
+        resolve_citation(citation, projects_root())
+    except ComposeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    try:
+        task = Task(
+            engine="siesta", shape="hierarchical",
+            run=derive_run(typed, citation,
+                           stage_names=TRANSPORT_STAGES),
+            structure=None, calculation="transport",
+            slots={"junction": citation}, bias=bias,
+            # the stages.md 6.2 rule holds here too: an override names
+            # a PROMOTED field, and `varies` is the promotion
+            varies=tuple(sorted(overrides)),
+            stages=tuple(Stage(name=n, enabled=True,
+                               overrides=(dict(overrides)
+                                          if n == "device" else {}))
+                         for n in TRANSPORT_STAGES))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    return jsonify({
+        "ok": True,
+        "label": task.label,
+        "files": [{"name": TASK_FILENAME,
+                   "text": json_text(task.to_dict())}],
+        "notices": [],
     })
 
 
