@@ -288,17 +288,20 @@ class TestResolvePsmlLib:
     a bare name at ``<calc>/projects/…`` (the module-level walk-up test
     at the end of this file)."""
 
-    def test_absolute_path_passes_through(self, tmp_path):
+    def test_absolute_inside_the_tree_passes_through(self, tmp_path):
         from molbuilder.pseudos import resolve_psml_lib
-        out = resolve_psml_lib(str(tmp_path / "foo"))
+        out = resolve_psml_lib(str(tmp_path / "foo"), base=tmp_path)
         assert out == tmp_path / "foo"
 
-    def test_tilde_expands(self):
-        from molbuilder.pseudos import resolve_psml_lib
-        from pathlib import Path
-        out = resolve_psml_lib("~/my_pseudos")
-        # ``~`` should be expanded, NOT anchored at projects/.
-        assert out == Path.home() / "my_pseudos"
+    def test_absolute_outside_the_tree_is_refused(self, tmp_path):
+        """2026-08-28: `psml_lib` always lives inside the tree, so an
+        outside absolute path has no honest answer -- and the refusal
+        names the tree it should move into."""
+        from molbuilder.pseudos import PsmlLibError, resolve_psml_lib
+        import pytest as _pytest
+        with _pytest.raises(PsmlLibError) as e:
+            resolve_psml_lib("/somewhere/else", base=tmp_path)
+        assert "outside" in str(e.value) and str(tmp_path) in str(e.value)
 
     def test_relative_anchored_at_projects(self, tmp_path):
         from molbuilder.pseudos import resolve_psml_lib
@@ -310,21 +313,15 @@ class TestResolvePsmlLib:
         out = resolve_psml_lib("shared/pbe_sr", base=tmp_path)
         assert out == tmp_path / "shared" / "pbe_sr"
 
-    def test_dotdot_resolves_against_projects(self, tmp_path):
-        """``../foo`` would walk OUT of projects/ -- the absolute path
-        is returned (and a later ``.is_dir()`` check in the validator
-        will fail predictably).  We don't try to be clever and reject
-        these; the user picked the path, the error message will tell
-        them where we looked."""
-        from molbuilder.pseudos import resolve_psml_lib
-        out = resolve_psml_lib("../foo", base=tmp_path)
-        # pathlib doesn't normalise ".." in non-resolve operations, so
-        # the literal ``<base>/../foo`` comes back.  The validator's
-        # .is_dir() will fail if the resulting path doesn't exist; the
-        # error message tells the user where we looked, so they fix it.
-        # The pin is the EXACT anchored path (R2-7: `"foo" in str(out)`
-        # could not fail -- the input itself contains "foo").
-        assert out == tmp_path / ".." / "foo"
+    def test_dotted_spellings_are_refused_with_the_reason(self, tmp_path):
+        """2026-08-28: the dotted anchor retired with the cascade --
+        pseudos beside the calculation are used without the field."""
+        from molbuilder.pseudos import PsmlLibError, resolve_psml_lib
+        import pytest as _pytest
+        for raw in ("./foo", "../foo"):
+            with _pytest.raises(PsmlLibError) as e:
+                resolve_psml_lib(raw, base=tmp_path)
+            assert "retired" in str(e.value)
 
 
 # (_envelope + _from_file_text retired 2026-08-22: their last
@@ -590,16 +587,19 @@ class TestDeadProjectorC5:
         # The validation layer must escalate dead_projector to ERROR.
         from molbuilder.validation.siesta import _check_siesta_pseudo_coverage
 
+        lib = tmp_path / "projects" / "psml"
+        lib.mkdir(parents=True)
+
         class _Cfg:
-            psml_lib = str(tmp_path)
+            psml_lib = str(lib)
             xc_authors = "PBE"
-        (tmp_path / "S.psml").write_text(
+        (lib / "S.psml").write_text(
             _psml_with_projectors("S", _S_DEAD_P, z=16))
 
         class _Struct:
             elements = ["S"]
         issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(),
-                                               dest_dir=tmp_path)
+                                               dest_dir=lib)
         assert any(i.severity == "error" and "Kleinman" in i.message
                    for i in issues), [(_i.severity, _i.message) for _i in issues]
 
@@ -676,16 +676,18 @@ class TestErrorStatusesSharedBySurfaces:
         # The SAME fixture the CLI now blocks on must also be error-severity
         # in the preflight -- proves the two surfaces agree.
         from molbuilder.validation.siesta import _check_siesta_pseudo_coverage
-        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
+        lib = tmp_path / "projects" / "psml"
+        lib.mkdir(parents=True)
+        (lib / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
 
         class _Cfg:
-            psml_lib = str(tmp_path)
+            psml_lib = str(lib)
             xc_authors = "PBE"
 
         class _Struct:
             elements = ["C"]
         issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(),
-                                               dest_dir=tmp_path)
+                                               dest_dir=lib)
         assert any(i.severity == "error" for i in issues), \
             [(i.severity, i.message) for i in issues]
 
@@ -751,17 +753,20 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     # then resolution tried the calculation folder first and took it if it
     # existed, so what a spelling meant depended on what happened to be on
     # disk.  That is the property A10 removes: the anchor is the spelling's,
-    # not the filesystem's.  `./mypseudos` is how you name the local one.
+    # not the filesystem's.  (Since 2026-08-28 there is no local spelling
+    # at all: pseudos beside the calculation are used without the field.)
     local = calc / "mypseudos"
     local.mkdir()
     assert resolve_psml_lib("mypseudos", dest_dir=calc) == \
         tmp_path / "projects" / "mypseudos"
-    assert resolve_psml_lib("./mypseudos", dest_dir=calc) == local
 
-    # Outside any projects tree there is no tree to name, so the bare
-    # spelling falls to the folder the user actually chose -- NOT to the
-    # working directory, which is the anchor nobody chose.
+    # Outside any projects tree there is no tree to walk up to, so the
+    # server's own declared root answers (2026-08-28) -- NOT the working
+    # directory, and no longer the lone folder (the old cascade's last
+    # anchor, retired: in-folder pseudos are used without the field).
+    from molbuilder.projects import PROJECTS_ROOT_ENV
     lone = tmp_path / "lone-calc"
     lone.mkdir()
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
     assert resolve_psml_lib("pseudopotential", dest_dir=lone) == \
-        lone / "pseudopotential"
+        tmp_path / "tree" / "pseudopotential"

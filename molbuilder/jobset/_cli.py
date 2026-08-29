@@ -288,11 +288,10 @@ def _resolve_bundle_may_be_new(ctx, param, value):
               # validators refused each other's accepted spelling -- click
               # rejecting the bare in-tree name, the resolver rejecting the
               # cwd-relative one click demanded.  One fact, one door.
-              help="where to read pseudopotentials from. A path on THIS "
-                   "machine: the files travel with the calculation, the "
-                   "path does not.  A bare name (`pseudopotential`) means "
-                   "the projects tree the calculation lives in; `./x` means "
-                   "beside the calculation; an absolute path means itself.")
+              help="where to read pseudopotentials from -- a path INSIDE "
+                   "the projects tree, measured from the tree root (the "
+                   "convention is `pseudopotential`).  The files travel "
+                   "with the calculation; the path does not.")
 @click.option("--vacuum", type=float, default=None, metavar="ANGSTROM",
               help="isolation vacuum (A) per side on isolated axes. Needed "
                    "for a flat or linear molecule from a bare XYZ, which "

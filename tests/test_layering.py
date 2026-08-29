@@ -139,6 +139,11 @@ _L1_MODULES = {
                          # ``web/reload_protocol.py``, where reading it ran
                          # ``web/__init__.py`` and pulled in the whole app plus
                          # Flask (docs/archive/2026-08-19-server-reload-plan.md 3.3).
+    "serve_daemon",      # the background half of `molbuilder serve` (daemon,
+                         # pidfile, log roll -- deployment.md § 1.0a-c).  L1
+                         # for reload_protocol's exact reason: it IS the
+                         # supervisor, so it imports stdlib + reload_protocol
+                         # and nothing of the application it restarts.
 }
 
 _L2_MODULES = {

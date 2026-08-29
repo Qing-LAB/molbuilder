@@ -1885,13 +1885,18 @@ def convert(
         # `Path(...).expanduser()` stood here until 2026-08-21 and made every
         # relative spelling working-directory-relative -- so `convert` and
         # `prep` disagreed about what the same template meant.
-        from ..pseudos import describe_psml_anchor, resolve_psml_lib
-        lib = resolve_psml_lib(str(cfg.psml_lib), dest_dir=fdf_p.parent)
-        if not lib.is_dir():
+        from ..pseudos import (PsmlLibError, describe_psml_anchor,
+                               resolve_psml_lib)
+        try:
+            lib = resolve_psml_lib(str(cfg.psml_lib), dest_dir=fdf_p.parent)
+        except PsmlLibError as exc:
+            lib = None
+            print(f"  WARN: skipping psml copy -- {exc}", file=sys.stderr)
+        if lib is not None and not lib.is_dir():
             print(f"  WARN: skipping psml copy -- "
                   f"{describe_psml_anchor(str(cfg.psml_lib), dest_dir=fdf_p.parent)}",
                   file=sys.stderr)
-        else:
+        elif lib is not None:
             summary["missing_psml"] = copy_pseudopotentials(species, lib, fdf_p.parent)
 
     # Drop a preview <basename>.molwatch.log next to the

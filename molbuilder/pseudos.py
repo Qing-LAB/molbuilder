@@ -39,121 +39,94 @@ import re
 import xml.etree.ElementTree as ET
 
 
+class PsmlLibError(ValueError):
+    """A ``psml_lib`` spelling the rule cannot answer -- dotted, or an
+    absolute path outside the projects tree.  The message teaches the
+    rule; callers surface it verbatim in their own refusal type."""
+
+
 def resolve_psml_lib(raw: str, *,
-                      base: Optional[Path] = None,
-                      dest_dir: Optional[Path] = None) -> Path:
-    """Resolve ``cfg.psml_lib`` against the anchor its SPELLING names.
+                     base: Optional[Path] = None,
+                     dest_dir: Optional[Path] = None) -> Path:
+    """Resolve ``cfg.psml_lib``: **a path inside the projects tree.**
 
-    The rule is `job-contracts.md` § 2.5a, and it is the whole rule:
+    The rule is `job-contracts.md` § 2.5a, ONE line since 2026-08-28
+    (user: the library always lives inside the project tree, so psml
+    paths speak the same language as every sidebar path):
 
-      * absolute, or ``~/...``           -> itself.
-      * starts with ``./`` or ``../``    -> the CALCULATION folder
-                                            (``dest_dir``).
-      * anything else (a bare name)      -> the ``projects/`` tree the
-                                            calculation lives in, found by
-                                            walking up from ``dest_dir``.
+      * a RELATIVE path (``pseudopotential``, ``shared/psml``) is
+        measured from the TREE ROOT -- the tree the calculation lives
+        in, walked up from ``dest_dir``; the server's own
+        ``projects_root()`` when there is no calculation yet (``base``
+        overrides it, for tests and other trees);
+      * an ABSOLUTE path is accepted as a convenience spelling of the
+        same fact -- it must lie INSIDE that tree, and is refused
+        otherwise;
+      * the ``./`` / ``../`` spellings are RETIRED with the old anchor
+        cascade: pseudopotentials already beside the calculation are
+        used without this field (prep adopts them), so the dotted
+        anchor had no remaining job.
 
-    **One anchor per spelling, and nothing is tried-and-discarded.**  Until
-    2026-08-21 this walked a cascade -- ``dest_dir``, then the tree, then
-    ``<cwd>/projects`` -- taking whichever candidate happened to exist.  Three
-    consequences, all of them found in one Sol failure:
-
-      * the same string named a different folder on different machines,
-        because which candidate "happened to exist" is a property of the
-        machine, not of what the user asked for;
-      * a total miss reported the LAST candidate, so ``prep`` refused with
-        ``.../optimization/Relax/projects/pseudopotential`` -- a folder
-        assembled from where the user was standing, which no user had chosen
-        and no amount of reading the message would explain;
-      * and because trying was free, nothing ever had to decide what the
-        spelling meant.
-
-    Now the spelling decides, the answer is one path, and a miss is reported
-    against the anchor that spelling asked for (`architecture.md` § 7, A10).
-
-    **The caller with no calculation folder.**  Server-side validation runs
-    before anything is written, so there is no *"here"* to be relative to and
-    no tree to walk up from.  With ``dest_dir=None`` both relative forms
-    anchor at ``projects_root()`` -- the server's own declared root, which is
-    the one place a working directory is a legitimate anchor.  ``base``
-    overrides that root (tests, and any caller serving a different tree).
-
-    Returns an absolute, **not-resolved** Path: callers do ``.is_dir()`` and
-    want the path to stay symlink-faithful in error messages.  The path is
-    returned whether or not it exists -- this function answers *"which folder
-    does this spelling name?"*, and the caller reports the miss.
+    Raises :class:`PsmlLibError` for a spelling the rule cannot answer.
+    Returns an absolute, **not-resolved** Path whether or not it
+    exists: this function answers *"which folder does this name?"* and
+    the caller reports a miss (``.is_dir()``) with
+    :func:`describe_psml_anchor`.
     """
-    from .projects import find_projects_root, projects_root
+    from .projects import (OutsideRoot, PROJECTS_ROOT_NAME, contain,
+                           find_projects_root, projects_root)
     p = Path(raw).expanduser()
+
+    if raw.startswith("./") or raw.startswith("../"):
+        raise PsmlLibError(
+            f"{raw!r}: the ./ spelling is retired -- `psml_lib` is a "
+            f"path inside the {PROJECTS_ROOT_NAME}/ tree, measured from "
+            f"the tree root (write `pseudopotential`, not "
+            f"`./pseudopotential`).  Pseudopotentials already beside "
+            f"the calculation are used without this field.")
+
+    tree: Optional[Path] = None
+    if dest_dir is not None:
+        tree = find_projects_root(dest_dir)
+    if tree is None:
+        tree = base if base is not None else projects_root()
+
     if p.is_absolute():
+        try:
+            contain(p, tree)
+        except OutsideRoot as exc:
+            raise PsmlLibError(
+                f"{raw!r} is outside the {PROJECTS_ROOT_NAME}/ tree "
+                f"({tree}).  `psml_lib` always lives inside the tree -- "
+                f"copy the library in (e.g. {tree}/pseudopotential) and "
+                f"write the tree-relative name.") from exc
         return p
-
-    dotted = raw.startswith("./") or raw.startswith("../")
-
-    if dest_dir is None:
-        # No calculation to be relative to: the server's declared root.
-        root = base if base is not None else projects_root()
-        return root / p
-
-    if dotted:
-        return Path(dest_dir) / p
-
-    tree = find_projects_root(dest_dir)
-    if tree is not None:
-        return tree / p
-    # The calculation is not inside a projects/ tree -- a hand-made folder,
-    # or a bundle copied somewhere flat.  There is no tree to name, so the
-    # bare spelling has no anchor and the calculation folder is the only
-    # place left that the user actually chose.
-    return Path(dest_dir) / p
+    return tree / p
 
 
 def describe_psml_anchor(raw: str, *, dest_dir: Optional[Path] = None) -> str:
-    """One sentence: which anchor this spelling named, and where that landed.
+    """One sentence for refusals: where this spelling looked (§ 2.5a).
 
-    **Why the explanation lives beside the rule.**  Two surfaces refuse over a
-    missing library -- ``prep`` on the target machine and the browser's
-    preflight -- and each used to describe the resolution in its own words.
-    Both descriptions were of the old cascade, so when the rule changed there
-    were two places telling users about anchors that are no longer tried.  A
-    refusal is the only place most users ever learn the rule, which makes it
-    part of the rule, not decoration on top of it.
-
-    The caller owns severity and formatting; this owns the fact.
+    Lives beside the rule so every surface that refuses over a missing
+    library -- ``prep``, deck emission, the browser preflight -- says
+    the same thing, in the rule's own words.
     """
-    landed = resolve_psml_lib(raw, dest_dir=dest_dir)
+    from .projects import PROJECTS_ROOT_NAME
+    try:
+        landed = resolve_psml_lib(raw, dest_dir=dest_dir)
+    except PsmlLibError as exc:
+        return str(exc)
     p = Path(raw).expanduser()
     if p.is_absolute():
-        return f"{raw} is an absolute path, so that is where it looked: {landed}."
-
-    if dest_dir is None:
-        return (f"{raw!r} is relative and there is no calculation folder yet, "
-                f"so it was resolved against this server's projects tree: "
-                f"{landed}.")
-
-    if raw.startswith("./") or raw.startswith("../"):
-        return (f"{raw!r} starts with a dot, which means "
-                f"\"from this calculation\", so it looked in {landed}.")
-
-    from .projects import PROJECTS_ROOT_NAME, find_projects_root
-    tree = find_projects_root(dest_dir)
-    if tree is None:
-        return (f"{raw!r} is a bare name, which means the {PROJECTS_ROOT_NAME}/ "
-                f"tree this calculation lives in -- but this calculation is "
-                f"not inside one, so it looked beside the calculation: "
-                f"{landed}.")
-    lead = (f"{raw!r} is a bare name, which means the {PROJECTS_ROOT_NAME}/ "
-            f"tree this calculation lives in ({tree}), so it looked in "
-            f"{landed}.")
+        return (f"{raw} is an absolute path inside the tree, so that is "
+                f"where it looked: {landed}.")
+    out = (f"{raw!r} is measured from the {PROJECTS_ROOT_NAME}/ tree "
+           f"root, so it looked in {landed}.")
     if raw.split("/", 1)[0] == PROJECTS_ROOT_NAME:
-        # The one spelling that cannot work: the walk-up already found the
-        # tree, so naming it again nests it inside itself.  Say so -- do not
-        # silently strip it, because a user who meant something else by that
-        # first segment deserves to see what happened to it.
-        lead += (f"  Note the doubled {PROJECTS_ROOT_NAME}/: the tree is what "
-                 f"the walk-up finds, so the path you write is the part "
-                 f"INSIDE it.  Drop the leading {PROJECTS_ROOT_NAME}/.")
-    return lead
+        out += (f"  Note the doubled {PROJECTS_ROOT_NAME}/: paths are "
+                f"measured from the tree root already.  Drop the "
+                f"leading {PROJECTS_ROOT_NAME}/.")
+    return out
 
 
 @dataclass(frozen=True)

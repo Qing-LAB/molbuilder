@@ -290,7 +290,11 @@ def write_description(desc: Description, dest, *,
             # folder being described, and staging is a transaction detail
             # that gets renamed away.  Anchoring on it would make a `./`
             # spelling point at a directory that ceases to exist.
-            lib = resolve_psml_lib(str(psml_lib), dest_dir=out_dir)
+            from .pseudos import PsmlLibError
+            try:
+                lib = resolve_psml_lib(str(psml_lib), dest_dir=out_dir)
+            except PsmlLibError as exc:
+                raise DescribeError(str(exc))
             if not lib.is_dir():
                 raise DescribeError(
                     f"--psml-lib {psml_lib!r} is not a directory.  "

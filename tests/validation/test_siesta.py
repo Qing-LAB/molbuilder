@@ -354,23 +354,27 @@ class TestSiestaPseudoCoverageInPreflight:
         assert errs
         assert "/no/such/dir" in errs[0].message
 
-    def test_complete_coverage_passes(self, tmp_path):
+    def test_complete_coverage_passes(self, tmp_path, monkeypatch):
         """All elements present + matching XC -> NO psml-related issues
         (other checks may fire; we filter to just the psml ones)."""
         for el in ("O", "H"):
             (tmp_path / f"{el}.psml").write_text(_make_pdojo_psml(el))
         from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.validation import validate
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
         issues = validate(self._water(),
                            SiestaConfig(psml_lib=str(tmp_path), xc_authors="PBE"))
         psml_issues = [i for i in issues if "psml" in i.where.lower()]
         assert psml_issues == []
 
-    def test_missing_element_emits_error(self, tmp_path):
+    def test_missing_element_emits_error(self, tmp_path, monkeypatch):
         """Only O.psml is present; H is missing -> ERROR Issue."""
         (tmp_path / "O.psml").write_text(_make_pdojo_psml("O"))
         from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.validation import validate
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
         issues = validate(self._water(),
                            SiestaConfig(psml_lib=str(tmp_path)))
         h_issues = [i for i in issues
@@ -379,7 +383,7 @@ class TestSiestaPseudoCoverageInPreflight:
         assert h_issues[0].severity == "error"
         assert "no .psml file for H" in h_issues[0].message
 
-    def test_xc_family_mismatch_emits_error(self, tmp_path):
+    def test_xc_family_mismatch_emits_error(self, tmp_path, monkeypatch):
         """Pseudos are LDA but the calc requests PBE -> an XC-FAMILY
         mismatch, which is never physically correct (silently wrong bond
         lengths).  ERROR per element (upgraded from WARN in the 2026-07
@@ -389,7 +393,9 @@ class TestSiestaPseudoCoverageInPreflight:
             (tmp_path / f"{el}.psml").write_text(
                 _make_pdojo_psml(el, libxc_id_x=1, libxc_id_c=9))
         from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.validation import validate
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
         issues = validate(self._water(),
                            SiestaConfig(psml_lib=str(tmp_path),
                                           xc_authors="PBE"))

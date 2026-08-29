@@ -59,8 +59,13 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
              "elements automatically."),
             "config.psml_lib",
         )]
-    from ..pseudos import resolve_psml_lib
-    psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
+    from ..pseudos import PsmlLibError, resolve_psml_lib
+    try:
+        psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
+    except PsmlLibError as exc:
+        # A spelling the rule cannot answer (outside the tree / dotted).
+        # ERROR, and the message already teaches the rule (2.5a).
+        return [Issue("error", str(exc), "config.psml_lib")]
     if not psml_dir.is_dir():
         # The spelling named ONE anchor (job-contracts.md 2.5a) and the
         # folder is not there.  Say which anchor, in the rule's own words --

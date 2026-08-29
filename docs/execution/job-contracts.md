@@ -495,47 +495,34 @@ across structures" intuition that motivated topic-first ordering.
 > only). The set is now **nine** — two storage topics (`structure`,
 > `pseudopotential`) and a free-form `user` workspace were added.
 
-#### 2.5a A relative path says which anchor it means
+#### 2.5a `psml_lib` is a path inside the projects tree
 
-A user types a path in one of three places — a template field, a CLI flag, a
-form — and the same string has to mean the same folder on the workstation that
-wrote it and the cluster that runs it. **The spelling declares the anchor.**
+*(One rule since 2026-08-28 — user: "psml-lib is always inside the
+project directory"; the three-anchor spelling cascade that stood here is
+retired. Resolution and containment go through the same `projects` door
+the sidebar API uses, so the browser, the CLI, and a template cannot
+disagree about what a path means.)*
 
-| The user wrote | It is resolved against | Because |
+| You wrote | It means | Refused when |
 |---|---|---|
-| `/data/psml` or `~/psml` | itself | an absolute path is already an answer |
-| `./psml` or `../../psml` | **the calculation folder** | the leading dot is the user saying *"from here"* — and "here", for a path stored in a calculation, is that calculation. It survives the whole folder being copied to a cluster, which a path anchored anywhere else does not |
-| `pseudopotential` (bare) | **the `projects/` tree this calculation lives in**, found by walking up from the calculation folder | a bare name is the tree's own vocabulary — the same word the topic table above uses. Walking up is what makes it machine-independent: the tree is found from the calculation's position, not from where the user was standing |
+| `pseudopotential` (any relative path) | **that folder under the tree root** — the tree the calculation lives in, walked up from the calculation folder; the server's own `projects_root()` when validating before any folder exists | the folder is not there (the refusal names the tree it searched) |
+| `/home/you/molbuilder/projects/pseudopotential` (absolute) | itself — a convenience spelling of the same fact | it lies **outside** the tree: there is no folder that spelling can honestly name under this rule |
+| `./psml`, `../psml` | nothing — **retired** | always, with the reason: pseudopotentials already beside the calculation are used *without* this field (prep adopts them), so the dotted anchor had no remaining job |
 
-**Nothing is tried and discarded.** A spelling names exactly one anchor, and if
-the folder is not there the answer is a refusal that names *that* anchor — not
-a second guess against a different one. A resolver that tries candidates in
-turn makes the same string mean different folders on different machines, and
-reports failures against a place the user never chose (`architecture.md` § 7,
-**A10**).
+Do not write the `projects/` prefix: paths are measured from the tree
+root already, so `projects/pseudopotential` looks for a `projects/`
+*inside* the tree — the refusal says so rather than silently stripping
+it.
 
-**A caller with no calculation folder** — server-side validation, which runs
-before anything is written anywhere — has no *"here"* and no tree to walk up
-from. It anchors bare and dotted spellings alike at its own `projects_root()`,
-which for the server process is the working directory it was started in. That
-is the one place a working directory is a legitimate anchor, because it is the
-server's own declared root rather than an accident of where a user stood.
-
-> **A claim that did not survive checking, recorded so it is not re-inherited.**
-> The old resolver justified trying the calculation folder FIRST as *"the form
-> the Save-to-current-dir button persists"*. That button's path-writing helper
-> (`static/lib/path-utils.js::relativeFromDir`) has had **no caller since
-> `d1c8a871`**, the migration that took deck-rendering out of the browser — so
-> the flow the rule was bent around had already gone. The dotted spelling
-> stands on its own: *"from here"* is a thing a person means when they type it,
-> whether or not any button writes it.
+**Nothing is tried and discarded** (`architecture.md` § 7, A10): a
+spelling names exactly one folder, and a miss is reported against that
+folder — never a second guess against a different anchor.
 
 #### 2.5b Naming a calculation: from the root, and inside it
 
-§ 2.5a is about a path that points at **data** — a pseudopotential library
-may legitimately live anywhere, so its spellings can leave the tree. A path
-that points at a **calculation** is a different question, and it gets a
-different answer (user, 2026-08-22):
+§ 2.5a is about a path that points at **data** inside the tree. A path
+that points at a **calculation** is a different question, and it gets its
+own answer (user, 2026-08-22):
 
 | `--bundle` | means |
 |---|---|
@@ -590,7 +577,7 @@ the string*.
 | `init`, `plan`, `prep`, `launch`, `status`, `summarize` | `--bundle` | **tree address**, fenced to the root |
 | `init` | `--structure` | **tree address** — a structure lives in `<project>/structure/` |
 | `prep` | `--from STAGE/run-N` | inside-bundle |
-| `init` | `--psml-lib` | § 2.5a's rule — a data library may leave the tree |
+| `init` | `--psml-lib` | § 2.5a's rule — a path inside the tree, measured from its root |
 | `probe` | `--out` | a machine record, not tree content |
 
 **Every verb names a calculation the same way, through one declaration.**

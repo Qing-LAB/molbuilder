@@ -512,7 +512,11 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             f"bare name `pseudopotential`, which means the projects tree "
             f"this calculation lives in (project-layout.md § 2.6, "
             f"job-contracts.md § 2.5a).")
-    lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
+    from ..pseudos import PsmlLibError
+    try:
+        lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
+    except PsmlLibError as exc:
+        raise PrepError(str(exc))
     if not lib.is_dir():
         # Name the anchor the SPELLING asked for, in the rule's own words.
         # This used to print only the resolved path, which under the old

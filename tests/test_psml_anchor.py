@@ -18,10 +18,12 @@ when none existed, the refusal named the **last one tried** -- which is how
 ``…/optimization/Relax/projects/pseudopotential``, a folder assembled out of
 where the user was standing that no user had ever chosen.
 
-The rule now is `job-contracts.md` § 2.5a: **the spelling names the anchor.**
-Absolute is itself; a leading dot means *from this calculation*; a bare name
-means *the tree this calculation lives in*.  One anchor per spelling, no
-fallback order, and a miss reported against the anchor that was asked for.
+The rule now is `job-contracts.md` § 2.5a, ONE line since 2026-08-28
+(user: the library always lives inside the project tree): **`psml_lib`
+is a path inside the projects tree, measured from the tree root.**  An
+absolute path is a convenience spelling of the same fact and must lie
+inside the tree; the dotted spellings are retired with the cascade.  No
+fallback order, and a miss reported against the one folder asked for.
 
 Every test below builds its own tree under ``tmp_path`` and passes the
 calculation explicitly, so nothing here can pass or fail because of where
@@ -34,7 +36,8 @@ from pathlib import Path
 import pytest
 
 from molbuilder.projects import find_projects_root
-from molbuilder.pseudos import describe_psml_anchor, resolve_psml_lib
+from molbuilder.pseudos import (PsmlLibError, describe_psml_anchor,
+                                resolve_psml_lib)
 
 
 @pytest.fixture
@@ -48,19 +51,30 @@ def calc(tmp_path: Path) -> Path:
 class TestTheSpellingNamesTheAnchor:
     """The matrix.  One row per spelling the rule defines."""
 
-    def test_absolute_is_itself(self, calc, tmp_path):
-        assert resolve_psml_lib(str(tmp_path / "psml"), dest_dir=calc) == \
-            tmp_path / "psml"
+    def test_absolute_inside_the_tree_is_itself(self, calc, tmp_path):
+        inside = tmp_path / "projects" / "pseudopotential"
+        inside.mkdir()
+        assert resolve_psml_lib(str(inside), dest_dir=calc) == inside
 
-    def test_tilde_expands_and_stops_there(self, calc):
-        got = resolve_psml_lib("~/psml", dest_dir=calc)
-        assert got == Path.home() / "psml"
+    def test_absolute_outside_the_tree_is_refused_teaching_the_rule(
+            self, calc, tmp_path):
+        """Under the one-line rule an outside path has no honest answer --
+        and the refusal says where the tree IS, not just no."""
+        with pytest.raises(PsmlLibError) as e:
+            resolve_psml_lib(str(tmp_path / "elsewhere"), dest_dir=calc)
+        msg = str(e.value)
+        assert "outside" in msg
+        assert str(tmp_path / "projects") in msg
 
-    def test_a_leading_dot_means_this_calculation(self, calc):
-        assert resolve_psml_lib("./psml", dest_dir=calc) == calc / "psml"
-
-    def test_dot_dot_walks_from_the_calculation(self, calc):
-        assert resolve_psml_lib("../psml", dest_dir=calc) == calc / ".." / "psml"
+    def test_the_dotted_spellings_are_retired_with_the_reason(self, calc):
+        for raw in ("./psml", "../psml"):
+            with pytest.raises(PsmlLibError) as e:
+                resolve_psml_lib(raw, dest_dir=calc)
+            msg = str(e.value)
+            assert "retired" in msg
+            assert "beside the calculation" in msg, (
+                "the refusal must say WHY the spelling has no job: "
+                "in-folder pseudos are used without the field")
 
     def test_a_bare_name_means_the_tree_the_calculation_lives_in(
             self, calc, tmp_path):
@@ -101,14 +115,20 @@ class TestTheCallerWithNoCalculation:
 
 
 class TestACalculationOutsideAnyTree:
-    """A bundle copied somewhere flat has no tree to name."""
+    """A bundle copied somewhere flat has no tree to walk up to -- the
+    server's own root answers (2026-08-28: same fallback as no-dest;
+    the old fall-to-the-calculation-folder anchor retired with the
+    cascade, and in-folder pseudos are used without the field anyway)."""
 
-    def test_the_bare_name_falls_to_the_folder_the_user_chose(self, tmp_path):
+    def test_the_bare_name_falls_to_the_servers_root(self, tmp_path,
+                                                     monkeypatch):
+        from molbuilder.projects import PROJECTS_ROOT_ENV
         loose = tmp_path / "scratch" / "run1"
         loose.mkdir(parents=True)
         assert find_projects_root(loose) is None
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
         assert resolve_psml_lib("pseudopotential", dest_dir=loose) == \
-            loose / "pseudopotential"
+            tmp_path / "tree" / "pseudopotential"
 
 
 class TestTheRefusalNamesWhatWasAskedFor:
@@ -127,10 +147,9 @@ class TestTheRefusalNamesWhatWasAskedFor:
         # The folder the old cascade would have named must NOT appear.
         assert str(calc / "projects") not in msg
 
-    def test_a_dotted_spelling_says_from_this_calculation(self, calc):
+    def test_a_dotted_spelling_explains_its_retirement(self, calc):
         msg = describe_psml_anchor("./psml", dest_dir=calc)
-        assert "from this calculation" in msg
-        assert str(calc / "psml") in msg
+        assert "retired" in msg and "tree" in msg
 
     def test_the_doubled_prefix_is_explained_not_silently_fixed(self, calc):
         """``projects/pseudopotential`` is the one spelling that cannot work.
@@ -144,9 +163,13 @@ class TestTheRefusalNamesWhatWasAskedFor:
         assert resolve_psml_lib("projects/pseudopotential", dest_dir=calc).name \
             == "pseudopotential"
 
-    def test_no_calculation_yet_is_said_plainly(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        assert "no calculation folder yet" in describe_psml_anchor("psml")
+    def test_no_calculation_yet_anchors_at_the_root_and_says_so(
+            self, tmp_path, monkeypatch):
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
+        msg = describe_psml_anchor("psml")
+        assert "tree root" in msg
+        assert str(tmp_path / "tree" / "psml") in msg
 
 
 class TestPrepRefusesWithTheRealPlace:
