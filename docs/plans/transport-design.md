@@ -3,8 +3,10 @@
 **Role:** plan (design of record once approved; graduates to a contract
 when built)
 **Domain:** execution
-**Status:** DRAFT 2026-08-28 — for review. Nothing here is built; § 6
-lists the decisions that are the user's.
+**Status:** DECIDED 2026-08-28 — all six § 6 questions answered by the
+user the same day, including one design improvement of the user's own
+(Q5: electrodes are DERIVED, not cited — § 4.1). Ready to plan the
+build. Nothing is built yet.
 
 **Companions:** [`execution/architecture.md`](?doc=execution/architecture.md)
 § 0 — the 2026-08-11 decision this fulfils (*transport is a different
@@ -17,22 +19,24 @@ preflight); [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 
 ## The short version
 
-**A transport calculation is not one run. It is an ASSEMBLY: two
-electrode calculations and a relaxed junction, composed by citation
-into a device self-consistency and a transmission post-processing.**
-The user's model, which this design adopts verbatim: *individual SIESTA
-tasks produce the independent pieces; the transport task PICKS finished
-results out of the project tree — "this electrode from here, that
-structure from there" — adds its own parameters, and runs only what is
-its own.*
+**A transport calculation is not one run. It is an ASSEMBLY built
+from ONE cited result — the relaxed junction — from which everything
+else is derived.** The user's model (2026-08-28, refined by their own
+Q5 answer): *the junction relaxation is an ordinary task in the tree;
+the transport task cites its finished attempt explicitly, EXTRACTS the
+two electrode cells from the structure's own `L-electrode` /
+`R-electrode` labeled blocks, and runs its internal ladder — electrode
+single-points, seed, device SCF, transmission — so a wrong metal
+structure or a parameter mismatch is impossible by construction.*
 
 | key idea | one line | where |
 |---|---|---|
 | **open system** | a current-carrying junction is OPEN — NEGF replaces periodicity along transport with electrode self-energies | § 1 |
-| **the artifact table** | each upstream task hands transport exactly one thing: electrode → `.TSHS` (+ geometry + E_F); relax → coordinates (+ region labels) | § 2 |
-| **slots, by citation** | the transport task cites finished attempts in the tree; prep COPIES the cited artifacts in, so the folder stays portable | § 4 |
-| **the compatibility gate** | basis · pseudos · XC · mesh · electronic T must MATCH across every cited piece — checked at prep, refused with the mismatched field named | § 3 |
-| **update semantics** | move the molecule → re-run the device SCF (it IS H(geometry)); electrodes are reusable capital; re-relax only if relaxing was the intent | § 5 |
+| **the artifact table** | what each step hands the next: relax → coordinates + labels; electrode sub-stages → `.TSHS` + E_F; device → `.TSHS`/`.TSDE` for TBtrans | § 1.4 |
+| **one slot, by citation** | the transport task cites ONE finished attempt — the relaxed junction, named explicitly (`...@run-N`); prep COPIES the structure in, so the folder stays portable | § 4 |
+| **electrodes are derived** | the two electrode single-points are INTERNAL sub-stages, built from the junction's own `L-electrode`/`R-electrode` labeled blocks — parameter and geometry mismatch impossible by construction (user design, Q5) | § 3, § 4.2 |
+| **the internal gate** | the labeled blocks must TILE as bulk (frozen atoms unmoved, bulk spacing) and be thick enough for the principal-layer condition — refused naming the atoms | § 3 |
+| **update semantics** | move the molecule → a new transport attempt (device SCF re-runs — it IS H(geometry)); the derived electrodes rebuild identically from the unmoved labels; re-relax only if relaxing was the intent | § 5 |
 | **a bias scan is a sweep** | the fifth axis again: N bias points = a ParameterSet of length N, warm-started along the list — no new machinery | § 4.3 |
 
 ---
@@ -128,21 +132,21 @@ Two practical consequences that shape the workflow:
 
 ```mermaid
 flowchart TB
-    subgraph U["independent SIESTA tasks — each an ordinary task in the tree"]
-      E1["<b>electrode L</b><br/>bulk lead, periodic along transport<br/><i>its own k/layer convergence,<br/>DOS + E_F sanity</i>"]
-      E2["<b>electrode R</b><br/>(often the same task cited twice)"]
-      RX["<b>junction relaxation</b><br/>sandwich with OUTER metal layers frozen,<br/>metal–molecule region free<br/><i>an ordinary optimization task —<br/>the framework already runs it</i>"]
-    end
-    subgraph T["the TRANSPORT task — composes, then runs only what is its own"]
+    RX["<b>junction relaxation</b> — an ordinary optimization task in the tree<br/>sandwich with OUTER metal layers frozen (labeled L-/R-electrode),<br/>metal–molecule region free"]
+    subgraph T["the TRANSPORT task — cites the junction, derives everything else (user design, Q5)"]
+      EL["<b>electrode L · single-point</b><br/>cell EXTRACTED from the junction's<br/>L-electrode labeled block"]
+      ER["<b>electrode R · single-point</b><br/>extracted from R-electrode"]
+      SEED["<b>seed · periodic SIESTA</b><br/>on the whole sandwich<br/>(default on, skippable)"]
       DEV["<b>device SCF · TranSIESTA</b><br/>zero bias first, then the bias list,<br/>each point warm-started from the last"]
       TBT["<b>transmission · TBtrans</b><br/>T(E), DOS, I(V) per bias —<br/>re-runnable on finer grids"]
     end
-    E1 -- ".TSHS  (H+S of the bulk lead)<br/>+ lead geometry + E_F" --> DEV
-    E2 -- ".TSHS" --> DEV
-    RX -- "relaxed coordinates<br/>+ region labels (electrode/buffer)" --> DEV
+    RX -- "relaxed coordinates + region labels<br/>(the ONE citation, @run-N explicit)" --> EL & ER & SEED
+    EL -- ".TSHS (H+S of the bulk lead) + E_F" --> DEV
+    ER -- ".TSHS" --> DEV
+    SEED -- ".DM (initial density)" --> DEV
     DEV -- "device .TSHS + .TSDE<br/>(open-boundary H and density)" --> TBT
-    E1 -- ".TSHS" --> TBT
-    E2 -- ".TSHS" --> TBT
+    EL -- ".TSHS" --> TBT
+    ER -- ".TSHS" --> TBT
 ```
 
 **The artifact table — the precise answer to "what does transport take
@@ -162,14 +166,16 @@ from the other tasks":**
 An optimization task is a **ladder**: stage feeds stage through warm
 files, inside one calculation, one engine configuration throughout.
 
-A transport task is a **junction of tasks**: its inputs are *finished
-results of other calculations*, possibly made weeks apart, each with
-its own convergence story — and one of them (the electrode) is
-deliberately *reusable capital*, computed once per lead material and
-cited by every junction that uses that lead. Bending this into a ladder
-would force the electrode to be re-run inside every transport
-calculation, which is both wasteful and scientifically wrong-headed:
-the electrode's convergence is its own study.
+A transport task **starts from another task's finished result**: its
+input is the relaxed junction, made separately, with its own
+convergence story — and its internal ladder is not a parameter ladder
+but a DAG of *different programs* (electrode extraction → single-points,
+seed, TranSIESTA, TBtrans) whose stages exchange different kinds of
+files. The electrodes are deliberately NOT independent tasks (user
+ruling Q5): deriving them from the junction's own labeled blocks makes
+every compatibility error unrepresentable, and an electrode
+single-point is cheap enough that re-deriving per transport task costs
+nothing worth caching across tasks.
 
 What stays identical to every other task — deliberately, per
 architecture § 0: the portable-folder rule, the verbs
@@ -179,47 +185,48 @@ machinery for transport's own parameters, and the sweep axis (§ 4.3).
 
 ---
 
-## 3. The compatibility contract — the science gate that makes
-composition safe
+## 3. The gate — what must still be checked when nothing is cited
 
-The self-energy `Σ(E)` is only meaningful if the electrode Hamiltonian
-and the device Hamiltonian **speak the same language**. This is the
-scientific heart of the design, and it is a *checkable contract*:
+The user's Q5 design removes the cross-task compatibility problem at
+the root: electrode and device share one template, one basis, one set
+of pseudos, one XC, one mesh, one electronic temperature — *because
+they are one calculation*. The table below is kept as the scientific
+record of what the derivation guarantees by construction:
 
-| must MATCH across device and every cited electrode | why |
+| guaranteed by construction (Q5) | why it matters |
 |---|---|
-| **basis set** (per species: same basis size/radii definitions) | `Σ` is expressed in the lead's orbitals; a different device basis makes the coupling blocks meaningless |
-| **pseudopotentials** (same files, byte-identical) | different cores = different Hamiltonians wearing one label |
-| **XC functional** | the lead and device must sit on one potential-energy surface |
-| **mesh cutoff** (real-space grid) | the electrostatic matching at the seam assumes one grid convention |
-| **electronic temperature / occupation smearing** | E_F alignment between lead and device assumes one occupation function |
-| **spin treatment** | a polarized lead against an unpolarized device has no consistent E_F |
-| **transverse k-grid compatibility** | `Σ(E, k_⊥)` is built per transverse k-point; the device's transverse grid must be commensurate |
-| **geometry at the seam** | the device's outer layers must replicate the lead's layer geometry and spacing — the self-energy attaches where the device *becomes* the bulk lead |
+| basis · pseudos · XC · mesh · electronic T · spin identical between electrode and device | the self-energy `Σ(E)` is only meaningful if lead and device Hamiltonians speak one language |
+| transverse cell and k-grid identical | `Σ(E, k_⊥)` is built per transverse k-point |
+| electrode geometry = the device's boundary geometry | the self-energy attaches where the device *becomes* the bulk lead |
 
-**Where the gate runs:** at `prep`, across the *cited templates* — the
-transport task holds citations (§ 4), each citation reaches a finished
-calculation whose template records every row above, and prep compares
-them field by field. A mismatch is a refusal that names the field and
-both values, in the style every other gate already uses. The existing
-`transport preflight` device↔electrode check is the seed of this gate;
-the design extends it from "one .fdf pair" to "every cited piece."
+What remains is **internal honesty about the labeled blocks**, checked
+at prep, refusals naming the atoms (user ruling Q3):
 
-The geometry seam check is the one row that needs the structures, not
-the templates: the outer-layer coordinates of the relaxed junction are
-compared against the electrode's layer geometry (allowing the rigid
-translation), and a drifted seam — the relaxer moved atoms that should
-have been frozen, or the frozen set was wrong — is refused with the
-atom indices named.
-
----
+* **Frozen means unmoved.** The relaxer must not have moved any atom
+  labeled `L-electrode`/`R-electrode` (tolerance: arithmetic dust
+  only). A moved "frozen" atom means the constraint was wrong or
+  dropped — refuse with the indices and displacements.
+* **The block must tile.** Repeating the labeled block along the
+  transport axis must reproduce a bulk lead — the layers sit at bulk
+  spacing with a well-defined period. A block that does not tile
+  (wrong label boundary, a partial layer) is refused naming the layer
+  spacing it found.
+* **Thick enough — the principal-layer condition.** The extracted cell
+  must be long enough along transport that SIESTA's orbitals couple
+  only to adjacent cells. Too thin → refuse: *"orbital range X Å
+  exceeds the L-electrode block's period Y Å — label more layers."*
+* **Buffer sanity.** Atoms labeled buffer (excluded from the NEGF
+  region) must sit outside the electrode blocks; `TS.Atoms.Buffer`
+  emission is the half of region consumption roadmap § 2 records as
+  missing, and lands with this.
 
 ## 4. The composition design
 
-### 4.1 Slots, filled by citation
+### 4.1 One slot, one explicit citation
 
-The transport task's `task.json` carries, beside the ordinary fields,
-a **`slots`** section — the user's "pick this piece from here":
+The transport task's `task.json` carries a single slot — the user's
+"pick the relaxed junction from here" — with the attempt named
+**explicitly, always** (user ruling Q1):
 
 ```jsonc
 {
@@ -227,44 +234,44 @@ a **`slots`** section — the user's "pick this piece from here":
   "engine": { "name": "siesta" },
   "calculation": "transport",
   "slots": {
-    "electrode_left":  "AuLead/optimization/Au111Lead",   // a calculation, cited from the tree root
-    "electrode_right": "AuLead/optimization/Au111Lead",   // the same source, cited twice, is normal
-    "junction":        "BDT-Au/optimization/JunctionRelax"
+    "junction": "BDT-Au/optimization/JunctionRelax@run-2"
   },
   "stages": [
-    { "name": "device",       "enabled": true, "overrides": {} },
-    { "name": "transmission", "enabled": true, "overrides": {} }
+    { "name": "seed",         "enabled": true,  "overrides": {} },
+    { "name": "electrode_L",  "enabled": true,  "overrides": {} },
+    { "name": "electrode_R",  "enabled": true,  "overrides": {} },
+    { "name": "device",       "enabled": true,  "overrides": {} },
+    { "name": "transmission", "enabled": true,  "overrides": {} }
   ],
   "bias": { "voltages_v": [0.0, 0.2, 0.4] }
 }
 ```
 
-* A slot value is a **calculation citation** in the same tree-relative
-  language every other path speaks (job-contracts § 2.5b). Which
-  *attempt* of that calculation supplies the artifact follows the
-  framework's existing resume rule — the latest **concluded** attempt —
-  and prep says which one it picked; `slots.<name>@run-2` pins one
-  explicitly when the user wants a specific attempt.
-* **At `prep`, the cited artifacts are COPIED in** (electrode `.TSHS`s,
-  the relaxed structure) — the transport folder then travels like any
-  other, carrying everything it needs. A citation is how a slot is
-  *filled*; it is not a live link. The provenance (which calculation,
-  which attempt, content hash) is recorded beside each copy, so a
-  result can always say exactly which electrode it was computed with.
-* The gate of § 3 runs here, across the cited templates, before
-  anything renders.
+* The citation is tree-relative, the same path language everything
+  speaks; `@run-N` is mandatory — nothing is ever picked for the user.
+* **Strict composition** (user ruling Q2): a missing or unconcluded
+  citation is a refusal naming exactly what to run first — the
+  transport task never runs its upstream pieces.
+* **At `prep`, the cited structure is COPIED in** with provenance
+  (calculation, attempt, content hash) recorded beside it — the
+  transport folder then travels like any other. The § 3 gate runs on
+  the copy before anything renders.
 
-### 4.2 Transport's own stages
+### 4.2 The internal ladder — five stages, all the task's own
 
-Two stages, the composite's own ladder — ordinary stages, ordinary
-attempts:
-
-1. **`device`** — the TranSIESTA SCF. At zero bias first; an optional
-   leading periodic-SIESTA pass seeds the density matrix (§ 6 Q4).
-2. **`transmission`** — TBtrans over the converged device. Its
-   parameters (energy window, grid, k-sampling for transmission) are
-   transport-template fields; re-running it on a finer grid is a new
-   attempt of this stage, never a re-run of `device`.
+1. **`seed`** — an ordinary periodic SIESTA pass on the sandwich;
+   its `.DM` starts the device SCF. **Default on, skippable** (user
+   ruling Q4): scaffolding for convergence and a cheap setup-error
+   catch, with no effect on the converged answer.
+2. **`electrode_L`** / **`electrode_R`** — the cells EXTRACTED from
+   the junction's labeled blocks (the existing wizard's move, made
+   the architecture); single-point SCF each, H/S save on → `.TSHS`.
+   Cheap; run per task, cached by nothing (Q5's trade-off, accepted).
+3. **`device`** — the TranSIESTA SCF: zero bias first, then the bias
+   list (§ 4.3), consuming both `.TSHS` files and the seed's `.DM`.
+4. **`transmission`** — TBtrans over the converged device; its energy
+   window / grid / k-sampling are transport-template fields, and a
+   finer grid is a new attempt of THIS stage only.
 
 ### 4.3 A bias scan is a sweep — the fifth axis, again
 
@@ -298,14 +305,14 @@ The dependency rule falls straight out of the artifact table: **a
 change invalidates exactly the pieces whose inputs it touched, and
 nothing upstream of them.**
 
-| what changed | electrode | junction relax | device SCF | transmission |
+| what changed | electrode sub-stages | junction relax | device SCF | transmission |
 |---|---|---|---|---|
-| molecule displaced along a vibration mode | **reused** — no electrode atom moved | **no** — the displacement IS the intended geometry; re-relaxing would undo it | **must re-run** | re-runs |
-| new junction conformation to explore (re-adsorption, different anchoring) | reused | **yes** — relax the new sandwich (frozen outer layers) | re-runs on the new relaxed structure | re-runs |
-| more electrode layers / different lead lattice / new lead material | **re-run** | yes — the surface the molecule binds changed | re-runs | re-runs |
-| basis, pseudos, XC, mesh, electronic T — anywhere | **everything re-runs.** The § 3 gate refuses a mixed assembly, so this cannot happen silently | ← | ← | ← |
-| bias list extended | reused | no | **only the new points**, warm from the nearest computed bias | new points |
-| finer transmission energy grid | reused | no | **no** | re-runs alone |
+| molecule displaced along a vibration mode | re-derive from the unmoved labeled blocks — cheap, bit-identical result | **no** — the displacement IS the intended geometry; re-relaxing would undo it | **must re-run** | re-runs |
+| new junction conformation to explore (re-adsorption, different anchoring) | re-derive (unchanged if the frozen blocks are) | **yes** — relax the new sandwich (frozen outer layers) | re-runs on the new relaxed structure | re-runs |
+| more electrode layers / different lead lattice / new lead material | re-derive from the NEW junction's blocks — automatic under Q5 | yes — the surface the molecule binds changed | re-runs | re-runs |
+| basis, pseudos, XC, mesh, electronic T | one template governs everything (Q5), so a change re-runs the whole task — a mixed assembly is unrepresentable | ← | ← | ← |
+| bias list extended | unchanged | no | **only the new points**, warm from the nearest computed bias | new points |
+| finer transmission energy grid | unchanged | no | **no** | re-runs alone |
 
 The physics behind the first row — the one the question was really
 about: TranSIESTA *is* the map from geometry to open-boundary
@@ -316,10 +323,12 @@ answers a question nobody asked. But the expensive reusable pieces
 So the workflow for a vibration study is: take the relaxed junction,
 generate the displaced structures (the Spectrum tab's vibration modes
 are the natural source — the Inelastica seam roadmap § 2 already
-names), and for each displaced structure the transport task re-runs
-`device` + `transmission` with the same cited electrodes. **In the
-composition model that is: same slots, new `junction` citation (or a
-structure override), new attempt.**
+names), and for each displaced structure the transport task re-runs its
+ladder — the derived electrodes rebuild bit-identically from the
+unmoved labeled blocks, and `device` + `transmission` do the real
+work. **In the composition model that is: a new `junction` citation
+per displaced structure, one transport run each** (ruling Q6: the
+study-over-runs machinery waits until the composite is proven).
 
 Whether to re-relax is *intent*, not physics the framework should
 decide (the standing rule — the tool does not overstep): a frozen-phonon
@@ -328,34 +337,13 @@ relax first. Both are just "which structure the `junction` slot cites."
 
 ---
 
-## 6. Open questions — the decisions that are the user's
+## 6. The six questions — asked and answered (2026-08-28)
 
-1. **Slot granularity.** Cite the *calculation* and let the
-   latest-concluded-attempt rule pick (with `@run-N` to pin), as
-   proposed in § 4.1 — or require the explicit attempt always?
-   *(Proposed: the calculation, with the pin available; prep prints
-   which attempt it took.)*
-2. **Strict composition.** The transport task never runs its upstream
-   pieces — a missing/unconcluded slot is a refusal naming what to run
-   first, not a trigger to run it. *(Proposed: yes — strictly compose;
-   the old orchestrating driver retires. Matches your stated model.)*
-3. **The seam check's tolerance.** The frozen-layer geometry comparison
-   needs a tolerance (relaxers move "frozen" atoms by numerical dust).
-   Propose: exact for declared-frozen atoms (they must be bitwise
-   unmoved), and the check is on *lead-spacing replication* for the
-   layer structure. Needs a look at real relaxed junctions before the
-   number is fixed.
-4. **The seed stage.** An ordinary periodic SIESTA pass on the device
-   geometry before TranSIESTA (better initial density, catches setup
-   errors cheaply) — on by default as stage 0, or opt-in?
-   *(Proposed: on by default, skippable.)*
-5. **Electrode task type.** Is `electrode` a new SIESTA calculation
-   *kind* (its own template items: transport-axis periodicity, H/S
-   save, its convergence checklist) — proposed — or an ordinary run
-   with a convention? The kind gets the wizard's logic a permanent
-   home and gives § 3's gate a template to read.
-6. **Where the vibration seam lands.** The displaced-structure loop of
-   § 5 (one transport re-run per mode, then IETS assembly) is the
-   Inelastica engine's eventual territory (roadmap § 2). Design it as
-   "a study over transport tasks" now, or leave the seam named and
-   stop? *(Proposed: stop at naming it — one composite at a time.)*
+| # | question | ruling |
+|---|---|---|
+| 1 | slot granularity | **explicit attempt always** — `@run-N` is mandatory; nothing is picked for the user |
+| 2 | strict composition | **yes** — transport never runs its upstream pieces; a missing/unconcluded citation refuses naming what to run first; the old `transport bundle` driver retires |
+| 3 | the seam check | **refuse, naming atoms** — frozen labels bitwise unmoved, blocks must tile, principal-layer thickness enforced (§ 3) |
+| 4 | the seed stage | **default on, skippable** |
+| 5 | electrode task type | **neither offered option — the user's own design, adopted**: electrodes are not tasks at all; they are internal sub-stages EXTRACTED from the junction's labeled blocks, making structure and parameter mismatch impossible by construction. Trade-off accepted: no cross-task electrode reuse (single-points are cheap) |
+| 6 | vibration/IETS scope | **name the seam, stop** — a displaced structure is a new `junction` citation; the study machinery waits for the proven composite |
