@@ -9,8 +9,11 @@
     of one set of ids is three chances for a rename to reach two of them.
 
     Parameters:
-      `hint`   - what this tab's analysis fills, in prose.
-      `title`  - the button's tooltip, which says the same in one line.
+      `hint`         - what this tab's analysis fills, in prose.
+      `title`        - the button's tooltip, which says the same in one line.
+      `button_label` - optional; defaults to "Auto-detect defaults".
+                       Transport passes "Re-analyze chemistry" because its
+                       analysis mutates no fields (informational only).
 
     JS: `lib/auto-detect.js` (the panel renderer and the analyze call).
     CSS: `lib/form-components.css` -- `.auto-detect-bar`,
@@ -20,7 +23,7 @@
   <p class="hint">{{ hint }}</p>
   <div class="auto-detect-bar">
     <button id="auto-detect-btn" type="button" disabled title="{{ title }}">
-      Auto-detect defaults
+      {{ button_label | default("Auto-detect defaults") }}
     </button>
     <span id="auto-detect-status" class="status" role="status"
           aria-live="polite"></span>

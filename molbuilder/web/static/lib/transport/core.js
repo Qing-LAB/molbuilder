@@ -317,126 +317,35 @@ const WORKSPACE_TAG = "transport";
         });
     }
 
-    // ---------- Auto-detect chemistry handler (Card 2) ---------- //
-
-    var _autoDetectSeq = 0;
-    // J3 2026-06-14: shared AbortController so a spam-click or a
-    // commit-on-file-change racing a prior request kills the older
-    // server-side parse instead of letting both complete.  Mirrors
-    // viewer.js's _autoDetectAbort pattern.
-    var _autoDetectAbort = null;
+    // ---------- Auto-detect chemistry (Card 2) ---------- //
+    //
+    // The SHARED surface (lib/auto-detect.js): analyze() owns the
+    // supersede protocol, renderPanel() owns the card + the detection
+    // chips.  This tab carried its own copy of all three until
+    // 2026-08-29 -- the recorded hold-out, retired with the redesign
+    // round it was deferred to.
 
     function _analyzeStructure(path) {
-        if (!path) return;
-        var mySeq = ++_autoDetectSeq;
-        if (_autoDetectAbort) _autoDetectAbort.abort();
-        _autoDetectAbort = new (root.AbortController)();
-        var mySignal = _autoDetectAbort.signal;
+        var ad = root.molbuilder && root.molbuilder.autoDetect;
+        var st = root.molbuilder && root.molbuilder.status;
+        if (!ad || typeof ad.analyze !== "function") return;
         var btn = _$("auto-detect-btn");
         if (btn) btn.disabled = true;
-        _autoDetectSetStatus("Analyzing chemistry…", null);
-        root.fetch("/api/structure/analyze", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ structure_path: path }),
-            signal:  mySignal,
-        })
-            .then(function (r) {
-                return r.json().then(function (body) {
-                    return { status: r.status, body: body };
-                });
-            })
-            .then(function (resp) {
-                if (mySeq !== _autoDetectSeq) return;
-                var b = resp.body;
-                if (!b || !b.ok) {
-                    _autoDetectSetStatus(
-                        b && b.error ? b.error
-                            : "Analyze failed (HTTP " + resp.status + ").",
-                        "error");
-                    _refreshAnalyzeButton();
-                    return;
-                }
-                _renderAutoDetectPanel(b);
-                // Inject the same workflow-group detection chip the
-                // SIESTA + PySCF tabs show — single source of truth
-                // (lib/detection-chip.js) per web-ui-coherence.md
-                // Rule 1.  Au junctions are the canonical use case;
-                // pre-2026-06-13 Transport silently rendered no chip.
-                var chipApi = (root.molbuilder
-                               && root.molbuilder.detectionChip);
-                if (chipApi && chipApi.render) chipApi.render(b);
-                _autoDetectSetStatus(
-                    "Chemistry analyzed — review the rationale "
-                    + "panel before sending.",
-                    null);
+        if (st) st.set("auto-detect-status", "Analyzing chemistry…");
+        ad.analyze(path).then(function (res) {
+            if (res && res.superseded) return;
+            if (!res || !res.ok) {
+                if (st) st.set("auto-detect-status",
+                    (res && res.error) || "Analyze failed.", "error");
                 _refreshAnalyzeButton();
-            })
-            .catch(function (e) {
-                // AbortError = J3 supersede.  Silent; the new
-                // request owns the UI.
-                if (e && e.name === "AbortError") return;
-                if (mySeq !== _autoDetectSeq) return;
-                _autoDetectSetStatus(
-                    "Network error: "
-                    + (e && e.message ? e.message : String(e)),
-                    "error");
-                _refreshAnalyzeButton();
-            });
-    }
-
-    function _autoDetectSetStatus(msg, kind) {
-        var el = _$("auto-detect-status");
-        if (!el) return;
-        el.textContent = msg || "";
-        el.className = "status"
-            + (kind === "error" ? " error" : "")
-            + (kind === "ok"    ? " ok"    : "");
-    }
-
-    function _renderAutoDetectPanel(resp) {
-        var panel = _$("auto-detect-panel");
-        if (!panel) return;
-        panel.hidden = false;
-        panel.open = true;
-        var ratEl  = _$("auto-detect-rationale");
-        var warnEl = _$("auto-detect-warnings");
-        var metEl  = _$("auto-detect-metals");
-        if (ratEl) {
-            var sug = (resp.suggested || {}).pyscf
-                || (resp.suggested || {}).siesta
-                || {};
-            ratEl.textContent = sug.rationale || "";
-        }
-        if (warnEl) {
-            warnEl.textContent = "";
-            var ws = resp.warnings || [];
-            for (var i = 0; i < ws.length; i++) {
-                var li = document.createElement("li");
-                li.textContent = ws[i];
-                warnEl.appendChild(li);
+                return;
             }
-            warnEl.hidden = ws.length === 0;
-        }
-        if (metEl) {
-            metEl.textContent = "";
-            var hs = resp.metal_hints || [];
-            for (var j = 0; j < hs.length; j++) {
-                var h = hs[j];
-                var dt = document.createElement("dt");
-                dt.textContent = h.element;
-                metEl.appendChild(dt);
-                var cs = h.common_spins || [];
-                for (var k = 0; k < cs.length; k++) {
-                    var c = cs[k];
-                    var dd = document.createElement("dd");
-                    dd.textContent =
-                        "spin=" + c.spin + " — " + c.label;
-                    metEl.appendChild(dd);
-                }
-            }
-            metEl.hidden = hs.length === 0;
-        }
+            ad.renderPanel(res.body);
+            if (st) st.set("auto-detect-status",
+                "Chemistry analyzed — review the rationale panel "
+                + "before sending.");
+            _refreshAnalyzeButton();
+        });
     }
 
     function _wireAutoDetectButton() {
@@ -595,28 +504,23 @@ const WORKSPACE_TAG = "transport";
      *  electronic contract is the citation's to say), so an untouched
      *  form sends nothing and a touched contract field gets a clear
      *  answer instead of a silent drop. */
+    /** The transport-only knobs whose value differs from the schema
+     *  default -- through the SHARED differ (formSchema.diffFromDefaults,
+     *  which owns the typed comparison incl. the 300-vs-"300" trap).
+     *  An untouched form sends nothing; an invalid one answers null so
+     *  the caller says so instead of silently dropping fields. */
     function _changedFields(formContainer) {
         var fs = root.molbuilder && root.molbuilder.formSchema;
-        var schema = _cachedSchema;
-        if (!fs || !schema || typeof fs.collectForm !== "function") {
+        if (!fs || !_cachedSchema
+                || typeof fs.diffFromDefaults !== "function") {
             return {};
         }
-        var values;
-        try { values = fs.collectForm(formContainer, schema); }
-        catch (e) { return null; }        // invalid form: the caller says so
-        var defaults = {};
-        (schema.sections || []).forEach(function (s) {
-            (s.fields || []).forEach(function (f) {
-                defaults[f.name] = f.default;
-            });
-        });
-        var out = {};
-        Object.keys(values || {}).forEach(function (k) {
-            var v = values[k];
-            var d = defaults[k];
-            if (JSON.stringify(v) !== JSON.stringify(d)) out[k] = v;
-        });
-        return out;
+        try {
+            var out = {};
+            fs.diffFromDefaults(formContainer, _cachedSchema)
+                .forEach(function (d) { out[d.name] = d.current; });
+            return out;
+        } catch (e) { return null; }      // invalid form: the caller says so
     }
 
     function _wireSendButton(formContainer) {

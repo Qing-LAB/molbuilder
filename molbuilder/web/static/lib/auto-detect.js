@@ -47,10 +47,9 @@
  * what each hand-rolled copy already assumed by keeping one
  * ``_autoDetectSeq`` per page shared across its call sites.
  *
- * HOLD-OUT: `lib/transport/core.js` still carries its own copy.
- * Transport's UI is designed in its own round (user ruling); it
- * joins there.  A shared module with one recorded hold-out beats
- * three copies drifting.
+ * The last hold-out (`lib/transport/core.js`'s own copy) joined
+ * 2026-08-29 with the transport redesign round it was deferred to —
+ * every analyze surface now runs through here.
  */
 (function () {
     "use strict";

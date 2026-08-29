@@ -72,31 +72,15 @@
   </section>
 
   {#- ===================== 2. Analyze chemistry ===================== -#}
-  <section class="card" id="analyze-card">
-    <h2>2. Analyze chemistry</h2>
-    <p class="hint">
-      Surfaces the open-shell-metal check (same as on
+  {% set hint %}Surfaces the open-shell-metal check (same as on
       <a href="/structure-optimization">Optimization</a> and
       <a href="/spectrum-calculation">Spectrum</a>) plus a region-
       label summary — run on the CITED junction's structure.
       Auto-fires when you cite one; re-run it from the button below.
-      No form fields are mutated — this step is informational only.
-    </p>
-    <div class="auto-detect-bar">
-      <button id="auto-detect-btn" type="button" disabled
-        title="Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited.">
-        Re-analyze chemistry
-      </button>
-      <span id="auto-detect-status" class="status" role="status"
-            aria-live="polite"></span>
-    </div>
-    <details id="auto-detect-panel" class="auto-detect-panel" hidden>
-      <summary>Chemistry analysis</summary>
-      <p class="auto-detect-rationale" id="auto-detect-rationale"></p>
-      <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
-      <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
-    </details>
-  </section>
+      No form fields are mutated — this step is informational only.{% endset %}
+  {% set title = "Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited." %}
+  {% set button_label = "Re-analyze chemistry" %}
+  {% include "_analyze_chemistry_card.html" %}
 
   {#- ===================== 3. Parameters ===================== -#}
   <section class="card" id="parameters-card">
@@ -169,6 +153,7 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
+<script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 {# lib/task-handover.js supplies the destination guards + the file-layer
    write; the transport branch posts to /api/transport/describe and does
