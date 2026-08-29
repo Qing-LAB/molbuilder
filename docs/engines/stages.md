@@ -1694,8 +1694,8 @@ are built somewhere else and moved into place only when all of them succeeded. O
 failure nothing is moved, and the message names the stage that stopped it.
 
 This is the same discipline the sidecar and archive writers already use — build,
-verify, then `os.replace` (`handoff-bundle.md § 5`) — applied to a directory
-rather than a file. What it must **not** do is remove warm files that were already
+verify, then `os.replace` ([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md)'s
+atomicity rule) — applied to a directory rather than a file. What it must **not** do is remove warm files that were already
 there; producing twice is `execution/run-identity.md § 6`, and those files are
 the point.
 
@@ -1923,21 +1923,13 @@ were written for a flat directory and would silently have lost data in a tree.
   file does not carry**, because there are no edges left to thread. *(That bullet
   read "the dependency chain, `Job.carry` … and asks for `on_nonconvergence`"
   until 2026-08-11; all three were deleted on 2026-08-10 — § 3.)*
-- **Carrying a finished run into the next calculation** — the handoff bundle,
-  [`execution/handoff-bundle.md`](?doc=execution/handoff-bundle.md) (it moved out
-  of `job-contracts.md § 5` on 2026-08-10). It reads a run directory and fuses the
-  final coordinates with the labels from the script that produced them, and a
-  folder of stages is a run directory, so it works unchanged.
-
-  > **One interaction to settle before this ships.** `handoff-bundle.md § 4`
-  > resolves *which* script to read when a directory holds several: **largest by
-  > atom count, ties broken lexicographically.** Every stage of one description has
-  > the same atoms, so every produce is a tie — and lexicographic order picks
-  > `_coarse` over `_tight`. The coordinates are right either way (they come from
-  > the one shared `.XV`), but `source_script` and the provenance it carries would
-  > name the stage that ran *first*. A folder of stages makes that the normal case
-  > rather than an edge one, so the tie-break needs an answer that knows about
-  > stages — most likely the last enabled one, which is the production stage.
+- **Carrying a finished run into the next calculation** — **it is CITED, never
+  bundled** (retired 2026-08-29; `job-contracts.md` § 5 holds the closure).  A
+  calculation that builds on a finished result names the attempt explicitly
+  (`<calc>@<stage>/run-N`) and `prep` composes from it —
+  [`plans/transport-design.md`](?doc=plans/transport-design.md) § 4.1 is the
+  shipped instance.  The which-script tie-break question the old handoff carried
+  died with it: a citation names ONE attempt, so there is nothing to guess.
 - **What a checkpoint history must always hold** —
   [`execution/checkpointing.md`](?doc=execution/checkpointing.md). This contract
   says *when* a checkpoint is taken and *what it is called*; that one says what

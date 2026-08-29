@@ -5,11 +5,12 @@
 **Module:** `molbuilder/parse/` · **Tests:** `tests/parse/` (~106 tests).
 **Companions:** [`structure.md`](?doc=model/structure.md) (a `StructureResult` carries a `Structure`);
 `engines/siesta.md` + `engines/pyscf.md` (the `.out`/`.log`/geometry formats the
-leaf parsers read, migrating); `execution/job-decoder.md` +
-[`execution/handoff-bundle.md`](?doc=execution/handoff-bundle.md) (the directory-level `JobResult`/`BundleResult`
-contracts the two DirParsers implement, migrating). The **write** side (the
-inverse — turning data back into files) is `sidecars/molstruct.py`,
-`script_emit.py`, and `bundle_writer.py`, not this module.
+leaf parsers read, migrating).  The **write** side (the inverse — turning data
+back into files) is `sidecars/molstruct.py` and `script_emit.py`, not this
+module.  *(A second DirParser, `BundleDirParser` → `BundleResult`, and the
+`bundle_writer.py` write half retired 2026-08-29 with calculation-to-calculation
+passing — a calculation that builds on a finished result CITES it and prep
+composes; `execution/job-contracts.md` § 5 holds the closure.)*
 
 One package answers a single question: **"what is in this path, as a Python
 object?"** — for a file, a text body, or a whole run directory. It is the sole
@@ -81,16 +82,11 @@ classDiagram
         plots · source_files · parse_warnings
         result_kind = "job"
     }
-    class BundleResult {
-        structure · regions · frozen_atoms · notes
-        result_kind = "bundle"
-    }
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- ScriptResult
     ParseResult <|-- JobResult
-    ParseResult <|-- BundleResult
 ```
 
 Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
@@ -98,8 +94,8 @@ Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
 instead of raising.
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
-  string (`"trajectory"`, `"structure"`, `"sidecar"`, `"script"`, `"job"`,
-  `"bundle"`). Consumers holding a `ParseResult` (cached, or sent over the wire)
+  string (`"trajectory"`, `"structure"`, `"sidecar"`, `"script"`, `"job"`).
+  Consumers holding a `ParseResult` (cached, or sent over the wire)
   `match` on it; JSON deserialisation reads it to pick a class. Adding a kind =
   a new subclass + a new discriminator value (rule below).
 - **Why frozen.** No defensive copies at API boundaries; hashable (dict/set
@@ -287,7 +283,7 @@ flowchart TD
 | `detect(path)` (`:60`) | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
 | `parse(path)` (`:135`) | `detect` + `parse` in one call |
 | `parse_text(text, parser)` (`:158`) | parse a known text body — **no detection**, caller names the `TextParser` |
-| `parse_dir(path)` (`:144`) | detect among **DirParsers only** — for callers whose contract is "this is a run directory" (JobMonitor, Results, bundle handoff) |
+| `parse_dir(path)` (`:144`) | detect among **DirParsers only** — for callers whose contract is "this is a run directory" (JobMonitor, Results) |
 | `register(parser)` (`:30`) | add a parser at module-init time (idempotent; not for runtime registration) |
 
 **Errors** (`errors.py`): `UnknownFormatError` (`:13`) and
@@ -343,7 +339,7 @@ s.provenance         # the PROVENANCE block, or None
 
 **Skip detection when you already know the type** — call the parser class's
 `parse()` directly. This is what most consumers do, e.g.
-`BundleDirParser.parse(run_dir)` (`web/blueprints/results.py`).
+`decode_run_dir(run_dir)` (`web/blueprints/results.py`).
 
 ---
 
@@ -352,7 +348,7 @@ s.provenance         # the PROVENANCE block, or None
 ```
 molbuilder/parse/
 ├── base.py        # the 3 ABCs                (FileParser / TextParser / DirParser)
-├── types.py       # ParseResult + 6 subclasses + ParseWarning
+├── types.py       # ParseResult + 5 subclasses + ParseWarning
 ├── registry.py    # _REGISTRY, detect/parse/parse_text/parse_dir/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
 ├── _log.py        # parse-side logging helper
@@ -382,7 +378,6 @@ molbuilder/parse/
 │
 └── dirs/          # directory composers (DirParsers)
     ├── job.py                 # JobDirParser + decode_run_dir → JobResult
-    ├── bundle.py              # BundleDirParser → BundleResult (explicit-dispatch)
     └── _assembler_helpers.py  # shared dir-walk + .fdf-coords helpers
 ```
 
@@ -396,17 +391,16 @@ molbuilder/parse/
 
 ## 5. Composer pattern — DirParsers
 
-A DirParser turns a whole run directory into one result. The two shipped:
+A DirParser turns a whole run directory into one result. One ships:
 
-- **`JobDirParser`** (`dirs/job.py:822`; public entry `decode_run_dir` `:736`) →
+- **`JobDirParser`** (`dirs/job.py:892`; public entry `decode_run_dir` `:803`) →
   `JobResult` — walks the `.out` files, consolidates per-source plots,
   classifies the job type. This is what the Results tab + JobMonitor consume.
-- **`BundleDirParser`** (`dirs/bundle.py:460`) → `BundleResult` — picks the
-  source `.fdf`, reads the `.XV` final coordinates, validates the atom count,
-  for the next-stage handoff. It is **explicit-dispatch, not auto-registered**
-  (it shares the `.fdf` claim with `JobDirParser` but expresses a different user
-  intent), so `parse_dir` routes to `JobDirParser`; a caller names
-  `BundleDirParser` directly.
+
+*(A second, `BundleDirParser` → `BundleResult` — the run-dir → next-calculation
+handoff fuse — stood beside it until 2026-08-29 and retired with
+calculation-to-calculation passing: a calculation that builds on a finished
+result CITES it, and prep composes — `transport/compose.py`.)*
 
 Every DirParser must: **walk** the directory, **dispatch each file through the
 registry** (`detect`+`parse`, or pick a specific FileParser when the choice
@@ -575,6 +569,7 @@ These stop the next round of parallel parse paths:
 The unified stack replaced the four parallel patterns above (shipped
 incrementally 2026-06-19 → 06-21). The legacy `molbuilder/parsers/`,
 `script_contract.py`, and `script_bundle.py` are deleted; their **read** side is
-here, and their **write** side rehomed to `molbuilder/sidecars/`,
-`script_emit.py`, and `bundle_writer.py` (parsing and emitting are inverse
-concerns, kept in separate modules).
+here, and their **write** side rehomed to `molbuilder/sidecars/` and
+`script_emit.py` (parsing and emitting are inverse concerns, kept in separate
+modules; the third rehome, `bundle_writer.py`, retired 2026-08-29 with the
+handoff it materialised).

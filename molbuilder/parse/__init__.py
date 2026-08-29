@@ -6,13 +6,15 @@ contract this package implements.
 Public surface:
 
 * ABCs — :class:`FileParser`, :class:`TextParser`, :class:`DirParser`.
-* Result types — :class:`ParseResult` and its 7 frozen subclasses.
+* Result types — :class:`ParseResult` and its 5 frozen subclasses
+  (trajectory / structure / sidecar / script / job — ``BundleResult``
+  retired 2026-08-29 with calculation-to-calculation passing).
 * Registry / dispatch — :func:`detect`, :func:`parse`,
   :func:`parse_text`, :func:`parse_dir`, :func:`register`.
 * Exceptions — :exc:`UnknownFormatError`, :exc:`AmbiguousFormatError`.
 
-Phase A (this commit) ships the skeleton only.  Phases B-H migrate
-the existing parser/decoder code into this package incrementally.
+The 2026-06 migration (phases A-H) is complete: the engine, coords,
+sidecar, script and dir parsers all live here and register at import.
 """
 
 from .base import DirParser, FileParser, TextParser
