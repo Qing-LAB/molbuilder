@@ -347,6 +347,12 @@ drops its POST.
 
 ## 2. Transport calculation backends  *(Phase B.3)*
 
+> **The composite design is drafted** —
+> [`plans/transport-design.md`](?doc=plans/transport-design.md)
+> (2026-08-28): the NEGF science essay, the slots-by-citation
+> composition, the compatibility gate, and the update-semantics table.
+> Six open questions await the user's ruling before anything builds.
+
 The transport engine abstraction (a registry of engines behind one
 `TransportConfig` + `Structure` pair) shipped as Phase B.2. Phase B.3
 fills in the concrete engines and the results path.

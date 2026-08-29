@@ -254,6 +254,9 @@
           "path": "plans/machine-identity-plan.md"
         },
         {
+          "path": "plans/transport-design.md"
+        },
+        {
           "path": "web/modify-persistency-investigation.md"
         },
         {
