@@ -43,6 +43,7 @@ const TONE_CLASS = {
     2:      "molviewer-label-predefined--2",
     3:      "molviewer-label-predefined--3",
     4:      "molviewer-label-predefined--4",
+    5:      "molviewer-label-predefined--5",
     // The one that means something: `frozen_atoms` changes the calculation.
     warn:   "molviewer-label-frozen",
 };
@@ -1652,6 +1653,12 @@ function mountPanel(doc, card, model) {
             const option = doc.createElement("option");
             option.value = name;
             option.textContent = name;
+            /* A reserved label explains itself where it is offered, not
+             * only after it is applied -- the chip's note, as a hover
+             * title on the chooser entry too (user, 2026-08-28: the
+             * meaning and use of these labels must be clear IN the tab). */
+            const note = labelNote.get(name);
+            if (note) option.title = name + " — " + note;
             chooser.appendChild(option);
         }
         const fresh = doc.createElement("option");

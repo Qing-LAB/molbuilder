@@ -166,6 +166,11 @@ device. The convention (the *vocabulary* is owned by
   electrode region").
 - **`interface`** (optional) — a sub-label flagging the contact atoms (the two S
   anchors in Au-BDT-Au) for projected-DOS analysis; doesn't change the partition.
+- **`buffer`** (optional) — atoms excluded from the NEGF region entirely
+  (`TS.Atoms.Buffer`): padding beyond the electrode blocks at the OUTER ends of
+  the device. Most 2-terminal junctions need none. Named 2026-08-28 with the
+  composite design ([`plans/transport-design.md`](?doc=plans/transport-design.md)
+  § 4.1a — the categorical sort places buffer atoms outermost).
 - **`<name>-electrode`** — any label ending `-electrode`/`_electrode`/bare
   `electrode` (case-insensitive) is a lead — so `tip-electrode`, `gate-electrode`
   work without code changes (`config.transport.is_electrode_label:94`).

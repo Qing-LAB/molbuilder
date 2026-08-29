@@ -1181,6 +1181,11 @@
     color:      #a6e08a; /* exempt: predefined-label tone */
     border:     1px solid #4a7a37; /* exempt: predefined-label tone */
 }
+.molviewer-label-predefined--5 {                      /* slate — buffer */
+    background: #1e3340; /* exempt: predefined-label tone */
+    color:      #8ec6e0; /* exempt: predefined-label tone */
+    border:     1px solid #396a85; /* exempt: predefined-label tone */
+}
 /* The one with a meaning: amber, the tone a warning wears. */
 .molviewer-label-frozen {
     font-weight: 700;

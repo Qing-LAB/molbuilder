@@ -78,15 +78,38 @@ export const FROZEN_LABEL = "frozen_atoms";
  * `frozen_atoms` appears here as the CONSTANT, never as a second literal: the
  * reserved meaning costs one name and one accessor, and that name is spelled
  * once, above. */
+/* THE RESERVED TRANSPORT LABELS.  Descriptions say what each is FOR and
+ * when to use it, because a transport calculation reads them as physics
+ * (plans/transport-design.md § 4.1a): the electrode blocks are extracted
+ * as the semi-infinite leads, so mislabeling silently changes the device.
+ * Names are the Python constants in config/transport.py -- one rename,
+ * one place. */
 export const PREDEFINED_LABELS = [
-    { name: "L-electrode", tone: 1, description: "the left semi-infinite lead" },
-    { name: "R-electrode", tone: 2, description: "the right semi-infinite lead" },
+    { name: "L-electrode", tone: 1,
+      description: "the left lead: bulk metal layers, FROZEN during "
+        + "relaxation, at bulk positions. Transport extracts the left "
+        + "electrode cell from exactly these atoms -- label only the "
+        + "bulk-like block, not the surface layers" },
+    { name: "R-electrode", tone: 2,
+      description: "the right lead: same rules as L-electrode, other "
+        + "end of the junction" },
     { name: "bridge",      tone: 3,
-      description: "the scattering region between the leads" },
+      description: "the scattering region: the molecule plus the "
+        + "relaxed surface layers between the leads -- where the "
+        + "metal-molecule chemistry is computed. Every atom that is "
+        + "not lead or buffer belongs here" },
     { name: "interface",   tone: 4,
-      description: "contact atoms inside the bridge" },
+      description: "optional bookkeeping inside the bridge: the "
+        + "contact atoms (e.g. the two S anchors), for projected-DOS "
+        + "analysis. Changes no partition" },
+    { name: "buffer",      tone: 5,
+      description: "optional: atoms excluded from the transport "
+        + "region entirely, padding beyond the electrode blocks at "
+        + "the outer ends. Most junctions need none" },
     { name: FROZEN_LABEL,  tone: "warn",
-      description: "these atoms are held still by the calculation" },
+      description: "these atoms are held still by the calculation. "
+        + "Electrode blocks must also carry this during relaxation -- "
+        + "transport refuses a moved electrode atom" },
 ];
 
 /* Just the names, in order — what every chooser offers. */

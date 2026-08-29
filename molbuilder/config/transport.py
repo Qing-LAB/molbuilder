@@ -71,6 +71,12 @@ from .siesta import _validate_basename
 REGION_LEFT_ELECTRODE  = "L-electrode"
 REGION_RIGHT_ELECTRODE = "R-electrode"
 REGION_BRIDGE          = "bridge"
+#: Atoms excluded from the NEGF region entirely (``TS.Atoms.Buffer``):
+#: padding at the OUTER ends of the device, beyond the electrode blocks.
+#: Optional -- most 2-terminal junctions need none.  Named 2026-08-28 with
+#: the transport composite design (plans/transport-design.md § 4.1a); the
+#: categorical sort places buffer atoms outermost, by transport coordinate.
+REGION_BUFFER          = "buffer"
 
 # The defaults that ship with the modify tab.  See
 # docs/engines/transport.md for the convention + scientific

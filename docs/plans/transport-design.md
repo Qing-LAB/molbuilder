@@ -150,13 +150,13 @@ flowchart TB
     ER -- ".TSHS" --> TBT
 ```
 
-**The artifact table — the precise answer to "what does transport take
-from the other tasks":**
+**The artifact table — the precise answer to "what does each step hand
+the next":**
 
-| upstream task | what it is | what transport consumes from it | conditions on it |
+| step | what it is | what it hands on | conditions on it |
 |---|---|---|---|
-| **electrode** (per lead) | a bulk calculation of a few lead unit cells, periodic along the transport axis, with the H/S save switched on | the **`.TSHS` file** — the lead's Hamiltonian and overlap in SIESTA's basis, from which the self-energies are built; plus the **lead geometry** (the device's outer layers must replicate it) and the lead **Fermi level** | thick enough that only adjacent cells couple (the *principal layer* condition); its own convergence checks (k along transport, layers, DOS at E_F — a metal must have states there) are this task's business, done once and reused forever |
-| **junction relaxation** | an ordinary optimization of the sandwich, outer metal layers frozen | the **relaxed coordinates**, with the structure's **region labels** (which atoms are left-electrode, right-electrode, buffer) riding along — the labels molbuilder's handoff already carries | the frozen outer layers must sit at the **bulk lead spacing** — they are the seam the self-energies attach to (§ 3) |
+| **junction relaxation** *(the one upstream task, cited)* | an ordinary optimization of the sandwich, outer metal layers frozen | the **relaxed coordinates**, with the structure's **region labels** (`L-electrode` / `R-electrode` / `bridge`, optional `buffer` and `interface`) riding along — the labels the Modify tab assigns | the frozen outer layers must sit at the **bulk lead spacing** — they are the seam the self-energies attach to (§ 3), and the blocks transport will extract |
+| **electrode single-points** *(transport's own sub-stages, one per lead)* | the cell EXTRACTED from the labeled block, periodic along the transport axis, single-point SCF with the H/S save on | the **`.TSHS` file** — the lead's Hamiltonian and overlap in SIESTA's basis, from which the self-energies are built — and the lead **Fermi level** | thick enough that only adjacent cells couple (the *principal layer* condition, checked at prep § 3); a metal must have states at E_F (a DOS sanity worth a warning) |
 | **device SCF** (transport's own first stage) | TranSIESTA on the assembled sandwich | produces the **device `.TSHS` + `.TSDE`** consumed by TBtrans; at bias `V_{i+1}`, warm-starts from `V_i`'s `.TSDE` | initial guess: an ordinary periodic SIESTA pass on the same geometry (a cheap seed stage) or atomic densities |
 | **transmission** (transport's own second stage) | TBtrans over device + electrode `.TSHS` | the deliverables: `T(E)`, DOS, `I(V)` | pure post-processing — re-runnable per energy grid without re-running the SCF |
 
@@ -182,7 +182,7 @@ What stays identical to every other task — deliberately, per
 architecture § 0: the portable-folder rule, the verbs
 (`init/prep/launch/summarize/status`), attempts, the template/catalogue
 machinery for transport's own parameters, and the sweep axis (§ 4.3).
-**Only the input model is new: slots filled by citation.**
+**Only the input model is new: one slot, filled by an explicit citation.**
 
 ---
 
@@ -286,11 +286,13 @@ is transport's business alone, and it happens at **transport prep, on
 the copied-in citation** — the cited attempt is never mutated.
 
 **The sort.** A categorical sort by region label into the canonical
-layout, buffers outermost:
+layout, buffer atoms outermost (there is ONE `buffer` label — which end
+a buffer atom belongs to is read from its transport coordinate, not
+from a second label):
 
 ```
-[ buffer_L ][ L-electrode ][ bridge ][ R-electrode ][ buffer_R ]
-  index 1 →                                          → index N
+[ buffer ][ L-electrode ][ bridge ][ R-electrode ][ buffer ]
+ index 1 →                                          → index N
 ```
 
 * **Within each electrode block**: sorted by transport coordinate
@@ -307,11 +309,12 @@ layout, buffers outermost:
 **The two checks, refusals naming atoms** (the user's "make sure
 nothing is missed"):
 
-1. **Every atom carries exactly one label** — `L-electrode`,
-   `R-electrode`, `bridge`, or buffer. An unlabeled atom is refused by
-   index and element ("atom 37 (C) carries no region label"), because
-   an unlabeled atom has no place in the canonical order and TranSIESTA
-   would misassign it silently.
+1. **Every atom carries exactly one PARTITION label** — `L-electrode`,
+   `R-electrode`, `bridge`, or `buffer` (`interface` is a bookkeeping
+   sub-label riding on bridge atoms and affects no partition). An
+   unlabeled atom is refused by index and element ("atom 37 (C)
+   carries no region label"), because an unlabeled atom has no place
+   in the canonical order and TranSIESTA would misassign it silently.
 2. **The sort is a bijection** — same count, same element-and-position
    multiset, every original atom exactly once in the sorted list.
    Checked mechanically after the sort; any discrepancy is a bug
@@ -413,9 +416,9 @@ The physics behind the first row — the one the question was really
 about: TranSIESTA *is* the map from geometry to open-boundary
 Hamiltonian. There is no shortcut where updated positions are "exposed"
 to an old Hamiltonian — transmission from stale `H` with new coordinates
-answers a question nobody asked. But the expensive reusable pieces
-(electrodes) genuinely are reusable, because no electrode atom moved.
-So the workflow for a vibration study is: take the relaxed junction,
+answers a question nobody asked. The electrode sub-stages, by
+contrast, rebuild bit-identically from the unmoved labeled blocks —
+cheap, and correct without thought. So the workflow for a vibration study is: take the relaxed junction,
 generate the displaced structures (the Spectrum tab's vibration modes
 are the natural source — the Inelastica seam roadmap § 2 already
 names), and for each displaced structure the transport task re-runs its
@@ -443,3 +446,30 @@ relax first. Both are just "which structure the `junction` slot cites."
 | 5 | electrode task type | **neither offered option — the user's own design, adopted**: electrodes are not tasks at all; they are internal sub-stages EXTRACTED from the junction's labeled blocks, making structure and parameter mismatch impossible by construction. Trade-off accepted: no cross-task electrode reuse (single-points are cheap) |
 | 6 | vibration/IETS scope | **name the seam, stop** — a displaced structure is a new `junction` citation; the study machinery waits for the proven composite |
 | 7 | *(user-added, same day)* atom order | **the categorical sort at transport prep** (§ 4.1a): TranSIESTA's positional electrode identification demands `[L][bridge][R]`; relaxation order stays free; the sort is checked (all labeled, bijection) and its permutation recorded |
+
+
+---
+
+## 7. The build plan — smallest risk first, each step separately gated
+
+*(Sequenced 2026-08-28, machine-identity style. What already ships and
+is reused: the device emitter (`transport/transiesta.py`), the
+electrode extraction logic (`transport/wizard.py`), the
+device↔electrode preflight, the region plumbing into `TS.Elecs`, and
+the whole task framework — verbs, attempts, warm files, sweeps.)*
+
+| P | build | gate (the test that must fail before and pass after) |
+|---|---|---|
+| **P1** | **The label vocabulary** — `REGION_BUFFER` constant; the Modify tab's reserved labels explained (chip + chooser tooltips state what each is FOR); `engines/transport.md` § 4 carries `buffer`. | *(Done 2026-08-28, with this design.)* Label suites green. |
+| **P2** | **The categorical sort** — a pure function: `(structure, regions) → (sorted structure, permutation)`; refusals for unlabeled atoms; the bijection check; the permutation sidecar schema (`molbuilder/atom-permutation@1`). No I/O, no engine knowledge. | Unit + property tests: sort is stable within bridge, layer-major within electrodes, bijective always; every refusal named; mutation-tested. |
+| **P3** | **The `transport` calculation kind** — `task.json` grows `slots` (one entry, `@run-N` mandatory) and `bias`; `init` accepts and validates them; strict-composition refusal (missing / unconcluded / unpinned citation each named). | init round-trip tests; the three refusals, each mutation-tested. |
+| **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). | A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block); the emitter's own order-preflight never fires (prep sorted first). |
+| **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
+| **P6** | **summarize + the record** — parse TBtrans output → `<label>.transport.json` (schema first: `T(E)` per bias, `I(V)` table, provenance incl. the permutation reference); `summarize` prints the I–V table; the Results-tab transmission inspector follows as its own step (roadmap § 2 already names it). | Parse fixtures from a real TBtrans run; schema round-trip; summarize output pinned. |
+| **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields) and hand over like every other tab. | The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane. |
+
+**Order of proof:** P2 and P3 are pure and land independently; P4 is
+the heart and cannot start before both; P5–P6 ride the existing
+framework; P7 last, so the old path keeps working until the new one is
+proven. The first real junction (BDT–Au on the workstation, then Sol)
+walks the road after P6, before P7 retires anything.
