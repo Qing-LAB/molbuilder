@@ -51,44 +51,49 @@ class TestTransportSchemaEndpoint:
             f"the actual engine keyword string otherwise)."
         )
 
-    def test_schema_carries_TransportConfig_sections(self, web):
-        """Section order MUST come from
-        ``TransportConfig._form_section_order`` so the workflow-
-        order (System → Electrodes → Transmission → NEGF → Runtime)
-        is stable independent of field-declaration order in the
-        dataclass.  (The old ``Geometry`` section held only the dead
-        ``structure_xyz_path`` / ``molstruct_json_path`` path fields,
-        removed 2026-07-25 -- geometry now rides in from the viewer, so
-        the section no longer exists.)"""
+    def test_schema_serves_only_the_override_lane(self, web):
+        """The tab's form is the OVERRIDE lane: the electronic contract
+        is the citation's to say, and a field the describe door refuses
+        BY NAME must not be offered as an input (found rendered
+        2026-08-29 — ten sealed fields as editable inputs, the bias
+        asked twice).  The filter empties System and Electrodes whole,
+        so the served sections are the three that carry transport-only
+        knobs, still in ``_form_section_order`` order."""
+        from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
         body = web.get("/api/transport/schema").get_json()
         sections = body["schema"]["sections"]
-        names = [s["name"] for s in sections]
-        assert names == [
-            "System", "Electrodes",
+        assert [s["name"] for s in sections] == [
             "Transmission", "NEGF", "Runtime",
         ]
-
-    def test_schema_includes_engine_field_with_choices(self, web):
-        """The engine selector is the load-bearing System field —
-        future engine backends register through it.  Pin its
-        presence + that it has at least the two planned choices."""
-        body = web.get("/api/transport/schema").get_json()
-        engine_field = None
-        for s in body["schema"]["sections"]:
-            for f in s.get("fields", []):
-                if f.get("name") == "engine":
-                    engine_field = f
-                    break
-            if engine_field:
-                break
-        assert engine_field is not None, (
-            "schema missing 'engine' field"
+        offered = {f["name"] for s in sections for f in s["fields"]}
+        leaked = offered & SEALED_TRANSPORT_FIELDS
+        assert not leaked, (
+            f"sealed fields served as form inputs: {sorted(leaked)} — "
+            f"the describe door refuses these by name, so offering "
+            f"them is a guaranteed 400"
         )
-        choices = engine_field.get("choices") or []
-        choice_values = [c["value"] if isinstance(c, dict) else c
-                         for c in choices]
-        assert "transiesta" in choice_values
-        assert "pyscf-negf" in choice_values
+
+    def test_engine_choices_are_registered_engines(self):
+        """Every engine the form could offer must be one the registry
+        answers for — a choice ``get_engine`` refuses
+        (``UnknownEngineError``) is a trap, not an option.  Until
+        2026-08-29 the metadata offered ``pyscf-negf``, which no
+        backend ever registered."""
+        from dataclasses import fields as _fields
+        import molbuilder.transport  # noqa: F401 -- registration side-effect
+        from molbuilder.config.transport import TransportConfig
+        from molbuilder.transport.engine_base import registered_engines
+        engine_field = next(f for f in _fields(TransportConfig)
+                            if f.name == "engine")
+        choices = engine_field.metadata["choices"]
+        registered = set(registered_engines())
+        unknown = [c for c in choices if c not in registered]
+        assert not unknown, (
+            f"engine choices offer unregistered backends: {unknown} "
+            f"(registered: {sorted(registered)}).  A backend that "
+            f"registers itself adds its choice back in the same commit."
+        )
+        assert "transiesta" in choices
 
     def test_schema_carries_field_metadata_for_render(self, web):
         """Every field must carry the metadata form-schema.js needs
@@ -106,61 +111,30 @@ class TestTransportSchemaEndpoint:
             f"fields missing render metadata: {missing}"
         )
 
-    def test_bias_voltages_schema_kind_and_default(self, web):
-        """``bias_voltages_v`` is ``List[float]`` — must render as the
-        new ``comma-floats`` text input, NOT fall through to plain
-        ``text`` (which would lose the placeholder hint).  The
-        default MUST be the factory-produced ``[0.0]`` serialized as
-        a comma-string so the form opens pre-populated.
+    def test_builder_kinds_for_sequence_fields(self):
+        """The BUILDER's branch pins, kept at the builder (the served
+        schema filters these sealed fields out, but the branches they
+        regression-pin are shared by every config form):
 
-        Regression for the 2026-06-11 review: the schema builder
-        previously had no branch for ``Sequence[float]`` so the field
-        fell through to ``kind: "text"`` AND ``_serialize_default``
-        returned ``None`` for ``default_factory`` fields (the form
-        opened with a blank input)."""
-        body = web.get("/api/transport/schema").get_json()
-        field = None
-        for s in body["schema"]["sections"]:
-            for f in s.get("fields", []):
-                if f.get("name") == "bias_voltages_v":
-                    field = f
-                    break
-            if field:
-                break
-        assert field is not None, "schema missing bias_voltages_v"
-        assert field["kind"] == "comma-floats", (
-            f"expected kind='comma-floats', got {field['kind']!r}.  "
-            f"Sequence[float] must use the comma-floats kind so the "
-            f"placeholder + class hooks render correctly."
-        )
-        assert field["default"] == "0.0", (
-            f"expected default='0.0' (single zero-bias entry), got "
-            f"{field['default']!r}.  The factory-default [0.0] must "
-            f"serialize as a comma-string for the text input."
-        )
-
-    def test_k_mesh_transverse_schema_kind_and_default(self, web):
-        """``k_mesh_transverse`` is ``Tuple[int, int, int]`` (fixed
-        arity-3) — must render as ``int-triple`` so the user gets
-        three side-by-side spinners (kx/ky/kz) rather than a single
-        free-text field where any malformed entry breaks the engine.
-
-        Regression for the 2026-06-11 review: the field was
-        previously ``List[int]`` which fell through to ``kind:
-        "text"``."""
-        body = web.get("/api/transport/schema").get_json()
-        field = None
-        for s in body["schema"]["sections"]:
-            for f in s.get("fields", []):
-                if f.get("name") == "k_mesh_transverse":
-                    field = f
-                    break
-            if field:
-                break
-        assert field is not None, "schema missing k_mesh_transverse"
-        assert field["kind"] == "int-triple"
-        assert field["default"] == [1, 1, 1]
-        assert field["labels"] == ["x", "y", "z"]
+        * ``Sequence[float]`` → ``comma-floats`` with the factory
+          default serialized as a comma-string (2026-06-11: it fell
+          through to ``text`` with a blank input);
+        * ``Tuple[int, int, int]`` → ``int-triple`` with three
+          labelled spinners (same review: it was a free-text field).
+        """
+        from molbuilder.web.blueprints._shared import (
+            dataclass_to_form_schema)
+        from molbuilder.config.transport import TransportConfig
+        schema = dataclass_to_form_schema(TransportConfig, "t")
+        by_name = {f["name"]: f
+                   for s in schema["sections"] for f in s["fields"]}
+        bias = by_name["bias_voltages_v"]
+        assert bias["kind"] == "comma-floats"
+        assert bias["default"] == "0.0"
+        kmesh = by_name["k_mesh_transverse"]
+        assert kmesh["kind"] == "int-triple"
+        assert kmesh["default"] == [1, 1, 1]
+        assert kmesh["labels"] == ["x", "y", "z"]
 
 
 class TestTransportPageRendering:

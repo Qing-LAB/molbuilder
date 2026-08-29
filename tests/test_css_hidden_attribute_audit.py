@@ -585,3 +585,63 @@ def test_a_class_on_a_hideable_element_does_not_defeat_the_hidden_attribute():
         + "\n  ".join(sorted(set(offenders)))
         + "\n\nAdd a `[hidden] { display: none }` rule for the class."
     )
+
+
+# --------------------------------------------------------------------- #
+#  Step 5 -- elements reached through .closest(), not by id             #
+# --------------------------------------------------------------------- #
+#
+# 2026-08-29: a FIFTH idiom.  The Task-setup file panel hides whole rows
+# by walking UP from an id-bearing child:
+#
+#     const el = $(id);                    // id is a VARIABLE here
+#     const li = el && el.closest("li");
+#     if (li) li.hidden = (docKind === "transport");
+#
+# No pattern above can see it: the id is not a literal, the hidden thing
+# has no id and no el()-built class.  `.ts-files li { display: flex }`
+# shipped with no guard, and on a transport folder the three rows the
+# code "hid" kept reading "not there yet" on screen -- author display
+# beats the UA's [hidden] on origin precedence.  Found in a browser,
+# again.
+
+_CLOSEST_HIDDEN_RE = re.compile(
+    r"""\b(?:const|let|var)\s+(\w+)\s*=\s*[^;\n]*
+        \.closest\(\s*["']([^"']+)["']\s*\)""",
+    re.VERBOSE,
+)
+
+
+def test_closest_sourced_hidden_rows_have_a_hidden_guard():
+    """Every `X = ....closest("sel"); X.hidden = ...` needs a CSS
+    `sel[hidden] { display: none }` (or a scoped variant carrying
+    `sel[hidden]`) somewhere in the tree, or the hide is a no-op
+    wherever an author rule sets that element's display."""
+    needed: set[str] = set()
+    for js_path in STATIC.rglob("*.js"):
+        rel = js_path.relative_to(STATIC).as_posix()
+        if rel.startswith("vendor/") or rel.endswith(".min.js"):
+            continue
+        src = js_path.read_text(encoding="utf-8")
+        var_to_sel = {m.group(1): m.group(2)
+                      for m in _CLOSEST_HIDDEN_RE.finditer(src)}
+        for m in _VAR_HIDDEN_ASSIGNMENT_RE.finditer(src):
+            sel = var_to_sel.get(m.group(1))
+            if sel:
+                needed.add(sel)
+    if not needed:
+        return
+    all_css = "\n".join(
+        _strip_comments(p.read_text(encoding="utf-8"))
+        for p in _all_css_files()
+    )
+    missing = [
+        sel for sel in needed
+        if not re.search(re.escape(sel) + r"\[hidden\]\s*[^{]*\{[^}]*display\s*:\s*none",
+                         all_css)
+    ]
+    assert not missing, (
+        "JS hides elements reached via .closest() on these selectors, but no "
+        "stylesheet carries a `<sel>[hidden] { display: none }` guard, so any "
+        "author display rule keeps them in the layout: " + ", ".join(sorted(missing))
+    )

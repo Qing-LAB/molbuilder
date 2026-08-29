@@ -173,15 +173,17 @@ class TransportConfig:
         "section": "System",
         "workflow_group": "profile",
         "label":   "Engine",
-        # PySCF-NEGF requires the PySCF + scipy stack; TranSIESTA
-        # requires a working SIESTA-MPI build with TranSIESTA enabled.
-        # Both backends will register as TransportEngine via
-        # :mod:`molbuilder.transport` in Phase B.3.
-        "choices": ("transiesta", "pyscf-negf"),
+        # ONLY registered backends are offered: a choice that
+        # `get_engine` would refuse (`UnknownEngineError`) is a trap,
+        # not an option.  TranSIESTA is the one shipped backend; a
+        # PySCF-NEGF backend that registers itself adds its choice
+        # back here in the same commit (all-electron, hybrid XC,
+        # smaller systems -- wrong when the junction needs
+        # pseudopotential-scale atom counts).
+        "choices": ("transiesta",),
         "engine_key": '(molbuilder: backend selector)',
-        "help":    "NEGF transport engine.  TranSIESTA: larger systems "
-                   "with pseudopotentials, GGA/LDA only.  PySCF-NEGF: "
-                   "smaller systems, all-electron with hybrid XC.",
+        "help":    "NEGF transport engine.  TranSIESTA: periodic "
+                   "junctions with pseudopotentials, GGA/LDA.",
     })
     job_name: str = field(default="transport", metadata={
         "section":   "System",

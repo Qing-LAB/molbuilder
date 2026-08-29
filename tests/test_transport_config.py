@@ -81,11 +81,15 @@ class TestFieldMetadata:
 
 
 class TestEngineChoices:
-    def test_both_engines_present(self):
+    def test_only_registered_engines_offered(self):
+        """``pyscf-negf`` left the choices 2026-08-29: no backend ever
+        registered it, so offering it made ``get_engine`` raise on a
+        value the form itself suggested.  A backend that registers
+        adds its choice back in the same commit (the registry match is
+        pinned in test_transport_blueprint.py)."""
         engine_field = next(f for f in fields(TransportConfig)
                             if f.name == "engine")
-        assert "transiesta" in engine_field.metadata["choices"]
-        assert "pyscf-negf" in engine_field.metadata["choices"]
+        assert engine_field.metadata["choices"] == ("transiesta",)
 
 
 class TestRegionLabels:

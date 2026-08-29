@@ -215,12 +215,14 @@ class TestRegistry:
         with pytest.raises(TypeError, match="`name`"):
             register_engine(_NoName)
 
-    def test_config_engine_choices_match_doc(self):
-        """``TransportConfig.engine`` declares the engine names the
-        UI will offer in B.3.  The registry IS the source of truth
-        for what's actually wired; this test only pins that the two
-        names the config promises are spelled the way B.3 will
-        register them."""
+    def test_config_engine_choices_match_registry(self):
+        """The registry IS the source of truth for what's wired, and
+        the choices must not promise more than it answers for
+        (``pyscf-negf`` left 2026-08-29 — offered but never
+        registered, so the form suggested a value ``get_engine``
+        refused)."""
+        import molbuilder.transport  # noqa: F401 -- registration side-effect
         from molbuilder.config.transport import TransportConfig
+        from molbuilder.transport.engine_base import registered_engines
         fld = TransportConfig.__dataclass_fields__["engine"]
-        assert fld.metadata["choices"] == ("transiesta", "pyscf-negf")
+        assert set(fld.metadata["choices"]) <= set(registered_engines())

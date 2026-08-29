@@ -91,7 +91,9 @@ const WORKSPACE_TAG = "transport";
             container.removeChild(container.firstChild);
         }
         var p = document.createElement("p");
-        p.className = "error";
+        // "status error" -- the shared severity vocabulary
+        // (page-shell.css); a bare "error" class has no rule anywhere.
+        p.className = "status error";
         p.setAttribute("role", "alert");
         p.textContent = message;
         container.appendChild(p);
@@ -205,30 +207,53 @@ const WORKSPACE_TAG = "transport";
             return Promise.resolve(null);
         }
         if (_mvHandle && _mvHandle.ok) return Promise.resolve(_mvHandle);
-        /* EDITABLE, and said the way MolView says it: editable is the ABSENCE
-         * of the mode flag.  Designating an electrode is a label write, which
-         * is exactly what this tab exists for.
+        /* READ-ONLY (molview.md § 9.4): this viewer shows the CITED
+         * calculation's structure, and labels are assigned where the
+         * junction is built -- never here (the card's own prose says so).
+         * The first install into the empty viewer runs in any mode, and a
+         * new citation swaps the structure through the load door's own
+         * `enforce` (projects/parser.js) -- a deliberate swap is the
+         * host's business, not an edit (§ 11.2a).
          *
-         * The files door comes off the namespace (this file is a classic
-         * script and cannot import it); both mount paths run at
-         * projects-ready moments -- the commit channel by construction, the
-         * init-restore because it awaits whenReady("projects"). */
+         * Both mount paths run at projects-ready moments -- the pick
+         * handler by construction, the init-restore because it awaits
+         * whenReady("projects") -- so the files door is real when read. */
         var _proj = root.molbuilder && root.molbuilder.projects;
-        return mount(host, ws, { owner: WORKSPACE_TAG,
+        return mount(host, ws, { mode: "readonly",
+                                 owner: WORKSPACE_TAG,
                                  files: _proj && _proj.molviewFiles })
             .then(function (h) {
                 _mvHandle = (h && h.ok) ? h : null;
+                /* THE TAB'S DEFAULT REPRESENTATION IS BALL-AND-STICK
+                 * (user, 2026-08-29).  Stick draws BONDS AND NOTHING
+                 * ELSE, so a junction whose atoms the library does not
+                 * perceive as bonded -- or one viewed end-on down its
+                 * transport axis, which is EVERY junction here --
+                 * renders an empty-looking window (the demo fixture's
+                 * own recorded failure, lib/molview/demo.js).  Spheres
+                 * draw regardless.  Set at mount, BEFORE the view
+                 * context restores, so a preference the user actually
+                 * chose still wins (ui-context applies saved.view after
+                 * the first structure). */
+                if (_mvHandle && _mvHandle.data && _mvHandle.data.view
+                        && typeof _mvHandle.data.view.set === "function") {
+                    _mvHandle.data.view.set("style", "ball-and-stick");
+                }
                 return _mvHandle;
             });
     }
 
     /**
-     * Coming back to a session (molview.md § 11.2a): mount and `load(0)`.
-     * A non-null answer means the draft was adopted -- the structure, the
-     * user's electrode labels, the position on the sequence -- so the tab
-     * shows it exactly as a commit would have.  Until 2026-08-19 this tab
-     * wrote its draft on every label edit and NEVER read it back: the
-     * labels were saved and lost anyway (write-only persistence).
+     * Coming back to a session: the tab's own note carries the citation,
+     * and the structure is RE-OPENED from the cited file -- the pattern
+     * molview.md § 12.3 gives a display tab ("a read-only tab keeps its
+     * structure by RELOADING it; the tab owns that, not the viewer").
+     * There is no draft branch: on a read-only viewer `load(0)` is a
+     * documented no-op (§ 11.2a), and the Results inspector's own 2026-08-03
+     * bug record shows what a draft-restore on the wrong mode looks like --
+     * "Loaded." over an empty viewer, no request, no error.  The note is
+     * read FIRST and unconditionally, so the citation, the meta line and
+     * the send gate come back even if the structure file has moved.
      */
     function _restoreSession() {
         var ws = root.molbuilder && root.molbuilder.workspace;
@@ -239,27 +264,18 @@ const WORKSPACE_TAG = "transport";
         // restore that mounts before the sidebar module ran would capture an
         // undefined door for the life of the viewer.
         runtime.whenReady("projects").then(function () {
-            return _ensureViewer();
-        }).then(function (viewer) {
-            if (!viewer || !viewer.data
-                    || typeof viewer.data.load !== "function") return null;
-            return viewer.data.load(0);
-        }).then(function (at) {
-            if (at === null || at === undefined) return;
-            // The viewer is back; now the tab's own note, under its own tag.
-            return Promise.resolve(ws.readState(_panelIdentity(ws)))
-                .then(function (note) {
-                    if (!note || note.v !== 2 || !note.junction) return;
-                    _junction = note.junction;
-                    _junctionSource = note.source || "";
-                    var out = _$("transport-junction-readout");
-                    if (out) out.textContent = _junction;
-                    _refreshSendButton();
-                    _refreshAnalyzeButton();
-                    _refreshJunctionMeta();
-                    _setStatus("Restored your last session: "
-                        + _junction + ".");
-                });
+            return Promise.resolve(ws.readState(_panelIdentity(ws)));
+        }).then(function (note) {
+            if (!note || note.v !== 2 || !note.junction) return;
+            _junction = note.junction;
+            _junctionSource = note.source || "";
+            var out = _$("transport-junction-readout");
+            if (out) out.textContent = _junction;
+            _refreshSendButton();
+            _refreshAnalyzeButton();
+            _refreshJunctionMeta();
+            if (_junctionSource) _showInMolview(_junctionSource);
+            _setStatus("Restored your last session: " + _junction + ".");
         }).catch(function (e) {
             if (root.console) {
                 root.console.error("[transport] session restore failed", e);
@@ -268,18 +284,14 @@ const WORKSPACE_TAG = "transport";
     }
 
     /**
-     * Display the committed structure in the concealed MolView component so the
-     * user can CHECK it before generating — atom/region labels, electrode regions,
-     * the unit cell, and alignment via the view toggles.  This is the SAME module
-     * Modify mounts, in full "modify" mode (interactive selection + cell panel +
-     * view menu); the geometry op-tabs are Modify-only and not part of the mount.
-     *
-     * Load the project file through the format-aware sidebar door
-     * (``projects.parser.openMolecule`` — reads the .xyz+.molstruct.json via the
-     * projects file package + installs the model in ONE write) then mount the fused
-     * card into the empty host on FIRST commit; later commits just reload the model
-     * and the mounted render reacts.  Best-effort: if the molview/projects stack
-     * failed to load, the tab still works as a form generator (the viewer is an aid).
+     * Show the CITED structure so the user can eyeball what they cited —
+     * atoms, region labels, the cell — before describing.  Read-only view of
+     * the citation (molview.md § 12.3); every call is a fresh open of the
+     * cited file through the one load door (``projects.parser.openMolecule``
+     * reads the .xyz + .molstruct.json server-side and installs the model in
+     * ONE write; its `enforce` makes a new citation a deliberate swap).
+     * Best-effort: if the molview/projects stack failed to load, the tab
+     * still describes (the viewer is an aid, not a gate).
      */
     function _showInMolview(path) {
         var proj = root.molbuilder && root.molbuilder.projects;
@@ -437,12 +449,12 @@ const WORKSPACE_TAG = "transport";
     }
 
     /* =================================================================
-     *  The COMPOSITE (P7b, transport-design.md § 4.1): cite the
-     *  junction, state the bias, hand over -- the tab describes and
-     *  Task setup saves; nothing renders here.
+     *  The COMPOSITE (transport-design.md § 4.1): cite the junction,
+     *  state the bias, Describe -- the tab writes the finished task.json
+     *  itself (no hand-over; user ruling 2026-08-29).  `_junction` and
+     *  `_junctionSource` are declared once, with the tab's two facts
+     *  above.
      * ================================================================= */
-
-    var _junction = "";        // the citation string, "" until chosen
 
     /** One fetch answers everything about an attempt: the summary for
      *  the meta line, the CITATION (the server spells it -- the tree
@@ -468,7 +480,9 @@ const WORKSPACE_TAG = "transport";
     function _adoptCitation(described, pickedPath, rel) {
         _junction = described.citation || "";
         if (!_junction) {
-            _setSendStatus("That folder is not an attempt inside a "
+            // The pick failed, so the complaint belongs in card 1 with
+            // the picker -- not three cards down beside Describe.
+            _setStatus("That folder is not an attempt inside a "
                 + "calculation (no task.json above it).");
             return;
         }
@@ -491,15 +505,24 @@ const WORKSPACE_TAG = "transport";
         _writePanelNote();
         _refreshSendButton();
         _refreshAnalyzeButton();
+        /* The server said whether the attempt CONCLUDED (strict
+         * composition, transport-design.md ruling Q2, is a PREP gate --
+         * describing ahead of conclusion is legal, so the tab warns
+         * loudly rather than blocking). */
+        var late = described.concluded
+            ? ""
+            : "  NOT CONCLUDED yet: you can describe now, but prep "
+              + "will refuse this citation until the relaxation "
+              + "finishes.";
         if (_junctionSource) {
             _showInMolview(_junctionSource);
             _analyzeStructure(_junctionSource);
             _setStatus("Cited " + _junction.split("/").pop()
-                + " — the viewer shows the cited junction.");
+                + " — the viewer shows the cited junction." + late);
         } else {
             _setStatus("Cited " + _junction + " — its source structure "
                 + "was not found beside the calculation, so the viewer "
-                + "keeps its last content.");
+                + "keeps its last content." + late);
         }
     }
 
@@ -556,7 +579,7 @@ const WORKSPACE_TAG = "transport";
                     _adoptCitation(b, picked, rel);
                 });
             }).catch(function (e) {
-                _setSendStatus("Picker failed: "
+                _setStatus("Picker failed: "
                     + (e && e.message ? e.message : String(e)));
             });
         });
@@ -621,7 +644,14 @@ const WORKSPACE_TAG = "transport";
             }
             mb.taskHandover.send({
                 projects: mb.projects,
-                say: function (kind, msg) { _setSendStatus(msg); },
+                say: function (kind, msg) {
+                    // Severity reaches the eye: the shared setter
+                    // applies .status.error/.ok/.warn (page-shell).
+                    var st = root.molbuilder && root.molbuilder.status;
+                    if (st && typeof st.set === "function") {
+                        st.set("transport-send-status", msg, kind);
+                    } else { _setSendStatus(msg); }
+                },
                 engine: "siesta",
                 calculation: "transport",
                 junction: _junction,

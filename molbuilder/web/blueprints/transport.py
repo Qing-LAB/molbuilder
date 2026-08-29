@@ -270,19 +270,36 @@ def api_transport_describe() -> Any:
 
 @bp.route("/api/transport/schema", methods=["GET"])
 def api_transport_schema() -> Any:
-    """Return the TransportConfig form schema.
+    """Return the transport TAB's form schema: the transport-only knobs.
 
-    Section order is taken from ``TransportConfig._form_section_order``
-    so the workflow-order (System → Geometry → Electrodes →
-    Transmission → NEGF → Runtime) is stable independent of field-
-    declaration order in the dataclass.
+    The electronic contract (engine, basis, XC, mesh, temperature, the
+    transverse k, the bias, the label) is the CITATION's to say — it
+    arrives from the cited junction's own deck at prep, and the
+    describe door refuses those fields BY NAME.  A form field the door
+    is guaranteed to refuse is a trap, not a control (found rendered
+    2026-08-29: ten sealed fields sat as editable inputs, and the bias
+    was asked twice), so the sealed set is filtered HERE, from the same
+    one constant the two refusing doors read.  What remains IS the
+    override lane: Transmission / NEGF / Runtime knobs that ride the
+    device stage's bag (stages.md § 6.2).  The bias is card 4's own
+    input — a describe-level fact beside the citation, not a config
+    override.
 
-    Sidecar-driven defaults (electrode/bridge regions seeding the
-    Geometry section) follow the Spectra pattern in a later
-    iteration — engine implementations come first.  Today the
-    endpoint returns the static schema only.
+    Section order still follows ``TransportConfig._form_section_order``;
+    sections the filter empties (System, Electrodes) are dropped whole.
     """
+    from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
     schema = _dataclass_to_form_schema(TransportConfig, "t")
+    kept = []
+    for sec in schema.get("sections", []):
+        fields_left = [f for f in sec.get("fields", [])
+                       if f.get("name") not in SEALED_TRANSPORT_FIELDS]
+        if fields_left:
+            sec = dict(sec)
+            sec["fields"] = fields_left
+            kept.append(sec)
+    schema = dict(schema)
+    schema["sections"] = kept
     response: Dict[str, Any] = {"ok": True, "schema": schema}
     return jsonify(response)
 

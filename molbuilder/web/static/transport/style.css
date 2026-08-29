@@ -6,7 +6,7 @@
  * template's inline styles + ownerless classes were pulled in here
  * (ui-design-contract: no inline styles, page sheets page-only). */
 
-.generate-row {
+.action-row {
     display: flex;
     align-items: center;
     gap: var(--space-md);

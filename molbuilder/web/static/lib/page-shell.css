@@ -367,6 +367,13 @@ button:disabled {
  * size / resting colour, but the severity colour lives here ONLY, using the global
  * palette tokens.  Do NOT re-declare these in a page/module sheet. */
 .status.error { color: var(--error); }
+/* Muted helper text -- shared vocabulary (used by index, spectra, modify,
+ * transport); lived in modify's page sheet until 2026-08-29, so three
+ * pages used it unstyled. */
+.muted {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
 .status.ok    { color: var(--success); }
 .status.warn  { color: var(--warn-soft); }
 .status.muted { color: var(--text-secondary); opacity: 0.75; }

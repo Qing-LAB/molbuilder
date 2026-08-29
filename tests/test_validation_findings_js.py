@@ -276,7 +276,9 @@ class TestOneRendererOnly:
 
     _CONSUMERS = (
         "molbuilder/web/static/structure-optimization/viewer.js",
-        "molbuilder/web/static/lib/transport/core.js",
+        # lib/transport/core.js left this list 2026-08-29: the issues
+        # panel died with the Generate lane (the composite validates at
+        # the describe door and at prep, not in the tab).
         # lib/spectra/core.js left this list at P3 and RETURNED the
         # same day: the live-preflight panel (gate ① for the
         # vibration kind) renders through the shared module.
@@ -310,9 +312,16 @@ class TestOneRendererOnly:
                 f"has re-grown its own findings vocabulary")
 
     def test_every_page_that_renders_findings_loads_the_module(self):
+        # transport_calculation.html left this list 2026-08-29 with its
+        # issues panel: the composite has no findings surface (validation
+        # answers at the describe door and at prep).
         tpl = REPO / "molbuilder/web/templates"
-        for name in ("index.html", "spectra.html",
-                     "transport_calculation.html", "results.html"):
+        for name in ("index.html", "spectra.html", "results.html"):
             html = (tpl / name).read_text(encoding="utf-8")
             assert "filename='lib/validation-findings.js'" in html, (
                 f"{name} renders findings but never loads the module")
+        transport = (tpl / "transport_calculation.html").read_text(
+            encoding="utf-8")
+        assert "validation-findings" not in transport, (
+            "the transport tab re-grew a findings include; its panel "
+            "died with the Generate lane")

@@ -138,6 +138,12 @@
     padding: var(--space-sm) 0;
     border-bottom: 1px solid var(--border-subtle);
 }
+/* The [hidden] guard: the rule above sets display, and an author rule
+ * beats the UA's `[hidden] { display: none }` on origin precedence --
+ * without this line, viewer.js hiding a row (`li.hidden = true`, the
+ * transport folder's template/structure rows) changes nothing on
+ * screen.  Shipped missing 2026-08-29 and found in a browser. */
+.ts-files li[hidden] { display: none; }
 .ts-file-name { flex: 0 0 auto; }
 .ts-files li:last-child { border-bottom: 0; }
 .ts-file-name {

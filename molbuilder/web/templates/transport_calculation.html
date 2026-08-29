@@ -32,13 +32,11 @@
 <div class="app-content">
 
 <!-- ============================================================ -->
-<!--  Vertical workflow (2026-06-10 post-review refactor):           -->
-<!--    1. Inspect structure — sidebar pick + commit                 -->
-<!--    2. Analyze chemistry — open-shell-metal + region surface     -->
-<!--    3. Parameters — TransportConfig form                          -->
-<!--    4. Generate — device .fdf + copy/download + issues panel     -->
-<!--  Matches the Optimization (3-card) + Spectrum (4-card) layouts. -->
-<!--  See transport_review_findings memory for the BLOCKER-2 history. -->
+<!--  The composite's describe surface (transport-design.md 4.1):  -->
+<!--    1. The junction — cite a finished attempt; viewer follows   -->
+<!--    2. Analyze chemistry — informational check on the citation  -->
+<!--    3. Parameters — the override lane (transport-only knobs)    -->
+<!--    4. Describe — bias + the one button; writes task.json       -->
 <!-- ============================================================ -->
 <main class="app-grid">
 
@@ -55,7 +53,7 @@
       Labels are assigned where the junction is built — the
       <a href="/molbuilder">Molbuilder</a> tab — never here.
     </p>
-    <div class="generate-row">
+    <div class="action-row">
       <button id="transport-junction-btn" type="button"
               title="Walk the projects tree and pick the junction relaxation's run-N attempt.  Only attempt directories can be chosen.">
         Choose junction attempt…
@@ -65,10 +63,8 @@
       </span>
     </div>
     <p id="transport-junction-meta" class="hint" hidden></p>
-    <div class="viewer-load-bar">
-      <span id="transport-status" class="status" role="status"
-            aria-live="polite"></span>
-    </div>
+    <span id="transport-status" class="status" role="status"
+          aria-live="polite"></span>
     {#- Empty host -> molview.mount builds the full fused card here when
         a junction is cited: the viewer RESPONDS to the active citation
         (user, 2026-08-29) -- check the labels, the regions, the cell. -#}
@@ -118,7 +114,7 @@
     </div>
   </section>
 
-  {#- ===================== 4. Generate ===================== -#}
+  {#- ===================== 4. Describe ===================== -#}
   <section class="card" id="composite-card">
     <h2>4. Describe</h2>
     <p class="hint">
@@ -133,17 +129,17 @@
       (transmission window, contour).  More than one voltage is a scan:
       one attempt ladder per point, launched as one chain job.
     </p>
-    <div class="generate-row">
+    <div class="action-row">
       <label for="transport-bias">Bias list (V):</label>
       <input id="transport-bias" type="text" value="0.0"
              title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan: one attempt ladder per point, launched as one chain job." />
     </div>
-    <div class="generate-row">
+    <div class="action-row">
       <button id="transport-send-btn" class="full-btn" disabled
               title="Writes the finished task.json into the folder selected in the Projects sidebar.  Prep it stage by stage from Task setup or the CLI.">
         Describe this calculation
       </button>
-      <span id="transport-send-status" class="muted"
+      <span id="transport-send-status" class="status"
             role="status" aria-live="polite"></span>
     </div>
     {#- The road after describing — the composite's own quickstart. -#}
@@ -173,15 +169,13 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
-<script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
-{# the ONE hand-over door (lib/task-handover.js) -- the composite's Send
-   posts through it like the optimization and spectrum tabs (P7b) #}
+{# lib/task-handover.js supplies the destination guards + the file-layer
+   write; the transport branch posts to /api/transport/describe and does
+   NOT navigate (user ruling 2026-08-29) #}
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
-{# transport/core.js sources frozen_atoms + electrode regions from the mounted
-   MolView model (molview.data) at Generate time — no separate sidecar-labels fetch. #}
 <script type="module" src="{{ url_for('static', filename='lib/transport/core.js') }}"></script>
 
 </body>
