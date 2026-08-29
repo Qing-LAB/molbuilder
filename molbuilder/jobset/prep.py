@@ -1167,7 +1167,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                                      write_compose_record)
     from ..transport.sort import SortError
     from ..transport.stages import (TRANSPORT_STAGES, StageError,
-                                    config_for, render_stage_deck)
+                                    config_for, render_stage_deck,
+                                    warm_declaration)
     from .shape import Shape
 
     base = Path(base_dir).resolve()
@@ -1258,8 +1259,14 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     allocation = _with_notify(_under_description(allocation,
                                                  task.allocation),
                               task.notify)
-    job = Job(name=stage, script=script,
-              resources=allocation or Resources())
+    res = allocation or Resources()
+    if stage == "transmission":
+        # TBtrans post-processes the device run FROM THE SAME DECK TEXT,
+        # so the binary cannot be read off the deck -- it rides the
+        # allocation road (`model.Resources.program`) into the wrapper.
+        res = dataclasses.replace(res, program="tbtrans")
+    job = Job(name=stage, script=script, resources=res,
+              warm=warm_declaration(stage, task.label, base))
     js = JobSet(name=task.label, engine=task.engine, kind="ladder",
                 shared=_siesta_shared_package(base), jobs=[job])
     js = _merge_run_jobset(base / JOBSET_FILENAME, js,
@@ -1268,6 +1275,98 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     _require_remote_activation(target, environment)
     return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=base, machine_record=environment)
+
+
+def gather_transport_inputs(base_dir, task, stage: str,
+                            attempt_dir) -> List[tuple]:
+    """Copy the § 4.2 DAG's inputs into ``attempt_dir`` — the composite's
+    other half of *"warm files are COPIED in at prep"*.
+
+    ``--from`` carries within ONE stage (an attempt continuing an
+    earlier attempt of itself); this carries BETWEEN stages, and the
+    sources are structural — fixed by the design's DAG, not named by a
+    person — so what keeps it honest is not a name but three gates, per
+    input, each a refusal naming what to do first (strict composition,
+    ruling Q2 — transport never runs its pieces for you):
+
+    * the upstream stage must have been PREPPED (its deck rendered);
+    * it must hold a CONCLUDED attempt **whose deck matches the current
+      render byte-for-byte** — a re-pointed citation or changed contract
+      re-renders the decks at prep, so a concluded attempt of the OLD
+      deck no longer answers for this composition and is skipped; if no
+      attempt matches, the refusal says the decks changed;
+    * the concluded, matching attempt must actually hold the file.
+
+    The newest qualifying attempt wins (identical decks → identical
+    single-point results).  What was taken from where lands in
+    ``.gathered-from`` beside the copies, so a result can always say
+    which electrode run fed it.  Returns ``[(source_rel, filename)]``.
+    """
+    from ..transport.stages import stage_inputs
+    from .materialize import ATTEMPT_RE, attempt_concluded
+    from .shape import Shape
+
+    base = Path(base_dir)
+    attempt_dir = Path(attempt_dir)
+    enabled = {s.name for s in task.stages if s.enabled}
+    inputs = stage_inputs(stage, task.label,
+                          seed_enabled=("seed" in enabled))
+    shape = Shape.named(task.shape)
+    gathered: List[tuple] = []
+    for upstream, filename in inputs:
+        token = token_for(task, upstream)
+        up_dir = base / shape.stage_dir(token)
+        stem = f"{task.label}_{token}"
+        current_deck = up_dir / f"{stem}.fdf"
+        run_first = (f"run it first --\n"
+                     f"    molbuilder jobset prep run {upstream} && "
+                     f"molbuilder jobset launch run {upstream}\n"
+                     f"  (strict composition, ruling Q2: transport never "
+                     f"runs its pieces for you.)")
+        if not current_deck.is_file():
+            raise PrepError(
+                f"the {stage} stage consumes {filename} from {upstream}, "
+                f"and {upstream} has not been prepped -- {run_first}")
+        attempts = sorted(
+            (d for d in up_dir.iterdir()
+             if d.is_dir() and ATTEMPT_RE.match(d.name)),
+            key=lambda d: int(ATTEMPT_RE.match(d.name).group(1)),
+            reverse=True)
+        concluded = [d for d in attempts
+                     if attempt_concluded(d, stem) is not None]
+        if not concluded:
+            raise PrepError(
+                f"the {stage} stage consumes {filename} from {upstream}, "
+                f"and {upstream} has no CONCLUDED attempt -- it was never "
+                f"launched, is still running, or was force-stopped (the "
+                f"last two look identical on disk; project-layout.md "
+                f"1.6).  Let it finish, or {run_first}")
+        matching = [d for d in concluded
+                    if (d / current_deck.name).is_file()
+                    and (d / current_deck.name).read_text()
+                    == current_deck.read_text()]
+        if not matching:
+            raise PrepError(
+                f"{upstream} has {len(concluded)} concluded attempt(s), "
+                f"but none ran the deck this composition renders -- the "
+                f"junction citation or its contract changed since they "
+                f"ran, so their {filename} answers a different "
+                f"calculation.  Re-{run_first}")
+        src = matching[0] / filename
+        if not src.is_file():
+            raise PrepError(
+                f"{upstream}'s concluded attempt "
+                f"{matching[0].relative_to(base)} did not write "
+                f"{filename} -- the run concluded without producing what "
+                f"the {stage} stage consumes.  Re-{run_first}")
+        import shutil as _sh
+        _sh.copy2(src, attempt_dir / filename)
+        gathered.append((str(matching[0].relative_to(base)), filename))
+    if gathered:
+        (attempt_dir / ".gathered-from").write_text(
+            "".join(f"{fn} <- {src}\n" for src, fn in gathered),
+            encoding="utf-8")
+    return gathered
 
 
 def _merge_run_jobset(path: Path, new: JobSet,

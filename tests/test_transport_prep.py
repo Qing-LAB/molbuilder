@@ -352,3 +352,263 @@ class TestRefusals:
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "seed")
         assert "Au.psml" in str(e.value)
+
+
+# --------------------------------------------------------------------- #
+#  P5a — the launch side: the DAG gather, the warm rows, the binary      #
+# --------------------------------------------------------------------- #
+
+_TOKEN = {"seed": "01_seed", "electrode_L": "02_electrode_L",
+          "electrode_R": "03_electrode_R", "device": "04_device",
+          "transmission": "05_transmission"}
+
+
+def _conclude(calc, stage, files, *, deck_text=None):
+    """Simulate a concluded run-0 of *stage*: the attempt holds the
+    stage's own rendered deck (or ``deck_text`` to fake a STALE one),
+    the conclusion marker, and the named product files."""
+    token = _TOKEN[stage]
+    stem = f"T_{token}"
+    stage_dir = calc / token
+    attempt = stage_dir / "run-0"
+    attempt.mkdir(parents=True, exist_ok=True)
+    (attempt / f"{stem}.fdf").write_text(
+        deck_text if deck_text is not None
+        else (stage_dir / f"{stem}.fdf").read_text())
+    (attempt / f"{stem}-run0.concluded").write_text("rc=0\n")
+    for name in files:
+        (attempt / name).write_bytes(b"\0binary\0")
+    return attempt
+
+
+class TestTheGather:
+    """`gather_transport_inputs` — the § 4.2 DAG's inputs, copied in at
+    prep with three gates per input (P5)."""
+
+    def _task(self, calc):
+        from molbuilder.task import read_task
+        return read_task(calc / "task.json")
+
+    def test_device_gathers_dm_and_both_tshs(self, calc, tmp_path):
+        from molbuilder.jobset.prep import gather_transport_inputs
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        dest = tmp_path / "device-attempt"
+        dest.mkdir()
+        got = gather_transport_inputs(calc, self._task(calc), "device",
+                                      dest)
+        names = sorted(fn for _src, fn in got)
+        assert names == ["T.DM", "T_L-electrode.TSHS",
+                         "T_R-electrode.TSHS"]
+        for n in names:
+            assert (dest / n).is_file()
+        record = (dest / ".gathered-from").read_text()
+        assert "T_L-electrode.TSHS <- 02_electrode_L/run-0" in record
+
+    def test_device_before_electrodes_conclude_is_refused_by_name(
+            self, calc, tmp_path):
+        """THE P5 gate row: device before the electrodes conclude is a
+        named refusal, never a wait and never an auto-run."""
+        from molbuilder.jobset.prep import gather_transport_inputs
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])
+        # electrode_L has an OPEN attempt -- deck in place, product even
+        # written, but no conclusion marker: launched-and-still-running
+        # (or force-stopped) must refuse exactly like never-launched.
+        stage_dir = calc / "02_electrode_L"
+        run0 = stage_dir / "run-0"
+        run0.mkdir()
+        shutil.copy2(stage_dir / "T_02_electrode_L.fdf",
+                     run0 / "T_02_electrode_L.fdf")
+        (run0 / "T_L-electrode.TSHS").write_bytes(b"\0half-written\0")
+        dest = tmp_path / "d"
+        dest.mkdir()
+        with pytest.raises(PrepError) as e:
+            gather_transport_inputs(calc, self._task(calc), "device", dest)
+        msg = str(e.value)
+        assert "electrode_L" in msg and "CONCLUDED" in msg
+        assert "launch run electrode_L" in msg, (
+            "strict composition: the refusal names what to run first")
+
+    def test_an_unprepped_upstream_is_refused_by_name(self, calc,
+                                                      tmp_path):
+        from molbuilder.jobset.prep import gather_transport_inputs
+        dest = tmp_path / "d"
+        dest.mkdir()
+        with pytest.raises(PrepError) as e:
+            gather_transport_inputs(calc, self._task(calc), "device", dest)
+        assert "has not been prepped" in str(e.value)
+
+    def test_a_stale_upstream_attempt_is_refused(self, calc, tmp_path):
+        """A concluded attempt of a DIFFERENT deck answers a different
+        calculation -- the gather must skip it and say why."""
+        from molbuilder.jobset.prep import gather_transport_inputs
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"],
+                  deck_text="SystemLabel T_L-electrode\n# an OLD render\n")
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        dest = tmp_path / "d"
+        dest.mkdir()
+        with pytest.raises(PrepError) as e:
+            gather_transport_inputs(calc, self._task(calc), "device", dest)
+        assert "none ran the deck this composition renders" in str(e.value)
+
+    def test_a_concluded_attempt_missing_its_product_is_refused(
+            self, calc, tmp_path):
+        from molbuilder.jobset.prep import gather_transport_inputs
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", [])                    # no T.DM written
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        dest = tmp_path / "d"
+        dest.mkdir()
+        with pytest.raises(PrepError) as e:
+            gather_transport_inputs(calc, self._task(calc), "device", dest)
+        assert "did not write T.DM" in str(e.value)
+
+    def test_a_disabled_seed_drops_its_row(self, calc, tmp_path):
+        """Ruling Q4: the seed is skippable -- a disabled seed is not a
+        missing dependency."""
+        from molbuilder.jobset.prep import gather_transport_inputs
+        from molbuilder.task import (Stage, Task, derive_run, read_task,
+                                     write_task)
+        for st in ("electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        t = read_task(calc / "task.json")
+        stages = tuple(Stage(name=s.name, enabled=(s.name != "seed"),
+                             overrides={}) for s in t.stages)
+        task2 = Task(engine=t.engine, shape=t.shape, run=t.run,
+                     structure=None, calculation="transport",
+                     slots=dict(t.slots), bias=t.bias, varies=(),
+                     stages=stages)
+        dest = tmp_path / "d"
+        dest.mkdir()
+        got = gather_transport_inputs(calc, task2, "device", dest)
+        assert sorted(fn for _s, fn in got) == [
+            "T_L-electrode.TSHS", "T_R-electrode.TSHS"]
+
+    def test_transmission_gathers_the_device_products(self, calc,
+                                                      tmp_path):
+        from molbuilder.jobset.prep import gather_transport_inputs
+        for st in ("electrode_L", "electrode_R", "device"):
+            prep_calculation(calc, st)
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        _conclude(calc, "device", ["T.TSHS", "T.TSDE"])
+        dest = tmp_path / "t"
+        dest.mkdir()
+        got = gather_transport_inputs(calc, self._task(calc),
+                                      "transmission", dest)
+        assert sorted(fn for _s, fn in got) == [
+            "T.TSDE", "T.TSHS", "T_L-electrode.TSHS",
+            "T_R-electrode.TSHS"]
+
+
+class TestTheLaunchSide:
+
+    def test_the_transmission_wrapper_launches_tbtrans(self, calc):
+        """The same deck text, a different program: the binary rides
+        Resources.program into the wrapper (P5)."""
+        prep_calculation(calc, "transmission")
+        prep_calculation(calc, "seed")
+        trans = (calc / "05_transmission" / "T_05_transmission.run.sh"
+                 ).read_text()
+        seed = (calc / "01_seed" / "T_01_seed.run.sh").read_text()
+        assert '_siesta_target="tbtrans"' in trans
+        assert "command -v tbtrans" in trans
+        assert "tbtrans" not in seed, (
+            "only the transmission stage routes to tbtrans")
+
+    def test_the_device_declares_its_tsde_warm_row(self, calc):
+        prep_calculation(calc, "device")
+        prep_calculation(calc, "electrode_L")
+        js = json.loads((calc / "job-set.json").read_text())
+        rows = {j["name"]: j for j in js["jobs"]}
+        device_warm = [w["name"] for w in rows["device"].get("warm", [])]
+        assert "T.TSDE" in device_warm and "T.DM" in device_warm
+        assert rows["electrode_L"].get("warm", []) == [], (
+            "an electrode single-point declares nothing -- re-running "
+            "is cheaper than reasoning about a half-finished copy")
+
+    def test_the_device_deck_honours_the_seed_dm(self, calc):
+        prep_calculation(calc, "device")
+        text = (calc / "04_device" / "T_04_device.fdf").read_text()
+        assert "DM.UseSaveDM           true" in text, (
+            "SIESTA's default is false -- without the keyword the "
+            "seed's density would sit present but not honoured")
+
+
+class TestTheCliRoute:
+    """`molbuilder jobset prep run <stage>` on a transport calc — the
+    template gate opens for task.json alone, and the tail gathers."""
+
+    def _invoke(self, args, root, monkeypatch):
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        return CliRunner().invoke(jobset_group, args)
+
+    def test_prep_routes_without_a_template(self, calc, tmp_path,
+                                            monkeypatch):
+        r = self._invoke(["prep", "run", "seed", "--bundle",
+                          "J/transport/T"], tmp_path / "projects",
+                         monkeypatch)
+        assert r.exit_code == 0, r.output
+        assert (calc / "01_seed" / "run-0" / "T_01_seed.fdf").is_file(), (
+            "the CLI tail opens the attempt like any ladder rung")
+
+    def test_prep_device_gathers_through_the_cli(self, calc, tmp_path,
+                                                 monkeypatch):
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        r = self._invoke(["prep", "run", "device", "--bundle",
+                          "J/transport/T"], tmp_path / "projects",
+                         monkeypatch)
+        assert r.exit_code == 0, r.output
+        assert "gathered: T_L-electrode.TSHS" in r.output
+        run0 = calc / "04_device" / "run-0"
+        for n in ("T.DM", "T_L-electrode.TSHS", "T_R-electrode.TSHS"):
+            assert (run0 / n).is_file()
+
+    def test_prep_device_refuses_through_the_cli_too(self, calc,
+                                                     tmp_path,
+                                                     monkeypatch):
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])      # electrodes stay unconcluded
+        r = self._invoke(["prep", "run", "device", "--bundle",
+                          "J/transport/T"], tmp_path / "projects",
+                         monkeypatch)
+        assert r.exit_code != 0
+        assert "electrode_L" in r.output and "CONCLUDED" in r.output
+
+    def test_prep_bench_on_transport_is_refused(self, calc, tmp_path,
+                                                monkeypatch):
+        r = self._invoke(["prep", "bench", "device", "--bundle",
+                          "J/transport/T"], tmp_path / "projects",
+                         monkeypatch)
+        assert r.exit_code != 0
+        assert "no benchmark" in r.output
+
+    def test_init_refuses_the_flat_shape(self, calc, tmp_path,
+                                         monkeypatch):
+        r = self._invoke(["init", "--calculation", "transport",
+                          "--shape", "flat",
+                          "--bundle", "J/transport/T2",
+                          "--slot", f"junction={_CITE}"],
+                         tmp_path / "projects", monkeypatch)
+        assert r.exit_code != 0
+        assert "hierarchical" in r.output

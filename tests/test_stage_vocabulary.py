@@ -273,6 +273,12 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the refusal class for a transport rung that cannot render -- "
         "carries the stage's name in its message, same role PrepError "
         "plays one floor up (prep translates it)"),
+    "stage_inputs": (
+        None, "molbuilder/transport/stages.py",
+        "the transport composite's § 4.2 DAG as data -- which files a "
+        "rung CONSUMES from the concluded attempts of the rungs before "
+        "it (P5's gather reads it).  Consumes the ladder like "
+        "render_stage_deck; not a way of expressing stages"),
     # Mechanism 3 -- ``--stages-json``, ``stages_from_dicts`` and
     # ``stages_from_configs`` -- and mechanism 8 -- ``StageSpec``,
     # ``_default_stages``, ``validate_stages`` -- are RETIRED (2026-08-18).

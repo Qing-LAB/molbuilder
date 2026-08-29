@@ -2643,11 +2643,19 @@ def render_run_wrapper(script_path: Path, *,
         # capability + the launcher choice in the log.  This adapts
         # automatically if you rebuild SIESTA with different flags --
         # no need to regenerate the wrapper.
+        # WHICH binary this wrapper launches.  The engine default is
+        # ``siesta``; ``resources.program`` overrides it -- the transport
+        # composite's transmission stage runs ``tbtrans`` over the SAME
+        # deck text, so the deck cannot carry the answer and the
+        # allocation road does (jobset/model.Resources.program).
+        _prog = getattr(r, "program", None) or "siesta"
         env_prefix += (
+            # The block NAME is job-contracts.md § 2.6's row and stays
+            # stable; the binary inside is _prog.
             f"# --- Probe SIESTA build at runtime ---\n"
-            f'_siesta_bin_path="$(command -v siesta || echo \"\")"\n'
+            f'_siesta_bin_path="$(command -v {_prog} || echo \"\")"\n'
             f'if [ -z "$_siesta_bin_path" ]; then\n'
-            f"    echo \"ERROR: 'siesta' not on PATH after activating "
+            f"    echo \"ERROR: '{_prog}' not on PATH after activating "
             f"'{target_env}'.  Is SIESTA installed in this env?\" >&2\n"
             f"    exit 1\n"
             f"fi\n"
@@ -2686,10 +2694,10 @@ def render_run_wrapper(script_path: Path, *,
             f'_mb_probe_out="$(mktemp 2>/dev/null '
             f'|| echo "${{TMPDIR:-/tmp}}/mb-probe.$$")"\n'
             f'if command -v timeout >/dev/null 2>&1; then\n'
-            f'    timeout -k 2 5 siesta --version >"$_mb_probe_out" 2>/dev/null '
+            f'    timeout -k 2 5 {_prog} --version >"$_mb_probe_out" 2>/dev/null '
             f'</dev/null || true\n'
             f'else\n'
-            f'    siesta --version >"$_mb_probe_out" 2>/dev/null '
+            f'    {_prog} --version >"$_mb_probe_out" 2>/dev/null '
             f'</dev/null || true\n'
             f'fi\n'
             f'_siesta_version_out="$(cat "$_mb_probe_out" 2>/dev/null || true)"\n'
@@ -2771,7 +2779,7 @@ def render_run_wrapper(script_path: Path, *,
             # Default launch target is the bare binary; GPU mode swaps in
             # the per-rank launcher (assigns each rank its GPU + picks the
             # CPU-bind policy).  See _gpu_per_rank_launcher_block.__doc__.
-            + '_siesta_target="siesta"\n'
+            + f'_siesta_target="{_prog}"\n'
             + (_gpu_per_rank_launcher_block() if gpu_mode else "")
             + f'if [ "$_has_mpi" = 1 ]; then\n'
             f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"\n'
@@ -2781,13 +2789,13 @@ def render_run_wrapper(script_path: Path, *,
             f'        _launch_note="pure MPI ($_mpi_np ranks; OMP setting irrelevant to this binary)"\n'
             f'    fi\n'
             f'elif [ "$_has_omp" = 1 ]; then\n'
-            f'    _launch_cmd="siesta"\n'
+            f'    _launch_cmd="{_prog}"\n'
             f'    _launch_note="OMP-only build ($_omp_threads threads)"\n'
             f'elif [ -z "$_siesta_par" ]; then\n'
             f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"\n'
             f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
             f'else\n'
-            f'    _launch_cmd="siesta"\n'
+            f'    _launch_cmd="{_prog}"\n'
             f'    _launch_note="serial build (no parallelisation compiled in)"\n'
             f"fi\n"
             f"\n"

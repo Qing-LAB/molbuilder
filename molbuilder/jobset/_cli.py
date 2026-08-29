@@ -295,6 +295,12 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         raise click.ClickException(
             f"transport is SIESTA-first (TranSIESTA); engine {engine!r} "
             f"has no transport ladder yet.")
+    if shape != "hierarchical":
+        raise click.ClickException(
+            f"a transport calculation is hierarchical: its five stages "
+            f"exchange files through their own attempts (the § 4.2 "
+            f"gather), which the {shape!r} shape has no directories to "
+            f"hold.  Drop --shape or pass hierarchical.")
 
     slots = {}
     for entry in slots_opt:
@@ -1784,9 +1790,20 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     from ..task import FILENAME as _TASK
     from ..template import find_template as _find_template
     base = _P(bundle).resolve()
+    # THE TRANSPORT COMPOSITE HAS NO TEMPLATE (transport-design.md § 4.1:
+    # floor 2 is task.json alone -- the electronic contract arrives from
+    # the citation), so for it the pair rule below is task.json alone.
+    _is_transport = False
+    if (base / _TASK).is_file():
+        try:
+            from ..task import read_task as _rt0
+            _is_transport = _rt0(base / _TASK).calculation == "transport"
+        except Exception:
+            pass          # unreadable description: the generic gate owns it
     # `find_template` rather than a glob: it REFUSES a folder holding two
     # rather than answering from the first one alphabetically.
-    if not ((base / _TASK).is_file() and _find_template(base) is not None):
+    if not ((base / _TASK).is_file()
+            and (_is_transport or _find_template(base) is not None)):
         # Described-only (U2/U4, 2026-08-12): the pre-made-bundle arm that
         # stood here had NO producer left -- `describe` is the only writer
         # of floor 2, and the old bench bundles died in step 6 u5.  A
@@ -1797,6 +1814,12 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             "(project-layout.md § 2.1); run `molbuilder jobset init` "
             "first.  (Hand-built job-sets remain launchable: `launch` and "
             "`status` read job-set.json directly.)")
+    if _is_transport and kind == "bench":
+        raise click.ClickException(
+            "a transport calculation has no benchmark sweep: its "
+            "parameters arrive whole from the citation, and its one "
+            "sweep axis is the bias list in task.json "
+            "(transport-design.md 4.3).")
     if (from_attempt or cold) and stage is None:
         # Every description has a ladder (§ 6.5), so an attempt always
         # belongs to a named stage.  Until 2026-08-16 this was conditional:
@@ -2044,6 +2067,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo("  cold start -- nothing copied in")
     else:
         click.echo("  nothing carried in (first stage, or none named)")
+    if _is_transport:
+        # The composite's OTHER carry: the § 4.2 DAG's inputs, from the
+        # concluded upstream attempts into this one (gather's own three
+        # gates refuse anything stale or unconcluded, by name).
+        from .prep import gather_transport_inputs
+        try:
+            gathered = gather_transport_inputs(base, _pf_task, rep.stage,
+                                               rep.dir)
+        except PrepError as e:
+            raise click.ClickException(str(e))
+        for _src, _fn in gathered:
+            click.echo(f"  gathered: {_fn} <- {_src}")
     _echo_resolved(js, base, rep.stage, rep.dir)
     click.echo("next: molbuilder jobset launch run "
                + (f"{stage} " if stage is not None else "")

@@ -93,12 +93,21 @@ def test_the_accumulative_records_name_no_deck_keyword():
 
 
 def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
-    rows = W.rules_for("siesta", "transport")
-    suffixes = [r.suffix for r in rows]
-    assert ".TSHS" in suffixes and ".TSDE" in suffixes
-    assert ".CG" not in suffixes
-    # transport carries nothing between stages today: inventory-only
-    assert not any(r.carry for r in rows if r.suffix in (".TSHS", ".TSDE"))
+    """P5 (transport-design.md 4.3) split the two TS rows: `.TSDE` is
+    the NEGF density -- THE warm state of a continued device run and the
+    file the bias chain hands along -- so it carries; `.TSHS` stays
+    inventory-only ON PURPOSE (a product of its own deck; the device's
+    copies arrive by the structural gather, never by continuation, so a
+    carried one could mask a changed deck)."""
+    rows = {r.suffix: r for r in W.rules_for("siesta", "transport")}
+    assert ".TSHS" in rows and ".TSDE" in rows
+    assert ".CG" not in rows
+    assert rows[".TSDE"].carry == "when-continuing"
+    assert rows[".TSDE"].honoured_by is None, (
+        "TranSIESTA reads .TSDE by presence -- an honoured_by would put "
+        "it into the present-but-not-honoured check and refuse a "
+        "legitimate continuation")
+    assert rows[".TSHS"].carry is None
 
 
 def test_an_empty_section_is_base_only():

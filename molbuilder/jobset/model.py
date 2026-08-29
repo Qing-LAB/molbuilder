@@ -109,6 +109,14 @@ class Resources:
     #: because a description travels and a token must not travel with it.
     notify_on_scf:      Optional[bool]  = None
     notify_every_hours: Optional[float] = None
+    #: WHICH binary the wrapper launches; ``None`` = the engine's own
+    #: (``siesta`` for a ``.fdf``).  Also not a SLURM flag -- the same
+    #: job-to-wrapper road as ``continue_retries``.  Set by the transport
+    #: composite's transmission stage (``tbtrans`` post-processes the
+    #: device run, transport-design.md § 4.2): the deck cannot say it,
+    #: because the transmission deck IS the device deck -- the same text,
+    #: read by a different program.
+    program:          Optional[str] = None
     max_memory_mb:    Optional[int] = None   # NOT a SLURM flag either -- `ulimit -v`
     #  ^ added 2026-08-11.  It is a MACHINE fact (how much memory one rank may
     #  take on this node), so it belongs to the allocation -- and until it lived

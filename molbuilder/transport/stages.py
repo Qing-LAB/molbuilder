@@ -47,6 +47,63 @@ class StageError(Exception):
     stage and what blocks it, ready to surface verbatim."""
 
 
+def stage_inputs(stage: str, task_label: str, *,
+                 seed_enabled: bool = True):
+    """The § 4.2 DAG, as data: ``[(upstream stage, filename)]`` this
+    stage CONSUMES from the concluded attempts of the stages before it.
+
+    The filenames are derived from the SystemLabel rules the renderers
+    already fixed — the seed and device share the task's label, each
+    electrode's label IS its ``.TSHS`` stem (`electrode_hs_stem`, one
+    spelling) — so producer and consumer cannot disagree about a name.
+
+    A disabled seed (ruling Q4: skippable scaffolding) simply drops its
+    row: the device SCF then starts from atomic densities.  The
+    electrode and device rows are never optional — they are the physics
+    (the self-energies, and the converged H the transmission reads).
+    """
+    from ..config.transport import (REGION_LEFT_ELECTRODE,
+                                    REGION_RIGHT_ELECTRODE)
+    from .transiesta import electrode_hs_stem
+    elec = [
+        ("electrode_L",
+         f"{electrode_hs_stem(task_label, REGION_LEFT_ELECTRODE)}.TSHS"),
+        ("electrode_R",
+         f"{electrode_hs_stem(task_label, REGION_RIGHT_ELECTRODE)}.TSHS"),
+    ]
+    if stage == "device":
+        seed = [("seed", f"{task_label}.DM")] if seed_enabled else []
+        return seed + elec
+    if stage == "transmission":
+        # TBtrans reads the device's converged H (.TSHS) and its NEGF
+        # density (.TSDE), plus the electrode .TSHS the TS.Elec blocks
+        # in the (shared) deck text reference.
+        return ([("device", f"{task_label}.TSHS"),
+                 ("device", f"{task_label}.TSDE")] + elec)
+    return []
+
+
+def warm_declaration(stage: str, task_label: str, base_dir=None):
+    """What a transport rung takes from a run it CONTINUES (``--from``
+    an earlier attempt of the SAME stage) — the § 4.2a vocabulary rows
+    for the transport type, on the stages where continuing means
+    anything: the seed (its ``.DM``) and the device (its ``.TSDE``, the
+    NEGF density; read by presence, no deck keyword).
+
+    The electrode single-points and the transmission post-processing
+    declare NOTHING — re-running them is cheaper than reasoning about a
+    half-finished copy, and an empty declaration is what makes
+    ``--from`` refuse there by name instead of copying dead weight.
+    """
+    if stage not in ("seed", "device"):
+        return []
+    from ..jobset.model import WarmFile
+    from ..warmfiles import rules_for
+    return [WarmFile(f"{task_label}{r.suffix}",
+                     requires_same=r.requires_same)
+            for r in rules_for("siesta", "transport", base_dir) if r.carry]
+
+
 def config_for(task, composed: ComposedJunction) -> TransportConfig:
     """The ONE config every stage renders from.
 

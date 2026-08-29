@@ -1804,9 +1804,13 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **twelve** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the five
-riders that become no scheduler flag: `continue_retries` (the warm-retry
+The `jobset.Resources` dataclass holds exactly **thirteen** fields — `domain`,
+`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the six
+riders that become no scheduler flag: `program` (**added 2026-08-28**, the
+transport composite — WHICH binary the wrapper launches; unset means the
+engine's own, siesta. The transmission stage runs tbtrans over the SAME
+deck text as the device stage, so the deck cannot carry the answer and the
+job-to-wrapper road does; transport-design.md § 4.2), `continue_retries` (the warm-retry
 budget, this table's last row), `max_memory_mb` (the wrapper's
 `ulimit -v` cap — the runtime guard against a runaway allocation, applied
 in the wrapper itself, distinct from `mem` which asks the scheduler), and

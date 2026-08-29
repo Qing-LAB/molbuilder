@@ -84,6 +84,23 @@ honoured_by   = "MD.UseSaveCG"
 # ---- transport: a different vocabulary, same format -----------------
 
 [[transport.file]]
-suffix = ".TSHS"                # TranSIESTA self-energy Hamiltonian
+suffix = ".TSHS"                # TranSIESTA Hamiltonian + overlap.
+                                # Inventory-only ON PURPOSE: it is a
+                                # PRODUCT of its own deck (the electrode
+                                # stages write it; the device recomputes
+                                # its own), so carrying it into a
+                                # continued attempt could mask a changed
+                                # deck.  The device's copies arrive by
+                                # the structural gather (prep's
+                                # transport arm), never by continuation.
+
 [[transport.file]]
-suffix = ".TSDE"                # NEGF density
+suffix = ".TSDE"                # the NEGF density -- THE warm state of a
+                                # device re-run, and the file the bias
+                                # chain hands from point to point
+                                # (transport-design.md 4.3).  No
+                                # honoured_by: TranSIESTA reads
+                                # <SystemLabel>.TSDE by PRESENCE, no deck
+                                # keyword involved -- same class as the
+                                # accumulative records above.
+carry  = "when-continuing"

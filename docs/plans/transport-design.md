@@ -376,6 +376,21 @@ the electrode cells from the sorted ends.** Then the stages:
    window / grid / k-sampling are transport-template fields, and a
    finer grid is a new attempt of THIS stage only.
 
+**How a stage receives what it consumes** *(built with P5, 2026-08-28)*:
+`--from` carries within one stage (an attempt continuing an earlier
+attempt of itself — the device's `.TSDE` is its warm row); the DAG's
+cross-stage inputs arrive by the **gather** at prep: when a device or
+transmission attempt opens, the files above are copied in from the
+newest **concluded** upstream attempt **whose deck matches the current
+render byte-for-byte**. Three gates per input, each a named refusal
+(unprepped upstream · no concluded attempt · no matching deck /
+missing product) — so a re-pointed citation can never feed a stale
+`.TSHS` forward, and *device before the electrodes conclude* refuses
+naming exactly what to launch first. `.gathered-from` beside the
+copies records which attempt fed what. The transmission stage runs
+**tbtrans over the same deck text** as the device, so the binary rides
+the allocation (`Resources.program`), not the deck.
+
 **What the calculation folder holds after prep** *(recorded with the
 P4 build, 2026-08-28 — the portable-folder rule, unchanged: one folder,
 travels whole)*:
@@ -494,7 +509,7 @@ the whole task framework — verbs, attempts, warm files, sweeps.)*
 | **P2** | **The categorical sort** — a pure function: `(structure, regions) → (sorted structure, permutation)`; refusals for unlabeled atoms; the bijection check; the permutation sidecar schema (`molbuilder/atom-permutation@1`). No I/O, no engine knowledge. | Unit + property tests: sort is stable within bridge, layer-major within electrodes, bijective always; every refusal named; mutation-tested. |
 | **P3** | **The `transport` calculation kind** — `task.json` grows `slots` (one entry, `@run-N` mandatory) and `bias`; `init` accepts and validates them; strict-composition refusal (missing / unconcluded / unpinned citation each named). | init round-trip tests; the three refusals, each mutation-tested. |
 | **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). *Build note (2026-08-28): the relaxed geometry must be PARSED from the attempt (the `.XV`, Bohr → Å), never file-copied — the old driver's `.XV`-copy + `MD.UseSaveXV` trick hands SIESTA an OLD-ORDER density-adjacent file, exactly what the § 4.1a fence forbids crossing the sort.* | *(Done 2026-08-28: P4a the compose engine (`transport/compose.py`), P4b the stage renders (`transport/stages.py`) + prep's transport arm.  The electronic contract flows citation-fdf → `TransportConfig` → every deck — the emitter's hard-coded DZP/PBE became config fields for it; `TS.Atoms.Buffer` + explicit `elec-pos` land with the buffered case; the composed record travels as `junction.xyz` + `junction.cited.fdf` + the two sidecars.)* A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block, broken tiling, buffer inside the blocks); the emitter's own order-preflight never fires (prep sorted first). |
-| **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
+| **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | *(P5a done 2026-08-28: the CLI route (floor 2 = task.json alone at the prep door too), the § 4.2 gather with its three per-input gates, `.TSDE` as the transport carry row, `Resources.program` routing tbtrans, conclusion markers via the shared wrapper.  P5b — the multi-point bias chain — awaits the user's shape ruling: the per-point directory naming is a clarity question the sweep machinery's `bench-` spelling does not answer well.)* The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
 | **P6** | **summarize + the record** — parse TBtrans output → `<label>.transport.json` (schema first: `T(E)` per bias, `I(V)` table, provenance incl. the permutation reference); `summarize` prints the I–V table; the Results-tab transmission inspector follows as its own step (roadmap § 2 already names it). | Parse fixtures from a real TBtrans run; schema round-trip; summarize output pinned. |
 | **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields) and hand over like every other tab. **The slot picker is `lib/tree-picker.js`** — the ONE pop-out path picker (promoted 2026-08-28 from the sidebar's destination dialog; user: reuse the wheel), with its `describe` seam fed from **the attempt's own `.fdf`** — the deck that actually ran is the truth about a result; the attempt dir's other files (`run.json`, `.concluded`, the monitor log) supply only runtime status. | The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane, slot selection through the shared picker. |
 
