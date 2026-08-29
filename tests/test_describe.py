@@ -341,3 +341,41 @@ def test_the_producer_is_pure_so_two_surfaces_cannot_disagree(struct, cfg):
     a = _describe(struct, cfg, default_siesta_stages("publishable"))
     b = _describe(struct, cfg, default_siesta_stages("publishable"))
     assert a.files() == b.files()
+
+
+def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path):
+    """2026-08-28: --psml-lib carried a click-level exists check that
+    validated against the WORKING DIRECTORY, while the resolver's rule
+    (job-contracts 2.5a) says a bare name means the projects tree the
+    calculation lives in.  From anywhere but inside the tree the two
+    validators refused each other's accepted spelling -- click rejecting
+    the bare in-tree name, the resolver rejecting the cwd-relative one
+    click demanded.  One fact, one door: the click check is gone and the
+    resolver decides, so the bare spelling works from any directory."""
+    import os
+
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "pseudopotential").mkdir()
+    (tree / "pseudopotential" / "H.psml").write_text("<psml/>\n")
+    (tree / "P" / "structure" / "h2.xyz").write_text(
+        "2\n\nH 0 0 0\nH 0 0 0.74\n")
+    os.environ[PROJECTS_ROOT_ENV] = str(tree)
+    try:
+        # CliRunner's cwd is the test runner's -- ./pseudopotential does
+        # NOT exist here, which is exactly the papercut's shape.
+        res = CliRunner().invoke(jobset_group, [
+            "init", "--structure", "P/structure/h2.xyz",
+            "--bundle", "P/optimization/calc",
+            "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB",
+            "--psml-lib", "pseudopotential"])
+    finally:
+        os.environ.pop(PROJECTS_ROOT_ENV, None)
+    assert res.exit_code == 0, res.output
+    assert (tree / "P" / "optimization" / "calc" / "H.psml").exists(), (
+        "the bare name must resolve against the tree and the pseudo "
+        "must travel with the calculation")

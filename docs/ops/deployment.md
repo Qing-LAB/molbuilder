@@ -183,78 +183,89 @@ of `molbuilder serve` bound to loopback. molbuilder supports this: set
 `X-Forwarded-For`/`-Proto`), and it only emits **HSTS** once the request actually
 arrived over HTTPS. Direct TLS (`--cert/--key`) also works for simpler setups.
 
-## 3. Auth — opt-in single-sign-on
+## 3. Auth — turning on sign-in
 
-Auth is **off by default** (the localhost single-user shape needs none). Turn it
-on by adding an `auth` section to `molbuilder.json` — and note **molbuilder holds
-no passwords**. Identity is delegated to an external provider (Google, GitHub,
-Microsoft, ORCID via OAuth/OIDC, or Apereo CAS); molbuilder only checks the
-returned email against your `allowed_users` allowlist. The login page is a row of
-provider buttons, not a username/password form.
+No `auth` section in `molbuilder.json` = no login. That is the right
+setup for a personal machine. Add sign-in only when other people can
+reach your server.
 
-With auth on:
+### 3.1 Google sign-in, step by step
 
-- an **unauthenticated browser** request → `302` redirect to `/login`; an
-  unauthenticated **`/api/*`** request → a clean `401 {ok:false, login_url}` JSON.
-- **exempt** (always reachable): the login/callback/logout routes, the health
-  probe (`/api/health`), static assets, and the Plotly vendor script.
-- the **session-signing key** comes from a `secret_key_file` path you configure
-  (auto-generated `0600` on first run *if the path is set*; without it, the key is
-  ephemeral per process and you get a warning). Session cookies are
-  `Secure` + `HttpOnly` + `SameSite=Lax`.
-
-`--no-auth` bypasses all of this and is refused on any non-loopback host.
-
-### 3.1 Getting the provider credentials — the wizard, and the Google console
-
-*(Restored 2026-08-28 — the old deployment page carried this and the
-rewrite lost it.)*
-
-**The fastest path is the wizard.** It asks the questions, writes the
-`auth` block into `molbuilder.json`, and puts every secret in its own
-`0600` file (§ 5.1) — nothing is printed, nothing lands in the config
-as a literal:
-
-```bash
-python -m molbuilder auth-setup                      # interactive
-python -m molbuilder auth-setup --provider asu       # ASURITE CAS = current user
-python -m molbuilder auth-setup --provider google    # prompts for client id + secret
-```
-
-**What Google needs from you first** (once per deployment, at
+**Step 1 — create the OAuth client** (once, in a browser, at
 <https://console.cloud.google.com/apis/credentials>):
 
-1. Pick or create a project → **OAuth consent screen** (External;
-   only the accounts on your `allowed_users` list will ever get past
-   molbuilder anyway).
-2. **Credentials → Create credentials → OAuth client ID → Web
-   application.**
-3. Under **Authorized redirect URIs**, add your server's callback:
+1. Pick or create a project. First time only: open **OAuth consent
+   screen**, choose *External*, fill in the app name, save.
+2. Click **Create credentials → OAuth client ID → Web application**.
+3. Under **Authorized redirect URIs**, click *Add URI* and enter:
 
    ```
-   https://<host>:<port>/oauth-callback/<provider id>
+   https://YOUR-HOST:8888/oauth-callback/google
    ```
 
-   e.g. `https://yourhost.example.edu:8888/oauth-callback/google`. The
-   `/oauth-callback/<id>` path is the fixed part; host and port must
-   match how browsers actually reach you (through a tunnel:
-   `http://localhost:8888/...`). `serve start` prints this exact URI
-   whenever auth is on, so you can copy it rather than derive it.
-4. Copy the **client id** and **client secret** into the wizard's
-   prompts (the secret is read with echo off).
+   Use the host and port people type into their browser. Through an
+   ssh tunnel that is `http://localhost:8888/oauth-callback/google`.
+   (`serve start` prints the exact URI whenever auth is on — copy it
+   from there instead of deriving it.)
+4. Click **Create**. Google shows a client ID and a client secret —
+   keep that page open for step 2.
 
-**Updating or rotating later:**
+**Step 2 — run the wizard on the server**, in the clone:
 
-- **New client secret** (rotation, or a leaked one): generate it in the
-  same console page, overwrite the one-line
-  `~/.config/molbuilder/google_client_secret` file (§ 5.1), then
-  `molbuilder serve restart`. The config itself carries only the path,
-  so nothing else changes.
-- **New host or port**: add the new redirect URI in the console (old
-  ones can stay during a migration), and the printed hint at `serve
-  start` tells you the URI to register.
-- **CAS (ASURITE)** has no client secret and no console — nothing to
-  create or rotate; only `allowed_users` is yours to edit.
+```bash
+python -m molbuilder auth-setup --provider google
+```
+
+Paste the client ID and secret at the prompts (the secret is typed
+with echo off), and list the Google accounts that may log in. The
+wizard writes everything: the `auth` section into `molbuilder.json`,
+and the secret into `~/.config/molbuilder/google_client_secret`
+(mode `0600`, § 5.1). Nothing secret lands in the config file.
+
+**Step 3 — restart and test:**
+
+```bash
+python -m molbuilder serve restart --port 8888
+```
+
+Open the site: you get a login page with a Google button. Sign in
+with one of the allowed accounts.
+
+### 3.2 ASURITE sign-in (CAS)
+
+```bash
+python -m molbuilder auth-setup --provider asu
+```
+
+No console, no secret — CAS has neither. The allowed user is your
+ASURITE; add lab members by editing `allowed_users` in
+`molbuilder.json`.
+
+### 3.3 Changing things later
+
+| what changed | what to do |
+|---|---|
+| rotate / replace the client secret | make a new secret on the same console page → overwrite `~/.config/molbuilder/google_client_secret` → `molbuilder serve restart` |
+| new host or port | add the new redirect URI in the console — `serve start` prints the exact URI to add |
+| add / remove people | edit `allowed_users` in `molbuilder.json` → `molbuilder serve restart` |
+
+### 3.4 Facts you may need
+
+- molbuilder never sees a password. Google (or CAS) does the login;
+  molbuilder only checks the returned email against `allowed_users`.
+- With auth on, a browser request without a session is redirected to
+  `/login`; an `/api/*` request gets a clean `401` JSON naming the
+  login URL. Always open regardless: the login/callback/logout
+  routes, `/api/health`, and static assets.
+- The session cookie is signed with the key at `secret_key_file`
+  (auto-generated `0600` on first run if the path is set) and is
+  `Secure` + `HttpOnly` + `SameSite=Lax`.
+- `--no-auth` skips login entirely and is refused on any
+  non-loopback host.
+- Google and ASURITE CAS come through the wizard; other OAuth/OIDC
+  providers (GitHub, Microsoft, ORCID) take the same `auth`-section
+  shape, written by hand
+  ([`configuration.md`](?doc=configuration.md)).
 
 ## 4. Security posture
 

@@ -280,10 +280,19 @@ def _resolve_bundle_may_be_new(ctx, param, value):
               type=click.Choice(("siesta", "pyscf")),
               help="whose parameters these are.")
 @click.option("--psml-lib", default=None, metavar="DIR",
-              type=click.Path(exists=True, file_okay=False),
+              # NO click-level exists check, deliberately (2026-08-28): the
+              # anchor rule lives in pseudos.resolve_psml_lib (job-contracts
+              # § 2.5a) and describe.py validates through it with the
+              # teaching refusal.  A click Path(exists=True) checked the
+              # WORKING DIRECTORY instead, so from the repo root the two
+              # validators refused each other's accepted spelling -- click
+              # rejecting the bare in-tree name, the resolver rejecting the
+              # cwd-relative one click demanded.  One fact, one door.
               help="where to read pseudopotentials from. A path on THIS "
-                   "machine: the files travel with the calculation, the path "
-                   "does not.")
+                   "machine: the files travel with the calculation, the "
+                   "path does not.  A bare name (`pseudopotential`) means "
+                   "the projects tree the calculation lives in; `./x` means "
+                   "beside the calculation; an absolute path means itself.")
 @click.option("--vacuum", type=float, default=None, metavar="ANGSTROM",
               help="isolation vacuum (A) per side on isolated axes. Needed "
                    "for a flat or linear molecule from a bare XYZ, which "

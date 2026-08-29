@@ -1119,7 +1119,7 @@ What remains:
   The shared writer is also LOUD about a missing slot, which one copy was and
   the others were not — that copy exists because a silent return once made a
   MolView mount failure completely invisible.
-### 7.4c · the anonymous values — **diagnosis corrected, and it needs a ruling**
+### 7.4c · the anonymous values — **done except `molview.css`** *(4px-grid ruling applied 2026-08-23; retitled 2026-08-28 — the heading still said "needs a ruling" long after the ruling landed)*
 
 **Partly done, and my first framing of it was wrong.** I reported it as sheets
 ignoring a vocabulary. Measured properly (2026-08-23): of the literals, only
@@ -1161,6 +1161,17 @@ two other things depend on. Its own header still says it never writes a
 literal where a named metric exists, and it still does, 127 times. *(Worth recording: `molview.css` states in its own header that it
 "never says `24px` where a named metric already exists" — and carries 127
 repeated literals. Its rule is right; the file does not keep it.)*
+
+**What remains, measured fresh 2026-08-28:** 777 raw px/rem literals
+tree-wide, decomposing exactly into the permitted categories — 39 are
+`tokens.css`'s own definitions (the one legitimate home), 311 are
+hairlines (excluded by the ruling), 248 sit in `molview.css`, and the
+rest are the one-off composition values `ui-contract.md` § 7 permits
+inline. So the campaign is closed except `molview.css`, with two
+options recorded for its eventual visit: name its literals **without
+moving the `calc()`-derived values** (the card floor and the dock
+threshold hang off them), or amend its header to stop claiming a rule
+the file does not keep.
 
 - ~~**7.4d — classes written by JS that no stylesheet defines**~~ **Done
   2026-08-23.** Of the 21: ten were the modals (7.4a); six were hooks made
