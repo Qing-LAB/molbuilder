@@ -2107,22 +2107,32 @@ def test_every_page_class_in_the_markup_is_styled_somewhere():
 #  the slot picker's describe seam                                      #
 # --------------------------------------------------------------------- #
 
-_T_CITE = "_t_transport/optimization/Relax@01_only/run-0"
+_T_CITE = "_t_transport/optimization/Relax/01_only/run-0"
 
 
 def _cited_junction(*, concluded=True):
-    """A minimal cited calculation inside the configured root: the
-    citation resolver checks task.json + the attempt dir; the describe
-    seam reads the attempt's own deck + the conclusion marker."""
+    """A minimal citable directory (4.1b form A: one .fdf + one .XV
+    together).  ``concluded=False`` writes a run RECORD that does not
+    conclude (mid-run / force-stopped); the classification itself
+    never needs molbuilder's layout."""
     calc = ROOT / "projects/_t_transport/optimization/Relax"
     attempt = calc / "01_only" / "run-0"
     attempt.mkdir(parents=True, exist_ok=True)
-    (calc / "task.json").write_text("{}")
     (attempt / "Relax_01_only.fdf").write_text(
         "SystemLabel Relax\nMeshCutoff 250.0 Ry\nPAO.BasisSize SZ\n"
         "XC.functional GGA\nXC.authors PBE\n")
+    bohr = 1.0 / 0.529177210903
+    (attempt / "Relax.XV").write_text(
+        f"  {10*bohr:.8f} 0.0 0.0  0.0 0.0 0.0\n"
+        f"  0.0 {10*bohr:.8f} 0.0  0.0 0.0 0.0\n"
+        f"  0.0 0.0 {10*bohr:.8f}  0.0 0.0 0.0\n"
+        "  2\n"
+        f"  1  6  0.0 0.0 0.0  0.0 0.0 0.0\n"
+        f"  1  6  0.0 0.0 {1.3*bohr:.8f}  0.0 0.0 0.0\n")
     if concluded:
         (attempt / "Relax_01_only-run0.concluded").write_text("rc=0\n")
+    else:
+        (attempt / "run.json").write_text("{}")
     return calc
 
 
@@ -2179,7 +2189,7 @@ def test_transport_describe_refuses_a_citation_the_tree_lacks(web_client):
         engine="siesta", name="T",
         junction="_t_nope/optimization/Gone@run-0", bias=[0.0]))
     assert r.status_code == 400
-    assert "task.json" in r.get_json()["error"]
+    assert "not a directory" in r.get_json()["error"]
 
 
 def test_transport_describe_refuses_a_bias_off_equilibrium(web_client):

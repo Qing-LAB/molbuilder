@@ -55,10 +55,10 @@ def test_transport_reads_back_what_it_writes():
         "that is a silent no-op (the inspector's 2026-08-03 bug)")
     assert "note.junction" in restore, (
         "the restore must re-adopt the cited junction")
-    assert "_showInMolview" in restore, (
-        "the restore must re-open the cited structure through the one "
-        "load door -- a read-only tab keeps its structure by RELOADING "
-        "it (molview.md § 12.3)")
+    assert "_adoptCitation" in restore and "_describeAttempt" in restore, (
+        "the restore must take the SAME path a pick takes -- re-describe "
+        "the citation and adopt it (the server re-composes the structure "
+        "fresh; molview.md § 12.3's reload, through the 4.1b seam)")
     adopt = src.split("function _adoptCitation(", 1)[1].split(
         "\n    function ", 1)[0]
     assert "_writePanelNote()" in adopt, (

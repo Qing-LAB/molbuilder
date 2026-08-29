@@ -35,7 +35,7 @@ structure or a parameter mismatch is impossible by construction.*
 |---|---|---|
 | **open system** | a current-carrying junction is OPEN — NEGF replaces periodicity along transport with electrode self-energies | § 1 |
 | **the artifact table** | what each step hands the next: relax → coordinates + labels; electrode sub-stages → `.TSHS` + E_F; device → `TS.HSX` for TBtrans, `.TSDE` for the bias chain | § 1.4 |
-| **one slot, by citation** | the transport task cites ONE finished attempt — the relaxed junction, named explicitly (`...@run-N`); prep COPIES the structure in, so the folder stays portable | § 4 |
+| **one slot, by citation** | the transport task cites ONE directory that satisfies the file condition (§ 4.1b — a finished relaxation's `.fdf`+`.XV`, or a labeled `.xyz`+`.molstruct.json` pair); prep COPIES the structure in, so the folder stays portable | § 4 |
 | **electrodes are derived** | the two electrode single-points are INTERNAL sub-stages, built from the junction's own `L-electrode`/`R-electrode` labeled blocks — parameter and geometry mismatch impossible by construction (user design, Q5) | § 3, § 4.2 |
 | **the internal gate** | the labeled blocks must TILE as bulk (frozen atoms unmoved, bulk spacing) and be thick enough for the principal-layer condition — refused naming the atoms | § 3 |
 | **the categorical sort** | TranSIESTA reads electrodes by POSITION, so prep sorts the copied structure into `[L][bridge][R]` (buffers outermost), checks every atom is labeled and none is lost, and records the permutation — relaxation order stays free | § 4.1a |
@@ -143,7 +143,7 @@ flowchart TB
       DEV["<b>device SCF · TranSIESTA</b><br/>zero bias first, then the bias list,<br/>each point warm-started from the last"]
       TBT["<b>transmission · TBtrans</b><br/>T(E), DOS, I(V) per bias —<br/>re-runnable on finer grids"]
     end
-    RX -- "relaxed coordinates + region labels<br/>(the ONE citation, @run-N explicit)" --> EL & ER & SEED
+    RX -- "relaxed coordinates + region labels<br/>(the ONE citation: a directory meeting the 4.1b file condition)" --> EL & ER & SEED
     EL -- ".TSHS (H+S of the bulk lead) + E_F" --> DEV
     ER -- ".TSHS" --> DEV
     SEED -- ".DM (initial density)" --> DEV
@@ -228,8 +228,8 @@ at prep, refusals naming the atoms (user ruling Q3):
 ### 4.1 One slot, one explicit citation
 
 The transport task's `task.json` carries a single slot — the user's
-"pick the relaxed junction from here" — with the attempt named
-**explicitly, always** (user ruling Q1):
+"pick the relaxed junction from here" — a **directory named
+explicitly, always** (user ruling Q1):
 
 ```jsonc
 {
@@ -237,7 +237,7 @@ The transport task's `task.json` carries a single slot — the user's
   "engine": { "name": "siesta" },
   "calculation": "transport",
   "slots": {
-    "junction": "BDT-Au/optimization/JunctionRelax@01_coarse/run-2"
+    "junction": "BDT-Au/optimization/JunctionRelax/01_coarse/run-2"
   },
   "stages": [
     { "name": "seed",         "enabled": true,  "overrides": {} },
@@ -250,20 +250,59 @@ The transport task's `task.json` carries a single slot — the user's
 }
 ```
 
-* The citation is tree-relative, the same path language everything
-  speaks, and the attempt half is the attempt's **on-disk path inside
-  the calculation** — `@01_coarse/run-2` in the hierarchical shape,
-  `@run-N` where attempts sit at the root. *(Refined during the P3
-  build, 2026-08-28: `run-N` alone is ambiguous across a ladder's
-  stages, and ruling Q1 — nothing is ever picked — extends to the
-  stage.)* Mandatory always.
-* **Strict composition** (user ruling Q2): a missing or unconcluded
-  citation is a refusal naming exactly what to run first — the
-  transport task never runs its upstream pieces.
+* The citation is a **tree-relative directory path**, the same path
+  language everything speaks.  What makes the directory citable is
+  § 4.1b's file condition — never its name, never where it sits.
+  *(Amended 2026-08-29, second user ruling: the original spelling
+  `<calc>@<stage>/run-N` bound the citation to molbuilder's own
+  attempt layout — "your design assumes too much about how the user
+  wants to do the calculation."  The `@` grammar retired with it; a
+  molbuilder attempt directory satisfies the condition naturally, so
+  the tree case is one instance, not the rule.)*  Mandatory always.
+* **Strict composition** (user ruling Q2): a citation whose directory
+  fails the § 4.1b condition is a refusal naming exactly which file is
+  missing — the transport task never runs its upstream pieces.
 * **At `prep`, the cited structure is COPIED in** with provenance
-  (calculation, attempt, content hash) recorded beside it — the
+  (directory, source files, content hashes) recorded beside it — the
   transport folder then travels like any other. The § 3 gate runs on
   the copy before anything renders.
+
+### 4.1b The citation condition — files, not layout *(user ruling, 2026-08-29)*
+
+**A directory is citable iff the files IN THAT DIRECTORY provide what
+transport consumes.**  Two forms are admitted, named by what they hold;
+everything a form provides comes from the same directory — no walking
+up, no sibling calculations, no assumed tree.
+
+| transport consumes | **form A — a finished relaxation**<br/>`.fdf` + `.XV` coexist in the directory | **form B — a labeled structure**<br/>`.xyz` + `.molstruct.json` coexist in the directory |
+|---|---|---|
+| final geometry | the `.XV` (the relaxation's own last positions) | the `.xyz` (its coordinates ARE the final geometry) |
+| atom identities + region labels (`L-electrode` / `R-electrode`, `frozen_atoms`) + cell | the deck: its species/coordinates block, its in-body **ATOM-METADATA** block (job-contracts § 3.4 — the deck is self-describing when labels exist), its `LatticeVectors`.  If the deck lacks the block, exactly one `.molstruct.json` in the same directory may supply the labels | the `.molstruct.json` (regions, frozen, cell) |
+| electronic contract (basis, XC, mesh, transverse k, T) | the deck — fdf-is-truth; the contract fields stay **sealed** | **none** — the description's own `TransportConfig` fields; the contract fields are **open** (settable) for this form, because there is no deck to be truth |
+| pseudopotentials | `.psml` in the directory (or its `pseudos/`); missing species are a prep refusal naming them | same |
+| convergence evidence | a run record in the directory, when one exists, must say CONCLUDED (a molbuilder attempt mid-run is refused); **no record → the `.XV` is taken as the final geometry, and the meta line says so honestly** | none claimed — the structure is taken as given, said honestly |
+
+Rules that keep the condition decidable:
+
+* **One of each.**  Form A needs exactly one usable `.fdf` and exactly
+  one `.XV`; form B exactly one `.xyz` + its stem-paired
+  `.molstruct.json`.  More than one candidate is a refusal listing
+  them — the citation names a directory, so the directory must answer
+  unambiguously.
+* **A wins over B** when a directory satisfies both — the deck carries
+  the contract, and more information never loses to less.
+* **The frozen gate (§ 3, ruling Q3) is form A's**: start = the deck's
+  own coordinates, end = the `.XV`; electrode atoms that moved refuse.
+  Form B had no relaxation *here*, so there is no motion to check —
+  the labels are taken as drawn, and the § 3 lead gates (thickness,
+  tiling) still run.
+* **The sealed set splits** (`transport/stages.py`):
+  `SEALED_ALWAYS` = {`engine`, `job_name`, `bias_voltages_v`} — the
+  description's own facts, refused as overrides for every citation;
+  `CONTRACT_FIELDS` = the electronic set — sealed for form A (the
+  deck's to say), open for form B.  Both doors (describe, prep) read
+  the same two constants; the tab's form offers contract fields only
+  for a form-B citation.
 
 ### 4.1a The atom-order contract — the categorical sort *(user, 2026-08-28)*
 
@@ -513,7 +552,7 @@ relax first. Both are just "which structure the `junction` slot cites."
 
 | # | question | ruling |
 |---|---|---|
-| 1 | slot granularity | **explicit attempt always** — `@run-N` is mandatory; nothing is picked for the user |
+| 1 | slot granularity | **explicit directory always** — nothing is picked for the user; the directory must satisfy § 4.1b's file condition *(amended 2026-08-29: the `@run-N` spelling retired with the layout binding)* |
 | 2 | strict composition | **yes** — transport never runs its upstream pieces; a missing/unconcluded citation refuses naming what to run first; the old `transport bundle` driver retires |
 | 3 | the seam check | **refuse, naming atoms** — frozen labels bitwise unmoved, blocks must tile, principal-layer thickness enforced (§ 3) |
 | 4 | the seed stage | **default on, skippable** |
@@ -540,7 +579,7 @@ the whole task framework — verbs, attempts, warm files, sweeps.)*
 | **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). *Build note (2026-08-28): the relaxed geometry must be PARSED from the attempt (the `.XV`, Bohr → Å), never file-copied — the old driver's `.XV`-copy + `MD.UseSaveXV` trick hands SIESTA an OLD-ORDER density-adjacent file, exactly what the § 4.1a fence forbids crossing the sort.* | *(Done 2026-08-28: P4a the compose engine (`transport/compose.py`), P4b the stage renders (`transport/stages.py`) + prep's transport arm.  The electronic contract flows citation-fdf → `TransportConfig` → every deck — the emitter's hard-coded DZP/PBE became config fields for it; `TS.Atoms.Buffer` + explicit `elec-pos` land with the buffered case; the composed record travels as `junction.xyz` + `junction.cited.fdf` + the two sidecars.)* A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block, broken tiling, buffer inside the blocks); the emitter's own order-preflight never fires (prep sorted first). |
 | **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | *(Done 2026-08-28/29.  P5a: the CLI route (floor 2 = task.json alone at the prep door too), the § 4.2 gather with its three per-input gates, `.TSDE` as the transport carry row, `Resources.program` routing tbtrans, conclusion markers via the shared wrapper.  P5b, on the user's plain-v-dirs ruling: per-point decks/wrappers/attempts, the bias-aware gather (transmission at v reads the device at v), and `submit_transport_chain` — ONE submission walking the points in order, the previous point's `.TSDE` copied forward, STOPPING on a failed point because later points chain their density from it (a benchmark's points are independent; a chain's are not).  Per-point transmission LAUNCH deliberately waits for P6, which owns the map over converged points; `--from`/`--cold` on a scan stage refuse until per-point continuation is named.)* The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
 | **P6** | **summarize + the record** — parse TBtrans output → `<label>.transport.json` (schema first: `T(E)` per bias, `I(V)` table, provenance incl. the permutation reference); `summarize` prints the I–V table; the Results-tab transmission inspector follows as its own step (roadmap § 2 already names it). | *(Done 2026-08-29.  The fixtures ARE from a real run — the carbon-chain live walk: the whole composite ran end-to-end on SIESTA/TBtrans 5.4.2 (seed 6 SCF iters → electrodes → the device chain warm-handing v0's `.TSDE` to v0.4 → transmission), T(E_F) = 2.0 exactly (the cumulene two-π-channel pin) and I(0.4 V) = 31 µA from TBtrans's own integral.  The walk found and fixed the 5.x reality: the device H travels as `TS.HSX` and the deck must say `TBT.HS` — measured, not assumed.  `summarize run` writes the record; the transmission scan launches through the same walker as the device chain, minus the hand-forward and the stop rule — its points are independent.  Registry rows for all three transport schemas landed in job-contracts § 6.1.)* Parse fixtures from a real TBtrans run; schema round-trip; summarize output pinned. |
-| **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields).  *(Amended by user ruling 2026-08-29: NO hand-over — the other kinds hand to Task setup because it owns questions they leave open (shape, stages, varies); transport has none open, so the tab selects and decides: `POST /api/transport/describe` answers with the FINISHED task.json and the tab writes it where the user chose.  Task setup remains the run surface that READS the description — machine, queue, prep — not a hand-over target.)* **The slot picker is `lib/tree-picker.js`** — the ONE pop-out path picker (promoted 2026-08-28 from the sidebar's destination dialog; user: reuse the wheel), with its `describe` seam fed from **the attempt's own `.fdf`** — the deck that actually ran is the truth about a result; the attempt dir's other files (`run.json`, `.concluded`, the monitor log) supply only runtime status. | *(Done 2026-08-29.  P7a: `transport bundle`/orchestrate.py deleted with their tests, the dead-spelling guard standing; the doc sweep closed W4 and flipped the roadmap's migration box.  P7b: the tab describes the composite — the shared tree-picker with a `pickable` seam (only `run-N` attempts choosable) and the `describe` seam fed by `/api/transport/describe_attempt` reading the attempt's own `.fdf`; bias + changed-from-default knobs ride the describe (ONE file, the finished task.json — floor 2 is task.json alone at this door too; the hand-over hop was cut by the same ruling), knob overrides promoted through `varies` onto the device stage per stages.md § 6.2, the sealed electronic-contract set refused by name at BOTH doors from one constant; Task setup's transport arm proposes the five fixed stages and answers the shape itself (codec pairing: transport ⇒ hierarchical).  Reviewed and reworked same day on the user's rulings: the VIEWER FOLLOWS THE CITATION (citing loads the cited calculation's labeled structure into MolView and runs the chemistry analysis on it; the sidebar commit channel is gone — a second source for the composite's one fact), and the tab describes DIRECTLY (no hand-over).  Verified live in the browser lane: picker → cite (viewer + analysis follow) → Describe → task.json on disk → Task setup reads it as an ordinary description → prepped through the CLI.)* The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane, slot selection through the shared picker. |
+| **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields).  *(Amended by user ruling 2026-08-29: NO hand-over — the other kinds hand to Task setup because it owns questions they leave open (shape, stages, varies); transport has none open, so the tab selects and decides: `POST /api/transport/describe` answers with the FINISHED task.json and the tab writes it where the user chose.  Task setup remains the run surface that READS the description — machine, queue, prep — not a hand-over target.)* **The slot picker is `lib/tree-picker.js`** — the ONE pop-out path picker (promoted 2026-08-28 from the sidebar's destination dialog; user: reuse the wheel), with its `describe` seam fed from **the attempt's own `.fdf`** — the deck that actually ran is the truth about a result; the attempt dir's other files (`run.json`, `.concluded`, the monitor log) supply only runtime status. | *(Done 2026-08-29.  P7a: `transport bundle`/orchestrate.py deleted with their tests, the dead-spelling guard standing; the doc sweep closed W4 and flipped the roadmap's migration box.  P7b: the tab describes the composite — the shared tree-picker with a `pickable` seam (only `run-N` attempts choosable) and the `describe` seam fed by `/api/transport/describe_attempt` reading the attempt's own `.fdf`; bias + changed-from-default knobs ride the describe (ONE file, the finished task.json — floor 2 is task.json alone at this door too; the hand-over hop was cut by the same ruling), knob overrides promoted through `varies` onto the device stage per stages.md § 6.2, the sealed electronic-contract set refused by name at BOTH doors from one constant; Task setup's transport arm proposes the five fixed stages and answers the shape itself (codec pairing: transport ⇒ hierarchical).  Reviewed and reworked same day on the user's rulings: the VIEWER FOLLOWS THE CITATION (citing loads the cited calculation's labeled structure into MolView and runs the chemistry analysis on it; the sidebar commit channel is gone — a second source for the composite's one fact), and the tab describes DIRECTLY (no hand-over).  Verified live in the browser lane: picker → cite (viewer + analysis follow) → Describe → task.json on disk → Task setup reads it as an ordinary description → prepped through the CLI.)* The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane, slot selection through the shared picker.  *(Amended again 2026-08-29, second ruling — § 4.1b: the `pickable` name filter and the `@run-N` grammar retired; ANY directory is choosable and the describe seam classifies it by its FILES, the viewer installing the server-composed structure envelope.)* |
 
 **Order of proof:** P2 and P3 are pure and land independently; P4 is
 the heart and cannot start before both; P5–P6 ride the existing

@@ -42,7 +42,12 @@ const WORKSPACE_TAG = "transport";
      * doesn't fail silently.
      */
     function _fetchAndRender(formContainer, formSchema) {
-        return root.fetch(SCHEMA_URL)
+        /* The contract lane rides the query (4.1b): "cited" hides the
+         * electronic-contract fields (the deck's to say); "open"
+         * offers them (a labeled pair has no deck). */
+        var url = SCHEMA_URL
+            + (_junctionContract === "open" ? "?contract=open" : "");
+        return root.fetch(url)
             .then(function (r) {
                 return r.json().then(function (body) {
                     if (!r.ok || !body.ok) {
@@ -147,13 +152,17 @@ const WORKSPACE_TAG = "transport";
         container.addEventListener("change", persist);
     }
 
-    /* THE TAB'S TWO FACTS (P7b review, 2026-08-29): the citation, and
-     * the cited calculation's source file the viewer shows.  Both are
-     * the SERVER's answers (/api/transport/describe_attempt spells the
-     * citation and names the source), adopted whole -- the tab derives
-     * neither. */
-    var _junction = "";          // the citation string, "" until cited
-    var _junctionSource = "";    // sidebar-space path of the cited source
+    /* THE TAB'S FACTS (4.1b, 2026-08-29): the citation (a directory
+     * whose FILES satisfy the condition), the composed labeled
+     * structure the server answers with (the viewer + the chemistry
+     * analysis run on it -- no file path is assumed), and which
+     * contract lane the form serves ("cited" = the deck's, contract
+     * fields hidden; "open" = the description's own, offered).  All
+     * three are /api/transport/describe_attempt's answers, adopted
+     * whole -- the tab derives none of them. */
+    var _junction = "";           // the citation path, "" until cited
+    var _junctionStructure = null;    // the composed structure envelope
+    var _junctionContract = "cited";  // which schema lane the form shows
 
     /* The composite's send gate: a citation is the ONE thing the
      * describe cannot go without (transport-design.md 4.1). */
@@ -166,7 +175,7 @@ const WORKSPACE_TAG = "transport";
     function _refreshAnalyzeButton() {
         var btn = _$("auto-detect-btn");
         if (!btn) return;
-        btn.disabled = !_junctionSource;
+        btn.disabled = !_junctionStructure;
     }
 
     // The mounted MolView handle (null until the first structure is committed
@@ -186,11 +195,11 @@ const WORKSPACE_TAG = "transport";
     function _writePanelNote() {
         var ws = root.molbuilder && root.molbuilder.workspace;
         if (!ws || typeof ws.persist !== "function") return;
-        /* v2 (P7b review): the tab's fact is the CITATION -- the viewer
-         * persists the structure itself; the note is what re-drives the
-         * readout, the meta line and the send gate on a reload. */
-        ws.persist(PANEL_TAG, { v: 2, junction: _junction || "",
-                                source: _junctionSource || "" },
+        /* v3 (4.1b): the tab's ONE fact is the CITATION.  A reload
+         * re-describes it through the same seam a pick uses, so the
+         * structure, the meta line and the contract lane always come
+         * back fresh from the server, never from a stale copy. */
+        ws.persist(PANEL_TAG, { v: 3, junction: _junction || "" },
                    _panelIdentity(ws));
     }
 
@@ -266,16 +275,13 @@ const WORKSPACE_TAG = "transport";
         runtime.whenReady("projects").then(function () {
             return Promise.resolve(ws.readState(_panelIdentity(ws)));
         }).then(function (note) {
-            if (!note || note.v !== 2 || !note.junction) return;
-            _junction = note.junction;
-            _junctionSource = note.source || "";
-            var out = _$("transport-junction-readout");
-            if (out) out.textContent = _junction;
-            _refreshSendButton();
-            _refreshAnalyzeButton();
-            _refreshJunctionMeta();
-            if (_junctionSource) _showInMolview(_junctionSource);
-            _setStatus("Restored your last session: " + _junction + ".");
+            if (!note || note.v !== 3 || !note.junction) return;
+            // The SAME flow a pick takes: re-describe, then adopt --
+            // one adoption path, so a restored citation and a fresh
+            // one cannot drift apart.
+            return _describeAttempt(note.junction).then(function (b) {
+                _adoptCitation(b, "Restored your last session: ");
+            });
         }).catch(function (e) {
             if (root.console) {
                 root.console.error("[transport] session restore failed", e);
@@ -285,30 +291,27 @@ const WORKSPACE_TAG = "transport";
 
     /**
      * Show the CITED structure so the user can eyeball what they cited —
-     * atoms, region labels, the cell — before describing.  Read-only view of
-     * the citation (molview.md § 12.3); every call is a fresh open of the
-     * cited file through the one load door (``projects.parser.openMolecule``
-     * reads the .xyz + .molstruct.json server-side and installs the model in
-     * ONE write; its `enforce` makes a new citation a deliberate swap).
-     * Best-effort: if the molview/projects stack failed to load, the tab
-     * still describes (the viewer is an aid, not a gate).
+     * atoms, region labels, the cell — before describing.  Read-only view
+     * of the citation (molview.md § 12.3), installed from the SERVER'S
+     * OWN composition (describe_attempt answers the structure envelope,
+     * the same shape /api/build/load's {structure} branch takes) — a
+     * form-A citation has no .xyz on disk, so no file path is assumed
+     * (4.1b).  `enforce` makes a new citation a deliberate swap
+     * (molview.md § 11.2a).  Best-effort: if the molview stack failed to
+     * load, the tab still describes (the viewer is an aid, not a gate).
      */
-    function _showInMolview(path) {
-        var proj = root.molbuilder && root.molbuilder.projects;
-        if (!proj || !proj.parser
-                || typeof proj.parser.openMolecule !== "function") {
-            return;
-        }
-        /* THE VIEWER FIRST, THEN THE FILE. A viewer mounts before it has a
-         * structure (molview.md § 8), and the load door needs somewhere to put
-         * what it reads. This ran the other way round, which only worked while
-         * the load door could find a viewer by name in a global. */
+    function _showStructure(wire) {
+        if (!wire) return;
         _ensureViewer().then(function (viewer) {
-            if (!viewer) return;
-            return proj.parser.openMolecule(viewer, path).then(function (r) {
-                if (r && r.ok === false && root.console) {
-                    root.console.error("[transport] load failed", r.error);
-                }
+            if (!viewer || !viewer.data
+                    || typeof viewer.data.installMolecule !== "function") {
+                return;
+            }
+            return viewer.data.installMolecule({
+                structure: wire,
+                source: { kind: "citation", file: _junction || null,
+                          generator_input: null },
+                enforce: true,
             });
         }).catch(function (e) {
             if (root.console) {
@@ -352,23 +355,23 @@ const WORKSPACE_TAG = "transport";
         var btn = _$("auto-detect-btn");
         if (!btn) return;
         btn.addEventListener("click", function () {
-            if (!_junctionSource) return;
-            _analyzeStructure(_junctionSource);
+            if (!_junctionStructure) return;
+            _analyzeStructure({ structure: _junctionStructure });
         });
     }
 
     /* =================================================================
      *  The COMPOSITE (transport-design.md § 4.1): cite the junction,
      *  state the bias, Describe -- the tab writes the finished task.json
-     *  itself (no hand-over; user ruling 2026-08-29).  `_junction` and
-     *  `_junctionSource` are declared once, with the tab's two facts
-     *  above.
+     *  itself (no hand-over; user ruling 2026-08-29).  The tab's facts
+     *  are declared once, above.
      * ================================================================= */
 
-    /** One fetch answers everything about an attempt: the summary for
-     *  the meta line, the CITATION (the server spells it -- the tree
-     *  grammar has one home), and the cited calculation's source file.
-     *  ``rel`` is tree-relative (proj.relativeToProjects). */
+    /** One fetch answers everything about a picked directory: the
+     *  4.1b classification (form, contract lane), the meta line, the
+     *  composed structure for the viewer, and the citation spelling
+     *  (the server's).  ``rel`` is tree-relative
+     *  (proj.relativeToProjects). */
     function _describeAttempt(rel) {
         return root.fetch("/api/transport/describe_attempt?path="
                           + encodeURIComponent(rel.replace(/^\/+/, "")))
@@ -386,15 +389,16 @@ const WORKSPACE_TAG = "transport";
      *  follow it, because the citation is the tab's one driver
      *  (user, 2026-08-29: the viewer responds to the active
      *  calculation). */
-    function _adoptCitation(described, pickedPath, rel) {
-        _junction = described.citation || "";
-        if (!_junction) {
-            // The pick failed, so the complaint belongs in card 1 with
-            // the picker -- not three cards down beside Describe.
-            _setStatus("That folder is not an attempt inside a "
-                + "calculation (no task.json above it).");
+    function _adoptCitation(described, statusPrefix) {
+        if (!described || !described.form || !described.citation) {
+            // Not citable: the server's summary IS the condition,
+            // naming the missing file.  Card 1, with the picker.
+            _setStatus((described && described.summary)
+                || "That directory is not citable.");
             return;
         }
+        _junction = described.citation;
+        _junctionStructure = described.structure || null;
         var out = _$("transport-junction-readout");
         if (out) out.textContent = _junction;
         var meta = _$("transport-junction-meta");
@@ -402,55 +406,42 @@ const WORKSPACE_TAG = "transport";
             meta.hidden = false;
             meta.textContent = described.summary || "";
         }
-        /* The cited source, in the sidebar's own path space: the picker
-         * hands back pickedPath whose tail is `rel`, so the root prefix
-         * is pickedPath minus rel -- no second spelling of the root. */
-        _junctionSource = "";
-        if (described.source && pickedPath && rel
-                && pickedPath.length > rel.length) {
-            var prefix = pickedPath.slice(0, pickedPath.length - rel.length);
-            _junctionSource = prefix + described.source;
-        }
         _writePanelNote();
         _refreshSendButton();
         _refreshAnalyzeButton();
-        /* The server said whether the attempt CONCLUDED (strict
-         * composition, transport-design.md ruling Q2, is a PREP gate --
-         * describing ahead of conclusion is legal, so the tab warns
-         * loudly rather than blocking). */
-        var late = described.concluded
-            ? ""
-            : "  NOT CONCLUDED yet: you can describe now, but prep "
-              + "will refuse this citation until the relaxation "
-              + "finishes.";
-        if (_junctionSource) {
-            _showInMolview(_junctionSource);
-            _analyzeStructure(_junctionSource);
-            _setStatus("Cited " + _junction.split("/").pop()
-                + " — the viewer shows the cited junction." + late);
-        } else {
-            _setStatus("Cited " + _junction + " — its source structure "
-                + "was not found beside the calculation, so the viewer "
-                + "keeps its last content." + late);
+        /* The contract lane follows the FORM (4.1b): a relaxation's
+         * deck owns the electronic contract (fields hidden); a plain
+         * labeled pair has no deck, so the fields are the
+         * description's own and the form offers them. */
+        var lane = described.contract === "open" ? "open" : "cited";
+        if (lane !== _junctionContract) {
+            _junctionContract = lane;
+            var fc = _$("transport-form-container");
+            var fs = root.molbuilder && root.molbuilder.formSchema;
+            if (fc && fs) _fetchAndRender(fc, fs);
         }
-    }
-
-    /** Re-fetch the meta line for a RESTORED citation (the note keeps
-     *  the strings; the summary is re-read so a junction that has
-     *  changed state since says so). */
-    function _refreshJunctionMeta() {
-        if (!_junction) return;
-        var rel = _junction.replace("@", "/");
-        var meta = _$("transport-junction-meta");
-        _describeAttempt(rel).then(function (b) {
-            if (meta) { meta.hidden = false;
-                        meta.textContent = b.summary || ""; }
-        }).catch(function (e) {
-            if (meta) { meta.hidden = false;
-                        meta.textContent = "Could not re-read the cited "
-                            + "attempt: "
-                            + (e && e.message ? e.message : String(e)); }
-        });
+        /* Honest state, not a gate (strict composition refuses at
+         * PREP; describing ahead is legal).  The summary already says
+         * CONCLUDED / not / no-record; add the road note only when
+         * prep would refuse today. */
+        var late = (described.form === "relaxation"
+                    && described.concluded === false
+                    && /NOT CONCLUDED/.test(described.summary || ""))
+            ? "  You can describe now, but prep will refuse this "
+              + "citation until the relaxation finishes."
+            : "";
+        if (_junctionStructure) {
+            _showStructure(_junctionStructure);
+            _analyzeStructure({ structure: _junctionStructure });
+            _setStatus((statusPrefix || "Cited ")
+                + _junction + " — the viewer shows the cited junction."
+                + late);
+        } else {
+            _setStatus((statusPrefix || "Cited ") + _junction
+                + " — it classifies but does not compose (the meta "
+                + "line says why), so the viewer keeps its last "
+                + "content." + late);
+        }
     }
 
     function _wireJunctionPicker() {
@@ -462,30 +453,32 @@ const WORKSPACE_TAG = "transport";
                 return (proj && proj.relativeToProjects)
                     ? String(proj.relativeToProjects(path) || "") : path;
             }
-            /* THE one pop-out picker (lib/tree-picker.js): only run-N
-             * attempt directories can be the answer, and the meta line
-             * is the attempt's own .fdf -- the deck that actually ran
-             * is the truth about a result (user, 2026-08-28). */
+            /* THE one pop-out picker (lib/tree-picker.js): ANY
+             * directory can be chosen -- what makes it citable is its
+             * FILES (4.1b, user ruling 2026-08-29: a finished
+             * relaxation's .fdf+.XV together, or a labeled
+             * .xyz+.molstruct.json pair), and the describe seam
+             * classifies each selection so the meta line answers
+             * before you confirm. */
             import("../tree-picker.js").then(function (mod) {
                 return mod.pickPath({
                     title: "Cite the relaxed junction",
-                    hint: "Walk to the junction relaxation's finished "
-                        + "attempt (a run-N folder).  \u25b8 expands.",
+                    hint: "Pick the DIRECTORY holding the relaxed "
+                        + "junction: a finished relaxation (.fdf + .XV "
+                        + "together) or a labeled structure (.xyz + "
+                        + ".molstruct.json).  \u25b8 expands.",
                     mode: "dir",
-                    pickable: function (entry) {
-                        return /^run-\d+$/.test(entry.name || "");
-                    },
                     describe: function (path) {
                         return _describeAttempt(toRel(path))
                             .then(function (b) { return b.summary || ""; });
                     },
-                    confirmLabel: "Cite this attempt",
+                    confirmLabel: "Cite this directory",
                 });
             }).then(function (picked) {
                 if (!picked) return;
                 var rel = toRel(picked);
                 return _describeAttempt(rel).then(function (b) {
-                    _adoptCitation(b, picked, rel);
+                    _adoptCitation(b);
                 });
             }).catch(function (e) {
                 _setStatus("Picker failed: "

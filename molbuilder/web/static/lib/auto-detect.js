@@ -142,8 +142,20 @@
     //: response nobody will read.
     var _abort = null;
 
-    function analyze(path, opts) {
-        if (!path) {
+    function analyze(source, opts) {
+        /* ``source`` is a project file PATH (string) or a structure
+         * ENVELOPE ({structure: {...}} -- the same shape
+         * /api/build/load's {structure} branch takes).  The Transport
+         * tab analyzes a composed citation that has no file on disk
+         * (2026-08-29). */
+        var body = null;
+        if (typeof source === "string" && source) {
+            body = { structure_path: source };
+        } else if (source && typeof source === "object"
+                   && source.structure) {
+            body = { structure: source.structure };
+        }
+        if (!body) {
             return Promise.resolve(
                 { ok: false, error: "No structure to analyze." });
         }
@@ -160,7 +172,7 @@
         return root.fetch("/api/structure/analyze", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ structure_path: path }),
+            body:    JSON.stringify(body),
             signal:  mySignal,
         }).then(function (r) {
             return r.json().then(function (body) {

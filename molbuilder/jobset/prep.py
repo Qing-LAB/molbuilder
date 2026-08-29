@@ -1113,11 +1113,10 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     have = {p.stem for p in pdir.glob("*.psml")}
     want = [s for s in species if s not in have]
     if want:
-        calc_rel = citation.partition("@")[0]
         root = find_projects_root(base)
         lib = None
         if root is not None:
-            cited = Path(root) / calc_rel
+            cited = Path(root) / citation
             if (cited / "pseudos").is_dir():
                 lib = cited / "pseudos"
             elif any(cited.glob("*.psml")):
@@ -1128,8 +1127,8 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
             raise PrepError(
                 f"this transport calculation needs "
                 f"{', '.join(f'{m}.psml' for m in missing)} and there is "
-                f"none in {base.name}/pseudos/ or beside the cited "
-                f"junction ({calc_rel}).  The pseudopotentials travel "
+                f"none in {base.name}/pseudos/ or in the cited "
+                f"directory ({citation}).  The pseudopotentials travel "
                 f"with the citation (transport-design.md 4.1) -- the "
                 f"junction ran with them, so its calculation folder "
                 f"should hold them; prep the junction there, or put the "

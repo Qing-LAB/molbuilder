@@ -44,19 +44,24 @@
   <section class="card" id="junction-card">
     <h2>1. The junction</h2>
     <p class="hint">
-      Transport is an assembly built from ONE cited result: the relaxed
-      junction's <em>finished attempt</em>.  Pick it here — only
-      <code>run-N</code> attempt folders can be chosen, and the meta
-      line reads the attempt's own <code>.fdf</code>.  The viewer below
-      shows the CITED calculation's labeled structure (a different
-      bridge variation means citing a different finished attempt).
-      Labels are assigned where the junction is built — the
+      Transport is an assembly built from ONE cited directory, and what
+      makes a directory citable is its <strong>files</strong> — never
+      its name or where it sits: a <em>finished relaxation</em>
+      (<code>.fdf</code> + <code>.XV</code> together; the deck is the
+      electronic contract) or a <em>labeled structure</em>
+      (<code>.xyz</code> + <code>.molstruct.json</code>; the contract
+      fields open up in Parameters, since there is no deck to be
+      truth).  Pick any directory — the meta line classifies it and
+      says exactly what is missing when it does not qualify.  The
+      viewer below shows the CITED labeled structure (a different
+      bridge variation means citing a different directory).  Labels
+      are assigned where the junction is built — the
       <a href="/molbuilder">Molbuilder</a> tab — never here.
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
-              title="Walk the projects tree and pick the junction relaxation's run-N attempt.  Only attempt directories can be chosen.">
-        Choose junction attempt…
+              title="Walk the projects tree and pick the directory holding the relaxed junction (.fdf+.XV together, or .xyz+.molstruct.json).">
+        Choose junction directory…
       </button>
       <span id="transport-junction-readout" class="muted">
         no junction cited yet

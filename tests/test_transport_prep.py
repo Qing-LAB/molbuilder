@@ -41,7 +41,7 @@ from molbuilder.jobset.prep import PrepError, prep_calculation
 from molbuilder.structure import Structure
 from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R, _write_xv
 
-_CITE = "J/optimization/Relax@01_coarse/run-0"
+_CITE = "J/optimization/Relax/01_coarse/run-0"
 _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
 #: The cited deck carries DISTINCTIVE values, so every assertion below
@@ -110,10 +110,30 @@ def _write_junction(root, struct):
                                atoms=len(struct.elements)),
         varies=(), stages=(Stage(name="coarse", enabled=True,
                                  overrides={}),)))
-    (attempt / "Relax_01_coarse.fdf").write_text(_CITED_DECK)
+    # The deck is SELF-DESCRIBING (4.1b form A): its own coordinate
+    # block is the frozen gate's baseline, and the in-body
+    # ATOM-METADATA block carries the labels -- emitted through the
+    # real emitter, never hand-spelled.
+    from molbuilder.script_emit import emit_atom_metadata
+    coords = "\n".join(
+        f"  {p[0]:.6f}  {p[1]:.6f}  {p[2]:.6f}  1"
+        for p in struct.positions)
+    label_store = {k: list(v) for k, v in struct.regions.items()}
+    if struct.frozen_atoms:
+        label_store["frozen_atoms"] = list(struct.frozen_atoms)
+    block = emit_atom_metadata(regions=label_store,
+                               n_atoms_total=len(struct.elements)) or ""
+    deck_text = (_CITED_DECK
+                 + "AtomicCoordinatesFormat Ang\n"
+                 + "%block AtomicCoordinatesAndAtomicSpecies\n"
+                 + coords + "\n"
+                 + "%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
+                 + block + "\n")
+    (attempt / "Relax_01_coarse.fdf").write_text(deck_text)
     (attempt / "Relax_01_coarse-run0.concluded").write_text("rc=0\n")
     _write_xv(attempt / "Relax.XV", struct)
-    write_pseudos(calc, ["Au", "S", "C"])
+    # Pseudos live IN the cited directory (4.1b: same-directory rule).
+    write_pseudos(attempt, ["Au", "S", "C"])
     return calc
 
 
@@ -281,11 +301,24 @@ class TestTheRecord:
         attempt = root / "J" / "optimization" / "Relax" / "01_coarse" \
             / "run-1"
         attempt.mkdir()
-        (attempt / "Relax_01_coarse.fdf").write_text(_CITED_DECK)
+        from molbuilder.script_emit import emit_atom_metadata
+        s2 = _junction_struct()
+        coords = "\n".join(
+            f"  {p[0]:.6f}  {p[1]:.6f}  {p[2]:.6f}  1"
+            for p in s2.positions)
+        store = {k: list(v) for k, v in s2.regions.items()}
+        store["frozen_atoms"] = list(s2.frozen_atoms)
+        blk = emit_atom_metadata(regions=store,
+                                 n_atoms_total=len(s2.elements)) or ""
+        (attempt / "Relax_01_coarse.fdf").write_text(
+            _CITED_DECK
+            + "AtomicCoordinatesFormat Ang\n"
+            + "%block AtomicCoordinatesAndAtomicSpecies\n"
+            + coords + "\n%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
+            + blk + "\n")
         (attempt / "Relax_01_coarse-run1.concluded").write_text("rc=0\n")
-        _write_xv(attempt / "Relax.XV", _junction_struct(),
-                  perturb_bridge=0.4)
-        cite2 = "J/optimization/Relax@01_coarse/run-1"
+        _write_xv(attempt / "Relax.XV", s2, perturb_bridge=0.4)
+        cite2 = "J/optimization/Relax/01_coarse/run-1"
         _describe_transport(root, cite=cite2)
         prep_calculation(calc, "seed")
         prov = json.loads((calc / "slot-provenance.json").read_text())
@@ -348,7 +381,7 @@ class TestRefusals:
     def test_a_pseudo_the_citation_cannot_supply_is_named(self, calc,
                                                           tmp_path):
         (tmp_path / "projects" / "J" / "optimization" / "Relax"
-         / "Au.psml").unlink()
+         / "01_coarse" / "run-0" / "Au.psml").unlink()
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "seed")
         assert "Au.psml" in str(e.value)
@@ -805,3 +838,41 @@ class TestTheOverrideLane:
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "transmission")
         assert "'n_pionts'" in str(e.value).replace('"', "'")
+
+
+class TestFormBContract:
+    """4.1b: a labeled-pair citation has no deck, so the electronic
+    contract is the description's own -- CONTRACT_FIELDS become
+    ordinary overrides and land in the rendered deck."""
+
+    def test_an_open_contract_field_reaches_the_deck(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        pair = root / "J" / "structure" / "junc"
+        pair.mkdir(parents=True)
+        StructureCodec().write(_junction_struct(), pair / "junction.xyz")
+        write_pseudos(pair, ["Au", "S", "C"])
+        dest = _describe_transport(root, cite="J/structure/junc")
+        # basis_size is CONTRACT -- sealed for form A, open here.
+        import json as _json
+        t = _json.loads((dest / "task.json").read_text())
+        for st in t["stages"]:
+            if st["name"] == "seed":
+                st["overrides"] = {"basis_size": "TZP"}
+        t["varies"] = ["basis_size"]
+        (dest / "task.json").write_text(_json.dumps(t, indent=2) + "\n")
+        prep_calculation(dest, "seed")
+        deck = (dest / "01_seed" / "T_01_seed.fdf").read_text()
+        assert "TZP" in deck, "the open contract field must reach the deck"
+
+    def test_the_same_field_stays_sealed_for_a_relaxation(self, calc):
+        import json as _json
+        t = _json.loads((calc / "task.json").read_text())
+        for st in t["stages"]:
+            if st["name"] == "seed":
+                st["overrides"] = {"basis_size": "SZ"}
+        t["varies"] = ["basis_size"]
+        (calc / "task.json").write_text(_json.dumps(t, indent=2) + "\n")
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed")
+        assert "citation's to say" in str(e.value)

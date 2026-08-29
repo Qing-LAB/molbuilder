@@ -133,7 +133,7 @@ The road is the composite, through the ordinary `jobset` verbs:
 # 1. describe the transport calculation: one slot, the finished attempt
 molbuilder jobset init --calculation transport --shape hierarchical \
     --bundle BDT-Au/transport/BDTTrans \
-    --slot junction=BDT-Au/optimization/JunctionRelax@01_coarse/run-2 \
+    --slot junction=BDT-Au/optimization/JunctionRelax/01_coarse/run-2 \
     --bias 0.0,0.2
 
 # 2. prep + launch the ladder, stage by stage (each prep gathers what
@@ -156,7 +156,7 @@ molbuilder jobset summarize run        # -> <label>.transport.json + the I-V tab
 | `transport electrode --which L-electrode\|R-electrode` | standalone helper: derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard` |
 | `transport preflight` | standalone helper: check the device ↔ electrode contract on decks you hand-edited | `preflight.py` |
 
-**Gotchas:** the citation names the attempt explicitly (`@<stage>/run-N`) —
+**Gotchas:** the citation names a DIRECTORY explicitly (its files must satisfy `transport-design.md` § 4.1b) —
 nothing is ever picked for you; a re-pointed citation recomposes and makes
 every stale upstream attempt refuse by deck-mismatch; `--bias` must start at
 `0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
@@ -474,7 +474,7 @@ single-point, or a relaxation if those layers are not frozen.
   ships with it (the `.TSDE`-chained walker).
 - **Web tab (rewired 2026-08-29, P7b + same-day review):** the tab is the
   composite's WHOLE describe surface — cite the junction through the
-  shared tree-picker (only `run-N` attempts choosable; the meta line reads
+  shared tree-picker (ANY directory choosable — what qualifies it is the § 4.1b FILE condition, and the meta line classifies each selection, reading
   the attempt's own `.fdf` via `/api/transport/describe_attempt`, and the
   VIEWER follows the citation: MolView loads the cited calculation's
   labeled structure and the chemistry analysis runs on it), state the

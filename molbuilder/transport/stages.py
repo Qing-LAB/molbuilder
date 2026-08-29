@@ -55,11 +55,22 @@ class StageError(Exception):
 #: ``task.bias``'s, the identity the task's.  ONE spelling: `config_for`
 #: refuses on it at prep, and the web hand-over refuses on it at send —
 #: same set, same reason, both name the field.
-SEALED_TRANSPORT_FIELDS = frozenset({
-    "engine", "job_name", "bias_voltages_v",
+#: The description's OWN facts — refused as overrides for EVERY
+#: citation form: the engine is fixed, the label names the job, the
+#: bias is the description's `--bias`.
+SEALED_ALWAYS = frozenset({"engine", "job_name", "bias_voltages_v"})
+
+#: The electronic contract.  Sealed when the citation carries a deck
+#: (form A — fdf-is-truth, ruling Q5); OPEN when it is a labeled
+#: structure pair (form B — there is no deck to be truth, so these are
+#: the description's own fields).  transport-design.md § 4.1b.
+CONTRACT_FIELDS = frozenset({
     "basis_size", "energy_shift_ry", "xc_functional", "xc_authors",
     "siesta_mesh_cutoff_ry", "k_mesh_transverse",
     "electronic_temperature_k"})
+
+#: Both sets together — what a form-A citation refuses.
+SEALED_TRANSPORT_FIELDS = SEALED_ALWAYS | CONTRACT_FIELDS
 
 
 def bias_token(v: float) -> str:
@@ -154,6 +165,7 @@ def config_for(task, composed: ComposedJunction) -> TransportConfig:
     """
     fdf = composed.fdf_params
     kw = {}
+    contract_sealed = composed.deck_text is not None
     if getattr(fdf, "kgrid", None):
         kx, ky, _kz = fdf.kgrid
         kw["k_mesh_transverse"] = (int(kx), int(ky), 1)
@@ -190,15 +202,21 @@ def config_for(task, composed: ComposedJunction) -> TransportConfig:
                     f"not a transport parameter (TransportConfig field "
                     f"names are the vocabulary; transport-design.md "
                     f"4.2).")
-            if name in SEALED_TRANSPORT_FIELDS:
+            if name in SEALED_ALWAYS:
+                raise StageError(
+                    f"stage {stage.name!r} overrides {name!r}, which is "
+                    f"the description's own field (identity, bias) -- "
+                    f"set it where the description sets it, never as a "
+                    f"stage override.")
+            if contract_sealed and name in CONTRACT_FIELDS:
                 raise StageError(
                     f"stage {stage.name!r} overrides {name!r}, which is "
                     f"the citation's to say (ruling Q5: the electronic "
                     f"contract arrives from the cited junction's own "
-                    f"deck, so electrode and device cannot disagree) or "
-                    f"the description's own field (bias, identity).  "
+                    f"deck, so electrode and device cannot disagree).  "
                     f"Cite a junction that ran with the values you "
-                    f"want.")
+                    f"want -- or cite a plain .xyz+.molstruct pair, "
+                    f"whose contract fields are open (4.1b).")
             kw[name] = value
     return TransportConfig(
         engine="transiesta",

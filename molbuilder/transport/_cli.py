@@ -54,7 +54,7 @@ TBtrans transmission -- as one five-stage calculation in the tree:
 \b
   molbuilder jobset init --calculation transport --shape hierarchical \\
       --bundle <project>/transport/<name> \\
-      --slot junction=<project>/optimization/<calc>@<stage>/run-N \\
+      --slot junction=<project>/optimization/<calc>/<stage>/run-N \\
       --bias 0.0,0.2
   molbuilder jobset prep run seed          # then launch, stage by stage
   molbuilder jobset summarize run          # -> <label>.transport.json

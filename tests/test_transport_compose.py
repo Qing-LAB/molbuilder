@@ -108,9 +108,26 @@ def _write_tree(root, struct):
                                          overrides={}),))
     write_task(calc / "task.json", task)
 
+    # Self-describing deck (4.1b form A): its coordinate block is the
+    # frozen gate's baseline; the in-body ATOM-METADATA block carries
+    # the labels (emitted through the real emitter).
+    from molbuilder.script_emit import emit_atom_metadata
+    coords = "\n".join(
+        f"  {q[0]:.6f}  {q[1]:.6f}  {q[2]:.6f}  1"
+        for q in struct.positions)
+    label_store = {k: list(v) for k, v in struct.regions.items()}
+    if struct.frozen_atoms:
+        label_store["frozen_atoms"] = list(struct.frozen_atoms)
+    block = emit_atom_metadata(regions=label_store,
+                               n_atoms_total=len(struct.elements)) or ""
     (attempt / "Relax_01_coarse.fdf").write_text(
         "SystemLabel Relax\nMeshCutoff 300.0 Ry\nXC.functional GGA\n"
-        "XC.authors PBE\nPAO.BasisSize DZP\n")
+        "XC.authors PBE\nPAO.BasisSize DZP\n"
+        "AtomicCoordinatesFormat Ang\n"
+        "%block AtomicCoordinatesAndAtomicSpecies\n"
+        + coords + "\n"
+        "%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
+        + block + "\n")
     (attempt / "Relax_01_coarse-run0.concluded").write_text("rc=0\n")
     return _write_xv(attempt / "Relax.XV", struct)
 
@@ -124,7 +141,7 @@ def tree(tmp_path):
     return root, struct, relaxed_pos
 
 
-_CITE = "J/optimization/Relax@01_coarse/run-0"
+_CITE = "J/optimization/Relax/01_coarse/run-0"
 
 
 class TestHappyPath:
@@ -152,8 +169,10 @@ class TestHappyPath:
         assert "PBE" in out.fdf_params.xc
         # provenance carries the hashes
         assert out.provenance["citation"] == _CITE
-        assert len(out.provenance["xv_sha256"]) == 64
-        assert out.provenance["concluded"].startswith("rc=")
+        assert len(out.provenance["files"]["Relax.XV"]) == 64
+        assert out.provenance["evidence"].startswith("rc=")
+        assert out.provenance["form"] == "relaxation"
+        assert "Relax.XV" in out.provenance["files"]
 
     def test_the_record_is_the_whole_travelling_copy(self, tree, tmp_path):
         """§ 4.1: the cited structure is COPIED in with provenance --
@@ -197,13 +216,20 @@ class TestStrictComposition:
             compose_junction("J/optimization/Relax@01_coarse/run-9",
                              tree_root=root)
         msg = str(e.value)
-        assert "jobset prep run" in msg and "jobset launch run" in msg, (
-            "strict composition refuses by naming what to run FIRST")
+        assert ".fdf" in msg and ".XV" in msg and ".molstruct.json" in msg, (
+            "the refusal states the WHOLE 4.1b condition -- both "
+            "admissible forms, so the user learns what a citable "
+            "directory holds")
 
     def test_an_unconcluded_attempt_refuses_without_deciding(self, tree):
+        """A run RECORD that does not conclude refuses (mid-run or
+        force-stopped -- indistinguishable, never decided).  The record
+        here is run.json: the marker molbuilder's launch writes at
+        process start."""
         root, _, _ = tree
-        (root / "J/optimization/Relax/01_coarse/run-0/"
-                "Relax_01_coarse-run0.concluded").unlink()
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        (attempt / "Relax_01_coarse-run0.concluded").unlink()
+        (attempt / "run.json").write_text("{}")
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
@@ -212,12 +238,22 @@ class TestStrictComposition:
             "the two states are indistinguishable on disk -- the refusal "
             "must name both, never decide")
 
-    def test_a_missing_calculation_is_refused(self, tree):
+    def test_no_record_at_all_composes_and_says_so(self, tree):
+        """4.1b: a directory with NO run record is a plain finished
+        relaxation from anywhere -- the .XV is taken as the final
+        geometry, and the provenance says the evidence honestly."""
+        root, _, _ = tree
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        (attempt / "Relax_01_coarse-run0.concluded").unlink()
+        out = compose_junction(_CITE, tree_root=root)
+        assert out.provenance["evidence"] == "no-record"
+
+    def test_a_missing_directory_is_refused(self, tree):
         root, _, _ = tree
         with pytest.raises(ComposeError) as e:
-            compose_junction("Nope/optimization/Gone@run-0",
+            compose_junction("Nope/optimization/Gone/run-0",
                              tree_root=root)
-        assert "task.json" in str(e.value)
+        assert "not a directory" in str(e.value)
 
 
 class TestTheGates:
@@ -239,14 +275,20 @@ class TestTheGates:
         compose_junction(_CITE, tree_root=root)     # must not raise
 
     def test_an_xv_of_a_different_structure_is_refused(self, tree):
+        """The deck and the .XV must describe the SAME relaxation --
+        the detectable disagreement under 4.1b (elements come FROM the
+        .XV now) is the atom count."""
+        import numpy as np
         root, src, _ = tree
-        other = _junction_struct()
-        other.elements[7] = "N"                     # a bridge C -> N
+        other = Structure(elements=list(src.elements) + ["Au"],
+                          positions=np.vstack([src.positions,
+                                               [[1.0, 1.0, 99.0]]]),
+                          cell=src.cell)
         _write_xv(root / "J/optimization/Relax/01_coarse/run-0/Relax.XV",
-                  other)
+                  other, perturb_bridge=0.0)
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
-        assert "elements differ" in str(e.value)
+        assert "do not describe the same relaxation" in str(e.value)
 
     def test_a_thin_electrode_block_is_refused(self, tmp_path):
         """§ 3: the principal-layer condition.  Five 2.5 A layers span
@@ -308,10 +350,72 @@ class TestTravelCopy:
         from molbuilder.transport.compose import load_compose_record
         dest, _ = self._record(tree, tmp_path)
         assert load_compose_record(
-            dest, citation="J/optimization/Relax@01_coarse/run-1") is None
+            dest, citation="J/optimization/Relax/01_coarse/run-1") is None
 
     def test_an_incomplete_copy_reads_as_no_record(self, tree, tmp_path):
         from molbuilder.transport.compose import load_compose_record
         dest, _ = self._record(tree, tmp_path)
         (dest / "junction.cited.fdf").unlink()
         assert load_compose_record(dest, citation=_CITE) is None
+
+
+class TestFormB:
+    """4.1b form B: a labeled .xyz+.molstruct.json pair, anywhere."""
+
+    def _pair_dir(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "anything" / "at all"
+        d.mkdir(parents=True)
+        StructureCodec().write(_junction_struct(), d / "junction.xyz")
+        return root, "anything/at all"
+
+    def test_a_labeled_pair_composes_without_any_layout(self, tmp_path):
+        root, cite = self._pair_dir(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        assert out.form == "structure"
+        assert out.deck_text is None and out.fdf_params is None
+        assert out.provenance["evidence"] == "given"
+        assert len(out.electrode_left.elements) == 6
+
+    def test_a_wins_over_b_when_both_coexist(self, tree, tmp_path):
+        """The deck carries the contract -- more information never
+        loses to less."""
+        from molbuilder.workingcopy_structure import StructureCodec
+        root, src, _ = tree
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        StructureCodec().write(src, attempt / "junction.xyz")
+        out = compose_junction(_CITE, tree_root=root)
+        assert out.form == "relaxation"
+        assert out.deck_text is not None
+
+    def test_two_decks_are_refused_as_ambiguous(self, tree):
+        root, _, _ = tree
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        (attempt / "second.fdf").write_text("SystemLabel x\n")
+        with pytest.raises(ComposeError) as e:
+            compose_junction(_CITE, tree_root=root)
+        assert "unambiguously" in str(e.value)
+
+    def test_a_pair_without_a_cell_is_refused(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "loose"
+        d.mkdir(parents=True)
+        s2 = _junction_struct()
+        s2.cell = None
+        StructureCodec().write(s2, d / "junction.xyz")
+        with pytest.raises(ComposeError) as e:
+            compose_junction("loose", tree_root=root)
+        assert "no cell" in str(e.value)
+
+    def test_a_bare_xyz_names_the_missing_sidecar(self, tmp_path):
+        root = tmp_path / "projects"
+        d = root / "loose"
+        d.mkdir(parents=True)
+        (d / "junction.xyz").write_text("1\n\nC 0 0 0\n")
+        with pytest.raises(ComposeError) as e:
+            compose_junction("loose", tree_root=root)
+        msg = str(e.value)
+        assert ".molstruct.json" in msg and ".fdf" in msg, (
+            "the refusal states the whole condition")

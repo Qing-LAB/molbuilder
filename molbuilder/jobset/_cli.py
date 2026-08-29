@@ -303,33 +303,32 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         name_, sep, cite = entry.partition("=")
         if not sep or not name_ or not cite:
             raise click.ClickException(
-                f"--slot {entry!r}: spell it NAME=CITATION, e.g. "
-                f"--slot junction=<project>/<topic>/<calc>@run-N.")
+                f"--slot {entry!r}: spell it NAME=DIRECTORY, e.g. "
+                f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
+                f"-- any directory whose files satisfy the citation "
+                f"condition (transport-design.md 4.1b).")
         slots[name_] = cite
     if set(slots) != {"junction"}:
         raise click.ClickException(
             "a transport calculation takes exactly one slot, `junction` "
-            "-- the relaxed junction it composes from: "
-            "--slot junction=<project>/<topic>/<calc>@run-N "
-            "(plans/transport-design.md 4.1).")
+            "-- the directory holding the relaxed junction it composes "
+            "from: a finished relaxation's .fdf+.XV together, or a "
+            "labeled .xyz+.molstruct.json pair "
+            "(plans/transport-design.md 4.1b).")
 
-    # The citation's calculation half goes through the SAME tree fence
-    # every calculation path uses (2.5b); the attempt half stays a
-    # promise checked at prep (strict composition, Q2 -- concluded-ness
-    # is the target machine's question).
-    calc_path, at, attempt = slots["junction"].partition("@")
-    if not at or not re.match(
-            r"^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*run-\d+$", attempt):
-        raise click.ClickException(
-            f"--slot junction={slots['junction']!r}: the attempt is named "
-            f"explicitly by its on-disk path -- `...@<stage>/run-N` "
-            f"(hierarchical) or `...@run-N` (attempts at the root).  "
-            f"Nothing is ever picked for you, the stage included "
-            f"(plans/transport-design.md, ruling Q1).")
-    resolved = _resolve_bundle(None, None, calc_path, must_exist=True)
+    # The cited directory goes through the SAME tree fence every
+    # calculation path uses (2.5b) and is classified against the 4.1b
+    # FILE condition right here -- a citation that cannot compose is
+    # refused at init, naming the missing file (strict composition, Q2).
+    resolved = _resolve_bundle(None, None, slots["junction"],
+                               must_exist=True)
     from ..projects import projects_root
-    rel = str(_P(resolved).relative_to(projects_root()))
-    citation = f"{rel}@{attempt}"
+    citation = str(_P(resolved).relative_to(projects_root()))
+    from ..transport.compose import ComposeError, classify_citation
+    try:
+        classify_citation(_P(resolved))
+    except ComposeError as exc:
+        raise click.ClickException(str(exc))
 
     bias = ()
     if bias_opt:
@@ -419,7 +418,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "checked where the vocabulary is read.")
 @click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
               help="a composite input (transport only): "
-                   "--slot junction=<project>/<topic>/<calc>@run-N.  The "
+                   "--slot junction=<dir> (a directory whose files "
+                   "satisfy transport-design.md 4.1b).  The "
                    "attempt is named explicitly, never picked "
                    "(plans/transport-design.md, ruling Q1).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",

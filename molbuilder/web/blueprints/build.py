@@ -195,6 +195,21 @@ def api_structure_analyze():
     from molbuilder.structure import Structure
 
     body = request.get_json(silent=True) or {}
+    # The structure ENVELOPE branch (2026-08-29): the same shape
+    # /api/build/load's {structure} branch takes -- a caller holding a
+    # composed structure (the Transport tab's cited relaxation, which
+    # has no .xyz on disk) analyzes the atoms directly through the one
+    # deserialiser.
+    if isinstance(body.get("structure"), dict):
+        from ._shared import struct_from_body
+        try:
+            struct = struct_from_body(body)
+        except (ValueError, TypeError) as exc:
+            return jsonify({"ok": False,
+                            "error": f"could not restore structure: "
+                                     f"{exc}"}), 400
+        return _analyze_response(struct, analyze_structure,
+                                 registered_adapters)
     text_in = body.get("structure_text")
     path_in = body.get("structure_path")
     if path_in:
@@ -219,6 +234,14 @@ def api_structure_analyze():
         return jsonify({"ok": False,
                         "error": f"could not parse structure: {exc}"}), 400
 
+    return _analyze_response(struct, analyze_structure,
+                             registered_adapters)
+
+
+def _analyze_response(struct, analyze_structure, registered_adapters):
+    """The ONE analyze answer, whatever door the structure came in by
+    (path, text, or the structure envelope)."""
+    from dataclasses import asdict
     # analyze_structure raises KeyError on an unknown element symbol
     # (typos, bad PDB column fallback) via total_electrons.  Catch -> 400
     # with the parser's clear message; without this it would surface

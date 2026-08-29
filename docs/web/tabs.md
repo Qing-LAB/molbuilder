@@ -192,7 +192,7 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 **The four cards, driven by ONE fact — the citation:**
 
 1. **The junction** — the shared tree-picker cites a finished relaxation
-   attempt (only `run-N` folders are choosable; the meta line reads the
+   directory (ANY directory is choosable — the 4.1b FILE condition decides what qualifies: a finished relaxation's `.fdf`+`.XV`, or a labeled `.xyz`+`.molstruct.json` pair; the meta line classifies each selection and reads the
    attempt's own `.fdf`, and says NOT CONCLUDED honestly).  A read-only
    **MolView** follows the citation: it re-opens the cited calculation's
    labeled structure on every cite and every reload (labels are assigned

@@ -98,79 +98,146 @@ class ComposedJunction:
     relaxed: Optional[Structure]
     electrode_left: ElectrodeModel
     electrode_right: ElectrodeModel
-    #: the parameter snapshot read from the attempt's own deck
-    fdf_params: object
-    #: the attempt's deck TEXT, verbatim — the fdf that actually ran is
-    #: the truth about a result, so the copy that travels is the file
-    #: itself, re-parseable anywhere (user ruling 2026-08-28)
-    deck_text: str
+    #: the parameter snapshot read from the cited deck — ``None`` for a
+    #: form-B citation (§ 4.1b: a labeled structure carries no contract)
+    fdf_params: Optional[object]
+    #: the cited deck TEXT, verbatim — the fdf that actually ran is the
+    #: truth about a result, so the copy that travels is the file itself,
+    #: re-parseable anywhere (user ruling 2026-08-28).  ``None`` for a
+    #: form-B citation: the electronic contract is then the description's
+    #: own (its contract fields are OPEN, § 4.1b)
+    deck_text: Optional[str]
     #: citation · resolved paths · content hashes — written beside the
     #: copies so a result can always say which junction built it
     provenance: Dict[str, object]
+    #: which § 4.1b form the citation satisfied — "relaxation" (A) or
+    #: "structure" (B)
+    form: str = "relaxation"
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def resolve_citation(citation: str, tree_root: Path) -> Tuple[Path, Path]:
-    """The citation's two on-disk halves — ``(calc_dir, attempt_dir)`` —
-    with the tree fence and the strict-composition refusals applied.
-    Public since P7b: the web hand-over validates a citation through the
-    SAME door prep composes through."""
+@dataclass(frozen=True)
+class CitedDir:
+    """The § 4.1b classification of a cited directory — WHICH form its
+    files satisfy, and with which files.  Layout, names and tree
+    position play no part (user ruling 2026-08-29)."""
+    path: Path
+    form: str                     # "relaxation" (A) | "structure" (B)
+    deck: Optional[Path] = None   # form A: the one .fdf
+    xv: Optional[Path] = None     # form A: the one .XV
+    xyz: Optional[Path] = None    # form B: the one .xyz
+    sidecar: Optional[Path] = None    # form B: its .molstruct.json
+    #: the run record's concluded line, when a record exists in the
+    #: directory; ``None`` with ``has_record=False`` means "no record —
+    #: the .XV is taken as the final geometry" (said honestly, § 4.1b)
+    concluded: Optional[str] = None
+    has_record: bool = False
+
+
+#: The § 4.1b condition, in one sentence — used verbatim by every
+#: refusal so the user always learns the WHOLE condition, not just the
+#: half they tripped on.
+CITATION_CONDITION = (
+    "a citable directory holds EITHER a finished relaxation -- exactly "
+    "one .fdf and exactly one .XV together -- OR a labeled structure -- "
+    "exactly one .xyz with its .molstruct.json beside it "
+    "(transport-design.md 4.1b)")
+
+
+def classify_citation(cite_dir: Path) -> CitedDir:
+    """Classify a directory against the § 4.1b file condition.
+
+    Raises :class:`ComposeError` naming exactly which file is missing
+    (or ambiguous) when the directory satisfies neither form.  Form A
+    wins when both are present — the deck carries the contract, and
+    more information never loses to less.
+    """
+    from ..jobset.materialize import attempt_concluded
+    cite_dir = Path(cite_dir)
+    decks = sorted(cite_dir.glob("*.fdf"))
+    xvs = sorted(cite_dir.glob("*.XV"))
+    xyzs = sorted(cite_dir.glob("*.xyz"))
+    pairs = [x for x in xyzs
+             if (cite_dir / (x.name[: -len(".xyz")] + ".molstruct.json")
+                 ).is_file()]
+
+    if decks and xvs:
+        if len(decks) > 1:
+            raise ComposeError(
+                f"{cite_dir} holds {len(decks)} .fdf files "
+                f"({', '.join(d.name for d in decks)}) -- the citation "
+                f"names a directory, so the directory must answer "
+                f"unambiguously.  Keep one deck, or cite a directory "
+                f"holding one.")
+        if len(xvs) > 1:
+            raise ComposeError(
+                f"{cite_dir} holds {len(xvs)} .XV files "
+                f"({', '.join(x.name for x in xvs)}) -- ambiguous; keep "
+                f"the relaxation's own one.")
+        deck = decks[0]
+        concluded = attempt_concluded(cite_dir, deck.stem)
+        # A molbuilder attempt mid-run HAS record files that do not
+        # conclude; attempt_concluded answers None for both that and
+        # no-record-at-all.  Tell them apart by the files themselves --
+        # classification only RECORDS the state (describing ahead of a
+        # running relax is legal); COMPOSING from it refuses (strict
+        # composition, ruling Q2 -- compose_junction).
+        has_record = (concluded is not None
+                      or bool(list(cite_dir.glob("run.json"))
+                              + list(cite_dir.glob("*.concluded"))))
+        return CitedDir(path=cite_dir, form="relaxation", deck=deck,
+                        xv=xvs[0], concluded=concluded,
+                        has_record=has_record)
+
+    if pairs:
+        if len(pairs) > 1:
+            raise ComposeError(
+                f"{cite_dir} holds {len(pairs)} .xyz+.molstruct.json "
+                f"pairs ({', '.join(x.name for x in pairs)}) -- "
+                f"ambiguous; keep one, or cite a directory holding one.")
+        xyz = pairs[0]
+        return CitedDir(
+            path=cite_dir, form="structure", xyz=xyz,
+            sidecar=cite_dir / (xyz.name[: -len(".xyz")]
+                                + ".molstruct.json"))
+
+    # Neither form: name what IS there and what the condition wants.
+    held = []
+    if decks:
+        held.append(f"{len(decks)} .fdf but no .XV")
+    if xvs and not decks:
+        held.append(f"{len(xvs)} .XV but no .fdf")
+    if xyzs and not pairs:
+        held.append(f"{len(xyzs)} .xyz but no stem-matched "
+                    f".molstruct.json")
+    what = "; ".join(held) if held else "none of the required files"
+    raise ComposeError(
+        f"{cite_dir} is not citable: it holds {what}.  "
+        f"{CITATION_CONDITION}.")
+
+
+def resolve_citation(citation: str, tree_root: Path
+                     ) -> Tuple[Path, CitedDir]:
+    """The citation's directory, fenced to the tree and classified
+    against the § 4.1b file condition.  Public since P7b: the web
+    hand-over validates a citation through the SAME door prep composes
+    through."""
     from ..projects import OutsideRoot, contain
-    from ..task import FILENAME as TASK_FILENAME
-    calc_rel, _, attempt_rel = citation.partition("@")
     try:
-        calc_dir = contain(tree_root / calc_rel, tree_root)
+        cite_dir = contain(tree_root / citation, tree_root)
     except OutsideRoot as exc:
         raise ComposeError(
-            f"the junction citation {citation!r} leaves the projects tree: "
-            f"{exc}")
-    if not (calc_dir / TASK_FILENAME).is_file():
+            f"the junction citation {citation!r} leaves the projects "
+            f"tree: {exc}")
+    if not cite_dir.is_dir():
         raise ComposeError(
-            f"the junction citation names {calc_rel!r}, but "
-            f"{calc_dir / TASK_FILENAME} does not exist -- there is no "
-            f"calculation there to compose from.  Run `jobset init` for "
-            f"the junction first, or fix the citation.")
-    attempt_dir = calc_dir / attempt_rel
-    if not attempt_dir.is_dir():
-        raise ComposeError(
-            f"the cited attempt {attempt_rel!r} does not exist under "
-            f"{calc_rel}.  Strict composition (transport-design.md, "
-            f"ruling Q2): run the junction first --\n"
-            f"  cd {calc_dir} && molbuilder jobset prep run <stage> "
-            f"&& molbuilder jobset launch run <stage>")
-    return calc_dir, attempt_dir
-
-
-def _attempt_artifacts(calc_dir: Path, attempt_dir: Path,
-                       citation: str) -> Tuple[Path, Path, str]:
-    """The attempt's deck, its ``.XV``, and its concluded rc line."""
-    from ..jobset.materialize import attempt_concluded
-    decks = sorted(attempt_dir.glob("*.fdf"))
-    if not decks:
-        raise ComposeError(
-            f"the cited attempt {attempt_dir} holds no .fdf -- it was "
-            f"never prepped; run the junction first (ruling Q2).")
-    deck = decks[0]
-    concluded = attempt_concluded(attempt_dir, deck.stem)
-    if concluded is None:
-        raise ComposeError(
-            f"the cited attempt {citation!r} has not CONCLUDED -- it is "
-            f"still running, or it was force-stopped (the two look "
-            f"identical on disk; project-layout.md 1.6).  Let it finish, "
-            f"or re-run the junction; transport never decides this over "
-            f"you (ruling Q2).")
-    xvs = sorted(attempt_dir.glob("*.XV"))
-    if not xvs:
-        raise ComposeError(
-            f"the cited attempt concluded but left no .XV under "
-            f"{attempt_dir} -- no relaxed geometry to compose from.  "
-            f"(A SIESTA relaxation writes <SystemLabel>.XV; a run that "
-            f"died before its first step may not.)  Re-run the junction "
-            f"or cite a different attempt.")
-    return deck, xvs[0], concluded
+            f"the junction citation {citation!r} is not a directory "
+            f"under the projects tree.  The citation names a directory "
+            f"whose FILES satisfy the condition: {CITATION_CONDITION}.")
+    return cite_dir, classify_citation(cite_dir)
 
 
 def _extract_and_gate_electrodes(dev: Structure):
@@ -224,53 +291,110 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
     :class:`~molbuilder.transport.sort.SortError` (the § 4.1a label
     gates) — the caller surfaces either verbatim.
     """
-    from ..task import FILENAME as TASK_FILENAME
-    from ..task import read_task
+    from ..sidecars.molstruct import apply_to_structure, load as load_sidecar
+    from ..script_emit import apply_inbody_atom_metadata
     from ..workingcopy_structure import StructureCodec
 
     tree_root = Path(tree_root)
-    calc_dir, attempt_dir = resolve_citation(citation, tree_root)
-    deck, xv_path, concluded = _attempt_artifacts(calc_dir, attempt_dir,
-                                                  citation)
+    cite_dir, cited = resolve_citation(citation, tree_root)
 
-    cited_task = read_task(calc_dir / TASK_FILENAME)
-    source = calc_dir / cited_task.structure.source
-    if not source.is_file():
+    if cited.form == "relaxation" and cited.has_record \
+            and cited.concluded is None:
         raise ComposeError(
-            f"the cited calculation's source structure "
-            f"{cited_task.structure.source!r} is missing from {calc_dir} "
-            f"-- the portable folder is incomplete.")
-    struct = StructureCodec().load(source)
+            f"the cited relaxation {citation!r} has a run record but "
+            f"has not CONCLUDED -- it is still running, or it was "
+            f"force-stopped (the two look identical on disk; "
+            f"project-layout.md 1.6).  Let it finish; transport never "
+            f"decides this over you (ruling Q2).")
 
-    cell, xv_elements, xv_pos = read_xv(xv_path)
-    if xv_elements != list(struct.elements):
-        raise ComposeError(
-            f"the attempt's .XV does not describe the cited source "
-            f"structure: elements differ ({xv_path.name} vs "
-            f"{source.name}).  The .XV order is the deck's order, which "
-            f"is the source's -- a mismatch means the attempt belongs to "
-            f"a different structure.")
+    if cited.form == "structure":
+        # ---- form B: the labeled pair IS the final structure ---------
+        struct = StructureCodec().load(cited.xyz)
+        if struct.cell is None:
+            raise ComposeError(
+                f"the cited pair {cited.xyz.name} + "
+                f"{cited.sidecar.name} carries no cell -- a junction "
+                f"needs its lattice (science/junction-cell.md).  Set "
+                f"the cell in the sidecar (the Modify tab's Cell page "
+                f"writes it), then cite again.")
+        cell = np.asarray(struct.cell, dtype=float)
+        xv_pos = np.asarray(struct.positions, dtype=float)
+        deck = xv_path = None
+        deck_text = None
+        concluded = None
+    else:
+        # ---- form A: deck + .XV, everything from the same directory --
+        deck, xv_path, concluded = cited.deck, cited.xv, cited.concluded
+        deck_text = deck.read_text()
+        params = parse_fdf_params(deck_text)
+        cell, xv_elements, xv_pos = read_xv(xv_path)
 
-    # frozen means unmoved (§ 3) -- checked BEFORE the overlay, against
-    # the source the labels were drawn on.
-    src_pos = np.asarray(struct.positions, dtype=float)
-    moved = []
-    for label in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
-        for i in struct.regions.get(label, ()):
-            d = float(np.linalg.norm(xv_pos[i] - src_pos[i]))
-            if d > FROZEN_TOL_ANG:
-                moved.append((i, struct.elements[i], label, d))
-    if moved:
-        shown = "; ".join(f"atom {i} ({el}, {lab}) moved {d:.4f} A"
-                          for i, el, lab, d in moved[:6])
-        more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
-        raise ComposeError(
-            f"{len(moved)} electrode atom(s) MOVED during the cited "
-            f"relaxation: {shown}{more}.  Frozen means unmoved "
-            f"(transport-design.md 3, ruling Q3): the electrode blocks "
-            f"are the seam the self-energies attach to.  Re-relax the "
-            f"junction with the electrode atoms constrained, or fix the "
-            f"labels.")
+        # The labeled source structure, from THIS directory (4.1b): the
+        # deck's own in-body ATOM-METADATA block first; else exactly one
+        # .molstruct.json beside it.
+        struct = Structure(elements=list(xv_elements),
+                           positions=xv_pos.copy())
+        struct.cell = cell
+        labeled = apply_inbody_atom_metadata(struct, deck_text)
+        if not labeled:
+            sidecars = sorted(cite_dir.glob("*.molstruct.json"))
+            if len(sidecars) == 1:
+                apply_to_structure(struct, load_sidecar(sidecars[0]))
+                labeled = bool(struct.regions)
+            elif len(sidecars) > 1:
+                raise ComposeError(
+                    f"the cited deck {deck.name} carries no ATOM-METADATA "
+                    f"block and {cite_dir} holds {len(sidecars)} "
+                    f".molstruct.json files -- ambiguous; keep the one "
+                    f"that labels this relaxation.")
+        if not labeled or not struct.regions:
+            raise ComposeError(
+                f"the cited relaxation in {cite_dir} carries no region "
+                f"labels: the deck {deck.name} has no in-body "
+                f"ATOM-METADATA block and no .molstruct.json sits beside "
+                f"it.  Transport derives the electrodes FROM the labels "
+                f"(L-electrode / R-electrode; transport-design.md 4.1b) "
+                f"-- relabel and re-relax through molbuilder, or put the "
+                f"structure's .molstruct.json in the same directory.")
+
+        if params.n_atoms is not None and params.n_atoms != len(xv_elements):
+            raise ComposeError(
+                f"the deck {deck.name} declares {params.n_atoms} atoms "
+                f"but {xv_path.name} carries {len(xv_elements)} -- the "
+                f"two files do not describe the same relaxation.")
+
+        # frozen means unmoved (§ 3, ruling Q3) -- start = the deck's
+        # own coordinates, end = the .XV (4.1b: the gate is form A's).
+        if params.coords_ang is None:
+            raise ComposeError(
+                f"the deck {deck.name} carries no convertible "
+                f"coordinate block (AtomicCoordinatesAndAtomicSpecies "
+                f"in Ang/Bohr/Fractional), so the frozen gate cannot "
+                f"compare start against end.  Include coordinates in "
+                f"the deck, or cite an .xyz+.molstruct.json pair.")
+        src_pos = np.asarray(params.coords_ang, dtype=float)
+        if len(src_pos) != len(xv_pos):
+            raise ComposeError(
+                f"the deck {deck.name}'s coordinate block ({len(src_pos)} "
+                f"atoms) does not match {xv_path.name} ({len(xv_pos)}) -- "
+                f"the two files do not describe the same relaxation.")
+        moved = []
+        for label in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
+            for i in struct.regions.get(label, ()):
+                d = float(np.linalg.norm(xv_pos[i] - src_pos[i]))
+                if d > FROZEN_TOL_ANG:
+                    moved.append((i, struct.elements[i], label, d))
+        if moved:
+            shown = "; ".join(f"atom {i} ({el}, {lab}) moved {d:.4f} A"
+                              for i, el, lab, d in moved[:6])
+            more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
+            raise ComposeError(
+                f"{len(moved)} electrode atom(s) MOVED during the cited "
+                f"relaxation: {shown}{more}.  Frozen means unmoved "
+                f"(transport-design.md 3, ruling Q3): the electrode "
+                f"blocks are the seam the self-energies attach to.  "
+                f"Re-relax the junction with the electrode atoms "
+                f"constrained, or fix the labels.")
 
     relaxed = Structure(
         elements=list(struct.elements),
@@ -302,23 +426,28 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         "schema": "molbuilder/slot-provenance@1",
         "slot": "junction",
         "citation": citation,
-        "calculation": str(calc_dir.relative_to(tree_root)),
-        "attempt": str(attempt_dir.relative_to(calc_dir)),
-        "concluded": concluded,
-        "deck": deck.name,
-        "deck_sha256": _sha256(deck),
-        "xv": xv_path.name,
-        "xv_sha256": _sha256(xv_path),
+        "form": cited.form,
+        # The 4.1b files this junction was composed from, with hashes --
+        # a result can always say which bytes built it.
+        "files": {f.name: _sha256(f)
+                  for f in (deck, xv_path, cited.xyz, cited.sidecar)
+                  if f is not None},
+        # Honest convergence evidence (4.1b): the record line when one
+        # exists; "no-record" when the .XV is taken as final; "given"
+        # for a cited structure pair.
+        "evidence": (concluded if concluded is not None
+                     else ("no-record" if cited.form == "relaxation"
+                           else "given")),
     }
-    deck_text = deck.read_text()
     return ComposedJunction(
         sorted=sorted_res,
         relaxed=relaxed,
         electrode_left=elec_l,
         electrode_right=elec_r,
-        fdf_params=parse_fdf_params(deck_text),
+        fdf_params=(parse_fdf_params(deck_text) if deck_text else None),
         deck_text=deck_text,
         provenance=provenance,
+        form=cited.form,
     )
 
 
@@ -335,11 +464,13 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     base_dir = Path(base_dir)
     StructureCodec().write(composed.sorted.structure,
                            base_dir / JUNCTION_GEOMETRY)
-    (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
+    written = [JUNCTION_GEOMETRY]
+    if composed.deck_text is not None:
+        (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
+        written.append(JUNCTION_DECK)
     write_json(base_dir / PROVENANCE_FILE, composed.provenance)
     write_json(base_dir / PERMUTATION_FILE, composed.sorted.sidecar())
-    return [JUNCTION_GEOMETRY, JUNCTION_DECK,
-            PROVENANCE_FILE, PERMUTATION_FILE]
+    return written + [PROVENANCE_FILE, PERMUTATION_FILE]
 
 
 def load_compose_record(base_dir, *, citation: str
@@ -359,10 +490,17 @@ def load_compose_record(base_dir, *, citation: str
     paths = {name: base_dir / name
              for name in (JUNCTION_GEOMETRY, JUNCTION_DECK,
                           PROVENANCE_FILE, PERMUTATION_FILE)}
-    if not all(p.is_file() for p in paths.values()):
+    required = [n for n in paths if n != JUNCTION_DECK]
+    if not all(paths[n].is_file() for n in required):
         return None
     provenance = json.loads(paths[PROVENANCE_FILE].read_text())
     if provenance.get("citation") != citation:
+        return None
+    # A form-A record without its travelled deck is incomplete (the
+    # contract travels as the file itself); a form-B record never had
+    # one.
+    form = provenance.get("form", "relaxation")
+    if form == "relaxation" and not paths[JUNCTION_DECK].is_file():
         return None
     perm = json.loads(paths[PERMUTATION_FILE].read_text())
     from ..workingcopy_structure import StructureCodec
@@ -372,13 +510,15 @@ def load_compose_record(base_dir, *, citation: str
         original_to_sorted=tuple(perm["original_to_sorted"]),
         sorted_to_original=tuple(perm["sorted_to_original"]))
     elec_l, elec_r = _extract_and_gate_electrodes(dev)
-    deck_text = paths[JUNCTION_DECK].read_text()
+    deck_text = (paths[JUNCTION_DECK].read_text()
+                 if paths[JUNCTION_DECK].is_file() else None)
     return ComposedJunction(
         sorted=sorted_res,
         relaxed=None,
         electrode_left=elec_l,
         electrode_right=elec_r,
-        fdf_params=parse_fdf_params(deck_text),
+        fdf_params=(parse_fdf_params(deck_text) if deck_text else None),
         deck_text=deck_text,
         provenance=provenance,
+        form=form,
     )

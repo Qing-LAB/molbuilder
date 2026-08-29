@@ -91,6 +91,11 @@ class FdfParams:
     solution_method: Optional[str] = None
     saves_ts_hs: bool = False
     n_atoms: Optional[int] = None
+    #: The deck's own START positions in Ang, deck order — the frozen
+    #: gate's baseline under the § 4.1b citation condition (form A:
+    #: start = the deck's coordinates, end = the .XV).  None when the
+    #: coordinate block is absent or its format cannot be converted.
+    coords_ang: Optional[List[List[float]]] = None
     #: Fermi smearing in K (None when the deck leaves SIESTA's default).
     electronic_temperature_k: Optional[float] = None
     #: XC as the deck SPELLS it (``xc`` above is the normalised
@@ -169,19 +174,50 @@ def parse_fdf_params(text: str) -> FdfParams:
     if coords:
         p.n_atoms = len(coords)
         fmt = (sc.get("atomiccoordinatesformat") or ["ang"])[0].lower()
-        zs = []
+        # Full positions in Ang (the frozen gate's baseline).  Three
+        # convertible formats; fractional needs the cell.  A format this
+        # cannot convert leaves coords_ang None — callers say so rather
+        # than guessing.
+        xyz: List[List[float]] = []
         for row in coords:
-            if len(row) >= 3:
-                z = _to_float(row[2])
-                if z is None:
-                    continue
-                if fmt.startswith("frac") and p.z_len_ang:
-                    z *= p.z_len_ang
-                elif fmt.startswith("bohr"):
-                    z *= _BOHR_ANG
-                zs.append(z)
-        if zs:
+            if len(row) < 3:
+                xyz = []
+                break
+            v = [_to_float(row[0]), _to_float(row[1]), _to_float(row[2])]
+            if any(x is None for x in v):
+                xyz = []
+                break
+            xyz.append(v)          # type: ignore[arg-type]
+        if xyz:
+            if fmt.startswith(("frac", "scaledbylatticevectors")):
+                if p.cell_ang:
+                    c = p.cell_ang
+                    xyz = [[sum(f[k] * c[k][d] for k in range(3))
+                            for d in range(3)] for f in xyz]
+                else:
+                    xyz = []
+            elif fmt.startswith(("bohr", "notscaledcartesianbohr")):
+                xyz = [[x * _BOHR_ANG for x in f] for f in xyz]
+            elif not fmt.startswith(("ang", "notscaledcartesianang")):
+                xyz = []           # an unknown format is not guessed at
+        if xyz:
+            p.coords_ang = xyz
+            zs = [f[2] for f in xyz]
             p.atom_z_span_ang = max(zs) - min(zs)
+        else:
+            zs = []
+            for row in coords:
+                if len(row) >= 3:
+                    z = _to_float(row[2])
+                    if z is None:
+                        continue
+                    if fmt.startswith("frac") and p.z_len_ang:
+                        z *= p.z_len_ang
+                    elif fmt.startswith("bohr"):
+                        z *= _BOHR_ANG
+                    zs.append(z)
+            if zs:
+                p.atom_z_span_ang = max(zs) - min(zs)
     return p
 
 

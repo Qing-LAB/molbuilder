@@ -89,17 +89,15 @@ _TOP_KEYS = ("schema", "engine", "shape", "run",
              "allocation", "notify", "slots", "bias")
 _BIAS_KEYS = ("voltages_v",)
 
-#: A slot citation names a calculation AND the attempt, explicitly --
-#: `<project>/<topic>/<calc>@<attempt-path>` where the attempt path is
-#: the attempt's ON-DISK path inside the calculation: `01_coarse/run-2`
-#: in the hierarchical shape, `run-2` where attempts sit at the root
-#: (transport-design.md, ruling Q1: nothing is ever picked for the
-#: user -- stage included, because run-N alone is ambiguous across a
-#: ladder's stages).  FORM only here; the tree fence and the concluded
-#: check live where the filesystem is (`init` resolves, `prep`
-#: composes).
-_CITATION_RE = re.compile(
-    r"^[^@\s]+@(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*run-(\d+)$")
+#: A slot citation names a DIRECTORY, explicitly, by its tree-relative
+#: path (transport-design.md 4.1 as amended 2026-08-29: what makes the
+#: directory citable is the 4.1b FILE condition -- a finished
+#: relaxation's .fdf+.XV, or a labeled .xyz+.molstruct.json pair --
+#: never its name or its position in molbuilder's own layout).  FORM
+#: only here: a relative path with no traversal; the tree fence and
+#: the file-condition check live where the filesystem is (`init`
+#: resolves, `prep` composes -- transport/compose.classify_citation).
+_CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
 _ALLOCATION_KEYS = ("domain", "time", "mem")
 _NOTIFY_KEYS = ("on_scf_converged", "every_hours")
 _RUN_KEYS = ("name", "id", "created")
@@ -323,7 +321,8 @@ class Task:
     bench: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
 
     #: THE COMPOSITE'S INPUTS (transport-design.md § 4.1) -- slot name ->
-    #: an EXPLICIT attempt citation, `<calc-path>@run-N` (ruling Q1).
+    #: an EXPLICIT directory citation (a tree-relative path whose FILES
+    #: satisfy the 4.1b condition; ruling Q1 + the 2026-08-29 amendment).
     #: Only ``calculation="transport"`` may carry slots, and it must
     #: carry exactly ``{"junction": ...}``; a transport description
     #: carries NO ``structure`` block, because its structure IS the
@@ -398,12 +397,13 @@ class Task:
         for name, cite in self.slots.items():
             if not isinstance(cite, str) or not _CITATION_RE.match(cite):
                 raise ValueError(
-                    f"task: slot {name!r} must cite an explicit attempt "
-                    f"by its on-disk path, `<calc>@<stage>/run-N` (or "
-                    f"`<calc>@run-N` where attempts sit at the root); "
-                    f"got {cite!r} -- nothing is ever picked for the "
-                    "user, the stage included "
-                    "(plans/transport-design.md, ruling Q1)")
+                    f"task: slot {name!r} must cite a directory by its "
+                    f"tree-relative path (no leading '/', no '..', no "
+                    f"whitespace); got {cite!r}.  What makes the "
+                    f"directory citable is its FILES -- a finished "
+                    f"relaxation's .fdf+.XV together, or a labeled "
+                    f".xyz+.molstruct.json pair "
+                    f"(plans/transport-design.md 4.1b)")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):

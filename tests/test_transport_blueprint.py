@@ -51,6 +51,20 @@ class TestTransportSchemaEndpoint:
             f"the actual engine keyword string otherwise)."
         )
 
+    def test_the_open_lane_offers_the_contract_fields(self, web):
+        """?contract=open (a form-B citation: a labeled pair has no
+        deck) offers the electronic-contract fields; the identity
+        set stays hidden always."""
+        from molbuilder.transport.stages import (CONTRACT_FIELDS,
+                                                 SEALED_ALWAYS)
+        body = web.get("/api/transport/schema?contract=open").get_json()
+        offered = {f["name"] for s in body["schema"]["sections"]
+                   for f in s["fields"]}
+        assert CONTRACT_FIELDS <= offered, (
+            "the open lane must offer the contract fields -- there is "
+            "no deck to be truth for a labeled-pair citation")
+        assert not (offered & SEALED_ALWAYS)
+
     def test_schema_serves_only_the_override_lane(self, web):
         """The tab's form is the OVERRIDE lane: the electronic contract
         is the citation's to say, and a field the describe door refuses

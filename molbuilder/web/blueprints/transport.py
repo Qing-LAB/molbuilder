@@ -57,22 +57,29 @@ bp = Blueprint("transport", __name__)
 
 @bp.route("/api/transport/describe_attempt", methods=["GET"])
 def api_transport_describe_attempt() -> Any:
-    """One line about a cited attempt, FROM ITS OWN ``.fdf`` — the deck
-    that actually ran is the truth about a result (user ruling
-    2026-08-28), and this is the `describe` seam the shared tree-picker
-    feeds on when the Transport tab picks the junction slot (P7).
+    """Classify a picked directory against the § 4.1b citation
+    condition and describe what it provides — the `describe` seam the
+    shared tree-picker feeds on when the Transport tab picks the
+    junction slot (P7; reworked 2026-08-29, second user ruling: the
+    condition is FILES, never layout).
 
-    ``?path=`` is tree-relative (the same path language every citation
-    speaks).  The answer is honest about the two states that matter:
-    CONCLUDED or not (still running and force-stopped look identical on
-    disk, and this endpoint never decides), and the electronic contract
-    the composite would inherit.
+    ``?path=`` is tree-relative.  The answer names the form the
+    directory satisfies ("relaxation" | "structure"), or — when it
+    satisfies neither — ``form: null`` with the refusal as the summary,
+    naming exactly which file is missing (the condition stated).  For a
+    relaxation it is honest about convergence (CONCLUDED / not / no
+    record at all), and it says whether the electronic contract is the
+    citation's ("cited") or the description's own ("open").
+    ``structure`` carries the composed labeled structure for the viewer
+    (the /api/build/load ``{structure}`` envelope), so the tab shows
+    the citation whatever the form.
     """
     from pathlib import Path
 
-    from molbuilder.jobset.materialize import attempt_concluded
     from molbuilder.projects import OutsideRoot, contain, projects_root
-    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.transport.compose import (ComposeError,
+                                              classify_citation,
+                                              compose_junction)
     from molbuilder.transport.preflight import parse_fdf_params
 
     raw = str(request.args.get("path") or "")
@@ -80,81 +87,83 @@ def api_transport_describe_attempt() -> Any:
         return jsonify({"ok": False, "error": "no path given"}), 400
     root = Path(projects_root()).resolve()
     try:
-        attempt = contain(root / raw, root)
+        cite_dir = contain(root / raw, root)
     except OutsideRoot as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if not attempt.is_dir():
+    if not cite_dir.is_dir():
         return jsonify({"ok": False,
                         "error": f"{raw} is not a directory"}), 404
-    decks = sorted(attempt.glob("*.fdf"))
-    if not decks:
-        return jsonify({"ok": False,
-                        "error": "no .fdf in this attempt -- it was "
-                                 "never prepped, so it cannot be "
-                                 "cited"}), 404
-    deck = decks[0]
+    citation = str(cite_dir.relative_to(root))
+    try:
+        cited = classify_citation(cite_dir)
+    except ComposeError as exc:
+        # Not citable -- the refusal IS the answer (it names the
+        # missing file and states the whole condition).
+        return jsonify({"ok": True, "citation": None, "form": None,
+                        "summary": str(exc)}), 200
 
-    # THE CITATION IS THE SERVER'S TO SPELL (P7b review, 2026-08-29):
-    # walk up to the calculation (the dir holding task.json) and form
-    # `<calc>@<attempt>` here, so the client never re-implements the
-    # tree grammar.  The same walk finds the calculation's SOURCE pair,
-    # which is what the tab's viewer shows for the cited junction.
-    calc = None
-    for anc in attempt.parents:
-        if anc == root.parent:
-            break
-        if (anc / TASK_FILENAME).is_file():
-            calc = anc
-            break
-        if anc == root:
-            break
-    citation = None
-    source_rel = None
-    if calc is not None:
-        citation = (f"{calc.relative_to(root)}"
-                    f"@{attempt.relative_to(calc)}")
-        try:
-            from molbuilder.task import read_task
-            src_name = read_task(calc / TASK_FILENAME).structure.source
-            from molbuilder.workingcopy_structure import StructureCodec
-            cand = calc / Path(src_name).name
-            alt = cand.with_suffix(StructureCodec.GEOMETRY_SUFFIX)
-            for c in (cand, alt):
-                if c.is_file():
-                    source_rel = str(c.relative_to(root))
-                    break
-        except Exception:
-            source_rel = None
-    concluded = attempt_concluded(attempt, deck.stem)
-    p = parse_fdf_params(deck.read_text())
-    bits = []
-    if p.basis_size:
-        bits.append(str(p.basis_size))
-    if p.mesh_cutoff_ry:
-        bits.append(f"{p.mesh_cutoff_ry:g} Ry")
-    if p.xc:
-        bits.append(str(p.xc))
-    if p.kgrid:
-        bits.append("k " + "x".join(str(k) for k in p.kgrid))
-    if p.n_atoms:
-        bits.append(f"{p.n_atoms} atoms")
-    status = (f"CONCLUDED ({concluded.strip()})" if concluded
-              else "NOT CONCLUDED -- still running, or force-stopped "
-                   "(the two look identical on disk)")
-    return jsonify({
-        "ok": True,
-        "concluded": bool(concluded),
-        "summary": status + (" · " + " · ".join(bits) if bits else ""),
-        "deck": deck.name,
-        "citation": citation,
-        "source": source_rel,
-        "params": {
+    if cited.form == "structure":
+        status = "labeled structure (taken as given)"
+        params_out = None
+        contract = "open"
+        concluded = None
+    else:
+        deck_text = cited.deck.read_text()
+        p = parse_fdf_params(deck_text)
+        bits = []
+        if p.basis_size:
+            bits.append(str(p.basis_size))
+        if p.mesh_cutoff_ry:
+            bits.append(f"{p.mesh_cutoff_ry:g} Ry")
+        if p.xc:
+            bits.append(str(p.xc))
+        if p.kgrid:
+            bits.append("k " + "x".join(str(k) for k in p.kgrid))
+        if p.n_atoms:
+            bits.append(f"{p.n_atoms} atoms")
+        if cited.concluded is not None:
+            state = f"CONCLUDED ({cited.concluded.strip()})"
+        elif cited.has_record:
+            state = ("NOT CONCLUDED -- still running, or force-stopped "
+                     "(the two look identical on disk)")
+        else:
+            state = ("no run record -- the .XV is taken as the final "
+                     "geometry (convergence unverified)")
+        status = state + (" · " + " · ".join(bits) if bits else "")
+        params_out = {
             "basis_size": p.basis_size,
             "mesh_cutoff_ry": p.mesh_cutoff_ry,
             "xc": p.xc,
             "kgrid": list(p.kgrid) if p.kgrid else None,
             "n_atoms": p.n_atoms,
-        },
+        }
+        contract = "cited"
+        concluded = bool(cited.concluded)
+
+    # The labeled structure FOR THE VIEWER (best-effort: a directory
+    # that classifies but does not compose -- missing labels, moved
+    # electrodes, mid-run record -- still answers, with the compose
+    # refusal appended so the user learns it at cite time, not at
+    # prep).
+    structure_wire = None
+    try:
+        composed = compose_junction(citation, tree_root=root)
+        rel_struct = (composed.relaxed
+                      if composed.relaxed is not None
+                      else composed.sorted.structure)
+        structure_wire = rel_struct.to_dict()
+    except Exception as exc:  # noqa: BLE001 -- surfaced, never fatal
+        status = status + "  !! " + str(exc)
+
+    return jsonify({
+        "ok": True,
+        "citation": citation,
+        "form": cited.form,
+        "contract": contract,
+        "concluded": concluded,
+        "summary": status,
+        "structure": structure_wire,
+        "params": params_out,
     })
 
 
@@ -186,7 +195,8 @@ def api_transport_describe() -> Any:
     from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import Stage, Task, derive_run
     from molbuilder.transport.compose import ComposeError, resolve_citation
-    from molbuilder.transport.stages import (SEALED_TRANSPORT_FIELDS,
+    from molbuilder.transport.stages import (CONTRACT_FIELDS,
+                                             SEALED_ALWAYS,
                                              TRANSPORT_STAGES)
 
     body = request.get_json(silent=True) or {}
@@ -211,32 +221,42 @@ def api_transport_describe() -> Any:
     if not isinstance(overrides, dict):
         return jsonify({"ok": False,
                         "error": "overrides must be an object"}), 400
+    typed = str(body.get("name") or "") or "transport"
+
+    try:
+        _, cited = resolve_citation(citation, projects_root())
+    except ComposeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
     # Refused HERE, not at prep on the cluster: an unknown knob or a
-    # sealed one (the citation's to say) names itself while changing
-    # it is still free.  Same sets, same reason as config_for.
+    # sealed one names itself while changing it is still free.  Same
+    # sets, same conditions as config_for (4.1b: the contract fields
+    # are the citation's ONLY when the citation carries a deck).
     import dataclasses as _dc
     _known = {f.name for f in _dc.fields(TransportConfig)}
+    _contract_sealed = cited.form == "relaxation"
     for _name in overrides:
         if _name not in _known:
             return jsonify({"ok": False,
                             "error": f"{_name!r} is not a transport "
                                      f"parameter"}), 400
-        if _name in SEALED_TRANSPORT_FIELDS:
+        if _name in SEALED_ALWAYS:
+            return jsonify({"ok": False,
+                            "error": f"{_name!r} is the description's "
+                                     f"own field (identity, bias) -- "
+                                     f"it is never an override"}), 400
+        if _contract_sealed and _name in CONTRACT_FIELDS:
             return jsonify({"ok": False,
                             "error": f"{_name!r} is the citation's to "
                                      f"say (the electronic contract "
                                      f"arrives from the cited "
-                                     f"junction's own deck) or the "
-                                     f"description's own field -- "
-                                     f"reset it in the form; cite a "
-                                     f"junction that ran with the "
-                                     f"values you want"}), 400
-    typed = str(body.get("name") or "") or "transport"
-
-    try:
-        resolve_citation(citation, projects_root())
-    except ComposeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+                                     f"relaxation's own deck) -- reset "
+                                     f"it in the form; cite a "
+                                     f"relaxation that ran with the "
+                                     f"values you want, or cite a "
+                                     f"plain .xyz+.molstruct pair, "
+                                     f"whose contract fields are "
+                                     f"open"}), 400
     try:
         task = Task(
             engine="siesta", shape="hierarchical",
@@ -288,12 +308,20 @@ def api_transport_schema() -> Any:
     Section order still follows ``TransportConfig._form_section_order``;
     sections the filter empties (System, Electrodes) are dropped whole.
     """
-    from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
+    from molbuilder.transport.stages import (CONTRACT_FIELDS,
+                                             SEALED_ALWAYS)
+    # ?contract=cited (default) hides the contract fields -- they are
+    # the citation's deck's to say; ?contract=open offers them, for a
+    # form-B citation (a labeled pair carries no deck; 4.1b).  The tab
+    # passes what describe_attempt answered.
+    hidden = set(SEALED_ALWAYS)
+    if str(request.args.get("contract") or "cited") != "open":
+        hidden |= CONTRACT_FIELDS
     schema = _dataclass_to_form_schema(TransportConfig, "t")
     kept = []
     for sec in schema.get("sections", []):
         fields_left = [f for f in sec.get("fields", [])
-                       if f.get("name") not in SEALED_TRANSPORT_FIELDS]
+                       if f.get("name") not in hidden]
         if fields_left:
             sec = dict(sec)
             sec["fields"] = fields_left
