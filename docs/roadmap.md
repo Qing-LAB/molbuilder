@@ -600,6 +600,18 @@ dropped in the same commit that closes its item)*:
 
 ## 4. Test-suite & housekeeping
 
+- **R-W3 rollout — "The short version" for every contract** *(user,
+  2026-08-28: key info first — keywords, diagram, example; the rule is
+  `workflow.md` R-W3)*. Done: scheduler (the model, with a deep
+  stale-claim pass), project-layout, job-system, generator,
+  job-contracts. The queue, by traffic then size: `engines/template.md`
+  · `engines/stages.md` · `execution/checkpointing.md` ·
+  `web/task-setup.md` · `execution/running-a-job.md` ·
+  `configuration.md` · `execution/submission.md` ·
+  `execution/architecture.md` · `execution/script-preparation.md` ·
+  `engines/tuning.md` · the web component contracts (`molview.md` last —
+  developer-facing). Each visit also fixes stale claims found on the
+  way; headers are additive, so no contract sentence moves silently.
 - **Per-tab wiring consolidation audit** *(recovered from the parked task
   store, ex-#96 — was `in_progress` when the docs-first gate froze system
   work; no findings were recorded, it restarts clean)*: audit each tab
