@@ -14,6 +14,10 @@
 `molbuilder/web/static/{modify,structure-optimization,spectra,transport,results,documents}/`,
 the shared modules under `static/lib/` they mount, and the tab stylesheets.
 Method: static only — no browser, no test run.
+**Superseded in part (2026-08-29):** every Transport-tab finding below
+(§ A3, § B2, and the transport rows of the tables) describes the retired
+Generate lane — the tab was rewired to the composite's describe surface
+(`plans/transport-design.md` P7b); read those rows as history only.
 **Companions:** [`tabs.md`](?doc=web/tabs.md) — the contract these pages are read
 against. [`results.md`](?doc=web/results.md) § 2 — the picker contract § E1 cites.
 [`vibrationview.md`](?doc=web/vibrationview.md) — the module § A1 finds dead.

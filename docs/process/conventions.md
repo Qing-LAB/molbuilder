@@ -139,23 +139,18 @@ shared API.
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `checkpoint`
 (git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON).
 
-#### Three orchestration lifecycles, where the design says one
+#### One orchestration lifecycle (the 2026-08-11 problem, closed)
 
-> ⚠ **`jobset`, `bench` and `transport` each run calculations their own way.**
-> *Named as a design problem 2026-08-11. Two are the same act with two spellings;
-> the third is a case the unified design cannot yet express.*
-
-| group | how it runs work | status |
-|---|---|---|
-| **`jobset`** | `prep` → `launch`, one job per invocation, per-attempt directories, `run.json` | the design ([`job-system.md`](?doc=execution/job-system.md)) |
-| **`bench`** | `probe-scheduler` only | **RESOLVED 2026-08-17** — the four duplicate verbs are gone; benchmarking is `jobset prep bench <stage>`. See below |
-| **`transport`** | `bundle` → `bash run-transport.sh`, a driver that **chains** three coupled runs | **the case with no representation** ([`transport.md § 8`](?doc=engines/transport.md)) |
-
-**They are not the same kind of problem, and conflating them would fix neither.**
-`bench` duplicates something that exists; `transport` does something the model
-cannot say. The first is a merge, the second needs a vocabulary — job-set edges
-between genuinely coupled runs, which decision 6 removed for ladders on purpose
-and would have to come back differently.
+> **`jobset`, `bench` and `transport` each ran calculations their own way** —
+> named as a design problem 2026-08-11, closed in two moves:
+> `bench` folded 2026-08-17 (benchmarking is `jobset prep bench <stage>` — the
+> four duplicate verbs died), and `transport` migrated 2026-08-29 (the
+> composite: one citation → five stages through the ordinary jobset verbs;
+> the `bundle` verb and its bash chain driver deleted,
+> [`plans/transport-design.md`](?doc=plans/transport-design.md)).  No edges
+> came back: a bias scan is ONE submission whose walker chains the points'
+> `.TSDE` inside a single job, so the job set still carries no dependency
+> vocabulary.
 
 ##### `bench` and `jobset` — RESOLVED, and the record was inverted
 

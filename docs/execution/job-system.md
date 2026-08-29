@@ -93,8 +93,10 @@ Concretely, three kinds of "many jobs" all reduce to the same object:
   stage a separate job that you start once you have looked at the one before it;
 - a **parameter sweep** — the same calculation run at many resource settings to
   find the fastest (this is what benchmarking is);
-- (planned) a **device workflow** — e.g. a transport junction assembled from two
-  separately-relaxed electrodes.
+- a **device workflow** — the transport composite (shipped 2026-08-29):
+  one CITED junction relaxation, five derived stages — the electrodes are
+  DERIVED from the junction's own labeled blocks, never separately relaxed
+  ([`plans/transport-design.md`](?doc=plans/transport-design.md) ruling Q5).
 
 The object they all reduce to is a **`JobSet`** (§ 3).
 
@@ -650,12 +652,13 @@ heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
 > *(PySCF's ran as an in-script loop inside a single `.py` until 2026-08-18 —
 > genuinely a different object then: its stages advanced in memory while
 > SIESTA's advanced because a person prepped the next one. The loop is
-> retired; the history and the reasoning live in § 1.1a.)* Transport and
-> spectra producers remain pre-framework (`roadmap.md`'s migration box).
+> retired; the history and the reasoning live in § 1.1a.)* The spectra and
+> transport producers migrated too (2026-08-21 / 2026-08-29 — `roadmap.md`'s
+> migration box records both).
 
 ---
 
-## 5. The workflow — describe, prep, plan, submit, summarize, status
+## 5. The workflow — init, prep, plan, launch, summarize, status
 
 **One verb on the host** (where you design the calculation) and **five on the
 target** (where it runs). They mirror the design: the host step writes files and
@@ -1351,9 +1354,10 @@ web") — and its first phase shipped:
   SPECTRA half opened 2026-08-20 by user ruling, workstation-scoped:
   `docs/archive/2026-08-20-spectra-migration-plan.md` — not a new seam but the PySCF
   seam learning the `vibration` calculation kind, which is why it may
-  precede the cluster milestone: it touches no submit-layer code.)* Reaching
-  transport is also where the single-parent limit (§ 2, design decision #6)
-  is lifted to a branching graph.
+  precede the cluster milestone: it touches no submit-layer code.)* *(Transport
+  crossed 2026-08-29 as the composite — and WITHOUT lifting the
+  single-parent limit: the citation composes at prep, so the job set still
+  carries no edges; a bias scan chains inside ONE submission's walker.)*
 
 Also out of scope for now: **multi-node MPI** (v1 fixes one node), and a
 `molbuilder config init --site` command (a site preset ships only as a JSON

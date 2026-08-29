@@ -186,10 +186,10 @@ device. The convention (the *vocabulary* is owned by
   § 4.1a — the categorical sort places buffer atoms outermost).
 - **`<name>-electrode`** — any label ending `-electrode`/`_electrode`/bare
   `electrode` (case-insensitive) is a lead — so `tip-electrode`, `gate-electrode`
-  work without code changes (`config.transport.is_electrode_label:94`).
+  work without code changes (`config.transport.is_electrode_label`).
 
-**Emitter behavior** (`transiesta.py::_emit_transiesta_block:487`,
-`_find_electrode_regions:195`): electrode regions are discovered, **sorted by
+**Emitter behavior** (`transiesta.py::_emit_transiesta_block`,
+`_find_electrode_regions`): electrode regions are discovered, **sorted by
 z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one
 `%block TS.Elec.<name>` per lead (the block name is the label minus the
 `-electrode` suffix: `L-electrode` → `L`), a `%block TS.ChemPots` + per-name
@@ -226,11 +226,12 @@ expansion in the shipped 2-terminal scope.)
 > **Atom-ordering is load-bearing.** TranSIESTA identifies electrode atoms by their
 > **position** in the coordinates block (first N atoms = first electrode), *not* by
 > region label. The **engine preflight** (`TransiestaEngine.preflight`,
-> `transiesta.py:830`) cross-checks that L + bridge + R are contiguous in emission
+> `transiesta.py::TransiestaEngine.preflight`) cross-checks that L + bridge + R are contiguous in emission
 > order — an out-of-order structure produces silently wrong physics with no run-time
-> error. It fires on the **web Generate** path (via `validate()`), but **not** on the
-> CLI `bundle` path (`build_transport_bundle` never calls it), so re-run
-> `transport preflight` after any manual reorder. (This ordering gate is distinct from
+> error. In the composite it cannot fire in anger: prep's categorical sort makes
+> disorder unrepresentable before any deck is rendered, and the engine preflight
+> still gates `render_stage_deck` as defense in depth (plus
+> `/api/transport/render`, the validation surface). (This ordering gate is distinct from
 > the cross-run `transport preflight` of § 5, which compares device vs electrode and
 > does *not* check atom order.)
 
@@ -266,7 +267,7 @@ gate `id`; ✓ = guaranteed by the electrode wizard's clone-by-construction inst
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | `electrode.saveHS` (warn) |
 
 `transport preflight` reports these as `error`/`warn`/`ok` Issues (a
-`PreflightReport`, `preflight.py:197`) and refuses to proceed on any error. This
+`PreflightReport`, `preflight.py`) and refuses to proceed on any error. This
 turns the prose "Golden Rule" into automated gates — the single biggest correctness
 lever, since these are exactly the silent failures. An illustrative run:
 
@@ -283,7 +284,7 @@ transport preflight -- device <-> electrode consistency
 ```
 
 (Messages abbreviated for illustration; the real formatter is
-`preflight.format_report:372`.)
+`preflight.format_report`.)
 
 **Each gate traces to a physical requirement and a reference** (so the design is
 auditable, not asserted): the open-boundary `kgrid.device_kz` (I8) and the
@@ -299,14 +300,14 @@ and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
 
 | Layer | Module | Role |
 |---|---|---|
-| Electrode wizard | `transport/wizard.py` (`electrode_wizard:289`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device; its z-period comes from `cell.bulk_z_period` (§ 7.1), the same derivation the Junction builder uses |
+| Electrode wizard | `transport/wizard.py` (`electrode_wizard`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device; its z-period comes from `cell.bulk_z_period` (§ 7.1), the same derivation the Junction builder uses |
 | Composition | `transport/compose.py` | citation → parsed `.XV` → frozen gate → categorical sort → electrode extraction; the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars) |
 | Stages | `transport/stages.py` | the five-rung ladder, the § 4.2 DAG (`stage_inputs`), the one config from the citation's deck (`config_for`), the per-stage renders |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`) |
 | Consistency preflight | `transport/preflight.py` | the cross-run contract gates (§ 5) |
-| Engine | `transport/transiesta.py` (`TransiestaEngine:649`) | the NEGF `.fdf` emitter (`render_script:664`), `preflight:698`, `parse_output:920` |
+| Engine | `transport/transiesta.py` (`TransiestaEngine`) | the NEGF `.fdf` emitter (`render_script`), `preflight`, `parse_output` |
 | Registry | `transport/engine_base.py` | the `TransportEngine` Protocol + `register_engine` (so a PySCF-NEGF backend can join) |
-| Results | `transport/results.py` (`TransportResults:74`) | engine-agnostic result: `transmission`, `bias_grid_V`/`current_uA`, `conductance_G0` + `to_dict`/`from_dict` |
+| Results | `transport/results.py` (`TransportResults`) | engine-agnostic result: `transmission`, `bias_grid_V`/`current_uA`, `conductance_G0` + `to_dict`/`from_dict` |
 | CLI | `transport/_cli.py` (`molbuilder transport`) | the terminal surface |
 
 **Data flow** — the single numerical contract (§ 5) is baked *identically* into all
@@ -315,19 +316,21 @@ three fdfs; only the geometry and the open-vs-bulk boundary (`kz`,
 
 ```mermaid
 flowchart LR
-    SRC["device.molstruct.json<br/>(regions + numerical contract)<br/>+ .psml files"]
-    SRC --> RELAX["relax.fdf<br/>(MD.CG, kz=1)"]
-    SRC --> ELEC["electrode.fdf<br/>(clone, dense kz, diagon single-point, SaveHS)"]
-    RELAX -->|"relaxed coords (device.XV)"| DEVICE["device.fdf<br/>(kz=1, SolutionMethod transiesta,<br/>TS.Elec → electrode.TSHS)"]
-    ELEC -->|"electrode.TSHS"| DEVICE
-    DEVICE -->|"device.TSHS"| TBT["tbtrans"]
-    TBT --> RESULT[".transport.json (planned)<br/>{E_F, G₀ = T(E_F), caveat}"]
+    CITE["the CITED junction attempt<br/>(deck + .XV + labels)"]
+    CITE --> SEED["01_seed<br/>(diagon SCF, kz=1 -> .DM)"]
+    CITE --> EL["02_electrode_L / 03_electrode_R<br/>(derived bulk cells, dense kz,<br/>diagon single-point, TS.HS.Save)"]
+    SEED -->|".DM"| DEVICE["04_device<br/>(SolutionMethod transiesta,<br/>TS.Elec -> <label>_L/_R.TSHS)"]
+    EL -->|"<label>_L.TSHS · <label>_R.TSHS"| DEVICE
+    DEVICE -->|"<label>.TS.HSX (5.x; the 4.x device .TSHS retired)<br/>+ .TSDE forward per bias point"| TBT["05_transmission<br/>(tbtrans; the deck says<br/>TBT.HS <label>.TS.HSX)"]
+    TBT --> RESULT["<label>.transport.json<br/>(summarize run; T(E) per bias, G(E_F), I-V)"]
 ```
 
-(`MD.CG` = conjugate-gradient geometry relaxation; `.XV` = SIESTA's relaxed-coordinates
-file; `diagon single-point` = the electrode has **no** MD block, so it's a single bulk
-SCF, not a relaxation. The `.transport.json` node is **planned** — results parsing
-is not wired yet, § 8.)
+(`diagon single-point` = the electrodes have **no** MD block — single bulk
+SCFs on cells DERIVED from the junction's labeled blocks.  The device H
+lands in `<label>.TS.HSX` — SIESTA 5.x; tbtrans must be told with an
+explicit `TBT.HS` line, measured live 2026-08-29 — while the electrode runs
+still write `.TSHS` via `TS.HS.Save`.  `summarize run` writes the record —
+§ 8.)
 
 ---
 
@@ -341,7 +344,7 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | XC | GGA-PBE | identical across all 3 runs (I1) |
 | Pseudos | PseudoDojo PBE (Au/C/S/H), validated | `molbuilder pseudo check` gate ([van Setten 2018]) |
 | Basis | **DZP everywhere** | DZP = double-ζ + polarization (SIESTA PAO tier); drop to the smaller SZP for bulk-Au only after a `T(E)` check |
-| `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The `bundle` default is **300**; the § 3 example overrides to 400 |
+| `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`config/transport.py::siesta_mesh_cutoff_ry`); the § 3 example overrides to 400 |
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
 | Transverse k | converge 2×2 → 4×4 → 6×6 | commensurate device ⇄ electrode (I7) |
 | Device `kz` | **1** | open boundary (I8) |
@@ -351,7 +354,7 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 
 > **Which of these are knobs today.** The transverse k (`--kx`/`--ky`), electrode kz
 > (`--electrode-kz`), `MeshCutoff`, and electronic temperature are form/CLI-driven, but
-> the **basis / XC block is hardcoded** — `_emit_basis_and_xc:442` writes
+> the **basis / XC block is hardcoded** — `_emit_basis_and_xc` writes
 > `PAO.BasisSize DZP`, `PAO.EnergyShift 0.01 Ry`, and `XC GGA-PBE` with no cfg hook. So
 > "converge the basis / EnergyShift / XC" means editing the emitted `.fdf` until those
 > become form fields (a planned follow-up, flagged in the code).
@@ -379,10 +382,10 @@ Three corrections that catch real mistakes:
   severs the periodic gold), so `--cell-fdf` preserves the real lattice. Forces are
   k-robust while the sharp `T(E_F)` Fermi-surface integral is not, so it is sound to
   **relax at a coarser transverse k (e.g. 2×2×1) and run transport dense (e.g.
-  4×4×1)** [Soler 2002; Papior 2017]. **But note:** `bundle` emits the *same*
-  transverse k (`--kx`/`--ky`) into *both* the relax and device fdfs — it does not
-  auto-coarsen the relax — so to relax coarser you run the relax step yourself at the
-  coarser mesh (or hand-edit `junc_relax.fdf`). Γ-only (1×1×1) is wrong for periodic
+  4×4×1)** [Soler 2002; Papior 2017]. **But note:** the composite reads the transverse k FROM the cited relaxation's
+  own deck (fdf-is-truth) and forces device `kz = 1` — it never auto-coarsens
+  anything — so to relax coarser you run the upstream relaxation at the coarser
+  mesh and cite that attempt. Γ-only (1×1×1) is wrong for periodic
   metallic leads: even with the lead atoms frozen it gives a poorly defined `E_F`.
 
 ### 7.1 The metal crystal — stacking, layer counts, and the two boundaries
@@ -486,12 +489,11 @@ single-point, or a relaxation if those layers are not frozen.
   surface.
 - **Follow-up** (see `roadmap.md`): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
-  moving); the **bias scan** (`bias_voltages_v` is a `List[float]`; today only the
-  first is emitted, with a preflight WARN if `len > 1` — the planned path emits one
-  `.fdf` per bias + a loop driver that stitches `*.TBT.AVTRANS_*` into an **I–V**
-  curve); a **PySCF-NEGF** backend (the `TransportEngine` registry already accepts
-  it); extending the web Generate from the single device `.fdf` to the full bundle;
-  and surfacing basis/EnergyShift/XC as form fields.
+  moving); the **Results-tab transmission inspector** (T(E) + I–V charts read
+  from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —
+  a backend that registers itself also adds its engine choice back to
+  `TransportConfig` (the form offers only registered engines since
+  2026-08-29).
 
 ---
 

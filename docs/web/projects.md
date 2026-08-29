@@ -349,10 +349,11 @@ MolView holds no file route; this door is where its exports become files.
 the project root, on any tab — `{title?, nameTitle?, initial?, hint?}` →
 `"<dir>/<name>"` or `null` on cancel (throws, never a silent nothing, when
 the page has no project root yet). **One door for every flow that deposits
-artifacts under the root**: the MolView exports ride it today, and a flow
-that consolidates several results into one task's inputs — the transport
-calculation is the named future consumer — asks the same question through
-the same door rather than growing its own.
+artifacts under the root**: the MolView exports ride it today.  *(The
+transport calculation was the named future consumer; it shipped 2026-08-29
+consolidating NOTHING in the browser — the citation composes at `prep`, so
+the tab writes one `task.json` through `projects.safeSave`, the same
+content-blind file layer, and this door gained no second caller.)*
 
 *(Whole-file **download** is not a method here — it is a direct browser download
 from the row's `⋯` menu.)*

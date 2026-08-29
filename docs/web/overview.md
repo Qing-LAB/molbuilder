@@ -109,7 +109,7 @@ entry file for `import`/`export`.)
 | **projects** | the sidebar file browser + the load/save doors | [projects.md](?doc=web/projects.md) | ✅ full |
 | **xyz-io** | the shared XYZ parse/format primitive | [runtime.md](?doc=web/runtime.md) | ✅ full |
 | **trajectory** | the optimization-run movie + convergence plots | [trajectory.md](?doc=web/trajectory.md) | ⬤ hybrid¹ |
-| **transport** | the TranSIESTA device-script generator | [tabs.md § 4](?doc=web/tabs.md) | ⬤ hybrid¹ |
+| **transport** | the transport composite's describe surface (cite → describe) | [tabs.md § 4](?doc=web/tabs.md) | ⬤ hybrid¹ |
 | **presenters** | the Results-tab file-viewer registry | [presenters.md](?doc=web/presenters.md) | ○ classic² |
 | **spectra** | the Raman spectrum chart + mode table engine | [spectra.md](?doc=web/spectra.md) | ○ classic² |
 | **results** | the Results-tab dispatch shell + file picker | [results.md](?doc=web/results.md) | ○ classic² |

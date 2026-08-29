@@ -25,8 +25,8 @@ this is the rule for how it tells you what it sees.
 
 ## 1. Why the split is the whole thing
 
-A `task.json` **travels**. It goes to a cluster, into a handoff bundle, into a
-colleague's copy of your project. That is what a description is for.
+A `task.json` **travels**. It goes to a cluster, into a citation's composed
+copy, into a colleague's copy of your project. That is what a description is for.
 
 A webhook URL does not travel — it is a fact about one person's Slack, and for
 Slack and Discord it *is* the credential, with no separate token beside it.

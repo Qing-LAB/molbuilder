@@ -18,8 +18,9 @@ same one** (user, 2026-08-16). Structure optimization is the worked case.
 **Spectrum sends since 2026-08-20** — the § 6 prerequisites landed with the
 spectra migration's P0–P2
 ([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)).
-**Transport waits**: it is a multi-component job and needs its own § 6-shaped
-work (catalogue rows for its kind, a decision on its description shape) first.
+**Transport never joined, by design** (resolved 2026-08-29): the composite
+leaves no question open for Task setup to answer, so its tab describes
+directly — no hand-over exists for it (see the closing section).
 
 ---
 
@@ -207,29 +208,19 @@ itself moved into `lib/task-handover.js` when the second tab arrived: the
 guards, the write order and the notice handling are this procedure's contract,
 and two copies of a contract drift.
 
-**Transport still waits**: a multi-component job needs its own catalogue rows,
-its own kind, and its own § 6.3-shaped decision before this procedure applies.
-
-**Transport is not, and that is why it waits.** It is a **multi-component job**
-— *"it involves multiple results and the transportation needs to combine all of
-them… a different kind of beast"* (user, decision 37,
-[`execution/generator.md`](?doc=execution/generator.md) § 9), and one region-
-labelled device becomes **three coupled SIESTA runs**
-([`engines/transport.md`](?doc=engines/transport.md)).
-
-Two things this procedure does not yet express, and both must be designed
-before Transport uses it:
-
-1. **A hand-over carrying several components**, not one engine + one structure.
-   `awaiting` names missing *keys*; a transport hand-over is missing a
-   *structure* — which of the three runs a value belongs to.
-2. **A description whose members are coupled.** `generator.md` § 9 keeps
-   transport out of `ParameterSet` deliberately: it is neither a sweep nor a
-   ladder, and this procedure currently produces exactly those two.
-
-**Do not stretch `task-handover@1` to cover it.** A second schema
-(`transport-handover@1`) that this procedure's three steps carry is the shape to
-reach for — the steps generalise, the payload does not.
+**Transport does not use this procedure — resolved 2026-08-29, and not the
+way this section once predicted.**  A hand-over exists because Task setup
+owns questions the sending tab leaves open (shape, stages, what varies).
+The composite leaves NONE open: the five stages and the hierarchical shape
+are fixed by design, the electronic contract arrives from the cited
+attempt's own deck at prep, and the knobs ride the stages' override bags.
+So the Transport tab describes DIRECTLY — `POST /api/transport/describe`
+answers with the finished `task.json`, the browser writes it where the
+user chose, and **nothing is awaiting** ([`plans/transport-design.md`](?doc=plans/transport-design.md)
+P7b).  The `transport-handover@1` schema this section once proposed was
+never needed: with no open questions there is no hand-over payload to
+carry.  Task setup remains the run surface that READS the description —
+machine, queue, prep — like any other.
 
 ---
 

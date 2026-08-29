@@ -106,7 +106,7 @@ the tab neither uses nor duplicates it.
 | | asks | answers |
 |---|---|---|
 | `checkpoint.py::_is_bundle_root` | *does this path declare itself the root of one multi-directory unit of work?* | one boolean, over `task.json` **or** `job-set.json` — enough to decide the folder owns its subdirectories (`checkpointing.md` **L1**) |
-| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
+| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* (a transport folder is always the FIRST state: the composite describes directly and never produces a hand-over — its `task.json` arrives finished, and this page reads it as an ordinary description whose five stages and shape are fixed) | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
 
 **The invariant that does bind them**, and it holds today: a folder this page
 treats as a described calculation is one the checkpoint system also covers.

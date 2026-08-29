@@ -448,13 +448,14 @@ engine edits `runwrap.py` — which is exactly what
 [`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
 files and edits none"* test exists to catch.
 
-**One whole workflow has not migrated onto this pipeline: transport.**
-Spectra migrated in 2026-08 (the vibration deck is a calculation KIND of the
-PySCF engine — `render_deck` runs it like any other; § 9's gates cover it).
-Transport still runs the path built before the framework, deliberately: it is
-a different KIND of job
-([`execution/architecture.md § 0`](?doc=execution/architecture.md)) and its
-workflow is being designed separately.
+**Every workflow now rides this pipeline.**  Spectra migrated in 2026-08
+(the vibration deck is a calculation KIND of the PySCF engine —
+`render_deck` runs it like any other; § 9's gates cover it), and transport
+migrated 2026-08-29 as the COMPOSITE: still a different KIND of job
+([`execution/architecture.md § 0`](?doc=execution/architecture.md)) — one
+citation of a finished junction attempt, five derived stages — but prepped,
+launched and summarized through the ordinary jobset verbs
+([`plans/transport-design.md`](?doc=plans/transport-design.md)).
 
 **Where this is tracked:** [`roadmap.md § 6`](?doc=roadmap.md).
 
@@ -529,12 +530,12 @@ this table exists to rule out)*:
 | **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges (`validation/metadata.py`) + the engine’s science (grid, parity, open-shell, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) §§ 3–4 (step 3.3) |
 | **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |
 
-One honest asymmetry, recorded rather than smoothed over: **transport**
-still rides its own pre-JobSet render path (script-preparation.md § “the
-four writers”), so its gates are its own until that migration.  *(A second
-stood here for a few hours — the vibration kind had no gate ① — until the
-kind-aware preflight landed on 2026-08-21; the Spectrum tab now runs the
-same live check Build does.)*
+*(Two asymmetries once stood here and both closed: the vibration kind had
+no gate ① for a few hours until the kind-aware preflight landed 2026-08-21
+— the Spectrum tab now runs the same live check Build does — and transport
+rode its own pre-JobSet render path until the composite migration on
+2026-08-29: its decks now render through prep like every other kind, with
+the TransiestaEngine preflight as its own extra gate.)*
 
 ### Where the details live — the drill-down for each arrow
 

@@ -1419,11 +1419,15 @@ item value would be an assertion about a machine the description has not met.
 The two are different claims and only one of them travels.
 
 **The calculation KINDS this vocabulary serves** *(P0 of the
-spectra-migration plan, 2026-08-20)*: `optimization` (the default, absent
-from the file) and **`vibration`** — the described vibrational-spectroscopy
-job, whose template the catalogue narrows by the `calculations` key
-(`template.md` § 6.3's sibling rule) and whose warm-file section
-`pyscf/warm-files.toml` already declares.
+spectra-migration plan, 2026-08-20; transport added 2026-08-29)*:
+`optimization` (the default, absent from the file), **`vibration`** — the
+described vibrational-spectroscopy job, whose template the catalogue narrows
+by the `calculations` key (`template.md` § 6.3's sibling rule) and whose
+warm-file section `pyscf/warm-files.toml` already declares — and
+**`transport`**, the composite with its own codec rules (`task.py`:
+transport ⇒ hierarchical shape, exactly one `junction` slot cited
+`@<stage>/run-N`, no `structure`, a `bias` list; `siesta/warm-files.toml`'s
+`[transport]` section declares its warm vocabulary).
 
 **What may be swept is not a free list.** A key must name a field the engine
 already declares sweepable — the `execution` category, which

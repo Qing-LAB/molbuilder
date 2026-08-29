@@ -623,11 +623,12 @@ tree for reusable geometries matching `*_optimized.xyz`, `*.STRUCT_OUT`, and
 ### 2.6 The run wrapper — `.run.sh` and `.sbatch`
 
 **`prep` writes the wrapper**, on the machine that will run the job, and on
-the described route it is the only thing that does.  *(One recorded side
-door calls the same emitter: transport's driver, which emits wrappers for
-its own kind and renders them no different way.  The web install-wrapper
-endpoint — the other side door this note used to record — retired
-2026-08-21 with zero browser callers.)*  The wrapper activates the
+the described route it is the only thing that does.  *(One recorded sibling writes beside it: a transport bias SCAN's launch
+regenerates the chain-walker script `launch/<stem>-chain.run.sh` — the one
+submission that walks the points — through the same emit conventions
+(`jobset/submit.py::submit_transport_chain`).  The old side doors — the
+pre-composite transport driver and the web install-wrapper endpoint —
+retired 2026-08-29 / 2026-08-21.)*  The wrapper activates the
 routed conda env and
 executes the tool (`molbuilder/runwrap.py::render_run_wrapper`). Routing is by
 extension:
@@ -1081,8 +1082,8 @@ upgraded.)*
   accepts the CURRENT version only (`_READABLE_SCHEMA_VERSIONS`); an old
   block — its `frozen_atoms` key included — is **refused** with the
   regenerate message.  Every reader refuses the retired key
-  (`transport/bundle.py`, the molstruct sidecar loader,
-  `apply_metadata_dict`): *no translation exists*, and the sentence that
+  (the molstruct sidecar loader, `apply_metadata_dict`; a third,
+  `transport/bundle.py`, was deleted with the pre-composite driver): *no translation exists*, and the sentence that
   stood here promised one the tree never performed (final review F-5,
   2026-08-13).  *(Until 2026-08-12 this bullet taught
   "`v4`, `schema_version: 4` … sidecar itself v6 … read-side accepts
@@ -1310,7 +1311,9 @@ the file's rows would be the drifting second listing this whole section
 exists to retire).  Illustratively: the geometry/density/history trio the
 carry cares about, the inventory-only rows (Wannier, Z-matrix,
 eigenvalues, wavefunctions, …), and transport's `.TSHS`/`.TSDE` in their
-own section.  SIESTA reads these itself when the matching `MD.UseSave*` /
+own section (the device stage's own H lands in `<label>.TS.HSX` — SIESTA
+5.x, inventory-only: produced and read by tbtrans via the deck's `TBT.HS`
+line, never carried forward).  SIESTA reads these itself when the matching `MD.UseSave*` /
 `DM.UseSaveDM` flags are set — the file's `honoured_by` column, checked
 by the § 4.2a agreement test.
 
@@ -1625,7 +1628,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Warm-file vocabulary | `<engine>/warm-files.toml`, shipped IN the engine's package (§ 4.2a); a calculation may carry its own copy (U6a) | `molbuilder/warm-files@1` | `warmfiles.py` | `[base]` + one section per calculation type; rows of `suffix` · `carry` · `requires_same` · `honoured_by` |
 | Task hand-over | `task.1st.json` — beside where `task.json` will go; **removed** when the description is saved | `molbuilder/task-handover@1` | `web/blueprints/build.py` (`api_task_setup_handover`) | `_what` (a line saying what the file is, since JSON has no comments), `engine`, `run`, `structure`, `awaiting` — the keys it is missing and who supplies them. **Deliberately not `molbuilder/task@1`**: it has no `shape`, so it would fail that schema's own reader, and `check_schema` refuses a wrong artifact by name. The extension is last (`task.1st.json`, not `task.json.1st`) so the editor highlights it as JSON and so nothing looking for `task.json` finds it — `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder is a calculation root |
-| Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]`, `calculation` (the KIND — absent means `optimization`), `bench` (the declared benchmark lane: pins, machine axes and value axes — `generator.md` § 4.3a), `allocation` (what this calculation ASKS THE SCHEDULER FOR — `domain` / `time` / `mem`, each optional, absent meaning unstated; `engines/stages.md` § 6.8a) — **what changes**; what does not is in `<label>.template.toml` |
+| Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]`, `calculation` (the KIND — absent means `optimization`), `bench` (the declared benchmark lane: pins, machine axes and value axes — `generator.md` § 4.3a), `allocation` (what this calculation ASKS THE SCHEDULER FOR — `domain` / `time` / `mem`, each optional, absent meaning unstated; `engines/stages.md` § 6.8a), `notify` (WHEN to speak, never where — the destination lives on the running machine), and the transport composite's pair: `slots` (exactly one `junction` citation, `<calc>@<stage>/run-N`) + `bias` (the voltage list; >1 is a scan) — **what changes**; what does not is in `<label>.template.toml` (the composite has no template: floor 2 is `task.json` alone) |
 | Template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>` — *(`fingerprint` was a third top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — `prep` resolves it from `environment.json`). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` — the structure→execution pair (a built/modified structure travelling into a description); the run→calculation use of this pair retired 2026-08-29 with `bundle_writer.py` (§ 5 — citations replaced it) | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `workingcopy_structure.StructureCodec`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |

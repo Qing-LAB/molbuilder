@@ -60,7 +60,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 
 | You want to know… | Open |
 |---|---|
-| **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)** |
+| **What got built in which order, and how each step was checked** — the milestones, the gates, and the three reviews at each one *(archived — the build completed)* | **[`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)** |
 
 *(The Task-setup tab graduated out of this kind: it shipped, and
 [`web/task-setup.md`](?doc=web/task-setup.md) is a **contract** — the tab that
@@ -85,9 +85,9 @@ reaches past it. Arrows point from a document to the ones it depends on.
 
 ```mermaid
 flowchart TB
-    subgraph plans["Plans — not built yet"]
-      IMP["staged-runs-implementation-plan.md<br/>the order + the gates"]
-      TSP["task-setup.md<br/>writes a description"]
+    subgraph plans["Plans that shipped (docs graduated / archived)"]
+      IMP["staged-runs-implementation-plan.md<br/>the order + the gates (archived)"]
+      TSP["task-setup.md<br/>writes a description (a contract now)"]
     end
     subgraph guides["Guides — how to do it today"]
       RAJ["running-a-job.md<br/>ONE job"]
@@ -154,8 +154,8 @@ executed, and the whole `execution/` domain is shaped by it:
 So the honest one-line status of the whole domain: **describe in the browser,
 act on the terminal, observe on either — shipped and proven for structure
 optimization on a workstation; the cluster proof and a web plan/status view
-remain (`roadmap.md` workstream 1), and spectra/transport still run their
-pre-framework paths (the roadmap's migration box).**
+remain (`roadmap.md` workstream 1); spectra (2026-08-21) and transport
+(2026-08-29, the composite) both migrated onto the framework.**
 
 ```mermaid
 flowchart TB
@@ -202,8 +202,9 @@ Two facts keep the picture honest:
 - **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
   in `task.json` and executes one rung per job, exactly as SIESTA's does
   ([`stages.md § 1.1a`](?doc=engines/stages.md), decided 2026-08-18 — the
-  in-script loop this bullet used to describe is retired). Transport and
-  spectra producers are still pre-framework (the roadmap's migration box).
+  in-script loop this bullet used to describe is retired). The spectra and
+  transport producers migrated too (2026-08-21 / 2026-08-29 — the roadmap's
+  migration box records both).
 
 ### 2.1 The second transition — one folder shape becomes a choice of two
 

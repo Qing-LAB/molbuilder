@@ -89,6 +89,17 @@ const CELL_FALLBACK = { color: "#888", radius: 0.04 };
  * node test — not a second palette. */
 const SCENE_BACKGROUND = { name: "--molviewer-scene-background", fallback: "#0f1217" };
 
+/* The bondless-atom marker (user, 2026-08-29).  Sticks draw BONDS AND
+ * NOTHING ELSE, so an atom the library perceives no bonds for simply
+ * vanishes -- a dissociated frame or an oddly-spaced junction rendered
+ * a blank window with every layer healthy (the demo fixture's own
+ * recorded failure, demo.js).  Under the stick representation those
+ * atoms draw as small amber spheres instead: visible, and visibly NOT
+ * an ordinary element colour, so the screen says "these atoms are here
+ * but nothing bonds them" rather than saying nothing.  Amber, not the
+ * highlight blue or an element colour, because it is a diagnostic mark. */
+const BONDLESS_MARKER = { scale: 0.25, color: "#e0a13d" };
+
 const root = (typeof window !== "undefined") ? window : globalThis;
 
 
@@ -241,6 +252,16 @@ export function create(hostEl, opts) {
      */
     function applyStyle() {
         try { state.viewer.setStyle({ model: 0 }, styleSpec(state.view)); } catch (_) {}
+        // Bondless atoms never vanish (BONDLESS_MARKER above).  Stick is
+        // the one shipped rep that draws only bonds; `line` already marks
+        // lone atoms with the library's native crosses, and the sphere /
+        // ball-and-stick reps draw every atom by construction.
+        if ((state.view.rep || "stick") === "stick") {
+            try {
+                state.viewer.setStyle({ model: 0, bonds: 0 },
+                                      { sphere: BONDLESS_MARKER });
+            } catch (_) {}
+        }
         // Unset means the card's ground (SCENE_BACKGROUND), never "leave it as
         // it was": the library's own default is white, so a skipped call is how
         // the window came to stay white inside a dark card.

@@ -27,7 +27,7 @@ There are **seven tabs**, and their order is defined in exactly one place — th
 | **Molbuilder** | `/molbuilder` | build / edit / assemble a structure | this doc § 2 |
 | **Structure optimization** | `/structure-optimization` | collect a SIESTA/PySCF relaxation's parameters and Send them to Task setup (the deck itself is written by `prep`, on the machine that runs it) | this doc § 3 |
 | **Spectrum** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; view any `.spectra.json` | [`spectra.md`](?doc=web/spectra.md) |
-| **Transport** | `/transport-calculation` | generate a TranSIESTA device script | this doc § 4 |
+| **Transport** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` directly (no hand-over) | this doc § 4 |
 | **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
@@ -79,9 +79,12 @@ Two rules shape everything below:
 
 1. **Molbuilder is the only interactive workspace.** It holds a live in-memory
    canvas. Every other tab reads from disk.
-2. **The task tabs are file-driven.** Structure optimization, Spectrum and
-   Transport take their input structure from a file you picked in the sidebar.
-   They never read Molbuilder's in-memory canvas.
+2. **The task tabs are file-driven.** Structure optimization and Spectrum
+   take their input structure from a file you picked in the sidebar;
+   Transport takes its ONE input from the citation its picker names (the
+   viewer follows the cited calculation's structure — there is no sidebar
+   commit channel on that tab).  None of them reads Molbuilder's in-memory
+   canvas.
 
 So the way to move a structure between tabs is to **save it** — there is no
 in-memory "send to" hand-off (`modify.html`: *"all cross-tab transfer now goes
@@ -179,36 +182,37 @@ wrapper — is written by `prep` on the machine that runs it (the old
 §6 (`saveMolecule` → `/api/structure/save`, which writes a molecule + sidecar
 pair); a script isn't a molecule, so it takes the plain file-write door.
 
-## 4. Transport — generate a TranSIESTA device script
+## 4. Transport — the composite's describe surface
 
-> **Status: working, with named gaps.** The `/transport-calculation` page's own
-> code still carries stale "placeholder / Generate disabled" comments from an
-> earlier phase — **ignore them**. The tab actually generates a real device
-> script today. What it does *not* yet do is listed below.
+> **Rewired 2026-08-29** ([`plans/transport-design.md`](?doc=plans/transport-design.md)
+> P7b + the same-day rulings).  The old Generate lane — sidebar pick, form,
+> device-`.fdf` preview, Copy/download — is gone; decks render at `prep`, on
+> the machine that runs them, like every other kind.
 
-**What works now** — a four-card workflow (Inspect / Analyze / Parameters /
-Generate):
+**The four cards, driven by ONE fact — the citation:**
 
-- a **MolView mount** (`mode: "modify", owner: "transport"`) — the same concealed
-  viewer, sourcing the frozen/region labels off the model at generate time
-  ("what you see is what generates");
-- a **schema form** from `GET /api/transport/schema`, with the same session
-  persistence and dirty-gating as the other tabs;
-- **auto-analyze** chemistry on load (`POST /api/structure/analyze` + detection
-  chip);
-- **Generate → `POST /api/transport/render`**, which dispatches through the engine
-  registry and renders a real TranSIESTA device `.fdf` (the TranSIESTA engine's
-  `render_script` is implemented for the zero-bias scope). You get an issues
-  panel, a script preview, Copy, and a download.
+1. **The junction** — the shared tree-picker cites a finished relaxation
+   attempt (only `run-N` folders are choosable; the meta line reads the
+   attempt's own `.fdf`, and says NOT CONCLUDED honestly).  A read-only
+   **MolView** follows the citation: it re-opens the cited calculation's
+   labeled structure on every cite and every reload (labels are assigned
+   where the junction is built — never here).
+2. **Analyze chemistry** — the shared open-shell check, run on the CITED
+   structure; informational only.
+3. **Parameters** — the OVERRIDE lane only (`GET /api/transport/schema`
+   filters the sealed electronic-contract fields: those are the citation's
+   to say).  Overrides travel as device-stage `varies` promotions.
+4. **Describe** — the bias list plus one button.  `POST
+   /api/transport/describe` answers with the finished `task.json`; the
+   browser writes it into the selected folder and does NOT navigate.  Task
+   setup then reads it as an ordinary description (the run surface, not a
+   hand-over target).
 
-**What's still deferred** (be honest about these when you point a user here):
-
-- **No in-app "save to project"** — only Copy and a blob download. The other
-  generator tabs write files; this one doesn't yet.
-- **Electrode `.TSHS` generation** is a manual, documented workflow, not wired.
-- **Multi-bias scans** are deferred.
-- **Reading results back** (T(E) plots) is deferred — the parser raises
-  `NotImplementedError`.
+**Still open** (honest residue): the Results-tab transmission inspector
+(reading the shipped `<label>.transport.json`), and
+`TransiestaEngine.parse_output`, which raises by design and points at the
+record.  `POST /api/transport/render` survives as the engine registry's
+validation surface only — no UI calls it.
 
 ## 5. Documents — the in-app reader (this page)
 

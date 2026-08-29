@@ -93,6 +93,18 @@ radius slider from 0.2 to 2.5 that scales stick thickness / sphere size / line
 width, and a background colour with preset swatches plus a picker. One preset is
 transparent — choose it before exporting a picture to drop onto a slide.
 
+**An atom with no perceivable bonds never vanishes** (user, 2026-08-29). Stick
+draws bonds and nothing else, so a dissociated frame or an oddly-spaced
+structure used to render a *blank window with every layer healthy* — the
+failure `demo.js` records ("it read as a broken viewer for a long time").
+Under the stick style, atoms the drawing library assigns zero bonds draw as
+small **amber marker spheres** instead: visible, and visibly not an element
+colour, so the screen says "these atoms are here but nothing bonds them"
+rather than saying nothing. The marker is the sealed layer's own drawing
+constant (`3dmol-embed.js` `BONDLESS_MARKER`); `line` already marks lone atoms
+with the library's native crosses, and sphere / ball & stick draw every atom
+by construction.
+
 The View menu and the Export menu are not the same kind of thing, and § 11.4 is
 why: View changes how the drawing paints what it already has, so it can live in
 the 3D window's own controls; Export decides what leaves the viewer and what it

@@ -481,7 +481,7 @@ to a file whose default is shipped rather than written.
 
 **Produced files are not configuration**, and none of them appear above:
 `job-set.json`, the rendered decks, `bench-result.json`, `run.json`,
-`jobset-decisions.log`, checkpoint manifests, handoff bundles. Every one is
+`jobset-decisions.log`, checkpoint manifests. Every one is
 registered in [`job-contracts.md` § 6.1](?doc=execution/job-contracts.md) with
 its schema and its authoritative module.
 

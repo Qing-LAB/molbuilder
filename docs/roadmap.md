@@ -275,7 +275,7 @@ between:
 flowchart LR
     IMP["The implementation plan<br/>M0 → M11<br/>(description → … → the two web tabs)"]:::keystone
     GATE{{"D7 GATE<br/>Prove the loop<br/>on a real cluster"}}:::gate
-    P3["Transport bundle mode<br/>(bias scan)"]
+    P3["Transport composite<br/>(SHIPPED 2026-08-29,<br/>bias chain included)"]
     P4["PySCF / spectra bundle mode"]
 
     IMP --> GATE
@@ -297,15 +297,16 @@ early because it shares the deck pipeline — the seam landed 2026-08-18 and
 the same E2E proved it.)* **What remains of D7 is the cluster half**: the
 same loop through SLURM on Sol. Transport and spectra stay gated on that.
 
-**Transport (gated on D7).** A `transport` producer and a transport-tab mode.
-This is also how the transport **bias scan** (workstream 2) ships: one `.fdf`
-per bias point plus its plan, produced by the framework rather than hand-rolled.
-Its tab writes a template plus a description like every other generating tab, and
-feeds the **same shared Task Setup tab** — which is why M11's columns are read
-from the schema rather than from a list. A bias scan is a **sweep** rather than a
-ladder — one deck per bias point, all independent — and `task.json` already
-expresses that: one member per voltage, each saying `restart: clean`. What the
-transport tab owes is a producer, not a new format.
+**Transport — SHIPPED 2026-08-29, and NOT as this paragraph once predicted.**
+The composite cites a finished junction attempt and derives five stages
+([`plans/transport-design.md`](?doc=plans/transport-design.md)); the tab
+describes DIRECTLY (`POST /api/transport/describe` answers with the finished
+`task.json` — no template, no hand-over; Task setup is the run surface that
+reads it).  The bias scan is a **warm chain, not an independent sweep** (user
+ruling 2026-08-29): one deck per point in plain `v`-dirs, launched as ONE
+submission whose walker copies each point's `.TSDE` forward and stops on a
+device failure — the opposite of the `restart: clean` per-member sweep this
+row used to plan.
 
 **PySCF (structure optimization) — DONE, ahead of the gate.** The seam has a
 PySCF arm (2026-08-18), a PySCF ladder is N decks and N jobs like SIESTA's
@@ -348,11 +349,12 @@ drops its POST.
 
 ## 2. Transport calculation backends  *(Phase B.3)*
 
-> **The composite design is drafted** —
+> **The composite is BUILT** —
 > [`plans/transport-design.md`](?doc=plans/transport-design.md)
-> (2026-08-28): the NEGF science essay, the slots-by-citation
-> composition, the compatibility gate, and the update-semantics table.
-> Six open questions await the user's ruling before anything builds.
+> (designed 2026-08-28, all six § 6 questions ruled the same day;
+> P1–P7 shipped 2026-08-29): the NEGF science essay, the
+> slots-by-citation composition, the compatibility gate, and the
+> five-stage build board, run end-to-end on real binaries.
 
 The transport engine abstraction (a registry of engines behind one
 `TransportConfig` + `Structure` pair) shipped as Phase B.2. Phase B.3
@@ -364,18 +366,19 @@ extracts a labelled `*-electrode` region's atoms from the device and emits the
 matching bulk-lead `.fdf`, plus a `transport preflight` device↔electrode
 contract check). Still open:
 
-1. **Bias scan.** `bias_voltages_v` is a list, but the engine emits only
-   the first value (with a preflight warning when more are given).
-   Planned: one input per bias point plus a driver — **delivered through
-   the batch framework's Phase 3**, not as separate code.
-2. **Output parsing + schema.** `parse_output` is not yet implemented for
-   transport (raises `NotImplementedError`); it needs a `<job>.transport.json`
-   schema designed first (mirroring the spectra sidecar).
+1. ~~**Bias scan.**~~ **Shipped 2026-08-29** — one deck per point in plain
+   `v`-dirs, one chain submission, `.TSDE` carried forward
+   (`jobset/submit.py::submit_transport_chain`).
+2. ~~**Output parsing + schema.**~~ **Shipped 2026-08-29** — `jobset
+   summarize run` writes `<label>.transport.json`
+   (`molbuilder/transport-result@1`, `transport/record.py`).  The engine
+   adapter `TransiestaEngine.parse_output` still raises by design and
+   points at the record.
 3. **Results inspector.** No in-app way to view transmission data yet;
    planned is a transport inspector on `/results` (a transmission-vs-energy
-   chart, and an I–V chart once multi-bias data exists).
+   chart + the I–V chart, reading the existing `<label>.transport.json`).
 4. **Methods-paragraph generator.** Today a placeholder; the full version
-   lands with output parsing so it can interpolate real run parameters.
+   can now interpolate the record's real run parameters.
 
 **PySCF-NEGF** — planned. A Gaussian-basis NEGF engine for smaller device
 regions with higher-level exchange-correlation. Mechanical to add given the
@@ -918,7 +921,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   (W4, gated on the § 1 Phase 3 diamond — a branching workflow, which has no
   representation today and would come back as something a person asks for at
   launch, never as a field a description stores),
-  `bundle_writer`/`script_emit` re-filing (W5).
+  `script_emit` re-filing (W5; its former sibling `bundle_writer` retired 2026-08-29).
 - **Boundary-condition contract rollout per engine** —
   `engines/overview.md § 5` defines the four obligations (declare consumed
   labels, schema pre-fill, Stage-3A divergence warn + 3B unrecognized-label
@@ -1079,11 +1082,12 @@ verifying the mechanics in an isolated `HOME`:
 **Goal:** a 5xx-with-HTML response reads as "the server returned non-JSON,
 check its log" on every surface, from one implementation.
 
-`_formatFetchError` now exists five times — `structure-optimization/viewer.js`,
-`lib/auto-detect.js`, `lib/results/bundle-handoff.js`, `lib/spectra/core.js`,
-and `lib/projects/api.js` (a lowercase variant inside `_fetchEnvelope`). Four
-predate 2026-08-22; the fifth was added that day while extracting a
-*triplicated* renderer — the same defect the extraction existed to remove.
+`_formatFetchError` now exists four times — `structure-optimization/viewer.js`,
+`lib/auto-detect.js`, `lib/spectra/core.js`, and `lib/projects/api.js` (a
+lowercase variant inside `_fetchEnvelope`); a fifth, in the retired
+`lib/results/bundle-handoff.js`, left with its file 2026-08-29. One was added
+2026-08-22 while extracting a *triplicated* renderer — the same defect the
+extraction existed to remove.
 `test_format_fetch_error_js::test_user_visible_catches_route_through_formatter`
 is **red** meanwhile: it greps one viewer for a formatter that has moved.
 *Test-pin:* the migrated test asserts every user-visible status banner's error

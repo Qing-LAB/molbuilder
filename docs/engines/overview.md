@@ -32,7 +32,7 @@ can each stay focused on their own emitter.
 | [`builders.md`](?doc=engines/builders.md) | **Structure synthesis** — sequence / SMILES / name → a 3-D `Structure`; the pluggable nucleic-acid backend registry and per-backend quirk repairs. (Upstream of the emitters.) |
 | [`siesta.md`](?doc=engines/siesta.md) | The **SIESTA `.fdf` emitter** — the block set + emission order, charge / spin / cell / k-grid emission, and the `Diag.Algorithm` / GPU-ELPA / MPS eigensolver *setting*. |
 | [`pyscf.md`](?doc=engines/pyscf.md) | The **PySCF `.py` emitter** — output-file set, one deck per rung (a ladder is N decks and N jobs, `stages.md § 1.1a`), and the engine-agnostic **molwatch-log format** (which SIESTA also writes). |
-| [`transport.md`](?doc=engines/transport.md) | The **TranSIESTA / NEGF workflow** — one region-labeled device → three coupled SIESTA runs, and the cross-run consistency preflight (I1–I13). |
+| [`transport.md`](?doc=engines/transport.md) | The **TranSIESTA / NEGF engine** — the transport COMPOSITE: one citation of a finished junction attempt → five derived stages (seed · electrode_L · electrode_R · device · transmission), and the cross-run consistency preflight (I1–I13). |
 | [`tuning.md`](?doc=engines/tuning.md) | The **cross-engine VALUES guide** — the single owner of what number each convergence / quality knob should carry, per tier. Every other doc that names a tier value defers here. |
 | [`stages.md`](?doc=engines/stages.md) | What a **stage** is — molbuilder's idea, not any engine's — and `task.json`, the file that describes a ladder of them. |
 | [`template.md`](?doc=engines/template.md) | The **template** — a calculation's parameter catalogue: the TOML file holding every parameter with its value, the `kind` vocabulary that says which layer owns each one, and what *complete* and *lossless* mean for it. Shared by every engine; only the items differ. |
@@ -44,7 +44,7 @@ flowchart LR
     ST --> CFG["+ engine config<br/>(values ← tuning.md)"]
     CFG -->|"siesta.md"| FDF["SIESTA .fdf"]
     CFG -->|"pyscf.md"| PY["PySCF .py"]
-    CFG -->|"transport.md"| TB["transport bundle<br/>(3 coupled SIESTA runs)"]
+    CFG -->|"transport.md"| TB["transport composite<br/>(citation -> 5 stages)"]
     FDF --> RUN["run on a scheduler<br/>(execution/)"]
     PY --> RUN
     TB --> RUN

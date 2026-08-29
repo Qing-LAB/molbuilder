@@ -50,7 +50,7 @@ tells you *what job it does*. Keep both straight.
 | Layer | Data management | Construction | Validation (science) | Execution (workflow) |
 |---|---|---|---|---|
 | **L3** surfaces | `web/blueprints/*` · `cli.py` — every surface is *deserialize → verb → serialize* | | | |
-| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `bundle_writer` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass + engine adapters) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) |
+| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass + engine adapters) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) |
 | **L1** core types | `structure` · `frame` · `selection` · `config/` · `trajectory_log` · `persist` · `issues` | *(none — construction is all L2 verbs)* | `chemistry` · `pseudos` · `residues` | `checkpoint` *(git-backed, parameterized glob tables)* |
 
 The four core types — `Structure`, `Frame`, `Config`, `Issue` — are the wire
@@ -220,7 +220,7 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 | W2 | ~~**The one leak inside the "agnostic" core.**~~ **CLOSED (U3, 2026-08-13):** `jobset/runstatus.py`'s hardcoded warm-file table now derives from the engines' `warm-files.toml` rules files through the one loader (`job-contracts.md` § 4.2a) — the row stays so the seam's history is findable | `jobset/runstatus.py` |
 | W3 | **`runtime_config` leaks scheduler schema as untyped dicts** into `jobset/submit.py` and `runwrap.py` (`d["partition"]`, `d["qos"]`, …), and the module also bundles web-auth/TLS config with scheduler config — two concerns in one reader. | `runtime_config.py`; consumers `jobset/submit.py`, `runwrap.py` |
 | W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`plans/transport-design.md`) | *(orchestrate.py deleted)* |
-| W5 | **Two modules misfiled under "workflow."** `bundle_writer.py` and `script_emit.py` are really **data** serializers (they reach into `parse.types`, `sidecars`, `structure`), not execution verbs — this doc files them under § 2 for that reason. | `bundle_writer.py`, `script_emit.py` |
+| W5 | **A module misfiled under "workflow."** `script_emit.py` is really a **data** serializer (it reaches into `parse.types`, `sidecars`, `structure`), not an execution verb — this doc files it under § 2 for that reason.  *(Its former sibling `bundle_writer.py` retired 2026-08-29 with the handoff it materialised.)* | `script_emit.py` |
 
 The scheduler vocabulary in `jobset/model.py::Resources` (`mpi_np`, `time`,
 `mem`, `gres`, `domain`) is SLURM-shaped — a *scheduler* coupling in the neutral

@@ -3,10 +3,12 @@
 **Role:** plan (design of record once approved; graduates to a contract
 when built)
 **Domain:** execution
-**Status:** DECIDED 2026-08-28 — all six § 6 questions answered by the
-user the same day, including one design improvement of the user's own
-(Q5: electrodes are DERIVED, not cited — § 4.1). Ready to plan the
-build. Nothing is built yet.
+**Status:** BUILT — decided 2026-08-28 (all six § 6 questions answered
+by the user the same day, including one design improvement of the user's
+own: Q5, electrodes are DERIVED, not cited — § 4.1); P1–P7 shipped
+2026-08-29 and proven end-to-end on real binaries (§ 7 records each row's
+closure).  The rules graduate into `engines/transport.md` +
+`job-contracts.md`; this file remains the design record.
 
 **Companions:** [`execution/architecture.md`](?doc=execution/architecture.md)
 § 0 — the 2026-08-11 decision this fulfils (*transport is a different

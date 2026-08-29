@@ -490,7 +490,9 @@ tabs (their docs, this wave):
 | ~~POST `/api/results/bundle`~~ | *retired 2026-08-29 — calculation-to-calculation passing is gone; the composite cites (`POST /api/transport/describe`)* |
 | GET `/api/bench/summary` | One benchmark **sweep**, composed: every trial's knobs / coordinate / measurement, where each run is now, and the verdict. Takes the sweep's `job-set.json`; the CALCULATION it belongs to is derived from it, because the file's own directory is not the bundle. Read-only and safe to poll — it never writes the record or the `run-config.toml` proposal, which are `jobset summarize`'s to write ([`bench-summary.md`](?doc=web/bench-summary.md)) |
 | POST `/api/spectra/load` | Parse an uploaded `<job>.spectra.json` into typed results (`/api/spectra/render` retired at the spectra migration's P3 — the deck computes; the tab only loads) |
-| POST `/api/transport/render` | Generate transport script/data |
+| GET `/api/transport/describe_attempt` | Describe a picked attempt for the citation: `?path=` (tree-relative) → the server-spelled citation, the CONCLUDED verdict, the source structure, the attempt's own deck summary |
+| POST `/api/transport/describe` | The composite's ONE door from the tab: junction citation + bias + overrides → the finished `task.json` text (same codec + refusals as `jobset init`); the browser writes it via the content-blind file layer, no navigation |
+| POST `/api/transport/render` | The engine registry's validation surface (single-deck render + preflight); no UI calls it — the composite's decks render at `prep` |
 
 **No module-doc home — documented in full in § 5:** the app-level routes
 (`/api/health`, `/api/backends`, the tab pages), the build env/script routes
