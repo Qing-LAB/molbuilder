@@ -6,7 +6,7 @@ Properties under guard, each named for its failure:
 
 * the codec round-trips slots + bias, and a transport description
   carries NO structure block (its structure IS the citation);
-* the rulings are refusals, not conventions: junction required, @run-N
+* the rulings are refusals, not conventions: junction required, the
   mandatory (Q1), bias starts at 0.0 (the .TSDE chain starts from
   equilibrium), slots/bias on a non-transport task refused;
 * `init --calculation transport` writes the five-stage task.json and
@@ -27,9 +27,9 @@ from click.testing import CliRunner
 from molbuilder.identity import run_id
 from molbuilder.task import Run, Stage, Task
 
-_CITE = "BDT-Au/optimization/JunctionRelax@01_coarse/run-2"
+_CITE = "BDT-Au/optimization/JunctionRelax/01_coarse/run-2"
 #: the root-attempt spelling stays legal (flat shapes)
-_CITE_ROOT = "BDT-Au/optimization/JunctionRelax@run-2"
+_CITE_ROOT = "BDT-Au/optimization/JunctionRelax/run-2"
 _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
 
@@ -74,17 +74,19 @@ class TestCodec:
             _task(slots={})
         assert "junction" in str(e.value)
 
-    def test_a_citation_without_run_N_is_refused(self):
-        """Ruling Q1: the attempt is named explicitly, never picked."""
-        with pytest.raises(ValueError) as e:
-            _task(slots={"junction": "BDT-Au/optimization/JunctionRelax"})
-        assert "run-N" in str(e.value)
+    def test_a_traversing_citation_is_refused(self):
+        """FORM only at the codec (4.1b): a fenced relative path -- no
+        leading '/', no '..', no whitespace.  What qualifies the
+        directory is its FILES, checked where the filesystem is."""
+        for bad in ("/abs/path", "a/../b", "has space", ""):
+            with pytest.raises(ValueError) as e:
+                _task(slots={"junction": bad})
+            assert "tree-relative" in str(e.value)
 
-    def test_both_attempt_spellings_are_legal(self):
-        """The attempt half is the ON-DISK path: `<stage>/run-N` in the
-        hierarchical shape, bare `run-N` where attempts sit at the
-        root -- the stage is explicit because run-N alone is ambiguous
-        across a ladder's stages."""
+    def test_any_directory_spelling_is_legal(self):
+        """A citation is a directory path -- an attempt deep in the
+        tree or a plain folder both pass FORM; the 4.1b file condition
+        decides at resolve time (amended 2026-08-29)."""
         from molbuilder.identity import run_id
         for cite in (_CITE, _CITE_ROOT):
             _task(slots={"junction": cite},
@@ -110,7 +112,7 @@ class TestCodec:
 
     def test_the_identity_derives_from_the_citation(self):
         a = _task()
-        b_cite = "Other/optimization/Relax@run-0"
+        b_cite = "Other/optimization/Relax/run-0"
         b = _task(slots={"junction": b_cite},
                   run=Run(name="T", id=run_id("T", b_cite,
                                               stage_names=_STAGES)))
@@ -122,8 +124,13 @@ class TestCodec:
 def tree(tmp_path, monkeypatch):
     from molbuilder.projects import PROJECTS_ROOT_ENV
     root = tmp_path / "projects"
-    (root / "BDT-Au" / "optimization" / "JunctionRelax" / "run-2"
-     ).mkdir(parents=True)
+    attempt = (root / "BDT-Au" / "optimization" / "JunctionRelax"
+               / "01_coarse" / "run-2")
+    attempt.mkdir(parents=True)
+    # Citable per 4.1b form A: one .fdf + one .XV together (init
+    # classifies at the door; content is prep's business).
+    (attempt / "Relax.fdf").write_text("SystemLabel Relax\n")
+    (attempt / "Relax.XV").write_text("stub\n")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
     return root
 
@@ -156,17 +163,20 @@ class TestInitCLI:
         r = self._invoke([
             "--calculation", "transport", "--shape", "hierarchical",
             "--bundle", "BDT-Au/transport/T",
-            "--slot", "junction=Nope/optimization/Gone@run-0"])
+            "--slot", "junction=Nope/optimization/Gone/run-0"])
         assert r.exit_code != 0
         assert "Nope/optimization/Gone" in r.output
 
-    def test_a_slot_without_the_attempt_is_refused(self, tree):
+    def test_an_unqualified_directory_is_refused_by_the_condition(self, tree):
+        """`init` classifies at the door (strict composition): an
+        empty directory satisfies neither 4.1b form, and the refusal
+        states the WHOLE condition."""
         r = self._invoke([
             "--calculation", "transport", "--shape", "hierarchical",
             "--bundle", "BDT-Au/transport/T",
             "--slot", "junction=BDT-Au/optimization/JunctionRelax"])
         assert r.exit_code != 0
-        assert "@run-N" in r.output
+        assert ".fdf" in r.output and ".molstruct.json" in r.output
 
     def test_options_answered_by_the_citation_are_refused(self, tree):
         (tree / "BDT-Au" / "structure").mkdir(parents=True, exist_ok=True)
