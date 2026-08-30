@@ -25,7 +25,8 @@ from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef
 from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
-                          latest_attempt, shape_of, stage_refs)
+                          latest_attempt, run_dir, shape_of,
+                          stage_refs)
 from .model import JobSet
 
 # Engine-native warm-restart files keyed by the project id (system label).
@@ -221,11 +222,11 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         # (project-layout.md § 1.5).  Globbing `d` regardless was blind to the
         # whole attempt layer: a finished hierarchical stage read as "prepped,
         # not launched" because its .out is one level down.
-        attempt = latest_attempt(d)
-        observed = attempt or d
+        attempt = latest_attempt(d)     # None is the ANSWER here: prepared?
+        observed = run_dir(d)           # ...and this is where to look
         # WHERE the launch record lives mirrors where submit WRITES it
         # (submit.py `_resolve_launch`): the attempt when one exists, and
-        # for a sweep trial the attempt-less dir is ITS OWN attempt, so
+        # and where flat keeps none the container IS the attempt, so
         # its `run.json` sits at the trial's top.  Until 2026-08-20 this
         # read the attempt only, so a grouped-submitted trial answered
         # § 1.6's exact forbidden line ("prepped, not launched") while

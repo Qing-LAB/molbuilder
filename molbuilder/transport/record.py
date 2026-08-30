@@ -124,15 +124,15 @@ def collect_record(base_dir, task) -> Dict:
     :class:`RecordError` only when NOTHING has run — an empty record
     would say less than the refusal.
     """
-    from ..jobset.materialize import latest_attempt
+    from ..jobset.materialize import latest_attempt, run_dir
     from .compose import PROVENANCE_FILE
 
     base = Path(base_dir)
     points_out: List[Dict] = []
     pending: List[Dict] = []
     for v, container in _point_dirs(base, task):
-        att = latest_attempt(container)
-        where = att if att is not None else container
+        att = latest_attempt(container)   # None is the ANSWER: prepared?
+        where = run_dir(container)        # ...and this is where to look
         avtrans = sorted(where.glob(f"{task.label}.TBT.AVTRANS_*"))
         if att is None or not avtrans:
             pending.append({

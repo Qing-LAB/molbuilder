@@ -772,6 +772,12 @@
  * Every colour comes from the app's tokens, so the block follows the
  * viewer's theme like the rows above it -- a literal here would read as
  * one theme's ink on the other's paper. */
+/* `display:flex` beats the UA's `[hidden] { display:none }`, so the block
+ * the JS hides would have stayed in the layout while the code believed it
+ * was gone -- shipped that way on 2026-08-30 and caught by the CSS audit
+ * only after the audit itself was fixed to attribute `host.hidden = ` to
+ * the nearest declaration rather than the last one in the file. */
+.ts-fit[hidden] { display: none; }
 .ts-fit {
     display: flex;
     flex-direction: column;

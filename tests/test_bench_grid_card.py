@@ -17,40 +17,83 @@ import json
 import re
 from pathlib import Path
 
+import numpy as np
 import pytest
+
+from molbuilder import describe as D
+from molbuilder.config.siesta import SiestaConfig
+from molbuilder.scheduler import Domain, Environment, Topology
+from molbuilder.siesta.stages import default_siesta_stages
+from molbuilder.structure import Structure
 
 REPO = Path(__file__).resolve().parents[1]
 VIEWER = REPO / "molbuilder" / "web" / "static" / "task-setup" / "viewer.js"
 
-_DECK_TASK = {
-    "schema": "molbuilder/task@1",
-    "label": "probe",
-    "engine": "siesta",
-    "calculation": "relaxation",
-    "structure": "probe.xyz",
-    "stages": [{"name": "coarse", "values": {}}],
-    "bench": {"mpi_np": [2, 4], "omp_threads": [1]},
-}
+#: A small Sol-SHAPED menu, written by hand so the fits list is a fact about
+#: this fixture rather than about whatever the developer's cluster last
+#: probed.  `public` deliberately stocks a100 and NOT a100.40gb -- the very
+#: asymmetry that made a real submission unrunnable.
+_DOMAINS = [
+    {"name": "short", "partition": "short", "qos": "public",
+     "max_time": "04:00:00", "max_cores": 128,
+     "gpu": {"a100": 4, "a100.40gb": 4},
+     "node_types": [{"cores": 128, "nodes": 20},
+                    {"cores": 48, "nodes": 10, "gpu": {"a100": 4}},
+                    {"cores": 64, "nodes": 4, "gpu": {"a100.40gb": 4}}]},
+    {"name": "public", "partition": "public", "qos": "public",
+     "max_time": "7-00:00:00", "max_cores": 128,
+     "gpu": {"a100": 4},
+     "node_types": [{"cores": 128, "nodes": 100},
+                    {"cores": 48, "nodes": 50, "gpu": {"a100": 4}}]},
+]
 
 
 @pytest.fixture()
-def bundle(tmp_path, monkeypatch):
-    """A description whose bench axes can be resolved, with tmp registered
-    as a picker root so the door may read it."""
+def bundle(tmp_path):
+    """A described SIESTA calculation on a machine WITH QUEUES.
+
+    Built here, never copied from the developer's `projects/` tree.  It was
+    copied, until 2026-08-30, and a browser walk that typed a point into the
+    real folder then saved it made this file fail -- a test proving its claim
+    against found state, which is the one thing a fixture must never do.
+    """
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "bundle"
+    D.write_description(
+        D.build_description(struct,
+                            SiestaConfig(system_label="JOB", use_gpu=True,
+                                         diag_algorithm="ELPA-1STAGE"),
+                            default_siesta_stages("publishable"),
+                            engine="siesta", shape="hierarchical", name="JOB",
+                            source=str(tmp_path / "h2.xyz")),
+        dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    env = Environment(scheduler="slurm",
+                      topology=Topology(sockets=2, cores_per_socket=32,
+                                        gpus_per_node=4,
+                                        gpu_type="a100.40gb"),
+                      domains=[Domain.from_row(r) for r in _DOMAINS])
+    (dest / "environment.json").write_text(env.to_json() + "\n")
+    return dest
+
+
+@pytest.fixture(autouse=True)
+def _picker_root(tmp_path, monkeypatch):
+    """The doors read only inside a picker root."""
     from molbuilder import diagnostics
-    src = REPO / "projects" / "Au-BDT-Au" / "optimization" / "AuBDTAu-slabcorrected"
-    if not src.is_dir():
-        pytest.skip("the worked-example bundle is not in this checkout")
-    import shutil
-    dst = tmp_path / "bundle"
-    shutil.copytree(src, dst, ignore=shutil.ignore_patterns(
-        ".git", ".binsnapshots", "01_coarse"))
     caps = diagnostics.Capabilities(
         runtime_config={}, conda_binary=None, conda_envs=frozenset())
     monkeypatch.setattr(type(caps), "file_picker_roots",
                         lambda self: ((tmp_path.resolve(), "projects"),))
     diagnostics.set_capabilities(caps)
-    return dst
 
 
 @pytest.fixture()
@@ -73,24 +116,34 @@ class TestTheDoorServesTheOneEnumerator:
         # the counts would be silently ignored.
         d = _post(client, bundle, {"mpi_np": [48], "omp_threads": [1],
                                    "use_gpu": [False]})
-        assert d["ok"] is True
+        assert d["ok"] is True, d
         assert d["cells"], "a resolvable grid must answer its cells"
         one = d["cells"][0]
         assert set(one) >= {"label", "shape", "family", "ranks",
                             "cores_each", "gpus", "gpu_type", "fits", "why"}
-        assert one["fits"], "this bundle's queues take a 48-rank CPU cell"
+        assert set(one["fits"]) == {"short", "public"}, (
+            f"both queues hold a 48-rank CPU cell; got {one['fits']}")
 
     def test_the_axes_SENT_win_over_the_axes_on_disk(self, client, bundle):
         """The card's edits live in the browser's model until the person
         saves, so a list read from `task.json` would describe the previous
-        state.  The point of the door is that it does not."""
-        on_disk = json.loads((bundle / "task.json").read_text())["bench"]
-        assert on_disk["mpi_np"] == [48], on_disk
+        state.  The point of the door is that it does not.
 
-        d = _post(client, bundle, {**on_disk, "mpi_np": [48, 128]})
+        Both halves are asserted: what is SAVED must not appear, and what is
+        SENT must.  Checking only the second would pass on a door that
+        merged the two."""
+        saved = {"mpi_np": [16], "omp_threads": [1], "use_gpu": [False]}
+        tj = bundle / "task.json"
+        doc = json.loads(tj.read_text())
+        doc["bench"] = saved
+        tj.write_text(json.dumps(doc, indent=2))
+
+        d = _post(client, bundle, {"mpi_np": [64], "omp_threads": [1],
+                                   "use_gpu": [False]})
         labels = {c["label"] for c in d["cells"]}
-        assert any("K128" in ell for ell in labels), (
-            f"the in-flight 128 must reach the grid; got {sorted(labels)}")
+        assert labels == {"K64C1"}, (
+            f"the in-flight 64 must be the whole grid, and the saved 16 must "
+            f"not appear; got {sorted(labels)}")
 
     def test_a_cell_no_queue_takes_is_returned_struck_not_dropped(
             self, client, bundle):
@@ -98,9 +151,14 @@ class TestTheDoorServesTheOneEnumerator:
         would leave the person guessing why their point vanished."""
         d = _post(client, bundle, {"mpi_np": [48, 128], "omp_threads": [1],
                                    "use_gpu": [True], "gpu_count": [4]})
+        kept = {c["label"] for c in d["cells"] if not c["why"]}
         struck = [c for c in d["cells"] if c["why"]]
-        assert struck, "a 128-rank GPU cell fits no queue on this record"
-        assert any(ch.isdigit() for ch in struck[0]["why"][0])
+        assert "G4K12C1" in kept, f"48 ranks x 4 a100.40gb fits `short`: {d}"
+        assert struck, "a 128-rank a100.40gb cell fits no queue here"
+        # R4 -- the struck row names the number to change, and the card it
+        # could not get: only `short` stocks a100.40gb, on 64-core nodes.
+        assert "64" in struck[0]["why"][0], struck[0]["why"]
+        assert "a100.40gb" in struck[0]["why"][0], struck[0]["why"]
 
     def test_nothing_surviving_is_a_result_not_an_error(self, client, bundle):
         """*Nothing here fits* is the answer, and the crossed-out rows are

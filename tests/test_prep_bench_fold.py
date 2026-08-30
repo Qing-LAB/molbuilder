@@ -512,7 +512,7 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import (job_dir_names, shape_of,
                                                was_launched)
-    from molbuilder.jobset.submit import submit_bench_group
+    from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
 
     # A DECLARED one-shelf sweep (one machine point x a block_size value
     # axis): the walk story needs several trials in ONE group, and since
@@ -526,9 +526,16 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
 
     # Stub each trial's wrapper: first succeeds and leaves a marker,
     # second fails, third (if any) sleeps past the bound.
+    # WHERE `prep` ACTUALLY PUT THE WRAPPER -- the attempt, when the shape
+    # keeps one (`project-layout.md` § 1.6).  This wrote the stub into the
+    # trial CONTAINER until 2026-08-30, which is the very place the
+    # sequencer's bug looked, so the walk was proved against a layout prep
+    # does not produce and Sol job 62372574 died at rc=127 with this test
+    # green.  A fixture that builds its own layout cannot test a layout
+    # question.
     behaviours = ["ok", "fail", "sleep"]
     for n, job in enumerate(js.jobs):
-        d = base / dirs[job.name]
+        d = _trial_run_dir(base / dirs[job.name])
         wrapper = d / (Path(job.script).stem + ".run.sh")
         kind = behaviours[min(n, 2)]
         body = {"ok":    "#!/usr/bin/env bash\ntouch ran.marker\nexit 0\n",
@@ -583,8 +590,9 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
     proc = _sp.run(["bash", f"launch/{script.name}"], cwd=str(container),
                    capture_output=True, text=True, timeout=120)
     log = (container / "launch" / "bench-group.log").read_text()
+    # The marker lands in the trial's CWD, which is where it runs.
     ran = [job.name for job in js.jobs
-           if (base / dirs[job.name] / "ran.marker").exists()]
+           if (_trial_run_dir(base / dirs[job.name]) / "ran.marker").exists()]
     assert ran == [j.name for j in js.jobs], (
         f"a failure stopped the walk: only {ran} ran\n{log}"
     )
@@ -600,11 +608,9 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
         assert f"<- {job.name} finished rc=" in log, log
     assert "took=" in log and "s" in log
     for job in js.jobs:
-        assert was_launched(base / dirs[job.name]), (
-            f"{job.name} has no launch record"
-        )
-        rec = _json.loads(
-            (base / dirs[job.name] / "run.json").read_text())
+        where = _trial_run_dir(base / dirs[job.name])
+        assert was_launched(where), f"{job.name} has no launch record"
+        rec = _json.loads((where / "run.json").read_text())
         assert rec.get("job_id") == "4242"
 
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
@@ -2455,3 +2461,125 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
     for name in pend:
         assert not was_launched(base / dirs[name]), (
             f"{name} rode a refused group; it must stay pending")
+
+
+def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
+    """Sol job 62372574: every trial died in 0s with
+
+        bash: siesta-...run.sh: No such file or directory   (rc=127)
+
+    The wrapper lives in the ATTEMPT (`project-layout.md` § 1.6 -- *"where
+    a run happens: inside the attempt directory"*, and § 1.5a gave sweep
+    trials attempts on 2026-08-27), and the sequencer went on naming the
+    trial CONTAINER.  A ``trial_dirs`` list had even been computed for
+    this, carrying the comment *"the sequencer cd's into these, so they
+    are the attempt too"* -- and nothing read it.
+
+    THE PIN IS AGAINST THE DISK, not against a fixture.  The test that
+    covered this sequencer wrote its own stub wrapper into the trial
+    directory -- the very place the bug looked -- so it proved the walk
+    against a layout `prep` does not produce.  This one asks `prep` for
+    the layout and checks that every path the script names is really
+    there, which is true under both shapes without knowing which is in
+    play.
+    """
+    import re
+    import types
+    from pathlib import Path
+
+    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset.submit import submit_bench_group
+
+    _describe_cpu(calc)
+    _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1],
+                          "block_size": [16, 32]})
+    _prep_bench(calc)
+    js, base = _load_bench_set(calc, "coarse")
+
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cwd"] = kw.get("cwd")
+        class R:
+            returncode = 0
+            stdout = "Submitted batch job 5150"
+            stderr = ""
+        return R()
+
+    import molbuilder.jobset.submit as submod
+    monkeypatch.setattr(submod, "subprocess",
+                        types.SimpleNamespace(run=fake_run))
+    import molbuilder.runwrap as _rw
+    monkeypatch.setattr(_rw, "_render_sbatch_for",
+                        lambda path, **k: "#!/bin/bash\n"
+                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
+                        f"bash {Path(path).stem}.run.sh \"$@\"\n")
+
+    submit_bench_group(js, base, dry_run=False)
+
+    container = Path(seen["cwd"])
+    scripts = list((container / "launch").glob("*.run.sh"))
+    assert scripts, "no sequencer was written"
+
+    checked = 0
+    for script in scripts:
+        for dir_, wrapper in re.findall(
+                r'^run_trial "[^"]+" "([^"]+)" "([^"]+)"',
+                script.read_text(), re.M):
+            target = container / dir_ / wrapper
+            assert target.is_file(), (
+                f"{script.name} cd's into {dir_!r} and runs {wrapper!r}, "
+                f"but that file is not there.  On disk the wrapper is at "
+                f"{sorted(str(p.relative_to(container)) for p in container.glob(dir_.split('/')[0] + '/**/' + wrapper))}"
+            )
+            checked += 1
+    assert checked, "no run_trial lines to check -- re-anchor this pin"
+
+
+def test_a_grouped_launch_records_where_was_launched_LOOKS(calc, monkeypatch):
+    """`run.json` is written where the job RAN and read from the same
+    place, or a re-launch re-submits work that has already measured.
+
+    The grouped path wrote it into the container while `was_launched`
+    read the attempt (`_trial_run_dir`) -- so every trial read *never
+    launched* forever.  The single-job paths had always resolved this;
+    only this one did not, which is what one shared resolver now prevents.
+    """
+    import types
+    from pathlib import Path
+
+    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
+                                               was_launched)
+    from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
+
+    _describe_cpu(calc)
+    _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1]})
+    _prep_bench(calc)
+    js, base = _load_bench_set(calc, "coarse")
+    dirs = job_dir_names(js, shape_of(js, base))
+
+    def fake_run(cmd, **kw):
+        class R:
+            returncode = 0
+            stdout = "Submitted batch job 6161"
+            stderr = ""
+        return R()
+
+    import molbuilder.jobset.submit as submod
+    monkeypatch.setattr(submod, "subprocess",
+                        types.SimpleNamespace(run=fake_run))
+    import molbuilder.runwrap as _rw
+    monkeypatch.setattr(_rw, "_render_sbatch_for",
+                        lambda path, **k: "#!/bin/bash\n"
+                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
+                        f"bash {Path(path).stem}.run.sh \"$@\"\n")
+
+    submit_bench_group(js, base, dry_run=False)
+
+    for job in js.jobs:
+        where = _trial_run_dir(base / dirs[job.name])
+        assert (where / "run.json").is_file(), (
+            f"{job.name}: no run.json at {where} -- the record and the "
+            f"check must name one directory")
+        assert was_launched(where), f"{job.name} reads as never launched"

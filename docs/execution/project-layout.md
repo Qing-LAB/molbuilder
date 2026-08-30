@@ -443,6 +443,22 @@ aside by hand. That is the `--force`-era answer this section retired.
 | **hierarchical** | a **directory**: `bench-<point>/run-1/` beside `run-0/`, nothing shared |
 | **flat** | the **filename index** the wrapper already writes: `-run1.out` beside `-run0.out`, warm files shared |
 
+**The SHAPE decides, not the kind — and every reader must ask one function.**
+`materialize.run_dir(container)` answers *where does this stage or trial
+actually run*: the newest attempt where the shape keeps them, the container
+where it does not. `latest_attempt` stays for the different question — *has an
+attempt been opened at all* — where `None` is the answer rather than a path.
+
+> **Why that is a rule and not a convenience.** Five call sites each spelled the
+> fallback themselves (`latest_attempt(d) or d`, `attempt or d`, `att if att is
+> not None else container`) across four files. When this section gave trials
+> attempts, the spellings were migrated and two places in `submit` that had
+> quietly composed a **container** path instead were not — so the grouped bench
+> `cd`ed one level above its wrapper (every trial `rc=127`; ASU Sol job
+> 62372574) and wrote `run.json` where nothing read it (so every re-launch
+> re-submitted work that had already measured its point). Both were silent:
+> one produced an empty benchmark, the other duplicate jobs.
+
 Neither is new machinery. Both already exist for stages; the sweep simply stops
 opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
 "a new test with new result is trivial".)*

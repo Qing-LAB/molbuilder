@@ -149,18 +149,30 @@ def _scan_js_for_hidden_ids() -> set[str]:
         # Variable-tracked: const row = $("foo"); row.hidden = ...
         # Build a small lookup of var-name → id within a 5-line
         # window so cross-scope collisions are unlikely.
-        var_to_id: dict[str, str] = {}
-        for m in _VAR_GET_RE.finditer(src):
-            var_to_id[m.group(1)] = m.group(2)
-        # ...and the property-table form the tab controllers actually use.
-        for m in _PROP_GET_RE.finditer(src):
-            var_to_id.setdefault(m.group(1), m.group(2))
-        for m in _BARE_ASSIGN_GET_RE.finditer(src):
-            var_to_id.setdefault(m.group(1), m.group(2))
+        # THE NEAREST PRECEDING DECLARATION WINS, not the last one in the
+        # file (2026-08-30).  A file-global table maps one variable NAME to
+        # one id, and `host` names seven different elements in
+        # task-setup/viewer.js alone -- so every `host.hidden = ` in it was
+        # attributed to whichever `const host = $(...)` happened to sit
+        # last.  That both MISSED a real offender (`#ts-machine-fit`, whose
+        # `.ts-fit{display:flex}` shipped unguarded) and blamed an innocent
+        # one (`#ts-target-choice`).  A name-keyed table cannot model scope;
+        # position can, and JS declarations precede their uses.
+        decls: list[tuple[int, str, str]] = []
+        for rx in (_VAR_GET_RE, _PROP_GET_RE, _BARE_ASSIGN_GET_RE):
+            for m in rx.finditer(src):
+                decls.append((m.start(), m.group(1), m.group(2)))
+        decls.sort()
         for m in _VAR_HIDDEN_ASSIGNMENT_RE.finditer(src):
-            name = m.group(1)
-            if name in var_to_id:
-                ids.add(var_to_id[name])
+            name, at = m.group(1), m.start()
+            nearest = None
+            for pos, dname, el_id in decls:
+                if pos >= at:
+                    break
+                if dname == name:
+                    nearest = el_id
+            if nearest is not None:
+                ids.add(nearest)
     return ids
 
 

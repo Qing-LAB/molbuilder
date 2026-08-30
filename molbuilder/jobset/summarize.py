@@ -311,7 +311,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     Its regex-keyed predecessor ``discover_points`` died with the OLD
     bundle format (u5).
     """
-    from .materialize import job_dir_names, latest_attempt, shape_of
+    from .materialize import job_dir_names, run_dir, shape_of
     bundle = Path(bundle)
     dirs = job_dir_names(jobset, shape_of(jobset, bundle))
     pts: List[BenchPoint] = []
@@ -337,7 +337,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
         # sit one level down.
         _d = bundle / dirs[j.name]
         pts.append(parse_point(
-            j.name, latest_attempt(_d) or _d, Path(j.script).stem,
+            j.name, run_dir(_d), Path(j.script).stem,
             "gpu" if j.resources.gres else "cpu", knobs,
             point=dict(j.point)))
     return pts
@@ -354,10 +354,10 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     job = next((j for j in jobset.jobs if j.name == label), None)
     if job is None:
         return {}
-    from .materialize import job_dir_names, latest_attempt, shape_of
+    from .materialize import job_dir_names, run_dir, shape_of
     import os as _os
     _c = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
-    d = latest_attempt(_c) or _c        # the same rule as above
+    d = run_dir(_c)                     # the one rule, in the layout layer
     deck = d / _os.path.basename(job.script)
     text = _read(deck)
     if not text:

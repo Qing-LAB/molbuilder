@@ -2334,3 +2334,44 @@ def test_describe_attempt_names_a_recorded_contract(web_client):
         import shutil as _shutil
         _shutil.rmtree(ROOT / "projects/_t_transport",
                        ignore_errors=True)
+
+
+def test_every_command_the_page_teaches_is_a_REAL_cli_verb():
+    """The page composes `molbuilder jobset …` command lines for the user
+    to paste on the cluster.  That is the CLI's grammar living in a second
+    place, and the only thing that keeps the two together is this check.
+
+    The pin beside it asserts the STRINGS are still present -- which proves
+    the page still says them, not that they still work.  Verbs in this
+    project do get renamed (`molbuilder bench` folded into `jobset`
+    2026-08-17; the bare `serve` form retired 2026-08-28), and under a
+    presence-only pin the page would go on teaching a dead command with
+    every test green.
+
+    So this resolves each one against the live click tree.
+    """
+    import re
+
+    import click
+
+    from molbuilder.jobset._cli import jobset_group
+
+    src = VIEWER.read_text()
+    taught = set(re.findall(r'"molbuilder jobset (\w+) (\w+)', src))
+    assert taught, "no jobset commands found in the page -- re-anchor this"
+
+    for verb, kind in sorted(taught):
+        cmd = jobset_group.commands.get(verb)
+        assert cmd is not None, (
+            f"the page teaches `molbuilder jobset {verb} …`, and `jobset` "
+            f"has no such command.  It offers: "
+            f"{', '.join(sorted(jobset_group.commands))}")
+        # …and the kind it passes must be one the verb accepts.
+        choices = next(
+            (p.type.choices for p in cmd.params
+             if isinstance(p, click.Argument)
+             and getattr(p.type, "choices", None)), None)
+        if choices is not None:
+            assert kind in choices, (
+                f"the page teaches `jobset {verb} {kind}`, but {verb} takes "
+                f"{choices}")

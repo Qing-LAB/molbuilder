@@ -110,6 +110,11 @@ def trial_work_dir(container, shape) -> Path:
     `resolve_attempt` is the rule, not restated: reuse the last attempt
     until it has been launched, then open the next.  Preparing twice before
     launching refreshes ``run-0`` rather than leaking ``run-1``.
+
+    **The read-side twin is :func:`run_dir`** — *where does this trial
+    actually run*, which needs no shape because by then the directory is
+    there to be found.  Both resolve to the newest attempt, and that is the
+    invariant: if they ever disagree, prep writes where nothing reads.
     """
     d = Path(container)
     if shape is None or not shape.keeps_attempts_as_directories:
@@ -465,6 +470,41 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     """
     ns = attempts(stage_dir)
     return (Path(stage_dir) / f"run-{ns[-1]}") if ns else None
+
+
+def run_dir(container: Path) -> Path:
+    """**The directory a stage or trial actually uses** — its newest attempt
+    when the shape keeps them, the container itself when it does not.
+
+    THE OTHER HALF OF :func:`latest_attempt`, which answers *is there an
+    attempt* and is right to return ``None`` for flat.  Almost every caller
+    wants *where do I look*, and each was writing the fallback itself:
+    ``latest_attempt(d) or d`` in two places, ``attempt or d`` in a third,
+    ``att if att is not None else container`` in a fourth.  Five spellings
+    of one rule, in four files.
+
+    That is the shape the 2026-08-30 failure came in.  When § 1.5a gave
+    sweep trials attempts (2026-08-27), the observers that spelled the rule
+    were migrated and the two places in `submit` that had quietly composed a
+    CONTAINER path instead were not: the grouped bench then ``cd``ed a level
+    above its wrapper (every trial rc=127, Sol job 62372574) and wrote
+    ``run.json`` where nothing read it (every re-launch re-submitted).
+
+    `latest_attempt` already says the principle -- *"this is a layout
+    question, so it is answered in the layout layer rather than by each
+    observer working out where to look"*.  It was answering half of it.
+
+    Keep using `latest_attempt` where ``None`` is the ANSWER (has this been
+    prepared at all?); use this where a path is wanted.
+
+    **The write-side twin is :func:`trial_work_dir`** — *where does prep PUT
+    this trial's files*, which takes the shape because it runs before the
+    directory exists and may have to open one.  The two agree by
+    construction and must keep agreeing: prep uses (or opens) the newest
+    attempt, and this finds the newest.  If either ever picks a different
+    one, prep writes where nothing reads.
+    """
+    return latest_attempt(container) or Path(container)
 
 
 def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
@@ -824,6 +864,7 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
 
 __all__ = ["Attempt", "trial_dir", "trial_work_dir",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
-           "attempts", "was_launched", "latest_attempt", "resolve_attempt",
+           "attempts", "was_launched", "latest_attempt", "run_dir",
+           "resolve_attempt",
            "prepare_attempt",
            "write_run_launch", "RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE"]

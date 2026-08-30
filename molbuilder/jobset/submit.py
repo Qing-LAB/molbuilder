@@ -207,7 +207,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # would the other two start?  Skipped BY NAME, the way a direct
         # run already reports them.
         if ask and jobset.kind == "sweep" and was_launched(
-                _trial_record_dir(base_dir / _dirs[job.name])):
+                _trial_run_dir(base_dir / _dirs[job.name])):
             results.append(JobResult(job.name, [], "already run"))
             continue
         job_dir, attempt, sbatch_name = _resolve_launch(
@@ -348,10 +348,17 @@ def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
     Both were called with identical arguments in both paths, so a fix to either
     had two sites and one of them would eventually be missed.
 
-    Returns ``(job_dir, attempt, wrapper_name)``. ``attempt`` is ``None`` for a
-    job with no attempt layer — a sweep point, or a ladder stage prepped
-    without ``prep run`` — and that is the caller's signal not to write a
-    ``run.json``.
+    Returns ``(job_dir, attempt, wrapper_name)``. ``attempt`` is ``None``
+    when there is no attempt DIRECTORY to name — a **flat** calculation of
+    either kind (§ 1.5a: flat tells re-runs apart by the wrapper's output
+    index, never by a directory), or a hierarchical ladder stage not yet
+    prepped with ``prep run``.  It is the caller's signal that the
+    container is where the job runs.
+
+    *This said "a sweep point" among the attempt-less cases until
+    2026-08-30.  § 1.5a gave trials attempts on 2026-08-27, so a
+    hierarchical trial has one like any stage; what is attempt-less is the
+    SHAPE, not the kind.*
 
     **The two loops are NOT merged**, and that is a judgement rather than an
     omission. § 9.6 lists *"one loop in `submit.py`"* as this object's gain;
@@ -376,30 +383,49 @@ def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
     return job_dir, attempt, _wrapper_name(job.script, suffix)
 
 
-def _trial_record_dir(container):
-    """Where a trial's ``run.json`` is — the attempt, or the trial itself.
+def _trial_run_dir(container):
+    """**Where a trial's files are** — the attempt, or the trial itself.
 
-    `submit` writes the launch record where the job RAN, and since
-    2026-08-27 a trial runs in its attempt when the shape keeps one
-    (`project-layout.md` § 1.5a).  Asking the container instead reads
-    *never launched* for a trial that has run, which is how a direct sweep
-    came to re-run everything it had already measured.
+    ONE ANSWER TO ONE QUESTION.  Since 2026-08-27 a trial runs in its
+    attempt when the shape keeps one (`project-layout.md` § 1.5a: *"a sweep
+    trial keeps attempts exactly as a stage does, and the SHAPE decides
+    how"*), and § 1.6 puts everything it needs there -- the deck, the
+    wrapper, the monitor.  **Flat keeps no attempt directories**, so the
+    same call answers the container, and neither caller needs to know which
+    shape it is looking at.
 
-    The same *latest attempt where there is one* rule `runstatus` and
-    `summarize` use, in the one place `submit` needs it.
+    Everything `submit` asks of a trial's directory goes through here: is it
+    launched, does its deck want a GPU, where does the sequencer ``cd``, and
+    where is ``run.json`` written.  Named ``_trial_record_dir`` until
+    2026-08-30, when the name had narrowed the function to one of those four
+    and the other three were each computing a container path of their own --
+    which is how the grouped bench came to WRITE its launch record in the
+    container while READING it from the attempt (so every re-launch
+    re-submitted everything), and to ``cd`` a level above the wrapper (so
+    every trial died with rc=127).
+
+    The rule itself lives in the layout layer (`materialize.run_dir`);
+    this is `submit`'s name for it, kept because the four questions above
+    read better against a trial-shaped word than a generic one.
     """
-    from .materialize import latest_attempt
-    return latest_attempt(container) or container
+    from .materialize import run_dir
+    return run_dir(container)
 
 
 def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Path]]:
     """Where this job runs, and the attempt to record the launch into.
 
-    Two layouts meet here.  A SWEEP has no attempt layer -- ``prep`` lays out
-    ``bench-<name>/`` and the point runs there, as it always has.  A LADDER
-    stage prepped with ``jobset prep run <stage>`` has ``<seq>_<name>/run-<n>/``,
-    and that is where it runs, because an attempt is immutable once it has run
-    (``project-layout.md`` § 1.5) and a re-run must not land on top of one.
+    THE SHAPE DECIDES, NOT THE KIND.  A hierarchical run -- ladder stage or
+    sweep trial alike -- runs in ``run-<n>/``, because an attempt is
+    immutable once it has run (``project-layout.md`` § 1.5) and a re-run
+    must not land on top of one.  A flat one keeps no attempt directories
+    at all (§ 1.5a's table) and runs in its own container.
+
+    *This said "a SWEEP has no attempt layer -- the point runs there, as it
+    always has" until 2026-08-30.  That was true until § 1.5a gave trials
+    attempts on 2026-08-27; the code below was migrated that day and the
+    docstring was not, so it went on teaching the retired design to
+    whoever read it next.*
 
     Refuses an attempt that has already been launched.  ``run.json`` is the only
     honest answer to *has this started?* -- a queued job has produced nothing
@@ -415,8 +441,8 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
         # with no attempt open used to fall through to (d, None) -- it
         # launched in its own container, wrote no run.json, and was
         # silently relaunchable, everything § 1.5/1.6 exist to prevent.
-        # Only that case refuses: a sweep trial IS its own attempt (below),
-        # and flat keeps no attempt directories at all.
+        # Only that case refuses: flat keeps no attempt directories at
+        # all (§ 1.5a), so its container IS where the run happens.
         if (jobset.kind == "ladder" and sh is not None
                 and sh.keeps_attempts_as_directories):
             raise SubmitError(
@@ -424,7 +450,7 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
                 f"a hierarchical stage runs in run-<n>, never in its own "
                 f"container (project-layout.md § 1.5, 1.6).  Open one:\n"
                 f"    molbuilder jobset prep run {job.name}")
-        # An attempt-less dir (a sweep trial) is ITS OWN attempt, and
+        # An attempt-less dir -- flat -- IS its own attempt, and
         # § 1.5's immutability applies to it the same way (R2, 2026-08-12:
         # until then a named trial -- or any direct re-invocation -- was
         # silently relaunchable in place, run.json overwritten; the rule
@@ -526,7 +552,7 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         # The skip is said out loud in the results.  Ladder stages keep
         # the refusal below: their re-run is a NEW attempt the user opens.
         if jobset.kind == "sweep" and was_launched(
-                _trial_record_dir(base_dir / dirs[job.name])):
+                _trial_run_dir(base_dir / dirs[job.name])):
             results.append(JobResult(job.name, [],
                                      "skipped -- already launched"))
             continue
@@ -676,7 +702,10 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         raise SubmitError(f"--only takes cpu or gpu, not {only!r}")
     sides = {"cpu": [], "gpu": []}
     for j in jobset.jobs:
-        sides["gpu" if _job_wants_gpu(base / dirs[j.name], j)
+        # The deck lives where the trial RUNS (§ 1.6).  Reading the
+        # container found no deck, so a trial whose deck asks for a GPU
+        # without stating `gres` answered "cpu" by absence.
+        sides["gpu" if _job_wants_gpu(_trial_run_dir(base / dirs[j.name]), j)
               else "cpu"].append(j)
     if only and not sides[only]:
         raise SubmitError(f"this sweep has no {only} trials to submit")
@@ -705,7 +734,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         for key in sorted(shelves, key=_shelf_width, reverse=True):
             pending = [j for j in shelves[key]
                        if not was_launched(
-                           _trial_record_dir(base / dirs[j.name]))]
+                           _trial_run_dir(base / dirs[j.name]))]
             if not pending:
                 continue            # this shelf already rode a group
             name = ("bench-group"
@@ -1033,10 +1062,8 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     # still refused it.  Precisely the "guard-only-a-surface-applies"
     # failure this module names elsewhere; caught by
     # `test_submission_gates_the_cold_start_against_the_deck`.
-    from .materialize import latest_attempt
     def _artifacts(j):
-        d = base / dirs[j.name]
-        return latest_attempt(d) or d
+        return _trial_run_dir(base / dirs[j.name])
 
     for j in pending:
         try:
@@ -1045,8 +1072,6 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
 
-    # The sequencer `cd`s into these, so they are the attempt too.
-    trial_dirs = [_artifacts(j) for j in pending]
     # THE CONTAINER IS THE TRIAL'S PARENT, NOT THE ATTEMPT'S.  With an
     # attempt layer `_artifacts(j).parent` is `bench-<point>` -- one per
     # trial -- so the "they must share one container" check found N and
@@ -1113,7 +1138,20 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     ]
     for j in pending:
         run_name = _wrapper_name(j.script, ".run.sh")
-        rel = (base / dirs[j.name]).name
+        # THE ATTEMPT, NOT THE TRIAL.  The wrapper lives in `run-<n>` since
+        # the attempt layer landed (`project-layout.md` § 1.5a, 2026-08-27),
+        # and this line went on naming the trial DIRECTORY -- so every
+        # grouped bench `cd`ed one level too high and every trial died
+        # instantly with *"No such file or directory"* (rc=127).  Sol job
+        # 62372574, and every grouped bench since 2026-08-27.
+        #
+        # `_artifacts` is the one answer to "where are this trial's files",
+        # and the gates above already ask it.  A ``trial_dirs`` list was
+        # computed here for exactly this purpose, carrying the comment
+        # *"the sequencer `cd`s into these, so they are the attempt too"* --
+        # and nothing read it.  The intent was recorded, the value was
+        # built, and the line that needed it went on computing its own.
+        rel = _artifacts(j).relative_to(container)
         args = " ".join(_run_sh_args(j.resources))
         lines.append(
             f'run_trial "{j.name}" "{rel}" "{run_name}"'
@@ -1291,7 +1329,13 @@ def _launch_prepared(base: Path, dirs, prep: "_Prepared") -> List[JobResult]:
     jid = _parse_sbatch_id(cp.stdout)
     results = [JobResult(name, cmd, "submitted", job_id=jid)]
     for j in pending:
-        _record_launch(base / dirs[j.name], mode="submit",
+        # WHERE IT RAN, not the container.  `was_launched` reads the
+        # attempt (`_trial_run_dir`), so recording in the container left
+        # every grouped trial reading *never launched* -- and a re-launch
+        # re-submitted work that had already measured its point.  The
+        # single-job paths have always resolved this; only the grouped one
+        # did not.
+        _record_launch(_trial_run_dir(base / dirs[j.name]), mode="submit",
                        command=cmd, job_id=jid, placement=placement)
         results.append(JobResult(j.name, [], "rides the group",
                                  job_id=jid))
@@ -1437,7 +1481,10 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         "}",
     ]
     for v, att in attempts:
-        rel = f"{bias_token(v)}/{att.name}"
+        # THE SAME IDIOM THE BENCH SEQUENCER USES.  Composing the path from
+        # its parts was correct here and wrong there, and two spellings of
+        # "where does this cd" is how the two came to disagree at all.
+        rel = att.relative_to(stage_dir)
         lines.append(f'run_point "{bias_token(v)}" "{rel}" "{run_name}"'
                      + (f" {args}" if args else ""))
     lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
