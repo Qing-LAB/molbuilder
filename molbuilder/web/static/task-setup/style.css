@@ -766,3 +766,52 @@
     font-size: var(--text-base);
     color: var(--text-secondary);
 }
+
+/* ---- what this machine would actually run -------------------------- *
+ * The resolved grid, beside the rows that ask for it (user, 2026-08-30).
+ * Every colour comes from the app's tokens, so the block follows the
+ * viewer's theme like the rows above it -- a literal here would read as
+ * one theme's ink on the other's paper. */
+.ts-fit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
+}
+.ts-fit-head {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ts-fit-row {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: var(--space-md);
+    align-items: baseline;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    background: var(--surface-deep);
+    font-size: var(--text-sm);
+}
+@media (max-width: 40rem) {
+    .ts-fit-row { grid-template-columns: minmax(0, 1fr); }
+}
+.ts-fit-label { font-family: var(--font-mono); color: var(--text-primary); }
+.ts-fit-shape { color: var(--text-muted); }
+/* WHERE it could go -- not where it WILL: the wall decides that, and it is
+ * stated at launch (scheduler.md R7). */
+.ts-fit-where { color: var(--text-muted); font-size: var(--text-xs); }
+/* A struck cell stays READABLE.  It is the row the person most needs to
+ * read -- it carries the number to change -- so it is marked, not faded
+ * into unreadability. */
+.ts-fit-row--out {
+    background: transparent;
+    border-left: 2px solid var(--error);
+    padding-left: calc(var(--space-sm) - 2px);
+}
+.ts-fit-row--out .ts-fit-label,
+.ts-fit-row--out .ts-fit-shape { text-decoration: line-through; }
+.ts-fit-why { color: var(--error); font-size: var(--text-xs); }

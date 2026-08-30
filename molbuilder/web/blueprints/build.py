@@ -1814,6 +1814,78 @@ def api_task_setup_resolved():
     })
 
 
+@bp.route("/api/task-setup/bench-grid", methods=["POST"])
+def api_task_setup_bench_grid():
+    """The bench grid this description would produce, cell by cell, with
+    the queues on the target that would take each one.
+
+    **The same list the terminal prints, as data** -- served rather than
+    recomputed, because a browser enumerating the grid a second way would
+    be exactly the drifting second decider `generator.md` § 4.3a's rebuild
+    removed.  `_bench_inputs` is the one enumerator; this hands it the
+    axes and collects its report.
+
+    POST ``{dest, target?, bench}``.  ``bench`` is the axis map AS IT IS
+    BEING EDITED -- the card's model, not what is saved -- so the list
+    tracks the person's typing instead of the last write.
+
+    Answers 200 with ``cells`` even when none survive: *nothing here fits*
+    is a result to show, not a failure.  400 is for a description this
+    cannot resolve at all (a bad axis name, an engine with no bench lane),
+    and carries the reader's own words.
+    """
+    body = request.get_json(silent=True) or {}
+    dest_raw = str(body.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False, "error": "no folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"not a directory: {dest_raw}"}), 400
+    bench = body.get("bench")
+    if bench is not None and not isinstance(bench, dict):
+        return jsonify({"ok": False,
+                        "error": "bench: must be an object of "
+                                 "axis -> points"}), 400
+    # The same translation the prep door does (and for its reason): the
+    # picker offers "(this machine)" as a LABEL, and `_bench_inputs` reads
+    # ``None`` as "this machine".  Spelled once here so the two doors
+    # cannot disagree about what the label means.
+    from molbuilder.scheduler.record import LOCAL_TARGET
+    target = body.get("target") or None
+    if target in ("(this machine)", LOCAL_TARGET):
+        target = None
+
+    import contextlib
+    import io
+
+    from molbuilder.jobset._cli import _bench_inputs
+    rows: list = []
+    try:
+        # `_bench_inputs` PRINTS its report for the terminal.  This door
+        # wants the same report as data, and the card refreshes it on
+        # every keystroke -- so the printing is swallowed rather than
+        # left to fill the server log.  One function, two renderings.
+        with contextlib.redirect_stdout(io.StringIO()):
+            _bench_inputs(dest, target, bench_override=bench, report=rows)
+    except Exception as exc:                      # noqa: BLE001
+        # A grid where nothing survives raises, and its report is still the
+        # answer worth showing -- the crossed-out rows say why.  The COUNT
+        # is computed, never assumed: `_bench_inputs` fills the report
+        # before its last few refusals, so a raise can follow cells that
+        # did survive, and writing 0 here would report them as struck.
+        if rows:
+            return jsonify({"ok": True, "cells": rows,
+                            "kept": sum(1 for r in rows if not r["why"]),
+                            "note": str(exc)})
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "cells": rows,
+                    "kept": sum(1 for r in rows if not r["why"])})
+
+
 @bp.route("/api/task-setup/machines", methods=["GET"])
 def api_task_setup_machines():
     """Which machines a calculation could be prepared FOR.

@@ -196,6 +196,13 @@
           measurement</strong> &mdash; the same row does both, because a run is a
           sweep of length one.</p>
         <div class="ts-rows" id="ts-machine-rows"></div>
+        {# WHAT THE MACHINE WOULD ACTUALLY RUN, beside the rows that ask for
+           it (user, 2026-08-30: "can't this list be just updated in the same
+           card where the parameters are set... this does not need to be a
+           message with a window").  Filled live from
+           /api/task-setup/bench-grid -- the terminal's own report, as data,
+           so the browser never enumerates the grid a second way. #}
+        <div class="ts-fit" id="ts-machine-fit" hidden></div>
         <div class="ts-actions" id="ts-machine-actions" hidden>
           <select id="ts-add-setting" class="ts-pick"
                   aria-label="add a setting to measure"></select>

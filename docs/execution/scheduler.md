@@ -70,6 +70,18 @@ noticed a problem.
 and the directives that placement produces. The vocabulary below (*machine*,
 *domain*, *request*, *placement*) is defined here.
 
+**Owns only what the SCHEDULER would refuse.** Admission exists to catch, from
+the record, the asks `sbatch` will bounce — a wall past the queue's limit, more
+cores than any machine there has, a gres type the partition does not stock, more
+devices than a node offers, a policy cap. It does **not** model whether the
+*calculation* will fit once it lands: a job whose system is too large for the
+card it asked for is a runtime failure the person deals with, and pulling it in
+here would make submission answer a question it cannot answer and cannot own.
+*(User, 2026-08-30: "what i care most is if the sbatch schedule goes through —
+those are road blockers.")* `Device.mem_gb` accordingly stays an **explicitly
+declared** column, never inferred from a gres name or a node feature, and
+nothing admits against it.
+
 **Does not own:** the meaning of an individual `#SBATCH` line
 (`running-a-job.md` § 5.3), the on-disk shape of `environment.json`
 (`configuration.md` § 5), which machine a bundle is prepared for

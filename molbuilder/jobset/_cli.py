@@ -1084,7 +1084,7 @@ def _apply_run_config(base, allocation, stage=None, engine=None):
     return allocation, pins
 
 
-def _declared_execution_pins(base, engine):
+def _declared_execution_pins(base, engine, bench_override=None):
     """`task.json` ``bench``, read as the OVERRIDE LANE it is (user rule,
     2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
     the template -- several points = an axis to try, ONE point = the value
@@ -1125,6 +1125,19 @@ def _declared_execution_pins(base, engine):
     from .. import template as _T
 
     task = read_task(Path(base) / TASK_FILENAME)
+    if bench_override is not None:
+        # THE AXES AS THEY ARE BEING EDITED, not as they were last saved.
+        # The task-setup card resolves its grid live, and its edits live in
+        # the browser's model until the person saves -- so a live answer
+        # read from disk would describe the previous state.  Through
+        # `_bench_from_obj`, the ONE normaliser, so the override arrives
+        # in the same shape (and earns the same refusals) as a declaration
+        # that came off disk.
+        import dataclasses as _dc
+
+        from ..task import _bench_from_obj
+        task = _dc.replace(task,
+                           bench=_bench_from_obj({"bench": bench_override}))
     declared = {k: list(v) for k, v in (task.bench or {}).items()}
     if not declared:
         return {}, {}, {}
@@ -1314,7 +1327,7 @@ def _cells_this_machine_holds(base, plan, gtype, *,
     out = []
     for fam, (g, k, c) in plan:
         want_gpu = bool(fam and g)
-        req = Request(ranks=(g * k if want_gpu else k), cpus_per_task=c,
+        req = Request(ranks=_cell_ranks(want_gpu, g, k), cpus_per_task=c,
                       gpus=g if want_gpu else None,
                       gpu_type=gtype if want_gpu else None)
         # THE POOL IS THE FIT QUESTION'S, NOT THE PREFERENCE'S.  For a
@@ -1378,7 +1391,7 @@ def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
     (R3).  Reasons name their numbers (R4).
     """
     g, k, c = cell
-    ranks = g * k if (fam and g) else k
+    ranks = _cell_ranks(fam, g, k)
     why = []
     if cores_total and ranks * c > cores_total:
         why.append(f"needs {ranks * c} cores and this machine has "
@@ -1387,6 +1400,19 @@ def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
         why.append(f"needs {g} x {gtype or 'gpu'} and this machine has "
                    f"{gpus_per_node}")
     return tuple(why)
+
+
+def _cell_ranks(fam, g, k) -> int:
+    """How many ranks a cell runs -- ``G x K`` on the GPU family, ``K`` on
+    the CPU one.
+
+    ONE SPELLING.  It was written three times -- in the fit check, in the
+    shape line, and in the report -- and the three agreed only because the
+    CPU family always holds ``G=0``.  Three copies of one arithmetic is how
+    the ceilings in this very file came to disagree; this is the same fault
+    at a smaller scale, fixed before it could grow one.
+    """
+    return g * k if (fam and g) else k
 
 
 def _cell_label(g, k, c, *, machine_axes) -> str:
@@ -1398,12 +1424,11 @@ def _cell_label(g, k, c, *, machine_axes) -> str:
 
 def _cell_shape(g, k, c, gtype) -> str:
     """What a cell ASKS FOR, in words -- ranks, cores each, and the card."""
-    ranks = g * k if g else k
-    bit = f"{ranks} rank(s) x {c} core(s)"
+    bit = f"{_cell_ranks(bool(g), g, k)} rank(s) x {c} core(s)"
     return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
 
 
-def _bench_inputs(base, target):
+def _bench_inputs(base, target, *, bench_override=None, report=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
     ``target`` is REQUIRED, and that is the point (2026-08-24).  It read
@@ -1522,7 +1547,7 @@ def _bench_inputs(base, target):
     # answer below, which is what makes the machine card's choice reach
     # the sweep without touching the template file.
     declared_pins, declared_axes, value_axes = _declared_execution_pins(
-        base, task.engine)
+        base, task.engine, bench_override)
 
     on_gpu = any(i.name == "use_gpu" and bool(i.value)
                  for i in template_select(tmpl, engine=task.engine))
@@ -1703,6 +1728,21 @@ def _bench_inputs(base, target):
 
     kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]
     crossed = [(f, cell, why) for f, cell, doms, why in checked if why]
+
+    # THE SAME REPORT THE TERMINAL PRINTS, AS DATA.  The task-setup card
+    # shows this list live beside the axes being edited, and a browser that
+    # enumerated it a second way would be exactly the drifting second
+    # decider this grid was rebuilt to remove.  One enumerator, two
+    # renderings.
+    if report is not None:
+        report.extend(
+            {"label": _cell_label(g, k, c, machine_axes=_axes),
+             "shape": _cell_shape(g, k, c, gtype),
+             "family": "gpu" if fam else "cpu",
+             "ranks": _cell_ranks(fam, g, k), "cores_each": c,
+             "gpus": (g if (fam and g) else 0), "gpu_type": gtype if g else None,
+             "fits": list(doms), "why": list(why)}
+            for fam, (g, k, c), doms, why in checked)
 
     click.echo(f"  bench grid: {len(checked)} combination(s) enumerated, "
                f"{len(kept)} this machine can hold")

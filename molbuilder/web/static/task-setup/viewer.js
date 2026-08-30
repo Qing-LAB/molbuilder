@@ -299,6 +299,119 @@ function renderStages(task) {
     card.hidden = false;
 }
 
+/* ---------- what this machine would actually run ---------- */
+
+/* The grid the axes above would produce, and which queues would take each
+ * cell -- painted into the card that sets them, live (user, 2026-08-30:
+ * "can't this list be just updated in the same card where the parameters
+ * are set... this does not need to be a message with a window").
+ *
+ * THE BROWSER DOES NOT ENUMERATE IT.  `/api/task-setup/bench-grid` hands
+ * the axes to `_bench_inputs` -- the one enumerator, the same one `prep`
+ * runs -- and returns its report.  A grid computed here would be the
+ * second, drifting decider that the whole cross-out rule was rebuilt to
+ * remove: the browser would say a cell is fine and `launch` would refuse
+ * it, which is exactly the failure the person hit.
+ *
+ * THE AXES SENT ARE THE MODEL'S, NOT THE FILE'S, so the list tracks
+ * typing rather than the last save. */
+let _fitTimer = null;
+let _fitSeq   = 0;
+/* THE AXES THE ROWS WERE PAINTED FROM.  `renderMachine` takes the task as
+ * an ARGUMENT and is called with the handover object in handover mode --
+ * so reading the module's `_task` here described a different object than
+ * the rows above, which is the two-sources bug in miniature.  The rows and
+ * the list answer from one value or they can disagree. */
+let _fitBench = {};
+
+function scheduleFitRefresh(bench) {
+    _fitBench = bench || {};
+    if (_fitTimer) clearTimeout(_fitTimer);
+    // Every keystroke repaints the rows; the server answer is worth one
+    // request per pause, not one per character.
+    _fitTimer = setTimeout(refreshFit, 300);
+}
+
+async function refreshFit() {
+    const host = $("ts-machine-fit");
+    if (!host) return;
+    const bench = _fitBench || {};
+    /* ONLY A REAL DESCRIPTION HAS A GRID.  In handover mode `task.json`
+     * does not exist yet, and the door reads it -- so this would fire a
+     * request that can only 400.  "Empty" likewise. */
+    if (_mode !== "description") { host.hidden = true; return; }
+    if (!_dir || !Object.keys(bench).length) { host.hidden = true; return; }
+
+    /* STALE ANSWERS ARE DROPPED.  Typing outruns the network, and an
+     * earlier reply landing after a later one would leave the card showing
+     * a grid for axes that no longer exist. */
+    const seq = ++_fitSeq;
+    let body;
+    try {
+        const r = await fetch("/api/task-setup/bench-grid", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dest: _dir, target: _machine || "",
+                                   bench: bench }),
+        });
+        body = await r.json();
+    } catch (e) {
+        body = null;
+    }
+    if (seq !== _fitSeq) return;
+
+    /* A LIST THAT CANNOT LOAD HIDES ITSELF; it never breaks the card.
+     * The rows above are the substance and are usable without this --
+     * the same rule the label note follows, for the same reason (a card
+     * that vanishes gets reported as the feature being gone). */
+    if (!body || !body.ok || !Array.isArray(body.cells)) {
+        host.hidden = true;
+        return;
+    }
+    paintFit(host, body);
+}
+
+function paintFit(host, body) {
+    const cells   = body.cells;
+    const kept    = cells.filter((c) => !(c.why || []).length);
+    const crossed = cells.filter((c) => (c.why || []).length);
+    host.textContent = "";
+    host.hidden = false;
+
+    host.appendChild(el("div", { class: "ts-fit-head" },
+        cells.length + " combination(s) \u2014 " + kept.length
+        + " this machine can run"
+        + (crossed.length ? ", " + crossed.length + " it cannot" : "")));
+
+    for (const c of kept) {
+        host.appendChild(el("div", { class: "ts-fit-row" },
+            el("code", { class: "ts-fit-label" }, c.label),
+            el("span", { class: "ts-fit-shape" }, c.shape),
+            el("span", { class: "ts-fit-where" },
+               (c.fits || []).slice(0, 4).join(", ")
+               + ((c.fits || []).length > 4 ? " \u2026" : ""))));
+    }
+    for (const c of crossed) {
+        host.appendChild(el("div", { class: "ts-fit-row ts-fit-row--out" },
+            el("code", { class: "ts-fit-label" }, c.label),
+            el("span", { class: "ts-fit-shape" }, c.shape),
+            // THE NUMBERS, not a verdict word (scheduler.md R4): the reason
+            // says what to change, which is the whole point of showing the
+            // struck rows rather than silently dropping them.
+            el("span", { class: "ts-fit-why" }, (c.why || [])[0] || "")));
+    }
+    /* A `note` means the grid resolved this far and then stopped -- the
+     * rows above are still the honest answer, and the reason belongs with
+     * them rather than swallowed.  Its own words, never a paraphrase. */
+    if (body.note) {
+        host.appendChild(el("p", { class: "status warn" }, body.note));
+    } else if (!kept.length) {
+        host.appendChild(el("p", { class: "status warn" },
+            "Nothing here fits this machine \u2014 adjust the points above, "
+            + "or choose a different machine."));
+    }
+}
+
 function renderMachine(task) {
     const card = $("ts-machine-card");
     const host = $("ts-machine-rows");
@@ -386,6 +499,8 @@ function renderMachine(task) {
     }
     const acts = $("ts-machine-actions");
     if (acts) acts.hidden = false;
+    // From the task THIS render was given -- see `_fitBench`.
+    scheduleFitRefresh(bench);
 
     /* SAY WHEN THE LABELS ARE MISSING.  The rows above are the real setting
      * names and are usable as they are; the server-side vocabulary that turns

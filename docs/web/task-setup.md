@@ -364,6 +364,47 @@ SIESTA carries ELPA through ELSI and runs it on CPU
 re-routes the wrapper. The two are easy to confuse and belong on different
 surfaces.
 
+### 6.2a What the machine would actually run, live in the card
+
+The rows above say what to *try*; this block says what the chosen machine
+would actually **run**, and it updates as the points are edited *(user,
+2026-08-30: "can't this list be just updated in the same card where the
+parameters are set… this does not need to be a message with a window")*.
+
+Each surviving cell shows its label — the same token its trial directory
+will carry — its shape, and the queues that would take it. Cells no queue
+here can hold are shown **struck, with the numbers** rather than dropped:
+a point that silently vanished is the thing that sent someone to the CLI
+to find out why.
+
+Three rules make it trustworthy rather than merely convenient:
+
+- **The browser does not enumerate it.** `POST /api/task-setup/bench-grid`
+  hands the axes to `_bench_inputs` — the one enumerator, the same one
+  `prep` runs — and returns its report. A grid computed in the page would
+  be a second decider, free to say a cell is fine where `launch` refuses
+  it. That is the exact failure this whole lane was rebuilt to remove.
+- **It reads the axes the rows were painted from** — the task
+  `renderMachine` was handed, which is the in-memory model, not the file.
+  So the list follows what is being typed rather than the last save, and
+  it cannot describe a different object than the rows above it. (It stays
+  quiet in handover and empty modes: there is no `task.json` for the door
+  to resolve against yet.)
+- **It is a nicety, and behaves like one.** A stale answer is dropped (a
+  sequence guard — typing outruns the network), the request is debounced
+  to one call per pause, and a failed fetch hides the block and leaves the
+  card working. **A surface that cannot get its nicety shows what it has;
+  only one that cannot get its *substance* may refuse** — the rows are the
+  substance here. That rule was learned the hard way on 2026-08-23, when
+  an unguarded label fetch left the whole bench card absent and the report
+  was "the bench setup is gone".
+
+It shows **what the scheduler would accept** — a wall, a core count, a
+gres type, a device count, a policy cap. It does not predict whether the
+calculation will fit in the card it asked for; that is a runtime failure
+the person deals with, and [`scheduler.md § 0`](?doc=execution/scheduler.md)
+says why submission must not answer it.
+
 ### 6.3 Only speed knobs may be measured
 
 A key must name a field the catalogue puts in the **`execution`** category —
