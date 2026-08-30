@@ -321,7 +321,7 @@ def test_serve_supervises_by_default():
     absent for anyone who had not read the help text -- and the reason to
     supervise (a restart is possible at all) applies to every ordinary run.
     """
-    forked, _ = _serve_probe(["serve", "--port", "0"])
+    forked, _ = _serve_probe(["serve", "foreground", "--port", "0"])
     assert forked, "serve did not become a supervisor without --no-supervise"
 
 
@@ -336,7 +336,7 @@ def test_the_parent_forks_before_importing_the_application():
     taken the parent with it, which is the exact failure the supervisor exists
     to prevent.
     """
-    forked, app_imported = _serve_probe(["serve", "--port", "0"])
+    forked, app_imported = _serve_probe(["serve", "foreground", "--port", "0"])
     assert forked
     assert not app_imported, (
         "the supervisor imported molbuilder.web.app before forking; a broken "
@@ -348,7 +348,7 @@ def test_no_supervise_runs_in_one_process():
     """The opt-out still opts out -- systemd, Docker and gunicorn already own
     restarts, and a supervisor inside one of them is a second answer to a
     question that has one."""
-    forked, _ = _serve_probe(["serve", "--port", "0", "--no-supervise"])
+    forked, _ = _serve_probe(["serve", "foreground", "--port", "0", "--no-supervise"])
     assert not forked, "--no-supervise still forked a supervisor"
 
 
@@ -356,7 +356,7 @@ def test_debug_turns_supervision_off_on_its_own():
     """Werkzeug's reloader respawns its child on ANY exit, including the
     sentinel the reload route uses to ask for a fresh server -- so the request
     would never reach our supervisor.  Debug is single-process by nature."""
-    forked, _ = _serve_probe(["serve", "--port", "0", "--debug"])
+    forked, _ = _serve_probe(["serve", "foreground", "--port", "0", "--debug"])
     assert not forked, (
         "--debug started a supervisor; its Reload button would be swallowed "
         "by Werkzeug's own reloader"

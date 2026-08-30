@@ -28,6 +28,14 @@ shade: pair-with-recorded-contract).
 
 Design stances (user, 2026-08-29):
 
+* **The contract block's keys are one agreed vocabulary** — exactly
+  `TransportConfig`'s `CONTRACT_FIELDS` names (`transport/stages.py`),
+  never a spelling invented at a call site.  The extractor is pinned to
+  the set by test (`tests/parse/test_contract.py`), the sealed fill
+  reads only names in it, and any new field joins by joining the
+  constant — so the recorder, the pane, the pair and the seal cannot
+  drift apart on a name.
+
 * `info` is **not structural**: it never enters `structure_hash`, the
   frozen/region machinery, or any deck emission — it *describes* the
   structure.  That is also why the read-only gate does not apply to it
@@ -50,8 +58,8 @@ Design stances (user, 2026-08-29):
 | **I2** | **Server core** | `Structure.info: dict` (JSON-refusing setter path at the dict doors), `to_dict`/`from_dict` top-level `info`, `structure_hash` untouched by it; sidecar `SCHEMA_VERSION` 9 — write `info` when non-empty, read 8 and 9, stray-key rule updated. | round-trip tests: pair→load→`info` intact; a v8 file loads with empty `info`; hash equal with/without `info` | **Done 2026-08-29** — `TestInfoBlock` pins the five invariants (ride-whole, empty-writes-no-key, hash invariance, v8 full-replace, JSON refusal at write) |
 | **I3** | **The wire** | `/api/build/load` answers `info` (path + `{structure}` envelope branches); `struct_from_body` carries it; the save door writes it through the codec. | endpoint round-trip test | **Done 2026-08-29** — `to_wire` + the `{structure}` envelope gate carry it; the web battery green |
 | **I4** | **MolView** | model `info` store + announce; `viewer.data.info.set/remove/get` (ungated, no unsaved badge, rides the editable draft); `structureFromServer`/`exportFile` carry it; `ui.js` third panel page `Metadata` (read-only key/value rendering, honest empty state). | js pins (doors exposed, third tab present); browser check: set a key → pane shows it → export → sidecar holds it | **Done 2026-08-29** — `test_molview_info_js` pins the ungated doors, the page, the two-way wire, the sheet; browser-proven (the demo: `info.set` → the Metadata tab renders the contract JSON) |
-| **I5** | **The recorded contract (producer)** | one `contract_of(run_dir) -> dict \| None` interface with per-engine extractors (SIESTA `parse_fdf_params`; PySCF its deck parser); the Results-tab structure load attaches `info.calculation` (engine, contract, source deck + sha) at the same server-side compose that already attaches periodicity. | load a finished run in Results → pane shows the contract → export → pair carries it | open |
-| **I6** | **The sealed pair (consumer)** | `transport/compose.py`: a form-B citation whose sidecar carries `info.calculation` fills the config from it and **seals** `CONTRACT_FIELDS` (same refusal as form A, wording names the recorded deck); `describe_attempt` answers `contract: "cited"` with "contract recorded from the <engine> deck" in the summary; the tab's lane logic already follows `contract`. | compose + describe tests both lanes; **mutation:** drop the seal → the stays-sealed test fails; browser: cite an exported pair → contract fields hidden, meta line says recorded | open |
+| **I5** | **The recorded contract (producer)** | one `contract_of(run_dir) -> dict \| None` interface with per-engine extractors (SIESTA `parse_fdf_params`; PySCF its deck parser); the Results-tab structure load attaches `info.calculation` (engine, contract, source deck + sha) at the same server-side compose that already attaches periodicity. | load a finished run in Results → pane shows the contract → export → pair carries it | **Done 2026-08-29** — `parse/contract.py::contract_of` (SIESTA real; a PySCF deck answers None until its extractor lands), `/api/results/contract`, the structure inspector records through the `info` door; the Export menu's indicator + the tab's presence dot shipped with it.  Residue: the TRAJECTORY inspector's export does not record yet (its load rides /api/watch, not the structure door) — § 3 |
+| **I6** | **The sealed pair (consumer)** | `transport/compose.py`: a form-B citation whose sidecar carries `info.calculation` fills the config from it and **seals** `CONTRACT_FIELDS` (same refusal as form A, wording names the recorded deck); `describe_attempt` answers `contract: "cited"` with "contract recorded from the <engine> deck" in the summary; the tab's lane logic already follows `contract`. | compose + describe tests both lanes; **mutation:** drop the seal → the stays-sealed test fails; browser: cite an exported pair → contract fields hidden, meta line says recorded | **Done 2026-08-29** — `recorded_contract_of` (one reader for compose + both web doors), the fill forces kz=1, the seal's refusal names the record, the travel copy keeps it (`TestTheRecordedContract`, seal mutation-killed); live: the recorded pair answers 'contract RECORDED from the siesta deck', and `prep run seed` renders SZ/150 Ry from the record, not the defaults |
 | **I7** | **Close-out** | full battery; browser walk of the whole chain (Results export → cite → describe → prep); this board flipped to Done; README/toc rows already indexed. | battery green (the 9 § 3 pre-existing failures excepted); walk screenshots | open |
 
 Order is the dependency order; nothing in I5–I6 starts before I2–I4
@@ -59,14 +67,29 @@ hold, because the store must exist before anything records into it.
 
 ## 3. The parked backlog (so one file answers "what is open")
 
-* **Nine pre-existing test failures on main**, verified present at the
-  pre-review baseline `7c3da5b1` (2026-08-29, in a throwaway
-  worktree): `test_admin_reload` ×2 · `test_catalogue_agreement`
-  (siesta row) · `test_docs_tab` (toc dedupe) ·
-  `test_http_status_contract` (route count) · `test_launch_ask_mode` ·
-  `test_negative_body_assert_lint` · `test_molview_mount` (label
-  offers ×2).  Each needs its own diagnosis; none is touched by the
-  work above.
+* ~~Nine pre-existing test failures on main~~ — **diagnosed and fixed
+  2026-08-29**, each read whole and classified:
+  `test_admin_reload` ×2 = test staleness (the probes invoked the
+  retired `serve --port` spelling; `serve` became a group — all four
+  probes retargeted at `serve foreground`);
+  `test_catalogue_agreement` = REAL DRIFT, the catalogue was the wrong
+  side (it still taught the retired `./` psml_lib spelling the code
+  refuses — aligned to the code's truth, said here as the test
+  demands);
+  `test_docs_tab` toc dedupe = passes on current toc (the duplicate it
+  saw is gone);
+  `test_http_status_contract` = stale doc header (route count 85 → 88,
+  the contract endpoint's row added);
+  `test_launch_ask_mode` = test-logic bug (a first-occurrence slice
+  between two anchors inverted to empty when the transport chain added
+  an earlier `if mode == "direct"`; the code itself was correct — the
+  end anchor is now searched after the start);
+  `test_negative_body_assert_lint` = a missing status guard in a test
+  body (added);
+  `test_molview_mount` ×2 (plus two more the same cause) = stale pins
+  from two legitimate features (the `buffer` label joined the
+  predefined set with the transport composite; the Metadata page made
+  the panel three pages).
 * **CSS polish batch** from the 2026-08-29 fresh-eyes review (wrong
   `var()` fallbacks documenting stale values; raw sizes in
   `molview.css` against its own tokens; the inspector vocabulary
@@ -88,6 +111,11 @@ hold, because the store must exist before anything records into it.
   axis is z, and the default camera looks down z — a 1-D chain reads
   as a single ball until rotated.  A host camera-orientation door is a
   `molview.md` contract question, not a patch.
+* **The trajectory inspector does not record the contract yet** — its
+  structure arrives through `/api/watch/load`, not the structure door,
+  so an export from the trajectory view carries no `info.calculation`;
+  the recording call it needs is the same one the structure inspector
+  makes (I5).
 * **The Results-tab transmission inspector** (reads the shipped
   `<label>.transport.json`) and `TransiestaEngine.parse_output`
   (raises by design, pointing at the record) — roadmap § 2 items 3–4.

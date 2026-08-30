@@ -79,7 +79,8 @@ def api_transport_describe_attempt() -> Any:
     from molbuilder.projects import OutsideRoot, contain, projects_root
     from molbuilder.transport.compose import (ComposeError,
                                               classify_citation,
-                                              compose_junction)
+                                              compose_junction,
+                                              recorded_contract_of)
     from molbuilder.transport.preflight import parse_fdf_params
 
     raw = str(request.args.get("path") or "")
@@ -103,9 +104,18 @@ def api_transport_describe_attempt() -> Any:
                         "summary": str(exc)}), 200
 
     if cited.form == "structure":
-        status = "labeled structure (taken as given)"
+        recorded = recorded_contract_of(cited)
+        if recorded is not None:
+            # 4.1b's third shade: the pair carries the finished run's
+            # own contract, so the lane is CITED, same as a deck.
+            contract = "cited"
+            status = ("labeled structure · contract RECORDED from the "
+                      f"{recorded.get('engine', '?')} deck "
+                      f"({recorded.get('source', '?')})")
+        else:
+            contract = "open"
+            status = "labeled structure (taken as given)"
         params_out = None
-        contract = "open"
         concluded = None
     else:
         deck_text = cited.deck.read_text()
@@ -234,7 +244,9 @@ def api_transport_describe() -> Any:
     # are the citation's ONLY when the citation carries a deck).
     import dataclasses as _dc
     _known = {f.name for f in _dc.fields(TransportConfig)}
-    _contract_sealed = cited.form == "relaxation"
+    from molbuilder.transport.compose import recorded_contract_of
+    _contract_sealed = (cited.form == "relaxation"
+                        or recorded_contract_of(cited) is not None)
     for _name in overrides:
         if _name not in _known:
             return jsonify({"ok": False,

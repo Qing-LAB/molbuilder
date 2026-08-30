@@ -1294,7 +1294,8 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
         }));
         """
     )
-    assert [o["tag"] for o in out["shape"]] == ["LABEL", "LABEL"], (
+    assert [o["tag"] for o in out["shape"]] == ["LABEL", "LABEL",
+                                                "LABEL"], (
         f"a tab is not the option the stylesheet draws: {out['shape']}"
     )
     for option in out["shape"]:
@@ -1303,11 +1304,14 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
             f"from the span; this option has {option['inside']}"
         )
         assert option["typed"] == "radio", "two tabs, one choice: a radio group"
-    assert [o["text"] for o in out["shape"]] == ["Selection", "Cell"]
-    assert out["atMount"] == {"checked": [True, False], "shown": [True, False]}, (
+    assert [o["text"] for o in out["shape"]] == ["Selection", "Cell",
+                                                 "Metadata"]
+    assert out["atMount"] == {"checked": [True, False, False],
+                              "shown": [True, False, False]}, (
         f"nothing said which page the panel opened on: {out['atMount']}"
     )
-    assert out["afterClick"] == {"checked": [False, True], "shown": [False, True]}, (
+    assert out["afterClick"] == {"checked": [False, True, False],
+                                 "shown": [False, True, False]}, (
         f"choosing the other tab did not move both the switch and the page: "
         f"{out['afterClick']}"
     )
@@ -1688,10 +1692,12 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         }));
         """
     )
-    assert out["offered"][:5] == ["L-electrode", "R-electrode", "bridge",
-                                  "interface", "frozen_atoms"], (
-        "the five predefined names come first, in the order the device reads: "
-        f"{out['offered']}"
+    assert out["offered"][:6] == ["L-electrode", "R-electrode", "bridge",
+                                  "interface", "buffer",
+                                  "frozen_atoms"], (
+        "the six predefined names come first, in the order the device reads "
+        "(buffer joined with the transport composite -- TS.Atoms.Buffer is "
+        f"a real region the emitter consumes): {out['offered']}"
     )
     assert out["offered"][-1] == "", (
         f"the last entry is the way to name a new label: {out['offered']}"
@@ -1703,8 +1709,8 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         "the reserved label is offered like any other, and only once — it is an "
         f"ordinary label (§ 6.6): {out['offered']}"
     )
-    assert len(out["offered"]) == 6, (
-        f"five predefined + nothing else carried + a way to name a new one: {out['offered']}"
+    assert len(out["offered"]) == 7, (
+        f"six predefined + nothing else carried + a way to name a new one: {out['offered']}"
     )
     assert out["boxHiddenForExisting"] is True, (
         "the typing box is in the way once an existing label is chosen"
@@ -1885,9 +1891,10 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
         f"the leftover atom range was offered as though somebody had defined a "
         f"label called it: {out['offered']}"
     )
-    assert out["offered"][1:6] == ["L-electrode", "R-electrode", "bridge",
-                                   "interface", "frozen_atoms"], (
-        f"the five names MolView offers come first: {out['offered']}"
+    assert out["offered"][1:7] == ["L-electrode", "R-electrode", "bridge",
+                                   "interface", "buffer",
+                                   "frozen_atoms"], (
+        f"the six names MolView offers come first: {out['offered']}"
     )
     assert "custom-tag" in out["offered"], (
         "a label the structure carries must be offered beside the predefined "

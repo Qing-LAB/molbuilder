@@ -419,7 +419,7 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
     })
     StructureCodec().write(s, tmp_path / "a.xyz")
     side = json.loads((tmp_path / "a.molstruct.json").read_text())
-    assert side["schema_version"] == 8
+    assert side["schema_version"] == 9
     assert side["residue_names"] == ["AUX", "CYS", "CYS"]
 
     back = StructureCodec().read(tmp_path / "a.xyz")

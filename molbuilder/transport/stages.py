@@ -165,7 +165,29 @@ def config_for(task, composed: ComposedJunction) -> TransportConfig:
     """
     fdf = composed.fdf_params
     kw = {}
-    contract_sealed = composed.deck_text is not None
+    recorded = getattr(composed, "recorded_contract", None)
+    contract_sealed = (composed.deck_text is not None
+                       or recorded is not None)
+    if recorded is not None and composed.deck_text is None:
+        # The RECORDED contract (4.1b's third shade, structure-info-plan
+        # I6): the pair's sidecar carries the finished run's own values
+        # (info.calculation, written by the Results tab from the deck),
+        # and they fill the config exactly as a cited deck would --
+        # fdf-is-truth transferred to the recorded copy.  Only KNOWN
+        # contract fields apply; kz is forced 1 like every fill here.
+        for name, value in dict(recorded.get("contract") or {}).items():
+            if name not in CONTRACT_FIELDS:
+                continue
+            if name == "k_mesh_transverse":
+                try:
+                    kx, ky = int(value[0]), int(value[1])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                kw[name] = (kx, ky, 1)
+            elif name == "siesta_mesh_cutoff_ry":
+                kw[name] = int(round(float(value)))
+            else:
+                kw[name] = value
     if getattr(fdf, "kgrid", None):
         kx, ky, _kz = fdf.kgrid
         kw["k_mesh_transverse"] = (int(kx), int(ky), 1)
@@ -209,13 +231,18 @@ def config_for(task, composed: ComposedJunction) -> TransportConfig:
                     f"set it where the description sets it, never as a "
                     f"stage override.")
             if contract_sealed and name in CONTRACT_FIELDS:
+                src = ("the cited junction's own deck"
+                       if composed.deck_text is not None
+                       else "the pair's RECORDED contract "
+                            "(info.calculation -- written from the "
+                            "finished run's deck at export)")
                 raise StageError(
                     f"stage {stage.name!r} overrides {name!r}, which is "
                     f"the citation's to say (ruling Q5: the electronic "
-                    f"contract arrives from the cited junction's own "
-                    f"deck, so electrode and device cannot disagree).  "
-                    f"Cite a junction that ran with the values you "
-                    f"want -- or cite a plain .xyz+.molstruct pair, "
+                    f"contract arrives from {src}, so electrode and "
+                    f"device cannot disagree).  Cite a junction that "
+                    f"ran with the values you want -- or cite a plain "
+                    f".xyz+.molstruct pair with no recorded contract, "
                     f"whose contract fields are open (4.1b).")
             kw[name] = value
     return TransportConfig(

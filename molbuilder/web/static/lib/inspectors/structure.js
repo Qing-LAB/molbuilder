@@ -254,6 +254,24 @@ import { molviewFiles } from "../projects/molview-doors.js";
                             return;
                         }
                     }
+                    /* RECORD THE CALCULATION CONTRACT (structure-info-plan.md
+                     * I5): the one engine deck in the SAME directory states
+                     * the electronic contract; recorded through the info
+                     * door it shows on the Metadata page and travels with
+                     * any export -- which is what lets a transport citation
+                     * of the exported pair run sealed (4.1b).  Best-effort:
+                     * the viewer works without the record. */
+                    try {
+                        const cr = await fetch("/api/results/contract?path="
+                            + encodeURIComponent(structPath));
+                        const cb = await cr.json();
+                        if (!disposed && cb && cb.ok && cb.calculation
+                                && handle.data && handle.data.info
+                                && typeof handle.data.info.set === "function") {
+                            handle.data.info.set("calculation",
+                                                 cb.calculation);
+                        }
+                    } catch (_) { /* no record is a real answer */ }
                     if (disposed) return;
 
                     const elems = handle.data.getElements() || [];

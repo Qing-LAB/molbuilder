@@ -113,6 +113,11 @@ class ComposedJunction:
     #: which § 4.1b form the citation satisfied — "relaxation" (A) or
     #: "structure" (B)
     form: str = "relaxation"
+    #: a form-B pair's RECORDED contract (`info.calculation` in its
+    #: sidecar — the Results tab wrote it from the finished run's own
+    #: deck; structure-info-plan.md I5/I6).  When present the contract
+    #: fields seal exactly as form A's do; ``None`` = the open lane.
+    recorded_contract: Optional[Dict[str, object]] = None
 
 
 def _sha256(path: Path) -> str:
@@ -219,6 +224,25 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         f"{CITATION_CONDITION}.")
 
 
+def recorded_contract_of(cited: CitedDir) -> Optional[Dict[str, object]]:
+    """A form-B pair's ``info.calculation`` block, when its sidecar
+    carries one with a usable ``contract`` dict — else ``None``.
+    ONE reader for compose and both web doors, so the lanes cannot
+    disagree about what counts as recorded."""
+    if cited.form != "structure" or cited.sidecar is None:
+        return None
+    try:
+        raw = json.loads(cited.sidecar.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    block = (raw.get("info") or {}).get("calculation")         if isinstance(raw.get("info"), dict) else None
+    if (isinstance(block, dict)
+            and isinstance(block.get("contract"), dict)
+            and block["contract"]):
+        return block
+    return None
+
+
 def resolve_citation(citation: str, tree_root: Path
                      ) -> Tuple[Path, CitedDir]:
     """The citation's directory, fenced to the tree and classified
@@ -322,10 +346,12 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         deck = xv_path = None
         deck_text = None
         concluded = None
+        recorded = recorded_contract_of(cited)
     else:
         # ---- form A: deck + .XV, everything from the same directory --
         deck, xv_path, concluded = cited.deck, cited.xv, cited.concluded
         deck_text = deck.read_text()
+        recorded = None
         params = parse_fdf_params(deck_text)
         cell, xv_elements, xv_pos = read_xv(xv_path)
 
@@ -439,6 +465,8 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
                      else ("no-record" if cited.form == "relaxation"
                            else "given")),
     }
+    if recorded is not None:
+        provenance["recorded_contract"] = recorded
     return ComposedJunction(
         sorted=sorted_res,
         relaxed=relaxed,
@@ -448,6 +476,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         deck_text=deck_text,
         provenance=provenance,
         form=cited.form,
+        recorded_contract=recorded,
     )
 
 
@@ -521,4 +550,5 @@ def load_compose_record(base_dir, *, citation: str
         deck_text=deck_text,
         provenance=provenance,
         form=form,
+        recorded_contract=provenance.get("recorded_contract"),
     )

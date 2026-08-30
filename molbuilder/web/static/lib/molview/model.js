@@ -340,8 +340,28 @@ export function createModel(opts) {
             });
         }, { redraw: "none" });
         history.edited();
+        markContractOutdated();
         return true;
     }, false);
+
+    /* AN EDIT OUTDATES A RECORDED CONTRACT (user, 2026-08-29).  The
+     * `info.calculation` block describes the structure the run was made
+     * FROM; once an edit lands -- geometry, cell, labels -- these atoms
+     * are no longer that structure, and a later reader must be told.
+     * One flag, set beside the record at the exact places an edit is
+     * marked (`history.edited()` -- inside the gate, so a read-only
+     * viewer or a failed edit never reaches it), never cleared by the
+     * viewer: un-editing is what Retract is for, and the flag rides the
+     * pair like everything in the store. */
+    function markContractOutdated() {
+        if (structure && structure.info
+                && structure.info.calculation
+                && typeof structure.info.calculation === "object"
+                && !structure.info.calculation.structure_modified) {
+            structure.info.calculation.structure_modified = true;
+            announceStructure();
+        }
+    }
 
     /* ── The same-atoms rule, at the doors that could break it (§ 10.8) ────
      *
@@ -517,6 +537,7 @@ export function createModel(opts) {
             // this line, so its badge never appears (§ 9.4), and a failed edit
             // never reaches it either, so nothing is recorded (§ 11.1).
             history.edited();
+            markContractOutdated();
             // An operation that grows or shrinks the structure clears the
             // selection: a kept one could point at an atom that is no longer the
             // one it meant. A count-preserving transform leaves it alone.
@@ -535,6 +556,7 @@ export function createModel(opts) {
                     ? said : null,
             });
             history.edited();
+            markContractOutdated();
         },
     });
 

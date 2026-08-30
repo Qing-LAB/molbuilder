@@ -158,7 +158,9 @@ class TestTransportPageRendering:
         assert r.status_code == 200
 
     def test_page_includes_form_container(self, web):
-        body = web.get("/transport-calculation").data.decode()
+        r = web.get("/transport-calculation")
+        assert r.status_code == 200
+        body = r.data.decode()
         assert 'id="transport-form-container"' in body
         # the composite card (P7b): cite + bias + send -- the Generate
         # button retired with the bundle road

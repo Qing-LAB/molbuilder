@@ -262,8 +262,11 @@ def test_ask_walks_the_SAME_path_as_submit():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1]
            / "molbuilder/jobset/submit.py").read_text()
-    disp = src[src.index("    if mode in (\"submit\", \"ask\"):"):
-               src.index("    if mode == \"direct\":")]
+    # Anchor the end AFTER the start: submit_transport_chain (P5b)
+    # carries its own earlier `if mode == "direct":`, and a naive
+    # first-occurrence slice inverted into an empty string.
+    _start = src.index("    if mode in (\"submit\", \"ask\"):")
+    disp = src[_start:src.index("    if mode == \"direct\":", _start)]
     assert "_submit_slurm" in disp
     assert disp.count("return") == 1, "ask branched away from submit"
 

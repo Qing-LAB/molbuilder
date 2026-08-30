@@ -865,9 +865,36 @@ function buildExportMenu(doc, card, model, handle, files) {
     item(imageRow, "Save to project", () => sendImage("project"));
     item(imageRow, "Download",        () => sendImage("download"));
 
+    /* THE METADATA INDICATOR (§ 8.4a; user, 2026-08-29): a data export
+     * carries the `info` store in the pair's sidecar, and the person
+     * about to export should not have to open the Metadata page to
+     * learn that.  One line under the Data section, live from the
+     * model, naming the keys -- the words themselves stay one click
+     * away on the pane. */
+    const infoNote = doc.createElement("div");
+    infoNote.className = "molviewer-export-info-note";
+    infoNote.hidden = true;
+    dataRow.parentNode.appendChild(infoNote);
+    function drawInfoNote() {
+        const store = (model.info && typeof model.info.get === "function")
+            ? model.info.get() : {};
+        const keys = Object.keys(store).sort();
+        infoNote.hidden = keys.length === 0;
+        if (keys.length) {
+            infoNote.textContent = "Includes metadata: "
+                + keys.join(", ") + "  (the Metadata page shows it; it "
+                + "travels with the saved pair)";
+        }
+    }
+    drawInfoNote();
+    const offInfoNote = model.subscribe(drawInfoNote);
+
     return {
         root, summary, body,
-        dispose() { try { root.remove(); } catch (_) {} },
+        dispose() {
+            offInfoNote();
+            try { root.remove(); } catch (_) {}
+        },
     };
 }
 
@@ -1743,6 +1770,14 @@ function mountPanel(doc, card, model) {
         const store = (model.info && typeof model.info.get === "function")
             ? model.info.get() : {};
         const keys = Object.keys(store).sort();
+        /* The presence dot, the Cell tab's own idiom (data-has-content
+         * shares the notice dot's drawing): something IS recorded here,
+         * visible from whichever page you are on. */
+        const tab = tabInputs.info && tabInputs.info.parentNode;
+        if (tab) {
+            if (keys.length) tab.setAttribute("data-has-content", "1");
+            else tab.removeAttribute("data-has-content");
+        }
         infoEmpty.hidden = keys.length > 0;
         infoList.textContent = "";
         for (const key of keys) {

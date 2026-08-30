@@ -55,3 +55,20 @@ def test_the_pane_vocabulary_is_defined_in_the_module_sheet():
     for cls in ("molviewer-info-empty", "molviewer-info-list",
                 "molviewer-info-key", "molviewer-info-value"):
         assert "." + cls in css, f"{cls} unstyled"
+
+
+def test_every_edit_landed_site_outdates_the_record():
+    """The structure_modified flag (user, 2026-08-29): each of the
+    three edit-landed sites (the history.edited() marks -- geometry op,
+    cell op, label write) also marks a recorded contract outdated, so a
+    later reader of the pair knows these atoms are no longer the
+    structure the contract described."""
+    src = _stripped(MOLVIEW / "model.js")
+    assert src.count("history.edited();") == 3, (
+        "the edit-landed sites moved; re-anchor this pin AND the "
+        "markContractOutdated hooks together")
+    assert src.count("markContractOutdated();") == 3, (
+        "an edit-landed site no longer outdates the record -- a pair "
+        "exported after that edit would carry a contract that silently "
+        "no longer describes its atoms")
+    assert "structure_modified" in src

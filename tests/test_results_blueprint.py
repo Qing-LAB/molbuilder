@@ -991,3 +991,43 @@ def test_calculation_to_calculation_passing_is_dead(web_client=None):
     client = create_app(config={}).test_client()
     r = client.post("/api/results/bundle", json={})
     assert r.status_code == 404, "the route must not exist"
+
+
+class TestTheContractEndpoint:
+    """/api/results/contract (structure-info-plan.md I5): the one deck
+    beside a structure answers its recorded contract.  Isolated onto a
+    tmp projects root -- tests never touch the real tree."""
+
+    @pytest.fixture
+    def isolated(self, tmp_path, monkeypatch):
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        root = tmp_path / "projects"
+        root.mkdir()
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        from molbuilder.web.app import create_app
+        return root, create_app(config={}).test_client()
+
+    def test_a_deck_beside_the_structure_answers(self, isolated):
+        root, client = isolated
+        d = root / "run"
+        d.mkdir()
+        (d / "chain.xyz").write_text("1\n\nC 0 0 0\n")
+        (d / "Relax.fdf").write_text(
+            "SystemLabel Relax\nMeshCutoff 250.0 Ry\n"
+            "PAO.BasisSize SZ\n")
+        r = client.get("/api/results/contract?path="
+                       + str(d / "chain.xyz"))
+        out = r.get_json()
+        assert out["ok"] is True
+        assert out["calculation"]["engine"] == "siesta"
+        assert out["calculation"]["contract"]["basis_size"] == "SZ"
+
+    def test_no_deck_answers_null(self, isolated):
+        root, client = isolated
+        d = root / "bare"
+        d.mkdir()
+        (d / "chain.xyz").write_text("1\n\nC 0 0 0\n")
+        r = client.get("/api/results/contract?path="
+                       + str(d / "chain.xyz"))
+        out = r.get_json()
+        assert out["ok"] is True and out["calculation"] is None

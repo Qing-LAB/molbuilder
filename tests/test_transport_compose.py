@@ -419,3 +419,88 @@ class TestFormB:
         msg = str(e.value)
         assert ".molstruct.json" in msg and ".fdf" in msg, (
             "the refusal states the whole condition")
+
+
+class TestTheRecordedContract:
+    """4.1b's third shade (structure-info-plan.md I6): a pair whose
+    sidecar carries `info.calculation` seals like a cited deck."""
+
+    def _recorded_pair(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "exported"
+        d.mkdir(parents=True)
+        s2 = _junction_struct()
+        s2.info = {"calculation": {
+            "engine": "siesta",
+            "contract": {"basis_size": "TZP",
+                         "siesta_mesh_cutoff_ry": 275,
+                         "xc_functional": "GGA", "xc_authors": "revPBE",
+                         "k_mesh_transverse": [3, 3, 2],
+                         "electronic_temperature_k": 150.0},
+            "source": "Relax.fdf", "source_sha256": "c" * 64}}
+        StructureCodec().write(s2, d / "junction.xyz")
+        return root, "exported"
+
+    def test_the_record_rides_the_composition(self, tmp_path):
+        root, cite = self._recorded_pair(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        assert out.form == "structure"
+        assert out.recorded_contract is not None
+        assert out.recorded_contract["contract"]["basis_size"] == "TZP"
+        assert out.provenance["recorded_contract"]["source"] == "Relax.fdf"
+
+    def test_the_record_fills_the_config_and_forces_kz(self, tmp_path):
+        from molbuilder.transport.stages import config_for
+        from molbuilder.task import Stage, Task, derive_run
+        root, cite = self._recorded_pair(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        task = Task(engine="siesta", shape="hierarchical",
+                    run=derive_run("T", cite, stage_names=("seed",)),
+                    structure=None, calculation="transport",
+                    slots={"junction": cite}, bias=(0.0,), varies=(),
+                    stages=(Stage(name="seed", enabled=True,
+                                  overrides={}),))
+        cfg = config_for(task, out)
+        assert cfg.basis_size == "TZP"
+        assert cfg.siesta_mesh_cutoff_ry == 275
+        assert cfg.xc_authors == "revPBE"
+        assert cfg.k_mesh_transverse == (3, 3, 1), "kz forced 1, always"
+        assert cfg.electronic_temperature_k == 150.0
+
+    def test_the_record_seals_the_contract_fields(self, tmp_path):
+        from molbuilder.transport.stages import StageError, config_for
+        from molbuilder.task import Stage, Task, derive_run
+        root, cite = self._recorded_pair(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        task = Task(engine="siesta", shape="hierarchical",
+                    run=derive_run("T", cite, stage_names=("seed",)),
+                    structure=None, calculation="transport",
+                    slots={"junction": cite}, bias=(0.0,),
+                    varies=("basis_size",),
+                    stages=(Stage(name="seed", enabled=True,
+                                  overrides={"basis_size": "SZ"}),))
+        with pytest.raises(StageError) as e:
+            config_for(task, out)
+        assert "RECORDED" in str(e.value)
+
+    def test_a_plain_pair_stays_open(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "plain"
+        d.mkdir(parents=True)
+        StructureCodec().write(_junction_struct(), d / "junction.xyz")
+        out = compose_junction("plain", tree_root=root)
+        assert out.recorded_contract is None
+
+    def test_the_travel_copy_keeps_the_record(self, tmp_path):
+        from molbuilder.transport.compose import (load_compose_record,
+                                                  write_compose_record)
+        root, cite = self._recorded_pair(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        dest = tmp_path / "travelled"
+        dest.mkdir()
+        write_compose_record(dest, out)
+        back = load_compose_record(dest, citation=cite)
+        assert back is not None
+        assert back.recorded_contract["contract"]["basis_size"] == "TZP"

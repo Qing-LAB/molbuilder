@@ -1419,7 +1419,8 @@
  *
  * A dot rather than a count: how MANY things are wrong is not the question a
  * tab can answer usefully, and the words are one click away. */
-.molviewer-panel-tab-option[data-has-notices] > span::after {
+.molviewer-panel-tab-option[data-has-notices] > span::after,
+.molviewer-panel-tab-option[data-has-content] > span::after {
     content: "";
     display: inline-block;
     width: 0.45em;
@@ -1428,6 +1429,17 @@
     vertical-align: 0.35em;
     border-radius: 50%;
     background: var(--warn-soft);
+}
+/* The Metadata tab's dot says "something recorded", not "something
+ * wrong" -- same drawing, the accent tone. */
+.molviewer-panel-tab-option[data-has-content] > span::after {
+    background: var(--molviewer-color-pick);
+}
+.molviewer-export-info-note {
+    margin-top: var(--molviewer-space-xs);
+    color: var(--molviewer-color-text-dim);
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-normal)
+          var(--molviewer-control-family);
 }
 .molviewer-panel-tab-option:has(input:checked) { border-bottom-color: var(--molviewer-color-pick); }
 .molviewer-panel-tab-option input[type="radio"] {

@@ -109,3 +109,32 @@ def partial_spectra_inspector():
 #  does the fuse (parse the .XV, overlay the labels, sort, gate:        #
 #  transport/compose.py) -- rather than receiving a bundled copy.       #
 # --------------------------------------------------------------------- #
+
+
+@bp.route("/api/results/contract", methods=["GET"])
+def api_results_contract():
+    """The electronic contract recorded by the deck beside a structure.
+
+    ``?path=`` names a structure file (or its directory), tree-relative;
+    the answer is the ``info.calculation`` block ``contract_of`` extracts
+    from the ONE engine deck in that directory, or ``null`` when there is
+    none (no deck, several decks, a deck stating nothing).  The Results
+    tab's structure inspector calls this after a load and records the
+    answer through the viewer's ``data.info`` door, so an export carries
+    it (`plans/structure-info-plan.md` I5)."""
+    from pathlib import Path
+
+    from flask import jsonify, request
+
+    from molbuilder.parse.contract import contract_of
+    from .files import _PickerError, _resolve_within_roots
+
+    raw = str(request.args.get("path") or "")
+    if not raw:
+        return jsonify({"ok": False, "error": "no path given"}), 400
+    try:
+        p = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    directory = Path(p) if Path(p).is_dir() else Path(p).parent
+    return jsonify({"ok": True, "calculation": contract_of(directory)})

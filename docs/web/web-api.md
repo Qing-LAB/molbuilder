@@ -405,7 +405,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 85 routes
+## 3. Endpoint index — all 88 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -487,6 +487,7 @@ tabs (their docs, this wave):
 |---|---|
 | POST `/api/watch/load` · GET `/api/watch/data` | Register + poll a trajectory. The load response carries `atom_metadata` (the input script's ATOM-METADATA block) and, since 2026-08-20, `periodicity` — composed ON THE SERVER: the cell from the output logs, the axis kinds / origin / vacuum from the run directory's `.source` pair (job-contracts § 6.3). The viewer passes the block through verbatim; until it existed the browser composed `{cell}` alone, and an export from the Results tab stamped a lattice-bearing junction `isolated` on every axis |
 | GET `/partials/{trajectory-inspector,spectra-inspector,selection-panel}` | HTML fragments |
+| GET `/api/results/contract` | The electronic contract recorded by the ONE deck beside a structure (`parse/contract.py::contract_of`) — the block the structure inspector records into the viewer's `info` store so an export carries it (`plans/structure-info-plan.md` I5); `null` is a real answer (no deck / several / nothing stated) |
 | ~~POST `/api/results/bundle`~~ | *retired 2026-08-29 — calculation-to-calculation passing is gone; the composite cites (`POST /api/transport/describe`)* |
 | GET `/api/bench/summary` | One benchmark **sweep**, composed: every trial's knobs / coordinate / measurement, where each run is now, and the verdict. Takes the sweep's `job-set.json`; the CALCULATION it belongs to is derived from it, because the file's own directory is not the bundle. Read-only and safe to poll — it never writes the record or the `run-config.toml` proposal, which are `jobset summarize`'s to write ([`bench-summary.md`](?doc=web/bench-summary.md)) |
 | POST `/api/spectra/load` | Parse an uploaded `<job>.spectra.json` into typed results (`/api/spectra/render` retired at the spectra migration's P3 — the deck computes; the tab only loads) |

@@ -2286,3 +2286,34 @@ def test_transport_describe_refuses_a_sealed_override_by_name(web_client):
     finally:
         _shutil.rmtree(ROOT / "projects/_t_transport",
                        ignore_errors=True)
+
+
+def test_describe_attempt_names_a_recorded_contract(web_client):
+    """4.1b's third shade at the seam: a pair whose sidecar carries
+    info.calculation answers contract="cited" and says RECORDED."""
+    import numpy as _np
+    from molbuilder.structure import Structure as _S
+    from molbuilder.workingcopy_structure import StructureCodec as _C
+    d = ROOT / "projects/_t_transport/exported"
+    d.mkdir(parents=True, exist_ok=True)
+    s2 = _S(elements=["Au"] * 12 + ["S", "C", "C", "S"] + ["Au"] * 12,
+            positions=_np.array([[1.0, 1.0, float(i)] for i in range(28)]),
+            regions={"L-electrode": list(range(12)),
+                     "R-electrode": list(range(16, 28))},
+            cell=_np.diag([8.0, 8.0, 40.0]))
+    s2.info = {"calculation": {"engine": "siesta",
+                               "contract": {"basis_size": "DZP"},
+                               "source": "Relax.fdf",
+                               "source_sha256": "c" * 64}}
+    _C().write(s2, d / "junction.xyz")
+    try:
+        r = web_client.get("/api/transport/describe_attempt"
+                           "?path=_t_transport/exported")
+        out = r.get_json()
+        assert out["ok"] and out["form"] == "structure"
+        assert out["contract"] == "cited"
+        assert "RECORDED" in out["summary"]
+    finally:
+        import shutil as _shutil
+        _shutil.rmtree(ROOT / "projects/_t_transport",
+                       ignore_errors=True)

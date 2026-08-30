@@ -1411,7 +1411,23 @@ read-only Results viewer attach the contract before an export), they
 never raise the unsaved badge, and the store never enters
 `structure_hash` (`model/structure-molstruct.md` § 3).  It rides
 `installMolecule` in and `exportFile` out, so what the pane shows is
-exactly what the `.xyz + .molstruct.json` pair will carry.
+exactly what the `.xyz + .molstruct.json` pair will carry — and the
+**Export menu says so** (user, 2026-08-29): when the store is
+non-empty, a line under the Data section names the recorded keys
+("Includes metadata: …"), so nobody has to open the pane to learn
+their export carries more than geometry.  The Metadata tab wears the
+panel's presence dot in the accent tone for the same reason —
+recorded, not warned.
+
+**An edit outdates a recorded contract** (user, 2026-08-29).  When the
+store carries `info.calculation` and any structure-changing edit lands
+— a geometry op, a cell op, a label write — the viewer sets
+`calculation.structure_modified: true` beside it, at the same gated
+points the unsaved badge is raised, so a read-only viewer or a failed
+edit never flags.  The flag is never cleared by the viewer (Retract is
+how an edit is un-done) and rides the pair like everything in the
+store: a later reader knows these atoms are no longer the structure
+the contract described.
 
 ### 8.5 The controls, and what each one reads
 

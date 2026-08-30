@@ -411,6 +411,9 @@ def test_the_envelope_defines_exactly_these_members(client):
     assert set(answer["structure"]) == {
         "title", "elements", "positions", "atom_names", "residue_ids",
         "residue_names", "chain_ids", "metadata",
+        # `info` joined 2026-08-29 (structure-info-plan.md I3): the
+        # free-form NON-structural store rides the envelope both ways.
+        "info",
     }, f"the envelope's members drifted: {sorted(answer['structure'])}"
 
 
