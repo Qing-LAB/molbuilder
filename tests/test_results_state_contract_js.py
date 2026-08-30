@@ -45,6 +45,23 @@ def core_body():
     return (_LIB / "trajectory" / "core.js").read_text()
 
 
+def _braced(src: str, open_idx: int) -> str:
+    """The object literal that starts at ``src[open_idx] == '{'``, brace
+    to brace -- so a pin over a literal covers the whole literal however
+    long it grows, rather than a fixed character count that a new field
+    can push a bucket out of."""
+    assert src[open_idx] == "{", "not an opening brace"
+    depth = 0
+    for i in range(open_idx, len(src)):
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[open_idx: i + 1]
+    raise AssertionError("unbalanced braces from the state literal")
+
+
 class TestBucketedStateShape:
     """``state`` carries five named buckets (fileState, viewState,
     uiPrefs, lifecycle, derived) + a ``machine`` field.  The contract
@@ -65,15 +82,18 @@ class TestBucketedStateShape:
     ])
     def test_state_carries_each_bucket(self, core_body, bucket):
         """Each of the five buckets must appear as a top-level key
-        of the ``state`` literal.  The state object literal is
-        ~80 lines so a non-greedy [^}]* won't span it; use a
-        wider window anchored at ``const state = {`` and look
-        within the first ~3000 chars."""
+        of the ``state`` literal.
+
+        THE WINDOW IS THE LITERAL, matched brace to brace.  It used to
+        be the first 4000 characters after ``const state = {`` -- a
+        guess at the literal's length ("~80 lines of ~50 chars"), and
+        the last bucket sat near the end of it.  Adding a field with a
+        comment on it pushed ``derived`` past the count and the test
+        failed for a bucket that was still right there, which is a pin
+        reporting on its own arithmetic rather than on the code."""
         m = re.search(r"const\s+state\s*=\s*\{", core_body)
         assert m is not None, "state literal not found"
-        # Look within the next 4000 chars (the state object is ~80
-        # lines of ~50 chars each = ~4000).
-        window = core_body[m.end(): m.end() + 4000]
+        window = _braced(core_body, m.end() - 1)
         assert re.search(
             r"^\s+" + bucket + r"\s*:\s*\{", window, re.MULTILINE,
         ), (f"trajectory/core.js state object no longer carries the "

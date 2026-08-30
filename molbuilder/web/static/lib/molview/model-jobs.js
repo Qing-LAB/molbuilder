@@ -251,9 +251,29 @@ export function structureFromServer(payload) {
                 ? channelDefs : null,
             /* The `info` store, carried verbatim (§ 6.2 -- the viewer
              * interprets none of it; the Metadata pane displays it and
-             * the host's `data.info` doors mutate it). */
-            info: (payload.info && typeof payload.info === "object")
-                ? payload.info : {},
+             * the host's `data.info` doors mutate it).
+             *
+             * FROM THE CANONICAL ENVELOPE, for the same reason `title`
+             * is: `payload.structure` IS the structure's own dict, and
+             * `info` is a field of a Structure, so it arrives there and
+             * nowhere else. This read asked for a FLAT `payload.info`,
+             * which no route has ever sent -- so every structure loaded
+             * since the store shipped arrived with an empty one, at
+             * HTTP 200, and § 8.4a's "it rides installMolecule in" was
+             * true of the contract and not of the code.
+             *
+             * Three things were broken by the one line, because every
+             * way a structure gets in comes through here: a saved pair's
+             * recorded contract was dropped the moment the pair was
+             * re-opened; a Results tab's recorded contract was wiped by
+             * the next modify op, since `applyOp` installs the server's
+             * answer the same way a load does; and with the store gone
+             * `markContractOutdated` had nothing left to flag, so an
+             * edit could never mark the contract stale. */
+            info: (payload.structure
+                    && payload.structure.info
+                    && typeof payload.structure.info === "object")
+                ? payload.structure.info : {},
         },
         coordinates: {
             frames: [atoms.map((a) => [Number(a.x) || 0,
@@ -585,6 +605,28 @@ function requestBodyFor(input) {
      * which is why no trajectory has ever drawn its unit cell. */
     if (input.periodicity && typeof input.periodicity === "object") {
         body.periodicity = input.periodicity;
+    }
+
+    /* WHAT THE CALLER KNOWS ABOUT THESE ATOMS THAT IS NOT THE ATOMS — the
+     * free `info` store (§ 8.4a). The other two ways in already carry it: a
+     * `path` load reads it out of the pair's `.molstruct.json`, and a
+     * structure put back carries it in its envelope. TEXT is the one shape
+     * with no document behind it, so a host that knows the store states it.
+     *
+     * THE HOST IS ALWAYS THE ONE THAT KNOWS (user, 2026-08-30): the viewer
+     * has no idea what describes the run it is showing, and never looks —
+     * the tab it sits in found it and hands it over, here, at the one
+     * entrance, so the whole structure lands in one go (§ 9.3) and the
+     * history anchor is recorded WITH it.
+     *
+     * That last part is why this is a load field rather than a `data.info`
+     * call after the load. The Results trajectory rebuilds its viewer on
+     * every poll and every filter change; a store attached afterwards is
+     * gone by the next rebuild, and the structure is observable without it
+     * in between (§ 6.4). It is the same argument the frames won on. */
+    if (input.info && typeof input.info === "object"
+            && Object.keys(input.info).length) {
+        body.info = input.info;
     }
     return body;
 }

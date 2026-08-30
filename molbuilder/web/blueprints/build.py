@@ -706,6 +706,25 @@ def api_build_load():
     # atom-count-only), never validated through ``load_text``.  Carries only
     # atom-scoped keys, so the parsed geometry / cell above stay intact.
     atom_metadata_text: str = ""
+    # WHAT THE CALLER KNOWS ABOUT THESE ATOMS THAT IS NOT THE ATOMS
+    # (`plans/structure-info-plan.md`, `web/molview.md` § 8.4a): the free
+    # ``info`` store, a dict of key -> value that DESCRIBES the structure.
+    # § 8.4a states it "rides installMolecule in and exportFile out", and
+    # this is the in: a text load parses a file, and a file being parsed
+    # carries no store, so a host that knows one states it here.
+    #
+    # A FIELD OF ITS OWN, for the same reason ``periodicity`` is one: it
+    # is a different fact from a different place.  The caller is a tab
+    # showing a finished run -- the labels come from the run's input
+    # script, the cell from its output logs, and this from the deck's
+    # stated parameters (``parse.dirs.run_info``).  Every future metadata
+    # category is a KEY inside it and costs nothing here.
+    #
+    # The other two ways in already carry it: the ``path`` branch reads
+    # it out of the pair's ``.molstruct.json`` through the codec, and the
+    # ``structure`` restore branch out of the envelope through
+    # ``from_dict``.  The text branch was the one door that dropped it.
+    info_block: Any = None
     # Bound on BOTH branches: a multipart upload carries no JSON, and the
     # periodicity seam below reads this for every path through the route.
     body: Dict[str, Any] = {}
@@ -720,6 +739,7 @@ def api_build_load():
         filename = body.get("filename") or ""
         sidecar_text = body.get("sidecar") or ""
         atom_metadata_text = body.get("atom_metadata") or ""
+        info_block = body.get("info")
 
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
@@ -809,6 +829,25 @@ def api_build_load():
     # reset the cell this just set.
     from ._shared import apply_periodicity_only
     struct = apply_periodicity_only(struct, body)
+
+    # THE ``info`` STORE THE CALLER STATED (see ``info_block`` above).
+    # Applied last, and it disturbs nothing applied before it: ``info`` is
+    # not part of the structure, so no seam above reads it and
+    # ``structure_hash`` does not cover it (`model/structure-molstruct.md`
+    # § 3).  What last DOES settle is the one overlap -- a ``sidecar``
+    # carries a store of its own, and a caller that states both means the
+    # stated one, which is the same precedence a stated ``periodicity``
+    # has over a sidecar's cell.
+    #
+    # REFUSED rather than coerced when it is not a dict: a non-dict store
+    # is a caller bug, and dropping it silently is how the labels went
+    # missing for months at HTTP 200.
+    if info_block is not None:
+        if not isinstance(info_block, dict):
+            return jsonify({"ok": False,
+                            "error": "info: must be an object of "
+                                     "key -> value"}), 400
+        struct.info = dict(info_block)
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom

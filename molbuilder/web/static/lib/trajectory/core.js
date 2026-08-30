@@ -261,6 +261,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // thing the Cell rules refuse.  null = the run knows nothing.
             // Same per-file lifecycle as atomMetadata.
             periodicity: null,
+            // What this run says ABOUT itself: the free `info` store
+            // (molview.md § 8.4a), composed by the server from the run
+            // directory -- today the contract its deck records, as
+            // `info.calculation`.  THE TAB PROVIDES IT (user, 2026-08-30):
+            // MolView has no idea what describes a run.  HELD here, beside
+            // its two neighbours, because this viewer is REBUILT on every
+            // poll -- the store is re-supplied to each installMolecule or
+            // it lasts one tick.  null = the run said nothing.
+            info: null,
         },
 
         viewState: {
@@ -347,6 +356,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         alias("data",         "fileState");
         alias("atomMetadata", "fileState");
         alias("periodicity",  "fileState");
+        alias("info",         "fileState");
         alias("firstFit",     "viewState");
         alias("pollTimer",    "lifecycle");
         alias("pollInFlight", "lifecycle");
@@ -401,6 +411,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.data   = null;
             state.fileState.atomMetadata = null;
             state.fileState.periodicity  = null;
+            state.fileState.info         = null;
             // Reset viewState per matrix: refit the camera on the next render.  The
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
@@ -441,6 +452,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.data   = null;
             state.fileState.atomMetadata = null;
             state.fileState.periodicity  = null;
+            state.fileState.info         = null;
             state.viewState.firstFit     = true;
             state.derived.scfPollHistory.length = 0;
             state.machine = "IDLE";
@@ -521,6 +533,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 state.fileState.atomMetadata = payload.atomMetadata;
             if (payload.periodicity !== undefined)
                 state.fileState.periodicity = payload.periodicity;
+            if (payload.info !== undefined)
+                state.fileState.info = payload.info;
             return;
         }
         // Unknown target: silent no-op.  Future targets (the
@@ -1069,6 +1083,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // carrying its own atom-count guard.  This tab does not open it.
                 atomMetadata: state.atomMetadata || null,
                 periodicity:  _runPeriodicity(),
+                // The store rides IN, on every rebuild, because a rebuild
+                // replaces the structure -- so a run's recorded contract is
+                // on the atoms before anything can read them, and an export
+                // from this view carries it.
+                info:         state.info || null,
             });
         } catch (e) {
             setStatus("Viewer failed to load the run: "
@@ -2567,6 +2586,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // per-file and doesn't change mid-run); set on a fresh load.
             atomMetadata: r.atomMetadata,
             periodicity:  r.periodicity,
+            info:         r.info,
         });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
@@ -2929,6 +2949,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // polls omit it and keep the value (APPLY keep-existing).
                 atomMetadata: r.atom_metadata || null,
                 periodicity:  r.periodicity || null,
+                // What the run says about itself (the deck's recorded
+                // contract), composed by the same server-side answer as
+                // the two above -- see watch.py::_run_metadata.
+                info:         r.info || null,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so

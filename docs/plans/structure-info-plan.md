@@ -334,7 +334,7 @@ Each batch was fixed at the rule, not at the symptom:
   the hand-over guard tests containment, not equality: a folder
   *inside* the citation buries the calculation exactly as thoroughly.
 
-## 5. The metadata bridge — settled 2026-08-30, ready to build
+## 5. The metadata bridge — settled and BUILT 2026-08-30
 
 **The question that started it** (user): an export from the Results
 *trajectory* view carries no `info.calculation`, so a transport citation
@@ -354,40 +354,69 @@ And: the store is **persistent** — it survives the reloads a tab makes
 while showing one run — and is **refreshed by the tab** when it moves
 in or out of a run.
 
-### 5.2 What the code already does — no MolView change is needed
-
-This was mis-diagnosed twice before the code was read; the anchors are
-recorded so nobody re-derives them.
+### 5.2 What the code does — one claim here was WRONG
 
 * **`info` IS the one additional-metadata API.** A free dict of
   key → value. `atomMetadata` and `periodicity` earn their own load
   parameters because they BECOME the structure; `info` only
   *describes* it, so every future category is a new KEY inside it and
-  costs nothing anywhere else.
-* **It rides a load in**: `structureFromServer`
-  (`lib/molview/model-jobs.js`, the `info:` line) copies `payload.info`
-  onto the new structure — and substitutes `{}` when the payload has
-  none.
-* **It rides an export out**: `createWriteOut` (same file) writes
-  `structure.info` into the pair's sidecar when non-empty.
-* **`molview.md` § 8.4a already states both.** The contract is
-  correct as written. The one sentence worth ADDING is the trap this
-  thread was: *a host that re-loads must re-supply `info`, because a
-  load with no `info` in its payload empties the store.*
+  costs nothing anywhere else. **This held.**
+* **It rides an export out**: `createWriteOut` writes `structure.info`
+  into the envelope, `StructureCodec` writes it into the
+  `.molstruct.json` (schema 9). **This held** — measured 2026-08-30.
+* **It rides a load in — IT DID NOT.**  This section said
+  `structureFromServer` "copies `payload.info` onto the new structure",
+  and it did read exactly that: a FLAT `payload.info`.  **No route has
+  ever sent one.**  A `Structure`'s fields arrive inside the canonical
+  `payload.structure` envelope — which is where `to_dict` puts `info`,
+  and where this same reader already takes `title` from, with a comment
+  explaining why the flat key was wrong *there*.
 
-### 5.3 The actual gap
+  So every structure loaded since the store shipped arrived with an
+  empty one, at HTTP 200. **Three consequences, all live:** a saved
+  pair lost its recorded contract the moment it was re-opened; a modify
+  op wiped a Results tab's contract (`applyOp` installs the server's
+  answer through the same reader); and with the store gone,
+  `markContractOutdated` had nothing left to flag, so an edit could
+  never mark a contract stale.
 
-The trajectory page's `installMolecule({text, frames, forces,
-atomMetadata, periodicity})` call passes **no `info`**. It rebuilds on
-every poll and every filter change, so anything a host set once is gone
-by the next rebuild. Nothing on that path ever asks for the contract
-either.
+  **How it survived**: `test_the_wire_carries_info_both_ways` asserted
+  the string `payload.info` appeared in the module — which the broken
+  line satisfied perfectly. A pin that asks whether a name is mentioned
+  cannot tell a working path from a dead one. Retired; replaced by
+  `tests/test_structure_info_bridge.py`, which walks the chain.
+* **`molview.md` § 8.4a** was right about the *design* and ahead of the
+  code. It now also states the re-supply rule, which side finds the
+  metadata, and the envelope the store arrives in.
 
-Contrast the structure inspector (`lib/inspectors/structure.js`), which
-gets away with a single `data.info.set("calculation", …)` after its
-load **because it loads once and never rebuilds**.
+### 5.3 The gaps — there were three, not one
 
-### 5.4 The build, in order
+1. **The trajectory page never asked.** Its `installMolecule({text,
+   frames, forces, atomMetadata, periodicity})` call passed **no
+   `info`**, and it rebuilds on every poll and every filter change, so
+   anything a host set once was gone by the next rebuild. Contrast the
+   structure inspector (`lib/inspectors/structure.js`), which gets away
+   with a single `data.info.set("calculation", …)` after its load
+   **because it loads once and never rebuilds**.
+2. **The load door could not have taken it anyway.** `requestBodyFor`
+   sent no `info`, and `/api/build/load`'s text branch read none — the
+   one shape with no document behind it, and so the one that needs a
+   caller to state the store. (`path` reads it off the sidecar and
+   `{structure}` carries it in its envelope; both already worked.)
+3. **And the answer would have been dropped on arrival** — § 5.2's
+   flat-key read. This is the one that also broke saved pairs and
+   modify ops, quite apart from trajectories.
+
+Fixing only #1 would have changed nothing observable. That is what the
+plan's own "one field" estimate missed, and why the code was measured
+before more of it was written.
+
+### 5.4 The build, in order — DONE 2026-08-30
+
+Landed as: `parse/dirs/run_info.py` (new) · `watch.py::_run_metadata` ·
+`build.py` `info` seam · `results.py` thin caller ·
+`model-jobs.js` (both directions) · `trajectory/core.js` (held + passed) ·
+`tests/test_structure_info_bridge.py` (14 pins, 11 mutations caught).
 
 1. **Server — one composer, not a third parallel line.**
    `/api/watch/load` has THREE response builders (multi-log,
@@ -417,14 +446,40 @@ load **because it loads once and never rebuilds**.
 
 ### 5.5 Holistic check to run with it
 
-* **Export**: the "Includes metadata: …" line under the Data section
-  must light up for a trajectory export, and the exported
-  `.molstruct.json` must carry `info.calculation`.
-* **Transport tab**: citing that exported pair must answer
-  `contract: "cited"` with *"contract RECORDED from the siesta deck"*,
-  and the contract fields must be sealed, not open.
-* **Fourth consumer, unchecked**: does the spectra inspector mount
-  MolView and export? If so it has the same hole and the same fix.
+* **Export**: the "Includes metadata: …" line reads the store live off
+  the model (`molview/ui.js::drawInfoNote`, subscribed), so it needs no
+  change — it lights up the moment the store is on the structure.
+  ✔ chain pinned; still to see on screen in the browser walk.
+* **Transport tab**: `compose.py::recorded_contract_of` reads
+  `info.calculation` out of the cited pair's sidecar, and the sidecar
+  carries the store (measured). ✔ chain pinned; the *"contract RECORDED
+  from the siesta deck"* wording and the sealed fields are for the walk.
+* **The two consequences nobody was looking for**, both now live and
+  both worth watching in the walk: re-opening a saved pair shows its
+  recorded contract in the Metadata pane, and a modify op no longer
+  wipes it — which means `structure_modified` starts appearing on
+  edited structures, as § 8.4a always said it should.
+* **Fourth consumer — answered.** The spectra inspector mounts a
+  viewer and exports from it, and it opens project pairs through
+  `projects.parser.openMolecule` → `installMolecule({path})` → the same
+  load door. So do Modify and the transport tab. **Every one of them
+  was losing a pair's store on open, and all four are fixed by the one
+  reader** — none needs a change of its own. Only a host reading
+  metadata out of a RUN (a deck, a log) has to state it, which today is
+  the trajectory page alone.
+
+### 5.5a One question the fix surfaced — NOT decided, not built
+
+`markContractOutdated` can now actually fire, so an edited structure
+carries `info.calculation.structure_modified: true` into its saved pair.
+**Nothing on the Python side reads that flag** (checked 2026-08-30: no
+reader in `molbuilder/`). So a transport citation of an edited pair
+seals the deck's contract onto atoms the deck never saw, and says
+nothing about it.
+
+Whether that deserves a warning — and at which door, the citation or the
+prep gate — is a design call, not a bug to patch. Recorded here; the
+flag itself is doing exactly what § 8.4a asks of it.
 
 ### 5.6 Order of everything still open
 

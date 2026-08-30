@@ -41,13 +41,18 @@ def test_the_panel_has_the_metadata_page():
     assert "molviewer-info-list" in src
 
 
-def test_the_wire_carries_info_both_ways():
-    src = _stripped(MOLVIEW / "model-jobs.js")
-    assert "payload.info" in src, (
-        "structureFromServer drops the store the server sent")
-    assert "out.info = structure.info" in src, (
-        "structureForServer drops the store on the way out -- the "
-        "exported pair would lose what the pane shows")
+#  ``test_the_wire_carries_info_both_ways`` stood here until 2026-08-30.
+#  It asserted the string ``payload.info`` appeared in the module -- and
+#  that string WAS the bug: no route has ever sent a flat ``payload.info``
+#  (the store arrives inside the canonical ``structure`` envelope, like
+#  every other field of a Structure), so every load answered an empty
+#  store at HTTP 200 while this pin stayed green.  A pin that asks whether
+#  a name is mentioned cannot tell a working path from a dead one.
+#
+#  Both directions are now pinned by ``tests/test_structure_info_bridge.py``,
+#  which walks the chain end to end -- a store stated to the load door
+#  comes back on the structure, a saved pair brings its store back when
+#  re-opened, and the reader names the envelope the value arrives in.
 
 
 def test_the_pane_vocabulary_is_defined_in_the_module_sheet():

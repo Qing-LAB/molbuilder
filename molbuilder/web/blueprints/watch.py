@@ -49,6 +49,7 @@ from molbuilder.parse import (
     UnknownFormatError,
     detect as detect_parser,
 )
+from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
 )
@@ -411,6 +412,55 @@ def _run_periodicity_json(
     except Exception:                        # noqa: BLE001
         pass
     return out or None
+
+
+def _run_metadata(
+    search_dir: Optional[str], data: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """The metadata block EVERY ``/api/watch/load`` answer carries.
+
+    Three builders answer this route -- multi-log, single-file, upload --
+    and each used to compose the block itself: two of them from two
+    DIFFERENT directory rules, and the upload one not at all.  What a
+    load carried therefore depended on which branch had built it.  One
+    composer, keyed by the directory to search, is the whole fix: a
+    builder spreads it, and the upload branch (which has no run
+    directory) answers "nothing available" DELIBERATELY -- ``None`` in
+    every field -- rather than by omission.
+
+    Omission means something else on this route.  The browser's APPLY
+    rule is keep-on-``undefined`` (`results-state-contract.md` § 4),
+    which is what lets the 200 ms poll re-send the frames without
+    re-sending the metadata.  So the POLL omits this block on purpose
+    and the LOAD always sends it; a poll that carried it would clear a
+    run's metadata five times a second.
+
+    The three fields are three sources, not one: the labels come from the
+    run's input script, the cell from its output logs, and ``info`` from
+    the deck's stated parameters.  They travel together because they
+    answer one question -- *what does this run directory say about the
+    structure it ran on?* -- and a new metadata category joins them as a
+    KEY inside ``info`` (``parse.dirs.run_info``), not as a fourth field.
+    """
+    return {
+        # Per-atom metadata (region labels / frozen tags / annotation
+        # channels) the Build tab embedded in the run's input script:
+        # coordinates come from the output logs, the labels from the
+        # .fdf / .py.  A JSON string, applied downstream through
+        # apply_to_structure; None when the run carries no block.
+        "atom_metadata": _atom_metadata_json(search_dir, data),
+        # The run's periodicity (the cell from the output logs, the axis
+        # kinds from the run dir's .source pair).  The viewer passes it
+        # through verbatim -- guessing periodicity in the browser is the
+        # one thing the Cell rules refuse.
+        "periodicity":   _run_periodicity_json(search_dir, data),
+        # What the run says ABOUT itself: today the electronic contract
+        # its deck records, as `info.calculation`.  Rides installMolecule
+        # in and exportFile out (molview.md § 8.4a), so an export from a
+        # results view carries the contract and a transport citation of
+        # that pair seals its fields rather than leaving them open.
+        "info":          run_info_for_dir(search_dir),
+    }
 
 
 def _attach_iter_walltime(
@@ -986,20 +1036,15 @@ def api_load():
             "data":             merged,
             "stages":           stages_meta,
             "uploaded":         False,
-            # Bridge the Build-tab per-atom metadata (region labels /
-            # frozen tags / annotations) embedded in the run's input
-            # script into the loaded MolView -- coordinates come from the
-            # output logs, metadata from the .fdf / .py.  JSON string of
-            # the trusted ATOM-METADATA block (applied downstream via
-            # apply_to_structure); None when the run carries no block.
-            "atom_metadata":
-                _atom_metadata_json(resolved_from_dir, merged),
-            # The run's periodicity, composed here (the cell from the output
-            # logs, the axis kinds from the run's .source pair) -- the viewer
-            # passes it through verbatim; guessing periodicity in the browser
-            # is the one thing the Cell rules refuse.
-            "periodicity":
-                _run_periodicity_json(resolved_from_dir, merged),
+            # What this run directory says about the structure it ran on
+            # (labels, cell, recorded contract) -- one composer, three
+            # builders.  See ``_run_metadata``.  The directory to search
+            # is spelled the same here as in the single-file branch: a
+            # multi-log run always HAS a resolved directory, so the
+            # fallback never fires, and writing the rule once is what
+            # stops the two branches drifting apart again.
+            **_run_metadata(resolved_from_dir or os.path.dirname(path),
+                            merged),
         })
 
     with _lock:
@@ -1019,9 +1064,7 @@ def api_load():
         return jsonify({"ok": False, "error": err}), 500
     # Metadata search dir: the resolved run directory, else the parent of
     # the file we loaded (Watch was pointed straight at a log inside a run
-    # dir).  Bridges the input script's ATOM-METADATA into MolView; see the
-    # multi-log branch above.
-    _md_dir = resolved_from_dir or os.path.dirname(path)
+    # dir).  The same expression the multi-log branch above uses.
     return jsonify({
         "ok":               True,
         "path":             state["path"],
@@ -1031,10 +1074,8 @@ def api_load():
         "label":            parser_cls.label,
         "data":             state["data"],
         "uploaded":         False,
-        "atom_metadata":
-            _atom_metadata_json(_md_dir, state["data"]),
-        "periodicity":
-            _run_periodicity_json(_md_dir, state["data"]),
+        **_run_metadata(resolved_from_dir or os.path.dirname(path),
+                        state["data"]),
     })
 
 
@@ -1112,6 +1153,13 @@ def _api_load_multipart(uploaded_file):
         "data":             state["data"],
         "uploaded":         True,
         "uploaded_filename": uploaded_file.filename,
+        # An upload is one file with no run directory behind it, so it
+        # has nothing to say about itself -- and it SAYS so, in the same
+        # fields the other two builders answer.  One route, one response
+        # shape: a reader learns what a load answers from one place, and
+        # "nothing available" is a stated answer rather than a field a
+        # caller has to notice is missing.
+        **_run_metadata(None, state["data"]),
     })
 
 

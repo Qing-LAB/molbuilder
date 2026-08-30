@@ -1419,6 +1419,37 @@ their export carries more than geometry.  The Metadata tab wears the
 panel's presence dot in the accent tone for the same reason —
 recorded, not warned.
 
+**A HOST THAT RE-LOADS MUST RE-SUPPLY THE STORE** (user, 2026-08-30).
+`installMolecule` REPLACES the structure, and the store is a field of
+the structure — so a load with no `info` in it does not merge, it
+empties.  A host that loads ONCE may attach the store afterwards
+through `data.info.set`; a host that REBUILDS — the Results trajectory
+rebuilds on every poll and every filter change — hands the store to
+every `installMolecule` call, or it lasts until the next tick.  The
+load parameter is also the only way the store is on the atoms *before*
+anything can read them (§ 6.4) and the only way the history anchor is
+recorded WITH it (§ 11.2) — the same argument the frames won on.
+
+**WHICH SIDE FINDS IT.**  Never the viewer: it has no idea what
+describes the run on screen, and never looks.  The tab a viewer sits in
+does — and for a run directory that is ONE server-side composer,
+`parse.dirs.run_info.run_info_for_dir`, so the doors that ask cannot
+come to disagree.  **A new metadata category is a new KEY in the block
+there, and nowhere else.**  That is the whole reason `info` is a free
+dict rather than a field per category: `atomMetadata` and
+`periodicity` earn load parameters of their own because they BECOME
+the structure, while `info` only describes it.
+
+**The store arrives in the CANONICAL envelope.**  It is a field of a
+`Structure`, so it comes back inside `payload.structure`, exactly like
+`title` — never as a flat top-level key.  The reader asked for a flat
+`payload.info` from the day the store shipped until 2026-08-30, so
+every structure arrived with an empty one at HTTP 200: a saved pair
+lost its recorded contract the moment it was re-opened, a modify op
+wiped a Results tab's contract (`applyOp` installs the server's answer
+the same way a load does), and with the store gone the
+`structure_modified` flag below had nothing left to mark.
+
 **An edit outdates a recorded contract** (user, 2026-08-29).  When the
 store carries `info.calculation` and any structure-changing edit lands
 — a geometry op, a cell op, a label write — the viewer sets

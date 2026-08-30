@@ -116,17 +116,22 @@ def api_results_contract():
     """The electronic contract recorded by the deck beside a structure.
 
     ``?path=`` names a structure file (or its directory), tree-relative;
-    the answer is the ``info.calculation`` block ``contract_of`` extracts
-    from the ONE engine deck in that directory, or ``null`` when there is
-    none (no deck, several decks, a deck stating nothing).  The Results
-    tab's structure inspector calls this after a load and records the
-    answer through the viewer's ``data.info`` door, so an export carries
-    it (`plans/structure-info-plan.md` I5)."""
+    the answer is the ``info.calculation`` key of the block that
+    directory answers for itself, or ``null`` when there is none (no
+    deck, several decks, a deck stating nothing).  The Results tab's
+    structure inspector calls this after a load and records the answer
+    through the viewer's ``data.info`` door, so an export carries it
+    (`plans/structure-info-plan.md` I5).
+
+    It asks ``run_info_for_dir`` -- the ONE composer of "what does this
+    directory say about itself" -- rather than the ``contract_of``
+    extractor beneath it, so this door and the trajectory load door
+    cannot come to disagree about what a directory records."""
     from pathlib import Path
 
     from flask import jsonify, request
 
-    from molbuilder.parse.contract import contract_of
+    from molbuilder.parse.dirs.run_info import run_info_for_dir
     from .files import _PickerError, _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
@@ -137,4 +142,5 @@ def api_results_contract():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
-    return jsonify({"ok": True, "calculation": contract_of(directory)})
+    info = run_info_for_dir(directory) or {}
+    return jsonify({"ok": True, "calculation": info.get("calculation")})
