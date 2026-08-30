@@ -115,10 +115,15 @@ def test_the_users_matrix_enumerates_both_families(sol_calc, capsys):
     assert all(p["use_gpu"] is True for p in gpu)
     # every point carries the full value coordinate
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
-    # the drop is loud and names its cells and the cap's source
+    # The struck cells are named, with the queue and the number that
+    # struck them.  The wording changed on 2026-08-30 -- the machine used
+    # to print "dropped from the GPU family (domain 'general' allows 48
+    # cores/node)" and now prints the whole grid, kept and crossed out,
+    # each struck row carrying its own reason.  The CLAIM is unchanged:
+    # nothing is dropped silently.
     out = capsys.readouterr().out
-    assert "dropped from the GPU family" in out
-    assert "'general'" in out and "48 cores/node" in out
+    assert "crossed out" in out
+    assert "general" in out and "48" in out
     assert "G1K64C1" in out and "G1K128C1" in out
     # an axis is never a pin; the measurement pins still ride
     assert "block_size" not in pins and pins["max_scf_iter"] == 3
@@ -490,7 +495,10 @@ def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
                         "gpu_count": [3]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(sol_calc, None)
-    assert "every GPU cell was dropped" in str(e.value)
+    assert "no GPU cell survived" in str(e.value)
+    assert "crossed-out list" in str(e.value), (
+        "the refusal must point at the list that names each struck cell "
+        "and why -- not merely say that everything went")
 
 
 def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
@@ -516,9 +524,9 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
     assert sorted((p["G"], p["K"]) for p in gpu) == \
         [(1, 32), (2, 16), (4, 8)]
     out = capsys.readouterr().out
-    assert "dropped from the GPU family" in out
+    assert "crossed out" in out
     for cell in ("G1K64C1", "G2K32C1", "G4K16C1"):
-        assert cell in out, f"the dropped cell {cell} must be named"
+        assert cell in out, f"the struck cell {cell} must be named"
 
 
 def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
