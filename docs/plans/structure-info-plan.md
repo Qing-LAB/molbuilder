@@ -333,3 +333,118 @@ Each batch was fixed at the rule, not at the symptom:
 * **F — § 3's quoted refusal matches the rule that replaced it**, and
   the hand-over guard tests containment, not equality: a folder
   *inside* the citation buries the calculation exactly as thoroughly.
+
+## 5. The metadata bridge — settled 2026-08-30, ready to build
+
+**The question that started it** (user): an export from the Results
+*trajectory* view carries no `info.calculation`, so a transport citation
+of that pair lands in the open lane instead of sealed. Reproduced live
+2026-08-30: the export menu's "Includes metadata" line stays hidden and
+the Metadata pane is empty for any SIESTA relaxation (relaxations open
+in the trajectory inspector, not the structure inspector).
+
+### 5.1 The rule (user, 2026-08-30)
+
+> The tab the viewer resides in is in charge of finding the metadata in
+> the run's deck (`.fdf`, or PySCF's, per engine) and handing it to
+> MolView. MolView has no control over what metadata comes; it is
+> always the host that provides it.
+
+And: the store is **persistent** — it survives the reloads a tab makes
+while showing one run — and is **refreshed by the tab** when it moves
+in or out of a run.
+
+### 5.2 What the code already does — no MolView change is needed
+
+This was mis-diagnosed twice before the code was read; the anchors are
+recorded so nobody re-derives them.
+
+* **`info` IS the one additional-metadata API.** A free dict of
+  key → value. `atomMetadata` and `periodicity` earn their own load
+  parameters because they BECOME the structure; `info` only
+  *describes* it, so every future category is a new KEY inside it and
+  costs nothing anywhere else.
+* **It rides a load in**: `structureFromServer`
+  (`lib/molview/model-jobs.js`, the `info:` line) copies `payload.info`
+  onto the new structure — and substitutes `{}` when the payload has
+  none.
+* **It rides an export out**: `createWriteOut` (same file) writes
+  `structure.info` into the pair's sidecar when non-empty.
+* **`molview.md` § 8.4a already states both.** The contract is
+  correct as written. The one sentence worth ADDING is the trap this
+  thread was: *a host that re-loads must re-supply `info`, because a
+  load with no `info` in its payload empties the store.*
+
+### 5.3 The actual gap
+
+The trajectory page's `installMolecule({text, frames, forces,
+atomMetadata, periodicity})` call passes **no `info`**. It rebuilds on
+every poll and every filter change, so anything a host set once is gone
+by the next rebuild. Nothing on that path ever asks for the contract
+either.
+
+Contrast the structure inspector (`lib/inspectors/structure.js`), which
+gets away with a single `data.info.set("calculation", …)` after its
+load **because it loads once and never rebuilds**.
+
+### 5.4 The build, in order
+
+1. **Server — one composer, not a third parallel line.**
+   `/api/watch/load` has THREE response builders (multi-log,
+   single-file, upload) plus the `/api/watch/data` poll. Two builders
+   answer `atom_metadata` + `periodicity` from a directory, using two
+   DIFFERENT directory rules (`resolved_from_dir` vs
+   `resolved_from_dir or dirname(path)`); the upload builder answers
+   neither; the poll omits them **by design** (the browser's APPLY rule
+   is `!== undefined` → keep, so an always-present bundle would clear
+   metadata on every poll).
+   Give the run's metadata ONE composer keyed by the search directory,
+   returning the block every builder spreads — upload included, which
+   then answers "nothing available" deliberately rather than by
+   omission. `contract_of(directory)` (`molbuilder/parse/contract.py`)
+   is the extractor; `/api/results/contract` becomes a thin caller of
+   the same composer.
+2. **Page — hold it like its two neighbours.** Set from the load
+   response; clear at the two moments the page ALREADY has (the
+   `transition("LOADING")` reset and the go-idle reset, which today
+   null `atomMetadata`/`periodicity` side by side).
+3. **Page — pass `info` in the `installMolecule` call.** One field.
+   Every future category is a key inside it.
+4. **Then the chain closes**: a trajectory export carries the
+   contract → a transport citation of that pair seals its contract
+   fields (`compose.py::recorded_contract_of` already reads
+   `info.calculation`) → **I7's browser walk can complete**.
+
+### 5.5 Holistic check to run with it
+
+* **Export**: the "Includes metadata: …" line under the Data section
+  must light up for a trajectory export, and the exported
+  `.molstruct.json` must carry `info.calculation`.
+* **Transport tab**: citing that exported pair must answer
+  `contract: "cited"` with *"contract RECORDED from the siesta deck"*,
+  and the contract fields must be sealed, not open.
+* **Fourth consumer, unchecked**: does the spectra inspector mount
+  MolView and export? If so it has the same hole and the same fix.
+
+### 5.6 Order of everything still open
+
+```
+ 0  MODIFY FUNCTIONS (Molbuilder tab)  — user calls it higher priority;
+    not yet described.  Blocks nothing technically; do it first on ask.
+ 1  § 5.4 steps 1-3          → unblocks 2
+ 2  I7 close-out: the browser walk (Results export → cite → describe → prep)
+ 3  independent backlog, any order:
+      · caller-less endpoints — `/api/docs/list` is a second, unused
+        answer to "what docs exist" beside `/api/docs/toc` (which the
+        tab actually calls); `/api/checkpoint/config` is the read half
+        of a route whose write half was deliberately removed;
+        `/api/selection/atoms` is pinned by five test files — decide
+        the ROLE, do not just delete
+      · transport viewer default orientation (a MolView camera-door
+        contract question)
+      · flat-shape citation ergonomics
+      · CSS polish batch (part sits on `web/ui-contract.md`'s recorded
+        keep-list — touching those reopens decisions)
+      · Results transmission inspector (the record exists; the reader
+        does not)
+```
