@@ -114,6 +114,31 @@ class TestTheCeilingIsAmongMachinesWithThatCard:
             why
         assert any("offers" in w for w in why)
 
+    def test_naming_a_card_never_LOOSENS_the_core_ceiling(self):
+        """A record that does not say which nodes hold its devices is
+        SILENT about that, and narrowing silence by type yields silence --
+        so the wider answer must stand, not vanish.
+
+        Caught in review, 2026-08-30, in this very change: the "no machine
+        here carries that card" short-circuit fired on an empty
+        device-bearing list too, which is every record with no
+        ``node_types`` -- all of them before 2026-08-27, and every
+        hand-declared row.  Naming a card then REMOVED the ceiling, and a
+        4096-rank trial was admitted on a 48-core queue.
+        """
+        big = Request(ranks=4096, cpus_per_task=1, gpus=2, gpu_type="a100")
+        # (a) max_cores only -- the pre-node_types record shape.
+        old = _dom("old", max_cores=48, gpu={"a100": 4})
+        assert admits(old, big), "the max_cores ceiling must still bar it"
+        # (b) node_types listed, but none says which machines hold devices.
+        quiet = _dom("quiet", max_cores=64, gpu={"a100": 4},
+                     node_types=[{"cores": 64, "nodes": 10}])
+        assert admits(quiet, big), "the widest-node ceiling must still bar it"
+        # And naming the card must never admit MORE than not naming it.
+        untyped = Request(ranks=4096, cpus_per_task=1, gpus=2)
+        for row in (old, quiet):
+            assert len(admits(row, big)) >= len(admits(row, untyped)), row.name
+
     def test_the_largest_node_group_is_the_one_named(self):
         """R10 names what would fit, and a queue listing a 1-node group
         and a 51-node group of the same width must not report the one."""
@@ -180,3 +205,59 @@ class TestTheGresStringIsReadByOneDoor:
         assert _gres_type("gpu:a100:4,mps:400") == "a100"
         assert _gres_type("gpu:4") == "gpu"        # untyped
         assert (_gres_type(""), _gres_count("")) == (None, 0)
+
+
+class TestTheGridFitCheckReportsHonestly:
+    """`_cells_this_machine_holds` -- caught in review, 2026-08-30."""
+
+    def test_a_cell_no_queue_could_take_is_never_reported_as_kept(
+            self, monkeypatch):
+        """The kept/crossed split is on the REASONS, so a cell offered to
+        an empty pool -- a GPU cell on a cluster with no gpu-capable queue
+        -- must carry one.  With no reason it read as *this machine can
+        hold it*, which is the opposite of the truth."""
+        import molbuilder.runtime_config as rc
+        from molbuilder.jobset._cli import _cells_this_machine_holds
+        cpu_only = [_dom("cpuonly", max_cores=128,
+                         node_types=[{"cores": 128, "nodes": 10}])]
+        monkeypatch.setattr(rc, "get_routing", lambda **k: cpu_only)
+        out = _cells_this_machine_holds(
+            ".", [(True, (2, 4, 1)), (False, (0, 4, 1))], "a100")
+        gpu_cell, cpu_cell = out[0], out[1]
+        assert gpu_cell[3], "a GPU cell with nowhere to go must be crossed out"
+        assert "gpu-capable" in gpu_cell[3][0]
+        assert not cpu_cell[3] and cpu_cell[2] == ("cpuonly",)
+
+    def test_a_count_refusal_outranks_a_wrong_queue_one(self):
+        """`_rank_reasons` demotes *"gaudi offers hl225"* -- which only says
+        the wrong queue was asked.  It keyed on the word "offers", which the
+        COUNT refusal also uses, so the one naming the number to change was
+        demoted with it."""
+        from molbuilder.jobset._cli import _rank_reasons
+        first = _rank_reasons([
+            "needs a100 but gaudi offers hl225",
+            "needs 4 a30 GPUs but public offers at most 3 a30"])[0]
+        assert "at most 3" in first
+
+    def test_a_stated_card_survives_an_unrelated_probe_failure(
+            self, monkeypatch, tmp_path):
+        """`_gpu_type_for_bench` asks two questions -- *what did you state*
+        and *what did this box measure* -- and the second raises on its own
+        account: on a workstation carrying named targets `machine_for` asks
+        which machine was meant.  Sharing one try block discarded the
+        stated answer over a failure that had nothing to do with it."""
+        import molbuilder.runtime_config as rc
+        import molbuilder.scheduler as sched
+        from molbuilder.jobset._cli import _gpu_type_for_bench
+
+        monkeypatch.setattr(rc, "get_scheduler",
+                            lambda **k: {"gpu": {"default_type": "a100"}})
+
+        def _ambiguous(*a, **k):
+            raise RuntimeError("several machines could be meant")
+        monkeypatch.setattr(sched, "machine_for", _ambiguous)
+
+        topo = type("T", (), {"gpu_type": "a100.40gb"})()
+        assert _gpu_type_for_bench(tmp_path, topo) == "a100", (
+            "the person stated a100; a probe failure must not silently "
+            "hand the bench the card this node happens to carry")

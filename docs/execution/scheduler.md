@@ -266,6 +266,15 @@ partially-probed cluster unusable.
 > machine list names devices but not this one states **no** core ceiling for
 > it, because the honest refusal is *this queue does not stock it*, not a
 > sentence about a machine that does not exist.
+>
+> **Silence still wins over the narrowing, and that is not a detail.** A queue
+> that never said *which* of its machines hold devices has said nothing, so the
+> wider ceiling stands — the widest listed machine, else `max_cores`. Reading
+> the empty list as *no machine carries that card* would make naming a card
+> **loosen** the ceiling instead of tightening it, and every record written
+> before `node_types` existed (2026-08-27) carries only `max_cores`. Caught in
+> review of the change that introduced this rule: a 4096-rank trial was
+> admitted on a 48-core queue because the request named its GPU.
 
 **R2a — The device TYPE is a declared limit, so it is compared.** A domain's
 `gpu` column names the gres types its nodes register; `--gres=gpu:<type>:N`

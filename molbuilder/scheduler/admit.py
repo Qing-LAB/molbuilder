@@ -228,7 +228,16 @@ def _widest_node(row, *, needs_device: bool = False,
     if needs_device:
         with_dev = [r for r in rows
                     if isinstance(r, dict) and r.get("gpu")]
-        if device_type:
+        # ...AND ONLY WHERE THE RECORD SAID WHICH NODES HOLD DEVICES.
+        # ``with_dev`` empty is SILENCE, and narrowing silence by type
+        # yields silence -- so the type filter is skipped and the wider
+        # answer (the unfiltered widest node, else ``max_cores``) stands.
+        # Without the ``and with_dev`` this returned "no ceiling" for every
+        # record with no ``node_types`` at all -- i.e. every record written
+        # before 2026-08-27, and every hand-declared row -- so NAMING a card
+        # removed the core ceiling instead of tightening it, and a
+        # 4096-rank trial was admitted on a 48-core queue.
+        if device_type and with_dev:
             # THE ONE READER of a gpu column, per `record._read_devices`:
             # the column has two spellings and reading it here by key
             # would make the descriptor form's key names ("type",

@@ -1239,13 +1239,21 @@ def _gpu_type_for_bench(base, topo):
     stated = None
     try:
         from ..runtime_config import get_scheduler
-        from ..scheduler import machine_for
         stated = ((get_scheduler(project_dir=Path(base)) or {})
                   .get("gpu") or {}).get("default_type")
+    except Exception:                                       # noqa: BLE001
+        stated = None
+    try:
+        # SEPARATELY, because this one raises on its own account: on a
+        # workstation carrying named targets `machine_for` asks "which
+        # machine did you mean" (`submit._reject_if_this_machine_says_no`
+        # records the same trap).  Losing the answer to *which card* over
+        # that would discard a preference the person did state.
+        from ..scheduler import machine_for
         probed_here = getattr(getattr(machine_for(Path(base)), "topology",
                                       None), "gpu_type", None)
     except Exception:                                       # noqa: BLE001
-        stated = None
+        probed_here = None
     if stated and stated != probed_here:
         return stated
     return getattr(topo, "gpu_type", None)
@@ -1254,9 +1262,10 @@ def _gpu_type_for_bench(base, topo):
 def _cells_this_machine_holds(base, plan, gtype, *,
                               local_cores=None, local_gpus=None):
     """Every enumerated bench cell, checked one by one against THIS
-    machine's queues -- ``[(fam, (g, k, c), domain, why)]`` in enumeration
-    order, ``domain`` naming where the cell would go and ``why`` the
-    reasons it fits nowhere.  Exactly one of the two is set.
+    machine's queues -- ``[(fam, (g, k, c), domains, why)]`` in enumeration
+    order, ``domains`` naming every queue that would take the cell and
+    ``why`` the reasons it fits nowhere.  Exactly one of the two is
+    non-empty, so ``why`` alone decides kept-vs-crossed.
 
     **Enumerate everything, then cross out what the machine cannot hold,
     then show what is left** (user, 2026-08-30).  What this replaces was a
@@ -1326,6 +1335,13 @@ def _cells_this_machine_holds(base, plan, gtype, *,
                 why.extend(no)
             else:
                 fits.append(row.name)
+        if not fits and not why:
+            # An EMPTY POOL says nothing, and silence here would be read
+            # as "it fits": the kept/crossed split is on ``why``, so a
+            # cell nothing could even be offered to must carry a reason.
+            # `place` refuses this case in the same words.
+            why = ["this machine has no gpu-capable queue" if want_gpu
+                   else "this machine has no queue for cpu work"]
         out.append((fam, (g, k, c), tuple(fits),
                     () if fits else _rank_reasons(why)))
     return out
@@ -1346,7 +1362,11 @@ def _rank_reasons(reasons):
         if r not in seen:
             seen.add(r)
             ranked.append(r)
-    ranked.sort(key=lambda r: (" offers " in r, len(r)))
+    # "offers at most 3 a30" NAMES the number to change and must not be
+    # demoted with it -- only the bare "offers <list>" (wrong queue
+    # entirely) sorts last.
+    ranked.sort(key=lambda r: (" offers " in r and " at most " not in r,
+                               len(r)))
     return tuple(ranked)
 
 
