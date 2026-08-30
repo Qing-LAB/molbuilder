@@ -213,11 +213,32 @@ at prep, refusals naming the atoms (user ruling Q3):
   transport axis must reproduce a bulk lead — the layers sit at bulk
   spacing with a well-defined period. A block that does not tile
   (wrong label boundary, a partial layer) is refused naming the layer
-  spacing it found.
+  spacing it found. **This gate runs first**, and the order is a
+  dependency rather than a preference: everything the next one computes
+  — the median interlayer, the period, the gap — is derived from the
+  layer spacing, so a block that does not tile would otherwise be
+  refused on invented numbers, pointing at the wrong repair.
 * **Thick enough — the principal-layer condition.** The extracted cell
   must be long enough along transport that SIESTA's orbitals couple
-  only to adjacent cells. Too thin → refuse: *"orbital range X Å
-  exceeds the L-electrode block's period Y Å — label more layers."*
+  only to adjacent cells. Too thin → refuse, naming the measured reach,
+  the gap it exceeds, and the block it belongs to.
+  The orbital ranges are **read, never guessed** *(2026-08-29; a fixed
+  ~12 Å floor refused the user's valid 3-layer Au lead)*: SIESTA
+  leaves `<El>.ion` beside every run, and the largest orbital cutoff
+  in the CITED directory's own files is the measurement
+  (`parse/ion.py`).  Two orbitals couple within rc_i + rc_j; the
+  nearest atoms of NEXT-NEAREST lead cells are separated along
+  transport by **2·period − span** (the top of cell *n* to the bottom
+  of cell *n+2*), and their true 3-D distance is at least that, so
+  gating on the axial separation is the conservative side.  The
+  refusal fires when 2·rc_max exceeds that gap.  *(Written that way,
+  not as period + interlayer: the two agree only while the period is
+  derived as span + interlayer, which an explicit `--z-period` breaks.)*
+  No
+  readable `.ion` for a block's element → the condition is honestly
+  **UNVERIFIED** — a note on the electrode model, never a refusal on
+  a number nobody measured (TranSIESTA verifies lead connectivity
+  itself at run time).
 * **Buffer sanity.** Atoms labeled buffer (excluded from the NEGF
   region) must sit outside the electrode blocks; `TS.Atoms.Buffer`
   emission is the half of region consumption roadmap § 2 records as
@@ -280,7 +301,7 @@ up, no sibling calculations, no assumed tree.
 | atom identities + region labels (`L-electrode` / `R-electrode`, `frozen_atoms`) + cell | the deck: its species/coordinates block, its in-body **ATOM-METADATA** block (job-contracts § 3.4 — the deck is self-describing when labels exist), its `LatticeVectors`.  If the deck lacks the block, exactly one `.molstruct.json` in the same directory may supply the labels | the `.molstruct.json` (regions, frozen, cell) |
 | electronic contract (basis, XC, mesh, transverse k, T) | the deck — fdf-is-truth; the contract fields stay **sealed** | **none** — the description's own `TransportConfig` fields; the contract fields are **open** (settable) for this form, because there is no deck to be truth |
 | pseudopotentials | `.psml` in the directory (or its `pseudos/`); missing species are a prep refusal naming them | same |
-| convergence evidence | a run record in the directory, when one exists, must say CONCLUDED (a molbuilder attempt mid-run is refused); **no record → the `.XV` is taken as the final geometry, and the meta line says so honestly** | none claimed — the structure is taken as given, said honestly |
+| convergence evidence | a run record in the directory, when one exists, must say CONCLUDED — molbuilder's own marker answers first (it carries the rc), and **the engine's own goodbye counts too**: SIESTA's `0_NORMAL_EXIT` is a clean exit whatever launched the run *(2026-08-29 — evidence is FILES, never our marker spelling)*; a record with neither is refused (mid-run or force-stopped, never decided); **no record → the `.XV` is taken as the final geometry, and the meta line says so honestly** | none claimed — the structure is taken as given, said honestly |
 
 Rules that keep the condition decidable:
 
@@ -346,9 +367,60 @@ a buffer atom belongs to is read from its transport coordinate, not
 from a second label):
 
 ```
-[ buffer ][ L-electrode ][ bridge ][ R-electrode ][ buffer ]
- index 1 →                                          → index N
+[ buffer ][ lower electrode ][ bridge ][ upper electrode ][ buffer ]
+ index 1 →    (−A3 lead)                   (+A3 lead)       → index N
 ```
+
+**Two facts, two owners.** Which block leads the atom list is
+**geometry**; which lead is biased positive is the **label**. Keeping
+them apart is what lets a junction be labeled either way round and
+still be a correct calculation.
+
+| what | decided by | why it cannot be the other one |
+|---|---|---|
+| atom order, `elec-pos` ends | the **lower** block first | the first electrode is the one extending to `−A3`; putting the upper block first aims its self-energy down into the bridge |
+| `semi-inf-direction ∓A3` | z-centroid | same reason — it is where the lead physically continues |
+| the reservoir at µ = +V/2 (`chem-pot Left`) | the region **name** (`L-electrode` → `Left`) | which end you bias positive is your experiment, not ours to infer |
+
+**The usual convention is `L-electrode` low, `R-electrode` high** —
+TranSIESTA's own, as in the author's reference inputs
+([`ts-tbt-sisl-tutorial/TS_02`](https://github.com/zerothi/ts-tbt-sisl-tutorial/blob/main/TS_02/RUN.fdf)):
+`TS.Elec.Left` takes `electrode-position 1` + `semi-inf-direction -a1`
++ `mu V/2`; `TS.Elec.Right` takes `end -1` + `+a1` + `mu -V/2`. Note
+the *names* are free strings — SIESTA's own shipped test
+(`Tests/16.TranSiesta/ts_chain.fdf`) calls them `high`/`low` — what is
+fixed is first-atoms ↔ `−a3` and last-atoms ↔ `+a3`.
+
+**A junction labeled the other way round is checked, warned about, and
+run** *(user ruling, 2026-08-29: check z, warn, the author decides)*.
+It is not mislabeled — it is a junction whose author biased the other
+end, and only they can say whether that was intended. The sort carries
+the observation as a note (`SortResult.notes`) instead of refusing;
+the engine preflight raises it as a **warning**, not an error; the tab
+prints it and offers the rename. All of them ask ONE predicate,
+`sort.py::electrode_orientation`, and say ONE sentence,
+`sort.py::inverted_note`, so no surface can drift into its own reading.
+The emitted deck states the outcome plainly — which region is the
+low-z `−A3` lead, which carries µ = +V/2, and, when those differ, that
+the high-z lead is the positively biased one.
+
+**The rename is offered, never applied for you.** `describe_attempt`
+answers `fix: "swap_electrodes"` — a word, so the tab acts on it rather
+than matching prose — and card 1 shows the button. On agreement `POST
+/api/transport/swap_electrodes` renames the two labels **in the file
+that carries them**: the deck's own atom-metadata block, or the one
+`.molstruct.json` beside it, whichever the composition reads
+(`compose.py::labeled_citation_structure` answers both the structure
+and its label source, so read and write cannot diverge). It consults no
+coordinates — a rename is a rename. Nothing else in the file moves — no
+coordinate, no keyword, no result — which is why relabeling does not
+invalidate the relaxation it annotates, and doing it at the SOURCE is
+what makes every later citation of that directory read the same way.
+
+**The one refusal left here** is geometric and no rename helps it: the
+two blocks' z-ranges may not **interleave**. Overlapping, there is no
+lower and no upper, so there is no order to build. (Each block must
+also be contiguous.)
 
 * **Within each electrode block**: sorted by transport coordinate
   (layer-major), then transverse coordinates — deterministic, and
@@ -448,7 +520,8 @@ travels whole)*:
 ```
 <project>/transport/<name>/
   task.json                 ← the description: citation + bias + 5 stages
-  junction.xyz (+ .molstruct.json)  ← the composed, SORTED junction
+  junction.xyz              ← the composed, SORTED junction …
+  junction.molstruct.json   ← … and the half carrying its electrode labels
   junction.cited.fdf        ← the attempt's own deck, verbatim (fdf-is-truth)
   slot-provenance.json      ← which attempt, content hashes
   atom-permutation.json     ← the sort, recorded (atom-permutation@1)
@@ -460,6 +533,24 @@ travels whole)*:
   04_device/        TranSIESTA; cites both .TSHS by that exact stem
   05_transmission/  TBtrans over the converged device (P6 parses it)
 ```
+
+**One answer to "is this record complete"** *(2026-08-29)*.
+`compose.py::record_files(form)` names the set above, and both the
+write and the load ask it — the write refuses to report a record it did
+not actually put down, the load treats any gap as *no record* and
+composes fresh. Spelling the set in each place separately is how the
+geometry's own label file came to be in neither list: the codec writes
+the pair, so the file was always on disk, but nothing declared it part
+of the record, and a copy whose labels had been deleted passed the
+check and loaded a junction with no electrodes.
+
+**The provenance names every file the junction was composed from**,
+label source included. On form A the regions may live in the deck's
+own atom-metadata block *or* in a `.molstruct.json` beside it (§ 4.1b),
+and in the second case that file is in none of the other slots — so
+`labeled_citation_structure` reports which file it read and the hash
+goes in with the rest. It is the same file the rename endpoint
+rewrites, which is precisely why a result must be able to name it.
 
 **A bias SCAN** (more than one voltage — § 4.3; layout ruled
 2026-08-29: *plain v-dirs, production names*) maps the device and

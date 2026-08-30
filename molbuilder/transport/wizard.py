@@ -65,12 +65,11 @@ from .transiesta import (
 # the convergence sweep (§ 6.5), not trusted blindly.
 DEFAULT_ELECTRODE_KZ = 40
 
-#: The principal-layer floor (Å): an electrode block thinner than this
-#: is likely shorter than the electronic principal layer for a metal
-#: lead (§ 4.1), so the self-energy would couple beyond adjacent cells.
-#: ONE number, two consumers: the wizard's advisory note below, and the
-#: transport composite's prep gate (`transport/compose.py`), which
-#: REFUSES on it (transport-design.md § 3 -- refusals name atoms).
+#: A heuristic advisory floor (Å) for the wizard's note below --
+#: nothing refuses on it.  The REAL principal-layer gate lives in
+#: `transport/compose.py` and compares the orbital interaction range
+#: (read from the citation's own ``.ion`` files, never guessed)
+#: against the lead's period (transport-design.md § 3).
 MIN_ELECTRODE_THICKNESS_ANG = 12.0
 
 
@@ -179,8 +178,9 @@ def extract_electrode_model(
         notes.append(
             f"electrode z-span {z_span:.2f} Å < ~{min_thickness_ang:.0f} Å: "
             f"may be thinner than the electronic principal layer (§ 4.1).  "
-            f"The consistency preflight gates on this; consider including "
-            f"more lead layers in the *-electrode region.")
+            f"The compose gate verifies the real condition against the "
+            f"basis's orbital ranges when .ion files sit beside the "
+            f"citation; consider more lead layers if it refuses.")
 
     return ElectrodeModel(
         label=label, block_name=block_name, elements=elems, positions=pos,
@@ -302,7 +302,7 @@ def electrode_wizard(
     electrode_kz: int = DEFAULT_ELECTRODE_KZ,
     z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
-    min_thickness_ang: float = 12.0,
+    min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
 ) -> List[Tuple[str, str, ElectrodeModel]]:
     """Derive electrode ``.fdf``(s) from a labeled device.
 

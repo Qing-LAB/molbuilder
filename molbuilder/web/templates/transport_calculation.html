@@ -57,6 +57,13 @@
       bridge variation means citing a different directory).  Labels
       are assigned where the junction is built — the
       <a href="/molbuilder">Molbuilder</a> tab — never here.
+      <br />Usual convention: <strong><code>L-electrode</code> low z,
+      <code>R-electrode</code> high z</strong> (TranSIESTA's own — the
+      first atoms are the <code>−A3</code> lead).  The atom order and
+      the semi-infinite directions follow the <em>geometry</em>;
+      <code>µ = +V/2</code> follows the <em>name</em>.  A junction
+      labeled the other way round still runs — it biases the high-z
+      lead instead — and is flagged here with a one-click rename.
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
@@ -68,6 +75,9 @@
       </span>
     </div>
     <p id="transport-junction-meta" class="hint" hidden></p>
+    {#- The one refusal with a one-click fix: inverted electrode
+        labels.  Populated by core.js from the describe's `fix` word. -#}
+    <div id="transport-junction-fix" hidden></div>
     <span id="transport-status" class="status" role="status"
           aria-live="polite"></span>
     {#- Empty host -> molview.mount builds the full fused card here when
@@ -108,7 +118,10 @@
     <h2>4. Describe</h2>
     <p class="hint">
       This button writes the finished <code>task.json</code> into the
-      folder selected in the Projects sidebar — nothing is left to ask:
+      folder selected in the Projects sidebar — a folder <em>of its
+      own</em>, never the cited junction (the calculation does not live
+      inside its citation; make one under this project's transport
+      topic and select it).  Nothing is left to ask:
       the five stages and the shape are fixed by design, and prep
       derives everything else from the citation above (the sorted copy,
       both electrode cells, the seed, the NEGF device, the TBtrans

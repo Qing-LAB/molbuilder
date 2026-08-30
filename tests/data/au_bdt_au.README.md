@@ -17,16 +17,21 @@ emission pipeline end-to-end.
 
 | Indices | Region | Composition |
 |---|---|---|
-| 0–2 | L-electrode | 3 Au atoms in a chain along +z |
+| 0–2 | L-electrode | 3 Au atoms in a chain, the LOWEST block (z = −11.32…−5.56) |
 | 3 | bridge (S head) | 1 sulfur, atop-bonded to Au_left_1 |
 | 4–9 | bridge (benzene ring) | 6 aromatic carbons |
 | 10–13 | bridge (H decorators) | 4 H atoms at C2, C3, C5, C6 |
 | 14 | bridge (S tail) | 1 sulfur, atop-bonded to Au_right_1 |
-| 15–17 | R-electrode | 3 Au atoms in a chain along −z |
+| 15–17 | R-electrode | 3 Au atoms in a chain, the highest block (z = +5.56…+11.32) |
 
-Atom ordering **is contiguous L→bridge→R** as TranSIESTA requires
-(see `molbuilder/transport/transiesta.py` preflight, Brandbyge
-2002 § III).
+Atom ordering **is contiguous L→bridge→R and ascends along z** —
+TranSIESTA binds electrodes POSITIONALLY (first atoms = the first
+electrode, which the emitter lists by z-centroid), so the listed
+order must be the geometric order (see
+`molbuilder/transport/transiesta.py` preflight, Brandbyge 2002
+§ III; transport-design.md § 4.1a, the one convention: `L-electrode` is the low-z lead).  Mirrored
+2026-08-29 — the earlier fixture listed the TOP block first, which
+the geometry-aware preflight correctly refuses.
 
 ## Provenance — how the geometry was built
 

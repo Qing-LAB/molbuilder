@@ -50,6 +50,37 @@ from molbuilder.validation import validate as _validate
 bp = Blueprint("transport", __name__)
 
 
+def _fence(raw: str):
+    """A tree-relative path → ``(citation, directory, root, refusal)``.
+
+    ONE fence for both citation doors: contain the path to the projects
+    tree, require a directory, and compute the citation string the rest
+    of the composite speaks in.  ``refusal`` is a ready answer when
+    either test fails and ``None`` when neither did.
+
+    The two doors diverge only AFTER this, and deliberately: describing
+    an unciteable directory answers 200 with the condition as its
+    summary (that is how a person learns what a citation needs), while
+    renaming one is simply a bad request.  Sharing the fence keeps that
+    difference visible instead of hiding it inside two copies of the
+    same three lines.
+    """
+    from pathlib import Path
+
+    from molbuilder.projects import OutsideRoot, contain, projects_root
+    root = Path(projects_root()).resolve()
+    try:
+        cite_dir = contain(root / raw, root)
+    except OutsideRoot as exc:
+        return None, None, root, (
+            jsonify({"ok": False, "error": str(exc)}), 400)
+    if not cite_dir.is_dir():
+        return None, None, root, (
+            jsonify({"ok": False,
+                     "error": f"{raw} is not a directory"}), 404)
+    return str(cite_dir.relative_to(root)), cite_dir, root, None
+
+
 # ===================================================================== #
 # /api/transport/describe_attempt  --  the slot picker's describe seam  #
 # ===================================================================== #
@@ -70,31 +101,29 @@ def api_transport_describe_attempt() -> Any:
     relaxation it is honest about convergence (CONCLUDED / not / no
     record at all), and it says whether the electronic contract is the
     citation's ("cited") or the description's own ("open").
-    ``structure`` carries the composed labeled structure for the viewer
-    (the /api/build/load ``{structure}`` envelope), so the tab shows
-    the citation whatever the form.
+    ``structure`` carries the cited junction's labeled structure for
+    the viewer (the /api/build/load ``{structure}`` envelope), so the
+    tab shows the citation whatever the form — **and whether or not it
+    composes**: a directory that classifies but cannot be built into a
+    calculation still answers with its junction, and the refusal is
+    appended to the summary above it.  ``fix`` is a word the tab can
+    act on (today only ``"swap_electrodes"``), never prose to match.
     """
-    from pathlib import Path
-
-    from molbuilder.projects import OutsideRoot, contain, projects_root
     from molbuilder.transport.compose import (ComposeError,
                                               classify_citation,
                                               compose_junction,
+                                              labeled_citation_structure,
                                               recorded_contract_of)
     from molbuilder.transport.preflight import parse_fdf_params
+    from molbuilder.transport.sort import (ORDER_INVERTED,
+                                           electrode_orientation)
 
     raw = str(request.args.get("path") or "")
     if not raw:
         return jsonify({"ok": False, "error": "no path given"}), 400
-    root = Path(projects_root()).resolve()
-    try:
-        cite_dir = contain(root / raw, root)
-    except OutsideRoot as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    if not cite_dir.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"{raw} is not a directory"}), 404
-    citation = str(cite_dir.relative_to(root))
+    citation, cite_dir, root, refusal = _fence(raw)
+    if refusal is not None:
+        return refusal
     try:
         cited = classify_citation(cite_dir)
     except ComposeError as exc:
@@ -150,20 +179,52 @@ def api_transport_describe_attempt() -> Any:
         contract = "cited"
         concluded = bool(cited.concluded)
 
-    # The labeled structure FOR THE VIEWER (best-effort: a directory
-    # that classifies but does not compose -- missing labels, moved
-    # electrodes, mid-run record -- still answers, with the compose
-    # refusal appended so the user learns it at cite time, not at
-    # prep).
+    # TWO SEPARATE QUESTIONS, and the card needs both: *what is this
+    # junction* (always answerable from the citation's own files) and
+    # *can it be composed into a calculation* (a refusal, sometimes).
+    # They used to be one call, so every reason a junction cannot be
+    # BUILT -- labels missing, an electrode that moved, a mid-run
+    # record, blocks that interleave -- also blanked the viewer, and
+    # the refusal was read over an empty card instead of over the thing
+    # it is about.
+    #
+    # The composition answers both when it succeeds (`relaxed` IS the
+    # labeled citation structure), so the happy path reads the .XV once
+    # and only the refusal path pays for a second look.
     structure_wire = None
+    fix = None
     try:
         composed = compose_junction(citation, tree_root=root)
         rel_struct = (composed.relaxed
                       if composed.relaxed is not None
                       else composed.sorted.structure)
         structure_wire = rel_struct.to_dict()
+        # THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user
+        # ruling, 2026-08-29).  An inverted junction composes and runs
+        # -- it biases the other end -- so the tab gets the observation
+        # (with the numbers, for the meta line) plus `fix` as a WORD it
+        # can act on without matching prose.
+        for note in composed.sorted.notes:
+            status = status + "  ⚠ " + note
+        if (electrode_orientation(composed.sorted.structure)
+                == ORDER_INVERTED):
+            fix = "swap_electrodes"
     except Exception as exc:  # noqa: BLE001 -- surfaced, never fatal
         status = status + "  !! " + str(exc)
+        # SHOW IT ANYWAY.  The labels may also be the wrong way round,
+        # and the rename is still worth offering on a junction whose
+        # refusal is about something else entirely.
+        try:
+            cited_struct, _src = labeled_citation_structure(cited)
+            structure_wire = cited_struct.to_dict()
+            if electrode_orientation(cited_struct) == ORDER_INVERTED:
+                fix = "swap_electrodes"
+        except (ComposeError, OSError, ValueError):
+            # Labels that cannot be read leave nothing to draw and
+            # nothing to offer.  NARROW on purpose: a blanket except
+            # here would swallow a programming error into a silently
+            # empty card.
+            pass
 
     return jsonify({
         "ok": True,
@@ -174,6 +235,50 @@ def api_transport_describe_attempt() -> Any:
         "summary": status,
         "structure": structure_wire,
         "params": params_out,
+        "fix": fix,
+    })
+
+
+@bp.route("/api/transport/swap_electrodes", methods=["POST"])
+def swap_electrodes():
+    """Swap ``L-electrode`` / ``R-electrode`` on a cited junction --
+    the fix the person AGREED to after describe offered it.
+
+    It edits their finished run's label block and nothing else (two
+    arrays of indices in molbuilder's own metadata; no coordinate, no
+    keyword, no result), which is why relabeling does not invalidate
+    the relaxation.  Fixed at the source, so every later citation of
+    that directory is right too.
+    """
+    from molbuilder.transport.compose import (ComposeError,
+                                              resolve_citation,
+                                              swap_electrode_labels)
+
+    body = request.get_json(silent=True) or {}
+    raw = str(body.get("path") or "")
+    if not raw:
+        return jsonify({"ok": False, "error": "no path given"}), 400
+    citation, _cite_dir, root, refusal = _fence(raw)
+    if refusal is not None:
+        return refusal
+    # RESOLVE AND CLASSIFY THROUGH THE ONE DOOR prep composes through
+    # (`resolve_citation`), not a hand-rolled repeat of its three steps
+    # with its own wording.  Unlike `describe_attempt` -- which must
+    # answer 200 with the refusal as its summary, because describing an
+    # unciteable directory is how a person LEARNS the condition -- a
+    # rename asked of a directory that is not a citation is simply a
+    # bad request.
+    try:
+        _dir, cited = resolve_citation(citation, root)
+        changed = swap_electrode_labels(cited)
+    except ComposeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({
+        "ok": True,
+        "changed": changed,
+        "message": (f"Swapped L-electrode and R-electrode in {changed} "
+                    f"-- labels only; no coordinate, keyword or result "
+                    f"was touched."),
     })
 
 

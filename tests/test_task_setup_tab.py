@@ -317,6 +317,23 @@ def test_the_tab_moves_bytes_through_the_file_layer():
             f"{surface} calls the write route directly instead of the door")
 
 
+def test_the_handover_refuses_the_cited_junction_as_destination():
+    """The calculation never lives in its citation (transport-design.md
+    § 4.1b): the sidebar selection lingers on the attempt the person
+    just browsed to cite, and describing there would drop task.json --
+    and every prep attempt -- inside the finished relaxation.  The
+    success message names the folder it DID write, so the person sees
+    where the description went."""
+    lib = (STATIC / "lib/task-handover.js").read_text()
+    assert "never lives inside its citation" in lib, (
+        "the citation-destination guard is gone -- a transport describe "
+        "into the cited attempt would pollute the relaxation it cites")
+    assert 'relNorm === citeNorm' in lib, (
+        "the guard must compare the DESTINATION against the citation")
+    assert '+ " into " + (rel || "the selected folder")' in lib, (
+        "the transport success message no longer names its destination")
+
+
 def test_save_refuses_outside_the_roots(web_client):
     """The save door owns `task.json` because it owns that schema — but it is
     still inside the picker's roots guard like every other write."""

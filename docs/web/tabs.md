@@ -193,7 +193,12 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 
 1. **The junction** — the shared tree-picker cites a finished relaxation
    directory (ANY directory is choosable — the 4.1b FILE condition decides what qualifies: a finished relaxation's `.fdf`+`.XV`, or a labeled `.xyz`+`.molstruct.json` pair; the meta line classifies each selection and reads the
-   attempt's own `.fdf`, and says NOT CONCLUDED honestly).  A read-only
+   attempt's own `.fdf`, and says NOT CONCLUDED honestly).  Electrode
+   labels the reverse of the usual convention (`L-electrode` low z) are
+   **warned about, never blocked** — the junction cites and runs, the
+   meta line states which lead ends up biased positive, and a *Swap
+   L-electrode and R-electrode* button offers the rename for whoever
+   wants it (`transport-design.md` § 4.1a).  A read-only
    **MolView** follows the citation: it re-opens the cited calculation's
    labeled structure on every cite and every reload (labels are assigned
    where the junction is built — never here).
@@ -204,9 +209,14 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
    to say).  Overrides travel as device-stage `varies` promotions.
 4. **Describe** — the bias list plus one button.  `POST
    /api/transport/describe` answers with the finished `task.json`; the
-   browser writes it into the selected folder and does NOT navigate.  Task
-   setup then reads it as an ordinary description (the run surface, not a
-   hand-over target).
+   browser writes it into the selected folder and does NOT navigate, and
+   the status names the folder it wrote.  The destination must be the
+   calculation's OWN folder: describing into the cited directory is
+   refused, because the calculation never lives inside its citation
+   (`transport-design.md` § 4.1b) — the sidebar selection lingers on the
+   attempt the person just browsed to cite, so this is the easy mistake.
+   Task setup then reads it as an ordinary description (the run surface,
+   not a hand-over target).
 
 **Still open** (honest residue): the Results-tab transmission inspector
 (reading the shipped `<label>.transport.json`), and

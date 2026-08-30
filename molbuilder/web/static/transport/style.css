@@ -13,6 +13,35 @@
     margin-top: var(--space-md);
 }
 
+/* THE ONE OFFER (2026-08-29): inverted electrode labels are a naming
+ * mistake with a one-click fix, so card 1 shows the reason and the
+ * button together.  Reason first, action under it -- and the action is
+ * `.full-btn` like every other button on this page, held to its own
+ * width here because it is an offer beside a sentence, not the card's
+ * primary action. */
+#transport-junction-fix {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+/* THE GUARD, not decoration (code-audit.md, the [hidden] precedence
+ * rule): core.js hides this row with `.hidden = true`, and any
+ * class/id rule setting a non-none display ties the UA's
+ * `[hidden] { display: none }` on specificity and wins on source
+ * order -- leaving an empty ghost panel on every citation.  Caught by
+ * test_css_hidden_attribute_audit on the first run, 2026-08-29. */
+#transport-junction-fix[hidden] {
+    display: none;
+}
+#transport-junction-fix .full-btn {
+    width: auto;
+    min-width: 12rem;
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+}
+
 /* (The generated-script preview rules that stood here died with the
  * Generate lane, 2026-08-29 -- the composite tab renders nothing; prep
  * does, on the machine that runs it.  P7b review.) */

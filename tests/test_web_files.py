@@ -2341,17 +2341,123 @@ class TestRootsContract:
         assert not hasattr(rc, "get_file_picker_roots")
 
 
+class TestTheDownloadButtonSaysWhatItIsDoing:
+    """The sidebar's Download control (user, 2026-08-29): the message
+    lives INSIDE the button while the server compresses, and the button
+    is unclickable until the browser's save has started -- which is
+    only knowable because the build has its own door."""
+
+    @staticmethod
+    def _src(web):
+        return web.get(
+            "/static/lib/projects/mutation-bar.js").get_data(as_text=True)
+
+    def test_the_button_walks_prepare_then_token(self, web):
+        src = self._src(web)
+        assert "/api/files/zip_prepare" in src, (
+            "the button still navigates straight at the archive, so it "
+            "cannot know when the build started or finished")
+        assert "download_zip?token=" in src
+
+    def test_the_label_carries_the_state(self, web):
+        src = self._src(web)
+        for state in ('"Zipping…"', '"Saving…"', '"Download"'):
+            assert state in src, f"the button never says {state}"
+        assert "ps-create-action-label" in src, (
+            "the state is written somewhere other than the button's "
+            "own label")
+
+    def test_one_function_owns_the_buttons_state(self, web):
+        """Found by reading (2026-08-29): the button had two writers --
+        the enablement pass, which `projects.onChange` fires on every
+        sidebar navigation, and the busy setter.  They contradicted
+        each other in both directions: browsing during a build handed
+        the button back (a second click, a second archive), and the
+        busy reset lit it unconditionally, so finishing while parked at
+        the projects root left it enabled and inert.
+
+        One writer, with busy and context as its inputs, is what makes
+        both impossible -- so what is pinned here is the SHAPE, not the
+        two symptoms."""
+        src = self._src(web)
+        assert "elZipBtn.disabled = zipBusy || root;" in src, (
+            "the button's disabled flag is not decided from busy AND "
+            "context together")
+        # The busy setter must not touch the element itself.
+        setter = src[src.index("function _setZipBusy("):]
+        setter = setter[:setter.index("\n}")]
+        assert "elZipBtn" not in setter, (
+            "the busy setter writes the button directly -- that is the "
+            "second writer this design exists to remove")
+        assert "_updateButtonEnablement();" in setter, (
+            "the busy setter does not go through the one writer")
+
+    def test_the_archive_reports_what_it_produced(self, web):
+        """The server counts the files, the bytes and anything it left
+        behind; saying none of it left the original complaint half
+        answered.  `skipped` is the load-bearing one -- those are
+        symlinks pointing out of the projects tree, dropped on purpose,
+        and a silently dropped file is not acceptable in something
+        being carried to another machine."""
+        src = self._src(web)
+        assert "out.files" in src and "out.bytes" in src, (
+            "the prepare call's own report of what it built is ignored")
+        assert "out.skipped" in src, (
+            "files left out of the archive are never mentioned")
+        assert "Last archive: " in src
+
+    def test_the_offer_row_cannot_ghost(self, web):
+        """A display-setting rule on an element JS hides with
+        `.hidden` beats the UA's `[hidden] { display: none }` on
+        source order (code-audit.md).  The transport tab's fix row is
+        hidden that way, so it needs its own guard."""
+        css = web.get(
+            "/static/transport/style.css").get_data(as_text=True)
+        assert "#transport-junction-fix[hidden]" in css, (
+            "the offer row would sit on the card as an empty ghost")
+
+    def test_the_title_names_the_target_and_what_is_left_out(self, web):
+        src = self._src(web)
+        assert "_dirName(dir)" in src, (
+            "the control names no target -- which is how a person "
+            "downloads a whole project by accident")
+        assert ".binsnapshots" in src and "no checkpoint history" in src
+
+    def test_the_busy_state_is_styled_by_the_modules_own_sheet(self, web):
+        css = web.get(
+            "/static/lib/projects/projects-sidebar.css").get_data(as_text=True)
+        assert ".ps-create-action[disabled].is-busy" in css, (
+            "a working button would render as merely unavailable")
+
+
 class TestDownloadZip:
-    """/api/files/download_zip -- the *carry a calculation without ssh*
-    door (user, 2026-08-28).  A directory streams as <name>.zip; the
-    fence holds; a root refuses; symlinks escaping the root are
-    skipped and said, symlinks inside are followed as real bytes."""
+    """The *carry a calculation without ssh* door (user, 2026-08-28),
+    now in two halves (user, 2026-08-29): ``POST /api/files/zip_prepare``
+    builds the archive and answers what it is, ``GET
+    /api/files/download_zip?token=`` streams it.  The split exists so
+    the sidebar button can say *Zipping…* and stay unclickable until
+    the save starts -- a plain navigation reports neither end of a
+    build that takes minutes.
+    """
+
+    @staticmethod
+    def _prepare(web, path):
+        return web.post("/api/files/zip_prepare", json={"path": str(path)})
+
+    def _fetch(self, web, path):
+        """prepare -> stream, the pair the button walks."""
+        pre = self._prepare(web, path)
+        assert pre.status_code == 200, pre.get_json()
+        body = pre.get_json()
+        assert body["ok"] is True
+        r = web.get("/api/files/download_zip",
+                    query_string={"token": body["token"]})
+        return body, r
 
     def test_a_directory_streams_as_its_named_zip(self, web, picker_root):
         import io
         import zipfile
-        r = web.get("/api/files/download_zip",
-                    query_string={"path": str(picker_root / "spectrum" / "BDT")})
+        body, r = self._fetch(web, picker_root / "spectrum" / "BDT")
         assert r.status_code == 200
         assert r.data[:2] == b"PK", "not a zip"
         assert 'filename=BDT.zip' in r.headers["Content-Disposition"]
@@ -2361,29 +2467,46 @@ class TestDownloadZip:
                 f"member paths must ride under the folder's name: {names}")
             assert zf.read("BDT/water_spectra.spectra.json") \
                 == b'{"schema_version": 2}\n', "bytes must survive verbatim"
-        assert r.headers["X-Molbuilder-Skipped"] == "0"
+        assert body["name"] == "BDT.zip"
+        assert body["files"] == 2 and body["bytes"] > 0
+        assert body["skipped"] == 0
+
+    def test_the_token_is_single_use(self, web, picker_root):
+        """The temp file goes with the response, so a replayed token
+        must be refused by name rather than fail on a missing file."""
+        pre = self._prepare(web, picker_root / "spectrum" / "BDT")
+        token = pre.get_json()["token"]
+        first = web.get("/api/files/download_zip",
+                        query_string={"token": token})
+        assert first.status_code == 200
+        again = web.get("/api/files/download_zip",
+                        query_string={"token": token})
+        assert again.status_code == 404
+        assert "already downloaded" in again.get_json()["error"]
+
+    def test_an_unknown_token_is_refused(self, web, picker_root):
+        r = web.get("/api/files/download_zip",
+                    query_string={"token": "deadbeef"})
+        assert r.status_code == 404
+        assert r.get_json()["ok"] is False
 
     def test_the_projects_root_itself_is_refused(self, web, picker_root):
-        r = web.get("/api/files/download_zip",
-                    query_string={"path": str(picker_root)})
+        r = self._prepare(web, picker_root)
         assert r.status_code == 400
         assert "refusing to zip a projects root" in r.get_json()["error"]
 
     def test_a_file_names_the_single_file_door(self, web, picker_root):
-        r = web.get("/api/files/download_zip",
-                    query_string={"path": str(picker_root / "water.xyz")})
+        r = self._prepare(web, picker_root / "water.xyz")
         assert r.status_code == 400
         assert "/api/files/download" in r.get_json()["error"]
 
     def test_outside_the_fence_is_refused(self, web, picker_root):
-        r = web.get("/api/files/download_zip",
-                    query_string={"path": "/etc"})
+        r = self._prepare(web, "/etc")
         assert r.status_code in (400, 403)
         assert r.get_json()["ok"] is False
 
     def test_missing_is_a_404(self, web, picker_root):
-        r = web.get("/api/files/download_zip",
-                    query_string={"path": str(picker_root / "spectrum" / "nope")})
+        r = self._prepare(web, picker_root / "spectrum" / "nope")
         assert r.status_code == 404
 
     def test_symlinks_escape_skipped_inside_followed(self, web, picker_root):
@@ -2394,8 +2517,7 @@ class TestDownloadZip:
         (d / "real.txt").write_text("kept\n")
         (d / "escape").symlink_to("/etc/hostname")          # outside -> skip
         (d / "warm").symlink_to(picker_root / "water.xyz")  # inside -> follow
-        r = web.get("/api/files/download_zip",
-                    query_string={"path": str(d)})
+        body, r = self._fetch(web, d)
         assert r.status_code == 200
         with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
             names = sorted(zf.namelist())
@@ -2407,20 +2529,68 @@ class TestDownloadZip:
                 "a symlink escaping the root must never enter the archive")
             assert zf.read("linked/warm").startswith(b"3\n"), (
                 "the followed link must carry the target's real content")
-        assert r.headers["X-Molbuilder-Skipped"] == "1"
+        assert body["skipped"] == 1
 
-    def test_the_checkpoint_store_never_enters_an_archive(self, web, picker_root):
-        """User 2026-08-28: the zip is a CLEAN run structure -- the
-        server's workspace/checkpoint store (.molbuilder_workspace) is
-        excluded wherever it appears, by the store module's own name."""
+    def test_storage_never_enters_an_archive(self, web, picker_root):
+        """User 2026-08-28 (*a clean run structure*), extended
+        2026-08-29 (*a pure execution dir*): the archive carries the
+        folder as it stands NOW.  Three storage subtrees stay out --
+        the workspace store, and a checkpoint folder's git repo and
+        its large-binary archive -- while ordinary run files, engine
+        restart files included, ride along.
+
+        Not through ``git archive``: a checkpoint keeps big files OUT
+        of git on purpose (they live in .binsnapshots), so a git export
+        would drop exactly the heavy outputs the far machine needs.
+        """
         import io
         import zipfile
         d = picker_root / "spectrum" / "BDT"
-        st = d / ".molbuilder_workspace" / "states"
-        st.mkdir(parents=True)
-        (st / "tab.json").write_text('{"draft": true}\n')
-        r = web.get("/api/files/download_zip", query_string={"path": str(d)})
+        (d / ".molbuilder_workspace" / "states").mkdir(parents=True)
+        (d / ".molbuilder_workspace" / "states" / "tab.json").write_text("{}\n")
+        (d / ".git" / "objects").mkdir(parents=True)
+        (d / ".git" / "objects" / "ab12").write_bytes(b"history\n")
+        (d / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+        (d / ".binsnapshots").mkdir()
+        (d / ".binsnapshots" / "big.DM.zst").write_bytes(b"snapshot\n")
+        (d / "run.DM").write_bytes(b"restart\n")
+        body, r = self._fetch(web, d)
         assert r.status_code == 200
         with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
-            assert not any(".molbuilder_workspace" in n for n in zf.namelist()), (
-                "server state leaked into the archive: " + str(zf.namelist()))
+            names = zf.namelist()
+        for storage in (".molbuilder_workspace", ".git", ".binsnapshots"):
+            assert not any(storage in n for n in names), (
+                f"{storage} leaked into the archive: {names}")
+        assert "BDT/run.DM" in names, (
+            "an engine restart file is run data -- the far machine needs it")
+        assert "BDT/.hidden" in names, (
+            "only STORAGE is excluded, not every dotfile")
+        assert sorted(body["excluded"]) == [
+            ".binsnapshots", ".git", ".molbuilder_workspace"]
+
+    def test_a_current_big_result_rides_even_when_snapshotted(
+            self, web, picker_root):
+        """The exclusion is by DIRECTORY, never by size or suffix
+        (user, 2026-08-29: *we don't want to lose the big result
+        files*).  A checkpointed run has its heavy outputs in TWO
+        places -- the live file in the run directory, and copies under
+        .binsnapshots keyed by state.  The live one is current result
+        and must travel; the copies are history and must not."""
+        import io
+        import zipfile
+        d = picker_root / "spectrum" / "BDT"
+        heavy = b"density-matrix bytes\n" * 500
+        (d / "siesta.DM").write_bytes(heavy)
+        snap = d / ".binsnapshots" / "a1b2c3"
+        snap.mkdir(parents=True)
+        (snap / "siesta.DM").write_bytes(b"an OLDER density matrix\n")
+        _body, r = self._fetch(web, d)
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            names = zf.namelist()
+            assert "BDT/siesta.DM" in names, (
+                "the CURRENT big result was dropped -- the far machine "
+                "would restart from nothing")
+            assert zf.read("BDT/siesta.DM") == heavy, (
+                "the archived copy shadowed the live file")
+        assert not any(".binsnapshots" in n for n in names), (
+            "the snapshot history rode along after all")

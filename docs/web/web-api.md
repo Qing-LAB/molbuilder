@@ -405,7 +405,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 88 routes
+## 3. Endpoint index — all 90 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -458,6 +458,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 |---|---|
 | GET `/api/files/{roots,list,stat,read,read_range}` | Browse + read |
 | GET `/api/files/download` | Raw byte download (non-JSON) |
+| POST `/api/files/zip_prepare` · GET `/api/files/download_zip` | Take a folder to another machine without ssh. The POST compresses it and answers `{token, name, files, bytes, skipped, excluded}`; the GET streams that archive by **token** (single-use, non-JSON) and deletes it. Split so the sidebar button can say *Zipping…* and stay unclickable through a build that takes minutes. The archive is the folder **as it stands now**: the three storage subtrees (`.molbuilder_workspace`, `.git`, `.binsnapshots`) never enter it, engine restart files do |
 | POST `/api/files/{mkdir,upload,write,rename,move,copy}` · DELETE `/api/files/delete` | Mutations |
 | POST `/api/projects/create` | Create a project (the topic tree) |
 | POST `/api/structure/save` | Save a structure + its sidecar to a path |
@@ -491,8 +492,9 @@ tabs (their docs, this wave):
 | ~~POST `/api/results/bundle`~~ | *retired 2026-08-29 — calculation-to-calculation passing is gone; the composite cites (`POST /api/transport/describe`)* |
 | GET `/api/bench/summary` | One benchmark **sweep**, composed: every trial's knobs / coordinate / measurement, where each run is now, and the verdict. Takes the sweep's `job-set.json`; the CALCULATION it belongs to is derived from it, because the file's own directory is not the bundle. Read-only and safe to poll — it never writes the record or the `run-config.toml` proposal, which are `jobset summarize`'s to write ([`bench-summary.md`](?doc=web/bench-summary.md)) |
 | POST `/api/spectra/load` | Parse an uploaded `<job>.spectra.json` into typed results (`/api/spectra/render` retired at the spectra migration's P3 — the deck computes; the tab only loads) |
-| GET `/api/transport/describe_attempt` | Classify a picked directory against the § 4.1b FILE condition: `?path=` (tree-relative) → the form (`relaxation` \| `structure` \| null with the refusal naming the missing file), the contract lane (`cited` \| `open`), the honest convergence state, the deck summary, and the server-composed labeled `structure` envelope the viewer installs |
+| GET `/api/transport/describe_attempt` | Classify a picked directory against the § 4.1b FILE condition: `?path=` (tree-relative) → the form (`relaxation` \| `structure` \| null with the refusal naming the missing file), the contract lane (`cited` \| `open`), the honest convergence state, the deck summary, the labeled `structure` envelope the viewer installs — answered **whether or not the citation composes**, so a refusal is read over the junction it is about — and `fix`, a word the tab acts on (today `"swap_electrodes"`; see `/api/transport/swap_electrodes`) |
 | POST `/api/transport/describe` | The composite's ONE door from the tab: junction citation + bias + overrides → the finished `task.json` text (same codec + refusals as `jobset init`); the browser writes it via the content-blind file layer, no navigation |
+| POST `/api/transport/swap_electrodes` | Rename `L-electrode` ↔ `R-electrode` on a cited junction — the rename `describe_attempt` offers as `fix: "swap_electrodes"` when the labels run the reverse of the usual convention (`L` = low z). Consults **no geometry**: whether they *should* be the other way round is the author's call, so the tab warns and this performs. Rewrites only the file the labels live in (the deck's atom-metadata block, or the `.molstruct.json` beside it); no coordinate, keyword or result is touched |
 | POST `/api/transport/render` | The engine registry's validation surface (single-deck render + preflight); no UI calls it — the composite's decks render at `prep` |
 
 **No module-doc home — documented in full in § 5:** the app-level routes

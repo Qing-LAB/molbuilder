@@ -93,6 +93,28 @@ class TestCanonicalOrder:
         assert out.structure.positions[0, 2] == -2.0
         assert out.structure.positions[-1, 2] == 13.0
 
+    def test_a_lopsided_buffer_still_lands_at_the_end_it_is_outside_of(
+            self):
+        """The side and the legality of a buffer atom are ONE question
+        (found by reading, 2026-08-29).  They used to be two rules --
+        the side from the midpoint of the WHOLE structure, the legality
+        from the electrode blocks -- and on a lopsided junction they
+        part company: padding above the upper lead that is taller than
+        everything below it drags the midpoint up past that lead, files
+        genuine top-buffer atoms at the BOTTOM, and then refuses a
+        perfectly good structure for "buffer inside the electrode"."""
+        struct, _ = _junction(
+            shuffle=False,
+            extra=[("He", 13.0, REGION_BUFFER),
+                   ("He", 40.0, REGION_BUFFER),
+                   ("He", 80.0, REGION_BUFFER)])   # midpoint = 40.0
+        out = categorical_sort(struct)             # no refusal
+        assert list(out.structure.positions[-3:, 2]) == [13.0, 40.0, 80.0], (
+            "every one of these sits above the upper electrode, so all "
+            "three belong at the high end")
+        assert out.structure.elements[0] == "Au", (
+            "nothing should have been pushed below the lower lead")
+
     def test_electrode_blocks_are_layer_major_along_transport(self):
         struct, _ = _junction(shuffle=False)
         # swap the two L-electrode layers in INPUT order; z must win
@@ -204,12 +226,25 @@ class TestRefusalsNameAtoms:
             categorical_sort(struct)
         assert REGION_RIGHT_ELECTRODE in str(e.value)
 
-    def test_labels_against_geometry_is_refused(self):
+    def test_swapped_names_sort_by_geometry_and_carry_a_note(self):
+        """CHECK z, WARN, the author decides (user ruling, 2026-08-29).
+        A junction labeled the other way round is not mislabeled -- it
+        biases the other end -- so the sort must NOT refuse it.  What
+        it must do is put the LOWER block first anyway (that block is
+        the -A3 lead; the upper one first would aim a self-energy into
+        the bridge) and say what it saw."""
         struct, _ = _junction(shuffle=False)
-        L = struct.regions[REGION_LEFT_ELECTRODE]
+        low = list(struct.regions[REGION_LEFT_ELECTRODE])
         struct.regions[REGION_LEFT_ELECTRODE] = \
             struct.regions[REGION_RIGHT_ELECTRODE]
-        struct.regions[REGION_RIGHT_ELECTRODE] = L
-        with pytest.raises(SortError) as e:
-            categorical_sort(struct)
-        assert "disagree with the geometry" in str(e.value)
+        struct.regions[REGION_RIGHT_ELECTRODE] = low
+
+        res = categorical_sort(struct)          # no refusal
+        # The block that was lowest in z still leads the atom list --
+        # now wearing the R-electrode name.
+        n_low = len(low)
+        assert sorted(res.structure.regions[REGION_RIGHT_ELECTRODE]) == \
+            list(range(n_low)), "the LOWER block must lead, whatever it is called"
+        assert res.notes, "an inverted pair must be reported, not passed silently"
+        note = res.notes[0]
+        assert "HIGH-z" in note and "+V/2" in note

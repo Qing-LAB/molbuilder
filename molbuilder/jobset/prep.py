@@ -1219,10 +1219,16 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # missing or re-pointed record composes fresh from the tree.
     citation = task.slots["junction"]
     try:
-        composed = load_compose_record(base, citation=citation)
+        # The tree root is resolved BEFORE the record is loaded: the
+        # reload re-runs the § 3 lead gates, and their principal-layer
+        # half reads the CITED directory's own .ion files, which the
+        # travelled folder does not carry.  Absent (the folder moved
+        # out of its tree), that half degrades to UNVERIFIED honestly.
+        from ..projects import find_projects_root
+        root = find_projects_root(base)
+        composed = load_compose_record(base, citation=citation,
+                                       tree_root=root)
         if composed is None:
-            from ..projects import find_projects_root
-            root = find_projects_root(base)
             if root is None:
                 raise PrepError(
                     f"the composed junction record is not beside "

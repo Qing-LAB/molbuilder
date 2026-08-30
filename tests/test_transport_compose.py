@@ -23,6 +23,7 @@ Properties under guard, each named for its failure:
 from __future__ import annotations
 
 import numpy as np
+
 import pytest
 
 from molbuilder.config.transport import (REGION_BRIDGE,
@@ -83,6 +84,16 @@ def _write_xv(path, struct, *, perturb_bridge=0.3, perturb_electrode=None):
         lines.append(f"  1  {_Z[el]}  {xyz}  0.0 0.0 0.0")
     path.write_text("\n".join(lines) + "\n")
     return pos
+
+
+def _write_ion(path, rc_bohr):
+    """A minimal .ion: one orbital block, cutoff *rc_bohr* -- the shape
+    parse/ion.py anchors on (#orbital header, then npts/delta/cutoff)."""
+    path.write_text(
+        "  0  6  1  0  1.000000   #orbital l, n, z, is_polarized, "
+        "population\n"
+        f" 500    0.4883E-02     {rc_bohr:.6f}     # npts, delta, "
+        "cutoff\n")
 
 
 def _write_tree(root, struct):
@@ -176,16 +187,25 @@ class TestHappyPath:
 
     def test_the_record_is_the_whole_travelling_copy(self, tree, tmp_path):
         """§ 4.1: the cited structure is COPIED in with provenance --
-        the SORTED pair, the attempt's own deck verbatim, and the two
-        sidecars, so the folder answers without the cited tree."""
+        the SORTED PAIR (geometry AND the file carrying its region
+        labels), the attempt's own deck verbatim, and the two sidecars,
+        so the folder answers without the cited tree.
+
+        The label file is named explicitly here because it was missing
+        from this list for a while (found by reading, 2026-08-29): the
+        codec writes the geometry as a pair, so it landed on disk, but
+        nothing declared it part of the record -- and the load check
+        did not require it either."""
         root, _, _ = tree
         out = compose_junction(_CITE, tree_root=root)
         dest = tmp_path / "transport-calc"
         dest.mkdir()
         names = write_compose_record(dest, out)
         assert sorted(names) == ["atom-permutation.json",
-                                 "junction.cited.fdf", "junction.xyz",
+                                 "junction.cited.fdf",
+                                 "junction.molstruct.json", "junction.xyz",
                                  "slot-provenance.json"]
+        assert (dest / "junction.molstruct.json").is_file()
         import json
         perm = json.loads((dest / "atom-permutation.json").read_text())
         assert perm["schema"] == "molbuilder/atom-permutation@1"
@@ -237,6 +257,19 @@ class TestStrictComposition:
         assert "still running" in msg and "force-stopped" in msg, (
             "the two states are indistinguishable on disk -- the refusal "
             "must name both, never decide")
+
+    def test_siestas_own_exit_marker_counts_as_concluded(self, tree):
+        """4.1b: evidence is FILES, never our marker spelling.  A run
+        that carries SIESTA's 0_NORMAL_EXIT ran to its own end whatever
+        launched it -- run.json present, no molbuilder marker, and it
+        still composes, saying which file answered."""
+        root, _, _ = tree
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        (attempt / "Relax_01_coarse-run0.concluded").unlink()
+        (attempt / "run.json").write_text("{}")
+        (attempt / "0_NORMAL_EXIT").write_text("")
+        out = compose_junction(_CITE, tree_root=root)
+        assert "0_NORMAL_EXIT" in out.provenance["evidence"]
 
     def test_no_record_at_all_composes_and_says_so(self, tree):
         """4.1b: a directory with NO run record is a plain finished
@@ -290,18 +323,90 @@ class TestTheGates:
             compose_junction(_CITE, tree_root=root)
         assert "do not describe the same relaxation" in str(e.value)
 
-    def test_a_thin_electrode_block_is_refused(self, tmp_path):
-        """§ 3: the principal-layer condition.  Five 2.5 A layers span
-        10 A -- under the ~12 A floor -- and the refusal names the
-        block, the span and the fix."""
+    def test_the_orbital_range_gate_refuses_when_the_ion_says_so(
+            self, tmp_path):
+        """§ 3: the principal-layer condition compares the orbital
+        interaction range (READ from the citation's .ion files) against
+        the lead's period.  A basis whose reach exceeds period +
+        interlayer couples beyond adjacent cells -- refused naming the
+        numbers and the source file."""
         root = tmp_path / "projects"
         thin = _junction_struct(layers_l=[0.0, 2.5, 5.0, 7.5, 10.0])
         _write_tree(root, thin)
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        # rc 15 Bohr = 7.94 A: reach 15.88 A > the L lead's
+        # period 12.5 + interlayer 2.5 = 15.0 A.
+        _write_ion(attempt / "Au.ion", 15.0)
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
         assert REGION_LEFT_ELECTRODE in msg
-        assert "principal-layer" in msg and "10.00 A" in msg
+        assert "orbital interaction range" in msg and "Au.ion" in msg
+
+    def test_a_short_reach_basis_passes_the_gate(self, tmp_path):
+        """The same thin block with a realistic basis (rc 6.13 Bohr,
+        Au DZP) composes -- reach 6.49 A fits the 15.0 A gap.  Kills a
+        mutation that inverts the comparison.
+
+        And the MEASURED verdict replaces the wizard's ~12 A guess:
+        this 10 A block would otherwise carry "may be thinner than the
+        electronic principal layer" beside the numbers proving it is
+        not (found by reading, 2026-08-29)."""
+        root = tmp_path / "projects"
+        thin = _junction_struct(layers_l=[0.0, 2.5, 5.0, 7.5, 10.0])
+        _write_tree(root, thin)
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        _write_ion(attempt / "Au.ion", 6.13)
+        out = compose_junction(_CITE, tree_root=root)
+        notes = out.electrode_left.notes
+        assert not any("UNVERIFIED" in n for n in notes)
+        assert any("MEASURED" in n for n in notes), (
+            "a measured lead does not say so")
+        assert not any("may be thinner" in n for n in notes), (
+            "the heuristic floor still contradicts the measurement "
+            "that superseded it")
+
+    def test_the_refusal_boundary_is_the_next_nearest_cell_gap(
+            self, tmp_path):
+        """The gate fires exactly when the orbital reach exceeds the
+        separation of NEXT-NEAREST lead cells -- pinned at the boundary
+        from both sides.
+
+        The gap is written ``2*period - span``.  That is the general
+        expression; in every path compose takes it equals
+        ``period + interlayer``, because compose always lets the period
+        be DERIVED as span + interlayer (only the wizard CLI overrides
+        it).  So this test cannot tell the two spellings apart, and
+        does not claim to -- it pins the NUMBER and the threshold."""
+        root = tmp_path / "projects"
+        # 6 layers, 2.5 A apart: span 12.5, interlayer 2.5,
+        # period 15.0 -> gap = 2*15.0 - 12.5 = 17.5 A.
+        _write_tree(root, _junction_struct())
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        # rc 16.5 Bohr = 8.732 A -> reach 17.46 A, just under 17.5.
+        for el in ("Au", "S", "C"):
+            _write_ion(attempt / f"{el}.ion", 0.1)
+        _write_ion(attempt / "Au.ion", 16.5)
+        out = compose_junction(_CITE, tree_root=root)
+        m = out.electrode_left
+        assert abs((2.0 * m.z_period - m.z_span) - 17.5) < 1e-6
+        assert not any("UNVERIFIED" in n for n in m.notes)
+        # 16.6 Bohr = 8.785 A -> reach 17.57 A, just over: refused.
+        _write_ion(attempt / "Au.ion", 16.6)
+        with pytest.raises(ComposeError) as e:
+            compose_junction(_CITE, tree_root=root)
+        assert "next-nearest" in str(e.value)
+
+    def test_no_ion_files_leave_the_condition_unverified(self, tmp_path):
+        """No .ion beside the citation -> nothing measured, nothing
+        refused: the condition is recorded as UNVERIFIED on the model
+        (TranSIESTA verifies lead connectivity itself at run time)."""
+        root = tmp_path / "projects"
+        thin = _junction_struct(layers_l=[0.0, 2.5, 5.0, 7.5, 10.0])
+        _write_tree(root, thin)
+        out = compose_junction(_CITE, tree_root=root)
+        notes = " ".join(out.electrode_left.notes)
+        assert "UNVERIFIED" in notes and "Au.ion" in notes
 
     def test_a_block_that_does_not_tile_is_refused(self, tmp_path):
         """§ 3: repeating the block must reproduce a bulk lead.  A 3.6 A
@@ -315,6 +420,259 @@ class TestTheGates:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
         assert "TILE" in msg and "3.600" in msg
+
+    def test_a_block_that_does_not_tile_is_told_THAT_first(self, tmp_path):
+        """The order of these two gates is a DEPENDENCY, not taste.
+        Every number the orbital-range condition uses comes from the
+        layer spacing -- a block that does not tile has a meaningless
+        median, hence a meaningless period and gap.  Checked second, it
+        was refused for "orbital range exceeds the gap": true about
+        invented numbers, and the wrong thing to go and fix."""
+        root = tmp_path / "projects"
+        broken = _junction_struct(
+            layers_l=[0.0, 2.5, 5.0, 7.5, 10.0, 13.6])
+        _write_tree(root, broken)
+        # A basis wide enough that the orbital gate would ALSO fire.
+        _write_ion(root / "J/optimization/Relax/01_coarse/run-0/Au.ion",
+                   30.0)
+        with pytest.raises(ComposeError) as e:
+            compose_junction(_CITE, tree_root=root)
+        msg = str(e.value)
+        assert "TILE" in msg, (
+            "the block's real defect is that it does not tile; the "
+            "refusal talks about something derived from it instead")
+        assert "orbital interaction range" not in msg
+
+
+class TestOrientation:
+    """§ 4.1a, user ruling 2026-08-29: CHECK z, WARN, the author
+    decides.  The usual convention is L-electrode low / R high, but a
+    junction labeled the other way round composes and runs -- it biases
+    the other end.  What is NOT negotiable is that the LOWER block
+    leads the atom list (it is the -A3 lead) and that the two blocks
+    do not interleave."""
+
+    def test_the_conventional_junction_sorts_l_first(self, tree):
+        root, _, _ = tree
+        srt = compose_junction(_CITE, tree_root=root).sorted.structure
+        n_l = len(srt.regions[REGION_LEFT_ELECTRODE])
+        assert sorted(srt.regions[REGION_LEFT_ELECTRODE]) == list(
+            range(n_l)), "the L block leads the canonical order"
+
+    def test_an_inverted_and_interleaved_pair_is_not_offered_a_swap(
+            self, tmp_path):
+        """Found by reading, not by running (2026-08-29): a junction
+        that is BOTH named the wrong way round and interleaved is not
+        fixable by a swap -- classifying it `inverted` would offer a
+        relabel that leaves it just as unusable, and the person would
+        have edited their run for nothing.  Interleaving is decided
+        first."""
+        from molbuilder.transport.sort import (ORDER_INTERLEAVED,
+                                               electrode_orientation)
+        both = _junction_struct(
+            layers_l=[1.25, 3.75, 6.25, 8.75, 11.25, 13.75],
+            layers_r=[0.0, 2.5, 5.0, 7.5, 10.0, 12.5])
+        assert electrode_orientation(both) == ORDER_INTERLEAVED, (
+            "an unfixable junction was classified as a naming mistake")
+        root = tmp_path / "projects"
+        _write_tree(root, both)
+        from molbuilder.transport.sort import SortError
+        with pytest.raises(SortError) as e:
+            compose_junction(_CITE, tree_root=root)
+        assert "INTERLEAVE" in str(e.value)
+        assert "SWAP THE TWO LABELS" not in str(e.value)
+
+    def test_l_on_top_composes_and_says_what_it_means(self, tmp_path):
+        """It COMPOSES (no refusal), the LOWER block leads the atom
+        list whatever it is named, and the note states the consequence
+        the author has to accept or fix: the high-z lead is the one at
+        +V/2."""
+        root = tmp_path / "projects"
+        flipped = _junction_struct(layers_l=_LAYERS_R,
+                                   layers_r=_LAYERS_L)
+        _write_tree(root, flipped)
+        composed = compose_junction(_CITE, tree_root=root)
+        srt = composed.sorted.structure
+        n_r = len(srt.regions[REGION_RIGHT_ELECTRODE])
+        assert sorted(srt.regions[REGION_RIGHT_ELECTRODE]) == list(
+            range(n_r)), "the LOWER block leads, whatever it is called"
+        assert composed.sorted.notes, "the inversion must be reported"
+        note = composed.sorted.notes[0]
+        assert "HIGH-z" in note and "+V/2" in note
+
+    def test_interleaved_blocks_are_refused(self, tmp_path):
+        """What geometry MUST supply is two distinguishable ends: the
+        blocks' z-ranges may not interleave."""
+        root = tmp_path / "projects"
+        tangled = _junction_struct(
+            layers_l=[0.0, 2.5, 5.0, 7.5, 10.0, 12.5],
+            layers_r=[1.25, 3.75, 6.25, 8.75, 11.25, 13.75])
+        _write_tree(root, tangled)
+        from molbuilder.transport.sort import SortError
+        # SortError propagates as its own type through compose (the
+        # documented 4.1a seam; prep and the web door catch both).
+        with pytest.raises(SortError) as e:
+            compose_junction(_CITE, tree_root=root)
+        assert "INTERLEAVE" in str(e.value)
+
+
+class TestTheSwap:
+    """The one-click fix the tab offers (user, 2026-08-29): swapping
+    two labels on the cited files, and nothing else."""
+
+    @staticmethod
+    def _cited(root):
+        from molbuilder.transport.compose import resolve_citation
+        return resolve_citation(_CITE, root)[1]
+
+    def test_the_swap_makes_an_inverted_junction_compose(self, tmp_path):
+        from molbuilder.transport.compose import swap_electrode_labels
+        root = tmp_path / "projects"
+        _write_tree(root, _junction_struct(layers_l=_LAYERS_R,
+                                           layers_r=_LAYERS_L))
+        changed = swap_electrode_labels(self._cited(root))
+        assert changed.endswith(".fdf")
+        srt = compose_junction(_CITE, tree_root=root).sorted.structure
+        n_l = len(srt.regions[REGION_LEFT_ELECTRODE])
+        assert sorted(srt.regions[REGION_LEFT_ELECTRODE]) == list(
+            range(n_l)), "after the swap L must lead the canonical order"
+
+    def test_the_swap_keeps_everything_it_did_not_come_to_change(
+            self, tmp_path):
+        """Found by reading (2026-08-29): the rewrite re-emits the
+        whole block, so anything not threaded through is DELETED.  The
+        atom count, the creation time and the other labels must
+        survive, and the write must say a swap happened."""
+        from molbuilder.parse.scripts.atom_metadata import (
+            _extract_atom_metadata_dict,
+        )
+        from molbuilder.transport.compose import swap_electrode_labels
+        root = tmp_path / "projects"
+        _write_tree(root, _junction_struct(layers_l=_LAYERS_R,
+                                           layers_r=_LAYERS_L))
+        deck = root / "J/optimization/Relax/01_coarse/run-0/Relax_01_coarse.fdf"
+        before = _extract_atom_metadata_dict(deck.read_text())
+        swap_electrode_labels(self._cited(root))
+        after = _extract_atom_metadata_dict(deck.read_text())
+        assert after["n_atoms_total"] == before["n_atoms_total"]
+        assert after.get("created_at") == before.get("created_at"), (
+            "the block's creation time was dropped by the rewrite")
+        assert "swapped" in str(after.get("created_by", "")).lower(), (
+            "the file does not record that its labels were swapped")
+        assert (after["regions"][REGION_BRIDGE]
+                == before["regions"][REGION_BRIDGE]), (
+            "a label the swap never touches came back different")
+        assert (after["regions"][REGION_LEFT_ELECTRODE]
+                == before["regions"][REGION_RIGHT_ELECTRODE])
+        # The deck's own physics is untouched -- only the fenced block.
+        for keyword in ("MeshCutoff 300.0 Ry", "PAO.BasisSize DZP",
+                        "%block AtomicCoordinatesAndAtomicSpecies"):
+            assert keyword in deck.read_text(), (
+                f"the rewrite disturbed {keyword!r} outside the fence")
+
+    def test_the_swap_consults_no_geometry(self, tree):
+        """A RENAME IS A RENAME (user ruling, 2026-08-29).  An earlier
+        draft read the coordinates first and refused to run unless they
+        said the labels were inverted -- the tool second-guessing a
+        decision that is the author's.  Pressed on an already-canonical
+        junction it must simply do it, leaving the pair the other way
+        round."""
+        from molbuilder.transport.compose import swap_electrode_labels
+        root, _, _ = tree
+        before = compose_junction(_CITE, tree_root=root)
+        assert not before.sorted.notes, "fixture is not canonical"
+
+        swap_electrode_labels(self._cited(root))            # no refusal
+
+        after = compose_junction(_CITE, tree_root=root)
+        assert after.sorted.notes, (
+            "the rename did nothing -- L should now be the high-z block")
+
+    def test_the_file_that_carries_the_labels_is_the_file_that_changes(
+            self, tmp_path):
+        """Found by reading (2026-08-29): form A accepts labels from
+        the deck's in-body block OR from one .molstruct.json beside it.
+        The swap must rewrite whichever the composition READS -- an
+        earlier draft always edited the deck, so a sidecar-labeled
+        citation would have been told it had no labels to swap."""
+        from molbuilder.transport.compose import swap_electrode_labels
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        struct = _junction_struct(layers_l=_LAYERS_R, layers_r=_LAYERS_L)
+        _write_tree(root, struct)
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        deck = attempt / "Relax_01_coarse.fdf"
+        # Strip the in-body block: the labels now live ONLY in the
+        # sidecar beside the deck -- written through the codec, which
+        # is the pair's one writer.
+        text = deck.read_text()
+        cut = text.index("# === molbuilder atom-metadata BEGIN ===")
+        deck.write_text(text[:cut])
+        StructureCodec().write(struct, attempt / "Relax.source.xyz")
+        changed = swap_electrode_labels(self._cited(root))
+        assert changed.endswith(".molstruct.json"), (
+            f"the swap rewrote {changed}, not the file the labels are in")
+
+    def test_the_provenance_records_the_file_the_labels_came_from(
+            self, tmp_path):
+        """A junction's electrode REGIONS are a fact about it as much
+        as its coordinates are.  When they live in a .molstruct.json
+        beside the deck rather than in the deck itself, that file is in
+        none of the other provenance slots -- so the record of "which
+        bytes built this" was missing the file that decided which atoms
+        are leads, and which the rename endpoint rewrites."""
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        struct = _junction_struct()
+        _write_tree(root, struct)
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        deck = attempt / "Relax_01_coarse.fdf"
+        text = deck.read_text()
+        deck.write_text(
+            text[:text.index("# === molbuilder atom-metadata BEGIN ===")])
+        StructureCodec().write(struct, attempt / "Relax.source.xyz")
+
+        files = compose_junction(_CITE, tree_root=root).provenance["files"]
+        assert "Relax.source.molstruct.json" in files, (
+            f"the labels' own file is unrecorded; provenance names "
+            f"{sorted(files)}")
+
+
+class TestTheReloadGate:
+    """The travelled record re-runs the § 3 lead gates -- and the
+    principal-layer half needs the CITED directory's .ion files, which
+    the travelled folder does not carry."""
+
+    def test_the_reload_reads_the_citations_ion_files(self, tree,
+                                                       tmp_path):
+        from molbuilder.transport.compose import (load_compose_record,
+                                                  write_compose_record)
+        root, _, _ = tree
+        _write_ion(root / "J/optimization/Relax/01_coarse/run-0/Au.ion",
+                   6.13)
+        out = compose_junction(_CITE, tree_root=root)
+        base = tmp_path / "calc"
+        base.mkdir()
+        write_compose_record(base, out)
+        back = load_compose_record(base, citation=_CITE, tree_root=root)
+        assert back is not None
+        assert not any("UNVERIFIED" in n
+                       for n in back.electrode_left.notes), (
+            "the reload did not read the citation's .ion files, so the "
+            "principal-layer gate silently stopped running")
+
+    def test_without_the_root_the_reload_says_unverified(self, tree,
+                                                          tmp_path):
+        from molbuilder.transport.compose import (load_compose_record,
+                                                  write_compose_record)
+        root, _, _ = tree
+        out = compose_junction(_CITE, tree_root=root)
+        base = tmp_path / "calc"
+        base.mkdir()
+        write_compose_record(base, out)
+        back = load_compose_record(base, citation=_CITE)
+        assert any("UNVERIFIED" in n
+                   for n in back.electrode_left.notes)
 
 
 class TestTravelCopy:
@@ -356,6 +714,20 @@ class TestTravelCopy:
         from molbuilder.transport.compose import load_compose_record
         dest, _ = self._record(tree, tmp_path)
         (dest / "junction.cited.fdf").unlink()
+        assert load_compose_record(dest, citation=_CITE) is None
+
+    def test_a_copy_without_its_LABELS_reads_as_no_record(self, tree,
+                                                           tmp_path):
+        """Found by reading (2026-08-29).  The geometry travels as a
+        PAIR and the second half carries the electrode regions, but the
+        completeness check named only the first -- so a record whose
+        labels had been deleted passed it, loaded a junction with no
+        electrodes, and died deep inside the lead gates with a message
+        about regions rather than answering "incomplete, compose
+        again"."""
+        from molbuilder.transport.compose import load_compose_record
+        dest, _ = self._record(tree, tmp_path)
+        (dest / "junction.molstruct.json").unlink()
         assert load_compose_record(dest, citation=_CITE) is None
 
 

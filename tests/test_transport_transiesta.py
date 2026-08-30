@@ -566,3 +566,81 @@ def test_imported_crystal_stays_verbatim_in_transiesta():
     s.__post_init__()
     coords = _coords_from_lines(_emit_geometry(s))
     assert _np.allclose(coords[0], [1.0, 2.0, 3.0])
+
+
+class TestTheReservoirBinding:
+    """Which end carries mu = +V/2 follows the REGION LABEL, not the
+    geometry (2026-08-29).  TranSIESTA takes chempot names as arbitrary
+    strings (Papior 2017); what it enforces positionally is atom order
+    and semi-inf-direction.  So the label is the only place the user
+    said which lead is "left", and `V = V_left - V_right` must mean
+    exactly that -- binding the name by z-order silently inverts the
+    I-V sign of a junction whose author put L at the high-z end.
+    """
+
+    @staticmethod
+    def _junction(l_on_top):
+        import numpy as np
+        from molbuilder.structure import Structure
+        lo = [0.0, 2.5, 5.0]
+        hi = [12.0, 14.5, 17.0]
+        mid = [7.0, 8.0, 9.0]
+        elements = ["Au"] * 3 + ["C"] * 3 + ["Au"] * 3
+        zs = lo + mid + hi
+        first, last = ((REGION_RIGHT_ELECTRODE, REGION_LEFT_ELECTRODE)
+                       if l_on_top
+                       else (REGION_LEFT_ELECTRODE,
+                             REGION_RIGHT_ELECTRODE))
+        regions = {first: [0, 1, 2], REGION_BRIDGE: [3, 4, 5],
+                   last: [6, 7, 8]}
+        return Structure(
+            elements=elements,
+            positions=np.array([[0.0, 0.0, z] for z in zs]),
+            regions=regions, cell=np.diag([8.0, 8.0, 25.0]))
+
+    def _deck(self, struct):
+        from molbuilder.config.transport import TransportConfig
+        from molbuilder.transport import get_engine
+        return get_engine("transiesta").render_script(
+            struct, TransportConfig(job_name="bind_test"))
+
+    def _elec_block(self, text, name):
+        head = f"%block TS.Elec.{name}"
+        assert head in text, f"{head} missing"
+        return text.split(head, 1)[1].split("%endblock", 1)[0]
+
+    def test_l_at_the_low_end_binds_left(self):
+        text = self._deck(self._junction(l_on_top=False))
+        assert "chem-pot           Left" in self._elec_block(text, "L")
+        assert "semi-inf-direction -A3" in self._elec_block(text, "L")
+
+    def test_the_r_electrode_takes_the_minus_reservoir(self):
+        text = self._deck(self._junction(l_on_top=False))
+        assert "chem-pot           Right" in self._elec_block(text, "R")
+        assert "semi-inf-direction +A3" in self._elec_block(text, "R")
+
+    def test_the_deck_states_which_region_is_plus_v_over_2(self):
+        """The one fact a reader cannot get from the block names."""
+        text = self._deck(self._junction(l_on_top=False))
+        assert "carries mu = +V/2" in text
+        assert "V = V_left - V_right" in text
+
+    def test_preflight_warns_about_inverted_labels_but_never_blocks(self):
+        """CHECK z, WARN, the author decides (user ruling, 2026-08-29).
+        The engine door also validates structures that never went
+        through prep's sort, so it must SAY that the labels run against
+        the usual convention -- and must not stop the run, because
+        biasing the other end is a legitimate experiment."""
+        from molbuilder.config.transport import TransportConfig
+        from molbuilder.transport import get_engine
+        issues = get_engine("transiesta").preflight(
+            self._junction(l_on_top=True),
+            TransportConfig(job_name="bind_test"))
+        said = [i for i in issues if "HIGH-z" in i.message]
+        assert said, (
+            "an inverted junction passes the engine door silently -- "
+            "its deck biases the high-z lead and nothing said so")
+        assert said[0].severity == "warn", (
+            "the convention is a warning, never a refusal")
+        assert not [i for i in issues if i.severity == "error"], (
+            "an inverted junction must still be runnable")

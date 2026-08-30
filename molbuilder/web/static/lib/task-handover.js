@@ -89,6 +89,31 @@
             return;
         }
 
+        /* THE CALCULATION NEVER LIVES IN ITS CITATION (transport-design.md
+         * 4.1b): describing into the cited directory would drop task.json --
+         * and later every prep attempt -- inside the finished relaxation it
+         * cites.  The sidebar selection lingers on the attempt the person
+         * just browsed to cite, so this is the easy mistake to make.
+         *
+         * "Inside" means inside, not "equal to": a subfolder of the
+         * citation buries the calculation just as thoroughly.  The check
+         * used to compare only equality, which enforced something
+         * narrower than the rule it quoted. */
+        const relNorm = rel.replace(/\/+$/, "");
+        const citeNorm = String(o.junction || "").replace(/\/+$/, "");
+        const inside = citeNorm && relNorm
+            && (relNorm === citeNorm || relNorm.startsWith(citeNorm + "/"));
+        if (isTransport && inside) {
+            say("warn",
+                (relNorm === citeNorm
+                    ? "That folder IS the cited junction"
+                    : "That folder is INSIDE the cited junction")
+                + " — the calculation never lives inside its citation.  "
+                + "Make a folder for this transport job (e.g. under the "
+                + "project's transport topic) and select it.");
+            return;
+        }
+
         /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  Send writes
          * with `overwrite: true`, so without this it would silently replace
          * another calculation's template.  The check goes through the file
@@ -241,7 +266,8 @@
              * the saved description like any other -- as the run
              * surface, not a hand-over target. */
             say("ok", "Described — wrote " + written.join(" and ")
-                + " into the selected folder.  Next: prep run seed "
+                + " into " + (rel || "the selected folder")
+                + ".  Next: prep run seed "
                 + "(the CLI, or Task setup's prep buttons on this "
                 + "folder), then launch stage by stage; summarize run "
                 + "writes the I–V record.");

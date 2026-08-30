@@ -67,7 +67,12 @@ BL = BondLengths()
 
 def _build_au_bdt_au_coords():
     """Return list of (element, (x, y, z)) tuples in the canonical
-    L-electrode -> bridge -> R-electrode order.
+    L-electrode -> bridge -> R-electrode order -- GEOMETRIC order:
+    the L block is the LOWER one and the list ascends along z
+    (transport-design.md § 4.1a, the one convention:
+    L-electrode is the LOW-z lead;
+    mirrored 2026-08-29 when the preflight learned to check geometry,
+    which exposed the old fixture as L-on-top-listed-first).
 
     The benzene ring sits in the y-z plane (x = 0), with the S-S
     axis along z.  S atoms sit on the z-axis at z = ±(C-C + C-S) =
@@ -131,7 +136,10 @@ def _build_au_bdt_au_coords():
     atoms.append(("Au", (0.0, 0.0, au_right_2z)))
     atoms.append(("Au", (0.0, 0.0, au_right_3z)))
 
-    return atoms
+    # The mirror: the walk above builds top-down (L first at high z);
+    # negating z makes the SAME chemistry ascend -- L at the bottom,
+    # every index and label untouched.
+    return [(el, (x, y, -z)) for (el, (x, y, z)) in atoms]
 
 
 # --------------------------------------------------------------------- #

@@ -100,10 +100,13 @@
       <span class="ps-create-action-icon" aria-hidden="true">⬆</span>
       <span class="ps-create-action-label">Upload</span>
     </button>
+    {#- No `title` here on purpose: mutation-bar.js owns this button's
+        label, tooltip and disabled state, and names the folder it is
+        about to zip.  A second copy in the markup is one that goes
+        stale and shows for the first paint. -#}
     <button type="button" id="ps-download-zip-btn"
             class="ps-create-action"
-            data-action="download-zip"
-            title="Download the current directory as a .zip">
+            data-action="download-zip">
       <span class="ps-create-action-icon" aria-hidden="true">⬇</span>
       <span class="ps-create-action-label">Download</span>
     </button>

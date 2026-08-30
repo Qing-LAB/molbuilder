@@ -101,11 +101,14 @@ def _find_electrode_regions(
     """Return (user_label, block_name, indices) for every region
     whose label ends with the electrode-suffix convention.
 
-    Sorted by z-centroid ascending so the first entry is the
-    "leftmost" electrode (minimum z); the last is the "rightmost"
-    (maximum z).  This deterministic ordering is what the emitter
-    uses to assign ``semi-inf-direction -A3`` / ``+A3`` and the
-    canonical ``Left`` / ``Right`` chempot names.
+    Sorted by z-centroid ascending so the first entry is the LOWER
+    electrode (minimum z) and the last the upper one.  This ordering
+    is what the emitter uses to assign ``semi-inf-direction -A3`` /
+    ``+A3`` and the ``elec-pos`` ends — the GEOMETRIC half of the
+    deck.  It does NOT decide the chemical potentials: those bind to
+    the region's own name (``L-electrode`` → ``Left`` → µ = +V/2), so
+    the two halves name different blocks on a junction labeled the
+    other way round, and the deck says so.
     """
     out: List[Tuple[str, str, List[int], float]] = []
     for label, indices in (struct.regions or {}).items():
@@ -418,9 +421,10 @@ def _emit_transiesta_block(struct: Structure,
       ``*-electrode`` label convention (any region whose label
       ends with ``-electrode`` becomes an electrode block);
       ``L-electrode`` / ``R-electrode`` (the defaults) fit
-      naturally.  Order is by z-centroid so the leftmost gets
-      ``semi-inf-direction -A3`` and the canonical ``Left``
-      chempot binding.
+      naturally.  Order is by z-centroid, so the LOWER block gets
+      ``semi-inf-direction -A3`` and the first ``elec-pos``; the
+      ``Left``/``Right`` chempot binding is by region NAME, and the
+      deck states which lead ends up at µ = +V/2.
 
     For the canonical 2-terminal case (the only fully-validated
     scope today), the emitter produces exactly the verified
@@ -444,7 +448,26 @@ def _emit_transiesta_block(struct: Structure,
     is_two_terminal = len(electrodes) == 2
     semi_inf = {0: "-A3", len(electrodes) - 1: "+A3"}
     chempot_for = {}
-    if is_two_terminal:
+    labels = [lab for lab, _n, _i in electrodes]
+    canonical = (sorted(labels) == sorted([REGION_LEFT_ELECTRODE,
+                                           REGION_RIGHT_ELECTRODE]))
+    if is_two_terminal and canonical:
+        # Bind the chempot by the region's own NAME.  Under the one
+        # convention (L-electrode = low z; sort.py refuses anything
+        # else, and the preflight below repeats it for structures that
+        # never went through prep) this is identical to binding by
+        # z-centroid -- so the deck reads `TS.Elec.L -> chem-pot Left`
+        # with no inversion possible, and `V = V_left - V_right` means
+        # what the labels say.  Naming it keeps the deck honest if the
+        # gate ever moves.
+        for label, block_name, _idxs in electrodes:
+            chempot_for[block_name] = (
+                "Left" if label == REGION_LEFT_ELECTRODE else "Right")
+    elif is_two_terminal:
+        # Two leads under non-canonical labels: nothing says which
+        # reservoir is which, so follow the CONVENTION -- Left is the
+        # first electrode, the -A3 (low-z) end (legacy <=4.0
+        # TS.NumUsedAtomsLeft: "the first N atoms").
         chempot_for[electrodes[0][1]] = "Left"
         chempot_for[electrodes[1][1]] = "Right"
     else:
@@ -520,7 +543,37 @@ def _emit_transiesta_block(struct: Structure,
         lines.append(f"%endblock TS.Elec.{block_name}")
         lines.append("")
 
-    # Chemical potentials.
+    # WHICH LEAD IS BIASED POSITIVE, said in the deck itself -- read
+    # off what was actually emitted above, never from an assumed
+    # convention.  The semi-infinite directions came from the GEOMETRY
+    # (``electrodes`` is z-sorted) and mu comes from the NAME, so on a
+    # junction labeled the other way round these two lines name
+    # different blocks.  That disagreement is the fact a reader most
+    # needs and is the one the deck used to hide.
+    if is_two_terminal:
+        low_label = electrodes[0][0]
+        plus_label = next((lab for lab, name, _i in electrodes
+                           if chempot_for[name] == "Left"), None)
+        lines.append(
+            f"# {low_label} is the LOW-z lead: listed first, "
+            f"semi-inf-direction -A3.")
+        if plus_label is not None:
+            lines.append(
+                f"# {plus_label} carries mu = +V/2 (chem-pot Left), so "
+                f"V = V_left - V_right.")
+            if plus_label != low_label:
+                lines.append(
+                    "# NOTE: those are DIFFERENT blocks.  This junction "
+                    "is labeled with")
+                lines.append(
+                    f"#   {plus_label} on the HIGH-z end, so the HIGH-z "
+                    f"lead is the positively")
+                lines.append(
+                    "#   biased one -- the reverse of the usual "
+                    "convention, and intentional")
+                lines.append(
+                    "#   unless the labels were swapped by mistake "
+                    "(transport-design.md 4.1a).")
     lines.append(
         "# Chemical potentials.  ``%block TS.ChemPots`` lists the names; "
         "each is")
@@ -797,38 +850,76 @@ class TransiestaEngine:
         bridge_idx = sorted(regions.get(REGION_BRIDGE, []))
         right_idx  = sorted(regions.get(REGION_RIGHT_ELECTRODE, []))
         if left_idx and bridge_idx and right_idx:
+            # WHICH BLOCK MUST COME FIRST IS GEOMETRY, not the label
+            # (transport-design.md 4.1a): the block TranSIESTA reads as
+            # the first electrode is the one that extends to -A3, and
+            # that is the LOWER one.  A junction labeled the other way
+            # round still sorts and still runs (the warning below says
+            # what it means); what may never happen is the upper block
+            # sitting first, because its lead would then point down
+            # into the bridge.
+            pos_z = np.asarray(struct.positions, dtype=float)[:, 2]
+            _zl = float(np.mean(pos_z[left_idx]))
+            _zr = float(np.mean(pos_z[right_idx]))
+            lower_lab, upper_lab = ((REGION_LEFT_ELECTRODE,
+                                     REGION_RIGHT_ELECTRODE) if _zl <= _zr
+                                    else (REGION_RIGHT_ELECTRODE,
+                                          REGION_LEFT_ELECTRODE))
+            first_idx, last_idx = ((left_idx, right_idx) if _zl <= _zr
+                                   else (right_idx, left_idx))
             ordering_ok = (
-                left_idx[-1]  < bridge_idx[0] and
-                bridge_idx[-1] < right_idx[0] and
+                first_idx[-1] < bridge_idx[0] and
+                bridge_idx[-1] < last_idx[0] and
                 # Each region must be contiguous (no gaps); a non-
-                # contiguous L-electrode would also break the
+                # contiguous electrode would also break the
                 # "first N atoms" assumption.
-                left_idx   == list(range(left_idx[0],
-                                          left_idx[-1] + 1)) and
+                first_idx  == list(range(first_idx[0],
+                                          first_idx[-1] + 1)) and
                 bridge_idx == list(range(bridge_idx[0],
                                           bridge_idx[-1] + 1)) and
-                right_idx  == list(range(right_idx[0],
-                                          right_idx[-1] + 1))
+                last_idx   == list(range(last_idx[0],
+                                          last_idx[-1] + 1))
             )
             if not ordering_ok:
                 issues.append(Issue(
                     severity="error",
                     message=(
-                        "TranSIESTA preflight: atoms must be ordered "
-                        "as [L-electrode][bridge][R-electrode] in the "
-                        "AtomicCoordinates block, with each region "
-                        "contiguous (no gaps).  TranSIESTA reads "
-                        "TS.NumUsedAtomsLeft as 'first N atoms = "
-                        "left electrode'; out-of-order labels "
-                        "produce SILENTLY WRONG transmission with "
-                        "no run-time error.  Got: "
-                        f"L-electrode={left_idx[0]}..{left_idx[-1]}, "
-                        f"bridge={bridge_idx[0]}..{bridge_idx[-1]}, "
-                        f"R-electrode={right_idx[0]}..{right_idx[-1]}.  "
-                        "Re-export the structure from the Molbuilder "
-                        "tab with atoms in contiguous L→bridge→R "
-                        "order before re-running."
+                        f"TranSIESTA preflight: atoms must be ordered "
+                        f"as [{lower_lab}][{REGION_BRIDGE}]"
+                        f"[{upper_lab}] in the AtomicCoordinates block "
+                        f"-- the LOWER electrode block first -- with "
+                        f"each region contiguous (no gaps).  TranSIESTA "
+                        f"identifies electrode atoms POSITIONALLY (first "
+                        f"N atoms = the first electrode, the -A3 lead); "
+                        f"out-of-order labels produce SILENTLY WRONG "
+                        f"transmission with no run-time error.  Got: "
+                        f"{REGION_LEFT_ELECTRODE}={left_idx[0]}.."
+                        f"{left_idx[-1]}, "
+                        f"{REGION_BRIDGE}={bridge_idx[0]}.."
+                        f"{bridge_idx[-1]}, "
+                        f"{REGION_RIGHT_ELECTRODE}={right_idx[0]}.."
+                        f"{right_idx[-1]}.  Run transport prep (it sorts "
+                        f"by geometry), or re-export the structure in "
+                        f"that order."
                     ),
+                    where="struct.regions",
+                ))
+
+        # THE CONVENTION, CHECKED AND REPORTED -- never enforced (user
+        # ruling, 2026-08-29).  An inverted junction is a valid
+        # experiment whose author biased the other end; only they can
+        # say which end they meant, so this states the measurement and
+        # its consequence and leaves the decision where it belongs.
+        # THE SAME DOOR the sort and the tab read (sort.py), never a
+        # second derivation of the rule here.
+        if left_idx and right_idx:
+            from .sort import (ORDER_INVERTED, electrode_orientation,
+                               inverted_note)
+            if electrode_orientation(struct) == ORDER_INVERTED:
+                issues.append(Issue(
+                    severity="warn",
+                    message=("TranSIESTA preflight: "
+                             + inverted_note(struct)),
                     where="struct.regions",
                 ))
 

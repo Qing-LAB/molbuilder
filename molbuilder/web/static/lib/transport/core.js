@@ -389,10 +389,93 @@ const WORKSPACE_TAG = "transport";
      *  follow it, because the citation is the tab's one driver
      *  (user, 2026-08-29: the viewer responds to the active
      *  calculation). */
+    /* A WARNING WITH ITS ACTION ATTACHED, never a block (user ruling,
+     * 2026-08-29).  Labels the reverse of the usual convention are a
+     * valid junction that biases the other end; only the author knows
+     * which end they meant, so the citation goes through and the
+     * choice sits here.
+     *
+     * What is WRONG with it is said once, by the server, in the meta
+     * line directly above this panel (sort.py::inverted_note, with the
+     * measured z centroids).  This panel adds only what that sentence
+     * cannot: the button, and what pressing it costs.
+     *
+     * The server answers `fix` as a WORD; nothing here matches prose. */
+    var SWAP_LABEL = "Swap L-electrode and R-electrode";
+
+    function _offerFix(described) {
+        var host = _$("transport-junction-fix");
+        if (!host) return;
+        if (!described || described.fix !== "swap_electrodes") {
+            host.hidden = true;
+            host.textContent = "";
+            return;
+        }
+        host.hidden = false;
+        host.textContent = "";
+        var say = root.document.createElement("span");
+        say.className = "hint";
+        say.textContent = "A rename, nothing else: the two labels trade "
+            + "names in the cited folder.  No coordinate, keyword or "
+            + "result is touched, and the relaxation stays valid.";
+        var btn = root.document.createElement("button");
+        btn.type = "button";
+        btn.id = "transport-swap-electrodes-btn";
+        btn.className = "full-btn";
+        btn.textContent = SWAP_LABEL;
+        btn.addEventListener("click", function () {
+            btn.disabled = true;
+            btn.textContent = "Swapping…";
+            _swapElectrodes(described.citation, btn);
+        });
+        host.appendChild(say);
+        host.appendChild(btn);
+    }
+
+    function _swapElectrodes(citation, btn) {
+        function _failed(why) {
+            btn.disabled = false;
+            btn.textContent = SWAP_LABEL;
+            _setStatus(why);
+        }
+        root.fetch("/api/transport/swap_electrodes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: citation })
+        }).then(function (r) { return r.json(); }).then(function (out) {
+            if (!out || !out.ok) {
+                _failed((out && out.error) || "The swap failed.");
+                return;
+            }
+            /* Re-describe through the SAME door the picker uses: the
+             * citation is unchanged, its labels are not, and every
+             * answer (viewer, lane, meta line) must come from the
+             * server's fresh reading -- never from patching what the
+             * page already had.
+             *
+             * RETURNED, so the outer .catch covers it.  Left dangling
+             * this chain had no handler of its own: a failed re-read
+             * left the button disabled reading "Swapping…" with
+             * nothing said, and only a reload got out of it. */
+            return root.fetch("/api/transport/describe_attempt?path="
+                + encodeURIComponent(citation))
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    _adoptCitation(d, out.message + "  Re-cited: ");
+                });
+        }).catch(function (e) {
+            _failed("The swap failed: " + e);
+        });
+    }
+
     function _adoptCitation(described, statusPrefix) {
         if (!described || !described.form || !described.citation) {
             // Not citable: the server's summary IS the condition,
             // naming the missing file.  Card 1, with the picker.
+            // Clear any offer first -- it belongs to the PREVIOUS
+            // citation, and a button left standing here would act on
+            // that one.
+            _offerFix(null);
             _setStatus((described && described.summary)
                 || "That directory is not citable.");
             return;
@@ -406,6 +489,7 @@ const WORKSPACE_TAG = "transport";
             meta.hidden = false;
             meta.textContent = described.summary || "";
         }
+        _offerFix(described);
         _writePanelNote();
         _refreshSendButton();
         _refreshAnalyzeButton();

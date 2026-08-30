@@ -193,9 +193,13 @@ device. The convention (the *vocabulary* is owned by
 z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one
 `%block TS.Elec.<name>` per lead (the block name is the label minus the
 `-electrode` suffix: `L-electrode` → `L`), a `%block TS.ChemPots` + per-name
-`%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. The leftmost electrode
-gets the conventional chempot `Left` + `semi-inf-direction -A3`, the rightmost
-`Right` + `+A3` (SIESTA names, independent of the user's region labels). Atoms
+`%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. **The two halves have
+different owners**: the LOWER electrode gets `semi-inf-direction -A3` and the first
+`elec-pos` (decided by z — it is where the lead physically continues), while the
+`Left`/`Right` chempot binding follows the region's own NAME (`L-electrode` →
+`Left` → µ = +V/2). On a junction labeled the reverse of the usual convention
+these name different blocks, and the deck says so in a comment above the chempot
+blocks. Atoms
 labelled `buffer` emit `%block TS.Atoms.Buffer`, and each lead then also states
 its position explicitly (`elec-pos`) — with padding outermost, TranSIESTA's
 default first-N/last-N electrode placement no longer holds (2026-08-28, with
@@ -223,22 +227,36 @@ SolutionMethod  transiesta
 `bloch 1 1 1` is the transverse tiling — the lead cell is used as-is, no Bloch
 expansion in the shipped 2-terminal scope.)
 
-> **Atom-ordering is load-bearing.** TranSIESTA identifies electrode atoms by their
-> **position** in the coordinates block (first N atoms = first electrode), *not* by
-> region label. The **engine preflight** (`TransiestaEngine.preflight`,
-> `transiesta.py::TransiestaEngine.preflight`) cross-checks that L + bridge + R are contiguous in emission
-> order — an out-of-order structure produces silently wrong physics with no run-time
-> error. In the composite it cannot fire in anger: prep's categorical sort makes
-> disorder unrepresentable before any deck is rendered, and the engine preflight
-> still gates `render_stage_deck` as defense in depth (plus
-> `/api/transport/render`, the validation surface). (This ordering gate is distinct from
-> the cross-run `transport preflight` of § 5, which compares device vs electrode and
-> does *not* check atom order.)
+> **Atom-ordering is load-bearing — and it follows GEOMETRY, not the label.**
+> TranSIESTA identifies electrode atoms by their **position** in the coordinates
+> block (first N atoms = first electrode), *not* by region label. The first
+> electrode is the one extending to `-A3`, so the **lower** block must come first;
+> the upper block first would aim its self-energy into the bridge. The **engine
+> preflight** (`transiesta.py::TransiestaEngine.preflight`) **refuses** only that:
+> `[lower][bridge][upper]`, each region contiguous. An out-of-order structure
+> produces silently wrong physics with no run-time error. In the composite it
+> cannot fire in anger — prep's categorical sort orders by z before any deck is
+> rendered — and the engine preflight still gates `render_stage_deck` as defense
+> in depth (plus `/api/transport/render`, the validation surface). (Distinct from
+> the cross-run `transport preflight` of § 5, which compares device vs electrode
+> and does *not* check atom order.)
 
-> **Bias direction.** Bias is `V_left − V_right`. **Positive** bias raises μ_L above
-> μ_R; electrons flow high→low chemical potential (L→R for positive V), so
-> conventional current flows R→L. Pick L to be the more-negative reservoir in your
-> forward-bias measurement. `TS.Voltage` is one value per run
+> **The label convention is checked and WARNED about, never enforced**
+> *(user ruling, 2026-08-29)*. The usual convention is `L-electrode` low z,
+> `R-electrode` high z — TranSIESTA's own, as in the author's reference inputs
+> ([`ts-tbt-sisl-tutorial/TS_02`](https://github.com/zerothi/ts-tbt-sisl-tutorial/blob/main/TS_02/RUN.fdf):
+> `Left` = `electrode-position 1` + `-a1` + `mu V/2`). A junction labeled the other
+> way round is **not an error** — it biases the other end, which only its author
+> can judge — so the sort notes it, the preflight warns, and the Transport tab
+> offers a one-click rename. See `transport-design.md` § 4.1a.
+
+> **Bias direction.** Bias is `V_left − V_right`; the emitter binds
+> `L-electrode → chem-pot Left → μ = +V/2` **by name**, and the deck states which
+> physical lead that turned out to be. **Positive** bias raises μ_L above μ_R;
+> electrons flow high→low chemical potential (L→R for positive V), so conventional
+> current flows R→L. Put the `L-electrode` label on whichever lead you want as the
+> more-positive reservoir in your forward-bias measurement — under the usual
+> convention that is the low-z one. `TS.Voltage` is one value per run
 > (`bias_voltages_v[0]`); multi-bias `T(E)` is multiple runs (§ 8).
 
 ---

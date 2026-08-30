@@ -277,6 +277,18 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   cursor: not-allowed;
   /* No hover lift when disabled. */
 }
+/* Working, not unavailable: a button mid-archive is disabled for the
+   same reason it is lit -- something is happening in it.  Keep it
+   legible (the label reads "Zipping…") and mark it with the wait
+   cursor rather than the not-allowed one. */
+.ps-create-action[disabled].is-busy {
+  opacity: 0.8;
+  cursor: progress;
+  border-color: var(--accent, #6ba6ff);
+}
+.ps-create-action.is-busy .ps-create-action-label {
+  font-style: italic;
+}
 .ps-create-action-icon {
   flex: 0 0 auto;
   font-size: var(--text-lg);

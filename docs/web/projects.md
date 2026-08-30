@@ -217,8 +217,25 @@ touch it. The parts:
 - **The filter box** — type to hide non-matching files (folders always stay);
   a leading dot matches by extension (`.xyz`). It only hides rows, and the
   filter sticks as you browse.
-- **The header buttons** — New project (always available), New folder and Upload
-  (available once you are inside a project). Each opens its own dialog.
+- **The header buttons** — New project (always available), New folder, Upload and
+  Download (available once you are inside a project). The first three open a
+  dialog; **Download** compresses the folder you are currently browsing — its
+  name is in the tooltip — and saves it as `<folder>.zip`. Because a results
+  directory can take minutes to compress, the button says so in its own label
+  (*Zipping…*, then *Saving…*) and refuses further clicks until the browser's
+  save begins; that is why the door is two calls, `POST /api/files/zip_prepare`
+  then `GET /api/files/download_zip?token=`. When it finishes it reports what
+  it made — file count and size, in the button's tooltip — and **says out loud
+  when anything was left out**: a symlink whose target sits outside the
+  projects tree cannot travel, so those are counted and named rather than
+  dropped in silence.
+  The archive is the folder **as it stands now — the pure execution directory**:
+  the workspace store (`.molbuilder_workspace`) and a checkpoint folder's
+  history (`.git`, `.binsnapshots`) are left out, while every run file, engine
+  restart files (`.DM`, `.TSDE`, `.XV`) included, rides along. *(Not via
+  `git archive`: a checkpoint deliberately keeps large files out of git — they
+  live in `.binsnapshots` — so a git export would silently drop the heaviest
+  outputs the far machine needs.)*
 - **The per-row `⋯` menu** — View, Download, Rename, Move, Copy, Delete, with
   only the items that apply shown (a project or topic folder shows just its
   type-to-confirm Delete). No menu appears when nothing applies.
