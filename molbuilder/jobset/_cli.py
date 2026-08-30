@@ -1744,8 +1744,14 @@ def _bench_inputs(base, target, *, bench_override=None, report=None):
              "fits": list(doms), "why": list(why)}
             for fam, (g, k, c), doms, why in checked)
 
+    # "THIS MACHINE" WAS THE WRONG WORD.  The menu these cells are checked
+    # against is the TARGET's -- `prep --target sol` on a workstation reads
+    # the record for Sol, and a declared `scheduler.routing` describes a
+    # cluster you are not standing on at all
+    # (`preparing-for-another-machine.md`).  So the count is about the
+    # QUEUES, and says so.
     click.echo(f"  bench grid: {len(checked)} combination(s) enumerated, "
-               f"{len(kept)} this machine can hold")
+               f"{len(kept)} fit a queue")
     for fam, (g, k, c), doms in kept:
         # WHERE IT COULD GO, not where it will: the wall decides that and
         # is stated at `launch`.  Four names then an ellipsis -- enough to
@@ -1755,8 +1761,8 @@ def _bench_inputs(base, target, *, bench_override=None, report=None):
                    f"{_cell_shape(g, k, c, gtype):<37}"
                    + (f"  fits: {where}" if where else ""))
     if crossed:
-        click.echo(f"  crossed out ({len(crossed)}) -- no queue on this "
-                   f"machine takes them:")
+        click.echo(f"  crossed out ({len(crossed)}) -- no queue takes "
+                   f"them:")
         for fam, (g, k, c), why in crossed:
             click.echo(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
                        f"{_cell_shape(g, k, c, gtype):<37}  {why[0]}")

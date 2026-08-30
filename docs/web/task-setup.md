@@ -371,8 +371,11 @@ would actually **run**, and it updates as the points are edited *(user,
 2026-08-30: "can't this list be just updated in the same card where the
 parameters are set… this does not need to be a message with a window")*.
 
-Each surviving cell shows its label — the same token its trial directory
-will carry — its shape, and the queues that would take it. Cells no queue
+The heading counts them — *"6 combination(s) — 4 fit a queue, 2 do not"* —
+and each surviving cell shows its label (the same token its trial directory
+will carry), its shape, and the queues that would take it.  **"a queue", not
+"this machine":** the menu is the target's, and preparing for a machine you
+are not standing on is ordinary here. Cells no queue
 here can hold are shown **struck, with the numbers** rather than dropped:
 a point that silently vanished is the thing that sent someone to the CLI
 to find out why.

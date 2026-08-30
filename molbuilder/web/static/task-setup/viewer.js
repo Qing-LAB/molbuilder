@@ -379,9 +379,12 @@ function paintFit(host, body) {
     host.hidden = false;
 
     host.appendChild(el("div", { class: "ts-fit-head" },
+        /* "this machine" would be wrong: the queues these were checked
+         * against are the TARGET's, and preparing for another machine is
+         * an ordinary thing to do here. */
         cells.length + " combination(s) \u2014 " + kept.length
-        + " this machine can run"
-        + (crossed.length ? ", " + crossed.length + " it cannot" : "")));
+        + " fit a queue"
+        + (crossed.length ? ", " + crossed.length + " do not" : "")));
 
     for (const c of kept) {
         host.appendChild(el("div", { class: "ts-fit-row" },
@@ -407,8 +410,8 @@ function paintFit(host, body) {
         host.appendChild(el("p", { class: "status warn" }, body.note));
     } else if (!kept.length) {
         host.appendChild(el("p", { class: "status warn" },
-            "Nothing here fits this machine \u2014 adjust the points above, "
-            + "or choose a different machine."));
+            "No queue on the chosen machine takes any of these \u2014 "
+            + "adjust the points above, or choose a different machine."));
     }
 }
 

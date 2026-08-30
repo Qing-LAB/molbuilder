@@ -417,9 +417,13 @@ framework rule, not a script patch)*:
   — a login node can therefore enumerate the GPU family for the cluster
   behind it.  Several inventory types on the row is a question the machine
   may not answer: refused by name, with the remedy of curating the row.
-- **Enumerate every combination, cross out what this machine cannot hold,
-  show what is left** *(user, 2026-08-30: "we don't have to fight with what
-  language we use to indicate error, but present the correct outcome")*.
+- **Enumerate every combination, cross out what no queue can hold, show what
+  is left** *(user, 2026-08-30: "we don't have to fight with what language we
+  use to indicate error, but present the correct outcome")*.  The queues are
+  the TARGET's, which is why neither the terminal nor the card says "this
+  machine": `prep --target sol` on a workstation checks against Sol's
+  record, and a declared `scheduler.routing` describes a cluster you are not
+  standing on at all.
   The grid is a **proposal**; the machine record decides; and what reaches
   the screen is the surviving list — each cell with its shape and the
   queues it could go to — followed by the struck ones, each naming its

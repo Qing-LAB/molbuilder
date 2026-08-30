@@ -1595,7 +1595,7 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc, capsys):
     with pytest.raises(click.ClickException):
         _bench_inputs(calc, None)
     shown = capsys.readouterr().out
-    assert "0 this machine can hold" in shown
+    assert "0 fit a queue" in shown
     assert "crossed out (1)" in shown
     # The CELL, by the name its trial directory would carry, and both
     # numbers -- what was asked and what there is.
@@ -2372,7 +2372,7 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
         "the point that fits must survive its oversized sibling")
 
     shown = capsys.readouterr().out
-    assert "2 combination(s) enumerated, 1 this machine can hold" in shown
+    assert "2 combination(s) enumerated, 1 fit a queue" in shown
     assert "K2C1" in shown and "K4096C1" in shown
     # The struck one names its numbers (R4), not a verdict word.
     assert "crossed out (1)" in shown
