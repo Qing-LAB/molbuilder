@@ -1210,25 +1210,177 @@ def _gpu_inventory(base):
     return (dev.per_node or None), dev.type
 
 
-def _gpu_core_cap(base):
-    """``(max_cores, domain name)`` of THE gpu domain row
-    (`scheduler.place.candidates`; ``(None, None)`` when it states no cap --
-    the queue then teaches).  Probed since 2026-08-21
-    (§ 4.3a): sinfo reports one row per node group, so the GPU nodes'
-    own core count is on their row even inside a mixed partition -- on
-    Sol, GPU nodes take 48 cores where standard nodes take 128.  The
-    row stays the user's to edit.
+def _gpu_type_for_bench(base, topo):
+    """WHICH card this sweep measures: the person's stated choice, else the
+    target's probed one.
+
+    M-1's fact/preference split, applied to the bench (2026-08-30).  *Which
+    card exists here* is a measurement (`topology.gpu_type`); *which card
+    you want to measure* is a choice, and `scheduler.gpu.default_type` is
+    where it is stated -- the override `runtime_config` has honoured since
+    N4 (2026-08-17) and `runwrap` reads at run time.  The bench read the
+    measurement directly, so the run path and the prep path answered one
+    question two ways, and there was no way at all to say *benchmark the
+    a100, not the a100.40gb*.
+
+    That mattered on Sol, where the probe lands on a 64-core node carrying
+    `a100.40gb` -- four such nodes cluster-wide -- while `a100` sits on 52
+    nodes of `public` alone.  The measurement picked the rarer card, and
+    nothing the person could write would change it.
+
+    The stated value is recognised by DIFFERING from this machine's probed
+    one: `get_scheduler` back-fills the probed answer when nothing is
+    stated, so an equal value is either "stated the same" or "not stated"
+    -- and both mean the same string.  A different value was written by
+    hand, and it wins.  Where nothing is stated, the TARGET's topology
+    answers, which is what keeps a `--target` prep measuring the target.
+    """
+    probed_here = None
+    stated = None
+    try:
+        from ..runtime_config import get_scheduler
+        from ..scheduler import machine_for
+        stated = ((get_scheduler(project_dir=Path(base)) or {})
+                  .get("gpu") or {}).get("default_type")
+        probed_here = getattr(getattr(machine_for(Path(base)), "topology",
+                                      None), "gpu_type", None)
+    except Exception:                                       # noqa: BLE001
+        stated = None
+    if stated and stated != probed_here:
+        return stated
+    return getattr(topo, "gpu_type", None)
+
+
+def _cells_this_machine_holds(base, plan, gtype, *,
+                              local_cores=None, local_gpus=None):
+    """Every enumerated bench cell, checked one by one against THIS
+    machine's queues -- ``[(fam, (g, k, c), domain, why)]`` in enumeration
+    order, ``domain`` naming where the cell would go and ``why`` the
+    reasons it fits nowhere.  Exactly one of the two is set.
+
+    **Enumerate everything, then cross out what the machine cannot hold,
+    then show what is left** (user, 2026-08-30).  What this replaces was a
+    single ``max_cores`` number (`_gpu_core_cap`) compared against the GPU
+    family only, and it was wrong three ways at once: it read
+    ``candidates()[0]`` -- on Sol the *debug* queue, whose 15-minute wall
+    this bench can never use -- it read ``max_cores``, which since
+    2026-08-27 is the widest machine OF ANY KIND rather than the widest
+    with a device, and it never looked at the device TYPE.  So it answered
+    128 for a grid whose GPU cells can only land on 48- and 64-core nodes,
+    dropped nothing, and left the disagreement to be discovered by sbatch.
+
+    The check is `scheduler.admits` over `scheduler.place.candidates` --
+    the same pair `place` itself walks, so "some queue admits it" here and
+    "placeable" at launch are one verdict, not two.  What is NOT done here
+    is CHOOSING one: the choice depends on the wall, and R7 says `prep`
+    knows the shape and the device but not the wall or the memory.  Naming
+    a winner anyway put ``-> debug`` beside every GPU cell -- the queue
+    with the tightest ceiling wins when no wall is stated, and debug's
+    ceiling is fifteen minutes.  So the row lists WHERE IT COULD GO and
+    lets `launch` pick once the wall is known.
+
+    A machine with no queue menu at all is answered by ``local_cores`` /
+    ``local_gpus`` -- the probed topology of the box this runs on, which
+    IS the machine when nothing schedules for it.  That is the ONLY place
+    topology may bound a cell: on a cluster it measures whichever node the
+    probe happened to land on, and R0 says a queue holds many kinds.  A
+    declared 128-rank point was refused outright against it until
+    2026-08-30, on a cluster whose `public` holds 107 nodes of 128 cores.
     """
     from ..runtime_config import get_routing
+    from ..scheduler.admit import Request, admits
     from ..scheduler.place import candidates
-    # CAPABILITY, not duration: `prep` asks which nodes have devices, not how
-    # long a job may run, so it passes no wall and the answer is the menu's
-    # own recommendation -- the first gpu-capable row (R7).
-    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=True)
-    row = rows[0] if rows else None
-    if row is not None and row.max_cores:
-        return int(row.max_cores), str(row.name)
-    return None, None
+    try:
+        routing = get_routing(project_dir=Path(base))
+    except Exception:                                       # noqa: BLE001
+        # No readable menu is not a small menu (R3): a record we cannot
+        # read must not cross out work the machine may well run.
+        routing = []
+
+    if not routing:
+        return [(fam, cell, (), _local_refusals(cell, fam, gtype,
+                                                local_cores, local_gpus))
+                for fam, cell in plan]
+
+    out = []
+    for fam, (g, k, c) in plan:
+        want_gpu = bool(fam and g)
+        req = Request(ranks=(g * k if want_gpu else k), cpus_per_task=c,
+                      gpus=g if want_gpu else None,
+                      gpu_type=gtype if want_gpu else None)
+        # THE POOL IS THE FIT QUESTION'S, NOT THE PREFERENCE'S.  For a
+        # device cell it is `candidates` -- gpu-capability is a filter,
+        # since a cpu-only row states no inventory and R3 would read that
+        # silence as permission.  For a CPU cell it is the WHOLE menu: a
+        # CPU job runs anywhere, and `candidates` narrows to cpu-only rows
+        # to express a PREFERENCE (idle devices cost).  Letting a
+        # preference decide the fit question would cross out a 128-rank
+        # CPU cell that Sol's `public` runs on 107 nodes, because the two
+        # cpu-only queues happen to be smaller.
+        pool = candidates(routing, prefer_gpu=True) if want_gpu \
+            else list(routing)
+        fits, why = [], []
+        for row in pool:
+            no = admits(row, req)
+            if no:
+                why.extend(no)
+            else:
+                fits.append(row.name)
+        out.append((fam, (g, k, c), tuple(fits),
+                    () if fits else _rank_reasons(why)))
+    return out
+
+
+def _rank_reasons(reasons):
+    """The refusals worth showing, most actionable first.
+
+    A cell no queue takes collects one reason per queue, and they are not
+    equally useful: *"needs a100.40gb but gaudi offers hl225"* says only
+    that the wrong queue was asked, while *"largest machine with
+    a100.40gb has 64"* names the number to change.  So the
+    wrong-card reasons sort last, and duplicates -- Sol repeats the same
+    node groups across debug/htc/general -- collapse.
+    """
+    seen, ranked = set(), []
+    for r in reasons:
+        if r not in seen:
+            seen.add(r)
+            ranked.append(r)
+    ranked.sort(key=lambda r: (" offers " in r, len(r)))
+    return tuple(ranked)
+
+
+def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
+    """Why THIS BOX cannot hold a cell -- the no-scheduler answer.
+
+    Empty means it fits, or that the probe measured nothing to compare
+    against: an unmeasured topology is silence, and silence never bars
+    (R3).  Reasons name their numbers (R4).
+    """
+    g, k, c = cell
+    ranks = g * k if (fam and g) else k
+    why = []
+    if cores_total and ranks * c > cores_total:
+        why.append(f"needs {ranks * c} cores and this machine has "
+                   f"{cores_total}")
+    if fam and g and gpus_per_node and g > gpus_per_node:
+        why.append(f"needs {g} x {gtype or 'gpu'} and this machine has "
+                   f"{gpus_per_node}")
+    return tuple(why)
+
+
+def _cell_label(g, k, c, *, machine_axes) -> str:
+    """A cell's name, spelled the way its trial directory will be
+    (`job-contracts.md` § 6.3) -- so the fit list and the directory
+    listing name the same thing."""
+    return (f"G{g}K{k}C{c}" if "G" in machine_axes else f"K{k}C{c}")
+
+
+def _cell_shape(g, k, c, gtype) -> str:
+    """What a cell ASKS FOR, in words -- ranks, cores each, and the card."""
+    ranks = g * k if g else k
+    bit = f"{ranks} rank(s) x {c} core(s)"
+    return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
 
 
 def _bench_inputs(base, target):
@@ -1295,7 +1447,7 @@ def _bench_inputs(base, target):
     topo = getattr(environment, "topology", None)
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
-    gtype = getattr(topo, "gpu_type", None)
+    gtype = _gpu_type_for_bench(base, topo)
 
     task = read_task(Path(base) / TASK_FILENAME)
     # THE SEAM REFUSAL, BY NAME (E-J1, restored 2026-08-21).  The bench
@@ -1424,6 +1576,8 @@ def _bench_inputs(base, target):
             f"resolve today are {', '.join(_KNOWN_AXES)} "
             f"(generator.md § 4.3a).")
     sockets = getattr(topo, "sockets", None) or 1
+    #: What the LOCAL box holds -- the ceiling only when this machine has
+    #: no queues to answer for it (`_cells_this_machine_holds`).
     cores_total = (sockets * cps) if cps else None
     # gpu_count alone does not declare a RANK grid: without mpi_np /
     # omp_threads the K x C half stays the machine's proposal, filtered
@@ -1437,16 +1591,21 @@ def _bench_inputs(base, target):
         # measure a configuration nobody declared.
         ranks = [int(v) for v in declared.get("mpi_np") or [1]]
         cores = [int(v) for v in declared.get("omp_threads") or [1]]
-        for r in ranks:
-            for c in cores:
-                if cores_total and r * c > cores_total:
-                    raise click.ClickException(
-                        f"declared bench point mpi_np={r}, omp_threads={c} "
-                        f"needs {r * c} cores and this machine's probe "
-                        f"found {cores_total} "
-                        f"({sockets} socket(s) x {cps} cores).  Trim the "
-                        f"declaration in task.json, or benchmark on the "
-                        f"machine it is meant to measure.")
+        # A DECLARED POINT IS NOT REFUSED HERE ANY MORE (2026-08-30).  It
+        # was, against ``topology.sockets x cores_per_socket`` -- ONE
+        # machine's measurement, taken wherever the probe happened to run.
+        # R0 is the whole reason the scheduler subsystem exists: a
+        # partition is a QUEUE holding many machine kinds, and on Sol the
+        # probe lands on a 64-core GPU node while `public` holds 107
+        # nodes of 128.  So a declared 128-rank point -- which those 107
+        # nodes run happily -- was refused outright, and the person was
+        # told to "benchmark on the machine it is meant to measure" while
+        # standing on it.
+        #
+        # The queues answer instead, cell by cell, in
+        # `_cells_this_machine_holds` -- which falls back to this same
+        # topology when there is no queue menu at all, because a
+        # workstation IS its own machine.
 
     # THE DECLARED DEVICE COUNTS (user, 2026-08-21: "explicit is what we
     # need").  Declared, gpu_count is exact: those G values and no others,
@@ -1506,30 +1665,50 @@ def _bench_inputs(base, target):
                 for g, k, c in sweep_grid(gpn if fam else 1, cps, ks, None)
                 if not (fam and gpu_counts) or g in gpu_counts]
 
-    # THE PER-FAMILY CAP (§ 4.3a): when the menu's gpu-capable row states
-    # max_cores (probed since 2026-08-21 from the GPU node group's own
-    # sinfo row; still hand-editable), a GPU cell that exceeds it is
-    # DROPPED BY NAME,
-    # never silently and never by refusing the prep -- refusal would deny
-    # the CPU family a rank count only the GPU nodes cannot hold.
-    cap, cap_dom = (_gpu_core_cap(base) if any(families) else (None, None))
+    # ENUMERATE EVERYTHING, THEN CROSS OUT WHAT THIS MACHINE CANNOT HOLD,
+    # THEN SHOW WHAT IS LEFT (user, 2026-08-30: "we don't have to fight
+    # with what language we use to indicate error, but present the correct
+    # outcome").  The grid is a proposal; the machine record is the thing
+    # that decides; and what the person needs on screen is the surviving
+    # list, not a sentence about a number.
+    #
+    # Both families go through it.  The CPU family was never checked at
+    # all -- the old cap applied to GPU cells only -- so a rank count no
+    # queue here can hold was carried all the way to `launch`.
+    plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
+    checked = _cells_this_machine_holds(base, plan, gtype,
+                                        local_cores=cores_total,
+                                        local_gpus=gpn)
+    _axes = ("G", "K", "C") if (mixed or on_gpu) else ("K", "C")
+
+    kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]
+    crossed = [(f, cell, why) for f, cell, doms, why in checked if why]
+
+    click.echo(f"  bench grid: {len(checked)} combination(s) enumerated, "
+               f"{len(kept)} this machine can hold")
+    for fam, (g, k, c), doms in kept:
+        # WHERE IT COULD GO, not where it will: the wall decides that and
+        # is stated at `launch`.  Four names then an ellipsis -- enough to
+        # see whether a cell has real room or is riding one queue.
+        where = ", ".join(doms[:4]) + (" ..." if len(doms) > 4 else "")
+        click.echo(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
+                   f"{_cell_shape(g, k, c, gtype):<37}"
+                   + (f"  fits: {where}" if where else ""))
+    if crossed:
+        click.echo(f"  crossed out ({len(crossed)}) -- no queue on this "
+                   f"machine takes them:")
+        for fam, (g, k, c), why in crossed:
+            click.echo(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
+                       f"{_cell_shape(g, k, c, gtype):<37}  {why[0]}")
+
     cells = []
     for fam in families:
-        fcells = _family_cells(fam)
-        if fam and cap:
-            dropped = [(g, k, c) for g, k, c in fcells if g * k * c > cap]
-            fcells = [(g, k, c) for g, k, c in fcells if g * k * c <= cap]
-            if dropped:
-                click.echo(
-                    f"  dropped from the GPU family (domain {cap_dom!r} "
-                    f"allows {cap} cores/node): "
-                    + ", ".join(f"G{g}K{k}C{c} ({g * k * c} cores)"
-                                for g, k, c in dropped))
+        fcells = [cell for f, cell, _dom in kept if f == fam]
         if fam and fcells:
             # Checks 1-3 of the GPU-sharing note (user, 2026-08-23): ALWAYS
             # state ranks/GPU, warn past MPS's 48-client ceiling, note past
             # this stack's ~4-rank tuned point.  Check 4 (node-fit) is the
-            # cap-drop just above -- this does not re-derive it, only
+            # crossing-out above -- this does not re-derive it, only
             # states the sharing fact for whatever survived it.  ONE
             # function (`ask.gpu_share_notes`) so this and the submission
             # display can never disagree about the arithmetic.
@@ -1546,19 +1725,20 @@ def _bench_inputs(base, target):
                 bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
             click.echo(f"  GPU sharing in this family: " + ", ".join(bits))
         if fam and not fcells:
-            # every GPU cell fell to the cap or the even-split rule --
-            # the drops were echoed by name above, so this names the
-            # consequence.
+            # every GPU cell was crossed out above, or fell to the
+            # even-split rule -- both are listed by name, so this names
+            # the consequence.
             if mixed:
                 click.echo(
-                    "  NOTE: no GPU cell survived the drops above -- "
-                    "this sweep measures only the CPU family.")
+                    "  NOTE: no GPU cell survived -- this sweep measures "
+                    "only the CPU family.")
             else:
                 raise click.ClickException(
-                    "every GPU cell was dropped (see the lines above: "
-                    "the domain's core cap and/or the even-split rule).  "
-                    "Adjust mpi_np / gpu_count in task.json, or "
-                    "benchmark where the GPU nodes are larger.")
+                    "no GPU cell survived (see the crossed-out list "
+                    "above, and the even-split rule).  Adjust mpi_np / "
+                    "gpu_count in task.json, name a domain whose GPU "
+                    "nodes are larger, or benchmark the card this "
+                    "machine's queues actually offer.")
         cells.extend((fam, cell) for cell in fcells)
     # THE VALUE-AXIS CARTESIAN (§ 4.3a): every machine cell is crossed
     # with the remaining declared value axes, in declaration order, and
@@ -1569,7 +1749,7 @@ def _bench_inputs(base, target):
     if not cells:
         raise click.ClickException(
             "no bench cell survived the declaration on this machine -- "
-            "see the drop/refusal lines above.")
+            "see the crossed-out list above.")
     combos = [{}]
     for name, vals in value_axes.items():
         combos = [{**c, name: v} for c in combos for v in vals]
@@ -2471,7 +2651,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                        mem_gb=_memory(mem_text))
             # NOTHING IS DERIVED (user dictation, 2026-08-24).  --time is
             # the wall, said or defaulted to the target queue's ceiling
-            # inside `_submit_side_group`; --trial-timeout is itself or
+            # inside `_prepare_side_group`; --trial-timeout is itself or
             # absent.  The bench_bound arithmetic that turned a "budget"
             # into a per-trial bound -- slack factor, startup margin,
             # one-minute floor, a 15-minute default when nothing was said
@@ -2713,6 +2893,22 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
              else verb)
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.status}] {tail}".rstrip())
+    # A PARTIAL SUBMISSION SAYS SO, LOUDLY.  One shelf refused by the
+    # scheduler no longer cancels the others (submit.py), so the run can
+    # end with some jobs queued and some not -- and the person must not
+    # have to spot that in a status column.  The refused shelves' trials
+    # stay pending, so re-running `launch` picks up exactly them.
+    _refused = [r for r in results if r.status == "sbatch refused"]
+    if _refused:
+        click.echo("")
+        click.echo(f"  {len(_refused)} group(s) the scheduler refused -- "
+                   f"their trials stay pending, the rest are queued:")
+        for r in _refused:
+            click.echo(f"    {r.name}")
+            for _l in (r.detail or "").splitlines():
+                click.echo(f"      {_l}")
+        click.echo("  Re-run this launch after fixing the ask; the groups "
+                   "already queued are skipped.")
     if not dry_run:
         click.echo("next: molbuilder jobset status   (look before the next "
                    "stage)")

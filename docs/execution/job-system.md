@@ -1152,6 +1152,24 @@ system** adds is submission and routing:
   `launch` resolves it and refuses an unknown name with the list of configured
   ones. Partition and qos are **required** for a SLURM site — the framework
   refuses to emit a header it knows will be rejected (design decision #4).
+- **Render every job, then submit them.** A grouped submission (the bench
+  sweep, § 7) writes **all** its shelf scripts before it sends the first one,
+  and **one scheduler refusal does not cancel the rest**: the shelves are
+  independent jobs the queue may run concurrently, so a refusal is recorded
+  on that shelf's result and the loop goes on. Its trials keep no launch
+  record, so `was_launched` leaves them pending and the next `launch` picks
+  up exactly them. The command reports what went out and what did not.
+
+  > **Both halves were one fault, found 2026-08-30.** Rendering and
+  > submitting were interleaved per shelf, so when a Sol bench had its
+  > 4-GPU group refused — for a gres type that partition does not stock —
+  > the raise unwound the loop: the CPU group had gone out, and the 2-GPU
+  > group behind it was *neither written nor sent*, though its ask was
+  > perfectly valid. The printed recovery command then answered *Unable to
+  > open file*, because the script it named had never been written.
+  > `--dry-run` still writes nothing at all; its documented meaning is
+  > *print the exact command without launching*, and the confirm preview
+  > walks that path before the person has said yes.
 - **Job names read well.** A job's `-J` is `<calculation>/<job>` —
   `bdt_au/coarse`, `bdt_au/G1K2C4` — so a `squeue` listing tells you which of
   your calculations each row belongs to, not just which stage.

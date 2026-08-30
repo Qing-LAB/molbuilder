@@ -78,12 +78,18 @@ class JobResult:
     id; in ``direct`` mode ``returncode`` is the process exit status.
     ``status`` is one of ``submitted`` / ``ran`` / ``failed`` / ``skipped``
     / ``planned`` (dry-run) / ``asked`` (``--mode ask``: nothing was
-    submitted and ``prediction`` carries what the scheduler said)."""
+    submitted and ``prediction`` carries what the scheduler said) /
+    ``sbatch refused`` (this one job was rejected; the rest still went) /
+    ``stays pending`` (its group was refused, so it was never sent)."""
     name:       str
     command:    List[str]
     status:     str
     job_id:     Optional[str] = None
     returncode: Optional[int] = None
+    #: What the scheduler said, on a ``sbatch refused``.  Carried rather
+    #: than raised because ONE refused shelf must not cancel the shelves
+    #: behind it -- so the failure has to travel back as data (2026-08-30).
+    detail:     Optional[str] = None
     #: Only in ``ask`` mode.  ``None`` everywhere else, and a ``Prediction``
     #: whose ``start`` is ``None`` when SLURM declined to predict -- which
     #: is reported as *unknown*, never as *soon*.
@@ -230,7 +236,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
             import dataclasses as _dc
             resources = _dc.replace(resources, time=_slurm_time(time_s))
         if mem_gb:
-            # Same gap as the grouped path (`_submit_side_group`), same
+            # Same gap as the grouped path (`_prepare_side_group`), same
             # fix: nothing ever set `Resources.mem` for a single-job
             # submission either -- `job.resources` is whatever `prep`
             # baked (mpi_np/omp/gres from the sweep axes; never memory),
@@ -675,7 +681,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     if only and not sides[only]:
         raise SubmitError(f"this sweep has no {only} trials to submit")
     mixed = bool(sides["cpu"]) and bool(sides["gpu"])
-    results: List[JobResult] = []
+    plans: List["_Prepared"] = []
     for side in ("cpu", "gpu"):
         jobs = sides[side]
         if not jobs or (only and side != only):
@@ -715,24 +721,65 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
             # flag from someone who already said `--only gpu` would be the
             # extra question this design exists to avoid; it is needed only
             # when the two sides genuinely go to different queues.
-            results += _submit_side_group(
+            plans.append(_prepare_side_group(
                 jobset, base, dirs, pending, name,
                 gpu_side=(side == "gpu"),
                 domain=((gpu_domain or domain) if side == "gpu"
                         else domain),
                 dry_run=dry_run,
                 trial_timeout_s=trial_timeout_s,
-                mem_gb=mem_gb, time_s=time_s)
-    if not results:
+                mem_gb=mem_gb, time_s=time_s))
+
+    if not plans:
         raise SubmitError(
             f"all {len(sides[only]) if only else len(jobset.jobs)} "
             f"{only + ' ' if only else ''}trials are launched.  next: "
             f"molbuilder jobset summarize bench <stage>")
+
+    if dry_run:
+        return [r for p in plans
+                for r in ([JobResult(p.name, p.cmd, "planned")]
+                          + [JobResult(j.name, [], "rides the group")
+                             for j in p.pending])]
+
+    # EVERY SHELF IS RENDERED BEFORE ANY IS SENT (above), AND ONE REFUSAL
+    # DOES NOT CANCEL THE REST (here; user, 2026-08-30).  These are two
+    # halves of one fault.  A Sol bench submitted its CPU group, had the
+    # 4-GPU group refused -- *Requested node configuration is not
+    # available*, for a card that partition does not stock -- and the
+    # raise unwound the loop, so the 2-GPU group was neither written nor
+    # sent.  Yet it was a perfectly valid ask, and independent: the
+    # shelves are separate jobs the queue may even run concurrently.
+    #
+    # So a refusal is DATA on that shelf's result, not an exception over
+    # the sweep.  Nothing is lost by continuing: the trials of a refused
+    # shelf keep no launch record, so `was_launched` leaves them pending
+    # and the next `launch bench` picks up exactly them.
+    results: List[JobResult] = []
+    refused: List[str] = []
+    for p in plans:
+        try:
+            results += _launch_prepared(base, dirs, p)
+        except SubmitError as exc:
+            refused.append(p.name)
+            results.append(JobResult(p.name, p.cmd, "sbatch refused",
+                                     detail=str(exc)))
+            results += [JobResult(j.name, [], "stays pending")
+                        for j in p.pending]
+    if refused and len(refused) == len(plans):
+        # NOTHING went out.  There is no partial success to preserve, so
+        # this is the plain failure it always was -- reported with every
+        # shelf's reason rather than only the first.
+        raise SubmitError(
+            "no shelf was accepted by the scheduler:\n"
+            + "\n".join(f"  {r.detail}" for r in results
+                         if r.status == "sbatch refused"))
     return results
 
 
 def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
-           mem_gb=None, gpus=None, named=None, label: str = ""):
+           mem_gb=None, gpus=None, gpu_type=None, named=None,
+           label: str = ""):
     """This side's placement — `scheduler.place`, walked with THIS machine's
     menu (`execution/scheduler.md` § 5).
 
@@ -752,7 +799,14 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     from .. import runtime_config as _rc
     from ..scheduler import Request, parse_mem_gb
     from ..scheduler.place import place, Unplaceable
+    # ``gpu_type`` rides the request because a queue's inventory is a
+    # limit it DECLARES (R2) and `--gres=gpu:<type>:N` is matched by SLURM
+    # on that token.  Passing only the COUNT is what routed an
+    # ``a100.40gb`` bench into Sol's `public` -- which offers a100,
+    # a100.20gb and a30 -- where the count fit (16 MIG slices) and the
+    # card did not exist.
     want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
+                   gpu_type=gpu_type,
                    mem_gb=parse_mem_gb(mem_gb), walltime_s=needed_s)
     try:
         # WHICH AXIS DECIDES between queues that all fit is the site's to
@@ -833,10 +887,30 @@ def _shelf_key(job: "Job"):
 
 
 def _gres_count(gres: str) -> int:
-    try:
-        return int(str(gres).rsplit(":", 1)[-1]) if gres else 0
-    except ValueError:
-        return 1
+    """How many devices a ``--gres`` string asks for.
+
+    Through `scheduler.quantities.parse_gres` -- the ONE reader of SLURM's
+    gres spelling -- rather than the ``rsplit(":", 1)`` this was.  That
+    read the last colon-separated token as the count, so
+    ``gpu:a100:4,mps:400`` asked for four devices and reported 400, and
+    the version-legal ``gpu:a100`` (one device, no count) raised and was
+    caught as 1 by accident rather than by reading.
+    """
+    from ..scheduler.quantities import parse_gres
+    return max(parse_gres(gres).values(), default=0)
+
+
+def _gres_type(gres: str) -> Optional[str]:
+    """WHICH device a ``--gres`` string names, or ``None`` when it names
+    none -- the token admission compares against a queue's inventory.
+
+    Where a string names several types the largest ask wins, matching
+    `_gres_count`: the two describe one device ask and must not disagree
+    about which one it is.
+    """
+    from ..scheduler.quantities import parse_gres
+    got = parse_gres(gres)
+    return max(got, key=lambda t: got[t]) if got else None
 
 
 def _shelf_width(key) -> tuple:
@@ -887,15 +961,40 @@ def _shelf_token(key, jobs=()) -> str:
     return point_token({"G": g, "K": (n // g) if g else n, "C": c})
 
 
-def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
-                       name: str, *, gpu_side: bool,
-                       domain: Optional[str], dry_run: bool,
-                       trial_timeout_s: Optional[int],
-                       mem_gb: Optional[float] = None,
-                       time_s: Optional[int] = None) -> List[JobResult]:
-    """One side's grouped submission -- the whole of the pre-split
-    `submit_bench_group` body, run once per side with its own envelope,
-    sequencer, and ``-p/-q`` resolution.
+@dataclass(frozen=True)
+class _Prepared:
+    """One shelf-job, rendered to disk and ready for `sbatch`.
+
+    The submission is split in two -- render every shelf, THEN submit them
+    -- because it used to render and submit each in turn, and a shelf whose
+    sbatch failed took the loop down with it.  On 2026-08-30 a Sol bench
+    left `launch/` holding two of its three script pairs: the CPU group had
+    gone out, the 4-GPU group was refused by the scheduler, and the 2-GPU
+    group had never been written, so the obvious recovery -- run the
+    printed sbatch by hand -- answered *Unable to open file*.
+    """
+    name:      str
+    cmd:       List[str]
+    container: Path
+    pending:   list
+    placement: object
+    gpu_side:  bool
+    domain:    Optional[str]
+
+
+def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
+                        name: str, *, gpu_side: bool,
+                        domain: Optional[str], dry_run: bool,
+                        trial_timeout_s: Optional[int],
+                        mem_gb: Optional[float] = None,
+                        time_s: Optional[int] = None) -> "_Prepared":
+    """One shelf's submission, checked, placed and WRITTEN -- but not sent.
+
+    Every gate, the envelope, the placement and both scripts; the `sbatch`
+    itself is :func:`_launch_prepared`.  Under ``dry_run`` nothing is
+    written at all -- the flag's documented meaning is *print the exact
+    command without launching* (`job-system.md` § 6), and the confirm
+    preview walks this path before the person has said yes.
 
     Widest-first ordering lives one level up since the shelf split
     (2026-08-21): every trial in a group shares one exact resource ask by
@@ -1067,6 +1166,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                              * max(envelope.cpus_per_task or 1, 1) or None,
                        mem_gb=envelope.mem,
                        gpus=_gres_count(envelope.gres or ""),
+                       gpu_type=_gres_type(envelope.gres or ""),
                        named=domain, label=name)
     # THE WALL, in the order the answers rank (user dictation,
     # 2026-08-24): what the user stated at launch (--time); else what
@@ -1094,9 +1194,11 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
     cmd.append(f"launch/{name}.sbatch")
 
+    prepared = _Prepared(name=name, cmd=cmd, container=container,
+                         pending=list(pending), placement=placement,
+                         gpu_side=gpu_side, domain=domain)
     if dry_run:
-        return [JobResult(name, cmd, "planned")] + [
-            JobResult(j.name, [], "rides the group") for j in pending]
+        return prepared
 
     script.write_text("\n".join(lines), encoding="utf-8")
     from ..runwrap import _render_sbatch_for
@@ -1142,6 +1244,19 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
             "--mode direct, or add a scheduler block "
             "(running-a-job.md § 5.3).")
     (launch_dir / f"{name}.sbatch").write_text(header, encoding="utf-8")
+    return prepared
+
+
+def _launch_prepared(base: Path, dirs, prep: "_Prepared") -> List[JobResult]:
+    """`sbatch` one prepared shelf, and stamp its trials' launch records.
+
+    Separate from the render so that EVERY shelf is on disk before ANY is
+    sent: a scheduler refusal then costs a submission, not the scripts of
+    the shelves queued behind it.
+    """
+    name, cmd, container = prep.name, prep.cmd, prep.container
+    gpu_side, domain, placement = prep.gpu_side, prep.domain, prep.placement
+    pending = prep.pending
     cp = subprocess.run(cmd, cwd=str(container),
                         capture_output=True, text=True,
                         env={**os.environ,
@@ -1163,6 +1278,13 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                         f"{', '.join(able)} -- retry with --domain <name>.  "
                         f"The other side's launch stands; this side stays "
                         f"pending.")
+        # Every shelf was rendered before any was sent, so the scripts a
+        # by-hand retry needs are all on disk -- which they were not on
+        # 2026-08-30, when this failure took its successor's .sbatch down
+        # with it and `sbatch launch/...` answered "Unable to open file".
+        hint += (f"\n  Every shelf's scripts are written under "
+                 f"{container}/launch/ -- this one can be re-sent by hand "
+                 f"once the ask fits.")
         raise SubmitError(
             f"sbatch failed for {name} (rc={cp.returncode}):\n"
             f"{cp.stderr.strip()}" + hint)
@@ -1360,6 +1482,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
                              * max(envelope.cpus_per_task or 1, 1) or None,
                        mem_gb=envelope.mem,
                        gpus=_gres_count(envelope.gres or ""),
+                       gpu_type=_gres_type(envelope.gres or ""),
                        named=domain, label=name)
     if time_s is not None:
         envelope = _dc_replace_time(envelope, _slurm_time(time_s))

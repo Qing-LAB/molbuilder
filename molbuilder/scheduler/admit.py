@@ -42,10 +42,20 @@ def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
     return bool(row.gpu) or bool(row.gpu_partition)
 
 
+def _types_offered(row) -> Tuple[str, ...]:
+    """The gres type NAMES this domain's record positively claims.
+
+    Empty when the record says nothing -- which R3 reads as *permission*,
+    never as "this queue has no such card".
+    """
+    return tuple(d.type for d in row.devices if d.type)
+
+
 def _compare(row, *, cores: Optional[int] = None,
                   walltime_s: Optional[int] = None,
                   mem_gb: Optional[float] = None,
-                  gpus: Optional[int] = None) -> List[str]:
+                  gpus: Optional[int] = None,
+                  gpu_type: Optional[str] = None) -> List[str]:
     """The comparison itself -- private; `admits` is the door.
 
     Kept as keywords rather than folded into :func:`admits` so each limit's
@@ -108,10 +118,20 @@ def _compare(row, *, cores: Optional[int] = None,
         # GPU trial admitted against the 128 is unplaceable, and a
         # benchmark's GPU side hits it first because the rank axis is
         # sized against the CPU side.
-        cap, widest = _widest_node(row, needs_device=bool(gpus))
+        #
+        # AND THE MACHINES THAT OFFER *THIS* DEVICE, when one is named.
+        # "a node that has one" is a statement about a TYPE, not about
+        # devices in general: on Sol, `general` holds a 128-core node
+        # with an h200 and four 64-core nodes with a100.40gb, so a
+        # 128-rank a100.40gb trial admitted against "the widest machine
+        # with a device" is unplaceable -- it would have to land on the
+        # h200 node, which carries no a100.40gb at all.
+        cap, widest = _widest_node(row, needs_device=bool(gpus),
+                                   device_type=gpu_type)
         if cap is not None and cap < cores:
             where = f" ({widest})" if widest else ""
-            with_dev = " with a device" if gpus else ""
+            with_dev = (f" with {gpu_type}" if (gpus and gpu_type)
+                        else " with a device" if gpus else "")
             why.append(f"needs {cores} cores{with_dev} but {row.name}'s "
                        f"largest machine{with_dev} has {cap}{where}")
         # THE POLICY CEILINGS, beside the hardware one (R13).  What the
@@ -152,14 +172,36 @@ def _compare(row, *, cores: Optional[int] = None,
         # PREFERRING nodes that do have devices is a CHOICE, and choices live
         # in `place.candidates`; this only refuses what the record positively
         # rules out.
-        most = _devices_offered(row)
+        # THE TYPE IS A LIMIT THE RECORD DECLARES, so R2 compares it.
+        # `--gres=gpu:<type>:N` names a type SLURM matches literally: a
+        # queue with no node registering that name answers *Requested
+        # node configuration is not available*, which is the refusal this
+        # framework exists to make before the scheduler does (R6).
+        #
+        # The types are NOT interchangeable and a suffix is not decoration
+        # -- Sol registers `a100` on 48-core nodes and `a100.40gb` on
+        # 64-core ones, disjoint groups, and `--gpus`' own help calls the
+        # MIG slices "separate askable types, not a smaller ask of the
+        # same one".  So this matches the token, never a prefix of it.
+        offered = _types_offered(row)
+        if gpu_type and offered and gpu_type not in offered:
+            why.append(f"needs {gpu_type} but {row.name} offers "
+                       f"{', '.join(sorted(offered))}")
+        # THE COUNT, of the type that was asked for.  Reading the largest
+        # count over ALL types answers a question nobody asked: on Sol's
+        # `public` that is 16 (a100.20gb MIG slices), which admitted every
+        # 4-device ask no matter which card it named.
+        most = _devices_offered(row, device_type=gpu_type)
         if most is not None and most < gpus:
-            why.append(f"needs {gpus} GPUs but {row.name} offers at "
-                       f"most {most}")
+            named = f" {gpu_type}" if (gpu_type and gpu_type in offered) else ""
+            why.append(f"needs {gpus}{named} GPUs but {row.name} offers at "
+                       f"most {most}{named}")
     return why
 
 
-def _widest_node(row, *, needs_device: bool = False) -> Tuple[Optional[int], str]:
+def _widest_node(row, *, needs_device: bool = False,
+                 device_type: Optional[str] = None
+                 ) -> Tuple[Optional[int], str]:
     """``(cores of the largest machine, how it is described)``.
 
     From ``node_types`` when the record lists them -- the measurement --
@@ -173,22 +215,57 @@ def _widest_node(row, *, needs_device: bool = False) -> Tuple[Optional[int], str
     the list names NO device-bearing machine the filter yields nothing and
     the unfiltered answer stands -- the record not saying which nodes hold
     the devices is silence, and silence never bars.
+
+    ``device_type`` narrows it further, to the machines carrying THAT
+    card.  A queue's device-bearing machines are not one pool: Sol's
+    `general` holds four 64-core nodes with a100.40gb beside a 128-core
+    node with an h200, and only the first four can take an a100.40gb job.
+    Silence still permits -- a node group that lists no ``gpu`` map, or a
+    record with no ``node_types`` at all, yields nothing to filter on and
+    the wider answer stands.
     """
     rows = getattr(row, "node_types", None) or []
     if needs_device:
         with_dev = [r for r in rows
                     if isinstance(r, dict) and r.get("gpu")]
+        if device_type:
+            # THE ONE READER of a gpu column, per `record._read_devices`:
+            # the column has two spellings and reading it here by key
+            # would make the descriptor form's key names ("type",
+            # "per_node") read as device names -- the exact bug that
+            # reader was written to end.
+            from .record import _read_devices
+            of_type = [r for r in with_dev
+                       if any(d.type == device_type
+                              for d in _read_devices(r.get("gpu")))]
+            # A LIST THAT NAMES DEVICES AND NOT THIS ONE IS AN ANSWER, and
+            # the answer is *no machine here carries that card* -- so there
+            # is no core ceiling to state, and stating the widest
+            # OTHER-device machine would say "public's largest machine with
+            # a100.40gb has 48" about a queue holding no a100.40gb at all.
+            # The type comparison in `_compare` is what refuses; this axis
+            # stays quiet rather than refusing the same fact in a false
+            # sentence.  (An EMPTY ``with_dev`` is the different case: the
+            # record never said which nodes hold devices, and silence never
+            # bars -- the unfiltered answer stands, below.)
+            if not of_type:
+                return None, ""
+            with_dev = of_type
         if with_dev:
             rows = with_dev
-    best, how = None, ""
+    best, best_n, how = None, None, ""
     for r in rows:
         try:
             c = int(r.get("cores"))
         except (TypeError, ValueError):
             continue
-        if best is None or c > best:
-            n = r.get("nodes")
-            best = c
+        # AMONG EQUALLY WIDE GROUPS, THE ONE WITH MORE MACHINES.  R10 asks
+        # the reason to name what would fit, and Sol lists `htc`'s A100
+        # nodes as a 1-node group and a 51-node group of the same width --
+        # reporting "1 node(s) of 48" reads as a queue with one machine.
+        n = _to_int_or_none(r.get("nodes"))
+        if best is None or c > best or (c == best and (n or 0) > (best_n or 0)):
+            best, best_n = c, n
             how = f"{n} node(s) of {c}" if n else f"{c} cores"
     if best is not None:
         return best, how
@@ -198,8 +275,22 @@ def _widest_node(row, *, needs_device: bool = False) -> Tuple[Optional[int], str
         return None, ""
 
 
-def _devices_offered(row) -> Optional[int]:
+def _to_int_or_none(v) -> Optional[int]:
+    """A record field as an int, or ``None`` when it is not one -- an
+    unreadable node count must not read as zero and lose a tie."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _devices_offered(row, device_type: Optional[str] = None) -> Optional[int]:
     """The most devices one node of this domain offers, or ``None``.
+
+    ``device_type`` asks about ONE card: the most of *that* type a node
+    here offers.  ``None`` when the row names no such type -- the caller
+    has already refused on the name by then, and inventing a count for a
+    card this queue does not have would refuse it twice.
 
     ``None`` means *the row does not say* -- an unreadable or absent column is
     not a domain with no devices (R3), and admission must refuse only what the
@@ -212,7 +303,9 @@ def _devices_offered(row) -> Optional[int]:
     largest count wins: the ask is *can this domain hold N devices*, and the
     richest node is the one that answers it.
     """
-    counts = [d.per_node for d in row.devices if d.per_node is not None]
+    counts = [d.per_node for d in row.devices
+              if d.per_node is not None
+              and (device_type is None or d.type == device_type)]
     return max(counts) if counts else None
 
 
@@ -256,6 +349,19 @@ class Request:
     ranks:      Optional[int] = None
     cpus_per_task: Optional[int] = None
     gpus:       Optional[int] = None
+    #: WHICH card, as ``--gres=gpu:<type>:N`` spells it -- the gres token,
+    #: never a marketing name (`quantities.parse_gres` reads it, and its
+    #: note says why a name-matching reader gets this wrong).  ``None``
+    #: asks for a device without naming one, and names nothing to refuse.
+    #:
+    #: `scheduler.md` § 7 has shown this field in the caller's view since
+    #: the contract was written; admission got it on 2026-08-30, after a
+    #: bench asked ``gpu:a100.40gb:4`` on Sol's `public` -- which offers
+    #: a100, a100.20gb and a30, and no a100.40gb anywhere.  Every declared
+    #: limit but this one was compared, so the submission was admitted
+    #: here and refused by sbatch (*Requested node configuration is not
+    #: available*) after the group ahead of it had already gone out.
+    gpu_type:   Optional[str] = None
     mem_gb:     Optional[float] = None
     walltime_s: Optional[int] = None
 
@@ -283,4 +389,5 @@ def admits(domain, request: "Request") -> List[str]:
                     cores=request.cores,
                     walltime_s=request.walltime_s,
                     mem_gb=request.mem_gb,
-                    gpus=request.gpus)
+                    gpus=request.gpus,
+                    gpu_type=request.gpu_type)

@@ -30,7 +30,8 @@ The rules, one line each — full statement in § 3:
 | **R0** | queue ≠ machine | a partition is a QUEUE holding many machine kinds; `node_types` lists them, any single figure over them is an opinion |
 | **R1** | one placement | header and flags are two renderings of ONE decision |
 | **R2** | total admission | every limit the record declares is compared — a declared field nobody checks is the defect |
-| **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked |
+| **R2a** | which card | the gres TYPE is a declared limit and is compared; `a100` and `a100.40gb` are different hardware, not one name with a suffix |
+| **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked — that card included |
 | **R4** | numbers, not "no" | a refusal names the numbers ("38 min > debug's 00:15:00") |
 | **R5** | header stands alone | a header naming a queue states a wall that queue accepts |
 | **R6** | refuse early | when the record already says no, refuse before the scheduler does |
@@ -255,6 +256,40 @@ partially-probed cluster unusable.
 > narrows the ceiling to device-bearing machines when the request names a
 > device, and stands aside — never bars — when the machine list does not say
 > which nodes hold them.
+>
+> **And a third half, 2026-08-30: *which* device.** "A node that has one" is a
+> statement about a **type**. `general` holds a 128-core node with an h200 and
+> four 64-core nodes with a100.40gb; a 128-rank a100.40gb trial admitted
+> against *the widest machine with a device* would have to land on the h200
+> node, which carries no a100.40gb at all. So when the request names a card,
+> the ceiling is the widest machine carrying **that card** — and a queue whose
+> machine list names devices but not this one states **no** core ceiling for
+> it, because the honest refusal is *this queue does not stock it*, not a
+> sentence about a machine that does not exist.
+
+**R2a — The device TYPE is a declared limit, so it is compared.** A domain's
+`gpu` column names the gres types its nodes register; `--gres=gpu:<type>:N`
+names one, and SLURM matches that token literally. A queue with no node
+registering the name answers *Requested node configuration is not available* —
+so refusing it here is R6, exercised on a fact already on disk.
+
+**The types are not interchangeable, and a suffix is not a memory annotation.**
+Sol registers `a100` on 48-core nodes (52 of them in `public`) and `a100.40gb`
+on 64-core nodes (four, in `htc`/`debug`/`general`, and none in `public`). No
+node group lists both; they are disjoint hardware. `--gpus`' own help says the
+MIG slices *"are separate askable types, not a smaller ask of the same one"*.
+So the comparison matches the whole token — never a prefix, never a
+normalisation — and the **count** compared is the count of *that* type.
+
+> **What its absence cost, 2026-08-30.** A bench baked
+> `--gres=gpu:a100.40gb:4` from `topology.gpu_type` — the card on whatever node
+> the probe had run on — and placement sent it to `public`, which stocks
+> a100, a100.20gb and a30. The count fit (16 MIG slices answered a 4-device
+> ask) and the card did not exist. Every declared limit but this one was
+> compared. § 7 of this document had shown `Request(..., gpu_type="a100")` in
+> the caller's view since the contract was written; the field was simply never
+> built. **A contract that states a field is not a field, until something
+> compares it.**
 
 **R4 — A refusal names the numbers.** *"needs 38 min but debug allows
 00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read

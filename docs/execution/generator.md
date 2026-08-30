@@ -292,7 +292,7 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 
 | | stated in | shape |
 |---|---|---|
-| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | the domain menu (probed into `environment.json`; a declared `scheduler.routing` is the workstation fallback) carries **limits** (`max_time`, `max_mem_gb`) and, since 2026-08-21, the **probed GPU inventory and `max_cores`** of each row's own node group — the two facts § 4.3a's GPU family and per-family cap read |
+| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | the domain menu (probed into `environment.json`; a declared `scheduler.routing` is the workstation fallback) carries **limits** (`max_time`, `max_mem_gb`, `node_types`) and the **probed GPU inventory** of each row — the facts § 4.3a's GPU family and its cell-by-cell fit check read |
 | **allocation** | the command, at `prep` — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, and the domain |
 | **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
 
@@ -417,20 +417,43 @@ framework rule, not a script patch)*:
   — a login node can therefore enumerate the GPU family for the cluster
   behind it.  Several inventory types on the row is a question the machine
   may not answer: refused by name, with the remedy of curating the row.
-- **Caps at prep, per family.**  When the menu's gpu-capable row carries
-  `max_cores`, a GPU-family cell whose `ranks × cores` exceeds it is
-  **dropped by name** (echoed, never silent) rather than refusing the
-  prep — refusal would deny the CPU family a rank count that only the GPU
-  nodes cannot hold.  `max_cores` is **probed** *(2026-08-21, user: "why
-  not autodetected?" — the scheduler reports one row per node group, so a
-  mixed partition's GPU nodes state their own core count; a gpu-capable
-  row records its GPU nodes' cores, a cpu-only row its widest node's; the
-  row stays yours to edit — on Sol, GPU nodes take 48 cores where
-  standard nodes take 128)*.  The
-  probe-topology refusal for a cell no core count here can hold stands
-  unchanged.  *(Known edge, recorded: that refusal reads the probing
-  node's shape, so a mixed matrix prepped ON a GPU node over-refuses the
-  CPU family; prep on a login/standard node.)*
+- **Enumerate every combination, cross out what this machine cannot hold,
+  show what is left** *(user, 2026-08-30: "we don't have to fight with what
+  language we use to indicate error, but present the correct outcome")*.
+  The grid is a **proposal**; the machine record decides; and what reaches
+  the screen is the surviving list — each cell with its shape and the
+  queues it could go to — followed by the struck ones, each naming its
+  numbers (R4).  **A cell that fits is never denied by a sibling that does
+  not.**  Both families go through it, and neither refuses the prep while
+  anything survives.
+
+  The check is `scheduler.admits` over `place.candidates` — the same pair
+  `place` itself walks — so *"some queue admits it"* here and *"placeable"*
+  at `launch` are one verdict rather than two.  What is deliberately **not**
+  done is choosing a queue: that depends on the wall, which R7 says `prep`
+  does not know, so the row lists where a cell *could* go.  For a device
+  cell the pool is the gpu-capable rows (a cpu-only row states no inventory
+  and R3 would read that silence as permission); for a CPU cell it is the
+  **whole menu**, because `candidates` narrows CPU work to cpu-only queues
+  as a *preference*, and a preference must not decide a fit question.
+
+  A machine with **no queue menu** is answered by its own probed topology —
+  which is the only place topology may bound a cell.
+
+  > **What this replaced, and why all of it.**  Until 2026-08-30 a single
+  > `max_cores` number was compared against the GPU family alone, and it was
+  > wrong three ways at once: it read `candidates()[0]` — on Sol the *debug*
+  > queue, whose fifteen-minute wall the bench can never use — it read
+  > `max_cores`, which since 2026-08-27 (R0) is the widest machine **of any
+  > kind** rather than the widest with a device, and it never looked at the
+  > device **type**.  Beside it stood a second gate comparing a declared
+  > point against `topology.sockets × cores_per_socket`, **one node's**
+  > measurement taken wherever the probe ran.  On Sol that refused a
+  > declared 128-rank point outright — while `public` holds 107 nodes of 128
+  > cores — and told the person to *"benchmark on the machine it is meant to
+  > measure"* while they were standing on it.  Two ceilings, both read off
+  > the wrong thing, neither agreeing with the admission `launch` would
+  > apply.
 - **Submission splits by the deck's own answer** (`_job_wants_gpu`, the
   one door) **and then by RESOURCE SHELF** *(user, 2026-08-21: "lighter
   tasks scheduled for heavy resource idling for hours is not a good use
@@ -806,7 +829,7 @@ where two things can disagree, is not this work.
 
 | # | question | why it is not decided here |
 |---|---|---|
-| **38** | ~~`scheduler.routing` has no cores, GPU count or GPU type per entry~~ **Closed 2026-08-21**: the probed domain rows carry the GPU inventory and `max_cores` (the node group's own `sinfo` row), and § 4.3a's cap and GPU family consume them | the row stays hand-editable; a declared workstation row may state the same columns |
+| **38** | ~~`scheduler.routing` has no cores, GPU count or GPU type per entry~~ **Closed 2026-08-21**: the probed domain rows carry the GPU inventory and `max_cores` (the node group's own `sinfo` row), and § 4.3a's fit check and GPU family consume them | the row stays hand-editable; a declared workstation row may state the same columns |
 | ~~**G3**~~ | ~~whether `bench` keeps a positional in the grammar~~ — **CLOSED 2026-08-17.** It does: `jobset prep <run\|bench> [STAGE]`, and the same positional on `launch` and `summarize`. The `bench` command's four duplicate verbs were deleted in the 2026-08-12 fold, leaving it one unrelated subcommand (`probe-scheduler`); [`process/conventions.md`](?doc=process/conventions.md) carries the before/after. **STAGE is required for `bench`**, because a sweep belongs to one stage rather than to the calculation (§ 4.3a) | — |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
 

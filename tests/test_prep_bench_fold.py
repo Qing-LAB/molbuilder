@@ -439,7 +439,7 @@ def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
     asked for no memory no matter what a person typed.
 
     Fixed by threading `Ask.mem_gb` through `submit_bench_group` ->
-    `_submit_side_group`, applied to the envelope the same way
+    `_prepare_side_group`, applied to the envelope the same way
     `_dc_replace_time` already applies the wall (`jobset/submit.py`).
     This is the CLI end to end, `--dry-run` so nothing real is submitted --
     the same entry point `test_cli_submit_bench_groups_the_sweep_by_shelf`
@@ -1569,16 +1569,32 @@ def test_the_declared_grid_is_the_sweep(calc):
     assert translation.axes == ("K", "C")
 
 
-def test_a_declared_point_over_capability_is_refused_by_name(calc):
-    """A point the machine cannot hold is refused naming the point and the
-    bound — never clamped, because a clamped point measures a configuration
-    nobody declared."""
+def test_a_declared_point_over_capability_is_crossed_out_by_name(calc, capsys):
+    """A point the machine cannot hold is CROSSED OUT naming the point, the
+    ask and the bound — never clamped, because a clamped point measures a
+    configuration nobody declared.
+
+    It was refused with an exception naming ``mpi_np=4096`` until
+    2026-08-30 (user: *"generate all combinations, then cross out by
+    checking each one and leave only the valid ones... present the correct
+    outcome"*).  The grid is enumerated whole and each cell checked; what
+    reaches the screen is the surviving list plus what was struck and why.
+    Nothing survives here, so the sweep still cannot proceed — but the
+    person is told which cell and by how much, not handed a sentence about
+    one number.
+    """
     import click
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [4096], "omp_threads": [2]})
-    with pytest.raises(click.ClickException) as e:
+    with pytest.raises(click.ClickException):
         _bench_inputs(calc, None)
-    assert "mpi_np=4096" in str(e.value) and "omp_threads=2" in str(e.value)
+    shown = capsys.readouterr().out
+    assert "0 this machine can hold" in shown
+    assert "crossed out (1)" in shown
+    # The CELL, by the name its trial directory would carry, and both
+    # numbers -- what was asked and what there is.
+    assert "K4096C2" in shown
+    assert "8192 cores" in shown and "has 4" in shown
 
 
 def test_prep_bench_asks_only_about_launched_trials(calc):
@@ -2320,3 +2336,122 @@ def test_the_prepped_trial_list_names_whose_attempt_each_is():
     assert "_rel(d)" in tail and "{d.name}" not in tail, (
         "the trial listing must print the path from the bundle, not the "
         "bare attempt name")
+
+
+# --------------------------------------------------------------------- #
+#  Enumerate, cross out, show what is left (user, 2026-08-30)            #
+# --------------------------------------------------------------------- #
+
+def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
+        calc, capsys):
+    """THE BUG THE USER HIT, in its smallest form.
+
+    A declared grid mixing a point this machine holds with one it does not
+    refused the WHOLE prep -- so a person asking to benchmark 48 and 128
+    ranks got neither, and had to delete the 128 by hand to get anything
+    at all.  (Worse on a cluster: the bound it was refused against was
+    ``topology.sockets x cores_per_socket``, ONE node's measurement taken
+    wherever the probe ran, while the queue that would run the job holds
+    107 nodes twice that wide -- R0.)
+
+    Now every combination is enumerated, each is checked, the ones that
+    fit are listed and the ones that do not are struck by name.  The sweep
+    proceeds on the survivors.
+    """
+    _describe_cpu(calc)                      # a 4-core box, no queues
+    _declare_bench(calc, {"mpi_np": [2, 4096], "omp_threads": [1]})
+    sweep, _pins, _translation = _bench_inputs(calc, None)
+
+    assert sweep == [{"K": 2, "C": 1}], (
+        "the point that fits must survive its oversized sibling")
+
+    shown = capsys.readouterr().out
+    assert "2 combination(s) enumerated, 1 this machine can hold" in shown
+    assert "K2C1" in shown and "K4096C1" in shown
+    # The struck one names its numbers (R4), not a verdict word.
+    assert "crossed out (1)" in shown
+    assert "4096 cores" in shown and "has 4" in shown
+
+
+def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
+    """L3's launch/ directory, complete even when the scheduler says no.
+
+    A Sol bench submitted its CPU group, had the next group refused, and
+    the raise unwound the shelf loop -- so the third group's scripts were
+    never written and the obvious recovery (run the printed sbatch by
+    hand) answered *Unable to open file*.  Rendering is now finished for
+    every shelf before the first `sbatch` runs.
+
+    And ONE REFUSAL DOES NOT CANCEL THE REST (user, 2026-08-30): the
+    shelves are independent jobs, so a valid one still goes out, and the
+    refused one's trials keep no launch record and stay pending for the
+    next `launch`.
+    """
+    import types
+    from pathlib import Path
+
+    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
+                                               was_launched)
+    from molbuilder.jobset.submit import submit_bench_group
+
+    _describe_cpu(calc)
+    _declare_bench(calc, {"mpi_np": [2, 4], "omp_threads": [1]})
+    _prep_bench(calc)
+    js, base = _load_bench_set(calc, "coarse")
+    dirs = job_dir_names(js, shape_of(js, base))
+
+    # The FIRST shelf sent is refused, exactly as the scheduler refused a
+    # gres type its partition does not stock; the second must still go.
+    seen = []
+
+    def fake_run(cmd, **kw):
+        seen.append((cmd, kw.get("cwd")))
+        first = len(seen) == 1
+        class R:
+            returncode = 1 if first else 0
+            stdout = "" if first else "Submitted batch job 777"
+            stderr = ("sbatch: error: Batch job submission failed: "
+                      "Requested node configuration is not available"
+                      if first else "")
+        return R()
+
+    import molbuilder.jobset.submit as submod
+    monkeypatch.setattr(submod, "subprocess",
+                        types.SimpleNamespace(run=fake_run))
+    # This box has no queue, so the real header render answers None; the
+    # header is not under test here.  The stub takes its name from the
+    # script path the renderer is handed, because a multi-shelf sweep
+    # renders one header PER SHELF.
+    import molbuilder.runwrap as _rw
+    monkeypatch.setattr(_rw, "_render_sbatch_for",
+                        lambda path, **k: "#!/bin/bash\n"
+                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
+                        f"bash {Path(path).stem}.run.sh \"$@\"\n")
+
+    results = submit_bench_group(js, base, dry_run=False)
+
+    assert len(seen) == 2, (
+        "a refused shelf must not cancel the shelf behind it -- both were "
+        "prepared, so both must be offered to the scheduler")
+
+    refused = [r for r in results if r.status == "sbatch refused"]
+    sent    = [r for r in results if r.status == "submitted"]
+    assert len(refused) == 1 and len(sent) == 1, [r.status for r in results]
+    assert "Requested node configuration" in (refused[0].detail or "")
+    assert sent[0].job_id == "777"
+
+    # EVERY shelf's pair is on disk -- the point of the split.
+    launch = Path(seen[0][1]) / "launch"
+    names = {r.name for r in results if r.command}
+    for n in names:
+        assert (launch / f"{n}.run.sh").is_file(), f"{n}.run.sh missing"
+        assert (launch / f"{n}.sbatch").is_file(), f"{n}.sbatch missing"
+
+    # The refused shelf's trials keep no launch record, so the next
+    # `launch bench` picks up exactly them.
+    pend = [r.name for r in results if r.status == "stays pending"]
+    assert pend
+    for name in pend:
+        assert not was_launched(base / dirs[name]), (
+            f"{name} rode a refused group; it must stay pending")
