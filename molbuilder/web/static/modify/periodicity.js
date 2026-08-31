@@ -116,6 +116,23 @@ export function init(viewer) {
      * to disagree through the UI, so a reader consulting the wrong one passed
      * the whole suite; the ruler's list is ordered by construction and a test
      * can drive it. */
+    //: The atom an origin means: the one picked most recently.
+    function lastPicked() {
+        var picks = pickedInOrder();
+        return picks.length ? picks[picks.length - 1] : null;
+    }
+
+    /* Named the way the rest of the page names atoms -- 1-based, with the
+     * element -- so the button and the ruler's readout agree about which atom
+     * is being talked about (molview.md § 11.5). */
+    function atomLabel(index) {
+        if (index == null) return "the picked atom";
+        var w = data();
+        var atoms = w && w.getStructure ? w.getStructure() : null;
+        var el = atoms && atoms.elements ? atoms.elements[index] : null;
+        return (el ? el + " " : "") + "#" + (index + 1);
+    }
+
     function pickedInOrder() {
         var w = data();
         if (!w || !w.measurement) return [];
@@ -256,14 +273,30 @@ export function init(viewer) {
                   + "the second. Pick them the other way round to flip it."
                 : "Pick exactly two atoms with the ruler (" + n + " picked).";
         }
+        /* THE ORIGIN TAKES THE ATOM YOU PICKED LAST, and requiring exactly
+         * one was a dead end.  The ruler holds up to three and drops the
+         * OLDEST at the fourth, so once two are picked the count runs
+         * 2, 3, 3, 3 -- it never comes back to one by picking.  Someone who
+         * had measured anything found this button greyed out, their click
+         * doing nothing, and no way back except the ruler's Clear, which
+         * nothing on screen pointed at.
+         *
+         * An origin is one point, and "the atom I just picked" is what the
+         * gesture means, so there is nothing to disambiguate -- unlike the
+         * axis, which needs a first AND a second and is right to insist on
+         * exactly two.  The button NAMES the atom it would use, because a
+         * gesture that silently prefers one of three picks would be worse
+         * than the dead end it replaces. */
         var orgBtn = $("pv-org-from-selection");
         if (orgBtn) {
-            orgBtn.disabled = n !== 1;
+            orgBtn.disabled = n < 1;
             orgBtn.title = !ruler
-                ? "Turn measuring on, then pick one atom."
-                : n === 1
-                ? "Put the box's low corner on the picked atom."
-                : "Pick exactly one atom with the ruler (" + n + " picked).";
+                ? "Turn measuring on, then pick an atom."
+                : n < 1
+                ? "Pick an atom with the ruler."
+                : "Put the box's low corner on " + atomLabel(lastPicked())
+                  + (n > 1 ? " -- the atom you picked last, of " + n + "."
+                           : ".");
         }
     }
 
@@ -554,9 +587,9 @@ export function init(viewer) {
 
         var orgFromSel = $("pv-org-from-selection");
         if (orgFromSel) orgFromSel.addEventListener("click", function () {
-            var picked = pickedInOrder();
-            if (picked.length !== 1) return;
-            var pos = positionsOf(picked);
+            var one = lastPicked();
+            if (one == null) return;
+            var pos = positionsOf([one]);
             if (!pos) return;
             /* Written DIRECTLY, not through `setIdle`.
              *
