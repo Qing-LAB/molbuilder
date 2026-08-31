@@ -87,7 +87,7 @@ def _echo_config_root() -> None:
     it.  This answers a narrower one that every verb needs even when it never
     reads a `molbuilder.json` section: *which file is the starting point*.  A
     person hitting the ``script_generation.activation`` refusal should not
-    have to already know that ``~/.config/molbuilder/molbuilder.json`` is the
+    have to already know that the config directory is the
     file to edit -- the first line of output says so.
 
     A Click GROUP callback runs once, before the subcommand's own output, and
@@ -102,7 +102,7 @@ def _echo_config_root() -> None:
     path, via = machine_config_path()
     state = "found" if path.is_file() else "not found -- defaults in effect"
     _click.echo(f"{CONFIG_FILENAME}: {path} ({state}, via {via})")
-    # A cwd file WINS SILENTLY otherwise (configuration.md § 2.1a).  The line
+    # A cwd file LOSES silently otherwise (configuration.md § 2.1a).  The line
     # above already names the resolved path; this says what that path is
     # standing in front of, which is the half a reader cannot infer.  To
     # stderr, so it reaches a person without entering piped output.

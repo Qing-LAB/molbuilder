@@ -50,8 +50,16 @@ PATH = f"/api/{ROUTE}"
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    """A configured server, with the log root pointed inside tmp."""
+    """A configured server, with the report store pointed inside tmp.
+
+    Reports live under the STATE directory since 2026-08-31 -- XDG's own home
+    for data that persists but is not configuration (`configuration.md`
+    § 2.1d).  Setting ``HOME`` alone stopped being enough then: it moved
+    ``~/.molbuilder`` because that path was built from the home directory, and
+    the state directory is named by its own variable.
+    """
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     keys = tmp_path / "notify_keys"
     keys.write_text(json.dumps({USER: KEY}))
     app = create_app(config={"rate_limit": {"enabled": False},
@@ -60,7 +68,7 @@ def store(tmp_path, monkeypatch):
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()          # rotating handlers are cached per user
     N._recent.clear()           # and so is the per-key rate window
-    return app.test_client(), tmp_path / ".molbuilder/reports"
+    return app.test_client(), tmp_path / "state" / "molbuilder" / "reports"
 
 
 def _post(client, key=KEY, body=None, raw=None, path=PATH, ts=None, sig=None):
@@ -134,7 +142,7 @@ def test_results_are_stored_apart_from_molbuilders_own_LOGS(store):
     """User, 2026-08-27: *this is a different kind of log, not of the status
     of molbuilder but collection of computation results.*
 
-    `~/.molbuilder/logs/` is diagnostics — you read it when something is
+    the log directory holds diagnostics — you read it when something is
     wrong and delete it when it is fixed. These are measurements from
     calculations, the kind you keep and grep a year later. Filing them
     together invited exactly one mistake: treating results as disposable.

@@ -294,6 +294,42 @@ somewhere the operator does not look.
 **no longer exists**. `tests/test_config_dir_has_one_home.py` asserts that no
 module builds a per-user path itself.
 
+### 2.1e The session key has one home, and the config cannot name it
+
+*(Built 2026-08-31. Cited by `runtime_config._SECRET_KEY_MOVED`,
+`web.auth._install_secret_key` and `auth_setup.build_auth_block`.)*
+
+**The key is `<config dir>/secret_key`.** It is created there on first run, at
+mode `0600`, and both the server and `molbuilder auth-setup` resolve it through
+`auth_setup.secret_key_path()` — one function, so the reader and the writer
+cannot name different files.
+
+**`secret_key_file` is retired**, and a config still carrying it is **refused**:
+
+```
+molbuilder.json: 'secret_key_file' is no longer configured.  The session key
+has ONE home -- <config dir>/secret_key, beside this file -- and is created
+there on first run …
+```
+
+Refused rather than ignored, for this document's usual reason: a setting that
+is read and silently dropped looks effective, so someone would point it
+somewhere and wonder why their sessions still died on every restart. The
+message is its own sentence rather than the generic *unknown top-level key*,
+because that one reads as a typo and sends the reader back to retype a key
+that has no spelling.
+
+**Why a configurable path was the wrong shape.** It is how the key came to live
+in two places at once — this machine's config said `~/.molbuilder/secret.key`
+while the wizard wrote `<config dir>/secret_key`, so running `auth-setup`
+produced a fresh key the server never read *and reported success*. One file
+with one home cannot do that.
+
+**There is no ephemeral fallback any more**, and its absence is deliberate. It
+existed for "no path configured", which cannot happen when the path is not
+configurable — and it degraded silently into sessions that died on every
+restart, behind a warning in a log nobody reads.
+
 ### 2.2 Which file actually took effect is displayed, never inferred
 
 Three files can supply a `scheduler` block — the working directory's, the

@@ -2319,6 +2319,21 @@ async function loadResolved() {
             el("dd", { class: "hint" },
                found.map((s) => s.scope + " (" + s.via + ")").join(", "))));
     }
+    /* AND WHAT IS WRONG WITH WHERE IT WAS READ FROM.  Showing the resolved
+     * path without these would be the worse half of an answer: a person with
+     * a `molbuilder.json` in their working directory would see a card naming
+     * a different file and nothing saying the one they are editing is never
+     * opened.  The terminal prints both; a tab that printed neither is how
+     * the two came to disagree.
+     *
+     * The words are the server's, verbatim -- rewording them here would put a
+     * second author on a message that has one home (§ 2.1a, § 2.1b). */
+    for (const warning of [d.shadow, d.mode_warning]) {
+        if (!warning) continue;
+        facts.appendChild(el("div", null,
+            el("dt", null, "warning"),
+            el("dd", { class: "hint ts-config-warning" }, String(warning))));
+    }
     facts.hidden = !facts.children.length;
 
 }
@@ -2764,11 +2779,28 @@ function paintDestination(d) {
     if (cmd && !here) {
         const url = ($("ts-reports-url") && $("ts-reports-url").value.trim())
             || d.url || "https://YOUR-SERVER:8888/api/<segment>";
+        /* THE PATH IS RESOLVED ON THE FAR MACHINE, so the rule has to travel
+         * as shell rather than as an answer -- this server's config directory
+         * is not the cluster's.  It must be the WHOLE rule
+         * (`configuration.md` § 2.1c): MOLBUILDER_CONFIG_DIR first and exactly
+         * as given, then XDG_CONFIG_HOME/molbuilder, then ~/.config/molbuilder.
+         *
+         * It implemented only the last two until 2026-08-31, so on any machine
+         * with MOLBUILDER_CONFIG_DIR set, following this card wrote the file
+         * where the monitor does not look -- and silently, because an absent
+         * notify file simply means "no notifier".  That is the same failure
+         * `notify_setup.py` records from the card's previous life, when it
+         * named `~/.molbuilder/notify` while the monitor read
+         * `config_dir()/notify`.  Fixing the spelling last time left the
+         * hardcoding in place; this states the rule instead.
+         *
+         * `tests/test_task_setup_notify_js.py` pins all three branches. */
         cmd.textContent =
-            'mkdir -p -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder"\n'
-            + 'cat > "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder/notify" <<\'EOF\'\n'
+            'cfg="${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}"\n'
+            + 'mkdir -p -m 700 "$cfg"\n'
+            + 'cat > "$cfg/notify" <<\'EOF\'\n'
             + '{\n  "url": "' + url + '",\n  "key": "PASTE-THE-KEY"\n}\nEOF\n'
-            + 'chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder/notify"';
+            + 'chmod 600 "$cfg/notify"';
     }
     if (d.configured && $("ts-reports-url") && !$("ts-reports-url").value) {
         $("ts-reports-url").value = d.url;

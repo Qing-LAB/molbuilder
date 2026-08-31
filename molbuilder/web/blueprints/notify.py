@@ -173,7 +173,7 @@ def log_root() -> Path:
     2026-08-27: *this is a different kind of log, not of the status of
     molbuilder but collection of computation results*).
 
-    `~/.molbuilder/logs/` holds molbuilder's own operational output -- what
+    The LOG directory holds molbuilder's own operational output -- what
     the env installer did, what the server logged. Those are diagnostics:
     you read them when something is wrong, and you delete them when it is
     fixed. **These are measurements from calculations** -- energies,

@@ -29,7 +29,7 @@ User-visible flow:
      lands on the originally-requested URL.
 
 Public entry point:
-    :func:`init_auth(app, auth_cfg, secret_key_file)` -- called from
+    :func:`init_auth(app, auth_cfg)` -- called from
     :func:`molbuilder.web.app.create_app` when an ``auth`` section is
     present in ``molbuilder.json``.
 
@@ -50,8 +50,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-from pathlib import Path
-from typing import List, Mapping, Optional
+from typing import List, Mapping
 
 
 # --------------------------------------------------------------------- #
@@ -95,7 +94,7 @@ _PUBLIC_ENDPOINTS = frozenset({
 # --------------------------------------------------------------------- #
 
 
-def init_auth(app, auth_cfg: Mapping, secret_key_file: Optional[str]) -> None:
+def init_auth(app, auth_cfg: Mapping) -> None:
     """Install authentication on a Flask app.
 
     ``auth_cfg`` shape: ``{"providers": [entry, entry, ...]}``, each
@@ -115,7 +114,7 @@ def init_auth(app, auth_cfg: Mapping, secret_key_file: Optional[str]) -> None:
             "or omit the call entirely to leave the app unauthenticated."
         )
 
-    _install_secret_key(app, secret_key_file)
+    _install_secret_key(app)
     _setup_session_security(app, auth_cfg)
     _store_providers(app, providers)
 
@@ -488,36 +487,41 @@ def _setup_session_security(app, auth_cfg: Mapping) -> None:
         )
 
 
-def _install_secret_key(app, secret_key_file: Optional[str]) -> None:
-    """Load Flask's session-signing key from disk (or generate one
-    on first run + persist with mode 0600).  Falls back to a
-    per-process random key + warning when no path is configured."""
-    if not secret_key_file:
-        app.config["SECRET_KEY"] = secrets.token_bytes(32)
-        logging.warning(
-            "molbuilder auth: no 'secret_key_file' in molbuilder.json; "
-            "using an ephemeral per-process key.  Sessions will "
-            "invalidate on every restart.  Set "
-            "'secret_key_file': '~/.config/molbuilder/secret_key' "
-            "(or similar) for stable sessions."
-        )
-        return
+def _install_secret_key(app) -> None:
+    """Load Flask's session-signing key, generating it on first run.
 
-    path = Path(os.path.expanduser(secret_key_file))
+    **The key has ONE home** -- ``<config dir>/secret_key``, asked of
+    ``auth_setup.secret_key_path()`` (`configuration.md` § 2.1e).  It took a
+    ``secret_key_file`` argument until 2026-08-31, and a configurable location
+    for a single file is how it came to live in two places: the config pointed
+    at ``~/.molbuilder/secret.key`` while the wizard wrote
+    ``<config dir>/secret_key``, so running ``auth-setup`` produced a key the
+    server never read and reported success.
+
+    There is no ephemeral fallback any more, and its absence is the point.  It
+    existed for "no path configured", which cannot happen when the path is not
+    configurable -- and it degraded silently into sessions that died on every
+    restart, behind a warning in a log nobody reads.
+    """
+    from ..auth_setup import secret_key_path
+    path = secret_key_path()
     if path.exists():
         key_bytes = path.read_bytes()
         if len(key_bytes) < 16:
             raise RuntimeError(
-                f"molbuilder auth: secret_key_file {str(path)!r} is "
+                f"molbuilder auth: the session key at {str(path)!r} is "
                 f"only {len(key_bytes)} bytes; refusing to use it "
-                f"(min 16).  Delete the file to regenerate."
+                f"(min 16).  Delete the file and it is regenerated on the "
+                f"next start."
             )
         app.config["SECRET_KEY"] = key_bytes
         return
 
     # First-run generate: make parent dir if needed, write atomically
-    # with restrictive permissions.
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # with restrictive permissions.  0700 on the directory, because a listable
+    # directory names the file even when the file itself is shut
+    # (`configuration.md` § 2.1b).
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     key_bytes = secrets.token_bytes(32)
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:

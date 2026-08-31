@@ -3,7 +3,7 @@
 ``$XDG_CONFIG_HOME/molbuilder``, else ``~/.config/molbuilder``.  Three
 modules computed that same two-line rule independently:
 
-* ``runtime_config._per_user_fallback_path`` -> ``molbuilder.json``
+* ``runtime_config._machine_config_file`` -> ``molbuilder.json``
 * ``scheduler/record.machine_scope_path`` -> ``environment.json`` and the
   ``environments/`` beside it
 * ``auth_setup.default_secret_dir`` -> ``secret_key``

@@ -629,8 +629,16 @@ export function init(viewer) {
          * the button press is the intent and the panel is only its effect. */
         var cellTab = $("optab-btn-cell");
         if (cellTab) cellTab.addEventListener("click", lockRulerForPicking);
-        var panelNow = $("optab-panel-cell");
-        if (panelNow && !panelNow.hidden) lockRulerForPicking();
+        /* NOT ON STARTUP, and this is a correction rather than an omission.
+         * It also ran here when the panel happened to be visible as the module
+         * loaded -- which turned measuring on, and announced it, before the
+         * person had touched anything.  A page that opens by telling you it
+         * changed a mode you never asked for is exactly what announcing the
+         * change was meant to prevent.  Caught by
+         * `test_app_notifications_e2e`, whose whole subject is that the
+         * notification bar stays empty until something happens.
+         *
+         * Opening the tab is the act; module load is not. */
     }
 
     start();

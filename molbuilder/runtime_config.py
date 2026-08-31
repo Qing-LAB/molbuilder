@@ -1,4 +1,4 @@
-"""Per-machine runtime configuration read from ``./molbuilder.json``.
+"""Per-machine runtime configuration, read from the ONE machine config.
 
 This module is named ``runtime_config`` (not just ``config``) because
 ``molbuilder.config`` is the engine-parameter dataclasses package
@@ -9,7 +9,7 @@ concerns:
   parameters serialised into the generated input deck.
 * ``molbuilder.runtime_config``  -- per-machine deployment knobs
   (TLS paths, conda env names) read at startup from a gitignored
-  file at the repo root.
+  file in the per-user config directory (`configuration.md` § 2.1c).
 
 The reader has zero UI dependencies: it raises a domain-level
 :class:`RuntimeConfigError` on bad input; the CLI / web layer catch
@@ -72,6 +72,19 @@ _ROUTING_MOVED = (
     "'scheduler.directives.partition' and '.qos'.")
 
 
+#: Same shape as `_ROUTING_MOVED`: a retired key gets its own sentence, not
+#: the generic "unknown top-level key".
+_SECRET_KEY_MOVED = (
+    "{path}: 'secret_key_file' is no longer configured.  The session key has "
+    "ONE home -- <config dir>/secret_key, beside this file -- and is created "
+    "there on first run (docs/configuration.md § 2.1e).  A key naming its own "
+    "location is how it came to live in two places at once: this file pointed "
+    "at ~/.molbuilder/secret.key while `auth-setup` wrote "
+    "<config dir>/secret_key, so running the wizard made a key the server "
+    "never read.  Delete the line; move the file if you want the sessions it "
+    "signed to survive.")
+
+
 class RuntimeConfigError(Exception):
     """Raised when ``molbuilder.json`` is present but unreadable / malformed.
 
@@ -81,23 +94,24 @@ class RuntimeConfigError(Exception):
 
 
 def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Read ``molbuilder.json`` from ``path``, or resolve the SERVER-WIDE
-    file: cwd first, XDG fallback second — one file, never both.
+    """Read ``molbuilder.json`` from ``path``, or from the one place the
+    machine scope lives.
 
-    That two-step lookup is `docs/ops/deployment.md` § 5's promise for THE
-    SERVER, and until 2026-08-13 only the section getters kept it: this
-    default read was cwd-only, so an operator with an XDG-only config got
-    a server with **no auth and no TLS** while `jobset` honoured the very
-    same file (final review A-7, the config split-brain).
+    **The location is asked of :func:`machine_config_path`, never re-derived.**
+    This function kept its own copy of the lookup until 2026-08-31, and the
+    copy is what let the working-directory step survive its own deletion: the
+    door stopped returning a cwd path and this reader went on loading one, so
+    a file that every message called unread was still being applied.  There had
+    already been a split-brain here once -- until 2026-08-13 this read was
+    cwd-only while the section getters honoured both, so an operator with an
+    XDG-only config got a server with no auth and no TLS (final review A-7).
 
     Returns the normalised dict (see :func:`_normalise`).  Returns
     ``{}`` if no file exists (not an error -- the file is optional).
     Raises :class:`RuntimeConfigError` when the JSON is malformed or the
     schema is invalid.
     """
-    cfg_path = path if path is not None else Path(CONFIG_FILENAME)
-    if path is None and not cfg_path.is_file():
-        cfg_path = _per_user_fallback_path()
+    cfg_path = path if path is not None else machine_config_path()[0]
     if not cfg_path.is_file():
         return {}
     try:
@@ -456,22 +470,6 @@ def _read_auth(raw: Mapping[str, Any]):
     return {"providers": validated, "trust_proxy": trust_proxy}
 
 
-def _read_secret_key_file(raw: Mapping[str, Any]):
-    # Path to the Flask session-signing key file.  Auto-generated on first
-    # use when missing; required when auth is enabled, quietly unused
-    # otherwise.  A top-level SCALAR, not a section -- the registry row is
-    # what says so.
-    secret_key_file = raw.get("secret_key_file")
-    if secret_key_file is None:
-        return None
-    if not isinstance(secret_key_file, str):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'secret_key_file' must be a "
-            f"string path; got {type(secret_key_file).__name__}."
-        )
-    return secret_key_file
-
-
 #: One URL segment: letters, digits, '-' and '_'.  Deliberately narrow --
 #: the value becomes part of a route, and anything with a slash or a dot in
 #: it would silently mean a different path than the one written down.
@@ -573,7 +571,7 @@ def _read_admin(raw: Mapping[str, Any]):
 
 
 #: name -> how it is read · where it may live · whether provenance may
-#: print its values.  ``scopes``: "machine" = molbuilder.json (cwd/XDG),
+#: print its values.  ``scopes``: "machine" = molbuilder.json (the config dir),
 #: "project" = the .molbuilder.json in a project or calculation folder
 #: -- ONE name for that scope, everywhere (2026-08-23; it answered to
 #: "bundle" in provenance output until then).  A section absent from a
@@ -648,8 +646,6 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
                           "scopes": ("machine",), "provenance_safe": False},
     "auth":              {"read": _read_auth,
                           "scopes": ("machine",), "provenance_safe": False},
-    "secret_key_file":   {"read": _read_secret_key_file,
-                          "scopes": ("machine",), "provenance_safe": False},
     "notify_keys_file":  {"read": _read_notify_keys_file,
                           "scopes": ("machine",), "provenance_safe": False},
     "notify_route":      {"read": _read_notify_route,
@@ -712,6 +708,8 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     unknown = sorted(k for k in raw
                      if k not in _SECTIONS and k not in _FLAT_ALIASES
                      and not k.startswith("_"))
+    if "secret_key_file" in unknown:
+        raise RuntimeConfigError(_SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
     if unknown:
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: unknown top-level "
@@ -748,12 +746,6 @@ def get_providers(cfg: Mapping[str, Any]) -> list:
     configured.  Ergonomic shorthand for ``get_auth(cfg).get("providers", [])``.
     """
     return list(cfg.get("auth", {}).get("providers", []))
-
-
-def get_secret_key_file(cfg: Mapping[str, Any]) -> Optional[str]:
-    """Path to the session-signing key file, or ``None`` when not
-    configured."""
-    return cfg.get("secret_key_file")
 
 
 def get_notify_keys_file(cfg: Mapping[str, Any]) -> Optional[str]:
@@ -1103,15 +1095,18 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 
 
-def _per_user_fallback_path() -> Path:
-    """``~/.config/molbuilder/molbuilder.json``, honouring XDG.
+def _machine_config_file() -> Path:
+    """The machine config, in the config directory.
 
-    **The bootstrap caller.**  This is how ``molbuilder.json`` is FOUND, so
-    it is the one location that cannot be declared inside ``molbuilder.json``
-    -- which is why :func:`molbuilder.config_dir.config_dir` is a convention
-    with no config-file override.  The cwd step in
-    :func:`_server_wide_candidates` is what lets a person still put the file
-    where they want without knowing this path.
+    **The bootstrap caller.**  This is how ``molbuilder.json`` is FOUND, so it
+    is the one location that cannot be declared inside ``molbuilder.json`` --
+    which is why :func:`molbuilder.config_dir.config_dir` takes its override
+    from the ENVIRONMENT (``MOLBUILDER_CONFIG_DIR``) rather than from a config
+    key, which would be circular.
+
+    It was called ``_per_user_fallback_path`` while there was a
+    working-directory step to fall back FROM; there is not, so the name said
+    something untrue about the only location there is.
     """
     return config_dir() / CONFIG_FILENAME
 
@@ -1129,7 +1124,7 @@ def _read_scope(path: Path) -> Dict[str, Any]:
 
 
 #: The sections :func:`config_provenance` reports.  A deliberate ALLOWLIST:
-#: the machine file also carries ``auth`` / ``tls`` / ``secret_key_file``,
+#: the machine file also carries ``auth`` / ``tls``,
 #: and provenance output lands in terminals, STAGE-PLAN.md and shipped run
 #: logs -- material that must never travel there.
 #: Derived from the registry -- a section's values may be printed in logs
@@ -1140,7 +1135,7 @@ _PROVENANCE_SECTIONS = tuple(
 
 def machine_config_path() -> Tuple[Path, str]:
     """Which ``molbuilder.json`` the MACHINE scope resolves to, and how —
-    ``(path, "cwd"|"xdg")``.
+    ``(path, "config-dir")``.
 
     Split out 2026-08-17 so a refusal can name the file it is refusing.  This
     two-step lookup was computed inline in :func:`config_provenance` and
@@ -1148,13 +1143,13 @@ def machine_config_path() -> Tuple[Path, str]:
     *"which file said this"* and the reader that raises about it could describe
     different files.
     """
-    cwd_path = Path(CONFIG_FILENAME)
-    # ABSOLUTE, always.  The cwd branch is a bare relative name, and a refusal
-    # quoting "molbuilder.json" is the very ambiguity this helper exists to
-    # remove -- there are three files it could mean.
-    if cwd_path.is_file():
-        return cwd_path.resolve(), "cwd"
-    return _per_user_fallback_path().resolve(), "xdg"
+    # ONE LOCATION (`plans/config-access-plan.md` § 3.3).  A working-directory
+    # `molbuilder.json` was step 1 of a first-found-wins search until
+    # 2026-08-31, and it is gone: it was redundant with the project scope --
+    # `.molbuilder.json`, which MERGES rather than replaces -- and it was the
+    # entire source of one setting living in two files with nothing saying
+    # which won.  Nothing stops now, because there is nothing to stop at.
+    return _machine_config_file().resolve(), "config-dir"
 
 
 def _operational_dir(key: str, default: Path) -> Path:
@@ -1203,49 +1198,37 @@ def reports_dir() -> Path:
 
 
 def machine_config_shadow() -> Optional[str]:
-    """A warning when ``./molbuilder.json`` is standing in front of the home.
+    """A warning when a ``./molbuilder.json`` is sitting there UNREAD.
 
-    `configuration.md` § 2.1a.  The machine scope's home is the per-user config
-    directory; a working-directory file still WINS when it exists, because
-    § 2.1's search stops at the first hit.  Nothing is merged and nothing is
-    said, so two files can hold the same setting while one takes effect --
-    which is the confusion this exists to end (user, 2026-08-31: *"I had
-    instances where information are saved in two places and I did not realize
-    which one was the effective one"*).
+    `configuration.md` § 2.1a.  The machine scope has ONE location, the
+    per-user config directory.  A working-directory file is **no longer read
+    at all** -- so the danger inverts: it used to win silently, and now it
+    loses silently, and a person editing it would watch their changes do
+    nothing (user, 2026-08-31: *"I had instances where information are saved in
+    two places and I did not realize which one was the effective one"*).
 
     THE PHRASING LIVES HERE, in one place, so every surface says the same
-    thing.  It is a warning and never a refusal: refusing would break a machine
-    that has such a file today, and obeying quietly is the bug.
+    thing.
 
-    Returns ``None`` when the machine scope resolves to its home -- the quiet
-    case is the correct one, and a message then would be noise on every
-    invocation.
+    Returns ``None`` when there is no such file -- which is the normal case,
+    and a message then would be noise on every invocation.
     """
     cwd_path = Path(CONFIG_FILENAME)
     if not cwd_path.is_file():
         return None
     here = cwd_path.resolve()
-    home = _per_user_fallback_path().resolve()
-    lines = [
-        f"{CONFIG_FILENAME} was found in the working directory and is in "
-        f"effect: {here}",
-    ]
-    if home.is_file():
-        # THE CASE WORTH THE NOISE: the same setting can be written in two
-        # files and read from one, with nothing saying which.
-        lines.append(
-            f"  A machine config also exists at its home and is being "
-            f"IGNORED: {home}")
-        lines.append(
-            "  These are alternatives, not layers -- the search stops at the "
-            "first file, so nothing from the ignored one is merged in.")
-    else:
-        lines.append(f"  Its home is {home}")
-    lines.append(
-        "  Move it there to have one machine config; for settings that should "
-        "apply to one project only, use that project's .molbuilder.json, "
-        "which merges (configuration.md § 2.1a).")
-    return "\n".join(lines)
+    # ASKED, not re-derived: a second copy of the resolution is the split-brain
+    # this whole change removes, and it would go unnoticed because both answers
+    # agree today.
+    home = machine_config_path()[0]
+    return "\n".join([
+        f"{CONFIG_FILENAME} in the working directory is NOT READ: {here}",
+        f"  The machine config has one location, and this is not it: {home}"
+        + ("" if home.is_file() else "  (no file there yet)"),
+        "  Move it there, or delete it.  For settings that should apply to "
+        "one project only, use that project's .molbuilder.json, which merges "
+        "(configuration.md § 2.1a).",
+    ])
 
 
 #: The only modes a file holding credentials may carry, and the directory that
@@ -1257,9 +1240,9 @@ CONFIG_DIR_MODE = 0o700
 def machine_config_mode_warning() -> Optional[str]:
     """A warning when the machine config is readable by anyone but its owner.
 
-    `configuration.md` § 2.1b.  This file carries `tls.key`, `secret_key_file`
-    and the `auth.providers` block, so a world-readable copy on a shared login
-    node is an exposure rather than an untidiness.
+    `configuration.md` § 2.1b.  This file carries `tls.key` and the
+    `auth.providers` block, so a world-readable copy on a shared login node is
+    an exposure rather than an untidiness.
 
     WRITING IT TIGHTLY WAS ALREADY HANDLED -- ``auth_setup`` opens with
     ``0o600`` and ``fchmod``s before the first byte, so the mode is right
@@ -1433,8 +1416,8 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
 
 
 def _read_server_wide() -> Dict[str, Any]:
-    """Server-wide config: cwd ``./molbuilder.json`` first, XDG
-    fallback ``~/.config/molbuilder/molbuilder.json`` second.
+    """The machine config, from the one place it lives
+    (`configuration.md` § 2.1c).
 
     Since 2026-08-13 this IS :func:`read_config`'s own default lookup
     (A-7 closed the split-brain where serve/TLS/auth read cwd-only while
@@ -1922,7 +1905,7 @@ def get_scheduler(
     # Name the FILE the block came from.  `_validate_scheduler` sees only the
     # MERGED mapping, so every refusal it raises -- a bad `kind`, a missing
     # directive -- could say no more than the generic "molbuilder.json", which
-    # names three possible files (cwd, XDG, project) and answers none.  R10
+    # names two possible files (machine, project) and answers neither.  R10
     # fixed exactly this for `read_config` on 2026-08-12 and the scheduler
     # getter was never given the same treatment.
     #
@@ -2072,9 +2055,8 @@ def write_config_scope(
     """Write a partial config patch into one scope.
 
     ``project_dir`` selects:
-      * ``None``: server-wide file at the highest-precedence existing
-        location (cwd if present, else the XDG path).  When neither
-        exists, the XDG path is created.
+      * ``None``: the machine config, which has one location and is
+        created there when absent (`configuration.md` § 2.1c).
       * a path: ``<project_dir>/.molbuilder.json``.
 
     The patch is deep-merged ONTO the existing file's contents (per
@@ -2090,8 +2072,10 @@ def write_config_scope(
     Returns the resolved target path.
     """
     if project_dir is None:
-        cwd_path = Path(CONFIG_FILENAME).resolve()
-        target = cwd_path if cwd_path.is_file() else _per_user_fallback_path()
+        # THE SAME DOOR THE READER USES.  A writer with its own idea of where
+        # the machine file lives writes one nothing reads, which is the whole
+        # failure this change removes.
+        target = machine_config_path()[0]
     else:
         # The same scope rule reads enforce (the registry): refusing at
         # WRITE time beats producing a file every later read refuses.
@@ -2157,7 +2141,6 @@ __all__ = [
     "get_envs",
     "get_auth",
     "get_providers",
-    "get_secret_key_file",
     "get_rate_limit",
     "get_script_generation",
     "require_activation",

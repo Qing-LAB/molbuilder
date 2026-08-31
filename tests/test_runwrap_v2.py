@@ -43,6 +43,11 @@ def sandbox(tmp_path, monkeypatch):
     so the generator picks it up.  Also resets capabilities each test.
     """
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
@@ -66,6 +71,11 @@ def test_render_refuses_when_no_activation_configured(tmp_path, monkeypatch):
     """Per docs/execution/running-a-job.md § 5: missing ``activation`` -> generator
     refuses to emit a wrapper that can't activate its env."""
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
@@ -83,6 +93,11 @@ def test_render_refuses_when_no_activation_configured(tmp_path, monkeypatch):
 def test_render_refuses_when_only_preamble_configured(tmp_path,
                                                        monkeypatch):
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
@@ -148,6 +163,11 @@ def test_preamble_chunks_carry_correct_scope_labels(sandbox, tmp_path):
 
 def test_empty_preamble_emits_placeholder(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
@@ -180,6 +200,11 @@ def test_activation_form_from_config(tmp_path, monkeypatch):
     """``activation: "conda activate"`` produces a ``conda activate``
     line, not ``source activate``."""
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()

@@ -42,6 +42,11 @@ def _isolated(monkeypatch, tmp_path_factory):
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
     monkeypatch.chdir(cwd)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cwd))
 
 
 # A 3-D (non-linear) molecule so the derived vacuum cell isn't degenerate at

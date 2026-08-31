@@ -292,7 +292,9 @@ class TestTheProjectsRootIsOneConfigurableDoor:
 
     def test_the_config_key_moves_the_tree(self, tmp_path, monkeypatch):
         import json
-        monkeypatch.chdir(tmp_path)
+        # tmp_path IS the config root: the machine scope has one location
+        # and it is not the working directory (configuration.md § 2.1a).
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
         (tmp_path / "molbuilder.json").write_text(
             json.dumps({"paths": {"projects": str(tmp_path / "elsewhere")}}))
@@ -305,7 +307,9 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         from -- the same rule `--bundle` and `psml_lib` follow."""
         import json
         import molbuilder
-        monkeypatch.chdir(tmp_path)
+        # tmp_path IS the config root: the machine scope has one location
+        # and it is not the working directory (configuration.md § 2.1a).
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
         (tmp_path / "molbuilder.json").write_text(
             json.dumps({"paths": {"projects": "shared-tree"}}))
@@ -314,7 +318,9 @@ class TestTheProjectsRootIsOneConfigurableDoor:
 
     def test_the_env_override_beats_the_config(self, tmp_path, monkeypatch):
         import json
-        monkeypatch.chdir(tmp_path)
+        # tmp_path IS the config root: the machine scope has one location
+        # and it is not the working directory (configuration.md § 2.1a).
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         (tmp_path / "molbuilder.json").write_text(
             json.dumps({"paths": {"projects": str(tmp_path / "from-config")}}))
         monkeypatch.setenv("MOLBUILDER_PROJECTS", str(tmp_path / "from-env"))
@@ -329,7 +335,9 @@ class TestTheProjectsRootIsOneConfigurableDoor:
         import json
         import pytest as _pytest
         from molbuilder.runtime_config import RuntimeConfigError
-        monkeypatch.chdir(tmp_path)
+        # tmp_path IS the config root: the machine scope has one location
+        # and it is not the working directory (configuration.md § 2.1a).
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
         (tmp_path / "molbuilder.json").write_text(
             json.dumps({"paths": {"porjects": "/typo"}}))

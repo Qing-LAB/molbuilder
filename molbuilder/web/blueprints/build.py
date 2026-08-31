@@ -1806,11 +1806,19 @@ def api_task_setup_resolved():
         prov = config_provenance(project_dir=dest)
     except Exception as exc:                      # a malformed config
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # THE WARNINGS TRAVEL WITH THE PROVENANCE, and forwarding only three of
+    # the five keys is how the tab and the terminal came to disagree.  The
+    # terminal prints `shadow` (a `molbuilder.json` sitting unread in a working
+    # directory) and `mode_warning` (the config readable by more than its
+    # owner); a page that showed the resolved path WITHOUT them would tell a
+    # person their config is fine while the file they are editing is ignored.
     return jsonify({
         "ok": True,
         "sources": prov.get("sources") or [],
         "effective": prov.get("effective") or {},
         "domains": prov.get("domains") or [],
+        "shadow": prov.get("shadow"),
+        "mode_warning": prov.get("mode_warning"),
     })
 
 

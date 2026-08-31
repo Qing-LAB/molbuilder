@@ -36,9 +36,15 @@ from molbuilder.runtime_config import _validate_provider
 # --------------------------------------------------------------------- #
 
 
-def test_default_secret_dir_under_home(tmp_path):
-    d = _as.default_secret_dir(home=tmp_path)
-    assert d == tmp_path / ".config" / "molbuilder"
+def test_default_secret_dir_follows_the_one_override(tmp_path, monkeypatch):
+    """A root is named the way every other caller names one.
+
+    This asserted a ``home=`` parameter until 2026-08-31.  It had no
+    production caller and rebuilt `config_dir`'s rule itself, so it was a
+    second override for a directory that already has an environment one.
+    """
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "named"))
+    assert _as.default_secret_dir() == tmp_path / "named"
 
 
 def test_default_secret_dir_honors_xdg(tmp_path, monkeypatch):
@@ -149,9 +155,7 @@ def test_google_entry_rejects_empty_allowlist(tmp_path):
 
 def test_emit_molbuilder_json_writes_0600(tmp_path):
     entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block(
-        providers=[entry], secret_key_file=tmp_path / "sk",
-    )
+    block = _as.build_auth_block(providers=[entry])
     out = tmp_path / "molbuilder.json"
     _as.emit_molbuilder_json(out, block)
     assert stat.S_IMODE(out.stat().st_mode) == 0o600
@@ -161,7 +165,7 @@ def test_emit_molbuilder_json_writes_0600(tmp_path):
 
 def test_emit_preserves_other_top_level_keys(tmp_path):
     entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block([entry], tmp_path / "sk")
+    block = _as.build_auth_block([entry])
     out = tmp_path / "molbuilder.json"
     existing = {"envs": {"siesta": "molbuilder-siesta"}, "tls": {"cert": "/x"}}
     _as.emit_molbuilder_json(out, block, existing=existing)
@@ -174,7 +178,7 @@ def test_emit_preserves_other_top_level_keys(tmp_path):
 
 def test_emit_refuses_to_clobber_without_force(tmp_path):
     entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block([entry], tmp_path / "sk")
+    block = _as.build_auth_block([entry])
     out = tmp_path / "molbuilder.json"
     out.write_text('{"keep": "me"}')
     with pytest.raises(FileExistsError, match="--force"):
@@ -185,7 +189,7 @@ def test_emit_refuses_to_clobber_without_force(tmp_path):
 
 def test_emit_force_overrides_clobber_guard(tmp_path):
     entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block([entry], tmp_path / "sk")
+    block = _as.build_auth_block([entry])
     out = tmp_path / "molbuilder.json"
     out.write_text('{"orphan": "x"}')
     _as.emit_molbuilder_json(out, block, force=True)
@@ -246,9 +250,15 @@ class TestTheWizardWritesWhereTheReaderReads:
     never looks at**, with the wizard reporting success while sign-in stayed
     off.
 
-    So the default is now the reader's own answer -- ``machine_config_path()``,
-    cwd first, per-user second.  These tests drive both branches, because the
-    bug is only visible in the pair: either branch alone looks correct.
+    So the default is the reader's own answer -- ``machine_config_path()``.
+
+    **That answer had two branches until 2026-08-31 and now has one**: the
+    machine scope lives in the config directory, and a `./molbuilder.json` is
+    not read at all (`configuration.md` § 2.1a).  The pair of tests below used
+    to drive both branches; the second now asserts the opposite of what it once
+    did, because "always write the per-user file" -- the rule this class was
+    written to disprove -- became correct when the other place stopped being
+    read.
     """
 
     def _run(self, extra=()):
@@ -275,31 +285,55 @@ class TestTheWizardWritesWhereTheReaderReads:
         # read from any directory, and saying otherwise teaches the wrong model.
         assert "cd " not in r.output or "read from anywhere" in r.output
 
-    def test_with_a_cwd_config_it_writes_THAT_one(
+    def test_a_cwd_config_does_not_attract_it(
             self, isolated_home, monkeypatch, tmp_path):
-        """The half that makes 'always write the per-user file' wrong.
+        """The inverted half: a file in the launch directory is not the target.
 
-        The reader takes the cwd file when one exists, so writing the per-user
-        file here would leave the auth block somewhere nothing reads.
+        It once was -- the reader took it, so writing anywhere else would have
+        left the auth block where nothing looks.  Now the reader never opens
+        it, and writing there would be the mistake instead.  The stray file is
+        left untouched, because the wizard has no business editing a file the
+        program does not read.
         """
         run_dir = tmp_path / "deployment"
         run_dir.mkdir()
-        (run_dir / "molbuilder.json").write_text(
+        stray = run_dir / "molbuilder.json"
+        stray.write_text(
             json.dumps({"script_generation": {"activation": "conda activate"}}))
         monkeypatch.chdir(run_dir)
 
         r = self._run(("--force",))
         assert r.exit_code == 0, r.output
 
-        here = json.loads((run_dir / "molbuilder.json").read_text())
-        assert here["auth"]["providers"][0]["kind"] == "cas", (
-            "the auth block did not land in the file the reader will read")
-        # The other sections survive -- the wizard merges, it does not replace.
-        assert here["script_generation"]["activation"] == "conda activate"
         xdg = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
-        assert not xdg.exists(), (
-            "wrote a per-user config the reader would ignore while a cwd one "
-            "exists -- success reported, sign-in still off")
+        assert json.loads(xdg.read_text())["auth"]["providers"][0]["kind"] == "cas", (
+            "the auth block did not land in the one file the reader opens")
+        assert json.loads(stray.read_text()) == {
+            "script_generation": {"activation": "conda activate"}}, (
+            "the wizard edited a file the program does not read")
+
+    def test_it_merges_into_what_is_already_at_the_one_location(
+            self, isolated_home, monkeypatch, tmp_path):
+        """The wizard adds a section; it does not replace the file.
+
+        This was asserted against the cwd branch before that branch existed
+        no more, and the property is the one worth keeping: a machine with
+        `execution` or `scheduler` already set must not lose them to a
+        sign-in setup.
+        """
+        monkeypatch.chdir(tmp_path)
+        target = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps({"script_generation": {"activation": "conda activate"}}))
+
+        r = self._run(("--force",))
+        assert r.exit_code == 0, r.output
+
+        after = json.loads(target.read_text())
+        assert after["auth"]["providers"][0]["kind"] == "cas"
+        assert after["script_generation"]["activation"] == "conda activate", (
+            "the wizard replaced the file instead of merging into it")
 
     def test_output_still_wins(self, isolated_home, monkeypatch, tmp_path):
         """Naming a path is answering the question, so nothing overrides it."""

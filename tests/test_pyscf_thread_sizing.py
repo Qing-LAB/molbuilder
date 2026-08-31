@@ -90,6 +90,11 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
     from molbuilder import runwrap
     home = tmp_path / "home"; home.mkdir()
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "molbuilder.json").write_text(json.dumps(

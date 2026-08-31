@@ -40,9 +40,9 @@ every bit of this per-user):
 
 | file | what |
 |---|---|
-| `~/.molbuilder/run/serve-<port>.pid` | the supervisor's pid — the address `stop`/`restart`/`status` act on |
-| `~/.molbuilder/logs/serve-<port>.log` | everything the server prints |
-| `~/.molbuilder/logs/serve-<port>.stacks.log` | thread stacks, appended on `SIGUSR1` and before any forced child kill (§ 1.0c) |
+| `$XDG_RUNTIME_DIR/molbuilder/serve-<port>.pid` | the supervisor's pid — the address `stop`/`restart`/`status` act on.  `<state>/run` when that variable is unset |
+| `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.log` | everything the server prints (default `~/.local/state/molbuilder/logs/`) |
+| `$XDG_STATE_HOME/molbuilder/logs/serve-<port>.stacks.log` | thread stacks, appended on `SIGUSR1` and before any forced child kill (§ 1.0c) |
 
 **The log is capped and rotated** *(user requirement, 2026-08-28)*:
 when it exceeds `--log-max-mb` (default 20) it is closed, gzipped to
@@ -373,21 +373,24 @@ using the server is disconnected, and workspace writes still in flight are lost
 
 ## 5. Configuration — `molbuilder.json`
 
-The server looks for **`molbuilder.json`** in two places, in this order:
+The server reads **`molbuilder.json`** from ONE place — the config directory
+(`configuration.md` § 2.1c). It searched three until 2026-08-31; a
+`./molbuilder.json` is no longer read at all:
 
 ```mermaid
 flowchart LR
-  CWD["1. &lt;cwd&gt;/molbuilder.json"] -->|"found"| LOAD["use it"]
-  CWD -->|"not found"| XDG["2. ~/.config/molbuilder/molbuilder.json"]
+  ENV["$MOLBUILDER_CONFIG_DIR"] -->|"set"| USE["&lt;that dir&gt;/molbuilder.json"]
+  ENV -->|"unset"| XDG["$XDG_CONFIG_HOME/molbuilder/, else ~/.config/molbuilder/"]
 ```
 
-It reads **one file, not both** — the first one it finds wins. A malformed
-file refuses to start rather than silently misconfiguring.
+The override is used **exactly as given** — no `molbuilder` component is
+appended, because the variable names *our* directory rather than a shared root.
+A malformed file refuses to start rather than silently misconfiguring.
 
-**`molbuilder auth-setup` writes to whichever of those two the server would
-read**, rather than to the directory it happens to be launched from. That is
-the same lookup, asked by the writer instead of the reader — so the wizard
-cannot leave the auth block in a file nothing consults, which is what "always
+**`molbuilder auth-setup` writes the file the server would read**, by asking
+the reader's own resolver rather than writing to the directory it happens to be
+launched from — so the wizard cannot leave the auth block in a file nothing
+consults, which is what "always
 write the per-user one" would do on a machine that already has a `./` config.
 
 **These are the server's sections.** The same file also carries what

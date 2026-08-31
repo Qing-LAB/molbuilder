@@ -37,7 +37,7 @@ Coverage:
       - at least one of email_attribute / email_domain (for allowlist match)
       - optional string fields validated when set
   * allowed_users must be list of strings (empty list = no one, valid)
-  * secret_key_file is optional + string when present
+  * a config still naming `secret_key_file` is REFUSED, with its one home named
 
 Does NOT test the runtime auth flow itself (Authlib OAuth + python-cas
 ticket validation are integration-tested separately).
@@ -48,7 +48,7 @@ import pytest
 
 from molbuilder.runtime_config import (
     RuntimeConfigError, _normalise,
-    get_auth, get_providers, get_secret_key_file,
+    get_auth, get_providers,
 )
 
 
@@ -102,7 +102,6 @@ class TestAuthDefaultOff:
         cfg = _normalise({})
         assert get_auth(cfg) == {}
         assert get_providers(cfg) == []
-        assert get_secret_key_file(cfg) is None
 
     def test_config_without_auth_section_unaffected(self):
         cfg = _normalise({
@@ -515,11 +514,9 @@ class TestSetupSessionSecurity:
         app = Flask(__name__)
         app.config["TESTING"] = True
         app.config["SECRET_KEY"] = b"x" * 32
-        init_auth(
-            app,
-            auth_cfg={"providers": providers, "trust_proxy": trust_proxy},
-            secret_key_file=None,
-        )
+        init_auth(app,
+                  auth_cfg={"providers": providers,
+                            "trust_proxy": trust_proxy})
         app.config["SECRET_KEY"] = b"x" * 32
         return app
 
@@ -836,19 +833,35 @@ class TestMixedConfig:
 # --------------------------------------------------------------------- #
 
 
-class TestSecretKeyFile:
+class TestSecretKeyFileIsRetired:
+    """The session key has ONE home, and the config does not name it.
 
-    def test_optional(self):
-        cfg = _normalise({})
-        assert get_secret_key_file(cfg) is None
+    A configurable location for a single file is how that key came to live in
+    two places at once: the config said ``~/.molbuilder/secret.key`` while the
+    wizard wrote ``<config dir>/secret_key``, so running the wizard produced a
+    key the server never read -- and reported success.
 
-    def test_string_path_preserved(self):
-        cfg = _normalise({"secret_key_file": "~/.mb/key"})
-        assert get_secret_key_file(cfg) == "~/.mb/key"
+    REFUSED rather than ignored, because a setting that is read and silently
+    dropped looks effective: someone would point it somewhere and wonder why
+    their sessions still died on every restart.
+    """
 
-    def test_non_string_rejected(self):
-        with pytest.raises(RuntimeConfigError, match="string path"):
-            _normalise({"secret_key_file": 42})
+    def test_a_config_naming_it_is_refused(self):
+        with pytest.raises(RuntimeConfigError, match="no longer configured"):
+            _normalise({"secret_key_file": "~/.mb/key"})
+
+    def test_the_refusal_names_where_the_key_lives_now(self):
+        """A refusal that does not name the replacement is a dead end."""
+        with pytest.raises(RuntimeConfigError) as e:
+            _normalise({"secret_key_file": "/anywhere"})
+        assert "secret_key" in str(e.value)
+
+    def test_it_does_not_read_as_a_typo(self):
+        """The generic 'unknown top-level key' message would send the reader
+        looking for a misspelling.  This key moved, and the message says so."""
+        with pytest.raises(RuntimeConfigError) as e:
+            _normalise({"secret_key_file": "/anywhere"})
+        assert "unknown top-level" not in str(e.value)
 
 
 # --------------------------------------------------------------------- #
@@ -908,13 +921,10 @@ class TestAuthenticate:
         # Use an in-process secret key (no file needed for these tests).
         app.config["SECRET_KEY"] = b"x" * 32
         # init_auth expects an auth_cfg shape matching _normalise output.
-        init_auth(
-            app,
-            auth_cfg={"providers": providers, "trust_proxy": False},
-            secret_key_file=None,   # already populated above
-        )
-        # ... but init_auth ALSO overwrites SECRET_KEY when called with
-        # None -- restore.
+        init_auth(app,
+                  auth_cfg={"providers": providers, "trust_proxy": False})
+        # init_auth installs the key from its ONE home, so restore the
+        # in-process one these tests sign with.
         app.config["SECRET_KEY"] = b"x" * 32
         return app
 

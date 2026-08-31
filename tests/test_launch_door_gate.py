@@ -73,10 +73,10 @@ def test_a_claimed_call_passes_the_gate(tmp_path):
 
 # ---- config provenance ------------------------------------------------ #
 
-def test_provenance_names_each_values_source(tmp_path):
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
+def test_provenance_names_each_values_source(tmp_path, machine_config):
+    machine_config(
         {"execution": {"mode": "direct"},
-         "script_generation": {"activation": "conda activate"}}))
+         "script_generation": {"activation": "conda activate"}})
     bundle = tmp_path / "calc"
     bundle.mkdir()
     (bundle / ".molbuilder.json").write_text(json.dumps(
@@ -88,7 +88,7 @@ def test_provenance_names_each_values_source(tmp_path):
     assert prov["effective"]["script_generation.activation"] == {
         "value": "source activate", "from": "project"}
     scopes = {s["scope"]: s for s in prov["sources"]}
-    assert scopes["machine"]["found"] and scopes["machine"]["via"] == "cwd"
+    assert scopes["machine"]["found"] and scopes["machine"]["via"] == "config-dir"
     # `project`, ONE name for this scope (2026-08-23).  It answered to
     # "bundle" here and "project" in the registry -- and `bundle` already
     # names the portable prepped directory the JobSet framework's
@@ -96,14 +96,16 @@ def test_provenance_names_each_values_source(tmp_path):
     assert scopes["project"]["found"]
 
 
-def test_provenance_never_carries_secret_material(tmp_path):
-    """The allowlist is the guarantee: auth/tls/secret_key_file live in the
-    same machine file and must never reach the formatted output, which lands
-    in terminals, STAGE-PLAN.md and shipped logs."""
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
+def test_provenance_never_carries_secret_material(tmp_path, machine_config):
+    """The allowlist is the guarantee: `auth` and `tls` live in the same
+    machine file and must never reach the formatted output, which lands in
+    terminals, STAGE-PLAN.md and shipped logs.
+
+    (`secret_key_file` was a third such section until 2026-08-31; the session
+    key now has one home and the config cannot name it at all.)"""
+    machine_config(
         {"execution": {"mode": "direct"},
-         "tls": {"key": "PEMKEYMATERIAL"},
-         "secret_key_file": "/run/secrets/mb"}))
+         "tls": {"key": "PEMKEYMATERIAL"}})
     text = format_provenance(config_provenance(project_dir=None))
     assert "PEMKEYMATERIAL" not in text
     assert "tls" not in text

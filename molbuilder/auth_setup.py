@@ -38,31 +38,30 @@ from .config_dir import DIRNAME, config_dir
 # --------------------------------------------------------------------- #
 
 
-def default_secret_dir(home: Optional[Path] = None) -> Path:
-    """Return ``$HOME/.config/molbuilder`` (Path object, not created).
+def default_secret_dir() -> Path:
+    """The config directory, where this installation's secrets live.
 
-    Override via ``$XDG_CONFIG_HOME`` if set, mirroring the XDG Base
-    Directory spec -- so a user with ``$XDG_CONFIG_HOME=/scratch/$USER``
-    keeps secrets off the NFS-mounted $HOME on HPC nodes.  That convention
-    is :func:`molbuilder.config_dir.config_dir`'s and is IMPORTED, not
-    restated -- this function used to spell it out, one of three copies.
+    :func:`molbuilder.config_dir.config_dir` outright -- ``MOLBUILDER_CONFIG_DIR``
+    if set, else ``$XDG_CONFIG_HOME/molbuilder``, else ``~/.config/molbuilder``
+    (`configuration.md` § 2.1c).
 
-    ``home=`` stays an explicit-root escape hatch for callers (and tests)
-    that name the directory outright; it deliberately does NOT consult
-    ``XDG_CONFIG_HOME``, because a caller passing a root has already
-    answered the question the variable exists to answer.
+    **The ``home=`` parameter is gone** (2026-08-31).  It was an escape hatch
+    for callers naming a root outright, it had no production caller, and it
+    rebuilt the ``.config/<name>`` rule itself -- the one place `config_dir`'s
+    convention was still spelled a second time.  A second override for a
+    directory that already has an environment one is exactly the duplication
+    this module's own history is about; a test that wants a different root
+    sets the variable, like everything else.
     """
-    if home is None:
-        return config_dir()
-    return Path(home) / ".config" / DIRNAME
+    return config_dir()
 
 
-def secret_key_path(home: Optional[Path] = None) -> Path:
-    return default_secret_dir(home) / "secret_key"
+def secret_key_path() -> Path:
+    return default_secret_dir() / "secret_key"
 
 
-def google_client_secret_path(home: Optional[Path] = None) -> Path:
-    return default_secret_dir(home) / "google_client_secret"
+def google_client_secret_path() -> Path:
+    return default_secret_dir() / "google_client_secret"
 
 
 # --------------------------------------------------------------------- #
@@ -240,25 +239,24 @@ def build_google_entry(client_id: str,
 # --------------------------------------------------------------------- #
 
 
-def build_auth_block(providers: List[Dict[str, Any]],
-                      secret_key_file: Path,
-                      ) -> Dict[str, Any]:
+def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Return the ``auth`` block as a dict ready for json.dumps.
 
-    The block carries ``providers`` (a list, in render order on the
-    sign-in page) and ``secret_key_file`` (path to a 0600 file holding
-    the Flask session signing key).  No secret literals are in this
-    block -- both client_secret_file and secret_key_file point at
-    out-of-band files.
+    The block carries ``providers`` -- a list, in render order on the sign-in
+    page.  No secret literals: ``client_secret_file`` points at an out-of-band
+    file.
+
+    **It carried ``secret_key_file`` until 2026-08-31**, and writing that key
+    is what made the session key configurable.  It now has one home,
+    :func:`secret_key_path`, which is where the server looks and where this
+    wizard writes -- so the two cannot name different files, which they did
+    (`configuration.md` § 2.1e).
     """
     if not providers:
         raise ValueError(
             "build_auth_block: at least one provider is required."
         )
-    return {
-        "providers":        list(providers),
-        "secret_key_file":  str(secret_key_file),
-    }
+    return {"providers": list(providers)}
 
 
 def emit_molbuilder_json(output_path: Path,

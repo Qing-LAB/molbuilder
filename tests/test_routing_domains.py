@@ -255,16 +255,20 @@ def test_a_workstation_record_does_not_mask_a_declared_cluster(tmp_path):
 
 # ---- where a value came from is displayed, not inferred --------------- #
 
-@pytest.mark.parametrize("scope", ["machine-cwd", "machine-xdg", "project"])
+@pytest.mark.parametrize("scope", ["machine", "project"])
 def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
     """A refusal must point at the file a person has to edit.
 
-    Three files can supply a `scheduler` block -- cwd, XDG, and the
+    TWO files can supply a `scheduler` block -- the machine scope and the
     project scope's `.molbuilder.json` -- so a message quoting the generic
-    ``molbuilder.json``
-    names three and answers none.  This file learned that once (R10,
-    2026-08-12) and N4 reintroduced it, costing thirteen confusing failures
-    whose real cause was a config two directories up.
+    ``molbuilder.json`` names both and answers neither.  This file learned
+    that once (R10, 2026-08-12) and N4 reintroduced it, costing thirteen
+    confusing failures whose real cause was a config two directories up.
+
+    It was THREE until 2026-08-31, when the working-directory step was
+    deleted and the machine scope became one location
+    (`configuration.md` § 2.1a) -- so the `machine-cwd` case is gone rather
+    than renamed: there is no such file to name.
 
     Checked here on ``kind``, a refusal that is still live: the routing
     refusal it was written for is gone (routing is declared capability now),
@@ -274,10 +278,6 @@ def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
     if scope == "project":
         _write_config(tmp_path, block)
         expected = tmp_path / PROJECT_CONFIG_FILENAME
-    elif scope == "machine-cwd":
-        (tmp_path / "molbuilder.json").write_text(
-            json.dumps({"scheduler": block}))
-        expected = tmp_path / "molbuilder.json"
     else:
         xdg = tmp_path / "home" / ".config" / "molbuilder"
         xdg.mkdir(parents=True)

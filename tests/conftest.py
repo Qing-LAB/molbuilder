@@ -20,6 +20,54 @@ from molbuilder.structure import Structure
 
 
 @pytest.fixture
+def config_root(tmp_path, monkeypatch) -> Path:
+    """The directory this test's machine configuration lives in.
+
+    **Ask for this instead of arranging a config by hand.**  Before 2026-08-31
+    a test that wanted `molbuilder.json` read had to know the reader's lookup
+    and reproduce it -- ``monkeypatch.chdir`` into a sandbox, write the file
+    there, and then remember to isolate ``HOME`` and ``XDG_CONFIG_HOME`` so the
+    fallback did not reach the developer's own.  The suite grew four different
+    spellings of that, and files that used the shortest one read the real
+    machine's config.
+
+    When the working-directory step was deleted (`configuration.md` § 2.1a),
+    every one of those arrangements stopped working AT ONCE and almost none of
+    them failed: the writes still succeeded, into a file nothing opened, so the
+    assertions went on passing while configuring nothing.  **A green suite
+    cannot show you that**, which is why the arrangement belongs in one named
+    place rather than in forty.
+
+    Returns the directory.  Combine with :func:`machine_config` to write into
+    it, or write ``config_root / "molbuilder.json"`` yourself when the test is
+    about the file rather than its contents.
+    """
+    root = tmp_path / "config-root"
+    root.mkdir(exist_ok=True)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
+    return root
+
+
+@pytest.fixture
+def machine_config(config_root):
+    """Write the machine config where the reader will find it.
+
+    ``machine_config({"execution": {"mode": "direct"}})`` -- returns the path,
+    and may be called again to replace the file mid-test.
+
+    It writes the WHOLE file rather than merging, because that is what the
+    scope is: one file, read entire (`configuration.md` § 2.1).  A helper that
+    merged would let a test believe it had cleared a section it had only
+    stopped mentioning.
+    """
+    def _write(obj) -> Path:
+        target = config_root / "molbuilder.json"
+        target.write_text(json.dumps(obj))
+        return target
+    return _write
+
+
+@pytest.fixture
 def checkpoint_config(tmp_path, monkeypatch):
     """Set the checkpoint classification for one test, where it really lives.
 
@@ -28,10 +76,16 @@ def checkpoint_config(tmp_path, monkeypatch):
     calculation directory -- ``_read_project`` refuses a ``checkpoint`` section
     there outright, which is the rule, not a limitation to work around.
 
-    The one home is the server-wide scope, and its first candidate is
-    ``./molbuilder.json``.  So this gives the test its own working directory
-    and writes the real file into it: the same resolution path production
-    takes, with nothing mocked (checkpointing.md § 4, S1c).
+    The one home is the server-wide scope, and since 2026-08-31 it has ONE
+    location -- the config directory, with no working-directory step
+    (`configuration.md` § 2.1a).  So this points ``MOLBUILDER_CONFIG_DIR`` at
+    the test's own sandbox and writes the real file there: the same resolution
+    path production takes, with nothing mocked (checkpointing.md § 4, S1c).
+
+    It used to rely on the cwd step, and when that step was deleted the writes
+    kept succeeding into a file nothing read -- so every test using this
+    fixture went on passing while configuring NOTHING, which is the failure
+    mode a green suite cannot show you.
 
     Returns a setter, because several tests change the classification *during*
     a test -- narrowing it between a save and a restore is I2c's own scenario.
@@ -39,10 +93,11 @@ def checkpoint_config(tmp_path, monkeypatch):
     home = tmp_path / "config-home"
     home.mkdir()
     monkeypatch.chdir(home)
-    # The OTHER two-thirds of the sandbox (H-5, 2026-08-13): read_config's
-    # default lookup falls back to $XDG_CONFIG_HOME / ~/.config when the
-    # cwd file is absent (deployment.md § 5), so a chdir alone leaves the
-    # default-read tests floating on the developer's own per-user config.
+    # THE SANDBOX IS THE CONFIG ROOT.  One variable answers for every door
+    # (§ 2.1c), which is what the three-line HOME/XDG dance below it used to
+    # approximate -- kept, because a test that reads $HOME for something else
+    # should still not find the developer's.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(home))
     monkeypatch.setenv("HOME", str(tmp_path / "user-home"))
     (tmp_path / "user-home").mkdir()
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
@@ -163,6 +218,38 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
         f.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
         f.chmod(0o755)
     return d
+
+
+@pytest.fixture(autouse=True)
+def config_root_is_never_the_developers(tmp_path, monkeypatch):
+    """**No test may read or write the real per-user config directory.**
+
+    `config_dir()` resolves ``$MOLBUILDER_CONFIG_DIR`` FIRST and does not fall
+    back past it (`configuration.md` § 2.1c), so pinning that one variable
+    isolates every door at once: the machine config, the session key, the
+    provider secret, `environment.json`, the notify tokens.
+
+    Isolating by ``HOME`` and ``XDG_CONFIG_HOME`` alone -- which is what most
+    fixtures did -- leaves this variable inherited from the shell, and a
+    developer who has set it would have the suite read their own machine's
+    config.  Worse than reading: `web.auth._install_secret_key` CREATES a
+    session key when none exists, so an unisolated test could write into a
+    real config directory.
+
+    **It CLEARS the override and redirects the fallback, rather than pinning
+    the override itself.**  Pinning it looked simpler and was wrong: a test
+    that isolates by setting ``XDG_CONFIG_HOME`` -- which many do, and which
+    is where machine-scope records like `environment.json` are written -- would
+    have that isolation silently outranked, because the override wins over XDG
+    by design.  The suite would then be isolated from the developer and from
+    the test's own arrangement at the same time.
+
+    Clearing leaves each test's chosen mechanism working, and closes both
+    leaks: the variable cannot arrive from the developer's shell, and the XDG
+    fallback lands in a temporary directory rather than ``~/.config``.
+    """
+    monkeypatch.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "_xdg-config"))
 
 
 @pytest.fixture(autouse=True)

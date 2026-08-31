@@ -33,6 +33,10 @@ def sandbox(tmp_path, monkeypatch):
     """Clean cwd + isolated $HOME + cleared XDG so the server-wide lookup
     chain lands in tmp_path (mirrors test_runtime_config_multi_scope)."""
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).  The cwd step these
+    # tests were written against is gone, so without this every
+    # config they write is a file nothing reads.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
@@ -235,8 +239,11 @@ _EXAMPLES = Path(__file__).resolve().parents[1] / "docs" / "ops" / "examples"
 def test_server_template_parses_and_covers_the_load_bearing_sections():
     from molbuilder.runtime_config import read_config
     cfg = read_config(_EXAMPLES / "molbuilder.json.example")
-    missing = {"tls", "envs", "auth", "secret_key_file",
-               "script_generation"} - set(cfg)
+    # `secret_key_file` was in this set until 2026-08-31.  The session key has
+    # one home and the config cannot name it (`configuration.md` § 2.1e), so a
+    # template still demonstrating the key would be a template the loader
+    # REFUSES -- which is what it had become.
+    missing = {"tls", "envs", "auth", "script_generation"} - set(cfg)
     assert not missing, (
         f"molbuilder.json.example no longer demonstrates: {sorted(missing)} "
         "-- the template must move with the reader in the same commit")

@@ -61,8 +61,9 @@ pip-installed.
 
 ## 2. `molbuilder.json` — what you want from this machine
 
-One small hand-written file, found in the working directory first, else
-`~/.config/molbuilder/` ([`deployment.md` § 5](?doc=ops/deployment.md)).
+One small hand-written file, in the config directory —
+`$MOLBUILDER_CONFIG_DIR` if you set it, else
+`$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` ([`deployment.md` § 5](?doc=ops/deployment.md)).
 The two shapes you will actually write:
 
 **A workstation** (jobs run right here):
@@ -124,7 +125,8 @@ full story of records, `--target`, and what refuses when a record is stale:
 **Just you, on your own machine:** nothing to configure.
 
 ```bash
-molbuilder serve start        # background; log + pidfile under ~/.molbuilder
+molbuilder serve start        # background; log under $XDG_STATE_HOME/molbuilder,
+                              # pidfile under $XDG_RUNTIME_DIR/molbuilder
 molbuilder serve status       # is it up, is it answering, where
 ```
 

@@ -83,8 +83,13 @@ def test_a_dead_pid_reads_dead_and_a_live_foreign_one_foreign(tmp_path):
 
 def test_signalling_a_stale_pidfile_reports_and_cleans_never_signals(
         tmp_path, monkeypatch):
+    # The pidfile lives under the RUNTIME directory now, and the real one
+    # (/run/user/$UID) exists -- so without naming a temporary root this test
+    # tried to create a directory that was already there, and would have been
+    # writing a pidfile into the live location if it had not.
     monkeypatch.setenv("HOME", str(tmp_path))
-    sd.run_dir().mkdir(parents=True)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    sd.run_dir().mkdir(parents=True, exist_ok=True)
     sd.pid_path(7777).write_text("999999999\n")
     sent = []
     monkeypatch.setattr(os, "kill", lambda *a: sent.append(a))
@@ -125,7 +130,16 @@ def _spawn_supervisor(tmp_path, port=9321, child_sleep=60):
         f"'import time,sys; print(\"child up\", flush=True); "
         f"time.sleep({child_sleep})'], "
         "log_max_bytes=1_000_000, log_keep=2)\n")
-    env = dict(os.environ, HOME=str(tmp_path))
+    # The supervisor writes its pidfile under the RUNTIME directory and its
+    # log under the STATE directory, not under HOME (`configuration.md`
+    # § 2.1d).  HOME alone moved both while `~/.molbuilder` existed; it no
+    # longer does, and these are CHILD PROCESSES, so the roots are handed over
+    # explicitly rather than monkeypatched.
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime").mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, HOME=str(tmp_path),
+               XDG_STATE_HOME=str(tmp_path / "state"),
+               XDG_RUNTIME_DIR=str(tmp_path / "runtime"))
     return subprocess.Popen([sys.executable, "-c", code], env=env,
                             cwd=_REPO)
 
@@ -151,7 +165,7 @@ def test_the_daemon_lifecycle_end_to_end(tmp_path):
     back (the repair) · SIGTERM stops cleanly and removes the pidfile."""
     sup = _spawn_supervisor(tmp_path)
     try:
-        pidfile = tmp_path / ".molbuilder" / "run" / "serve-9321.pid"
+        pidfile = tmp_path / "runtime" / "molbuilder" / "serve-9321.pid"
         assert _wait_for(lambda: pidfile.exists()), "no pidfile appeared"
         assert int(pidfile.read_text()) == sup.pid
 
@@ -179,7 +193,7 @@ def test_the_daemon_lifecycle_end_to_end(tmp_path):
         assert sup.wait(timeout=15) == 0
         assert not pidfile.exists(), "stop must remove the pidfile"
 
-        log = tmp_path / ".molbuilder" / "logs" / "serve-9321.log"
+        log = tmp_path / "state" / "molbuilder" / "logs" / "serve-9321.log"
         text = log.read_text()
         assert "child up" in text, "the child's output must reach the roll"
         assert "restart requested" in text
@@ -211,12 +225,21 @@ def test_a_flapping_child_is_given_up_on(tmp_path):
         "[sys.executable, '-c', "
         "'import os,signal; os.kill(os.getpid(), signal.SIGKILL)'], "
         "log_max_bytes=1_000_000, log_keep=1))\n")
-    env = dict(os.environ, HOME=str(tmp_path))
+    # The supervisor writes its pidfile under the RUNTIME directory and its
+    # log under the STATE directory, not under HOME (`configuration.md`
+    # § 2.1d).  HOME alone moved both while `~/.molbuilder` existed; it no
+    # longer does, and these are CHILD PROCESSES, so the roots are handed over
+    # explicitly rather than monkeypatched.
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime").mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, HOME=str(tmp_path),
+               XDG_STATE_HOME=str(tmp_path / "state"),
+               XDG_RUNTIME_DIR=str(tmp_path / "runtime"))
     sup = subprocess.Popen([sys.executable, "-c", code], env=env,
                            cwd=_REPO)
     try:
         assert sup.wait(timeout=30) == 1
-        log = (tmp_path / ".molbuilder" / "logs" / "serve-9322.log")
+        log = (tmp_path / "state" / "molbuilder" / "logs" / "serve-9322.log")
         assert "giving up" in log.read_text()
     finally:
         if sup.poll() is None:
@@ -252,13 +275,17 @@ def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
     the daemon's log, not only print it to whoever asked."""
     from click.testing import CliRunner
     from molbuilder.cli import cli
+    # In-process, so the roots are monkeypatched rather than passed in a child
+    # environment.  HOME no longer decides where the log goes -- the state
+    # directory does (`configuration.md` § 2.1d).
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(sd, "read_pid", lambda port: os.getpid())
     monkeypatch.setattr(sd, "pid_state", lambda pid: "ours")
     # port 9329: nothing listens -- the health probe fails fast
     r = CliRunner().invoke(cli, ["serve", "status", "--port", "9329"])
     assert r.exit_code == 4
-    log = tmp_path / ".molbuilder" / "logs" / "serve-9329.log"
+    log = tmp_path / "state" / "molbuilder" / "logs" / "serve-9329.log"
     assert log.exists(), "the detection never reached the log"
     text = log.read_text()
     assert "[serve-status]" in text and "DETECTED" in text

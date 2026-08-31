@@ -44,6 +44,10 @@ def sandbox(tmp_path, monkeypatch):
     server-wide / project files into.
     """
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).  The cwd step these
+    # tests were written against is gone, so without this every
+    # config they write is a file nothing reads.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()

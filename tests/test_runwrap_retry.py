@@ -48,6 +48,11 @@ GEOM_MARKER = "outcoor: Final (unrelaxed) atomic coordinates"
 def sandbox(tmp_path, monkeypatch):
     """Minimal config so the generator will emit (mirrors test_runwrap_v2)."""
     monkeypatch.chdir(tmp_path)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()

@@ -1200,6 +1200,33 @@ from conftest import write_pseudos as _pseudos_for
 
 
 
+def _child_env_with_a_config(tmp_path):
+    """Environment for a spawned `molbuilder`, with a machine config of its own.
+
+    These two tests run the real CLI in a SUBPROCESS from the repo root, and
+    it used to pick up a ``./molbuilder.json`` sitting there -- the developer's
+    own file, which no test had put under control.  That is proving something
+    with found state, and it ended the moment the machine config stopped being
+    looked for in the working directory (`configuration.md` § 2.1a).
+
+    So the child is given a root of its own, holding the one thing the render
+    requires: ``script_generation.activation``.  ``monkeypatch`` cannot reach
+    across a process boundary, which is why the environment is built here
+    rather than set on the parent.
+    """
+    import json
+    import os
+    root = tmp_path / "child-config-root"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {"preamble": "module load mamba",
+                              "activation": "source activate"},
+    }))
+    env = dict(os.environ)
+    env["MOLBUILDER_CONFIG_DIR"] = str(root)
+    return env
+
+
 def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
     """§ 7's bar, automated: structure -> hand-over -> description -> deck.
 
@@ -1253,7 +1280,8 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
         p = subprocess.run(
             [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "run",
              "coarse", "--bundle", str(d)],
-            capture_output=True, text=True, cwd=str(ROOT), timeout=300)
+            capture_output=True, text=True, cwd=str(ROOT), timeout=300,
+            env=_child_env_with_a_config(tmp_path))
         assert p.returncode == 0, p.stdout + p.stderr
         assert "already under way" not in p.stdout, (
             "the hand-over's own files are being reported as engine leftovers:\n"
@@ -1289,7 +1317,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
 
 
-def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
+def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path):
     """The machine half of § 7's bar, which the chain test above does not reach.
 
     **Where the grid comes from is settled and it is not the description.**
@@ -1347,7 +1375,8 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
         p = subprocess.run(
             [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "bench",
              "coarse", "--bundle", str(d)],
-            capture_output=True, text=True, cwd=str(ROOT), timeout=300)
+            capture_output=True, text=True, cwd=str(ROOT), timeout=300,
+            env=_child_env_with_a_config(tmp_path))
         assert p.returncode == 0, (
             "a CPU description cannot be benchmarked:\n" + p.stdout + p.stderr)
 
@@ -2017,6 +2046,11 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         b.mkdir(parents=True)
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
         monkeypatch.chdir(tmp_path)
+        # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+        # working-directory step, which is gone (configuration.md § 2.1a) --
+        # without naming the directory the write lands in a file nothing
+        # opens, and the test passes having configured nothing.
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
         (tmp_path / "molbuilder.json").write_text(_json.dumps(
             {"script_generation": {"preamble": "source /home/local/conda.sh",
                                    "activation": "conda activate"}}))

@@ -769,8 +769,9 @@ def machine_scope_path() -> Path:
     `config_dir` is L1 pure stdlib exactly like `persist`, which this module
     already imports (`write_environment` -> `..persist.write_json`).
 
-    **Per-user only, with no cwd step** — deliberately unlike
-    `molbuilder.json`, whose lookup tries the working directory first.  A
+    **Per-user only, with no cwd step.**  `molbuilder.json` had one until
+    2026-08-31 and no longer does, so the two now agree rather than
+    contrasting (`configuration.md` § 2.1a).  A
     calculation is very often the working directory, so a cwd step here would
     make the machine scope and the calculation scope the same file whenever
     you happened to run from inside a bundle, and M-3's precedence would then

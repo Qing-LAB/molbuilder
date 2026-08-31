@@ -11,15 +11,13 @@ A working-directory `molbuilder.json` is honoured and SAID OUT LOUD.
     realize which one was the effective one … I prefer consistency rather than
     all based on implicit rules."*
 
-The machine scope's home is the per-user config directory.  A cwd file still
-wins when it exists, because § 2.1's search stops at the first hit — nothing is
-merged, and until now nothing was said, so two files could hold the same setting
-while one took effect.
+The machine scope has ONE location, the per-user config directory. A
+working-directory file is **not read at all** — so the danger inverts: it used
+to win silently, and now it loses silently. A person editing one would watch
+their changes do nothing, which is why its presence is still said out loud.
 
-The state worth the noise is **both files present**: that is the only one in
-which a setting can be written twice and read once.  It is a warning and never a
-refusal — refusing would break a machine that has such a file today, and obeying
-quietly is the bug.
+It is a warning and never a refusal, in both directions: an unread file does not
+stop the program, and a loose mode does not either.
 """
 from __future__ import annotations
 
@@ -61,27 +59,26 @@ class TestWhenItSaysNothing:
 
 class TestWhenItSpeaks:
 
-    def test_a_cwd_file_is_named_and_so_is_its_home(self, isolated):
+    def test_an_unread_cwd_file_is_named_and_so_is_the_one_location(
+            self, isolated):
         work, home = isolated
         (work / "molbuilder.json").write_text("{}")
         msg = _shadow()
         assert msg is not None
-        assert str(work / "molbuilder.json") in msg, "name the file in effect"
+        assert "NOT READ" in msg, (
+            "the danger inverted when the cwd step was deleted: this file "
+            "used to win silently and now loses silently, and someone editing "
+            "it would watch their changes do nothing")
+        assert str(work / "molbuilder.json") in msg
         assert str(home) in msg, (
-            "and where it belongs -- 'move it' is not actionable without the "
-            "destination")
+            "'move it' is not actionable without the destination")
 
-    def test_both_present_says_the_home_one_is_ignored(self, isolated):
-        """The case the user hit: written twice, read once."""
-        work, home = isolated
-        home.parent.mkdir(parents=True, exist_ok=True)
-        home.write_text('{"execution": {"mode": "submit"}}')
-        (work / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
-        msg = _shadow()
-        assert "IGNORED" in msg, (
-            "a reader must not have to infer that the other file lost")
-        assert "not layers" in msg or "not merged" in msg or "nothing" in msg, (
-            "and that nothing from it is merged in -- the search STOPS")
+    def test_it_says_when_the_one_location_is_still_empty(self, isolated):
+        """Otherwise "move it there" reads as though a file already exists to
+        merge with, and the reader hesitates."""
+        work, _home = isolated
+        (work / "molbuilder.json").write_text("{}")
+        assert "no file there yet" in _shadow()
 
     def test_it_points_at_the_project_scope_for_per_directory_settings(
             self, isolated):
@@ -95,14 +92,22 @@ class TestWhenItSpeaks:
 
 class TestItIsAWarningAndNotARefusal:
 
-    def test_the_cwd_file_still_takes_effect(self, isolated):
+    def test_the_cwd_file_is_not_read(self, isolated):
         from molbuilder.runtime_config import machine_config_path
-        work, _home = isolated
-        (work / "molbuilder.json").write_text("{}")
+        work, home = isolated
+        (work / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
         path, via = machine_config_path()
-        assert path == (work / "molbuilder.json").resolve()
-        assert via == "cwd", (
-            "§ 2.1a keeps the step working; it only stops being silent")
+        assert path == home.resolve(), (
+            "one location -- and it is not the working directory")
+        assert via == "config-dir"
+
+    def test_and_its_contents_do_not_leak_in(self, isolated):
+        """The sharp end: not merely 'a different path' but 'that file's
+        settings are not applied'."""
+        from molbuilder.runtime_config import read_config
+        work, _home = isolated
+        (work / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
+        assert read_config() == {}
 
 
 class TestEverySurfaceSaysTheSameThing:
@@ -117,16 +122,19 @@ class TestEverySurfaceSaysTheSameThing:
 
     def test_the_jobset_banner_prints_it(self, isolated, capsys):
         from molbuilder.jobset import _cli
-        work, _home = isolated
+        work, home = isolated
         (work / "molbuilder.json").write_text("{}")
         _cli._echo_config_root()
         out = capsys.readouterr()
-        assert "working directory" in out.err, (
-            "the banner names the resolved path on stdout; the warning says "
-            "what that path is standing in front of, and goes to stderr so it "
-            "reaches a person without entering piped output")
-        assert str(work / "molbuilder.json") in out.out, (
-            "and the banner itself still names the file, as it always did")
+        assert "NOT READ" in out.err, (
+            "the warning goes to stderr so it reaches a person without "
+            "entering piped output")
+        assert str(work / "molbuilder.json") in out.err, (
+            "and names the stray file, since 'somewhere in the working "
+            "directory' is not something you can go and delete")
+        assert str(home) in out.out, (
+            "while the banner on stdout names the file actually read -- which "
+            "is now the one location, not the one in the working directory")
 
 
 # ---------------------------------------------------------------------------
@@ -144,10 +152,10 @@ class TestTheModeIsCheckedOnTheWayIn:
     the careful writer, so a `0644` config was `0644` in silence."""
 
     def test_a_tight_file_says_nothing(self, isolated):
-        work, _home = isolated
-        f = work / "molbuilder.json"
-        f.write_text("{}")
-        f.chmod(0o600)
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        home.write_text("{}")
+        home.chmod(0o600)
         assert _mode_warning() is None, "the correct case must stay quiet"
 
     def test_no_file_says_nothing(self, isolated):
@@ -156,8 +164,9 @@ class TestTheModeIsCheckedOnTheWayIn:
 
     @pytest.mark.parametrize("mode", [0o644, 0o640, 0o666, 0o604])
     def test_any_reach_past_the_owner_is_named(self, isolated, mode):
-        work, _home = isolated
-        f = work / "molbuilder.json"
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        f = home
         f.write_text("{}")
         f.chmod(mode)
         msg = _mode_warning()
@@ -167,8 +176,9 @@ class TestTheModeIsCheckedOnTheWayIn:
 
     def test_it_names_the_exact_command_to_fix_it(self, isolated):
         """A warning whose remedy the reader has to work out is a nag."""
-        work, _home = isolated
-        f = work / "molbuilder.json"
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        f = home
         f.write_text("{}")
         f.chmod(0o644)
         assert f"chmod 0600 {f}" in _mode_warning()
@@ -176,8 +186,9 @@ class TestTheModeIsCheckedOnTheWayIn:
     def test_group_only_and_world_readable_read_differently(self, isolated):
         """`0640` and `0644` are not the same exposure, and a message that
         called both "everyone" would overstate one and understate nothing."""
-        work, _home = isolated
-        f = work / "molbuilder.json"
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        f = home
         f.write_text("{}")
         f.chmod(0o640)
         group_only = _mode_warning()
@@ -190,8 +201,9 @@ class TestTheModeIsCheckedOnTheWayIn:
         """Not decoration: without the reason this reads as pedantry about a
         config file, and the reason is that it carries key paths and provider
         credentials."""
-        work, _home = isolated
-        f = work / "molbuilder.json"
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        f = home
         f.write_text("{}")
         f.chmod(0o644)
         msg = _mode_warning()
@@ -203,8 +215,9 @@ class TestItIsAWarningAndNotARefusalEither:
 
     def test_a_loose_file_is_still_read(self, isolated):
         from molbuilder.runtime_config import machine_config_path
-        work, _home = isolated
-        f = work / "molbuilder.json"
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        f = home
         f.write_text("{}")
         f.chmod(0o644)
         assert machine_config_path()[0] == f.resolve(), (
@@ -216,8 +229,9 @@ class TestBothWarningsTravelTogether:
 
     def test_provenance_carries_the_mode_warning_too(self, isolated):
         from molbuilder.runtime_config import config_provenance
-        work, _home = isolated
-        f = work / "molbuilder.json"
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        f = home
         f.write_text("{}")
         f.chmod(0o644)
         assert config_provenance()["mode_warning"] == _mode_warning()
@@ -229,10 +243,9 @@ class TestBothWarningsTravelTogether:
         work, home = isolated
         home.parent.mkdir(parents=True, exist_ok=True)
         home.write_text("{}")
-        f = work / "molbuilder.json"
-        f.write_text("{}")
-        f.chmod(0o644)
+        home.chmod(0o644)
+        (work / "molbuilder.json").write_text("{}")
         _cli._echo_config_root()
         err = capsys.readouterr().err
-        assert "IGNORED" in err, "the shadow warning"
-        assert "chmod 0600" in err, "and the mode warning"
+        assert "NOT READ" in err, "the stray-file warning"
+        assert "chmod 0600" in err, "and the mode warning, about the real one"

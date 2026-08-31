@@ -71,12 +71,12 @@ def _maybe_install_auth(app, cfg) -> None:
     the pre-loaded cfg (not the filesystem) so ``create_app(config=...)``
     can swap in a test config without touching ``molbuilder.json``.
     """
-    from ..runtime_config import get_auth, get_secret_key_file
+    from ..runtime_config import get_auth
     auth_cfg = get_auth(cfg)
     if not auth_cfg:
         return  # no auth configured; nothing to do
     from .auth import init_auth
-    init_auth(app, auth_cfg, get_secret_key_file(cfg))
+    init_auth(app, auth_cfg)
 
 
 def _install_admins(app, cfg) -> None:
@@ -204,7 +204,8 @@ def create_app(*, config=None) -> Flask:
     Parameters:
         config: optional pre-loaded ``runtime_config`` dict.  When
                 ``None`` (production default), the config is read
-                from ``./molbuilder.json`` via
+                from the machine config (one location,
+                `configuration.md` § 2.1a) via
                 :func:`molbuilder.runtime_config.read_config`.  Tests
                 pass an explicit dict (often ``{}`` for the no-auth
                 / no-TLS default) so they never touch the developer's

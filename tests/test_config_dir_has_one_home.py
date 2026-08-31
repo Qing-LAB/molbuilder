@@ -4,7 +4,7 @@
 which "was a string literal in three modules".  The DIRECTORY that filename
 sits in stayed spelled three times:
 
-    runtime_config._per_user_fallback_path   -> molbuilder.json
+    runtime_config._machine_config_file      -> molbuilder.json
     scheduler/record.machine_scope_path      -> environment.json, environments/
     auth_setup.default_secret_dir            -> secret_key
 
@@ -32,14 +32,14 @@ def moved(monkeypatch, tmp_path):
 
 def _all_four():
     from molbuilder.auth_setup import default_secret_dir, secret_key_path
-    from molbuilder.runtime_config import _per_user_fallback_path
+    from molbuilder.runtime_config import _machine_config_file
     from molbuilder.scheduler import environments_dir, machine_scope_path
     return {
         "secret_key":     secret_key_path(),
         "secret_dir":     default_secret_dir(),
         "environment":    machine_scope_path(),
         "environments":   environments_dir(),
-        "molbuilder.json": _per_user_fallback_path(),
+        "molbuilder.json": _machine_config_file(),
     }
 
 
@@ -278,8 +278,15 @@ class TestThePathsOverride:
         return tmp_path
 
     def _write(self, cfg, obj):
+        """Into the ONE location, which is not the working directory.
+
+        Written to the cwd at first, and every `paths` assertion passed while
+        proving nothing -- the file was not being read at all.
+        """
         import json
-        (cfg / "molbuilder.json").write_text(json.dumps(obj))
+        root = cfg / "cfg"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "molbuilder.json").write_text(json.dumps(obj))
 
     def test_defaults_when_nothing_is_named(self, cfg):
         from molbuilder.runtime_config import logs_dir, reports_dir, run_dir
@@ -343,7 +350,8 @@ class TestThePathsOverride:
         """THE BOOTSTRAP RULE.  A log that could only be written after parsing
         a file that failed to parse is the one log nobody gets."""
         from molbuilder.runtime_config import logs_dir
-        (cfg / "molbuilder.json").write_text("{ not json")
+        (cfg / "cfg").mkdir(parents=True, exist_ok=True)
+        (cfg / "cfg" / "molbuilder.json").write_text("{ not json")
         assert logs_dir() == cfg / "state" / "molbuilder" / "logs"
 
     def test_the_override_is_machine_scope_only(self):

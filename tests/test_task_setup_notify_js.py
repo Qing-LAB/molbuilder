@@ -306,3 +306,60 @@ def test_no_two_elements_share_an_id_in_the_task_setup_page():
     assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
 
 
+
+
+# ---------------------------------------------------------------------------
+# The far-machine command must resolve the config directory the SAME way
+# ---------------------------------------------------------------------------
+
+def test_the_remote_command_implements_the_whole_config_dir_rule():
+    """`configuration.md` § 2.1c, expressed in shell because it runs elsewhere.
+
+    The card hands over a copy-paste block for a machine this server cannot
+    write to, so the rule has to travel as shell rather than as an answer --
+    and it has to be the WHOLE rule.  It implemented only the XDG branches
+    until 2026-08-31: on any machine with ``MOLBUILDER_CONFIG_DIR`` set,
+    following the card wrote the file where the monitor does not look, and
+    silently, because an absent notify file just means "no notifier".
+
+    This runs the emitted shell under all three environments and compares it
+    against `config_dir()` itself, so the two cannot drift.  A comment saying
+    "keep these in sync" is what failed here once already.
+    """
+    import os
+    import re
+    import subprocess
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / (
+        "molbuilder/web/static/task-setup/viewer.js")
+    line = next((l for l in src.read_text(encoding="utf-8").splitlines()
+                 if l.strip().startswith("'cfg=")), None)
+    assert line, "the command no longer starts by resolving a config dir"
+    # the JS string literal, unescaped to the shell it emits
+    shell = re.sub(r"^\s*'|\\n'\s*$", "", line.strip()).replace('\\"', '"')
+
+    from molbuilder.config_dir import config_dir
+    home = "/home/tester"
+    cases = [
+        ({"MOLBUILDER_CONFIG_DIR": "/scratch/me/mb"}, "the override, exact"),
+        ({"XDG_CONFIG_HOME": "/tmp/xdg"}, "the XDG root, with our name under it"),
+        ({}, "the default"),
+    ]
+    for extra, what in cases:
+        env = {"HOME": home, **extra}
+        got = subprocess.run(["bash", "-c", shell + '; echo "$cfg"'],
+                             env=env, capture_output=True, text=True,
+                             check=True).stdout.strip()
+        saved = dict(os.environ)
+        try:
+            os.environ.clear()
+            os.environ.update(env)
+            expected = str(config_dir())
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        assert got == expected, (
+            f"{what}: the card's shell says {got!r}, config_dir() says "
+            f"{expected!r} -- a file written by following the card would "
+            f"land where nothing reads it")

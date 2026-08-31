@@ -36,7 +36,8 @@ from .recipes import BUILTIN_RECIPES, recipe_by_name
 # --------------------------------------------------------------------- #
 #
 # Every ``molbuilder envs install`` run drops a full copy of its
-# terminal output at ``~/.molbuilder/logs/install-<recipe>-<TS>.log``
+# terminal output at ``<log dir>/install-<recipe>-<TS>.log`` -- the log
+# directory is `runtime_config.logs_dir()` (configuration.md § 2.1d)
 # so the user can grep / diff / share install transcripts later
 # without rerunning the build.  The path is reported at the start of
 # the install and again at the end.

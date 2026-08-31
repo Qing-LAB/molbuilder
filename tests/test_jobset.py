@@ -2669,6 +2669,11 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
                     topology=Topology(sockets=2, cores_per_socket=64)),
         base / FILENAME)
     monkeypatch.chdir(base)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
     prep_jobset(js, base, env="molbuilder-siesta")
     return base
 
@@ -2766,6 +2771,11 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
         {"script_generation": {"activation": "conda activate",
                                "preamble": "source /x/conda.sh"}}))
     monkeypatch.chdir(base)
+    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
+    # working-directory step, which is gone (configuration.md § 2.1a) --
+    # without naming the directory the write lands in a file nothing
+    # opens, and the test passes having configured nothing.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
 
     from molbuilder import runwrap as _rw
 

@@ -3,7 +3,7 @@
 The snapshot answers three questions:
 
   * Which conda envs exist (by name) on this machine?
-  * What does ``./molbuilder.json`` say (TLS paths, env-name overrides)?
+  * What does the machine config say (TLS paths, env-name overrides)?
   * Where is the ``conda`` CLI?
 
 It does NOT pre-probe host PATH for individual tools -- ``shutil.which``

@@ -12,11 +12,15 @@ Covered:
   2026-08-12 -- "ignored silently" is how admin/rate_limit were dropped)
 * the convenience accessors filter junk values defensively
 
-Every test ``chdir``s into ``tmp_path`` so the repo-root molbuilder.json
-template never leaks into the reader — and since ``read_config()``'s
-default lookup gained the deployment.md § 5 XDG fallback (A-7,
-2026-08-13), HOME/XDG are sandboxed too, or the developer's own
-``~/.config/molbuilder/molbuilder.json`` would decide these outcomes.
+Every test writes its ``molbuilder.json`` into ``tmp_path`` and the fixture
+below makes ``tmp_path`` the CONFIG ROOT, so the reader opens exactly the file
+the test wrote and nothing else.
+
+That used to be arranged by ``chdir`` -- the reader's first candidate was the
+working directory -- with ``HOME`` and ``XDG_CONFIG_HOME`` sandboxed underneath
+in case the file was absent.  The working-directory step was deleted on
+2026-08-31 (`configuration.md` § 2.1a), and the ``chdir`` calls that remain in
+these tests no longer decide anything; the one variable does.
 """
 
 from __future__ import annotations
@@ -30,7 +34,19 @@ from molbuilder.runtime_config import (CONFIG_FILENAME, RuntimeConfigError,
 
 
 @pytest.fixture(autouse=True)
-def _isolated_home(monkeypatch, tmp_path_factory):
+def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
+    """``tmp_path`` holds this test's machine config, and the reader knows it.
+
+    ONE variable answers for the whole lookup (`configuration.md` § 2.1c), so
+    this replaces the HOME/XDG sandboxing that used to guard the fallback --
+    which is kept anyway, because a test that reads ``$HOME`` for some other
+    reason should still not find the developer's.
+
+    `conftest.config_root` is the general form of this fixture and is what new
+    tests should ask for; this one exists because every test in this file
+    already writes to ``tmp_path`` by name.
+    """
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)

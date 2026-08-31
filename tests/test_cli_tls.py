@@ -4,7 +4,11 @@ The CLI grew a pair of ``--cert`` / ``--key`` flags plus a
 ``molbuilder.json`` config-file lookup so a deployment can flip the
 Flask dev server into HTTPS without code changes.  Precedence:
 
-    CLI flag   >   ./molbuilder.json   >   plain HTTP
+    CLI flag   >   the machine config   >   plain HTTP
+
+The middle term was ``./molbuilder.json`` until 2026-08-31; the machine scope
+now has one location and no working-directory step (`configuration.md`
+§ 2.1a).  The precedence is unchanged -- only where the file is found.
 
 The resolver lives at ``molbuilder.cli._resolve_tls``; both serve
 commands pass the resolved pair to ``app.run(ssl_context=...)``.
@@ -26,6 +30,21 @@ from click.testing import CliRunner
 
 from molbuilder import cli
 from molbuilder.cli import _check_tls_readable, _resolve_tls
+
+
+@pytest.fixture(autouse=True)
+def _tmp_path_is_the_config_root(monkeypatch, tmp_path):
+    """These tests write their ``molbuilder.json`` into ``tmp_path``.
+
+    They arranged for it to be read by ``chdir``-ing there, which was the
+    reader's first candidate.  That step is gone, so the directory is named
+    outright instead -- and this file had NO other isolation, so without it
+    the resolver would answer from the developer's own machine config.
+
+    `conftest.config_root` is the general form; this file writes to
+    ``tmp_path`` by name throughout.
+    """
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
 
 
 # --------------------------------------------------------------------- #

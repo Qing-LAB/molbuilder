@@ -1291,9 +1291,9 @@ def _print_oauth_redirect_hint_if_auth_on(scheme, host, port):
 
 
 def _resolve_tls(cert_cli, key_cli):
-    """CLI flags > ./molbuilder.json > (None, None).
+    """CLI flags > the machine config > (None, None).
 
-    Reads cert/key from ``./molbuilder.json`` (via
+    Reads cert/key from the machine config (via
     :mod:`molbuilder.config`).  Both nested (``"tls": {"cert": ...,
     "key": ...}``) and flat (top-level ``"cert"`` / ``"key"``) shapes
     are accepted; see ``molbuilder.config`` for details.  A partial
@@ -1437,13 +1437,14 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
         you log in to the server with is the username CAS will
         authenticate against.
       * The Flask session signing key is generated locally with
-        ``secrets.token_urlsafe(32)`` and written to a 0600 file under
-        ``~/.config/molbuilder/secret_key``.  It is NEVER printed,
-        NEVER logged, and NEVER placed into molbuilder.json -- the
-        config file holds only the PATH.
+        ``secrets.token_urlsafe(32)`` and written to a 0600 file at
+        ``<config dir>/secret_key`` -- its ONE home, which the server
+        resolves through the same function.  It is NEVER printed, NEVER
+        logged, and molbuilder.json does not name it at all: the key has
+        one home rather than a configurable path (§ 2.1e).
       * The Google OAuth client secret is prompted via ``getpass``
         (hidden input, no echo, no shell history) and written to
-        ``~/.config/molbuilder/google_client_secret`` with mode 0600.
+        ``<config dir>/google_client_secret`` with mode 0600.
         Same path-not-literal rule applies.
       * molbuilder.json itself is written mode 0600.
 
@@ -1452,14 +1453,12 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     re-prompted each run.  Use ``--force`` to acknowledge replacing an
     existing molbuilder.json's auth block.
 
-    Where the file lives: ``molbuilder serve`` looks for
-    ``./molbuilder.json`` in the directory it was launched from, and
-    falls back to ``~/.config/molbuilder/molbuilder.json`` (honouring
-    ``XDG_CONFIG_HOME``).  **This wizard writes whichever of those two
-    the server would read** -- so with no ``./molbuilder.json`` around
-    it writes the per-user one, which is found from any directory, and
-    with one already there it writes THAT, because a per-user file the
-    reader skips is an auth block nothing consults.  Pass --output to
+    Where the file lives: the machine config has ONE location, the
+    config directory.  **This wizard writes the file the server would
+    read**, by asking the reader's own resolver rather than writing
+    wherever it happened to be launched -- so the auth block cannot land
+    in a file nothing consults.  A ``./molbuilder.json`` in the launch
+    directory is not read, and is left alone.  Pass --output to
     name a path outright.
     """
     import getpass
@@ -1484,8 +1483,8 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     # 2. Resolve target paths -----------------------------------------
     #
     # THE WIZARD WRITES THE FILE THE READER WILL READ.  `machine_config_path`
-    # is the reader's own two-step lookup -- cwd first, then the per-user
-    # config directory -- so asking it is what keeps the two from disagreeing.
+    # is the reader's own resolver, so asking it is what keeps the two from
+    # disagreeing -- which they did, when this defaulted to the cwd.
     #
     # It defaulted to `./molbuilder.json` until 2026-08-30, which put the
     # config wherever the wizard happened to be launched from: for anyone
@@ -1499,7 +1498,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     from .runtime_config import machine_config_path as _machine_config_path
     output_path = (_Path(output).resolve() if output
                    else _machine_config_path()[0])
-    secret_key_file = _as.secret_key_path()
+    session_key_path = _as.secret_key_path()
     google_secret_file = _as.google_client_secret_path()
 
     # 3. Bail early on clobber unless --force --------------------------
@@ -1594,11 +1593,11 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
 
     # 6. Flask session signing key ------------------------------------
     session_secret = _as.generate_session_secret()
-    _as.write_secret_file(secret_key_file, session_secret)
+    _as.write_secret_file(session_key_path, session_secret)
     # Wipe the in-memory copy promptly; the file is the source of truth.
     del session_secret
     click.echo(
-        f"  + Flask session key generated; stored at {secret_key_file}",
+        f"  + Flask session key generated; stored at {session_key_path}",
         err=True,
     )
 
@@ -1614,10 +1613,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
                 err=True,
             )
             existing = None
-    auth_block = _as.build_auth_block(
-        providers=providers,
-        secret_key_file=secret_key_file,
-    )
+    auth_block = _as.build_auth_block(providers=providers)
     _as.emit_molbuilder_json(
         output_path, auth_block,
         force=force, existing=existing,

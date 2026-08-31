@@ -659,7 +659,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 
 ## 8. Configuration — one file, and which floor reads each part
 
-**There is one config file, ten sections, and two different audiences.** Half of it
+**There is one config file, twelve sections, and two different audiences.** Half of it
 configures the *server* (who may sign in, what the rate limiter does). Half
 configures *running calculations* (how to activate an environment, what the
 scheduler wants). Neither half knows about the other, and no document listed
@@ -670,7 +670,7 @@ neither said it was showing a subset.
 
 ```mermaid
 flowchart LR
-    A["<b>server-wide</b><br/>./molbuilder.json<br/><i>else</i> ~/.config/molbuilder/molbuilder.json"]
+    A["<b>server-wide</b><br/>&lt;config dir&gt;/molbuilder.json<br/><i>$MOLBUILDER_CONFIG_DIR, else XDG</i>"]
     B["<b>this project</b><br/>&lt;project&gt;/.molbuilder.json"]
     M{{"merge:<br/>objects deep-merge<br/>scalars and lists replace<br/><b>the project wins</b>"}}
     R["the effective settings"]
@@ -678,9 +678,12 @@ flowchart LR
     B --> M --> R
 ```
 
-**Only one server-wide file is read** — the current directory first, the XDG
-location second, and the first one found wins. A malformed file refuses to start
-rather than half-configuring something.
+**The server-wide file has one location** — the config directory
+(`configuration.md` § 2.1c). It was a first-found-wins search across the working
+directory and two XDG locations until 2026-08-31; a `./molbuilder.json` is now
+not read at all, because per-directory settings are the project scope's job and
+it merges rather than shadowing. A malformed file refuses to start rather than
+half-configuring something.
 
 `script_generation` merges by its own rule, because concatenating is the useful
 answer there: **preambles join, server first, then project**; `activation` is
@@ -694,10 +697,9 @@ the project's if set, otherwise the server's.
 | `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory), `defaults` (time, cores, memory), and `routing` — the named domains |
 | `execution` | `get_execution` | **floor 5**, at `launch` | `mode` (`direct` or `submit`), and the default `domain` |
 | `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
-| `paths` | `get_paths` | `projects.projects_root` — every surface | `projects`: where the projects tree lives.  Default: `projects/` inside the checkout; set it when that is not writable or not wanted (a quota'd cluster home, a scratch filesystem, a shared tree).  `$MOLBUILDER_PROJECTS` overrides it |
+| `paths` | `get_paths` | `projects.projects_root`; `runtime_config.logs_dir` / `run_dir` / `reports_dir` | where molbuilder keeps things that are not its own code.  `projects`: the projects tree — default `projects/` inside the checkout, `$MOLBUILDER_PROJECTS` overrides it.  `logs`, `run`, `reports`: operational state — defaults follow `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` (`configuration.md` § 2.1d) |
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
 | `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
-| `secret_key_file` | `get_secret_key_file` | the **server** | the path to the session-signing key — a path, never the secret itself |
 | `notify_keys_file` | `get_notify_keys_file` | the **server** | the path to the run-report signing-key file — a path, never the keys ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `notify_route` | `get_notify_route` | the **server** | the listener's URL segment, generated per deployment by `notify-token`. **Both keys are required**; with either absent no route is registered at any path, so the server cannot even be probed for the capability. Not a secret — it is in every access log — but never a fixed word, because a fixed word in a public repository is not obscurity ([`access-control.md`](?doc=ops/access-control.md) § 8 rule 7) |
 | `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
@@ -728,7 +730,7 @@ before:
 | rule | what it means for you |
 |---|---|
 | **an unknown top-level key is refused, never ignored** | a typo'd section name (`"shceduler"`) is an error naming the known sections, not a silently dead block. *Amended contract — `running-a-job.md` § 5 said "unknown keys are ignored", and that tolerance is exactly the hole that ate `admin`.* The one carve-out: a key starting with `_` (the templates' `"_comment_tls"` idiom) is a comment by design |
-| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `secret_key_file`, `notify_keys_file`, `notify_route`, `checkpoint`, `rate_limit` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
+| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `notify_keys_file`, `notify_route`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
 | **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `execution` and `script_generation` — never anything near a secret |
 
 *(That the § 8.2 table and the registry name the same sections is checked —
