@@ -170,12 +170,26 @@ class TestPlacementIsAbsolute:
 
     def test_dx_dy_are_from_the_world_origin_not_a_selection(self):
         """§ 3: the panel reads no selection at all.  A base atom parked far
-        from the origin must not drag the slab with it."""
+        from the origin must not drag the slab with it.
+
+        **What this no longer asserts, and why.**  It used to require the
+        SLICE's own lateral centroid to land exactly on `(dx, dy)`.  That
+        pinned the reference that made `start_registry` wrong: a slice's
+        centroid depends on which layers the trim kept, so at any layer count
+        that is not a whole stacking period the correction differed per
+        registry and moved the slab off-lattice (see
+        `TestTheRegistryIsNotContaminatedByTheTrim`).  The property this test
+        exists for is that placement is ABSOLUTE and RIGID -- which reference
+        point realises it is the builder's business, not the contract's.
+        """
         far = Structure(elements=["C"], positions=np.array([[40.0, -25.0, 12.0]]))
         a = _metal(_slab(size=(2, 2, 2), offset=(3.0, 1.0)))
         b = _metal(_slab(far, size=(2, 2, 2), offset=(3.0, 1.0)))
-        assert np.allclose(a[:, :2].mean(axis=0), [3.0, 1.0], atol=1e-6)
+        # ABSOLUTE: what else is in the structure changes nothing.
         assert np.allclose(a[:, :2], b[:, :2], atol=1e-9)
+        # RIGID, and dx/dy move it by exactly themselves.
+        moved = _metal(_slab(size=(2, 2, 2), offset=(5.0, -1.5)))
+        assert np.allclose(moved[:, :2] - a[:, :2], [2.0, -2.5], atol=1e-9)
 
 
 class TestTheStackingSwitch:
@@ -259,3 +273,89 @@ class TestWhatItRefuses:
 
     def test_zero_layers_is_a_no_op_not_an_error(self):
         assert _slab(size=(2, 2, 0)).n_atoms == 1
+
+
+# ---------------------------------------------------------------------------
+# The registry survives a layer count that is NOT a whole stacking period
+# ---------------------------------------------------------------------------
+
+class TestTheRegistryIsNotContaminatedByTheTrim:
+    """`start_registry` must mean the same thing at every layer count.
+
+    **The bug this exists for.** The slab was placed by putting *the trimmed
+    slice's own lateral centroid* on `(dx, dy)`.  A layer's lateral offset
+    repeats with the stacking period, so the mean over a window of L layers is
+    independent of where the window starts ONLY when L is a whole number of
+    periods.  At any other L the correction differed per registry, and it
+    silently cancelled part of the registry that had been asked for.
+
+    Measured before the fix, Au(111): a 4-layer slab at registry B sat
+    **1.249 Å** from the registry-A one, where the true step is
+    `a/√6` = **1.665 Å** — off-lattice, and past `SEAM_STEP_TOL_ANG`, so
+    `classify_seam` would then report `unknown` for a junction the person had
+    every reason to believe was one crystal.
+
+    `test_the_registry_control_actually_changes_the_slab` could not see it:
+    it only ever ran `size=(2, 2, 3)`, and 3 IS a whole period on (111), which
+    is precisely the case where the two references agree.
+    """
+
+    A = 4.0782
+
+    def _bottom_layer_centroid(self, registry, layers, plane="111",
+                               orthogonal=False):
+        import numpy as np
+        from molbuilder.modify import add_slab
+        from molbuilder.structure import Structure
+        out = add_slab(Structure(elements=[], positions=np.zeros((0, 3))),
+                       "Au", plane, (2, 2, layers),
+                       start_registry=registry, start_z=0.0,
+                       orthogonal=orthogonal, lattice_constant=self.A)
+        pos = np.asarray(out.positions, dtype=float)
+        z0 = sorted({round(float(z), 6) for z in pos[:, 2]})[0]
+        return pos[np.abs(pos[:, 2] - z0) < 0.1][:, :2].mean(axis=0)
+
+    @pytest.mark.parametrize("layers", [3, 4, 5, 6, 7])
+    def test_neighbouring_registries_differ_by_the_lattice_step_on_111(
+            self, layers):
+        """`a/√6` — `junction-cell.md` § 3.1 — at EVERY layer count, not only
+        the multiples of three."""
+        import numpy as np
+        step = self.A / np.sqrt(6)
+        got = np.linalg.norm(self._bottom_layer_centroid(1, layers)
+                             - self._bottom_layer_centroid(0, layers))
+        assert got == pytest.approx(step, abs=1e-3), (
+            f"{layers} layers: registry A->B moved {got:.3f} Å, but the "
+            f"lattice step is {step:.3f} Å.  A slab that is not on the "
+            f"lattice is not the crystal that was asked for")
+
+    @pytest.mark.parametrize("plane,orthogonal", [("100", True), ("110", True)])
+    def test_the_same_holds_on_the_two_period_surfaces(self, plane, orthogonal):
+        """Period 2, so an ODD layer count is the exposed case there."""
+        import numpy as np
+        a = self._bottom_layer_centroid(0, 3, plane, orthogonal)
+        b = self._bottom_layer_centroid(1, 3, plane, orthogonal)
+        moved = np.linalg.norm(b - a)
+        assert moved > 0.1, "the registry did nothing"
+        # and it is a real lattice translation: doing it twice returns
+        assert np.allclose(
+            self._bottom_layer_centroid(2 % 2, 3, plane, orthogonal), a,
+            atol=1e-6), "registry 0 and 2 are the same registry at period 2"
+
+    def test_the_offset_still_means_the_same_thing_for_every_registry(self):
+        """`dx, dy` is absolute (§ 3), so moving it must move every registry's
+        slab by exactly that much — the property the shared reference buys."""
+        import numpy as np
+        for registry in (0, 1, 2):
+            here = self._bottom_layer_centroid(registry, 4)
+            import molbuilder.modify as M
+            from molbuilder.structure import Structure
+            out = M.add_slab(Structure(elements=[], positions=np.zeros((0, 3))),
+                             "Au", "111", (2, 2, 4), start_registry=registry,
+                             start_z=0.0, offset=(3.0, -2.0),
+                             lattice_constant=self.A)
+            pos = np.asarray(out.positions, dtype=float)
+            z0 = sorted({round(float(z), 6) for z in pos[:, 2]})[0]
+            moved = pos[np.abs(pos[:, 2] - z0) < 0.1][:, :2].mean(axis=0)
+            assert np.allclose(moved - here, (3.0, -2.0), atol=1e-6), (
+                f"registry {registry}: dx,dy did not translate rigidly")

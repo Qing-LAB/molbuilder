@@ -194,8 +194,18 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
         raise ValueError(
             f"structure carries {stray!r}, which the envelope does not define "
             f"(known: {sorted(known)!r}).  Metadata belongs under 'metadata'.")
-    if not env.get("elements"):
-        raise ValueError("structure.elements must be a non-empty list")
+    # AN EMPTY STRUCTURE IS A STRUCTURE, and refusing one blocked the whole
+    # point of the slab op: it places from ABSOLUTE coordinates -- dx, dy and
+    # start_z from the world origin -- so it needs no atoms to build onto.
+    # Requiring some meant a person had to load an unrelated molecule before
+    # they could make an electrode, which is a rule nobody chose.
+    #
+    # `elements` MISSING is still refused: that is a malformed envelope, and
+    # telling it apart from a deliberately empty one is the whole distinction.
+    if env.get("elements") is None:
+        raise ValueError("structure.elements is required (may be an empty list)")
+    if not isinstance(env["elements"], list):
+        raise ValueError("structure.elements must be a list")
     if not isinstance(env.get("positions"), list):
         raise ValueError("structure.positions must be a list of [x, y, z]")
 

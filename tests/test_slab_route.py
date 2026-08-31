@@ -60,8 +60,18 @@ class TestItBuildsWhatItWasTold:
         assert down.min() < 0 and abs(down.max()) < 1e-6
 
     def test_dx_dy_are_absolute(self, client):
-        xy = _coords(_post(client, dx=3.0, dy=-2.0).get_json()["xyz"])[2:, :2]
-        assert np.allclose(xy.mean(axis=0), [3.0, -2.0], atol=1e-6)
+        """Moving `dx, dy` moves the slab by exactly that, and nothing else.
+
+        This asserted the SLICE's centroid landed on `(dx, dy)`, which pinned
+        the reference that made `start_registry` wrong at any layer count that
+        is not a whole stacking period (`tests/test_add_slab.py`,
+        `TestTheRegistryIsNotContaminatedByTheTrim`).  Which point realises
+        the placement is the builder's business; that the numbers translate
+        it rigidly is the contract.
+        """
+        here = _coords(_post(client, dx=0.0, dy=0.0).get_json()["xyz"])[2:, :2]
+        there = _coords(_post(client, dx=3.0, dy=-2.0).get_json()["xyz"])[2:, :2]
+        assert np.allclose(there - here, [3.0, -2.0], atol=1e-6)
 
     def test_a_lattice_constant_override_reaches_the_builder(self, client):
         a = _coords(_post(client, lattice_constant=4.0).get_json()["xyz"])[2:]

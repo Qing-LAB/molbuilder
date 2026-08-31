@@ -352,7 +352,11 @@ export function groupByLabel(annotations) {
  * and the server judged a structure that was not the one on screen.
  */
 export function structureForServer(structure, positions) {
-    if (!structure || !positions) return null;
+    if (!structure) return null;
+    // No frames yet is the empty canvas, not a mismatch: an empty structure
+    // has no coordinates to disagree with.
+    if (!positions) positions = structure.elements.length ? null : [];
+    if (!positions) return null;
 
     /* THE COUNT INVARIANT, checked before anything leaves. The coordinates and
      * the per-atom facts are two lists that must index the same atoms; if they
@@ -763,8 +767,19 @@ export function createEdits(handed) {
         if (!spec) throw new Error("applyOp: unknown operation '" + name + "'");
         if (running) return null;
 
-        const structure = handed.readStructure();
-        if (!structure) return null;
+        /* NOTHING LOADED IS A STATE THE SERVER CAN ANSWER, not a reason to
+         * stay silent.  This returned `null` and sent nothing, so `slab` --
+         * which places from absolute coordinates and needs no atoms -- could
+         * not build the first thing on an empty canvas, and the button did
+         * nothing with no message.
+         *
+         * An empty structure is a structure: `Structure(elements=[])` is
+         * legal, round-trips, and `add_slab` builds onto it.  Ops that DO
+         * need atoms are unaffected -- with none there is nothing to delete,
+         * rotate or translate, so they return the empty structure unchanged,
+         * which is the honest answer to asking. */
+        const structure = handed.readStructure()
+            || { elements: [], annotations: [], periodicity: null };
         let selection = handed.readSelection();
         if (spec.wholeStructure) selection = [];
 

@@ -1047,11 +1047,26 @@ def add_slab(
         # never taken apart.
         metal_pos[:, 2] = start_z - (z_rel.max() - z_rel)
 
-    # PLACEMENT IS ABSOLUTE: the slice's own lateral centroid lands on
-    # `offset`, measured from the world origin.  No anchor, no selection --
-    # the same numbers put the same slab in the same place whatever is picked.
+    # PLACEMENT IS ABSOLUTE, and the reference is THE SUPERSET'S centroid --
+    # not the slice's.
+    #
+    # THE SLICE'S CENTROID IS REGISTRY-DEPENDENT, and using it silently
+    # cancelled part of the registry the caller asked for.  Layer j's lateral
+    # offset repeats with the stacking period, so the mean over a window of L
+    # layers is independent of where the window starts ONLY when L is a whole
+    # number of periods.  At any other L the correction differed per registry:
+    # measured on Au(111), a 4-layer slab at registry B sat 1.249 A from the
+    # registry-A one where the true step is a/sqrt(6) = 1.665 A -- off-lattice,
+    # and past SEAM_STEP_TOL_ANG, so `classify_seam` then called the pair
+    # `unknown` for a junction the user had every reason to think was one
+    # crystal.
+    #
+    # The superset is the same slab for every registry, so its centroid is a
+    # constant: `offset` means one thing, and two registries differ by exactly
+    # the lattice step between them.  `tall` is at least one full period, so
+    # this reference is itself period-averaged rather than arbitrary.
     metal_pos[:, :2] += np.asarray(offset, dtype=float) \
-        - metal_pos[:, :2].mean(axis=0)
+        - all_pos[:, :2].mean(axis=0)
 
     # PADDING STAYS ON, for now.  § 3 moves *"pad cell by one layer spacing"*
     # out of this panel and into the Cell page (§ 4.4), and that move is a
