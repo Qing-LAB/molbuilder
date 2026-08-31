@@ -278,6 +278,74 @@ export function init(viewer) {
         }
     }
 
+    /* THE ATOMS' SPAN ALONG THE CHOSEN AXIS, and the gap a person adds to it.
+     *
+     * `c` is measured and set, never invented (`junction-cell.md` § 6).  The
+     * builder stopped padding on 2026-08-31, so this is where a slab's box
+     * gets its length along the transport axis -- and these two controls exist
+     * to make the measuring cheap, not to make the decision.
+     *
+     * The SPAN is a fact about the atoms, so it is displayed rather than left
+     * as arithmetic for a person to redo.  The GAP is theirs: for a boundary
+     * meant to continue the crystal it is the layer spacing (pick two atoms in
+     * adjacent layers, read the ruler's signed Δ); for a free surface it is
+     * however much vacuum the run needs.  Nothing here judges which was meant
+     * -- `classify_seam` reports on what was set, on every build. */
+    function spanAlong(axisRow) {
+        var w = data();
+        var frame = w ? w.getFrameAllAtoms(w.currentFrame()) : null;
+        if (!frame || !frame.length) return null;
+        var row = stagedCell()[axisRow];
+        var len = norm(row);
+        // Along the axis's own direction when it has one, so a tilted `c`
+        // measures the span that matters rather than the bounding box's.
+        // With no direction yet, z is the honest reading: it is the axis this
+        // control exists for and the one a slab is built along.
+        var u = len > LENGTH_QUIET
+            ? [row[0] / len, row[1] / len, row[2] / len]
+            : [0, 0, 1];
+        var lo = Infinity, hi = -Infinity;
+        for (var i = 0; i < frame.length; i++) {
+            var p = frame[i];
+            var t = p[0] * u[0] + p[1] * u[1] + p[2] * u[2];
+            if (t < lo) lo = t;
+            if (t > hi) hi = t;
+        }
+        return (hi > lo || hi === lo) ? hi - lo : null;
+    }
+
+    function renderSpan() {
+        var out = $("pv-cell-span");
+        var btn = $("pv-cell-span-plus-gap");
+        var note = $("pv-cell-span-note");
+        if (!out) return;
+        var span = spanAlong(chosenAxis());
+        var gap = Number($("pv-cell-gap") ? $("pv-cell-gap").value : NaN);
+        out.textContent = span == null ? "\u2014" : round(span) + " \u00c5";
+        var ready = span != null && isFinite(gap) && gap >= 0;
+        if (btn) {
+            btn.disabled = !ready;
+            btn.title = span == null
+                ? "Load a structure first."
+                : !isFinite(gap)
+                ? "Type the gap to add to the span."
+                : "Set this axis to " + round(span) + " + " + round(gap)
+                  + " = " + round(span + gap) + " \u00c5.";
+        }
+        if (note) {
+            note.hidden = !ready;
+            if (ready) {
+                note.textContent =
+                    "c = " + round(span) + " + " + round(gap) + " = "
+                    + round(span + gap) + " \u00c5.  For a boundary that "
+                    + "continues the crystal the gap is one layer spacing -- "
+                    + "measure it with the ruler.  The seam check reports on "
+                    + "what you set.";
+                note.classList.remove("modify-op-hint--warn");
+            }
+        }
+    }
+
     function fillAxisOptions() {
         ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id) {
             var sel = $(id);
@@ -379,6 +447,7 @@ export function init(viewer) {
             refreshHandedness();
         }
         refreshPickButtons();
+        renderSpan();
         // "Use default" clears the explicit cell -> resolve_cell(); on a periodic /
         // transport axis that RAISES (no bbox-derived lattice), so disable it there --
         // offering it is what made the box vanish (§ 3c symptom c).
@@ -545,6 +614,30 @@ export function init(viewer) {
                                         pos[1][1] - pos[0][1],
                                         pos[1][2] - pos[0][2]]);
             labelCellAxes(); syncLengthBox(); refreshHandedness();
+        });
+
+        var gapBox = $("pv-cell-gap");
+        if (gapBox) gapBox.addEventListener("input", renderSpan);
+        var axisPickForSpan = $("pv-cell-axis");
+        if (axisPickForSpan) axisPickForSpan.addEventListener("change", renderSpan);
+        var spanPlus = $("pv-cell-span-plus-gap");
+        if (spanPlus) spanPlus.addEventListener("click", function () {
+            var span = spanAlong(chosenAxis());
+            var gap = Number($("pv-cell-gap") ? $("pv-cell-gap").value : NaN);
+            if (span == null || !isFinite(gap) || gap < 0) return;
+            var r = chosenAxis();
+            var row = stagedCell()[r];
+            var have = norm(row);
+            var want = span + gap;
+            if (have < LENGTH_QUIET) {
+                // No direction yet: this control is for the axis a slab is
+                // built along, so give it z rather than refusing.
+                setStagedRow(r, [0, 0, want]);
+            } else {
+                var k = want / have;
+                setStagedRow(r, [row[0] * k, row[1] * k, row[2] * k]);
+            }
+            labelCellAxes(); syncLengthBox(); refreshHandedness(); renderSpan();
         });
 
         var setLen = $("pv-cell-set-len");

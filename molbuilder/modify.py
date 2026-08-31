@@ -1068,15 +1068,23 @@ def add_slab(
     metal_pos[:, :2] += np.asarray(offset, dtype=float) \
         - all_pos[:, :2].mean(axis=0)
 
-    # PADDING STAYS ON, for now.  § 3 moves *"pad cell by one layer spacing"*
-    # out of this panel and into the Cell page (§ 4.4), and that move is a
-    # contract rewrite -- `junction-cell.md` § 5 names the Junction panel as
-    # the switch's home and § 6 explains why it defaults on.  Until it lands,
-    # an unpadded box would put the bottom atom's periodic image exactly on
-    # the top atom and SIESTA would stop (§ 1).
+    # NO PADDING.  `c` IS MEASURED AND SET, NEVER INVENTED
+    # (`junction-cell.md` § 6, rewritten 2026-08-31).
+    #
+    # This used to add one interlayer spacing for you.  The switch that was
+    # supposed to expose that decision made it instead -- it defaulted on, and
+    # its note deliberately withheld the number -- so the one value deciding
+    # whether a junction was a crystal was computed out of sight.
+    #
+    # What the builder knows, it sets: `a` and `b` are the crystal's own
+    # in-plane vectors, straight from the slab ASE built.  What it does not
+    # know, it leaves: `c` comes out as the atoms' extent, which is a
+    # COLLISION until a person sets it on the Cell page.  That is deliberate
+    # -- the missing step is visible where it is taken, and `classify_seam`
+    # names it on every build rather than a builder guessing.
     return _finish_slab(
         struct, metal_pos, element, full,
-        d_interlayer=d_layer, pad_interlayer_gap=True)
+        d_interlayer=d_layer, pad_interlayer_gap=False)
 
 
 def add_electrode_slab(

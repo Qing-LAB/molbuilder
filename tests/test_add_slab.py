@@ -231,26 +231,49 @@ class TestTheStackingSwitch:
 
 
 class TestTheBoxItCaptures:
-    """`junction-cell.md` § 1: an unpadded box puts the bottom atom's periodic
-    image exactly on the top atom, at zero distance, and SIESTA stops.  The
-    padding is one interlayer spacing.
+    """`junction-cell.md` § 6: **`c` is measured and set, never invented.**
 
-    Pinned at ONE layer as well as several, because that is the case with no
-    spacing of its own to measure — and the case whose handling moved during
-    the API review, from a probe inside the shared helper to the caller that
-    owns the build recipe.
+    The builder sets what it knows -- `a` and `b`, the crystal's own in-plane
+    vectors -- and leaves `c` as the atoms' extent.  That is a `collision`
+    until a person sets it on the Cell page, and it is meant to be: the
+    missing step is visible where it is taken.
+
+    **This pinned the opposite until 2026-08-31**: `c == span + d`, one
+    interlayer spacing added by the builder.  The switch that was supposed to
+    expose that decision made it instead -- default on, with a note that
+    deliberately withheld the number -- so the value deciding whether a
+    junction was a crystal was computed out of sight.
     """
 
     @pytest.mark.parametrize("n_layers", (1, 2, 3))
-    def test_the_box_is_padded_by_exactly_one_interlayer_spacing(self, n_layers):
-        d_au111 = 2.3544                       # Au(111), a = 4.078
+    def test_c_is_the_atoms_extent_with_nothing_added(self, n_layers):
         out = _slab(size=(2, 2, n_layers), start_z=2.4)
         pos = np.asarray(out.positions, dtype=float)
         span = float(pos[:, 2].max() - pos[:, 2].min())
         assert out.cell is not None, "a slab with z extent must capture a box"
-        assert abs((out.cell[2][2] - span) - d_au111) < 1e-3, (
-            f"{n_layers} layer(s): padded by {out.cell[2][2] - span}, "
-            f"expected one spacing ({d_au111})")
+        assert out.cell[2][2] == pytest.approx(span, abs=1e-9), (
+            f"{n_layers} layer(s): the builder added "
+            f"{out.cell[2][2] - span:.4f} Å to c.  It does not decide that")
+
+    def test_a_and_b_are_still_the_crystals_own_vectors(self):
+        """What the builder DOES know it still sets: re-deriving the in-plane
+        lattice by hand would be a second formula waiting to disagree with the
+        atoms."""
+        from molbuilder.modify import _build_ase_slab
+        out = _slab(size=(2, 2, 3))
+        ase = np.asarray(_build_ase_slab("Au", "111", (2, 2, 3), False,
+                                         4.078).get_cell(), dtype=float)
+        assert np.allclose(out.cell[0][:2], ase[0][:2], atol=1e-9)
+        assert np.allclose(out.cell[1][:2], ase[1][:2], atol=1e-9)
+
+    def test_the_unset_c_is_reported_rather_than_left_to_be_discovered(self):
+        """The loop § 6.1 closes: the seam check names it on every build, so
+        the step nobody has taken yet is visible in the tab."""
+        from molbuilder.cell import classify_seam
+        out = _slab(size=(2, 2, 6))
+        verdict = classify_seam(np.asarray(out.positions, dtype=float), out.cell)
+        assert verdict.verdict == "collision", verdict
+        assert "not padded" in verdict.message
 
     def test_a_degenerate_z_extent_captures_no_box(self):
         """A monolayer landing exactly on a flat molecule has no z extent, and

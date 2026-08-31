@@ -178,15 +178,28 @@ class TestTheWarningReachesTheUser:
         body.update(kw)
         return client.post("/api/modify/slab", json=body).get_json()
 
-    def test_a_bad_layer_count_comes_back_as_a_warning_not_a_refusal(self, client):
+    def test_a_fresh_slab_reports_the_c_nobody_has_set_yet(self, client):
+        """`junction-cell.md` § 6: the builder leaves `c` as the extent, so a
+        fresh slab collides with its own image -- and is TOLD SO, on the build,
+        rather than the person discovering it at the engine.
+
+        This asserted `eclipsed` on a bad layer count until 2026-08-31.  With
+        no padding the boundary is a collision first, and the stacking question
+        cannot be asked of a box whose faces are on top of each other."""
         j = self._slab(client, layers=4)
         assert j["ok"] is True, "a warning, never a refusal (§ 2.4)"
         warns = [n for n in j["notices"] if n["level"] == "warn"]
-        assert warns and "§ 3.1" in warns[0]["message"]
+        assert warns, "a slab with an unset c must say so"
+        assert "collision" in warns[0]["message"]
+        assert "not padded" in warns[0]["message"]
 
-    def test_a_good_slab_is_not_nagged(self, client):
-        j = self._slab(client, layers=6)
-        assert [n["level"] for n in j["notices"]] == ["info"]
+    def test_it_says_the_same_thing_whatever_the_layer_count(self, client):
+        """The layer-count question belongs to the seam, and there is no seam
+        until `c` is set.  A good layer count does not buy a quiet build --
+        it cannot, because nothing has been decided about the box yet."""
+        for layers in (4, 6):
+            j = self._slab(client, layers=layers)
+            assert [n["level"] for n in j["notices"]] == ["warn"], layers
 
     def test_it_uses_the_one_channel_and_not_a_second_door(self, client):
         j = self._slab(client, layers=4)
@@ -204,7 +217,7 @@ class TestTheWarningReachesTheUser:
         """
         seen = self._slab(client, layers=4)["notices"]
         assert {"level", "message", "where", "about"} <= set(seen[0])
-        assert seen[0]["where"] == "slab.seam_eclipsed"
+        assert seen[0]["where"] == "slab.seam_collision"
         assert seen[0]["about"] != "cell"
 
     def test_the_periodicity_receipts_are_not_trampled(self, client):

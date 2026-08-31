@@ -488,6 +488,9 @@ export function createModel(opts) {
             // and Assign would have run against indices that no longer
             // exist -- or worse, that now name different atoms.
             selection.clear();
+            // ...and the ruler, whose picks name atoms in the structure that
+            // just went away.  Same argument, one track over.
+            measurement.clear();
             unit = HOLDING;
         },
         announce: () => {},                 // settle already told everyone
@@ -561,6 +564,25 @@ export function createModel(opts) {
             // selection: a kept one could point at an atom that is no longer the
             // one it meant. A count-preserving transform leaves it alone.
             if (countChanged) selection.clear();
+            /* THE RULER IS CLEARED BY ANY EDIT, with no "did the count change"
+             * question asked (user, 2026-08-31: *"any edit would clear
+             * measurement selection list - to keep it simple and explicit"*).
+             *
+             * It was cleared by NOTHING until then, and the failure was worse
+             * than the selection's: measure a bond, delete an earlier atom,
+             * and every index shifts down one.  The readout is subscribed to
+             * the structure, so it repaints AT ONCE -- quoting a different
+             * pair of atoms to three decimal places, with nothing saying
+             * anything moved.  The Cell page reads the same picks, so a stale
+             * one could be written into a cell matrix and posted.
+             *
+             * Unconditional rather than count-gated, and that is the simpler
+             * rule as well as the safer one: a count-preserving transform
+             * MOVES the atoms it kept, so a measurement across them is stale
+             * in value even when it is sound in index.  There is no edit after
+             * which a held measurement is still the measurement that was
+             * taken. */
+            measurement.clear();
         },
     });
 

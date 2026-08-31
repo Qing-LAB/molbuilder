@@ -939,6 +939,26 @@
                    step="0.01" min="0" aria-label="length of the chosen axis" />
             <button id="pv-cell-set-len" class="modify-ghost" type="button">Set</button>
           </div>
+          {#- § 6.1: `c` is MEASURED AND SET, never invented.  The builder no
+              longer pads, so this is where the box gets its length along the
+              transport axis.  Two conveniences, no decisions: the atoms' span
+              is a fact nobody should be recomputing, and the gap is added to
+              it.  For a boundary meant to continue the crystal the gap IS the
+              layer spacing -- pick two atoms in adjacent layers and read the
+              ruler's signed delta.  For a free surface it is however much
+              vacuum the run needs, and nothing here judges which you meant:
+              `classify_seam` reports on what you set, every build. -#}
+          <div class="modify-op-row modify-cell-pick">
+            <label for="pv-cell-gap">Span + gap</label>
+            <output id="pv-cell-span" class="modify-cell-tag"
+                    aria-label="the atoms' extent along the chosen axis">—</output>
+            <input type="number" id="pv-cell-gap" class="modify-cell-num"
+                   step="0.01" min="0"
+                   aria-label="gap to add to the span" placeholder="gap" />
+            <button id="pv-cell-span-plus-gap" class="modify-ghost" type="button"
+                    disabled>Use</button>
+          </div>
+          <p id="pv-cell-span-note" class="modify-op-hint" hidden></p>
           {#- § 7: the refusal this gesture will actually hit.  Advisory -- the
               gate still decides; this only says it before the request, with the
               way out the gate cannot know about. -#}
