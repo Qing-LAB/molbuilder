@@ -267,7 +267,11 @@ def emit_molbuilder_json(output_path: Path,
                           force: bool = False,
                           existing: Optional[Dict[str, Any]] = None,
                           ) -> Path:
-    """Write ``./molbuilder.json`` carrying the ``auth_block``.
+    """Write the machine ``molbuilder.json`` carrying the ``auth_block``.
+
+    WHERE it goes is the caller's to decide and the CLI asks
+    :func:`runtime_config.machine_config_path` -- the same helper the reader
+    uses -- so the wizard writes the file the server will actually read.
 
     If ``existing`` is provided, the auth block REPLACES any prior
     auth section but every other top-level key is preserved (so an
@@ -281,6 +285,15 @@ def emit_molbuilder_json(output_path: Path,
     sensitive (knowing the path is half the attack).
     """
     output_path = Path(output_path)
+    # The per-user config directory may not exist yet.  0700, matching the
+    # secret directory this file's paths point INTO: the config names those
+    # files, and knowing the path is half the attack (see the mode note above).
+    #
+    # It happened to work before only because the wizard writes the session
+    # key first, which creates the directory as a side effect -- correctness
+    # resting on call order, one reordering away from a FileNotFoundError on
+    # a fresh machine.
+    output_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     if existing is None and output_path.exists() and not force:
         raise FileExistsError(
             f"{output_path} already exists.  Re-run with --force to "

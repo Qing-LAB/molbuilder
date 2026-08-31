@@ -108,7 +108,7 @@ flowchart TB
   L2 -->|reads/writes| L1
 ```
 
-**The L1 index, grouped by the object each module owns.** All 22 of them —
+**The L1 index, grouped by the object each module owns.** All 23 of them —
 this is the list `tests/test_layering.py` enforces, and
 `test_the_documented_L1_index_is_the_enforced_one` fails if the two drift
 apart. *(The diagram above named `pseudos` and `checkpoint` as L1 until
@@ -121,7 +121,14 @@ how "which layer does this go in?" becomes a guess.)*
 | **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding |
 | **the job as described** | `task` · `config` · `identity` · `warmfiles` · `annotations_fdf` | `task.json`, the engine-knob dataclasses, how a run id is written, the warm-file rules, the fdf annotation strategies |
 | **the machine** | `scheduler` | what a machine offers and what a job may ask of it — records, queues, admission, placement, emission, and **the quantities a job asks for and every dialect each is written in** (`quantities.py`) |
-| **infrastructure** | `persist` · `config_dir` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
+| **infrastructure** | `persist` · `config_dir` · `constants` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, **the physical constants**, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
+
+> **`constants` sits lower than everything, because it imports nothing at
+> all** — which is the point of it. The Bohr radius was written out eight
+> times in three different values, and two `.XV` readers using two of them
+> gave the same file coordinates 4e-7 apart. A number every layer may reach
+> for cannot itself reach anything, or asking for one would drag a
+> dependency into the layer that asked.
 
 Reading the table is how you answer *"where does this new function go?"* —
 find the object it acts on, and that is the module. A function that acts on a

@@ -1410,8 +1410,11 @@ def _check_tls_readable(cert, key) -> None:
                    "DOMAIN (e.g. 'asu.edu').  May be passed multiple "
                    "times.  Default: no restriction.")
 @click.option("--output", type=click.Path(dir_okay=False), default=None,
-              help="where to write the molbuilder.json.  Default: "
-                   "``./molbuilder.json`` in the current directory.")
+              help="where to write the molbuilder.json.  Default: THE FILE "
+                   "THE SERVER WILL READ -- ``./molbuilder.json`` when one is "
+                   "already there, otherwise "
+                   "``~/.config/molbuilder/molbuilder.json`` (honouring "
+                   "XDG_CONFIG_HOME).")
 @click.option("--force", is_flag=True,
               help="overwrite an existing molbuilder.json's auth block.  "
                    "Other top-level sections (envs, tls, ...) survive.")
@@ -1450,9 +1453,14 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     existing molbuilder.json's auth block.
 
     Where the file lives: ``molbuilder serve`` looks for
-    ``./molbuilder.json`` in the directory it was launched from.  Drop
-    this file there (the wizard's default), or pass --output to write
-    somewhere else.
+    ``./molbuilder.json`` in the directory it was launched from, and
+    falls back to ``~/.config/molbuilder/molbuilder.json`` (honouring
+    ``XDG_CONFIG_HOME``).  **This wizard writes whichever of those two
+    the server would read** -- so with no ``./molbuilder.json`` around
+    it writes the per-user one, which is found from any directory, and
+    with one already there it writes THAT, because a per-user file the
+    reader skips is an auth block nothing consults.  Pass --output to
+    name a path outright.
     """
     import getpass
     from pathlib import Path as _Path
@@ -1474,7 +1482,23 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     want_google = provider in ("google", "both")
 
     # 2. Resolve target paths -----------------------------------------
-    output_path = _Path(output or "molbuilder.json").resolve()
+    #
+    # THE WIZARD WRITES THE FILE THE READER WILL READ.  `machine_config_path`
+    # is the reader's own two-step lookup -- cwd first, then the per-user
+    # config directory -- so asking it is what keeps the two from disagreeing.
+    #
+    # It defaulted to `./molbuilder.json` until 2026-08-30, which put the
+    # config wherever the wizard happened to be launched from: for anyone
+    # running it inside a checkout, the git root.  That was wrong twice over.
+    # The same command already writes both SECRETS into the per-user config
+    # directory, so one command split its output across two conventions.  And
+    # a bare cwd default cannot be right in general: on a machine that already
+    # has `./molbuilder.json` somewhere else, writing a fresh XDG file would
+    # produce a config the reader never looks at, and the wizard would report
+    # success while sign-in stayed off.
+    from .runtime_config import machine_config_path as _machine_config_path
+    output_path = (_Path(output).resolve() if output
+                   else _machine_config_path()[0])
     secret_key_file = _as.secret_key_path()
     google_secret_file = _as.google_client_secret_path()
 
@@ -1603,9 +1627,21 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     click.echo(f"Wrote {output_path} (mode 0600)", err=True)
     click.echo("", err=True)
     click.echo("Next steps:", err=True)
-    click.echo(
-        f"  cd {output_path.parent}", err=True,
-    )
+    # WHERE THE FILE LANDED DECIDES WHETHER `cd` IS ADVICE OR A TRAP: a cwd
+    # config is found by launch directory, a per-user one from anywhere.  The
+    # `cd` was printed unconditionally, so a per-user file would have come
+    # with an instruction to cd into ~/.config/molbuilder and serve from
+    # there -- which works, and teaches the wrong model.
+    if output_path.parent == _Path.cwd():
+        # A cwd config is found by LAUNCH DIRECTORY, so saying where to start
+        # the server from is the instruction, not a nicety.
+        click.echo(f"  cd {output_path.parent}", err=True)
+    else:
+        click.echo(
+            f"  (this file is read from anywhere -- it is the per-user "
+            f"config, not a directory you have to start the server in)",
+            err=True,
+        )
     click.echo(
         f"  python -m molbuilder serve start --port 8888 --host 127.0.0.1",
         err=True,

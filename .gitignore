@@ -87,6 +87,20 @@ claude-memory.tgz
 molbuilder.json
 molbuilder.json.bak*
 
+# ...and the PROJECT-scope file, which is a different file with a
+# similar name: `.molbuilder.json` (leading dot) sits in a project or
+# calculation folder and carries that folder's `script_generation` /
+# `scheduler` / `envs`.  It may not carry `auth`, `tls` or
+# `secret_key_file` -- the runtime-config registry refuses those
+# outside the machine scope -- so it is less sensitive than the file
+# above, but it is still somebody's local setup and nothing in the
+# repo is supposed to ship one.  The pattern above does NOT cover it:
+# gitignore matches whole basenames, and `.molbuilder.json` is not
+# `molbuilder.json`.  (The ones under `projects/` were already covered
+# by `projects/*` below; this catches every other place a prepped
+# folder can be unpacked.)
+.molbuilder.json
+
 projects/*
 *.parse.log
 

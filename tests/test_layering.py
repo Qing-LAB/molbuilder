@@ -48,6 +48,15 @@ import pytest
 
 _L1_MODULES = {
     "structure", "frame", "issues",
+    "constants",         # the physical constants (Bohr, Hartree, Rydberg).
+                         # Lower than everything, because it imports NOTHING at
+                         # all -- which is the point: the Bohr radius was
+                         # written out eight times in three different values,
+                         # and two .XV readers using two of them gave the same
+                         # file coordinates 4e-7 apart.  A constant that every
+                         # layer may reach cannot itself reach anything, or it
+                         # would drag a dependency into every layer that wants
+                         # a number.
     "cell",              # the ONE cell resolver + checker
                          # (structure-periodicity.md § 3a/6.1 -- design
                          # record: archive/2026-08-20-cell-plan.md § 6a).

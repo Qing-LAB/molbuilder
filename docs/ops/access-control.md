@@ -182,6 +182,31 @@ else `~/.config/molbuilder`). Not in `molbuilder.json`, not in the
 tree, and never committed. Client secrets follow the same rule — one file per
 provider. See [`deployment.md`](?doc=ops/deployment.md) § 5.1.
 
+**And so does the config that names them** (2026-08-30). `molbuilder auth-setup`
+writes to **the file the server will actually read** — which is the reader's own
+two-step lookup, `./molbuilder.json` when one is already there, otherwise
+`~/.config/molbuilder/molbuilder.json`.
+
+It defaulted to `./molbuilder.json` regardless, meaning *wherever the wizard was
+launched from* — for anyone running it inside a checkout, the git root. Two
+things were wrong with that, and the second is the one that bites:
+
+- the same command already wrote both **secrets** into the config directory, so
+  one command split its output across two conventions; and
+- on a machine that already had a `./molbuilder.json` elsewhere, a fresh
+  per-user file would have been **a config the reader never looks at** — the
+  wizard reporting success while sign-in stayed off.
+
+Asking the reader where it reads is what keeps the two from disagreeing. Pass
+`--output` to name a path outright; that answers the question and nothing
+overrides it.
+
+> **Both files are gitignored, and neither has ever been committed.**
+> `molbuilder.json` (machine scope — `auth`, `tls`, `secret_key_file`) and
+> `.molbuilder.json` (project scope — no credentials, the registry refuses them
+> there). They are separate patterns because gitignore matches whole basenames
+> and the leading dot makes them different names.
+
 ---
 
 ## 4. Hostility — the limiter judges behaviour

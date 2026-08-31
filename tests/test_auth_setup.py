@@ -234,6 +234,94 @@ def test_cli_asu_only_writes_config_and_secret(isolated_home):
     assert sk.read_text().strip()
 
 
+class TestTheWizardWritesWhereTheReaderReads:
+    """Where ``auth-setup`` puts ``molbuilder.json`` (2026-08-30).
+
+    It defaulted to ``./molbuilder.json`` -- wherever the wizard happened to
+    be launched from, which for anyone running it inside a checkout is the
+    git root.  Wrong twice over: the same command already writes both SECRETS
+    into the per-user config directory, so one command split its output across
+    two conventions; and on a machine that already has a ``./molbuilder.json``,
+    writing a fresh per-user file would have produced a config **the reader
+    never looks at**, with the wizard reporting success while sign-in stayed
+    off.
+
+    So the default is now the reader's own answer -- ``machine_config_path()``,
+    cwd first, per-user second.  These tests drive both branches, because the
+    bug is only visible in the pair: either branch alone looks correct.
+    """
+
+    def _run(self, extra=()):
+        return CliRunner().invoke(cli, [
+            "auth-setup", "--provider", "asu", "--asurite", "jdoe", *extra,
+        ], catch_exceptions=False)
+
+    def test_with_no_cwd_config_it_writes_the_per_user_one(
+            self, isolated_home, monkeypatch, tmp_path):
+        run_dir = tmp_path / "somewhere-else"
+        run_dir.mkdir()
+        monkeypatch.chdir(run_dir)
+
+        r = self._run()
+        assert r.exit_code == 0, r.output
+
+        xdg = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
+        assert xdg.is_file(), r.output
+        assert not (run_dir / "molbuilder.json").exists(), (
+            "the wizard wrote into the directory it was launched from")
+        assert json.loads(xdg.read_text())["auth"]["providers"][0]["kind"] == "cas"
+        assert stat.S_IMODE(xdg.stat().st_mode) == 0o600
+        # ...and it does not tell the user to cd anywhere: a per-user config is
+        # read from any directory, and saying otherwise teaches the wrong model.
+        assert "cd " not in r.output or "read from anywhere" in r.output
+
+    def test_with_a_cwd_config_it_writes_THAT_one(
+            self, isolated_home, monkeypatch, tmp_path):
+        """The half that makes 'always write the per-user file' wrong.
+
+        The reader takes the cwd file when one exists, so writing the per-user
+        file here would leave the auth block somewhere nothing reads.
+        """
+        run_dir = tmp_path / "deployment"
+        run_dir.mkdir()
+        (run_dir / "molbuilder.json").write_text(
+            json.dumps({"script_generation": {"activation": "conda activate"}}))
+        monkeypatch.chdir(run_dir)
+
+        r = self._run(("--force",))
+        assert r.exit_code == 0, r.output
+
+        here = json.loads((run_dir / "molbuilder.json").read_text())
+        assert here["auth"]["providers"][0]["kind"] == "cas", (
+            "the auth block did not land in the file the reader will read")
+        # The other sections survive -- the wizard merges, it does not replace.
+        assert here["script_generation"]["activation"] == "conda activate"
+        xdg = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
+        assert not xdg.exists(), (
+            "wrote a per-user config the reader would ignore while a cwd one "
+            "exists -- success reported, sign-in still off")
+
+    def test_output_still_wins(self, isolated_home, monkeypatch, tmp_path):
+        """Naming a path is answering the question, so nothing overrides it."""
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "chosen" / "conf.json"
+        r = self._run(("--output", str(target)))
+        assert r.exit_code == 0, r.output
+        assert target.is_file()
+
+    def test_the_per_user_directory_is_created_if_absent(
+            self, isolated_home, monkeypatch, tmp_path):
+        """`emit_molbuilder_json` used to assume its directory existed, and got
+        away with it only because the wizard writes the session key first --
+        correctness resting on call order.  Asserted directly on the emitter,
+        so a reordering upstream cannot hide it."""
+        import molbuilder.auth_setup as _as
+        target = tmp_path / "brand" / "new" / "molbuilder.json"
+        _as.emit_molbuilder_json(target, {"providers": []})
+        assert target.is_file()
+        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
+
+
 def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
     """When --asurite is not passed, the wizard prompts with the
     system user as the default.  Pressing Enter accepts that default.

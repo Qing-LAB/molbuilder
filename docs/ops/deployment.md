@@ -384,6 +384,12 @@ flowchart LR
 It reads **one file, not both** — the first one it finds wins. A malformed
 file refuses to start rather than silently misconfiguring.
 
+**`molbuilder auth-setup` writes to whichever of those two the server would
+read**, rather than to the directory it happens to be launched from. That is
+the same lookup, asked by the writer instead of the reader — so the wizard
+cannot leave the auth block in a file nothing consults, which is what "always
+write the per-user one" would do on a machine that already has a `./` config.
+
 **These are the server's sections.** The same file also carries what
 *calculations* need — `script_generation`, `scheduler`, `execution`, `envs`,
 `checkpoint` — which are [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
