@@ -116,23 +116,6 @@ export function init(viewer) {
      * to disagree through the UI, so a reader consulting the wrong one passed
      * the whole suite; the ruler's list is ordered by construction and a test
      * can drive it. */
-    //: The atom an origin means: the one picked most recently.
-    function lastPicked() {
-        var picks = pickedInOrder();
-        return picks.length ? picks[picks.length - 1] : null;
-    }
-
-    /* Named the way the rest of the page names atoms -- 1-based, with the
-     * element -- so the button and the ruler's readout agree about which atom
-     * is being talked about (molview.md § 11.5). */
-    function atomLabel(index) {
-        if (index == null) return "the picked atom";
-        var w = data();
-        var atoms = w && w.getStructure ? w.getStructure() : null;
-        var el = atoms && atoms.elements ? atoms.elements[index] : null;
-        return (el ? el + " " : "") + "#" + (index + 1);
-    }
-
     function pickedInOrder() {
         var w = data();
         if (!w || !w.measurement) return [];
@@ -260,33 +243,30 @@ export function init(viewer) {
         }
     }
 
+    /* ONE RULE FOR BOTH GESTURES: read the picks in order and take what you
+     * need from the front.  An axis is the first two, an origin is the first.
+     *
+     * There is no counting policy here and there should not be -- the track
+     * belongs to MolView and this page just asks it what is picked, in order
+     * (`molview.md` § 11.6).  Both buttons demanded an EXACT count until
+     * 2026-08-31, which turned the ruler's own behaviour into bookkeeping for
+     * the user: it holds up to three and drops the oldest at the fourth, so
+     * after two picks the count runs 2, 3, 3, 3 and never returns to one.  The
+     * origin button was then permanently dead for anyone who had measured
+     * anything, with the remedy -- the ruler's Clear -- named nowhere. */
     function refreshPickButtons() {
         var n = pickedInOrder().length;
         var ruler = rulerIsOn();
         var axisBtn = $("pv-cell-from-selection");
         if (axisBtn) {
-            axisBtn.disabled = n !== 2;
+            axisBtn.disabled = n < 2;
             axisBtn.title = !ruler
                 ? "Turn measuring on, then pick two atoms."
-                : n === 2
-                ? "Set this axis to the vector from the first picked atom to "
-                  + "the second. Pick them the other way round to flip it."
-                : "Pick exactly two atoms with the ruler (" + n + " picked).";
+                : n < 2
+                ? "Pick two atoms with the ruler."
+                : "Set this axis to the vector from the first picked atom to "
+                  + "the second. Pick them the other way round to flip it.";
         }
-        /* THE ORIGIN TAKES THE ATOM YOU PICKED LAST, and requiring exactly
-         * one was a dead end.  The ruler holds up to three and drops the
-         * OLDEST at the fourth, so once two are picked the count runs
-         * 2, 3, 3, 3 -- it never comes back to one by picking.  Someone who
-         * had measured anything found this button greyed out, their click
-         * doing nothing, and no way back except the ruler's Clear, which
-         * nothing on screen pointed at.
-         *
-         * An origin is one point, and "the atom I just picked" is what the
-         * gesture means, so there is nothing to disambiguate -- unlike the
-         * axis, which needs a first AND a second and is right to insist on
-         * exactly two.  The button NAMES the atom it would use, because a
-         * gesture that silently prefers one of three picks would be worse
-         * than the dead end it replaces. */
         var orgBtn = $("pv-org-from-selection");
         if (orgBtn) {
             orgBtn.disabled = n < 1;
@@ -294,9 +274,7 @@ export function init(viewer) {
                 ? "Turn measuring on, then pick an atom."
                 : n < 1
                 ? "Pick an atom with the ruler."
-                : "Put the box's low corner on " + atomLabel(lastPicked())
-                  + (n > 1 ? " -- the atom you picked last, of " + n + "."
-                           : ".");
+                : "Put the box's low corner on the first atom you picked.";
         }
     }
 
@@ -560,8 +538,8 @@ export function init(viewer) {
         var fromSel = $("pv-cell-from-selection");
         if (fromSel) fromSel.addEventListener("click", function () {
             var picked = pickedInOrder();
-            if (picked.length !== 2) return;
-            var pos = positionsOf(picked);
+            if (picked.length < 2) return;
+            var pos = positionsOf(picked.slice(0, 2));
             if (!pos) return;
             setStagedRow(chosenAxis(), [pos[1][0] - pos[0][0],
                                         pos[1][1] - pos[0][1],
@@ -587,9 +565,9 @@ export function init(viewer) {
 
         var orgFromSel = $("pv-org-from-selection");
         if (orgFromSel) orgFromSel.addEventListener("click", function () {
-            var one = lastPicked();
-            if (one == null) return;
-            var pos = positionsOf([one]);
+            var picked = pickedInOrder();
+            if (!picked.length) return;
+            var pos = positionsOf([picked[0]]);
             if (!pos) return;
             /* Written DIRECTLY, not through `setIdle`.
              *
