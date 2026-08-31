@@ -1415,8 +1415,6 @@ class TestEveryOpIsChecked:
         "/api/modify/calibrate":   {},
         "/api/modify/electrode":   {"element": "Au", "plane": "111",
                                     "size": [1, 1, 2]},
-        "/api/modify/symmetric_electrodes": {"element": "Au", "plane": "111",
-                                             "size": [1, 1, 2], "gap": 8.0},
         # The new slab op (modify-redesign-plan.md § 3).  It reads no
         # selection -- dx, dy and start_z are absolute -- so unlike the two
         # electrode ops above it needs no `indices` to have something to do.

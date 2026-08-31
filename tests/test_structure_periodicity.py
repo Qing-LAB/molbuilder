@@ -8,6 +8,24 @@ import pytest
 from molbuilder.structure import Structure
 
 
+def _two_slabs(struct, element, plane, size, *, gap=8.0, **kw):
+    """A junction: two slabs, one per side, each at ``gap/2``.
+
+    `modify.add_symmetric_electrodes` did this in one call and was deleted
+    with the Junction panel (redesign plan § 3.4) -- slabs are built one at a
+    time now.  These tests are about the CELL a build captures, which is
+    unchanged, so they are repointed rather than retired.
+    """
+    from molbuilder.modify import add_electrode_slab
+    out = struct
+    for side in ("+z", "-z"):
+        out = add_electrode_slab(out, element, plane, size,
+                                 contact_distance=gap / 2.0, side=side, **kw)
+    return out
+
+
+
+
 def _s(**kw):
     return Structure(elements=["C", "H"], positions=[[0, 0, 0], [2, 0, 0]], **kw)
 
@@ -173,11 +191,10 @@ class TestElectrodeCaptureCell:
         return best
 
     def test_z_is_extent_plus_one_interlayer_spacing(self):
-        from molbuilder.modify import add_symmetric_electrodes
         a = 4.0782
         d = a / np.sqrt(3)                      # fcc(111): a/sqrt(3)
         dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
-        out = add_symmetric_electrodes(dev, "Au", "111", (2, 2, 3), gap=8.0,
+        out = _two_slabs(dev, "Au", "111", (2, 2, 3), gap=8.0,
                                        lattice_constant=a)
         extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
         assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
@@ -187,9 +204,8 @@ class TestElectrodeCaptureCell:
     def test_padding_off_reproduces_the_bare_extent(self):
         """The switch has to really switch -- and the OFF state is the bug,
         so this pins the collision it reproduces (junction-cell.md § 6)."""
-        from molbuilder.modify import add_symmetric_electrodes
         dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
-        out = add_symmetric_electrodes(dev, "Au", "111", (2, 2, 3), gap=8.0,
+        out = _two_slabs(dev, "Au", "111", (2, 2, 3), gap=8.0,
                                        lattice_constant=4.0782,
                                        pad_interlayer_gap=False)
         extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
@@ -222,14 +238,13 @@ class TestElectrodeCaptureCell:
     def test_the_molecule_does_not_set_the_crystal_spacing(self):
         """A molecule reaching past the slabs must not become the layer
         spacing: the padding is measured on the METAL layers only."""
-        from molbuilder.modify import add_symmetric_electrodes
         a = 4.0782
         d = a / np.sqrt(3)
         # a long molecule whose atoms sit at irregular z
         dev = Structure(elements=["S", "C", "C", "S"],
                         positions=[[0, 0, -3.1], [0, 0, -1.0],
                                    [0, 0, 1.0], [0, 0, 3.1]])
-        out = add_symmetric_electrodes(dev, "Au", "111", (2, 2, 3), gap=8.0,
+        out = _two_slabs(dev, "Au", "111", (2, 2, 3), gap=8.0,
                                        lattice_constant=a)
         extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
         assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
@@ -260,10 +275,9 @@ class TestCellOriginAndCalibration:
     def _junction(self):
         """Molecule pinned at the origin (2 anchors on z) + symmetric Au(111)
         electrodes -- atoms straddle the origin, cell captured with cell_origin."""
-        from molbuilder.modify import add_symmetric_electrodes
         mol = Structure(elements=["S", "S"],
                         positions=[[0.0, 0.0, -2.0], [0.0, 0.0, 2.0]])
-        return add_symmetric_electrodes(
+        return _two_slabs(
             mol, "Au", "111", (2, 2, 3), center_indices=[0, 1], gap=6.0)
 
     def test_cell_origin_wraps_the_atoms(self):

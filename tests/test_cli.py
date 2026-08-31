@@ -769,19 +769,13 @@ def test_add_dataclass_options_choices_on_bool_is_an_error():
 
 
 def test_modify_electrode_spec_key_case_insensitive():
-    """``@GAP=`` / ``@Gap=`` / ``@CONTACT=`` are accepted (R3 fix:
-    the parser lowercases the key).  Catches a regression where the
-    ``.lower()`` call in ``_parse_electrode_spec`` is dropped --
-    earlier mutation testing showed 0 test failures when this was
-    silently removed."""
-    upper = cli._parse_electrode_spec("Au:111:3x3x2@GAP=8.0:5,10")
-    assert upper["mode"] == "pair"
-    assert upper["gap"] == 8.0
+    """``@CONTACT=`` / ``@Contact=`` are accepted (R3 fix: the parser
+    lowercases the key).  Catches a regression where the ``.lower()`` call in
+    ``_parse_electrode_spec`` is dropped -- earlier mutation testing showed 0
+    test failures when this was silently removed.
 
-    mixed = cli._parse_electrode_spec("Au:111:3x3x2@Gap=8.0:5,10")
-    assert mixed["mode"] == "pair"
-    assert mixed["gap"] == 8.0
-
+    The ``@GAP=`` half went with pair mode (redesign plan § 3.4); the
+    lowercasing it also exercised is covered by the remaining key."""
     upper_contact = cli._parse_electrode_spec("Au:111:3x3x2@CONTACT=2.4:+z=3")
     assert upper_contact["mode"] == "single"
     assert upper_contact["contact_distance"] == 2.4
@@ -1056,23 +1050,6 @@ def test_modify_warns_when_orient_suboptions_unused(tmp_path, capsys):
     assert "--angle" in err
 
 
-def test_modify_electrode_pair_mode_one_call(tmp_path):
-    """Pair mode: one --electrode flag, two slabs (one +z, one -z),
-    @gap= sets electrode-to-electrode distance."""
-    inp  = tmp_path / "in.xyz"
-    oriented = tmp_path / "oriented.xyz"
-    outp = tmp_path / "junction.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
-    rc = cli.main(["modify", str(oriented), str(outp),
-                   "--electrode", "Au:111:3x3x2@gap=9.0:3,0"])
-    assert rc == 0
-    text = outp.read_text()
-    # 4 molecule atoms + 9 atoms/layer × 2 layers × 2 sides = 4 + 36
-    n = int(text.splitlines()[0])
-    assert n == 4 + 36
-
-
 def test_modify_electrode_single_mode(tmp_path):
     """Single mode: @contact= and ±z=N -- one slab on the named side."""
     inp  = tmp_path / "in.xyz"
@@ -1087,24 +1064,6 @@ def test_modify_electrode_single_mode(tmp_path):
     n = int(text.splitlines()[0])
     # 4 molecule + 9 × 2 layers (one side only) = 4 + 18
     assert n == 4 + 18
-
-
-def test_modify_electrode_stepped_two_pair_specs(tmp_path):
-    """Stepped 3×3 close + 4×4 far on both sides -- two --electrode flags
-    in one call (both pair-mode, geometrically independent)."""
-    inp  = tmp_path / "in.xyz"
-    oriented = tmp_path / "oriented.xyz"
-    outp = tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
-    rc = cli.main(["modify", str(oriented), str(outp),
-                   "--electrode", "Au:111:3x3x1@gap=9.0:3,0",
-                   "--electrode", "Au:111:4x4x1@gap=14.0:3,0"])
-    assert rc == 0
-    text = outp.read_text()
-    n = int(text.splitlines()[0])
-    # 4 molecule + (9 + 16) × 2 sides = 4 + 50
-    assert n == 4 + 50
 
 
 def test_modify_electrode_bad_spec_raises(tmp_path):
@@ -1179,3 +1138,29 @@ def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
     assert res.exit_code == 0, res.output
     assert calls["config"] == {}                 # no-auth seam
     assert calls["run_kwargs"].get("ssl_context") is None   # plain http
+
+
+# ---------------------------------------------------------------------------
+# `--electrode …@gap=` — retired with the pair
+# ---------------------------------------------------------------------------
+
+def test_electrode_gap_is_refused_by_name_not_as_a_typo():
+    """Pairs are not built as one step any more (redesign plan § 3.4), and
+    `gap` was the PAIR's parameter — the electrode-to-electrode distance,
+    meaningless for one slab.
+
+    Refused by name rather than falling into the generic "unknown key", which
+    would read as a misspelling: this key existed, did something, and was
+    removed, so the message has to say what to do instead.
+    """
+    import pytest as _pytest
+    from molbuilder import cli
+    with _pytest.raises(Exception, match="no longer supported"):
+        cli._parse_electrode_spec("Au:111:3x3x2@gap=8.0:5,10")
+
+
+def test_electrode_still_builds_one_slab_per_flag():
+    from molbuilder import cli
+    spec = cli._parse_electrode_spec("Au:111:3x3x2@contact=2.4:+z=3")
+    assert spec["mode"] == "single" and spec["side"] == "+z"
+    assert spec["contact_distance"] == 2.4

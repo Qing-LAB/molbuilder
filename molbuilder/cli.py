@@ -746,17 +746,16 @@ def _parse_size3(size_str, flag):
 def _parse_electrode_spec(spec):
     """Parse one ``--electrode`` value into a kwargs dict.
 
-    Two modes, distinguished by the ``@key=`` substring:
+**One slab per flag**: ``ELEM:PLANE:MxNxL@contact=DIST:+z=I,J,...``
+    or ``...:-z=I,J,...``.  ``DIST`` is the centre-to-closest-layer distance
+    for the chosen side, and the slab centres on the CENTROID of the trailing
+    index list (1 index -> that atom, 2 -> their midpoint, N -> centroid).
 
-      * **Pair (default):** ``ELEM:PLANE:MxNxL@gap=GAP:I,J,...``.
-        One or more centre indices after the trailing colon,
-        comma-separated -- the junction centres on their CENTROID (1
-        index -> that atom, 2 -> their midpoint, N -> centroid).
-        ``GAP`` is the total electrode-to-electrode distance.
-      * **Single (rare):** ``ELEM:PLANE:MxNxL@contact=DIST:+z=I,J,...``
-        or ``...:-z=I,J,...``.  ``DIST`` is the centre-to-closest-layer
-        distance for the chosen side; the slab centres on the same
-        centroid of the trailing index list.
+    **``@gap=`` is gone** (redesign plan § 3.4).  It built a symmetric PAIR in
+    one step, and pairs are not built as one step any more -- a junction is
+    two flags, one per side, each saying where its slab goes.  ``gap`` was the
+    pair's own parameter and had no meaning for a single slab, so it went with
+    it rather than being kept as a second way to say ``contact``.
 
     Returns a dict with key ``"mode"`` set to ``"pair"`` or
     ``"single"`` and the appropriate fields.
@@ -764,7 +763,7 @@ def _parse_electrode_spec(spec):
     main, sep, after_at = spec.partition("@")
     if not sep or not after_at:
         raise click.BadParameter(
-            f"--electrode {spec!r}: missing '@gap=...' or '@contact=...' "
+            f"--electrode {spec!r}: missing '@contact=...' "
             f"section.  See `molbuilder modify --help` for the format."
         )
     # Strip whitespace on every parsed field so e.g. ``+z = 3`` (with
@@ -791,7 +790,7 @@ def _parse_electrode_spec(spec):
     rest = rest.strip()
     if not has_eq:
         raise click.BadParameter(
-            f"--electrode {spec!r}: '@{keyval}' must be '@gap=NUM' or "
+            f"--electrode {spec!r}: '@{keyval}' must be "
             f"'@contact=NUM' (key=value form)"
         )
     try:
@@ -802,14 +801,21 @@ def _parse_electrode_spec(spec):
         )
 
     if key == "gap":
-        # Pair mode: trailing field is a centre-index list "I,J,..."
-        center_indices = _parse_ints_csv(rest, f"--electrode {spec!r}")
-        return {
-            "mode": "pair",
-            "element": element, "plane": plane, "size": size,
-            "gap": distance,
-            "center_indices": center_indices,
-        }
+        # PAIR MODE IS GONE, and `gap` went with it -- it was the PAIR's
+        # parameter, the electrode-to-electrode distance, meaningless for one
+        # slab.  Slabs are built one at a time now and where each goes is
+        # stated (redesign plan § 3.4).
+        #
+        # Refused by name rather than falling into the generic "unknown key",
+        # which would read as a typo: this key existed, did something, and was
+        # removed, so the message has to say what to do instead.
+        raise click.BadParameter(
+            f"--electrode {spec!r}: '@gap=' is no longer supported.  It was "
+            f"the electrode-to-electrode distance of a PAIR, and pairs are "
+            f"not built as one step any more.  Pass --electrode twice, one "
+            f"per side, each with '@contact=NUM:+z=I' or ':-z=I' -- which is "
+            f"what the pair did internally, with the two positions now "
+            f"stated rather than derived from a gap.")
     if key == "contact":
         # Single mode: trailing field is "+z=I,J,..." or "-z=I,J,..."
         side, has_eq2, idx_str = rest.partition("=")
@@ -871,14 +877,12 @@ def _infer_output_format(path):
                    "passing --rotate twice is rejected.")
 @click.option("--electrode", multiple=True,
               metavar="ELEM:PLANE:MxNxL@KEY=VAL:CENTER_INDICES",
-              help="add an FCC electrode, centred on the CENTROID of the "
+              help="add ONE FCC slab, centred on the CENTROID of the "
                    "trailing atom-index list (1 index -> that atom, 2 -> "
-                   "their midpoint, N -> centroid).  PAIR (default): "
-                   "'Au:111:3x3x2@gap=8.5:3,0' -- gap is electrode-to-"
-                   "electrode distance.  SINGLE (rare): "
+                   "their midpoint, N -> centroid).  "
                    "'Au:111:3x3x2@contact=2.4:+z=3' -- contact is the "
-                   "centre-to-closest-layer distance.  Repeat for stepped "
-                   "contacts; mixing pair and single is allowed.")
+                   "centre-to-closest-layer distance for that side.  Repeat "
+                   "the flag for the other side, or for stepped contacts.")
 # Sub-options for --orient-axis
 @click.option("--axis", default="z", show_default=True,
               type=click.Choice(["x", "y", "z"]),
@@ -951,7 +955,7 @@ def cmd_modify(input_path, output_path,
     requested (m, n) doesn't satisfy the chosen cell shape.
     """
     from .modify import (
-        add_electrode_slab, add_symmetric_electrodes,
+        add_electrode_slab,
         delete_atoms, orient_along_axis, rotate_around_axis,
     )
 
@@ -1046,31 +1050,18 @@ def cmd_modify(input_path, output_path,
             offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
             for spec_str in electrode:
                 spec = _parse_electrode_spec(spec_str)
-                if spec["mode"] == "pair":
-                    struct = add_symmetric_electrodes(
-                        struct,
-                        element=spec["element"],
-                        plane=spec["plane"],
-                        size=spec["size"],
-                        center_indices=spec["center_indices"],
-                        gap=spec["gap"],
-                        orthogonal=orthogonal,
-                        offset=offset_xy,
-                        lattice_constant=lattice_constant,
-                    )
-                else:  # single
-                    struct = add_electrode_slab(
-                        struct,
-                        element=spec["element"],
-                        plane=spec["plane"],
-                        size=spec["size"],
-                        center_indices=spec["center_indices"],
-                        contact_distance=spec["contact_distance"],
-                        side=spec["side"],
-                        orthogonal=orthogonal,
-                        offset=offset_xy,
-                        lattice_constant=lattice_constant,
-                    )
+                struct = add_electrode_slab(
+                    struct,
+                    element=spec["element"],
+                    plane=spec["plane"],
+                    size=spec["size"],
+                    center_indices=spec["center_indices"],
+                    contact_distance=spec["contact_distance"],
+                    side=spec["side"],
+                    orthogonal=orthogonal,
+                    offset=offset_xy,
+                    lattice_constant=lattice_constant,
+                )
     except (ValueError, IndexError) as exc:
         raise click.ClickException(str(exc)) from exc
 

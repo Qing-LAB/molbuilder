@@ -714,7 +714,6 @@ def test_molbuilder_page_loads(web_client):
         'id="add-apply"',
         'id="orient-apply"',
         'id="rotate-apply"',
-        'id="elc-apply"',
     ):
         assert needle in body, f"missing {needle!r} in /molbuilder HTML"
     # Retired surfaces stay retired -- catch any reintroduction of
@@ -1326,7 +1325,6 @@ def test_modify_page_has_m3_edit_controls(web_client):
         'id="add-distance"',
         'id="add-apply"',
         # M5 electrode + handoff controls are wired.
-        'id="elc-apply"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1656,7 +1654,6 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
         'id="rotate-angle"',     'id="rotate-angle-val"',
         'name="rotate-axis"',
         # M5 controls wired.
-        'id="elc-apply"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1686,50 +1683,6 @@ _SS_XYZ = (
 )
 
 
-def test_modify_symmetric_electrodes_pair_mode(web_client):
-    """Pair mode: 2x2x1 Au(111) on either side of a 2-atom S pair,
-    8 Å gap.  4 Au atoms per side -> 8 ELC atoms + 2 S = 10 total."""
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "structure": _env(_SS_XYZ),
-        "element": "Au", "plane": "111",
-        "size":    [2, 2, 1],
-        "center_indices": [1, 0],   # junction centres on their centroid
-        "gap":     8.0,
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["n_atoms"] == 10
-    elc = sum(1 for n in body["residue_names"] if n == "ELC")
-    assert elc == 8, body["residue_names"]
-
-
-def test_modify_symmetric_electrodes_anchorless_centres_on_origin(web_client):
-    """No-selection mode (no ``center_indices`` field) puts the slab
-    midpoint at the world origin: top closest layer at z = +gap/2, bot
-    at -gap/2.  We verify by reading ELC z-coords from the response
-    xyz.  This is the canonical UI workflow -- centre-and-pose the
-    molecule first, then add slabs around the origin."""
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "structure": _env(_SS_XYZ),
-        "element": "Au", "plane": "111",
-        "size":    [2, 2, 1],
-        "gap":     8.0,
-        # No center_indices field.
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    coords = _coords_from_xyz(body["xyz"])
-    elc_z = [coords[i][2] for i, rn in enumerate(body["residue_names"])
-             if rn == "ELC"]
-    top = [z for z in elc_z if z > 0]
-    bot = [z for z in elc_z if z < 0]
-    assert top, "expected at least one ELC atom at z > 0"
-    assert bot, "expected at least one ELC atom at z < 0"
-    # Closest layers are at exactly ±gap/2 = ±4.0 Å.
-    assert abs(min(top) - 4.0) < 1e-6, f"top closest z = {min(top)}"
-    assert abs(max(bot) + 4.0) < 1e-6, f"bot closest z = {max(bot)}"
-
-
 def test_modify_meta_lists_supported_elements_and_planes(web_client):
     """/api/modify/meta returns the SAME tuples molbuilder.modify
     exports.  This is the wire contract that lets the UI populate
@@ -1741,19 +1694,6 @@ def test_modify_meta_lists_supported_elements_and_planes(web_client):
     assert body["ok"] is True
     assert body["fcc_elements"] == list(SUPPORTED_FCC_ELEMENTS)
     assert body["fcc_planes"]   == list(SUPPORTED_FCC_PLANES)
-
-
-def test_modify_symmetric_electrodes_rejects_nonpositive_gap(web_client):
-    """A 0 / negative gap is rejected at the route boundary so the
-    user gets an actionable 400 instead of a downstream geometry
-    error."""
-    for gap in (0.0, -3.0):
-        r = web_client.post("/api/modify/symmetric_electrodes", json={
-            "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
-            "size": [2, 2, 1], "gap": gap,
-        })
-        assert r.status_code == 400, gap
-        assert "gap" in r.get_json()["error"], gap
 
 
 def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
@@ -1818,14 +1758,6 @@ def test_modify_translate_rejects_nan_offset(web_client):
 def test_modify_rotate_rejects_nan_angle(web_client):
     r = web_client.post("/api/modify/rotate", json={
         "structure": _env(_LINEAR_XYZ), "axis": "z", "angle": float("nan"),
-    })
-    assert r.status_code == 400
-
-
-def test_modify_symmetric_electrodes_rejects_nan_gap(web_client):
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "structure": _env(_LINEAR_XYZ), "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "gap": float("nan"),
     })
     assert r.status_code == 400
 

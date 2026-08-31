@@ -729,8 +729,6 @@ export const OPERATIONS = {
                              group: "anchor_index", scalar: true },
     electrode:             { emptySelection: "origin", needsExactly: null,
                              group: "center_indices" },
-    symmetric_electrodes:  { emptySelection: "origin", needsExactly: null,
-                             group: "center_indices" },
     delete:                { emptySelection: "refuse", needsExactly: null,
                              group: "indices" },
     calibrate:             { emptySelection: "all",    needsExactly: null,

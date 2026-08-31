@@ -138,3 +138,45 @@ class TestWhatItRefuses:
     def test_zero_layers_is_a_no_op_not_an_error(self, client):
         d = _post(client, layers=0).get_json()
         assert d["ok"] is True and d["n_atoms"] == 2
+
+
+# ---------------------------------------------------------------------------
+# "From a bulk run…" reaches its route — the door it calls must exist
+# ---------------------------------------------------------------------------
+
+def test_the_bulk_run_button_calls_a_door_that_exists():
+    """**The bug this exists for.**
+
+    The button called `projects.shared().file` — a method that has never been
+    on that module.  `&&`-guarded, so it was `undefined` on every press and
+    every press took the "pick a file first" branch: the feature was
+    unreachable, and no action a person could take made it work.  The route
+    behind it was correct and tested the whole time.
+
+    A name that does not exist cannot be caught by a JS unit test that stubs
+    the module — the stub would define it.  So this reads the source and holds
+    it to the surface `lib/projects/state.js` actually publishes, plus the
+    tree picker's own entry point.
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
+    panel = (root / "modify/slab-panel.js").read_text(encoding="utf-8")
+    picker = (root / "lib/tree-picker.js").read_text(encoding="utf-8")
+
+    # CODE, NOT PROSE.  The comment above the fix names the dead call on
+    # purpose, and a substring search flags it -- the third time today a pin
+    # punished the documentation it wanted.  Comment and block-comment lines
+    # are dropped before looking.
+    code = "\n".join(
+        line for line in panel.splitlines()
+        if not line.lstrip().startswith(("*", "//", "/*")))
+    assert "projects.shared" not in code, (
+        "`projects.shared()` does not exist; the button is unreachable again")
+    assert "tree-picker.js" in panel and "pickPath" in panel, (
+        "the button must ASK for the file rather than read the sidebar's "
+        "current selection (user, 2026-08-31)")
+    assert "export async function pickPath" in picker, (
+        "slab-panel imports `pickPath` from the tree picker; it is gone")
+    assert 'mode: "file"' in panel, (
+        "the picker defaults to directories -- a lattice is measured from a "
+        "FILE")

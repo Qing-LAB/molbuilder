@@ -16,9 +16,9 @@ Public surface (all pure functions; each returns a new ``Structure``):
                        offset=(0.0, 0.0), lattice_constant=None,
                        inter_layer_offset=None, pad_interlayer_gap=True)
                                                 -> Structure
-    add_symmetric_electrodes(struct, element, plane, size,
-                             center_indices=None, *, gap=8.0,
-                             orthogonal=False, offset=(0.0, 0.0),
+    add_slab(struct, element, plane, size, *, start_registry=0,
+             start_z=0.0, grow="+z", stacking="continue",
+             orthogonal=False, offset=(0.0, 0.0),
                              lattice_constant=None, pad_interlayer_gap=True)
                                                 -> Structure
 
@@ -49,9 +49,10 @@ Geometry conventions for the nanojunction workflow:
       layer at z = centre.z + contact_distance, with subsequent layers
       extending outward in the +z direction.  Use ``side="-z"`` for the
       bottom electrode.
-    * ``add_symmetric_electrodes`` centres BOTH slabs on that same
-      centroid and separates them by ``gap`` (closest layers at
-      centre.z ± gap/2).
+    * ``add_slab`` places from ABSOLUTE coordinates instead -- a stated
+      ``start_z`` and growth direction, reading no selection at all.  It is
+      the one to reach for; ``add_electrode_slab``'s anchor-relative rule
+      above is the older path.
 """
 
 from __future__ import annotations
@@ -1104,10 +1105,11 @@ def add_electrode_slab(
 ) -> Structure:
     """Append a single FCC electrode slab on one side of an anchor atom.
 
-    Single-electrode primitive.  For the canonical pair-electrode
-    junction, use :func:`add_symmetric_electrodes` (it takes
-    ``gap`` = electrode-to-electrode distance, the meaningful junction
-    parameter) instead of calling this twice.
+    Single-electrode primitive.  A junction is two of these, one per side,
+    each with ``contact_distance = gap/2`` -- which is all the retired
+    ``add_symmetric_electrodes`` wrapper ever did (redesign plan § 3.4).
+    Slabs are built one at a time now, and where each one goes is stated
+    rather than inferred from a pair.
 
     The slab is built by ASE's ``fcc{100,110,111}`` builder with
     ``size=(m, n, n_layers)`` where every layer has the same lateral
@@ -1318,98 +1320,6 @@ def add_electrode_slab(
     return _finish_slab(
         struct, metal_pos, element, full,
         d_interlayer=d_crystal, pad_interlayer_gap=pad_interlayer_gap)
-
-
-# --------------------------------------------------------------------- #
-#  Convenience: symmetric junction in one call                          #
-# --------------------------------------------------------------------- #
-
-
-def add_symmetric_electrodes(
-    struct: Structure,
-    element: str,
-    plane: str,
-    size: Tuple[int, int, int],
-    center_indices: Optional[Sequence[int]] = None,
-    *,
-    gap: float = 8.0,
-    orthogonal: bool = False,
-    offset: Tuple[float, float] = (0.0, 0.0),
-    lattice_constant: Optional[float] = None,
-    pad_interlayer_gap: bool = True,
-) -> Structure:
-    """Add a symmetric pair of FCC electrodes -- one on +z, one on -z --
-    centred on the SELECTED ATOM GROUP (or the origin).
-
-    The junction CENTRE is the centroid (mean x, y, z) of ``center_indices`` --
-    the atoms the user selected.  The slabs are then placed:
-
-      top closest layer at  z = centre.z + gap/2
-      bot closest layer at  z = centre.z - gap/2
-      both slabs lateral-centred on (centre.x + offset[0], centre.y + offset[1])
-
-    This is the natural generalisation of "flank the selected atoms": one atom
-    centres on that atom, two atoms centre on their midpoint, N atoms centre on
-    their centroid -- one consistent rule (supersedes the old origin-only default
-    AND the two-anchor special case).  With NO selection (``center_indices`` None
-    or empty) the centre falls back to the origin (0, 0, 0) -- the pre-centred
-    workflow.
-
-    The molecule is NOT moved (advisory-not-enforcing, design.md "Validation is
-    advisory while editing, enforcing at generation"): if its z-extent exceeds the
-    gap, ``validate_geometry`` surfaces the close contact non-blockingly; the op
-    still builds the junction so the user can re-pose / re-gap.
-
-    Each slab's layer planes are perpendicular to z (ASE fcc{100,110,111}
-    convention); the line joining the two slab centroids is parallel to z.
-
-    Parameters
-    ----------
-    center_indices
-        Atom indices whose centroid is the junction centre (typically the current
-        selection).  ``None`` or empty -> the origin.
-    gap
-        Total junction gap (Angstrom), electrode-to-electrode along z.  Default 8.0.
-    offset
-        ``(dx, dy)`` lateral shift (Angstrom) applied to BOTH slabs, relative to the
-        centre's xy.  Default ``(0, 0)``.
-    orthogonal, lattice_constant
-        Same as :func:`add_electrode_slab`; applied to both sides.
-
-    For asymmetric junctions (different size / metal / offset per side), call
-    :func:`add_electrode_slab` twice with explicit ``side`` + ``contact_distance``.
-    """
-    if struct.n_atoms == 0:
-        raise ValueError(
-            "cannot add electrodes to an empty structure; load a molecule first "
-            "(Build tab, /api/build/load, or one of the molbuilder build CLIs)"
-        )
-    if gap <= 0.0:
-        raise ValueError(f"gap = {gap:.3f} Angstrom must be > 0")
-
-    # Both slabs share the SAME centre (the centroid of ``center_indices``, or the
-    # origin) and sit at centre.z +/- gap/2 -- i.e. each is a single electrode with
-    # contact_distance = gap/2 on the opposite side.  add_electrode_slab owns the
-    # centroid/origin rule, so we just call it twice.  ``center_indices`` names the
-    # molecule atoms; the +z slab is appended AFTER them, so the same indices still
-    # name the same atoms on the -z call.
-    half = gap / 2.0
-    out = add_electrode_slab(
-        struct, element, plane, size, center_indices,
-        contact_distance=half, side="+z",
-        orthogonal=orthogonal, offset=offset, lattice_constant=lattice_constant,
-        pad_interlayer_gap=pad_interlayer_gap,
-    )
-    out = add_electrode_slab(
-        out, element, plane, size, center_indices,
-        contact_distance=half, side="-z",
-        orthogonal=orthogonal, offset=offset, lattice_constant=lattice_constant,
-        pad_interlayer_gap=pad_interlayer_gap,
-    )
-    return out
-
-
-
 def calibrate_to_cell(struct: Structure) -> Structure:
     """Move the structure into its cell's SIESTA coordinate frame (§ 3c).
 
@@ -1458,7 +1368,6 @@ __all__ = [
     "orient_along_axis",
     "rotate_around_axis",
     "add_electrode_slab",
-    "add_symmetric_electrodes",
     "calibrate_to_cell",
     "SUPPORTED_FCC_ELEMENTS",
     "SUPPORTED_FCC_PLANES",

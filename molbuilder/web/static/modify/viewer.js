@@ -5,7 +5,7 @@
  * This file is handed that viewer and holds ONLY:
  *
  *   * the edit-op controls -- Atom (Delete, Add atom), Transform (Translate, Center,
- *     Rotate, Orient), and the electrode/anchor (Junction) panel.  Each POSTs op-PARAMS via
+ *     Rotate, Orient).  Each POSTs op-PARAMS via
  *     ``molview.data.applyOp(op, args)``; the MODULE builds the structure body from its own
  *     data (data-model._structureBody) and applies the response atomically.  This file
  *     never sends or holds structure geometry/metadata.
@@ -44,7 +44,7 @@ export function init(viewer) {
     // mirror: every geometry/metadata read goes LIVE through the unified molview.data API
     // (getStructure / getElements / getCoordinates), so the Modify tab holds zero copies of
     // the structure and can never drift from the single source (the residue-across-ops /
-    // electrode None>None class of bug).  The op-REQUEST body is built inside the module
+    // the None>None class of bug).  The op-REQUEST body is built inside the module
     // (data-model.applyOp), not here.
     const state = {
         inFlight: false,       // true while an /api/modify/* fetch is open
@@ -108,21 +108,6 @@ export function init(viewer) {
     function _coords() {
         const d = _data();
         return (d && typeof d.getCoordinates === "function" && d.getCoordinates()) || [];
-    }
-    // The symmetric-electrode junction CENTRE: the centroid of the selected atom
-    // group, or the ORIGIN when nothing is selected -- the exact rule the op uses
-    // server-side (add_symmetric_electrodes).  Shown in the electrode readout so
-    // the user can confirm where the slabs will land before applying.
-    function _electrodeCenter(sel) {
-        if (!sel || !sel.length) return { x: 0, y: 0, z: 0, source: "origin" };
-        const c = _coords();
-        let x = 0, y = 0, z = 0;
-        for (const i of sel) {
-            const p = c[i];
-            if (p) { x += p[0]; y += p[1]; z += p[2]; }
-        }
-        const n = sel.length;
-        return { x: x / n, y: y / n, z: z / n, source: "selection" };
     }
     // NOTE (Track B migration): the base render, the explicit-cell wireframe, and the
     // isolate render controller USED to live here (`_drawBase` / the cell accessors).
@@ -224,43 +209,6 @@ export function init(viewer) {
         const translateBtn = $("translate-apply");
         if (translateBtn) translateBtn.disabled = locked || _nAtoms() === 0;
 
-        // Electrode: anchor count depends on mode.
-        const elcBtn = $("elc-apply");
-        const elcReadout = $("elc-anchor-readout");
-        const mode = ($("elc-mode") || {}).value || "symmetric";
-        if (elcBtn && elcReadout) {
-            if (mode === "single") {
-                // Same centring rule as pair mode: the slab centres on the
-                // centroid of the selected atom group (any count), or the ORIGIN
-                // when nothing is selected.  ``side`` picks which face it grows on.
-                elcBtn.disabled = locked || _nAtoms() === 0;
-                const center = _electrodeCenter(sel);
-                const c = `(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, `
-                        + `${center.z.toFixed(2)}) Å`;
-                const side = getCheckedRadio("elc-side") || "+z";
-                elcReadout.textContent = (sel.length === 0)
-                    ? `Single mode: slab centre = ${c} — the ORIGIN (nothing `
-                      + `selected); grows on the ${side} face.`
-                    : `Single mode: slab centre = ${c} — centroid of the `
-                      + `${sel.length} selected atom${sel.length === 1 ? "" : "s"}`
-                      + `; grows on the ${side} face.`;
-            } else {
-                // Pair mode: the junction CENTRE is the centroid of the
-                // selected atom group -- any count works (1 atom -> that atom,
-                // 2 -> midpoint, N -> centroid).  NOTHING selected -> the origin.
-                // Enabled whenever a structure is loaded.  We SHOW the computed
-                // centre (x, y, z) so the user can confirm where the slabs land.
-                elcBtn.disabled = locked || _nAtoms() === 0;
-                const center = _electrodeCenter(sel);   // {x,y,z, source}
-                const c = `(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, `
-                        + `${center.z.toFixed(2)}) Å`;
-                elcReadout.textContent = (sel.length === 0)
-                    ? `Pair mode: junction centre = ${c} — the ORIGIN (nothing `
-                      + `selected); slabs at z = ${center.z.toFixed(2)} ± gap/2.`
-                    : `Pair mode: junction centre = ${c} — centroid of the `
-                      + `${sel.length} selected atom${sel.length === 1 ? "" : "s"}.`;
-            }
-        }
 
         // (The "Send to Structure optimization" handoff was removed: cross-tab
         // transfer now goes ONLY through a saved project file -- Save to project
@@ -654,306 +602,6 @@ export function init(viewer) {
         );
     }
 
-    // ----- M5: electrode panel ------------------------------------- //
-
-    function readElcCommonBody() {
-        // Bundle the shared electrode OP-PARAMS both single + symmetric modes need
-        // (element / plane / size / orthogonal / offset / lattice_constant).  These are
-        // op-args only; the module (data-model.applyOp) merges them with the structure body.
-        const m         = Number($("elc-m").value);
-        const n         = Number($("elc-n").value);
-        const layers    = Number($("elc-layers").value);
-        const element   = $("elc-element").value;
-        const out = {
-            element:    element,
-            plane:      getCheckedRadio("elc-plane") || "111",
-            size:       [m, n, layers],
-            orthogonal: $("elc-orthogonal").checked,
-            offset:     [
-                Number($("elc-dx").value),
-                Number($("elc-dy").value),
-            ],
-            // Pad the cell's z by one interlayer spacing so the box does not
-            // collide with its own periodic image (science/junction-cell.md).
-            // Sent explicitly: the server also defaults it TRUE, and the two
-            // must not be able to disagree about what "unchecked" means.
-            pad_interlayer_gap: $("elc-pad-gap").checked,
-        };
-        // Resolve the chosen lattice reference -> a numeric
-        // `lattice_constant` payload field.  The API already accepts
-        // `lattice_constant` (modify.py:448); the radio is purely a
-        // client-side picker that looks up the right value from the
-        // /api/modify/meta lattice_table.  Default ref "experimental"
-        // matches pre-2026-06-18 behaviour (no field sent ->
-        // backend falls back to its hardcoded experimental).
-        const ref = getCheckedRadio("elc-lattice-ref") || "experimental";
-        const lat = window.__elcLatticeTable
-                    && window.__elcLatticeTable[element];
-        if (ref !== "experimental" && lat) {
-            const value = lat[`a_${ref}`];
-            if (typeof value === "number") {
-                out.lattice_constant = value;
-            }
-        }
-        return out;
-    }
-
-    // The z-gap note.  Two facts a person needs before building, and no
-    // crystallography of its own: what the switch does to the box, and
-    // whether THIS layer count makes a whole stacking period.  The period
-    // table comes from /api/modify/meta (science/junction-cell.md § 3.1);
-    // the Angstrom value deliberately is NOT recomputed here -- the spacing
-    // is measured on the built slab by cell.bulk_z_period, and a second
-    // formula in JS is a second answer waiting to disagree.
-    function renderPadGapNote() {
-        const note = $("elc-pad-gap-note");
-        if (!note) return;
-        const box = $("elc-pad-gap");
-        let msg;
-        if (box && !box.checked) {
-            msg = "Off: the cell's z is the atoms' extent exactly, so the "
-                + "bottom atom's periodic image lands on the top atom. Use "
-                + "only when you set the cell yourself.";
-            note.className = "status warn";
-        } else {
-            const plane  = getCheckedRadio("elc-plane") || "111";
-            const layers = Number(($("elc-layers") || {}).value);
-            const period = (window.__elcStackingPeriod || {})[plane];
-            msg = "Adds one interlayer spacing to the cell's z, so the slab "
-                + "tiles without colliding with its own image.";
-            if (period && Number.isFinite(layers) && layers > 0) {
-                // A whole stacking period is NECESSARY, not sufficient -- the
-                // symmetric pair places its -z slab by mirroring, which leaves
-                // both outermost layers on the same registry whatever the layer
-                // count.  So say what the count IS, never that the boundary
-                // WILL join.
-                const whole = (layers % period) === 0;
-                msg += whole
-                    ? `  ${layers} layers is a whole fcc(${plane}) stacking `
-                      + `period (multiple of ${period}).`
-                    : `  ${layers} layers is NOT a whole fcc(${plane}) stacking `
-                      + `period (multiple of ${period}), so the two faces cannot `
-                      + `line up as bulk across the boundary.`;
-                note.className = whole ? "status ok" : "status warn";
-            } else {
-                note.className = "status muted";
-            }
-        }
-        note.textContent = msg;
-        // The rest of the story -- registry, the mirror, what TranSIESTA does
-        // and does not care about -- is a page, not a tooltip.
-        const link = document.createElement("a");
-        link.href = "/documents?doc=science/junction-cell.md";
-        link.target = "_blank";
-        link.rel = "noopener";
-        link.textContent = "Why this matters";
-        note.appendChild(document.createTextNode(" "));
-        note.appendChild(link);
-    }
-
-    // Populate the element <select> and plane radios from the
-    // server's /api/modify/meta endpoint so the UI never duplicates
-    // ``SUPPORTED_FCC_ELEMENTS`` / ``SUPPORTED_FCC_PLANES`` from the
-    // Python source.  Adding a new metal in molbuilder.modify reaches
-    // the dropdown automatically; no template change.  Defaults: first
-    // element is selected, plane "111" is checked when present (it's
-    // the canonical close-packed surface for transport junctions).
-    async function populateElectrodeMeta() {
-        let meta = null;
-        try {
-            const r = await fetch("/api/modify/meta");
-            meta = await r.json();
-        } catch (_e) { /* fall through to a hard-coded fallback below */ }
-        const elements = (meta && meta.fcc_elements)
-            || ["Au", "Ag", "Cu", "Ni", "Pt", "Pd"];
-        const planes   = (meta && meta.fcc_planes)
-            || ["100", "110", "111"];
-        // Stash the lattice table for readElcCommonBody.  Schema:
-        // { Au: {a_experimental, a_pbe, name, system}, ... } -- the third
-        // column left in v3 (data/README.md): it was null for every metal
-        // and nothing could write it.
-        window.__elcLatticeTable = (meta && meta.lattice_table) || {};
-        // Layers per stacking period, from the server (science/junction-cell.md
-        // § 3.1).  No client-side copy of the crystallography -- an empty table
-        // makes the note say nothing rather than guess.
-        window.__elcStackingPeriod = (meta && meta.stacking_period) || {};
-        const elSel = $("elc-element");
-        if (elSel) {
-            elSel.innerHTML = "";
-            for (const sym of elements) {
-                const opt = document.createElement("option");
-                opt.value = sym;
-                opt.textContent = sym;
-                if (sym === "Au") opt.selected = true;
-                elSel.appendChild(opt);
-            }
-            // Re-render lattice-ref radios when the element changes
-            // so the displayed values track the picker.
-            elSel.addEventListener("change", renderLatticeRefRadios);
-        }
-        const planeBox = $("elc-plane-radios");
-        if (planeBox) {
-            planeBox.innerHTML = "";
-            for (const p of planes) {
-                const lbl = document.createElement("label");
-                const inp = document.createElement("input");
-                inp.type = "radio";
-                inp.name = "elc-plane";
-                inp.value = p;
-                if (p === "111") inp.checked = true;
-                lbl.appendChild(inp);
-                lbl.appendChild(document.createTextNode(p));
-                planeBox.appendChild(lbl);
-            }
-        }
-        // The z-gap note tracks the plane + layer count, so re-render it
-        // whenever either changes (and once now, for the initial state).
-        for (const inp of planeBox ? planeBox.querySelectorAll("input") : []) {
-            inp.addEventListener("change", renderPadGapNote);
-        }
-        for (const id of ["elc-layers", "elc-pad-gap"]) {
-            const el = $(id);
-            if (el) el.addEventListener("change", renderPadGapNote);
-        }
-        const layersBox = $("elc-layers");
-        if (layersBox) layersBox.addEventListener("input", renderPadGapNote);
-        renderPadGapNote();
-
-        // Lattice-ref radios + ⓘ popover wiring.
-        renderLatticeRefRadios();
-        const infoBtn = $("elc-lattice-ref-info");
-        const infoPanel = $("elc-lattice-ref-panel");
-        if (infoBtn && infoPanel) {
-            infoBtn.addEventListener("click", () => {
-                const open = !infoPanel.hidden;
-                infoPanel.hidden = open;
-                infoBtn.setAttribute("aria-expanded", open ? "false" : "true");
-            });
-        }
-    }
-
-    function renderLatticeRefRadios() {
-        const box = $("elc-lattice-ref-radios");
-        if (!box) return;
-        const element = ($("elc-element") && $("elc-element").value) || "Au";
-        const lat = (window.__elcLatticeTable || {})[element] || {};
-        /* TWO REFERENCES, AND BOTH ARE FROM THE LITERATURE -- which is what a
-         * shared table is for.
-         *
-         * There was a third, "Your bulk run", reading `a_pbe_siesta_psml`.  It
-         * was null for every metal and nothing in the codebase could write it,
-         * so this function greyed it out -- correctly -- from the day it
-         * shipped, and the machinery that did the greying (a disabled branch,
-         * an "is my pick still selectable" check, and a silent fall-back to
-         * Experimental) existed only to cope with a value that was never
-         * present.  All of it went with the column (data/README.md, v3).
-         *
-         * The value itself was not wrong, its HOME was: a lattice constant
-         * measured in the user's own SIESTA+PSML setup belongs to one
-         * optimisation run, not to a table every project shares.  It is read
-         * from that run's result now -- POST /api/modify/lattice-from-run. */
-        const refs = [
-            ["experimental", "Experimental",       lat.a_experimental, "Wyckoff 1963"],
-            ["pbe",          "PBE (all-electron)", lat.a_pbe,          "Haas 2009"],
-        ];
-        const pick = getCheckedRadio("elc-lattice-ref") || "experimental";
-        box.innerHTML = "";
-        for (const [value, label, num, src] of refs) {
-            const lbl = document.createElement("label");
-            const inp = document.createElement("input");
-            inp.type = "radio";
-            inp.name = "elc-lattice-ref";
-            inp.value = value;
-            inp.checked = (value === pick);
-            lbl.appendChild(inp);
-            lbl.appendChild(document.createTextNode(
-                typeof num === "number"
-                    ? ` ${label} (${num.toFixed(4)} Å — ${src})`
-                    : ` ${label} (unset — ${src})`));
-            box.appendChild(lbl);
-        }
-    }
-
-    function refreshElcReadouts() {
-        $("elc-gap-val").textContent = `${Number($("elc-gap").value).toFixed(1)} Å`;
-        $("elc-dx-val").textContent  = Number($("elc-dx").value).toFixed(2);
-        $("elc-dy-val").textContent  = Number($("elc-dy").value).toFixed(2);
-        // The gap label tracks the mode: pair-mode gap is
-        // electrode-to-electrode; single-mode gap is anchor-to-
-        // closest-layer (i.e. ``contact_distance``).
-        const mode = $("elc-mode").value;
-        $("elc-gap-label").textContent =
-            mode === "single" ? "contact" : "gap";
-        // Show / hide the side picker by mode.
-        const sideRow = $("elc-side-row");
-        if (sideRow) sideRow.hidden = (mode !== "single");
-    }
-
-    // The gap slider is REUSED for both modes, but they need different physical
-    // ranges.  Pair mode is the electrode-to-electrode GAP (wide, 4–30 Å).  Single
-    // mode is the anchor-to-closest-layer CONTACT distance, which must reach down to
-    // a real metal–adsorbate bond (Au–S ≈ 2.4 Å) — far below any pair gap; the old
-    // shared 4 Å floor made a physical single-mode contact impossible.  Adjust the
-    // range on mode switch + snap the value to the mode's default when the current
-    // value falls outside the new range.  Kept out of refreshElcReadouts (which
-    // fires on every slider input) so a drag isn't re-clamped mid-move.
-    function applyElcGapRange(mode) {
-        const gap = $("elc-gap");
-        if (!gap) return;
-        // Read the value BEFORE narrowing the range: setting a max below the
-        // current value makes the browser clamp it, which would hide an
-        // out-of-range value from the snap check below.
-        const v = Number(gap.value);
-        if (mode === "single") {
-            gap.min = "1.5"; gap.max = "6.0"; gap.step = "0.05";
-            if (!(v >= 1.5 && v <= 6.0)) gap.value = "2.4";   // canonical Au–S contact
-        } else {
-            gap.min = "4.0"; gap.max = "30.0"; gap.step = "0.1";
-            if (!(v >= 4.0 && v <= 30.0)) gap.value = "12.0";
-        }
-    }
-
-    async function applyElectrode() {
-        const mode = $("elc-mode").value;
-        const common = readElcCommonBody();
-        const gap = Number($("elc-gap").value);
-        // Electrode ops are ordinary modifier ops: the response flows through
-        // molview.data.applyOp -> the model.  The module resolves the CENTRE
-        // group (``center_indices``) from the current selection -- ONE unified
-        // rule for both modes:
-        //   single (electrode)            -> slab centred on the selection's
-        //                                    centroid; grows on `side`.
-        //   pair   (symmetric_electrodes) -> both slabs centred on that same
-        //                                    centroid, separated by `gap`.
-        // Any count is valid: 1 -> that atom, 2 -> midpoint, N -> centroid,
-        // and NO selection -> the world origin (the field is omitted).
-        // A rollback point is an explicit "Save state" checkpoint (§19.5) --
-        // there is no per-op auto-push.  We pass op-params only; the module
-        // fills in ``center_indices`` from the selection.
-        let r = null;
-        if (mode === "single") {
-            const side = getCheckedRadio("elc-side") || "+z";
-            r = await postOp(
-                "/api/modify/electrode",
-                Object.assign({}, common, {
-                    side:             side,
-                    contact_distance: gap,
-                }),
-                `Added ${common.element}(${common.plane}) ${side}`,
-            );
-        } else {
-            r = await postOp(
-                "/api/modify/symmetric_electrodes",
-                Object.assign({}, common, { gap: gap }),
-                `Added ${common.element}(${common.plane}) pair`,
-            );
-        }
-        // Void of use: r reflects postOp success; the model already
-        // applied it.  refreshUndoButton keeps the timeline controls
-        // in step (uncommitted just flipped true).
-        if (r) refreshUndoButton();
-    }
-
     // (sendToBuild removed: the "Send to Structure optimization" handoff is gone.
     // Cross-tab/step transfer goes ONLY through a saved project file -- "Save to
     // project" here, then "Load from project" in the target tab.  This is the
@@ -1073,29 +721,6 @@ export function init(viewer) {
             refreshRotateAngleReadout();
         }
 
-        // M5: electrode panel.
-        const elcBtn = $("elc-apply");
-        if (elcBtn) elcBtn.addEventListener("click", applyElectrode);
-        // Mode switch: re-evaluate selection requirement + show/hide
-        // the side picker; live readouts update on slider drag.
-        const modeSel = $("elc-mode");
-        if (modeSel) {
-            applyElcGapRange(modeSel.value);   // set the initial range for the default mode
-            modeSel.addEventListener("change", () => {
-                applyElcGapRange(modeSel.value);
-                refreshElcReadouts();
-                refreshSelectionUI();
-            });
-        }
-        ["elc-gap", "elc-dx", "elc-dy"].forEach((id) => {
-            const sl = $(id);
-            if (sl) sl.addEventListener("input", refreshElcReadouts);
-        });
-        // Populate element + plane controls from /api/modify/meta;
-        // refresh the readouts once the controls exist.  Async so we
-        // don't block the rest of init -- the mode switch and selection
-        // UI are wired off the existing readouts.
-        populateElectrodeMeta().then(refreshElcReadouts);
         // (Non-blocking persist failures surface in the app-wide notification bar
         // -- lib/app-notifications.js listens for molbuilder:persist-error, so the
         // Modify tab wires nothing here; see docs/web/notifications.md.)

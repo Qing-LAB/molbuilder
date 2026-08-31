@@ -221,16 +221,34 @@ export function init(viewer) {
      * setup is the user's to own -- so they are shown, not swallowed.
      */
     async function pickFromRun() {
-        const projects = (window.molbuilder || {}).projects;
-        const path = projects && projects.shared && projects.shared().file;
         const notify = (window.molbuilder || {}).notify;
         const say = (level, message) => notify && notify.show
             && notify.show({ id: "slab-lattice-from-run", level, message });
-        if (!path) {
-            say("warn", "Pick a relaxed bulk result (.xyz or .XV) in the "
-                      + "Projects sidebar first, then press this again.");
-            return;
-        }
+
+        /* ASK FOR THE FILE, rather than reading whatever the sidebar happens
+         * to have selected (user, 2026-08-31).
+         *
+         * This called `projects.shared().file` -- a method that has never
+         * existed on that module.  Guarded by `&&`, so it was `undefined` on
+         * every press and the button always took the refusal branch below:
+         * the whole feature was unreachable, and no action a person could take
+         * made it work.
+         *
+         * The picker is also the better question.  The sidebar's current
+         * selection is implicit state -- it depends on what you last clicked,
+         * possibly for an unrelated reason -- where a dialog asks the thing
+         * the button is about.  `mode: "file"` is the tree picker's own
+         * file-selection mode; the `pickable` filter narrows it to what a
+         * lattice can actually be measured from. */
+        const { pickPath } = await import("/static/lib/tree-picker.js");
+        const path = await pickPath({
+            title: "Measure the lattice from which run?",
+            hint: "Pick a relaxed bulk result.  \u25b8 expands a folder.",
+            mode: "file",
+            confirmLabel: "Measure",
+            pickable: (entry) => /\.(xyz|XV)$/i.test(entry.name || ""),
+        });
+        if (!path) return;                       // cancelled -- say nothing
         let j = null;
         try {
             const r = await fetch("/api/modify/lattice-from-run", {

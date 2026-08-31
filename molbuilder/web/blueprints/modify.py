@@ -18,7 +18,6 @@ Routes (no url_prefix; each carries its own full path):
     POST /api/modify/electrode             add_electrode_slab (single
                                             mode: one slab on +z or -z
                                             of one anchor)
-    POST /api/modify/symmetric_electrodes  add_symmetric_electrodes
                                             (pair mode: collinear-z
                                             slabs separated by gap)
     GET  /api/modify/meta                  dropdown enums (FCC
@@ -100,7 +99,6 @@ from molbuilder.modify import (
     FCC_ORTHOGONAL_CHOICES,
     add_atom as _add_atom,
     add_electrode_slab as _add_electrode_slab,
-    add_symmetric_electrodes as _add_symmetric_electrodes,
     calibrate_to_cell as _calibrate_to_cell,
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
@@ -573,7 +571,7 @@ def api_modify_electrode():
     ``contact_distance`` is the centre-to-closest-layer distance.  Per-side single mode is the
     one to use when the user wants asymmetric junctions (different
     metal / size on each side); for canonical pair junctions, prefer
-    :func:`api_modify_symmetric_electrodes` which takes ``gap``
+the retired pair route, which took ``gap``
     directly.
     """
     body = request.get_json(silent=True) or {}
@@ -635,92 +633,6 @@ def api_modify_electrode():
         )
     except (ValueError, NotImplementedError) as exc:
         return _err(f"add_electrode_slab failed: {exc}", 400)
-    # No selection_remap: the client CLEARS the selection on any atom-count
-    # change (molview.md § 11.1, "Effect on atom count").
-    return _ok_response(new_struct)
-
-
-# --------------------------------------------------------------------- #
-#  /api/modify/symmetric_electrodes  (pair mode; canonical junction)    #
-# --------------------------------------------------------------------- #
-
-
-@bp.route("/api/modify/symmetric_electrodes", methods=["POST"])
-def api_modify_symmetric_electrodes():
-    """Append a collinear-z pair of FCC slabs perpendicular to z.
-
-    Body: ``{xyz, [...metadata...], element, plane, size:[m,n,n_layers],
-             gap?, anchors?, orthogonal?, offset?, lattice_constant?}``.
-
-    ``gap`` is the canonical electrode-to-electrode z-distance (the
-    empty space between the two slabs' closest layers).
-
-    Slab placement (canonical, ``anchors`` omitted):
-
-      top closest layer at z = +gap/2
-      bot closest layer at z = -gap/2
-      lateral xy centroid    = ``offset`` (default origin)
-
-    The midpoint of the two slabs is at the world origin -- the
-    Body: ``{xyz, [...metadata...], element, plane, size:[m,n,n_layers],
-             gap?, center_indices?, orthogonal?, offset?, lattice_constant?}``.
-
-    The junction CENTRE is the centroid of ``center_indices`` (the atoms the user
-    selected): 1 atom centres on that atom, 2 on their midpoint, N on their
-    centroid.  Omitted / empty -> the origin (0, 0, 0).  The molecule is NOT
-    moved; if it doesn't fit the gap, ``validate_geometry`` advises (non-blocking).
-    """
-    body = request.get_json(silent=True) or {}
-    try:
-        struct = _struct_from_body(body)
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    try:
-        element, plane, size, orthogonal, offset, lat_a, pad_gap = \
-            _parse_electrode_common(body)
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    # Junction CENTRE = the centroid of ``center_indices`` (the user's selection);
-    # omitted / empty -> the origin.  This generalises the old two-anchor midpoint
-    # to any-size group (1 atom -> that atom, 2 -> midpoint, N -> centroid).
-    center_indices = body.get("center_indices")
-    center_idx: Optional[List[int]]
-    if center_indices is None:
-        center_idx = None
-    else:
-        if not isinstance(center_indices, list):
-            return _err(
-                "'center_indices' must be omitted or a list of atom indices", 400)
-        try:
-            center_idx = [int(i) for i in center_indices]
-        except (TypeError, ValueError):
-            return _err("'center_indices' entries must be integers", 400)
-        for i in center_idx:
-            if not (0 <= i < struct.n_atoms):
-                return _err(
-                    f"center index {i} out of range for {struct.n_atoms}-atom "
-                    f"structure", 400)
-    try:
-        gap = _finite_float("gap", body.get("gap", 8.0))
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    if gap <= 0.0:
-        return _err("'gap' must be > 0 Å", 400)
-    try:
-        new_struct = _add_symmetric_electrodes(
-            struct, element, plane, size, center_idx,
-            gap=gap,
-            orthogonal=orthogonal,
-            pad_interlayer_gap=pad_gap,
-            offset=offset,
-            lattice_constant=lat_a,
-        )
-    except (ValueError, NotImplementedError) as exc:
-        return _err(f"add_symmetric_electrodes failed: {exc}", 400)
-    except Exception as exc:  # noqa: BLE001 -- surface the real error as JSON, not a 500 HTML page
-        current_app.logger.exception("symmetric_electrodes: unexpected error")
-        return _err(
-            f"add_symmetric_electrodes failed ({type(exc).__name__}): {exc}", 500)
     # No selection_remap: the client CLEARS the selection on any atom-count
     # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)

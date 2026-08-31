@@ -79,7 +79,11 @@ def test_both_junction_checkboxes_use_the_row_class():
     """Every checkbox in the panel opts in -- one that forgets gets the
     stacked treatment back, silently."""
     html = TEMPLATE.read_text(encoding="utf-8")
-    for cid in ("elc-orthogonal", "elc-pad-gap"):
+    # `elc-orthogonal` and `elc-pad-gap` were the Junction panel's two, and
+    # the panel is gone (redesign plan § 3.4).  The Slab panel's box is the
+    # one left, and the rule it is held to is the same: a checkbox row wears
+    # the row class so the label sits beside the box rather than under it.
+    for cid in ("slab-orthogonal",):
         i = html.find(f'id="{cid}"')
         assert i != -1, f'id="{cid}" not found in modify.html'
         label_start = html.rfind("<label", 0, i)

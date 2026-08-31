@@ -3,7 +3,7 @@
 Spec source of truth: ``docs/web/tabs.md``.
 
 Covers M1: the four pure-function ops (delete_atoms, add_atom,
-orient_along_axis, add_electrode_slab) plus the symmetric-electrode
+orient_along_axis, add_electrode_slab) plus the junction
 convenience wrapper.  No web / CLI / UI yet -- those land in M2-M5.
 """
 
@@ -17,12 +17,13 @@ from molbuilder.modify import (
     SUPPORTED_FCC_PLANES,
     add_atom,
     add_electrode_slab,
-    add_symmetric_electrodes,
     delete_atoms,
     orient_along_axis,
     rotate_around_axis,
 )
 from molbuilder.structure import FROZEN_LABEL, Structure
+
+
 
 
 @pytest.fixture
@@ -770,250 +771,28 @@ def test_electrode_inter_layer_offset_rescales_z():
 
 
 # --------------------------------------------------------------------- #
-#  add_symmetric_electrodes                                             #
-# --------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("plane,orthogonal,size,per_side", [
-    ("111", False, (2, 2, 2), 8),
-    ("111", True,  (2, 2, 2), 8),
-    ("100", True,  (2, 2, 2), 8),
-    ("110", True,  (2, 2, 2), 8),
-])
-def test_symmetric_electrodes_doubles_metal_count(linear_dimer, plane,
-                                                    orthogonal, size, per_side):
-    """gap is now the total electrode-to-electrode distance.  After
-    midpoint orient, linear_dimer's anchor pair is 3 Å apart along z;
-    pick gap = 7.0 Å so each side's contact distance = (7-3)/2 = 2.0 Å,
-    matching the old per-side semantics for a clean atom-count check."""
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z",
-                                  center="midpoint")
-    # center_indices = the selected atom group; centre = its centroid.
-    # After midpoint orient, atoms 0 & 5 straddle the origin so the pair
-    # centres near z=0 and the slabs land at ±gap/2.
-    out = add_symmetric_electrodes(oriented, "Au", plane, size,
-                                    center_indices=[5, 0],
-                                    gap=7.0, orthogonal=orthogonal)
-    n_au = sum(1 for e in out.elements if e == "Au")
-    assert n_au == 2 * per_side
-
-
-def test_symmetric_electrodes_above_and_below(linear_dimer):
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z",
-                                  center="midpoint")
-    out = add_symmetric_electrodes(oriented, "Au", "111",
-                                    (2, 2, 2),
-                                    center_indices=[5, 0],
-                                    gap=7.0)
-    a0_z = oriented.positions[0, 2]
-    a1_z = oriented.positions[5, 2]
-    assert a0_z < a1_z, "expected midpoint centring to put a0 below a1"
-    au_z = np.array([p[2] for e, p in zip(out.elements, out.positions) if e == "Au"])
-    above = (au_z > a1_z).sum()
-    below = (au_z < a0_z).sum()
-    assert above == 8 and below == 8
-
-
-def test_symmetric_electrodes_gap_centered_on_anchor_midpoint(linear_dimer):
-    """Spec § "tilted molecule + gap": the closest layers of the two
-    electrodes sit at z = mid.z ± gap/2 where mid = anchor-pair midpoint."""
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
-    a_top = oriented.positions[5]
-    a_bot = oriented.positions[0]
-    mid_z = 0.5 * (a_top[2] + a_bot[2])
-    gap = 7.0
-    out = add_symmetric_electrodes(oriented, "Au", "111",
-                                    (2, 2, 1),
-                                    center_indices=[5, 0],
-                                    gap=gap)
-    au_z = sorted({float(p[2])
-                   for e, p in zip(out.elements, out.positions)
-                   if e == "Au"})
-    # Two layers: one at mid + gap/2, one at mid - gap/2.
-    assert np.isclose(au_z[-1], mid_z + gap / 2, atol=1e-9)
-    assert np.isclose(au_z[0],  mid_z - gap / 2, atol=1e-9)
-
-
-def test_symmetric_electrodes_small_gap_is_advisory_not_blocked(linear_dimer):
-    """Advisory-not-enforcing (validation contract): a positive gap smaller than
-    the selected-group z-extent is NOT rejected.  Centring on center_indices=[5,0]
-    puts the slabs at centre.z ± gap/2; with gap=1.0 they clash into the molecule,
-    but the op still BUILDS the junction so the user can re-pose / re-gap.
-    ``validate_geometry`` surfaces the close contact while editing; only a
-    non-positive gap (degenerate) is rejected (covered separately)."""
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
-    out = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
-                                   center_indices=[5, 0], gap=1.0)
-    assert out.n_atoms > oriented.n_atoms   # slabs added, no raise
-
-
-def test_symmetric_electrodes_anchorless_off_center_is_advisory_not_blocked():
-    """Advisory-not-enforcing (validation contract): the anchorless slabs sit at
-    absolute z = ±gap/2 and this mode does NOT move the molecule, so an
-    off-center molecule can end up with a slab poking into it.  The op does NOT
-    block -- it builds the (possibly clashing) junction; ``validate_geometry``
-    surfaces any close contact while editing and the generation gate enforces at
-    emit.  The user re-poses / re-gaps."""
-    off = Structure(elements=["S", "S"],
-                    positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 5.0]]))
-    out = add_symmetric_electrodes(off, "Au", "111", (2, 2, 1), gap=8.0)
-    assert out.n_atoms > off.n_atoms   # slabs added, no raise
-    # A centred molecule of the same span builds too (the guard was never the gate).
-    centred = Structure(elements=["S", "S"],
-                        positions=np.array([[0.0, 0.0, -2.5], [0.0, 0.0, 2.5]]))
-    assert add_symmetric_electrodes(centred, "Au", "111", (2, 2, 1),
-                                    gap=8.0).n_atoms > centred.n_atoms
-
-
-def test_symmetric_electrodes_order_independent(linear_dimer):
-    """The junction centre is the CENTROID of ``center_indices`` -- an
-    unordered set -- so [5, 0] and [0, 5] must produce the identical junction.
-    (The old two-anchor version distinguished a_top / a_bot and rejected a
-    reversed pair; centroid centring removes that ordering concept entirely.)"""
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
-    a = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
-                                 center_indices=[5, 0], gap=7.0)
-    b = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
-                                 center_indices=[0, 5], gap=7.0)
-    assert np.allclose(a.positions, b.positions, atol=1e-12)
-
-
-def test_symmetric_electrodes_handles_tilted_molecule():
-    """For a tilted molecule (anchor pair NOT along z), gap is still
-    measured along z and the slabs are collinear along z, centred on
-    the anchor-pair midpoint's xy."""
-    s = Structure(
-        elements=["S", "C", "C", "S"],
-        positions=np.array([
-            [0.0, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [3.5, 0.0, 0.0],
-            [5.0, 0.0, 0.0],
-        ]),
-        title="bdt-stub",
-    )
-    # 30-degree tilt in xz-plane via the new angle parameter
-    tilted = orient_along_axis(s, (0, 3), axis="z", angle=30.0)
-    a_top = tilted.positions[3]
-    a_bot = tilted.positions[0]
-    mid = 0.5 * (a_top + a_bot)
-    # gap = 9.0 Å > anchor z-extent
-    junction = add_symmetric_electrodes(tilted, "Au", "111", (3, 3, 1),
-                                          center_indices=[3, 0],
-                                          gap=9.0)
-    # The two electrode layers' centroids should sit at (mid.x, mid.y)
-    # in xy and at mid.z ± gap/2 in z.
-    au_pos = np.array([p for e, p in zip(junction.elements, junction.positions)
-                       if e == "Au"])
-    z_layers = sorted({round(float(z), 6) for z in au_pos[:, 2]})
-    assert len(z_layers) == 2
-    assert np.isclose(z_layers[1], mid[2] + 9.0 / 2, atol=1e-6)
-    assert np.isclose(z_layers[0], mid[2] - 9.0 / 2, atol=1e-6)
-    # Lateral centroid of all Au atoms should equal (mid.x, mid.y).
-    centroid_xy = au_pos[:, :2].mean(axis=0)
-    assert np.allclose(centroid_xy, mid[:2], atol=1e-6), (
-        f"slab centroid {centroid_xy} should equal anchor midpoint "
-        f"({mid[0]}, {mid[1]})"
-    )
-
-
-def test_symmetric_electrodes_anchorless_centres_on_origin(linear_dimer):
-    """``center_indices=None`` (default, no selection) places the slab
-    pair symmetrically around the world origin: closest layers at ±gap/2
-    in absolute z, regardless of where the molecule sits."""
-    out = add_symmetric_electrodes(linear_dimer, "Au", "111",
-                                   size=(2, 2, 2), gap=10.0)
-    elc_z = np.array([p[2] for n, p in zip(out.residue_names, out.positions)
-                      if n == "ELC"])
-    top = elc_z[elc_z > 0].min()
-    bot = elc_z[elc_z < 0].max()
-    assert abs(top - 5.0) < 1e-9, top
-    assert abs(bot + 5.0) < 1e-9, bot
-
-
-def test_symmetric_electrodes_anchorless_works_for_offset_origin():
-    """With atom 0 NOT near the centroid, the closest layers still
-    land at ±gap/2 absolute (regression: the old contact_top<=0
-    guard rejected this case spuriously)."""
-    s = Structure(elements=["C", "C", "C"],
-                  positions=np.array([[10.0, 0, -1],
-                                       [10.0, 0,  0],
-                                       [10.0, 0,  1]]))
-    out = add_symmetric_electrodes(s, "Au", "111",
-                                   size=(2, 2, 2), gap=10.0)
-    elc_z = np.array([p[2] for n, p in zip(out.residue_names, out.positions)
-                      if n == "ELC"])
-    assert abs(elc_z[elc_z > 0].min() - 5.0) < 1e-9
-    assert abs(elc_z[elc_z < 0].max() + 5.0) < 1e-9
-
-
-def test_symmetric_electrodes_anchorless_small_gap_is_advisory_not_blocked():
-    """Advisory-not-enforcing (validation contract): a gap too small for the
-    molecule's z-extent is NOT rejected -- the op builds the (clashing) junction
-    and ``validate_geometry`` surfaces the close contact while editing (the
-    generation gate enforces at emit).  Only a non-positive gap (degenerate) is
-    rejected."""
-    s = Structure(elements=["C"]*5, positions=np.array([
-        [0, 0, -3], [0, 0, -1.5], [0, 0, 0], [0, 0, 1.5], [0, 0, 3],
-    ]))
-    out = add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=4.0)
-    assert out.n_atoms > s.n_atoms   # slabs added, no raise
-
-
-def test_symmetric_electrodes_anchorless_rejects_nonpositive_gap():
-    """gap == 0 and gap < 0 must be rejected explicitly."""
-    s = Structure(elements=["C"], positions=np.array([[0, 0, 0]]))
-    with pytest.raises(ValueError, match="must be > 0"):
-        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=0.0)
-    with pytest.raises(ValueError, match="must be > 0"):
-        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=-3.0)
-
-
-def test_symmetric_electrodes_anchorless_rejects_empty_structure():
-    """An empty struct can't carry the slab op; the error must point
-    the user at how to load a structure."""
-    s = Structure(elements=[], positions=np.zeros((0, 3)))
-    with pytest.raises(ValueError, match="empty structure"):
-        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=8.0)
-
-
-def test_symmetric_electrodes_offset_propagates_to_both_sides(linear_dimer):
-    """The single offset arg shifts BOTH the +z and -z slabs by the
-    same (Δx, Δy)."""
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
-    base = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 2),
-                                      center_indices=[5, 0], gap=7.0)
-    shifted = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 2),
-                                         center_indices=[5, 0], gap=7.0,
-                                         offset=(0.6, -0.4))
-    def side_centroid(s, sign):
-        au = np.array([p[:2] for e, p in zip(s.elements, s.positions)
-                       if e == "Au" and (sign * p[2]) > 0])
-        return au.mean(axis=0)
-    base_top = side_centroid(base, +1)
-    base_bot = side_centroid(base, -1)
-    shifted_top = side_centroid(shifted, +1)
-    shifted_bot = side_centroid(shifted, -1)
-    assert np.allclose(shifted_top - base_top, (0.6, -0.4), atol=1e-6)
-    assert np.allclose(shifted_bot - base_bot, (0.6, -0.4), atol=1e-6)
-
-
-# --------------------------------------------------------------------- #
-#  End-to-end: build a Au(111)-bdt-Au(111) junction                    #
+#  a junction: two slabs, one per side                                  #
 # --------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("orthogonal,size,per_side", [
     # Spec § 2 walkthrough (now uniform per call): user calls the
-    # symmetric helper with one (m, n, n_layers).  For stepped contacts
+    # two slabs with one (m, n, n_layers).  For stepped contacts
     # ("3×3 close, 4×4 further out") the user makes two add_electrode_slab
     # calls instead of one; covered separately by the stacked test below.
     (False, (3, 3, 2), 3 * 3 * 2),    # 18 atoms per side
     (True,  (3, 4, 2), 3 * 4 * 2),    # 24 atoms per side (n must be even)
 ])
 def test_junction_end_to_end(orthogonal, size, per_side):
-    """Mini "BDT-like" stub (S–S linker), oriented on z, with Au(111)
-    on both sides via add_symmetric_electrodes."""
+    """Mini "BDT-like" stub (S–S linker), oriented on z, with Au(111) on both
+    sides — **built as two slabs**, one per flag, which is what a junction is
+    now (redesign plan § 3.4).
+
+    `add_symmetric_electrodes` did exactly this in one call and was deleted
+    with the Junction panel.  The junction is still worth an end-to-end test;
+    what changed is that each side's position is stated rather than derived
+    from a gap.
+    """
     bdt = Structure(
         elements=["S", "C", "C", "S"],
         positions=np.array([
@@ -1028,14 +807,18 @@ def test_junction_end_to_end(orthogonal, size, per_side):
     assert abs(oriented.positions[0, 2]) > 0
     assert np.isclose(oriented.positions[0, 2], -oriented.positions[3, 2])
 
-    junction = add_symmetric_electrodes(
-        oriented, "Au", "111", size,
-        # NEW convention: (a_top, a_bot).  After orient with default
-        # midpoint centring, atom 3 is on +z (top), atom 0 on -z (bottom).
-        center_indices=[3, 0], gap=9.0, orthogonal=orthogonal,
-    )
+    # Two slabs, each at half the old `gap` from the same centre -- the
+    # arithmetic the deleted wrapper did internally, now written down.
+    # After orient with default midpoint centring, atom 3 is on +z (top),
+    # atom 0 on -z (bottom).
+    junction = oriented
+    for side in ("+z", "-z"):
+        junction = add_electrode_slab(
+            junction, "Au", "111", size, [3, 0],
+            contact_distance=9.0 / 2.0, side=side, orthogonal=orthogonal,
+        )
     n_au = sum(1 for e in junction.elements if e == "Au")
-    # symmetric => 2 sides × per_side atoms
+    # two sides × per_side atoms
     assert n_au == 2 * per_side
     assert junction.n_atoms == 4 + 2 * per_side
     elc_count = sum(1 for n in junction.residue_names if n == "ELC")
