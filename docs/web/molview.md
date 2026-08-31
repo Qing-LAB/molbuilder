@@ -3719,6 +3719,33 @@ is the one that forgets to ask. The **bulk** list gestures — shift-range and t
 drag box — do nothing while measuring: "these forty atoms" is not a measurement,
 and writing them into the selection is what the user's rule forbids.
 
+**Under isolate the ruler still picks; the selection does not** *(user,
+2026-08-31)*. The window used to drop **every** click while isolating, because
+the drawn numbering is not the real one (§ 6.5) and a measurement built from a
+drawn index would be the wrong atoms quoted to three decimal places. But the
+answer to a numbering problem is the map, not a closed door: `sourceIndex` is
+exactly that map and § 6.5 already keeps it, which is how a label still reads
+#47 for an atom now drawn third. **The window translates the drawn index through
+it before asking `pickAtom` anything**, so the track receives real indices and
+`pickAtom`'s contract — *it takes an original index* — is unchanged. The
+translation lives at that entry because that is the only place a drawn index
+exists; the atom rows already carry real ones.
+
+What stays shut is **selecting** by window click while isolating, and for its own
+reason rather than a numbering one: isolate draws only the selected atoms, so
+clicking one to toggle it would make it vanish under the cursor. The rows curate
+that instead. Measuring has no such circularity — the picks change nothing — and
+§ 6.5's `measured` list is already exempted from isolate on the way *out*, so
+this makes the two directions agree.
+
+**The Cell page turns it on, and says so** *(user, 2026-08-31)*. Reaching for
+the axis gesture **locks the ruler on** with a message naming why — the gesture
+needs ordered picks and this is where they come from — rather than failing
+quietly against a ruler the person left off. The lock is released when the
+gesture is done, and toggling the ruler off again is theirs to do. A mode that
+turns itself on without saying so is the thing § 11.2b's lane exists to prevent;
+saying it is what makes the same act support rather than surprise.
+
 **It is the ordered-pick track, and the ruler is its first reader — not its
 owner** *(user, 2026-08-31: "this feels cleaner")*. Order and a small count limit
 are what it promises; measuring is one use of that promise. The **Cell page's

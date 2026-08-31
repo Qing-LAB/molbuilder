@@ -591,6 +591,31 @@ stage a value, and the commit is a separate press landing on § 4.1's existing
 door. What this closes is § 1.3's loose end — `selection` goes back to being the
 set it is documented as, and `pickOrder` is deleted rather than defended.
 
+**The page locks the ruler on, with a message** *(user, 2026-08-31: "it should
+lock measurement toggle to be on with a message to user saying so. and when it
+is done, the user can toggle it off as needed")*. Reaching for the axis gesture
+turns the track on and says why, instead of failing quietly against a ruler the
+person happened to leave off. Released when the gesture is done; turning it off
+again is theirs.
+
+**And it unlocks picking under isolate** — the reason this decoupling is worth
+more than tidiness. Today the window drops **every** click while isolating,
+because the drawn numbering is not the real one. With the two tracks separated
+the rule can be split the way the two actually differ:
+
+- **selecting** by window click stays shut, and for its own reason — isolate
+  draws only the selected atoms, so clicking one to toggle it would make it
+  vanish under the cursor;
+- **measuring** is allowed, because its picks change nothing.
+
+The translation the user names — *"map the displayed index to the original
+index"* — **already exists**: `sourceIndex` in the render engine, documented at
+`molview.md` § 6.5 as the map from drawn back to original, and the reason a
+label still reads #47 for an atom now drawn third. § 6.5's `measured` list is
+already exempt from isolate on the way *out*, so the marks are drawn there
+today; only the way *in* is closed. One guard, at the one entry where a drawn
+index exists (`mount.js`'s `onPick`), and the two directions agree.
+
 ### 4.3 Handedness — the refusal this gesture will actually hit
 
 **Three axes picked independently from atom pairs have no reason to come out
