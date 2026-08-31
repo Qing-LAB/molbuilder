@@ -395,6 +395,12 @@
                 role="tab" type="button"
                 id="optab-btn-junction" aria-controls="optab-panel-junction"
                 aria-selected="false">Junction</button>
+        {#- § 3: BESIDE the Junction tab, not replacing it.  The old panel and
+            its backend are untouched and go only once this is proven (§ 3.4). -#}
+        <button class="modify-optab" data-op-tab="slab"
+                role="tab" type="button"
+                id="optab-btn-slab" aria-controls="optab-panel-slab"
+                aria-selected="false">Slab</button>
         <button class="modify-optab" data-op-tab="cell"
                 role="tab" type="button"
                 id="optab-btn-cell" aria-controls="optab-panel-cell"
@@ -738,6 +744,108 @@
            Wired by modify/periodicity.js via ws.commitPeriodicity (the server re-resolves
            the effective cell).  (k-grid is NOT here: it's a reciprocal-space sampling knob
            on SiestaConfig / TransportConfig, not geometry.) -->
+      {#- ============================================================ -#}
+      {#-  Slab -- one fcc slab, placed ABSOLUTELY                      -#}
+      {#-  (plans/modify-redesign-plan.md § 3)                          -#}
+      {#- ============================================================ -#}
+      <div class="modify-optab-panel" data-op-panel="slab" role="tabpanel"
+           id="optab-panel-slab" aria-labelledby="optab-btn-slab">
+
+        <fieldset class="modify-op-block">
+          <legend>Lattice</legend>
+          <div class="modify-op-row">
+            <label for="slab-element">Element</label>
+            <select id="slab-element" class="modify-cell-select"></select>
+          </div>
+          <div class="modify-op-row">
+            <label>Plane</label>
+            <span id="slab-plane-radios" class="modify-axis-radios"></span>
+          </div>
+          <div class="modify-op-row">
+            <label>Lattice ref</label>
+            <span id="slab-lattice-ref-radios" class="modify-axis-radios"></span>
+          </div>
+          {#- § 3.3: the value the "Your bulk run" reference uses, measured off
+              a relaxed result by POST /api/modify/lattice-from-run and
+              overridable by hand.  The derived line beside it is the
+              cross-check that catches a second-shell pick. -#}
+          <div class="modify-op-row modify-cell-pick">
+            <label for="slab-a">a (Å)</label>
+            <input type="number" id="slab-a" class="modify-cell-num"
+                   step="0.0001" min="0" />
+            <button id="slab-pick-run" class="modify-ghost" type="button">
+              From a bulk run…
+            </button>
+          </div>
+          <p id="slab-a-derived" class="modify-op-hint" hidden></p>
+        </fieldset>
+
+        <fieldset class="modify-op-block">
+          <legend>Size</legend>
+          <div class="modify-op-row">
+            <label for="slab-m">m × n × layers</label>
+            <span>
+              <input type="number" id="slab-m" class="modify-cell-num"
+                     step="1" min="1" value="1" aria-label="m repeats" />
+              <input type="number" id="slab-n" class="modify-cell-num"
+                     step="1" min="1" value="1" aria-label="n repeats" />
+              <input type="number" id="slab-layers" class="modify-cell-num"
+                     step="1" min="0" value="3" aria-label="layers" />
+            </span>
+          </div>
+          <div class="modify-check-row">
+            <input type="checkbox" id="slab-orthogonal" />
+            <label for="slab-orthogonal">Orthogonal cell</label>
+          </div>
+          {#- § 3.1: a seam only continues the crystal when the layer count is
+              a whole multiple of the stacking period.  The note is rendered
+              client-side from /api/modify/meta's `stacking_period`, so the
+              crystallography travels and the arithmetic does not. -#}
+          <p id="slab-period-note" class="modify-op-hint" hidden></p>
+        </fieldset>
+
+        <fieldset class="modify-op-block">
+          <legend>Where it starts, and how it grows</legend>
+          {#- § 3: dx, dy and the starting z are ALL from the origin of the 3-D
+              window's own coordinate system.  This panel reads no selection --
+              the same numbers place the same slab whatever is picked. -#}
+          <div class="modify-op-row">
+            <label>Start registry</label>
+            <span id="slab-registry-radios" class="modify-axis-radios"></span>
+          </div>
+          <div class="modify-op-row">
+            <label for="slab-start-z">Starting surface z (Å)</label>
+            <input type="number" id="slab-start-z" class="modify-cell-num"
+                   step="0.1" value="0" />
+          </div>
+          <div class="modify-op-row">
+            <label>Grows toward</label>
+            <span id="slab-grow-radios" class="modify-axis-radios"></span>
+          </div>
+          {#- § 3.2: growing DOWN, the registry either continues the crystal or
+              mirrors it.  Growing up the two are identical, so the row hides. -#}
+          <div class="modify-op-row" id="slab-stacking-row" hidden>
+            <label>Stacking below it</label>
+            <span id="slab-stacking-radios" class="modify-axis-radios"></span>
+          </div>
+          <div class="modify-op-row">
+            <label>Offset from origin (Å)</label>
+            <span>
+              <input type="number" id="slab-dx" class="modify-cell-num"
+                     step="0.1" value="0" aria-label="dx from origin" />
+              <input type="number" id="slab-dy" class="modify-cell-num"
+                     step="0.1" value="0" aria-label="dy from origin" />
+            </span>
+          </div>
+          <p class="modify-op-hint">
+            All three are measured from the 3-D window's origin, so this panel
+            never reads what you have selected.
+          </p>
+        </fieldset>
+
+        <button id="slab-apply" class="full-btn" type="button">Add slab</button>
+      </div><!-- /.optab-panel data-op-panel="slab" -->
+
       <div class="modify-optab-panel" data-op-panel="cell" role="tabpanel"
            id="optab-panel-cell" aria-labelledby="optab-btn-cell">
 

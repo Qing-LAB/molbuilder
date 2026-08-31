@@ -20,6 +20,7 @@
 import { mount } from "/static/lib/molview/index.js";
 import { init as startOpControls } from "./viewer.js";
 import { init as startCellPanel }  from "./periodicity.js";
+import { init as startSlabPanel }  from "./slab-panel.js";
 import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
 /* THIS FILE IS THE MOLBUILDER TAB'S OWNER. It mounts the one viewer this page
@@ -103,6 +104,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // Held here and awaited below, where the answer is needed.
         const _restoring = startOpControls(_mounted);   // edit ops + state timeline
         startCellPanel(_mounted);      // the Cell op-tab's periodicity editors
+        startSlabPanel(_mounted);      // the Slab op-tab (redesign plan § 3)
         // The classic generator/save scripts loaded before this file and cannot
         // import; they are handed the viewer through their own bind door.
         const page = window.molbuilder && window.molbuilder.structurePage;

@@ -2763,6 +2763,7 @@ shape, rather than each one being hand-coded:
 | `symmetric_electrodes` | a reference | `center_indices` | fall back to centring on the origin | — | grows |
 | `delete` | the atoms to remove | `indices` | refuse | — | shrinks |
 | `calibrate` | the thing being mapped | — | act on all atoms | — | unchanged, whole-structure only |
+| `slab` | **not read at all** | — | *(nothing to fall back from)* | — | grows |
 
 Those columns drive one generic piece of code. **"Where it lands" is the body key
 the resolved selection is written to** — without it the table says how many atoms
@@ -2776,6 +2777,15 @@ travels under the key above; the operation's own arguments — `dx`, `element`,
 them. Nesting them under a `params` object sends them where nothing looks.
 
 The count requirement is checked **before** the request goes out — `orient` with
+**Two operations send no selection, for two different reasons, and the table
+says which.** `calibrate` rigidly maps every atom into the cell, so a partial
+selection would be a half-mapped structure. `slab` places its slab from
+**absolute coordinates** — a starting z, a growth direction and an (x, y)
+measured from the world origin — so there is nothing for a selection to mean;
+it is the one edit whose panel a user can drive with atoms picked and get the
+same answer either way (`plans/modify-redesign-plan.md` § 3). The shared
+mechanism is one flag: *the selection is not sent*.
+
 one atom selected never reaches the network. `calibrate` always takes the
 whole-structure path even with a partial selection, because it rigidly maps every
 atom into the cell and clears the cell origin.

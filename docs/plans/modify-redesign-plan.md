@@ -41,8 +41,8 @@ because it says where the code misleads.
 | opened at | `465e1e22`, tree clean — **none of this built** |
 | now at | `7ec7593c` |
 | branch | `feature/generator-jobset-ui` |
-| built | items **1, 2, 4, 5** and item 3's **§ 3.3** — see § 7 |
-| left | item **3**: the slab tab itself (§§ 3.1–3.2) and § 3.4's removal |
+| built | **all five items** — see § 7 |
+| left | § 3.4's scheduled removal of the old Junction panel, which waits on this one being proven in use |
 
 **Every item landed contract-first**, and each carries pins that fail when the
 rule is broken rather than when the code merely changes. What each one turned
@@ -769,7 +769,7 @@ built in, which is not the same thing and was never meant to be.
 | 2 | § 2 | **Center follows the group** | one branch in one route, no browser change — the cheapest thing on the board and a bug the user reported | **built** 2026-08-30 |
 | 3 | § 1 | **Measurement track** | settles *what a click does*, which § 4's picking depends on | **built** 2026-08-30, marks on the atoms included |
 | 4 | § 4 | **Cell setup** | no new route; settled before § 3 finishes, since the padding switch moves into it (§ 4.4) | **built** 2026-08-30 |
-| 5 | § 3 | **New slab tab** | largest — new panel, new builder, new route, plus § 3.4's deletion | **part built**: § 3.3's extractor and the column it replaces are done; §§ 3.1–3.2's panel and § 3.4's removal are not |
+| 5 | § 3 | **New slab tab** | largest — new panel, new builder, new route, plus § 3.4's deletion | **built** 2026-08-30 — builder, route, panel and § 3.3's extractor. **§ 3.4's removal is not done**, by design: the old Junction panel stands until this one is proven |
 
 **Three collisions, and each is why a row sits where it does.**
 

@@ -101,6 +101,7 @@ from molbuilder.modify import (
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
     translate as _translate,
+    add_slab as _add_slab,
     load_fcc_lattice_full as _load_fcc_lattice_full,
 )
 
@@ -710,6 +711,92 @@ def api_modify_symmetric_electrodes():
         current_app.logger.exception("symmetric_electrodes: unexpected error")
         return _err(
             f"add_symmetric_electrodes failed ({type(exc).__name__}): {exc}", 500)
+    # No selection_remap: the client CLEARS the selection on any atom-count
+    # change (molview.md § 11.1, "Effect on atom count").
+    return _ok_response(new_struct)
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/slab                                                     #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/slab", methods=["POST"])
+def api_modify_slab():
+    """Append ONE fcc slab, placed absolutely (redesign plan § 3).
+
+    Body: ``{structure, element, plane, m, n, layers, start_registry,
+    start_z, grow, stacking, orthogonal, dx, dy, lattice_constant?}``.
+
+    IT READS NO SELECTION, and that is the design rather than an omission:
+    ``dx``, ``dy`` and ``start_z`` are measured from the world origin, so the
+    same numbers place the same slab whatever the user happens to have
+    picked.  The client's OPERATIONS table says so too (`molview.md` § 11.1),
+    which is why no `indices` key reaches here.
+
+    Beside ``/api/modify/electrode``, not replacing it: the old panel stays
+    until this one is proven (§ 3.4 lists what goes when it is).
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        struct = _struct_from_body(body)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+
+    element = body.get("element")
+    plane = body.get("plane")
+    if not isinstance(element, str) or not element:
+        return _err("missing 'element'", 400)
+    if plane not in SUPPORTED_FCC_PLANES:
+        return _err(f"'plane' must be one of {list(SUPPORTED_FCC_PLANES)}", 400)
+
+    def _int(key, default, lo=None):
+        raw = body.get(key, default)
+        try:
+            val = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"'{key}' must be a whole number; got {raw!r}")
+        if lo is not None and val < lo:
+            raise ValueError(f"'{key}' must be >= {lo}; got {val}")
+        return val
+
+    try:
+        m = _int("m", 1, 1)
+        n = _int("n", 1, 1)
+        layers = _int("layers", 1, 0)
+        start_registry = _int("start_registry", 0, 0)
+        start_z = _finite_float("start_z", body.get("start_z", 0.0))
+        dx = _finite_float("dx", body.get("dx", 0.0))
+        dy = _finite_float("dy", body.get("dy", 0.0))
+    except ValueError as exc:
+        return _err(str(exc), 400)
+
+    lat_raw = body.get("lattice_constant")
+    lat_a = None
+    if lat_raw is not None:
+        try:
+            lat_a = _finite_float("lattice_constant", lat_raw)
+        except ValueError as exc:
+            return _err(str(exc), 400)
+        if lat_a <= 0:
+            return _err("'lattice_constant' must be > 0 Å", 400)
+
+    try:
+        new_struct = _add_slab(
+            struct, element, plane, (m, n, layers),
+            start_registry=start_registry,
+            start_z=start_z,
+            grow=body.get("grow", "+z"),
+            stacking=body.get("stacking", "continue"),
+            orthogonal=bool(body.get("orthogonal", False)),
+            offset=(dx, dy),
+            lattice_constant=lat_a,
+        )
+    except (ValueError, NotImplementedError) as exc:
+        return _err(f"add_slab failed: {exc}", 400)
+    except Exception as exc:  # noqa: BLE001 -- surface it as JSON, not an HTML 500
+        current_app.logger.exception("slab: unexpected error")
+        return _err(f"add_slab failed ({type(exc).__name__}): {exc}", 500)
     # No selection_remap: the client CLEARS the selection on any atom-count
     # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)

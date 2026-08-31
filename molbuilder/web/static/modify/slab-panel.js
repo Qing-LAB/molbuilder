@@ -1,0 +1,281 @@
+/* Modify tab -- the Slab op-tab (plans/modify-redesign-plan.md § 3).
+ *
+ * Contract: docs/web/molview.md § 11.1 (the op table -- `slab` sends no
+ *           selection), docs/web/web-api.md (`/api/modify/slab`,
+ *           `/api/modify/lattice-from-run`).
+ * Owns:     the Slab panel's controls and the one body it posts.
+ * Called by: modify/selection-bootstrap.js, which mounts the viewer and hands
+ *           it here.  Nothing self-starts.
+ *
+ * BESIDE THE JUNCTION PANEL, NOT REPLACING IT.  § 3.4 lists what goes when
+ * this is proven -- the old panel, its half of viewer.js, and the symmetric
+ * -electrode route.  Until then the two coexist, and this file deliberately
+ * shares no code with the old one: it fetches `/api/modify/meta` itself
+ * rather than reading the `window.__elc*` globals that panel stashes, so the
+ * deletion is a deletion and not an untangling.
+ *
+ * IT READS NO SELECTION.  `dx`, `dy` and the starting z are measured from the
+ * 3-D window's own origin, so the same numbers place the same slab whatever
+ * is picked.  That is why `OPERATIONS.slab` carries `group: null`.
+ */
+"use strict";
+
+//: Grown downward, the registry either continues the crystal or mirrors it.
+//  Growing up the two are identical, which is why the row hides (§ 3.2).
+const STACKINGS = [
+    ["continue", "continues the crystal"],
+    ["mirror", "mirrors the slab"],
+];
+const GROWS = [["+z", "+z (up)"], ["-z", "-z (down)"]];
+const REGISTRY_NAMES = ["A", "B", "C"];
+
+export function init(viewer) {
+    const $ = (id) => document.getElementById(id);
+    if (!$("optab-panel-slab")) return;
+
+    const data = () => (viewer && viewer.ok) ? viewer.data : null;
+    let meta = { fcc_elements: [], fcc_planes: [], lattice_table: {},
+                 stacking_period: {} };
+
+    /* ── Small builders, so the five radio groups are one piece of code ── */
+
+    function radios(hostId, name, entries, checked) {
+        const box = $(hostId);
+        if (!box) return;
+        box.innerHTML = "";
+        for (const [value, label] of entries) {
+            const lbl = document.createElement("label");
+            const inp = document.createElement("input");
+            inp.type = "radio";
+            inp.name = name;
+            inp.value = value;
+            inp.checked = (value === String(checked));
+            lbl.appendChild(inp);
+            lbl.appendChild(document.createTextNode(" " + label));
+            box.appendChild(lbl);
+        }
+    }
+    const picked = (name, fallback) => {
+        const el = document.querySelector(`input[name="${name}"]:checked`);
+        return el ? el.value : fallback;
+    };
+    const num = (id, dflt) => {
+        const el = $(id);
+        const v = el ? Number(el.value) : NaN;
+        return Number.isFinite(v) ? v : dflt;
+    };
+
+    /* ── What the surface offers, from the server ────────────────────────
+     *
+     * The element list, the planes and the stacking periods are the Python
+     * source's (`/api/modify/meta`), never a copy here -- adding a metal in
+     * `molbuilder.modify` reaches this dropdown with no template change.
+     */
+    async function loadMeta() {
+        try {
+            const r = await fetch("/api/modify/meta");
+            const j = await r.json();
+            if (j && j.ok) meta = j;
+        } catch (_) { /* a panel that cannot get its menu says so below */ }
+
+        const elSel = $("slab-element");
+        if (elSel) {
+            elSel.innerHTML = "";
+            for (const sym of meta.fcc_elements || []) {
+                const o = document.createElement("option");
+                o.value = sym; o.textContent = sym;
+                if (sym === "Au") o.selected = true;
+                elSel.appendChild(o);
+            }
+            elSel.addEventListener("change", onLatticeInputsChanged);
+        }
+        radios("slab-plane-radios", "slab-plane",
+               (meta.fcc_planes || []).map((p) => [p, p]), "111");
+        radios("slab-grow-radios", "slab-grow", GROWS, "+z");
+        radios("slab-stacking-radios", "slab-stacking", STACKINGS, "continue");
+        for (const inp of document.querySelectorAll(
+                'input[name="slab-plane"]')) {
+            inp.addEventListener("change", onPlaneChanged);
+        }
+        for (const inp of document.querySelectorAll('input[name="slab-grow"]')) {
+            inp.addEventListener("change", onGrowChanged);
+        }
+        onPlaneChanged();
+        onGrowChanged();
+        onLatticeInputsChanged();
+    }
+
+    /* ── The three notes, each tracking one control ──────────────────── */
+
+    /* HOW MANY REGISTRIES THIS SURFACE HAS falls out of its stacking period
+     * -- three on (111), two on the others -- so "A, B, or C *if available*"
+     * needs no table of its own (§ 3.1).  An unknown plane offers one, which
+     * says nothing rather than guessing. */
+    function onPlaneChanged() {
+        const plane = picked("slab-plane", "111");
+        const period = (meta.stacking_period || {})[plane] || 1;
+        const keep = Number(picked("slab-registry", "0"));
+        radios("slab-registry-radios", "slab-registry",
+               Array.from({ length: period },
+                          (_, i) => [String(i), REGISTRY_NAMES[i] || String(i)]),
+               String(keep < period ? keep : 0));
+        renderPeriodNote();
+    }
+
+    /* Growing UP, "continues" and "mirrors" are the same slab, so the row is
+     * hidden rather than offering a choice with no effect (§ 3.2). */
+    function onGrowChanged() {
+        const row = $("slab-stacking-row");
+        if (row) row.hidden = picked("slab-grow", "+z") !== "-z";
+    }
+
+    /* A seam only continues the crystal when the layer count is a whole
+     * multiple of the stacking period (junction-cell.md § 3.1).  The period
+     * is the server's; the arithmetic is one modulo and stays here. */
+    function renderPeriodNote() {
+        const note = $("slab-period-note");
+        if (!note) return;
+        const plane = picked("slab-plane", "111");
+        const period = (meta.stacking_period || {})[plane];
+        const layers = num("slab-layers", 0);
+        if (!period || period < 2 || !layers) { note.hidden = true; return; }
+        const rem = layers % period;
+        note.textContent = rem === 0
+            ? `${layers} layers is a whole number of ${period}-layer periods, `
+              + `so a seam against another slab can continue the crystal.`
+            : `${layers} layers is ${rem} past a whole ${period}-layer period `
+              + `on fcc(${plane}) -- a seam here will not continue the `
+              + `crystal. ${layers - rem} or ${layers + period - rem} would.`;
+        note.classList.toggle("modify-op-hint--warn", rem !== 0);
+        note.hidden = false;
+    }
+
+    /* WHAT THE TYPED `a` MEANS, as the cross-check § 3.3 describes: the
+     * derived spacings and how far the value sits from each literature
+     * reference.  The one mistake anyone makes is picking a SECOND-shell
+     * pair, which reads a factor 1.414 high and lands ~41% out -- where this
+     * line says so at once. */
+    function onLatticeInputsChanged() {
+        const note = $("slab-a-derived");
+        if (!note) return;
+        const a = num("slab-a", NaN);
+        const element = ($("slab-element") || {}).value;
+        const row = (meta.lattice_table || {})[element] || {};
+        if (!Number.isFinite(a) || a <= 0) { note.hidden = true; return; }
+        const parts = [
+            `d(111) ${(a / Math.sqrt(3)).toFixed(4)}`,
+            `d(100) ${(a / 2).toFixed(4)}`,
+            `nearest neighbour ${(a / Math.sqrt(2)).toFixed(4)} Å`,
+        ];
+        for (const [key, label] of [["a_experimental", "experimental"],
+                                    ["a_pbe", "PBE"]]) {
+            const ref = row[key];
+            if (typeof ref === "number" && ref > 0) {
+                const off = (a - ref) / ref * 100;
+                parts.push(`${off >= 0 ? "+" : ""}${off.toFixed(1)}% from `
+                           + `${label} (${ref.toFixed(4)})`);
+            }
+        }
+        note.textContent = parts.join(" · ");
+        note.hidden = false;
+    }
+
+    /* ── "From a bulk run…" -- § 3.3's door ──────────────────────────────
+     *
+     * The field stays typeable: this fills it, the derived line says what it
+     * means, and the value can be overridden by hand.  The route measures the
+     * ATOMS, not the cell, and returns notes rather than refusals -- the
+     * setup is the user's to own -- so they are shown, not swallowed.
+     */
+    async function pickFromRun() {
+        const projects = (window.molbuilder || {}).projects;
+        const path = projects && projects.shared && projects.shared().file;
+        const notify = (window.molbuilder || {}).notify;
+        const say = (level, message) => notify && notify.show
+            && notify.show({ id: "slab-lattice-from-run", level, message });
+        if (!path) {
+            say("warn", "Pick a relaxed bulk result (.xyz or .XV) in the "
+                      + "Projects sidebar first, then press this again.");
+            return;
+        }
+        let j = null;
+        try {
+            const r = await fetch("/api/modify/lattice-from-run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    path: path,
+                    element: ($("slab-element") || {}).value || undefined,
+                }),
+            });
+            j = await r.json();
+        } catch (e) {
+            say("error", "could not reach the server: " + (e && e.message));
+            return;
+        }
+        if (!j || j.ok !== true) {
+            say("error", (j && j.error) || "the lattice could not be read");
+            return;
+        }
+        const box = $("slab-a");
+        if (box) box.value = j.a.toFixed(4);
+        onLatticeInputsChanged();
+        const said = (j.notes || []).map((n) => n.message).join("  ·  ");
+        say((j.notes || []).some((n) => n.level === "warn") ? "warn" : "info",
+            `${j.element}${j.n_atoms} from ${j.source}: a = ${j.a.toFixed(4)} Å`
+            + (said ? "  ·  " + said : ""));
+    }
+
+    /* ── Apply ───────────────────────────────────────────────────────────
+     *
+     * Through `applyOp`, like every other edit: the module builds the
+     * structure body from its own data and applies the answer atomically
+     * (molview.md § 11.1).  This passes only the op's own arguments.
+     */
+    async function apply() {
+        const w = data();
+        if (!w) return;
+        const body = {
+            element: ($("slab-element") || {}).value || "Au",
+            plane: picked("slab-plane", "111"),
+            m: num("slab-m", 1),
+            n: num("slab-n", 1),
+            layers: num("slab-layers", 1),
+            start_registry: Number(picked("slab-registry", "0")),
+            start_z: num("slab-start-z", 0),
+            grow: picked("slab-grow", "+z"),
+            stacking: picked("slab-stacking", "continue"),
+            orthogonal: !!($("slab-orthogonal") || {}).checked,
+            dx: num("slab-dx", 0),
+            dy: num("slab-dy", 0),
+        };
+        // A TYPED `a` WINS, and an empty box means "use the table's".  Sent
+        // only when it is a real length, so the server keeps its own default
+        // rather than being handed NaN.
+        const a = num("slab-a", NaN);
+        if (Number.isFinite(a) && a > 0) body.lattice_constant = a;
+        try {
+            await w.applyOp("slab", body);
+        } catch (err) {
+            const notify = (window.molbuilder || {}).notify;
+            if (notify && notify.show) {
+                notify.show({ id: "slab-apply", level: "error",
+                              message: (err && err.message) || "the slab was "
+                                       + "not added" });
+            }
+        }
+    }
+
+    for (const id of ["slab-layers"]) {
+        const el = $(id);
+        if (el) el.addEventListener("input", renderPeriodNote);
+    }
+    const aBox = $("slab-a");
+    if (aBox) aBox.addEventListener("input", onLatticeInputsChanged);
+    const pick = $("slab-pick-run");
+    if (pick) pick.addEventListener("click", pickFromRun);
+    const go = $("slab-apply");
+    if (go) go.addEventListener("click", apply);
+
+    loadMeta();
+}

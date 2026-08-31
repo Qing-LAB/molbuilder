@@ -704,9 +704,15 @@ export function createWriteOut(handed) {
  *                      or fall back to centring on the origin.
  *   `needsExactly`   — checked BEFORE the request goes out, so `orient` with one
  *                      atom selected never reaches the network.
- *   `wholeStructure` — `calibrate` takes the whole-structure path even with a
- *                      partial selection, because it rigidly maps every atom into
- *                      the cell and clears the cell origin.
+ *   `wholeStructure` — THE SELECTION IS NOT SENT for this operation.  Two ops
+ *                      set it, for two different reasons, and the rule is the
+ *                      same one: `calibrate` rigidly maps every atom into the
+ *                      cell (a partial selection would be a half-mapped
+ *                      structure), and `slab` places from ABSOLUTE coordinates
+ *                      -- a starting z, a growth direction, an (x, y) from the
+ *                      world origin -- so there is nothing a selection could
+ *                      mean.  One flag rather than two, because it is one rule;
+ *                      the reasons live on the rows.
  */
 export const OPERATIONS = {
     translate:             { emptySelection: "all",    needsExactly: null,
@@ -724,6 +730,10 @@ export const OPERATIONS = {
     delete:                { emptySelection: "refuse", needsExactly: null,
                              group: "indices" },
     calibrate:             { emptySelection: "all",    needsExactly: null,
+                             wholeStructure: true, group: null },
+    // Placed absolutely, so it reads no selection -- the one edit whose panel
+    // gives the same answer with atoms picked or none (redesign plan § 3).
+    slab:                  { emptySelection: "all",    needsExactly: null,
                              wholeStructure: true, group: null },
 };
 

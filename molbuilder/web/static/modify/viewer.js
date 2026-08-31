@@ -769,7 +769,9 @@ export function init(viewer) {
         const planes   = (meta && meta.fcc_planes)
             || ["100", "110", "111"];
         // Stash the lattice table for readElcCommonBody.  Schema:
-        // { Au: {a_experimental, a_pbe, a_pbe_siesta_psml, name, system}, ... }
+        // { Au: {a_experimental, a_pbe, name, system}, ... } -- the third
+        // column left in v3 (data/README.md): it was null for every metal
+        // and nothing could write it.
         window.__elcLatticeTable = (meta && meta.lattice_table) || {};
         // Layers per stacking period, from the server (science/junction-cell.md
         // § 3.1).  No client-side copy of the crystallography -- an empty table

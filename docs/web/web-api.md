@@ -405,7 +405,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 92 routes
+## 3. Endpoint index — all 93 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -447,6 +447,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/build/molecule` | Build a molecule from a backend |
 | GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,calibrate,electrode,symmetric_electrodes}` | The eight structure edits |
+| POST `/api/modify/slab` | `{structure, element, plane, m, n, layers, start_registry, start_z, grow, stacking, orthogonal, dx, dy, lattice_constant?}` → the structure with one fcc slab appended. **Placed absolutely** — `dx`, `dy` and `start_z` are from the world origin — so it reads **no selection** at all, which is the difference from `electrode` beside it (`?doc=plans/modify-redesign-plan.md` § 3). `start_registry` picks which stacking registry the layer at `start_z` sits on (A/B/C, taken mod the surface's period); `grow` says which way the rest go; `stacking` says whether growing **down** continues the crystal or mirrors it — for `+z` the two are identical |
 | POST `/api/modify/lattice-from-run` | `{path, element?}` → `{ok, a, d_nn, coordination, second_shell_ratio, n_atoms, element, source, notes}`. **A lattice constant read back out of the user's own relaxed bulk result** (`?doc=plans/modify-redesign-plan.md` § 3.3). It measures the **atoms**, not the cell: a relaxed result's box may be conventional cubic, primitive rhombohedral, or the user's own m×n×N lead cell — three relations to `a`, and the file does not say which — so `a = √2·d_nn` under minimum image, which assumes nothing. The path is fenced at the route (§ 2.1) and read through the parse module (`.XV`) or `StructureCodec` (`.xyz` pair). **Two refusals**: a file with no cell, and more than one element with none named. Everything else is a `note` — coordination away from 12, a second shell away from √2·d, and the offset from each literature reference — because the setup is the user's to own |
 | POST `/api/selection/atoms` | Per-atom payload for a structure |
 | POST `/api/selection/eval` | Evaluate a selection expression |
