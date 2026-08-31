@@ -78,7 +78,7 @@ Three scopes exist. They are read in this order, and **later wins**:
 
 | # | scope | where | what may live here |
 |---|---|---|---|
-| 1 | **machine** | `molbuilder.json` in the working directory, else `$XDG_CONFIG_HOME` | every section |
+| 1 | **machine** | `molbuilder.json` — its **home** is the per-user config directory; a working-directory copy still wins today and is warned about (§ 2.1a) | every section |
 | 2 | **project** | `.molbuilder.json` in a project or calculation folder | `execution`, `script_generation`, `scheduler` — **and nothing else** |
 | 3 | **calculation** | the folder itself: `task.json`, `<label>.template.toml`, `environment.json`, an optional `warm-files.toml` | what this one calculation is |
 
@@ -163,12 +163,26 @@ So the rule is:
    effect, and says plainly when a per-user file **exists and is being
    ignored**. That last case is the one worth the noise: it is the only state in
    which the same setting can be written twice and read once.
-4. **The cwd step is on its way out.** It is kept for the machines that have one
-   and is not a place to put a new file. Retiring it is its own decision,
-   recorded here rather than left implicit.
+4. **The cwd step is on its way out**, and the decision is now taken rather
+   than pending: `plans/config-access-plan.md` § 3.3 retires it, with **no
+   migration and no compatibility layer** (user, 2026-08-31: *"no old design
+   should be expected"*). Until that lands the step works as described above.
+   When it lands, the warning below changes job — from *"this wins, and you may
+   not want it to"* to *"this is not read; move it"* — and this section is the
+   one that must be edited to say so.
 
 The warning is not a diagnosis aid bolted on afterwards; it is the price of
 keeping a search step whose whole failure mode is being invisible.
+
+> **Where the rest of that design lives.** `plans/config-access-plan.md` also
+> settles what this document does not yet describe, because none of it is built:
+> a `MOLBUILDER_CONFIG_DIR` override for the root; `logs/`, `run/` and
+> `reports/` moving off `~/.molbuilder/` onto `$XDG_STATE_HOME` and
+> `$XDG_RUNTIME_DIR`, overridable by a `paths` block; and one home and one
+> filename for the session secret, which today is written as
+> `<config_dir>/secret_key` and read as `~/.molbuilder/secret.key`. **This
+> document describes what is; that one describes what was decided.** Each step
+> edits this document as it lands.
 
 ### 2.1b It holds secrets, so it is `0600` — checked, not just written
 
