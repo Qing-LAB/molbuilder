@@ -790,58 +790,6 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
 # --------------------------------------------------------------------- #
 
 
-def slab_layer_step(element: str, plane: str, size, orthogonal: bool,
-                    a: float):
-    """The lateral offset from one atomic layer to the next, **measured**.
-
-    Returns ``(step_xy, d_interlayer)`` in Angstrom, read off a slab built
-    with exactly these parameters.
-
-    MEASURED, NEVER COMPUTED, and that is not fastidiousness.  The formula
-    ``(a1+a2)/period`` is right only on the PRIMITIVE in-plane vectors, and
-    a slab's ``get_cell()`` returns the SUPERCELL's -- so on a 3x3 Au(111)
-    the formula gives 4.3254 A where the layers actually step 1.4418.  The
-    measurement is identical for (1,1,6) and (3,3,6) on every surface, so it
-    is independent of m and n, and it honours a ``lattice_constant``
-    override for free.
-
-    It also removes a sign question rather than answering it.  The raw step
-    agrees with the formula only MODULO the lattice vectors -- on (100) and
-    (110) it is the exact negative, on (111) it is the formula shifted by
-    ``a1`` -- and every one of those is a chance to be wrong by a lattice
-    vector.  The step that was measured is the step.
-
-    Same discipline as ``cell.bulk_z_period`` applies to the z spacing
-    (science/junction-cell.md § 5), here applied to the lateral half.
-    """
-    m, n, _ = (int(v) for v in size)
-    probe = _build_ase_slab(element, plane, (m, n, 2), orthogonal, a)
-    pos = np.asarray(probe.positions, dtype=float)
-    zs = sorted({round(float(z), 6) for z in pos[:, 2]})
-    if len(zs) < 2:
-        raise ValueError(
-            f"a two-layer {element} fcc({plane}) slab came back with one "
-            f"layer; cannot measure the stacking step")
-
-    def _rep(z):
-        """One layer's lateral CENTROID.
-
-        Not "the lexicographically lowest atom", which was the first version
-        and is unstable: a layer is a finite patch, so translating it changes
-        WHICH atom sits at the corner and the marker jumps by a lattice
-        vector.  Measuring a placed slab that way reported three different
-        steps for one uniform walk.
-
-        A centroid translates exactly with the layer, and ASE builds every
-        layer with the same (m, n), so the two centroids describe the same
-        set of sites -- the difference between them is the registry and
-        nothing else.
-        """
-        return pos[np.abs(pos[:, 2] - z) < 1e-6][:, :2].mean(axis=0)
-
-    return _rep(zs[1]) - _rep(zs[0]), float(zs[1] - zs[0])
-
-
 def _finish_slab(struct, metal_pos, element, full, *,
                  plane, m, n, a, orthogonal, pad_interlayer_gap):
     """Append placed metal atoms and capture the box they imply.
@@ -1011,56 +959,73 @@ def add_slab(
             f"registry cannot be interpreted")
     k0 = int(start_registry) % period
 
-    full = _build_ase_slab(element, plane, (m, n, n_layers), orthogonal, a)
-    metal_pos = np.asarray(full.positions, dtype=float).copy()
-    step_xy, d_layer = slab_layer_step(element, plane, size, orthogonal, a)
+    # BUILD TALL, TRIM, THEN MOVE AS ONE PIECE (user, 2026-08-30: "you can
+    # create a super set that has more layers, trim it as needed, and offset
+    # precisely with mirroring as needed").
+    #
+    # THE REGISTRY IS WHICH SLICE YOU TAKE, and nothing moves sideways at all.
+    # Superset layer j already sits on registry j mod period -- ASE put it
+    # there -- so choosing where the window starts chooses the registry, and
+    # the result is a CONTIGUOUS SLICE OF A REAL CRYSTAL by construction.
+    #
+    # Two earlier attempts moved atoms laterally instead, and both were built
+    # on a false premise: that there is one lateral "step" from one layer to
+    # the next.  There is not.  Measured on ASE's own untouched Au(111) slab,
+    # consecutive layer centroids walk by three DIFFERENT vectors repeating
+    # with period 3 -- [-1.4418, 0.8324], [0, -1.6648], [1.4418, 0.8324] --
+    # because each layer is wrapped into the cell.  Any single "step" is one
+    # of three, and shifting by it lands a finite patch a lattice vector away
+    # from where it was meant to be.  Trimming asks the question that has an
+    # answer.
+    tall = n_layers + period - 1
+    full = _build_ase_slab(element, plane, (m, n, tall), orthogonal, a)
+    all_pos = np.asarray(full.positions, dtype=float)
+    zs = sorted({round(float(z), 6) for z in all_pos[:, 2]})
+    d_layer = float(zs[1] - zs[0]) if len(zs) > 1 else 0.0
 
-    # WHICH BUILT LAYER IS WHICH.  ASE stacks upward from z_min, so built
-    # layer j carries registry (layer0 + j) and sits j spacings up.
+    # WHICH LAYER LANDS ON `start_z`, and therefore which window carries the
+    # registry the caller asked for.  Growing up, or mirrored, it is the
+    # window's BOTTOM layer; growing down by continuing, its TOP.
+    if grow == "-z" and stacking == "continue":
+        first = (k0 - n_layers + 1) % period
+    else:
+        first = k0
+    keep_z = zs[first:first + n_layers]
+    if len(keep_z) < n_layers:                      # pragma: no cover - guarded by `tall`
+        raise RuntimeError(
+            f"a {tall}-layer slab could not supply {n_layers} layers from "
+            f"registry {k0}; this is a builder bug, not a bad request")
+    lo, hi = keep_z[0] - 1e-6, keep_z[-1] + 1e-6
+    metal_pos = all_pos[(all_pos[:, 2] >= lo) & (all_pos[:, 2] <= hi)].copy()
+
+    # EVERYTHING FROM HERE IS RIGID -- it acts on the whole slice, never on a
+    # layer.  A rigid motion of a crystal is a crystal, so the class of bug
+    # that per-layer editing invites is unreachable rather than guarded.
     z_rel = metal_pos[:, 2] - metal_pos[:, 2].min()
-    layer_of = np.rint(z_rel / d_layer).astype(int) if d_layer > 1e-9 \
-        else np.zeros(len(metal_pos), dtype=int)
+    if grow == "+z":
+        metal_pos[:, 2] = start_z + z_rel
+    elif stacking == "mirror":
+        # Reflected about the starting surface: the sequence reads the same
+        # way outward from it as an upward slab does.
+        metal_pos[:, 2] = start_z - z_rel
+    else:
+        # Translated only.  The layers below `start_z` are the ones ASE
+        # already put below -- the crystal carries on downward because it was
+        # never taken apart.
+        metal_pos[:, 2] = start_z - (z_rel.max() - z_rel)
 
-    # THE REGISTRY WALK.  Growing up, it always steps forward -- that is what
-    # the slab was built as.  Growing down it steps backward when the crystal
-    # is to CONTINUE (below A sits C), forward when the slab is to be
-    # MIRRORED.  One line, and it is the whole of the `stacking` switch.
-    zdir = 1.0 if grow == "+z" else -1.0
-    rstep = 1 if (grow == "+z" or stacking == "mirror") else -1
-
-    # PLACE FIRST, THEN SHIFT THE REGISTRY -- and the order is the whole of
-    # it.  Placement is absolute: the slab's own lateral centroid lands on
-    # `offset`, measured from the world origin, with no anchor and no
-    # selection.  Done the other way round, a uniform registry shift moves
-    # every atom and the re-centring then subtracts exactly the same amount:
-    # A, B and C all come out as the same slab, and the control does
-    # nothing at all.  (Caught by its own test, 2026-08-30.)
+    # PLACEMENT IS ABSOLUTE: the slice's own lateral centroid lands on
+    # `offset`, measured from the world origin.  No anchor, no selection --
+    # the same numbers put the same slab in the same place whatever is picked.
     metal_pos[:, :2] += np.asarray(offset, dtype=float) \
         - metal_pos[:, :2].mean(axis=0)
-
-    # Built layer j already carries j steps of lateral offset; it needs
-    # (k0 + rstep*j).  The difference is what moves.  A registry choice IS a
-    # lateral displacement in units of the stacking step -- which is why it
-    # has to survive the placement rather than be absorbed by it.
-    for j in range(n_layers):
-        rows = layer_of == j
-        if not rows.any():
-            continue
-        metal_pos[rows, :2] += (k0 + (rstep - 1) * j) * step_xy
-
-    # AND THE z: the starting layer lands ON `start_z`, the rest follow the
-    # growth direction.  A TRANSLATION in both cases -- `-z` negates the
-    # OFFSET FROM the starting layer, never the slab's own stacking, which
-    # is what `stacking` is for and what the old builder conflated.
-    metal_pos[:, 2] = start_z + zdir * z_rel
 
     # PADDING STAYS ON, for now.  § 3 moves *"pad cell by one layer spacing"*
     # out of this panel and into the Cell page (§ 4.4), and that move is a
     # contract rewrite -- `junction-cell.md` § 5 names the Junction panel as
-    # the switch's home and § 6 explains why it defaults on.  Until that
-    # lands, an unpadded box would put the bottom atom's periodic image
-    # exactly on the top atom and SIESTA would stop (§ 1), so this builder
-    # keeps the safe default rather than shipping a box no engine can use.
+    # the switch's home and § 6 explains why it defaults on.  Until it lands,
+    # an unpadded box would put the bottom atom's periodic image exactly on
+    # the top atom and SIESTA would stop (§ 1).
     return _finish_slab(
         struct, metal_pos, element, full,
         plane=plane, m=m, n=n, a=a, orthogonal=orthogonal,

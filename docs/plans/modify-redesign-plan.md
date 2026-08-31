@@ -315,31 +315,37 @@ have to decide whether the formula or the slab is wrong. It is neither.
 *"if available"* falls out of the period: three choices on (111), two on the
 others. **No new table.**
 
-> **Sharpened 2026-08-30, at the point of building it.** This said the shift is
-> built *"from the slab's own in-plane cell vectors"*. Measured, that is wrong
-> in a way that would have shipped: those vectors are the **supercell's**, so on
-> an m×n slab `(a₁+a₂)/period` comes out **m times too large** — 4.3254 Å
-> instead of 1.4418 on a 3×3 Au(111).
+> **Superseded the same day, by the user.** The paragraph here said the shift
+> is built *"from the slab's own in-plane cell vectors"*, and I then sharpened
+> it to *"measure the step off the layer offsets"*. **Both were wrong, and for
+> the same reason: there is no such thing as "the" step.**
 >
-> **Measure the step off the slab's own LAYER OFFSETS instead** — layer 1's
-> lateral position minus layer 0's. Measured, that is identical for (1,1,6) and
-> (3,3,6) on every surface, so it is independent of m and n, and it honours a
-> `lattice_constant` override for free. Same discipline as `junction-cell.md`
-> § 5's z padding, applied to the lateral half.
+> Measured on ASE's own untouched Au(111) slab, consecutive layer centroids
+> walk by **three different vectors** repeating with period 3 —
+> `[-1.4418, 0.8324]`, `[0, -1.6648]`, `[1.4418, 0.8324]` — because each layer
+> is wrapped into the cell. Any single "step" is one of three, and shifting a
+> finite patch by it lands it a lattice vector from where it was meant to be.
+> Two implementations were built on that false premise before the measurement
+> was taken; neither could have been made correct by measuring more carefully.
 >
-> And it settles the sign question below without arithmetic: the measured step
-> *is* the step, so nothing has to be reduced modulo anything.
+> **What replaced it** (user: *"you can create a super set that has more
+> layers, trim it as needed, and offset precisely with mirroring as needed"*):
 >
-> | surface | measured layer step (Å) | `(a₁+a₂)/period`, primitive |
-> |---|---|---|
-> | (111) | `[-1.4418, +0.8324]` | `[+1.4418, +0.8324]` |
-> | (100) | `[-1.4418, -1.4418]` | `[+1.4418, +1.4418]` |
-> | (110) | `[-2.0390, -1.4418]` | `[+2.0390, +1.4418]` |
+> - build a slab **taller than asked** — `layers + period − 1`;
+> - **trim** to the window whose first layer carries the wanted registry.
+>   Superset layer `j` already sits on registry `j mod period` because ASE put
+>   it there, so **the registry is which slice you take** and nothing moves
+>   sideways at all;
+> - then place it with **rigid motions only** — one translation for `+z` and
+>   for `continue`, one reflection for `mirror`.
 >
-> On (100) and (110) the raw step is the exact **negative**; on (111) it is the
-> formula shifted by `a₁`. All three agree with the formula only **modulo the
-> lattice vectors**, which is what § 6.1 recorded and what this table now shows
-> in Å rather than in fractions.
+> The result is a **contiguous slice of a real crystal**, and a rigid motion of
+> a crystal is a crystal — so the whole class of bug that per-layer editing
+> invites is *unreachable* rather than guarded against. That is the argument
+> for it, not brevity.
+>
+> `slab_layer_step`, written for the previous approach, is deleted: it measured
+> a quantity that is not well defined.
 
 ### 3.2 What this closes rather than adds
 
