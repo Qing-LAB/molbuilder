@@ -1,4 +1,9 @@
-"""A working-directory `molbuilder.json` is honoured and SAID OUT LOUD.
+"""What the machine config says about itself: which file, and is it safe.
+
+Two warnings, both on the way IN, both phrased in exactly one place so every
+surface says the same thing -- `configuration.md` §§ 2.1a and 2.1b.
+
+A working-directory `molbuilder.json` is honoured and SAID OUT LOUD.
 
 `configuration.md` § 2.1a.  User, 2026-08-31:
 
@@ -122,3 +127,112 @@ class TestEverySurfaceSaysTheSameThing:
             "reaches a person without entering piped output")
         assert str(work / "molbuilder.json") in out.out, (
             "and the banner itself still names the file, as it always did")
+
+
+# ---------------------------------------------------------------------------
+# § 2.1b — it holds secrets, so its mode is checked and not merely written
+# ---------------------------------------------------------------------------
+
+def _mode_warning():
+    from molbuilder.runtime_config import machine_config_mode_warning
+    return machine_config_mode_warning()
+
+
+class TestTheModeIsCheckedOnTheWayIn:
+    """Writing it tightly was already handled; a file that ARRIVES loose --
+    copied, restored, unpacked, or made by an editor -- never passes through
+    the careful writer, so a `0644` config was `0644` in silence."""
+
+    def test_a_tight_file_says_nothing(self, isolated):
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o600)
+        assert _mode_warning() is None, "the correct case must stay quiet"
+
+    def test_no_file_says_nothing(self, isolated):
+        assert _mode_warning() is None, (
+            "there is nothing to say about a file nobody wrote")
+
+    @pytest.mark.parametrize("mode", [0o644, 0o640, 0o666, 0o604])
+    def test_any_reach_past_the_owner_is_named(self, isolated, mode):
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(mode)
+        msg = _mode_warning()
+        assert msg is not None, f"mode {mode:04o} reaches past the owner"
+        assert f"{mode:04o}" in msg, "say what the mode IS, not just that it is wrong"
+        assert str(f) in msg
+
+    def test_it_names_the_exact_command_to_fix_it(self, isolated):
+        """A warning whose remedy the reader has to work out is a nag."""
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o644)
+        assert f"chmod 0600 {f}" in _mode_warning()
+
+    def test_group_only_and_world_readable_read_differently(self, isolated):
+        """`0640` and `0644` are not the same exposure, and a message that
+        called both "everyone" would overstate one and understate nothing."""
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o640)
+        group_only = _mode_warning()
+        f.chmod(0o644)
+        world = _mode_warning()
+        assert "everyone" not in group_only
+        assert "everyone" in world
+
+    def test_it_says_why_the_mode_matters(self, isolated):
+        """Not decoration: without the reason this reads as pedantry about a
+        config file, and the reason is that it carries key paths and provider
+        credentials."""
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o644)
+        msg = _mode_warning()
+        assert "credential" in msg or "private-key" in msg
+        assert "2.1b" in msg, "and where the rule lives"
+
+
+class TestItIsAWarningAndNotARefusalEither:
+
+    def test_a_loose_file_is_still_read(self, isolated):
+        from molbuilder.runtime_config import machine_config_path
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o644)
+        assert machine_config_path()[0] == f.resolve(), (
+            "refusing would lock a person out over something they can fix in "
+            "one command -- which the message names")
+
+
+class TestBothWarningsTravelTogether:
+
+    def test_provenance_carries_the_mode_warning_too(self, isolated):
+        from molbuilder.runtime_config import config_provenance
+        work, _home = isolated
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o644)
+        assert config_provenance()["mode_warning"] == _mode_warning()
+
+    def test_the_banner_prints_both_when_both_apply(self, isolated, capsys):
+        """A cwd file that is also loose has two things wrong with it, and
+        hearing one of them is how the other survives."""
+        from molbuilder.jobset import _cli
+        work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        home.write_text("{}")
+        f = work / "molbuilder.json"
+        f.write_text("{}")
+        f.chmod(0o644)
+        _cli._echo_config_root()
+        err = capsys.readouterr().err
+        assert "IGNORED" in err, "the shadow warning"
+        assert "chmod 0600" in err, "and the mode warning"

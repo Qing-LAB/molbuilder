@@ -170,6 +170,42 @@ So the rule is:
 The warning is not a diagnosis aid bolted on afterwards; it is the price of
 keeping a search step whose whole failure mode is being invisible.
 
+### 2.1b It holds secrets, so it is `0600` — checked, not just written
+
+*(User, 2026-08-31: "we should constrain its chmod in contract and in
+practice?")*
+
+`molbuilder.json` is not ordinary configuration. It carries `tls.cert` and
+`tls.key`, `secret_key_file`, and the `auth.providers` block — paths to private
+keys, and provider credentials. A world-readable copy on a shared login node is
+a real exposure, not a tidiness question.
+
+**The rule, for the file and its directory:**
+
+| | mode | why |
+|---|---|---|
+| `molbuilder.json` (either location) | **`0600`** | owner reads and writes; nobody else has any business with it |
+| the per-user config directory | **`0700`** | a listable directory names the file even when the file itself is shut |
+
+**Writing it this way was already done; checking it was not.** `auth_setup`
+creates the file with `os.open(..., 0o600)` and `fchmod`s the descriptor
+*before the first byte* — the mode is right before there is anything to read,
+rather than being fixed afterwards by a `chmod` that races the write. That care
+is worth keeping and is not what this section adds.
+
+What it adds is that **an existing file's mode is checked on the way in**. A
+file arrives loose in ways no writer controls: copied from another machine,
+restored from a backup, created by an editor, `git checkout`-ed, or unpacked
+from an archive that did not preserve modes. The careful writer never sees those,
+so a file that is `0644` today is `0644` silently.
+
+**A warning, never a refusal**, for the same reason as § 2.1a: refusing locks a
+person out of their own tooling over a condition they can fix in one command,
+and the fix is named in the message. `runtime_config.machine_config_mode_warning()`
+is the one place it is phrased, so every surface says the same thing, and it
+names the exact `chmod` to run. It says nothing when the mode is already tight —
+the quiet case is the correct one.
+
 ### 2.2 Which file actually took effect is displayed, never inferred
 
 Three files can supply a `scheduler` block — the working directory's, the

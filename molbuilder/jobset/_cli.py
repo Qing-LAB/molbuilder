@@ -97,6 +97,7 @@ def _echo_config_root() -> None:
     """
     import click as _click
     from ..runtime_config import (CONFIG_FILENAME, machine_config_path,
+                                  machine_config_mode_warning,
                                   machine_config_shadow)
     path, via = machine_config_path()
     state = "found" if path.is_file() else "not found -- defaults in effect"
@@ -105,9 +106,9 @@ def _echo_config_root() -> None:
     # above already names the resolved path; this says what that path is
     # standing in front of, which is the half a reader cannot infer.  To
     # stderr, so it reaches a person without entering piped output.
-    shadow = machine_config_shadow()
-    if shadow:
-        _click.echo(shadow, err=True)
+    for warning in (machine_config_shadow(), machine_config_mode_warning()):
+        if warning:
+            _click.echo(warning, err=True)
 
 
 #: The calculation folder, spelled the same way on every verb.

@@ -1177,6 +1177,54 @@ def machine_config_shadow() -> Optional[str]:
     return "\n".join(lines)
 
 
+#: The only modes a file holding credentials may carry, and the directory that
+#: names it (`configuration.md` § 2.1b).  `0600` and `0700`: owner only.
+CONFIG_FILE_MODE = 0o600
+CONFIG_DIR_MODE = 0o700
+
+
+def machine_config_mode_warning() -> Optional[str]:
+    """A warning when the machine config is readable by anyone but its owner.
+
+    `configuration.md` § 2.1b.  This file carries `tls.key`, `secret_key_file`
+    and the `auth.providers` block, so a world-readable copy on a shared login
+    node is an exposure rather than an untidiness.
+
+    WRITING IT TIGHTLY WAS ALREADY HANDLED -- ``auth_setup`` opens with
+    ``0o600`` and ``fchmod``s before the first byte, so the mode is right
+    before there is anything to read.  What no writer can control is a file
+    that ARRIVES loose: copied from another machine, restored from a backup,
+    made by an editor, or unpacked from an archive that dropped its modes.
+    Those never pass through the careful path, so the check belongs on the way
+    IN.
+
+    A warning and never a refusal (§ 2.1a's reasoning): the fix is one command
+    and it is named here.  ``None`` when the mode is already tight, and when
+    the file does not exist -- there is nothing to say about a file nobody
+    wrote.
+    """
+    path, _via = machine_config_path()
+    try:
+        if not path.is_file():
+            return None
+        mode = path.stat().st_mode & 0o777
+    except OSError:
+        return None
+    loose = mode & ~CONFIG_FILE_MODE
+    if not loose:
+        return None
+    who = []
+    if mode & 0o077 & 0o070:
+        who.append("your group")
+    if mode & 0o007:
+        who.append("everyone on this machine")
+    reach = " and ".join(who) if who else "more than its owner"
+    return (f"{path} is mode {mode:04o}, so {reach} can read it. It holds "
+            f"private-key paths and provider credentials "
+            f"(configuration.md § 2.1b).\n"
+            f"  Fix it with: chmod {CONFIG_FILE_MODE:04o} {path}")
+
+
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Which config files this process consults, and which one supplied each
     execution-relevant value — the answer to *"where did that setting come
@@ -1208,6 +1256,9 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # skipped, and that is the state where a setting is written twice and read
     # once.  Asked of the one place that phrases it, never re-worded here.
     shadow = machine_config_shadow()
+    # Same split as § 2.1a's: WHICH file, and whether it is safe to hold what
+    # it holds.  Asked of the one place that phrases each, never re-worded.
+    mode_warning = machine_config_mode_warning()
 
     if project_dir is not None:
         project_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
@@ -1282,7 +1333,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     except RuntimeConfigError:
         domains = []               # a malformed block is the caller's to raise
     return {"sources": sources, "effective": effective, "domains": domains,
-            "shadow": shadow}
+            "shadow": shadow, "mode_warning": mode_warning}
 
 
 def format_provenance(prov: Mapping[str, Any]) -> str:
