@@ -216,6 +216,36 @@ class TestTheStackingSwitch:
             "continue behaved like a reflection")
 
 
+class TestTheBoxItCaptures:
+    """`junction-cell.md` § 1: an unpadded box puts the bottom atom's periodic
+    image exactly on the top atom, at zero distance, and SIESTA stops.  The
+    padding is one interlayer spacing.
+
+    Pinned at ONE layer as well as several, because that is the case with no
+    spacing of its own to measure — and the case whose handling moved during
+    the API review, from a probe inside the shared helper to the caller that
+    owns the build recipe.
+    """
+
+    @pytest.mark.parametrize("n_layers", (1, 2, 3))
+    def test_the_box_is_padded_by_exactly_one_interlayer_spacing(self, n_layers):
+        d_au111 = 2.3544                       # Au(111), a = 4.078
+        out = _slab(size=(2, 2, n_layers), start_z=2.4)
+        pos = np.asarray(out.positions, dtype=float)
+        span = float(pos[:, 2].max() - pos[:, 2].min())
+        assert out.cell is not None, "a slab with z extent must capture a box"
+        assert abs((out.cell[2][2] - span) - d_au111) < 1e-3, (
+            f"{n_layers} layer(s): padded by {out.cell[2][2] - span}, "
+            f"expected one spacing ({d_au111})")
+
+    def test_a_degenerate_z_extent_captures_no_box(self):
+        """A monolayer landing exactly on a flat molecule has no z extent, and
+        a box with none is singular.  Answered with `cell=None` — no box —
+        rather than with a box no engine can use."""
+        out = _slab(size=(2, 2, 1), start_z=0.0)
+        assert out.cell is None
+
+
 class TestWhatItRefuses:
 
     @pytest.mark.parametrize("bad", ["z", "up", "+Z", ""])

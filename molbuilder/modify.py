@@ -791,7 +791,7 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
 
 
 def _finish_slab(struct, metal_pos, element, full, *,
-                 plane, m, n, a, orthogonal, pad_interlayer_gap):
+                 d_interlayer, pad_interlayer_gap):
     """Append placed metal atoms and capture the box they imply.
 
     EXTRACTED 2026-08-30 so ``add_slab`` and ``add_electrode_slab`` share
@@ -801,7 +801,17 @@ def _finish_slab(struct, metal_pos, element, full, *,
     in what happens afterwards: the metadata, the cell, its origin, and the
     axis kinds are the same facts about the same atoms.
 
-    Everything below is the original body, moved unchanged.
+    ``d_interlayer`` is the crystal's layer spacing, in Angstrom, and it is
+    the CALLER's to supply.  This function used to take the whole build
+    recipe instead -- ``plane``, ``m``, ``n``, ``a``, ``orthogonal`` -- five
+    parameters whose only purpose was to re-run ``_build_ase_slab`` for a
+    two-layer probe when the real slab held one layer and had no spacing to
+    measure.  Passing a builder its own recipe alongside its own product is
+    a smell, and it made this helper build things: ``add_slab`` had already
+    built a TALLER slab it could have measured, and paid for a second one.
+    The spacing is one number both callers already hold.
+
+    Everything else below is the original body, moved unchanged.
     """
     # Assemble metadata for the new metal atoms.
     n_new = metal_pos.shape[0]
@@ -832,21 +842,16 @@ def _finish_slab(struct, metal_pos, element, full, *,
             # Measure the METAL layers only: they are what meets across the
             # boundary, and a molecule that reaches past the slabs must not set
             # the crystal's spacing.
+            # Measured on the slab AS BUILT where there is more than one
+            # layer, so an ``inter_layer_offset`` override is honoured without
+            # being passed in.  A MONOLAYER has no spacing to measure and the
+            # caller supplies the crystal's instead -- see `d_interlayer`.
             metal_layers = _cell.detect_layers(metal_pos[:, 2])
-            if len(metal_layers) < 2:
-                # A MONOLAYER has no spacing to measure, but the crystal still
-                # has one -- so ask the same builder for a 2-layer slab and read
-                # it off that, rather than leaving the box unpadded (which is
-                # the zero-distance collision this whole branch exists to
-                # prevent).  Same (m, n) and ``orthogonal`` as the real slab, so
-                # it cannot hit an ASE shape constraint the caller already
-                # passed.  ``inter_layer_offset`` does not apply at one layer.
-                probe = _build_ase_slab(element, plane, (m, n, 2), orthogonal, a)
-                metal_layers = _cell.detect_layers(
-                    np.asarray(probe.positions, dtype=float)[:, 2])
+            spacing = d_interlayer
             if len(metal_layers) >= 2:
-                _zp, d_interlayer, _n = _cell.bulk_z_period(metal_layers)
-                z_len = z_extent + d_interlayer
+                _zp, spacing, _n = _cell.bulk_z_period(metal_layers)
+            if spacing:
+                z_len = z_extent + spacing
         elc_cell = np.array([
             [slab_cell[0, 0], slab_cell[0, 1], 0.0],
             [slab_cell[1, 0], slab_cell[1, 1], 0.0],
@@ -1028,8 +1033,7 @@ def add_slab(
     # the top atom and SIESTA would stop (§ 1).
     return _finish_slab(
         struct, metal_pos, element, full,
-        plane=plane, m=m, n=n, a=a, orthogonal=orthogonal,
-        pad_interlayer_gap=True)
+        d_interlayer=d_layer, pad_interlayer_gap=True)
 
 
 def add_electrode_slab(
@@ -1245,10 +1249,24 @@ def add_electrode_slab(
                 closest_z = anchor[2] + sign * contact_distance
                 metal_pos[:, 2] = closest_z + (metal_pos[:, 2] - closest_z) * scale
 
+    # THE CRYSTAL'S LAYER SPACING, for the monolayer case where the slab
+    # itself has none to measure.  Asked of the same builder with the same
+    # (m, n) and ``orthogonal``, so it cannot hit an ASE shape constraint
+    # this call already passed.  Only built when it is actually needed --
+    # with two or more layers `_finish_slab` measures the real slab and this
+    # is never consulted.
+    d_crystal = 0.0
+    if n_layers < 2 and pad_interlayer_gap:
+        probe_z = np.asarray(
+            _build_ase_slab(element, plane, (m, n, 2), orthogonal, a).positions,
+            dtype=float)[:, 2]
+        probe_layers = _cell.detect_layers(probe_z)
+        if len(probe_layers) >= 2:
+            _zp, d_crystal, _n = _cell.bulk_z_period(probe_layers)
+
     return _finish_slab(
         struct, metal_pos, element, full,
-        plane=plane, m=m, n=n, a=a, orthogonal=orthogonal,
-        pad_interlayer_gap=pad_interlayer_gap)
+        d_interlayer=d_crystal, pad_interlayer_gap=pad_interlayer_gap)
 
 
 # --------------------------------------------------------------------- #
