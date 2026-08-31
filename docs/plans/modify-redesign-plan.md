@@ -1,4 +1,4 @@
-# Modify — the Molbuilder tab's four-item redesign
+# Modify — the Molbuilder tab's five-item redesign
 
 **Role:** plan (designed, none of it built)
 **Domain:** web · science
@@ -12,16 +12,22 @@ and the padding switch ·
 [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.2 —
 the one cell door ·
 [`plans/bench-and-junction-plan.md`](?doc=plans/bench-and-junction-plan.md) § 2.3 —
-subsumed by item 3
+subsumed by item 3 ·
+[`web/ui-contract.md`](?doc=web/ui-contract.md) §§ 1, 4 — the stylesheet layers
+and the rhythm item 5 has to obey ·
+[`plans/css-system-plan.md`](?doc=plans/css-system-plan.md) §§ 3, 4 — the tier
+rule, and the steps C/D item 5 partly discharges
 
 **Why this file exists.** The user dictated four changes to the Molbuilder tab's
-Modify surface in one sitting, then settled every open question in the exchange that followed. This is
+Modify surface in one sitting, then settled every open question in the exchange
+that followed; a fifth — the tab's own placement and alignment — was added once
+the first four were written down. This is
 the record of what was asked, what the code actually does today, and what each
 item changes — written before any code, so the contract is what gets reviewed
 rather than a diff.
 
 **Nothing here is a guess.** Every claim about current behaviour was read out of
-the code or measured; the measurements are in § 5, with the numbers. Where a
+the code or measured; the measurements are in § 6, with the numbers. Where a
 first reading of mine turned out to be wrong, the correction is recorded rather
 than quietly replaced (§ 2.2, § 3.3) — the wrong reading is the more useful half,
 because it says where the code misleads.
@@ -229,7 +235,7 @@ one fewer thing to keep apart from item 1.
 
 ### 3.1 A/B/C is buildable, and it is read off the slab
 
-Measured on all three surfaces, not assumed (§ 5.1): an fcc(111) slab's layers
+Measured on all three surfaces, not assumed (§ 6.1): an fcc(111) slab's layers
 sit on exactly **three** in-plane registries, separated by `(a₁+a₂)/3`; (100) and
 (110) have **two**, separated by `(a₁+a₂)/2`. So *"start on A, B or C"* is a
 lateral shift of `k·(a₁+a₂)/period`, and the period is `cell.STACKING_PERIOD` —
@@ -238,7 +244,7 @@ panel** by `/api/modify/meta` (`stacking_period`).
 
 **The step is equal only modulo the lattice vectors**, and that is not a
 technicality to skip: the raw difference between two consecutive layers comes out
-as the *negative* of `(a₁+a₂)/period` on every surface measured (§ 5.1). Whoever
+as the *negative* of `(a₁+a₂)/period` on every surface measured (§ 6.1). Whoever
 implements this will read that difference, see a sign that does not match, and
 have to decide whether the formula or the slab is wrong. It is neither.
 
@@ -264,7 +270,7 @@ thing that knows about registry and becomes the **check on a stated one**.
 
 ### 3.3 "Your bulk run" — dead by construction, not broken
 
-Verified (§ 5.3): `a_pbe_siesta_psml` is `null` for **all six** metals in the
+Verified (§ 6.3): `a_pbe_siesta_psml` is `null` for **all six** metals in the
 packaged `fcc_lattice.json`, and **nothing in the codebase writes it**. The radio
 greys itself when the value is null — correctly — so it has been unreachable
 since it shipped. Its only home is that packaged table plus the machine-wide
@@ -298,7 +304,7 @@ a    = √2 · d_nn
 ```
 
 Verified on a 3×3×6 Au(111) supercell: all three routes recover `a` exactly
-(§ 5.2). This is exactly the division of labour the user set — **they** guarantee
+(§ 6.2 here). This is exactly the division of labour the user set — **they** guarantee
 the pseudopotential, basis and cutoff; the backend does not have to guess how the
 cell was set up.
 
@@ -412,11 +418,151 @@ disagree with the one that shapes the box).
 
 ---
 
-## 5. What was measured, and what it showed
+## 5. The surface — one inset, one edge, one typeface
+
+The user, 2026-08-30: *"your current modify tab have many elements not displayed
+clearly or inconsistent from the rest. this is a good time to improve those
+visual placement and alignment etc. make sure your css is designed
+systematically rather than a patch."*
+
+It is item 5 rather than an afterthought because items 3 and 4 each add a
+**panel to this card**. Whatever decides where a row starts has to be settled
+before two more panels are built on top of it, or they inherit the arithmetic
+below and the problem doubles.
+
+### 5.1 What is on screen, measured
+
+Read out of the live page — `/molbuilder`, one 312-atom structure loaded, a
+641 px content column — not out of the stylesheet.
+
+**Three cards, three title positions.** Distance from the content column's left
+edge:
+
+| card | card's left edge | title's left edge | title inset |
+|---|---:|---:|---:|
+| Init structure | 0.0 | 20.8 | 20.8 |
+| Structure & selection | 16.0 | 36.0 | 20.0 |
+| Modify | 16.0 | 54.8 | **38.8** |
+
+Two faults at once: the init card sits **flush** with the column while the two
+below it are inset 16, and the Modify title is indented 19 px further than
+either of the other two.
+
+**Inside the Modify card, six left edges:**
+
+| what | inset from the card's edge | where it comes from |
+|---|---:|---|
+| header rule · action row · message band | 18.8 | `.card`'s own padding |
+| `h2` "Modify" | 38.8 | + `.card-header`'s 20 |
+| op-tab row · panels · fieldsets | 34.8 | + `.modify-edit-panel`'s 16 |
+| the tab buttons | 42.8 | + `.modify-op-tabs`' 8 |
+| every legend, label and control | 51.6 | + the fieldset's 16 + the legend's 4 |
+
+The card's title, the rule under it and its first form row start at three
+different places, and **8.6 % of a 600 px card is left margin** accumulated four
+containers deep.
+
+**The rest of the app does not do this.** On `/task-setup`, five cards all wear
+the shell's `.card` and every one of their titles sits at exactly **18.8 px** —
+the card's own inset, one number, no exceptions. Modify is the outlier, not the
+norm, which is why this is a repair rather than a redesign.
+
+### 5.2 Why it happens — indentation by nesting
+
+Each container adds padding without knowing what its ancestors already spent:
+18 (`.card`) + 20 (`.card-header`) for the title; 18 + 16
+(`.modify-edit-panel`) + 16 (the fieldset) + 4 (the legend) for a form row.
+Every one of those is defensible alone. The sum is nobody's decision.
+
+That is also why a patch cannot fix it. Subtracting 20 from `.card-header`
+lines the Modify title up and **breaks the viewer card's**, because that
+section is not a `.card` and has no 18 underneath to absorb it — the same rule
+has to serve a header with a padded parent and a header without one.
+
+### 5.3 The rule
+
+> **One inset per card.** A card states its inset once, on itself. Everything
+> inside it — title, rule, tabs, fieldsets, rows — begins at that inset and adds
+> none of its own. A nested block may add *vertical* space; horizontal
+> indentation is a deliberate signal of hierarchy, never a by-product of
+> nesting.
+
+Here that means `.card-header`, `.modify-edit-panel`, `.modify-op-tabs` and
+`.modify-op-block` give up their horizontal padding, and one edge runs from the
+title straight down through every control. Where a row genuinely *should* be
+indented — a sub-option under the control it belongs to — it says so with one
+step of the spacing scale, and the reader can tell, because it is then the only
+indentation on the card.
+
+> **One gutter per tab.** Every top-level block shares one left edge, one right
+> edge and one max-width. Nothing sits outside the page's own container.
+
+Here that means `.modify-init-card` moves **inside** `<main class="modify-main">`
+— today it is a sibling of it (`modify.html:55` against `:279`), which is the
+whole reason it is flush while everything below is inset — and the max-width
+that only `.modify-grid` carries moves to the container both blocks sit in.
+
+### 5.4 Three findings bigger than this tab
+
+Each affects every page; none is fixed by item 5, and each is recorded so it is
+decided once rather than a fourth time.
+
+1. **The app's one card surface is off the 4 px grid.** `page-shell.css` sets
+   `.card { padding: var(--space-md) 18px 18px }`. 18 is not a hairline (under
+   3 px, exempt) and not a dimension (over 40 px, exempt), so by
+   `ui-contract.md` § 4's own rule it should be on the scale. Because `.card` is
+   the canonical surface, *everything* nested inside one is 2 px off the grid it
+   is supposed to share. Fixing it shifts every page by 2 px and deserves its
+   own commit.
+
+2. **The page renders in two typefaces.** `page-shell.css` sets the body to
+   `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Inter",
+   sans-serif`; six `font:` shorthands in `modify/style.css` write
+   `system-ui, sans-serif`. **The shorthand resets the family**, so card titles,
+   op-tab labels, hints and the timeline status come out in a different face
+   from the body text around them — measured on this machine, the same string
+   sets 292.61 px in the first stack and 290.93 px in the second. `tokens.css`
+   has had `--font-sans` since it was written and **nothing in the page layer
+   uses it**. The rule that closes it is one line: *a `font:` shorthand names
+   `var(--font-sans)`, or it is not written.*
+
+3. **Four answers to "how wide is a page".** `results` caps at 1200 px,
+   `--ts-page-max` at 1240, `modify` at 1680, and three tabs have no cap at all.
+   `modify/style.css`'s own preamble already defers this — *"reconciling those
+   three is a design decision about the whole app, not a tidy-up"* — and that is
+   still true. Named here, not settled here.
+
+### 5.5 What the sheet gives up
+
+`modify/style.css` declares selectors that are not its own vocabulary:
+`html, body`, `header`, `header h1`, `footer`, `footer a`, `.status`,
+`.card[hidden]`, `.card-header`, `.ghost`, and a `:root`. That is
+`plans/css-system-plan.md` § 3's rule — *a page sheet may contain only T3* —
+unmet, and its steps **C** and **D** are exactly this work.
+
+Two of them are cheap and belong with item 5 because it touches them anyway:
+`.card-header` and `.ghost` are written by `modify.html` and **by nothing else
+in the app** (3 and 10 occurrences, all in that one file). They are page
+vocabulary wearing a shared name, so renaming them `.modify-card-header` and
+`.modify-ghost` states the ownership and changes no pixel.
+
+### 5.6 What this is not
+
+Not a restyle. No new colours, no new type scale, no change to what the tab
+*looks* like beyond where things sit — `tokens.css` is the scale and it is
+fine, which is what `plans/css-system-plan.md` § 6 already says.
+
+And nothing here touches `molview.css`. The viewer card's interior belongs to
+the module, in CSS exactly as in JavaScript; the page arranges the section that
+hosts it and stops at its edge.
+
+---
+
+## 6. What was measured, and what it showed
 
 Everything below was run, not recalled.
 
-### 5.1 The registries, on all three surfaces
+### 6.1 The registries, on all three surfaces
 
 `ase.build.fcc{111,100,110}('Au', size=(1,1,6), a=4.158, vacuum=0)`, layers low → high:
 
@@ -431,7 +577,7 @@ The last two columns agree **modulo the lattice vectors** — e.g. on (111),
 will actually see in the positions, which is why both columns are printed here
 rather than only the tidy one.
 
-### 5.2 Three routes to `a` from a 3×3×6 supercell
+### 6.2 Three routes to `a` from a 3×3×6 supercell
 
 Built at `a = 4.158`; every route recovers it exactly:
 
@@ -444,7 +590,7 @@ Built at `a = 4.158`; every route recovers it exactly:
 The first two need the user's own `m` or `N` and the surface; the third needs
 nothing. That is why § 3.3's door measures `d_nn`.
 
-### 5.3 The dead column
+### 6.3 The dead column
 
 ```
 Au: a_experimental=4.0782  a_pbe=4.158  a_pbe_siesta_psml=None
@@ -453,7 +599,7 @@ Ni: 3.524   3.52   None      Pt: 3.9242  3.967  None
 Pd: 3.8907  3.943  None
 ```
 
-### 5.4 3Dmol's mouse map, and why Clear is a button
+### 6.4 3Dmol's mouse map, and why Clear is a button
 
 | button | gesture |
 |---|---|
@@ -472,21 +618,24 @@ gesture will look like an obvious idea again later.
 
 ---
 
-## 6. Order, and where the items collide
+## 7. Order, and where the items collide
 
 | | item | why here | touches |
 |---|---|---|---|
 | 1 | **Center follows the group** (§ 2) | one branch in one route; no browser change | `blueprints/modify.py` |
 | 2 | **Measurement track** (§ 1) | settles *what a click does*, which item 4 depends on | `stores.js`, `ui.js`, `mount.js`, `ui-context.js`, `molview.css` |
 | 3 | **Cell setup** (§ 4) | no new route; must be settled before item 3 finishes, since the padding switch moves into it (§ 4.4) | `periodicity.js`, `modify.html`, `junction-cell.md` |
-| 4 | **New slab tab** (§ 3) | largest — new panel, new builder, new route, plus § 3.4's deletion | `modify.py`, `blueprints/modify.py`, new panel, `tabs.md` |
+| 4 | **The surface** (§ 5) | before the two new panels exist, so they are built on one inset instead of inheriting five | `modify/style.css`, `modify.html`, `page-shell.css` |
+| 5 | **New slab tab** (§ 3) | largest — new panel, new builder, new route, plus § 3.4's deletion | `modify.py`, `blueprints/modify.py`, new panel, `tabs.md` |
 
-Two collisions, both handled above: item 1 before item 4's picking (§ 4.2), and
-item 4 before item 3's padding move (§ 4.4).
+Three collisions, all handled above: item 1 before item 4's picking (§ 4.2),
+item 4 before item 3's padding move (§ 4.4), and **item 5 before the new
+panels** — a panel added after the inset rule lands needs no rework, one added
+before it needs redoing (§ 5.3).
 
 ---
 
-## 7. Contracts to change, before any code
+## 8. Contracts to change, before any code
 
 | Document | What changes |
 |---|---|
@@ -497,25 +646,28 @@ item 4 before item 3's padding move (§ 4.4).
 | `plans/bench-and-junction-plan.md` | § 2.3 closed as subsumed (§ 3.2) · § 2.4 restated as a check on a stated registry |
 | `model/structure-periodicity.md` | § 6.2 — the two new gestures reaching the existing `cell` / `cell_origin` ops, and the handedness refusal they will routinely meet (§ 4.3) |
 | `molbuilder/data/README.md` | the `a_pbe_siesta_psml` column leaves the table (§ 3.3) |
+| `web/ui-contract.md` | § 4 — **one inset per card** and **one gutter per tab** join the rhythm rules (§ 5.3) · the `font:`-shorthand rule that keeps `--font-sans` the only family (§ 5.4) |
+| `plans/css-system-plan.md` | § 4 — steps **C** and **D** record what item 5 discharges for `modify`, and what it leaves (§ 5.5) |
 
 ---
 
-## 8. Decisions on the record
+## 9. Decisions on the record
 
 All from the user, 2026-08-30, in the exchange that produced this file.
 
 | Decision | Effect |
 |---|---|
 | a fourth measurement pick **drops the oldest** | measuring a chain stays fluid; no state to clear by hand |
-| clearing is a **button on the readout**, not right-click | § 5.4 — kills the drag threshold and the invisible gesture |
+| clearing is a **button on the readout**, not right-click | § 6.4 — kills the drag threshold and the invisible gesture |
 | the measurement track must not overlap the real selection | § 1.4's wall, and the item-2 hazard it names |
 | **the group is the rigid part** — only selected atoms move | § 2.3's `indices` path |
 | **nothing selected = everything**, one rigid move | § 2.3's no-`indices` path, box travels |
 | dx, dy **and** the starting-surface z are **absolute**, from the 3D window's origin | the new slab panel reads no selection |
 | "Your bulk run" is **extracted from a result file**, the user owning the setup's correctness | § 3.3's door |
 | the extracted number belongs to **one optimization run**, never a global table | § 3.3's deletion of the packaged column |
+| the tab's placement and alignment are **designed, not patched** | § 5.3's two rules, applied everywhere at once rather than per element |
 
 ---
 
-> **Nothing here is built.** The next step is § 7 — the contracts — and only then
-> § 6's order.
+> **Nothing here is built.** The next step is § 8 — the contracts — and only then
+> § 7's order.

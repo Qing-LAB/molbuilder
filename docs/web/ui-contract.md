@@ -130,6 +130,39 @@ fails when it does.)*
   one class had three looks and source order picked the winner. Deleting the
   copies was the fix, and `test_css_no_duplicate_selectors` now enforces it
   rather than excusing it.
+- **One inset per card** (2026-08-30). A card states its inset once, on
+  itself; everything inside it — title, rule, tab row, fieldsets, form rows —
+  **begins at that inset and adds none of its own**. A nested block may add
+  *vertical* space; horizontal indentation is a deliberate signal of hierarchy,
+  never a by-product of nesting.
+
+  Measured on `/molbuilder` the day this was written: six left edges inside one
+  600 px card — 18.8 (the card) · 34.8 (+ the panel's 16) · 38.8 (+ the header's
+  20) · 42.8 (+ the tab row's 8) · 51.6 (+ the fieldset's 16 and the legend's 4)
+  — so the card's title, the rule under it and its first form row each started
+  somewhere different, and **8.6 % of the card's width was accumulated left
+  margin**. Every one of those paddings is defensible alone; the sum was nobody's
+  decision, which is the whole failure mode this rule names. `/task-setup` is the
+  counter-example and the proof the rule is already the norm: five cards, five
+  titles, all at 18.8.
+
+  It is a rule rather than a fix because a fix cannot hold. Subtracting the
+  header's 20 lines up a header inside a `.card` and **breaks** one whose parent
+  is not a card and has no inset underneath to absorb it — the same component
+  has to serve both.
+- **One gutter per tab** (2026-08-30). Every top-level block on a page shares one
+  left edge, one right edge and one max-width; nothing sits outside the page's
+  own container. The Molbuilder tab had its Init-structure card as a *sibling* of
+  `<main>` rather than a child, so it rendered flush while every card below it was
+  inset by main's padding — a 16 px step at a narrow window and a 506 px one at a
+  wide one, where only the inner row carried the max-width.
+- **One family, and the shorthand is where it escapes** (2026-08-30). `--font-sans`
+  in `tokens.css` is the app's sans stack. **A `font:` shorthand resets
+  `font-family`**, so any rule using the shorthand silently re-picks the typeface:
+  a page sheet writing `font: 600 var(--text-base)/1 system-ui, sans-serif` renders
+  its headings in a different face from the body text page-shell set, and nothing
+  looks wrong in the source. The rule: *a `font:` shorthand names
+  `var(--font-sans)`, or it is not written* — use the longhands instead.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are
