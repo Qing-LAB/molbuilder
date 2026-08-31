@@ -142,12 +142,16 @@ def test_invert_takes_the_complement_and_reports_no_pick_trail():
     Two things about it are easy to get wrong, and both matter downstream.
     It is the COMPLEMENT against the atom count it is handed -- not against
     whatever happens to be drawn -- and, like All and an applied filter, it is
-    NOT a click, so it carries no pick order (§ 9.5, § 11.6).
+    NOT a click, and after 2026-08-31 there is no pick order for it to carry.
 
-    That second half is the one worth a test: the measurement readout takes an
-    angle's vertex from the atom picked SECOND, so a bulk operation reporting a
-    fabricated trail would let the readout treat "the middle atom by number" as
-    the atom a chemist chose. It looks implemented and is wrong.
+    **The trail half of this test is retired**, not weakened.  It asserted that
+    a bulk operation reports an EMPTY `pickOrder`, because a fabricated trail
+    was indistinguishable from a real one to the measurement readout.  That
+    readout no longer reads this store at all -- measuring has its own track --
+    and the field itself is gone: order and count limits belong to the ruler,
+    and this store is a SET (`molview.md` § 9.5).  Asserting a rule no document
+    states is how a test outlives its contract, so what is left is the half
+    that is still true.
     """
     out = _run(
         """
@@ -157,15 +161,16 @@ def test_invert_takes_the_complement_and_reports_no_pick_trail():
         const state = sel.getState();
         console.log(JSON.stringify({
             selection: state.selection,
-            pickOrder: state.pickOrder,
+            keys: Object.keys(state).sort(),
         }));
         """
     )
     assert out["selection"] == [0, 2, 4], (
         f"invert is the complement against the count it was handed: {out['selection']}")
-    assert out["pickOrder"] == [], (
-        "invert is not a click, so it must report no pick trail -- a fabricated "
-        "one is indistinguishable from a real one to the measurement readout")
+    assert "pickOrder" not in out["keys"], (
+        "the snapshot must not carry an order field: this store is a set, and "
+        "a second field for 'in what order' is what made the two tracks "
+        "overlap (molview.md § 9.5)")
 
 
 def test_isolate_turns_itself_off_when_invert_empties_the_selection():
@@ -344,7 +349,6 @@ def test_the_panel_is_handed_one_settled_state_whole():
         console.log(JSON.stringify({
             onSubscribe,
             keys: Object.keys(latest).sort(),
-            pickOrder: latest.pickOrder,
             selection: latest.selection,
             isolate: latest.isolate,
             filters: latest.filters,
@@ -357,11 +361,11 @@ def test_the_panel_is_handed_one_settled_state_whole():
         "subscribing must hand over a state immediately, or the first paint "
         "needs a separate fetch"
     )
-    assert out["pickOrder"] == [7, 2, 5], (
-        "the snapshot must carry the ORDER atoms were picked in — the vertex of "
-        f"an angle is the atom picked second, not the middle by number: {out['pickOrder']}"
-    )
-    assert out["selection"] == [7, 2, 5]
+    assert out["selection"] == [7, 2, 5], (
+        "clicks APPEND -- `toggle` does not sort, so what a click-built "
+        "selection holds is what was clicked.  That is a fact about this "
+        "store, not an order promise: `add`, `all`, `invert` and a filter all "
+        "sort, and nothing may depend on the difference (molview.md § 9.5)")
     assert out["isolate"] is True
     assert out["filters"] == [{"kind": "by_element", "value": "Au"}]
     assert out["combinator"] == "or"
@@ -370,7 +374,7 @@ def test_the_panel_is_handed_one_settled_state_whole():
     # panel can say "that rule found nothing" — which an empty selection alone
     # cannot distinguish from never having filtered.
     assert out["keys"] == ["combinator", "filterOutcome", "filters", "forceScale",
-                           "isolate", "mode", "pickOrder", "selection",
+                           "isolate", "mode", "selection",
                            "showAxis", "showCell", "showForces", "showIndex"], (
         f"the snapshot must be everything the panel draws: {out['keys']}"
     )

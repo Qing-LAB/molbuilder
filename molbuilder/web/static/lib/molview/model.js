@@ -1013,6 +1013,23 @@ export function createModel(opts) {
         beginChange() { history.beginChange(); },
         endChange()   { return history.endChange(); },
 
+        /* WHICH ATOM A 3-D CLICK LANDED ON, given the index the window drew.
+         *
+         * Forwarded to the renderer, which owns the drawn-to-original map
+         * (§ 6.5) -- the model does not keep a second one.  `null` when there
+         * is no renderer or the seat is not on screen.
+         *
+         * It is NOT folded into `pickAtom`, and that is deliberate: `pickAtom`
+         * takes an ORIGINAL index, and the atom rows already hand it one.
+         * Translating inside would turn every row click into a second lookup
+         * of an index that was already right.  The translation belongs at the
+         * one entry where a drawn index exists (§ 11.6).
+         */
+        drawnToOriginal(drawn) {
+            return renderer && renderer.drawnToOriginal
+                ? renderer.drawnToOriginal(drawn) : drawn;
+        },
+
         /* ══ Internal wiring ═════════════════════════════════════════════
          *
          * The renderEngine is CALLED ONLY BY THE MODEL (§ 7 level 5) and is

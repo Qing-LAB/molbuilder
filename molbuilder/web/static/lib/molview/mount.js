@@ -171,15 +171,27 @@ export async function mount(hostEl, workspace, opts) {
      * the measurement — is `model.pickAtom`'s to decide, and this file does not
      * get a second opinion about it (§ 11.6).
      *
-     * The isolate guard stays HERE, and comes first, because it is about this
-     * entry and not about the tracks: under isolate the drawn numbering no
-     * longer matches the real one (§ 6.5), so the index is not the atom.  A
-     * measurement built from it would be the wrong atoms quoted to three
-     * decimal places, which is worse than no answer — the panel curates
-     * instead, where the rows carry real indices. */
+     * THE INDEX IS TRANSLATED HERE, because this is the only entry where a
+     * drawn index exists -- the atom rows already carry real ones (§ 11.6).
+     * Under isolate the drawn numbering no longer matches the real one
+     * (§ 6.5), and this used to drop the click entirely for that reason.  But
+     * the answer to a numbering problem is the map, not a closed door: the
+     * renderer owns one and `drawnToOriginal` asks it, so what reaches
+     * `pickAtom` is an atom rather than a seat.
+     *
+     * WHAT STAYS SHUT under isolate is SELECTING by window click, and for its
+     * own reason rather than a numbering one: isolate draws only the selected
+     * atoms, so clicking one to toggle it would make it vanish under the
+     * cursor.  The rows curate that instead.  Measuring has no such
+     * circularity -- its picks change nothing -- and § 6.5's `measured` list
+     * is already exempt from isolate on the way OUT, so this makes the two
+     * directions agree (user, 2026-08-31). */
     embed.onPick((drawnIndex) => {
-        if (model.selection.getState().isolate) return;
-        model.pickAtom(drawnIndex);
+        const isolating = model.selection.getState().isolate;
+        if (isolating && !model.measurement.getState().active) return;
+        const original = model.drawnToOriginal(drawnIndex);
+        if (typeof original !== "number") return;
+        model.pickAtom(original);
     });
 
     /* ── Playback (§ 9.2) ──────────────────────────────────────────────────

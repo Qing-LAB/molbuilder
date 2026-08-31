@@ -103,15 +103,22 @@ export function createSelectionStore(handed) {
     // THE SELECTION IS THE TRUTH; click and filter are two EDITORS of it.
     // Switching between them does not touch what is selected.
     let selected = [];
-    /* The order atoms were picked.  ITS CONSUMER HAS MOVED (2026-08-30): the
-     * measurement readout used to read this, and now reads the `measurement`
-     * store's own list, so nothing in the module reads this field today.  It is
-     * left standing rather than deleted in the same commit that orphaned it,
-     * because the snapshot's shape is § 8.4's and § 9.5's and removing a
-     * documented field is its own decision — recorded as a loose end in
-     * plans/modify-redesign-plan.md § 1.3 rather than left for a reader to
-     * discover from a comment that no longer matches. */
-    let pickOrder = [];
+    /* `pickOrder` WAS HERE, and it is gone (2026-08-31).  A click-order shadow
+     * of `selected`, kept in lock-step on a store whose whole contract is that
+     * order does NOT matter — this is a set, for managing groups and labels,
+     * where "these forty atoms" has no first and no second (§ 9.5).
+     *
+     * It existed for the angle vertex, a MEASUREMENT, and when measuring got
+     * its own track it was left with one reader: the Cell page's axis gesture,
+     * which needs `second − first`.  That gesture now reads the ruler, whose
+     * promise is exactly order and a count limit, so the shadow has no reader
+     * at all (user, 2026-08-31: "having selection and this function
+     * overlapping seems functionally wrong").
+     *
+     * Deleting it is what makes the two tracks actually independent — and the
+     * payoff is elsewhere: with nothing ordered riding on the selection, a
+     * window click under isolate can be let through for MEASURING while still
+     * refused for SELECTING (§ 11.6). */
     let mode = "click";          // which editor is showing — not what is selected
     let rows = [];               // the filter rows being built
     let combine = "and";
@@ -126,9 +133,8 @@ export function createSelectionStore(handed) {
     let switches = Object.assign({}, SWITCH_DEFAULTS);
 
     const changed = subscribable();
-    const set = (next, order) => {
+    const set = (next) => {
         selected = next;
-        pickOrder = order != null ? order : next.slice();
         /* ISOLATE TURNS ITSELF OFF WHEN THE SELECTION EMPTIES (§ 1.1) — "since
          * there would be nothing left to show". It is a SELECTION-STATE RULE,
          * so it lives here beside the fact it depends on rather than in the
@@ -155,7 +161,6 @@ export function createSelectionStore(handed) {
     function snapshot() {
         return {
             selection:  selected.slice(),
-            pickOrder:  pickOrder.slice(),
             mode:       mode,
             filters:    rows.map((r) => Object.assign({}, r)),
             combinator: combine,
@@ -186,39 +191,24 @@ export function createSelectionStore(handed) {
         /* ── The click operations (§ 9.5) ────────────────────────────────── */
         toggle(atom) {
             const at = selected.indexOf(atom);
-            if (at >= 0) {
-                set(selected.filter((i) => i !== atom),
-                    pickOrder.filter((i) => i !== atom));
-            } else {
-                set(selected.concat([atom]), pickOrder.concat([atom]));
-            }
+            if (at >= 0) set(selected.filter((i) => i !== atom));
+            else         set(selected.concat([atom]));
         },
-        /* THE BULK OPERATIONS CARRY NO PICK TRAIL, and say so by handing over an
-         * empty one. `pickOrder` is the order atoms were CLICKED — a chemist's
-         * "from → to", and the reason the vertex of an angle is the atom picked
-         * second (§ 11.6). All, Invert, an applied filter and a restored session
-         * are not clicks; there is no such order to report.
-         *
-         * Reporting the sorted selection instead, which is what these did, is
-         * § 8.4's failure from the other side: the readout cannot tell a real
-         * trail from a fabricated one, so it treats "the middle atom by number"
-         * as the vertex the user chose. It looks implemented and is wrong. */
-        add(atoms)    { set(Array.from(new Set(selected.concat(atoms))).sort((a, b) => a - b), []); },
+        add(atoms)    { set(Array.from(new Set(selected.concat(atoms))).sort((a, b) => a - b)); },
         remove(atoms) {
             const drop = new Set(atoms);
-            set(selected.filter((i) => !drop.has(i)),
-                pickOrder.filter((i) => !drop.has(i)));
+            set(selected.filter((i) => !drop.has(i)));
         },
-        all(count)    { set(Array.from({ length: count }, (_, i) => i), []); },
+        all(count)    { set(Array.from({ length: count }, (_, i) => i)); },
         invert(count) {
             const has = new Set(selected);
-            set(Array.from({ length: count }, (_, i) => i).filter((i) => !has.has(i)), []);
+            set(Array.from({ length: count }, (_, i) => i).filter((i) => !has.has(i)));
         },
         clear()       { set([]); },
 
         // A restored session's selection: intent the user expressed, so it is
         // part of what was saved (§ 11.2) and comes back with the structure.
-        adopt(atoms)  { set(Array.isArray(atoms) ? atoms.slice() : [], []); },
+        adopt(atoms)  { set(Array.isArray(atoms) ? atoms.slice() : []); },
 
         /* ── The switches (§ 9.5) ────────────────────────────────────────── */
         //
@@ -315,7 +305,7 @@ export function createSelectionStore(handed) {
                 matched: atoms.length,
                 isolateTurnedOff: !!switches.isolate && atoms.length === 0,
             };
-            set(atoms.slice(), []);
+            set(atoms.slice());
             return atoms.slice();
         },
 

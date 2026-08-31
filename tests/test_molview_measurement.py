@@ -363,10 +363,20 @@ def test_only_the_view_context_lane_persists_the_track():
         "ui.js":          "the rail toggle and the readout",
         "render-engine.js": "derives the marks on the picked atoms (§ 11.6)",
         "ui-context.js":  "the one lane that persists it (§ 11.2b)",
+        # ADDED 2026-08-31, and it reverses the note that stood here.  The
+        # window's click still goes through `model.pickAtom` -- WHICH track it
+        # lands in is still not this file's opinion.  What it now asks is
+        # whether the ruler is on, and that is a different question: under
+        # isolate the drawn numbering is not the real one, so the entry
+        # translates the index (§ 6.5's map) and lets a MEASURING click
+        # through while still refusing a SELECTING one -- because isolate
+        # draws only the selected atoms, and clicking one to toggle it would
+        # make it vanish under the cursor.  The guard is about this entry, not
+        # about the tracks, which is why it can live here without the routing
+        # following it.
+        "mount.js":       "asks whether the ruler is on, to let a pick "
+                          "through under isolate (§ 11.6)",
     }
-    # `mount.js` is deliberately NOT here, and its absence is the design: the
-    # 3D window's click goes through `model.pickAtom`, so the file that wires
-    # the window never learns there is a second track to route to.
     named = sorted(n for n, t in src.items() if "measurement" in t.lower())
     assert named == sorted(readers), (
         f"the track is named in {named}; the readers it is allowed are "

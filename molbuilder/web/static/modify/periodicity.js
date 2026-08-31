@@ -98,36 +98,28 @@ export function init(viewer) {
         return at < 0 ? 0 : at;
     }
 
-    /* WHICH ATOMS, IN THE ORDER THEY WERE PICKED.
+    /* THE PICKS COME FROM THE RULER, NOT THE SELECTION (molview.md § 11.6).
      *
-     * The order is the answer, not a detail: the axis runs from the atom picked
-     * FIRST to the one picked SECOND, so picking the same pair the other way
-     * round negates that axis -- which is the way out of the left-handed
-     * refusal below.
+     * An axis needs a FIRST and a SECOND -- reverse the pair and it negates --
+     * and an origin needs exactly one atom.  Order and a count limit are what
+     * the pick track promises; `selection` is a SET, for managing groups and
+     * labels, where "these forty atoms" has no first and no second.
      *
-     * A selection can arrive with no pick trail at all (All, a filter, a
-     * restored session), and the store says so by handing over an empty one.
-     * Then the row runs in INDEX order, which the control says out loud rather
-     * than leaving the user to discover the direction by its sign.
+     * This used to read `selection`'s `pickOrder`, a click-order shadow kept
+     * in lock-step on the very store whose contract says order does not
+     * matter -- and that shadow existed for the ANGLE VERTEX, a measurement,
+     * so once measuring got its own track this gesture was its only user.
+     * Reading the track directly retires it (user, 2026-08-31: "having
+     * selection and this function overlapping seems functionally wrong").
      *
-     * WHY `pickOrder` AND NOT JUST `selection`, when the two agree today.
-     * They do agree: `toggle` APPENDS, so a click-built selection is already in
-     * click order.  But `add` SORTS and empties the trail, which is the store
-     * saying it makes no promise about `selection`'s order -- the order is
-     * `pickOrder`'s job (molview.md § 8.4, "what is selected and IN WHAT
-     * ORDER").  Reading `selection` would work until the day `toggle` keeps its
-     * list sorted, and then axes would silently flip sign.
-     *
-     * NO TEST CAN SEE THIS DIFFERENCE, and that is worth writing down rather
-     * than discovering: because the two fields cannot be made to disagree
-     * through the UI, a mutation that reads `selection` here passes the whole
-     * suite.  Checked, 2026-08-30.  So this comment is the guard. */
+     * It also makes the direction PROVABLE.  The two fields could not be made
+     * to disagree through the UI, so a reader consulting the wrong one passed
+     * the whole suite; the ruler's list is ordered by construction and a test
+     * can drive it. */
     function pickedInOrder() {
         var w = data();
-        if (!w || !w.selection) return [];
-        var st = w.selection.getState();
-        var trail = st.pickOrder || [];
-        return (trail.length === st.selection.length) ? trail : st.selection;
+        if (!w || !w.measurement) return [];
+        return w.measurement.getState().picks;
     }
     //: Where those atoms are AT THE FRAME ON SCREEN -- the same door the
     //  measurement readout reads, so a trajectory gives the axis of the frame
@@ -217,22 +209,61 @@ export function init(viewer) {
     }
     /* Both "Use selection" buttons say what they need and why they cannot run,
      * because a disabled button with no reason is a dead end. */
+    /* THE CELL PAGE TURNS THE RULER ON, AND SAYS SO (molview.md § 11.6).
+     *
+     * The gesture needs ordered picks and the ruler is where they come from,
+     * so reaching for it against a ruler the person left off would fail
+     * quietly -- and it could not be fixed from here either, because the pick
+     * buttons stay disabled until two atoms are picked and no atom can be
+     * picked with the ruler off.  So opening this page turns it on.
+     *
+     * IT SAYS SO, and that is not politeness.  A mode that switches itself on
+     * silently is exactly what § 11.2b's lane exists to prevent; announcing it
+     * is what makes the same act support rather than surprise (user,
+     * 2026-08-31: "lock measurement toggle to be on with a message to user
+     * saying so").  Leaving the page releases the lock and LEAVES THE RULER
+     * ON -- turning it off again is the person's to do, not ours to undo
+     * behind them. */
+    function rulerIsOn() {
+        var w = data();
+        return !!(w && w.measurement && w.measurement.getState().active);
+    }
+    function lockRulerForPicking() {
+        var w = data();
+        if (!w || !w.measurement) return;
+        if (!rulerIsOn()) {
+            w.measurement.setActive(true);
+            var notify = (window.molbuilder || {}).notify;
+            if (notify && notify.show) {
+                notify.show({ id: "cell-ruler-lock", level: "info", message:
+                    "Measuring is on: the Cell page picks atoms with the "
+                    + "ruler, in the order you click them. Turn it off when "
+                    + "you are done here." });
+            }
+        }
+    }
+
     function refreshPickButtons() {
         var n = pickedInOrder().length;
+        var ruler = rulerIsOn();
         var axisBtn = $("pv-cell-from-selection");
         if (axisBtn) {
             axisBtn.disabled = n !== 2;
-            axisBtn.title = n === 2
+            axisBtn.title = !ruler
+                ? "Turn measuring on, then pick two atoms."
+                : n === 2
                 ? "Set this axis to the vector from the first picked atom to "
                   + "the second. Pick them the other way round to flip it."
-                : "Select exactly two atoms (" + n + " selected).";
+                : "Pick exactly two atoms with the ruler (" + n + " picked).";
         }
         var orgBtn = $("pv-org-from-selection");
         if (orgBtn) {
             orgBtn.disabled = n !== 1;
-            orgBtn.title = n === 1
-                ? "Put the box's low corner on the selected atom."
-                : "Select exactly one atom (" + n + " selected).";
+            orgBtn.title = !ruler
+                ? "Turn measuring on, then pick one atom."
+                : n === 1
+                ? "Put the box's low corner on the picked atom."
+                : "Pick exactly one atom with the ruler (" + n + " picked).";
         }
     }
 
@@ -580,13 +611,26 @@ export function init(viewer) {
         // ws.subscribe fires on the canvas onChange too (dispatcher wires cs.onChange).
         var w = data();
         if (w && typeof w.subscribe === "function") w.subscribe(refresh);
-        /* And the SELECTION, which `subscribe` above does not carry: it
-         * announces data changes, and picking two atoms changes no data.  The
-         * two buttons say how many atoms are picked, so without this they said
-         * it once and then went stale. */
-        if (w && w.selection && typeof w.selection.subscribe === "function") {
-            w.selection.subscribe(refreshPickButtons);
+        /* And the RULER, which `subscribe` above does not carry: it announces
+         * data changes, and picking two atoms changes no data.  The two
+         * buttons say how many atoms are picked, so without this they said it
+         * once and then went stale.
+         *
+         * This followed the SELECTION until 2026-08-31, which is where the
+         * picks used to come from.  Same reason, one track over. */
+        if (w && w.measurement && typeof w.measurement.subscribe === "function") {
+            w.measurement.subscribe(refreshPickButtons);
         }
+
+        /* Opening this page is what "reaching for the gesture" IS -- there is
+         * no earlier moment, because every pick control here is disabled until
+         * atoms are picked and none can be picked with the ruler off.  Wired
+         * to the tab button rather than a panel-visibility watcher, because
+         * the button press is the intent and the panel is only its effect. */
+        var cellTab = $("optab-btn-cell");
+        if (cellTab) cellTab.addEventListener("click", lockRulerForPicking);
+        var panelNow = $("optab-panel-cell");
+        if (panelNow && !panelNow.hidden) lockRulerForPicking();
     }
 
     start();

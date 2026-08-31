@@ -85,6 +85,31 @@ import { effectiveCell } from "./model-jobs.js";
  *   `switches`   `{isolate, showIndex, showForces, forceScale}` (§ 6.2)
  * @returns {object} § 6.5's processed frame
  */
+export function sourceIndexFor(selection, switches, atomCount) {
+    /* WHICH ATOMS ARE DRAWN, and where each came from -- `sourceIndex[m]` is
+     * the ORIGINAL number of drawn atom `m` (§ 6.5).
+     *
+     * Lifted out of `processFrame` so there is ONE definition of it.  It is
+     * not per-frame -- it depends only on `isolate` and the selection, which
+     * are the same for every frame -- and the 3-D window needs the same map
+     * to turn a click back into an atom (§ 11.6).  Recomputing it at that
+     * entry would be a second copy of the isolate rule, and the day the two
+     * disagreed a click would measure the wrong atom while every frame still
+     * drew correctly.
+     */
+    const picked = selection || [];
+    const isolating = !!(switches || {}).isolate && picked.length > 0;
+    if (!isolating) {
+        return Array.from({ length: atomCount }, (_, i) => i);
+    }
+    // Ascending original order, each atom once -- the drawn list is a
+    // cut-down structure, not a record of the order they were picked in.
+    return Array.from(new Set(picked))
+        .filter((i) => i >= 0 && i < atomCount)
+        .sort((a, b) => a - b);
+}
+
+
 export function processFrame(input) {
     const elements  = input.elements  || [];
     const positions = input.positions || [];
@@ -105,16 +130,7 @@ export function processFrame(input) {
      * lets a label still show #47 for an atom that is now third in the list.
      */
     const isolating = !!sw.isolate && selection.length > 0;
-    let sourceIndex;
-    if (isolating) {
-        // Ascending original order, each atom once — the drawn list is a
-        // cut-down structure, not a record of the order they were picked in.
-        sourceIndex = Array.from(new Set(selection))
-            .filter((i) => i >= 0 && i < positions.length)
-            .sort((a, b) => a - b);
-    } else {
-        sourceIndex = positions.map((_, i) => i);
-    }
+    const sourceIndex = sourceIndexFor(selection, sw, positions.length);
 
     const drawnPositions = sourceIndex.map((i) => positions[i]);
     const drawnElements  = sourceIndex.map((i) => elements[i]);
@@ -714,6 +730,31 @@ export function createRenderEngine(embed) {
 
     return {
         setDataSource(next) { source = next; },
+
+        /* WHICH ATOM A CLICK IN THE 3-D WINDOW LANDED ON (§ 11.6).
+         *
+         * The window reports the index of the atom it DREW, and under isolate
+         * that is not the atom's real number -- the drawn list is cut down to
+         * the selection, so everything is renumbered.  This turns it back,
+         * through the same map the labels are placed with (§ 6.5), so a click
+         * measures the atom the person clicked rather than whichever atom
+         * happens to hold that seat.
+         *
+         * The engine answers because the engine OWNS the map; asking it here
+         * is what keeps the isolate rule in one place.  `null` for an index
+         * that is not on screen, so the caller drops it rather than guessing.
+         */
+        drawnToOriginal(drawn) {
+            if (typeof drawn !== "number" || !(drawn >= 0)) return null;
+            const s = structure();
+            const count = s && s.elements ? s.elements.length : 0;
+            if (!count) return null;
+            const map = sourceIndexFor(
+                source ? source.selection() : [],
+                source ? source.switches() : {},
+                count);
+            return drawn < map.length ? map[drawn] : null;
+        },
 
         // "Here is the data." A whole new structure — the set of drawn atoms
         // changed by definition, so this is a rebuild (§ 10.5 question 1).
