@@ -1051,14 +1051,22 @@ def submitted_cap_notes(plans) -> List[str]:
     notes: List[str] = []
     for name, n in sorted(counts.items()):
         cap = caps.get(name)
-        if not isinstance(cap, int) or n <= cap:
+        # `bool` is a subclass of `int`, so a stray True would compare as a
+        # cap of 1 and invent a refusal.  A cap is a count or it is nothing.
+        if type(cap) is not int or n <= cap:
             continue
+        # SAID AS A CONDITION, NOT A PREDICTION.  What is known here is the
+        # cap and the size of this sweep; what is NOT known is how many jobs
+        # are already queued under that QoS -- with one already there, only
+        # `cap - 1` of these get in.  Writing "the scheduler will accept 2"
+        # would be the same overclaim this whole change exists to remove:
+        # a sentence stated with more certainty than its evidence.
         notes.append(
-            f"{name} takes {cap} submitted job(s) per user; this sweep is "
-            f"{n}. The scheduler will accept {cap} and refuse "
-            f"{n - cap} with QOSMaxSubmitJobPerUserLimit -- those trials "
-            f"stay pending, and re-running this launch picks up exactly "
-            f"them.")
+            f"{name} takes {cap} submitted job(s) per user, and this sweep "
+            f"is {n}. With nothing of yours already queued there, {cap} go "
+            f"and {n - cap} come back QOSMaxSubmitJobPerUserLimit -- fewer "
+            f"if you already hold some. A refused shelf's trials stay "
+            f"pending, and re-running this launch picks up exactly them.")
     return notes
 
 

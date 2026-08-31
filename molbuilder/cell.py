@@ -604,13 +604,14 @@ def measure_fcc(positions, cell) -> FccMeasurement:
     box = np.asarray(cell, dtype=float).reshape(3, 3)
     n = int(pos.shape[0])
     if n < 1:
+        # ONE ATOM IS ENOUGH, and the first version of this guard said
+        # `n < 2`.  A primitive fcc cell holds exactly one atom whose twelve
+        # nearest neighbours are its own periodic images -- precisely the
+        # case the image handling below exists for -- so refusing it hid a
+        # real bug in that handling behind a plausible sentence.  The
+        # comment two blocks up already promised the opposite; a test
+        # settled which of the two was the mistake.
         raise ValueError("there are no atoms of that element to measure")
-    # ONE atom is enough, and refusing it was wrong.  A primitive fcc cell
-    # holds exactly one, and its twelve nearest neighbours are its own periodic
-    # images -- which is precisely the case the image handling above exists
-    # for.  The first version of this guard said `n < 2` while the comment two
-    # blocks up promised the opposite; the test below is what settled which of
-    # the two was the mistake.
     if abs(float(np.linalg.det(box))) < ZERO_VOLUME_TOL:
         raise ValueError(
             "this cell has no volume, so there are no periodic images to "

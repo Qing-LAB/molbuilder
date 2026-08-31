@@ -57,9 +57,31 @@ class TestTheArithmeticIsSaidBeforeTheAsk:
         assert "debug" in said
         assert "2 submitted job(s)" in said
         assert "this sweep is 6" in said
-        assert "refuse 4" in said
+        assert "4 come back" in said
         # ...and what it costs, so the reader knows this is survivable.
         assert "stay pending" in said and "picks up exactly them" in said
+
+    def test_it_is_stated_as_a_condition_not_a_prediction(self):
+        """What is known here is the cap and the sweep size.  What is NOT
+        known is how many jobs are already queued under that QoS -- with one
+        already there, only `cap - 1` of these get in.
+
+        So the sentence must carry its own precondition.  Claiming "the
+        scheduler will accept 2" would be the same overclaim this whole
+        change exists to remove: more certainty than the evidence carries.
+        """
+        said = submitted_cap_notes([_shelf() for _ in range(6)])[0]
+        assert "With nothing of yours already queued" in said, said
+        assert "fewer if you already hold some" in said, said
+        assert "will accept" not in said, "stated as a prediction"
+
+    def test_a_bool_is_not_a_cap(self):
+        """`bool` is a subclass of `int`, so a stray True would compare as a
+        cap of 1 and invent a refusal out of nothing."""
+        row = {"name": "odd", "partition": "p", "qos": "q",
+               "max_time": "1:00:00", "max_submit_jobs": True}
+        plans = [_Plan(_Placement("odd", Domain.from_row(row)))] * 5
+        assert submitted_cap_notes(plans) == []
 
     def test_a_sweep_that_fits_says_nothing(self):
         assert submitted_cap_notes([_shelf() for _ in range(2)]) == []

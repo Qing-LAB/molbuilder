@@ -332,6 +332,14 @@ thing that knows about registry and becomes the **check on a stated one**.
 
 ### 3.3 "Your bulk run" — dead by construction, not broken
 
+> **Built 2026-08-30.** `POST /api/modify/lattice-from-run` measures the atoms
+> (`cell.measure_fcc`), and `fcc_lattice.json` v3 drops the column nothing could
+> fill. The two refusals and the notes are as described below. Two bugs surfaced
+> on the first run and are recorded in the commit rather than here, because they
+> were mistakes in the building, not in the design: the image handling collapsed
+> each atom's images before dropping the self-distance, and the guard that
+> followed hid it behind a plausible message.
+
 Verified (§ 6.3): `a_pbe_siesta_psml` is `null` for **all six** metals in the
 packaged `fcc_lattice.json`, and **nothing in the codebase writes it**. The radio
 greys itself when the value is null — correctly — so it has been unreachable
@@ -707,7 +715,7 @@ built in, which is not the same thing and was never meant to be.
 | 2 | § 2 | **Center follows the group** | one branch in one route, no browser change — the cheapest thing on the board and a bug the user reported | **built** 2026-08-30 |
 | 3 | § 1 | **Measurement track** | settles *what a click does*, which § 4's picking depends on | **built** 2026-08-30, marks on the atoms included |
 | 4 | § 4 | **Cell setup** | no new route; settled before § 3 finishes, since the padding switch moves into it (§ 4.4) | **built** 2026-08-30 |
-| 5 | § 3 | **New slab tab** | largest — new panel, new builder, new route, plus § 3.4's deletion | to build |
+| 5 | § 3 | **New slab tab** | largest — new panel, new builder, new route, plus § 3.4's deletion | **part built**: § 3.3's extractor and the column it replaces are done; §§ 3.1–3.2's panel and § 3.4's removal are not |
 
 **Three collisions, and each is why a row sits where it does.**
 
