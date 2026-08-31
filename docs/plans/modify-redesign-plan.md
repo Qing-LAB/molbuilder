@@ -41,8 +41,8 @@ because it says where the code misleads.
 | opened at | `465e1e22`, tree clean — **none of this built** |
 | now at | `7ec7593c` |
 | branch | `feature/generator-jobset-ui` |
-| built | **all five items** — see § 7 |
-| left | § 3.4's scheduled removal of the old Junction panel, which waits on this one being proven in use |
+| built | items 1, 2, 3 and 5. **Item 4 is not finished**: § 4.4's padding decision was open until 2026-08-31 and its Cell-page controls (the `z range` readout and the gap box) are not built |
+| left | § 4.4's Cell-page controls, then § 3.4's removal of the old Junction panel — **now unblocked**, since the padding switch it carried is deleted rather than moved |
 | proving it | **under way** — § 3.3b: two of three surfaces were unbuildable from the panel's defaults, and the seam is now measured and warned about at build time |
 
 **Every item landed contract-first**, and each carries pins that fail when the
@@ -520,10 +520,28 @@ The user's instruction is explicit: build beside, replace after proving. So the
 new tab does **not** get to leave the old one standing indefinitely. When it is
 proven, these go:
 
-- the Junction op-tab panel and its half of `modify/viewer.js`
+- the Junction op-tab panel and its half of `modify/viewer.js` (22 controls,
+  ~300 lines)
 - `modify.add_symmetric_electrodes`
 - `POST /api/modify/symmetric_electrodes`
 - `OPERATIONS.symmetric_electrodes` in `model-jobs.js`
+- the ~34 assertions in `tests/test_modify.py` that pin the pair op, and
+  `tests/test_elc_side_row_visibility_js.py` entire
+
+> **Unblocked 2026-08-31.** The dependency was § 4.4's padding switch — the one
+> control here with no home elsewhere. It is deleted rather than moved, so
+> nothing on this panel is load-bearing any more.
+>
+> **Pairs are not rebuilt** *(user, 2026-08-31: "it is right that we're not
+> creating things in pairs anymore. We add slabs one at a time, and the user
+> decides which side and how")*. The pair op is not re-expressed on top of
+> `add_slab`; it goes. What replaces "pick two atoms, get a junction" is two
+> slab builds at stated `start_z`, which is § 3.2's argument — the pair is what
+> forced the mirror, and the mirror is what broke the seam.
+>
+> The CLI's `--electrode` flag is the one caller outside the browser. It is
+> re-expressed over `add_slab` so the flag survives with the new builder
+> underneath, rather than being deleted with the panel.
 
 ---
 
@@ -635,16 +653,45 @@ Naming it here because it is a *predictable consequence of the new gesture*, not
 a defect in the gate: the gate is right to refuse, and § 4 is where the panel
 learns to expect it.
 
-### 4.4 What it inherits from item 3
+### 4.4 What it inherits from item 3 — REVISED 2026-08-31: the switch is not moved, it is deleted
 
-*"Pad cell by one layer spacing"* moves here.
+> **This said *"Pad cell by one layer spacing" moves here*** — a contract
+> rewrite naming the Cell page as the switch's new home, with the deliberate
+> refusal to print `d` carried across intact.
 
-That is a **contract rewrite, not a UI move**: `junction-cell.md § 5` names the
-Junction panel as the switch's home, and § 6 explains why it defaults on — *an
-unpadded box collides with itself, and no engine can use it*. That reasoning has
-to survive the move intact, including the deliberate refusal to print `d` in the
-panel (a second formula in JavaScript would be a second answer waiting to
-disagree with the one that shapes the box).
+**The switch is gone instead, and nothing replaces it** *(user, 2026-08-31)*:
+
+> *"this is, again, handled by the user correctly measure the layer distance
+> and then measure the bottom top to define the c axis if that's the
+> transportation axis. and then calculate what the right unit cell size should
+> be … It's the calculate result and set in the cell lattice step."*
+
+The old reasoning was self-defeating, and moving it would have carried the
+defect. The switch existed to expose a decision; on — the default — it *made*
+the decision, and its note deliberately withheld the number, so the one value
+determining whether a junction was a crystal was computed out of sight.
+
+**`c` is measured and set, never invented** (`junction-cell.md` § 6, rewritten).
+The builder sets `a` and `b`, which are the crystal's own vectors, and leaves
+`c = z_extent`. That is a `collision` until you set it — visibly, in the tab
+you are already in, which is the point.
+
+**What the Cell page gains** — convenience, not decisions:
+
+| | |
+|---|---|
+| `z range (max − min)` | a readout. A fact about the atoms; nobody should be recomputing it. |
+| a **gap** box beside `c` | `c = z range + gap`. For a continuing boundary the gap **is** the layer spacing; for a free surface it is however much vacuum the run needs. |
+| the layer spacing itself | already available — pick two atoms in adjacent layers and read the ruler's signed `Δ`. |
+
+Nothing validates which one you meant, and nothing should: only you know
+whether you are running a periodic junction or a slab with a surface.
+`classify_seam` gives a verdict on what you set, on every build, which closes
+the loop without guessing.
+
+**This unblocks § 3.4.** The padding switch was the one control on the Junction
+panel with no home elsewhere, so its deletion removes the last dependency
+standing in front of that panel's removal.
 
 ---
 
@@ -898,9 +945,9 @@ document, so a row still unmarked is a thing not yet built.
 | Document | What changes |
 |---|---|
 | `web/molview.md` | **done** — § 11.6 the readout reads its own track, the geometry guess goes, and the marks on the atoms · § 8.5 the rail's sixth control and *where each switch lives* · § 9.5 the selection is untouched while measuring · § 11.2b the lane carries the track · § 6.5 + § 10.3 the seventh per-frame field |
-| `web/tabs.md` | § 2 — the op-tab list, and the new slab tab beside the old |
+| `web/tabs.md` | § 2 — the op-tab list, and the new slab tab beside the old. *(The "beside the old" half expires with § 3.4: when the Junction panel goes, this row becomes "the Slab tab" outright.)* |
 | `web/web-api.md` | the new `lattice-from-run` route · the catalogue count. *(The recenter rule is not here after all: `web-api.md` documents no `/api/modify/translate` entry, so there was nothing to correct — the rule lives in the route's own docstring and in § 2.3.)* |
-| `science/junction-cell.md` | § 5 and § 6 — the padding switch's home moves to the Cell page, its reasoning intact · § 3 — registry becomes a **chosen parameter**, not only a warned-about outcome |
+| `science/junction-cell.md` | **done** — § 6 rewritten: the switch is **deleted**, not moved (§ 4.4 revised), and `c` is measured and set rather than invented; § 5's ownership row and the header's companion line follow it. *(Still open: § 3 — registry as a **chosen parameter**, not only a warned-about outcome.)* |
 | `plans/bench-and-junction-plan.md` | § 2.3 closed as subsumed (§ 3.2) · § 2.4 restated as a check on a stated registry |
 | `model/structure-periodicity.md` | **done** — written into **§ 7**, not § 6.2: § 6.2 is the door's own shape and nothing about it changed, while § 7 is the account of the editor, which is what gained two gestures, the staging rule, the pick order as the axis's sign, and the handedness note (§ 4.3) |
 | `molbuilder/data/README.md` | the `a_pbe_siesta_psml` column leaves the table (§ 3.3) |

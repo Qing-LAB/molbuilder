@@ -6,17 +6,21 @@
 (the `cell` / `axis_kind` fields this decides a value for — § 4 `resolve_cell`,
 § 5 capture-at-construction); [`engines/transport.md`](?doc=engines/transport.md)
 (the TranSIESTA invariants I8 / I10 / I12 that read this geometry);
-the Modify tab's Junction panel exposes the switch (`web/templates/modify.html`
-+ `web/static/modify/viewer.js`).
+the Modify tab's **Cell page** is where `c` is set (§ 6).
 
 When you flank a molecule with two metal slabs, something has to decide how long
 the box is along z. Get it wrong by one layer spacing and the crystal either
 collides with itself or grows a contact no metal has. This document is the rule,
 the numbers behind it, and what each choice costs.
 
-**The rule in one line:** the box along z is
-**`z_span + d`** — the atoms' extent plus **one interlayer spacing of the
-electrode crystal** — never the extent alone.
+**The rule in one line:** for a boundary that continues the crystal, the box
+along z is **`z_span + d`** — the atoms' extent plus **one interlayer spacing of
+the electrode crystal** — never the extent alone.
+
+**Who applies it changed on 2026-08-31.** It is the number a person sets on the
+Cell page after measuring `d` with the ruler (§ 6), not one a builder adds
+behind them. This document still owns *what the right value is*; § 6 owns *how
+it gets there*.
 
 ---
 
@@ -265,22 +269,26 @@ lets the junction builder use the same function instead of growing a second
 copy — the two callers are `transport.wizard.extract_electrode_model` and
 `modify.add_electrode_slab`.
 
-**The monolayer case.** A one-layer slab has no spacing to *measure*, but the
-crystal still has one. Rather than leave such a box unpadded — which would
-reintroduce the § 1 collision in a corner, silently — the builder asks the same
-ASE builder for a two-layer slab at the same `(m, n)` and `orthogonal`, and
-reads `d` off that. Using the caller's own lateral size matters: a probe at
-`(1, 1, 2)` would trip ASE's "second number must be even" constraint on
-orthogonal fcc(111), which the caller's size has already satisfied.
+**The monolayer case.** A one-layer slab has no spacing to *measure* — there
+is only one layer to measure between. `add_electrode_slab` handles it by asking
+the same ASE builder for a two-layer slab at the same `(m, n)` and
+`orthogonal` and reading `d` off that; using the caller's own lateral size
+matters, since a probe at `(1, 1, 2)` would trip ASE's "second number must be
+even" constraint on orthogonal fcc(111).
+
+For a slab built through § 6's route the case does not arise as a *builder*
+problem: nobody is padding, so nothing needs a spacing it cannot measure. It
+becomes a question for the person instead — a monolayer's repeat distance is
+the crystal's `d` from § 2, which they can read off the table rather than off
+their own structure.
 
 | Concern | Home |
 |---|---|
 | the rule `z_period = z_span + d` | `cell.bulk_z_period` |
 | grouping atoms into layers | `cell.detect_layers` |
 | layers per stacking period, by surface | `cell.STACKING_PERIOD` |
-| applying it when a junction is built | `modify.add_electrode_slab` |
 | applying it to the bulk lead | `transport.wizard.extract_electrode_model` |
-| the user-facing switch + note | the Modify tab's Junction panel |
+| **setting it on a built slab** | **you**, on the Modify tab's Cell page (§ 6) |
 
 `STACKING_PERIOD` is a table rather than a verdict function on purpose: the
 panel's note re-renders as the user types a layer count, so `/api/modify/meta`
@@ -290,32 +298,65 @@ rather than asserting a verdict.
 
 ---
 
-## 6. The switch, and why it defaults on
+## 6. The `c` axis is measured and set, never invented
 
-The Junction panel carries a checkbox, **on by default**. On, the built cell
-gets `z_span + d`, and a note beside the switch says so and reports whether the
-chosen layer count is a whole stacking period (§ 3.1). Off, `c` is the atoms'
-extent verbatim, and the note says plainly what that means.
+*(Rewritten 2026-08-31 on the user's decision. This section described a
+checkbox — "**Pad cell by one layer spacing**", on by default — that built
+`c = z_span + d` for you. The switch is gone and so is the padding.)*
 
-The note deliberately does **not** print `d` in Ångström. The spacing is
-measured on the slab as built, so quoting a number in the panel would mean a
-second formula in JavaScript — a second answer waiting to disagree with the one
-that actually shapes the box. It also stops short of promising the boundary
-*will* join: a whole stacking period is necessary, and § 3.2 is why it is not
-sufficient. The note links here for the rest.
+**The builder sets what it knows and nothing else.**
 
-Default-on because the un-padded box is not a cell any engine can use — it
-collides with itself. The switch exists because a user reproducing an existing
-structure needs the builder to stop deciding for them.
+| | who sets it | why |
+|---|---|---|
+| `a`, `b` | the **builder** | they are the crystal's own in-plane vectors, straight from the slab ASE built. Re-deriving them by hand would be a second formula waiting to disagree with the atoms. |
+| `c` | **you** | it is a decision about the calculation — how much vacuum, or which repeat distance makes the boundary continue — and nothing in the geometry answers it. |
 
-**Be precise about what wins, because building an electrode is not passive.**
-`add_electrode_slab` *overwrites* any prior cell — the electrode is what
-establishes the junction's in-plane lattice, so it has to. The padding is part
-of that same capture. What survives is a cell set **afterwards**: `resolve_cell`
-branch 1 (`structure-periodicity.md` § 4) uses an explicit cell verbatim, so a
-value committed through the Modify tab's Cell op-tab stands until the next
-electrode is added. Turning the switch off is therefore the way to keep a bare
-extent *through* a build; editing the Cell tab is the way to override one
-*after* it.
+A freshly built slab therefore gets `c = z_extent`, the atoms' span verbatim.
+That is not a usable cell: the top layer sits on its own periodic image, and
+`classify_seam` says so — **`collision`**. That is the point. The missing step
+is visible in the tab you are already in, and stays visible until you take it.
+
+### 6.1 How you set it, and what the tab owes you
+
+The principle is *measure, calculate, set* — so the tab's job is to make the
+two measurements cheap, not to make the decision:
+
+1. **The layer spacing** — pick two atoms in adjacent layers with the ruler.
+   The readout's signed `Δ = (Δx, Δy, Δz)` gives it directly.
+2. **The span** — the Cell page shows `z range (max − min)` for the current
+   structure. Displayed rather than left to arithmetic, because it is a fact
+   about the atoms and a person should not be recomputing it.
+3. **The gap** — a box beside the `c` axis: `c = z range + gap`. For a
+   boundary meant to continue the crystal, the gap **is** the layer spacing
+   from step 1. For a slab with a free surface, it is however much vacuum the
+   calculation needs.
+
+**Nothing checks that you typed the spacing rather than something else**, and
+nothing should: a slab calculation wants vacuum there, and only you know which
+you are running. What the program owes you is a verdict on what you set, and
+`classify_seam` gives one on every build — `collision` if `c` is too small,
+`vacuum` if it is much larger than a layer, `continues` if the crystal joins
+(§ 3). That closes the loop without anyone guessing.
+
+### 6.2 Why the switch went
+
+It hid the decision it claimed to expose. On — the default — the builder chose
+`d` for you and the note beside the switch deliberately *did not print the
+number*, on the grounds that quoting it would mean a second formula in
+JavaScript. So the one value that determined whether your junction was a
+crystal was computed out of sight and never shown.
+
+Measuring it with the ruler and typing it costs one gesture, puts the number on
+screen, and makes `c` a thing you decided. The second formula the old note
+feared is not needed either: the ruler is not a formula, it is the distance
+between two atoms you chose.
+
+**What still overwrites what.** Unchanged, and worth restating since the switch
+was tangled in it: building a slab *establishes* the in-plane lattice, so `a`
+and `b` are overwritten by a build — the slab is what defines them. A `c` you
+commit through the Cell page is an explicit cell and stands (`resolve_cell`
+branch 1, `structure-periodicity.md` § 4) until the next build replaces the
+in-plane pair. Editing the Cell tab is now the only way `c` is ever set, which
+is the simplification: there is one door instead of a switch and a door.
 
 ---
