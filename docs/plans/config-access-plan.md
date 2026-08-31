@@ -226,15 +226,8 @@ The survey found ~90 `json.load`/`dump` sites. The great majority are the
 second list. Pulling them in would be the over-reach this section exists to
 prevent.
 
-> **`logs/`, `run/`, `reports/` are the one judgement call**, and it is stated
-> rather than assumed. They are operational state, not configuration, so on a
-> strict reading they do not belong in the table above. They are included for
-> one reason: **they are the only things keeping `~/.molbuilder/` alive as a
-> second root.** Leave them and the schema is not unified — a person who
-> points `MOLBUILDER_CONFIG_DIR` somewhere still has files in two places,
-> which is the whole complaint. Say so, and if the answer is to leave them
-> where they are, then `~/.molbuilder/` survives and § 3.1's guarantee shrinks
-> to "every *config* file", which is a smaller promise but still an honest one.
+`logs/`, `run/` and `reports/` are operational state rather than
+configuration, and § 3.4 settles where they go.
 
 The pin that keeps this honest asks the opposite question of most: not *"is
 everything using the door"* but *"does anything in the first list compute a
@@ -242,14 +235,75 @@ per-user path without it"*.
 
 ---
 
+### 3.4 Operational state — XDG has a convention, and the config may override it
+
+*(User, 2026-08-31: "is there a XDG convention for operational state files? …
+we can also let user to assign them in the molbuilder.json … such that they can
+overwrite the place for operational state files")*
+
+**There is.** `$XDG_STATE_HOME`, default `~/.local/state`, was added to the
+Base Directory spec in 0.8 (2021) for exactly this: state that persists across
+restarts but is not portable or important enough for `$XDG_DATA_HOME` — the
+spec names **logs** first. `$XDG_RUNTIME_DIR` (typically `/run/user/$UID`,
+owner-only, cleared on logout) is the one for pidfiles and sockets.
+
+Neither `~/.var/log` nor `~/.local/log` is a convention — `~/.var/app/` is
+flatpak's, and `~/.local/log` is not in the spec.
+
+| ours | variable | default |
+|---|---|---|
+| `logs/`, `reports/` | `XDG_STATE_HOME` | `~/.local/state/molbuilder/` |
+| `run/` — pidfiles | `XDG_RUNTIME_DIR` | `<state>/run` when unset |
+
+**And `molbuilder.json` may name them instead**, which is what makes the
+standards-correct default acceptable. A person who wants one directory holding
+everything sets one key; a person on a node with a small `$HOME` and a large
+scratch puts the logs on scratch without moving their secrets. The default is
+XDG's; the override is theirs.
+
+```json
+{ "paths": { "logs": "/scratch/$USER/molbuilder/logs",
+             "run":  "/scratch/$USER/molbuilder/run" } }
+```
+
+#### This does not reverse the 2026-08-23 decision — it is the other question
+
+`config_dir.py` records a user decision against a `paths.state` key, and the
+reasoning is sound and still holds:
+
+> *"A config key would be a second way to say one thing … It would also be
+> circular for the first caller, which uses this to FIND `molbuilder.json`."*
+
+That decision is about overriding **the config root**, and both objections are
+about that: `XDG_CONFIG_HOME` already moves it, and a key inside
+`molbuilder.json` cannot say where `molbuilder.json` is. **Neither applies to
+operational state.** The resolution runs in one direction with no loop —
+
+```
+root (env or XDG)  →  molbuilder.json  →  logs / run / reports
+```
+
+— and there is no second way to say it, because there is no environment
+variable of ours for the state directory. `XDG_STATE_HOME` is not ours; it
+moves every application at once, which is the setting a person makes for
+their whole account rather than for this program.
+
+**The bootstrap constraint, stated because it is easy to miss.** Anything
+written before `molbuilder.json` is read — including the failure to read it —
+has no configured destination and goes to the default. So a `paths.logs`
+override takes effect for everything *after* config load, and the first lines
+of a run may land in the default location. A log that could only be written
+after reading a file that failed to parse would be the one log nobody gets.
+
 ## 4. Order
 
 Contract first, then one mechanical change at a time, each with its own tests.
 
 1. **The root and its override** — `MOLBUILDER_CONFIG_DIR` in `config_dir()`,
    plus the pin that no module computes a per-user path itself.
-2. **Move `logs/`, `run/`, `reports/`** off `~/.molbuilder/` and under the
-   root.
+2. **`state_dir()` / `runtime_dir()` per § 3.4**, and move `logs/`, `run/`,
+   `reports/` off `~/.molbuilder/` onto them. The `paths` override lands with
+   them, since a default nobody can change is not the design.
 3. **The secret's one home** — `<config_dir>/secret_key`, one filename. This
    one touches a live credential and is the only step that can log a person
    out of their own server, so it is taken deliberately and alone.
