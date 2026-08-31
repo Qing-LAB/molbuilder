@@ -52,7 +52,7 @@ The shared "nouns" and the cross-engine chemistry:
 
 ### Ops → [`ops/`](?doc=ops/installation.md)
 
-- **`envs/`** — conda-env management (`recipes.py`, `install.py`, `doctor.py`, `builds.py`, …). **`diagnostics.py`** (pre-run machine snapshot), **`runtime_config.py`** (the `./molbuilder.json` reader — named to *not* collide with the `config/` engine-param package), **`auth_setup.py`**.
+- **`envs/`** — conda-env management (`recipes.py`, `install.py`, `doctor.py`, `builds.py`, …). **`diagnostics.py`** (pre-run machine snapshot), **`runtime_config.py`** (the machine-config reader — named to *not* collide with the `config/` engine-param package), **`auth_setup.py`**.
 
 ### The web app → [`web/`](?doc=web/overview.md)
 

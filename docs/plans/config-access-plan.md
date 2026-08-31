@@ -1,5 +1,13 @@
 # One root for the server's own configuration
 
+**Role:** plan (steps 1–4 built 2026-08-31; step 5, the read/write door, open)
+**Domain:** ops · execution
+**Started:** 2026-08-31
+**Companions:** [`configuration.md`](?doc=configuration.md) §§ 2.1a–2.1e — the
+contract this settles, edited as each step landed ·
+[`ops/deployment.md`](?doc=ops/deployment.md) § 5 — the operator's view
+
+
 > **Status.** Design, settled 2026-08-31. **No code yet** — written first on
 > the user's instruction, and consolidated from four rounds of correction into
 > one reading rather than a chronology of them.

@@ -275,8 +275,8 @@ constrained to what is safe as a **filename**, since that is what it becomes.
 
 ### 4.1a Where the results go, and what one line holds
 
-**`~/.molbuilder/reports/<user>.jsonl` — `reports/`, not `logs/`.** The
-distinction is the point: `~/.molbuilder/logs/` is molbuilder's own
+**`<state dir>/reports/<user>.jsonl` — `reports/`, not `logs/`.** The
+distinction is the point: `<state dir>/logs/` is molbuilder's own
 operational output, the kind you read when something is wrong and delete when
 it is fixed. **These are measurements from calculations** — energies,
 iteration counts, when a relaxation step landed. You keep them, grep them a
@@ -459,7 +459,7 @@ damage if a destination is ever compromised: the worst it buys is noise.
 | how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.py` line |
 | when to fire | `monitor.run_monitor` |
 | where to send | `monitor.load_destination` → `config_dir()/notify` |
-| where results land | `~/.molbuilder/reports/<user>.jsonl`, JSON Lines, 0600 (§ 4.1a) |
+| where results land | `$XDG_STATE_HOME/molbuilder/reports/<user>.jsonl` (default `~/.local/state/molbuilder/`), JSON Lines, 0600 (§ 4.1a).  `paths.reports` moves it |
 | what identifies a report | `monitor.run_identity` — label, job id, host (§ 4.1a) |
 | overriding that once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |
 | the card that sets it | the Task-setup tab, `task-setup.md` § 7 |

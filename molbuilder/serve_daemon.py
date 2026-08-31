@@ -41,21 +41,34 @@ from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 # --------------------------------------------------------------------- #
 
 def run_dir() -> Path:
-    """Where the supervisor's pidfile goes.
+    """Where the supervisor's pidfile goes -- ``config_dir.runtime_dir()``.
 
-    Asked of ``runtime_config`` rather than computed, so the ``paths`` block
-    and the XDG runtime directory both reach it (`configuration.md` § 2.1d).
-    Imported inside the function to keep this module's import list what it is
-    -- a supervisor that pulls the config reader in at import time pays for it
-    on every start, and this is the one path it needs before doing anything.
+    **The XDG default, NOT `molbuilder.json`'s `paths` block**, and the
+    layering says why: this module is L1 and `runtime_config` is L2, so
+    reading the config here would invert the dependency.  That constraint and
+    the bootstrap rule are the same fact seen twice.
+
+    The supervisor must be able to write its log BEFORE any config is read --
+    including when reading it is what failed.  A supervisor that consulted
+    `paths.logs` to find out where to report a malformed `molbuilder.json`
+    would have nowhere to report it, which is the one log nobody can afford to
+    lose (`configuration.md` § 2.1d).
+
+    So `paths.logs` moves molbuilder's application logs; the supervisor's own
+    follow the state directory.  Both move together when the person moves
+    `$XDG_STATE_HOME`, which is the case the split is for.
     """
-    from .runtime_config import run_dir as _resolved
-    return _resolved()
+    from .config_dir import runtime_dir
+    return runtime_dir()
 
 
 def log_dir() -> Path:
-    from .runtime_config import logs_dir as _resolved
-    return _resolved()
+    """The supervisor's log directory -- ``config_dir.state_dir()/logs``.
+
+    Same reasoning as :func:`run_dir`: L1, and writable before config.
+    """
+    from .config_dir import state_dir
+    return state_dir() / "logs"
 
 
 def pid_path(port: int) -> Path:

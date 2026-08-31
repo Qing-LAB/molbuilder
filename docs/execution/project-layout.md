@@ -2012,7 +2012,7 @@ how a folder stops being trustworthy.
 
 | File | Level | Format | Holds |
 |---|---|---|---|
-| `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
+| `molbuilder.json` | outside the tree — the config directory (`$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`) | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
 | `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the parameters the hardware decides (the `execution` category) but carries **no value** for them: the question is the calculation's, the answer is `prep`'s, from `environment.json` |
 | `task.json` | ③ calculation | `molbuilder/task@1` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference, and an optional `bench` plan. **No `base` key** — what does not change is in the template, once (`stages.md` § 4; this row said "base settings" until 2026-08-16, naming a key removed on 2026-08-07) |

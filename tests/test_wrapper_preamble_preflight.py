@@ -200,12 +200,28 @@ class TestActivationComesFromTheMachineRecord:
         assert "miniconda3" not in text
 
     def test_a_record_that_states_nothing_falls_back_to_THIS_machine(
-            self, tmp_path):
+            self, tmp_path, monkeypatch):
         """The only legitimate substitute for a silent record is the config
         of the machine that record describes -- reachable only when it is
         this one.  `prep` refuses before reaching here when the record
-        names somewhere else."""
+        names somewhere else.
+
+        THIS MACHINE'S CONFIG IS SUPPLIED, not found.  It read whatever
+        `./molbuilder.json` sat in the repo root -- the developer's own, whose
+        preamble happens to source a `conda.sh` -- so the assertion below was
+        really about the checkout rather than about the fallback.  It passed
+        or failed on a file no test controlled, and stopped meaning anything
+        the moment the machine scope left the working directory.
+        """
         from molbuilder.scheduler import Environment, Topology
+        import json as _json
+        root = tmp_path / "machine-config"
+        root.mkdir()
+        (root / "molbuilder.json").write_text(_json.dumps({
+            "script_generation": {
+                "preamble": "source /opt/conda/etc/profile.d/conda.sh",
+                "activation": "conda activate"}}))
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
         (tmp_path / "JOB.fdf").write_text(
             "SystemName t\nSystemLabel t\nNumberOfAtoms 1\n")
         with warnings.catch_warnings():
@@ -215,7 +231,7 @@ class TestActivationComesFromTheMachineRecord:
                 env="e", project_dir=tmp_path,
                 machine_record=Environment(scheduler="workstation",
                                            topology=Topology()))
-        # this repo root's molbuilder.json is the server scope here
+        # the machine config supplied above is the server scope here
         assert "conda.sh" in text
 
     def test_the_probe_records_this_machines_activation(self):

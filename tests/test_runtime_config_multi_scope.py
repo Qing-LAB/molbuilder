@@ -71,7 +71,24 @@ def test_cwd_server_wide_is_read(sandbox):
     assert cfg.get("envs") == {"siesta": "alt-siesta"}
 
 
-def test_xdg_fallback_is_read_when_cwd_absent(sandbox, monkeypatch):
+
+@pytest.fixture
+def xdg_branch(sandbox, monkeypatch):
+    """Exercise the XDG step, which the override deliberately outranks.
+
+    `sandbox` names ``MOLBUILDER_CONFIG_DIR`` so the file a test writes is the
+    file the reader opens.  A test whose SUBJECT is the XDG fallback has to
+    clear it — the override is not a search step, and a test that left it set
+    would be asserting the override while claiming to assert XDG
+    (`configuration.md` § 2.1c).
+    """
+    monkeypatch.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(sandbox / "home" / ".config"))
+    return sandbox
+
+
+def test_xdg_fallback_is_read_when_cwd_absent(xdg_branch, monkeypatch):
+    sandbox = xdg_branch
     xdg_dir = sandbox / "home" / ".config" / "molbuilder"
     xdg_dir.mkdir(parents=True)
     (xdg_dir / "molbuilder.json").write_text(json.dumps({
@@ -96,7 +113,8 @@ def test_cwd_wins_over_xdg_fallback(sandbox, monkeypatch):
     assert cfg["envs"]["pyscf"] == "cwd-pyscf"
 
 
-def test_explicit_xdg_config_home_is_honored(sandbox, monkeypatch):
+def test_explicit_xdg_config_home_is_honored(xdg_branch, monkeypatch):
+    sandbox = xdg_branch
     xdg_dir = sandbox / "elsewhere"
     (xdg_dir / "molbuilder").mkdir(parents=True)
     (xdg_dir / "molbuilder" / "molbuilder.json").write_text(json.dumps({
@@ -107,23 +125,28 @@ def test_explicit_xdg_config_home_is_honored(sandbox, monkeypatch):
     assert cfg["envs"]["pyscf"] == "elsewhere-pyscf"
 
 
-def test_the_bare_default_read_honours_the_same_fallback(sandbox):
-    """A-7 (final review, 2026-08-13): `deployment.md` § 5 promises the
-    cwd→XDG two-step for THE SERVER, but serve/TLS/auth/diagnostics read
-    through the bare ``read_config()``, which was cwd-only — an operator
-    with an XDG-only config got a no-auth, no-TLS server while `jobset`
-    honoured the very same file.  The default read and the section
-    getters now share ONE lookup."""
+def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
+    """A-7 (final review, 2026-08-13): the bare ``read_config()`` was
+    cwd-only while the section getters honoured the XDG file too, so an
+    operator with an XDG-only config got a no-auth, no-TLS server while
+    `jobset` honoured the very same file.
+
+    The cwd step is gone (2026-08-31) and the split-brain it enabled with it,
+    but the property this pins is the one that outlived it: the default read
+    and the section getters share ONE lookup."""
+    sandbox = xdg_branch
     from molbuilder.runtime_config import get_tls, read_config
     xdg_dir = sandbox / "home" / ".config" / "molbuilder"
     xdg_dir.mkdir(parents=True)
     (xdg_dir / "molbuilder.json").write_text(json.dumps({
         "tls": {"cert": "c.pem", "key": "k.pem"}}))
     assert get_tls(read_config()) == {"cert": "c.pem", "key": "k.pem"}
-    # cwd still wins when both exist -- one file, never both (§ 5)
+    # A file in the working directory changes NOTHING -- it is not read
+    # (§ 2.1a), which is the half of this that inverted.
     (sandbox / "molbuilder.json").write_text(json.dumps({
         "tls": {"cert": "cwd.pem", "key": "cwd-k.pem"}}))
-    assert read_config()["tls"]["cert"] == "cwd.pem"
+    assert read_config()["tls"]["cert"] == "c.pem", (
+        "a working-directory file reached the reader")
 
 
 # --------------------------------------------------------------------- #
@@ -338,7 +361,8 @@ def test_write_server_wide_when_cwd_file_exists_writes_to_cwd(sandbox):
     assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 
-def test_write_server_wide_creates_xdg_when_cwd_absent(sandbox):
+def test_write_server_wide_creates_xdg_when_cwd_absent(xdg_branch):
+    sandbox = xdg_branch
     """When NO server-wide file exists, the write lands at the XDG
     path (per docs/execution/running-a-job.md § 5 last sentence)."""
     target = write_config_scope(project_dir=None, patch={
@@ -365,16 +389,19 @@ def test_write_project_scope_creates_hidden_file(sandbox):
 def test_write_preserves_existing_unrelated_keys(sandbox):
     """A patch only touches the keys it carries.  Sister sections
     survive."""
+    # `secret_key_file` was the second sister section here until 2026-08-31.
+    # A config carrying it is now REFUSED, so seeding one would test the
+    # refusal rather than the merge (`configuration.md` § 2.1e).
     (sandbox / "molbuilder.json").write_text(json.dumps({
         "envs": {"siesta": "molbuilder-siesta"},
-        "secret_key_file": "~/.config/molbuilder/secret_key",
+        "execution": {"mode": "direct"},
     }))
     write_config_scope(project_dir=None, patch={
         "script_generation": {"preamble": "module load mamba"},
     })
     cfg = json.loads((sandbox / "molbuilder.json").read_text())
     assert cfg["envs"]["siesta"] == "molbuilder-siesta"
-    assert cfg["secret_key_file"] == "~/.config/molbuilder/secret_key"
+    assert cfg["execution"]["mode"] == "direct"
     assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 

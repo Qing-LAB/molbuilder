@@ -710,7 +710,7 @@ from:**
 absent, and each effective value tagged with its source file — and `prep`
 writes the same block into `STAGE-PLAN.md`, so a behaviour difference between
 two machines is explained by the bundle itself. Secret sections (`auth`,
-`tls`, `secret_key_file`) are excluded by an allowlist, never by care.
+`tls`) are excluded by an allowlist, never by care.
 
 **There is ONE launch door.** `molbuilder jobset launch` resolves the mode
 (flag, else `execution.mode`, else a refusal — never the detected scheduler),

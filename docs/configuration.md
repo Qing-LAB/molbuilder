@@ -174,15 +174,11 @@ So the rule is:
 The warning is not a diagnosis aid bolted on afterwards; it is the price of
 keeping a search step whose whole failure mode is being invisible.
 
-> **Where the rest of that design lives.** `plans/config-access-plan.md` also
-> settles what this document does not yet describe, because none of it is built:
-> a `MOLBUILDER_CONFIG_DIR` override for the root; `logs/`, `run/` and
-> `reports/` moving off `~/.molbuilder/` onto `$XDG_STATE_HOME` and
-> `$XDG_RUNTIME_DIR`, overridable by a `paths` block; and one home and one
-> filename for the session secret, which today is written as
-> `<config_dir>/secret_key` and read as `~/.molbuilder/secret.key`. **This
-> document describes what is; that one describes what was decided.** Each step
-> edits this document as it lands.
+> **All of it landed on 2026-08-31**, and each piece is described where it
+> belongs: the root override in § 2.1c, the state and runtime directories with
+> their `paths` block in § 2.1d, and the session key's one home in § 2.1e.
+> `plans/config-access-plan.md` holds the reasoning and the order it was taken
+> in; **this document describes what is.**
 
 ### 2.1b It holds secrets, so it is `0600` — checked, not just written
 
@@ -190,7 +186,7 @@ keeping a search step whose whole failure mode is being invisible.
 practice?")*
 
 `molbuilder.json` is not ordinary configuration. It carries `tls.cert` and
-`tls.key`, `secret_key_file`, and the `auth.providers` block — paths to private
+`tls.cert` and `tls.key`, and the `auth.providers` block — paths to private
 keys, and provider credentials. A world-readable copy on a shared login node is
 a real exposure, not a tidiness question.
 
@@ -289,6 +285,15 @@ somewhere the operator does not look.
 > config load, and a `molbuilder.json` that will not parse still has somewhere
 > to say so. A log that could only be written after parsing a file that failed
 > to parse is the one log nobody gets.
+>
+> **The `serve` supervisor is the standing case of that**, so its own log and
+> pidfile follow `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` and **do not read
+> `paths`**. It has to be able to report a malformed config, which it could
+> not do if finding its log required reading one. The module is L1 for the
+> same reason — `tests/test_layering.py` refuses it an import of the config
+> reader, which is this rule enforced from the other side. Moving
+> `$XDG_STATE_HOME` moves both it and the application logs together, which is
+> the case that split is for.
 
 `~/.molbuilder/` — a second per-user root that moved with no variable at all —
 **no longer exists**. `tests/test_config_dir_has_one_home.py` asserts that no
@@ -389,7 +394,7 @@ bytes as the CLI"* a checkable claim rather than an intention.
 
 ## 4. `molbuilder.json` — what you want
 
-Ten sections. Each declares which scopes may carry it, and whether its values
+Twelve sections. Each declares which scopes may carry it, and whether its values
 may be printed in a provenance log. Both facts live in one registry in
 `runtime_config._SECTIONS`, which is why they cannot disagree.
 
@@ -400,11 +405,13 @@ may be printed in a provenance log. Both facts live in one registry in
 | `scheduler` | machine · project | no — except the routing **domain names**, which `config_provenance` prints |
 | `tls` | machine | no |
 | `auth` | machine | no |
-| `secret_key_file` | machine | no |
 | `admin` | machine | no |
 | `envs` | machine | no |
 | `checkpoint` | machine | no |
 | `rate_limit` | machine | no |
+| `notify_keys_file` | machine | no |
+| `notify_route` | machine | no |
+| `paths` | machine | **yes** |
 
 **Why the provenance column exists and why most rows say no.**
 `config_provenance` answers *"where did that setting come from?"* at the moment

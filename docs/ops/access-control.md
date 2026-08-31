@@ -176,7 +176,8 @@ to parse a login page as data.
 
 ### 3.4 The session key lives outside the repo
 
-Sessions are signed with a key read from a file named by `secret_key_file`
+Sessions are signed with a key at `<config dir>/secret_key` — one home,
+not a configured path (`configuration.md` § 2.1e)
 (conventionally in the config directory — `$XDG_CONFIG_HOME/molbuilder`,
 else `~/.config/molbuilder`). Not in `molbuilder.json`, not in the
 tree, and never committed. Client secrets follow the same rule — one file per
@@ -202,7 +203,7 @@ Asking the reader where it reads is what keeps the two from disagreeing. Pass
 overrides it.
 
 > **Both files are gitignored, and neither has ever been committed.**
-> `molbuilder.json` (machine scope — `auth`, `tls`, `secret_key_file`) and
+> `molbuilder.json` (machine scope — `auth`, `tls`) and
 > `.molbuilder.json` (project scope — no credentials, the registry refuses them
 > there). They are separate patterns because gitignore matches whole basenames
 > and the leading dot makes them different names.

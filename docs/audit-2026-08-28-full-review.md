@@ -97,7 +97,8 @@ answer.
 
 **O3 — CLOSED 2026-08-28**: the server registers a stack-dump hook —
 `kill -USR1 <child pid>` appends every thread's stack to
-`~/.molbuilder/logs/serve-<port>.stacks.log`. The next wedge is read,
+`<state dir>/logs/serve-<port>.stacks.log` (`configuration.md` § 2.1d;
+it was `~/.molbuilder/logs/` when this audit was written). The next wedge is read,
 not theorized.
 
 **O4 — in-request heavy work can freeze every user.** *Narrowed

@@ -257,8 +257,9 @@ ASURITE; add lab members by editing `allowed_users` in
   `/login`; an `/api/*` request gets a clean `401` JSON naming the
   login URL. Always open regardless: the login/callback/logout
   routes, `/api/health`, and static assets.
-- The session cookie is signed with the key at `secret_key_file`
-  (auto-generated `0600` on first run if the path is set) and is
+- The session cookie is signed with the key at `<config dir>/secret_key`
+  — one home, not a configured path (`configuration.md` § 2.1e) —
+  auto-generated `0600` on first run, and the cookie is
   `Secure` + `HttpOnly` + `SameSite=Lax`.
 - `--no-auth` skips login entirely and is refused on any
   non-loopback host.
@@ -404,7 +405,6 @@ workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
 | `tls: {cert, key}` | HTTPS (CLI `--cert/--key` overrides) |
 | `auth: {providers:[…]}` | enable SSO login (§3) |
 | `auth.trust_proxy` | install `ProxyFix` for a reverse proxy |
-| `secret_key_file` | path to the session-signing key |
 | `notify_keys_file` | path to the run-report signing-key file ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3). `molbuilder notify-token` writes it |
 | `notify_route` | the listener's generated URL segment, printed by the same command. **Both are required**; with either absent no route is registered at any path, so a server that has not set this up cannot be probed for the capability |
 | `rate_limit: {…}` | tune the limiter (§4 defaults) |
@@ -417,7 +417,7 @@ Two ready-made files ship beside this doc, in `ops/examples/`:
 
 | File | What it is |
 |---|---|
-| `molbuilder.json.example` | The server template — `tls` / `envs` / `auth` / `secret_key_file` / `script_generation`, each annotated with inline `_comment_*` keys. Copy it to your launch directory and edit. **`script_generation.activation` is required before the web UI (or CLI) can install any `.run.sh` wrapper** — a config predating that section is exactly the "the `.fdf` saved but no `.run.sh` appeared" symptom. Pinned by `tests/test_scheduler_config.py` (parses through the live reader; load-bearing sections present; cited docs exist) so it stays synced with the code. |
+| `molbuilder.json.example` | The server template — `tls` / `envs` / `auth` / `script_generation`, each annotated with inline `_comment_*` keys. Copy it to the **config directory** and edit (`configuration.md` § 2.1c) — a copy in a launch directory is not read. **`script_generation.activation` is required before the web UI (or CLI) can install any `.run.sh` wrapper** — a config predating that section is exactly the "the `.fdf` saved but no `.run.sh` appeared" symptom. Pinned by `tests/test_scheduler_config.py` (parses through the live reader; load-bearing sections present; cited docs exist) so it stays synced with the code. |
 | `molbuilder.asu-sol.json` | A real site preset (ASU Sol: SLURM `public` partition, A100 GPUs). The shape a working HPC config takes. Pinned by `tests/test_scheduler_config.py` so it stays valid against the live reader. |
 
 ```bash
@@ -436,27 +436,32 @@ when the variable is unset** (`molbuilder.config_dir.config_dir`) — the same
 one `molbuilder auth-setup` writes to, so a wizard-generated deployment and a
 hand-made one put their secrets in the same place.
 
-> **Corrected 2026-08-26.** This section was headed *"The `~/.molbuilder/`
-> directory"* and told you to create one, while the code had always used
-> `config_dir()`. Nothing broke — the config carries paths, so either
-> location works — but the wizard and these instructions named different
-> directories, which is two answers to one question. **If you followed the
-> old text, nothing needs moving:** point `secret_key_file` wherever your
-> files already are. What changed is which directory this page recommends.
+> **Corrected 2026-08-26, and settled 2026-08-31.** This section was headed
+> *"The `~/.molbuilder/` directory"* and told you to create one, while the
+> code had always used `config_dir()`. The 2026-08-26 note said "nothing
+> needs moving — point `secret_key_file` wherever your files already are",
+> and that advice is now void in both halves: `secret_key_file` is retired
+> (§ 2.1e) and `~/.molbuilder/` no longer exists. **Files there must move**
+> to the config directory, where the wizard and the server both look.
 
-Honouring `XDG_CONFIG_HOME` is not decoration. On an HPC login node `$HOME`
-is NFS-mounted and often snapshotted; `XDG_CONFIG_HOME=/scratch/$USER` is how
-you keep a credential off it. That matters most for the run-report token
+Being able to move the directory is not decoration. On an HPC login node
+`$HOME` is NFS-mounted and often snapshotted; `MOLBUILDER_CONFIG_DIR=/scratch/$USER/molbuilder`
+(or `XDG_CONFIG_HOME=/scratch/$USER`) is how you keep a credential off it.
+molbuilder cannot tell whether a directory is shared — it guarantees only that
+everything of its own lives under the one you name (`configuration.md`
+§ 2.1c). That matters most for the run-report token
 ([`run-reports.md`](?doc=execution/run-reports.md)), which is read on a
 **compute node**.
 
 Initial setup (once per deployment host):
 
 ```bash
-mkdir -p -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder"
-cfg="${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder"
+cfg="${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}"
+mkdir -p -m 700 "$cfg"
 
-# The Flask session-signing key (referenced by "secret_key_file"):
+# The Flask session-signing key.  Nothing references it BY PATH -- the name
+# and the location are the contract (configuration.md § 2.1e), and the server
+# creates it on first run if you skip this.
 python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secret_key"
 chmod 600 "$cfg/secret_key"
 

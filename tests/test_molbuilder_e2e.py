@@ -206,6 +206,17 @@ def _pick_atom(page, one_based: int):
     page.locator(f"{_CARD} input[aria-label='Select atom #{one_based}']").click()
 
 
+def _clear_ruler(page):
+    """The ruler's own Clear — *"the selection is not touched"*.
+
+    A separate control from the selection's, because they are separate tracks
+    (`molview.md` § 11.6).  The Cell page's gestures read the RULER, so a test
+    re-picking a pair must clear THAT one; clearing the selection instead
+    leaves the ruler holding the old picks and the second pair never forms.
+    """
+    page.locator(f"{_CARD} .molviewer-measure-clear").click()
+
+
 # --------------------------------------------------------------------- #
 #  § 6.5 step 1 — the page mounts                                       #
 # --------------------------------------------------------------------- #
@@ -400,13 +411,16 @@ def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz)
     That is not a nicety — it is the stated way out of the left-handed refusal
     below, so it has to be true rather than approximately true.
 
-    WHAT THIS CANNOT SEE, said here rather than left implied: the panel reads
-    the store's `pickOrder`, and a mutation making it read `selection` instead
-    passes this test.  The two fields cannot be made to disagree through the UI
-    — `toggle` appends, so a click-built selection is already in click order —
-    so no browser test can tell them apart.  What this DOES catch is the whole
-    class of ways the direction goes wrong anyway: a sort, an `abs`, a
-    subtraction the other way round, a gesture that ignores order entirely.
+    **THIS BECAME PROVABLE ON 2026-08-31**, and the note it replaces said the
+    opposite: the panel used to read `selection`'s `pickOrder` shadow, and the
+    two fields could not be made to disagree through the UI, so a mutation
+    reading the wrong one passed.  The gesture now reads the RULER, whose list
+    is ordered by construction and is a different track from the selection
+    (`molview.md` §§ 9.5, 11.6) — so this test drives the thing it asserts.
+
+    Opening the Cell tab turns the ruler on, which is why the picks below land
+    in it: `pickAtom` routes by whether measuring is on, so the same click that
+    would select an atom measures one instead.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -415,12 +429,21 @@ def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz)
 
     _pick_atom(page, 1)
     _pick_atom(page, 2)
+    page.wait_for_function(
+        "() => !document.getElementById('pv-cell-from-selection').disabled",
+        timeout=_ACT_MS)
     page.locator("#pv-cell-from-selection").click()
     forward = [float(v) for v in _cell_boxes(page)[:3]]
 
-    _clear_selection(page)
+    # THE RULER's Clear, not the selection's -- they are separate tracks, and
+    # clearing the wrong one leaves the old pair in place so the second never
+    # forms.
+    _clear_ruler(page)
     _pick_atom(page, 2)
     _pick_atom(page, 1)
+    page.wait_for_function(
+        "() => !document.getElementById('pv-cell-from-selection').disabled",
+        timeout=_ACT_MS)
     page.locator("#pv-cell-from-selection").click()
     back = [float(v) for v in _cell_boxes(page)[:3]]
 

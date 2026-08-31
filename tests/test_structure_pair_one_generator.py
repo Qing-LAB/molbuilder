@@ -27,6 +27,27 @@ from molbuilder.structure import Structure
 from molbuilder.workingcopy_structure import StructureCodec
 
 
+@pytest.fixture(autouse=True)
+def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
+    """`render_run_wrapper` refuses without `script_generation.activation`.
+
+    These tests took it from whatever `./molbuilder.json` happened to sit in
+    the repo root -- the developer's own, which no test had put under control,
+    and which vanished when the machine scope stopped being looked for in the
+    working directory (`configuration.md` § 2.1a).  Supplying it here is what
+    makes the render depend on the test rather than on the checkout.
+    """
+    root = tmp_path / "config-root"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "molbuilder.json").write_text(json.dumps({
+        # `conda activate` with no preamble: the suite stubs `conda` to
+        # succeed silently, which is all a wrapper in a bare shell needs
+        # (conftest's `product_toolchain_is_the_suites_own`).
+        "script_generation": {"preamble": "", "activation": "conda activate"}}))
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
+
+
+
 def _with_metadata() -> Structure:
     """Metadata applied the way it actually arrives — through the codec's own
     door, which coerces and validates. Assigning the fields directly bypasses
