@@ -59,7 +59,7 @@ from __future__ import annotations
 import json as _json
 import os as _os
 from pathlib import Path as _Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -632,6 +632,31 @@ SUPPORTED_FCC_ELEMENTS: Tuple[str, ...] = ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
 
 SUPPORTED_FCC_PLANES: Tuple[str, ...] = ("100", "110", "111")
 
+#: Which values of ``orthogonal`` each fcc surface can actually be built with
+#: (science/junction-cell.md § 2b).
+#:
+#: ASE implements a non-orthogonal cell for fcc(111) only; asking for one on
+#: (100) or (110) raises ``NotImplementedError``.  So the flag is a real
+#: choice on ONE surface, and a UI that offers it as a free checkbox on all
+#: three lets the user pick a combination that cannot exist -- which is what
+#: it did: the box starts unchecked, and unchecked is the one setting a (100)
+#: slab cannot be built with, so the default request came back a 400.
+#:
+#: What is NOT here: fcc(111)'s orthogonal cell additionally needs an even
+#: ``n``.  That depends on the size rather than the surface, so it stays
+#: passed through to ASE and surfaced verbatim (`_build_ase_slab`) instead of
+#: being restated -- one door per fact.
+#:
+#: Hardcoded for the same reason ``SUPPORTED_FCC_ELEMENTS`` is, and with a
+#: guard the elements list does not have:
+#: ``tests/test_fcc_cell_shapes.py`` builds every combination and asserts ASE
+#: agrees, so this cannot drift from the library it describes.
+FCC_ORTHOGONAL_CHOICES: Dict[str, Tuple[bool, ...]] = {
+    "100": (True,),
+    "110": (True,),
+    "111": (False, True),
+}
+
 # Lattice-constant table is loaded lazily on first call to
 # :func:`_get_fcc_lattice` and cached for the rest of the process.
 # Lazy loading lets ``import molbuilder.modify`` succeed even when the
@@ -769,9 +794,12 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
     and re-raise as ``ValueError`` so callers (and the future Modify
     UI) can display the message inline as a hint.
 
-    See ``docs/web/tabs.md`` for the per-(plane, orthogonal)
-    compatibility table -- determined empirically once, but enforced
-    by passing through to ASE rather than re-implementing the rules.
+    See ``science/junction-cell.md`` § 2b for the per-(plane, orthogonal)
+    compatibility table (``FCC_ORTHOGONAL_CHOICES`` above) -- determined
+    empirically, but enforced by passing through to ASE rather than
+    re-implementing the rules.  The size-dependent half of the constraint
+    (fcc(111) orthogonal needs an even ``n``) is deliberately NOT in that
+    table and reaches the user only through this pass-through.
     """
     builder = _ase_slab_builder(plane)
     try:
@@ -1411,4 +1439,5 @@ __all__ = [
     "calibrate_to_cell",
     "SUPPORTED_FCC_ELEMENTS",
     "SUPPORTED_FCC_PLANES",
+    "FCC_ORTHOGONAL_CHOICES",
 ]

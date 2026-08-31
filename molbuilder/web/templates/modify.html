@@ -793,10 +793,16 @@
                      step="1" min="0" value="3" aria-label="layers" />
             </span>
           </div>
+          {#- § 2b: the cell shape is a real choice on fcc(111) only -- ASE
+              cannot build a non-orthogonal (100) or (110) cell at all.  The
+              box is set and disabled from /api/modify/meta's
+              `orthogonal_choices` on those, with the note saying why, so the
+              panel cannot offer a slab that does not exist. -#}
           <div class="modify-check-row">
             <input type="checkbox" id="slab-orthogonal" />
             <label for="slab-orthogonal">Orthogonal cell</label>
           </div>
+          <p id="slab-orthogonal-note" class="modify-op-hint" hidden></p>
           {#- § 3.1: a seam only continues the crystal when the layer count is
               a whole multiple of the stacking period.  The note is rendered
               client-side from /api/modify/meta's `stacking_period`, so the

@@ -35,7 +35,7 @@ export function init(viewer) {
 
     const data = () => (viewer && viewer.ok) ? viewer.data : null;
     let meta = { fcc_elements: [], fcc_planes: [], lattice_table: {},
-                 stacking_period: {} };
+                 stacking_period: {}, orthogonal_choices: {} };
 
     /* ── Small builders, so the five radio groups are one piece of code ── */
 
@@ -119,7 +119,40 @@ export function init(viewer) {
                Array.from({ length: period },
                           (_, i) => [String(i), REGISTRY_NAMES[i] || String(i)]),
                String(keep < period ? keep : 0));
+        renderOrthogonalChoice();
         renderPeriodNote();
+    }
+
+    /* THE CELL SHAPE IS NOT A FREE SWITCH (junction-cell.md § 2b): ASE builds
+     * a non-orthogonal cell for fcc(111) only.  Where the surface allows one
+     * shape, the box is set to it and disabled -- offering the other is
+     * offering a slab that cannot be built, and the box starting unchecked is
+     * exactly how a default (100) request came back a 400.
+     *
+     * Which shapes exist is the server's fact (`orthogonal_choices`), never a
+     * copy here.  A plane the server said nothing about leaves the box alone
+     * rather than guessing at it. */
+    function renderOrthogonalChoice() {
+        const box = $("slab-orthogonal");
+        const note = $("slab-orthogonal-note");
+        if (!box) return;
+        const plane = picked("slab-plane", "111");
+        const choices = (meta.orthogonal_choices || {})[plane];
+        if (!Array.isArray(choices) || choices.length !== 1) {
+            box.disabled = false;
+            if (note) note.hidden = true;
+            return;
+        }
+        box.checked = !!choices[0];
+        box.disabled = true;
+        if (note) {
+            note.textContent =
+                `fcc(${plane}) is built with ${choices[0] ? "an orthogonal"
+                : "a non-orthogonal"} cell only -- there is no choice to make `
+                + `on this surface.`;
+            note.classList.remove("modify-op-hint--warn");
+            note.hidden = false;
+        }
     }
 
     /* Growing UP, "continues" and "mirrors" are the same slab, so the row is

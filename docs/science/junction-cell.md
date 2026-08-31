@@ -63,6 +63,33 @@ rather than a table.
 
 ---
 
+## 2b. The cell shape is not a free switch
+
+The slab builders take an `orthogonal` flag, but on two of the three surfaces
+there is nothing to choose. Measured against ASE, not assumed:
+
+| plane | `orthogonal = False` | `orthogonal = True` |
+|---|---|---|
+| (100) | **not available** — ASE raises `NotImplementedError` | always |
+| (110) | **not available** — ASE raises `NotImplementedError` | always |
+| (111) | always | only when `n` is even |
+
+So the flag is a real choice on (111) alone, and even there it constrains
+`(m, n)`. Offering it as a free checkbox on all three is how a default request
+for a (100) slab came back a `400`: the panel's box starts unchecked, which is
+the one setting (100) cannot build.
+
+**The table lives in `modify.FCC_ORTHOGONAL_CHOICES`** and is served to the
+browser by `/api/modify/meta`, the same anti-drift route `STACKING_PERIOD`
+takes — the panel must not carry its own copy. `n`'s evenness is *not* in the
+table: it depends on the size, so it stays where it already is, passed through
+to ASE and surfaced verbatim (§ 5).
+
+`tests/test_fcc_cell_shapes.py` builds every combination in the table and
+asserts ASE agrees, so the copy cannot drift from the library it describes.
+
+---
+
 ## 3. Filling the gap is necessary, not sufficient
 
 Padding `c` by `d` fixes the *distance*. It does not fix the *registry* — which
