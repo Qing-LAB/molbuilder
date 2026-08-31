@@ -66,6 +66,16 @@ const FORCE_ARROW = {
 // structure; a sphere per picked atom does not.
 const SELECTION_GLOW = { color: "#ffd54a", radius: 0.7, opacity: 0.5 };
 
+/* The measurement glow (molview.md § 11.6).  A SECOND glow, not a second
+ * meaning for the first: an atom can be selected AND measured at once, and the
+ * two must be tellable apart on sight -- so this one is cool where the
+ * selection is warm, and a little wider, so a measured atom that is also
+ * selected reads as a ring around the amber rather than replacing it.
+ *
+ * Cool blue is also what the ruler already is elsewhere: the chip's border
+ * takes `--molviewer-color-accent`, the same hue. */
+const MEASURE_GLOW = { color: "#5ad2ff", radius: 0.92, opacity: 0.45 };
+
 const LABEL_STYLE = {
     fontSize:          12,
     fontColor:         "#222",
@@ -186,12 +196,11 @@ export function create(hostEl, opts) {
         arrowShapes:     [],
         arrowLabels:     [],
         labelHandles:    [],
-        markerShapes:    [],
-        haloShapes:      [],
         highlightShapes: [],
+        measuredShapes:  [],
         // What the overlays currently say, so a frame swap can re-place them
         // (§ 10.6: shapes move with the frames) without being re-sent.
-        overlays:    { labels: [], markers: [], halos: [], highlight: [] },
+        overlays:    { labels: [], highlight: [], measured: [] },
         arrows:      [],
         pickHandler: null,
         pickWired:   false,
@@ -302,54 +311,32 @@ export function create(hostEl, opts) {
         }
     }
 
-    function redrawMarkers() {
-        state.markerShapes = clear(state.markerShapes);
+    /* ONE GLOW PRIMITIVE, two callers (§ 10.7).
+     *
+     * A glow is a SHAPE, never a restyle: restyling to show a selection
+     * rebuilds the whole model's geometry, so its cost grows with the
+     * structure; a sphere per atom does not.
+     *
+     * It replaced two doors that did the same thing and were reached by
+     * nobody -- `markers` and `halos`, identical but for a default opacity,
+     * both hard-coded to `[]` by the only caller since the embed they came
+     * from was retired.  They also took their colour and radius FROM THE
+     * CALLER, which § 6.5 gives to this layer: "this says WHICH atoms, and
+     * what a highlight looks like is a constant owned by the sealed layer."
+     * So the replacement takes a list of atoms and a style THIS FILE owns.
+     */
+    function redrawGlow(bucket, indices, style) {
+        state[bucket] = clear(state[bucket]);
         const atoms = drawnAtoms();
-        for (const m of state.overlays.markers) {
-            const a = atoms[m.atom];
-            if (!a) continue;
-            try {
-                state.markerShapes.push(state.viewer.addSphere({
-                    center:  { x: a.x, y: a.y, z: a.z },
-                    radius:  m.radius,
-                    color:   m.color,
-                    opacity: m.opacity == null ? 1 : m.opacity,
-                }));
-            } catch (_) {}
-        }
-    }
-
-    function redrawHalos() {
-        state.haloShapes = clear(state.haloShapes);
-        const atoms = drawnAtoms();
-        for (const h of state.overlays.halos) {
-            const a = atoms[h.atom];
-            if (!a) continue;
-            try {
-                state.haloShapes.push(state.viewer.addSphere({
-                    center:  { x: a.x, y: a.y, z: a.z },
-                    radius:  h.radius,
-                    color:   h.color,
-                    opacity: h.opacity == null ? 0.5 : h.opacity,
-                }));
-            } catch (_) {}
-        }
-    }
-
-    // § 10.7: a click adds or removes SHAPES and issues no model restyle, so its
-    // cost does not grow with the structure.
-    function redrawHighlight() {
-        state.highlightShapes = clear(state.highlightShapes);
-        const atoms = drawnAtoms();
-        for (const i of state.overlays.highlight) {
+        for (const i of indices) {
             const a = atoms[i];
             if (!a) continue;
             try {
-                state.highlightShapes.push(state.viewer.addSphere({
+                state[bucket].push(state.viewer.addSphere({
                     center:  { x: a.x, y: a.y, z: a.z },
-                    radius:  SELECTION_GLOW.radius,
-                    color:   SELECTION_GLOW.color,
-                    opacity: SELECTION_GLOW.opacity,
+                    radius:  style.radius,
+                    color:   style.color,
+                    opacity: style.opacity,
                 }));
             } catch (_) {}
         }
@@ -485,9 +472,10 @@ export function create(hostEl, opts) {
     // lattice-only and static, so it is deliberately not in here.
     function replaceOverlays() {
         redrawLabels();
-        redrawMarkers();
-        redrawHalos();
-        redrawHighlight();
+        // The measurement glow is drawn UNDER the selection glow, so an atom
+        // that is both keeps the amber at its centre and gains a blue ring.
+        redrawGlow("measuredShapes", state.overlays.measured, MEASURE_GLOW);
+        redrawGlow("highlightShapes", state.overlays.highlight, SELECTION_GLOW);
     }
 
     /* ── Picking ───────────────────────────────────────────────────────────
@@ -701,9 +689,8 @@ export function create(hostEl, opts) {
             overlays = overlays || {};
             state.overlays = {
                 labels:    overlays.labels    || [],
-                markers:   overlays.markers   || [],
-                halos:     overlays.halos     || [],
                 highlight: overlays.highlight || [],
+                measured:  overlays.measured  || [],
             };
             replaceOverlays();
             paint();

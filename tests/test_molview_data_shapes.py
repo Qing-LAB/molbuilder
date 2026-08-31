@@ -573,8 +573,13 @@ def test_the_cell_box_and_axes_are_not_per_frame_data():
     assert "cellBox" not in out["keys"] and "axes" not in out["keys"], (
         f"scene-level data leaked into the per-frame data: {out['keys']}"
     )
-    assert out["keys"] == ["arrows", "elements", "labels", "positions",
-                           "selection", "sourceIndex"], (
+    # Seven since 2026-08-30: `measured` joined them when the ruler gained its
+    # marks on the atoms (§ 6.5's table, § 11.6).  The list is asserted WHOLE
+    # rather than by membership, so a field added without a row in that table
+    # fails here — which is the only thing stopping the per-frame shape from
+    # growing quietly.
+    assert out["keys"] == ["arrows", "elements", "labels", "measured",
+                           "positions", "selection", "sourceIndex"], (
         f"the processed frame must be exactly § 6.5's fields: {out['keys']}"
     )
 

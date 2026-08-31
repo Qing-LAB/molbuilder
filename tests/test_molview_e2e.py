@@ -260,6 +260,7 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
 
     demo.locator(".molviewer-rail button").nth(6).click()   # ∡ Measure
     _settle(demo)
+    before_pixels = _canvas_pixels(demo)
 
     # THE FORMAT IS THE CONTRACT'S, spelled out in § 1.1 and § 11.6:
     #   one atom    -> `Au #3 — (0.000, 0.000, 0.000) Å`
@@ -291,6 +292,17 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
     assert text.startswith("∠C #1 – C #2 – C #3 = "), (
         f"the vertex is not the atom picked second: {text}")
     assert "120." in text, f"benzene's interior angle is 120 degrees: {text}"
+
+    # THE MARK ON THE ATOM (user, 2026-08-30: "the measurement selection need
+    # some indicator at the atom?").  The chip naming three atoms is not an
+    # indicator ON the molecule, and the only place "it reached WebGL" can be
+    # asserted is a page — the store being right and the engine deriving the
+    # marks correctly is exactly the state six other features were in while the
+    # window showed nothing.
+    assert _canvas_pixels(demo) != before_pixels, (
+        "measuring three atoms changed nothing on screen — the marks reach "
+        "the store and the engine but not the drawing"
+    )
 
     # THE WALL, on screen: three atoms measured, and the selection is still the
     # ONE that was picked before the ruler came on.

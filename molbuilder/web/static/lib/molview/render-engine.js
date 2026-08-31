@@ -7,8 +7,9 @@
  * Contract: docs/web/molview.md § 9.7, § 9.8, § 10 whole.
  *
  * ── The maths half — § 7 level 5 ──────────────────────────────────────────────
- * Owns:     nothing. It is HANDED the master copy, the selection and the
- *           switches, works out what each frame looks like, and passes the
+ * Owns:     nothing. It is HANDED the master copy, the selection, the ruler's
+ *           track (§ 11.6) and the switches, works out what each frame looks
+ *           like, and passes the
  *           result down. Chooses how much work a change costs (§ 10.5: frame
  *           swap / overlay refresh / append / rebuild) by WHAT CHANGED, never by
  *           atom count. Holds the rebuild window (§ 10.9), where nothing that
@@ -78,6 +79,9 @@ import { effectiveCell } from "./model-jobs.js";
  *   `positions`  this frame's coordinates — `Vec3[]`
  *   `forces`     this frame's forces, or null
  *   `selection`  the selected atoms, as original numbers
+ *   `measurement` the ruler's `{active, picks}` (§ 11.6) — its own track, not
+ *                the selection, and it decides its own visibility: the marks
+ *                belong to the ruler, so with the ruler off there are none
  *   `switches`   `{isolate, showIndex, showForces, forceScale}` (§ 6.2)
  * @returns {object} § 6.5's processed frame
  */
@@ -86,6 +90,7 @@ export function processFrame(input) {
     const positions = input.positions || [];
     const forces    = input.forces || null;
     const selection = input.selection || [];
+    const track     = input.measurement || {};
     const sw        = input.switches || {};
 
     /* ── Step 1 — keep only what is shown ──────────────────────────────────
@@ -139,6 +144,23 @@ export function processFrame(input) {
         highlight = drawn.length ? drawn : null;
     }
 
+    /* The ruler's marks (§ 11.6).  Same shape as the highlight and a different
+     * rule in one respect: they SURVIVE ISOLATE.  The highlight is null there
+     * because the drawn set already IS the selection, so marking all of it says
+     * nothing — but the measured atoms are a handful WITHIN that set, so which
+     * three they are is exactly the thing still worth saying.
+     *
+     * Renumbered through step 1's map like everything else, so a mark lands on
+     * the right atom whether or not the drawn list was cut down. */
+    let measured = null;
+    if (track.active && Array.isArray(track.picks) && track.picks.length) {
+        const seat = new Map(sourceIndex.map((original, drawn) => [original, drawn]));
+        const drawn = track.picks
+            .map((i) => seat.get(i))
+            .filter((d) => d !== undefined);
+        measured = drawn.length ? drawn : null;
+    }
+
     // Force arrows for THIS frame, from THIS frame's forces. Getting that wrong
     // shows converged forces on an unconverged frame (§ 10.3).
     let arrows = null;
@@ -165,6 +187,7 @@ export function processFrame(input) {
         elements:    drawnElements,
         labels:      labels,
         selection:   highlight,
+        measured:    measured,
         arrows:      arrows,
     };
 }
@@ -183,6 +206,7 @@ export function processFrames(input) {
         positions: positions,
         forces:    forcesPerFrame ? forcesPerFrame[f] : null,
         selection: input.selection,
+        measurement: input.measurement,
         switches:  input.switches,
     }));
 }
@@ -389,6 +413,9 @@ export function createRenderEngine(embed) {
     function selection() {
         return (source && source.selection) ? source.selection() : [];
     }
+    function measurement() {
+        return (source && source.measurement) ? source.measurement() : {};
+    }
 
     /* Which atoms are drawn, as a value that changes exactly when the SET does.
      *
@@ -407,6 +434,7 @@ export function createRenderEngine(embed) {
             frames:         frames() || [],
             forcesPerFrame: forces(),
             selection:      selection(),
+            measurement:    measurement(),
             switches:       switches(),
         });
     }
@@ -426,6 +454,7 @@ export function createRenderEngine(embed) {
             positions: all[at],
             forces:    perFrame ? perFrame[at] : null,
             selection: selection(),
+            measurement: measurement(),
             switches:  switches(),
         });
     }
@@ -440,9 +469,8 @@ export function createRenderEngine(embed) {
             labels:    (processed.labels || []).map((l, drawn) => ({
                 atom: drawn, text: l.text,
             })),
-            markers:   [],
-            halos:     [],
             highlight: processed.selection || [],
+            measured:  processed.measured || [],
         });
         /* ONE ARROW SET, COMPOSED HERE. The axis triad rides the ordinary arrow
          * door carrying its own colours (§ 10.3), and the drawing has one such

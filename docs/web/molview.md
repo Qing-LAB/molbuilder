@@ -666,27 +666,32 @@ the axes and the busy-state cover also travel down; none of those is per frame �
 | `elements` | `string[]` | element per **drawn** atom |
 | `labels` | `{position, text}[]` or `null` | the atom-number labels — *not* the labels a user attaches — when that switch is on. `text` is the **1-based original** number (§ 11.5) |
 | `selection` | `int[]` or `null` | which drawn atoms to highlight. `null` means *draw no highlight* — which happens both when nothing is selected and under isolate, where every drawn atom is selected and a highlight would say nothing |
+| `measured` | `int[]` or `null` | which drawn atoms the ruler holds (§ 11.6). `null` when the ruler is off or nothing is picked — but **not** under isolate, and that is the one place it parts from `selection` above: the measured atoms are a handful *within* the drawn set, so which ones they are is still worth saying |
 | `arrows` | `{start, end}[]` or `null` | force vectors for **this** frame, where `end = start + force × scale` |
 
 The cell box and the axes are **not** in here. They are the same for every frame
 unless the cell itself changes, so they are worked out once as scene-level data
 and are not recomputed per frame.
 
-**`selection` here is content, not styling.** It says *which* atoms are
-highlighted. What the highlight looks like is a fixed constant owned by the
-sealed layer — a translucent sphere, amber `#ffd54a`, radius 0.7, opacity 0.5 —
-re-placed each frame so it follows moving atoms. Keeping the appearance out of
-the per-frame data is what keeps every frame's data identically shaped, and it
-means a selected atom keeps its own element colour with the highlight simply
-sitting over it.
+**`selection` and `measured` here are content, not styling.** They say *which*
+atoms. What each looks like is a fixed constant owned by the sealed layer — a
+translucent sphere, amber `#ffd54a` r0.7 for the selection, cool blue `#5ad2ff`
+r0.92 for the ruler — re-placed each frame so both follow moving atoms. Keeping
+the appearance out of the per-frame data is what keeps every frame's data
+identically shaped, and it means a marked atom keeps its own element colour with
+the glows simply sitting over it. **Two lists, two constants, one primitive**:
+the layer draws a glow, and the difference between the two is which list and
+which constant it was handed.
 
 **Under isolate, the 3D window is display-only.** In-window clicking is off,
 because a drawn atom's number no longer equals its real number. The panel curates
-the selection instead and always speaks in original numbers. Measurement is a
-separate thing from drawing: it takes its atoms from the panel's selection and
-reads their coordinates from the **master copy** at the current frame, so it
-stays correct and frame-aware without touching the drawing at all. Clicking
-returns when isolate is off, where drawn number and real number agree again.
+the selection instead and always speaks in original numbers, and so does the ruler
+(§ 11.6) — its clicks are refused at the window for the same reason, and its
+marks go on being drawn, renumbered through `sourceIndex` like every other
+overlay. Measurement's *readout* is a separate thing from drawing: it reads its
+coordinates from the **master copy** at the current frame, so it stays correct
+and frame-aware whatever the drawing is doing. Clicking returns when isolate is
+off, where drawn number and real number agree again.
 
 ### 6.6 Reserved labels — one mechanism, interpreted at the end
 
@@ -2383,6 +2388,7 @@ now third in the list.
 |---|---|---|---|
 | **atom-number labels** | that switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.5). Never its position in the cut-down list |
 | **the selection highlight** | something is selected **and isolate is off** | the list of drawn atoms to highlight | under isolate this is deliberately empty: the drawn set already *is* the selection, so highlighting all of it would say nothing. The pipeline emits only *which* atoms — never what the highlight looks like |
+| **the measurement marks** | the ruler is on and something is picked (§ 11.6) | the list of drawn atoms the ruler holds | the one overlay that **survives isolate**, and for the mirror of the highlight's reason: the measured atoms are a handful *within* the drawn set, so which ones they are is exactly what is still worth saying. Same content-only rule — *which* atoms, never what a mark looks like |
 | **force arrows** | the forces switch is on and the data carried forces | frame `f`'s forces, times the scale | frame `f`'s arrows come from frame `f`'s forces. Getting this wrong shows converged forces on an unconverged frame |
 
 The result, for every frame, is the finished data of § 6.5.
@@ -3689,6 +3695,23 @@ is what a reader checks the derived number against. At two atoms, the distance
 **and** the signed `Δ = (Δx, Δy, Δz)`, second minus first, so it reads as *to get
 from the first atom to the second, go this far along each axis*. At three, the
 angle.
+
+**And a mark on each picked atom** *(user, 2026-08-30: "the measurement selection
+need some indicator at the atom?")*. The chip names the atoms; the marks are what
+says which ones they are **on the molecule**, which is the difference between
+picking and picking blind. It is a **second glow**, not a second meaning for the
+first: an atom can be selected and measured at once, so the ruler's mark is cool
+where the selection's is warm, and a little wider — a measured-and-selected atom
+reads as a ring around the amber rather than replacing it. Content only, as
+§ 10.3's table has it: the pipeline emits *which* atoms and the sealed layer owns
+what a mark looks like.
+
+> **This replaced two doors nobody used.** The sealed layer carried `markers` and
+> `halos` — identical spheres-per-atom apart from a default opacity, both
+> hard-coded to `[]` by their only caller since the embed they came from was
+> retired, and both taking their colour and radius **from the caller**, which
+> § 6.5 gives to the sealed layer. They are gone; one glow primitive draws the
+> selection and the ruler from two lists and two constants this layer owns.
 
 **When it repaints.** On a change to the track **or** a frame change — it
 subscribes to both (§ 6.4).

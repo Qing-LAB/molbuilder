@@ -151,6 +151,19 @@ export function createModel(opts) {
      * snapshot also carries which editor is showing and the filter rows being
      * typed; those change no pixel, and re-deriving on every keystroke in a
      * filter box would be work with an identical answer. */
+    /* The ruler's marks reach the drawing the same way the switches do, and
+     * through the same guard: a redraw only when what the frame calculation
+     * READS has changed.  Without this line the store was complete, the engine
+     * derived the marks correctly, and the window showed nothing — the exact
+     * failure the comment above records for the switches, one store later. */
+    let markedFrom = null;
+    measurement.subscribe((track) => {
+        const reads = JSON.stringify([track.active, track.picks]);
+        if (reads === markedFrom) return;
+        markedFrom = reads;
+        if (renderer) renderer.switchesChanged();
+    });
+
     let drawnFrom = null;
     selection.subscribe((state) => {
         const reads = JSON.stringify([
@@ -1023,6 +1036,13 @@ export function createModel(opts) {
                     frame:     () => frameIndex,
                     switches:  () => selection.switches(),
                     selection: () => selection.get(),
+                    /* The ruler's track, WHOLE — `{active, picks}` — because
+                     * the frame calculation decides its own visibility from
+                     * both halves (§ 11.6), the way it already decides the
+                     * highlight from `isolate` plus the selection.  Handing a
+                     * pre-filtered list instead would put that rule in the
+                     * wiring, where nothing else about a frame is decided. */
+                    measurement: () => measurement.getState(),
                 });
             }
         },

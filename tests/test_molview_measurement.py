@@ -262,6 +262,88 @@ def test_the_track_is_not_structure_metadata():
 
 
 # ---------------------------------------------------------------------------
+# The mark on the atom
+# ---------------------------------------------------------------------------
+
+ENGINE = MODULE_DIR / "render-engine.js"
+ENGINE_PRELUDE = f"""
+const E = await import({json.dumps(ENGINE.resolve().as_uri())});
+const FRAME = {{
+    elements: ["C", "O", "N", "H"],
+    positions: [[0,0,0], [1,0,0], [2,0,0], [3,0,0]],
+}};
+const at = (over) => E.processFrame(Object.assign({{}}, FRAME, over));
+"""
+
+
+def _engine(snippet: str):
+    return run_node([], ENGINE_PRELUDE + snippet)
+
+
+def test_the_picked_atoms_are_marked_in_the_drawing():
+    """User, 2026-08-30: *"the measurement selection need some indicator at the
+    atom?"*  Without one, picking in the 3D window is blind — the chip names the
+    atoms, but nothing on the molecule says which three they are.
+
+    The marks are content, never styling (§ 6.5): this says WHICH atoms, and
+    what a mark looks like is the sealed layer's constant.
+    """
+    out = _engine("""
+        const off = at({ measurement: { active: false, picks: [1, 2] } });
+        const on  = at({ measurement: { active: true,  picks: [1, 2] } });
+        const none = at({ measurement: { active: true, picks: [] } });
+        console.log(JSON.stringify({
+            off: off.measured, on: on.measured, none: none.measured,
+        }));
+    """)
+    assert out["on"] == [1, 2], "the picked atoms are not marked"
+    assert out["off"] is None, (
+        "the marks belong to the ruler: with it off there are none"
+    )
+    assert out["none"] is None
+
+
+def test_the_marks_survive_isolate_where_the_highlight_does_not():
+    """The one place the two glows differ, and it is not an oversight.
+
+    Under isolate the highlight is null because the drawn set already IS the
+    selection, so marking all of it says nothing.  The measured atoms are a
+    handful WITHIN that set, so which of them they are is exactly the thing
+    still worth saying — and the marks are renumbered through the same map, so
+    they land on the right atoms in the cut-down list.
+    """
+    out = _engine("""
+        const iso = at({
+            selection: [1, 2, 3],
+            switches: { isolate: true },
+            measurement: { active: true, picks: [3, 1] },
+        });
+        console.log(JSON.stringify({
+            highlight: iso.selection, measured: iso.measured,
+            sourceIndex: iso.sourceIndex,
+        }));
+    """)
+    assert out["highlight"] is None, "the highlight's isolate rule changed"
+    # The drawn list is [1, 2, 3] renumbered to [0, 1, 2]; atoms 3 and 1 are
+    # drawn seats 2 and 0.  Asserting the ORIGINAL numbers here would pass on a
+    # marker that lands on the wrong atom under isolate.
+    assert out["sourceIndex"] == [1, 2, 3]
+    assert out["measured"] == [2, 0], (
+        f"the marks were not renumbered into the drawn list: {out['measured']}"
+    )
+
+
+def test_a_pick_that_is_no_longer_in_the_structure_is_dropped():
+    """A track restored from the lane, or held across an edit, can name an atom
+    the drawn list does not have.  A mark with no atom must vanish, not throw."""
+    out = _engine("""
+        const gone = at({ measurement: { active: true, picks: [1, 99] } });
+        console.log(JSON.stringify({ measured: gone.measured }));
+    """)
+    assert out["measured"] == [1]
+
+
+# ---------------------------------------------------------------------------
 # Source pins — where the track may and may not be named
 # ---------------------------------------------------------------------------
 
@@ -270,10 +352,27 @@ def test_only_the_view_context_lane_persists_the_track():
     no other — not `history.js` (a state, a draft, the badge), not
     `model-jobs.js` (a request body), not the export paths."""
     src = _sources()
-    writes = sorted(n for n, t in src.items()
-                    if "measurement" in t and n not in
-                    ("stores.js", "model.js", "ui.js", "ui-context.js", "mount.js"))
-    assert writes == [], f"the track is named in {writes}; it belongs to the lane"
+
+    # READING is not the wall.  The track has readers by design — the readout
+    # draws it, the drawing marks it, the router picks into it — and each is
+    # listed with what it does, so a NEW name here is a decision somebody made
+    # rather than a line that slipped in.
+    readers = {
+        "stores.js":      "owns it",
+        "model.js":       "assembles it and routes clicks into it",
+        "ui.js":          "the rail toggle and the readout",
+        "render-engine.js": "derives the marks on the picked atoms (§ 11.6)",
+        "ui-context.js":  "the one lane that persists it (§ 11.2b)",
+    }
+    # `mount.js` is deliberately NOT here, and its absence is the design: the
+    # 3D window's click goes through `model.pickAtom`, so the file that wires
+    # the window never learns there is a second track to route to.
+    named = sorted(n for n, t in src.items() if "measurement" in t.lower())
+    assert named == sorted(readers), (
+        f"the track is named in {named}; the readers it is allowed are "
+        f"{sorted(readers)} — a new one is a decision, not an oversight")
+
+    # WHAT IT MAY NEVER REACH, each for its own reason.
     assert "measurement" not in src["history.js"], \
         "a measurement is not an edit: no state, no draft, no badge"
     assert "measurement" not in src["model-jobs.js"], \
