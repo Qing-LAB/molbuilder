@@ -108,7 +108,7 @@ named.
 
 | file | looked for, in order | combining rule |
 |---|---|---|
-| `molbuilder.json` (machine) | 1. `./molbuilder.json` — the **working directory**<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file, never both** — the first found is the machine scope, entire |
+| `molbuilder.json` (machine) | 1. `./molbuilder.json` — the **working directory**, legacy and **warned about** (§ 2.1a)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set — **the home**<br>3. `~/.config/molbuilder/molbuilder.json` — the home when `XDG_CONFIG_HOME` is unset | **one file, never both** — the first found is the machine scope, entire |
 | `.molbuilder.json` (project) | `<project-dir>/.molbuilder.json` | **deep-merged** over the machine file, project wins — *the one merge in this document*. Objects recurse, scalars and arrays replace |
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<machine scope>/environments/<name>.json`<br>3. `$XDG_CONFIG_HOME/molbuilder/environment.json`, else `~/.config/molbuilder/environment.json`<br>4. a fresh probe — **only when the caller asked for one** | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
@@ -126,6 +126,49 @@ counterpart has a different name (`.molbuilder.json`, with the dot).
 > are alternatives — finding one *stops the search*, so a cwd file with only a
 > `tls` block does not inherit the XDG file's `execution`. Only the machine ←
 > project pair merges, and only after each has been resolved to one file.
+
+### 2.1a The machine scope has ONE home, and a cwd file is warned about
+
+*(User, 2026-08-31: "I had instances where information are saved in two places
+and I did not realize which one was the effective one … I prefer consistency
+rather than all based on implicit rules.")*
+
+**The home is the per-user config directory** — `$XDG_CONFIG_HOME/molbuilder/`
+if that variable is set, else `~/.config/molbuilder/`. That is where
+`auth-setup` writes, where `environment.json` already lives, and what every
+instruction should name.
+
+**`./molbuilder.json` still wins when it exists, and that is exactly the
+problem.** Step 1 of § 2.1's search is a *first-found-wins* stop, so a working-
+directory file silently stands in front of the per-user one — the per-user file
+is not merged, not consulted, and not mentioned. Two files hold configuration,
+one takes effect, and nothing says which.
+
+Worse, **the cwd step is redundant**: per-directory configuration already has a
+scope of its own, `.molbuilder.json`, which *merges* properly and is documented
+as the one merge in this document. Anything a cwd `molbuilder.json` can express,
+the project scope expresses better and without shadowing anything.
+
+So the rule is:
+
+1. **A machine-scope file belongs in the per-user config directory.** New
+   installs write there; documentation names that path.
+2. **Per-directory configuration is the project scope's job** —
+   `<project-dir>/.molbuilder.json`, which merges rather than replaces.
+3. **A `./molbuilder.json` is honoured and WARNED about.** It is not silently
+   obeyed and not refused: refusing would break a machine that has one today,
+   and obeying quietly is what caused the confusion. Every surface that resolves
+   the machine scope says so — `runtime_config.machine_config_shadow()` is the
+   one place that phrasing lives, and it names **both** paths, says which is in
+   effect, and says plainly when a per-user file **exists and is being
+   ignored**. That last case is the one worth the noise: it is the only state in
+   which the same setting can be written twice and read once.
+4. **The cwd step is on its way out.** It is kept for the machines that have one
+   and is not a place to put a new file. Retiring it is its own decision,
+   recorded here rather than left implicit.
+
+The warning is not a diagnosis aid bolted on afterwards; it is the price of
+keeping a search step whose whole failure mode is being invisible.
 
 ### 2.2 Which file actually took effect is displayed, never inferred
 

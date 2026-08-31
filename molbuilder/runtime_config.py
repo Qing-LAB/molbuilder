@@ -1131,6 +1131,52 @@ def machine_config_path() -> Tuple[Path, str]:
     return _per_user_fallback_path().resolve(), "xdg"
 
 
+def machine_config_shadow() -> Optional[str]:
+    """A warning when ``./molbuilder.json`` is standing in front of the home.
+
+    `configuration.md` § 2.1a.  The machine scope's home is the per-user config
+    directory; a working-directory file still WINS when it exists, because
+    § 2.1's search stops at the first hit.  Nothing is merged and nothing is
+    said, so two files can hold the same setting while one takes effect --
+    which is the confusion this exists to end (user, 2026-08-31: *"I had
+    instances where information are saved in two places and I did not realize
+    which one was the effective one"*).
+
+    THE PHRASING LIVES HERE, in one place, so every surface says the same
+    thing.  It is a warning and never a refusal: refusing would break a machine
+    that has such a file today, and obeying quietly is the bug.
+
+    Returns ``None`` when the machine scope resolves to its home -- the quiet
+    case is the correct one, and a message then would be noise on every
+    invocation.
+    """
+    cwd_path = Path(CONFIG_FILENAME)
+    if not cwd_path.is_file():
+        return None
+    here = cwd_path.resolve()
+    home = _per_user_fallback_path().resolve()
+    lines = [
+        f"{CONFIG_FILENAME} was found in the working directory and is in "
+        f"effect: {here}",
+    ]
+    if home.is_file():
+        # THE CASE WORTH THE NOISE: the same setting can be written in two
+        # files and read from one, with nothing saying which.
+        lines.append(
+            f"  A machine config also exists at its home and is being "
+            f"IGNORED: {home}")
+        lines.append(
+            "  These are alternatives, not layers -- the search stops at the "
+            "first file, so nothing from the ignored one is merged in.")
+    else:
+        lines.append(f"  Its home is {home}")
+    lines.append(
+        "  Move it there to have one machine config; for settings that should "
+        "apply to one project only, use that project's .molbuilder.json, "
+        "which merges (configuration.md § 2.1a).")
+    return "\n".join(lines)
+
+
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Which config files this process consults, and which one supplied each
     execution-relevant value — the answer to *"where did that setting come
@@ -1157,6 +1203,11 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     machine_path, machine_via = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
                 "found": machine_path.is_file(), "via": machine_via}]
+    # WHAT THIS SCOPE IS STANDING IN FRONT OF (§ 2.1a).  The row above says
+    # which file was reached; it cannot say that another one exists and was
+    # skipped, and that is the state where a setting is written twice and read
+    # once.  Asked of the one place that phrases it, never re-worded here.
+    shadow = machine_config_shadow()
 
     if project_dir is not None:
         project_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
@@ -1230,7 +1281,8 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
         domains = [d.name for d in get_routing(project_dir=project_dir)]
     except RuntimeConfigError:
         domains = []               # a malformed block is the caller's to raise
-    return {"sources": sources, "effective": effective, "domains": domains}
+    return {"sources": sources, "effective": effective, "domains": domains,
+            "shadow": shadow}
 
 
 def format_provenance(prov: Mapping[str, Any]) -> str:
