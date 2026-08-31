@@ -805,6 +805,30 @@
           <legend>Unit cell (Å) <span id="pv-cell-tag" class="modify-cell-tag"></span></legend>
           {#- 3x3 lattice-vector matrix; nine inputs built by periodicity.js. -#}
           <div id="pv-cell-grid" class="modify-cell-matrix" aria-label="unit cell 3x3"></div>
+          {#- § 7: two ways to fill a row that are not the keyboard.  Both STAGE
+              into the nine inputs above -- "Update cell" stays the only commit,
+              so what is about to be sent is on screen first.  The chooser's
+              option text carries each axis's current length, so all three are
+              readable from one control and the box below edits the chosen one
+              (one home for the number). -#}
+          <div class="modify-op-row modify-cell-pick">
+            <label for="pv-cell-axis">Axis</label>
+            <select id="pv-cell-axis" class="modify-cell-select"
+                    aria-label="which lattice vector to set"></select>
+            <button id="pv-cell-from-selection" class="modify-ghost" type="button">
+              Use selection
+            </button>
+          </div>
+          <div class="modify-op-row modify-cell-pick">
+            <label for="pv-cell-len">Length</label>
+            <input type="number" id="pv-cell-len" class="modify-cell-num"
+                   step="0.01" min="0" aria-label="length of the chosen axis" />
+            <button id="pv-cell-set-len" class="modify-ghost" type="button">Set</button>
+          </div>
+          {#- § 7: the refusal this gesture will actually hit.  Advisory -- the
+              gate still decides; this only says it before the request, with the
+              way out the gate cannot know about. -#}
+          <p id="pv-cell-hand" class="modify-op-hint" hidden></p>
           <div class="modify-op-row modify-cell-actions">
             <button id="pv-cell-update" class="full-btn" type="button">Update cell</button>
             <button id="pv-cell-reset" class="modify-ghost" type="button"
@@ -838,6 +862,13 @@
                    aria-label="cell origin y" />
             <input type="number" id="pv-org-c" class="modify-cell-num" step="0.1"
                    aria-label="cell origin z" />
+          </div>
+          {#- § 7: one selected atom becomes the corner.  Stages into the three
+              boxes above; "Update origin" stays the commit. -#}
+          <div class="modify-op-row modify-cell-pick">
+            <button id="pv-org-from-selection" class="modify-ghost" type="button">
+              Use selection
+            </button>
           </div>
           <div class="modify-op-row modify-cell-actions">
             <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>

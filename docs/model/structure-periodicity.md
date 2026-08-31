@@ -616,6 +616,45 @@ atoms. There is **no calibrate button** (§ 6.2 — emission translates
 implicitly), and **only the Modify tab has this editor**: the other tabs
 mount MolView read-only and carry no periodicity controls.
 
+**Two gestures take a value off the structure instead of out of the keyboard**
+*(user, 2026-08-30: "allow the 3dmol to select two atoms that defines the
+selected axis ... the same for the cell origin")*. They are **stagers, not a
+second door**: each writes into the same inputs a user could have typed, and the
+group's own Update button remains the only thing that commits. No new route and
+no new op — two atoms are a row of `cell`, one atom is a `cell_origin`, and the
+arithmetic is vector subtraction on coordinates the browser already holds.
+
+| Gesture | Needs | Writes into |
+|---|---|---|
+| **Use selection** beside the axis chooser | exactly **two** selected atoms | that row of the 3×3, as `second − first` |
+| **Set length** beside it | a row with a direction | the same row, rescaled to the stated length — the spacing between periodic images, set without touching the direction |
+| **Use selection** beside the origin boxes | exactly **one** selected atom | the three origin boxes, as that atom's position |
+
+**The order of the two atoms is the answer, not a detail.** The axis runs from
+the atom picked *first* to the atom picked *second*, so picking the same pair the
+other way round **negates that axis** — which is the way out of the refusal
+below, and the reason the pick order is read rather than the sorted selection.
+Where there is no pick order at all (the selection came from *All*, a filter, a
+restored session) the row runs in index order, which is stated on the control
+rather than guessed at.
+
+**They read the ordinary selection, and get no track of their own.** MolView's
+measurement gains one (`molview.md` § 11.6) because measuring must not disturb
+what an edit acts on; the cell page *is* an edit, so it wants exactly the
+selection every other op resolves its group through. One picking mechanism, one
+diversion switch, nothing new to keep apart.
+
+**Handedness, said before the request.** The gate refuses a left-handed cell
+outright — `det ≤ 0`, `cell.left_handed`, HTTP 400 — and typing nine numbers
+rarely produces one by accident, while **picking three atom pairs will produce
+one about half the time**. So the panel checks the sign of the staged matrix as
+it is built and says so, with the gesture's own way out: *swap any two rows, or
+pick one axis's two atoms in the other order.* The note is **advisory and the
+gate still decides** — it predicts the refusal rather than replacing it, and it
+stays silent when the determinant is near zero, because that is the *no-volume*
+finding and giving one cause two names is what `cell.py` avoids by checking
+volume first.
+
 ---
 
 ## 8. Persistence + the data-flow loop

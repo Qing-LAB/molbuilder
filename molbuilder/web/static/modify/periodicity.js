@@ -65,6 +65,177 @@ export function init(viewer) {
             }
         }
     }
+    /* ── Taking a value off the STRUCTURE instead of the keyboard (§ 7) ──
+     *
+     * Both gestures STAGE.  They write into the very inputs a user could have
+     * typed, and the group's own Update button remains the only thing that
+     * commits -- so what is about to be sent is on screen first, and there is
+     * no second commit path for the gate to stand in front of.
+     */
+
+    //: The nine inputs as a matrix.  A blank box is 0, exactly as Update reads it.
+    function stagedCell() {
+        var m = [];
+        for (var r = 0; r < 3; r++) {
+            var row = [];
+            for (var c = 0; c < 3; c++) {
+                var raw = Number(cellInputs[r * 3 + c].value);
+                row.push(isFinite(raw) ? raw : 0);
+            }
+            m.push(row);
+        }
+        return m;
+    }
+    function setStagedRow(r, vec) {
+        for (var c = 0; c < 3; c++) cellInputs[r * 3 + c].value = round(vec[c]);
+    }
+    function norm(v) {
+        return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    }
+    function chosenAxis() {
+        var sel = $("pv-cell-axis");
+        var at = sel ? "abc".indexOf(sel.value) : -1;
+        return at < 0 ? 0 : at;
+    }
+
+    /* WHICH ATOMS, IN THE ORDER THEY WERE PICKED.
+     *
+     * The order is the answer, not a detail: the axis runs from the atom picked
+     * FIRST to the one picked SECOND, so picking the same pair the other way
+     * round negates that axis -- which is the way out of the left-handed
+     * refusal below.
+     *
+     * A selection can arrive with no pick trail at all (All, a filter, a
+     * restored session), and the store says so by handing over an empty one.
+     * Then the row runs in INDEX order, which the control says out loud rather
+     * than leaving the user to discover the direction by its sign.
+     *
+     * WHY `pickOrder` AND NOT JUST `selection`, when the two agree today.
+     * They do agree: `toggle` APPENDS, so a click-built selection is already in
+     * click order.  But `add` SORTS and empties the trail, which is the store
+     * saying it makes no promise about `selection`'s order -- the order is
+     * `pickOrder`'s job (molview.md § 8.4, "what is selected and IN WHAT
+     * ORDER").  Reading `selection` would work until the day `toggle` keeps its
+     * list sorted, and then axes would silently flip sign.
+     *
+     * NO TEST CAN SEE THIS DIFFERENCE, and that is worth writing down rather
+     * than discovering: because the two fields cannot be made to disagree
+     * through the UI, a mutation that reads `selection` here passes the whole
+     * suite.  Checked, 2026-08-30.  So this comment is the guard. */
+    function pickedInOrder() {
+        var w = data();
+        if (!w || !w.selection) return [];
+        var st = w.selection.getState();
+        var trail = st.pickOrder || [];
+        return (trail.length === st.selection.length) ? trail : st.selection;
+    }
+    //: Where those atoms are AT THE FRAME ON SCREEN -- the same door the
+    //  measurement readout reads, so a trajectory gives the axis of the frame
+    //  the user is looking at rather than of frame zero.
+    function positionsOf(indices) {
+        var w = data();
+        var frame = w ? w.getFrameAllAtoms(w.currentFrame()) : null;
+        if (!frame) return null;
+        var out = [];
+        for (var i = 0; i < indices.length; i++) {
+            var p = frame[indices[i]];
+            if (!p) return null;
+            out.push(p);
+        }
+        return out;
+    }
+
+    /* THE REFUSAL THIS GESTURE WILL ACTUALLY HIT, said before the request.
+     *
+     * The gate refuses a left-handed cell outright (det <= 0, HTTP 400).  Typing
+     * nine numbers rarely produces one by accident; picking three atom pairs
+     * will produce one about half the time, so this stops being rare the moment
+     * the gesture ships.
+     *
+     * ADVISORY, AND THE GATE STILL DECIDES.  This predicts the refusal rather
+     * than replacing it -- there is no second rule here, only the same sign
+     * read early.  Silent near zero: that is the NO-VOLUME finding, which
+     * `cell.py` reports instead and deliberately does not also call
+     * "left-handed", because giving one cause two names is what it avoids by
+     * checking volume first. */
+    //: Å³.  Below this the box has no VOLUME, which `cell.py` reports as its own
+    //  finding -- so the handedness note stays quiet rather than giving one
+    //  cause two names.
+    var DET_QUIET = 1e-6;
+    //: Å.  A row with no direction has no length to scale: rescaling (0,0,0) is
+    //  a division by zero dressed as an edit.  Separate from DET_QUIET above
+    //  because a determinant and a length are not the same quantity, and one
+    //  constant standing for both is a coincidence waiting to be edited.
+    var LENGTH_QUIET = 1e-9;
+    function refreshHandedness() {
+        var note = $("pv-cell-hand");
+        if (!note) return;
+        var m = stagedCell();
+        var det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+                - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+                + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+        if (det < -DET_QUIET) {
+            note.textContent =
+                // The server prints `det:.6g`; 3 dp would render a small
+                // negative determinant as "-0", which reads as a typo.
+                "These three vectors are left-handed (det = "
+                + Number(det.toPrecision(6))
+                + "), and the server will refuse them. Swap any two rows, or "
+                + "pick one axis's two atoms in the other order.";
+            note.classList.add("modify-op-hint--warn");
+            note.hidden = false;
+        } else {
+            note.hidden = true;
+        }
+    }
+
+    function fillCellAxisOptions() {
+        var sel = $("pv-cell-axis");
+        if (!sel || sel.options.length) return;
+        ["a", "b", "c"].forEach(function (name) {
+            var o = document.createElement("option");
+            o.value = name; o.textContent = name;
+            sel.appendChild(o);
+        });
+    }
+    // The chooser's option text carries each axis's CURRENT LENGTH, so all
+    // three are readable from one control while the box below edits the chosen
+    // one -- rather than a second row of three read-only numbers saying what
+    // the box already says.
+    function labelCellAxes() {
+        var sel = $("pv-cell-axis");
+        if (!sel || sel.options.length !== 3) return;
+        var m = stagedCell();
+        for (var r = 0; r < 3; r++) {
+            sel.options[r].textContent = "abc"[r] + " — " + round(norm(m[r])) + " Å";
+        }
+    }
+    function syncLengthBox() {
+        var box = $("pv-cell-len");
+        if (!box || document.activeElement === box) return;
+        box.value = round(norm(stagedCell()[chosenAxis()]));
+    }
+    /* Both "Use selection" buttons say what they need and why they cannot run,
+     * because a disabled button with no reason is a dead end. */
+    function refreshPickButtons() {
+        var n = pickedInOrder().length;
+        var axisBtn = $("pv-cell-from-selection");
+        if (axisBtn) {
+            axisBtn.disabled = n !== 2;
+            axisBtn.title = n === 2
+                ? "Set this axis to the vector from the first picked atom to "
+                  + "the second. Pick them the other way round to flip it."
+                : "Select exactly two atoms (" + n + " selected).";
+        }
+        var orgBtn = $("pv-org-from-selection");
+        if (orgBtn) {
+            orgBtn.disabled = n !== 1;
+            orgBtn.title = n === 1
+                ? "Put the box's low corner on the selected atom."
+                : "Select exactly one atom (" + n + " selected).";
+        }
+    }
+
     function fillAxisOptions() {
         ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id) {
             var sel = $(id);
@@ -161,7 +332,11 @@ export function init(viewer) {
                 }
             }
             tag("pv-cell-tag", !explicitCell);
+            labelCellAxes();
+            syncLengthBox();
+            refreshHandedness();
         }
+        refreshPickButtons();
         // "Use default" clears the explicit cell -> resolve_cell(); on a periodic /
         // transport axis that RAISES (no bbox-derived lattice), so disable it there --
         // offering it is what made the box vanish (§ 3c symptom c).
@@ -308,6 +483,70 @@ export function init(viewer) {
         if (orgReset) orgReset.addEventListener("click", function () {
             commitOp("cell_origin", null);
         });
+        // Editing any of the nine restates the lengths and re-checks the sign,
+        // so the note tracks what is staged rather than what was last committed.
+        cellInputs.forEach(function (inp) {
+            inp.addEventListener("input", function () {
+                labelCellAxes(); syncLengthBox(); refreshHandedness();
+            });
+        });
+        var axisPick = $("pv-cell-axis");
+        if (axisPick) axisPick.addEventListener("change", syncLengthBox);
+
+        var fromSel = $("pv-cell-from-selection");
+        if (fromSel) fromSel.addEventListener("click", function () {
+            var picked = pickedInOrder();
+            if (picked.length !== 2) return;
+            var pos = positionsOf(picked);
+            if (!pos) return;
+            setStagedRow(chosenAxis(), [pos[1][0] - pos[0][0],
+                                        pos[1][1] - pos[0][1],
+                                        pos[1][2] - pos[0][2]]);
+            labelCellAxes(); syncLengthBox(); refreshHandedness();
+        });
+
+        var setLen = $("pv-cell-set-len");
+        if (setLen) setLen.addEventListener("click", function () {
+            var want = Number($("pv-cell-len") ? $("pv-cell-len").value : NaN);
+            if (!isFinite(want) || want <= 0) return;
+            var r = chosenAxis();
+            var row = stagedCell()[r];
+            var have = norm(row);
+            // A row with no direction has no length to scale: rescaling (0,0,0)
+            // is a division by zero dressed as an edit.  Give it a direction
+            // first -- two atoms, or the keyboard.
+            if (have < LENGTH_QUIET) return;
+            var k = want / have;
+            setStagedRow(r, [row[0] * k, row[1] * k, row[2] * k]);
+            labelCellAxes(); refreshHandedness();
+        });
+
+        var orgFromSel = $("pv-org-from-selection");
+        if (orgFromSel) orgFromSel.addEventListener("click", function () {
+            var picked = pickedInOrder();
+            if (picked.length !== 1) return;
+            var pos = positionsOf(picked);
+            if (!pos) return;
+            /* Written DIRECTLY, not through `setIdle`.
+             *
+             * NOT A BUG FIX, and it is worth saying so: I changed this
+             * believing `setIdle` would skip a focused box and leave one third
+             * of the origin stale, then mutation-tested it — pressing the
+             * button BLURS the input first, so `setIdle` writes all three and
+             * the case cannot be reached by clicking.  The test that claimed
+             * otherwise was deleted rather than kept green over nothing.
+             *
+             * The direct write stays for the reason that does hold: a
+             * button-driven write should not consult `document.activeElement`
+             * at all — the user asked for exactly this value — and
+             * `setStagedRow` above already writes directly, so going the other
+             * way would make the two gestures differ for no reason. */
+            ["a", "b", "c"].forEach(function (ax, i) {
+                var box = $("pv-org-" + ax);
+                if (box) box.value = round(pos[0][i]);
+            });
+        });
+
         var cell = $("pv-cell-update");
         if (cell) cell.addEventListener("click", function () {
             var m = [];
@@ -334,12 +573,20 @@ export function init(viewer) {
         if (!$("optab-panel-cell")) return;
         buildCellGrid();
         fillAxisOptions();
+        fillCellAxisOptions();
         wire();
         refresh();
         // Refresh on ANY workspace change (load, modify op, or another periodicity edit):
         // ws.subscribe fires on the canvas onChange too (dispatcher wires cs.onChange).
         var w = data();
         if (w && typeof w.subscribe === "function") w.subscribe(refresh);
+        /* And the SELECTION, which `subscribe` above does not carry: it
+         * announces data changes, and picking two atoms changes no data.  The
+         * two buttons say how many atoms are picked, so without this they said
+         * it once and then went stale. */
+        if (w && w.selection && typeof w.selection.subscribe === "function") {
+            w.selection.subscribe(refreshPickButtons);
+        }
     }
 
     start();

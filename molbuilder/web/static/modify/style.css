@@ -734,6 +734,27 @@ footer a:hover { color: var(--accent-hover); }
     font: italic var(--text-xs)/1.4 var(--font-sans);
     margin: 0 0 var(--space-sm);
 }
+/* The handedness note (structure-periodicity.md § 7).  A hint that says the
+   server is about to refuse is not an aside, so it takes the passive
+   attention tone rather than the muted one -- `--warn-soft` is the app's
+   "needs attention" against `--warning`'s call-to-action (tokens.css), and
+   this is the first: nothing is wrong yet, the row simply cannot be sent. */
+.modify-op-hint.modify-op-hint--warn {
+    color: var(--warn-soft);
+    font-style: normal;
+}
+
+/* The two "take the value off the structure" rows (§ 7): a label, the control
+   it names, and the button that fills it.  The row's own default is
+   `space-between`, which would fling the three to the edges of a 450px card;
+   these read as one phrase, so they sit together and only the button goes to
+   the end. */
+.modify-edit-panel .modify-cell-pick {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+.modify-edit-panel .modify-cell-pick > button { margin-left: auto; }
+.modify-edit-panel .modify-cell-pick > input  { flex: 0 1 9ch; }
 .modify-cell-tag {
     color: var(--text-muted);
     font-weight: 400;

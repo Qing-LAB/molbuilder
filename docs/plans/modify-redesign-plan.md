@@ -118,6 +118,16 @@ rather than gaining one.
 > hand over does not exist* — is about that very field, so the deletion is its
 > own decision rather than a side effect of this one. The comment was corrected
 > in the same commit, so no reader is misled in the meantime.
+>
+> **Item 4 gave it a reader, not a defence (2026-08-30).** The Cell page's axis
+> gesture reads `pickOrder` for the direction of `second − first`. That is the
+> *correct* field to read — `add` sorts and empties the trail, which is the
+> store declining to promise anything about `selection`'s order — but the two
+> **cannot be made to disagree through the UI**, since `toggle` appends and a
+> click-built selection is therefore already in click order. A mutation reading
+> `selection` there passes the entire suite; measured. So the field has a reader
+> whose correctness no test can demonstrate, and the question of deleting it is
+> unchanged.
 
 ### 1.4 The isolation rule, and what pins it
 
@@ -644,37 +654,47 @@ gesture will look like an obvious idea again later.
 
 ## 7. Order, and where the items collide
 
-| | item | why here | touches |
-|---|---|---|---|
-| ✅ | **Center follows the group** (§ 2) — *built* | | |
-| ✅ | **Measurement track** (§ 1) — *built* | | |
-| ✅ | **The surface** (§ 5) — *built* | | |
-| 1 | **Center follows the group** (§ 2) | one branch in one route; no browser change | `blueprints/modify.py` |
-| 2 | **Measurement track** (§ 1) | settles *what a click does*, which item 4 depends on | `stores.js`, `ui.js`, `mount.js`, `ui-context.js`, `molview.css` |
-| 3 | **Cell setup** (§ 4) | no new route; must be settled before item 3 finishes, since the padding switch moves into it (§ 4.4) | `periodicity.js`, `modify.html`, `junction-cell.md` |
-| 4 | **The surface** (§ 5) | before the two new panels exist, so they are built on one inset instead of inheriting five | `modify/style.css`, `modify.html`, `page-shell.css` |
-| 5 | **New slab tab** (§ 3) | largest — new panel, new builder, new route, plus § 3.4's deletion | `modify.py`, `blueprints/modify.py`, new panel, `tabs.md` |
+Ordered by what each one settles for the next, not by size. The **§** column is
+the item's own section; the numbers in the first column are the order they were
+built in, which is not the same thing and was never meant to be.
 
-Three collisions, all handled above: item 1 before item 4's picking (§ 4.2),
-item 4 before item 3's padding move (§ 4.4), and **item 5 before the new
-panels** — a panel added after the inset rule lands needs no rework, one added
-before it needs redoing (§ 5.3).
+| | § | item | why here | state |
+|---|---|---|---|---|
+| 1 | § 5 | **The surface** | before either new panel exists, so they are built on one inset instead of inheriting five | **built** 2026-08-30 |
+| 2 | § 2 | **Center follows the group** | one branch in one route, no browser change — the cheapest thing on the board and a bug the user reported | **built** 2026-08-30 |
+| 3 | § 1 | **Measurement track** | settles *what a click does*, which § 4's picking depends on | **built** 2026-08-30, marks on the atoms included |
+| 4 | § 4 | **Cell setup** | no new route; settled before § 3 finishes, since the padding switch moves into it (§ 4.4) | **built** 2026-08-30 |
+| 5 | § 3 | **New slab tab** | largest — new panel, new builder, new route, plus § 3.4's deletion | to build |
+
+**Three collisions, and each is why a row sits where it does.**
+
+- **§ 5 before §§ 3 and 4.** A panel added after the inset rule lands needs no
+  rework; one added before it needs redoing (§ 5.3).
+- **§ 1 before § 4.** § 4's gestures read the selection, so *what a click does*
+  has to be settled first — and § 4.2's answer (no third track) is only
+  available once § 1 exists to be pointed at.
+- **§ 4 before § 3 finishes.** The padding switch moves from the Junction panel
+  into the Cell page (§ 4.4), so the page has to exist before the panel that
+  loses it is replaced.
 
 ---
 
 ## 8. Contracts to change, before any code
 
+Each row is marked **done** once the contract carries it — the code follows the
+document, so a row still unmarked is a thing not yet built.
+
 | Document | What changes |
 |---|---|
-| `web/molview.md` | § 11.6 — the readout reads its own track, and the geometry guess goes · § 8.5 — the rail gains a sixth control · § 9.5 — the selection is untouched while measuring · § 11.2b — the lane carries the track · § 12.4 — the worked example |
+| `web/molview.md` | **done** — § 11.6 the readout reads its own track, the geometry guess goes, and the marks on the atoms · § 8.5 the rail's sixth control and *where each switch lives* · § 9.5 the selection is untouched while measuring · § 11.2b the lane carries the track · § 6.5 + § 10.3 the seventh per-frame field |
 | `web/tabs.md` | § 2 — the op-tab list, and the new slab tab beside the old |
-| `web/web-api.md` | the `translate` entry's recenter rule · the new `lattice-from-run` route · the catalogue count |
+| `web/web-api.md` | the new `lattice-from-run` route · the catalogue count. *(The recenter rule is not here after all: `web-api.md` documents no `/api/modify/translate` entry, so there was nothing to correct — the rule lives in the route's own docstring and in § 2.3.)* |
 | `science/junction-cell.md` | § 5 and § 6 — the padding switch's home moves to the Cell page, its reasoning intact · § 3 — registry becomes a **chosen parameter**, not only a warned-about outcome |
 | `plans/bench-and-junction-plan.md` | § 2.3 closed as subsumed (§ 3.2) · § 2.4 restated as a check on a stated registry |
-| `model/structure-periodicity.md` | § 6.2 — the two new gestures reaching the existing `cell` / `cell_origin` ops, and the handedness refusal they will routinely meet (§ 4.3) |
+| `model/structure-periodicity.md` | **done** — written into **§ 7**, not § 6.2: § 6.2 is the door's own shape and nothing about it changed, while § 7 is the account of the editor, which is what gained two gestures, the staging rule, the pick order as the axis's sign, and the handedness note (§ 4.3) |
 | `molbuilder/data/README.md` | the `a_pbe_siesta_psml` column leaves the table (§ 3.3) |
-| `web/ui-contract.md` | § 4 — **one inset per card** and **one gutter per tab** join the rhythm rules (§ 5.3) · the `font:`-shorthand rule that keeps `--font-sans` the only family (§ 5.4) |
-| `plans/css-system-plan.md` | § 4 — steps **C** and **D** record what item 5 discharges for `modify`, and what it leaves (§ 5.5) |
+| `web/ui-contract.md` | **done** — § 4 **one inset per card** and **one gutter per tab** join the rhythm rules (§ 5.3) · the `font:`-shorthand rule that keeps `--font-sans` the only family (§ 5.4) · § 9 the negated-`var()` rule |
+| `plans/css-system-plan.md` | **done** — § 4 steps **C**/**D**/**E** record what item 5 discharged for `modify` and what it left (§ 5.5) |
 
 ---
 

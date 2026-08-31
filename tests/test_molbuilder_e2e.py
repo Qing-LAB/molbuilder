@@ -343,6 +343,180 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
 
 
 # --------------------------------------------------------------------- #
+#  structure-periodicity.md § 7 — a cell value taken off the structure  #
+# --------------------------------------------------------------------- #
+
+def _cell_boxes(page):
+    return [page.locator("#pv-cell-grid input").nth(i).input_value()
+            for i in range(9)]
+
+
+def _clear_selection(page):
+    page.locator(f"{_CARD} .molviewer-selection-clear-btn").click()
+
+
+def test_two_picked_atoms_become_a_lattice_vector_and_commit_nothing(
+        page, flask_server, labelled_xyz):
+    """§ 7: *Use selection* beside the axis chooser writes `second − first` into
+    that row — and STAGES it.
+
+    Both halves matter.  The vector is checkable (water's O→H is 0.957 Å along
+    x), and the staging is what keeps the group's own Update the only commit:
+    a gesture that committed would be a second door for the gate to stand in
+    front of, and the user would never see what was about to be sent.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_selector("#pv-cell-from-selection", state="visible",
+                           timeout=_ACT_MS)
+    mirror_before = page.locator(f"{_CARD} .molviewer-cell-readout").inner_text()
+
+    # The button says what it needs while it cannot run.
+    assert page.locator("#pv-cell-from-selection").is_disabled()
+    assert "two atoms" in page.locator("#pv-cell-from-selection").get_attribute("title")
+
+    _pick_atom(page, 1)                       # O at the origin
+    _pick_atom(page, 2)                       # H at (0.957, 0, 0)
+    page.wait_for_function(
+        "() => !document.getElementById('pv-cell-from-selection').disabled",
+        timeout=_ACT_MS)
+    page.locator("#pv-cell-from-selection").click()
+
+    row_a = [float(v) for v in _cell_boxes(page)[:3]]
+    assert abs(row_a[0] - 0.957) < 1e-3, row_a
+    assert abs(row_a[1]) < 1e-3 and abs(row_a[2]) < 1e-3, row_a
+    # The chooser carries each axis's length, so all three read from one control.
+    assert "0.957" in page.locator("#pv-cell-axis").inner_text()
+    # NOTHING WAS COMMITTED: MolView's read-only Cell page still says what it did.
+    assert page.locator(f"{_CARD} .molviewer-cell-readout").inner_text() \
+        == mirror_before, "the gesture committed; it must only stage"
+
+
+def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz):
+    """§ 7: the axis runs from the atom clicked FIRST to the one clicked SECOND,
+    so the same pair the other way round negates it.
+
+    That is not a nicety — it is the stated way out of the left-handed refusal
+    below, so it has to be true rather than approximately true.
+
+    WHAT THIS CANNOT SEE, said here rather than left implied: the panel reads
+    the store's `pickOrder`, and a mutation making it read `selection` instead
+    passes this test.  The two fields cannot be made to disagree through the UI
+    — `toggle` appends, so a click-built selection is already in click order —
+    so no browser test can tell them apart.  What this DOES catch is the whole
+    class of ways the direction goes wrong anyway: a sort, an `abs`, a
+    subtraction the other way round, a gesture that ignores order entirely.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_selector("#pv-cell-from-selection", timeout=_ACT_MS)
+
+    _pick_atom(page, 1)
+    _pick_atom(page, 2)
+    page.locator("#pv-cell-from-selection").click()
+    forward = [float(v) for v in _cell_boxes(page)[:3]]
+
+    _clear_selection(page)
+    _pick_atom(page, 2)
+    _pick_atom(page, 1)
+    page.locator("#pv-cell-from-selection").click()
+    back = [float(v) for v in _cell_boxes(page)[:3]]
+
+    assert all(abs(f + b) < 1e-6 for f, b in zip(forward, back)), (
+        f"picking the pair the other way round did not negate the axis: "
+        f"{forward} vs {back}")
+
+
+def test_setting_a_length_keeps_the_direction(page, flask_server, labelled_xyz):
+    """§ 7: *Set length* rescales the row to the stated magnitude — the spacing
+    between periodic images, set without touching where the axis points."""
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_selector("#pv-cell-from-selection", timeout=_ACT_MS)
+
+    _pick_atom(page, 1)
+    _pick_atom(page, 3)                       # O -> H at (-0.239, 0.927, 0)
+    page.locator("#pv-cell-from-selection").click()
+    before = [float(v) for v in _cell_boxes(page)[:3]]
+
+    page.fill("#pv-cell-len", "12")
+    page.locator("#pv-cell-set-len").click()
+    after = [float(v) for v in _cell_boxes(page)[:3]]
+
+    length = sum(v * v for v in after) ** 0.5
+    assert abs(length - 12.0) < 1e-3, f"length not set: {after} -> {length}"
+
+    # SAME DIRECTION, to the precision the panel writes.  Every staged number is
+    # rounded to 3 dp, because the input IS the value that will be sent and a
+    # kept-behind unrounded copy would be a second home for it -- so the scaled
+    # components' ratios agree to ~1e-4, not to machine precision.  The honest
+    # assertion is therefore the ANGLE between the two vectors, not the equality
+    # of their ratios; the first version of this test asserted the latter and
+    # failed on a rescaling that had turned the axis by 2e-5 degrees.
+    dot = sum(x * y for x, y in zip(before, after))
+    mags = (sum(v * v for v in before) ** 0.5) * length
+    assert dot / mags > 1 - 1e-6, (
+        f"rescaling turned the axis: {before} -> {after}")
+    assert all(a * b > 0 for a, b in zip(before, after) if abs(b) > 1e-6), (
+        f"rescaling flipped a component: {before} -> {after}")
+
+
+def test_one_picked_atom_becomes_the_cell_origin(page, flask_server,
+                                                 labelled_xyz):
+    """§ 7: *Use selection* beside the origin boxes puts the box's low corner on
+    the selected atom.  Staged, like the other one."""
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_selector("#pv-org-from-selection", timeout=_ACT_MS)
+
+    assert page.locator("#pv-org-from-selection").is_disabled()
+    _pick_atom(page, 3)                       # H at (-0.239, 0.927, 0.000)
+    page.wait_for_function(
+        "() => !document.getElementById('pv-org-from-selection').disabled",
+        timeout=_ACT_MS)
+    page.locator("#pv-org-from-selection").click()
+
+    got = [float(page.locator(f"#pv-org-{ax}").input_value()) for ax in "abc"]
+    assert abs(got[0] + 0.239) < 1e-3 and abs(got[1] - 0.927) < 1e-3 \
+        and abs(got[2]) < 1e-3, got
+
+
+def test_the_panel_says_left_handed_before_the_server_refuses_it(
+        page, flask_server, labelled_xyz):
+    """§ 7: the gate refuses `det <= 0` with a 400, and picking three atom pairs
+    produces one about half the time — so the panel says it while the row is
+    still being built, with the gesture's own way out.
+
+    Advisory, not a second rule: the note appears and disappears with the sign,
+    and the server remains the thing that refuses.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_selector("#pv-cell-grid input", timeout=_ACT_MS)
+
+    # A deliberately mirrored frame: x, y, and MINUS z.
+    for i, v in enumerate([1, 0, 0, 0, 1, 0, 0, 0, -1]):
+        page.locator("#pv-cell-grid input").nth(i).fill(str(v))
+    note = page.locator("#pv-cell-hand")
+    page.wait_for_function(
+        "() => !document.getElementById('pv-cell-hand').hidden", timeout=_ACT_MS)
+    said = note.inner_text()
+    assert "left-handed" in said, said
+    # It must carry the way OUT, not just the diagnosis.
+    assert "other order" in said or "swap" in said.lower(), said
+
+    # Flip that axis back and the note goes — the sign is read live.
+    page.locator("#pv-cell-grid input").nth(8).fill("1")
+    page.wait_for_function(
+        "() => document.getElementById('pv-cell-hand').hidden", timeout=_ACT_MS)
+
+
+# --------------------------------------------------------------------- #
 #  § 6.5 step 4 — an edit lands, and the page notices                   #
 # --------------------------------------------------------------------- #
 
