@@ -237,40 +237,103 @@ where that is.**
 
 ---
 
-## 5. The one door for reading and writing
+## 5. One API — callers ask for the file, never for a directory
 
-Every read and write of a § 2 in-scope file goes through one module, so four
+> *(User, 2026-08-31: "Variables are useful when it is used for those unified
+> API to deduce the result … users … should go through API rather than go
+> through directly for some variables. The variables are only concentrated and
+> used within those APIs … and the users never sees them because they don't
+> need to handcraft anything or derive anything. … that API should stay or be
+> designed to be in the correct layer, so there is no reversion of
+> dependency.")*
+
+### 5.1 What is still handcrafted
+
+Steps 1–4 stopped modules reading the environment: `tests/test_config_dir_has_one_home.py`
+holds `MOLBUILDER_CONFIG_DIR` and every XDG variable to one module. **The
+derivation moved up a level rather than going away.** Nine sites in seven
+modules each hold a filename and join it onto a directory:
+
+| module | what it derives |
+|---|---|
+| `runtime_config` | `<config>/molbuilder.json`, `<state>/logs`, `<state>/reports` |
+| `auth_setup` | `<config>/secret_key`, `<config>/google_client_secret` |
+| `scheduler/record` | `<config>/environment.json` |
+| `monitor` | `<config>/notify` |
+| `cli` | `<config>/notify_keys` |
+| `serve_daemon` | `<state>/logs`, `<run>/serve-<port>.pid` |
+
+Each is small and each is correct today. Together they are the same defect one
+level up: seven modules that must agree about a filename, with nothing making
+them. `configuration.md` M-4 already recorded this exact failure for a single
+file — *"it gave `environment.json` one home for its FILENAME, which was a
+string literal in three modules"* — and fixed that one. The rule was never
+generalised, so the next six grew back.
+
+### 5.2 The rule
+
+**A caller names the FILE it wants, and gets a path. It never names a
+directory, and never joins.**
+
+```python
+paths.machine_config()          # not config_dir() / "molbuilder.json"
+paths.session_key()             # not default_secret_dir() / "secret_key"
+paths.notify_token()            # not _config_dir() / NOTIFY_FILENAME
+paths.serve_pidfile(port)       # not run_dir() / f"serve-{port}.pid"
+paths.logs()                    # a directory, because it IS the answer
+```
+
+Filenames become constants inside that module and appear nowhere else. The
+environment variables stay where they already are — read in one place, to
+*derive* these answers — and no caller sees them.
+
+### 5.3 Which layer, and why it can be the lowest one
+
+**L1, stdlib-only, no molbuilder imports** — the property `config_dir.py`
+already has, which is what lets `runwrap` ship its source beside a job.
+
+That is only possible if the answers depend on nothing above L1. Today one
+thing breaks it: `paths.logs` / `paths.run` / `paths.reports` are read from
+`molbuilder.json`, which drags the API to L2 — and L2 is out of reach for
+`serve_daemon` (L1) and for the shipped monitor. **That is the whole of the
+`serve_daemon` conflict**: not a layering accident, but a config key placed
+where the layer below it needs the answer.
+
+So those three keys are **retired**, and the reasoning is `config_dir.py`'s own,
+from 2026-08-23:
+
+> *"`XDG_CONFIG_HOME` already moves this directory … A config key would be a
+> second way to say one thing."*
+
+`XDG_STATE_HOME` moves logs and reports; `XDG_RUNTIME_DIR` moves pidfiles. The
+keys said the same thing a second way, and being a second way is exactly what
+put them out of reach. **Deleting them removes the inversion rather than
+working around it** — no injection point, no registry, no resolver installed at
+startup. `paths.projects` stays: it is data rather than operational state, it
+has no XDG equivalent, and `$MOLBUILDER_PROJECTS` is its documented override.
+
+### 5.4 What the door still guarantees when it reads and writes
+
+Reading and writing a file in § 2's list goes through the same module, so four
 properties hold by construction rather than per caller:
 
-1. **The path is computed in one place** — never `expanduser` at a call site.
-2. **The mode is enforced, not hoped for** — `0600` for a file holding
-   secrets, `0700` for its directory, applied on write *and* checked on read.
-   § 2.1b already does this for `molbuilder.json`; this generalises it.
-3. **Writes are atomic** — `persist.write_bytes` does unique-temp +
-   `os.replace`, and `write_json` is its caller. The door uses it rather than
-   growing a second implementation.
+1. **The path is computed in one place** — never `expanduser`, and now never a
+   join, at a call site.
+2. **The mode is enforced, not hoped for** — `0600` for a file holding secrets,
+   `0700` for its directory, on write *and* checked on read. § 2.1b already
+   does this for `molbuilder.json`; this generalises it.
+3. **Writes are atomic** — `persist.write_bytes` does unique-temp + `os.replace`.
 
-   > **But `persist` cannot write a secret as it stands, and finding that out
-   > is why this review happened before the code.** `write_bytes` takes no
-   > `mode` argument: it uses *the target's existing mode if the file is
-   > already there, and `0644` if it is not* — deliberately, and its docstring
-   > says why (*"which is not what a shared artifact should end up as"*). It
-   > is right for a shared artifact and wrong for a session key: a **new**
-   > secret written through it lands world-readable, and § 2.1b's check would
-   > then warn about a file we had just created ourselves.
-   >
-   > So step 5 must settle one of two things, and not discover it mid-edit:
-   > either `persist.write_bytes` gains an explicit `mode=`, or the door
-   > creates the file at `0600` before handing the write over. The first keeps
-   > one write implementation and touches a module several unrelated callers
-   > share; the second leaves `persist` alone and puts the mode where the
-   > sensitivity is known. **The second is preferred** — `persist`'s default is
-   > correct for what `persist` is for, and the caller is the only one that
-   > knows it is writing a secret.
-4. **An absent file is *unset*, never an error** — the rule every current
-   reader implements separately.
-
----
+   > **`persist` cannot write a secret as it stands.** `write_bytes` takes no
+   > `mode`: it uses the target's existing mode, or `0644` when the file does
+   > not exist — deliberately, and its docstring says why (*"not what a shared
+   > artifact should end up as"*). Right for a shared artifact, wrong for a
+   > session key: a **new** secret written through it lands world-readable, and
+   > § 2.1b's check would warn about a file we had just created. The door
+   > creates the file at `0600` before handing the write over, rather than
+   > giving `persist` a `mode=` — `persist`'s default is correct for what
+   > `persist` is for, and only the caller knows it is writing a secret.
+4. **An absent file is *unset*, never an error.**
 
 ## 6. Order
 
@@ -282,7 +345,7 @@ Contract first, then one mechanical change per commit, each with its own tests.
 | 2 | `state_dir()` / `runtime_dir()` (§ 3.2), move `logs`/`run`/`reports` off `~/.molbuilder/`, land the `paths` override | a default nobody can change is not the design |
 | 3 | **the secret's one home** — `<root>/secret_key`, one filename | touches a live credential; **taken alone**, and it is the only step that can log a person out of their own server |
 | 4 | delete the cwd step; `configuration.md` § 2.1a's warning becomes *"not read, move it"* | |
-| 5 | the read/write door (§ 5), and move each in-scope reader onto it | |
+| 5 | **the one API** (§ 5): every per-user file named by a function, filenames held there and nowhere else, `paths.logs`/`run`/`reports` retired so it can be L1 | the layering conflict dissolves rather than being worked around |
 
 **The pin asks the opposite of the usual question**: not *"is everything using
 the door"* but *"does anything in § 2's first list compute a per-user path
