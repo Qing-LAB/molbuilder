@@ -389,7 +389,11 @@ class TestTheGates:
         _write_ion(attempt / "Au.ion", 16.5)
         out = compose_junction(_CITE, tree_root=root)
         m = out.electrode_left
-        assert abs((2.0 * m.z_period - m.z_span) - 17.5) < 1e-6
+        # 1e-4, not 1e-6: the fixture's geometry arrives through a
+        # Bohr->Angstrom conversion, so 17.5 is exact only to the
+        # precision of that constant.  What is pinned here is a
+        # THRESHOLD at 17.5 A, and 7e-6 A is not a threshold question.
+        assert abs((2.0 * m.z_period - m.z_span) - 17.5) < 1e-4
         assert not any("UNVERIFIED" in n for n in m.notes)
         # 16.6 Bohr = 8.785 A -> reach 17.57 A, just over: refused.
         _write_ion(attempt / "Au.ion", 16.6)

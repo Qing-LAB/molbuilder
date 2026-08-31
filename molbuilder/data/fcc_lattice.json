@@ -1,5 +1,5 @@
 {
-    "_format": "molbuilder.data.fcc_lattice v2",
+    "_format": "molbuilder.data.fcc_lattice v3",
     "_units": {
         "a": "angstrom"
     },
@@ -12,12 +12,10 @@
         "pbe": {
             "citation": "Haas, Tran, Blaha 2009 PRB 79 085104 (Table II) + erratum PRB 79 209902; cross-checked Csonka 2009 PRB 79 155107, Janthon 2013/2014 JCTC 9 1631 / 10 3832",
             "method": "all-electron WIEN2k, scalar-relativistic, basis-converged",
-            "spin_polarized": ["Ni"],
+            "spin_polarized": [
+                "Ni"
+            ],
             "notes": "PBE-XC consistent. Use when running PBE DFT to avoid ~1-2% lead/device lattice mismatch in transport calcs. Ni value assumes SpinPolarized=T (ferromagnetic ground state)."
-        },
-        "pbe_siesta_psml": {
-            "citation": "user-measured via a bulk-cell relax in their specific SIESTA + PSML setup",
-            "notes": "All-electron PBE (a_pbe) and the value SIESTA+PSML produces can differ by 0.5-1.5% due to pseudopotential + basis effects. Run a bulk-cell relax with the same Au.psml, basis (e.g. DZP), and MeshCutoff to populate this; the workflow is the most accurate option for the user's stack."
         }
     },
     "metals": {
@@ -25,43 +23,38 @@
             "name": "Gold",
             "system": "fcc",
             "a_experimental": 4.0782,
-            "a_pbe": 4.158,
-            "a_pbe_siesta_psml": null
+            "a_pbe": 4.158
         },
         "Ag": {
             "name": "Silver",
             "system": "fcc",
             "a_experimental": 4.0853,
-            "a_pbe": 4.147,
-            "a_pbe_siesta_psml": null
+            "a_pbe": 4.147
         },
         "Cu": {
             "name": "Copper",
             "system": "fcc",
             "a_experimental": 3.6149,
-            "a_pbe": 3.635,
-            "a_pbe_siesta_psml": null
+            "a_pbe": 3.635
         },
         "Ni": {
             "name": "Nickel",
             "system": "fcc",
-            "a_experimental": 3.5240,
-            "a_pbe": 3.520,
-            "a_pbe_siesta_psml": null
+            "a_experimental": 3.524,
+            "a_pbe": 3.52
         },
         "Pt": {
             "name": "Platinum",
             "system": "fcc",
             "a_experimental": 3.9242,
-            "a_pbe": 3.967,
-            "a_pbe_siesta_psml": null
+            "a_pbe": 3.967
         },
         "Pd": {
             "name": "Palladium",
             "system": "fcc",
             "a_experimental": 3.8907,
-            "a_pbe": 3.943,
-            "a_pbe_siesta_psml": null
+            "a_pbe": 3.943
         }
-    }
+    },
+    "_note_v3": "v3 (2026-08-30) DROPS a_pbe_siesta_psml. It was null for every metal and nothing in the codebase could write it: its only homes were this packaged file and a machine-wide MOLBUILDER_DATA_DIR override, so the 'Your bulk run' control it fed greyed itself out -- correctly -- from the day it shipped. A lattice constant measured in the user's own SIESTA+PSML setup belongs to ONE optimization run, not to a table shared by every project, so it is read from that run's result instead: POST /api/modify/lattice-from-run. This table keeps the two LITERATURE references, which is what a shared table is for. Loaders accept v2 and v3 alike -- a v2 file simply carries a column that is now ignored."
 }

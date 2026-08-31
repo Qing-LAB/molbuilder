@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-_BOHR_ANG = 0.529177
+from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANG
 
 
 def _norm(key: str) -> str:

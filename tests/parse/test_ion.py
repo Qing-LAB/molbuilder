@@ -8,6 +8,11 @@ honest ``None`` for anything unreadable.
 from __future__ import annotations
 
 from molbuilder.parse.ion import max_orbital_rc_ang
+# THE CONVERSION THE PARSER USES, imported rather than retyped: a copy here
+# would make the test compare two Bohr radii instead of checking the parse.
+# It did -- these two lines carried `0.529177` and failed by 1.3e-6 A the day
+# the tree stopped having three different values for it.
+from molbuilder.constants import BOHR_ANGSTROM
 
 _HEADER = "  0  6  1  0  1.000000   #orbital l, n, z, is_polarized, population\n"
 
@@ -18,7 +23,7 @@ def test_the_largest_orbital_cutoff_wins_in_angstrom(tmp_path):
         _HEADER + " 500  0.48E-02  4.000000  # npts, delta, cutoff\n"
         + _HEADER + " 500  0.48E-02  6.130000  # npts, delta, cutoff\n")
     rc = max_orbital_rc_ang(f)
-    assert abs(rc - 6.13 * 0.529177) < 1e-6
+    assert abs(rc - 6.13 * BOHR_ANGSTROM) < 1e-6
 
 
 def test_only_orbital_blocks_count(tmp_path):
@@ -30,7 +35,7 @@ def test_only_orbital_blocks_count(tmp_path):
         " 500  0.48E-02  99.000000  # npts, delta, cutoff\n"
         + _HEADER + " 500  0.48E-02  6.130000  # npts, delta, cutoff\n")
     rc = max_orbital_rc_ang(f)
-    assert abs(rc - 6.13 * 0.529177) < 1e-6
+    assert abs(rc - 6.13 * BOHR_ANGSTROM) < 1e-6
 
 
 def test_missing_and_garbage_answer_none(tmp_path):

@@ -37,7 +37,7 @@ from molbuilder.structure import Structure
 # 1 Bohr in Ångström.  Same value the absorbed .XV reader uses
 # (``parse/coords/siesta_xv.py:_ANGSTROM_PER_BOHR``); pinned here to
 # avoid a cross-module constant import.
-_ANGSTROM_PER_BOHR = 0.5291772108
+from molbuilder.constants import BOHR_ANGSTROM as _ANGSTROM_PER_BOHR
 
 
 # --------------------------------------------------------------------- #
@@ -158,7 +158,7 @@ def read_fdf_initial_coords(text_or_path: Union[str, Path]) -> Structure:
 
     Handles units per ``AtomicCoordinatesFormat``:
       * ``Ang`` / ``NotScaledCartesianAng``           — Å
-      * ``Bohr`` / ``NotScaledCartesianBohr``         — Å = Bohr × 0.5291772108
+      * ``Bohr`` / ``NotScaledCartesianBohr``         — Å = Bohr × ``constants.BOHR_ANGSTROM``
       * ``ScaledCartesian``                           — Å = value × LatticeConstant
       * ``Fractional`` / ``ScaledByLatticeVectors``   — Å = fractional · cell_vectors
 

@@ -535,14 +535,25 @@ def _data_dir_candidates() -> List[_Path]:
 def load_fcc_lattice_full() -> dict:
     """Load the full FCC lattice-constant table from ``fcc_lattice.json``.
 
-    v2 schema (2026-06-18 onward): each metal carries
-    ``a_experimental`` (Wyckoff 1963), ``a_pbe`` (Haas-Tran-Blaha 2009),
-    and ``a_pbe_siesta_psml`` (user-measured, nullable until populated
-    via a bulk-cell relax in the user's specific SIESTA+PSML setup).
+    Each metal carries ``a_experimental`` (Wyckoff 1963) and ``a_pbe``
+    (Haas-Tran-Blaha 2009) -- the two LITERATURE references, which is what
+    a shared table is for.
 
     Returns the metals dict directly: ``{symbol: {a_experimental: float,
-    a_pbe: float, a_pbe_siesta_psml: Optional[float], name: str,
-    system: str}}``.  Format check is strict; v1 ("a" only) files raise.
+    a_pbe: float, name: str, system: str}}``.
+
+    **v3 (2026-08-30) dropped ``a_pbe_siesta_psml``.**  It was null for
+    every metal and nothing in the codebase could write it: its only homes
+    were the packaged file and a machine-wide ``MOLBUILDER_DATA_DIR``
+    override, so the "Your bulk run" control it fed greyed itself out --
+    correctly -- from the day it shipped.  A lattice constant measured in
+    the user's own SIESTA+PSML setup belongs to ONE optimization run, not
+    to a table every project shares, so it is read from that run's result
+    instead (``POST /api/modify/lattice-from-run``).
+
+    **v2 files still load**, carrying a column this returns nothing for:
+    a user's overriding data dir must not stop working because a column
+    they never filled went away.  v1 ("a" only) still raises.
     """
     last_error: Optional[Exception] = None
     for candidate_dir in _data_dir_candidates():
@@ -563,30 +574,26 @@ def load_fcc_lattice_full() -> dict:
             )
             continue
         fmt = data.get("_format", "")
-        if "v2" not in fmt:
+        if not ("v2" in fmt or "v3" in fmt):
             raise RuntimeError(
-                f"FCC lattice table at {path!s} is not v2 (got "
-                f"{fmt!r}).  Each metal must carry a_experimental, "
-                f"a_pbe, a_pbe_siesta_psml; the v1 'a'-only schema "
-                f"is no longer supported."
+                f"FCC lattice table at {path!s} is neither v2 nor v3 (got "
+                f"{fmt!r}).  Each metal must carry a_experimental and "
+                f"a_pbe; the v1 'a'-only schema is no longer supported."
             )
         metals: dict = {}
         for sym, entry in data["metals"].items():
             try:
                 a_exp = float(entry["a_experimental"])
                 a_pbe = float(entry["a_pbe"])
-                a_psml_raw = entry.get("a_pbe_siesta_psml")
-                a_psml = float(a_psml_raw) if a_psml_raw is not None else None
             except (KeyError, TypeError, ValueError) as exc:
                 raise RuntimeError(
                     f"FCC lattice entry {sym!r} in {path!s} is malformed: {exc}"
                 ) from exc
             metals[sym] = {
-                "a_experimental":    a_exp,
-                "a_pbe":             a_pbe,
-                "a_pbe_siesta_psml": a_psml,
-                "name":              entry.get("name", sym),
-                "system":            entry.get("system", "fcc"),
+                "a_experimental": a_exp,
+                "a_pbe":          a_pbe,
+                "name":           entry.get("name", sym),
+                "system":         entry.get("system", "fcc"),
             }
         if not metals:
             raise RuntimeError(

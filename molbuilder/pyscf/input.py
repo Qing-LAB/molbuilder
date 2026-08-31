@@ -76,6 +76,7 @@ _STABILITY_ENERGY_TOL = 1e-8
 # refusal moved with it, so this alias serves one reader --
 # the deck header's solvent line.
 from .scf_setup import SOLVENTS as _SOLVENTS
+from molbuilder.constants import HARTREE_EV as _HARTREE_EV
 
 
 
@@ -1382,7 +1383,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     _ha_bohr_to_ev_ang = 51.42208619
     _max_force_eV = float(cfg.geom_gmax) * _ha_bohr_to_ev_ang
     _rms_force_eV = float(cfg.geom_grms) * _ha_bohr_to_ev_ang
-    _energy_tol_eV = float(cfg.geom_etol) * 27.211386245988
+    _energy_tol_eV = float(cfg.geom_etol) * _HARTREE_EV
     out.append("_CONVERGENCE_TARGETS = {")
     out.append(f"    {(stage_token or 'run')!r}: {{")
     out.append(f"        'max_force_tol_eV_per_A': {_max_force_eV!r},")

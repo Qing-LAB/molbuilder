@@ -65,8 +65,8 @@ from ._helpers import _iso_z
 #: ``volume`` is already Ang**3, so a blanket assumption is wrong in the same
 #: file.  An unrecognised unit REFUSES (see :func:`_to`), because a future
 #: SIESTA that writes Angstrom would otherwise be scaled by 1.89 in silence.
-_BOHR_TO_ANG = 0.529177210903
-_RY_TO_EV = 13.605693122994
+from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
+from molbuilder.constants import RYDBERG_EV as _RY_TO_EV
 
 _LENGTH: Dict[str, float] = {"bohr": _BOHR_TO_ANG, "ang": 1.0,
                              "angstrom": 1.0}

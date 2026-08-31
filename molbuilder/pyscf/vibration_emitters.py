@@ -63,7 +63,7 @@ from ..spectra.results import SCHEMA_VERSION
 # constant in the script for transparency rather than hiding it
 # behind an import.
 _CM1_PER_AU_FREQ = 219474.6313632   # 1 atomic unit of frequency (= 2*Rydberg) in cm⁻¹
-_BOHR_TO_ANG     = 0.529177210903
+from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
 
 
 # Default finite-difference step for Raman dα/dR.

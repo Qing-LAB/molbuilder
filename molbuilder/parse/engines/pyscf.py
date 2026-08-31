@@ -46,9 +46,12 @@ from ._sidecar import read_frozen_atoms
 
 
 # Hartree -> eV
-_HARTREE_TO_EV = 27.211386245988
+from molbuilder.constants import (
+    HARTREE_EV as _HARTREE_TO_EV,
+    BOHR_ANGSTROM as _BOHR_ANGSTROM,
+)
 # Hartree/Bohr -> eV/Ang
-_HA_BOHR_TO_EV_ANG = _HARTREE_TO_EV / 0.5291772108
+_HA_BOHR_TO_EV_ANG = _HARTREE_TO_EV / _BOHR_ANGSTROM
 
 
 _COMMENT_RE = re.compile(

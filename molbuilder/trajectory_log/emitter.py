@@ -45,6 +45,14 @@ class MolwatchEmitter:
     # Unit-conversion constants used at write time so ``.molwatch.log``
     # is unit-self-consistent and the parser does zero conversion.
     #
+    # A LITERAL, AND IT HAS TO BE.  This class body is copied VERBATIM into
+    # the standalone script the user runs on the cluster, where molbuilder is
+    # not importable -- so `from molbuilder.constants import ...` here becomes
+    # a NameError out there, several machines away from the edit.  (Tried it,
+    # 2026-08-30: the generated preview script died on exactly that line.)
+    # It is the same CODATA-2018 value `molbuilder/constants.py` holds; when
+    # one changes, change both.
+    #
     # HARTREE_TO_EV is the CODATA-2018 value 27.211386245988 eV/Hartree.
     # HARTREE_BOHR_TO_EV_ANG = 51.42208619 is the value used by ASE,
     # NIST historical tables, and most quantum-chemistry packages; the

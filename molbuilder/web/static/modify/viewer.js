@@ -835,23 +835,26 @@ export function init(viewer) {
         if (!box) return;
         const element = ($("elc-element") && $("elc-element").value) || "Au";
         const lat = (window.__elcLatticeTable || {})[element] || {};
+        /* TWO REFERENCES, AND BOTH ARE FROM THE LITERATURE -- which is what a
+         * shared table is for.
+         *
+         * There was a third, "Your bulk run", reading `a_pbe_siesta_psml`.  It
+         * was null for every metal and nothing in the codebase could write it,
+         * so this function greyed it out -- correctly -- from the day it
+         * shipped, and the machinery that did the greying (a disabled branch,
+         * an "is my pick still selectable" check, and a silent fall-back to
+         * Experimental) existed only to cope with a value that was never
+         * present.  All of it went with the column (data/README.md, v3).
+         *
+         * The value itself was not wrong, its HOME was: a lattice constant
+         * measured in the user's own SIESTA+PSML setup belongs to one
+         * optimisation run, not to a table every project shares.  It is read
+         * from that run's result now -- POST /api/modify/lattice-from-run. */
         const refs = [
-            ["experimental",    "Experimental",       lat.a_experimental,    "Wyckoff 1963"],
-            ["pbe",             "PBE (all-electron)", lat.a_pbe,             "Haas 2009"],
-            ["pbe_siesta_psml", "Your bulk run",      lat.a_pbe_siesta_psml, "user-measured"],
+            ["experimental", "Experimental",       lat.a_experimental, "Wyckoff 1963"],
+            ["pbe",          "PBE (all-electron)", lat.a_pbe,          "Haas 2009"],
         ];
-        // Resolve what should be checked BEFORE the render loop so
-        // the per-radio code stays simple.  Rule:
-        //   1. If the user's current pick is still selectable
-        //      (its numeric value is present), keep it.
-        //   2. Otherwise (e.g. previous "siesta_psml" pick where the
-        //      value is now null), fall back to "experimental".
-        const currentPick = getCheckedRadio("elc-lattice-ref")
-                            || "experimental";
-        const isPickValid = refs.some(function (r) {
-            return r[0] === currentPick && r[2] !== null && r[2] !== undefined;
-        });
-        const effectivePick = isPickValid ? currentPick : "experimental";
+        const pick = getCheckedRadio("elc-lattice-ref") || "experimental";
         box.innerHTML = "";
         for (const [value, label, num, src] of refs) {
             const lbl = document.createElement("label");
@@ -859,20 +862,12 @@ export function init(viewer) {
             inp.type = "radio";
             inp.name = "elc-lattice-ref";
             inp.value = value;
-            const disabled = (num === null || num === undefined);
-            if (disabled) {
-                inp.disabled = true;
-                // Accessibility: screen readers don't get any signal
-                // from the visual opacity fade alone.
-                inp.setAttribute("aria-disabled", "true");
-                lbl.classList.add("modify-electrode-lattice-off");
-            }
-            inp.checked = (value === effectivePick);
+            inp.checked = (value === pick);
             lbl.appendChild(inp);
-            const txt = (typeof num === "number")
-                        ? ` ${label} (${num.toFixed(4)} Å — ${src})`
-                        : ` ${label} (unset — ${src})`;
-            lbl.appendChild(document.createTextNode(txt));
+            lbl.appendChild(document.createTextNode(
+                typeof num === "number"
+                    ? ` ${label} (${num.toFixed(4)} Å — ${src})`
+                    : ` ${label} (unset — ${src})`));
             box.appendChild(lbl);
         }
     }

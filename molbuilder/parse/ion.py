@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-_BOHR_TO_ANG = 0.529177
+from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
 
 
 def max_orbital_rc_ang(path) -> Optional[float]:

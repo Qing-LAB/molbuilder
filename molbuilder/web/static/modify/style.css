@@ -719,15 +719,6 @@ footer a {
 }
 footer a:hover { color: var(--accent-hover); }
 
-/* Disabled lattice-ref radio (PBE 'Your bulk run' option when
- * a_pbe_siesta_psml is not yet measured for this metal).  Was
- * inline ``element.style.opacity = "0.55"`` in modify/viewer.js;
- * lifted out per the 2026-06-19 JS-quality review. */
-.modify-electrode-lattice-off {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
 /* Cell op-tab -- per-group periodicity editors (modify/periodicity.js). */
 .modify-op-hint {
     color: var(--text-muted);

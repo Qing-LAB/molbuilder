@@ -426,7 +426,8 @@ sees:
 | (110) | ABAB | **2 layers** | `a/(2√2)` | 1.4701 Å |
 
 `a` is not a constant to assume: `fcc_lattice.json` carries
-`a_experimental`, `a_pbe` and `a_pbe_siesta_psml` per metal, and **the lead must
+`a_experimental` and `a_pbe` per metal (and the Modify tab can measure a third
+off your own relaxed bulk run), and **the lead must
 use the same one the device was built with** — a 1–2 % lead/device lattice
 mismatch is exactly what I10 exists to prevent. For a PBE run that means
 `a_pbe`, not the room-temperature experimental value.

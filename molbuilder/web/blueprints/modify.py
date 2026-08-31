@@ -857,20 +857,16 @@ def _read_relaxed_result(path):
     ``.molstruct.json`` pair.  Nothing here parses a file itself.
     """
     if path.suffix.lower() == ".xv":
-        # THE PARSE MODULE'S READER, not `transport.compose`'s.
+        # THE PARSE MODULE'S READER, not `transport.compose`'s.  Reading files
+        # is the parse module's job, and this one returns the cell as a
+        # first-class field, which is the thing being measured against.
         #
-        # There are two .XV readers, and picking the wrong one showed up as a
-        # test failing by 1.6e-6 Å: `transport/preflight.py` carries
-        # `_BOHR_ANG = 0.529177` -- SIX digits -- while this one uses
-        # 0.5291772108, so the same file read through the two gives coordinates
-        # 4e-7 apart.  Reading files is the parse module's job, and this reader
-        # returns the cell as a first-class field, which is the thing being
-        # measured against.
-        #
-        # The wider finding is recorded, not fixed here: the tree carries FIVE
-        # spellings of the Bohr radius (0.529177210903, 0.5291772108, 0.529177
-        # and two derived constants).  Unifying them changes numeric output in
-        # several engines, so it is its own change with its own review.
+        # Choosing between them used to matter for a second reason: the two
+        # carried DIFFERENT Bohr radii, so the same file gave coordinates 4e-7
+        # apart depending on which was asked.  That is fixed -- every
+        # conversion in the tree now reads `molbuilder/constants.py` -- and is
+        # recorded here because this route is where it surfaced, as a test
+        # comparing the two answers and failing by 1.6e-6 Å.
         from molbuilder.parse.coords.siesta_xv import (
             SiestaXVError, read_xv, read_xv_cell,
         )

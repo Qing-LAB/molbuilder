@@ -53,7 +53,7 @@ calculation.
 
 | File | Schema | Read by | Status |
 |---|---|---|---|
-| `fcc_lattice.json` | v1 | `molbuilder.modify._load_fcc_lattice` | live |
+| `fcc_lattice.json` | v3 | `molbuilder.modify.load_fcc_lattice_full` (and `_load_fcc_lattice`, the experimental-only shim) | live |
 | `catalogue.template.toml` | `molbuilder/template@2` | `molbuilder.template.read_template` | **new 2026-08-14 — the parameter catalogue** |
 
 ---
@@ -111,31 +111,62 @@ editing the JSON or by passing `lattice_constant=` to
 * You want the *DFT-equilibrium* lattice constant for your specific
   XC functional.  Plain LDA underbinds gold by ~3 %, GGA-PBE overbinds
   by ~1 %; if you optimise the slab cell self-consistently in your
-  production run, use that value here for consistency between the
-  initial geometry and the relaxed one.
+  production run, use that value.  **Do not put it here** — that is the
+  mistake v3 undid: it is a fact about one run, and this file is shared
+  by every project.  The Modify tab reads it from the run's own result.
 
-The JSON `_units.temperature_K` field carries the temperature at which
-the published values were measured; if you replace a value with a
-DFT-equilibrium one, change `_units.temperature_K` to `null` (or to the
-temperature your DFT calculation targets) and update this README.
+The temperature the published experimental values were measured at lives
+in `_sources.experimental.temperature_K`; the PBE column is a
+zero-temperature calculation and carries no temperature of its own.
 
-### Schema (v1)
+### Schema (v3)
 
 ```json
 {
-    "_format": "molbuilder.data.fcc_lattice v1",
-    "_units":  { "a": "angstrom", "temperature_K": 298 },
-    "_source": "<one-line citation; full chain in this README>",
-    "metals":  {
-        "<symbol>": { "a": <float>, "system": "fcc", "name": "<full name>" }
+    "_format":  "molbuilder.data.fcc_lattice v3",
+    "_units":   { "a": "angstrom" },
+    "_sources": { "experimental": {...}, "pbe": {...} },
+    "metals":   {
+        "<symbol>": {
+            "a_experimental": <float>,
+            "a_pbe":          <float>,
+            "system": "fcc", "name": "<full name>"
+        }
     }
 }
 ```
 
-Adding a new entry: add a `"<symbol>": {"a": ..., "system": "fcc",
-"name": "..."}` row, append a citation line in the table above, and add
-a paragraph explaining why this entry was added (typical use-case,
-literature reference, anything readers should know).
+**Two references per metal, and they are both from the literature** —
+that is what a shared table is for. `a_experimental` is Wyckoff's
+room-temperature measurement; `a_pbe` is the all-electron PBE value.
+Which one to use is a question about your calculation, not about this
+file: match the one your run was built with.
+
+Adding a new entry: add the two values, `system` and `name`, append a
+citation line in the table above, and add a paragraph explaining why the
+entry was added.
+
+#### What v3 removed, and where it went (2026-08-30)
+
+v2 carried a third column, `a_pbe_siesta_psml` — "the lattice constant
+**your** SIESTA and **your** pseudopotential produce". It was `null` for
+all six metals, and **nothing in molbuilder could ever write it**: its
+only homes were this packaged file and a `MOLBUILDER_DATA_DIR` copy, so
+the "Your bulk run" control that read it greyed itself out — correctly —
+from the day it shipped.
+
+The shape was wrong, not just the value. A lattice constant measured in
+your own setup belongs to **one optimisation run**, not to a table every
+project on the machine shares. So it is read from that run's result
+instead: point the Modify tab at a relaxed bulk `.xyz` or `.XV` and it
+measures the nearest-neighbour distance and reports
+`a = √2 · d`, along with what looks wrong (`POST
+/api/modify/lattice-from-run`).
+
+**A v2 file still loads.** If you have an overriding copy, it keeps
+working; the extra column is ignored. Only the v1 `"a"`-only schema is
+refused, because a single number with no exchange-correlation functional
+attached is the ambiguity v2 existed to end.
 
 ---
 

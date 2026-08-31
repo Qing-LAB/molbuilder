@@ -199,7 +199,8 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
 The electrode builder records which lattice constant it used
-(`fcc_lattice.json` carries `a_experimental` / `a_pbe` / `a_pbe_siesta_psml`),
+(`fcc_lattice.json` carries `a_experimental` / `a_pbe`, and a value measured
+off the user's own relaxed bulk run can be typed in beside them),
 so the captured cell matches the DFT setup.
 
 ---
