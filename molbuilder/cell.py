@@ -533,6 +533,134 @@ def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
     return z_period, d_interlayer, n
 
 
+# --------------------------------------------------------------------- #
+#  Reading a lattice constant back OUT of a relaxed result                #
+#  (plans/modify-redesign-plan.md § 3.3)                                  #
+# --------------------------------------------------------------------- #
+
+#: Fractional width of the nearest-neighbour shell.  6% holds a relaxed
+#: crystal's jitter and is far narrower than the gap to the second shell
+#: (√2 ≈ 1.414 d), so a "neighbour" cannot quietly become a next-nearest one.
+NN_SHELL_TOL = 0.06
+
+#: Below this, two positions are the same point, not two atoms.  Only used to
+#: drop an atom's distance to ITSELF at the identity translation -- its
+#: distances to its own periodic IMAGES are real and are counted, which is what
+#: makes this correct on a one-atom primitive cell where the nearest neighbour
+#: IS an image.
+_SAME_POINT_ANG = 1e-9
+
+
+@dataclass(frozen=True)
+class FccMeasurement:
+    """What a relaxed bulk result says its lattice constant is.
+
+    ``a`` is the CONVENTIONAL cubic edge, from ``a = √2 · d_nn``.
+    """
+
+    #: Å — the closest two atoms get, periodic images included.
+    d_nn: float
+    #: Å — the conventional cubic edge implied by ``d_nn``.
+    a: float
+    #: How many neighbours an atom has in that shell; the MEDIAN over atoms,
+    #: so a surface layer cannot drag the answer down.  12 for bulk fcc.
+    coordination: int
+    #: Å — the next distinct distance, or ``None`` if there is not one.  In
+    #: fcc it sits at ``√2 · d_nn``; that ratio is the cheap catch for a
+    #: distorted or non-cubic result.
+    second_shell: Optional[float]
+    #: How many atoms the measurement was taken over.
+    n_atoms: int
+
+
+def measure_fcc(positions, cell) -> FccMeasurement:
+    """Measure the fcc lattice constant from ATOMS, not from the cell.
+
+    **Why the atoms.**  The cell of a relaxed result may be conventional cubic
+    (edge ``a``), primitive rhombohedral (edge ``a/√2``), or the user's own
+    m×n×N layered lead cell (edge ``m·a/√2``) -- three different relations to
+    ``a``, and the file does not say which.  Reading the cell means guessing
+    the user's convention.  The nearest-neighbour distance assumes nothing:
+    whatever the box, the closest two atoms in an fcc crystal are ``a/√2``
+    apart.
+
+    Distances are taken under the **minimum image convention**: fractional
+    deltas are wrapped to the nearest image and then checked against the 27
+    surrounding translations, which is exact rather than merely usually right
+    on a skewed cell.
+
+    NOT :func:`validation.geometry._min_image_distance`, and the difference
+    matters: that one EXCLUDES the identity translation on purpose, because it
+    asks "how close does this molecule sit to its periodic copies" -- an
+    artefact question.  This one asks for the nearest neighbour, which in a
+    supercell is overwhelmingly an in-cell atom.  Handing this job to that
+    function returns the distance across the box boundary and calls it a bond.
+
+    Raises ``ValueError`` on fewer than two atoms or a cell with no volume --
+    both are cases where there is no distance to report rather than a distance
+    that happens to be wrong.
+    """
+    pos = np.asarray(positions, dtype=float).reshape(-1, 3)
+    box = np.asarray(cell, dtype=float).reshape(3, 3)
+    n = int(pos.shape[0])
+    if n < 1:
+        raise ValueError("there are no atoms of that element to measure")
+    # ONE atom is enough, and refusing it was wrong.  A primitive fcc cell
+    # holds exactly one, and its twelve nearest neighbours are its own periodic
+    # images -- which is precisely the case the image handling above exists
+    # for.  The first version of this guard said `n < 2` while the comment two
+    # blocks up promised the opposite; the test below is what settled which of
+    # the two was the mistake.
+    if abs(float(np.linalg.det(box))) < ZERO_VOLUME_TOL:
+        raise ValueError(
+            "this cell has no volume, so there are no periodic images to "
+            "measure against")
+
+    inv = np.linalg.inv(box)
+    whole = np.array([(i, j, k)
+                      for i in (-1, 0, 1)
+                      for j in (-1, 0, 1)
+                      for k in (-1, 0, 1)], dtype=float) @ box   # (27, 3)
+
+    d_nn = float("inf")
+    per_atom: List[np.ndarray] = []
+    for i in range(n):
+        frac = (pos - pos[i]) @ inv            # (n, 3)
+        frac -= np.round(frac)                 # nearest image
+        near = frac @ box                      # (n, 3), cartesian
+        d = np.linalg.norm(near[:, None, :] + whole[None, :, :], axis=2)
+        d = d.reshape(-1)
+        # Only the exact self-at-the-identity-translation is dropped.  Taking a
+        # minimum over the 27 images first would have dropped an atom's own
+        # images WITH it -- and on a one-atom primitive cell those are the only
+        # neighbours there are, so the function would have had nothing to
+        # measure and said so, wrongly.  (Caught on the first run, 2026-08-30.)
+        d = d[d > _SAME_POINT_ANG]
+        if d.size:
+            per_atom.append(d)
+            d_nn = min(d_nn, float(d.min()))
+
+    if not per_atom or not np.isfinite(d_nn):
+        raise ValueError("no two atoms are a measurable distance apart")
+
+    shell = d_nn * (1.0 + NN_SHELL_TOL)
+    counts = [int((d <= shell).sum()) for d in per_atom]
+    # A crystal whose every measured distance falls inside the first shell has
+    # no second shell to report -- one image cage and nothing beyond it.  That
+    # is a `None`, not an empty concatenate.
+    beyond = [d[d > shell] for d in per_atom]
+    beyond = [chunk for chunk in beyond if chunk.size]
+    second = float(np.concatenate(beyond).min()) if beyond else None
+
+    return FccMeasurement(
+        d_nn=d_nn,
+        a=float(np.sqrt(2.0) * d_nn),
+        coordination=int(np.median(counts)) if counts else 0,
+        second_shell=second,
+        n_atoms=n,
+    )
+
+
 #: Layers per stacking period, by fcc surface.  (111) is ABCABC, the
 #: others ABAB -- so a seam only continues the crystal when the layer
 #: count is a whole multiple (junction-cell.md § 3.1).

@@ -87,7 +87,9 @@ from ._shared import (
     struct_from_body as _struct_from_body,
 )
 
-from molbuilder.cell import STACKING_PERIOD
+import numpy as np
+
+from molbuilder.cell import STACKING_PERIOD, measure_fcc as _measure_fcc
 from molbuilder.modify import (
     SUPPORTED_FCC_ELEMENTS,
     SUPPORTED_FCC_PLANES,
@@ -99,6 +101,7 @@ from molbuilder.modify import (
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
     translate as _translate,
+    load_fcc_lattice_full as _load_fcc_lattice_full,
 )
 
 
@@ -710,3 +713,232 @@ def api_modify_symmetric_electrodes():
     # No selection_remap: the client CLEARS the selection on any atom-count
     # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/lattice-from-run                                         #
+# --------------------------------------------------------------------- #
+
+
+#: How far the second shell may sit from √2·d before it is worth a note.
+#: 3% is wider than any relaxed crystal's jitter and far narrower than the
+#: distortion that would make the fcc reading wrong.
+_SECOND_SHELL_TOL = 0.03
+
+#: fcc's own coordination number.  Anything else means the file is probably
+#: not the bulk crystal the user meant to point at.
+_FCC_COORDINATION = 12
+
+#: How many atoms of the named element this route will measure over.
+#:
+#: The measurement is exact and therefore O(n²) -- every atom against every
+#: atom's 27 surrounding images.  Measured: 500 atoms 0.5 s, 1372 atoms 5.2 s,
+#: growing as the square from there, so an unbounded request can hang the
+#: server on a file picked by accident.
+#:
+#: The cap is at the ROUTE, not in `cell.measure_fcc`: a module measures
+#: whatever it is handed (the reasoning web-api.md § 2.1 gives for where a
+#: fence belongs), and a request-time budget is the route's business.  It
+#: REFUSES rather than sampling, because a silently truncated answer to "what
+#: is this crystal's lattice constant" is worse than being asked for a smaller
+#: cell -- and a lattice constant does not need a thousand atoms.
+_MAX_ATOMS = 1000
+
+
+@bp.route("/api/modify/lattice-from-run", methods=["POST"])
+def api_modify_lattice_from_run():
+    """Read a lattice constant back out of the user's own relaxed result.
+
+    Body: ``{path, element?}`` -> ``{ok, element, a, d_nn, coordination,
+    second_shell_ratio, n_atoms, source, notes}``.
+
+    THE DIVISION OF LABOUR IS THE USER'S OWN (plans/modify-redesign-plan.md
+    § 3.3): *"the user needs to make sure this setup is correct, and the
+    backend just extracts the lattice from that result."*  So **they**
+    guarantee the pseudopotential, basis and mesh cutoff; this measures what
+    the file says and reports what looks odd, without refusing on their
+    behalf.
+
+    IT MEASURES THE ATOMS, NOT THE CELL, and `cell.measure_fcc` carries why:
+    the box may be conventional, primitive, or their own layered lead cell,
+    and the file does not say which.
+
+    Two refusals, because guessing would be worse than stopping: a file with
+    **no cell** (no periodic images, so on a small cell the measured minimum
+    is simply wrong), and **more than one element with none named**.
+    Everything else is a note.
+    """
+    from .files import _PickerError, _resolve_within_roots
+
+    body = request.get_json(silent=True) or {}
+    raw = body.get("path")
+    if not isinstance(raw, str) or not raw.strip():
+        return _err("missing 'path'", 400)
+    # THE FENCE IS AT THE ROUTE (web-api.md § 2.1): an untrusted path is
+    # resolved through the one primitive before anything opens it.
+    try:
+        path = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        return _err(exc.message, exc.status)
+    if not path.is_file():
+        return _err(f"{path.name} is not a file", 400)
+
+    element = body.get("element")
+    if element is not None and not isinstance(element, str):
+        return _err("'element' must be a chemical symbol", 400)
+    element = element.strip() if isinstance(element, str) else None
+
+    try:
+        elements, positions, cell = _read_relaxed_result(path)
+    except (ValueError, OSError) as exc:
+        return _err(f"could not read {path.name}: {exc}", 400)
+    except Exception as exc:  # noqa: BLE001 -- a bad file is the user's, not a crash
+        # A malformed sidecar, a truncated deck, a Z this build has no symbol
+        # for: the readers raise their own kinds, and the ones they do not
+        # name still have to reach the user as JSON.  The house pattern in
+        # this file (the electrode routes) logs and answers, rather than
+        # letting Flask render an HTML 500 into a fetch() that expects JSON.
+        current_app.logger.exception("lattice-from-run: unexpected read error")
+        return _err(
+            f"could not read {path.name} ({type(exc).__name__}): {exc}", 400)
+
+    if cell is None:
+        return _err(
+            f"{path.name} carries no unit cell. A lattice constant is measured "
+            f"against the crystal's periodic images, so a file without a cell "
+            f"has none to measure against.", 400)
+
+    present = sorted(set(elements))
+    if element is None:
+        if len(present) != 1:
+            return _err(
+                f"{path.name} holds {len(present)} elements "
+                f"({', '.join(present)}); name which one to measure.", 400)
+        element = present[0]
+    elif element not in present:
+        return _err(
+            f"{path.name} holds no {element} (it holds "
+            f"{', '.join(present) or 'nothing'}).", 400)
+
+    keep = [i for i, sym in enumerate(elements) if sym == element]
+    if len(keep) > _MAX_ATOMS:
+        return _err(
+            f"{path.name} holds {len(keep)} {element} atoms; this measurement "
+            f"is exact and grows as the square of the count, so it is capped "
+            f"at {_MAX_ATOMS}. A lattice constant does not need more than a "
+            f"few unit cells — point at a smaller relaxed cell.", 400)
+    try:
+        measured = _measure_fcc(np.asarray(positions)[keep], cell)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+
+    notes = _lattice_notes(measured, element)
+    ratio = (measured.second_shell / measured.d_nn
+             if measured.second_shell else None)
+    return jsonify({
+        "ok":                 True,
+        "element":            element,
+        "a":                  measured.a,
+        "d_nn":               measured.d_nn,
+        "coordination":       measured.coordination,
+        "second_shell_ratio": ratio,
+        "n_atoms":            measured.n_atoms,
+        "source":             path.name,
+        "notes":              notes,
+    })
+
+
+def _read_relaxed_result(path):
+    """``(elements, positions_ang, cell_ang_or_None)`` from a result file.
+
+    Two readers, and both already existed (§ 3.3): SIESTA's ``.XV`` through
+    ``transport.compose.read_xv``, and everything else through
+    ``StructureCodec``, which is the ONE authority on the ``.xyz`` +
+    ``.molstruct.json`` pair.  Nothing here parses a file itself.
+    """
+    if path.suffix.lower() == ".xv":
+        # THE PARSE MODULE'S READER, not `transport.compose`'s.
+        #
+        # There are two .XV readers, and picking the wrong one showed up as a
+        # test failing by 1.6e-6 Å: `transport/preflight.py` carries
+        # `_BOHR_ANG = 0.529177` -- SIX digits -- while this one uses
+        # 0.5291772108, so the same file read through the two gives coordinates
+        # 4e-7 apart.  Reading files is the parse module's job, and this reader
+        # returns the cell as a first-class field, which is the thing being
+        # measured against.
+        #
+        # The wider finding is recorded, not fixed here: the tree carries FIVE
+        # spellings of the Bohr radius (0.529177210903, 0.5291772108, 0.529177
+        # and two derived constants).  Unifying them changes numeric output in
+        # several engines, so it is its own change with its own review.
+        from molbuilder.parse.coords.siesta_xv import (
+            SiestaXVError, read_xv, read_xv_cell,
+        )
+        try:
+            struct = read_xv(path)
+            cell = read_xv_cell(path)
+        except SiestaXVError as exc:
+            raise ValueError(str(exc)) from exc
+        return list(struct.elements), struct.positions, cell
+
+    from molbuilder.workingcopy_structure import StructureCodec
+    struct = StructureCodec().read(path)
+    return list(struct.elements), struct.positions, struct.cell
+
+
+def _lattice_notes(measured, element: str):
+    """What looks odd about this file, as notes rather than refusals.
+
+    The setup is the user's to own, so nothing here stops the answer being
+    used — each row says what was expected, what was found, and what that
+    usually means, and leaves the judgement where it belongs.
+    """
+    notes = []
+
+    if measured.coordination != _FCC_COORDINATION:
+        notes.append({
+            "level": "warn",
+            "message": (
+                f"Each {element} has {measured.coordination} neighbours at this "
+                f"distance; bulk fcc has {_FCC_COORDINATION}. That usually means "
+                f"the file is not the bulk crystal you meant — a slab with "
+                f"vacuum, a surface, or a defect."),
+        })
+
+    if measured.second_shell is None:
+        notes.append({
+            "level": "warn",
+            "message": (
+                "There is no second neighbour shell to check, so the fcc "
+                "signature could not be confirmed."),
+        })
+    else:
+        ratio = measured.second_shell / measured.d_nn
+        if abs(ratio - np.sqrt(2.0)) > _SECOND_SHELL_TOL:
+            notes.append({
+                "level": "warn",
+                "message": (
+                    f"The second shell sits at {ratio:.3f}×the first; fcc puts "
+                    f"it at √2 = 1.414. A different ratio means this is not a "
+                    f"cubic close-packed crystal."),
+            })
+
+    # AND HOW IT COMPARES, which is the cross-check that catches the one
+    # mistake anyone makes: a second-shell pair reads a factor √2 high and
+    # lands ~41% from both references.  Done here rather than in the panel
+    # because the table is already loaded here, and two homes for one
+    # subtraction is one home too many.
+    try:
+        table = _load_fcc_lattice_full().get(element, {})
+    except Exception:                      # noqa: BLE001 -- a missing table is not this route's failure
+        table = {}
+    for key, label in (("a_experimental", "experimental"), ("a_pbe", "PBE")):
+        ref = table.get(key)
+        if not ref:
+            continue
+        off = (measured.a - ref) / ref * 100.0
+        notes.append({
+            "level": "info" if abs(off) < 5.0 else "warn",
+            "message": f"{off:+.1f}% from {label} ({ref:.4f} Å)",
+        })
+    return notes
