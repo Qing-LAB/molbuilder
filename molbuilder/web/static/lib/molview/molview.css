@@ -752,6 +752,56 @@
 .molviewer-overlay--warn { border-color: var(--molviewer-color-warn);   background: var(--molviewer-color-warn-bg); }
 .molviewer-overlay--info { border-color: var(--molviewer-color-accent); }
 
+/* THE MEASUREMENT CHIP (ui.js mountReadout; molview.md § 11.6).
+ *
+ * The only overlay with a stack of lines rather than one, and the only one with
+ * something to CLICK -- so it is also the only one that departs from the shared
+ * `pointer-events: none` above.  The departure is on the BUTTON alone: the
+ * chip's own body still lets a drag pass through to the molecule behind it,
+ * which is the whole of what that rule protects.  A chip that swallowed drags
+ * would put a dead rectangle in the corner of the window the user rotates in.
+ *
+ * `tabular-nums` because the lines are coordinates read down a column: with
+ * proportional digits the decimal points wander and a set of three positions
+ * stops being comparable at a glance, which is most of why they are shown. */
+.molviewer-overlay--measure {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--molviewer-space-xs);
+    font-variant-numeric: tabular-nums;
+}
+.molviewer-measure-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;                       /* hairline: a line-gap, not a rhythm step */
+}
+.molviewer-measure-line {
+    white-space: nowrap;
+    color: var(--molviewer-color-text-dim);
+}
+/* The derived answer -- the distance, the delta, the angle -- against the
+ * positions it was worked out from.  It is what the user asked the question
+ * for, so it is the line that reads first. */
+.molviewer-measure-line.molviewer-measure-result {
+    color: var(--molviewer-color-text);
+    font-weight: 600;
+}
+.molviewer-measure-clear {
+    pointer-events: auto;           /* the exception, and the only one */
+    align-self: flex-end;
+    padding: 0 var(--molviewer-space-xs);
+    background: transparent;
+    color: var(--molviewer-color-text-dim);
+    border: 1px solid var(--molviewer-color-edge);
+    border-radius: var(--molviewer-radius-sm);
+    font: inherit;
+    cursor: pointer;
+}
+.molviewer-measure-clear:hover {
+    color: var(--molviewer-color-accent);
+    border-color: var(--molviewer-color-accent);
+}
+
 /* SIZING-CONTRACT FAILURE (mount.js): the parent handed the card less than --molviewer-size-card-min-width.
  * The module refuses to render broken/overflowing -- it shows a blank card with a centered message.
  * The --unmountable modifier drops the min-width so the message itself fits the too-small host. */

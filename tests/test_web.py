@@ -1440,10 +1440,13 @@ def test_modify_rotate_rejects_non_numeric_angle(web_client):
 
 
 def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
-    """``recenter: true`` translates so the geometric centroid sits
-    at (0, 0, 0).  The fixture _LINEAR_XYZ is (1,1,1)/(2,2,2)/(3,3,3)/
-    (4,4,4) so its centroid is (2.5, 2.5, 2.5); after recentering
-    every coord is shifted by -2.5."""
+    """``recenter: true`` with no group translates so the WHOLE
+    structure's centroid sits at (0, 0, 0).
+
+    _LINEAR_XYZ is (0,0,0)/(1,1,0)/(2,2,0)/(3,3,0), centroid
+    (1.5, 1.5, 0).  (The docstring said (1,1,1)..(4,4,4) until
+    2026-08-30 -- a fixture it has not matched for some time, and
+    nothing failed, because the assertion only reads the centroid.)"""
     r = web_client.post("/api/modify/translate", json={
         "structure": _env(_LINEAR_XYZ),
         "recenter": True,
@@ -1457,6 +1460,97 @@ def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
     assert abs(cx) < 1e-9, cx
     assert abs(cy) < 1e-9, cy
     assert abs(cz) < 1e-9, cz
+
+
+def test_modify_translate_recenter_centres_THE_GROUP_and_moves_only_it(web_client):
+    """The bug this route shipped with: Center ignored the selection.
+
+    User, 2026-08-30: *"when we have selected a group of atoms, the idea
+    is that the center operation would be about this selected group, not
+    the whole structure"* -- and *"the group moves without anything else
+    moved.  the group is the rigid part."*
+
+    The browser was never at fault: `applyOp` injects the selection from
+    `OPERATIONS.translate.group` for Center exactly as it does for
+    Translate, so both bodies carry `indices`.  The route returned from
+    its `recenter` branch BEFORE that key was read.
+
+    _LINEAR_XYZ is (0,0,0)/(1,1,0)/(2,2,0)/(3,3,0).  Centring atoms 0-1
+    moves their own centroid (0.5, 0.5, 0) to the origin, so they land
+    on (-0.5,-0.5,0) and (0.5,0.5,0) -- and atoms 2-3 must not move at
+    all, which is the half a whole-structure centring would also get
+    wrong in the other direction.
+    """
+    r = web_client.post("/api/modify/translate", json={
+        "structure": _env(_LINEAR_XYZ),
+        "recenter": True,
+        "indices": [0, 1],
+    })
+    body = r.get_json()
+    assert body["ok"] is True, body
+    out = _coords_from_xyz(body["xyz"])
+    assert abs(out[0][0] + 0.5) < 1e-9 and abs(out[0][1] + 0.5) < 1e-9, out[0]
+    assert abs(out[1][0] - 0.5) < 1e-9 and abs(out[1][1] - 0.5) < 1e-9, out[1]
+    # The atoms outside the group are the point: they stay put.
+    src = _coords_from_xyz(_LINEAR_XYZ)
+    for i in (2, 3):
+        assert all(abs(out[i][k] - src[i][k]) < 1e-9 for k in range(3)), \
+            f"atom {i} moved; only the selected group may move"
+
+
+def test_modify_translate_recenter_with_no_group_is_one_rigid_move(web_client):
+    """User: *"when nothing is selected, it act as if all are selected as
+    one rigid move."*  An EMPTY list says the same thing as no key at all
+    -- the browser omits `indices` when the selection is empty, but a
+    caller that sends `[]` must not get a different structure back."""
+    both = []
+    for body in ({"structure": _env(_LINEAR_XYZ), "recenter": True},
+                 {"structure": _env(_LINEAR_XYZ), "recenter": True,
+                  "indices": []}):
+        r = web_client.post("/api/modify/translate", json=body).get_json()
+        assert r["ok"] is True, r
+        both.append(r["xyz"])
+    assert both[0] == both[1], "an empty group must mean the whole structure"
+
+
+def test_modify_translate_recenter_of_a_group_leaves_the_box(web_client):
+    """A group is not the whole structure, so the box does not travel:
+    only part of what it contains moved.  That rule is
+    ``modify.translate``'s, and Center now reaches it by BEING a
+    translate rather than by re-deciding (`plans/modify-redesign-plan.md`
+    § 2.3)."""
+    periodicity = {
+        "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
+        "cell_origin": [-5.0, -5.0, -10.0],
+        "axis_kind": ["periodic", "periodic", "transport"],
+    }
+    r = web_client.post("/api/modify/translate", json={
+        "structure": _env_per(_LINEAR_XYZ, periodicity),
+        "recenter": True, "indices": [0, 1]}).get_json()
+    assert r["ok"] is True, r
+    assert r["periodicity"]["cell_origin"] == periodicity["cell_origin"], \
+        "centring a GROUP must leave the box where it is"
+
+
+def test_modify_translate_recenter_of_everything_takes_the_box_along(web_client):
+    """The other half of the same rule: with nothing selected the move is
+    rigid, so the box goes with the atoms and containment cannot change.
+    Asserting only the previous test would pass on a route that never
+    moves the box at all."""
+    import numpy as np
+    periodicity = {
+        "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
+        "cell_origin": [-5.0, -5.0, -10.0],
+        "axis_kind": ["periodic", "periodic", "transport"],
+    }
+    r = web_client.post("/api/modify/translate", json={
+        "structure": _env_per(_LINEAR_XYZ, periodicity),
+        "recenter": True}).get_json()
+    assert r["ok"] is True, r
+    # centroid of _LINEAR_XYZ is (1.5, 1.5, 0), so the corner moves by -that
+    assert np.allclose(r["periodicity"]["cell_origin"],
+                       np.array(periodicity["cell_origin"]) - [1.5, 1.5, 0.0]), \
+        r["periodicity"]["cell_origin"]
 
 
 def test_modify_translate_offset_shifts_every_atom_by_delta(web_client):

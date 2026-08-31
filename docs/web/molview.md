@@ -1469,10 +1469,10 @@ a fact of its own, and none reaches the drawing directly.
 | The control | Reads | Writes |
 |---|---|---|
 | **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); loop and speed, from the handle | the displayed frame, through the one write everyone uses; play, pause, loop and speed, through the handle (§ 9.2) |
-| **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
+| **the rail** — atom numbers, forces, cell, axes, isolate, **measure**, Reset (§ 1.1) | each switch's lit state **from the store that owns it** — five from `selection`, measure from `measurement` (§ 11.6) | the five switches to `selection`, measure to `measurement`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
 | **the View menu** — style, radius, background, projection | `view` | all four to `view` |
 | **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
-| **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
+| **the measurement readout** | which atoms are picked **and in what order**, from `measurement` (§ 11.6) — **not** from `selection`; their coordinates from the **master copy** at the current frame | the track's **Clear**, to `measurement`, and nothing else |
 | **the Export menu** | what to export, over which frames, and where it goes (§ 11.4); the frame range's default from the model (§ 6.4) | nothing in the viewer |
 
 > **Speed was the one fact on this card with no home but its control**, and this
@@ -2050,8 +2050,15 @@ only thing standing between a read-only viewer and a changed structure.
 ### 9.5 `selection` — what is picked out, and what is drawn beside it
 
 What is selected, and which of the things that go *into* a frame are switched on,
-all in one place. The panel, the highlight and the measurements are all
-**readers** of it; none of them keeps its own answer.
+all in one place. The panel, the highlight and the count are all **readers** of
+it; none of them keeps its own answer.
+
+**The measurement readout is not one of them, and that is deliberate** (§ 11.6).
+This selection is **what an edit acts on** — every op resolves its group through
+it — so a measurement sharing it would mean picking a third atom to read an angle
+silently changed what the next Delete removes, and clearing the measurement
+changed it back. The ruler keeps its own list, in its own store, and **nothing in
+this snapshot names it**.
 
 - **The switches live here** — every one of them off by default, and the arrow
   scale at its default — not in the renderEngine and not in the panel.
@@ -3044,6 +3051,8 @@ a viewer keeps what § 11.2 deliberately keeps out of the truth:
 | `switches` | isolate, atom numbers, forces + scale, cell, axes — § 9.5's switches |
 | `camera` | the pose, read from the sealed layer at a gesture's end (§ 9.6) |
 | `frame` | the displayed frame |
+| `measuring` | whether the ruler is on — a standing preference, applied like a switch |
+| `measurement` | the ruler's picked atoms (§ 11.6) — applied under `match`, for **every** viewer: no truth lane restores this one, so `hasTruthLane` has nothing to say about it |
 | `selection` | the picked atoms — **read back only by a viewer with no truth lane** (read-only); where a draft exists it owns the selection, and two lanes restoring one fact is § 5.2's drift |
 | `match` | the structure this context belonged to (atom + frame counts) |
 
@@ -3645,18 +3654,71 @@ The readout in the 3D window (§ 1.1) is not produced by the render pipeline and
 not an overlay. It is the result of a user *interacting* with the view, and it
 lives on its own.
 
-**What it reads.** Its atoms come from the selection, in **pick order** — which is
+**It has its own track, and that is the point.** `measurement` is a third store
+beside `selection` and `view`, holding **at most three atoms in the order they
+were clicked**, and whether the ruler is on. It is not a field on `selection` and
+**does not appear in `selection`'s snapshot** — because that snapshot is what an
+edit acts on (§ 9.5), and one list holding both would mean picking a third atom
+to read an angle changed what the next Delete removes.
+
+*(User, 2026-08-30: "make sure your code does not make the measurement selection
+conflict/overlap with atom selection data in the molview that is used elsewhere"
+— and, separately, "measurement selection is not part of the structure meta data
+but rather molview internal status".)*
+
+**Three, and the fourth pick drops the oldest.** Three atoms is every measurement
+there is — a position, a distance, an angle — and a fourth pick means *now measure
+from here*, which is measuring a chain. Refusing it would make the user clear and
+re-pick two atoms they had already chosen.
+
+**Where a click goes is decided in one place.** A click enters a viewer at three
+points — the 3D window, an atom row, that row's checkbox — and each asks the model
+the same question through `pickAtom`: measuring, or selecting? Written out at each
+entry it would be three copies of one rule, and the fourth click path added later
+is the one that forgets to ask. The **bulk** list gestures — shift-range and the
+drag box — do nothing while measuring: "these forty atoms" is not a measurement,
+and writing them into the selection is what the user's rule forbids.
+
+**What it reads.** Its atoms come from `measurement`, in **pick order** — which is
 why the vertex of a three-atom angle is the atom picked second, not the middle one
 by number. Its coordinates come from the **master copy at the current frame**
 (§ 6.3), never from the drawing.
 
-**When it repaints.** On a selection change **or** a frame change — it subscribes
-to both (§ 6.4).
+**What it shows.** Every picked atom's coordinates, at every count — the position
+is what a reader checks the derived number against. At two atoms, the distance
+**and** the signed `Δ = (Δx, Δy, Δz)`, second minus first, so it reads as *to get
+from the first atom to the second, go this far along each axis*. At three, the
+angle.
+
+**When it repaints.** On a change to the track **or** a frame change — it
+subscribes to both (§ 6.4).
 
 That is what makes it correct in the two places a drawing-derived readout would be
 wrong: while a trajectory plays, because it re-reads the current frame; and under
 isolate, because the drawn numbering no longer matches the real one and it never
-looked at the drawn numbering (§ 6.5).
+looked at the drawn numbering (§ 6.5). Under isolate the 3D window stops feeding
+the ruler too, for the same reason it stops feeding the selection: the index a
+click yields is not the atom, and a measurement built from it would be the wrong
+atoms quoted to three decimal places.
+
+**Clear sits on the chip.** The selection panel has a Clear three inches away that
+empties something else; two buttons with one word meaning two things, in one card,
+is the confusion this whole layer exists to avoid. This one names what it clears by
+sitting on it, and appears only while there is something to clear. It is also why
+the chip is the one overlay that may be clicked at all.
+
+**It is kept where looking is kept.** The track persists in the `<owner>:ui` lane
+(§ 11.2b) and nowhere else: never a state, never the draft, never the badge, never
+an export, never a request body, and never the structure or its sidecar — so it
+does not travel with a saved file.
+
+> **What this replaced, and why it is gone.** The readout used to take its atoms
+> from `selection`, which can arrive with **no pick order at all** — from *All*,
+> *Invert*, an applied filter, a restored session. So it guessed the vertex from
+> geometry: the atom closest to the other two. A track is only ever built by
+> clicks, so that case is now unreachable and the guess is **deleted** rather than
+> maintained. A guess dressed as the user's own choice is worse than a missing
+> feature.
 
 ### 11.7 The structure on the wire — one path in, one path out
 

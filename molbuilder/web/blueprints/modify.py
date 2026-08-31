@@ -383,8 +383,12 @@ def api_modify_translate():
 
     THREE modes (``recenter`` wins over the others if both are sent):
 
-    * ``{recenter: true}`` -- translate so the geometric centroid
-      lands on the origin.  Useful after adding electrode slabs
+    * ``{recenter: true}`` -- translate so a centroid lands on the
+      origin.  WHOSE centroid is decided by ``indices``, exactly as
+      it is for a ``{dx, dy, dz}`` translate: with a group, that
+      group's own centroid moves to the origin and only those atoms
+      move; without one, the whole structure's centroid does and the
+      box travels with it.  Useful after adding electrode slabs
       shifts the structure off-axis: re-anchoring the centroid
       makes mouse-zoom feel sane and aligns subsequent slab ops
       against a predictable origin.
@@ -407,10 +411,36 @@ def api_modify_translate():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    # `indices` -> move ONLY those atoms, box untouched.  Absent (or empty) ->
+    # the whole structure moves rigidly and the box goes with it.  The route
+    # takes the atoms so the caller sends the WHOLE structure either way
+    # (molview.md § 11.7: one path in, one path out).
+    #
+    # READ BEFORE THE RECENTER BRANCH, and that placement is the whole fix.
+    # The browser sends the selection for Center exactly as it does for
+    # Translate -- `applyOp` injects it from `OPERATIONS.translate.group` one
+    # layer below either call site, so both bodies carry `indices`.  The
+    # recenter branch used to return above this line, so the key was never
+    # read and Center silently centred the whole structure while every other
+    # op on the tab honoured the group.
+    indices = body.get("indices")
+    if indices is not None and not isinstance(indices, list):
+        return _err("'indices' must be a list of atom indices", 400)
+    group = indices or None
+
     if bool(body.get("recenter", False)):
+        # Center IS a Translate whose vector the server computes.  One path,
+        # so the two cannot drift: `modify.translate` already decides what
+        # moves -- a named group moves alone and the box stays; no group and
+        # the structure moves rigidly with its box.
         try:
-            new_struct = struct.centered()
-        except ValueError as exc:
+            positions = (struct.positions[group] if group is not None
+                         else struct.positions)
+            if len(positions) == 0:
+                raise ValueError("no atoms to centre")
+            new_struct = _translate(struct, -positions.mean(axis=0),
+                                    indices=group)
+        except (ValueError, IndexError) as exc:
             return _err(f"recenter failed: {exc}", 400)
         return _ok_response(new_struct)
     try:
@@ -419,13 +449,6 @@ def api_modify_translate():
         dz = _finite_float("dz", body.get("dz", 0.0))
     except ValueError as exc:
         return _err(str(exc), 400)
-    # `indices` -> move ONLY those atoms, box untouched.  Absent -> the whole
-    # structure moves rigidly and the box goes with it.  The route takes the
-    # atoms so the caller sends the WHOLE structure either way (molview.md
-    # § 11.7: one path in, one path out).
-    indices = body.get("indices")
-    if indices is not None and not isinstance(indices, list):
-        return _err("'indices' must be a list of atom indices", 400)
     try:
         new_struct = _translate(struct, (dx, dy, dz), indices=indices)
     except ValueError as exc:

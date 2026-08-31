@@ -21,7 +21,8 @@ import {
     structureForServer, groupByLabel, effectiveCell,
     resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
-import { createSelectionStore, createViewStore } from "./stores.js";
+import { createSelectionStore, createMeasurementStore, createViewStore }
+    from "./stores.js";
 import { createHistory } from "./history.js";
 
 
@@ -130,6 +131,11 @@ export function createModel(opts) {
         writeLabel:    (name, atoms, verb) => writeLabel(name, atoms, verb),
     });
     const view = createViewStore();
+    /* The ruler's track (§ 11.6).  It is handed NOTHING: measuring reads the
+     * master copy through the model like every other reader, and writes to no
+     * truth at all — so there is no door to give it and no gate for it to pass
+     * (§ 9.4 has nothing to stop). */
+    const measurement = createMeasurementStore();
 
     /* ── The switches and the selection reach the drawing (§ 10.5) ─────────
      *
@@ -937,6 +943,36 @@ export function createModel(opts) {
          */
         selection: selection,
         view:      view,
+
+        /* The ruler's track (§ 11.6).  A door of its own, beside the selection
+         * and never inside it: what an edit acts on and what a measurement asks
+         * about are two facts, and one list holding both would mean picking a
+         * third atom to read an angle changed what the next Delete removes. */
+        measurement: measurement,
+
+        /* ══ A click picks an atom — WHICH TRACK it lands in is decided here ══
+         *
+         * One question, one home.  A click enters this viewer in three places
+         * (the 3D window, an atom row, that row's checkbox) and every one of
+         * them asks the same thing: are we measuring?  Written out at each
+         * entry it is three copies of one rule, and the fourth click path
+         * somebody adds later is the one that forgets to ask.
+         *
+         * It sits on the MODEL because the model is what owns both tracks
+         * (§ 9.3) — the answer is about data, not about which control was
+         * touched.  What is NOT here is the isolate guard: under isolate the
+         * drawn numbering no longer matches the real one (§ 6.5), which is a
+         * fact about the 3D WINDOW, so it stays at that entry.  An atom row
+         * carries the real index and keeps working.
+         */
+        pickAtom(index) {
+            if (!Number.isInteger(index)) return;
+            if (measurement.getState().active) {
+                measurement.toggle(index);
+                return;
+            }
+            selection.toggle(index);
+        },
 
         /* ══ Save a point, and move through the sequence (§ 11.2) ═════════
          *

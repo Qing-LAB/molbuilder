@@ -130,11 +130,26 @@ const RAIL = [
       title: "Show / hide unit cell" },
     { glyph: "◉", name: "Show selected only", flag: "isolate",
       title: "Hide unselected atoms so the current selection stands out." },
+    /* THE ONE SWITCH THAT IS NOT THE SELECTION'S (§ 11.6).  It says WHERE its
+     * state lives rather than being a special case in the loop below, so the
+     * next switch from a third store costs a line here and nothing there. */
+    { glyph: "∡", name: "Measure", flag: "active", store: "measurement",
+      // ...and how it is written, because `setSwitch(name, value)` and
+      // `setActive(value)` do not share an arity.  Stated in the table rather
+      // than sniffed for with `typeof`: a type check here would silently pick
+      // the wrong door the day `selection` grows a method of the same name.
+      write: (store, on) => store.setActive(on),
+      title: "Pick up to three atoms to measure — a position, a distance, "
+           + "an angle. Picking does not change the selection." },
 ];
 
 function mountRail(doc, card, model, handle) {
     const rail = card.rail;
-    const lit = {};
+    /* Each lit button beside the store it reads from, so the redraw below can
+     * ask the right one.  A switch has ONE home (§ 5.2); which home is the
+     * spec's to say. */
+    const lit = [];
+    const storeOf = (spec) => model[spec.store || "selection"];
 
     for (const spec of RAIL) {
         const button = doc.createElement("button");
@@ -153,10 +168,13 @@ function mountRail(doc, card, model, handle) {
                 // it here — a button that remembered its own state would be the
                 // second answer that goes stale the moment anything else set it
                 // (isolate, for one, turns itself off when the selection empties).
-                const on = model.selection.getState()[spec.flag];
-                model.selection.setSwitch(spec.flag, !on);
+                const store = storeOf(spec);
+                const on = store.getState()[spec.flag];
+                const write = spec.write
+                    || ((s, next) => s.setSwitch(spec.flag, next));
+                write(store, !on);
             });
-            lit[spec.flag] = button;
+            lit.push({ spec: spec, button: button });
         } else {
             // Reset is an action on the WINDOW, not a switch: there is no state
             // to light, which is why it carries no pressed attribute (§ 9.6 —
@@ -166,14 +184,27 @@ function mountRail(doc, card, model, handle) {
         rail.appendChild(button);
     }
 
-    const off = model.selection.subscribe((state) => {
-        for (const flag of Object.keys(lit)) {
-            lit[flag].setAttribute("aria-pressed", state[flag] ? "true" : "false");
+    /* One redraw, subscribed to every store the rail reads.  Each button is
+     * re-read from ITS OWN store rather than from the snapshot that happened to
+     * fire — a change in one store must not paint the other's buttons from a
+     * state object that does not describe them. */
+    const paint = () => {
+        for (const entry of lit) {
+            const on = !!storeOf(entry.spec).getState()[entry.spec.flag];
+            entry.button.setAttribute("aria-pressed", on ? "true" : "false");
         }
-    });
+    };
+    const offs = [];
+    for (const name of new Set(RAIL.filter((r) => r.flag)
+                                  .map((r) => r.store || "selection"))) {
+        offs.push(model[name].subscribe(paint));
+    }
 
     return {
-        dispose() { off(); try { rail.textContent = ""; } catch (_) {} },
+        dispose() {
+            for (const off of offs) { try { off(); } catch (_) {} }
+            try { rail.textContent = ""; } catch (_) {}
+        },
     };
 }
 
@@ -1072,102 +1103,118 @@ function mountBadge(doc, card, model) {
 
 /* ══ The measurement readout (§ 11.6, § 8.5) ═════════════════════════════════
  *
- * Its own layer, not part of drawing. It takes atom numbers from the panel's
- * selection and coordinates from the MASTER COPY at the current frame — which is
- * exactly why it stays correct while a trajectory plays and under isolate, where
- * the drawn numbering no longer matches the real one.
+ * Its own layer, and now its own INPUT: the atoms come from `measurement`, not
+ * from the selection.  Coordinates come from the MASTER COPY at the current
+ * frame — which is why the numbers stay right while a trajectory plays and
+ * under isolate, where the drawn numbering no longer matches the real one.
  *
  * THE VERTEX OF AN ANGLE IS THE ATOM PICKED SECOND, not the middle one by
- * number. That is why the pick order is carried in the snapshot (§ 8.4) rather
- * than reconstructed from the sorted selection.
+ * number.  The track is only ever built by clicks, so that order always exists
+ * — which is what retired `byGeometry`, the guess this function used to need
+ * when its input was a selection that could arrive from All, Invert, a filter
+ * or a restored session with no pick trail at all.  A guess dressed as the
+ * user's own choice is worse than a missing feature; there is no longer a case
+ * that produces one.
+ *
+ * The chip carries a CLEAR of its own, and it is the reason it may be clicked
+ * at all (§ 8.5).  The selection panel's Clear is three inches away and empties
+ * something else; two buttons with one word meaning two things, in one card, is
+ * the confusion this whole item exists to remove — so this one names what it
+ * clears by sitting on the thing it clears, and appears only while there is
+ * something to clear.
  */
 function mountReadout(doc, card, model) {
     const readout = doc.createElement("div");
-    readout.className = "molviewer-overlay molviewer-overlay--bottom-left molviewer-overlay--info";
+    readout.className = "molviewer-overlay molviewer-overlay--bottom-left "
+                      + "molviewer-overlay--info molviewer-overlay--measure";
     readout.hidden = true;
+
+    const lines = doc.createElement("div");
+    lines.className = "molviewer-measure-lines";
+    readout.appendChild(lines);
+
+    const clear = doc.createElement("button");
+    clear.type = "button";
+    clear.className = "molviewer-measure-clear";
+    clear.textContent = "Clear";
+    clear.title = "Clear the measurement — the selection is not touched.";
+    clear.addEventListener("click", () => model.measurement.clear());
+    readout.appendChild(clear);
+
     card.canvas.appendChild(readout);
 
+    const fixed3 = (v) => v.toFixed(3);
+    const vec = (p) => "(" + p.map(fixed3).join(", ") + ") Å";
+
     function show() {
-        const state = model.selection.getState();
+        const track = model.measurement.getState();
         const frame = model.getFrameAllAtoms(model.currentFrame());
-        const picked = orderedForMeasurement(state, frame);
-        if (!frame || !picked.length || picked.length > 3) {
+        const picked = track.picks;
+        lines.textContent = "";
+        // Off, or nothing picked yet, or the picks point past the structure
+        // that is loaded now — in every case there is nothing to say.
+        if (!track.active || !frame || !picked.length
+                || picked.some((i) => !frame[i])) {
             readout.hidden = true;
             return;
         }
-        const at = (i) => frame[i];
-        /* WHICH ATOM, not just which number (§ 1.1). A bare `#5` makes the
-         * reader look away from the answer to find out what it is about, and
-         * on a mixed structure the number alone does not say whether the 0.96 Å
-         * is the bond they meant. The element comes from the master copy, read
+        /* WHICH ATOM, not just which number (§ 1.1).  A bare `#5` makes the
+         * reader look away from the answer to find out what it is about, and on
+         * a mixed structure the number alone does not say whether the 0.96 Å is
+         * the bond they meant.  The element comes from the master copy, read
          * here beside the coordinates so both describe the same moment. */
         const elements = model.getElements() || [];
+        // 1-based on screen, through the one translation (§ 11.5).
         const name = (i) => (elements[i] || "?") + " #" + toDisplay(i);
-        let text = "";
-        if (picked.length === 1) {
-            const p = at(picked[0]);
-            if (p) text = name(picked[0]) + " — ("
-                        + p.map((v) => v.toFixed(3)).join(", ") + ") Å";
-        } else if (picked.length === 2) {
+        const at = (i) => frame[i];
+
+        const line = (text, extraClass) => {
+            const row = doc.createElement("div");
+            row.className = "molviewer-measure-line"
+                          + (extraClass ? " " + extraClass : "");
+            row.textContent = text;
+            lines.appendChild(row);
+        };
+
+        // EVERY PICKED ATOM'S COORDINATES, at every count — the user asked for
+        // the positions themselves, not only the derived number, because the
+        // position is what you check the derived number against.
+        for (const i of picked) line(name(i) + " — " + vec(at(i)));
+
+        if (picked.length === 2) {
             const a = at(picked[0]), b = at(picked[1]);
-            if (a && b) text = "|" + name(picked[0]) + " – " + name(picked[1])
-                             + "| = " + distance(a, b).toFixed(3) + " Å";
-        } else {
-            // picked[1] is the vertex: the atom clicked SECOND. Writing the
+            line("|" + name(picked[0]) + " – " + name(picked[1]) + "| = "
+                 + fixed3(distance(a, b)) + " Å", "molviewer-measure-result");
+            /* Δ IS SIGNED AND IN PICK ORDER: second minus first, so it reads as
+             * "to get from the first atom to the second, go this far along each
+             * axis".  An unsigned or sorted Δ would answer a different question
+             * from the one the two clicks asked. */
+            line("Δ = (" + [0, 1, 2].map((k) => fixed3(b[k] - a[k])).join(", ")
+                 + ") Å", "molviewer-measure-result");
+        } else if (picked.length === 3) {
+            // picked[1] is the vertex: the atom clicked SECOND.  Writing the
             // three in that order is what says which one it is — the middle
             // position IS the claim, so the reader can check the answer against
             // the atoms it came from without being told the convention.
             const a = at(picked[0]), v = at(picked[1]), c = at(picked[2]);
-            if (a && v && c) text = "∠" + name(picked[0]) + " – " + name(picked[1])
-                                  + " – " + name(picked[2])
-                                  + " = " + angle(a, v, c).toFixed(1) + "°";
+            line("∠" + name(picked[0]) + " – " + name(picked[1]) + " – "
+                 + name(picked[2]) + " = " + angle(a, v, c).toFixed(1) + "°",
+                 "molviewer-measure-result");
         }
-        readout.textContent = text;
-        readout.hidden = text === "";
+        readout.hidden = false;
     }
 
-    const offSel = model.selection.subscribe(show);
+    const offTrack = model.measurement.subscribe(show);
     const offFrame = model.onFrameChange(show);   // stays right while it plays
     const offData = model.subscribe(show);
     show();
 
     return {
         dispose() {
-            offSel(); offFrame(); offData();
+            offTrack(); offFrame(); offData();
             try { readout.remove(); } catch (_) {}
         },
     };
-}
-
-/* WHICH ATOMS, IN WHICH ORDER (§ 11.6).
- *
- * The vertex of an angle is THE ATOM PICKED SECOND — a chemist's convention that
- * only the pick order can carry (§ 8.4). But a selection can arrive with no pick
- * order at all: All, Invert, an applied filter and a restored session are not
- * clicks, and the store now says so by handing over an empty trail instead of
- * inventing one out of the sorted selection.
- *
- * With no trail, the vertex comes from GEOMETRY — the atom closest to the other
- * two, which for a bonded triple is the middle one. That is a guess and it is
- * labelled as one here; what it replaces was also a guess, made silently, and
- * dressed up as the user's own choice.
- */
-function orderedForMeasurement(state, frame) {
-    const picked = state.selection;
-    const trail = state.pickOrder;
-    if (trail.length === picked.length) return trail;      // a real click trail
-    if (picked.length !== 3 || !frame) return picked;      // no vertex to find
-    return byGeometry(picked, frame);
-}
-
-function byGeometry(atoms, frame) {
-    if (atoms.some((i) => !frame[i])) return atoms;
-    const spread = (i) => atoms.reduce(
-        (total, other) => total + (other === i ? 0 : distance(frame[i], frame[other])), 0);
-    let vertex = atoms[0];
-    for (const atom of atoms) if (spread(atom) < spread(vertex)) vertex = atom;
-    const ends = atoms.filter((i) => i !== vertex);
-    return [ends[0], vertex, ends[1]];
 }
 
 function distance(a, b) {
@@ -1386,7 +1433,21 @@ function mountPanel(doc, card, model) {
      *
      * `rowBoxes` is the list as the user sees it, in the order they see it, so
      * "between" means what it looks like it means and nothing is invented. */
+    /* WHILE THE RULER IS ON, THE LIST DOES NOT EDIT THE SELECTION (§ 11.6).
+     *
+     * A single click still picks — through `model.pickAtom`, which routes it to
+     * the track.  The BULK gestures do not: shift-range and the drag box mean
+     * "these forty atoms", and a track that holds three has nothing to do with
+     * that.  Doing nothing is the only reading that keeps the user's rule true
+     * — *a click in the list does not change the selection group* — since the
+     * alternative is a gesture that quietly writes to the very list measuring
+     * was supposed to leave alone.
+     *
+     * Asked once, here, so a third bulk gesture cannot be added without it. */
+    const measuring = () => model.measurement.getState().active;
+
     function selectRun(fromAtom, toAtom) {
+        if (measuring()) return;
         const from = rowBoxes.findIndex((e) => e.atom === fromAtom);
         const to   = rowBoxes.findIndex((e) => e.atom === toAtom);
         if (from < 0 || to < 0) return;   // a row that is no longer drawn
@@ -1443,6 +1504,9 @@ function mountPanel(doc, card, model) {
         listWrap.addEventListener("mousedown", (e) => {
             if (e.button !== 0) return;                    // left button only
             if (isControl(e.target)) return;
+            // Refused at the START, not at the end: a box that draws itself
+            // across forty rows and then does nothing reads as broken.
+            if (measuring()) return;
             /* A BOX THAT OUTLIVED ITS DRAG IS SWEPT UP HERE. If the pointer
              * leaves the window mid-drag the mouseup lands somewhere else and
              * the box is left on screen, pointing at nothing. Clearing it as
@@ -1939,6 +2003,19 @@ function mountPanel(doc, card, model) {
             check.checked = picked.has(atom.index);
             check.setAttribute("aria-label",
                                "Select atom #" + toDisplay(atom.index));
+            /* WHILE MEASURING, THE TICK BOX IS NOT A SELECTION CONTROL.
+             *
+             * Caught on `click`, which fires BEFORE the browser flips the box:
+             * `preventDefault` there stops the flip and suppresses the `change`
+             * below, so nothing has to put the tick back afterwards.  The tick
+             * goes on meaning exactly one thing — this atom is selected — which
+             * is what lets the redraw stay the only writer of it. */
+            check.addEventListener("click", (e) => {
+                if (!measuring()) return;
+                e.preventDefault();
+                e.stopPropagation();
+                model.pickAtom(atom.index);
+            });
             check.addEventListener("change", (e) => {
                 // The row's own handler would toggle it straight back.
                 e.stopPropagation();
@@ -1954,7 +2031,7 @@ function mountPanel(doc, card, model) {
                     return;
                 }
                 rangeAnchor = atom.index;
-                model.selection.toggle(atom.index);
+                model.pickAtom(atom.index);
             });
             checkCell.appendChild(check);
             row.appendChild(checkCell);
@@ -1981,7 +2058,7 @@ function mountPanel(doc, card, model) {
                     return;
                 }
                 rangeAnchor = atom.index;
-                model.selection.toggle(atom.index);
+                model.pickAtom(atom.index);
             });
             rowBoxes.push({ atom: atom.index, row: row });   // for the drag box
             list.appendChild(row);

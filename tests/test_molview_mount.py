@@ -469,9 +469,14 @@ def test_a_switch_and_a_selection_reach_the_drawing():
 
 
 def test_the_switches_are_a_rail_of_buttons_outside_the_window():
-    """§ 1.1: "Six icon buttons sit down the left edge, always outside the
+    """§ 1.1 / § 8.5: icon buttons down the left edge, "always outside the
     canvas, never on top of the molecule" — Reset view, axes, atom labels, force
-    vectors, unit cell, show-selected-only, in that order.
+    vectors, unit cell, show-selected-only, and (2026-08-30) **measure**, in
+    that order.
+
+    The seventh is the one that is not the selection's: § 8.5 now says each
+    button reads its lit state "from the store that owns it", so this test also
+    pins that a switch living in `measurement` lights from there.
 
     Two things are asserted and both are the design rather than decoration: that
     they are one-press controls a user can see without opening anything, and that
@@ -504,19 +509,31 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
         viewer.data.selection.setSwitch("showAxis", true);
         const litFromStore = buttons[1].getAttribute("aria-pressed");
 
+        // The seventh button reads a DIFFERENT store (§ 11.6), so both
+        // directions are checked against it too.
+        buttons[6].click();
+        const measuringAfterPress = viewer.data.measurement.getState().active;
+        viewer.data.measurement.setActive(false);
+        const measureLitFromStore = buttons[6].getAttribute("aria-pressed");
+        // ...and pressing it must not have moved anything in the selection.
+        const selectionUntouched = viewer.data.selection.get();
+
         globalThis.__resetCalls();
         buttons[0].click();                       // Reset view
         const refit = globalThis.__countCalls("zoomTo");
 
-        console.log(JSON.stringify({ shape, afterPress, litFromStore, refit }));
+        console.log(JSON.stringify({ shape, afterPress, litFromStore, refit,
+                                    measuringAfterPress, measureLitFromStore,
+                                    selectionUntouched }));
         """
     )
-    assert out["shape"]["glyphs"] == ["⟲", "✚", "#", "➤", "▦", "◉"], (
-        f"the rail is not § 1.1's six buttons in order: {out['shape']['glyphs']}"
+    assert out["shape"]["glyphs"] == ["⟲", "✚", "#", "➤", "▦", "◉", "∡"], (
+        f"the rail is not § 8.5's buttons in order: {out['shape']['glyphs']}"
     )
     assert out["shape"]["names"] == [
         "Reset view", "Show axes", "Show atom labels",
         "Show force vectors", "Show unit cell", "Show selected only",
+        "Measure",
     ]
     assert out["shape"]["pressed"][0] is None, (
         "Reset view carries a pressed state; it is an action, not a switch"
@@ -534,6 +551,17 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
         "remembering its own state instead of reading the store"
     )
     assert out["refit"] == 1, "Reset view did not re-fit the camera"
+    assert out["measuringAfterPress"] is True, (
+        "the measure button wrote nothing — a rail switch whose home is not "
+        "`selection` still has to reach it (§ 8.5)"
+    )
+    assert out["measureLitFromStore"] == "false", (
+        "turning measuring off elsewhere left its button lit — the rail is "
+        "reading the wrong store, or remembering its own answer"
+    )
+    assert out["selectionUntouched"] == [], (
+        "turning the ruler on moved the selection (§ 11.6's wall)"
+    )
 
 
 def test_an_open_menu_is_placed_against_its_own_trigger():
@@ -723,18 +751,15 @@ def test_each_write_costs_what_the_cost_table_says_it_costs():
 
 
 def test_the_readout_measures_from_the_truth_in_pick_order():
-    """§ 11.6: the readout's atoms come from the selection IN PICK ORDER — "which
-    is why the vertex of a three-atom angle is the atom picked second, not the
-    middle one by number" — and its coordinates from the master copy at the
-    current frame, never from the drawing.
+    """§ 11.6: the readout's atoms come from the MEASUREMENT TRACK in pick order
+    — "which is why the vertex of a three-atom angle is the atom picked second,
+    not the middle one by number" — and its coordinates from the master copy at
+    the current frame, never from the drawing.
 
-    § 13.3 asks a test to show both, and there was none: the store's pick order
-    was guarded, and the only thing that reads it was not. That is § 8.4's
-    failure with the halves swapped.
-
-    The fallback is here too, because a selection can arrive with no pick order
-    at all — All, Invert, a filter — and inventing one out of the sorted
-    selection is what makes a wrong vertex look like the user's own choice.
+    Its input changed on 2026-08-30: it used to read `selection`, which is what
+    an edit acts on.  The geometric-vertex fallback went with that change and is
+    asserted GONE here — a selection can arrive with no pick order (All, Invert,
+    a filter), a track cannot, so the guess has no case left to cover.
     """
     out = _run(
         """
@@ -753,74 +778,107 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
             [[-2, 0, 0], [0, 0, 0], [0, 2, 0]],
         ]);
         const card = host.querySelector(".molviewer-card");
-        const readout = card.querySelector(".molviewer-overlay--info");
+        const readout = card.querySelector(".molviewer-overlay--measure");
+        const lines = () => Array.from(
+            readout.querySelectorAll(".molviewer-measure-line"))
+            .map((n) => n.textContent);
+        const result = () => Array.from(
+            readout.querySelectorAll(".molviewer-measure-result"))
+            .map((n) => n.textContent);
+
+        // Off, it says nothing at all — even with atoms selected.
+        viewer.data.selection.add([0, 1, 2]);
+        const whileOff = readout.hidden;
+
+        viewer.data.measurement.setActive(true);
+        const emptyTrack = readout.hidden;
 
         // One atom: where it is.
-        viewer.data.selection.toggle(1);
-        const one = readout.textContent;
+        viewer.data.measurement.toggle(1);
+        const one = lines();
 
-        // Two: the distance between them.
-        viewer.data.selection.toggle(2);
-        const two = readout.textContent;
+        // Two: both positions, the distance, and the signed delta.
+        viewer.data.measurement.toggle(2);
+        const two = lines();
 
         // Three, picked 2nd-1st-3rd, so the VERTEX IS ATOM 0 — the one picked
         // second — even though atom 1 is the middle by number and by geometry.
-        viewer.data.selection.clear();
-        viewer.data.selection.toggle(1);
-        viewer.data.selection.toggle(0);
-        viewer.data.selection.toggle(2);
-        const picked = readout.textContent;
+        viewer.data.measurement.clear();
+        viewer.data.measurement.toggle(1);
+        viewer.data.measurement.toggle(0);
+        viewer.data.measurement.toggle(2);
+        const picked = result();
 
-        // The same three with no pick trail at all: geometry decides, and the
-        // vertex is the atom between the other two.
-        viewer.data.selection.clear();
+        // A BULK SELECTION CANNOT REACH THE TRACK, so the no-trail case the
+        // geometric guess existed for cannot arise.
         viewer.data.selection.all(3);
-        const bulk = readout.textContent;
+        const afterBulk = result();
+        const trackAfterBulk = viewer.data.measurement.get();
 
         // It follows the frame, because it re-reads the master copy.
         viewer.data.setCurrentFrame(1);
-        const laterFrame = readout.textContent;
+        const laterFrame = result();
+        const laterLines = lines();
 
         // And it is not the drawing's numbering: under isolate the drawn set is
         // cut down and renumbered, and the answer must not move.
         viewer.data.selection.setSwitch("isolate", true);
-        const isolated = readout.textContent;
+        const isolated = result();
 
-        console.log(JSON.stringify({ one, two, picked, bulk, laterFrame, isolated }));
+        // Clear is on the chip, and it clears the RULER, not the selection.
+        readout.querySelector(".molviewer-measure-clear").click();
+        console.log(JSON.stringify({
+            whileOff, emptyTrack, one, two, picked, afterBulk, trackAfterBulk,
+            laterFrame, laterLines, isolated,
+            afterClear: readout.hidden,
+            selectionAfterClear: viewer.data.selection.get(),
+        }));
         """
     )
-    # § 1.1's three formats, WORD FOR WORD. These assertions used to be
-    # `startswith("#2")` and `"1.000 Å"` — copied from what the code printed, in
-    # a file whose docstring says every test comes from the document. So the
-    # readout had never carried the element at all, and this test was what kept
-    # it that way: it agreed with the code because it was written from it.
-    assert out["one"] == "C #2 — (0.000, 0.000, 0.000) Å", (
-        f"one atom → `Au #3 — (0.000, 0.000, 0.000) Å` (§ 1.1): {out['one']}"
+    assert out["whileOff"] is True, (
+        "the chip showed with the ruler off — it was reading the selection"
     )
-    assert out["two"] == "|C #2 – C #3| = 1.000 Å", (
-        f"two atoms → `|H #5 – O #1| = 0.957 Å` (§ 1.1): {out['two']}"
-    )
+    assert out["emptyTrack"] is True, "nothing picked is nothing to say"
+
+    # § 1.1's formats, WORD FOR WORD. These assertions used to be
+    # `startswith("#2")` — copied from what the code printed, in a file whose
+    # docstring says every test comes from the document. So the readout had
+    # never carried the element at all, and this test was what kept it that way.
+    assert out["one"] == ["C #2 — (0.000, 0.000, 0.000) Å"], out["one"]
+    # EVERY picked atom's coordinates, then the derived answers: the position is
+    # what a reader checks the distance against (§ 11.6).
+    assert out["two"] == [
+        "C #2 — (0.000, 0.000, 0.000) Å",
+        "C #3 — (0.000, 1.000, 0.000) Å",
+        "|C #2 – C #3| = 1.000 Å",
+        "Δ = (0.000, 1.000, 0.000) Å",
+    ], out["two"]
+
     # Picked 1→0→2, so the vertex is atom 0 — off to the side, giving 45°. By
     # number or by geometry the vertex would be atom 1, giving 90°: the two
     # answers differ, which is what makes this test able to tell them apart.
-    assert out["picked"] == "∠C #2 – C #1 – C #3 = 45.0°", (
-        f"the vertex must be the atom picked SECOND, not the middle one by "
-        f"number or by geometry, and it is named in the middle position "
-        f"(§ 1.1): {out['picked']}"
+    assert out["picked"] == ["∠C #2 – C #1 – C #3 = 45.0°"], out["picked"]
+    assert out["afterBulk"] == out["picked"], (
+        "a bulk SELECTION changed the measurement — the two tracks are joined"
     )
-    # With no trail, geometry: atom 1 sits between the other two, giving 90°.
-    # Written out, the vertex moves to the middle NAME as well as the middle
-    # value — which is what makes the two cases distinguishable on screen and
-    # not only in the number.
-    assert out["bulk"] == "∠C #1 – C #2 – C #3 = 90.0°", (
-        f"with no pick trail the vertex comes from geometry: {out['bulk']}"
+    assert out["trackAfterBulk"] == [1, 0, 2]
+
+    assert out["laterFrame"] == out["picked"], (
+        "the angle is 45° in both frames; only the coordinates should move"
     )
-    assert out["laterFrame"] == out["bulk"], (
-        "the readout did not re-read the master copy at the new frame"
+    assert out["laterLines"][0] == "C #2 — (0.000, 0.000, 0.000) Å"
+    assert out["laterLines"][1] == "C #1 — (-2.000, 0.000, 0.000) Å", (
+        "the readout did not re-read the master copy at the new frame: "
+        f"{out['laterLines']}"
     )
     assert out["isolated"] == out["laterFrame"], (
         "isolate changed the measurement — it is reading the drawing's numbering "
         "instead of the master copy (§ 6.5)"
+    )
+    assert out["afterClear"] is True, "the chip's Clear did not empty the track"
+    assert out["selectionAfterClear"] == [0, 1, 2], (
+        "the chip's Clear emptied the SELECTION — the two Clears in this card "
+        "are exactly the confusion § 11.6 separates them to avoid"
     )
 
 

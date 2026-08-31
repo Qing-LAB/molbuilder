@@ -166,13 +166,20 @@ export async function mount(hostEl, workspace, opts) {
         hasTruthLane: opts.mode !== "readonly",
     }));
 
-    // A click in the window arrives at the bottom and is the selection's
-    // business, not the drawing's (§ 9.5). Under isolate the drawn numbering no
-    // longer matches the real one, so in-window clicking is off (§ 6.5) — the
-    // panel curates the selection instead.
+    /* A click in the window arrives at the bottom and is the data's business,
+     * not the drawing's (§ 9.5).  WHICH TRACK it lands in — the selection or
+     * the measurement — is `model.pickAtom`'s to decide, and this file does not
+     * get a second opinion about it (§ 11.6).
+     *
+     * The isolate guard stays HERE, and comes first, because it is about this
+     * entry and not about the tracks: under isolate the drawn numbering no
+     * longer matches the real one (§ 6.5), so the index is not the atom.  A
+     * measurement built from it would be the wrong atoms quoted to three
+     * decimal places, which is worse than no answer — the panel curates
+     * instead, where the rows carry real indices. */
     embed.onPick((drawnIndex) => {
         if (model.selection.getState().isolate) return;
-        model.selection.toggle(drawnIndex);
+        model.pickAtom(drawnIndex);
     });
 
     /* ── Playback (§ 9.2) ──────────────────────────────────────────────────

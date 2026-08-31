@@ -1,6 +1,6 @@
 # Modify — the Molbuilder tab's five-item redesign
 
-**Role:** plan (designed, none of it built)
+**Role:** plan (items 1, 2 and 5 built 2026-08-30; items 3 and 4 designed)
 **Domain:** web · science
 **Started:** 2026-08-30
 **Companions:** [`web/molview.md`](?doc=web/molview.md) §§ 8.5, 9.5, 11.2b, 11.6 —
@@ -109,6 +109,15 @@ That guess exists only because a *selection* can arrive with no pick order — f
 to invent a vertex from geometry. A measurement track is **only ever built by
 clicks**, so there is no such case left. `molview.md` § 11.6 loses a paragraph
 rather than gaining one.
+
+> **A loose end this leaves, recorded rather than taken (2026-08-30).**
+> `selection`'s snapshot still carries `pickOrder`, and its own comment said it
+> was *"for measurement"* — which is no longer true: after this item **nothing
+> in the module reads it**. Deleting it changes the shape §§ 8.4 and 9.5
+> describe, and § 8.4's recorded lesson — *a fact the store keeps but does not
+> hand over does not exist* — is about that very field, so the deletion is its
+> own decision rather than a side effect of this one. The comment was corrected
+> in the same commit, so no reader is misled in the meantime.
 
 ### 1.4 The isolation rule, and what pins it
 
@@ -637,6 +646,9 @@ gesture will look like an obvious idea again later.
 
 | | item | why here | touches |
 |---|---|---|---|
+| ✅ | **Center follows the group** (§ 2) — *built* | | |
+| ✅ | **Measurement track** (§ 1) — *built* | | |
+| ✅ | **The surface** (§ 5) — *built* | | |
 | 1 | **Center follows the group** (§ 2) | one branch in one route; no browser change | `blueprints/modify.py` |
 | 2 | **Measurement track** (§ 1) | settles *what a click does*, which item 4 depends on | `stores.js`, `ui.js`, `mount.js`, `ui-context.js`, `molview.css` |
 | 3 | **Cell setup** (§ 4) | no new route; must be settled before item 3 finishes, since the padding switch moves into it (§ 4.4) | `periodicity.js`, `modify.html`, `junction-cell.md` |
@@ -684,5 +696,14 @@ All from the user, 2026-08-30, in the exchange that produced this file.
 
 ---
 
-> **Nothing here is built.** The next step is § 8 — the contracts — and only then
-> § 7's order.
+> **Built on 2026-08-30, in this order:** item 5 (the surface), item 2 (Center
+> follows the group), item 1 (the measurement track).  Each landed with its
+> contract edited first — `ui-contract.md` § 4 for the surface, `molview.md`
+> §§ 8.5, 9.5, 11.2b, 11.6 for the track — and with the pins that make the rule
+> fail if it is broken: `test_molview_measurement.py` mutation-tests the wall
+> three ways, and `test_web.py`'s four new translate pins fail on the old
+> whole-structure centring.
+>
+> **Still to build: items 3 and 4** — the new slab tab and the Cell page.  Their
+> contract rows in § 8 are untouched, and § 7's reasoning holds: both add panels
+> to the card item 5 just settled, so they inherit one inset rather than five.

@@ -94,18 +94,19 @@ def _canvas_pixels(page):
 #  § 1.1 — the toolbar switches                                         #
 # --------------------------------------------------------------------- #
 
-def test_the_rail_is_six_buttons_beside_the_window_not_over_it(demo):
-    """§ 1.1: "Six icon buttons sit down the left edge, always outside the
-    canvas, never on top of the molecule."
+def test_the_rail_is_buttons_beside_the_window_not_over_it(demo):
+    """§ 1.1 / § 8.5: icon buttons down the left edge, "always outside the
+    canvas, never on top of the molecule."  Seven since 2026-08-30 — the
+    measure toggle joined them (§ 11.6).
 
     Both halves are the design: one press each, visible without opening
     anything, and never covering what the user is looking at.
     """
     buttons = demo.locator(".molviewer-rail button")
-    assert buttons.count() == 6
+    assert buttons.count() == 7
 
-    glyphs = [buttons.nth(i).inner_text() for i in range(6)]
-    assert glyphs == ["⟲", "✚", "#", "➤", "▦", "◉"], glyphs
+    glyphs = [buttons.nth(i).inner_text() for i in range(7)]
+    assert glyphs == ["⟲", "✚", "#", "➤", "▦", "◉", "∡"], glyphs
 
     rail = demo.locator(".molviewer-rail").bounding_box()
     canvas = demo.locator(".molviewer-window-canvas").bounding_box()
@@ -113,7 +114,7 @@ def test_the_rail_is_six_buttons_beside_the_window_not_over_it(demo):
         f"the rail overlaps the 3D window: rail ends at "
         f"{rail['x'] + rail['width']}, canvas starts at {canvas['x']}"
     )
-    for i in range(6):
+    for i in range(7):
         assert buttons.nth(i).is_visible()
 
 
@@ -240,36 +241,48 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
 
     Benzene's ring carbons are 1.396 Å from the centre and 120° apart, so the
     numbers are checkable rather than merely present.
+
+    Since 2026-08-30 the ruler has its own toggle and its own track, so this
+    walk starts by pressing the rail's seventh button — and ends by checking on
+    screen that three atoms were measured and NONE was selected, which is the
+    user's rule stated where only a page can show it.
     """
     rows = demo.locator(".molviewer-atoms-table tr")
-    readout = demo.locator(".molviewer-overlay--info")
+    readout = demo.locator(".molviewer-overlay--measure")
+    result = demo.locator(".molviewer-measure-result")
+    count = demo.locator(".molviewer-selection-count")
 
-    # THE FORMAT IS THE CONTRACT'S, spelled out in § 1.1:
+    # Nothing is measured until the ruler is on: a row click is a selection.
+    rows.nth(0).click()
+    _settle(demo)
+    assert not readout.is_visible(), "the chip showed with the ruler off"
+    assert count.inner_text().startswith("1 of "), count.inner_text()
+
+    demo.locator(".molviewer-rail button").nth(6).click()   # ∡ Measure
+    _settle(demo)
+
+    # THE FORMAT IS THE CONTRACT'S, spelled out in § 1.1 and § 11.6:
     #   one atom    -> `Au #3 — (0.000, 0.000, 0.000) Å`
-    #   two atoms   -> `|H #5 – O #1| = 0.957 Å`
+    #   two atoms   -> `|H #5 – O #1| = 0.957 Å`, then `Δ = (…) Å`
     #   three atoms -> `∠H #5 – O #1 – H #6 = 104.5°`
-    #
-    # This asserted a bare `#1` and a leading `120.`, which is the shape from
-    # before the element symbol was added. § 1.1 says why it is there: a bare
-    # number makes the reader look away from the answer to find out which atom
-    # it is about, and on a mixed structure it does not say whether the 0.96 Å
-    # is the bond they meant.
     rows.nth(0).click()
     _settle(demo)
     assert readout.is_visible()
     text = readout.inner_text()
     assert text.startswith("C #1 — ("), text          # the atom, then its place
-    assert text.endswith("Å"), text
+    assert result.count() == 0, "one atom has a position, not a result"
 
     rows.nth(1).click()
     _settle(demo)
-    text = readout.inner_text()
-    assert text.startswith("|C #1 – C #2| = "), text  # both atoms named
-    assert text.endswith("Å"), text
+    lines = [result.nth(i).inner_text() for i in range(result.count())]
+    assert lines[0].startswith("|C #1 – C #2| = "), lines   # both atoms named
+    assert lines[0].endswith("Å"), lines
+    assert lines[1].startswith("Δ = ("), lines
+    assert lines[1].endswith("Å"), lines
 
     rows.nth(2).click()
     _settle(demo)
-    text = readout.inner_text()
+    text = result.nth(0).inner_text()
     assert text.endswith("°"), text
     # Picked 1 → 2 → 3, so atom 2 is the vertex: the interior angle of the ring.
     # The MIDDLE POSITION IS THE CLAIM (§ 11.6) -- writing the three in pick
@@ -279,10 +292,18 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
         f"the vertex is not the atom picked second: {text}")
     assert "120." in text, f"benzene's interior angle is 120 degrees: {text}"
 
+    # THE WALL, on screen: three atoms measured, and the selection is still the
+    # ONE that was picked before the ruler came on.
+    assert count.inner_text().startswith("1 of "), (
+        f"measuring changed the selection: {count.inner_text()}")
 
-# --------------------------------------------------------------------- #
-#  § 1.1 — the menus, the panel, playing a trajectory                   #
-# --------------------------------------------------------------------- #
+    # Clear is on the chip, and it clears the ruler alone.
+    demo.locator(".molviewer-measure-clear").click()
+    _settle(demo)
+    assert not readout.is_visible()
+    assert count.inner_text().startswith("1 of "), (
+        f"the chip's Clear emptied the selection: {count.inner_text()}")
+
 
 def test_the_view_menu_opens_onto_something(demo):
     """§ 8.5: the menus are controls MolView draws, and a control that opens onto

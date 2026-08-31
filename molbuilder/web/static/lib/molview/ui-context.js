@@ -4,8 +4,8 @@
  *           place), § 9.7 (the bounded pose read).
  * Owns:     one workspace slot per viewer — tag `<owner>:ui`, one file at
  *           state_index 0 — holding view settings, switches, the camera
- *           pose, the displayed frame, and (for viewers with no truth lane)
- *           the selection.
+ *           pose, the displayed frame, the measurement track, and (for
+ *           viewers with no truth lane) the selection.
  * Called by: mount.js, once per viewer, after the model and engine exist.
  *
  * NEVER (§ 11.2b — "looking is not changing"):
@@ -68,6 +68,15 @@ export function attachUiContext(deps) {
             switches: model.selection.switches(),
             camera: engine.getCamera(),
             frame: model.currentFrame(),
+            /* The ruler (§ 11.6).  It belongs in THIS lane and in no other:
+             * a measurement is looking, not changing, so it is never a state,
+             * never the draft, and never in the file the user saves.  Split
+             * the same way the rest of the payload is — `measuring` is a
+             * standing preference like a switch, `measurement` is atom indices
+             * and therefore only meaningful against the structure they were
+             * picked on (the `match` guard below). */
+            measuring: model.measurement.getState().active,
+            measurement: model.measurement.get(),
         };
         if (!hasTruthLane) out.selection = model.selection.get();
         return out;
@@ -102,6 +111,9 @@ export function attachUiContext(deps) {
             for (const k of Object.keys(sw)) {
                 model.selection.setSwitch(k, sw[k]);
             }
+            if (typeof saved.measuring === "boolean") {
+                model.measurement.setActive(saved.measuring);
+            }
             // The structure-bound half, only onto the structure it belonged
             // to (§ 11.2b's guard).
             const now = matchOf();
@@ -116,6 +128,14 @@ export function attachUiContext(deps) {
                 if (saved.camera) engine.setCamera(saved.camera);
                 if (!hasTruthLane && Array.isArray(saved.selection)) {
                     model.selection.adopt(saved.selection);
+                }
+                /* The picks come back for EVERY viewer, editable or not: they
+                 * are not the selection and no truth lane restores them, so
+                 * `hasTruthLane` has nothing to say here.  Under `match` like
+                 * the camera and the frame, because an index into a different
+                 * structure names a different atom. */
+                if (Array.isArray(saved.measurement)) {
+                    model.measurement.adopt(saved.measurement);
                 }
             }
         } finally {
@@ -147,6 +167,7 @@ export function attachUiContext(deps) {
     // one write; the pose is read AT the write, never tracked.
     offs.push(model.view.subscribe(schedule));
     offs.push(model.selection.subscribe(schedule));
+    offs.push(model.measurement.subscribe(schedule));
     offs.push(model.onFrameChange(schedule));
     if (canvasEl && typeof canvasEl.addEventListener === "function") {
         const onGesture = () => schedule();

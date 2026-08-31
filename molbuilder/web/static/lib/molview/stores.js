@@ -1,8 +1,12 @@
-/* MolView — the two stores: what is picked out, and how it is drawn. § 7 level 4.
+/* MolView — the three stores: what is picked out, what is being measured, and
+ * how it is drawn. § 7 level 4.
  *
- * Contract: docs/web/molview.md § 9.5 (`selection`) and § 9.6 (`view`).
- * Owns:     `selection` — what is picked, and the switches beside it.
- *           `view`      — style, radius, background, projection.
+ * Contract: docs/web/molview.md § 9.5 (`selection`), § 9.6 (`view`),
+ *           § 11.6 (`measurement`).
+ * Owns:     `selection`   — what is picked, and the switches beside it.
+ *           `measurement` — the ruler's own track: at most three atoms, in the
+ *                           order they were clicked, and whether it is on.
+ *           `view`        — style, radius, background, projection.
  * Called by: assembled by the model and reached ONLY through it (§ 9.3), so a
  *           change asked for through a store meets the same rules as one asked
  *           for anywhere else (§ 9.4).
@@ -99,7 +103,15 @@ export function createSelectionStore(handed) {
     // THE SELECTION IS THE TRUTH; click and filter are two EDITORS of it.
     // Switching between them does not touch what is selected.
     let selected = [];
-    let pickOrder = [];          // the order atoms were picked, for measurement
+    /* The order atoms were picked.  ITS CONSUMER HAS MOVED (2026-08-30): the
+     * measurement readout used to read this, and now reads the `measurement`
+     * store's own list, so nothing in the module reads this field today.  It is
+     * left standing rather than deleted in the same commit that orphaned it,
+     * because the snapshot's shape is § 8.4's and § 9.5's and removing a
+     * documented field is its own decision — recorded as a loose end in
+     * plans/modify-redesign-plan.md § 1.3 rather than left for a reader to
+     * discover from a comment that no longer matches. */
+    let pickOrder = [];
     let mode = "click";          // which editor is showing — not what is selected
     let rows = [];               // the filter rows being built
     let combine = "and";
@@ -396,6 +408,116 @@ function rowToRule(row) {
         default:
             return null;
     }
+}
+
+
+/* ══ `measurement` — the ruler's own track (§ 11.6) ══════════════════════════
+ *
+ * A THIRD STORE, AND THE POINT IS THAT IT IS A THIRD.
+ *
+ * Measuring is not selecting.  The selection is what an EDIT acts on -- delete,
+ * translate, centre, a label -- and every op resolves its group through it.  A
+ * measurement is a question about where atoms are, asked and answered without
+ * changing anything.  Sharing one list would mean that picking a third atom to
+ * read an angle silently changed what the next Delete would remove, and that
+ * clearing a measurement changed it back.
+ *
+ * So the wall is a separate object, not a flag on `selection`: this store's
+ * atoms never enter `selection`'s snapshot, and the panel, the halo, the count
+ * and isolate -- all readers of that one settled object (§ 8.4) -- cannot see
+ * them even by accident.
+ *
+ * It holds `active` as well as the picks, because a store owns its whole
+ * feature: the rail button that turns measuring on reads its lit state from
+ * here, the same way the other five read theirs from `selection`.  A flag in
+ * one store governing a list in another is the split § 5.2 exists to stop.
+ *
+ * WHY A CAP OF THREE, and why the fourth pick drops the OLDEST (user,
+ * 2026-08-30): three atoms is every measurement there is -- a position, a
+ * distance, an angle -- and a fourth pick means "now measure from here",
+ * which is measuring a chain.  Refusing the fourth would make the user clear
+ * and re-pick two atoms they had already chosen.
+ *
+ * THE ORDER IS THE USER'S CLICK ORDER and it is the answer, not a detail: the
+ * vertex of an angle is the atom picked SECOND (§ 11.6).  Because this track is
+ * only ever built by clicks, that order always exists -- which is what retires
+ * the geometric vertex guess the readout needed when its input was a selection
+ * that could arrive from All, Invert or a filter with no trail at all.
+ */
+
+//: Every measurement there is fits in three atoms (§ 11.6).
+const MEASUREMENT_MAX = 3;
+
+export function createMeasurementStore() {
+    let active = false;
+    let picks = [];
+    const changed = subscribable();
+
+    function snapshot() {
+        return { active: active, picks: picks.slice() };
+    }
+    const fire = () => changed.fire(snapshot());
+
+    return {
+        /* ── Reading ─────────────────────────────────────────────────────── */
+        getState() { return snapshot(); },
+        get()      { return picks.slice(); },
+
+        // Handed one on subscribing, like `selection` — the first paint needs
+        // no separate fetch (§ 8.4).
+        subscribe(fn) {
+            const off = changed.add(fn);
+            try { fn(snapshot()); } catch (_) {}
+            return off;
+        },
+
+        /* ── The toggle beside the other rail switches (§ 8.5) ───────────── */
+        //
+        // Turning measuring OFF keeps the picks.  Coming back to a measurement
+        // you were part-way through is the behaviour that costs nothing; the
+        // Clear button is how a user says they are done with it, and it says so
+        // in one place rather than being a side effect of a different control.
+        setActive(on) {
+            const next = !!on;
+            if (active === next) return;
+            active = next;
+            fire();
+        },
+
+        /* ── The picks (§ 11.6) ──────────────────────────────────────────── */
+        //
+        // Toggle, so clicking a picked atom takes it back out — the same verb
+        // the selection uses, because it is the same gesture.
+        toggle(atom) {
+            const at = picks.indexOf(atom);
+            if (at >= 0) {
+                picks.splice(at, 1);
+            } else {
+                picks.push(atom);
+                // The fourth pick drops the OLDEST, so measuring along a chain
+                // stays one click per step.
+                while (picks.length > MEASUREMENT_MAX) picks.shift();
+            }
+            fire();
+        },
+        clear() {
+            if (!picks.length) return;
+            picks = [];
+            fire();
+        },
+
+        /* A restored session's track (§ 11.2b).  It is *how you were looking*,
+         * not part of the work — so it comes back from the view-context lane
+         * and never from a state, a draft or the file.  Trimmed and cleaned
+         * here rather than trusted: the lane is bytes that were on disk. */
+        adopt(atoms) {
+            const next = (Array.isArray(atoms) ? atoms : [])
+                .filter((i) => Number.isInteger(i) && i >= 0)
+                .slice(0, MEASUREMENT_MAX);
+            picks = next;
+            fire();
+        },
+    };
 }
 
 
