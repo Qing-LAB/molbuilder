@@ -1417,6 +1417,11 @@ class TestEveryOpIsChecked:
                                     "size": [1, 1, 2]},
         "/api/modify/symmetric_electrodes": {"element": "Au", "plane": "111",
                                              "size": [1, 1, 2], "gap": 8.0},
+        # The new slab op (modify-redesign-plan.md § 3).  It reads no
+        # selection -- dx, dy and start_z are absolute -- so unlike the two
+        # electrode ops above it needs no `indices` to have something to do.
+        "/api/modify/slab":        {"element": "Au", "plane": "111",
+                                    "m": 1, "n": 1, "layers": 2},
     }
 
     @pytest.fixture
@@ -1425,9 +1430,15 @@ class TestEveryOpIsChecked:
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
-    #: GET, returns dropdown enums -- no structure goes in or out, so there is
-    #: nothing to validate (modify.py:113).
-    NOT_AN_OP = {"/api/modify/meta"}
+    #: Routes that return no structure, so there is nothing to validate.
+    NOT_AN_OP = {
+        # GET, returns dropdown enums -- no structure goes in or out.
+        "/api/modify/meta",
+        # Measures a bulk run's lattice constant and returns NUMBERS (a, the
+        # spacings it implies, and notes).  It reads a file the user points
+        # at and never touches the structure on the bench.
+        "/api/modify/lattice-from-run",
+    }
 
     def _stranded(self):
         """Atoms at x = 50..52 in a 4 A box the user typed at the origin."""

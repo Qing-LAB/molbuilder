@@ -89,10 +89,15 @@ from ._shared import (
 
 import numpy as np
 
-from molbuilder.cell import STACKING_PERIOD, measure_fcc as _measure_fcc
+from molbuilder.cell import (
+    STACKING_PERIOD,
+    classify_seam as _classify_seam,
+    measure_fcc as _measure_fcc,
+)
 from molbuilder.modify import (
     SUPPORTED_FCC_ELEMENTS,
     SUPPORTED_FCC_PLANES,
+    FCC_ORTHOGONAL_CHOICES,
     add_atom as _add_atom,
     add_electrode_slab as _add_electrode_slab,
     add_symmetric_electrodes as _add_symmetric_electrodes,
@@ -152,6 +157,11 @@ def api_modify_meta():
         "lattice_table":   lattice_table,
         "lattice_error":   lattice_error,
         "stacking_period": dict(STACKING_PERIOD),
+        # Which cell shapes each surface can be built with -- so the Slab
+        # panel can stop offering a combination ASE cannot make, without
+        # carrying its own copy of the rule (science/junction-cell.md § 2b).
+        "orthogonal_choices": {p: list(v)
+                               for p, v in FCC_ORTHOGONAL_CHOICES.items()},
     })
 
 
@@ -799,7 +809,85 @@ def api_modify_slab():
         return _err(f"add_slab failed ({type(exc).__name__}): {exc}", 500)
     # No selection_remap: the client CLEARS the selection on any atom-count
     # change (molview.md § 11.1, "Effect on atom count").
-    return _ok_response(new_struct)
+    return _ok_response(new_struct,
+                        extra={"notices": _seam_notices(new_struct, element,
+                                                        plane)})
+
+
+#: The seam's subject.  NOT ``"cell"``: that routes to the Cell page, and a
+#: seam is not fixed there -- it is fixed by changing the layer count or the
+#: placement, both of which are in this panel.  Saying its own subject is what
+#: `periodicity_gate._notice` prescribes for a notice from another module, and
+#: any subject but ``"cell"`` lands in the general place, which is visible from
+#: either page.
+_SEAM_ABOUT = "slab"
+
+
+def _seam_notice(level: str, verdict: str, message: str):
+    """One seam receipt, in the wire shape every notice uses.
+
+    ``where`` is the STABLE ID, so a finding is identifiable without reading
+    its prose -- the reason that field exists (periodicity_gate, 2026-08-03).
+    """
+    return {"level": level, "message": message,
+            "where": f"slab.seam_{verdict}", "about": _SEAM_ABOUT}
+
+
+def _seam_notices(struct, element: str, plane: str):
+    """What the periodic boundary does to the crystal, as a note.
+
+    A WARNING, NEVER A REFUSAL (bench-and-junction-plan.md § 2.4): an eclipsed
+    seam is wrong for a periodic crystal and harmless in a relaxation whose
+    outer layers are frozen, and only the user knows which they are running.
+
+    **This has to be said at BUILD TIME, and this is the only moment it can
+    be.**  Measured on the real `Au-BDT-Au` junction: the seam is bit-identical
+    before and after relaxation -- 2.4008 Å, step (0.000, 0.000) both times --
+    because the layers that form it are exactly the ones
+    ``Geometry.Constraints`` pins.  No later check can catch it, because
+    nothing later changes it.
+
+    The measuring lives in `cell.classify_seam`; the phrasing lives here, the
+    same split `_lattice_notes` uses.
+
+    **It travels in the RECEIPTS slot**, which `ok_structure_response`
+    documents as "what the edit did first, what is now true after it" and
+    which had no caller until this one -- so the warning reaches the screen
+    through `applyOp`'s existing handoff (`model-jobs.js`: "the structure AND
+    what the server found true of it, in one handoff") and needs no display
+    code of its own.  A second `notes` key beside it, which is what this
+    returned at first, would have been a second door onto the same fact -- and
+    the panel dropped it on the floor, because nothing was reading that door.
+    """
+    cell = getattr(struct, "cell", None)
+    if cell is None:
+        return []
+    metal = np.asarray(
+        [p for sym, p in zip(struct.elements, struct.positions)
+         if sym == element], dtype=float)
+    if metal.shape[0] < 2:
+        return []
+    seam = _classify_seam(metal, cell)
+
+    if seam.verdict == "continues":
+        want = STACKING_PERIOD.get(plane)
+        if want and seam.period and seam.period != want:
+            # Thin enough that it does not determine its own stacking: two
+            # layers of (111) are A,B, which is fcc and hcp alike.
+            return [_seam_notice("warn", "too_thin", (
+                f"the boundary continues the stacking, but as a "
+                f"{seam.period}-layer repeat -- fcc({plane}) has "
+                f"{want}.  This slab is too thin to be the crystal you "
+                f"asked for; add layers"))]
+        return [_seam_notice("info", "continues", (
+            f"the crystal continues across the periodic boundary: layers "
+            f"{seam.z_room:.3f} Å apart, nearest atoms {seam.gap:.3f} Å"))]
+
+    if seam.verdict == "vacuum":
+        # Not a warning: an open face is what a slab calculation wants.
+        return [_seam_notice("info", "vacuum", seam.message)]
+    return [_seam_notice("warn", seam.verdict,
+                         f"{seam.verdict}: {seam.message}")]
 
 
 # --------------------------------------------------------------------- #

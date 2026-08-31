@@ -662,6 +662,260 @@ def measure_fcc(positions, cell) -> FccMeasurement:
     )
 
 
+# --------------------------------------------------------------------- #
+#  Does the boundary continue the crystal?                                #
+#  (plans/bench-and-junction-plan.md § 2.4)                               #
+# --------------------------------------------------------------------- #
+
+#: Two atoms closer than this across the boundary are colliding, not bonded.
+SEAM_COLLISION_ANG = 0.5
+
+#: How far a lateral offset may sit from a reference and still be called it.
+#: 0.3 A is well under the smallest real registry step (1.44 A on Au(111))
+#: and well over any relaxation jitter in a frozen outer layer.
+SEAM_STEP_TOL_ANG = 0.3
+
+#: How many interlayer spacings of room mean the boundary is VACUUM rather
+#: than a seam.
+#:
+#: A boundary is only a seam when the two faces are close enough to be
+#: bonded.  Open it wider and there is no crystal there to continue -- there
+#: is a free surface, which is what a slab calculation WANTS.
+#:
+#: Without this the registry test answers a question nobody asked: a slab
+#: built beside a molecule gets a box tall enough for both, and its faces came
+#: back `continues` across 7.5 Å of empty space because the two layers
+#: happened to land on matching sites.  Registry agreement across vacuum is a
+#: coincidence, not a crystal.
+#:
+#: 1.5 sits above any real relaxation (the measured `Au-BDT-Au` seam holds at
+#: 1.0000 -- 2.4008 Å across a 2.4006 Å spacing) and far below the several
+#: spacings of room that even a thin vacuum layer opens.
+SEAM_VACUUM_FACTOR = 1.5
+
+
+@dataclass(frozen=True)
+class SeamVerdict:
+    """What the periodic boundary does to the crystal."""
+
+    #: ``continues`` · ``eclipsed`` · ``twin`` · ``collision`` ·
+    #: ``vacuum`` · ``unknown``
+    verdict: str
+    #: Å — the closest approach across the boundary.  NOT the same number as
+    #: :attr:`z_room`: where consecutive layers sit laterally offset, the
+    #: nearest atom across the boundary is further than the layers are apart.
+    gap: float
+    #: Å — the VERTICAL room at the boundary, top face to the imaged bottom
+    #: one.  This is what decides collision and vacuum, because it is what
+    #: "is there space for a layer here" actually asks.
+    z_room: float
+    #: Å — the lateral offset across the boundary, shortest representative.
+    seam_step: Tuple[float, float]
+    #: Å — the same measurement between the top two layers INSIDE the slab.
+    #: Reported for diagnosis only: the verdict is NOT reached by comparing
+    #: these two vectors (see :func:`classify_seam` for why that fails).
+    slab_step: Tuple[float, float]
+    #: One sentence naming what is wrong, or ``None`` when it continues.
+    message: Optional[str] = None
+    #: Layers per stacking period, MEASURED from this structure -- not taken
+    #: from :data:`STACKING_PERIOD`.  Compare it against the plane's expected
+    #: period to catch a slab too thin to determine its own stacking: two
+    #: layers of (111) are ``A,B``, which is fcc and hcp alike, so the boundary
+    #: continues them as a 2-period stack that is not gold's.  ``None`` when no
+    #: period could be measured.
+    period: Optional[int] = None
+
+
+def _shortest_lateral(a_xy: np.ndarray, b_xy: np.ndarray) -> np.ndarray:
+    """The shortest lateral displacement from layer ``a`` to layer ``b``.
+
+    Not a centroid difference and not a corner-atom difference: a layer is a
+    finite patch, so translating it changes which atom sits at the corner and
+    changes the centroid too when the patches differ.  The shortest
+    atom-to-atom displacement is canonical for two lattices of the same shape
+    -- it is the registry offset reduced to its smallest representative, with
+    no choice of marker to get wrong.
+
+    THE SEAM AND THE IN-SLAB REFERENCE ARE MEASURED BY THIS SAME FUNCTION,
+    which is what makes them comparable: whatever convention the reduction
+    lands on applies to both, so the modulo-the-lattice ambiguity cancels
+    instead of having to be resolved.
+    """
+    d = b_xy[None, :, :] - a_xy[:, None, :]              # (na, nb, 2)
+    flat = d.reshape(-1, 2)
+    return flat[int(np.argmin(np.linalg.norm(flat, axis=1)))]
+
+
+def _failing_condition(n_layers: int, period: Optional[int]) -> str:
+    """Which of `junction-cell.md`'s two conditions this structure breaks.
+
+    The contract requires the warning to NAME the failing condition, and the
+    condition does not follow from the verdict -- the real `Au-BDT-Au`
+    junction is `eclipsed` with 6 layers per side, which is a whole number of
+    periods, so § 3.1 HOLDS there and only the mirror is wrong.  Reading the
+    condition off the verdict called that one backwards.
+
+    So it is measured: the layer count is the one that fails when the layers
+    are not a whole number of stacking periods; otherwise the placement is.
+    Only the structure as handed over is examined -- for a junction that is
+    both electrodes together, so this counts every layer, not one side's.
+    """
+    if period and n_layers % period:
+        return (f"The LAYER COUNT is what fails (junction-cell.md § 3.1): "
+                f"{n_layers} layers is not a whole number of "
+                f"{period}-layer stacking periods")
+    return ("The PLACEMENT is what fails (junction-cell.md § 3.2): the layer "
+            "count is a whole number of stacking periods, so it is where the "
+            "layers were put -- mirrored rather than translated")
+
+
+def _coincide(a_xy: np.ndarray, b_xy: np.ndarray) -> float:
+    """How far layer ``b`` sits from layer ``a`` laterally, in Angstrom.
+
+    Zero means the two layers occupy the SAME registry -- the same lateral
+    sites, however the patches are wrapped.
+    """
+    return float(np.linalg.norm(_shortest_lateral(a_xy, b_xy)))
+
+
+def classify_seam(positions, cell) -> SeamVerdict:
+    """Does the cell boundary continue the crystal, and if not, how not?
+
+    Compares the BOTTOM layer's image one cell up against the layers actually
+    in the slab, and reports **which one it lands on**.
+
+    **The distance alone is not the test** (`junction-cell.md` § 3.1): a twin
+    has the correct bulk bond length, so a distance check passes it.  Only the
+    registry separates continuation from a twin.
+
+    **AND THE REGISTRY IS NOT TESTED BY ARITHMETIC.**  Two earlier versions
+    compared the seam's lateral step against the in-slab step -- first
+    directly, then reduced modulo the cell -- and both were wrong for the same
+    reason the slab builder hit: consecutive layers step by `period` DIFFERENT
+    vectors that agree only modulo the PRIMITIVE lattice, while the cell on
+    hand is the SUPERCELL's, m times larger.  A perfectly continuous 3-layer
+    Au(111) boundary came back `unknown`.
+
+    So this asks the question that has an answer without any lattice
+    arithmetic: **which layer of this slab does the imaged one coincide
+    with?**  In a crystal of period `p`, the layer above the top is a repeat
+    of the one `p` below it, so:
+
+    ==================  ==========================================
+    the image lands on  verdict
+    ==================  ==========================================
+    layer ``N - p``     ``continues`` -- the crystal carries on
+    the top layer       ``eclipsed`` -- stacking repeats, not advances
+    layer ``N - 2``     ``twin`` -- right bond, reversed stacking
+    ==================  ==========================================
+
+    ``p`` is the slab's OWN period, measured here rather than passed in, so
+    the plane never has to be stated and a strained or unusual slab is judged
+    on what it is.
+
+    A WARNING, NEVER A REFUSAL, is the caller's job -- an eclipsed seam is
+    wrong for a periodic crystal and harmless in a relaxation whose outer
+    layers are frozen, and only the caller knows which it is running.
+    """
+    pos = np.asarray(positions, dtype=float).reshape(-1, 3)
+    box = np.asarray(cell, dtype=float).reshape(3, 3)
+
+    def unknown(why):
+        return SeamVerdict("unknown", float("nan"), float("nan"),
+                            (0.0, 0.0), (0.0, 0.0), why)
+
+    if pos.shape[0] < 2:
+        return unknown("fewer than two atoms: there is no seam to classify")
+    layers = detect_layers(pos[:, 2])
+    if len(layers) < 2:
+        return unknown(
+            "this structure has one atomic layer, so there is nothing for the "
+            "boundary to continue")
+
+    def _at(z):
+        return pos[np.abs(pos[:, 2] - z) < LAYER_TOL_ANG]
+
+    sets = [_at(z) for z in layers]
+    if any(len(a) == 0 for a in sets):
+        return unknown("a layer came back empty")
+    N = len(sets)
+    top = sets[-1]
+    up = sets[0] + box[2]
+
+    gap = float(np.linalg.norm(
+        up[None, :, :] - top[:, None, :], axis=2).min())
+    # THE ROOM AT THE BOUNDARY IS VERTICAL, and the two are not the same
+    # number: where consecutive layers sit laterally offset, the nearest atom
+    # ACROSS the boundary is further than the layers are apart.  Measuring
+    # room with the 3-D distance called a perfectly padded fcc(110) boundary
+    # vacuum (2.04 Å of reach across a 1.44 Å spacing), and called a box with
+    # its padding removed -- layers at the SAME z, 1.66 Å apart sideways -- a
+    # continuation.  So room is measured up, and `gap` is reported as the
+    # closest approach it is.
+    z_room = float(up[:, 2].min() - top[:, 2].max())
+    seam = _shortest_lateral(top[:, :2], up[:, :2])
+    slab = _shortest_lateral(sets[-2][:, :2], top[:, :2])
+    pair = (tuple(float(v) for v in seam), tuple(float(v) for v in slab))
+
+    spacing = float(np.median(np.diff(layers))) if len(layers) >= 2 else 0.0
+
+    if z_room < SEAM_COLLISION_ANG:
+        return SeamVerdict(
+"collision", gap, z_room, *pair, period=None,
+            message=(f"the boundary leaves {z_room:.2f} Å of room -- the box is "
+                     f"not padded, and no engine can use it "
+                     f"(science/junction-cell.md § 1)"))
+
+    if spacing > 0 and z_room > SEAM_VACUUM_FACTOR * spacing:
+        return SeamVerdict(
+"vacuum", gap, z_room, *pair, period=None,
+            message=(f"the boundary is {z_room:.2f} Å of vacuum, against a "
+                     f"{spacing:.2f} Å layer spacing -- a free surface, not a "
+                     f"seam.  Nothing continues across it, and for a slab "
+                     f"nothing should"))
+
+    # THE SLAB'S OWN STACKING PERIOD, measured: the smallest step at which a
+    # layer repeats.  Measured rather than taken from STACKING_PERIOD so the
+    # plane never has to be stated, and so a slab that is not what it claims
+    # is judged on what it is.
+    #
+    # The search runs over the slab's layers PLUS the imaged one, because a
+    # slab exactly one period tall has no repeat inside it -- layer 0 comes
+    # back only across the boundary.  Leaving the image out found no period
+    # for exactly the three slabs that continue most perfectly (3-layer (111),
+    # 2-layer (100) and (110)) and called all three wrong.
+    stack = sets + [up]
+    period = next((p for p in range(1, N + 1)
+                   if _coincide(stack[0][:, :2], stack[p][:, :2])
+                   < SEAM_STEP_TOL_ANG), None)
+
+    if _coincide(top[:, :2], up[:, :2]) < SEAM_STEP_TOL_ANG:
+        return SeamVerdict(
+"eclipsed", gap, z_room, *pair, period=period,
+            message=("the layers across the boundary sit on the same sites, "
+                     "so the stacking repeats where it should advance.  "
+                     + _failing_condition(N, period) +
+                     ".  Wrong for a periodic crystal, harmless in a "
+                     "relaxation whose outer layers are frozen"))
+    if period is not None \
+            and _coincide(stack[N - period][:, :2], up[:, :2]) \
+            < SEAM_STEP_TOL_ANG:
+        return SeamVerdict(
+"continues", gap, z_room, *pair, period=period)
+    if N >= 2 and _coincide(sets[-2][:, :2], up[:, :2]) < SEAM_STEP_TOL_ANG:
+        return SeamVerdict(
+"twin", gap, z_room, *pair, period=period,
+            message=("the boundary is a mirror twin: the bond length is right "
+                     "but the stacking reverses there, so the crystal does "
+                     "not continue.  " + _failing_condition(N, period) +
+                     ".  Change the layer count or the starting registry"))
+    return SeamVerdict(
+"unknown", gap, z_room, *pair, period=period,
+        message=("the layer across the boundary matches none of this slab's "
+                 "own layers, so the boundary is neither a continuation, a "
+                 "twin, nor an eclipse"))
+
+
 #: Layers per stacking period, by fcc surface.  (111) is ABCABC, the
 #: others ABAB -- so a seam only continues the crystal when the layer
 #: count is a whole multiple (junction-cell.md § 3.1).
