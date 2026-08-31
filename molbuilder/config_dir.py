@@ -41,20 +41,46 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["config_dir"]
+__all__ = ["config_dir", "CONFIG_DIR_ENV", "DIRNAME"]
 
 #: The directory name under the XDG config root.  One string, because it is
 #: the half of the path that is not the XDG convention.
 DIRNAME = "molbuilder"
 
+#: Name this and it IS the root, exactly as given
+#: (`plans/config-access-plan.md` § 3.1).
+#:
+#: Spelled like ``MOLBUILDER_DATA_DIR`` and ``MOLBUILDER_PROJECTS``, which are
+#: already the convention for "the program's own <thing> directory".
+CONFIG_DIR_ENV = "MOLBUILDER_CONFIG_DIR"
+
 
 def config_dir() -> Path:
-    """``$XDG_CONFIG_HOME/molbuilder``, else ``~/.config/molbuilder``.
+    """Where this installation's own configuration lives.
+
+    ``$MOLBUILDER_CONFIG_DIR`` if set, else ``$XDG_CONFIG_HOME/molbuilder``,
+    else ``~/.config/molbuilder``.
 
     Not created, and not required to exist -- every caller either writes it
     on demand or treats an absent file as *unset*.  Read at CALL time rather
-    than captured at import, so a test (or an operator) that moves
-    ``XDG_CONFIG_HOME`` moves every one of the callers above together.
+    than captured at import, so a test (or an operator) that moves the root
+    moves every one of the callers above together.
+
+    **The override is used EXACTLY AS GIVEN** -- no ``molbuilder`` component is
+    appended.  ``XDG_CONFIG_HOME`` names a root shared by every application, so
+    ours must add its own name under it; ``MOLBUILDER_CONFIG_DIR`` names OUR
+    directory, and appending to it would put the files somewhere the person did
+    not ask for.  The two variables answer different questions and are treated
+    differently on purpose.
+
+    **It is an override, not a search step.**  Set it and that is the root,
+    entire: nothing falls back past it, and a file in one of the other two
+    places is not consulted.  A fallback here would recreate exactly the
+    shadowing that `configuration.md` § 2.1a exists to warn about -- one
+    setting, two files, one of them silently winning.
     """
+    override = os.environ.get(CONFIG_DIR_ENV)
+    if override:
+        return Path(override)
     xdg = os.environ.get("XDG_CONFIG_HOME")
     return (Path(xdg) if xdg else Path.home() / ".config") / DIRNAME

@@ -86,6 +86,135 @@ def test_no_module_spells_the_rule_a_second_time():
         f"config_dir(): {sorted(set(offenders))}")
 
 
+# ---------------------------------------------------------------------------
+# The override — plans/config-access-plan.md § 3.1
+# ---------------------------------------------------------------------------
+
+class TestTheRootCanBeNamedOutright:
+
+    def test_it_is_used_exactly_as_given(self, monkeypatch, tmp_path):
+        """No ``molbuilder`` component is appended, and that asymmetry with
+        ``XDG_CONFIG_HOME`` is the design.
+
+        ``XDG_CONFIG_HOME`` names a root shared by every application, so ours
+        must add its own name under it.  ``MOLBUILDER_CONFIG_DIR`` names OUR
+        directory; appending to it would put the files somewhere the person
+        did not ask for.
+        """
+        from molbuilder.config_dir import config_dir, CONFIG_DIR_ENV
+        monkeypatch.setenv(CONFIG_DIR_ENV, str(tmp_path / "here"))
+        assert config_dir() == tmp_path / "here"
+
+    def test_it_beats_xdg_and_does_not_fall_back_past_it(
+            self, monkeypatch, tmp_path):
+        """An override, not a search step.
+
+        A fallback here would recreate exactly the shadowing
+        `configuration.md` § 2.1a exists to warn about: one setting, two
+        files, one of them silently winning.
+        """
+        from molbuilder.config_dir import config_dir, CONFIG_DIR_ENV
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv(CONFIG_DIR_ENV, str(tmp_path / "named"))
+        assert config_dir() == tmp_path / "named"
+
+    def test_empty_is_not_set(self, monkeypatch, tmp_path):
+        """``MOLBUILDER_CONFIG_DIR=`` is how a shell unsets a variable it
+        cannot unset; treating it as a root would put the config at the
+        filesystem root."""
+        from molbuilder.config_dir import config_dir, CONFIG_DIR_ENV
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv(CONFIG_DIR_ENV, "")
+        assert config_dir() == tmp_path / "xdg" / "molbuilder"
+
+    def test_it_moves_every_per_user_file_together(self, monkeypatch, tmp_path):
+        """The property the variable exists for -- the same one
+        ``XDG_CONFIG_HOME`` has, asserted for the new door too."""
+        from molbuilder.config_dir import CONFIG_DIR_ENV
+        monkeypatch.setenv(CONFIG_DIR_ENV, str(tmp_path / "one"))
+        for name, path in _all_four().items():
+            assert (tmp_path / "one") in path.parents \
+                or path == tmp_path / "one", f"{name} -> {path}"
+
+    def test_no_module_spells_the_override_a_second_time(self):
+        """Same guard as `XDG_CONFIG_HOME`'s, for the same reason."""
+        offenders = []
+        for py in _SRC.rglob("*.py"):
+            if py.name == "config_dir.py":
+                continue
+            src = py.read_text(encoding="utf-8")
+            if "MOLBUILDER_CONFIG_DIR" in src:
+                offenders.append(str(py.relative_to(_SRC)))
+        assert not offenders, (
+            "these modules read MOLBUILDER_CONFIG_DIR directly instead of "
+            f"calling config_dir(): {sorted(set(offenders))}")
+
+
+# ---------------------------------------------------------------------------
+# The second root — plans/config-access-plan.md § 3.2, step 2
+# ---------------------------------------------------------------------------
+
+#: Modules that still compute a per-user path themselves, with the path.
+#:
+#: `~/.molbuilder/` is the SECOND ROOT the plan retires: it moves with nothing,
+#: so a person who sets either variable moves some of their files and not the
+#: rest.  This list is the work, written down -- step 2 empties it, and the
+#: test below fails the moment it is empty so the allowance is deleted rather
+#: than left standing.
+_SECOND_ROOT_HOLDOUTS = {
+    "serve_daemon.py": "~/.molbuilder/run, ~/.molbuilder/logs",
+    "envs/_cli.py": "~/.molbuilder/logs",
+    "web/blueprints/notify.py": "~/.molbuilder/reports",
+}
+
+
+def _computes_a_second_root_path(src: str) -> bool:
+    """Does this module BUILD a ``~/.molbuilder/...`` path, or merely mention one?
+
+    The difference matters and the first version of this test missed it: it
+    matched the string anywhere, and flagged `notify_setup.py` -- whose only
+    mention is a docstring recording this exact class of bug (*"the Task-setup
+    card said ``~/.molbuilder/notify`` while the monitor read
+    ``config_dir()/notify``, and following the card put the file where nothing
+    looks"*).  That module does the right thing and says why.  **A test that
+    cannot tell a path from a sentence about a path punishes the documentation
+    we want.**
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:                       # pragma: no cover -- defensive
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+        if name not in ("expanduser", "Path", "home"):
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str) \
+                    and arg.value.startswith("~/.molbuilder"):
+                return True
+    return False
+
+
+def test_the_second_root_shrinks_and_this_list_is_the_work():
+    found = {}
+    for py in _SRC.rglob("*.py"):
+        if _computes_a_second_root_path(py.read_text(encoding="utf-8")):
+            found[str(py.relative_to(_SRC))] = True
+    unexpected = sorted(set(found) - set(_SECOND_ROOT_HOLDOUTS))
+    assert not unexpected, (
+        f"new modules reached for ~/.molbuilder/: {unexpected}. That root is "
+        f"being retired (plans/config-access-plan.md § 3.2); use the state or "
+        f"runtime directory instead")
+    gone = sorted(set(_SECOND_ROOT_HOLDOUTS) - set(found))
+    assert not gone, (
+        f"these no longer name ~/.molbuilder/: {gone} -- delete them from "
+        f"_SECOND_ROOT_HOLDOUTS. When the list empties, delete the list and "
+        f"this test with it: the root is gone and there is nothing to shrink")
+
+
 def test_record_stays_importable_with_stdlib_only_at_module_level():
     """`record.py` claims to be stdlib-only, and `config_dir` is L1 so the
     claim survives importing it -- the same way `persist` does.  If someone

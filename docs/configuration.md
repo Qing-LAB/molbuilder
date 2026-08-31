@@ -108,7 +108,7 @@ named.
 
 | file | looked for, in order | combining rule |
 |---|---|---|
-| `molbuilder.json` (machine) | 1. `./molbuilder.json` — the **working directory**, legacy and **warned about** (§ 2.1a)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set — **the home**<br>3. `~/.config/molbuilder/molbuilder.json` — the home when `XDG_CONFIG_HOME` is unset | **one file, never both** — the first found is the machine scope, entire |
+| `molbuilder.json` (machine) | 1. `./molbuilder.json` — the **working directory**, legacy and **warned about** (§ 2.1a)<br>2. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>3. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>4. `~/.config/molbuilder/molbuilder.json` | **one file, never both** — the first found is the machine scope, entire |
 | `.molbuilder.json` (project) | `<project-dir>/.molbuilder.json` | **deep-merged** over the machine file, project wins — *the one merge in this document*. Objects recurse, scalars and arrays replace |
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<machine scope>/environments/<name>.json`<br>3. `$XDG_CONFIG_HOME/molbuilder/environment.json`, else `~/.config/molbuilder/environment.json`<br>4. a fresh probe — **only when the caller asked for one** | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
@@ -219,6 +219,38 @@ and the fix is named in the message. `runtime_config.machine_config_mode_warning
 is the one place it is phrased, so every surface says the same thing, and it
 names the exact `chmod` to run. It says nothing when the mode is already tight —
 the quiet case is the correct one.
+
+### 2.1c Naming the root outright — `MOLBUILDER_CONFIG_DIR`
+
+*(Built 2026-08-31. `plans/config-access-plan.md` § 3.1.)*
+
+`config_dir()` resolves the per-user root in three steps:
+
+1. `$MOLBUILDER_CONFIG_DIR`, when set — **used exactly as given**.
+2. `$XDG_CONFIG_HOME/molbuilder`, when that variable is set.
+3. `~/.config/molbuilder`.
+
+Spelled like `MOLBUILDER_DATA_DIR` and `MOLBUILDER_PROJECTS`, which are already
+the convention for *"the program's own `<thing>` directory"*.
+
+**No `molbuilder` component is appended to the override, and the asymmetry with
+`XDG_CONFIG_HOME` is deliberate.** `XDG_CONFIG_HOME` names a root shared by
+every application, so ours must add its own name beneath it.
+`MOLBUILDER_CONFIG_DIR` names *our* directory; appending to it would put the
+files somewhere the person did not ask for. The two variables answer different
+questions.
+
+**It is an override, not a search step.** Set it and that is the root, entire —
+nothing falls back past it, and a file in either of the other two places is not
+consulted. A fallback here would recreate the shadowing § 2.1a exists to warn
+about: one setting, two files, one silently winning.
+
+An empty value is *not set* — `MOLBUILDER_CONFIG_DIR=` is how a shell clears a
+variable it cannot unset, and treating it as a root would put the config at the
+filesystem root.
+
+`tests/test_config_dir_has_one_home.py` pins all of it, including that no other
+module reads either variable itself.
 
 ### 2.2 Which file actually took effect is displayed, never inferred
 
