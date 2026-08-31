@@ -57,11 +57,13 @@ def default_secret_dir() -> Path:
 
 
 def secret_key_path() -> Path:
-    return default_secret_dir() / "secret_key"
+    from .config_dir import session_key
+    return session_key()
 
 
 def google_client_secret_path() -> Path:
-    return default_secret_dir() / "google_client_secret"
+    from .config_dir import google_client_secret
+    return google_client_secret()
 
 
 # --------------------------------------------------------------------- #

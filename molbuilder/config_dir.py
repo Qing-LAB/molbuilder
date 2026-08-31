@@ -41,8 +41,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["config_dir", "state_dir", "runtime_dir",
-           "CONFIG_DIR_ENV", "DIRNAME"]
+__all__ = [
+    # The directories.  A format owner asks for one of these and joins its
+    # own filename; nobody else joins at all.
+    "config_dir", "state_dir", "runtime_dir", "logs_dir", "reports_dir",
+    # The files with no format to own them -- spelled here and nowhere else.
+    "session_key", "google_client_secret",
+    "serve_pidfile", "serve_log", "serve_stacks_log",
+    "CONFIG_DIR_ENV", "DIRNAME",
+]
 
 #: The directory name under the XDG config root.  One string, because it is
 #: the half of the path that is not the XDG convention.
@@ -127,3 +134,83 @@ def runtime_dir() -> Path:
     if xdg:
         return Path(xdg) / DIRNAME
     return state_dir() / "run"
+
+
+# ══ THE FILES ═══════════════════════════════════════════════════════════════
+#
+# A CALLER NAMES THE FILE IT WANTS AND GETS A PATH.  It never names a
+# directory and it never joins (user, 2026-08-31: *"users ... should go through
+# API rather than go through directly for some variables ... they don't need to
+# handcraft anything or derive anything"*).
+#
+# The filenames live here and nowhere else.  They were spread across seven
+# modules -- `runtime_config`, `auth_setup`, `scheduler/record`, `monitor`,
+# `cli`, `serve_daemon` -- each joining its own onto a directory.  Each join
+# was small and correct; together they were seven modules that had to agree
+# about a spelling with nothing making them.  `configuration.md` M-4 recorded
+# exactly this for ONE file -- *"a string literal in three modules"* -- fixed
+# that one, and did not generalise the rule, so the next six grew back.
+#
+# The environment variables are read above, to DERIVE these answers.  No
+# caller sees them.
+
+#: THE DIVISION, and A11 draws it: **the module that owns a FORMAT owns its
+#: NAME**, and this module owns the DIRECTORY.  So a file with a format owner
+#: keeps its name there and that owner exposes the path function --
+#: `runtime_config.machine_config_path`, `scheduler/record.machine_scope_path`,
+#: `monitor.default_notify_path`.  Each asks here for the directory and joins
+#: once, in the one module entitled to spell it.
+#:
+#: What lives HERE is the files with no format to own: opaque secrets, a
+#: pidfile, a log.  Nobody else may spell these.
+#:
+#: (Pulling `environment.json` and `notify` in here was tried and reverted the
+#: same day -- it took a name away from its format owner, which is the rule
+#: A11 exists to hold, and `test_architecture_rules` said so.)
+SESSION_KEY_FILENAME = "secret_key"
+GOOGLE_CLIENT_SECRET_FILENAME = "google_client_secret"
+
+
+def session_key() -> Path:
+    """The Flask session-signing key.
+
+    One home and one name.  It was written as ``<config dir>/secret_key`` and
+    read as ``~/.molbuilder/secret.key`` -- two directories and two spellings
+    -- so running ``auth-setup`` produced a key the server never read and
+    reported success (`configuration.md` § 2.1e).
+    """
+    return config_dir() / SESSION_KEY_FILENAME
+
+
+def google_client_secret() -> Path:
+    """The Google OAuth client secret."""
+    return config_dir() / GOOGLE_CLIENT_SECRET_FILENAME
+
+
+def logs_dir() -> Path:
+    """molbuilder's own operational output -- diagnostics, deleted when fixed."""
+    return state_dir() / "logs"
+
+
+def reports_dir() -> Path:
+    """Per-run measurements -- kept, grepped a year later, NOT diagnostics.
+
+    Beside ``logs/`` and deliberately not inside it: filing measurements under
+    a name that reads as *disposable* invited exactly that mistake once.
+    """
+    return state_dir() / "reports"
+
+
+def serve_pidfile(port: int) -> Path:
+    """The supervisor's pidfile -- the address ``stop``/``restart`` act on."""
+    return runtime_dir() / f"serve-{port}.pid"
+
+
+def serve_log(port: int) -> Path:
+    """Everything the server prints."""
+    return logs_dir() / f"serve-{port}.log"
+
+
+def serve_stacks_log(port: int) -> Path:
+    """Thread stacks, appended on ``SIGUSR1`` and before any forced child kill."""
+    return logs_dir() / f"serve-{port}.stacks.log"

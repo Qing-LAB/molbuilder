@@ -57,9 +57,10 @@ def _log_root() -> Path:
     It was ``~/.molbuilder/logs`` until 2026-08-31 -- a second per-user root
     that moved with neither ``MOLBUILDER_CONFIG_DIR`` nor any XDG variable, so
     a person who moved their config still had install logs in the old place
-    (`plans/config-access-plan.md` § 3.2).
+    (`configuration.md` § 2.1d).  Asked of `config_dir`, which is the one
+    module that answers "where is X" for every per-user file.
     """
-    from ..runtime_config import logs_dir
+    from ..config_dir import logs_dir
     return logs_dir()
 
 

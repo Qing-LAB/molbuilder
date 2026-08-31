@@ -190,7 +190,7 @@ def log_root() -> Path:
     directory, still in separate folders, so the distinction this docstring
     draws survives the move.
     """
-    from ...runtime_config import reports_dir
+    from ...config_dir import reports_dir
     return reports_dir()
 
 

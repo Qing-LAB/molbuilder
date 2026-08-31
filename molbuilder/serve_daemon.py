@@ -67,20 +67,23 @@ def log_dir() -> Path:
 
     Same reasoning as :func:`run_dir`: L1, and writable before config.
     """
-    from .config_dir import state_dir
-    return state_dir() / "logs"
+    from .config_dir import logs_dir
+    return logs_dir()
 
 
 def pid_path(port: int) -> Path:
-    return run_dir() / f"serve-{port}.pid"
+    from .config_dir import serve_pidfile
+    return serve_pidfile(port)
 
 
 def log_path(port: int) -> Path:
-    return log_dir() / f"serve-{port}.log"
+    from .config_dir import serve_log
+    return serve_log(port)
 
 
 def stacks_path(port: int) -> Path:
-    return log_dir() / f"serve-{port}.stacks.log"
+    from .config_dir import serve_stacks_log
+    return serve_stacks_log(port)
 
 
 # --------------------------------------------------------------------- #

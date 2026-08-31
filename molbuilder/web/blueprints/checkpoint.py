@@ -31,6 +31,8 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request
 
+from molbuilder.runtime_config import CONFIG_FILENAME as _CONFIG_FILENAME
+
 from molbuilder.checkpoint import (
     Repo,
     CalculationNameError,
@@ -256,7 +258,9 @@ def api_checkpoint_config():
             "calculation":      repo.calculation() if repo.initialized else None,
             "size_limit_bytes": int(cls["size_limit_bytes"]),
             "always_large":     list(cls["always_large"]),
-            "edit_in":          "molbuilder.json",
+            # NAMED BY THE ONE MODULE THAT OWNS THE SPELLING -- a UI
+            # string is still a place the filename can drift.
+            "edit_in":          _CONFIG_FILENAME,
         })
     except CheckpointError as exc:
         return _server_fault(str(exc))

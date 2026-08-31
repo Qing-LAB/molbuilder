@@ -1873,7 +1873,8 @@ def cmd_notify_token(user, host, keys_file, route, replace):
             f"FILENAME on the server, so it is limited to letters, digits "
             f"and . _ @ + - (max 128).")
 
-    path = Path(keys_file) if keys_file else config_dir() / "notify_keys"
+    from .monitor import notify_keys_path
+    path = Path(keys_file) if keys_file else notify_keys_path()
     try:
         existing = _json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(existing, dict):

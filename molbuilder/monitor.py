@@ -717,6 +717,9 @@ NOTIFY_TIMEOUT_S = 2.0
 #: citation's composed copy, to whoever is handed the calculation -- and a token must
 #: not travel with it.  The policy is in the description; the secret is here.
 NOTIFY_FILENAME = "notify"
+#: The operator's signing keys for those reports.  Named beside the file they
+#: sign for, because this module owns that exchange's format (A11).
+NOTIFY_KEYS_FILENAME = "notify_keys"
 
 
 def _config_dir():
@@ -751,6 +754,17 @@ def default_notify_path() -> Path:
     give them no way to.
     """
     return _config_dir() / NOTIFY_FILENAME
+
+
+def notify_keys_path():
+    """The operator's run-report signing keys.
+
+    Beside :func:`default_notify_path` because this module owns the format of
+    the exchange they belong to.  `cli` spelled the filename itself and joined
+    it -- one more place to edit when a name changes, and the one that gets
+    missed (A11).
+    """
+    return _config_dir() / NOTIFY_KEYS_FILENAME
 
 
 @dataclass(frozen=True)

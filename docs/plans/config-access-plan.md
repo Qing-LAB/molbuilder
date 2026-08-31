@@ -276,15 +276,35 @@ generalised, so the next six grew back.
 directory, and never joins.**
 
 ```python
-paths.machine_config()          # not config_dir() / "molbuilder.json"
-paths.session_key()             # not default_secret_dir() / "secret_key"
-paths.notify_token()            # not _config_dir() / NOTIFY_FILENAME
-paths.serve_pidfile(port)       # not run_dir() / f"serve-{port}.pid"
-paths.logs()                    # a directory, because it IS the answer
+runtime_config.machine_config_path()   # not config_dir() / "molbuilder.json"
+config_dir.session_key()               # not default_secret_dir() / "secret_key"
+monitor.default_notify_path()          # not _config_dir() / NOTIFY_FILENAME
+config_dir.serve_pidfile(port)         # not run_dir() / f"serve-{port}.pid"
 ```
 
-Filenames become constants inside that module and appear nowhere else. The
-environment variables stay where they already are — read in one place, to
+**Which module hands out which path is already answered**, and by a rule this
+one has to obey rather than replace: architecture rule **A11** — *the module
+that owns the FORMAT owns its NAME*. So:
+
+| | owns the name | hands out the path |
+|---|---|---|
+| `molbuilder.json` | `runtime_config` — it validates the schema | `machine_config_path()` |
+| `environment.json`, `environments/` | `scheduler/record` | `machine_scope_path()`, `environments_dir()` |
+| `notify`, `notify_keys` | `monitor` — it owns that exchange | `default_notify_path()`, `notify_keys_path()` |
+| `secret_key`, `google_client_secret`, the serve pidfile and logs | `config_dir` — **no format to own them** | `session_key()`, `serve_pidfile(port)`, … |
+
+`config_dir` owns the **directories**; a format owner asks it for one and joins
+its own filename **once**, in the single module entitled to spell it. Nobody
+else joins at all.
+
+> **This was got wrong first.** The initial cut pulled every filename into
+> `config_dir`, including `environment.json` and `notify` — which takes a name
+> away from its format owner, the exact thing A11 exists to prevent. The
+> existing test caught it before any of it shipped. The lesson is the one this
+> project keeps relearning: the contract had already answered the question, and
+> the answer was not the one I was about to invent.
+
+The environment variables stay where they already are — read in one place, to
 *derive* these answers — and no caller sees them.
 
 ### 5.3 Which layer, and why it can be the lowest one

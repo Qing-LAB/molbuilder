@@ -268,17 +268,8 @@ containers) the fallback is the **state** directory rather than a temp dir,
 because a supervisor's pidfile that vanished underneath it would leave a
 running server nothing can find.
 
-**And `molbuilder.json`'s `paths` block may name them instead** — the same
-block that already holds `projects`:
-
-```json
-{ "paths": { "logs": "/scratch/$USER/molbuilder/logs",
-             "run":  "/scratch/$USER/molbuilder/run" } }
-```
-
-Machine scope only: where an installation writes its logs is a property of the
-installation, and a project able to redirect them could point one run's output
-somewhere the operator does not look.
+**The variables are the only way to move them.** `paths` holds `projects`
+and nothing else — see the note below.
 
 > **The default answers before the config is read**, including when reading it
 > fails. A `paths` override therefore takes effect for everything *after*
@@ -286,14 +277,16 @@ somewhere the operator does not look.
 > to say so. A log that could only be written after parsing a file that failed
 > to parse is the one log nobody gets.
 >
-> **The `serve` supervisor is the standing case of that**, so its own log and
-> pidfile follow `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` and **do not read
-> `paths`**. It has to be able to report a malformed config, which it could
-> not do if finding its log required reading one. The module is L1 for the
-> same reason — `tests/test_layering.py` refuses it an import of the config
-> reader, which is this rule enforced from the other side. Moving
-> `$XDG_STATE_HOME` moves both it and the application logs together, which is
-> the case that split is for.
+> **And that is why `paths.logs` / `paths.run` / `paths.reports` no longer
+> exist.** They were added on 2026-08-31 and retired the same day. The `serve`
+> supervisor is L1 and the config reader is L2, so the supervisor could not
+> reach a config-derived answer — leaving two answers to one question, which is
+> the defect this whole change removes. The keys were also a *second way to say
+> one thing*: `$XDG_STATE_HOME` already moves logs and reports, and
+> `$XDG_RUNTIME_DIR` already moves pidfiles, which is `config_dir.py`'s own
+> 2026-08-23 reasoning against a `paths.state` key. Deleting them removed the
+> inversion instead of working around it with an injection point. A config
+> still naming one is **refused**, with the variable that replaces it named.
 
 `~/.molbuilder/` — a second per-user root that moved with no variable at all —
 **no longer exists**. `tests/test_config_dir_has_one_home.py` asserts that no

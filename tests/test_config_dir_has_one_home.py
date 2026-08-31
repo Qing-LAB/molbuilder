@@ -267,96 +267,194 @@ class TestOperationalStateFollowsXdg:
         assert state_dir() != config_dir()
 
 
-class TestThePathsOverride:
+class TestOperationalStateFollowsTheVariablesOnly:
+    """`paths.logs` / `paths.run` / `paths.reports` are RETIRED.
+
+    They existed for a day.  `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` already
+    move these directories, so the keys were a second way to say one thing --
+    and being a second way is what put the answer out of reach of the layer
+    that needs it: `serve_daemon` is L1, the config reader is L2, and a
+    supervisor must be able to write its log before any config is read.
+
+    Deleting them removed the inversion instead of working around it with an
+    injection point (`plans/config-access-plan.md` § 5.3).
+    """
 
     @pytest.fixture()
     def cfg(self, monkeypatch, tmp_path):
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        monkeypatch.chdir(tmp_path)
+        (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
         return tmp_path
 
     def _write(self, cfg, obj):
-        """Into the ONE location, which is not the working directory.
-
-        Written to the cwd at first, and every `paths` assertion passed while
-        proving nothing -- the file was not being read at all.
-        """
         import json
-        root = cfg / "cfg"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "molbuilder.json").write_text(json.dumps(obj))
+        (cfg / "cfg" / "molbuilder.json").write_text(json.dumps(obj))
 
-    def test_defaults_when_nothing_is_named(self, cfg):
-        from molbuilder.runtime_config import logs_dir, reports_dir, run_dir
+    def test_the_variables_move_them(self, cfg):
+        from molbuilder.config_dir import logs_dir, reports_dir, runtime_dir
         assert logs_dir() == cfg / "state" / "molbuilder" / "logs"
         assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
-        assert run_dir() == cfg / "state" / "molbuilder" / "run"
+        assert runtime_dir() == cfg / "state" / "molbuilder" / "run"
 
-    def test_a_named_directory_wins(self, cfg):
-        from molbuilder.runtime_config import logs_dir, run_dir
-        self._write(cfg, {"paths": {"logs": str(cfg / "scratch" / "l"),
-                                    "run": str(cfg / "scratch" / "r")}})
-        assert logs_dir() == cfg / "scratch" / "l"
-        assert run_dir() == cfg / "scratch" / "r"
+    @pytest.mark.parametrize("key", ["logs", "run", "reports"])
+    def test_the_retired_key_is_refused(self, cfg, key):
+        from molbuilder.runtime_config import RuntimeConfigError, read_config
+        self._write(cfg, {"paths": {key: "/somewhere"}})
+        with pytest.raises(RuntimeConfigError, match="no longer configured"):
+            read_config()
 
-    def test_naming_one_leaves_the_others_alone(self, cfg):
-        from molbuilder.runtime_config import logs_dir, reports_dir
-        self._write(cfg, {"paths": {"logs": str(cfg / "only")}})
-        assert logs_dir() == cfg / "only"
-        assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
+    def test_the_refusal_names_the_variable_that_replaces_it(self, cfg):
+        """A refusal that does not name the replacement is a dead end."""
+        from molbuilder.runtime_config import RuntimeConfigError, read_config
+        self._write(cfg, {"paths": {"logs": "/somewhere"}})
+        with pytest.raises(RuntimeConfigError) as e:
+            read_config()
+        assert "XDG_STATE_HOME" in str(e.value)
 
-    def test_a_key_nothing_reads_is_refused(self, cfg):
-        """A `paths` block naming a directory nothing consults would look
-        effective and do nothing -- the argument behind every refusal in
-        configuration.md."""
+    def test_it_does_not_read_as_a_typo(self, cfg):
+        from molbuilder.runtime_config import RuntimeConfigError, read_config
+        self._write(cfg, {"paths": {"run": "/somewhere"}})
+        with pytest.raises(RuntimeConfigError) as e:
+            read_config()
+        assert "unknown key" not in str(e.value)
+
+    def test_projects_stays(self, cfg):
+        """Data rather than operational state, no XDG equivalent, and
+        `$MOLBUILDER_PROJECTS` is its documented override."""
+        from molbuilder.runtime_config import read_config
+        self._write(cfg, {"paths": {"projects": "/data/projects"}})
+        assert read_config()["paths"]["projects"] == "/data/projects"
+
+    def test_a_key_nothing_reads_is_still_refused(self, cfg):
         from molbuilder.runtime_config import RuntimeConfigError, read_config
         self._write(cfg, {"paths": {"cache": "/tmp/x"}})
         with pytest.raises(RuntimeConfigError, match="cache"):
             read_config()
 
-    def test_the_key_that_was_already_there_still_works(self, cfg):
-        """**The regression the first attempt shipped.**
+    def test_the_supervisor_and_the_installer_agree(self, cfg):
+        """The two answers this change collapsed into one.
 
-        `paths` was not a new section -- it already held `projects`, the tree
-        every surface resolves through.  Adding a second `_read_paths` and a
-        second registry entry gave the dict a duplicate key: the later one won
-        silently, and `paths.projects` began being refused as unknown.  Python
-        raises nothing for a repeated key in a literal, and no test named
-        `projects`, so only a mutation run that could not find its own pattern
-        twice exposed it.
+        `serve_daemon` could not reach the config-aware accessor, so its log
+        went to the XDG directory while the installer's went wherever `paths`
+        said -- two answers to one question, in the same program.
         """
-        from molbuilder.runtime_config import read_config
-        self._write(cfg, {"paths": {"projects": "/data/projects"}})
-        assert read_config()["paths"]["projects"] == "/data/projects"
+        from molbuilder import serve_daemon
+        from molbuilder.envs._cli import _log_root
+        assert serve_daemon.log_dir() == _log_root()
 
-    def test_the_two_kinds_of_path_coexist(self, cfg):
-        from molbuilder.runtime_config import logs_dir, read_config
-        self._write(cfg, {"paths": {"projects": "/data/p",
-                                    "logs": str(cfg / "l")}})
-        assert read_config()["paths"]["projects"] == "/data/p"
-        assert logs_dir() == cfg / "l"
 
-    def test_there_is_exactly_one_paths_reader(self):
-        """A duplicate is invisible at runtime, so it is asserted at source."""
-        import inspect
-        from molbuilder import runtime_config as rc
-        src = inspect.getsource(rc)
-        assert src.count("def _read_paths(") == 1
-        assert src.count('"paths":             {"read"') == 1
+# ---------------------------------------------------------------------------
+# One API — plans/config-access-plan.md § 5
+# ---------------------------------------------------------------------------
 
-    def test_a_broken_config_still_has_somewhere_to_be_logged(self, cfg):
-        """THE BOOTSTRAP RULE.  A log that could only be written after parsing
-        a file that failed to parse is the one log nobody gets."""
-        from molbuilder.runtime_config import logs_dir
-        (cfg / "cfg").mkdir(parents=True, exist_ok=True)
-        (cfg / "cfg" / "molbuilder.json").write_text("{ not json")
-        assert logs_dir() == cfg / "state" / "molbuilder" / "logs"
+#: THE DIVISION A11 DRAWS: the module that owns a FORMAT owns its NAME, and
+#: `config_dir` owns the DIRECTORY.  So a file with a format owner keeps its
+#: name there and that owner exposes the path function; what lives in
+#: `config_dir` is the files with no format to own.
+#:
+#: Pulling `environment.json` and `notify` into `config_dir` was tried and
+#: reverted the same day — it took a name from its format owner, and
+#: `test_architecture_rules`' A11 said so before any of this shipped.
+_FILE_DOORS = ("session_key", "google_client_secret")
+_DIR_DOORS = ("config_dir", "state_dir", "runtime_dir", "logs_dir",
+              "reports_dir")
 
-    def test_the_override_is_machine_scope_only(self):
-        """Where an installation writes its logs is a property of the
-        installation.  A project able to redirect them could point one run's
-        output somewhere the operator does not look."""
-        from molbuilder.runtime_config import _SECTIONS
-        assert _SECTIONS["paths"]["scopes"] == ("machine",)
+
+class TestEveryFileHasADoor:
+
+    @pytest.mark.parametrize("name", _FILE_DOORS + _DIR_DOORS)
+    def test_the_door_exists_and_answers_a_path(self, name, monkeypatch,
+                                                tmp_path):
+        from pathlib import Path
+        from molbuilder import config_dir as api
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "c"))
+        assert isinstance(getattr(api, name)(), Path)
+
+    def test_the_ported_ones_take_the_port(self, monkeypatch, tmp_path):
+        from molbuilder.config_dir import serve_log, serve_pidfile
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "r"))
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "s"))
+        assert serve_pidfile(8888).name == "serve-8888.pid"
+        assert serve_log(8888).name == "serve-8888.log"
+
+    def test_every_door_moves_with_the_one_variable(self, monkeypatch,
+                                                    tmp_path):
+        """The property the whole change exists for: name one directory and
+        every configuration file is under it — the format owners' doors
+        included, since they ask this module for the directory."""
+        from molbuilder.config_dir import (config_dir, google_client_secret,
+                                           session_key)
+        from molbuilder.monitor import default_notify_path, notify_keys_path
+        from molbuilder.runtime_config import machine_config_path
+        from molbuilder.scheduler.record import (environments_dir,
+                                                 machine_scope_path)
+        root = tmp_path / "named"
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
+        doors = {
+            "session_key": session_key(),
+            "google_client_secret": google_client_secret(),
+            "machine config": machine_config_path()[0],
+            "environment record": machine_scope_path(),
+            "environments/": environments_dir(),
+            "notify": default_notify_path(),
+            "notify_keys": notify_keys_path(),
+        }
+        assert config_dir() == root
+        for name, got in doors.items():
+            assert root in got.parents or got == root, f"{name} -> {got}"
+
+
+class TestNoModuleNamesOneOfThoseFilesItself:
+    """**The rule, asked the strict way round.**
+
+    Not *"is everything using the API"* — a module can pass that by doing
+    nothing — but *"does anything still spell one of these filenames"*.  Seven
+    modules each held one and joined it onto a directory; each join was correct
+    and together they were seven places that had to agree with nothing making
+    them.  `configuration.md` M-4 recorded exactly this for `environment.json`
+    ("a string literal in three modules"), fixed that one file, and did not
+    generalise — so the other six grew back.
+    """
+
+    #: The format owner of each, per A11.  Nobody else may join it.
+    _OWNERS = {
+        "config_dir.py": "the files with no format owner",
+        "runtime_config.py": "molbuilder.json's schema",
+        "scheduler/record.py": "environment.json's schema",
+        "monitor.py": "the notify exchange",
+    }
+
+    @pytest.mark.parametrize("literal", [
+        '"molbuilder.json"', '"secret_key"', '"google_client_secret"',
+        '"environment.json"', '"notify_keys"',
+    ])
+    def test_the_literal_appears_only_where_it_is_owned(self, literal):
+        offenders = {}
+        for py in _SRC.rglob("*.py"):
+            rel = str(py.relative_to(_SRC))
+            if rel in self._OWNERS:
+                continue
+            src = py.read_text(encoding="utf-8")
+            for i, line in enumerate(src.splitlines(), 1):
+                stripped = line.strip()
+                # a comment or docstring may NAME a file; only code may not
+                # BUILD a path from it
+                if literal in line and not stripped.startswith(("#", "*", ">")):
+                    if "/" in line or "Path(" in line or "join" in line:
+                        offenders.setdefault(rel, []).append(i)
+        assert not offenders, (
+            f"{literal} is joined into a path outside the module that owns it: "
+            f"{offenders}.  Ask `config_dir` for the file instead "
+            f"(plans/config-access-plan.md § 5)")
+
+    def test_each_format_owner_exposes_a_path_so_nobody_needs_to_join(self):
+        """The rule's positive half: an owner that spells a name must also
+        hand out the path, or callers have no alternative to joining."""
+        from molbuilder.monitor import default_notify_path, notify_keys_path
+        from molbuilder.runtime_config import machine_config_path
+        from molbuilder.scheduler.record import machine_scope_path
+        for door in (machine_config_path, machine_scope_path,
+                     default_notify_path, notify_keys_path):
+            assert callable(door), door
