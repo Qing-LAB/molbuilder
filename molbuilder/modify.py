@@ -785,6 +785,288 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
         ) from exc
 
 
+# --------------------------------------------------------------------- #
+#  The new slab builder (plans/modify-redesign-plan.md § 3)              #
+# --------------------------------------------------------------------- #
+
+
+def slab_layer_step(element: str, plane: str, size, orthogonal: bool,
+                    a: float):
+    """The lateral offset from one atomic layer to the next, **measured**.
+
+    Returns ``(step_xy, d_interlayer)`` in Angstrom, read off a slab built
+    with exactly these parameters.
+
+    MEASURED, NEVER COMPUTED, and that is not fastidiousness.  The formula
+    ``(a1+a2)/period`` is right only on the PRIMITIVE in-plane vectors, and
+    a slab's ``get_cell()`` returns the SUPERCELL's -- so on a 3x3 Au(111)
+    the formula gives 4.3254 A where the layers actually step 1.4418.  The
+    measurement is identical for (1,1,6) and (3,3,6) on every surface, so it
+    is independent of m and n, and it honours a ``lattice_constant``
+    override for free.
+
+    It also removes a sign question rather than answering it.  The raw step
+    agrees with the formula only MODULO the lattice vectors -- on (100) and
+    (110) it is the exact negative, on (111) it is the formula shifted by
+    ``a1`` -- and every one of those is a chance to be wrong by a lattice
+    vector.  The step that was measured is the step.
+
+    Same discipline as ``cell.bulk_z_period`` applies to the z spacing
+    (science/junction-cell.md § 5), here applied to the lateral half.
+    """
+    m, n, _ = (int(v) for v in size)
+    probe = _build_ase_slab(element, plane, (m, n, 2), orthogonal, a)
+    pos = np.asarray(probe.positions, dtype=float)
+    zs = sorted({round(float(z), 6) for z in pos[:, 2]})
+    if len(zs) < 2:
+        raise ValueError(
+            f"a two-layer {element} fcc({plane}) slab came back with one "
+            f"layer; cannot measure the stacking step")
+
+    def _rep(z):
+        """One layer's lateral CENTROID.
+
+        Not "the lexicographically lowest atom", which was the first version
+        and is unstable: a layer is a finite patch, so translating it changes
+        WHICH atom sits at the corner and the marker jumps by a lattice
+        vector.  Measuring a placed slab that way reported three different
+        steps for one uniform walk.
+
+        A centroid translates exactly with the layer, and ASE builds every
+        layer with the same (m, n), so the two centroids describe the same
+        set of sites -- the difference between them is the registry and
+        nothing else.
+        """
+        return pos[np.abs(pos[:, 2] - z) < 1e-6][:, :2].mean(axis=0)
+
+    return _rep(zs[1]) - _rep(zs[0]), float(zs[1] - zs[0])
+
+
+def _finish_slab(struct, metal_pos, element, full, *,
+                 plane, m, n, a, orthogonal, pad_interlayer_gap):
+    """Append placed metal atoms and capture the box they imply.
+
+    EXTRACTED 2026-08-30 so ``add_slab`` and ``add_electrode_slab`` share
+    it rather than each carrying a copy.  The two builders differ entirely
+    in WHERE the slab goes -- one from an anchor and a contact distance,
+    one from an absolute start z and a growth direction -- and not at all
+    in what happens afterwards: the metadata, the cell, its origin, and the
+    axis kinds are the same facts about the same atoms.
+
+    Everything below is the original body, moved unchanged.
+    """
+    # Assemble metadata for the new metal atoms.
+    n_new = metal_pos.shape[0]
+    new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
+
+    # Capture the electrode's cell (structure-periodicity.md § 4 -- fixes the old
+    # discard).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
+    # fcc(111)).  axis_kind = (periodic, periodic, transport): the transport z is
+    # electrode-matched, never tiled/k-sampled.  Overwrites any prior cell -- the
+    # electrode defines the junction's in-plane periodicity.  Skipped if the z
+    # extent is degenerate (would make a singular cell); the caller can set one.
+    #
+    # z is the atoms' extent PLUS ONE INTERLAYER SPACING (science/junction-cell.md
+    # § 1).  The extent alone puts the bottom atom's image at z_min + c = z_max --
+    # exactly on the top atom, at zero distance -- and SIESTA stops.  The spacing
+    # comes from cell.bulk_z_period, the same derivation the electrode wizard uses
+    # for the bulk lead (§ 5), measured on the slab AS BUILT so an
+    # ``inter_layer_offset`` override is honoured without being passed in.
+    all_pos = np.vstack([struct.positions, metal_pos])
+    z_extent = float(all_pos[:, 2].max() - all_pos[:, 2].min())
+    slab_cell = np.asarray(full.get_cell(), dtype=float)
+    elc_cell = None
+    elc_axis_kind = None
+    elc_cell_origin = None
+    if z_extent > 1e-6:
+        z_len = z_extent
+        if pad_interlayer_gap:
+            # Measure the METAL layers only: they are what meets across the
+            # boundary, and a molecule that reaches past the slabs must not set
+            # the crystal's spacing.
+            metal_layers = _cell.detect_layers(metal_pos[:, 2])
+            if len(metal_layers) < 2:
+                # A MONOLAYER has no spacing to measure, but the crystal still
+                # has one -- so ask the same builder for a 2-layer slab and read
+                # it off that, rather than leaving the box unpadded (which is
+                # the zero-distance collision this whole branch exists to
+                # prevent).  Same (m, n) and ``orthogonal`` as the real slab, so
+                # it cannot hit an ASE shape constraint the caller already
+                # passed.  ``inter_layer_offset`` does not apply at one layer.
+                probe = _build_ase_slab(element, plane, (m, n, 2), orthogonal, a)
+                metal_layers = _cell.detect_layers(
+                    np.asarray(probe.positions, dtype=float)[:, 2])
+            if len(metal_layers) >= 2:
+                _zp, d_interlayer, _n = _cell.bulk_z_period(metal_layers)
+                z_len = z_extent + d_interlayer
+        elc_cell = np.array([
+            [slab_cell[0, 0], slab_cell[0, 1], 0.0],
+            [slab_cell[1, 0], slab_cell[1, 1], 0.0],
+            [0.0, 0.0, z_len],
+        ], dtype=float)
+        elc_axis_kind = ("periodic", "periodic", "transport")
+        # cell_origin (structure-periodicity.md § 3c): the captured cell is built
+        # AROUND atoms that straddle the origin (the molecule stays pinned there;
+        # the slabs sit at +/- gap/2).  Anchor the cell at the structure's LOW
+        # CORNER so the box WRAPS the atoms WITHOUT moving them -- z runs
+        # [z_min, z_min + z_len), so the padding opens at the TOP, which is where
+        # the two faces meet.  render_fdf then shifts atoms by -cell_origin into
+        # [0, cell) for SIESTA; the `calibrate` op bakes that shift when the user
+        # wants it in the stored coords.
+        elc_cell_origin = all_pos.min(axis=0).astype(float)
+
+    # New electrode atoms are appended at indices [old_n, old_n + n_new).
+    # Existing frozen_atoms + region indices carry through unchanged; the
+    # new electrode atoms are NOT auto-frozen and NOT auto-tagged with a
+    # region label (callers who want either can post-process the result).
+    return Structure(
+        elements=list(struct.elements) + [element] * n_new,
+        positions=np.vstack([struct.positions, metal_pos]),
+        cell=elc_cell,
+        cell_origin=elc_cell_origin,
+        axis_kind=elc_axis_kind,
+        atom_names=list(struct.atom_names) + [element] * n_new,
+        residue_ids=list(struct.residue_ids) + [new_residue_id] * n_new,
+        residue_names=list(struct.residue_names) + ["ELC"] * n_new,
+        chain_ids=list(struct.chain_ids) + ["A"] * n_new,
+        title=struct.title,
+        regions={k: list(v) for k, v in struct.regions.items()},
+        annotations=copy_annotations(struct.annotations),
+    )
+
+
+def add_slab(
+    struct: Structure,
+    element: str,
+    plane: str,
+    size: Tuple[int, int, int],
+    *,
+    start_registry: int = 0,
+    start_z: float = 0.0,
+    grow: str = "+z",
+    stacking: str = "continue",
+    orthogonal: bool = False,
+    offset: Tuple[float, float] = (0.0, 0.0),
+    lattice_constant: Optional[float] = None,
+) -> Structure:
+    """Append ONE fcc slab, placed absolutely (redesign plan § 3).
+
+    Everything is stated; nothing is inferred from a selection.  ``offset``
+    and ``start_z`` are measured from the WORLD ORIGIN -- the origin of the
+    3-D window's own coordinate system -- so the same numbers place the same
+    slab whatever is currently picked.
+
+    Parameters that are not ``add_electrode_slab``'s
+    ------------------------------------------------
+    start_registry
+        Which stacking registry the layer AT ``start_z`` sits on, as an
+        index: 0=A, 1=B, 2=C.  Taken modulo the surface's period
+        (``cell.STACKING_PERIOD``), so (100) and (110) have two choices and
+        (111) three -- *"if available"* falls out of the period rather than
+        needing a table.
+    start_z
+        The z of that starting layer, in Angstrom, absolute.
+    grow
+        ``"+z"`` or ``"-z"`` -- which way the remaining layers go from the
+        starting one.
+    stacking
+        What the registry does when growing DOWNWARD.  ``"continue"`` walks
+        it backwards with the growth direction, so the layers below A are
+        C then B -- what a real fcc crystal has below an A layer.
+        ``"mirror"`` walks it forwards regardless, which is the same slab
+        flipped in z.
+
+        **Both are real fcc**: the lattice is centrosymmetric, so a mirrored
+        slab is a perfectly good crystal.  They differ only where two slabs
+        MEET -- grown apart from A, ``continue`` gives ``...B C A | A B C...``
+        and ``mirror`` gives ``...C B A | A B C...``.  Growing ``+z`` the two
+        are identical, and this argument is why the parameter exists at all:
+        the redesign plan first claimed that stating the registry made the
+        choice unreachable, when it had only made it unstated
+        (§ 3.2, corrected 2026-08-30 at the user's prompt).
+
+    What it deliberately does NOT take
+    ----------------------------------
+    ``center_indices`` (placement is absolute), ``contact_distance`` (the
+    starting z is given outright), ``side`` (``grow`` says it, and says it
+    without mirroring by accident), and ``gap`` (there is no pair -- one
+    slab per call, so nothing has to guess where the other one goes).
+    """
+    m, n, n_layers = (int(v) for v in size)
+    if n_layers <= 0:
+        return struct.copy()
+    if grow not in ("+z", "-z"):
+        raise ValueError(f"grow must be '+z' or '-z'; got {grow!r}")
+    if stacking not in ("continue", "mirror"):
+        raise ValueError(
+            f"stacking must be 'continue' or 'mirror'; got {stacking!r}")
+    _check_fcc_element(element)
+    a = (lattice_constant if lattice_constant is not None
+         else _get_fcc_lattice()[element])
+
+    period = _cell.STACKING_PERIOD.get(plane)
+    if period is None:
+        raise ValueError(
+            f"no stacking period is known for fcc({plane}), so a start "
+            f"registry cannot be interpreted")
+    k0 = int(start_registry) % period
+
+    full = _build_ase_slab(element, plane, (m, n, n_layers), orthogonal, a)
+    metal_pos = np.asarray(full.positions, dtype=float).copy()
+    step_xy, d_layer = slab_layer_step(element, plane, size, orthogonal, a)
+
+    # WHICH BUILT LAYER IS WHICH.  ASE stacks upward from z_min, so built
+    # layer j carries registry (layer0 + j) and sits j spacings up.
+    z_rel = metal_pos[:, 2] - metal_pos[:, 2].min()
+    layer_of = np.rint(z_rel / d_layer).astype(int) if d_layer > 1e-9 \
+        else np.zeros(len(metal_pos), dtype=int)
+
+    # THE REGISTRY WALK.  Growing up, it always steps forward -- that is what
+    # the slab was built as.  Growing down it steps backward when the crystal
+    # is to CONTINUE (below A sits C), forward when the slab is to be
+    # MIRRORED.  One line, and it is the whole of the `stacking` switch.
+    zdir = 1.0 if grow == "+z" else -1.0
+    rstep = 1 if (grow == "+z" or stacking == "mirror") else -1
+
+    # PLACE FIRST, THEN SHIFT THE REGISTRY -- and the order is the whole of
+    # it.  Placement is absolute: the slab's own lateral centroid lands on
+    # `offset`, measured from the world origin, with no anchor and no
+    # selection.  Done the other way round, a uniform registry shift moves
+    # every atom and the re-centring then subtracts exactly the same amount:
+    # A, B and C all come out as the same slab, and the control does
+    # nothing at all.  (Caught by its own test, 2026-08-30.)
+    metal_pos[:, :2] += np.asarray(offset, dtype=float) \
+        - metal_pos[:, :2].mean(axis=0)
+
+    # Built layer j already carries j steps of lateral offset; it needs
+    # (k0 + rstep*j).  The difference is what moves.  A registry choice IS a
+    # lateral displacement in units of the stacking step -- which is why it
+    # has to survive the placement rather than be absorbed by it.
+    for j in range(n_layers):
+        rows = layer_of == j
+        if not rows.any():
+            continue
+        metal_pos[rows, :2] += (k0 + (rstep - 1) * j) * step_xy
+
+    # AND THE z: the starting layer lands ON `start_z`, the rest follow the
+    # growth direction.  A TRANSLATION in both cases -- `-z` negates the
+    # OFFSET FROM the starting layer, never the slab's own stacking, which
+    # is what `stacking` is for and what the old builder conflated.
+    metal_pos[:, 2] = start_z + zdir * z_rel
+
+    # PADDING STAYS ON, for now.  § 3 moves *"pad cell by one layer spacing"*
+    # out of this panel and into the Cell page (§ 4.4), and that move is a
+    # contract rewrite -- `junction-cell.md` § 5 names the Junction panel as
+    # the switch's home and § 6 explains why it defaults on.  Until that
+    # lands, an unpadded box would put the bottom atom's periodic image
+    # exactly on the top atom and SIESTA would stop (§ 1), so this builder
+    # keeps the safe default rather than shipping a box no engine can use.
+    return _finish_slab(
+        struct, metal_pos, element, full,
+        plane=plane, m=m, n=n, a=a, orthogonal=orthogonal,
+        pad_interlayer_gap=True)
+
+
 def add_electrode_slab(
     struct: Structure,
     element: str,
@@ -998,84 +1280,10 @@ def add_electrode_slab(
                 closest_z = anchor[2] + sign * contact_distance
                 metal_pos[:, 2] = closest_z + (metal_pos[:, 2] - closest_z) * scale
 
-    # Assemble metadata for the new metal atoms.
-    n_new = metal_pos.shape[0]
-    new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
-
-    # Capture the electrode's cell (structure-periodicity.md § 4 -- fixes the old
-    # discard).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
-    # fcc(111)).  axis_kind = (periodic, periodic, transport): the transport z is
-    # electrode-matched, never tiled/k-sampled.  Overwrites any prior cell -- the
-    # electrode defines the junction's in-plane periodicity.  Skipped if the z
-    # extent is degenerate (would make a singular cell); the caller can set one.
-    #
-    # z is the atoms' extent PLUS ONE INTERLAYER SPACING (science/junction-cell.md
-    # § 1).  The extent alone puts the bottom atom's image at z_min + c = z_max --
-    # exactly on the top atom, at zero distance -- and SIESTA stops.  The spacing
-    # comes from cell.bulk_z_period, the same derivation the electrode wizard uses
-    # for the bulk lead (§ 5), measured on the slab AS BUILT so an
-    # ``inter_layer_offset`` override is honoured without being passed in.
-    all_pos = np.vstack([struct.positions, metal_pos])
-    z_extent = float(all_pos[:, 2].max() - all_pos[:, 2].min())
-    slab_cell = np.asarray(full.get_cell(), dtype=float)
-    elc_cell = None
-    elc_axis_kind = None
-    elc_cell_origin = None
-    if z_extent > 1e-6:
-        z_len = z_extent
-        if pad_interlayer_gap:
-            # Measure the METAL layers only: they are what meets across the
-            # boundary, and a molecule that reaches past the slabs must not set
-            # the crystal's spacing.
-            metal_layers = _cell.detect_layers(metal_pos[:, 2])
-            if len(metal_layers) < 2:
-                # A MONOLAYER has no spacing to measure, but the crystal still
-                # has one -- so ask the same builder for a 2-layer slab and read
-                # it off that, rather than leaving the box unpadded (which is
-                # the zero-distance collision this whole branch exists to
-                # prevent).  Same (m, n) and ``orthogonal`` as the real slab, so
-                # it cannot hit an ASE shape constraint the caller already
-                # passed.  ``inter_layer_offset`` does not apply at one layer.
-                probe = _build_ase_slab(element, plane, (m, n, 2), orthogonal, a)
-                metal_layers = _cell.detect_layers(
-                    np.asarray(probe.positions, dtype=float)[:, 2])
-            if len(metal_layers) >= 2:
-                _zp, d_interlayer, _n = _cell.bulk_z_period(metal_layers)
-                z_len = z_extent + d_interlayer
-        elc_cell = np.array([
-            [slab_cell[0, 0], slab_cell[0, 1], 0.0],
-            [slab_cell[1, 0], slab_cell[1, 1], 0.0],
-            [0.0, 0.0, z_len],
-        ], dtype=float)
-        elc_axis_kind = ("periodic", "periodic", "transport")
-        # cell_origin (structure-periodicity.md § 3c): the captured cell is built
-        # AROUND atoms that straddle the origin (the molecule stays pinned there;
-        # the slabs sit at +/- gap/2).  Anchor the cell at the structure's LOW
-        # CORNER so the box WRAPS the atoms WITHOUT moving them -- z runs
-        # [z_min, z_min + z_len), so the padding opens at the TOP, which is where
-        # the two faces meet.  render_fdf then shifts atoms by -cell_origin into
-        # [0, cell) for SIESTA; the `calibrate` op bakes that shift when the user
-        # wants it in the stored coords.
-        elc_cell_origin = all_pos.min(axis=0).astype(float)
-
-    # New electrode atoms are appended at indices [old_n, old_n + n_new).
-    # Existing frozen_atoms + region indices carry through unchanged; the
-    # new electrode atoms are NOT auto-frozen and NOT auto-tagged with a
-    # region label (callers who want either can post-process the result).
-    return Structure(
-        elements=list(struct.elements) + [element] * n_new,
-        positions=np.vstack([struct.positions, metal_pos]),
-        cell=elc_cell,
-        cell_origin=elc_cell_origin,
-        axis_kind=elc_axis_kind,
-        atom_names=list(struct.atom_names) + [element] * n_new,
-        residue_ids=list(struct.residue_ids) + [new_residue_id] * n_new,
-        residue_names=list(struct.residue_names) + ["ELC"] * n_new,
-        chain_ids=list(struct.chain_ids) + ["A"] * n_new,
-        title=struct.title,
-        regions={k: list(v) for k, v in struct.regions.items()},
-        annotations=copy_annotations(struct.annotations),
-    )
+    return _finish_slab(
+        struct, metal_pos, element, full,
+        plane=plane, m=m, n=n, a=a, orthogonal=orthogonal,
+        pad_interlayer_gap=pad_interlayer_gap)
 
 
 # --------------------------------------------------------------------- #

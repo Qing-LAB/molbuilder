@@ -285,8 +285,10 @@ included.**
 untouched and are removed only once the new design is proven. Keep element,
 plane, lattice ref, m, n, layers, and the (dx, dy) offset. **Drop `gap` and the
 symmetric/single mode.** Add **starting surface (A, B, or C if available)**, the
-**z-offset of that starting surface**, and the **direction of growth** — one slab
-per operation, specified by its lattice, its starting z, and how it grows. Keep
+**z-offset of that starting surface**, the **direction of growth**, and — added
+when building it — **whether the stacking continues or mirrors** when it grows
+downward (§ 3.2's correction).  One slab per operation, specified by its
+lattice, its starting z, and how it grows. Keep
 the orthogonal-cell option. **"Pad cell by one layer spacing" moves out**, into
 the cell setup (item 4). Make **"Your bulk run"** work.
 
@@ -311,10 +313,33 @@ implements this will read that difference, see a sign that does not match, and
 have to decide whether the formula or the slab is wrong. It is neither.
 
 *"if available"* falls out of the period: three choices on (111), two on the
-others. **No new table** — the shift is built from the slab's own in-plane cell
-vectors, so a `lattice_constant` override is honoured with nothing passed in,
-which is the same discipline `junction-cell.md § 5` applies to the z padding for
-the same reason.
+others. **No new table.**
+
+> **Sharpened 2026-08-30, at the point of building it.** This said the shift is
+> built *"from the slab's own in-plane cell vectors"*. Measured, that is wrong
+> in a way that would have shipped: those vectors are the **supercell's**, so on
+> an m×n slab `(a₁+a₂)/period` comes out **m times too large** — 4.3254 Å
+> instead of 1.4418 on a 3×3 Au(111).
+>
+> **Measure the step off the slab's own LAYER OFFSETS instead** — layer 1's
+> lateral position minus layer 0's. Measured, that is identical for (1,1,6) and
+> (3,3,6) on every surface, so it is independent of m and n, and it honours a
+> `lattice_constant` override for free. Same discipline as `junction-cell.md`
+> § 5's z padding, applied to the lateral half.
+>
+> And it settles the sign question below without arithmetic: the measured step
+> *is* the step, so nothing has to be reduced modulo anything.
+>
+> | surface | measured layer step (Å) | `(a₁+a₂)/period`, primitive |
+> |---|---|---|
+> | (111) | `[-1.4418, +0.8324]` | `[+1.4418, +0.8324]` |
+> | (100) | `[-1.4418, -1.4418]` | `[+1.4418, +1.4418]` |
+> | (110) | `[-2.0390, -1.4418]` | `[+2.0390, +1.4418]` |
+>
+> On (100) and (110) the raw step is the exact **negative**; on (111) it is the
+> formula shifted by `a₁`. All three agree with the formula only **modulo the
+> lattice vectors**, which is what § 6.1 recorded and what this table now shows
+> in Å rather than in fractions.
 
 ### 3.2 What this closes rather than adds
 
@@ -326,6 +351,29 @@ describes.
 **Saying where a slab starts and which way it grows makes that flip unreachable.**
 § 2.3 should be closed into this item rather than built separately. Dropping
 `gap` and the pair mode is the same argument: the pair is what forced the mirror.
+
+> **Wrong, and corrected at the point of building it (user, 2026-08-30: "can we
+> make this an option too?").**
+>
+> Stating the registry does not make the flip unreachable. It makes it
+> *unstated*. "Start on A and grow **down**" has two readings, and both are real
+> fcc crystals because fcc is centrosymmetric:
+>
+> | | layers below the A at `start_z` | the seam, two slabs grown apart from A |
+> |---|---|---|
+> | the crystal **continues** | A · C · B · A | `…B C A ǀ A B C…` |
+> | the slab is **mirrored** in z | A · B · C · A | `…C B A ǀ A B C…` |
+>
+> For `+z` they are identical; the choice only bites downward. So § 2.3's
+> parameter is **not** redundant — it is the thing that disambiguates, and my
+> argument above had merely renamed it into a convention nobody would have been
+> told about. It comes back as `stacking`, with a better name and a better home:
+> stated per slab, beside the registry it modifies, instead of buried in a pair
+> builder.
+>
+> What DOES survive of the argument: dropping `gap` and the pair mode is still
+> right. The old failure was not that a mirror existed, it was that a pair
+> builder **chose one silently**.
 
 `§ 2.4`'s seam detector survives, with a changed job: it stops being the only
 thing that knows about registry and becomes the **check on a stated one**.
