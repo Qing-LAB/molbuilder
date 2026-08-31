@@ -43,6 +43,7 @@ because it says where the code misleads.
 | branch | `feature/generator-jobset-ui` |
 | built | **all five items** — see § 7 |
 | left | § 3.4's scheduled removal of the old Junction panel, which waits on this one being proven in use |
+| proving it | **under way** — § 3.3b: two of three surfaces were unbuildable from the panel's defaults, and the seam is now measured and warned about at build time |
 
 **Every item landed contract-first**, and each carries pins that fail when the
 rule is broken rather than when the code merely changes. What each one turned
@@ -467,6 +468,42 @@ which exist only to cope with a value that is never present. The table keeps the
 two literature references, which is what a shared table is for. `load_fcc_lattice_full`'s
 v2 schema and `molbuilder/data/README.md` change with it; the loader reads the key
 with `.get`, so its absence does not raise.
+
+### 3.3b Proving it found two things — 2026-08-31
+
+Neither was in the plan; both came out of running the tab rather than reading
+it.
+
+**The cell shape was offered as a free choice on surfaces that have none.**
+ASE builds a non-orthogonal cell for fcc(111) only — asking for one on (100)
+or (110) raises `NotImplementedError`. The panel's "Orthogonal cell" box
+starts unchecked, and unchecked is the one setting a (100) slab cannot be
+built with, so **a default (100) or (110) request came back a 400**: two of
+the three surfaces were unusable from the panel's own defaults.
+
+The rule had no home. `_build_ase_slab`'s docstring cited a compatibility
+table in `web/tabs.md` that is no longer there — a citation pointing at
+nothing. It now lives in `science/junction-cell.md` § 2b as
+`modify.FCC_ORTHOGONAL_CHOICES`, is served by `/api/modify/meta` beside
+`stacking_period`, and the panel sets and disables the box where the surface
+allows one shape. `tests/test_fcc_cell_shapes.py` builds every combination and
+holds the table to the ASE it describes, in both directions — what it offers
+must build, what it withholds must not.
+
+What is deliberately *not* in that table: fcc(111)'s orthogonal cell also
+needs an even `n`. That depends on the size rather than the surface, so it
+stays passed through to ASE and surfaced verbatim — one door per fact.
+
+**The seam is now measured at build time and said out loud.** `POST
+/api/modify/slab` returns `cell.classify_seam`'s verdict in its `notes`
+(`bench-and-junction-plan.md` § 2.4). It has to be said here because this is
+the only moment it can be: measured on the shipped `Au-BDT-Au` junction, the
+seam is bit-identical before and after relaxation — 2.4008 Å, step (0.000,
+0.000) both times — because the layers forming it are exactly the ones
+`Geometry.Constraints` pins. Nothing later catches it, because nothing later
+changes it.
+
+---
 
 ### 3.4 The scheduled removal
 

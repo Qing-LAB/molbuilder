@@ -128,7 +128,7 @@ from where it belongs, in the wrong direction.
 plus a Junction-panel control. **Default `mirror`** — every existing structure
 used it, and contact symmetry is usually the intent.
 
-### 2.4 Seam detector + warning
+### 2.4 Seam detector + warning — BUILT 2026-08-31
 
 > **Still wanted, with a changed job** *(2026-08-30)*. Once § 2.3's replacement
 > lands, the registry is **stated** by the user rather than inferred — so this
@@ -140,12 +140,50 @@ already owns `detect_layers` / `bulk_z_period` / `STACKING_PERIOD`).
 
 Compare the top layer against the bottom layer's image one cell up:
 
-| verdict | evidence |
-|---|---|
-| `continues` | lateral step matches the in-slab step (mod 120° on 111) |
-| `eclipsed` | `Δxy = (0,0)` at ~`d` |
-| `twin` | correct `a/√2` bond, **reversed** step |
-| `collision` | ~0 Å — the unpadded case |
+| verdict | evidence | as built |
+|---|---|---|
+| `continues` | lateral step matches the in-slab step (mod 120° on 111) | the image lands on layer `N − p` |
+| `eclipsed` | `Δxy = (0,0)` at ~`d` | the image lands on the **top** layer |
+| `twin` | correct `a/√2` bond, **reversed** step | the image lands on layer `N − 2` |
+| `collision` | ~0 Å — the unpadded case | vertical room `< 0.5 Å` |
+| `vacuum` | *(not foreseen — see below)* | vertical room `> 1.5 ×` the spacing |
+
+**"Matches the in-slab step" is not implementable as written, and the three
+attempts that took it literally were all wrong.** Consecutive layers of ONE
+ASE fcc(111) slab step by three different vectors — `(−1.44, 0.83)`,
+`(0, −1.66)`, `(1.44, 0.83)` — because each layer is wrapped into the cell.
+They are the same registry advance, agreeing only modulo the **primitive**
+lattice, while the cell on hand is the **supercell's**, `m` times larger. So:
+
+1. comparing the raw vectors called a perfect 3-layer boundary `unknown`;
+2. reducing the difference modulo the cell reduced by the wrong lattice, and
+   called it `unknown` again;
+3. the "mod 120°" the table suggests covers the rotation but not the
+   translation, so it would not have closed it either.
+
+What has an answer without any lattice arithmetic: **which layer of this slab
+does the imaged one coincide with?** In a crystal of period `p` the layer
+above the top repeats the one `p` below it, which is the third column. `p` is
+**measured** from the structure — including the imaged layer, since a slab
+exactly one period tall has no repeat inside it — so the plane never has to be
+stated and a slab that is not what it claims is judged on what it is. The
+measured `p` is reported, which is what catches a slab too thin to have a
+stacking at all: two layers of (111) are `A,B`, fcc and hcp alike, and the
+boundary genuinely continues them as a 2-period stack that is not gold's.
+
+**`vacuum` is a fifth verdict the four above needed.** A boundary is only a
+seam when the faces are close enough to bond; open it wider and there is a
+free surface, which is what a slab calculation wants. A slab built beside a
+molecule gets a box tall enough for both, and its faces came back `continues`
+across 7.5 Å of nothing because the layers happened to land on matching sites.
+Registry agreement across vacuum is a coincidence, not a crystal.
+
+**And the room at a boundary is vertical, not the nearest-atom distance.**
+Where layers sit laterally offset the nearest atom across the boundary is
+further than the layers are apart — a padded fcc(110) boundary has 1.44 Å of
+room and 2.04 Å of reach. Measuring room with the 3-D distance called that
+boundary vacuum, and called a box with its padding stripped (layers at the
+same z, 1.66 Å apart sideways) a continuation. `SeamVerdict` carries both.
 
 **The distance alone is not the test** (`junction-cell.md` § 3.1). A twin has
 the correct bulk bond length, so a distance check passes it; only the *step*
@@ -154,6 +192,19 @@ separates continuation from twin.
 Surface as a **warning, not a refusal** — an eclipsed seam is wrong for a
 periodic crystal and harmless in a relaxation whose outer layers are frozen.
 Name which condition failed: layer count (§ 3.1) or placement (§ 3.2).
+
+**Which condition failed does not follow from the verdict**, and reading it
+off the verdict got the flagship case backwards. The measured `Au-BDT-Au`
+junction is `eclipsed` with **6 layers a side** — a whole number of periods —
+so § 3.1 *holds* there and only the mirror is wrong. It is decided by the one
+test that answers it: the layer count fails when the layers are not a whole
+number of measured periods; otherwise the placement does.
+
+`POST /api/modify/slab` returns the verdict in its `notes`, the same
+`{level, message}` vocabulary `/api/modify/lattice-from-run` uses; `vacuum`
+and `continues` are `info`, everything else `warn`. The measuring lives in
+`cell.classify_seam`, the phrasing in the route — the split `_lattice_notes`
+already uses.
 
 **Evidence that this will fire, and that build time is the only moment it can.**
 Measured on `projects/Au-BDT-Au` — the reason this is worth building, and the
@@ -167,7 +218,10 @@ reason it belongs here rather than in the science doc:
 | **seam** | **2.4008 Å, step (0.000, 0.000)** | **2.4008 Å, step (0.000, 0.000)** |
 
 It has 6 layers/side, so § 3.1 holds and only the mirror fails — the detector
-would warn, correctly. The seam is **bit-identical** before and after: the
+**does** warn, correctly: run against the shipped `junction.xyz` it returns
+`eclipsed`, gap 2.4008 Å, step (0.000, 0.000), measured period 3, naming
+§ 3.2. Those are the numbers in this table, reproduced by the detector rather
+than asserted against it. The seam is **bit-identical** before and after: the
 layers forming it are exactly the ones the relaxation pins, so relaxation
 cannot touch it. That is why the warning has to arrive when the structure is
 built.
