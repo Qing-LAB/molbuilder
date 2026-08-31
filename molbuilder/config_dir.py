@@ -41,7 +41,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["config_dir", "CONFIG_DIR_ENV", "DIRNAME"]
+__all__ = ["config_dir", "state_dir", "runtime_dir",
+           "CONFIG_DIR_ENV", "DIRNAME"]
 
 #: The directory name under the XDG config root.  One string, because it is
 #: the half of the path that is not the XDG convention.
@@ -84,3 +85,45 @@ def config_dir() -> Path:
         return Path(override)
     xdg = os.environ.get("XDG_CONFIG_HOME")
     return (Path(xdg) if xdg else Path.home() / ".config") / DIRNAME
+
+
+def state_dir() -> Path:
+    """Where operational state lives -- logs and reports.
+
+    ``$XDG_STATE_HOME/molbuilder``, else ``~/.local/state/molbuilder``
+    (`plans/config-access-plan.md` § 3.2).
+
+    ``XDG_STATE_HOME`` entered the Base Directory spec in 0.8 for state that
+    persists across restarts but is not portable or important enough for
+    ``$XDG_DATA_HOME`` -- and the spec names LOGS first, which is what this
+    holds.  ``~/.var/log`` and ``~/.local/log`` are not conventions:
+    ``~/.var/app/`` is flatpak's, and the latter is not in the spec at all.
+
+    **Separate from the config root on purpose.**  Configuration is edited and
+    backed up; logs grow and are deleted.  A person may still put both in one
+    place -- ``molbuilder.json``'s ``paths`` block names this directory, and
+    :func:`molbuilder.runtime_config.logs_dir` is where that override is
+    applied.  It cannot be applied HERE: this module is the bootstrap that
+    finds ``molbuilder.json``, so it must answer before any config is read.
+    """
+    xdg = os.environ.get("XDG_STATE_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".local" / "state") / DIRNAME
+
+
+def runtime_dir() -> Path:
+    """Where pidfiles and sockets live.
+
+    ``$XDG_RUNTIME_DIR/molbuilder`` when the variable is set, else
+    ``state_dir()/run``.
+
+    ``XDG_RUNTIME_DIR`` is the spec's directory for exactly this -- owner-only,
+    and **cleared when the session ends**, which is right for a pidfile and
+    wrong for anything meant to outlive a logout.  It is not always set (cron,
+    a detached ssh, some containers), and the fallback is deliberately the
+    STATE directory rather than a temp dir: a supervisor's pidfile that
+    vanished under it would leave a running server nothing can find.
+    """
+    xdg = os.environ.get("XDG_RUNTIME_DIR")
+    if xdg:
+        return Path(xdg) / DIRNAME
+    return state_dir() / "run"

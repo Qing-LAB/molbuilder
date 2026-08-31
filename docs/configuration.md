@@ -252,6 +252,48 @@ filesystem root.
 `tests/test_config_dir_has_one_home.py` pins all of it, including that no other
 module reads either variable itself.
 
+### 2.1d Operational state — `$XDG_STATE_HOME`, and `paths` may name it
+
+*(Built 2026-08-31. `plans/config-access-plan.md` § 3.2.)*
+
+Logs, pidfiles and reports are **not configuration**, and they do not live in
+the config root. XDG has directories for exactly this:
+
+| ours | variable | default |
+|---|---|---|
+| `logs/`, `reports/` | `XDG_STATE_HOME` | `~/.local/state/molbuilder/` |
+| `run/` — pidfiles | `XDG_RUNTIME_DIR` | `<state>/run` when unset |
+
+`XDG_STATE_HOME` entered the Base Directory spec in 0.8 for state that persists
+across restarts but is not portable enough for `$XDG_DATA_HOME` — and the spec
+names *logs* first. `XDG_RUNTIME_DIR` is cleared when the session ends, which
+is right for a pidfile; when it is unset (cron, a detached ssh, some
+containers) the fallback is the **state** directory rather than a temp dir,
+because a supervisor's pidfile that vanished underneath it would leave a
+running server nothing can find.
+
+**And `molbuilder.json`'s `paths` block may name them instead** — the same
+block that already holds `projects`:
+
+```json
+{ "paths": { "logs": "/scratch/$USER/molbuilder/logs",
+             "run":  "/scratch/$USER/molbuilder/run" } }
+```
+
+Machine scope only: where an installation writes its logs is a property of the
+installation, and a project able to redirect them could point one run's output
+somewhere the operator does not look.
+
+> **The default answers before the config is read**, including when reading it
+> fails. A `paths` override therefore takes effect for everything *after*
+> config load, and a `molbuilder.json` that will not parse still has somewhere
+> to say so. A log that could only be written after parsing a file that failed
+> to parse is the one log nobody gets.
+
+`~/.molbuilder/` — a second per-user root that moved with no variable at all —
+**no longer exists**. `tests/test_config_dir_has_one_home.py` asserts that no
+module builds a per-user path itself.
+
 ### 2.2 Which file actually took effect is displayed, never inferred
 
 Three files can supply a `scheduler` block — the working directory's, the

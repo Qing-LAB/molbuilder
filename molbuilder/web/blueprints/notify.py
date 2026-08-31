@@ -185,9 +185,13 @@ def log_root() -> Path:
     no parser of ours in the middle.
 
     *(By the letter of the XDG spec this belongs under `$XDG_STATE_HOME`,
-    as does `logs/`. Moving both is its own change.)*
+    as does `logs/`. Moving both is its own change.)* -- **done 2026-08-31**
+    (`plans/config-access-plan.md` § 3.2): both now sit under the state
+    directory, still in separate folders, so the distinction this docstring
+    draws survives the move.
     """
-    return Path(os.path.expanduser("~/.molbuilder/reports"))
+    from ...runtime_config import reports_dir
+    return reports_dir()
 
 
 def read_keys(path: str) -> Dict[str, str]:

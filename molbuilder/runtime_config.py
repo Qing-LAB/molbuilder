@@ -53,7 +53,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from .config_dir import config_dir
+from .config_dir import config_dir, runtime_dir, state_dir
 
 
 CONFIG_FILENAME = "molbuilder.json"
@@ -582,10 +582,16 @@ def _read_admin(raw: Mapping[str, Any]):
 #: dropped looks effective while nobody applied it.  ``provenance_safe``
 #: gates `config_provenance`: True only where every value is printable
 #: in logs (no secrets, no paths to secrets).
+#: Every directory ``paths`` may name.  A closed set: a key nothing reads
+#: would look effective and do nothing, which is the argument behind every
+#: refusal in `configuration.md`.
+_PATH_KEYS = ("projects", "logs", "run", "reports")
+
+
 def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """``paths`` — where molbuilder keeps things that are not its own code.
 
-    One key today: ``projects``, the tree of projects.  It exists because
+    ``projects`` is the tree of projects.  It exists because
     the default (inside the checkout) is not always writable or wanted --
     a cluster home with a small quota, a scratch filesystem, a shared tree
     (user, 2026-08-22).  Everything that touches the tree goes through
@@ -595,23 +601,43 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
 
     A relative value is resolved against the molbuilder root, so the
     setting means the same thing whatever directory you run from.
+
+    ``logs``, ``run`` and ``reports`` name where OPERATIONAL STATE goes,
+    overriding the XDG directories `config_dir.state_dir` and
+    `config_dir.runtime_dir` default to (`plans/config-access-plan.md` § 3.2).
+    They are read through :func:`logs_dir`, :func:`run_dir` and
+    :func:`reports_dir`, which is also where the defaults live -- so a person
+    with a small ``$HOME`` and a large scratch puts the logs on scratch
+    without moving their secrets.
+
+    **Added here rather than in a section of their own** (2026-08-31), because
+    this section already answers *"where does molbuilder keep things that are
+    not its own code"* and a second block asking the same question is the
+    fragmentation this change exists to end.  The first attempt DID add a
+    second ``paths`` reader and registry entry: the duplicate dict key
+    silently won, and ``paths.projects`` -- a live setting that moves the whole
+    project tree -- began being refused as unknown.
     """
     if "paths" not in raw:
         return None
     section = _require_object_section(raw, "paths")
     if section is None:
         return None
-    unknown = set(section) - {"projects"}
+    unknown = set(section) - set(_PATH_KEYS)
     if unknown:
         raise RuntimeConfigError(
             f"molbuilder.json: unknown key(s) in `paths`: "
-            f"{', '.join(sorted(unknown))}.  The only key is `projects` "
-            f"(architecture.md § 8.2).")
-    val = section.get("projects")
-    if val is not None and not isinstance(val, str):
-        raise RuntimeConfigError(
-            f"molbuilder.json: paths.projects must be a string path; "
-            f"got {type(val).__name__}.")
+            f"{', '.join(sorted(unknown))}.  The keys are "
+            f"{', '.join(_PATH_KEYS)} (architecture.md § 8.2, "
+            f"plans/config-access-plan.md § 3.2).")
+    for key in _PATH_KEYS:
+        val = section.get(key)
+        if val is None:
+            continue
+        if not isinstance(val, str) or not val.strip():
+            raise RuntimeConfigError(
+                f"molbuilder.json: paths.{key} must be a non-empty string "
+                f"path; got {val!r}.")
     return section
 
 
@@ -1129,6 +1155,51 @@ def machine_config_path() -> Tuple[Path, str]:
     if cwd_path.is_file():
         return cwd_path.resolve(), "cwd"
     return _per_user_fallback_path().resolve(), "xdg"
+
+
+def _operational_dir(key: str, default: Path) -> Path:
+    """One operational directory, config-overridden or defaulted.
+
+    `plans/config-access-plan.md` § 3.2.  The default comes from
+    :mod:`molbuilder.config_dir` -- XDG's own state and runtime directories --
+    and ``molbuilder.json``'s ``paths`` block may name somewhere else, so a
+    person with a small ``$HOME`` and a large scratch puts the logs on scratch
+    without moving their secrets.
+
+    **The default is what answers before the config is read**, including when
+    reading it fails.  A ``paths`` override therefore takes effect for
+    everything AFTER config load, and a config file that will not parse still
+    has somewhere to say so -- a log that could only be written after parsing
+    a file that failed to parse is the one log nobody gets.  That is why this
+    swallows the read rather than raising.
+    """
+    try:
+        block = read_config().get("paths") or {}
+        named = block.get(key)
+    except Exception:                 # noqa: BLE001 -- see the docstring
+        named = None
+    return Path(os.path.expanduser(named)) if named else default
+
+
+def logs_dir() -> Path:
+    """Where molbuilder's own operational output goes."""
+    return _operational_dir("logs", state_dir() / "logs")
+
+
+def run_dir() -> Path:
+    """Where pidfiles live."""
+    return _operational_dir("run", runtime_dir())
+
+
+def reports_dir() -> Path:
+    """Where per-run measurements are filed.
+
+    Beside ``logs/`` and deliberately not inside it: these are energies and
+    iteration counts, the kind of thing kept and grepped a year later, and
+    filing them under a name that reads as *disposable* invited exactly that
+    mistake once (`web/blueprints/notify.py`).
+    """
+    return _operational_dir("reports", state_dir() / "reports")
 
 
 def machine_config_shadow() -> Optional[str]:

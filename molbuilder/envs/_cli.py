@@ -43,17 +43,23 @@ from .recipes import BUILTIN_RECIPES, recipe_by_name
 
 
 def _log_root() -> Path:
-    """``~/.molbuilder/logs``, resolved WHEN ASKED, not at import.
+    """The install log directory, resolved WHEN ASKED, not at import.
 
     This was a module constant, which froze the real home into the
     module the moment anything imported it -- so a test that isolated
     ``HOME`` afterwards still wrote install logs into the developer's
-    actual ``~/.molbuilder/logs`` (five zero-byte files per full-suite
-    run, found 2026-08-28 by noticing them appear at the same second a
-    suite started).  A path that depends on the environment is a
-    QUESTION, and a question is asked when it is asked.
+    actual log directory (five zero-byte files per full-suite run, found
+    2026-08-28 by noticing them appear at the same second a suite
+    started).  A path that depends on the environment is a QUESTION, and
+    a question is asked when it is asked.
+
+    It was ``~/.molbuilder/logs`` until 2026-08-31 -- a second per-user root
+    that moved with neither ``MOLBUILDER_CONFIG_DIR`` nor any XDG variable, so
+    a person who moved their config still had install logs in the old place
+    (`plans/config-access-plan.md` § 3.2).
     """
-    return Path(os.path.expanduser("~/.molbuilder/logs"))
+    from ..runtime_config import logs_dir
+    return logs_dir()
 
 
 def _resolve_install_log_path(recipe_name: str) -> Path:

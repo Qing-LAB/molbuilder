@@ -137,102 +137,218 @@ class TestTheRootCanBeNamedOutright:
                 or path == tmp_path / "one", f"{name} -> {path}"
 
     def test_no_module_spells_the_override_a_second_time(self):
-        """Same guard as `XDG_CONFIG_HOME`'s, for the same reason."""
+        """Same guard as `XDG_CONFIG_HOME`'s, for the same reason.
+
+        Matched against the SYNTAX TREE, not the text.  A first version
+        matched the name anywhere and flagged `envs/_cli.py`, whose only
+        mention is a docstring explaining why its log directory moved -- the
+        same trap the second-root pin fell into, and the same answer: a test
+        that cannot tell a path from a sentence about one punishes the
+        documentation we want.
+        """
         offenders = []
         for py in _SRC.rglob("*.py"):
             if py.name == "config_dir.py":
                 continue
             src = py.read_text(encoding="utf-8")
-            if "MOLBUILDER_CONFIG_DIR" in src:
-                offenders.append(str(py.relative_to(_SRC)))
+            if "MOLBUILDER_CONFIG_DIR" not in src:
+                continue
+            for node in ast.walk(ast.parse(src)):
+                # os.environ.get("MOLBUILDER_CONFIG_DIR") / os.environ[...]
+                if isinstance(node, (ast.Call, ast.Subscript)) \
+                        and "MOLBUILDER_CONFIG_DIR" in {
+                            n.value for n in ast.walk(node)
+                            if isinstance(n, ast.Constant)
+                            and isinstance(n.value, str)}:
+                    offenders.append(str(py.relative_to(_SRC)))
+                    break
         assert not offenders, (
             "these modules read MOLBUILDER_CONFIG_DIR directly instead of "
             f"calling config_dir(): {sorted(set(offenders))}")
 
 
 # ---------------------------------------------------------------------------
-# The second root — plans/config-access-plan.md § 3.2, step 2
+# The second root — RETIRED 2026-08-31
+# ---------------------------------------------------------------------------
+#
+# `_SECOND_ROOT_HOLDOUTS` listed the three modules that still computed
+# `~/.molbuilder/...` themselves, and its own failure message said: "when the
+# list empties, delete the list and this test with it: the root is gone and
+# there is nothing to shrink."  Step 2 emptied it, so it is deleted rather than
+# left standing as an empty allowance.
+#
+# What replaces it is not a smaller allow-list but a stricter question, below:
+# no module may compute a per-user root AT ALL.
+
+
+def test_no_module_computes_a_per_user_root_itself():
+    """The pin the plan promises, asked the strict way round.
+
+    Not *"is everything using the door"* -- which a new module can pass by
+    doing nothing -- but *"does anything build a per-user path without it"*.
+    `config_dir.py` is the one place allowed to join a home directory to a
+    name; every other module asks it.
+    """
+    offenders = {}
+    for py in _SRC.rglob("*.py"):
+        if py.name == "config_dir.py":
+            continue
+        src = py.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:                   # pragma: no cover -- defensive
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) \
+                else getattr(fn, "id", "")
+            if name not in ("expanduser", "Path"):
+                continue
+            for arg in node.args:
+                if isinstance(arg, ast.Constant) \
+                        and isinstance(arg.value, str) \
+                        and arg.value.startswith("~/.molbuilder"):
+                    offenders.setdefault(
+                        str(py.relative_to(_SRC)), []).append(arg.value)
+    assert not offenders, (
+        f"these modules build a per-user path themselves: {offenders}.  "
+        f"`~/.molbuilder/` was retired 2026-08-31 "
+        f"(plans/config-access-plan.md § 3.2) -- ask runtime_config for "
+        f"logs_dir(), run_dir() or reports_dir(), which honour both the XDG "
+        f"directories and molbuilder.json's `paths` block")
+
+
+# ---------------------------------------------------------------------------
+# Operational state — plans/config-access-plan.md § 3.2
 # ---------------------------------------------------------------------------
 
-#: Modules that still compute a per-user path themselves, with the path.
-#:
-#: `~/.molbuilder/` is the SECOND ROOT the plan retires: it moves with nothing,
-#: so a person who sets either variable moves some of their files and not the
-#: rest.  This list is the work, written down -- step 2 empties it, and the
-#: test below fails the moment it is empty so the allowance is deleted rather
-#: than left standing.
-_SECOND_ROOT_HOLDOUTS = {
-    "serve_daemon.py": "~/.molbuilder/run, ~/.molbuilder/logs",
-    "envs/_cli.py": "~/.molbuilder/logs",
-    "web/blueprints/notify.py": "~/.molbuilder/reports",
-}
-
-
-def _computes_a_second_root_path(src: str) -> bool:
-    """Does this module BUILD a ``~/.molbuilder/...`` path, or merely mention one?
-
-    The difference matters and the first version of this test missed it: it
-    matched the string anywhere, and flagged `notify_setup.py` -- whose only
-    mention is a docstring recording this exact class of bug (*"the Task-setup
-    card said ``~/.molbuilder/notify`` while the monitor read
-    ``config_dir()/notify``, and following the card put the file where nothing
-    looks"*).  That module does the right thing and says why.  **A test that
-    cannot tell a path from a sentence about a path punishes the documentation
-    we want.**
+class TestOperationalStateFollowsXdg:
+    """`$XDG_STATE_HOME` entered the Base Directory spec in 0.8 for state that
+    persists across restarts but is not portable enough for `$XDG_DATA_HOME`,
+    and the spec names LOGS first.  `$XDG_RUNTIME_DIR` is the one for pidfiles.
     """
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:                       # pragma: no cover -- defensive
-        return False
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        fn = node.func
-        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
-        if name not in ("expanduser", "Path", "home"):
-            continue
-        for arg in node.args:
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, str) \
-                    and arg.value.startswith("~/.molbuilder"):
-                return True
-    return False
+
+    def test_state_follows_its_variable(self, monkeypatch, tmp_path):
+        from molbuilder.config_dir import state_dir
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "s"))
+        assert state_dir() == tmp_path / "s" / "molbuilder"
+
+    def test_state_defaults_to_the_spec_location(self, monkeypatch, tmp_path):
+        from molbuilder.config_dir import state_dir
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert state_dir() == tmp_path / ".local" / "state" / "molbuilder"
+
+    def test_runtime_prefers_its_own_variable(self, monkeypatch, tmp_path):
+        from molbuilder.config_dir import runtime_dir
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "r"))
+        assert runtime_dir() == tmp_path / "r" / "molbuilder"
+
+    def test_runtime_falls_back_to_state_and_not_to_a_temp_dir(
+            self, monkeypatch, tmp_path):
+        """XDG_RUNTIME_DIR is cleared when the session ends, and is not always
+        set (cron, a detached ssh, some containers).  A supervisor's pidfile
+        that vanished under it would leave a running server nothing can find,
+        so the fallback persists."""
+        from molbuilder.config_dir import runtime_dir, state_dir
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "s"))
+        assert runtime_dir() == state_dir() / "run"
+
+    def test_state_is_not_under_the_config_root(self, monkeypatch, tmp_path):
+        """Configuration is edited and backed up; logs grow and are deleted.
+        A person who wants them together says so with `paths`."""
+        from molbuilder.config_dir import config_dir, state_dir
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+        assert config_dir() not in state_dir().parents
+        assert state_dir() != config_dir()
 
 
-def test_the_second_root_shrinks_and_this_list_is_the_work():
-    found = {}
-    for py in _SRC.rglob("*.py"):
-        if _computes_a_second_root_path(py.read_text(encoding="utf-8")):
-            found[str(py.relative_to(_SRC))] = True
-    unexpected = sorted(set(found) - set(_SECOND_ROOT_HOLDOUTS))
-    assert not unexpected, (
-        f"new modules reached for ~/.molbuilder/: {unexpected}. That root is "
-        f"being retired (plans/config-access-plan.md § 3.2); use the state or "
-        f"runtime directory instead")
-    gone = sorted(set(_SECOND_ROOT_HOLDOUTS) - set(found))
-    assert not gone, (
-        f"these no longer name ~/.molbuilder/: {gone} -- delete them from "
-        f"_SECOND_ROOT_HOLDOUTS. When the list empties, delete the list and "
-        f"this test with it: the root is gone and there is nothing to shrink")
+class TestThePathsOverride:
 
+    @pytest.fixture()
+    def cfg(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
 
-def test_record_stays_importable_with_stdlib_only_at_module_level():
-    """`record.py` claims to be stdlib-only, and `config_dir` is L1 so the
-    claim survives importing it -- the same way `persist` does.  If someone
-    later gives `config_dir` a molbuilder dependency, this fails."""
-    import molbuilder.config_dir as cd
-    tree = ast.parse(Path(cd.__file__).read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.ImportFrom):
-            assert node.level == 0 and (node.module or "").split(".")[0] != "molbuilder", (
-                f"config_dir imported {node.module} -- it must stay L1 stdlib")
-        if isinstance(node, ast.Import):
-            for a in node.names:
-                assert not a.name.startswith("molbuilder"), a.name
+    def _write(self, cfg, obj):
+        import json
+        (cfg / "molbuilder.json").write_text(json.dumps(obj))
 
+    def test_defaults_when_nothing_is_named(self, cfg):
+        from molbuilder.runtime_config import logs_dir, reports_dir, run_dir
+        assert logs_dir() == cfg / "state" / "molbuilder" / "logs"
+        assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
+        assert run_dir() == cfg / "state" / "molbuilder" / "run"
 
-def test_an_explicit_root_still_wins_for_the_caller_that_passes_one():
-    """`default_secret_dir(home=...)` names the root outright; a caller that
-    has answered the question does not get XDG's answer instead."""
-    from molbuilder.auth_setup import default_secret_dir
-    got = default_secret_dir(home=Path("/opt/somewhere"))
-    assert got == Path("/opt/somewhere/.config/molbuilder")
+    def test_a_named_directory_wins(self, cfg):
+        from molbuilder.runtime_config import logs_dir, run_dir
+        self._write(cfg, {"paths": {"logs": str(cfg / "scratch" / "l"),
+                                    "run": str(cfg / "scratch" / "r")}})
+        assert logs_dir() == cfg / "scratch" / "l"
+        assert run_dir() == cfg / "scratch" / "r"
+
+    def test_naming_one_leaves_the_others_alone(self, cfg):
+        from molbuilder.runtime_config import logs_dir, reports_dir
+        self._write(cfg, {"paths": {"logs": str(cfg / "only")}})
+        assert logs_dir() == cfg / "only"
+        assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
+
+    def test_a_key_nothing_reads_is_refused(self, cfg):
+        """A `paths` block naming a directory nothing consults would look
+        effective and do nothing -- the argument behind every refusal in
+        configuration.md."""
+        from molbuilder.runtime_config import RuntimeConfigError, read_config
+        self._write(cfg, {"paths": {"cache": "/tmp/x"}})
+        with pytest.raises(RuntimeConfigError, match="cache"):
+            read_config()
+
+    def test_the_key_that_was_already_there_still_works(self, cfg):
+        """**The regression the first attempt shipped.**
+
+        `paths` was not a new section -- it already held `projects`, the tree
+        every surface resolves through.  Adding a second `_read_paths` and a
+        second registry entry gave the dict a duplicate key: the later one won
+        silently, and `paths.projects` began being refused as unknown.  Python
+        raises nothing for a repeated key in a literal, and no test named
+        `projects`, so only a mutation run that could not find its own pattern
+        twice exposed it.
+        """
+        from molbuilder.runtime_config import read_config
+        self._write(cfg, {"paths": {"projects": "/data/projects"}})
+        assert read_config()["paths"]["projects"] == "/data/projects"
+
+    def test_the_two_kinds_of_path_coexist(self, cfg):
+        from molbuilder.runtime_config import logs_dir, read_config
+        self._write(cfg, {"paths": {"projects": "/data/p",
+                                    "logs": str(cfg / "l")}})
+        assert read_config()["paths"]["projects"] == "/data/p"
+        assert logs_dir() == cfg / "l"
+
+    def test_there_is_exactly_one_paths_reader(self):
+        """A duplicate is invisible at runtime, so it is asserted at source."""
+        import inspect
+        from molbuilder import runtime_config as rc
+        src = inspect.getsource(rc)
+        assert src.count("def _read_paths(") == 1
+        assert src.count('"paths":             {"read"') == 1
+
+    def test_a_broken_config_still_has_somewhere_to_be_logged(self, cfg):
+        """THE BOOTSTRAP RULE.  A log that could only be written after parsing
+        a file that failed to parse is the one log nobody gets."""
+        from molbuilder.runtime_config import logs_dir
+        (cfg / "molbuilder.json").write_text("{ not json")
+        assert logs_dir() == cfg / "state" / "molbuilder" / "logs"
+
+    def test_the_override_is_machine_scope_only(self):
+        """Where an installation writes its logs is a property of the
+        installation.  A project able to redirect them could point one run's
+        output somewhere the operator does not look."""
+        from molbuilder.runtime_config import _SECTIONS
+        assert _SECTIONS["paths"]["scopes"] == ("machine",)

@@ -41,11 +41,21 @@ from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 # --------------------------------------------------------------------- #
 
 def run_dir() -> Path:
-    return Path(os.path.expanduser("~/.molbuilder/run"))
+    """Where the supervisor's pidfile goes.
+
+    Asked of ``runtime_config`` rather than computed, so the ``paths`` block
+    and the XDG runtime directory both reach it (`configuration.md` § 2.1d).
+    Imported inside the function to keep this module's import list what it is
+    -- a supervisor that pulls the config reader in at import time pays for it
+    on every start, and this is the one path it needs before doing anything.
+    """
+    from .runtime_config import run_dir as _resolved
+    return _resolved()
 
 
 def log_dir() -> Path:
-    return Path(os.path.expanduser("~/.molbuilder/logs"))
+    from .runtime_config import logs_dir as _resolved
+    return _resolved()
 
 
 def pid_path(port: int) -> Path:
