@@ -42,15 +42,19 @@ public|7-00:00:00|107|(null)|128
 # rows leave it empty, `lightwork_qos` shows the shape a cpu cap arrives
 # in, and `gres_only` shows a MaxTRES that caps OTHER resources and must
 # not read as a core cap.
+# MaxSubmitJobsPerUser appended 2026-08-30 (R14) -- APPENDED, because these
+# rows are positional and a column in the middle shifts every reader after it.
+# `debug` shows the shape a real cap arrives in (Sol allows 2), `class` a
+# second one, and the rest are blank: asked, and no cap stated.
 _QOS = """\
-public|||DenyOnLimit
-private|||DenyOnLimit
-debug|00:15:00||DenyOnLimit,OverPartQOS
-long|14-00:00:00|||PartitionTimeLimit
-class|1-00:00:00||DenyOnLimit
-htc|04:00:00||
-lightwork_qos||cpu=8|DenyOnLimit
-gres_only||gres/gpu=8,mem=512G|DenyOnLimit
+public||||
+private|||DenyOnLimit|
+debug|00:15:00||DenyOnLimit,OverPartQOS|2
+long|14-00:00:00|||PartitionTimeLimit|
+class|1-00:00:00||DenyOnLimit|10
+htc|04:00:00|||
+lightwork_qos||cpu=8|DenyOnLimit|
+gres_only||gres/gpu=8,mem=512G|DenyOnLimit|
 """
 
 # Real Sol `sacctmgr -nP show assoc user=$USER format=QOS`.
@@ -226,13 +230,50 @@ def test_a_domain_is_never_a_preference():
         # term and the partition's MaxCPUsPerNode, written null when the
         # question was asked and the scheduler states no cap (absent-vs-
         # null; a preference would be a NUMBER nobody measured).
+        # ``max_submit_jobs`` joined 2026-08-30 (R14), same table, same
+        # rule -- and it is the field that made the rule: Sol's `debug`
+        # caps a user at 2 submitted jobs, a bench sweep sent six, and
+        # nothing in the record could have said so first.
         assert set(d) <= {"name", "partition", "qos", "max_time", "gpu",
                           "max_cores", "node_types",
-                          "max_cpus_per_job", "max_cpus_per_node"}, \
+                          "max_cpus_per_job", "max_cpus_per_node",
+                          "max_submit_jobs"}, \
             f"a domain gained a field that is not a measurement: {sorted(d)}"
     by = {d["name"]: d for d in domains}
     assert by["htc"]["gpu"] == {"a100": 4, "a100.20gb": 16}
     assert "gpu" not in by["fpga"], "no inventory -> no key, never null"
+
+
+def test_the_submitted_job_cap_rides_the_domain_that_states_one():
+    """R14.  Sol's `debug` allows a user 2 submitted jobs at once; a bench
+    sweep sent six, two landed, and four came back
+    ``QOSMaxSubmitJobPerUserLimit`` -- with nothing in the record able to
+    have said so, because the column was never asked for.
+
+    Both halves are asserted, because only the pair is the rule: a stated
+    cap becomes a NUMBER, and a QoS that states none becomes ``None`` --
+    *asked, and no cap* -- never a missing key, which would mean *never
+    asked* and let R3 read it as permission.
+    """
+    domains, _ = derive_domains(*_sol())
+    by = {d["name"]: d for d in domains}
+    assert by["debug"]["max_submit_jobs"] == 2, by["debug"]
+    assert by["htc"]["max_submit_jobs"] is None, (
+        "htc states no submitted-job cap; asked-and-uncapped is null, not "
+        "an absent key")
+    for row in domains:
+        assert "max_submit_jobs" in row, (
+            f"{row['name']} does not say whether the question was asked")
+
+
+def test_a_row_from_the_older_format_says_never_asked():
+    """A record probed before 2026-08-30 has four columns, not five.  Its
+    rows must read as *the question was never asked* rather than as *no
+    cap* -- the absent-vs-null distinction R13 already needed once."""
+    from molbuilder.scheduler.probe import parse_qos
+    old = parse_qos("debug|00:15:00||DenyOnLimit,OverPartQOS\n")
+    assert old["debug"].maxwall_secs == 900, "the older columns still parse"
+    assert old["debug"].max_submit_jobs_pu is None
 
 
 def test_the_qos_assumption_is_stated_not_hidden():

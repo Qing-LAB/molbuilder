@@ -34,14 +34,25 @@ because it says where the code misleads.
 
 ---
 
-## 0. State when this was written
+## 0. State
 
 | | |
 |---|---|
-| HEAD | `465e1e22`, tree clean, nothing unpushed |
+| opened at | `465e1e22`, tree clean — **none of this built** |
+| now at | `7ec7593c` |
 | branch | `feature/generator-jobset-ui` |
-| built | none of this |
-| lane | last full run `7995 passed, 6 skipped, 1 xfailed` on this commit |
+| built | items **1, 2, 4, 5** and item 3's **§ 3.3** — see § 7 |
+| left | item **3**: the slab tab itself (§§ 3.1–3.2) and § 3.4's removal |
+
+**Every item landed contract-first**, and each carries pins that fail when the
+rule is broken rather than when the code merely changes. What each one turned
+out to be is written back into the section it belongs to, including the three
+readings of mine that were wrong (§ 1.3's loose end, § 2.2, and § 5.4's
+typeface claim).
+
+**Two findings this work turned up that are not about this tab at all** are
+recorded in § 10, because they were found here and fixed here and the next
+reader of this file is the person who will wonder why.
 
 ---
 
@@ -99,6 +110,38 @@ Everything else the item needs has a home already built:
   else it could plausibly clear.
 - **`ui-context.js` carries the track** in the lane it already writes, under the
   same `match` guard that protects the camera and the frame.
+
+### 1.2b A mark on the atom, added after the track shipped
+
+*(User, on seeing item 1 land: "the measurement selection need some indicator
+at the atom?")*
+
+Right — and § 1.2 above did not ask for one, which is why this subsection
+exists rather than being folded in. The chip **names** the three atoms; nothing
+on the molecule said **which** three, so picking in the 3D window was picking
+blind.
+
+A **second glow**, not a second meaning for the first: an atom can be selected
+and measured at once, so the ruler's mark is cool where the selection's amber is
+warm and a little wider — a marked-and-selected atom reads as a ring around the
+amber rather than replacing it.
+
+**It survives isolate, and that is the one place it parts from the highlight.**
+The highlight is null there because the drawn set already *is* the selection, so
+marking all of it says nothing; the measured atoms are a handful *within* that
+set, so which ones they are is exactly what is still worth saying.
+
+It also closed two dead doors. The sealed layer carried `markers` **and**
+`halos` — spheres-per-atom, identical apart from a default opacity, both
+hard-coded to `[]` by their only caller ever since the embed they came from was
+retired, and both taking colour and radius **from the caller**, which
+`molview.md` § 6.5 gives to the sealed layer. One `redrawGlow(bucket, atoms,
+style)` replaced all three functions.
+
+Pinned where only a page can see it: the end-to-end walk asserts the **canvas
+changes** when three atoms are measured. Cutting the redraw wire makes it fail —
+which is the state six other features were once in, store correct, engine
+correct, nothing on screen.
 
 ### 1.3 What is deleted
 

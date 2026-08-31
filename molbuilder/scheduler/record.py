@@ -181,6 +181,18 @@ class Domain:
     #: measurement, never *unlimited by assumption* (R3).
     max_cpus_per_job:  Any = UNSET
     max_cpus_per_node: Any = UNSET
+    #: R14 -- how many jobs this domain's QoS lets ONE USER have submitted
+    #: at once (``MaxSubmitJobsPerUser``).  Same tri-state as the two above,
+    #: and the same reason it exists: the column was in the QoS table all
+    #: along and the format list did not ask for it.
+    #:
+    #: It is a different KIND of ceiling from every other field here.  Those
+    #: cap ONE job and are answerable from the job alone; this caps the SET,
+    #: so whether an ask fits depends on what is already queued.  A bench
+    #: sweep submits many jobs at once by construction -- which is how Sol's
+    #: `debug` (cap 2) took two of six and refused four, with the record
+    #: unable to have said so.
+    max_submit_jobs:   Any = UNSET
     gpu:       Optional[Dict[str, Any]] = None
     #: Every distinct machine this domain holds: ``[{cores, nodes, mem_gb,
     #: gpu}, ...]``.  DECLARED since 2026-08-27, because a partition is a
@@ -211,14 +223,15 @@ class Domain:
     #: ``extra``, uninterpreted; ``node_types`` is the machine list.
     _KNOWN = ("name", "partition", "qos", "max_time",
               "max_cores", "max_mem_gb", "default_mem_per_core_gb",
-              "max_cpus_per_job", "max_cpus_per_node",
+              "max_cpus_per_job", "max_cpus_per_node", "max_submit_jobs",
               "gpu", "gpu_partition", "node_types")
 
     #: The tri-state policy columns (see their field note): ``None`` is a
     #: real answer here and lands as ``null``; only ``UNSET`` stays off
     #: the disk.  Every other ``_KNOWN`` column keeps the record style --
     #: ``None`` says nothing and is not written.
-    _NULLABLE = ("max_cpus_per_job", "max_cpus_per_node")
+    _NULLABLE = ("max_cpus_per_job", "max_cpus_per_node",
+                 "max_submit_jobs")
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:

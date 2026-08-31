@@ -86,14 +86,26 @@ class JobResult:
     status:     str
     job_id:     Optional[str] = None
     returncode: Optional[int] = None
-    #: What the scheduler said, on a ``sbatch refused``.  Carried rather
-    #: than raised because ONE refused shelf must not cancel the shelves
-    #: behind it -- so the failure has to travel back as data (2026-08-30).
+    #: What is known about this shelf's fate.  After a ``sbatch refused``,
+    #: the scheduler's own words -- carried rather than raised, because ONE
+    #: refused shelf must not cancel the shelves behind it, so the failure
+    #: travels back as data (2026-08-30).  In a PREVIEW, what the record
+    #: predicts instead: today, that this domain's per-user job cap will
+    #: refuse some of this sweep (R14).  One meaning, two moments -- what we
+    #: know about whether this will run.
     detail:     Optional[str] = None
     #: Only in ``ask`` mode.  ``None`` everywhere else, and a ``Prediction``
     #: whose ``start`` is ``None`` when SLURM declined to predict -- which
     #: is reported as *unknown*, never as *soon*.
     prediction: Optional[object] = None
+    #: WHICH DOMAIN this was placed on, by name (2026-08-30).  The command
+    #: carries ``-p`` and ``-q``, and on a cluster where several domains
+    #: share one partition those flags do not say which domain was chosen:
+    #: Sol's `debug` is (htc, debug) and its `htc` is (htc, public), so a
+    #: preview showing ``-p htc`` reads as *htc* to anyone scanning it.
+    #: It did, and the person who ran it believed a debug sweep had gone to
+    #: the wrong queue.  The name is the fact; the flags are its rendering.
+    domain:     Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:
         return dataclasses.asdict(self)
@@ -766,8 +778,17 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
             f"molbuilder jobset summarize bench <stage>")
 
     if dry_run:
+        # R14's prediction rides the shelves it is about: the note is a fact
+        # about the DOMAIN, so every shelf on that domain carries the same
+        # sentence and the caller dedupes -- the same shape the GPU-share
+        # notes already use ("one warning per unstated fact, not per job").
+        _caps = {}
+        for _n in submitted_cap_notes(plans):
+            _caps[_n.split(" takes ", 1)[0]] = _n
         return [r for p in plans
-                for r in ([JobResult(p.name, p.cmd, "planned")]
+                for r in ([JobResult(p.name, p.cmd, "planned",
+                                     domain=_domain_name(p),
+                                     detail=_caps.get(_domain_name(p)))]
                           + [JobResult(j.name, [], "rides the group")
                              for j in p.pending])]
 
@@ -990,6 +1011,57 @@ def _shelf_token(key, jobs=()) -> str:
     return point_token({"G": g, "K": (n // g) if g else n, "C": c})
 
 
+def _domain_name(prepared) -> Optional[str]:
+    """The NAME of the domain a shelf was placed on, or ``None``.
+
+    ``None`` means this machine has no menu (R6) -- the rendered header's
+    own directives stand, and there is no domain to name.
+    """
+    placement = getattr(prepared, "placement", None)
+    return getattr(placement, "name", None) or None
+
+
+def submitted_cap_notes(plans) -> List[str]:
+    """What a domain's per-user submitted-job cap says about THIS sweep
+    (R14) -- one sentence per domain that cannot take it, ``[]`` otherwise.
+
+    **A note, not a refusal**, and that is the design.  A refused shelf
+    already costs nothing: its trials keep no launch record, so
+    ``was_launched`` leaves them pending and the next ``launch bench``
+    picks up exactly them.  What was missing was not enforcement, it was
+    being TOLD -- a sweep of six went to a queue that takes two, and the
+    person learned the cap from four red refusals after saying yes.
+
+    Silent when the record does not state a cap.  ``UNSET`` means the
+    probe never asked (a record older than 2026-08-30) and ``None`` means
+    it asked and the QoS states none; neither is a limit, and R3 forbids
+    reading an unstated one as a bar.
+    """
+    from collections import Counter
+    counts: Counter = Counter()
+    caps: Dict[str, object] = {}
+    for p in plans:
+        name = _domain_name(p)
+        if not name:
+            continue
+        counts[name] += 1
+        placement = getattr(p, "placement", None)
+        caps[name] = getattr(getattr(placement, "domain", None),
+                             "max_submit_jobs", None)
+    notes: List[str] = []
+    for name, n in sorted(counts.items()):
+        cap = caps.get(name)
+        if not isinstance(cap, int) or n <= cap:
+            continue
+        notes.append(
+            f"{name} takes {cap} submitted job(s) per user; this sweep is "
+            f"{n}. The scheduler will accept {cap} and refuse "
+            f"{n - cap} with QOSMaxSubmitJobPerUserLimit -- those trials "
+            f"stay pending, and re-running this launch picks up exactly "
+            f"them.")
+    return notes
+
+
 @dataclass(frozen=True)
 class _Prepared:
     """One shelf-job, rendered to disk and ready for `sbatch`.
@@ -1006,6 +1078,10 @@ class _Prepared:
     cmd:       List[str]
     container: Path
     pending:   list
+    #: The :class:`~molbuilder.scheduler.place.Placement` this shelf was
+    #: bound to, or ``None`` when this machine has no menu (R6).  It carries
+    #: the Domain itself, so the per-user job cap is already here -- which
+    #: is why R14's check needed no new plumbing, only somebody to ask.
     placement: object
     gpu_side:  bool
     domain:    Optional[str]

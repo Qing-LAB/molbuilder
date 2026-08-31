@@ -42,6 +42,7 @@ The rules, one line each — full statement in § 3:
 | **R11** | compare KINDS | comparability = the node's kind (cores, device model, mem ≈10 GB) — never its hostname, never the allocation |
 | **R12** | sent ≠ landed | `run.json` records where it was SENT; the monitor's first `[MACHINE]` line records what it LANDED on |
 | **R13** | two ceilings | hardware (widest machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read; the smaller governs |
+| **R14** | some limits count JOBS | a QoS also caps how many jobs one user may have submitted (`MaxSubmitJobsPerUser`); it is read, and a sweep that exceeds it is told **before** the prompt |
 
 **How you use it:** the decision graph is § 5, the five-file shape § 6,
 and § 7 shows the caller's view (`Request` → `place` → `Directives`) in
@@ -388,6 +389,47 @@ R3 then reads the missing policy limit as permission.
 > the smaller governs. **Sol's answer: no policy cap anywhere** —
 > `lightwork` included; its only policy split from `public` is the
 > 1-day wall.
+
+**R14 — Some limits are about the SET, not the job. They are read too, and a
+sweep that exceeds one is told before it is sent.** Added 2026-08-30.
+
+R13's two ceilings cap **one job**, and both are answerable from the job alone.
+A QoS also states `MaxSubmitJobsPerUser` — how many jobs one user may have
+submitted at once — and that is a different kind of question: whether an ask
+fits depends on **what is already queued**. A benchmark sweep submits many jobs
+at once *by construction*, so it is the one limit a sweep reliably meets.
+
+> **R13's rule landed a third time, one column over.** *A field you did not
+> request is not an absence the record may report as silence.* The probe fetched
+> `sacctmgr show qos` with `format=Name,MaxWall,MaxTRES,Flags`;
+> `MaxSubmitJobsPerUser` was in that very table and was never asked for. So
+> `Domain` had no job-count field at all, and nothing anywhere in the codebase
+> could have named the limit.
+>
+> **What that cost, 2026-08-30.** A six-shelf bench sweep went to Sol's `debug`,
+> which allows **two** submitted jobs per user. Two were accepted; four came
+> back `QOSMaxSubmitJobPerUserLimit`. The preview had listed all six and asked
+> *submit this?*, and every check it could run had passed — because the limit
+> that decided the outcome was not among the facts the record holds.
+>
+> **And the preview named no domain**, only `-p htc -q debug`. On Sol `debug`
+> *is* (htc, debug) while `htc` is (htc, public) — two domains, one partition —
+> so the flags read as *htc* to anyone scanning them, and the run was believed
+> to have gone to the wrong queue entirely. It had not; the 15-minute walltime
+> in every line was `debug`'s own. **A rendering that cannot be read back to the
+> decision is not a display of the decision.**
+>
+> **A note, not a refusal.** A refused shelf already costs nothing: its trials
+> keep no launch record, so `was_launched` leaves them pending and re-running
+> the launch picks up exactly them. What was missing was not enforcement, it was
+> being told — so the preview states the arithmetic (*debug takes 2; this sweep
+> is 6; 4 will be refused*) while saying no is still free, and the choice stays
+> the person's.
+>
+> **Tri-state, like R13's fields.** A number caps; `null` means *asked, and this
+> QoS states none*; the key absent means *never asked* — a record older than
+> this change. R3 forbids reading an unstated limit as a bar, and it equally
+> forbids reading a never-asked one as permission.
 
 **R11 — Comparability is a property of the MACHINE, never of the domain.**
 Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue

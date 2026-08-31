@@ -2742,7 +2742,16 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             _lines = ["about to submit:"]
             _planned = [r for r in _plan if r.status == "planned"]
             for _r in _planned:
-                _lines.append(f"  {_r.name}")
+                # NAME THE DOMAIN, not only the flags.  On a cluster where
+                # several domains share one partition the flags do not say
+                # which was chosen -- Sol's `debug` is (htc, debug) and its
+                # `htc` is (htc, public), so `-p htc` reads as *htc* to
+                # anyone scanning, and on 2026-08-30 it did: a debug sweep
+                # was believed to have gone to the wrong queue.  The name is
+                # the fact; `-p`/`-q` are its rendering.
+                _lines.append(f"  {_r.name}"
+                              + (f"   -> domain {_r.domain}" if _r.domain
+                                 else ""))
                 _lines.append(f"    {' '.join(_r.command)}")
             # ONE warning per unstated FACT, not per job.  These describe
             # the ask -- prep bakes one allocation over a sweep, so every
@@ -2775,6 +2784,20 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                     _line = "  " + _l.strip()
                     if _line not in _warn:
                         _warn.append(_line)
+            # R14 -- the CAP THIS SWEEP WILL MEET, said while saying no is
+            # still free.  Deduped on the sentence, like the ratios above:
+            # the fact is about the domain, not about which shelf carries
+            # it.  A note and not a refusal, because a refused shelf already
+            # costs nothing -- its trials keep no launch record, so the next
+            # `launch bench` picks up exactly them.  What was missing was
+            # being told: a sweep of six went to a queue that takes two, and
+            # the cap was learned from four red refusals AFTER saying yes.
+            for _r in _planned:
+                if not _r.detail:
+                    continue
+                _line = "  " + _r.detail.strip()
+                if _line not in _warn:
+                    _warn.append(_line)
             if any(not any(a.startswith("--mem") for a in r.command)
                    for r in _planned):
                 _warn.append(
@@ -3341,8 +3364,36 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         # in this very table all along, and the format list never asked
         # for it -- a field you did not request is not an absence the
         # record may report as silence.
-        qos = parse_qos(_run(["sacctmgr", "-nP", "show", "qos",
-                              "format=Name,MaxWall,MaxTRES,Flags"]) or "")
+        #
+        # MaxSubmitJobsPerUser added 2026-08-30 (R14) -- the SAME rule, the
+        # next column over.  Sol's `debug` caps a user at 2 submitted jobs;
+        # a bench sweep sent six, two landed, four came back
+        # QOSMaxSubmitJobPerUserLimit, and no record could have said so.
+        #
+        # APPENDED, never inserted: `sacctmgr -nP` prints no header, so
+        # these rows are positional and a column in the middle would shift
+        # every reader after it.
+        #
+        # AND ASKED SEPARATELY, with a fall-back.  `sacctmgr` rejects the
+        # WHOLE query on one unknown format field, and `_run` reports any
+        # failure as None -- so on a cluster whose Slurm spells this column
+        # differently, a single combined query would lose MaxWall and
+        # MaxTRES as well, and every domain would silently go back to
+        # having no QoS facts at all.  One new question cannot be allowed
+        # to cost the answers we already had.
+        _QOS_FMT_FULL = "format=Name,MaxWall,MaxTRES,Flags,MaxSubmitJobsPerUser"
+        _QOS_FMT_BASE = "format=Name,MaxWall,MaxTRES,Flags"
+        _qos_txt = _run(["sacctmgr", "-nP", "show", "qos", _QOS_FMT_FULL])
+        if _qos_txt is None:
+            _qos_txt = _run(["sacctmgr", "-nP", "show", "qos", _QOS_FMT_BASE])
+            if _qos_txt is not None:
+                notes.append(
+                    "this Slurm did not accept MaxSubmitJobsPerUser in the "
+                    "QoS format list, so no domain records a submitted-job "
+                    "cap -- the wall and core caps were read as usual.  A "
+                    "sweep will find that limit at sbatch time instead of "
+                    "before it (scheduler.md R14).")
+        qos = parse_qos(_qos_txt or "")
         allowed = parse_allowed_qos(
             _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
                   "format=QOS"]) or "")

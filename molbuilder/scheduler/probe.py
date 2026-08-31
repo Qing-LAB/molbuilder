@@ -280,16 +280,38 @@ class QosLimit(NamedTuple):
     #: able to say whether both were true (R13: a field you did not
     #: request is not an absence the record may report as silence).
     max_cpus_per_job: Optional[int] = None
+    #: ``MaxSubmitJobsPerUser`` -- HOW MANY JOBS this QoS lets one user have
+    #: submitted at once.  Added 2026-08-30 (R14), and it is R13's rule
+    #: landing a third time: the number was in this very table and the
+    #: format list still did not ask for it.
+    #:
+    #: It is a different KIND of ceiling from the two above, which is why it
+    #: needed its own rule rather than joining R13.  Those cap ONE job and
+    #: are answerable from the job alone; this one caps the SET, and whether
+    #: an ask fits depends on what the user already has queued.  A bench
+    #: sweep submits many jobs at once by construction, so this is exactly
+    #: the limit a sweep meets -- and the one nothing could see.
+    max_submit_jobs_pu: Optional[int] = None
 
 
 _TRES_CPU = re.compile(r"(?:^|,)cpu=(\d+)")
 
 
 def parse_qos(text: str) -> Dict[str, "QosLimit"]:
-    """Parse ``sacctmgr -nP show qos format=Name,MaxWall,MaxTRES,...`` ->
+    """Parse ``sacctmgr -nP show qos
+    format=Name,MaxWall,MaxTRES,Flags,MaxSubmitJobsPerUser`` ->
     ``{name: QosLimit}``.  Empty MaxWall -> None (no QoS-level wall
     ceiling; the partition limit governs); a MaxTRES with no ``cpu=`` term
-    caps other resources and says nothing about cores."""
+    caps other resources and says nothing about cores.
+
+    **The job-count column is read from the END of the row, and that is
+    deliberate.** These rows are positional -- ``sacctmgr -nP`` prints no
+    header -- so a column inserted in the middle shifts every reader after
+    it, which is the failure :class:`QosLimit`'s own docstring warns about.
+    Appending cannot move ``MaxWall`` or ``MaxTRES``, and a row from the
+    older four-column format simply has no fifth cell, which reads as *this
+    probe never asked* rather than as *no limit*.
+    """
     out: Dict[str, QosLimit] = {}
     for line in (text or "").splitlines():
         cols = [c.strip() for c in line.split("|")]
@@ -307,7 +329,16 @@ def parse_qos(text: str) -> Dict[str, "QosLimit"]:
         m = _TRES_CPU.search(cols[2]) if len(cols) > 2 else None
         if m:
             cpus = int(m.group(1))
-        out[name] = QosLimit(mw or None, secs, cpus)
+        # Column 5 (index 4), appended after Flags.  Blank means the QoS
+        # states no per-user submit cap; a missing column means this row
+        # came from the older format and the question was never asked.
+        submit: Optional[int] = None
+        if len(cols) > 4 and cols[4]:
+            try:
+                submit = int(cols[4])
+            except ValueError:
+                submit = None
+        out[name] = QosLimit(mw or None, secs, cpus, submit)
     return out
 
 
@@ -468,6 +499,12 @@ def derive_domains(
         # answered for ``debug``.  Missed in the R13 sweep until a real
         # Sol record (2026-08-28) showed every domain null'd but this one.
         row["max_cpus_per_job"] = qos["debug"].max_cpus_per_job
+        # R14: HOW MANY JOBS this QoS lets one user submit at once.  `debug`
+        # is the queue that made the rule -- ASU Sol caps it at 2, a bench
+        # sweep sent six, two landed and four came back
+        # QOSMaxSubmitJobPerUserLimit, and nothing in the record could have
+        # said so beforehand because the column was never asked for.
+        row["max_submit_jobs"] = qos["debug"].max_submit_jobs_pu
         domains.append(row)
 
     for p in parts:
@@ -492,6 +529,7 @@ def derive_domains(
         # *asked; it states no cpu cap*.
         if q in qos:
             row["max_cpus_per_job"] = qos[q].max_cpus_per_job
+            row["max_submit_jobs"] = qos[q].max_submit_jobs_pu
         domains.append(row)
 
     seen: Set[Tuple[str, str]] = set()
