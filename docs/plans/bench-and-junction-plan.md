@@ -102,6 +102,14 @@ write has a CSV and no summary). Correct the docstring's claim.
 
 ### 2.3 Junction placement — `mirror` | `translate`
 
+> **SUBSUMED 2026-08-30** by
+> [`plans/modify-redesign-plan.md`](?doc=plans/modify-redesign-plan.md) § 3. The
+> redesigned slab panel states a **starting registry (A/B/C), a starting z, and a
+> growth direction**, which makes the accidental layer-order flip below
+> unreachable rather than switchable. Build that instead of this parameter; what
+> stays true is the arithmetic, kept here because the new panel has to get it
+> right for the same reason.
+
 The geometry is `junction-cell.md` § 3.3; this is the parameter, which does not
 exist yet. `modify.py:974` unconditionally mirrors for `side="-z"`.
 
@@ -121,6 +129,11 @@ plus a Junction-panel control. **Default `mirror`** — every existing structure
 used it, and contact symmetry is usually the intent.
 
 ### 2.4 Seam detector + warning
+
+> **Still wanted, with a changed job** *(2026-08-30)*. Once § 2.3's replacement
+> lands, the registry is **stated** by the user rather than inferred — so this
+> stops being the only thing that knows about it and becomes the check that what
+> was built matches what was asked.
 
 Nothing measures the boundary today. Put `classify_seam` in `cell.py` (which
 already owns `detect_layers` / `bulk_z_period` / `STACKING_PERIOD`).
