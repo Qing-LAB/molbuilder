@@ -172,6 +172,15 @@ rather than gaining one.
 > `selection` there passes the entire suite; measured. So the field has a reader
 > whose correctness no test can demonstrate, and the question of deleting it is
 > unchanged.
+>
+> **CLOSED 2026-08-31 — the reader moves, and the field goes.** The user named
+> what the overlap was: `selection` manages *groups and labels*; order and a
+> count limit are a different kind of thing. Both belong to the pick track,
+> which already promises them, so § 4.2 is revised — the Cell page turns the
+> ruler on and reads its picks. `pickOrder` then has no reader at all and is
+> deleted, and § 8.4's lesson stays intact: the field is removed because
+> nothing needs it, not left in the snapshot to be misread. The rule now lives
+> in `molview.md` §§ 9.5 and 11.6; this is its restatement, not its home.
 
 ### 1.4 The isolation rule, and what pins it
 
@@ -538,14 +547,49 @@ perform, reached by a different gesture.
 
 This makes item 4 the cheapest of the four.
 
-### 4.2 Picking, without a third track
+### 4.2 Picking — REVISED 2026-08-31: it reads the pick track, not the selection
 
-Item 1 diverts clicks to the measurement track. Item 4 wants picking too. **The
-cell page does not get a track of its own**: it reads the ordinary selection
-through a *Use selection* button — two atoms → that axis, one atom → the origin.
+> **Superseded, and by the better reading.** This section first said the cell
+> page reads **the ordinary selection** through a *Use selection* button. That
+> avoided a third track, which was the right worry and the wrong fix: it made
+> an ordered, count-limited gesture read a store whose contract is that it is
+> an unordered set — and paid for it with `pickOrder`, a parallel order field
+> on `selection` that nothing else needed (§ 1.3).
 
-One picking mechanism, one diversion switch, no third mode to explain — and
-nothing new to keep apart from § 1.4's wall.
+Item 1 diverts clicks to the measurement track. Item 4 wants picking too.
+
+**The cell page turns the ruler on and reads its picks** *(user, 2026-08-31:
+"having selection and this function overlapping seems functionally wrong — one
+is for users to manage groups, labels, and the other have specific order, and
+number limits" … "can we let the cell enable the measurement toggle and use
+those to facilitate the setup of axis?" … "this feels cleaner")*.
+
+The two kinds are genuinely different, and naming them is what settles this:
+
+| | `selection` | the pick track (§ 11.6) |
+|---|---|---|
+| what it is for | groups, labels, what the next op acts on | one ordered gesture |
+| shape | a **set** — no first, no second | a **list**, in click order |
+| size | any, up to every atom | **at most three** |
+| built by | clicks, *All*, *Invert*, a filter, a restore | clicks only |
+
+An axis needs a first and a second; an origin needs exactly one. Both are the
+right-hand column, and neither is a property a set can honestly carry.
+
+**Still no third track** — the original worry, met properly. The ruler is the
+second track and it already exists; this gives it a second reader rather than
+the page a store of its own. One picking mechanism, one diversion switch.
+
+**And the gesture gets better, not just tidier.** At two atoms the ruler already
+shows the signed `Δ = (Δx, Δy, Δz)`, second minus first — which *is* the row
+about to be written. The person sees the axis before committing it instead of
+picking blind and reading the sign off the result. The count limit is the
+gesture's own rule for free.
+
+**Reading it is still looking, not changing** (`molview.md` § 11.2b): the picks
+stage a value, and the commit is a separate press landing on § 4.1's existing
+door. What this closes is § 1.3's loose end — `selection` goes back to being the
+set it is documented as, and `pickOrder` is deleted rather than defended.
 
 ### 4.3 Handedness — the refusal this gesture will actually hit
 

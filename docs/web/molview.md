@@ -2065,6 +2065,30 @@ silently changed what the next Delete removes, and clearing the measurement
 changed it back. The ruler keeps its own list, in its own store, and **nothing in
 this snapshot names it**.
 
+**THIS SELECTION IS A SET, AND IT CARRIES NO ORDER** *(user, 2026-08-31)*. It is
+how a person manages **groups and labels** — which atoms are the bridge, which
+are frozen, which the next op acts on — and a set is the honest shape for that:
+"these forty atoms" has no first and no second. Anything that needs a **specific
+order** or a **count limit** is a different kind of thing and belongs to the pick
+track (§ 11.6), which has both by construction.
+
+The snapshot **still carries `pickOrder`**, a click-order shadow of `selection`,
+and it is **on its way out** — the overlap is the tell: one field for "which
+atoms" and a parallel field for "in what order", maintained in lock-step on a
+store whose whole contract is that order does not matter. It was built for the
+angle vertex — a *measurement* — and when measurement got its own track the
+shadow had no user but one, the Cell page's axis gesture, which needs
+`second − first`. Pointing that gesture at the pick track instead retires the
+shadow: `selection` goes back to being the set it is documented as, and the
+order lives in the one store that promises it. It is still in § 6.2's shape
+diagram, because it is still there.
+
+Until it is gone the field takes **no new readers**. Its correctness cannot be
+demonstrated: `toggle` appends without sorting, so a click-built `selection` is
+already in click order, and every operation that sorts also hands over an empty
+trail — so no reachable state makes the two disagree, and a reader that consults
+the wrong one passes the whole suite. Measured, 2026-08-30.
+
 - **The switches live here** — every one of them off by default, and the arrow
   scale at its default — not in the renderEngine and not in the panel.
 - **The selection is the truth; the atom list and the filter are two editors of
@@ -3694,6 +3718,25 @@ entry it would be three copies of one rule, and the fourth click path added late
 is the one that forgets to ask. The **bulk** list gestures — shift-range and the
 drag box — do nothing while measuring: "these forty atoms" is not a measurement,
 and writing them into the selection is what the user's rule forbids.
+
+**It is the ordered-pick track, and the ruler is its first reader — not its
+owner** *(user, 2026-08-31: "this feels cleaner")*. Order and a small count limit
+are what it promises; measuring is one use of that promise. The **Cell page's
+axis gesture is the second**: two picks are a row of the cell matrix, one is the
+origin (§ 4 of `plans/modify-redesign-plan.md`), and both need exactly what this
+store has and `selection` refuses to give — a first and a second.
+
+The fit is closer than borrowing. At two atoms this track **already shows the
+signed `Δ = (Δx, Δy, Δz)`, second minus first** — which *is* the axis vector, so
+the person sees the row they are about to commit before committing it, rather
+than picking blind and reading the sign off the result. The count limit is the
+gesture's own rule for free: an axis takes two atoms and an origin one, and a
+fourth pick meaning *now measure from here* is the same thing an axis wants.
+
+**Reading it is still looking, not changing** (§ 11.2b). The picks stage a value;
+the commit is a separate, deliberate press on the Cell page, landing on the door
+§ 4.1 names. Nothing about turning the ruler on edits anything, which is the
+property that let this track be shared at all.
 
 **What it reads.** Its atoms come from `measurement`, in **pick order** — which is
 why the vertex of a three-atom angle is the atom picked second, not the middle one
