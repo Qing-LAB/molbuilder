@@ -56,8 +56,11 @@
 
 body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 system-ui, "Inter", sans-serif;
+    /* ONE FAMILY (ui-contract.md § 4).  This hand-written stack was one of
+       five spellings of the same typeface in the page layer; they agreed only
+       because every name before `system-ui` misses on Linux.  --font-sans is
+       the owner now. */
+    font-family: var(--font-sans);
     color: var(--text-primary);
     background: var(--bg-page);
     line-height: 1.5;

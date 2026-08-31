@@ -128,6 +128,7 @@
     --weight-normal:    400;
     --weight-medium:    500;
     --weight-semibold:  600;
+    --weight-bold:      700;   /* page titles only */
 
     /* ============================================================== */
     /*  Component-scoped palettes (Phase 3, 2026-06-13)               */

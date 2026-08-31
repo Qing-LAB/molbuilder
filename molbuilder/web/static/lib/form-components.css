@@ -316,7 +316,7 @@ button.danger:disabled {
     border: none;
     border-radius: var(--radius-sm);
     padding: var(--space-sm) 0;
-    font: 600 0.92rem/1 system-ui, sans-serif;
+    font: var(--weight-semibold) 0.92rem/1 var(--font-sans);
     cursor: pointer;
 }
 .full-btn:disabled {

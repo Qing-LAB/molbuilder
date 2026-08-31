@@ -34,7 +34,7 @@ header {
 }
 header h1 {
     margin: 0;
-    font: 700 1.6rem/1.2 "Inter", system-ui, sans-serif;
+    font: var(--weight-bold) 1.6rem/1.2 "Inter", var(--font-sans);
 }
 header .tagline {
     /* COMPOSITION ONLY (`ui-contract.md` § 5).  The `color` and `font-size`

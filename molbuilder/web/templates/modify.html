@@ -52,231 +52,231 @@
      generator's form is visible at a time, eliminating the
      accordion's vertical sprawl + keeping the workflow visually
      compact.  Order matches docs/web/tabs.md -->
-<section class="modify-init-card card">
-  <header class="card-header">
-    <h2>Init structure</h2>
-    <span id="status" class="status">No structure loaded.</span>
-  </header>
-
-  <nav class="modify-init-tabs" role="tablist" aria-label="Init structure source">
-    <button class="modify-init-tab is-active" data-init-tab="load"
-            role="tab" type="button" aria-selected="true">
-      Load from project
-    </button>
-    <button class="modify-init-tab" data-init-tab="upload"
-            role="tab" type="button" aria-selected="false">
-      Upload file
-    </button>
-    <button class="modify-init-tab" data-init-tab="smiles"
-            role="tab" type="button" aria-selected="false">
-      SMILES
-    </button>
-    <button class="modify-init-tab" data-init-tab="name"
-            role="tab" type="button" aria-selected="false">
-      Name lookup
-    </button>
-    <button class="modify-init-tab" data-init-tab="dna"
-            role="tab" type="button" aria-selected="false">
-      DNA
-    </button>
-    <button class="modify-init-tab" data-init-tab="rna"
-            role="tab" type="button" aria-selected="false">
-      RNA
-    </button>
-    <button class="modify-init-tab" data-init-tab="peptide"
-            role="tab" type="button" aria-selected="false">
-      Peptide
-    </button>
-  </nav>
-
-  <div class="modify-init-panel is-active" data-init-panel="load"
-       role="tabpanel">
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in
-        the <strong>Projects</strong> sidebar, then click
-        <strong>Load</strong> to bring it into the workspace.
-      </p>
-      <div class="modify-source-actions">
-        <button id="load-candidate-btn" class="ghost" disabled
-          title="Load the file currently picked in the Projects sidebar into the workspace. Disabled when no loadable file (.xyz / .pdb) is picked.">
-          Load picked file
-        </button>
-        <span id="load-candidate-readout" class="muted"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="modify-init-panel" data-init-panel="upload" role="tabpanel" hidden>
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Drop a local <code>.xyz</code> / <code>.pdb</code> file
-        into the workspace (no project sidebar pick needed —
-        useful for one-off geometries from another tool).
-      </p>
-      <div class="modify-source-actions">
-        <input id="file-upload-input" type="file"
-               accept=".xyz,.pdb,.XYZ,.PDB">
-        <span id="file-upload-status" class="status" role="status"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="modify-init-panel" data-init-panel="smiles" role="tabpanel" hidden>
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Build a 3-D structure from a SMILES string via RDKit.
-      </p>
-      <label class="modify-source-row">
-        <span>SMILES</span>
-        <input id="smiles-input" type="text"
-               placeholder="e.g. CCO  (ethanol)"
-               autocomplete="off" spellcheck="false">
-      </label>
-      <div class="modify-source-actions">
-        <button id="smiles-generate-btn" class="ghost">Generate</button>
-        <span id="smiles-status" class="status" role="status"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="modify-init-panel" data-init-panel="name" role="tabpanel" hidden>
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Look up a molecule by IUPAC or common name (PubChem) and
-        build a 3-D structure.
-      </p>
-      <label class="modify-source-row">
-        <span>Name</span>
-        <input id="name-input" type="text"
-               placeholder="e.g. ethanol  /  benzene  /  caffeine"
-               autocomplete="off" spellcheck="false">
-      </label>
-      <div class="modify-source-actions">
-        <button id="name-generate-btn" class="ghost">Generate</button>
-        <span id="name-status" class="status" role="status"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="modify-init-panel" data-init-panel="dna" role="tabpanel" hidden>
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
-        Picks the best installed backend (3DNA preferred, AmberTools fallback).
-        <br>
-        <strong>Canonical duplex:</strong> prefix with <code>ds,</code> — e.g.
-        <code>ds,ATGCATGC</code> — for a Watson–Crick duplex; the complementary
-        strand is generated automatically (B / A / Z helix — Z needs an
-        alternating poly-d(GC) sequence).
-        <br>
-        <strong>Explicit / mismatched duplex:</strong> give the two strands
-        comma-separated — e.g. <code>ATGCATGC,GCATGCAT</code> — both 5'→3', paired
-        antiparallel and equal length. A non-complementary base pairs as a
-        mismatch (a B-form starting model — relax before use). B-form only.
-        (Requires 3DNA. Read 5'→3'; write <code>3'-…-5'</code> to reverse a strand.)
-      </p>
-      <label class="modify-source-row">
-        <span>Sequence</span>
-        <input id="dna-input" type="text"
-               placeholder="ATGCATGC · ds,ATGCATGC · ATGC,GCAT (two strands)"
-               autocomplete="off" spellcheck="false">
-      </label>
-      <label class="modify-source-row">
-        <span>Form</span>
-        <select id="dna-form-select"
-                
-                title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine only)">
-          <option value="B" selected>B (canonical)</option>
-          <option value="A">A (dehydrated)</option>
-          <option value="Z">Z (left-handed, GCGC… only)</option>
-        </select>
-      </label>
-      <label class="modify-source-row">
-        <span>Backend</span>
-        <select id="dna-backend-select"
-                
-                title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical helical fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
-          <option value="auto" selected>auto</option>
-          <option value="threedna">3DNA (canonical helix)</option>
-          <option value="amber">AmberTools (extended chain)</option>
-          <option value="rdkit">RDKit (folded conformer)</option>
-        </select>
-      </label>
-      <label class="modify-source-row"
-             title="Two-strand duplexes only: a non-complementary (mismatched) base pair interpenetrates at the standard frame.  When checked, a short force-field minimization pushes the overlapping atoms apart (removes near-coincidence) so a later DFT/SIESTA relaxation doesn't explode.  Unchecked, a clash is only reported.">
-        <span>Relieve clashes</span>
-        <input id="dna-relax-clashes" type="checkbox">
-      </label>
-      <div class="modify-source-actions">
-        <button id="dna-generate-btn" class="ghost">Generate</button>
-        <span id="dna-status" class="status" role="status"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="modify-init-panel" data-init-panel="rna" role="tabpanel" hidden>
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Build single-stranded RNA from a 1-letter sequence (ACGU)
-        in A / B / Z helix form.  A-form is the canonical RNA
-        helix; the backend picks the best installed builder
-        (3DNA preferred, AmberTools fallback).
-      </p>
-      <label class="modify-source-row">
-        <span>Sequence</span>
-        <input id="rna-input" type="text"
-               placeholder="e.g. ACGUACGU"
-               autocomplete="off" spellcheck="false">
-      </label>
-      <label class="modify-source-row">
-        <span>Form</span>
-        <select id="rna-form-select"
-                
-                title="A = canonical RNA helix (3'-endo sugar).  3DNA's fiber only builds A-form RNA; other backends ignore form and produce an extended (Amber) or folded (RDKit) chain.">
-          <option value="A" selected>A (canonical)</option>
-        </select>
-      </label>
-      <label class="modify-source-row">
-        <span>Backend</span>
-        <select id="rna-backend-select"
-                
-                title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical A-form fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
-          <option value="auto" selected>auto</option>
-          <option value="threedna">3DNA (canonical A-form)</option>
-          <option value="amber">AmberTools (extended chain)</option>
-          <option value="rdkit">RDKit (folded conformer)</option>
-        </select>
-      </label>
-      <div class="modify-source-actions">
-        <button id="rna-generate-btn" class="ghost">Generate</button>
-        <span id="rna-status" class="status" role="status"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="modify-init-panel" data-init-panel="peptide" role="tabpanel" hidden>
-    <div class="modify-source-body">
-      <p class="modify-source-hint">
-        Build a peptide from a one-letter amino-acid sequence
-        (e.g. <code>ACDEF</code>).  Generates an extended
-        conformation via AmberTools' <code>tleap</code>.
-      </p>
-      <label class="modify-source-row">
-        <span>Sequence</span>
-        <input id="peptide-input" type="text"
-               placeholder="e.g. ACDEF"
-               autocomplete="off" spellcheck="false">
-      </label>
-      <div class="modify-source-actions">
-        <button id="peptide-generate-btn" class="ghost">Generate</button>
-        <span id="peptide-status" class="status" role="status"></span>
-      </div>
-    </div>
-  </div>
-</section>
-
 <main class="modify-main">
+
+  <section class="modify-init-card card">
+    <header class="modify-card-header">
+      <h2>Init structure</h2>
+      <span id="status" class="status">No structure loaded.</span>
+    </header>
+
+    <nav class="modify-init-tabs" role="tablist" aria-label="Init structure source">
+      <button class="modify-init-tab is-active" data-init-tab="load"
+              role="tab" type="button" aria-selected="true">
+        Load from project
+      </button>
+      <button class="modify-init-tab" data-init-tab="upload"
+              role="tab" type="button" aria-selected="false">
+        Upload file
+      </button>
+      <button class="modify-init-tab" data-init-tab="smiles"
+              role="tab" type="button" aria-selected="false">
+        SMILES
+      </button>
+      <button class="modify-init-tab" data-init-tab="name"
+              role="tab" type="button" aria-selected="false">
+        Name lookup
+      </button>
+      <button class="modify-init-tab" data-init-tab="dna"
+              role="tab" type="button" aria-selected="false">
+        DNA
+      </button>
+      <button class="modify-init-tab" data-init-tab="rna"
+              role="tab" type="button" aria-selected="false">
+        RNA
+      </button>
+      <button class="modify-init-tab" data-init-tab="peptide"
+              role="tab" type="button" aria-selected="false">
+        Peptide
+      </button>
+    </nav>
+
+    <div class="modify-init-panel is-active" data-init-panel="load"
+         role="tabpanel">
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in
+          the <strong>Projects</strong> sidebar, then click
+          <strong>Load</strong> to bring it into the workspace.
+        </p>
+        <div class="modify-source-actions">
+          <button id="load-candidate-btn" class="modify-ghost" disabled
+            title="Load the file currently picked in the Projects sidebar into the workspace. Disabled when no loadable file (.xyz / .pdb) is picked.">
+            Load picked file
+          </button>
+          <span id="load-candidate-readout" class="muted"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modify-init-panel" data-init-panel="upload" role="tabpanel" hidden>
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Drop a local <code>.xyz</code> / <code>.pdb</code> file
+          into the workspace (no project sidebar pick needed —
+          useful for one-off geometries from another tool).
+        </p>
+        <div class="modify-source-actions">
+          <input id="file-upload-input" type="file"
+                 accept=".xyz,.pdb,.XYZ,.PDB">
+          <span id="file-upload-status" class="status" role="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modify-init-panel" data-init-panel="smiles" role="tabpanel" hidden>
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Build a 3-D structure from a SMILES string via RDKit.
+        </p>
+        <label class="modify-source-row">
+          <span>SMILES</span>
+          <input id="smiles-input" type="text"
+                 placeholder="e.g. CCO  (ethanol)"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <div class="modify-source-actions">
+          <button id="smiles-generate-btn" class="modify-ghost">Generate</button>
+          <span id="smiles-status" class="status" role="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modify-init-panel" data-init-panel="name" role="tabpanel" hidden>
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Look up a molecule by IUPAC or common name (PubChem) and
+          build a 3-D structure.
+        </p>
+        <label class="modify-source-row">
+          <span>Name</span>
+          <input id="name-input" type="text"
+                 placeholder="e.g. ethanol  /  benzene  /  caffeine"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <div class="modify-source-actions">
+          <button id="name-generate-btn" class="modify-ghost">Generate</button>
+          <span id="name-status" class="status" role="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modify-init-panel" data-init-panel="dna" role="tabpanel" hidden>
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
+          Picks the best installed backend (3DNA preferred, AmberTools fallback).
+          <br>
+          <strong>Canonical duplex:</strong> prefix with <code>ds,</code> — e.g.
+          <code>ds,ATGCATGC</code> — for a Watson–Crick duplex; the complementary
+          strand is generated automatically (B / A / Z helix — Z needs an
+          alternating poly-d(GC) sequence).
+          <br>
+          <strong>Explicit / mismatched duplex:</strong> give the two strands
+          comma-separated — e.g. <code>ATGCATGC,GCATGCAT</code> — both 5'→3', paired
+          antiparallel and equal length. A non-complementary base pairs as a
+          mismatch (a B-form starting model — relax before use). B-form only.
+          (Requires 3DNA. Read 5'→3'; write <code>3'-…-5'</code> to reverse a strand.)
+        </p>
+        <label class="modify-source-row">
+          <span>Sequence</span>
+          <input id="dna-input" type="text"
+                 placeholder="ATGCATGC · ds,ATGCATGC · ATGC,GCAT (two strands)"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <label class="modify-source-row">
+          <span>Form</span>
+          <select id="dna-form-select"
+                
+                  title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine only)">
+            <option value="B" selected>B (canonical)</option>
+            <option value="A">A (dehydrated)</option>
+            <option value="Z">Z (left-handed, GCGC… only)</option>
+          </select>
+        </label>
+        <label class="modify-source-row">
+          <span>Backend</span>
+          <select id="dna-backend-select"
+                
+                  title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical helical fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
+            <option value="auto" selected>auto</option>
+            <option value="threedna">3DNA (canonical helix)</option>
+            <option value="amber">AmberTools (extended chain)</option>
+            <option value="rdkit">RDKit (folded conformer)</option>
+          </select>
+        </label>
+        <label class="modify-source-row"
+               title="Two-strand duplexes only: a non-complementary (mismatched) base pair interpenetrates at the standard frame.  When checked, a short force-field minimization pushes the overlapping atoms apart (removes near-coincidence) so a later DFT/SIESTA relaxation doesn't explode.  Unchecked, a clash is only reported.">
+          <span>Relieve clashes</span>
+          <input id="dna-relax-clashes" type="checkbox">
+        </label>
+        <div class="modify-source-actions">
+          <button id="dna-generate-btn" class="modify-ghost">Generate</button>
+          <span id="dna-status" class="status" role="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modify-init-panel" data-init-panel="rna" role="tabpanel" hidden>
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Build single-stranded RNA from a 1-letter sequence (ACGU)
+          in A / B / Z helix form.  A-form is the canonical RNA
+          helix; the backend picks the best installed builder
+          (3DNA preferred, AmberTools fallback).
+        </p>
+        <label class="modify-source-row">
+          <span>Sequence</span>
+          <input id="rna-input" type="text"
+                 placeholder="e.g. ACGUACGU"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <label class="modify-source-row">
+          <span>Form</span>
+          <select id="rna-form-select"
+                
+                  title="A = canonical RNA helix (3'-endo sugar).  3DNA's fiber only builds A-form RNA; other backends ignore form and produce an extended (Amber) or folded (RDKit) chain.">
+            <option value="A" selected>A (canonical)</option>
+          </select>
+        </label>
+        <label class="modify-source-row">
+          <span>Backend</span>
+          <select id="rna-backend-select"
+                
+                  title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical A-form fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
+            <option value="auto" selected>auto</option>
+            <option value="threedna">3DNA (canonical A-form)</option>
+            <option value="amber">AmberTools (extended chain)</option>
+            <option value="rdkit">RDKit (folded conformer)</option>
+          </select>
+        </label>
+        <div class="modify-source-actions">
+          <button id="rna-generate-btn" class="modify-ghost">Generate</button>
+          <span id="rna-status" class="status" role="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modify-init-panel" data-init-panel="peptide" role="tabpanel" hidden>
+      <div class="modify-source-body">
+        <p class="modify-source-hint">
+          Build a peptide from a one-letter amino-acid sequence
+          (e.g. <code>ACDEF</code>).  Generates an extended
+          conformation via AmberTools' <code>tleap</code>.
+        </p>
+        <label class="modify-source-row">
+          <span>Sequence</span>
+          <input id="peptide-input" type="text"
+                 placeholder="e.g. ACDEF"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <div class="modify-source-actions">
+          <button id="peptide-generate-btn" class="modify-ghost">Generate</button>
+          <span id="peptide-status" class="status" role="status"></span>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- Viewer — vertical workflow puts the 3D canvas between Init
        structure (above) and Modify (below).  View actions (Reset
@@ -303,7 +303,7 @@
       (exactly like the demo's bare #molview-demo-host).  Wrapping it in an outer .card
       would double-nest card chrome and break the module card's fold/responsive layout. -#}
   <section class="modify-viewer-section">
-    <header class="card-header">
+    <header class="modify-card-header modify-card-header--section">
       <h2>Structure &amp; selection</h2>
       <span id="title-readout" class="muted"></span>
     </header>
@@ -320,16 +320,16 @@
        fixed while applying ops.  "Save to project" is in the card
        header row (all cross-tab transfer is via saved project files). -->
   <section class="card modify-section">
-    <header class="card-header">
+    <header class="modify-card-header">
       <h2>Modify</h2>
       {#- State timeline (§19.5) -- WHOLE-MODEL controls, always visible (not
           buried in an op-subtab): "Save state" checkpoints the model
           (molview.data.save(1)); "Retract" rolls back (molview.data.load(-1)).
           Wired in modify/viewer.js. -#}
       <span class="modify-timeline-actions">
-        <button id="save-state" class="ghost" disabled
+        <button id="save-state" class="modify-ghost" disabled
           title="Save a checkpoint of the current structure you can roll back to.">⭳ Save state</button>
-        <button id="undo-op" class="ghost" disabled
+        <button id="undo-op" class="modify-ghost" disabled
           title="Retract: with unsaved edits, return to the last saved state; otherwise step back one checkpoint.">↶ Retract</button>
         {#- Dirty/target indicator: shows whether the model has unsaved edits
             and WHICH state Retract will restore (last saved when dirty; the
@@ -807,7 +807,7 @@
           <div id="pv-cell-grid" class="modify-cell-matrix" aria-label="unit cell 3x3"></div>
           <div class="modify-op-row modify-cell-actions">
             <button id="pv-cell-update" class="full-btn" type="button">Update cell</button>
-            <button id="pv-cell-reset" class="ghost" type="button"
+            <button id="pv-cell-reset" class="modify-ghost" type="button"
                     title="Clear the explicit cell -- fall back to the default bounding-box + vacuum.">
               Use default
             </button>
@@ -841,7 +841,7 @@
           </div>
           <div class="modify-op-row modify-cell-actions">
             <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>
-            <button id="pv-org-reset" class="ghost" type="button" disabled
+            <button id="pv-org-reset" class="modify-ghost" type="button" disabled
                     title="Clear the manual origin -- the other parameters (vacuum, periodicity) regain their freedom; the next vacuum/periodicity update re-derives the box.">
               Reset origin to default
             </button>

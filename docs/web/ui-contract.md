@@ -156,13 +156,21 @@ fails when it does.)*
   `<main>` rather than a child, so it rendered flush while every card below it was
   inset by main's padding — a 16 px step at a narrow window and a 506 px one at a
   wide one, where only the inner row carried the max-width.
-- **One family, and the shorthand is where it escapes** (2026-08-30). `--font-sans`
-  in `tokens.css` is the app's sans stack. **A `font:` shorthand resets
-  `font-family`**, so any rule using the shorthand silently re-picks the typeface:
-  a page sheet writing `font: 600 var(--text-base)/1 system-ui, sans-serif` renders
-  its headings in a different face from the body text page-shell set, and nothing
-  looks wrong in the source. The rule: *a `font:` shorthand names
-  `var(--font-sans)`, or it is not written* — use the longhands instead.
+- **One family, and the shorthand is where it escapes** (2026-08-30).
+  `--font-sans` in `tokens.css` is the app's sans stack. **A `font:` shorthand
+  resets `font-family`**, so every rule that uses the shorthand has to retype the
+  stack — and retyping is how the app came to spell one typeface five ways:
+  the token, page-shell's hand-written body stack, `system-ui, sans-serif` in six
+  `modify` rules, `"Inter", system-ui, sans-serif` on the page title, and
+  `--font-sans` again in `task-setup` and `dialog`.
+
+  Measured on `/molbuilder` they all render **the same face** (289.98 px for one
+  string, every stack) — because the Apple and Windows names miss on that machine
+  and each stack falls through to `system-ui`. **That is agreement by luck.**
+  Five spellings can be edited independently, and on a machine where an earlier
+  name hits they stop agreeing, in a way no one is looking for. The rule: *a
+  `font:` shorthand names `var(--font-sans)`, or it is not written* — reach for
+  the longhands instead, which leave the family alone.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are
@@ -347,6 +355,13 @@ before concluding anything.
   new media-query breakpoint.
 - A class that sets `display` on a `hidden`-toggled element → add the
   `[hidden]` guard.
+- A **negative** token value → `calc(-1 * var(--token))`. **`-var(--token)` is
+  not valid CSS**: the minus does not bind to the function, so the browser
+  discards the *whole declaration* — including any other values on the same
+  line. Nothing errors, nothing renders differently enough to notice, and the
+  comment beside it goes on describing a layout that never shipped. One shipped
+  this way for months (`modify/style.css`'s op-tab strip, "bleed to card edges",
+  found 2026-08-30 and pinned by `test_css_negated_var_is_calc`).
 - Behavior → a linked `.js` file; never an inline `<script>` or `onclick=`.
 - A page sheet that repeats a shared selector → **read its properties** (§ 5).
   Position is composition and stays; `color` / `font-size` is a second owner

@@ -515,16 +515,31 @@ decided once rather than a fourth time.
    is supposed to share. Fixing it shifts every page by 2 px and deserves its
    own commit.
 
-2. **The page renders in two typefaces.** `page-shell.css` sets the body to
-   `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Inter",
-   sans-serif`; six `font:` shorthands in `modify/style.css` write
-   `system-ui, sans-serif`. **The shorthand resets the family**, so card titles,
-   op-tab labels, hints and the timeline status come out in a different face
-   from the body text around them — measured on this machine, the same string
-   sets 292.61 px in the first stack and 290.93 px in the second. `tokens.css`
-   has had `--font-sans` since it was written and **nothing in the page layer
-   uses it**. The rule that closes it is one line: *a `font:` shorthand names
-   `var(--font-sans)`, or it is not written.*
+2. **One typeface, spelled five ways, agreeing by luck.** `tokens.css` has
+   `--font-sans`; `task-setup/style.css` and `lib/dialog.css` use it;
+   `page-shell.css` hand-writes `-apple-system, BlinkMacSystemFont, "Segoe UI",
+   system-ui, "Inter", sans-serif` for the body; six `font:` shorthands in
+   `modify/style.css` write `system-ui, sans-serif`; and `header h1` writes
+   `"Inter", system-ui, sans-serif`.
+
+   **Measured, all of them render the same face** — 289.98 px for the same
+   string in every sans stack on the page. They agree because the Apple and
+   Windows names miss on this machine and every stack falls through to
+   `system-ui`. That is luck, not a rule: any of the five can be edited
+   without the others, and on a machine where an earlier name *does* hit they
+   stop agreeing.
+
+   *(An earlier draft of this section claimed the page renders in two faces and
+   quoted 292.61 px against 290.93 px. That measurement was mine and it was
+   wrong — the stack I typed into the test carried a `Roboto` the stylesheet
+   does not, and Roboto is installed here, so I measured my own typo. Kept
+   because the correction is the useful half: a font stack has to be measured
+   as the sheet writes it, character for character.)*
+
+   The mechanism that made five is worth naming even so: **a `font:` shorthand
+   resets `font-family`**, so every author using it must retype the stack, and
+   retyping is how a fifth spelling appears. The rule: *a `font:` shorthand
+   names `var(--font-sans)`, or it is not written.*
 
 3. **Four answers to "how wide is a page".** `results` caps at 1200 px,
    `--ts-page-max` at 1240, `modify` at 1680, and three tabs have no cap at all.

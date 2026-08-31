@@ -50,7 +50,7 @@ header {
 }
 header h1 {
     margin: 0;
-    font: 700 var(--text-xl)/1.2 "Inter", system-ui, sans-serif;
+    font: var(--weight-bold) var(--text-xl)/1.2 "Inter", var(--font-sans);
     color: var(--text-primary);
 }
 
@@ -131,6 +131,16 @@ header h1 {
     flex-direction: column;
     gap: var(--gap);
     padding: var(--gap);
+    /* ONE GUTTER PER TAB (ui-contract.md § 4).  The cap and the centring live
+       here, on the container every top-level block sits in -- not on the
+       workspace row alone.  Until 2026-08-30 the Init-structure card was a
+       SIBLING of this element rather than a child, so it rendered flush with
+       the content column while everything below it was inset by this padding:
+       a 16px step at a narrow window and a 506px one at a wide one, where only
+       .modify-grid carried the max-width. */
+    max-width: var(--page-max-width);
+    margin-inline: auto;
+    width: 100%;
 }
 /* Page COMPOSITION only: the fused molview card sits in a flex column in the workspace grid.
  * Everything about the VIEWER's dimensions -- the square (--viewer-extent), the fill-to-canvas
@@ -152,8 +162,8 @@ header h1 {
  * three --card-* vars, so the row wraps the modify card below the instant both min-widths
  * stop fitting (never crushing one card into the other).  See docs/web/ui-contract.md. */
 .modify-grid {
-    max-width: var(--page-max-width);
-    margin-inline: auto;
+    /* the cap and the centring moved to .modify-main (2026-08-30), which is
+       now the one container both top-level blocks share. */
 }
 /* Primary card: wide + heavy grow; min == the fused card's own stacked min-width.
  * Targets .modify-viewer-section -- the direct grid child that now WRAPS molview.mount's built
@@ -239,20 +249,15 @@ header h1 {
  * below it. */
 .modify-init-card {
     margin: 0;
-    padding: var(--space-sm) var(--space-lg) var(--space-sm);
-    /* the column flow the deleted `.card` copy used to give it;
-       `.modify-section` (line ~165) already declared its own. */
+    /* No padding here.  ONE INSET PER CARD (ui-contract.md § 4): the inset is
+       `.card`'s and this element does not get a second opinion.  It carried
+       `var(--space-sm) var(--space-lg) var(--space-sm)` until 2026-08-30,
+       which is why its title sat at 20.8px while the Modify card's sat at
+       38.8 and the viewer's at 20.0 -- three cards, three left edges.
+       The two `.card-header` overrides that stood here are gone too: they said
+       what `.modify-card-header` now says for every card on the page. */
     display: flex;
     flex-direction: column;
-}
-.modify-init-card .card-header {
-    padding: 0 0 var(--space-sm);
-    border-bottom: 1px solid var(--border-soft);
-}
-.modify-init-card .card-header h2 {
-    margin: 0;
-    font-size: var(--text-base);
-    color: var(--text-primary);
 }
 
 /* Tab bar that replaced the <details> accordion (one panel
@@ -318,17 +323,56 @@ header h1 {
 .modify-section {
     min-height: 0;          /* let inner flex children scroll */
 }
-.card-header {
+/* A card's top row.  ONE INSET PER CARD (ui-contract.md § 4): NO horizontal
+   padding here, so the title starts exactly where the card's own inset puts
+   every other thing in it -- the rule under it, the action row, the tab strip,
+   the form rows.  It carried `var(--space-md) var(--space-lg)` until
+   2026-08-30, which pushed the Modify card's title 20px past its own rule and
+   left the viewer's, whose parent is not a `.card`, 20px in from nothing.
+   One component, two parents: only a rule that reads the PARENT's inset can
+   serve both, and the way to read it is not to add one.
+
+   Renamed from the shared-looking `.card-header` at the same time: it is
+   written by modify.html and by nothing else in the app (css-system-plan.md
+   § 3 -- a page sheet may contain only its own vocabulary). */
+.modify-card-header {
     display: flex;
-    align-items: baseline;
+    /* Centred in a row of a STATED height, not baselined against whatever
+       else is in it.  With `align-items: baseline` the row's first baseline
+       came from its tallest control, so a card whose title line carries
+       buttons sat its title lower than a card whose title line does not --
+       the Modify and Structure titles, side by side, were 9px apart with
+       nothing on screen to explain the step.  The min-height is what makes
+       the two rows the same size in the first place. */
+    align-items: center;
     justify-content: space-between;
-    padding: var(--space-md) var(--space-lg);
+    gap: var(--space-md);
+    min-height: calc(var(--space-lg) * 2);   /* >= the tallest control it can hold */
+    padding: 0 0 var(--space-sm);
+    margin-bottom: var(--space-sm);
     border-bottom: 1px solid var(--border-soft);
 }
-.card-header h2 {
+.modify-card-header h2 {
     margin: 0;
-    font: 600 var(--text-base)/1 system-ui, sans-serif;
+    font: var(--weight-semibold) var(--text-base)/var(--line-tight) var(--font-sans);
     color: var(--text-primary);
+}
+/* The viewer section is NOT a `.card` -- MolView paints its own surface inside
+   `#molview-host`, with its own border and radius.  So this header was a
+   card-coloured strip with square corners sitting on a page-coloured rounded
+   box: two surfaces failing to join, which is what the seam under the title
+   was.  It becomes a LABEL for the card below it instead -- no background of
+   its own, no rule (the module's card draws its own top edge a few pixels
+   down) -- and keeps the card's top inset so its baseline matches the title
+   of the Modify card beside it. */
+.modify-card-header--section {
+    /* Only the rule differs.  The box is a card header's, so its title sits at
+       the same height as the Modify card's beside it -- the section supplies
+       the top inset a `.card` would have given it (see .modify-viewer-section
+       below), instead of this modifier growing its own box and landing the two
+       column titles 6px apart. */
+    border-bottom: 0;
+    background: transparent;
 }
 
 /* (Atom-list styles retired 2026-05-20 along with the left-column
@@ -336,18 +380,28 @@ header h1 {
  * per-atom list now.  See lib/selection-panel.css.) */
 
 /* ---- Viewer section ---- */
-.modify-viewer-section { gap: 0; }
-.ghost {
+/* The top inset a `.card` gives its header.  This section is not a card --
+   MolView paints its own surface below -- so the inset is stated here rather
+   than borrowed from a surface that is not there. */
+.modify-viewer-section { gap: 0; padding-top: var(--space-md); }
+/* Renamed from `.ghost` 2026-08-30 -- ten buttons, all in modify.html,
+   none anywhere else in the app.  Page vocabulary wearing a shared name. */
+.modify-ghost {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
     padding: var(--space-xs) var(--space-md);
     cursor: pointer;
-    font: inherit;
+    /* A CONTROL's type, not the document's.  `font: inherit` -- the usual way
+       to undo the UA's button font -- handed these buttons the BODY size, so
+       Save state and Retract rendered at 16px beside 14px op-tabs and a
+       14.7px Save-to-project, and read as the largest thing on the card after
+       its title.  Measured 2026-08-30: 33.6px tall against 31.6 and 30.7. */
+    font: var(--weight-medium) var(--text-sm)/var(--line-normal) var(--font-sans);
     transition: border-color 0.12s, color 0.12s;
 }
-.ghost:hover {
+.modify-ghost:hover {
     border-color: var(--accent);
     color: var(--accent);
 }
@@ -365,7 +419,7 @@ header h1 {
  * and which state Retract restores.  Amber (--warn-soft) when dirty, muted when
  * at a clean checkpoint. */
 .modify-timeline-status {
-    font: var(--text-2xs)/1.2 system-ui, sans-serif;
+    font: var(--text-2xs)/1.2 var(--font-sans);
     color: var(--text-muted);
     white-space: nowrap;
     user-select: none;
@@ -378,7 +432,11 @@ header h1 {
 .modify-edit-card .modify-edit-panel {
     flex: 1 1 auto;
     overflow: auto;
-    padding: var(--space-sm) var(--space-md);
+    /* Vertical only.  This element draws nothing -- no background, no border --
+       so a horizontal inset here is indentation with no reason a reader can
+       see, and it stacked on the card's: every op row sat 34.8px in while the
+       rule above it sat at 18.8.  ONE INSET PER CARD (ui-contract.md § 4). */
+    padding: var(--space-sm) 0;
 }
 .modify-edit-panel .hint {
     color: var(--text-muted);
@@ -391,12 +449,25 @@ header h1 {
    the three workflow phases so only one panel is visible at a
    time.  Mirrors the .control-tabs / .ctab pattern in the Watch
    stylesheet. */
+/* The tab strip sits on the card's inset, and its rule is the same width as
+   the header's rule above it -- two ruled bands, one edge.
+   
+   What stood here was `margin: var(--space-sm) -var(--space-md) var(--space-sm)`
+   with the comment "bleed to card edges".  **A minus glued to `var()` is not
+   valid CSS**, so the browser dropped the whole declaration: no bleed, and the
+   vertical margins the same line asked for were lost with it (computed
+   `margin: 0px`, measured 2026-08-30 -- it is the only occurrence of the
+   pattern in the tree).  Nothing errored and the comment kept describing a
+   layout that never shipped.  The negation, had it been wanted, is
+   `calc(-1 * var(--space-md))`; the bleed itself is not wanted -- it would put
+   this strip's edges 16px outside every other edge on the card.
+   `background: var(--bg-card)` went too: it painted the card's own colour onto
+   the card. */
 .modify-edit-panel .modify-op-tabs {
     display: flex;
     border-bottom: 1px solid var(--border-soft);
-    margin: var(--space-sm) -var(--space-md) var(--space-sm);     /* bleed to card edges */
-    padding: 0 var(--space-sm);
-    background: var(--bg-card);
+    margin: 0 0 var(--space-md);
+    padding: 0;
 }
 .modify-edit-panel .modify-optab {
     flex: 1;
@@ -406,7 +477,7 @@ header h1 {
     border-radius: 0;
     padding: var(--space-sm) var(--space-xs);
     color: var(--text-secondary);
-    font: 600 var(--text-sm)/1 system-ui, sans-serif;
+    font: var(--weight-semibold) var(--text-sm)/1 var(--font-sans);
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
@@ -426,18 +497,25 @@ header h1 {
     display: block;
 }
 
+/* A fieldset DRAWS a surface -- background, border, radius -- so its own inset
+   is the second and last one on this card, and it reads as what it is: this
+   row belongs to this operation.  That is the hierarchy signal
+   `ui-contract.md` § 4 allows; the panel's and the tab strip's insets above
+   were not signals, they were nesting. */
 .modify-edit-panel .modify-op-block {
     background: var(--bg-fieldset);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: var(--space-sm) var(--space-md) var(--space-sm);
-    margin: var(--space-sm) 0;
+    padding: var(--space-sm) var(--space-sm2) var(--space-sm2);
+    margin: 0 0 var(--space-sm);
 }
+/* No padding: a legend is offset by its fieldset's padding already, so its own
+   would put the operation's name 4px off the edge its rows sit on. */
 .modify-edit-panel .modify-op-block legend {
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     font-size: var(--text-sm);
-    padding: 0 var(--space-xs);
+    padding: 0;
 }
 .modify-edit-panel .modify-op-row {
     display: flex;
@@ -653,7 +731,7 @@ footer a:hover { color: var(--accent-hover); }
 /* Cell op-tab -- per-group periodicity editors (modify/periodicity.js). */
 .modify-op-hint {
     color: var(--text-muted);
-    font: italic var(--text-xs)/1.4 system-ui, sans-serif;
+    font: italic var(--text-xs)/1.4 var(--font-sans);
     margin: 0 0 var(--space-sm);
 }
 .modify-cell-tag {
@@ -704,7 +782,7 @@ footer a:hover { color: var(--accent-hover); }
     font: var(--text-sm) ui-monospace, monospace;
     text-align: right;
 }
-.modify-cell-select { font-family: system-ui, sans-serif; text-align: left; }
+.modify-cell-select { font-family: var(--font-sans); text-align: left; }
 .modify-cell-actions { display: flex; gap: var(--space-sm); }
 
 /* A CELL FIELD THAT IS CURRENTLY INERT (structure-periodicity.md § 6.1a).
