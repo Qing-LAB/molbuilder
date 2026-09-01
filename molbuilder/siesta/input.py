@@ -608,7 +608,7 @@ def _parallel_facts(cfg) -> dict:
     else:
         over_k = bool(cfg.parallel_over_k)
 
-    # Diagonalizer (engines/siesta.md § 13).  The solver choice
+    # Diagonalizer (engines/siesta.md § 7).  The solver choice
     # (``diag_algorithm``) is INDEPENDENT of the GPU toggle; ELPA runs on
     # CPU and GPU alike, and ``use_gpu`` only moves an ELPA solve onto
     # the GPU.
@@ -625,7 +625,7 @@ def _parallel_facts(cfg) -> dict:
             "use_gpu requires an ELPA diagonalizer (diag_algorithm = "
             "ELPA-1STAGE or ELPA-2STAGE); GPU acceleration does not apply to "
             f"the {_algo} solver.  Pick an ELPA algorithm or turn GPU off "
-            "(engines/siesta.md § 13).")
+            "(engines/siesta.md § 7).")
     # THE FOUR MPI VALUES go through the one door.  None of them is a config
     # field read straight through -- the block size is computed from the atom
     # count and the rank count, ParallelOverK defaults from whether the k-mesh

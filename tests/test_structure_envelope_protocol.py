@@ -112,7 +112,11 @@ def test_an_envelope_that_cannot_be_read_says_so_rather_than_guessing():
     reaches a calculation."""
     for broken, why in [
         ({"structure": {}}, "no atoms at all"),
-        ({"structure": {"elements": [], "positions": []}}, "empty"),
+        # NOT here any more: an EMPTY envelope is legal (2026-08-31).  An
+        # empty structure is a structure -- `add_slab` builds the first thing
+        # onto one -- so refusing it is what stopped a blank canvas being a
+        # starting point.  The four below are still malformed: they claim
+        # atoms and then fail to describe them.
         ({"structure": {"elements": ["C"]}}, "no positions"),
         ({"structure": {"elements": ["C"], "positions": []}}, "count mismatch"),
         ({"structure": {"elements": ["C"], "positions": [[0, 0]]}}, "not a point"),
@@ -411,7 +415,7 @@ def test_the_envelope_defines_exactly_these_members(client):
     assert set(answer["structure"]) == {
         "title", "elements", "positions", "atom_names", "residue_ids",
         "residue_names", "chain_ids", "metadata",
-        # `info` joined 2026-08-29 (structure-info-plan.md I3): the
+        # `info` joined 2026-08-29 (archive/2026-09-01-structure-info-plan.md I3): the
         # free-form NON-structural store rides the envelope both ways.
         "info",
     }, f"the envelope's members drifted: {sorted(answer['structure'])}"

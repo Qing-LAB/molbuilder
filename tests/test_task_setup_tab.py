@@ -318,7 +318,7 @@ def test_the_tab_moves_bytes_through_the_file_layer():
 
 
 def test_the_handover_refuses_the_cited_junction_as_destination():
-    """The calculation never lives in its citation (transport-design.md
+    """The calculation never lives in its citation (archive/2026-09-01-transport-design.md
     § 4.1b): the sidebar selection lingers on the attempt the person
     just browsed to cite, and describing there would drop task.json --
     and every prep attempt -- inside the finished relaxation.  The
@@ -2154,7 +2154,7 @@ def test_every_page_class_in_the_markup_is_styled_somewhere():
 
 
 # --------------------------------------------------------------------- #
-#  The TRANSPORT hand-over (transport-design.md § 4.1, P7b) +           #
+#  The TRANSPORT hand-over (archive/2026-09-01-transport-design.md § 4.1, P7b) +           #
 #  the slot picker's describe seam                                      #
 # --------------------------------------------------------------------- #
 

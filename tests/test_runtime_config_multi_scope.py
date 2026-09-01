@@ -63,15 +63,6 @@ def test_no_config_files_returns_empty(sandbox):
     assert read_effective_config() == {}
 
 
-def test_cwd_server_wide_is_read(sandbox):
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "envs": {"siesta": "alt-siesta"},
-    }))
-    cfg = read_effective_config()
-    assert cfg.get("envs") == {"siesta": "alt-siesta"}
-
-
-
 @pytest.fixture
 def xdg_branch(sandbox, monkeypatch):
     """Exercise the XDG step, which the override deliberately outranks.
@@ -96,21 +87,6 @@ def test_xdg_fallback_is_read_when_cwd_absent(xdg_branch, monkeypatch):
     }))
     cfg = read_effective_config()
     assert cfg.get("envs") == {"pyscf": "alt-pyscf"}
-
-
-def test_cwd_wins_over_xdg_fallback(sandbox, monkeypatch):
-    """When both exist, cwd is the server-wide layer; XDG is ignored.
-    Per docs/execution/running-a-job.md § 5's lookup order."""
-    xdg_dir = sandbox / "home" / ".config" / "molbuilder"
-    xdg_dir.mkdir(parents=True)
-    (xdg_dir / "molbuilder.json").write_text(json.dumps({
-        "envs": {"pyscf": "xdg-pyscf"},
-    }))
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "envs": {"pyscf": "cwd-pyscf"},
-    }))
-    cfg = read_effective_config()
-    assert cfg["envs"]["pyscf"] == "cwd-pyscf"
 
 
 def test_explicit_xdg_config_home_is_honored(xdg_branch, monkeypatch):

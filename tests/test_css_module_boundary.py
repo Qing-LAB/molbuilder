@@ -6,7 +6,7 @@ reaching into it is the same category error as a tab reaching past ``mount`` —
 and it fails the same way, late and far from its cause: the module renames a
 part, and a page nobody was thinking about goes visually wrong.
 
-This guard is the boundary from ``docs/plans/css-system-plan.md`` § 1, as an
+This guard is the boundary from ``docs/archive/2026-09-01-css-system-plan.md`` § 1, as an
 assert.  It runs in one direction only, on purpose: it checks that PAGE sheets do
 not name MODULE classes.  It does not read the module sheets to judge them,
 because that is exactly the reach it exists to forbid.
@@ -50,7 +50,7 @@ KNOWN: dict[str, str] = {
         ".inspector-card/-header/-title/-note/-actions/-link are built in JS by "
         "lib/inspectors/ and styled by no other sheet.  Fix is a MODULE change "
         "(repatriate to lib/inspectors/, linked by every page that mounts one); "
-        "see css-system-plan.md § 3.2 + § 7."
+        "see archive/2026-09-01-css-system-plan.md § 3.2 + § 7."
     ),
 }
 
@@ -114,7 +114,7 @@ def test_a_page_sheet_does_not_name_a_module_class(sheet: Path) -> None:
         f"{sheet.relative_to(STATIC)} styles classes owned by an ESM module:\n  "
         + "\n  ".join(offenders)
         + "\n\nA module owns its CSS the way it owns its JS "
-          "(css-system-plan.md § 1).  Delete the reach; if the module must look "
+          "(archive/2026-09-01-css-system-plan.md § 1).  Delete the reach; if the module must look "
           "different, change the module."
     )
 

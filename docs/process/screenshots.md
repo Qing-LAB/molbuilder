@@ -13,13 +13,24 @@ nine are kept current per this manifest for docs embedding and any
 future README gallery.  Update this file whenever an embedding of one
 of these images changes.
 
-> **⚠ Known stale capture (2026-07-28).**  `tab-bar.png` — and the nav
-> strip inside `hero-molbuilder.png` — show **five** tabs.  The shipped
-> app has **six**: the **Documents** tab landed after these were taken
-> ([`web/tabs.md § 1`](?doc=web/tabs.md)).  Both need a re-capture (the
-> re-capture rule below already mandates it: a new tab is exactly the
-> trigger); the README's hero alt text deliberately avoids naming a tab
-> count until then.
+> **⚠ Known stale capture (2026-07-28, still stale 2026-09-01).**
+> `tab-bar.png` — and the nav strip inside `hero-molbuilder.png` — show
+> **five** tabs.  The shipped app has **eight**: **Documents** landed after
+> these were taken, then **Task setup**, then **This machine**
+> ([`web/tabs.md § 1`](?doc=web/tabs.md) is the roster and the only place
+> the count is decided).  Both need a re-capture (the re-capture rule below
+> already mandates it: a new tab is exactly the trigger); the README's hero
+> alt text deliberately avoids naming a tab count until then.
+>
+> Three tabs behind is the argument for the rule, not against it: each one
+> landed with a note like this and none triggered the capture, because a
+> note is not a mechanism.  The count had read *five · six · seven*
+> simultaneously across three documents, all of them restating `tabs.md`
+> § 1.  The **owner** is pinned now —
+> `test_doc_claims.py::test_the_tab_count_is_stated_in_prose_and_true`
+> compares § 1's prose against `TABS` — so a new tab cannot land without at
+> least one document telling the truth.  **The captures themselves are still
+> only a rule**: nothing can look at a PNG and count tabs in it.
 
 > **Demo data convention.**  Every screenshot uses the project at
 > `projects/BDT/` so the README reads as one continuous Au–BDT–Au
@@ -65,7 +76,7 @@ of these images changes.
 | # | Filename | Used in README § | URL | What to load / set | Zoom region | Communicates |
 |---|---|---|---|---|---|---|
 | 1 | `hero-molbuilder.png` | top of README | `/molbuilder` | Load `projects/BDT/structure/BDT-AuJunction_siestaStage1_optimized.xyz`; Junction panel open; default camera | Full content area (sidebar + main + the right-side commands stack) — exclude browser chrome | "This is molbuilder" — sidebar + tabs + viewer + commands in one frame |
-| 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (**six** tabs — the order comes from the one `TABS` list in `tabs.py`).  ~1200 × 60 px | Names + order of every tab |
+| 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (**eight** tabs — the order comes from the one `TABS` list in `tabs.py`).  ~1200 × 60 px | Names + order of every tab |
 | 3 | `sidebar-projects.png` | § Workflow + § Documentation | `/molbuilder` | Expand `BDT/` → `structure/`; cursor on `BDT-AuJunction_siestaStage1_optimized.xyz` so the paired `.molstruct.json` shows as a sidecar | Zoom: just the projects sidebar column.  ~360 × 700 px | Tree shape + the structure↔sidecar pairing |
 | 4 | `molbuilder-workspace.png` | § 1 Molbuilder tab | `/molbuilder` | Load the BDT junction; one atom selected in the viewer to show the amber **shape glow** (the only selection highlight — halos were removed, see [`web/molview.md`](?doc=web/molview.md)) + sync to the atom list on the left | Zoom: the `/molbuilder` content area (no sidebar, no top tab strip).  ~1080 × 760 px | The 3-panel layout: atom list + viewer + commands stack |
 | 5 | `structure-optimization-form.png` | § 2 Structure optimization | `/structure-optimization` | Pick `BDT-AuJunction_siestaStage1_optimized.xyz` from the sidebar; engine = SIESTA; default profile.  Issues panel will show INFO notices about Au-thiol detection | Zoom: the `/structure-optimization` content area (form on left, viewer on right, issues panel docked below).  ~1100 × 760 px | Schema-driven form + workflow-group cards + inline detection chip + issues |

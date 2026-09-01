@@ -6,7 +6,7 @@
  *           a scratch canvas).
  * Called by: MolView's Export menu.  (VibrationView keeps its own private
  *           encoder for now — its migration onto this module is a recorded
- *           deferral, not an accident: docs/roadmap.md, task #104's note.)
+ *           deferral, not an accident: docs/archive/2026-09-01-roadmap.md, task #104's note.)
  *
  * THE CALLER OWNS THE FRAMES; this module owns the file.  Frames arrive as
  * PNG Blobs — whatever produced them (a sealed 3D window, a chart, a test's

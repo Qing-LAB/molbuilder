@@ -6,7 +6,7 @@
 same backend by *functional concern*, the paired lens to this layer index);
 [`design.md`](?doc=design.md) (mission · principles · decisions — the narrative
 sibling); [`README.md`](?doc=README.md) (the doc index + the rules);
-[`roadmap.md`](?doc=roadmap.md) (open work);
+[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) (open work);
 [`process/package-layout.md`](?doc=process/package-layout.md) (where each file
 lives); [`process/conventions.md`](?doc=process/conventions.md) (the L1/L2/L3
 layering rule + the provenance header this map rests on).
@@ -65,7 +65,7 @@ Two habits make the reuse rule work:
 | Benchmark GPU/CPU knobs on a target | `molbuilder jobset {prep,submit,summarize} bench` — benchmarking is `prep` whose parameters are a set (fold landed 2026-08-12; the legacy in-place `siesta-gpu` sweep was deleted 2026-08-13 -- the group itself was deleted 2026-08-17 and its one config helper is now `molbuilder jobset probe`) | reinvent the sweep / adapters | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | Snapshot / restore / branch a run dir (with big-binary safety) | `checkpoint.Repo` + `molbuilder checkpoint {init,save,list,tag,restore,config}` — **six verbs, and there is no `branch`** (a fork is what happens when you save from a restored state, `execution/checkpointing.md` § 7.1) | shuffle files by hand | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 (how to drive it); [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (what the history must guarantee — **read this before changing anything in `checkpoint.py`**) |
 | See the whole thing done once, end to end, with a real molecule | [`execution/worked-example.md`](?doc=execution/worked-example.md) | infer the workflow from four contracts at once | [`execution/worked-example.md`](?doc=execution/worked-example.md) |
-| Build a calculation on a finished run (relax → transport) | **cite the attempt** — `jobset init --slot junction=<dir>` (any directory whose files satisfy `transport-design.md` § 4.1b); `prep` composes from the citation (`transport/compose.py`).  The handoff bundle retired 2026-08-29 | copy geometry ad hoc; re-grow a bundle writer | [`plans/transport-design.md`](?doc=plans/transport-design.md) § 4.1; [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 5 (the closure) |
+| Build a calculation on a finished run (relax → transport) | **cite the attempt** — `jobset init --slot junction=<dir>` (any directory whose files satisfy `transport-design.md` § 4.1b); `prep` composes from the citation (`transport/compose.py`).  The handoff bundle retired 2026-08-29 | copy geometry ad hoc; re-grow a bundle writer | [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1; [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 5 (the closure) |
 | Build a structure (peptide / DNA / RNA / SMILES / name) | `molbuilder {peptide,dna,rna,smiles,name}` (`peptide.py` / `nucleic.py` / `smiles.py` / `pubchem.py` / `builders/backends/`) | new geometry code | [`engines/builders.md`](?doc=engines/builders.md) |
 | Emit a SIESTA / PySCF input | `siesta.input.render_fdf` · `pyscf.input.render_script` from `SiestaConfig` / `PySCFConfig` | template strings; **or a CLI verb** — there is no `molbuilder fdf` and no `molbuilder run` (deleted 2026-08-11): a deck is rendered by `jobset prep`, on the machine that will run it.  (*One recorded exception:* `molbuilder pyscf` still renders from flags — [`process/conventions.md`](?doc=process/conventions.md) § 3, "survives for now") | [`engines/siesta.md`](?doc=engines/siesta.md) § 1.1 · [`engines/pyscf.md`](?doc=engines/pyscf.md) |
 | Carry a calculation's **parameters** from a browser to the machine that runs it | `<label>.template.toml` — one TOML file, every parameter with its value and a `kind` saying which layer owns it | invent a second description file, or finish the deck early | [`engines/template.md`](?doc=engines/template.md) |
@@ -241,7 +241,7 @@ This index is deliberately thin — it routes you to the authoritative doc.
   package layout).
 - **The forward plan** — every open feature/backend workstream, including the
   execution↔engine decoupling items and the front-end ESM conversions — is
-  [`roadmap.md`](?doc=roadmap.md). Closed decisions live in [`design.md`](?doc=design.md).
+  [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md). Closed decisions live in [`design.md`](?doc=design.md).
 
 Keep this map in sync when a **major** subsystem or public entry point is
 added; per-detail changes belong in the linked docs, not here.

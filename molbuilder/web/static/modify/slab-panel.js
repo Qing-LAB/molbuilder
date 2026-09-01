@@ -1,4 +1,4 @@
-/* Modify tab -- the Slab op-tab (plans/modify-redesign-plan.md § 3).
+/* Modify tab -- the Slab op-tab (archive/2026-09-01-modify-redesign-plan.md § 3).
  *
  * Contract: docs/web/molview.md § 11.1 (the op table -- `slab` sends no
  *           selection), docs/web/web-api.md (`/api/modify/slab`,
@@ -7,18 +7,21 @@
  * Called by: modify/selection-bootstrap.js, which mounts the viewer and hands
  *           it here.  Nothing self-starts.
  *
- * BESIDE THE JUNCTION PANEL, NOT REPLACING IT.  § 3.4 lists what goes when
- * this is proven -- the old panel, its half of viewer.js, and the symmetric
- * -electrode route.  Until then the two coexist, and this file deliberately
- * shares no code with the old one: it fetches `/api/modify/meta` itself
- * rather than reading the `window.__elc*` globals that panel stashes, so the
- * deletion is a deletion and not an untangling.
+ * IT IS THE ONLY SLAB BUILDER.  The Junction panel it was written beside is
+ * gone (§ 3.4, done 2026-08-31) along with its half of viewer.js and the
+ * symmetric-electrode route, and the per-side `/api/modify/electrode` route
+ * went the day after (§ 3.4a) once nothing called it.  This file never shared
+ * code with any of them -- it asks `/api/modify/meta` for its menu rather than
+ * reading globals that panel stashed -- which is why the removals were
+ * deletions and not untanglings.
  *
  * IT READS NO SELECTION.  `dx`, `dy` and the starting z are measured from the
  * 3-D window's own origin, so the same numbers place the same slab whatever
  * is picked.  That is why `OPERATIONS.slab` carries `group: null`.
  */
 "use strict";
+
+import { runOp } from "./viewer.js";
 
 //: Grown downward, the registry either continues the crystal or mirrors it.
 //  Growing up the two are identical, which is why the row hides (§ 3.2).
@@ -284,8 +287,7 @@ export function init(viewer) {
      * (molview.md § 11.1).  This passes only the op's own arguments.
      */
     async function apply() {
-        const w = data();
-        if (!w) return;
+        if (!data()) return;   // no viewer, nothing to build on
         const body = {
             element: ($("slab-element") || {}).value || "Au",
             plane: picked("slab-plane", "111"),
@@ -305,22 +307,17 @@ export function init(viewer) {
         // rather than being handed NaN.
         const a = num("slab-a", NaN);
         if (Number.isFinite(a) && a > 0) body.lattice_constant = a;
-        try {
-            await w.applyOp("slab", body);
-        } catch (err) {
-            const notify = (window.molbuilder || {}).notify;
-            if (notify && notify.show) {
-                notify.show({ id: "slab-apply", level: "error",
-                              message: (err && err.message) || "the slab was "
-                                       + "not added" });
-            }
-        }
+        /* THROUGH THE PAGE'S ONE OP WRAPPER (viewer.js `runOp`), which owns
+           the in-flight lock and the edit-status line.  This awaited
+           `applyOp` directly and DISCARDED the answer -- and `applyOp`
+           returns null both when another edit is in flight and when a
+           precondition is refused, so a built slab and a refused one were
+           indistinguishable, with no button disabled in between. */
+        await runOp("/api/modify/slab", body, "Add slab");
     }
 
-    for (const id of ["slab-layers"]) {
-        const el = $(id);
-        if (el) el.addEventListener("input", renderPeriodNote);
-    }
+    const layersBox = $("slab-layers");
+    if (layersBox) layersBox.addEventListener("input", renderPeriodNote);
     const aBox = $("slab-a");
     if (aBox) aBox.addEventListener("input", onLatticeInputsChanged);
     const pick = $("slab-pick-run");

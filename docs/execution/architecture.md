@@ -11,13 +11,13 @@ project directory *is*, and the five steps `prep` runs;
 formats and the shared parameter vocabulary;
 [`architecture.md`](?doc=architecture.md) — the whole package by **import
 depth** (`L1`/`L2`/`L3`), a different and coarser grouping than this one;
-[`roadmap.md`](?doc=roadmap.md) — how much of this the code holds today.
+[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — how much of this the code holds today.
 
 > **This document says who is allowed to decide what.** It is the authority for
 > the execution domain's internal shape: the floors, the objects that travel
 > between them, the routes that cross them, and the rules that must never break.
 > It says nothing about *when* any of it gets built — that is
-> [`roadmap.md`](?doc=roadmap.md), and per the doc rules a contract does not
+> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md), and per the doc rules a contract does not
 > hold a plan.
 
 ---
@@ -697,11 +697,11 @@ the project's if set, otherwise the server's.
 | `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory), `defaults` (time, cores, memory), and `routing` — the named domains |
 | `execution` | `get_execution` | **floor 5**, at `launch` | `mode` (`direct` or `submit`), and the default `domain` |
 | `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
-| `paths` | `get_paths` | `projects.projects_root`; `runtime_config.logs_dir` / `run_dir` / `reports_dir` | where molbuilder keeps things that are not its own code.  `projects`: the projects tree — default `projects/` inside the checkout, `$MOLBUILDER_PROJECTS` overrides it.  `logs`, `run`, `reports`: operational state — defaults follow `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` (`configuration.md` § 2.1d) |
+| `paths` | `get_paths` | `projects.projects_root` | where molbuilder keeps things that are not its own code.  **`projects` is the only key**: the projects tree — default `projects/` inside the checkout, `$MOLBUILDER_PROJECTS` overrides it.  `logs`, `run` and `reports` were retired on 2026-08-31 and the reader now **refuses** them — operational state follows `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` through `config_dir` alone, because a second way to say one thing put the answer out of reach of the layer that needs it (`configuration.md` § 2.1d) |
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
 | `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
-| `notify_keys_file` | `get_notify_keys_file` | the **server** | the path to the run-report signing-key file — a path, never the keys ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
-| `notify_route` | `get_notify_route` | the **server** | the listener's URL segment, generated per deployment by `notify-token`. **Both keys are required**; with either absent no route is registered at any path, so the server cannot even be probed for the capability. Not a secret — it is in every access log — but never a fixed word, because a fixed word in a public repository is not obscurity ([`access-control.md`](?doc=ops/access-control.md) § 8 rule 7) |
+| `notify_keys_file` | `_read_notify_retired` | nothing | **Retired 2026-08-31 and now REFUSED.** It was a path to a file molbuilder had itself written. Still in the registry, and that is the point: a retired key must be *refused by name*, not fall through as "unknown", or the person who wrote it is told the wrong thing ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
+| `notify_route` | `_read_notify_retired` | nothing | Retired and refused with it. It was a copy of a segment molbuilder had itself issued — and because the issuing command could not read `molbuilder.json`, a second key generated a **new** segment and pasting it moved the route out from under everyone already set up, silently. The key file carries its own route now and **is** the switch: no file, no route in it, no listener |
 | `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
 | `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
 | `admin` | `get_admin_emails` | the **server** | `admin.emails` — who may clear the block list and restart the process. **Absent means nobody**, which is the safe state you get by writing no config |
@@ -730,7 +730,7 @@ before:
 | rule | what it means for you |
 |---|---|
 | **an unknown top-level key is refused, never ignored** | a typo'd section name (`"shceduler"`) is an error naming the known sections, not a silently dead block. *Amended contract — `running-a-job.md` § 5 said "unknown keys are ignored", and that tolerance is exactly the hole that ate `admin`.* The one carve-out: a key starting with `_` (the templates' `"_comment_tls"` idiom) is a comment by design |
-| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `notify_keys_file`, `notify_route`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
+| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
 | **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `execution` and `script_generation` — never anything near a secret |
 
 *(That the § 8.2 table and the registry name the same sections is checked —

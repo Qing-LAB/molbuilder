@@ -132,7 +132,7 @@ config — no under- or over-promising. `job_name` stays unsuffixed so
 > it "a live catalogue item … safe to build on" until the U6 close — by
 > then C7 (2026-08-18) had deleted the field as the last of the retired
 > spellings, and neither `PySCFConfig` nor the catalogue carries a `stage`
-> entry.  `roadmap.md` records the closure.)*
+> entry.  `archive/2026-09-01-roadmap.md` records the closure.)*
 
 ---
 

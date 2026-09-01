@@ -161,7 +161,7 @@ header. The header's source-path line has the username redacted.
   body is still a classic script that publishes `window.molbuilder.trajectoryInspector`
   — a **hybrid**, not yet a clean module. It converts to a full ES module in the
   file-viewer registry + `inspectors` → `presenters` pass (task #102,
-  [`roadmap.md § 3`](?doc=roadmap.md)), the same pass that converts the sibling
+  [`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md)), the same pass that converts the sibling
   spectra engine. See [`presenters.md`](?doc=web/presenters.md).
 
 ## 8. Test map

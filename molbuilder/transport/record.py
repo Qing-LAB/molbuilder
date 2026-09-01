@@ -1,4 +1,4 @@
-"""The transport composite's RECORD — `plans/transport-design.md` § 7,
+"""The transport composite's RECORD — `archive/2026-09-01-transport-design.md` § 7,
 build step P6.
 
 TBtrans's own outputs are the truth this module reads: the k-averaged

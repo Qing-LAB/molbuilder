@@ -148,7 +148,7 @@ def test_c3_the_deck_renders_its_own_non_convergence_policy(small_struct):
     to `halt` whatever the user declared, so that no knob could silently ship a
     non-converged answer. A deck no longer knows whether it is last, so the
     script cannot enforce that. The guarantee is not abandoned; it is homeless,
-    and it is recorded as such in `roadmap.md` § 6 rather than quietly dropped.
+    and it is recorded as such in `archive/2026-09-01-roadmap.md` § 6 rather than quietly dropped.
     """
     for policy, expected in (("halt", "mol_eq = _mb_run_optimization(_hard_fail=True)"),
                              ("proceed", "mol_eq = _mb_run_optimization(_hard_fail=False)"),

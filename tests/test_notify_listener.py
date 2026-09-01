@@ -60,11 +60,13 @@ def store(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    keys = tmp_path / "notify_keys"
-    keys.write_text(json.dumps({USER: KEY}))
-    app = create_app(config={"rate_limit": {"enabled": False},
-                             "notify_keys_file": str(keys),
-                             "notify_route": ROUTE})
+    # THE KEY FILE IS THE SWITCH (2026-08-31): it lives at the one known
+    # place and carries its own route, so there is no config to set.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
+    keys = tmp_path / "cfg" / "notify_keys"
+    keys.write_text(json.dumps({"route": ROUTE, "keys": {USER: KEY}}))
+    app = create_app(config={"rate_limit": {"enabled": False}})
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()          # rotating handlers are cached per user
     N._recent.clear()           # and so is the per-key rate window
@@ -97,17 +99,23 @@ def _lines(log_root: Path):
 #  gate 1: it exists only when it was enabled                            #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("cfg,why", [
-    ({}, "neither key"),
-    ({"notify_route": ROUTE}, "a route but no keys"),
-    ({"notify_keys_file": "/nonexistent/keys"}, "keys but no route"),
+@pytest.mark.parametrize("doc,why", [
+    (None, "no file at all"),
+    ({"keys": {USER: KEY}}, "keys but no route"),
+    ({"route": ROUTE}, "a route but no keys"),
+    ({"route": "", "keys": {USER: KEY}}, "an empty route"),
+    ({USER: KEY}, "the pre-2026-08-31 shape, which carries no route"),
 ])
-def test_both_config_keys_are_required_or_there_is_no_route(
-        tmp_path, monkeypatch, cfg, why):
+def test_a_half_written_key_file_opens_no_door(
+        tmp_path, monkeypatch, doc, why):
     """`access-control.md` § 8 rule 1: *the safe state is the one you get by
-    doing nothing.* Half a configuration must not open a door."""
+    doing nothing.* The file is the switch, so half a file is still off."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    app = create_app(config={"rate_limit": {"enabled": False}, **cfg})
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
+    if doc is not None:
+        (tmp_path / "cfg" / "notify_keys").write_text(json.dumps(doc))
+    app = create_app(config={"rate_limit": {"enabled": False}})
     # The LISTENER's blueprint specifically.  `notify_setup` also lives
     # under /api/notify/ and is always registered -- it is the signed-in
     # SETUP api, about sending reports FROM here, where this is about
@@ -660,14 +668,23 @@ def test_a_user_id_that_would_escape_the_log_directory_is_refused(
     assert not (tmp_path / "escaped.jsonl").exists()
 
 
-def test_the_route_segment_is_validated_as_one_url_segment(tmp_path,
-                                                           monkeypatch):
+def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(tmp_path):
     """A value with a slash in it would silently mean a different path than
-    the one written down."""
-    from molbuilder.runtime_config import RuntimeConfigError, _normalise
-    for bad in ("a/b", "", "has space", "x" * 200, "a.b", 42):
-        with pytest.raises(RuntimeConfigError):
-            _normalise({"notify_keys_file": "/k", "notify_route": bad})
-    # and one that is fine, so the test cannot pass by refusing everything
-    ok = _normalise({"notify_keys_file": "/k", "notify_route": "  /x7Kq/  "})
-    assert ok["notify_route"] == "x7Kq", "surrounding slashes are trimmed"
+    the one written down — and the destination's url is built from it, so the
+    two ends would disagree about where reports go.
+
+    The rule moved with the value: it was on the retired `notify_route`
+    config key, and now guards the file that carries the route.
+    """
+    from molbuilder.monitor import read_notify_keys
+    for bad in ("a/b", "", "has space", "x" * 200, "a.b", 42, None):
+        p = tmp_path / "notify_keys"
+        p.write_text(json.dumps({"route": bad, "keys": {USER: KEY}}))
+        route, keys = read_notify_keys(p)
+        assert route is None and keys == {}, f"{bad!r} was accepted as a route"
+    # ...and one that is fine, so it cannot pass by refusing everything.
+    p = tmp_path / "notify_keys"
+    p.write_text(json.dumps({"route": "  /x7Kq/  ", "keys": {USER: KEY}}))
+    route, keys = read_notify_keys(p)
+    assert route == "x7Kq", "surrounding slashes are trimmed"
+    assert keys == {USER: KEY}

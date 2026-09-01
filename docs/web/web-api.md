@@ -405,7 +405,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 93 routes
+## 3. Endpoint index — all 96 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -426,17 +426,28 @@ with rate limiting on registers a few additional admin/auth routes.)
 Every route, grouped by domain. Routes with a module-doc home link to it; the
 rest are documented in full in § 5.
 
-**Run reports** — setting up *where* a calculation's reports go; owned by
-[`run-reports.md`](?doc=execution/run-reports.md) § 3.1. **Signed-in only**,
+**Run reports** — the machine's notification channels and its listener; owned
+by [`run-reports.md`](?doc=execution/run-reports.md) § 3.1, and surfaced by
+[`this-machine.md`](?doc=web/this-machine.md). **Signed-in only**,
 and separate from the listener on purpose: that one is the public *receiving*
 end (§ 4 there), this is about *sending* from this machine.
 
+**Every one of the channel routes answers with the whole state** — `path`,
+`channels`, `problem`, `mode`, `execution_mode`, `can_write_here` — not just
+what it changed. The page repaints from whatever the response carries, so a
+mutation that replied with a narrower object left the painter reading fields
+that were not there: after a test the card read *"2 channels in undefined"*,
+because `path` was in the GET's answer and in no other (found in the browser,
+2026-08-31). A response is the state, or it is a trap for the next painter.
+
 | Method · Path | Purpose |
 |---|---|
-| GET `/api/notify/destination` | Is one set up, where, and is a key present. **Never the key itself** — a page that can show you a secret can leak one |
-| POST `/api/notify/destination` | Write it, `0600`, at `config_dir()/notify` — the path taken from the monitor's own function so the two cannot disagree |
-| DELETE `/api/notify/destination` | Remove it. **Absent is off**, and off is a state you can reach without a shell |
-| POST `/api/notify/destination/test` | Send one report and say what happened — the only check that exercises the file, the url, the segment, the signature, egress and TLS together |
+| GET `/api/notify/channels` | The channels on this machine: name, kind, whether a key is stored, how the last test went. **Never a key, and every address masked** — for Slack and Discord the address *is* the credential, and masking only that kind is a rule mislabelling can defeat. The only one of these the Task-setup tab calls |
+| PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `config_dir()/notify` — the path taken from the monitor's own function so the two cannot disagree. **Merges** across channels and within one, so a blank key box means *unchanged*. The one thing it clears is the retired single-destination shape's top-level `url`/`key`/`headers` |
+| DELETE `/api/notify/channels/<name>` | Remove one. **Absent is off**, and off is a state you can reach without a shell |
+| POST `/api/notify/channels/<name>/test` | Send one report to that channel and say what happened — the only check that exercises the file, the url, the segment, the signature, egress and TLS together |
+| GET `/api/notify/listener` | Whether **this server** receives reports: the route segment and who holds a key. Never a key |
+| POST `/api/notify/listener/keys/<user>` | Issue or rotate one. **Returns the key once**, which is the only time it is ever readable — the same deal `notify-token` gives a terminal |
 
 **Structure + edits** — return the canonical structure envelope (§ 1);
 owned by [`molview.md`](?doc=web/molview.md):
@@ -446,9 +457,9 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/build/load` | Load a structure (path / upload / raw text) |
 | POST `/api/build/molecule` | Build a molecule from a backend |
 | GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
-| POST `/api/modify/{delete,add_atom,orient,rotate,translate,calibrate,electrode,symmetric_electrodes}` | The eight structure edits |
-| POST `/api/modify/slab` | `{structure, element, plane, m, n, layers, start_registry, start_z, grow, stacking, orthogonal, dx, dy, lattice_constant?}` → the structure with one fcc slab appended. **Placed absolutely** — `dx`, `dy` and `start_z` are from the world origin — so it reads **no selection** at all, which is the difference from `electrode` beside it (`?doc=plans/modify-redesign-plan.md` § 3). `start_registry` picks which stacking registry the layer at `start_z` sits on (A/B/C, taken mod the surface's period); `grow` says which way the rest go; `stacking` says whether growing **down** continues the crystal or mirrors it — for `+z` the two are identical |
-| POST `/api/modify/lattice-from-run` | `{path, element?}` → `{ok, a, d_nn, coordination, second_shell_ratio, n_atoms, element, source, notes}`. **A lattice constant read back out of the user's own relaxed bulk result** (`?doc=plans/modify-redesign-plan.md` § 3.3). It measures the **atoms**, not the cell: a relaxed result's box may be conventional cubic, primitive rhombohedral, or the user's own m×n×N lead cell — three relations to `a`, and the file does not say which — so `a = √2·d_nn` under minimum image, which assumes nothing. The path is fenced at the route (§ 2.1) and read through the parse module (`.XV`) or `StructureCodec` (`.xyz` pair). **Two refusals**: a file with no cell, and more than one element with none named. Everything else is a `note` — coordination away from 12, a second shell away from √2·d, and the offset from each literature reference — because the setup is the user's to own |
+| POST `/api/modify/{delete,add_atom,orient,rotate,translate,calibrate,slab}` | The seven structure edits |
+| POST `/api/modify/slab` | `{structure, element, plane, m, n, layers, start_registry, start_z, grow, stacking, orthogonal, dx, dy, lattice_constant?}` → the structure with one fcc slab appended. **Placed absolutely** — `dx`, `dy` and `start_z` are from the world origin — so it reads **no selection** at all, which is what it was built to change: it replaced `electrode`, which centred on one (`?doc=archive/2026-09-01-modify-redesign-plan.md` § 3, removed § 3.4a). `start_registry` picks which stacking registry the layer at `start_z` sits on (A/B/C, taken mod the surface's period); `grow` says which way the rest go; `stacking` says whether growing **down** continues the crystal or mirrors it — for `+z` the two are identical |
+| POST `/api/modify/lattice-from-run` | `{path, element?}` → `{ok, a, d_nn, coordination, second_shell_ratio, n_atoms, element, source, notes}`. **A lattice constant read back out of the user's own relaxed bulk result** (`?doc=archive/2026-09-01-modify-redesign-plan.md` § 3.3). It measures the **atoms**, not the cell: a relaxed result's box may be conventional cubic, primitive rhombohedral, or the user's own m×n×N lead cell — three relations to `a`, and the file does not say which — so `a = √2·d_nn` under minimum image, which assumes nothing. The path is fenced at the route (§ 2.1) and read through the parse module (`.XV`) or `StructureCodec` (`.xyz` pair). **Two refusals**: a file with no cell, and more than one element with none named. Everything else is a `note` — coordination away from 12, a second shell away from √2·d, and the offset from each literature reference — because the setup is the user's to own |
 | POST `/api/selection/atoms` | Per-atom payload for a structure |
 | POST `/api/selection/eval` | Evaluate a selection expression |
 | POST `/api/structure/periodicity` | The four Cell-page edits, through the frame-contract gate |
@@ -471,6 +482,8 @@ owned by [`molview.md`](?doc=web/molview.md):
 | GET `/api/task-setup/columns` | Which settings may become a column of the stage table — everything the description is allowed to hold, with the settings the machine answers left out ([`stages.md § 6.2`](?doc=engines/stages.md)). Separate from `sweepable`, which answers what a benchmark may MEASURE: filtering a panel and limiting a table are different questions, and borrowing one answer for the other cost the table `restart` |
 | GET `/api/task-setup/resolved` | What a `prep` would resolve for a folder and from which file — the same `config_provenance` block `prep` prints, served rather than restated so the tab and the terminal cannot drift. It carried a `bootstrap_warning` field until 2026-08-25; that rule was retracted ([`§ 3`](?doc=execution/preparing-for-another-machine.md)) and the field is gone |
 | POST `/api/task-setup/bench-grid` | The bench grid these axes would produce on this target, cell by cell, with the queues that would take each — the report `_bench_inputs` already computes, served as data. Body `{dest, target?, bench}`; `bench` is the axis map **as it is being edited**, so the card's list tracks typing rather than the last save. 200 with `cells` even when none survive (*nothing here fits* is a result); 400 only for a description that cannot be resolved at all, carrying the reader's own words. **The browser never enumerates the grid** — a second enumerator is the drifting decider [`generator.md § 4.3a`](?doc=execution/generator.md) was rebuilt to remove |
+| POST `/api/task-setup/run-fit` | Would the **run's** own numbers fit a queue on this target? Body `{dest, target?, values}` — one value per parameter, the card's model as it is typed. **It is the grid door with a grid of one** ([`task-setup.md § 6.2b`](?doc=web/task-setup.md)): a run is a sweep of length one, so it builds a one-point axis from each value and asks the same `_bench_inputs`. 200 with `cell: null` when the ask survives nothing — *this fits no queue here* belongs beside the field that caused it, not in a 400 |
+| POST `/api/task-setup/prep-plan` | What a `prep` would write, stage by stage ([`task-setup.md § 7.1`](?doc=web/task-setup.md)). Body `{task}` — the description as it is being edited; no folder, and nothing here touches a filesystem. Names come from `prep.token_for` and `Shape.stage_dir`, the allocation from `prep._allocation_for` — **the producers, never the page**, because flat and hierarchical name directories differently and a list composed in the browser would be free to disagree with the thing it describes |
 | GET `/api/task-setup/machines` | Which machines a calculation could be prepared FOR — the records `jobset probe --write --name NAME` wrote, plus this machine, each with what it measured. `choice_required` is computed by the same rule the CLI refuses on, so the tab and the terminal cannot disagree about what is ambiguous ([`preparing-for-another-machine.md § 4`](?doc=execution/preparing-for-another-machine.md)) |
 | GET `/api/task-setup/presets` | A shipped tier's values for one stage (`coarse` / `medium` / `tight`), so a row can be filled from [`tuning.md § 4`](?doc=engines/tuning.md) instead of typed |
 | GET `/api/task-setup/template-values` | The FOLDER's `<label>.template.toml`, parsed by `read_template` — the same reader `prep` opens it with. It is what an empty stage cell shows, so the number on screen is the one the job will run rather than the catalogue's recommendation ([`task-setup.md § 5.1`](?doc=web/task-setup.md)). Server-side because TOML is a format, and [`projects.md § 3`](?doc=web/projects.md) keeps a format's correctness off the browser |
@@ -490,8 +503,8 @@ tabs (their docs, this wave):
 | Method · Path | Purpose |
 |---|---|
 | POST `/api/watch/load` · GET `/api/watch/data` | Register + poll a trajectory. The load response carries ONE metadata block — `atom_metadata` (the input script's ATOM-METADATA block), `periodicity`, and `info` (what the run says ABOUT itself; today the electronic contract its deck records, as `info.calculation`) — from **one composer keyed by the run directory**, so all three of this route's builders answer the same thing and an upload, which has no run directory, states `null` in each rather than omitting them. Omission means KEEP on this route: `/api/watch/data` deliberately leaves the block out so the 200 ms poll re-sends the frames without re-sending the metadata. `periodicity` is composed ON THE SERVER: the cell from the output logs, the axis kinds / origin / vacuum from the run directory's `.source` pair (job-contracts § 6.3). The viewer passes the block through verbatim; until it existed the browser composed `{cell}` alone, and an export from the Results tab stamped a lattice-bearing junction `isolated` on every axis |
-| GET `/partials/{trajectory-inspector,spectra-inspector,selection-panel}` | HTML fragments |
-| GET `/api/results/contract` | The electronic contract recorded by the ONE deck beside a structure (`parse/contract.py::contract_of`) — the block the structure inspector records into the viewer's `info` store so an export carries it (`plans/structure-info-plan.md` I5); `null` is a real answer (no deck / several / nothing stated) |
+| GET `/partials/{trajectory-inspector,spectra-inspector}` | HTML fragments. `selection-panel` was a third until the MolView module took over building that panel itself; the route went with it and this row outlived it |
+| GET `/api/results/contract` | The electronic contract recorded by the ONE deck beside a structure (`parse/contract.py::contract_of`) — the block the structure inspector records into the viewer's `info` store so an export carries it (`archive/2026-09-01-structure-info-plan.md` I5); `null` is a real answer (no deck / several / nothing stated) |
 | ~~POST `/api/results/bundle`~~ | *retired 2026-08-29 — calculation-to-calculation passing is gone; the composite cites (`POST /api/transport/describe`)* |
 | GET `/api/bench/summary` | One benchmark **sweep**, composed: every trial's knobs / coordinate / measurement, where each run is now, and the verdict. Takes the sweep's `job-set.json`; the CALCULATION it belongs to is derived from it, because the file's own directory is not the bundle. Read-only and safe to poll — it never writes the record or the `run-config.toml` proposal, which are `jobset summarize`'s to write ([`bench-summary.md`](?doc=web/bench-summary.md)) |
 | POST `/api/spectra/load` | Parse an uploaded `<job>.spectra.json` into typed results (`/api/spectra/render` retired at the spectra migration's P3 — the deck computes; the tab only loads) |

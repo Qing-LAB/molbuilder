@@ -1,5 +1,12 @@
 # Audit 2026-08-21 — jobset · engines · execution · the two tabs, full-text
 
+
+> **ARCHIVED 2026-09-01.**  Its open items moved to the one plan,
+> [`plans/plan.md`](?doc=plans/plan.md) — which is what rule R3 now names.
+> What stays here is the record.  The merge fact-checked every item against
+> the tree; most of what this file still carried as open had shipped, which
+> is the drift it was itself written to prevent.
+
 **Role:** audit report — **evidence, not a plan.** Held the open list until
 2026-08-22, when rule R3 was applied: open work lives in
 [`roadmap.md`](?doc=roadmap.md) and nowhere else. Its remaining items are

@@ -140,10 +140,19 @@ def test_clicking_a_picked_atom_takes_it_back_out():
     assert out["picks"] == [2]
 
 
-def test_turning_measuring_off_keeps_the_picks_and_clear_empties_them():
-    """Two controls, two jobs.  Coming back to a half-finished measurement
-    costs nothing; Clear is how the user says they are done, and it says so in
-    one place rather than being a side effect of the toggle."""
+def test_turning_measuring_off_ends_the_session_and_clear_only_empties_it():
+    """Two controls, two jobs — and OFF means nothing is being measured.
+
+    The picks survived the toggle until 2026-08-31, on the reasoning that
+    coming back to a half-finished measurement costs nothing.  It was not
+    free: the Cell page's pick buttons read the COUNT, so they stayed enabled
+    with the ruler off, titled "turn measuring on", and staged a row from picks
+    nothing on screen was showing.  Off-with-picks and off-without behaved
+    differently and looked identical.
+
+    Clear is still its own control: it empties the track WITHOUT leaving the
+    mode, which is what a user wants mid-measurement.
+    """
     out = _store("""
         const m = S.createMeasurementStore();
         m.setActive(true); m.toggle(1); m.toggle(2);
@@ -151,28 +160,18 @@ def test_turning_measuring_off_keeps_the_picks_and_clear_empties_them():
         const afterOff = m.get();
         m.setActive(true);
         const backOn = m.get();
+        m.toggle(1); m.toggle(2);
         m.clear();
         console.log(JSON.stringify({ afterOff, backOn, afterClear: m.get(),
                                      stillActive: m.getState().active }));
     """)
-    assert out["afterOff"] == [1, 2], "turning it off must not discard the work"
-    assert out["backOn"] == [1, 2]
+    assert out["afterOff"] == [], (
+        "turning measuring off ends the session — leaving picks behind is the "
+        "state that made the Cell page's buttons act on marks nobody could see"
+    )
+    assert out["backOn"] == [], "coming back starts a new measurement, not the old one"
     assert out["afterClear"] == []
     assert out["stillActive"] is True, "Clear empties the track, not the toggle"
-
-
-def test_a_restored_track_is_trimmed_and_cleaned():
-    """The lane is bytes that were on disk (§ 11.2b), so what comes back is
-    checked rather than trusted — a saved four, a negative, a string."""
-    out = _store("""
-        const m = S.createMeasurementStore();
-        m.adopt([1, 2, 3, 4]);
-        const tooMany = m.get();
-        m.adopt([-1, "2", null, 3]);
-        console.log(JSON.stringify({ tooMany, junk: m.get() }));
-    """)
-    assert out["tooMany"] == [1, 2, 3], "a saved four must not raise the cap"
-    assert out["junk"] == [3]
 
 
 # ---------------------------------------------------------------------------
@@ -208,10 +207,10 @@ def test_a_click_lands_in_exactly_one_track():
     out = _model("""
         const m = await loaded();
         m.pickAtom(0);
-        const offTrack = m.measurement.get(), offSel = m.selection.get();
+        const offTrack = m.measurement.getState().picks, offSel = m.selection.get();
         m.measurement.setActive(true);
         m.pickAtom(2);
-        const onTrack = m.measurement.get(), onSel = m.selection.get();
+        const onTrack = m.measurement.getState().picks, onSel = m.selection.get();
         console.log(JSON.stringify({ offTrack, offSel, onTrack, onSel }));
     """)
     assert out["offSel"] == [0] and out["offTrack"] == [], \
@@ -376,6 +375,11 @@ def test_only_the_view_context_lane_persists_the_track():
         # following it.
         "mount.js":       "asks whether the ruler is on, to let a pick "
                           "through under isolate (§ 11.6)",
+        # ADDED 2026-08-31.  The marks became ARROWS, so the sealed layer now
+        # names the thing it is drawing.  It draws only -- it is handed which
+        # atoms, in order, and owns what a mark LOOKS like (§ 6.5); it reads no
+        # track and decides nothing about one.
+        "3dmol-embed.js": "draws the marks, one arrow per step (§ 11.6)",
     }
     named = sorted(n for n, t in src.items() if "measurement" in t.lower())
     assert named == sorted(readers), (
@@ -406,7 +410,7 @@ def test_the_geometric_vertex_guess_is_gone():
     """It existed only because a SELECTION can arrive with no pick order — from
     All, Invert, a filter, a restored session.  A track is only ever built by
     clicks, so the case is unreachable and the guess is deleted rather than left
-    to be maintained (`plans/modify-redesign-plan.md` § 1.3)."""
+    to be maintained (`archive/2026-09-01-modify-redesign-plan.md` § 1.3)."""
     ui = _sources()["ui.js"]
     assert "byGeometry" not in ui and "orderedForMeasurement" not in ui
 
@@ -435,3 +439,253 @@ def test_the_ops_group_still_comes_from_the_selection():
 
     jobs = _sources()["model-jobs.js"]
     assert "readSelection" in jobs and "measurement" not in jobs
+
+
+# ---------------------------------------------------------------------- #
+#  THE CLEARING RULE HAS ONE HOME (§ 11.6, user 2026-08-31)               #
+#                                                                        #
+#  It lived at three call sites and the fourth door -- the cell commit -- #
+#  had already forgotten it.  It is now stated once in `settle`, which    #
+#  every structure change passes through, with a single exemption for the #
+#  doors that PROVE the atoms are unchanged (`requireSameAtoms` runs      #
+#  before they land): a running job's frames arriving.  Those must not    #
+#  clear, because § 12.4 is measuring an angle WHILE a trajectory plays.  #
+# ---------------------------------------------------------------------- #
+
+def test_a_structure_change_clears_the_track_without_the_door_asking():
+    """The rule, from the outside: pick atoms, change the structure, and the
+    picks are gone -- with no door having decided that for itself."""
+    out = _model("""
+        const m = await loaded();
+        m.measurement.setActive(true);
+        m.pickAtom(2); m.pickAtom(0);
+        const before = m.measurement.getState().picks;
+        await m.installMolecule({
+            text: "4\\n\\nO 0 0 0\\nO 1 0 0\\nO 2 0 0\\nO 3 0 0\\n",
+            filename: "y.xyz",
+        });
+        console.log(JSON.stringify({ before, after: m.measurement.getState().picks }));
+    """)
+    assert out["before"] == [2, 0], "the picks were not taken in click order"
+    assert out["after"] == [], (
+        "a structure change must clear the ordered track -- the picks name "
+        "atoms in the molecule that just went away (molview.md § 11.6)"
+    )
+
+
+def test_a_frame_arriving_from_a_job_does_NOT_clear_the_track():
+    """The one exemption, and the reason it exists: § 12.4 is measuring while
+    a trajectory plays.  The picks are indices and the readout re-reads the
+    current frame, so a growing movie must leave them standing."""
+    out = _model("""
+        const m = await loaded();
+        m.measurement.setActive(true);
+        m.pickAtom(1); m.pickAtom(3);
+        m.addFrame([[0,0,0],[1.1,0,0],[2,0,0],[3,0,0]]);
+        m.addFrames([[[0,0,0],[1.2,0,0],[2,0,0],[3,0,0]]]);
+        m.setForces(null);
+        console.log(JSON.stringify({ picks: m.measurement.getState().picks }));
+    """)
+    assert out["picks"] == [1, 3], (
+        "frames arriving from a running job prove the atoms are unchanged, so "
+        "they must not clear the track -- clearing here deletes the very "
+        "measurement § 12.4 exists to show"
+    )
+
+
+# ---------------------------------------------------------------------- #
+#  AN ORDERED OP READS THE ORDERED TRACK (§ 11.6, user 2026-08-31)        #
+#                                                                        #
+#  `orient`'s answer is WHICH ATOM WAS FIRST -- first -> second is the    #
+#  tilt direction.  It read `selection`, which SORTS, so the same two     #
+#  atoms picked by clicking and by shift-range oriented in opposite       #
+#  directions with nothing said.  The op table now declares the track.    #
+# ---------------------------------------------------------------------- #
+
+_RECORDING_SERVER = """
+globalThis.__sent = [];
+globalThis.fetch = async function (route, init) {
+    globalThis.__sent.push({ route, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({
+        ok: true,
+        atoms: [0, 1, 2, 3].map((i) => ({
+            index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
+        n_atoms: 4,
+        periodicity: { cell: null, cell_origin: null,
+                       axis_kind: ["free", "free", "free"], vacuum: null },
+    }) };
+};
+"""
+
+
+def _model_recording(snippet: str):
+    return run_node([], MODEL_PRELUDE + snippet, globals_js=_RECORDING_SERVER)
+
+
+def test_orient_sends_the_anchors_in_CLICK_order_not_sorted_order():
+    """The bug, driven: pick 2 then 0 with the ruler while the selection holds
+    the same two atoms sorted.  What reaches the server must be the click
+    order, because reversing the pair reverses the tilt."""
+    out = _model_recording("""
+        const m = await loaded();
+        // the SET says {0, 2}: `add` SORTS, and `add` is what shift-range and
+        // the drag box call -- which is exactly how the same two atoms came to
+        // orient in two directions depending on how they were picked.
+        m.selection.add([2, 0]);
+        // the TRACK says 2 then 0 -- the order they were clicked
+        m.measurement.setActive(true);
+        m.pickAtom(2); m.pickAtom(0);
+        await m.applyOp("orient", { axis: "z", angle: 0, center: "midpoint" });
+        const sent = globalThis.__sent.filter((s) => /orient/.test(s.route));
+        console.log(JSON.stringify({
+            selection: m.selection.get(),
+            anchors: sent.length ? sent[0].body.anchors : null,
+        }));
+    """)
+    assert out["selection"] == [0, 2], \
+        "the selection store is a SET and sorts -- that is the premise"
+    assert out["anchors"] == [2, 0], (
+        "orient must send the CLICK order from the ruler's track, not the "
+        "sorted selection -- reversing the pair reverses the tilt "
+        "(molview.md § 11.6, `ordered` column in § 11.1's table)"
+    )
+
+
+def test_a_set_op_still_reads_the_selection_and_ignores_the_ruler():
+    """The other half, or the column would be a rule with no edge: `delete`
+    declares no `ordered`, so the picks must not reach it."""
+    out = _model_recording("""
+        const m = await loaded();
+        m.selection.adopt([1, 3]);
+        m.measurement.setActive(true);
+        m.pickAtom(0);
+        await m.applyOp("delete", {});
+        const sent = globalThis.__sent.filter((s) => /delete/.test(s.route));
+        console.log(JSON.stringify({
+            indices: sent.length ? sent[0].body.indices : null }));
+    """)
+    assert out["indices"] == [1, 3], (
+        "a set op reads the selection; the ruler's picks are a different "
+        "track and must not reach it"
+    )
+
+
+# ---------------------------------------------------------------------- #
+#  THE SURFACE IS NARROWER THAN THE STORE (user, 2026-08-31)              #
+#                                                                        #
+#  "The internal selection states should not be accessible from outside   #
+#  the module ... this is the only way to guarantee that you're not       #
+#  misusing any of those states."  The model used to hand out the STORE,  #
+#  so every internal write door came with it and a consumer could add a   #
+#  pick without going through `pickAtom` -- the one place that decides    #
+#  measuring-vs-selecting and the one place isolate has been translated.  #
+# ---------------------------------------------------------------------- #
+
+def test_the_router_is_what_a_pick_goes_through():
+    """The other half: `pickAtom` must actually reach the track, or the door
+    above would be closed with nothing open in its place."""
+    out = _model("""
+        const m = await loaded();
+        m.measurement.setActive(true);
+        m.pickAtom(2); m.pickAtom(0);
+        const measuring = m.measurement.getState().picks;
+        m.measurement.setActive(false);      // ...which also ends the session
+        m.pickAtom(3);                       // now it means SELECT
+        console.log(JSON.stringify({
+            measuring, after: m.measurement.getState().picks, selection: m.selection.get(),
+        }));
+    """)
+    assert out["measuring"] == [2, 0], "picks land in click order while measuring"
+    assert out["after"] == [], (
+        "turning the ruler off clears the track, and a click with it off must "
+        "not put anything back into it"
+    )
+    assert out["selection"] == [3], "...it selects instead"
+
+
+def test_asking_for_the_ruler_is_the_modules_decision_not_the_pages():
+    """`requestPicking` answers whether it turned the ruler ON, so a caller
+    never has to read `active` and set it itself — which is the two-step both
+    panels were copying, and which lived in a page-side file until the module
+    took it back."""
+    out = _model("""
+        const m = await loaded();
+        const first  = m.requestPicking();   // was off -> turns on
+        const second = m.requestPicking();   // already on
+        const active = m.measurement.getState().active;
+        console.log(JSON.stringify({ first, second, active }));
+    """)
+    assert out["first"] is True, "asking with the ruler off turns it on and says so"
+    assert out["second"] is False, (
+        "already on is not an event — announcing it would greet every tab "
+        "opening with a notice about a mode nobody touched"
+    )
+    assert out["active"] is True
+
+
+# ---------------------------------------------------------------------- #
+#  NOTHING ESCAPES THE MODULE (user, 2026-08-31)                          #
+#                                                                        #
+#  "All the measurement API has to be within MolView, and all the users   #
+#  have to call through it.  Nothing escapes."                            #
+#                                                                        #
+#  A design invariant, so it is checked statically: it is violated by     #
+#  NEW code reaching past the surface, which no behavioural test can see  #
+#  until someone writes that code.                                       #
+# ---------------------------------------------------------------------- #
+
+#: What the model hands a consumer (model.js).  Anything else named on a
+#: `.measurement.` is a reach past the surface into the store.
+_SURFACE = {"getState", "positions", "subscribe", "setActive",
+            "requestPicking", "clear"}
+
+_STATIC = REPO / "molbuilder" / "web" / "static"
+
+
+def _outside_module_js():
+    for path in sorted(_STATIC.rglob("*.js")):
+        rel = path.relative_to(_STATIC).as_posix()
+        if rel.startswith("lib/molview/") or rel.startswith("vendor/"):
+            continue
+        yield rel, path
+
+
+def test_no_consumer_reaches_past_the_measurement_surface():
+    offenders = {}
+    for rel, path in _outside_module_js():
+        src = path.read_text(encoding="utf-8", errors="ignore")
+        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        src = re.sub(r"^\s*//.*$", "", src, flags=re.M)
+        for m in re.finditer(r"\.measurement\s*\.\s*(\w+)", src):
+            if m.group(1) not in _SURFACE:
+                offenders.setdefault(rel, set()).add(m.group(1))
+    assert not offenders, (
+        f"these reach past the measurement surface: "
+        f"{ {k: sorted(v) for k, v in offenders.items()} }.  The model hands "
+        f"out {sorted(_SURFACE)} and nothing else; a pick is written through "
+        f"`pickAtom` alone (molview.md § 11.6)."
+    )
+    # ...and the scan is not vacuous: the two real consumers must be seen.
+    seen = {rel for rel, p in _outside_module_js()
+            if ".measurement." in p.read_text(encoding="utf-8", errors="ignore")}
+    assert {"modify/periodicity.js", "modify/viewer.js"} <= seen, (
+        f"the corpus lost its known consumers, so a pass means nothing: {seen}"
+    )
+
+
+def test_no_consumer_imports_a_molview_internal():
+    """The module is `index.js` and its two exports.  A consumer that imports
+    `model.js` or `stores.js` directly has the store itself, and every rule
+    above is moot."""
+    offenders = {}
+    for rel, path in _outside_module_js():
+        src = path.read_text(encoding="utf-8", errors="ignore")
+        for m in re.finditer(r"""from\s+["'][^"']*molview/([\w.-]+)["']""", src):
+            if m.group(1) != "index.js":
+                offenders.setdefault(rel, set()).add(m.group(1))
+    assert not offenders, (
+        f"these import a MolView internal instead of index.js: "
+        f"{ {k: sorted(v) for k, v in offenders.items()} } — "
+        f"'a consumer that imports any of them directly has broken the "
+        f"module, not found a shortcut' (molview.md § 4)"
+    )

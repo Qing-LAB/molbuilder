@@ -649,3 +649,56 @@ def test_every_shown_frame_is_clickable_not_just_the_wired_one():
     assert out["after"] == out["before"] + 1, (
         "the frame swap did not re-establish clickability -- every frame "
         "but the wired one is click-dead")
+
+
+# ---------------------------------------------------------------------------
+# § 11.6 — the ruler's marks carry the ORDER
+# ---------------------------------------------------------------------------
+
+def test_the_measured_marks_are_arrows_in_pick_order():
+    """User, 2026-08-31: *"if it's two, then it will have an arrow of its own
+    kind pointing from the start and to the end of that selection ... then the
+    orientation, the order, and everything is already shown in the drawing"*.
+
+    One pick has no direction, so it marks the atom.  Two draw one arrow, three
+    draw two — first→second, second→third, which also puts the angle's vertex
+    at the tail of the second arrow.
+    """
+    out = _run(
+        """
+        /* THREE atoms at x = 0, 1, 2 -- the shared fixture has only two, and
+           three picks is the case that shows a chain rather than a pair. */
+        const e = MOD.create(globalThis.__makeHost(), {});
+        e.loadFrames(["C", "O", "N"], [[[0, 0, 0], [1, 0, 0], [2, 0, 0]]]);
+
+        globalThis.__resetCalls();
+        e.setOverlays({ measured: [2] });
+        const one = { arrows: globalThis.__countCalls("addArrow"),
+                      marks:  globalThis.__countCalls("addSphere") };
+
+        globalThis.__resetCalls();
+        e.setOverlays({ measured: [2, 0] });
+        const two = { arrows: globalThis.__countCalls("addArrow"),
+                      first:  globalThis.__lastCall("addArrow").args[0] };
+
+        globalThis.__resetCalls();
+        e.setOverlays({ measured: [2, 0, 1] });
+        const three = { arrows: globalThis.__countCalls("addArrow") };
+
+        console.log(JSON.stringify({ one, two, three }));
+        """
+    )
+    assert out["one"]["arrows"] == 0, \
+        "one pick has no direction to draw"
+    assert out["one"]["marks"] >= 1, \
+        "...but it is marked, or the pick would be invisible"
+    assert out["two"]["arrows"] == 1, "two picks are one arrow"
+    assert out["three"]["arrows"] == 2, \
+        "three picks are two arrows — a chain, not a triangle"
+    # atom 2 was picked FIRST, atom 0 second, so the arrow runs 2 -> 0.
+    start = out["two"]["first"]["start"]
+    end = out["two"]["first"]["end"]
+    assert (start["x"], end["x"]) == (2, 0), (
+        f"the arrow runs x={start['x']} -> x={end['x']}; it must follow the "
+        f"CLICK order, which is the whole thing it exists to show"
+    )

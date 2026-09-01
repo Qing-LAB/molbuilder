@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -130,6 +131,67 @@ def write_secret_file(path: Path, contents: str) -> None:
         os.write(fd, contents.encode("utf-8"))
     finally:
         os.close(fd)
+
+
+#: A user id, as the LISTENER will accept it.  It becomes a log filename on
+#: the server, so it is limited to what `notify.py` enforces when it writes.
+#: Refusing at issue time is cheaper than a key that authenticates and then
+#: cannot be recorded.
+NOTIFY_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
+
+
+class NotifyKeyError(ValueError):
+    """A key could not be issued, with a reason a person can act on."""
+
+
+def issue_notify_key(user: str, *, path: Optional[Path] = None,
+                     route: Optional[str] = None,
+                     replace: bool = False):
+    """Issue one run-report signing key.  ``(key, segment, previous)``.
+
+    **One door, because there are two of them.**  `cli notify-token` and the
+    *This machine* tab both do this, and they must write the same file the
+    same way -- a second implementation would be free to generate a second
+    route segment and silence everybody already set up, which is the exact
+    failure `run-reports.md` § 4.3 records from when the route lived in two
+    places.
+
+    ``previous`` is the segment the file held BEFORE this call, or ``None``
+    for the first key.  Returned rather than swallowed because it is what
+    tells the four cases apart -- first key, joined the file's route,
+    adopted a segment the file did not have, or **moved** the route because
+    ``route`` disagreed with the file.  Only the last one stops every key
+    already issued, and a caller that cannot see it cannot warn about it.
+
+    The key is **returned**, once.  There is no way to read it back out of
+    the file in a form anyone can use, and that is deliberate
+    (`this-machine.md` § 2).
+    """
+    from .monitor import (notify_keys_document, notify_keys_path,
+                          read_notify_keys)
+    if not NOTIFY_USER_RE.match(user or ""):
+        raise NotifyKeyError(
+            f"{user!r} is not usable as a user id here. It becomes a log "
+            f"FILENAME on the server, so it is limited to letters, digits "
+            f"and . _ @ + - (max 128).")
+    path = Path(path) if path else notify_keys_path()
+    # THE ROUTE COMES OUT OF THE FILE IT WENT INTO, so a second key joins the
+    # first by default and there is nothing for the caller to remember.
+    existing_route, existing = read_notify_keys(path)
+    if user in existing and not replace:
+        raise NotifyKeyError(
+            f"{user!r} already has a key in {path}. Re-issue with `replace` "
+            f"to generate a new one -- the old one stops working the moment "
+            f"you do.")
+    token = secrets.token_urlsafe(32)
+    existing[user] = token
+    # GENERATED, NOT NAMED.  A word chosen in the source would be committed
+    # to a public repository and so be exactly as public as `notify`, only
+    # less honest about what it does (`access-control.md` § 8 rule 7).
+    seg = route or existing_route \
+        or secrets.token_urlsafe(12).replace("-", "").replace("_", "")
+    write_secret_file(path, notify_keys_document(seg, existing))
+    return token, seg, existing_route
 
 
 # --------------------------------------------------------------------- #

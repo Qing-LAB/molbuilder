@@ -5,7 +5,7 @@
 **Companions:** this is the map; every module named below has its own doc, linked
 in the registry (§ 4). New here? Read this, then the one module you need.
 
-The molbuilder front end is **six tabs sharing one app shell**, and behind them a
+The molbuilder front end is **eight tabs sharing one app shell**, and behind them a
 small set of **reusable modules** that do the real work. A tab is deliberately
 thin: it lays out some cards, then *mounts* the modules — the 3D viewer, the file
 browser, the option forms, the result viewers — and wires their events to the
@@ -55,8 +55,8 @@ copies.
 
 ```mermaid
 flowchart TD
-  subgraph TABS["The six tab pages — thin consumers, see tabs.md"]
-    T["Molbuilder · Structure-opt · Spectrum · Transport · Results · Documents"]
+  subgraph TABS["The tab pages — thin consumers, the roster is tabs.md § 1"]
+    T["Molbuilder · Structure-opt · Spectrum · Transport<br/>Task setup · Results · This machine · Documents"]
   end
   subgraph MODS["Reusable front-end modules"]
     MV["MolView · VibrationView — the sibling 3D viewers"]
@@ -178,7 +178,7 @@ stack and some shared plumbing**:
   registry itself, and the loose primitives (`markdown-render`, `detection-chip`,
   `constants`, `path-utils`).
 
-Finishing the conversion is tracked in two workstreams (`roadmap.md § 3`):
+Finishing the conversion is tracked in two workstreams (`archive/2026-09-01-roadmap.md § 3`):
 
 - **#102** — convert the file-viewer registry to ESM **and rename `inspectors` →
   `presenters`** in one pass. The same pass also converts the two **heavy engine

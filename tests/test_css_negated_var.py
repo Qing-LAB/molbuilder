@@ -34,7 +34,7 @@ What this test pins
 No ``.css`` file under ``molbuilder/web/static/`` contains a minus sign
 immediately followed by ``var(``.  Module sheets are included: this is
 a syntax fact, not a style opinion, so the module boundary
-(``css-system-plan.md`` § 1) does not apply — a guard may *read* a
+(``archive/2026-09-01-css-system-plan.md`` § 1) does not apply — a guard may *read* a
 module's sheet, it just may not tell it how to look.
 """
 from __future__ import annotations

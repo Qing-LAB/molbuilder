@@ -219,7 +219,7 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 | W1 | **`runwrap.py` is the coupling hotspot.** Engine-aware by necessity (restart semantics), but it also reaches into the `.fdf` *input schema* (`_fdf_requests_gpu` / `_fdf_requests_elpa` / `_parse_fdf_n_atoms`). Execution is fused to one engine's input schema rather than sitting behind an interface. *(The memory-model half of this row was deleted 2026-08-24 with the estimator itself.)* | `runwrap.py` (the three `_fdf_*` helpers) |
 | W2 | ~~**The one leak inside the "agnostic" core.**~~ **CLOSED (U3, 2026-08-13):** `jobset/runstatus.py`'s hardcoded warm-file table now derives from the engines' `warm-files.toml` rules files through the one loader (`job-contracts.md` § 4.2a) — the row stays so the seam's history is findable | `jobset/runstatus.py` |
 | W3 | **`runtime_config` leaks scheduler schema as untyped dicts** into `jobset/submit.py` and `runwrap.py` (`d["partition"]`, `d["qos"]`, …), and the module also bundles web-auth/TLS config with scheduler config — two concerns in one reader. | `runtime_config.py`; consumers `jobset/submit.py`, `runwrap.py` |
-| W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`plans/transport-design.md`) | *(orchestrate.py deleted)* |
+| W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`archive/2026-09-01-transport-design.md`) | *(orchestrate.py deleted)* |
 | W5 | **A module misfiled under "workflow."** `script_emit.py` is really a **data** serializer (it reaches into `parse.types`, `sidecars`, `structure`), not an execution verb — this doc files it under § 2 for that reason.  *(Its former sibling `bundle_writer.py` retired 2026-08-29 with the handoff it materialised.)* | `script_emit.py` |
 
 The scheduler vocabulary in `jobset/model.py::Resources` (`mpi_np`, `time`,
@@ -275,7 +275,7 @@ remains is **completing** the separation at the execution edges (§ 5 W1–W4) a
 little hygiene (§ 3 nits, § 2 residuals, W5) — deferred boundary debt, not
 load-bearing bugs. None of it changes the concern *homes*; it makes them
 uniform. If any of these are scheduled, they become entries in
-[`roadmap.md`](?doc=roadmap.md).
+[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md).
 
 ---
 

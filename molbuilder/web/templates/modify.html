@@ -315,7 +315,7 @@
     <div id="molview-host"></div>
   </section>
 
-  <!-- 4. Modify — atom/transform/junction/cell op-tabs.  Now its own
+  <!-- 4. Modify — atom/transform/slab/cell op-tabs.  Now its own
        card so the user can keep the viewer + selection panels
        fixed while applying ops.  "Save to project" is in the card
        header row (all cross-tab transfer is via saved project files). -->
@@ -362,7 +362,7 @@
     </div>
 
     <div class="modify-body">
-      <!-- Edit (op-tabs) — Atom / Transform / Junction / Cell
+      <!-- Edit (op-tabs) — Atom / Transform / Slab / Cell
            sub-tabs.  Selection is now in its own panel above so
            this column gets the full width. -->
       <aside class="modify-edit modify-edit-card">
@@ -607,7 +607,7 @@
            on SiestaConfig / TransportConfig, not geometry.) -->
       {#- ============================================================ -#}
       {#-  Slab -- one fcc slab, placed ABSOLUTELY                      -#}
-      {#-  (plans/modify-redesign-plan.md § 3)                          -#}
+      {#-  (archive/2026-09-01-modify-redesign-plan.md § 3)                          -#}
       {#- ============================================================ -#}
       <div class="modify-optab-panel" data-op-panel="slab" role="tabpanel"
            id="optab-panel-slab" aria-labelledby="optab-btn-slab">
@@ -645,7 +645,7 @@
           <legend>Size</legend>
           <div class="modify-op-row">
             <label for="slab-m">m × n × layers</label>
-            <span>
+            <span class="modify-count-group">
               <input type="number" id="slab-m" class="modify-cell-num"
                      step="1" min="1" value="1" aria-label="m repeats" />
               <input type="number" id="slab-n" class="modify-cell-num"

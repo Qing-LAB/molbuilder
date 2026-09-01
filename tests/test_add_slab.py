@@ -1,6 +1,6 @@
 """The new slab builder — one slab, placed absolutely (redesign plan § 3).
 
-The old `add_electrode_slab` places a slab RELATIVE to a selection and, on
+The deleted `add_electrode_slab` placed a slab RELATIVE to a selection and, on
 `side="-z"`, mirrors it unconditionally — which reverses the layer order and
 breaks the seam (`junction-cell.md` § 3.2).  This one is told everything:
 which registry the layer at `start_z` sits on, what z that is, which way the

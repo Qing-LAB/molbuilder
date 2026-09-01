@@ -215,3 +215,50 @@ def test_allowlist_entries_still_have_duplicates():
         for sel, files in stale:
             lines.append(f"  {sel!r}  (currently in: {files or ['none']})")
         pytest.fail("\n".join(lines))
+
+
+# --------------------------------------------------------------------- #
+#  The other shape: one rule, copied under two DIFFERENT selectors       #
+# --------------------------------------------------------------------- #
+
+def test_no_long_block_is_copied_between_stylesheets():
+    """**The duplicate this file's own check could not see.**
+
+    Everything above asks whether one selector has two homes. It says
+    nothing about the opposite copy-paste: the same reasoning and the same
+    declaration, under two different selectors, in two sheets. That is what
+    happened to the MolView host's overflow rule — eighteen identical lines
+    in `structure-optimization/style.css` and `transport/style.css`,
+    differing only in the id — and it survived because neither selector was
+    ever duplicated.
+
+    `ui-contract.md` § 1: *a shared element has exactly one owner — its
+    rules are declared in one place, and other sheets don't redeclare
+    them.* A long identical run across two sheets is that rule broken,
+    whatever the selectors say.
+
+    Ten non-blank lines is the threshold: shorter runs are honestly shared
+    idiom (a `[hidden] { display: none }` pair, a flex column), while ten
+    lines that match exactly are a paste.
+    """
+    import difflib
+    import itertools
+
+    sheets = sorted(p for p in STATIC_ROOT.rglob("*.css")
+                    if "vendor" not in p.parts)
+    offenders = []
+    for a, b in itertools.combinations(sheets, 2):
+        la = a.read_text(encoding="utf-8").splitlines()
+        lb = b.read_text(encoding="utf-8").splitlines()
+        for blk in difflib.SequenceMatcher(None, la, lb,
+                                           autojunk=False).get_matching_blocks():
+            run = [ln for ln in la[blk.a:blk.a + blk.size] if ln.strip()]
+            if len(run) >= 10:
+                offenders.append(
+                    f"{a.relative_to(STATIC_ROOT)}:{blk.a + 1} and "
+                    f"{b.relative_to(STATIC_ROOT)}:{blk.b + 1} share "
+                    f"{len(run)} lines, starting {run[0].strip()[:60]!r}")
+    assert not offenders, (
+        "the same block is written in two stylesheets — give it one owner "
+        "(a shared sheet, or the module's own) and let the pages opt in:\n  "
+        + "\n  ".join(offenders))

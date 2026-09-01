@@ -90,7 +90,7 @@ except ImportError:                  # pragma: no cover - Windows branch
 #: into a quiet one.
 SCHEMA_VERSION = 9   # 9 (2026-08-29): + the OPTIONAL `info` block (the
 #                      free-form NON-structural store,
-#                      plans/structure-info-plan.md -- additive; absent
+#                      archive/2026-09-01-structure-info-plan.md -- additive; absent
 #                      means "nothing recorded", and it never enters
 #                      structure_hash).
 #                    8 (2026-08-20): + the OPTIONAL identity columns

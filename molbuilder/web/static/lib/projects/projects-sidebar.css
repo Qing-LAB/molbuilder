@@ -231,6 +231,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  */
 .ps-create-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-sm) var(--space-sm);
@@ -239,8 +240,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-create-action {
   appearance: none;
-  flex: 1 1 0;
-  min-width: 0;            /* let flex shrink labels when sidebar narrows */
+  flex: 0 0 auto;          /* as wide as its own label, no wider */
+  min-width: 0;
   background: var(--ps-bg-deep);
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
@@ -299,9 +300,17 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-selected-fg);
 }
 .ps-create-action-label {
+  /* The bar's stated intent is compact AND readable.  `nowrap` defeated the
+     second half: at the token default (--ps-w: 18rem) the button is 62px and
+     "New project" wants 61px of text inside 8px of padding, so it rendered
+     "New projec...".  The button is already icon-above-label, so the label
+     wraps onto the line it already has room for -- content deciding, per
+     ui-contract.md 3, with no width literal and no media query.  `ellipsis`
+     stays as the fallback for a single unbreakable word. */
   flex: 0 0 auto;
   font-size: var(--text-2xs);
   font-weight: 500;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

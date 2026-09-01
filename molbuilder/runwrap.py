@@ -34,6 +34,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
+# The channel-name rule, from the module that owns the file those names
+# have to match.  It cannot import upward -- it ships to a compute node
+# alone -- so it is the end of the exchange that gets to own the rule.
+from .monitor import is_channel_name
 
 if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # Under TYPE_CHECKING because the annotation is all this module needs:
@@ -1824,6 +1828,21 @@ def render_run_wrapper(script_path: Path, *,
     # one this module has already had twice.
     notify_on_scf = bool(r.notify_on_scf)
     notify_every_hours = float(r.notify_every_hours or 0.0)
+    notify_channels = r.notify_channels
+    if notify_channels is not None:
+        # VALIDATED HERE because this is where a name becomes SHELL.  Every
+        # name that arrives through `task.json` was checked at parse, but
+        # `Resources` can be built directly, and a value that reaches a
+        # generated script unchecked is a quoting bug waiting for the one
+        # caller that does not go through the description.
+        bad = [n for n in notify_channels if not is_channel_name(n)]
+        if bad:
+            raise WrapperError(
+                f"notify channel name(s) {', '.join(map(repr, bad))}: only "
+                f"letters, digits, '-' and '_'.  A name is written into a "
+                f"description and rendered into the monitor's command line, "
+                f"and anything else would mean one thing in the file and "
+                f"another in the shell.")
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
     category = EXTENSION_TO_CATEGORY.get(suffix)
@@ -3398,6 +3417,13 @@ def render_run_wrapper(script_path: Path, *,
             + (f'--notify-on-scf ' if notify_on_scf else "")
             + (f'--notify-every-hours {notify_every_hours:g} '
                if notify_every_hours > 0 else "")
+            # ABSENT is "every channel this machine has" and `""` is "none",
+            # so the flag is emitted whenever the description said anything
+            # at all -- including when what it said was nothing at all
+            # (`run-reports.md` 3.0).  A description that names no channels
+            # renders no flag, exactly as it did before channels existed.
+            + ("" if notify_channels is None
+               else f'--notify-channels "{",".join(notify_channels)}" ')
             + f'--watch-pid $$ >/dev/null 2>&1 &\n'
             f'    _monitor_pid=$!\n'
             f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '

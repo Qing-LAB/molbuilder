@@ -121,7 +121,7 @@ def api_results_contract():
     deck, several decks, a deck stating nothing).  The Results tab's
     structure inspector calls this after a load and records the answer
     through the viewer's ``data.info`` door, so an export carries it
-    (`plans/structure-info-plan.md` I5).
+    (`archive/2026-09-01-structure-info-plan.md` I5).
 
     It asks ``run_info_for_dir`` -- the ONE composer of "what does this
     directory say about itself" -- rather than the ``contract_of``

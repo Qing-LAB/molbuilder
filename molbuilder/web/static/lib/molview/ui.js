@@ -1411,8 +1411,9 @@ function mountPanel(doc, card, model) {
     //
     /* WHERE A RUN COUNTS FROM: the last row the user clicked. That is a fact
      * about the pointer, not about the structure, so it lives here with the rest
-     * of the interaction state and never enters the store — the store holds what
-     * is selected and in what order it was picked, and an anchor is neither. It
+     * of the interaction state and never enters the store — the store holds
+     * WHICH ATOMS are selected, as a set, and an anchor is neither that nor
+     * ordered (order is the measurement track's, § 11.6). It
      * survives a redraw because it lives in the panel's closure, not in a row. */
     let rangeAnchor = null;
 
@@ -2200,7 +2201,7 @@ function mountPanel(doc, card, model) {
      *
      *   Lattice   default when there is no explicit `cell` -- the box shown is
      *             then bbox + 2*vacuum on each isolated axis, resolved server
-     *             side (model/structure-periodicity.md § 3a).
+     *             side (model/structure-periodicity.md § 4).
      *   Origin    default when there is no explicit `cell_origin`.
      *   Axes      default when unset OR every axis is `isolated` -- a fresh
      *             molecule loads all-isolated, and that is still the default

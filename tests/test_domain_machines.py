@@ -84,7 +84,7 @@ def test_a_64_rank_cpu_ask_is_ADMITTED_where_a_floor_refused_it():
 
 
 def test_a_gpu_ask_is_bounded_by_the_machines_that_HAVE_one():
-    """**R3's second half** (machine-identity-plan.md P6). "SLURM will not
+    """**R3's second half** (archive/2026-09-01-machine-identity-plan.md P6). "SLURM will not
     place a job on a node too small" is exactly as true of devices: a
     ``--gres`` job can only land on a node that has one.  On `htc` the
     device-bearing machines top out at 64 cores while the queue's widest

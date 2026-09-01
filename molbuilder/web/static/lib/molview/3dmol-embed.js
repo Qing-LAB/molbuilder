@@ -74,7 +74,24 @@ const SELECTION_GLOW = { color: "#ffd54a", radius: 0.7, opacity: 0.5 };
  *
  * Cool blue is also what the ruler already is elsewhere: the chip's border
  * takes `--molviewer-color-accent`, the same hue. */
-const MEASURE_GLOW = { color: "#5ad2ff", radius: 0.92, opacity: 0.45 };
+/* THE MARKS CARRY THE ORDER (user, 2026-08-31: "using arrows to show what is
+ * the item that is selected and the direction of that selection ... then the
+ * orientation, the order, and everything is already shown in the drawing").
+ *
+ * A glow said WHICH atoms and nothing else, so an ordered pick and an
+ * unordered one looked identical -- which is why `orient` reading a sorted set
+ * as though it were a click order went unnoticed for as long as it did.  An
+ * arrow per step says which was first, and the picture stops needing the
+ * caption.
+ *
+ * One pick has no direction to show, so it keeps a mark on the atom itself.
+ * Two draw one arrow, three draw two -- first->second, second->third -- which
+ * is also exactly the angle's vertex at the tail of the second arrow.
+ *
+ * Cool blue in both, the hue the ruler already is elsewhere: the chip's border
+ * takes `--molviewer-color-accent`. */
+const MEASURE_MARK  = { color: "#5ad2ff", radius: 0.55, opacity: 0.55 };
+const MEASURE_ARROW = { color: "#5ad2ff", radius: 0.07 };
 
 const LABEL_STYLE = {
     fontSize:          12,
@@ -342,6 +359,64 @@ export function create(hostEl, opts) {
         }
     }
 
+    /* THE RULER'S MARKS (§ 11.6), in pick order.
+     *
+     * ITS OWN SHAPES, NOT `state.arrows`.  `redrawArrows` ranks every arrow it
+     * holds by length to decide which one gets the gold that marks the largest
+     * force (§ 1.1) -- so a measurement arrow in that bucket could be the
+     * longest and take the gold off the force that earned it.  Two overlays,
+     * two buckets, no interaction.
+     *
+     * A PICK THAT IS NOT ON SCREEN COSTS THE ARROWS, not their correctness.
+     * Under isolate a picked atom may not be drawn; joining the two that ARE
+     * drawn would assert a step the user never made.  So a missing pick falls
+     * back to marking what IS visible, which says less rather than something
+     * untrue.
+     */
+    function redrawMeasurement(indices) {
+        state.measuredShapes = clear(state.measuredShapes);
+        const atoms = drawnAtoms();
+        const pts = [];
+        let allDrawn = true;
+        for (const i of indices) {
+            const a = atoms[i];
+            if (!a) { allDrawn = false; continue; }
+            pts.push(a);
+        }
+        if (!pts.length) return;
+
+        const mark = (a) => {
+            try {
+                state.measuredShapes.push(state.viewer.addSphere({
+                    center:  { x: a.x, y: a.y, z: a.z },
+                    radius:  MEASURE_MARK.radius,
+                    color:   MEASURE_MARK.color,
+                    opacity: MEASURE_MARK.opacity,
+                }));
+            } catch (_) {}
+        };
+
+        // One pick, or a broken chain: there is no direction to draw.
+        if (pts.length === 1 || !allDrawn) {
+            for (const a of pts) mark(a);
+            return;
+        }
+
+        for (let k = 0; k + 1 < pts.length; k++) {
+            const a = pts[k], b = pts[k + 1];
+            try {
+                state.measuredShapes.push(state.viewer.addArrow({
+                    start:       { x: a.x, y: a.y, z: a.z },
+                    end:         { x: b.x, y: b.y, z: b.z },
+                    radius:      MEASURE_ARROW.radius,
+                    radiusRatio: 2.5,
+                    mid:         0.85,
+                    color:       MEASURE_ARROW.color,
+                }));
+            } catch (_) {}
+        }
+    }
+
     // |end - start| — the drawn length. The ramp uses the RATIO to the largest,
     // so whatever scale the caller applied cancels out.
     function arrowMagnitude(a) {
@@ -472,9 +547,9 @@ export function create(hostEl, opts) {
     // lattice-only and static, so it is deliberately not in here.
     function replaceOverlays() {
         redrawLabels();
-        // The measurement glow is drawn UNDER the selection glow, so an atom
-        // that is both keeps the amber at its centre and gains a blue ring.
-        redrawGlow("measuredShapes", state.overlays.measured, MEASURE_GLOW);
+        // The ruler's marks are drawn UNDER the selection glow, so an atom that
+        // is both keeps the amber at its centre.
+        redrawMeasurement(state.overlays.measured);
         redrawGlow("highlightShapes", state.overlays.highlight, SELECTION_GLOW);
     }
 

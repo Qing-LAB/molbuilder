@@ -473,7 +473,7 @@ def resolve_and_check(struct: Structure, *,
 #                                                                       #
 #  Contract: docs/science/junction-cell.md.  Two callers derive the      #
 #  same number for two boxes -- the junction cell that flanks a molecule #
-#  (modify.add_electrode_slab) and the bulk-lead cell TranSIESTA needs   #
+#  (modify.add_slab) and the bulk-lead cell TranSIESTA needs            #
 #  (transport.wizard.extract_electrode_model).  It lived in the wizard   #
 #  first; it is here so the second caller reuses it instead of growing   #
 #  a second copy that can disagree.                                      #
@@ -535,7 +535,7 @@ def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
 
 # --------------------------------------------------------------------- #
 #  Reading a lattice constant back OUT of a relaxed result                #
-#  (plans/modify-redesign-plan.md § 3.3)                                  #
+#  (archive/2026-09-01-modify-redesign-plan.md § 3.3)                                  #
 # --------------------------------------------------------------------- #
 
 #: Fractional width of the nearest-neighbour shell.  6% holds a relaxed
@@ -664,14 +664,17 @@ def measure_fcc(positions, cell) -> FccMeasurement:
 
 # --------------------------------------------------------------------- #
 #  Does the boundary continue the crystal?                                #
-#  (plans/bench-and-junction-plan.md § 2.4)                               #
+#  (archive/2026-09-01-bench-and-junction-plan.md § 2.4)                               #
 # --------------------------------------------------------------------- #
 
 #: Two atoms closer than this across the boundary are colliding, not bonded.
 SEAM_COLLISION_ANG = 0.5
 
 #: How far a lateral offset may sit from a reference and still be called it.
-#: 0.3 A is well under the smallest real registry step (1.44 A on Au(111))
+#: 0.3 A is well under the smallest real registry step -- a/sqrt(6) = 1.67 A
+#: on fcc(111), the tightest of the three (fcc(100) a/2 = 2.04, fcc(110) 2.50).
+#: (1.44 A = a/(2*sqrt(2)) is the fcc(110) INTERLAYER spacing, measured along
+#: z; it is not a registry step, and it is not (111)'s.)
 #: and well over any relaxation jitter in a frozen outer layer.
 SEAM_STEP_TOL_ANG = 0.3
 
@@ -920,7 +923,7 @@ def classify_seam(positions, cell) -> SeamVerdict:
 #: others ABAB -- so a seam only continues the crystal when the layer
 #: count is a whole multiple (junction-cell.md § 3.1).
 #:
-#: Served to the Junction panel by /api/modify/meta, which is the whole
+#: Served to the Slab panel by /api/modify/meta, which is the whole
 #: reason it is a table rather than a function: the note re-renders as the
 #: user types a layer count, so the arithmetic happens client-side and only
 #: the crystallography travels.  A plane absent from this table means "not

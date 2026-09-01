@@ -8,7 +8,7 @@
  *   * the sidebar's Move/Copy destination question (dirs only) — the
  *     original caller, now delegating here;
  *   * any form field that names a file in the tree;
- *   * the Transport tab's SLOT selection (plans/transport-design.md
+ *   * the Transport tab's SLOT selection (archive/2026-09-01-transport-design.md
  *     § 4.1): pick a concluded attempt, with the metadata line read
  *     from the attempt's own `.fdf` — the deck that actually ran is
  *     the truth about a result (user, 2026-08-28), never a file this

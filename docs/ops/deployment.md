@@ -405,8 +405,7 @@ workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
 | `tls: {cert, key}` | HTTPS (CLI `--cert/--key` overrides) |
 | `auth: {providers:[…]}` | enable SSO login (§3) |
 | `auth.trust_proxy` | install `ProxyFix` for a reverse proxy |
-| `notify_keys_file` | path to the run-report signing-key file ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3). `molbuilder notify-token` writes it |
-| `notify_route` | the listener's generated URL segment, printed by the same command. **Both are required**; with either absent no route is registered at any path, so a server that has not set this up cannot be probed for the capability |
+| *(run reports)* | **nothing goes here.** `molbuilder notify-token`, or the *This machine* tab, writes `notify_keys` in the config directory, and **that file is the switch**: it carries its own route, and the listener is registered because the file exists and names one. `notify_keys_file` and `notify_route` were retired on 2026-08-31 and are now refused ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `rate_limit: {…}` | tune the limiter (§4 defaults) |
 | `envs: {siesta, pyscf, …}` | the conda-env names for the backends |
 
@@ -421,7 +420,11 @@ Two ready-made files ship beside this doc, in `ops/examples/`:
 | `molbuilder.asu-sol.json` | A real site preset (ASU Sol: SLURM `public` partition, A100 GPUs). The shape a working HPC config takes. Pinned by `tests/test_scheduler_config.py` so it stays valid against the live reader. |
 
 ```bash
-cp docs/ops/examples/molbuilder.json.example molbuilder.json
+# The config directory is where the server reads it from -- a copy in the
+# launch directory is NOT read (configuration.md § 2.1a).
+mkdir -p "${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}"
+cp docs/ops/examples/molbuilder.json.example \
+   "${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}/molbuilder.json"
 ```
 
 ### 5.1 The config directory — secrets live outside the repo

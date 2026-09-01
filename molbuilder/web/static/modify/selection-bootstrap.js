@@ -132,11 +132,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // mount — the user arrived with intent ("send my structure
         // to the Molbuilder tab"), not with a stray click.
         const projects = window.molbuilder && window.molbuilder.projects;
-        // The bootstrap drives molview.data.selection (set source
-        // file, adopt session, subscribe to selection changes).  This
-        // is the only surface; the legacy ``selection.store`` global
-        // is a private implementation detail.
-        const store    = _mounted.data.selection;
         // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py

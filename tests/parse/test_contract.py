@@ -1,5 +1,5 @@
 """``parse.contract.contract_of`` — the recorded-contract extractor
-(structure-info-plan.md I5): one deck in the directory defines the
+(archive/2026-09-01-structure-info-plan.md I5): one deck in the directory defines the
 answer; anything else is None, never a guess."""
 from __future__ import annotations
 

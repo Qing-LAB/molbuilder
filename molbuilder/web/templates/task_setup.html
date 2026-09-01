@@ -158,6 +158,32 @@
           </div>
         </div>
 
+        {# WHAT THE RUN WILL USE -- one value each, typed (task-setup.md
+           6.2b).  The rows mirror the bench's parameters because the thing
+           you measured is the thing you are deciding about; the bench's
+           points appear beside each as INFORMATION and fill nothing.
+
+           This is the concealment the card was rebuilt to end (user,
+           2026-09-01): the run took run-config.toml's verdict for every
+           field the description had not stated, and the tab gave no way to
+           state one -- so the recommendation was the only input, it was
+           never shown, and a run needed a benchmark to have been EXECUTED. #}
+        <div class="ts-runvals" id="ts-runvals" hidden>
+          <h3 class="ts-reports-head">What the run will use</h3>
+          <p class="hint">One value each &mdash; <strong>your decision</strong>,
+            not the benchmark's. What you leave blank falls to the stage's
+            <code>run-config.toml</code> and then to the wrapper's own policy,
+            and the tab says which.</p>
+          <div class="ts-rows" id="ts-run-rows"></div>
+          <div class="ts-fit" id="ts-run-fit" hidden></div>
+          <div class="ts-actions">
+            <select id="ts-add-runval" class="ts-pick"
+                    aria-label="add a setting for the run"></select>
+            <button type="button" class="btn" id="ts-add-runval-go">+ Add
+              setting</button>
+          </div>
+        </div>
+
         {# A `ts-queue-state` block stood here, hidden, with a title and a
            body no JS ever wrote -- markup added on the assumption it would
            be needed and then never wired.  Deleted 2026-08-24 rather than
@@ -203,6 +229,35 @@
            /api/task-setup/bench-grid -- the terminal's own report, as data,
            so the browser never enumerates the grid a second way. #}
         <div class="ts-fit" id="ts-machine-fit" hidden></div>
+        {# MEASURING IS NOT RUNNING (stages.md 6.8c, user 2026-09-01: "launch
+           target for run may be different from bench (due to the time
+           requirement etc)").  A benchmark is short by construction --
+           capped SCF, one point, no relaxation -- so one wall serving both
+           queues a thirty-second job behind a two-day reservation.
+
+           COLLAPSED, because the common case is that they are the same and
+           absent means "use the run's".  Opening it is the whole cost of
+           the uncommon one. #}
+        <details class="ts-benchalloc" id="ts-benchalloc">
+          <summary>Measure on a different queue or wall</summary>
+          <p class="hint">Left alone, a benchmark asks for whatever the run
+            asks for. These override that <strong>for the measurement
+            only</strong>.</p>
+          <div class="ts-asks">
+            <div class="ts-ask">
+              <label class="ts-ask-label" for="ts-bench-domain">Queue</label>
+              <input class="ts-ask-input" id="ts-bench-domain" type="text"
+                     autocomplete="off" placeholder="&mdash; the run's">
+            </div>
+            <div class="ts-ask">
+              <label class="ts-ask-label" for="ts-bench-time">Time limit</label>
+              <input class="ts-ask-input" id="ts-bench-time" type="text"
+                     autocomplete="off" placeholder="e.g. 30m"
+                     aria-describedby="ts-bench-time-note">
+              <span class="ts-ask-note" id="ts-bench-time-note"></span>
+            </div>
+          </div>
+        </details>
         <div class="ts-actions" id="ts-machine-actions" hidden>
           <select id="ts-add-setting" class="ts-pick"
                   aria-label="add a setting to measure"></select>
@@ -219,12 +274,13 @@
          belongs after them rather than between "where it runs" and
          "stages".
 
-         ONE CARD, TWO FILES, and that is the part to keep straight
-         (`run-reports.md` 1).  The ticks are POLICY and go into task.json,
-         which TRAVELS -- so a key must never reach them.  The address and
-         key below go into <config dir>/notify on this machine, which never
-         travels.  Sharing a card is a UI decision; sharing a file would be
-         a contract violation, and they do not. #}
+         ONE CARD, ONE FILE, and that is new (2026-08-31).  Everything here
+         goes into task.json, which TRAVELS -- the ticks, and the channel
+         NAMES, which are labels the person chose and not credentials.  The
+         addresses and keys those names resolve to are on the This-machine
+         tab, in a file that never travels.  It was one card over two files
+         and the separation was held by this comment; it is now held by the
+         architecture (`run-reports.md` 1, `this-machine.md` 1). #}
       <section class="card" id="ts-notify-card" hidden>
         <h2>Tell me how it is going</h2>
         <p class="hint">A long run does not need watching. Tick what is
@@ -252,51 +308,22 @@
         <span class="ts-ask-note" id="ts-notify-note"></span>
 
         <hr class="ts-notify-rule">
-        <h3 class="ts-reports-head">Where these go &mdash; this machine</h3>
-<p class="hint">One destination per machine, not per calculation
-          &mdash; setting it here changes it for every run on this box.
-          <strong>With none set nothing is sent</strong> and a run behaves
-          exactly as it always did.
-          <span id="ts-reports-path" class="ts-reports-path"></span></p>
+        <h3 class="ts-reports-head">Send it to</h3>
+        <p class="hint">Channels are named once on the
+          <a href="/this-machine">This&nbsp;machine</a> tab; this picks which
+          of them <em>this</em> calculation uses. <strong>Only the names
+          travel</strong> &mdash; no address and no key reaches this page, or
+          the file it writes.</p>
 
-        <p class="ts-reports-state" id="ts-reports-state">checking&hellip;</p>
+        <label class="ts-notify-opt" for="ts-notify-all">
+          <input type="checkbox" id="ts-notify-all" checked>
+          <span>Every channel on the machine that runs it
+            <span class="ts-notify-sub">the description names none, so it
+              uses whatever is set up wherever it lands &mdash; which is what
+              every description said before channels existed</span></span>
+        </label>
 
-        <div class="ts-reports-form" id="ts-reports-form">
-          <label class="ts-reports-row" for="ts-reports-url">
-            <span class="ts-reports-label">Address</span>
-            <input type="url" id="ts-reports-url" class="ts-reports-input"
-                   placeholder="https://molbuilder.example.edu:8888/api/&lt;segment&gt;"
-                   autocomplete="off" spellcheck="false">
-          </label>
-          <label class="ts-reports-row" for="ts-reports-key">
-            <span class="ts-reports-label">Key</span>
-            <input type="password" id="ts-reports-key" class="ts-reports-input"
-                   placeholder="from `molbuilder notify-token`"
-                   autocomplete="new-password" spellcheck="false">
-          </label>
-          <p class="ts-notify-sub">Both come from
-            <code>molbuilder notify-token &lt;you&gt;</code>. Slack and
-            Discord keep the credential in the address itself and need no
-            key.</p>
-          <div class="ts-actions">
-            <button type="button" class="btn" id="ts-reports-save">Save</button>
-            <button type="button" class="btn" id="ts-reports-test">Send a test
-              report</button>
-            <button type="button" class="btn" id="ts-reports-clear">Remove</button>
-          </div>
-        </div>
-
-        {#- The far-machine case: this server cannot write a file on a
-           cluster, and pretending otherwise would be the worst kind of
-           help.  It hands over the exact content instead, which is the
-           format problem solved even though the writing is not. -#}
-        <div class="ts-reports-elsewhere" id="ts-reports-elsewhere" hidden>
-          <p class="hint">Jobs from this machine are <strong>submitted to a
-            scheduler</strong>, so the monitor reads this file on the
-            cluster &mdash; somewhere this page cannot write. Run this
-            <em>there</em>:</p>
-          <pre class="ts-reports-cmd" id="ts-reports-cmd"></pre>
-        </div>
+        <div class="ts-notify-channels" id="ts-notify-channels"></div>
         <span class="ts-ask-note" id="ts-reports-note"></span>
       </section>
 
@@ -337,6 +364,22 @@
               <span class="ts-file-state" data-exists="no" id="ts-f-side">not there yet</span></span>
           </li>
         </ul>
+
+        {#- AND WHAT A PREP WILL WRITE, PER STAGE (task-setup.md 7.1, user
+           2026-09-01: "we should have an explicit list of the run tasks for
+           each stage in that tab so that this information is confirmed and
+           clear").
+
+           A CONFIRMATION, NOT A SECOND ANSWER: the names and the numbers
+           come from /api/task-setup/prep-plan, which asks the one namer
+           (`prep.token_for`) and the one layout (`Shape.stage_dir`).  Flat
+           and hierarchical name directories differently, and a list this
+           page composed would be free to disagree with the thing it is
+           describing. -#}
+        <div class="ts-plan" id="ts-plan" hidden>
+          <h3 class="ts-reports-head">And when you prep, per stage</h3>
+          <ul class="ts-planlist" id="ts-plan-list"></ul>
+        </div>
       </section>
 
     </aside>
@@ -369,10 +412,11 @@
   </section>
 
   <section class="card" id="ts-next-card" hidden>
-    <h2>Then, on the machine that will run it</h2>
+    <h2>Preparing, stage by stage</h2>
     <p class="hint">This page writes a description and stops &mdash; a deck
-      carries values only the target knows. These are the commands for the
-      stages you have, in order.</p>
+      carries values only the target knows. <strong>One tab per rung</strong>;
+      inside each, what that stage will produce and the exact commands
+      &mdash; measure it, or run it.</p>
     <div id="ts-next"></div>
   </section>
 

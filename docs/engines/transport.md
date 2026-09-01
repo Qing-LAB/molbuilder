@@ -14,7 +14,7 @@ engine contract).
 > ([`execution/architecture.md § 0`](?doc=execution/architecture.md),
 > decided 2026-08-11) — and the composite is that kind given its own
 > representation rather than bent into a ladder:
-> [`plans/transport-design.md`](?doc=plans/transport-design.md), built
+> [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md), built
 > P1–P6 and proven end-to-end on real binaries (the carbon-chain live
 > walk). The pre-framework `transport bundle` driver this banner once
 > guarded is deleted; § 8 records the closure.
@@ -50,7 +50,7 @@ basis, mesh, pseudopotentials) **and a geometric clone** of the electrode.
 
 Since 2026-08-29 that agreement is not checked after the fact — it is
 **impossible to break by construction**: transport is the COMPOSITE
-calculation (`plans/transport-design.md`). You relax the junction as an
+calculation (`archive/2026-09-01-transport-design.md`). You relax the junction as an
 ordinary task (outer metal layers labeled `L-electrode`/`R-electrode` and
 frozen), then the transport calculation **cites that finished attempt** and
 derives everything else — the sorted copy, both electrode cells (extracted
@@ -182,7 +182,7 @@ device. The convention (the *vocabulary* is owned by
 - **`buffer`** (optional) — atoms excluded from the NEGF region entirely
   (`TS.Atoms.Buffer`): padding beyond the electrode blocks at the OUTER ends of
   the device. Most 2-terminal junctions need none. Named 2026-08-28 with the
-  composite design ([`plans/transport-design.md`](?doc=plans/transport-design.md)
+  composite design ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
   § 4.1a — the categorical sort places buffer atoms outermost).
 - **`<name>-electrode`** — any label ending `-electrode`/`_electrode`/bare
   `electrode` (case-insensitive) is a lead — so `tip-electrode`, `gate-electrode`
@@ -452,11 +452,14 @@ not part of the transport physics. What I12 does require is that the padding
 there be one interlayer spacing and not vacuum — `z-vacuum ≈ 0 at the leads`,
 because a real gap severs the lead instead of continuing it.
 
-**A caution about symmetric junctions.** `add_symmetric_electrodes` places the
-`-z` slab by mirroring, which makes both electrodes present the same face to the
-molecule — the point of a symmetric junction — but also makes the two outermost
-layers carry the same in-plane registry, so they meet head-on across the device
-boundary. No layer count changes this, and neither does any other point-group
+**A caution about mirrored junctions.** `add_symmetric_electrodes` built one by
+placing the `-z` slab as a **mirror** of the `+z` one. That function is gone
+(the pair op went with the Junction panel, 2026-08-31), and the caution is why:
+mirroring makes both electrodes present the same face to the molecule — the
+point of a symmetric junction — but also makes the two outermost layers carry
+the same in-plane registry, so they meet head-on across the device boundary.
+Two `add_slab` builds at stated `start_z` do not mirror, so a junction built
+the current way has this only if you ask for it. No layer count changes this, and neither does any other point-group
 operation (measured: mirror, C₂ and inversion give identical eclipsed seams),
 because each close-packed layer is itself a centrosymmetric 2-D lattice. Under
 I8 this costs the transport calculation nothing. It does contaminate the
@@ -506,7 +509,7 @@ single-point, or a relaxation if those layers are not frozen.
   description as the run surface (machine, queue, prep).  The render
   endpoint (`/api/transport/render`) remains as the engine's validation
   surface.
-- **Follow-up** (see `roadmap.md`): a **convergence sweep** mode (auto-vary
+- **Follow-up** (see `archive/2026-09-01-roadmap.md`): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **Results-tab transmission inspector** (T(E) + I–V charts read
   from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —

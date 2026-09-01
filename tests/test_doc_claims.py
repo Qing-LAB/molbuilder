@@ -116,6 +116,33 @@ _COUNT_WORD = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
                12: "twelve", 13: "thirteen", 14: "fourteen"}
 
 
+def test_the_tab_count_is_stated_in_prose_and_true():
+    """`tabs.md` § 1 states the roster size in prose, and it is the one place
+    the count is decided anywhere.
+
+    It had drifted **three tabs** by 2026-09-01, and in three different
+    directions at once: `web/overview.md` said six and its diagram listed six
+    (omitting Task setup), `archive/2026-09-01-roadmap.md` said seven ship, `README.md` said six
+    ship, and eight shipped. Every one of those landed with a note saying the
+    screenshots needed re-capturing; none of them was a mechanism.
+
+    This checks the owner. The restatements are prose in four files and stay
+    that way — but with the owner pinned, a sweep has something true to sweep
+    towards.
+    """
+    from molbuilder.web.tabs import TABS
+    text = (DOCS / "web/tabs.md").read_text(encoding="utf-8")
+    m = re.search(r"There are \*\*([a-z]+) tabs\*\*", text)
+    assert m, (
+        "tabs.md § 1 no longer states the roster size in prose. The count is "
+        "what drifted last time (five vs six vs seven, with eight shipping), "
+        "so it is worth stating and worth pinning."
+    )
+    assert m.group(1) == _COUNT_WORD.get(len(TABS), "?"), (
+        f"TABS has {len(TABS)} entries; tabs.md § 1 says {m.group(1)!r}.  A "
+        f"tab arrives with its row in § 1's table, or it does not arrive")
+
+
 def test_the_resources_field_count_is_stated_in_prose_and_true():
     """The instance that motivated this file, kept as its own test.
 

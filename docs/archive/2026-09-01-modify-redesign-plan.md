@@ -1,6 +1,19 @@
 # Modify — the Molbuilder tab's five-item redesign
 
-**Role:** plan (items 1, 2 and 5 built 2026-08-30; items 3 and 4 designed)
+
+> **ARCHIVED 2026-09-01.**  Its open items moved to the one plan,
+> [`plans/plan.md`](?doc=plans/plan.md); what stays here is the record of
+> what was decided and built.  Nine plan documents were consolidated that
+> day *(user: "We don't need ten plan files scattered")*, and a fact-check
+> against the code found three of the nine headers stating the opposite of
+> what had shipped.
+
+**Role:** plan — **all five items built** (1, 2, 3, 5 on 2026-08-30; item 4's
+Cell-page controls with them; § 3.4's removal 2026-08-31; § 3.4a's 2026-09-01).
+The header said *"items 3 and 4 designed"* until 2026-09-01, when a fact-check
+found both shipped — § 3 had its own **Built 2026-08-30** marker three sections
+lower, and § 4.4's `z range` readout and gap box are `pv-cell-span` /
+`pv-cell-gap` in `modify.html`. **Nothing here is open; this is a record.**
 **Domain:** web · science
 **Started:** 2026-08-30
 **Companions:** [`web/molview.md`](?doc=web/molview.md) §§ 8.5, 9.5, 11.2b, 11.6 —
@@ -41,8 +54,8 @@ because it says where the code misleads.
 | opened at | `465e1e22`, tree clean — **none of this built** |
 | now at | `7ec7593c` |
 | branch | `feature/generator-jobset-ui` |
-| built | items 1, 2, 3 and 5. **Item 4 is not finished**: § 4.4's padding decision was open until 2026-08-31 and its Cell-page controls (the `z range` readout and the gap box) are not built |
-| left | § 4.4's Cell-page controls, then § 3.4's removal of the old Junction panel — **now unblocked**, since the padding switch it carried is deleted rather than moved |
+| built | **all five items.** 1, 2, 3 and 5 on 2026-08-30; § 4.4's Cell-page controls (`pv-cell-span`, `pv-cell-gap`, `pv-cell-span-plus-gap` in `modify.html`, wired in `periodicity.js`) landed with the padding decision on 2026-08-31 |
+| left | **nothing in this plan.** § 3.4's removal of the Junction panel landed 2026-08-31 and § 3.4a's of the single electrode route on 2026-09-01. *This row read "§ 4.4's Cell-page controls" until 2026-09-01, after those controls had shipped* |
 | proving it | **under way** — § 3.3b: two of three surfaces were unbuildable from the panel's defaults, and the seam is now measured and warned about at build time |
 
 **Every item landed contract-first**, and each carries pins that fail when the
@@ -542,6 +555,96 @@ proven, these go:
 > The CLI's `--electrode` flag is the one caller outside the browser. It is
 > re-expressed over `add_slab` so the flag survives with the new builder
 > underneath, rather than being deleted with the panel.
+
+### 3.4a The single electrode route — removed 2026-09-01
+
+§ 3.4's list is the **pair**'s removal, and it was carried out. The per-side
+route was a separate thing and outlived it by a day.
+
+> *(user, 2026-09-01: "delete it, clean up all obsolete residue so we don't
+> have overlap or bugs related duplication or redundancy")*
+
+`POST /api/modify/electrode` placed one slab **relative to a selection** — the
+centroid of `center_indices`, or the world origin when nothing was picked.
+`add_slab` places from absolute coordinates, which is § 3.2's whole argument,
+and by 2026-08-31 **nothing in the browser called the old route at all**: no
+panel, no button, no `applyOp("electrode")`. Its own docstring still said *"the
+old panel stays until this one is proven"* about a panel deleted the day
+before.
+
+What went with it:
+
+- `POST /api/modify/electrode` and `_parse_electrode_common`, its last caller
+- `OPERATIONS.electrode` in `model-jobs.js` — and with it the **`emptySelection:
+  "origin"` value**, which no other row used and which was never a branch in
+  `applyOp` anyway: the server did the centring
+- three tests in `tests/test_web.py` (a positive contact distance, a `+z`/`-z`
+  side — that route's own arguments, taken by no other)
+- its rows in `web-api.md` § 3, `molview.md` § 11.1, and the route table in
+  `tests/test_periodicity_gate.py`
+
+**What did NOT go, and why.** `modify.add_electrode_slab` — the Python
+function — stays: the CLI's `--electrode` flag is its live caller, and § 3.4
+already says that flag *"is re-expressed over `add_slab` so the flag survives
+with the new builder underneath"*. **That re-expression has not been done.**
+Until it is, the two builders coexist, and that is the one piece of overlap
+this removal did not close. It is a behaviour question, not residue: the flag
+places relative to a centroid and `add_slab` places absolutely, so moving it
+means the CLI computes the centroid itself.
+
+**The residue this found on the way** is the argument for sweeping rather than
+deleting: the pair's removal a day earlier had left four orphaned continuation
+lines in `modify.py`'s own route list describing routes that no longer existed,
+`symmetric_electrodes` still in `molview.md`'s operation table and in its
+`applyOp` example, and three dangling `# M5 electrode ...` comments in
+`tests/test_web.py` marking needle lists that had already been emptied. A
+commit titled *"no residue"* left all of it.
+
+---
+
+### 3.4b The second slab builder — removed 2026-09-01
+
+> *(user, 2026-09-01: "I think this is really just a fucking name. Right?
+> Maybe reusing the fundamental back ends, of course. I mean, we just
+> redesigned the logic of how to use them. Of course, the older design should
+> have to go.")*
+
+That is the whole argument, and it is right. `add_electrode_slab` and
+`add_slab` were never two builders — they shared `_build_ase_slab` and
+`_finish_slab`, the backend, and differed **only in the placement logic this
+plan redesigned**: one from an anchor and a contact distance, one from an
+absolute `start_z`, a registry and a growth direction.
+
+**The old one carried the defect § 3.2 exists to remove.** For `side="-z"` it
+mirrored, unconditionally — the accidental layer-order flip
+`bench-and-junction-plan.md` § 2.3 records, which that section declares
+*"unreachable rather than switchable"* under this redesign. It became
+unreachable in the browser on 2026-08-30 and stayed reachable from
+`--electrode` for two more days.
+
+It also still padded the captured `c` by one layer spacing — the rule § 6 of
+`junction-cell.md` retired on 2026-08-31 — so the CLI was the last place a
+cell was invented rather than measured.
+
+**What went, and what stayed:**
+
+| | |
+|---|---|
+| **deleted** | `modify.add_electrode_slab` (242 lines) · `_finish_slab`'s `pad_interlayer_gap` + `d_interlayer`, which only it varied · its `inter_layer_offset`, which no caller ever passed · 11 tests whose subject was the deleted placement |
+| **moved** | the centroid rule and the index-range refusal, into `cli.py` where `--electrode` lives — with their tests |
+| **kept** | the **flag**. `--electrode ELEM:PLANE:MxNxL@contact=D:±z=I,J` is a good way to ask, and it is unchanged. It computes the centroid, turns it into an absolute `start_z`, and calls `add_slab` |
+| **kept** | `default_contact_distance` + `data/contact_distance.json`. Measured physics with no consumer now; wiring it in as `@contact=`'s default is a decision, not a cleanup |
+
+**Two behaviours changed, and both are this plan landing rather than a
+regression:** `-z` continues the crystal instead of mirroring it, and `c`
+comes out as the atoms' extent. Verified: `+z` and `-z` still place the
+closest layer at exactly `anchor.z ± contact`, and a two-slab junction's seam
+is now `a/√6` — one registry step — where mirrored faces met at zero.
+
+**A regression the deletion did cause, caught by its own test:** `add_slab`
+reported *"no stacking period is known for fcc(101)"* where the old builder
+named the closed list. The plane check moved into `add_slab` ahead of the
+registry lookup.
 
 ---
 

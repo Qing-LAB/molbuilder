@@ -27,16 +27,10 @@
           "label": "Configuration"
         },
         {
-          "path": "roadmap.md"
-        },
-        {
-          "path": "audit-2026-08-21-fullstack-review.md",
-          "label": "Full-stack Review (live plan)"
+          "path": "plans/plan.md",
+          "label": "The plan (one file)"
         }
       ]
-    },
-    {
-      "path": "audit-2026-08-28-full-review.md"
     },
     {
       "label": "Model",
@@ -221,6 +215,9 @@
           "path": "web/task-setup.md"
         },
         {
+          "path": "web/this-machine.md"
+        },
+        {
           "path": "web/web-api.md"
         },
         {
@@ -237,27 +234,6 @@
         },
         {
           "path": "web/bench-summary.md"
-        },
-        {
-          "path": "plans/editor-module-plan.md"
-        },
-        {
-          "path": "plans/css-system-plan.md"
-        },
-        {
-          "path": "plans/bench-and-junction-plan.md"
-        },
-        {
-          "path": "plans/machine-identity-plan.md"
-        },
-        {
-          "path": "plans/structure-info-plan.md"
-        },
-        {
-          "path": "plans/modify-redesign-plan.md"
-        },
-        {
-          "path": "plans/transport-design.md"
         },
         {
           "path": "web/modify-persistency-investigation.md"
@@ -498,6 +474,66 @@
           "path": "archive/2026-08-29-handoff-bundle.md",
           "label": "RETIRED (2026-08-29) — the composite replaced the handoff bundle",
           "subtitle": "RETIRED (2026-08-29) — the composite replaced the handoff bundle"
+        },
+        {
+          "path": "archive/2026-09-01-audit-2026-08-21-fullstack-review.md",
+          "label": "Audit 2026-08-21 — jobset · engines · execution · the two tabs, full-text",
+          "subtitle": "Audit 2026-08-21 — jobset · engines · execution · the two tabs, full-text"
+        },
+        {
+          "path": "archive/2026-09-01-audit-2026-08-28-full-review.md",
+          "label": "Audit 2026-08-28 — the whole road, walked with a real molecule",
+          "subtitle": "Audit 2026-08-28 — the whole road, walked with a real molecule"
+        },
+        {
+          "path": "archive/2026-09-01-bench-and-junction-plan.md",
+          "label": "Benchmark measurement + junction placement — the standing work",
+          "subtitle": "Benchmark measurement + junction placement — the standing work"
+        },
+        {
+          "path": "archive/2026-09-01-config-access-plan.md",
+          "label": "One root for the server's own configuration",
+          "subtitle": "One root for the server's own configuration"
+        },
+        {
+          "path": "archive/2026-09-01-consolidated-cleanup-plan.md",
+          "label": "Cleanup — the drift left by the Junction removal and the config unification",
+          "subtitle": "Cleanup — the drift left by the Junction removal and the config unification"
+        },
+        {
+          "path": "archive/2026-09-01-css-system-plan.md",
+          "label": "The tab CSS system — a proposal",
+          "subtitle": "The tab CSS system — a proposal"
+        },
+        {
+          "path": "archive/2026-09-01-editor-module-plan.md",
+          "label": "The editor module — CodeMirror behind one door",
+          "subtitle": "The editor module — CodeMirror behind one door"
+        },
+        {
+          "path": "archive/2026-09-01-machine-identity-plan.md",
+          "label": "Machine identity — migrating the code to R11/R12/R13",
+          "subtitle": "Machine identity — migrating the code to R11/R12/R13"
+        },
+        {
+          "path": "archive/2026-09-01-modify-redesign-plan.md",
+          "label": "Modify — the Molbuilder tab's five-item redesign",
+          "subtitle": "Modify — the Molbuilder tab's five-item redesign"
+        },
+        {
+          "path": "archive/2026-09-01-roadmap.md",
+          "label": "Roadmap — the one plan",
+          "subtitle": "Roadmap — the one plan"
+        },
+        {
+          "path": "archive/2026-09-01-structure-info-plan.md",
+          "label": "Structure info — free metadata that travels with the pair",
+          "subtitle": "Structure info — free metadata that travels with the pair"
+        },
+        {
+          "path": "archive/2026-09-01-transport-design.md",
+          "label": "Transport — the composite calculation, designed top-down",
+          "subtitle": "Transport — the composite calculation, designed top-down"
         },
         {
           "path": "archive/MIGRATION.md",

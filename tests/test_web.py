@@ -735,7 +735,7 @@ def test_modify_static_assets_load(web_client):
     css = web_client.get("/static/modify/style.css")
     assert css.status_code == 200
     # The page's own namespace: every class this sheet owns is `modify-*`
-    # (css-system-plan.md T3).  `.molbuilder-tab-main` was one of eight competing
+    # (archive/2026-09-01-css-system-plan.md T3).  `.molbuilder-tab-main` was one of eight competing
     # prefixes before 2026-08-02.
     assert b".modify-main" in css.data
     js = web_client.get("/static/modify/viewer.js")
@@ -1013,8 +1013,8 @@ def test_modify_delete_returns_workspace_payload(web_client):
 def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
     """selection_remap was retired: the client CLEARS the selection on any
     atom-count change (web/molview.md § 11), so a cleared selection can
-    never mis-point at a shifted index.  Neither delete nor add_atom (nor the
-    electrode ops) may carry a ``selection_remap`` in ``extra`` anymore."""
+    never mis-point at a shifted index.  No count-changing op -- delete,
+    add_atom, slab -- may carry a ``selection_remap`` in ``extra`` anymore."""
     r = web_client.post("/api/modify/delete", json={
         "structure": _env(_H2O_XYZ), "indices": [0]})
     body = r.get_json()
@@ -1311,7 +1311,7 @@ def test_modify_endpoint_chain_preserves_metadata(web_client):
 def test_modify_page_has_m3_edit_controls(web_client):
     """The Edit panel must expose the M3 op controls (delete button,
     add-atom element input, three offset sliders + live distance
-    readout).  M4 / M5 placeholders remain disabled."""
+    readout)."""
     body = web_client.get("/molbuilder").data.decode()
     for needle in (
         # Delete
@@ -1324,7 +1324,6 @@ def test_modify_page_has_m3_edit_controls(web_client):
         'id="add-dz"',     'id="add-dz-val"',
         'id="add-distance"',
         'id="add-apply"',
-        # M5 electrode + handoff controls are wired.
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1515,7 +1514,7 @@ def test_modify_translate_recenter_of_a_group_leaves_the_box(web_client):
     """A group is not the whole structure, so the box does not travel:
     only part of what it contains moved.  That rule is
     ``modify.translate``'s, and Center now reaches it by BEING a
-    translate rather than by re-deciding (`plans/modify-redesign-plan.md`
+    translate rather than by re-deciding (`archive/2026-09-01-modify-redesign-plan.md`
     § 2.3)."""
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
@@ -1640,7 +1639,7 @@ def test_modify_orient_then_rotate_chains_through_metadata(web_client):
 def test_modify_page_has_m4_orient_rotate_controls(web_client):
     """The Edit panel must expose the M4 orient + rotate controls
     (anchor-pair readout, axis radios, angle slider, Apply for both
-    ops).  The M5 placeholder (electrode panel) stays disabled."""
+    ops)."""
     body = web_client.get("/molbuilder").data.decode()
     for needle in (
         # Orient
@@ -1653,7 +1652,6 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
         'id="rotate-apply"',
         'id="rotate-angle"',     'id="rotate-angle-val"',
         'name="rotate-axis"',
-        # M5 controls wired.
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1672,8 +1670,15 @@ def test_modify_viewer_js_wires_orient_and_rotate(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  M5: electrode endpoints + Send-to-Build handoff                      #
+#  Send-to-Build handoff                                                #
 # --------------------------------------------------------------------- #
+#
+# The electrode endpoints that shared this banner are gone: the pair went
+# with the Junction panel, and the per-side one went on 2026-09-01 once
+# `/api/modify/slab` had replaced it (`archive/2026-09-01-modify-redesign-plan.md` 3.4a).
+# Their three tests went with them -- what they pinned (a positive contact
+# distance, a `+z`/`-z` side) were that route's arguments, and no other
+# route takes either.
 
 
 _SS_XYZ = (
@@ -1694,40 +1699,6 @@ def test_modify_meta_lists_supported_elements_and_planes(web_client):
     assert body["ok"] is True
     assert body["fcc_elements"] == list(SUPPORTED_FCC_ELEMENTS)
     assert body["fcc_planes"]   == list(SUPPORTED_FCC_PLANES)
-
-
-def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
-    """Single-mode contact distance must be strictly positive."""
-    r = web_client.post("/api/modify/electrode", json={
-        "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "center_indices": [0],
-        "contact_distance": 0.0, "side": "+z",
-    })
-    assert r.status_code == 400
-    assert "contact_distance" in r.get_json()["error"]
-
-
-def test_modify_electrode_single_mode(web_client):
-    """Single mode: one slab on +z, centred on the second S atom."""
-    r = web_client.post("/api/modify/electrode", json={
-        "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "center_indices": [1],
-        "side": "+z", "contact_distance": 2.4,
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    # 4 Au atoms + 2 S = 6 total.
-    assert body["n_atoms"] == 6
-    assert sum(1 for n in body["residue_names"] if n == "ELC") == 4
-
-
-def test_modify_electrode_rejects_bad_side(web_client):
-    r = web_client.post("/api/modify/electrode", json={
-        "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "center_indices": [0], "side": "above",
-    })
-    assert r.status_code == 400
-    assert "side" in r.get_json()["error"]
 
 
 # --------------------------------------------------------------------- #

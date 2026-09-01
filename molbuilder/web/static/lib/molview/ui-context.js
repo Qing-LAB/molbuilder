@@ -4,7 +4,7 @@
  *           place), § 9.7 (the bounded pose read).
  * Owns:     one workspace slot per viewer — tag `<owner>:ui`, one file at
  *           state_index 0 — holding view settings, switches, the camera
- *           pose, the displayed frame, the measurement track, and (for
+ *           pose, the displayed frame, the ruler's on/off, and (for
  *           viewers with no truth lane) the selection.
  * Called by: mount.js, once per viewer, after the model and engine exist.
  *
@@ -76,7 +76,6 @@ export function attachUiContext(deps) {
              * and therefore only meaningful against the structure they were
              * picked on (the `match` guard below). */
             measuring: model.measurement.getState().active,
-            measurement: model.measurement.get(),
         };
         if (!hasTruthLane) out.selection = model.selection.get();
         return out;
@@ -128,14 +127,6 @@ export function attachUiContext(deps) {
                 if (saved.camera) engine.setCamera(saved.camera);
                 if (!hasTruthLane && Array.isArray(saved.selection)) {
                     model.selection.adopt(saved.selection);
-                }
-                /* The picks come back for EVERY viewer, editable or not: they
-                 * are not the selection and no truth lane restores them, so
-                 * `hasTruthLane` has nothing to say here.  Under `match` like
-                 * the camera and the frame, because an index into a different
-                 * structure names a different atom. */
-                if (Array.isArray(saved.measurement)) {
-                    model.measurement.adopt(saved.measurement);
                 }
             }
         } finally {

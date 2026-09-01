@@ -265,3 +265,159 @@ class TestTheBrowserDoesNotEnumerate:
         assert tail.count("host.hidden = true") >= 2, (
             "a failed or unparseable answer must hide the list, never "
             "throw out of renderMachine and strand the card")
+
+
+# --------------------------------------------------------------------- #
+#  The RUN's own numbers — the same door, a grid of one                  #
+# --------------------------------------------------------------------- #
+
+def _fit(client, dest, values, target="(this machine)"):
+    return client.post("/api/task-setup/run-fit",
+                       json={"dest": str(dest), "target": target,
+                             "values": values}).get_json()
+
+
+class TestTheRunFitIsTheSameEnumerator:
+    """`task-setup.md` § 6.2b: the run states one value per parameter, which
+    is a sweep of length one — so the check is the grid door with a grid of
+    one, and there is no second admission path to keep in step."""
+
+    def test_a_run_that_fits_says_which_queues_would_take_it(self, client,
+                                                             bundle):
+        d = _fit(client, bundle, {"mpi_np": 48, "omp_threads": 1,
+                                  "use_gpu": False})
+        assert d["ok"] is True, d
+        assert d["stated"] is True and d["fits"] is True
+        assert set(d["cell"]["fits"]) == {"short", "public"}, d["cell"]
+        assert d["cell"]["ranks"] == 48
+
+    def test_a_run_no_queue_can_hold_is_a_RESULT_not_a_failure(self, client,
+                                                               bundle):
+        """A struck answer beside the field that caused it is the point.  A
+        400 would leave the card with nothing to show and send the person to
+        the CLI to find out why — the failure this whole lane was rebuilt to
+        remove."""
+        d = _fit(client, bundle, {"mpi_np": 100000, "omp_threads": 1,
+                                  "use_gpu": False})
+        assert d["ok"] is True, d
+        assert d.get("fits") is not True
+        assert d["cell"] is None or d["cell"]["why"], d
+
+    def test_stating_nothing_is_ordinary_and_checks_nothing(self, client,
+                                                            bundle):
+        """A description that leaves the run to `run-config.toml` and the
+        wrapper's policy is the state every description was in before
+        2026-09-01."""
+        d = _fit(client, bundle, {})
+        assert d["ok"] is True and d["stated"] is False and d["cell"] is None
+
+    def test_it_reads_the_values_SENT_not_the_ones_on_disk(self, client,
+                                                           bundle):
+        """Same reason the grid door does: the card's edits live in the
+        browser's model until the person saves."""
+        a = _fit(client, bundle, {"mpi_np": 48, "omp_threads": 1,
+                                  "use_gpu": False})
+        b = _fit(client, bundle, {"mpi_np": 24, "omp_threads": 2,
+                                  "use_gpu": False})
+        assert a["cell"]["ranks"] == 48 and b["cell"]["ranks"] == 24
+
+
+def test_there_is_exactly_one_admission_path():
+    """Both doors call `_bench_inputs` and neither computes a verdict of its
+    own.  A second one could say a run is fine where `launch` refuses it."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
+    door = src[src.index("def api_task_setup_run_fit"):
+               src.index("def api_task_setup_machines")]
+    assert "_bench_inputs" in door
+    for invented in ("max_cores", "admit(", "def _fits"):
+        assert invented not in door, f"the run door computes {invented} itself"
+
+
+# --------------------------------------------------------------------- #
+#  What a prep will write, per stage — task-setup.md § 7.1               #
+# --------------------------------------------------------------------- #
+
+_PLAN_TASK = {
+    "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+    "shape": "hierarchical", "run": {"name": "r", "id": "r_H2"},
+    "structure": {"source": "a.xyz", "formula": "H2", "atoms": 2},
+    "varies": [],
+    "stages": [{"name": "coarse", "enabled": True, "overrides": {}},
+               {"name": "tight", "enabled": True, "overrides": {}}],
+    "allocation": {"domain": "htc", "time": "1-00:00:00", "mpi_np": 8},
+    "stage_allocation": {"tight": {"time": "2-00:00:00", "mpi_np": 16}},
+    "bench": {"mpi_np": [4, 8, 16]},
+    "bench_allocation": {"time": "0-00:30:00"},
+}
+
+
+def _plan(client, task):
+    return client.post("/api/task-setup/prep-plan",
+                       json={"task": task}).get_json()
+
+
+class TestThePlanComesFromTheProducer:
+    """§ 7.1: a confirmation, not a second answer.  Flat and hierarchical
+    name directories differently, and a list the page composed would be free
+    to disagree with the thing it describes."""
+
+    def test_each_stage_names_its_directory_from_the_one_namer(self, client):
+        d = _plan(client, _PLAN_TASK)
+        assert d["ok"] is True, d
+        assert [r["dir"] for r in d["stages"]] == ["01_coarse", "02_tight"]
+
+    def test_flat_puts_every_stage_in_the_bundle_root(self, client):
+        """The layout question, and the reason the page may not answer it:
+        `Shape.stage_dir` gives flat a real path (`.`) so no caller needs an
+        `if` for "no directory"."""
+        t = dict(_PLAN_TASK, shape="flat",
+                 stages=[_PLAN_TASK["stages"][0]])
+        d = _plan(client, t)
+        assert [r["dir"] for r in d["stages"]] == ["."]
+
+    def test_a_rung_shows_what_IT_will_ask_for(self, client):
+        """§ 6.8b at the surface: `tight` overrides the wall and the ranks
+        and inherits the queue nobody restated."""
+        d = _plan(client, _PLAN_TASK)
+        coarse, tight = d["stages"]
+        assert coarse["allocation"]["time"] == "1-00:00:00"
+        assert coarse["allocation"]["values"] == {"mpi_np": 8}
+        assert tight["allocation"]["time"] == "2-00:00:00"
+        assert tight["allocation"]["values"] == {"mpi_np": 16}
+        assert tight["allocation"]["domain"] == "htc", "the queue is inherited"
+
+    def test_the_bench_row_shows_its_OWN_wall(self, client):
+        """§ 6.8c: measuring is short and running is not.  The row exists so
+        that is visible beside the runs rather than inferred."""
+        d = _plan(client, _PLAN_TASK)
+        assert d["bench"]["allocation"]["time"] == "0-00:30:00"
+        assert d["bench"]["allocation"]["domain"] == "htc"
+        assert d["bench"]["axes"] == {"mpi_np": [4, 8, 16]}
+
+    def test_a_disabled_rung_is_not_listed(self, client):
+        t = dict(_PLAN_TASK,
+                 stages=[dict(_PLAN_TASK["stages"][0], enabled=False),
+                         _PLAN_TASK["stages"][1]])
+        assert [r["stage"] for r in _plan(client, t)["stages"]] == ["tight"]
+
+    def test_a_description_mid_edit_is_refused_in_its_own_words(self, client):
+        """Unreadable is ordinary while someone types, and the card hides the
+        list rather than showing a plan for a document that no longer says
+        what it did."""
+        d = _plan(client, {"schema": "molbuilder/task@1"})
+        assert d["ok"] is False and d["error"]
+
+
+def test_the_plan_door_composes_no_name_of_its_own():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
+    door = src[src.index("def api_task_setup_prep_plan"):
+               src.index("def api_task_setup_machines")]
+    assert "token_for" in door and "stage_dir" in door
+    for invented in ('f"{i:02d}_', "zfill", "01_", "bench-"):
+        if invented == "bench-":
+            continue          # the LITERAL label of the bench row, not a name
+        assert invented not in door, f"the door builds {invented} itself"

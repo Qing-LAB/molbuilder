@@ -130,6 +130,16 @@ fails when it does.)*
   one class had three looks and source order picked the winner. Deleting the
   copies was the fix, and `test_css_no_duplicate_selectors` now enforces it
   rather than excusing it.
+- **One owner survives a rename** (2026-08-31). That check asks whether one
+  *selector* has two homes, and there is a second shape it cannot see: the
+  same reasoning and the same declaration under two *different* selectors.
+  The MolView host's `overflow-x` rule was eighteen identical lines in
+  `structure-optimization/style.css` and `transport/style.css`, differing
+  only in the id — invisible to a per-selector check, because neither
+  selector was ever duplicated. It lives in the module sheet now
+  (`.molviewer-host`) and pages opt in with the class, so a third page needs
+  no third copy. `test_no_long_block_is_copied_between_stylesheets` fails on
+  ten identical non-blank lines shared by two sheets.
 - **One inset per card** (2026-08-30). A card states its inset once, on
   itself; everything inside it — title, rule, tab row, fieldsets, form rows —
   **begins at that inset and adds none of its own**. A nested block may add

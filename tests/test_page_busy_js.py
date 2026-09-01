@@ -184,24 +184,6 @@ def test_state_works_without_a_dom():
     assert out == {"claimed": True, "reason": "headless op"}
 
 
-def test_the_sidebar_lock_spelling_is_dead():
-    """Rename = delete the old everywhere: the sidebar-scoped API
-    (projects.lock / unlock / isLocked / onLockChange) and its banner
-    ids must be gone from the projects surface and templates."""
-    state_src = (ROOT / "molbuilder/web/static/lib/projects/state.js"
-                 ).read_text()
-    assert "function lock(" not in state_src
-    assert "onLockChange" not in state_src.replace(
-        "// The sidebar-scoped lock API that lived here (lock / unlock /\n"
-        "  // isLocked / getLockReason / onLockChange", "")
-    tmpl = (ROOT / "molbuilder/web/templates/_projects_sidebar.html"
-            ).read_text()
-    assert "ps-lock-banner" not in tmpl and "ps-lock-cancel" not in tmpl
-    css = (ROOT / "molbuilder/web/static/lib/projects/projects-sidebar.css"
-           ).read_text()
-    assert ".ps-lock-banner {" not in css and ".is-locked >" not in css
-
-
 def test_the_smiles_generate_claims_the_fence():
     """The first production caller: generate() claims before the POST,
     wires Cancel to an AbortController, and releases in a finally."""

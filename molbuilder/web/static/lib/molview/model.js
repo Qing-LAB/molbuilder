@@ -272,6 +272,25 @@ export function createModel(opts) {
          * § 6.4: updated completely first, and no one observes a half state. */
         notices = opts.notices || null;
         change();                                             // 1
+
+        /* THE RULE FOR THE ORDERED TRACK, STATED ONCE (§ 11.6).
+         *
+         * The picks are MolView's internal state and they name atoms in the
+         * molecule that was in the window.  So: A CHANGE TO THE STRUCTURE
+         * CLEARS THEM -- an edit, a load, a Retract, a cell commit, all of it,
+         * with no per-door decision to remember.  It lived at three call sites
+         * before this and the fourth door added later is the one that would
+         * have forgotten.
+         *
+         * `keepsAtoms` is the ONE exemption and it is not a judgement call: it
+         * marks the doors that PROVE the atoms are unchanged (`requireSameAtoms`
+         * / `requireMatch` run before they land) -- a running job's frames
+         * arriving, and a label written onto the atoms already there.  Those
+         * must not clear, because § 12.4 is measuring an angle WHILE a
+         * trajectory plays: the picks are indices, the readout re-reads the
+         * current frame, and the value follows the movie.  Clearing there
+         * would delete the measurement the feature exists to show. */
+        if (!opts.keepsAtoms) measurement.clear();
         const count = Array.isArray(frames) ? frames.length : 0;   // 2
         const wanted = opts.resetFrame ? 0 : frameIndex;
         const resolved = count                                      // 3
@@ -488,9 +507,6 @@ export function createModel(opts) {
             // and Assign would have run against indices that no longer
             // exist -- or worse, that now name different atoms.
             selection.clear();
-            // ...and the ruler, whose picks name atoms in the structure that
-            // just went away.  Same argument, one track over.
-            measurement.clear();
             unit = HOLDING;
         },
         announce: () => {},                 // settle already told everyone
@@ -542,6 +558,10 @@ export function createModel(opts) {
         readFrame:     (i) => (frames ? frames[i] : null),
         currentFrame:  () => frameIndex,
         readSelection: () => selection.get(),
+        /* The ordered track, for the rows that declare `ordered` (§ 11.6).
+         * Handed the same way the selection is, so the table stays the only
+         * place that knows which op wants which. */
+        readPicks:     () => measurement.get(),
         apply: (s, c, countChanged, said) => {
             settle(() => put(s, c), {
                 resetFrame: true,
@@ -581,8 +601,9 @@ export function createModel(opts) {
              * MOVES the atoms it kept, so a measurement across them is stale
              * in value even when it is sound in index.  There is no edit after
              * which a held measurement is still the measurement that was
-             * taken. */
-            measurement.clear();
+             * taken.
+             *
+             * The clear itself is `settle`'s, stated once for every door. */
         },
     });
 
@@ -908,7 +929,7 @@ export function createModel(opts) {
             settle(() => {
                 frames = nextFrames.map((f) => f.map((p) => [p[0], p[1], p[2]]));
                 forcesPerFrame = nextForces || null;
-            }, { resetFrame: true });
+            }, { resetFrame: true, keepsAtoms: true });
         }),
 
         // `{forces}` — an OPTIONS object, which is the shape § 12.2's worked
@@ -933,7 +954,7 @@ export function createModel(opts) {
                     if (!forcesPerFrame) forcesPerFrame = frames.map(() => null);
                     forcesPerFrame[frames.length - 1] = forces || null;
                 }
-            }, { redraw: "append", from: from });
+            }, { redraw: "append", from: from, keepsAtoms: true });
         }),
 
         addFrames: (function (moreFrames, options) {
@@ -954,12 +975,12 @@ export function createModel(opts) {
                             (moreForces && moreForces[k]) || null;
                     }
                 });
-            }, { redraw: "append", from: from });
+            }, { redraw: "append", from: from, keepsAtoms: true });
         }),
 
         setForces: (function (perFrame) {
             settle(() => { forcesPerFrame = perFrame || null; },
-                   { redraw: "forces" });
+                   { redraw: "forces", keepsAtoms: true });
         }),
 
         /* What this viewer IS, which is not the same as what it holds. § 9.4
@@ -982,8 +1003,41 @@ export function createModel(opts) {
         /* The ruler's track (§ 11.6).  A door of its own, beside the selection
          * and never inside it: what an edit acts on and what a measurement asks
          * about are two facts, and one list holding both would mean picking a
-         * third atom to read an angle changed what the next Delete removes. */
+         * third atom to read an angle changed what the next Delete removes.
+         *
+         * The STORE is here because the module's own pieces -- the panel, the
+         * readout, the view context -- are the module.  What an OUTSIDE caller
+         * gets is narrower, and that narrowing is `mount.js`'s: it is the file
+         * that decides what leaves through the handle (§ 9.2). */
         measurement: measurement,
+
+        /* Where the picked atoms are, at the frame on screen, in pick order --
+         * `null` if any pick no longer names an atom.  It was computed twice,
+         * once by the readout inside and once by the Cell page outside, both
+         * walking the current frame with the same staleness guard.  A question
+         * about the measurement is the measurement's to answer. */
+        measurementPositions() {
+            const picks = measurement.get();
+            if (!picks.length) return null;
+            const frame = frames ? frames[frameIndex] : null;
+            if (!frame) return null;
+            const out = [];
+            for (const i of picks) {
+                const p = frame[i];
+                if (!p) return null;
+                out.push([p[0], p[1], p[2]]);
+            }
+            return out;
+        },
+
+        /* A gesture that needs ordered picks asks for the ruler, and is told
+         * whether it had to be turned on -- so the caller says so and nothing
+         * announces a mode that did not change (§ 11.6). */
+        requestPicking() {
+            if (measurement.getState().active) return false;
+            measurement.setActive(true);
+            return true;
+        },
 
         /* ══ A click picks an atom — WHICH TRACK it lands in is decided here ══
          *

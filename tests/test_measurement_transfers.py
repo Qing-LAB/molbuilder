@@ -4,7 +4,7 @@
 `prep run` carrying a benchmark's verdict into a production allocation.
 
 **This file's previous version is the cautionary tale the migration plan
-tells** (`machine-identity-plan.md` § 0).  It built a fake domain carrying
+tells** (`archive/2026-09-01-machine-identity-plan.md` § 0).  It built a fake domain carrying
 `node_type="standard"` and asserted the plumbing moved it — both ends were
 fixtures, so it proved the wire and never the current, and the check it
 "covered" had never once fired in production: the probe never wrote that

@@ -408,6 +408,47 @@ calculation will fit in the card it asked for; that is a runtime failure
 the person deals with, and [`scheduler.md § 0`](?doc=execution/scheduler.md)
 says why submission must not answer it.
 
+### 6.2b What the RUN will use — one value each, and you type them
+
+*(user, 2026-09-01: "the principle of this tab is to let the user decide
+based on his reading of bench and whatever information he holds… the run
+task needs user's explicit setup to be finalized.")*
+
+§ 6.2a's block says what a **measurement** would run. This says what the
+**run** will, and it is a different question with a different answer shape:
+**one value per parameter, typed.** Not a row picked out of the grid, not a
+verdict applied on your behalf.
+
+**The rows mirror the bench's parameters, and take more.** Whatever § 6.2's
+rows declare, this offers — add `omp_threads` to the bench and a single-valued
+`omp_threads` appears here — because the thing you measured is the thing you
+are deciding about. It carries its own *+ Add setting* for a knob the bench
+never touched, since a run may want one a measurement did not.
+
+**The bench's points are shown beside each row and fill nothing.** A grey
+*measured: 4, 8, 16* is there so you can see what was tried while you type
+what you want. When a benchmark has been summarized its winner is marked, and
+**marked is all it is** — the field stays as you left it.
+
+> **This is the change, stated plainly.** The run used to take
+> `run-config.toml`'s verdict for any field you had not stated, and the tab
+> gave you no way to state one — so the recommendation was the only input and
+> the decision was invisible. Two things followed: the run needed a benchmark
+> to have been **executed**, and what it chose was never shown. Now the
+> description carries your answer, `run-config.toml` fills only what you left
+> blank, and a run needs no benchmark at all
+> ([`stages.md § 6.8a`](?doc=engines/stages.md)).
+
+**Where it lands.** `task.json`'s `allocation`, or a stage's own block under
+`stage_allocation` when the rungs differ (`stages.md` §§ 6.8a–6.8b). Not
+`run-config.toml`: that file lives *inside* a prepared bundle, so the browser
+cannot write it before the prep it is meant to configure.
+
+**And it is checked, in this card, as you type.** The same admission the
+grid block runs, over the one combination this states — the queue's core
+ceiling, its wall, its device count. A run whose ask no queue can hold is
+worth knowing before you copy the command, not after `launch` refuses it.
+
 ### 6.3 Only speed knobs may be measured
 
 A key must name a field the catalogue puts in the **`execution`** category —
@@ -435,7 +476,9 @@ its point count:
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
 | a machine-card setting — **any** point count | `task.json`'s `bench` | **an override lane on the template** *(user rule, 2026-08-20)*: several points = values to **try** (a bench axis); **one point = the value in force**, applied at prep as a pin — for the bench's trials and the run alike. Nothing migrates between files; the description stays exactly as edited, and prep is where a declaration is resolved (`generator.md` § 4.3a) |
-| a notify-card tick | `task.json`'s `notify` | **when this run should say something** — on each SCF convergence, every N hours, or neither; a run ending always reports and so is not offered. Portable in the way § 6.1 requires: *"tell me every six hours"* is true wherever the file is opened. **Where to send it is not written here and must not be** — a description travels, so the URL and its credential stay in the user's own config directory on the machine that runs the job |
+| a notify-card tick | `task.json`'s `notify` | **when this run should say something, and to which channels by name** — on each SCF convergence, every N hours, or neither; a run ending always reports and so is not offered. Portable in the way § 6.1 requires: *"every six hours, to `slack`"* is true wherever the file is opened, because a name is a label the person chose and grants nothing. **What that name resolves to is not written here and must not be** — a description travels, so the address and its credential stay in the config directory of the machine that runs the job, set on the [This machine](?doc=web/this-machine.md) tab |
+| a run's value — `mpi_np`, a wall, a queue | `task.json`'s `allocation`, or `stage_allocation.<stage>` when the rungs differ | **what this calculation asks the machine for** (`stages.md` §§ 6.8a–6.8b). It is an *ask*, not a finding: § 6.8's rule is about `summarize` never writing a measurement back, and it stands. The finding stays in `run-config.toml`, and fills only what you left blank |
+| a bench's own queue or wall | `task.json`'s `bench_allocation` | measuring is short and running is not (`stages.md` § 6.8c). Absent means the run's |
 
 ```jsonc
 // task.json — molbuilder/task@1
@@ -453,6 +496,27 @@ its point count:
 
 **There is no `base` key.** What does not change is in the template, once
 ([`stages.md § 4`](?doc=engines/stages.md)).
+
+### 7.1 And what a prep will write, per stage
+
+*(user, 2026-09-01: "we should have an explicit list of the run tasks for each
+stage in that tab so that this information is confirmed and clear".)*
+
+Beside the four files above, this card lists — **one line per enabled stage** —
+what `prep` will produce for it: the directory, and the allocation that
+directory's wrapper will carry.
+
+```
+  01_coarse   run-0/           8 × 6 · htc · 1-00:00:00 · 128G
+  02_tight    run-0/          16 × 6 · htc · 2-00:00:00 · 128G
+  bench       bench-<token>/   4,8,16 × 1,2 · general · 0-00:30:00
+```
+
+**It is a confirmation, not a second answer.** The names and the numbers come
+from the same producer `prep` runs — flat and hierarchical name directories
+differently (§ 4), and a page that composed them would be free to disagree with
+the thing it is describing. What it adds is that you see all of it at once,
+before you copy a command, rather than one stage at a time in § 11's tabs.
 
 ---
 
@@ -520,50 +584,44 @@ has not been saved says so.
 
 ---
 
-## 9b. One card, two files — *Tell me how it is going*
+## 9b. *Tell me how it is going* — and the one file it writes
 
 **It is last in the flow, deliberately.** Everything above is what the
 calculation *is*; this is what it *says while it runs*, which is a different
 question. It sat between "Where it runs" and "Stages" until 2026-08-27 and
 interrupted the setup (user: *"it breaks the flow"*).
 
-**One card, and two files, which is the part to keep straight**
-([`run-reports.md`](?doc=execution/run-reports.md) §§ 1, 3.1):
+**This card writes `task.json` and nothing else.** It was one card over two
+files until 2026-08-31 — the ticks into the description, the address and key
+into `config_dir()/notify` — and the separation was held by a comment in the
+template. It is now held by the architecture: the address and the key are on
+the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)), where
+they belong, because they are a fact about the box and not about this
+calculation.
 
-| half | writes | travels? | sees a key? |
-|---|---|---|---|
-| the ticks — *when* to speak | `task.json`'s `notify` block | **yes** | **never** |
-| *Where these go* — the address and key | `config_dir()/notify`, `0600` | **no** | yes, that is what it is for |
+**What the card asks, and what travels:**
 
-Sharing a card is a **UI** decision — you tick *tell me* and immediately want
-to know *where* — and sharing a **file** would be a contract violation. They do
-not: the two halves have different ids, and a test asserts that nothing
-belonging to the destination reaches the function that writes `task.json`.
+| | writes | travels? |
+|---|---|---|
+| the ticks — *when* to speak | `notify.on_scf_converged`, `notify.every_hours` | **yes** |
+| the channel list — *which* channels, **by name** | `notify.channels` | **yes**, and safely: a name is a label the person chose, not a credential |
 
-**The page hardcodes no path.** It shows what `GET /api/notify/destination`
-reports, and that comes from `monitor.default_notify_path` — so the page, the
-API and the process that reads the file on a compute node get it from one
-function. The card once said `~/.molbuilder/notify` while the monitor read
-`config_dir()/notify`; following it put the file where nothing looks, and
-**absent means silently off**.
+**The names come from the server; the secrets never do.** The list is painted
+from `GET /api/notify/channels`, which reports a name, whether it is configured
+on this machine, and how the last test went — never an address and never a key.
+Nothing on this page has ever seen one, and now nothing on this page *can*.
 
-**One consequence of the merge, stated plainly:** the destination is
-machine-wide but now lives inside a card that only appears with a calculation
-open. `molbuilder notify-token` is the door that needs no calculation.
+**Ticking nothing means nothing is sent**, and that is a real state rather than
+an oversight ([`run-reports.md`](?doc=execution/run-reports.md) § 3.0): reports
+off for this calculation on a machine where they are otherwise set up. A
+description with **no** `channels` key — one written by hand, or before
+2026-08-31 — means *every channel on this machine*, so nothing that already
+worked stops working.
 
-**The key is write-only.** The card reports whether one is present and never
-what it is, and clears the field once saved: a page that can show you a secret
-is one that can leak it, and there is no reason to read it back.
-
-**On a submit machine it does not pretend.** The monitor reads that file on the
-cluster, which this server cannot write, so the card hands over the exact
-command to run *there* instead of offering a button that would write it
-somewhere useless.
-
-**Send a test report** is the only check that exercises the whole path — the
-file, the address, the route segment, the signature, egress and TLS. Before it,
-the only way to know a setup worked was to run a job and notice nothing
-arrived.
+**A ticked name this machine does not have is shown as such**, not hidden. That
+is the travelling case — a description written at a desk and opened on a
+cluster — and it is the one worth seeing *before* submitting, because a channel
+that resolves to nothing is silent by design.
 
 ---
 
@@ -591,31 +649,55 @@ arrived.
 
 ---
 
-## 11. What to prepare next — the card that hands you the command
+## 11. Preparing, stage by stage — one tab per rung
 
-The page does not run anything (§ 10). What it can do is hand you the exact
-command, with everything it knows already filled in: the bundle from the
-projects root, the target machine you chose, and the `--from` a `continue`
-stage needs.
+*(user, 2026-09-01: "we can make the stage axis as a tab to organize the cards
+for prep bench and run so the whole page won't extend too long".)*
 
-**One block per enabled stage, and both things you can do with it.** A
-stage is either something to *measure* or something to *run*, and which
-one is a decision only you can make:
+The page does not run anything (§ 10). What it can do is show, per stage, what
+will be prepared and hand you the exact command — and it does that **in a tab
+strip keyed by stage**, because the alternative grows the page by one block per
+rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
+
+**One tab per enabled stage.** Inside a tab, everything about that rung:
+
+| | |
+|---|---|
+| **what the run will use** | § 6.2b's rows for this stage — one value each, inherited from the flat `allocation` and overridden here when this rung differs (`stages.md` § 6.8b) |
+| **what it will produce** | the directory this prep writes, its deck and wrapper, and the allocation each carries |
+| **the two commands** | `prep bench <stage>` → `launch bench` → `summarize bench`, and `prep run <stage>` → `launch run` |
+
+**A stage is either something to measure or something to run, and which is
+a decision only you can make** — unchanged from the card this replaces:
 
 | | what it does | when |
 |---|---|---|
-| **benchmark this stage** | `prep bench <stage>` → `launch bench` → `summarize bench` | you do not yet know what allocation this stage wants. The verdict is written to `run-config.toml`, which the run then applies |
-| **prepare the run** | `prep run <stage>` → `launch run` | you know what it wants — either from a benchmark, or because you are telling it with flags |
+| **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what allocation this stage wants. The verdict is written to `run-config.toml`, which the run then applies **to the fields you left blank** |
+| **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark, from § 6.2b's rows, or from flags |
 
-**Any stage may be benchmarked, not only the first.** The card offered
-`prep bench` for the first enabled stage alone until 2026-08-22, which was
-a guess dressed as an answer: the bench axes are declared once for the
-calculation (§ 6.3), so every enabled stage can be measured. Which one is
-worth measuring is a judgement — usually the cheapest rung that still has
-the expensive stage's shape — and the page states that as a hint rather
-than choosing.
+**Any stage may be benchmarked, not only the first.** The bench axes are
+declared once for the calculation (§ 6.3), so every enabled stage can be
+measured. Which one is worth measuring is a judgement — usually the cheapest
+rung that still has the expensive stage's shape — and the page states that as
+a hint rather than choosing.
 
 **The order is shown because it is load-bearing.** `summarize bench` writes
-`run-config.toml`, and `prep run` *applies* it to any allocation field you
-did not state. Skipping the middle step does not fail; it silently prepares
-a run with no measured verdict behind it.
+`run-config.toml`, and `prep run` applies it to any field neither your flags
+nor your description stated. Skipping the middle step is no longer silent,
+though: with § 6.2b's rows filled the run has an answer of its own, and the
+tab says which of the two it will use.
+
+**The directory names come from the producer.** Flat and hierarchical name
+things differently (§ 4), and a page that composed them itself would be a
+second answer free to disagree with `prep` — the same rule § 6.2a states for
+the grid. What the tab shows is what `prep` reports it would write.
+
+**Bench and run may target different machines and different walls**, and the
+tab shows both without making you hold them in your head: the run's from
+§ 6.2b and `allocation`, the bench's from `bench_allocation` when it is set
+(`stages.md` § 6.8c). A thirty-second measurement queued behind a two-day
+reservation is the ordinary cost of one wall serving both.
+
+**It works the same on a workstation and against a cluster.** Nothing here
+reads `execution.mode`: the commands are the commands, the admission check is
+the target's, and *which* machine is § 6's question, answered once above.

@@ -7,7 +7,7 @@ free, so hostname comparison would flag every sweep ever run (trap T1).
 
 Fixtures here write real monitor logs and parse them through the real
 readers; nothing injects a machine dict the monitor could not have written.
-That rule is `machine-identity-plan.md` § 7: the migration this belongs to
+That rule is `archive/2026-09-01-machine-identity-plan.md` § 7: the migration this belongs to
 exists because a check was kept green for four days by fixtures supplying a
 value production never wrote.
 """

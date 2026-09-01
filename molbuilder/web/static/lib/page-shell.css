@@ -295,6 +295,13 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
 input[type="text"],
 input[type="number"],
 input[type="file"],
+/* `url` and `password` joined the list 2026-08-31, when the This-machine tab
+   needed both.  They were missing rather than excluded: the Task-setup
+   destination form used them and its own sheet had quietly re-declared the
+   font and size to compensate, which is the second-owner shape this file
+   exists to prevent.  A control the app uses belongs in the app's one list. */
+input[type="url"],
+input[type="password"],
 select,
 textarea {
     font: inherit;

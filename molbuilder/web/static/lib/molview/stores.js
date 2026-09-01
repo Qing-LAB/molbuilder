@@ -149,14 +149,17 @@ export function createSelectionStore(handed) {
     /* ONE SETTLED STATE, HANDED OVER WHOLE (§ 8.4).
      *
      * The panel does not assemble what it draws from a dozen separate reads. It
-     * is given one snapshot — what is selected and IN WHAT ORDER, which editor
-     * is showing, the rows and how they combine, and every switch.
+     * is given one snapshot — WHICH ATOMS are selected (a set: § 9.5, no
+     * order), which editor is showing, the rows and how they combine, and every
+     * switch.
      *
-     * This is the fix for a real failure, not a style preference: the pick order
-     * was maintained correctly in the store for months and simply LEFT OUT of
-     * the snapshot, so the panel read nothing, fell back to guessing an angle's
-     * vertex from geometry, and § 11.6's rule was dead end to end while looking
-     * implemented. A fact the store keeps but does not hand over does not exist.
+     * The lesson that shaped it is worth keeping even though its subject is
+     * gone: a click-order shadow was maintained correctly in this store for
+     * months and simply LEFT OUT of the snapshot, so the panel read nothing,
+     * fell back to guessing an angle's vertex from geometry, and § 11.6's rule
+     * was dead end to end while looking implemented. **A fact the store keeps
+     * but does not hand over does not exist.** The shadow itself was retired
+     * on 2026-08-31 — order lives in the measurement track, which promises it.
      */
     function snapshot() {
         return {
@@ -462,15 +465,28 @@ export function createMeasurementStore() {
         },
 
         /* ── The toggle beside the other rail switches (§ 8.5) ───────────── */
-        //
-        // Turning measuring OFF keeps the picks.  Coming back to a measurement
-        // you were part-way through is the behaviour that costs nothing; the
-        // Clear button is how a user says they are done with it, and it says so
-        // in one place rather than being a side effect of a different control.
+        /* TURNING MEASURING OFF CLEARS THE PICKS (user, 2026-08-31).
+         *
+         * The toggle IS the measurement session, so leaving it ends the
+         * session.  It kept them until then, on the reasoning that coming back
+         * to a half-finished measurement costs nothing -- but the picks are
+         * not free while they sit there:
+         *
+         *   - the Cell page's pick buttons read the COUNT, so they stayed
+         *     enabled with the ruler off and a title saying "turn measuring
+         *     on", and pressing one staged a row from picks no longer marked
+         *     on the molecule;
+         *   - nothing on screen shows them once the ruler is off, so the state
+         *     that decides what those buttons do is invisible;
+         *   - and it made the mode ambiguous: off-with-picks and off-without
+         *     behaved differently and looked identical.
+         *
+         * Off means nothing is being measured.  One state, not two. */
         setActive(on) {
             const next = !!on;
             if (active === next) return;
             active = next;
+            if (!next) picks = [];      // one `fire` below, not two
             fire();
         },
 
@@ -496,17 +512,13 @@ export function createMeasurementStore() {
             fire();
         },
 
-        /* A restored session's track (§ 11.2b).  It is *how you were looking*,
-         * not part of the work — so it comes back from the view-context lane
-         * and never from a state, a draft or the file.  Trimmed and cleaned
-         * here rather than trusted: the lane is bytes that were on disk. */
-        adopt(atoms) {
-            const next = (Array.isArray(atoms) ? atoms : [])
-                .filter((i) => Number.isInteger(i) && i >= 0)
-                .slice(0, MEASUREMENT_MAX);
-            picks = next;
-            fire();
-        },
+        /* NO `adopt`.  There was one, for restoring a session's picks from the
+         * view-context lane -- and it was the bug: the lane's only guard was an
+         * ATOM COUNT, which two different three-atom molecules pass, so the
+         * readout came back quoting a bond length for atoms nobody had picked.
+         * The picks do not persist at all now (§ 11.6), so there is nothing to
+         * adopt them from, and leaving the door standing would be an invitation
+         * to write that restore again. */
     };
 }
 

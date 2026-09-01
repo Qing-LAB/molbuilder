@@ -96,7 +96,7 @@ Concretely, three kinds of "many jobs" all reduce to the same object:
 - a **device workflow** — the transport composite (shipped 2026-08-29):
   one CITED junction relaxation, five derived stages — the electrodes are
   DERIVED from the junction's own labeled blocks, never separately relaxed
-  ([`plans/transport-design.md`](?doc=plans/transport-design.md) ruling Q5).
+  ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) ruling Q5).
 
 The object they all reduce to is a **`JobSet`** (§ 3).
 
@@ -653,7 +653,7 @@ heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
 > genuinely a different object then: its stages advanced in memory while
 > SIESTA's advanced because a person prepped the next one. The loop is
 > retired; the history and the reasoning live in § 1.1a.)* The spectra and
-> transport producers migrated too (2026-08-21 / 2026-08-29 — `roadmap.md`'s
+> transport producers migrated too (2026-08-21 / 2026-08-29 — `archive/2026-09-01-roadmap.md`'s
 > migration box records both).
 
 ---
@@ -1344,7 +1344,7 @@ grammar; § 4's note has the story.)*
 ### Where the web stands, and what other engines wait on
 
 This is the migration the project is undertaking, planned in
-[`roadmap.md`](?doc=roadmap.md) (workstream 1, "Batch execution reaches the
+[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) (workstream 1, "Batch execution reaches the
 web") — and its first phase shipped:
 
 - **✅ Phase 1 — the browser writes the description** *(shipped; proven end
@@ -1368,7 +1368,7 @@ web") — and its first phase shipped:
   the ladder end-to-end (describe → prep → submit → monitor) **on a real
   cluster** before broadening. *(PySCF was listed here and crossed early: it
   shares the deck pipeline, its seam landed 2026-08-18, and the 2026-08-19
-  workstation E2E drove it — see `roadmap.md`'s migration box.  The
+  workstation E2E drove it — see `archive/2026-09-01-roadmap.md`'s migration box.  The
   SPECTRA half opened 2026-08-20 by user ruling, workstation-scoped:
   `docs/archive/2026-08-20-spectra-migration-plan.md` — not a new seam but the PySCF
   seam learning the `vibration` calculation kind, which is why it may
@@ -1386,7 +1386,7 @@ out of scope until 2026-08-26, and is no longer: the monitor POSTs to a
 destination the user configures in their own config directory, on a
 schedule the calculation states in `task.json`'s `notify` block. What
 remains unbuilt is the receiving end on molbuilder's own server —
-`plans/bench-and-junction-plan.md` § 2.10.)*
+`archive/2026-09-01-bench-and-junction-plan.md` § 2.10.)*
 
 The through-line: the CLI framework on this page is the settled foundation, and
 the web work is *additive on top of it* — it reuses the same five-step

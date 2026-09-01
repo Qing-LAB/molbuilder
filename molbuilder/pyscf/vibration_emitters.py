@@ -137,7 +137,7 @@ def _emit_header_docstring(struct: Structure,
         # cited "§ 13.1" with no document after the 2026-07 docs migration
         # retired the spec that owned that section -- so a scientist told to
         # check the validation status had nowhere to go.
-        out.append("    the right band ordering (docs/roadmap.md § 5 records")
+        out.append("    the right band ordering (docs/archive/2026-09-01-roadmap.md § 5 records")
         out.append("    the closure; docs/web/spectra.md holds the Raman")
         out.append("    validation).  A mode-by-mode cross-check against an")
         out.append("    external code has not been run;")
@@ -1059,7 +1059,7 @@ def _emit_ir_projection() -> List[str]:
 
     SCIENTIFIC VALIDATION STATUS: BAND-LEVEL VALIDATED
     (2026-08-20, water at B3LYP/def2-SVP against literature
-    windows with the right band ordering -- docs/roadmap.md § 5
+    windows with the right band ordering -- docs/archive/2026-09-01-roadmap.md § 5
     records the closure).  The projection math + Gaussian/ORCA
     km/mol prefactor are textbook; a mode-by-mode cross-check
     against an external code (Gaussian / ORCA / Turbomole) has

@@ -185,8 +185,10 @@ provider. See [`deployment.md`](?doc=ops/deployment.md) § 5.1.
 
 **And so does the config that names them** (2026-08-30). `molbuilder auth-setup`
 writes to **the file the server will actually read** — which is the reader's own
-two-step lookup, `./molbuilder.json` when one is already there, otherwise
-`~/.config/molbuilder/molbuilder.json`.
+one answer: `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set,
+else `$XDG_CONFIG_HOME/molbuilder/molbuilder.json`, else
+`~/.config/molbuilder/molbuilder.json`.  A `./molbuilder.json` is not read
+(`configuration.md` § 2.1a).
 
 It defaulted to `./molbuilder.json` regardless, meaning *wherever the wizard was
 launched from* — for anyone running it inside a checkout, the git root. Two

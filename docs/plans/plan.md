@@ -1,0 +1,158 @@
+# The plan — one file
+
+**Role:** plan — **the only one.** Every open item from the nine plan
+documents that preceded it lives here; those nine are archived under
+`docs/archive/2026-09-01-*.md` as records of what was decided and built.
+**Domain:** all
+**Started:** 2026-09-01, by consolidation
+
+> *(user, 2026-09-01: "We don't need ten plan files scattered. We want one
+> plan folder or one plan file and stay with that file.")*
+
+**Nothing here has been executed.** This file is the merge, fact-checked
+against code on 2026-09-01; the next step is agreeing what it should contain
+and in what order.
+
+---
+
+## 0. Rule R3, restated
+
+`docs/README.md` used to say **R3: `roadmap.md` is THE one plan.** That is now
+this file *(user, 2026-09-01: "the old roadmap and audit should be archived")*,
+and R3 reads:
+
+> **`plans/plan.md` is the one plan. Every open item lives there, and nowhere
+> else. A document that finds work records the evidence and sends the item
+> here.**
+
+That roadmap and the two audit reports are archived under
+`archive/2026-09-01-*`. They were 2044 lines between them, and the fact-check
+below is why the merge was worth doing rather than the filing.
+
+---
+
+## 1. What the fact-check found
+
+Nine plan documents, read in full and checked against the code on 2026-09-01.
+Three headers were **flatly false** and are corrected in the archived copies:
+
+| document | claimed | actually |
+|---|---|---|
+| `modify-redesign-plan` | *"items 3 and 4 designed"* | all five built — § 3 carried its own **Built 2026-08-30** marker three sections lower |
+| `css-system-plan` | *"proposed, not started"* | steps A and B done **2026-08-02**, four weeks earlier, ticked in its own § 4 table |
+| `config-access-plan` | header *"steps 1–4 built"*, body ***"No code yet"*** | one document, two answers; steps 1–4 built and step 5 mostly |
+
+**Two were in no index at all** — `consolidated-cleanup-plan` and
+`config-access-plan` existed on disk and appeared nowhere in `toc.json`, so
+they were invisible in the Documents tab. Fixed 2026-09-01.
+
+**One item I got wrong first, corrected by reading the function:** bench § 2.2
+looked built on a grep for `cpu_mean_pct`; `parse_util_bound` takes only the
+*verdict*, and its docstring says the numbers on that line **"are deliberately
+NOT read here any more."** It is open.
+
+---
+
+## 2. Open — engine, execution, science
+
+| # | item | from | state |
+|---|---|---|---|
+| **E1** | **Benchmark iteration count, settable per calculation.** No field exists on `task.json` or `Resources` | `bench-and-junction` § 2.1 | not started |
+| **E2** | **Read the monitor's own mean.** `[UTIL-SUMMARY]` carries an exact figure over every tick; `bench/result.py` still reconstructs one by time-weighting the changed-rows CSV, and `parse_util_bound`'s docstring justifies not reading it in words the code contradicts | `bench-and-junction` § 2.2 | not started |
+| **E3** | **`wall_s` is the monitored window**, first-to-last written row — not job wall time | `bench-and-junction` § 3B | found, not fixed |
+| **E4** | **CPU-only trials log no node line.** `detected phys_cores` appears only on the GPU path; node name + CPU model belong on every path as provenance | `bench-and-junction` § 3D | found, not fixed |
+| **E5** | **Two facts need a Sol run**, not code: a real `[MACHINE]` line from a live job, and a re-probe to settle `lightwork`'s cap | `machine-identity` § 6 | blocked on a machine |
+| **E6** | **`default_contact_distance` has no consumer.** Measured physics (Au–S 2.40, Pt–N 2.05, Ag–S 2.50) with nothing reading it since `add_electrode_slab` went. Wiring it in as `--electrode @contact=`'s default would make it live again — a decision, not a cleanup | found 2026-09-01 | open |
+| **E7** | **D7's cluster half** — the same prep→submit→watch loop through SLURM on Sol. Everything else about D7 shipped; this needs the machine, and pairs with **E5** in one session | roadmap § 1 | blocked on a machine |
+| **E8** | **PySCF's big-binary globs for the checkpoint system** — the last piece of the old checkpoint item | roadmap § 1 | open |
+| **E9** | **`BlockSize`'s third state (C8)** and **the rank-clamp message (C12)** — the second needs a call from you about what it should say | roadmap § 6 | open |
+| **E10** | **Detecting from the `.out` that a run STOPPED**, and whether it stopped converged (`SCF_NOT_CONV` / `ABNORMAL_TERMINATION`) — **on a zero exit too**, since an MPI stack may not propagate an abort. Ruled to belong to `mb_monitor.py`, not the execution branch | roadmap § 4 | open |
+| **E11** | **A fresh live walk of the PySCF / spectra decks.** The 2026-08-28 review exercised them only through the guard suites and says so | audit 08-28 § 5 | open |
+
+## 3. Open — configuration and ops
+
+| # | item | from | state |
+|---|---|---|---|
+| **C2** | **The wheel omits most of `static/`.** The packaging globs miss the core viewer and most of the front end; wants the globs fixed **and** a test that the wheel's file list covers every `static/` file a template references | roadmap § 4 | open |
+| **C3** | **`molbuilder/backends/` is the last no-shim violation.** A back-compat re-export package, still present — verified 2026-09-01. Ship-or-retire says retire | roadmap § 4 | open |
+| **C1** | **Step 5's remaining hand-joins.** Three of § 5.1's nine sites still join a filename onto a directory: `runtime_config` (`molbuilder.json`), `scheduler/record` (`environment.json`). `monitor`'s two are **not** residue — that module ships to a compute node with nothing else importable and owns the format (A11) | `config-access` § 5 | mostly done |
+
+## 4. Open — the front end
+
+| # | item | from | state |
+|---|---|---|---|
+| **W1** | **The document tier (step C).** `html, body`, `header`, `button`, `footer`, `textarea` genuinely differ per page; the `*` reset is already deleted. Blocked on a browser pass over all pages | `css-system` § 4C | partly |
+| **W2** | **One home per component (step D).** `.card`, `.status`, `header .tagline`. **One value to settle first:** `.card`'s padding is `var(--space-md) 18px 18px` and 18 is off the 4px grid the contract declares — moving it shifts every page by 2px | `css-system` § 4D | not started |
+| **W3** | **Per-page token/namespace passes (step E)**, one page per commit: `spectra`, `structure-optimization`, `transport`, `results`, `documents` | `css-system` § 4E | partly |
+| **W4** | **Guards 1 and 2 (step F)** — one home including elements; a page sheet contains only its own tier. Guard 3 landed; a fourth (no long block copied between sheets) landed 2026-09-01 | `css-system` § 4F | partly |
+| **W5** | **The inspectors module's appearance still lives in `results/style.css`** — 70 mentions. Mount an inspector on another page and it renders unstyled. Three of its sheets have been repatriated; the rest is a module change, deliberately | `css-system` § 7.0 | partly |
+| **W6** | **The editor module.** CodeMirror on three surfaces, owned by nothing: **three** loaders, **three** sheets theming `.CodeMirror` (40 rules — up from the 30 the plan measured), and the hard-won caps (1500-line selection, 1 MB view-only) on **one** surface. Not started, deliberately sequenced after the Task-setup workflow | `editor-module` | not started |
+| **W7** | **I7 close-out** — the browser walk of Results export → cite → describe → prep. I1–I6 done | `structure-info` I7 | open |
+| **W8** | **Caller-less endpoints — decide the ROLE, do not just delete.** `/api/docs/list` (a second answer to "what docs exist" beside the `/api/docs/toc` the tab calls); `/api/checkpoint/config` (the read half of a route whose write half was removed); `/api/selection/atoms` (pinned by five test files) | `structure-info` § 3 | open |
+| **W9** | **Transport viewer default orientation** — a MolView camera-door contract question | `structure-info` § 3 | open |
+| **W10** | **Results transmission inspector** — the record exists, the reader does not | `structure-info` § 3 · roadmap § 2 | open |
+| **W12** | **The live browser walk-throughs** — checkpoint swap at narrow and wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1. Carried since the archived molview-and-checkpoint plan | roadmap § 0.3 | open |
+| **W13** | **384 raw px/rem literals** in the page sheets. The 2026-08-28 count was 777, so this halved without being finished; it is the tail of 7.4c | roadmap § 7.4c | partly |
+| **W14** | **A web plan view and a per-stage status roll-up.** The web *describes* a staged calculation (Task setup) and *observes* runs (Results); neither shows the plan as a whole | roadmap § 6 | open |
+| **W15** | **Sealing the MolView module's internals and finishing the ES-module conversion** — both **browser-verified** before they count. Plus routing the CLI through the shared codec and exercising the last annotation-channel kind | roadmap § 3 | partly |
+| **W11** | **The trajectory inspector's export records no contract.** Its load rides `/api/watch`, not the structure door, so an export from the trajectory view carries no `info.calculation` | `structure-info` § 3 | open |
+
+## 4a. Open — needs a decision from you
+
+| # | item | from | state |
+|---|---|---|---|
+| **N1** | **What may run in a request thread.** The GPU half is closed (every driver read is now a timed subprocess behind a cache); the general case — RDKit embeds, giant parses — still runs in request threads and can freeze every user. Wants a contract sentence, not a patch | audit 08-28 O4 | needs a rule |
+| **N2** | **Ship-or-retire batch**, named in design and never built, with no recorded retirement: the checkpoint tail (`prune`, a CLI `checkpoint diff`, the `snippets/` library, wrapper-git "Path B"), and #32's MD viewer/editor | roadmap § 4 | needs a call |
+| **N3** | **Three wording papercuts:** the prepped-trials list prints `run-0, run-0` without saying whose attempt each is; the science-gate warning repeats once per trial (noise at 16); a scheduler-less `ask` says *"nothing to wait for"* and then prints an `sbatch --test-only` preview | audit 08-28 O5 | open |
+| **N4** | **The science-validation tail** — checks deferred with recorded rationale in `science/pseudopotentials.md`. The roadmap carried them under a heading that said *"needs a home"* for five weeks | roadmap § 5 | needs a home |
+
+## 5. Open — documentation drift
+
+| # | item | from | state |
+|---|---|---|---|
+| **D1** | **21 code→doc citations that resolve to nothing.** 14 were repointed; the rest name sections that do not exist, spread over ten documents — submission, web-api, generator, job-system, job-contracts, script-preparation, validation, vibrationview, template, and the archived structure-info plan. `test_docs_structure.py` lists them by file and line on every run, which is a better inventory than a copy here: **naming them in this row made the guard read them as live citations and fail on its own bug report** (found 2026-09-01, minutes after this file was written) | `consolidated-cleanup` § 7 | open |
+| **D2** | **Tests with no target, remainder.** 12 removed; ~14 flagged. The two files with zero test functions were **checked and left** — each is a signpost recording where retired coverage moved, which is a service, not residue | `consolidated-cleanup` § 9 | partly |
+| **D3** | **Tests that write into the real `projects/` tree** rather than a sandbox | `consolidated-cleanup` § 9 | open |
+| **D4** | **The README screenshots are three tabs stale** — five captured, eight ship. Nothing can enforce this (no test can count tabs in a PNG); the *owner* of the count is pinned as of 2026-09-01 | `screenshots.md` | open |
+
+## 5a. What the roadmap fact-check found
+
+1770 lines, read against the tree on 2026-09-01. **Most of what it carried as
+open had shipped**, which is the same drift it was written to prevent — and it
+says so about itself twice, at § 7.4's *"carried as open for a day after they
+shipped"* and § 7.5's *"re-read against the tree and most of it was already
+gone."* A third re-read was overdue.
+
+| roadmap item | claimed | verified 2026-09-01 |
+|---|---|---|
+| § 7.5 **O5 residue** — `_SAFE_BASE` / `_SAFE_GPU_TYPE`, "two definitions, zero uses" | open | **gone.** Both symbols are absent from the tree |
+| § 7.8 **wave 1** — the same two, plus the `task.stages and` conjunct at `_cli.py:569` | *"the live plan"* | **done.** No symbol survives |
+| § 7.10 **bundle layout** — nothing rendered at the bundle root | *"plan of record"* | **built.** `project-layout.md` records *"nothing rendered sits at the root since 2026-08-24"* |
+| § 7.11 the two asks reach the browser | — | **done**, and says so |
+| § 3 **A4** — the disk-based selection endpoints, *"verify the live caller before deleting"* | open, caller named | **the caller is gone.** `_fetchAtoms` is absent from the MolView store; `/api/selection/atoms` is now caller-less — folded into **W8** |
+| § 7.4c **anonymous values** — 777 raw px/rem literals (2026-08-28) | open | **384.** Halved, not finished — **W13** |
+| § 4 **`molbuilder/backends/`** — the last no-shim violation | open | **still there** — **C3** |
+| audits' **O1 O2 O3** (conclusion marker · supervisor respawn · stack-dump hook) | closed in the audit itself | closed, consistent |
+
+**What that leaves.** Of roughly forty items the roadmap presented as work,
+the ones that survive contact with the code are the twenty-odd rows above in
+§§ 2–5. The rest were closed and never struck.
+
+---
+
+## 6. Closed by consolidation — what was archived, and why
+
+| document | why it is a record now |
+|---|---|
+| `modify-redesign-plan` | all five items built, plus § 3.4 and § 3.4a/b's removals. Nothing open |
+| `transport-design` | *"graduates to a contract when built"* — it did; `engines/transport.md` is `Role: contract` |
+| `machine-identity-plan` | all seven pieces built; the two remaining facts need a machine, and are **E5** above |
+| `bench-and-junction-plan` | ~85% built history; its four open items are **E1–E4** |
+| `structure-info-plan` | I1–I6 done; its open items are **W7–W11** |
+| `config-access-plan` | steps 1–4 built, step 5 mostly; the remainder is **C1** |
+| `css-system-plan` | steps A and B done; C–F are **W1–W5** |
+| `editor-module-plan` | not started, and its design is worth keeping whole — **W6** points at it |
+| `consolidated-cleanup-plan` | 10 of 12 items done; the rest are **D1–D3** |
+| `roadmap.md` | R3's old home. 1770 lines, ~85% closed work never struck; its live items are **E7–E11, C2, C3, W12–W15, N1–N4** |
+| `archive/2026-09-01-audit-2026-08-21-fullstack-review.md` | its open list became roadmap § 7.5, and § 7.5 is now empty — verified |
+| `archive/2026-09-01-audit-2026-08-28-full-review.md` | O1–O3 closed in the document; O4's general case is **N1**, O5 is **N3**, its uncovered lane is **E11** |

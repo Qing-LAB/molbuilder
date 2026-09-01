@@ -600,7 +600,7 @@ class TestPbcFollowsAxisKind:
 
 
 class TestInfoBlock:
-    """Schema 9's `info` block (plans/structure-info-plan.md): free-form,
+    """Schema 9's `info` block (archive/2026-09-01-structure-info-plan.md): free-form,
     NON-structural, additive, never hashed."""
 
     def _struct(self):

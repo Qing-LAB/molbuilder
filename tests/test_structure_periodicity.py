@@ -9,19 +9,23 @@ from molbuilder.structure import Structure
 
 
 def _two_slabs(struct, element, plane, size, *, gap=8.0, **kw):
-    """A junction: two slabs, one per side, each at ``gap/2``.
+    """A junction: two slabs, one per side, each starting at ``gap/2``.
 
-    `modify.add_symmetric_electrodes` did this in one call and was deleted
-    with the Junction panel (redesign plan § 3.4) -- slabs are built one at a
-    time now.  These tests are about the CELL a build captures, which is
-    unchanged, so they are repointed rather than retired.
+    Repointed twice, and each time the builder under it was deleted rather
+    than the rule.  `add_symmetric_electrodes` did this in one call and went
+    with the Junction panel (2026-08-31); `add_electrode_slab` did it in two
+    and went on 2026-09-01, its anchor-relative placement folded into the
+    callers that wanted it.  What these tests are about -- the CELL a build
+    captures -- is `_finish_slab`'s, and that has not moved.
+
+    `stacking="continue"` on the `-z` side is the redesign's answer to the
+    mirror the old builder applied unconditionally.
     """
-    from molbuilder.modify import add_electrode_slab
-    out = struct
-    for side in ("+z", "-z"):
-        out = add_electrode_slab(out, element, plane, size,
-                                 contact_distance=gap / 2.0, side=side, **kw)
-    return out
+    from molbuilder.modify import add_slab
+    out = add_slab(struct, element, plane, size,
+                   start_z=gap / 2.0, grow="+z", **kw)
+    return add_slab(out, element, plane, size,
+                    start_z=-gap / 2.0, grow="-z", stacking="continue", **kw)
 
 
 
@@ -149,13 +153,13 @@ class TestSidecarRoundTrip:
 
 
 class TestElectrodeCaptureCell:
-    """The electrode builder captures its ASE cell + sets axis_kind
+    """The slab builder captures its ASE cell + sets axis_kind
     (structure-periodicity.md § 4 -- fixes the modify.py:955 discard)."""
 
-    def test_add_electrode_slab_captures_cell_and_axis_kind(self):
-        from molbuilder.modify import add_electrode_slab
+    def test_a_built_slab_captures_cell_and_axis_kind(self):
+        from molbuilder.modify import add_slab
         dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
-        out = add_electrode_slab(dev, "Au", "111", (2, 2, 3), center_indices=[0])
+        out = add_slab(dev, "Au", "111", (2, 2, 3), start_z=2.4)
         assert out.cell is not None, "electrode cell must be captured, not discarded"
         assert out.axis_kind == ("periodic", "periodic", "transport")
         assert out.pbc == (True, True, True)          # transport -> True
@@ -190,64 +194,37 @@ class TestElectrodeCaptureCell:
                 np.linalg.norm(top[:, None, :] - img[None, :, :], axis=-1))))
         return best
 
-    def test_z_is_extent_plus_one_interlayer_spacing(self):
-        a = 4.0782
-        d = a / np.sqrt(3)                      # fcc(111): a/sqrt(3)
-        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
-        out = _two_slabs(dev, "Au", "111", (2, 2, 3), gap=8.0,
-                                       lattice_constant=a)
-        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
-        assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
-        # and the thing that actually matters: the image no longer lands on it
-        assert self._seam(out) == pytest.approx(d, abs=1e-6)
+    def test_c_is_the_atoms_extent_and_the_collision_is_visible(self):
+        """**`c` IS MEASURED AND SET, NEVER INVENTED** (junction-cell.md § 6,
+        rewritten 2026-08-31 on the user's decision).
 
-    def test_padding_off_reproduces_the_bare_extent(self):
-        """The switch has to really switch -- and the OFF state is the bug,
-        so this pins the collision it reproduces (junction-cell.md § 6)."""
+        A freshly built slab gets `c = z_extent` verbatim, so the top layer
+        sits on its own periodic image and the seam is zero. That is the
+        point, not a bug: the missing step is a decision about the
+        calculation, it is visible in the tab you are already in, and
+        `classify_seam` names it on every build.
+
+        *Three tests here pinned the opposite until 2026-09-01 -- extent plus
+        one layer spacing, an `inter_layer_offset` override, and a monolayer
+        falling back to the crystal spacing. They went with the padding they
+        described, which had survived in `add_electrode_slab` alone for a
+        month after the rule that retired it.*
+        """
+        a = 4.0782
         dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
         out = _two_slabs(dev, "Au", "111", (2, 2, 3), gap=8.0,
-                                       lattice_constant=4.0782,
-                                       pad_interlayer_gap=False)
+                         lattice_constant=a)
         extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
         assert out.cell[2, 2] == pytest.approx(extent, abs=1e-9)
-        assert self._seam(out) == pytest.approx(0.0, abs=1e-6)
 
-    def test_padding_follows_an_inter_layer_offset_override(self):
-        """The gap is measured on the slab AS BUILT, so a strained slab pads
-        by ITS spacing, not by the bulk one (junction-cell.md § 5)."""
-        from molbuilder.modify import add_electrode_slab
-        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
-        out = add_electrode_slab(dev, "Au", "111", (2, 2, 3), center_indices=[0],
-                                 lattice_constant=4.0782, inter_layer_offset=3.0)
-        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
-        assert out.cell[2, 2] == pytest.approx(extent + 3.0, abs=1e-6)
-
-    def test_a_monolayer_is_still_padded_by_the_crystal_spacing(self):
-        """A single layer has no spacing to MEASURE, but the crystal still has
-        one -- so the box must not silently fall back to the bare extent, which
-        is the collision the padding exists to prevent."""
-        from molbuilder.modify import add_electrode_slab
-        a = 4.0782
-        d = a / np.sqrt(3)
-        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
-        out = add_electrode_slab(dev, "Au", "111", (2, 2, 1), center_indices=[0],
-                                 lattice_constant=a)
-        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
-        assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
-
-    def test_the_molecule_does_not_set_the_crystal_spacing(self):
-        """A molecule reaching past the slabs must not become the layer
-        spacing: the padding is measured on the METAL layers only."""
-        a = 4.0782
-        d = a / np.sqrt(3)
-        # a long molecule whose atoms sit at irregular z
-        dev = Structure(elements=["S", "C", "C", "S"],
-                        positions=[[0, 0, -3.1], [0, 0, -1.0],
-                                   [0, 0, 1.0], [0, 0, 3.1]])
-        out = _two_slabs(dev, "Au", "111", (2, 2, 3), gap=8.0,
-                                       lattice_constant=a)
-        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
-        assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
+        # AND WHAT THE FACES DO WHEN THEY MEET, which is a different rule
+        # (junction-cell.md § 3.3) and worth pinning here because it is what
+        # the redesign changed.  `c == extent` puts the two faces at Δz = 0
+        # across the boundary; MIRRORED slabs would then be eclipsed, atom on
+        # atom, at distance 0.  These CONTINUE the crystal, so the faces sit
+        # one registry step apart -- a/√6 for fcc(111) -- and the boundary is
+        # a stacking fault rather than a collision.
+        assert self._seam(out) == pytest.approx(a / np.sqrt(6), abs=1e-6)
 
 
 def _parse_fdf_cell_coords(fdf):
@@ -277,8 +254,10 @@ class TestCellOriginAndCalibration:
         electrodes -- atoms straddle the origin, cell captured with cell_origin."""
         mol = Structure(elements=["S", "S"],
                         positions=[[0.0, 0.0, -2.0], [0.0, 0.0, 2.0]])
-        return _two_slabs(
-            mol, "Au", "111", (2, 2, 3), center_indices=[0, 1], gap=6.0)
+        # `center_indices=[0, 1]` used to say "midpoint of the two S atoms",
+        # which IS the origin here -- so the absolute placement below is the
+        # same junction, said outright instead of derived.
+        return _two_slabs(mol, "Au", "111", (2, 2, 3), gap=6.0)
 
     def test_cell_origin_wraps_the_atoms(self):
         j = self._junction()

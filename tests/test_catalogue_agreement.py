@@ -6,7 +6,7 @@ defined there, and a config class carries a name, a type and its validators.
 **But the live Build form still reads the facts off the dataclass fields** —
 :data:`MIRRORED`, which is the one place that set is named (`template.md` § 5.1
 used to list it too, and listed five of the six). Until the UI is rebuilt from
-the catalogue (deferred — tracked in `roadmap.md` workstream 3; the debt is
+the catalogue (deferred — tracked in `archive/2026-09-01-roadmap.md` workstream 3; the debt is
 measured at `template.md` § 2.1a), those facts live
 in **two** homes.
 

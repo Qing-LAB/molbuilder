@@ -488,7 +488,7 @@ together with the **`inspectors` → `presenters` rename** — one pass (task #1
 that does the file-viewer registry *and* the heavy engine cores it mounts (this
 `lib/spectra/core.js` among them), since converting them rewrites those files
 anyway. See [`presenters.md`](?doc=web/presenters.md) and
-[`roadmap.md § 3`](?doc=roadmap.md).
+[`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md).
 
 ## 10. Test map
 

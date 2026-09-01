@@ -723,7 +723,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     Returns the per-job directories. Raises :class:`PrepError`.
     """
-    # TRANSPORT IS THE COMPOSITE (plans/transport-design.md § 4.2): no
+    # TRANSPORT IS THE COMPOSITE (archive/2026-09-01-transport-design.md § 4.2): no
     # template, no structure reference -- its stages render from the
     # composed junction, so it takes its own arm rather than crashing
     # on the structure this calculation deliberately does not carry.
@@ -812,7 +812,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # person typing `--mem` now is answering about now.  Field by field,
     # not object by object: `--np 8` alone must not erase the file's
     # memory ask, which a whole-object override would do silently.
-    allocation = _under_description(allocation, task.allocation)
+    # MEASURING IS `sweep` BEING PRESENT, and it is the caller's own signal:
+    # `prep bench` hands the grid down, `prep run` hands nothing.  Asked here
+    # rather than passed as a second flag, because two ways to say one thing
+    # is how they come to disagree.
+    allocation = _under_description(
+        allocation, _allocation_for(task, stage, measuring=sweep is not None))
     # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
     # prepped bundle needs no flag to know it.  A separate line rather than a
@@ -1465,7 +1470,17 @@ def _flat_resources(resources) -> str:
     null: a line of ``domain=None, time=None, gres=None`` is noise in a file
     whose whole value is that a person can read it.
     """
-    return ", ".join(f"{k}={v}" for k, v in
+    def _val(v):
+        # A SEQUENCE FIELD PRINTS AS ITS VALUE, not as its repr.  Every field
+        # here was a scalar until `notify_channels` (2026-08-31), and the
+        # default rendering put `('slack', 'lab')` -- and, worse, a bare `()`
+        # -- into the one file whose whole value is that a person can read it.
+        # `()` is a real answer meaning *nowhere*, so it gets a word.
+        if isinstance(v, tuple):
+            return ",".join(v) if v else "(none)"
+        return v
+
+    return ", ".join(f"{k}={_val(v)}" for k, v in
                      dataclasses.asdict(resources).items() if v is not None) \
         or "(nothing asked for)"
 
@@ -1614,6 +1629,31 @@ def _siesta_shared_package(base: Path) -> List[str]:
     return grouped or sorted(p.name for p in base.glob("*.psml"))
 
 
+def _allocation_for(task, stage=None, *, measuring=False):
+    """WHICH allocation block this prep is under (`stages.md` §§ 6.8a-6.8c).
+
+    Three states, and they compose field by field over the flat block:
+
+      * **measuring** -> ``bench_allocation`` over it.  A benchmark is short
+        by construction -- capped SCF, one point, no relaxation -- so one
+        wall serving both queues a thirty-second job behind a two-day
+        reservation, or kills the calculation.  Absent means the run's, which
+        is what every description said before 2026-09-01.
+      * **a named stage** -> that rung's ``stage_allocation`` block over it.
+        A ladder's rungs do not always want the same machine.
+      * **neither** -> the flat block, unchanged.
+
+    The bench does not take a rung's override: a stage block says what that
+    rung's RUN wants, and what a trial runs is one of `bench`'s own points.
+    """
+    base = task.allocation
+    if measuring:
+        bench = getattr(task, "bench_allocation", None)
+        return bench.merged_over(base) if bench else base
+    per = (getattr(task, "stage_allocation", None) or {}).get(stage or "")
+    return per.merged_over(base) if per else base
+
+
 def _under_description(flags, declared) -> "Resources":
     """The caller's allocation over the description's -- FIELD by field.
 
@@ -1624,6 +1664,14 @@ def _under_description(flags, declared) -> "Resources":
     which is the class of silent loss this whole round has been about.
 
     ``domain`` rides `Resources.domain`, the same field `--domain` fills.
+
+    **The machine-answered VALUES fold the same way** (`stages.md` § 6.8a,
+    2026-09-01): `mpi_np`, `omp_threads`, `use_gpu` and their kin are what
+    the RUN should use, stated by a person who read a benchmark or already
+    knew.  A flag still wins, field by field, and what neither states is
+    left for the stage's `run-config.toml` and then the wrapper's policy --
+    which is the precedence § 6.8a spells out, unchanged except that the
+    description now has a place in it.
     """
     out = flags or Resources()
     if not declared:
@@ -1634,6 +1682,14 @@ def _under_description(flags, declared) -> "Resources":
                       ("time", declared.time),
                       ("mem", declared.mem)):
         if val and getattr(out, name, None) in (None, ""):
+            patch[name] = val
+    known = {f.name for f in _dc.fields(Resources)}
+    for name, val in sorted((getattr(declared, "values", None) or {}).items()):
+        # A name `Resources` does not carry is not silently dropped here:
+        # `validation/task.py` refuses one the catalogue does not declare,
+        # and one it DOES declare that this class has no field for is a
+        # translation gap the emitter's own door reports (`resolve.py`).
+        if name in known and getattr(out, name, None) in (None, ""):
             patch[name] = val
     return _dc.replace(out, **patch) if patch else out
 
@@ -1669,6 +1725,12 @@ def _with_notify(flags, declared) -> "Resources":
         patch["notify_on_scf"] = True
     if declared.every_hours and out.notify_every_hours is None:
         patch["notify_every_hours"] = declared.every_hours
+    # `is not None`, NOT truthiness -- the other two fields are off when
+    # falsy and this one is not.  An empty tuple says "send this calculation
+    # nowhere", and a truthiness guard here would drop it and hand the job
+    # every channel on the machine instead (`run-reports.md` 3.0).
+    if declared.channels is not None and out.notify_channels is None:
+        patch["notify_channels"] = declared.channels
     return _dc.replace(out, **patch) if patch else out
 
 

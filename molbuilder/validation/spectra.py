@@ -329,7 +329,7 @@ def spectra_render_checks(struct: Structure,
     # compute_ir advisory RETIRED 2026-08-21 -- it warned that IR
     # was "not implemented", which P1 falsified (the deck computes IR
     # via dipole derivatives, band-level validated against literature
-    # water intensities; roadmap.md § 5 records the closure).  Found
+    # water intensities; archive/2026-09-01-roadmap.md § 5 records the closure).  Found
     # by the honesty gate's render probe: a validator claiming a
     # capability is absent is the same drift as a diagram drawing a
     # file that is gone.

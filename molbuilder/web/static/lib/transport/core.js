@@ -1,5 +1,5 @@
 /* Transport-calculation tab core — the COMPOSITE's describe surface
- * (plans/transport-design.md § 4.1, P7b).
+ * (archive/2026-09-01-transport-design.md § 4.1, P7b).
  *
  * ONE driver: the junction citation.  Picking the relaxed junction's
  * finished attempt (the shared tree-picker; only run-N directories are

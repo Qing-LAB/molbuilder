@@ -1,7 +1,7 @@
 """``max_orbital_rc_ang`` — the basis reach an ``.ion`` file records.
 
 The principal-layer gate (`transport/compose.py`, contract:
-`plans/transport-design.md` § 3) needs each element's largest orbital
+`archive/2026-09-01-transport-design.md` § 3) needs each element's largest orbital
 cutoff radius.  That number is never guessed: SIESTA writes it into the
 ``<El>.ion`` file beside every run — each ``#orbital`` header is
 followed by a ``npts, delta, cutoff`` line, cutoff in Bohr.  KB

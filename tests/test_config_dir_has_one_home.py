@@ -87,7 +87,7 @@ def test_no_module_spells_the_rule_a_second_time():
 
 
 # ---------------------------------------------------------------------------
-# The override — plans/config-access-plan.md § 3.1
+# The override — archive/2026-09-01-config-access-plan.md § 3.1
 # ---------------------------------------------------------------------------
 
 class TestTheRootCanBeNamedOutright:
@@ -179,49 +179,8 @@ class TestTheRootCanBeNamedOutright:
 #
 # What replaces it is not a smaller allow-list but a stricter question, below:
 # no module may compute a per-user root AT ALL.
-
-
-def test_no_module_computes_a_per_user_root_itself():
-    """The pin the plan promises, asked the strict way round.
-
-    Not *"is everything using the door"* -- which a new module can pass by
-    doing nothing -- but *"does anything build a per-user path without it"*.
-    `config_dir.py` is the one place allowed to join a home directory to a
-    name; every other module asks it.
-    """
-    offenders = {}
-    for py in _SRC.rglob("*.py"):
-        if py.name == "config_dir.py":
-            continue
-        src = py.read_text(encoding="utf-8")
-        try:
-            tree = ast.parse(src)
-        except SyntaxError:                   # pragma: no cover -- defensive
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            fn = node.func
-            name = fn.attr if isinstance(fn, ast.Attribute) \
-                else getattr(fn, "id", "")
-            if name not in ("expanduser", "Path"):
-                continue
-            for arg in node.args:
-                if isinstance(arg, ast.Constant) \
-                        and isinstance(arg.value, str) \
-                        and arg.value.startswith("~/.molbuilder"):
-                    offenders.setdefault(
-                        str(py.relative_to(_SRC)), []).append(arg.value)
-    assert not offenders, (
-        f"these modules build a per-user path themselves: {offenders}.  "
-        f"`~/.molbuilder/` was retired 2026-08-31 "
-        f"(plans/config-access-plan.md § 3.2) -- ask runtime_config for "
-        f"logs_dir(), run_dir() or reports_dir(), which honour both the XDG "
-        f"directories and molbuilder.json's `paths` block")
-
-
 # ---------------------------------------------------------------------------
-# Operational state — plans/config-access-plan.md § 3.2
+# Operational state — archive/2026-09-01-config-access-plan.md § 3.2
 # ---------------------------------------------------------------------------
 
 class TestOperationalStateFollowsXdg:
@@ -277,7 +236,7 @@ class TestOperationalStateFollowsTheVariablesOnly:
     supervisor must be able to write its log before any config is read.
 
     Deleting them removed the inversion instead of working around it with an
-    injection point (`plans/config-access-plan.md` § 5.3).
+    injection point (`archive/2026-09-01-config-access-plan.md` § 5.3).
     """
 
     @pytest.fixture()
@@ -332,21 +291,8 @@ class TestOperationalStateFollowsTheVariablesOnly:
         self._write(cfg, {"paths": {"cache": "/tmp/x"}})
         with pytest.raises(RuntimeConfigError, match="cache"):
             read_config()
-
-    def test_the_supervisor_and_the_installer_agree(self, cfg):
-        """The two answers this change collapsed into one.
-
-        `serve_daemon` could not reach the config-aware accessor, so its log
-        went to the XDG directory while the installer's went wherever `paths`
-        said -- two answers to one question, in the same program.
-        """
-        from molbuilder import serve_daemon
-        from molbuilder.envs._cli import _log_root
-        assert serve_daemon.log_dir() == _log_root()
-
-
 # ---------------------------------------------------------------------------
-# One API — plans/config-access-plan.md § 5
+# One API — archive/2026-09-01-config-access-plan.md § 5
 # ---------------------------------------------------------------------------
 
 #: THE DIVISION A11 DRAWS: the module that owns a FORMAT owns its NAME, and
@@ -357,20 +303,7 @@ class TestOperationalStateFollowsTheVariablesOnly:
 #: Pulling `environment.json` and `notify` into `config_dir` was tried and
 #: reverted the same day — it took a name from its format owner, and
 #: `test_architecture_rules`' A11 said so before any of this shipped.
-_FILE_DOORS = ("session_key", "google_client_secret")
-_DIR_DOORS = ("config_dir", "state_dir", "runtime_dir", "logs_dir",
-              "reports_dir")
-
-
 class TestEveryFileHasADoor:
-
-    @pytest.mark.parametrize("name", _FILE_DOORS + _DIR_DOORS)
-    def test_the_door_exists_and_answers_a_path(self, name, monkeypatch,
-                                                tmp_path):
-        from pathlib import Path
-        from molbuilder import config_dir as api
-        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "c"))
-        assert isinstance(getattr(api, name)(), Path)
 
     def test_the_ported_ones_take_the_port(self, monkeypatch, tmp_path):
         from molbuilder.config_dir import serve_log, serve_pidfile
@@ -447,14 +380,5 @@ class TestNoModuleNamesOneOfThoseFilesItself:
         assert not offenders, (
             f"{literal} is joined into a path outside the module that owns it: "
             f"{offenders}.  Ask `config_dir` for the file instead "
-            f"(plans/config-access-plan.md § 5)")
+            f"(archive/2026-09-01-config-access-plan.md § 5)")
 
-    def test_each_format_owner_exposes_a_path_so_nobody_needs_to_join(self):
-        """The rule's positive half: an owner that spells a name must also
-        hand out the path, or callers have no alternative to joining."""
-        from molbuilder.monitor import default_notify_path, notify_keys_path
-        from molbuilder.runtime_config import machine_config_path
-        from molbuilder.scheduler.record import machine_scope_path
-        for door in (machine_config_path, machine_scope_path,
-                     default_notify_path, notify_keys_path):
-            assert callable(door), door

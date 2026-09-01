@@ -483,7 +483,6 @@ classDiagram
     }
     class Selection {
       +int[] selection
-      +int[] pickOrder
       +Filter[] filters
     }
     class Switches {
@@ -876,15 +875,21 @@ them can. They reach it through three doors:
 | `/api/structure/periodicity` | the structure as it arrived, then the edit | every cell edit |
 | `/api/modify/*` | the structure the op produced | every edit, all eight ops |
 
-The third door is not eight doors. Every `/api/modify/*` route returns through
+The third door is not many doors. Every `/api/modify/*` route returns through
 one helper, `ok_structure_response`, and the check lives **in that return path**
 — so an op cannot answer without having been checked. "Always validated" is a
-property of the shape of the code, not of eight authors remembering.
+property of the shape of the code, not of each author remembering.
 
-(The eight are delete, add_atom, orient, rotate, translate, calibrate, electrode
-and symmetric_electrodes. There is a ninth `/api/modify/*` route, `meta`, and it
-is not an op: a GET of the dropdown enums, with no structure in either
-direction.)
+(The ops are delete, add_atom, orient, rotate, translate, calibrate and slab.
+`meta` and `lattice-from-run` are `/api/modify/*` routes and not ops: the first
+is a GET of the dropdown enums, the second reads a number out of a finished
+run, and neither carries a structure in both directions.
+
+There were two more until 2026-09-01 — `symmetric_electrodes`, which went with
+the Junction panel, and `electrode`, which `slab` replaced. **This paragraph
+counted eight and named them for months after the first was deleted**, which is
+the argument for the count being derived at the top of this table rather than
+written into prose beside it.)
 
 (`/api/structure/export` returns them too, but MolView does not call it — bytes
 leave through the `files` door, § 6.7.)
@@ -1039,7 +1044,21 @@ else:
 |---|---|---|
 | **it worked** | the change happened | the thing — the structure, the cell block |
 | **it was refused** | the server said no, or the request never completed | **it throws**, carrying the reason |
-| **there was nothing to do** | nothing is loaded · the viewer is read-only · an op was asked for that the controls already rule out · **one edit is already in flight** (§ 11.1) | **`null`**, and nothing else — none of these needs explaining |
+| **there was nothing to do** | the viewer is read-only · an op was asked for that the controls already rule out · **one edit is already in flight** (§ 11.1) · the **cell** door with nothing loaded — there is no box to change | **`null`**, and nothing else — none of these needs explaining |
+
+**"Nothing is loaded" is not one of these for an EDIT, and that is a
+correction.** An empty structure **is** a structure: `Structure(elements=[])` is
+legal, round-trips, and `add_slab` builds onto it. So an edit door with nothing
+loaded sends the request like any other, and the ops that need atoms answer the
+honest thing — with none there is nothing to delete, rotate or translate, so
+they return the empty structure unchanged.
+
+The rule was the other way until 2026-08-31, and it cost the feature it was
+blocking: `slab` places from absolute coordinates and needs no atoms at all, so
+"nothing loaded → null" meant **the first thing could not be built on an empty
+canvas** and the button did nothing with no message. The cell door keeps the old
+answer for a reason that survives: a cell is a property *of* a structure, and
+with none there is no box to change.
 
 **`null` is not a failure.** It is the answer to a question that was never really
 asked: there is no structure to edit, or the viewer does not edit, or the atoms
@@ -1595,6 +1614,38 @@ it; nonsense leaves the speed alone instead of stopping the timer.
 > silently capped the **slow** end at 1 fps — so the slowest setting the contract
 > offers, 3000 ms, actually played at 1000 ms.
 
+### 9.2a What leaves through the handle *(user, 2026-08-31)*
+
+*"Why would you expose all internal when there is no need for outside user to
+have them?"*
+
+`mount` returns `data`, and until 2026-08-31 that **was the model**, whose
+`selection`, `view` and `measurement` properties **were the stores**. So every
+internal door was public: `selection` alone offers eighteen, and outside code
+uses three.
+
+The module's own pieces — the panel, the view context, the render engine — are
+still handed the model itself, because **they are the module**. A tab is not,
+and it gets surfaces instead. The rule is not "only what is used today", which
+would make the API a record of its callers; it is:
+
+> **Reads are open. Operations are open. The one door left out of each store is
+> the one that has a ROUTER.**
+
+That door is `selection.toggle`. A pick is written by `pickAtom`, which decides
+whether a click means measuring or selecting (§ 11.6) — so a consumer calling
+`toggle` beside it writes straight past the rule. That is not hypothetical: it
+is exactly the defect the measurement track carried until this was written, one
+store over. Anything wanting to toggle an atom calls `pickAtom`.
+
+`measurement` additionally has no `adopt`: the picks do not persist (§ 11.6), so
+there is nothing to adopt them from.
+
+Everything else on the model — `applyOp`, `installMolecule`, the frame doors,
+the history, the getters — passes through unchanged. The surface narrows three
+properties; it does not re-list the model, so a door added to the model is
+reachable without anyone remembering to add it here.
+
 ### 9.3 The model — the one place the structure lives
 
 Every read of data returns a **copy**, so changing what you were given can never
@@ -2072,22 +2123,20 @@ are frozen, which the next op acts on — and a set is the honest shape for that
 order** or a **count limit** is a different kind of thing and belongs to the pick
 track (§ 11.6), which has both by construction.
 
-The snapshot **still carries `pickOrder`**, a click-order shadow of `selection`,
-and it is **on its way out** — the overlap is the tell: one field for "which
-atoms" and a parallel field for "in what order", maintained in lock-step on a
-store whose whole contract is that order does not matter. It was built for the
-angle vertex — a *measurement* — and when measurement got its own track the
-shadow had no user but one, the Cell page's axis gesture, which needs
-`second − first`. Pointing that gesture at the pick track instead retires the
-shadow: `selection` goes back to being the set it is documented as, and the
-order lives in the one store that promises it. It is still in § 6.2's shape
-diagram, because it is still there.
+**`pickOrder` is gone** *(2026-08-31)*. The snapshot carried a click-order
+shadow of `selection` — one field for "which atoms" and a parallel field for "in
+what order", maintained in lock-step on a store whose whole contract is that
+order does not matter. It was built for the angle vertex, a *measurement*, and
+when measurement got its own track the shadow was left with one user: the Cell
+page's axis gesture, which needs `second − first`. Pointing that gesture at the
+pick track retired it, and `selection` is the set it is documented as.
 
-Until it is gone the field takes **no new readers**. Its correctness cannot be
-demonstrated: `toggle` appends without sorting, so a click-built `selection` is
-already in click order, and every operation that sorts also hands over an empty
-trail — so no reachable state makes the two disagree, and a reader that consults
-the wrong one passes the whole suite. Measured, 2026-08-30.
+It could never have been shown correct, which is the second reason it went.
+`toggle` appends without sorting, so a click-built `selection` is *already* in
+click order, and every operation that sorts also handed over an empty trail — so
+no reachable state made the two disagree, and a reader consulting the wrong one
+passed the whole suite. Measured, 2026-08-30. `stores.js` deleted it, and
+`test_molview_stores_history.py` now pins its absence from the snapshot.
 
 - **The switches live here** — every one of them off by default, and the arrow
   scale at its default — not in the renderEngine and not in the panel.
@@ -2763,7 +2812,7 @@ depending on a different mechanism having fired — is exactly the shape of the
 drift bug described in § 10.6.
 
 The highlight already works this way. The rest is planned, not built
-([`roadmap.md`](?doc=roadmap.md)), and it changes none of § 10.5's four costs —
+([`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md)), and it changes none of § 10.5's four costs —
 it makes the overlay-refresh one do less.
 
 ---
@@ -2783,8 +2832,6 @@ shape, rather than each one being hand-coded:
 | `rotate` | the thing being rotated | `indices` | act on all atoms | — | unchanged |
 | `orient` | a reference the move is defined against | `anchors` | refuse | 2 | unchanged |
 | `add_atom` | a reference the new atom attaches to | `anchor_index` (one number) | refuse | 1 | grows |
-| `electrode` | a reference | `center_indices` | fall back to centring on the origin | — | grows |
-| `symmetric_electrodes` | a reference | `center_indices` | fall back to centring on the origin | — | grows |
 | `delete` | the atoms to remove | `indices` | refuse | — | shrinks |
 | `calibrate` | the thing being mapped | — | act on all atoms | — | unchanged, whole-structure only |
 | `slab` | **not read at all** | — | *(nothing to fall back from)* | — | grows |
@@ -2807,7 +2854,7 @@ selection would be a half-mapped structure. `slab` places its slab from
 **absolute coordinates** — a starting z, a growth direction and an (x, y)
 measured from the world origin — so there is nothing for a selection to mean;
 it is the one edit whose panel a user can drive with atoms picked and get the
-same answer either way (`plans/modify-redesign-plan.md` § 3). The shared
+same answer either way (`archive/2026-09-01-modify-redesign-plan.md` § 3). The shared
 mechanism is one flag: *the selection is not sent*.
 
 one atom selected never reaches the network. `calibrate` always takes the
@@ -2831,7 +2878,7 @@ when a structure has changed.
 
 ```js
 await viewer.data.applyOp("delete");                 // delete the selected atoms
-await viewer.data.applyOp("symmetric_electrodes");   // electrodes anchored on the selection
+await viewer.data.applyOp("slab");                   // append one fcc slab, placed absolutely
 // in a read-only viewer both do nothing — they would change the master copy (§ 9.4)
 ```
 
@@ -2898,7 +2945,7 @@ and *restore where I was* — and the third is what a session restore needs.
 (None of this is the Export menu's *Image*, which is a picture — § 11.3.)
 
 **Saving a state is something the user does.** An edit — a delete, a rotate, a
-new electrode — changes the structure and does **not** record a state; the user
+new slab — changes the structure and does **not** record a state; the user
 decides when the structure is worth being able to come back to, and says so.
 
 The one point nobody asks for is **point 0**, laid down when a structure is
@@ -3750,8 +3797,39 @@ saying it is what makes the same act support rather than surprise.
 owner** *(user, 2026-08-31: "this feels cleaner")*. Order and a small count limit
 are what it promises; measuring is one use of that promise. The **Cell page's
 axis gesture is the second**: two picks are a row of the cell matrix, one is the
-origin (§ 4 of `plans/modify-redesign-plan.md`), and both need exactly what this
+origin (§ 4 of `archive/2026-09-01-modify-redesign-plan.md`), and both need exactly what this
 store has and `selection` refuses to give — a first and a second.
+
+**Orient is the third, and an op declares which track it reads** *(user, 2026-08-31: "why don't we also unify the transform,
+orientation, all of this to use the same measurement API rather than relying on
+the selection itself")*. § 11.1's table gained one column, `ordered`, and it is
+this whole split expressed as data: a row that sets it resolves its group from
+this track, a row that does not resolves it from `selection`.
+
+It is a column rather than a rule each op remembers because the alternative had
+already failed. `orient` read `selection[0]` and `selection[1]` while the store
+**sorts** — `add()` does, and *All*, *Invert* and a filter produce a set with no
+pick order at all — so the same two atoms picked by clicking and picked by
+shift-range oriented in **opposite directions**, silently. At `tilt ≠ 0` that is
+a wrong structure; at `tilt = 0` it is a 180° flip. The readout above the button
+faithfully reported whichever order the set happened to hold, which is why it
+survived so long.
+
+Set operations leave the column unset, and that is not an oversight: order is
+meaningless to a delete or to a whole-structure rotation, and reading an
+ordered track would cap them at three atoms.
+
+**`add_atom` is a set op too, and the arity is why.** It needs exactly one
+anchor, and a set of one has no ambiguous first — there is no order to get
+wrong. It also shares the Atom tab with Delete, which is a set gesture: turning
+the ruler on there would take Delete's clicks away to serve an op that had no
+order problem. Unifying it would have cost a working gesture and bought
+nothing.
+
+The Transform tab turns the ruler on when reached and says so, exactly as the
+Cell page does — the same act, from `modify/ruler-lock.js`, because two panels
+doing one thing from two copies is how they come to say different things about
+one mode.
 
 The fit is closer than borrowing. At two atoms this track **already shows the
 signed `Δ = (Δx, Δy, Δz)`, second minus first** — which *is* the axis vector, so
@@ -3776,15 +3854,39 @@ is what a reader checks the derived number against. At two atoms, the distance
 from the first atom to the second, go this far along each axis*. At three, the
 angle.
 
-**And a mark on each picked atom** *(user, 2026-08-30: "the measurement selection
-need some indicator at the atom?")*. The chip names the atoms; the marks are what
-says which ones they are **on the molecule**, which is the difference between
-picking and picking blind. It is a **second glow**, not a second meaning for the
-first: an atom can be selected and measured at once, so the ruler's mark is cool
-where the selection's is warm, and a little wider — a measured-and-selected atom
-reads as a ring around the amber rather than replacing it. Content only, as
-§ 10.3's table has it: the pipeline emits *which* atoms and the sealed layer owns
-what a mark looks like.
+**And the marks carry the ORDER** *(user, 2026-08-30: "the measurement
+selection need some indicator at the atom?"; 2026-08-31: "using arrows to show
+what is the item that is selected and the direction of that selection ... then
+the orientation, the order, and everything is already shown in the drawing")*.
+The chip names the atoms; the marks say which ones they are **on the molecule**,
+which is the difference between picking and picking blind.
+
+| picks | drawn |
+|---|---|
+| 1 | a mark on that atom — there is no direction yet to show |
+| 2 | one arrow, **first → second** |
+| 3 | two arrows, first → second and second → third |
+
+**Why arrows and not a glow.** A glow said *which* atoms and nothing else, so an
+ordered pick and an unordered one looked identical — and that is not a cosmetic
+complaint: it is why `orient` reading a **sorted set** as though it were a click
+order went unnoticed for as long as it did (§ 11.1's `ordered` column). An arrow
+per step says which was first, so the picture stops needing the caption. At
+three picks the second arrow's tail is the angle's vertex, which is the same
+thing the readout says in words.
+
+**Its own shapes, not the arrow overlay.** Force arrows are ranked by length so
+the largest draws gold (§ 1.1); a measurement arrow in that bucket could be the
+longest and take the gold off the force that earned it. Two overlays, two
+buckets, no interaction.
+
+**A pick that is not on screen costs the arrows, not their correctness.** Under
+isolate a picked atom may not be drawn, and joining the two that *are* drawn
+would assert a step the user never made — so a broken chain falls back to
+marking what is visible. It says less rather than something untrue.
+
+Content only, as § 10.3's table has it: the pipeline emits *which* atoms in what
+order, and the sealed layer owns what a mark looks like.
 
 > **This replaced two doors nobody used.** The sealed layer carried `markers` and
 > `halos` — identical spheres-per-atom apart from a default opacity, both
@@ -3810,10 +3912,221 @@ is the confusion this whole layer exists to avoid. This one names what it clears
 sitting on it, and appears only while there is something to clear. It is also why
 the chip is the one overlay that may be clicked at all.
 
-**It is kept where looking is kept.** The track persists in the `<owner>:ui` lane
-(§ 11.2b) and nowhere else: never a state, never the draft, never the badge, never
-an export, never a request body, and never the structure or its sidecar — so it
-does not travel with a saved file.
+**It is kept where looking is kept.** The ruler's on/off persists in the
+`<owner>:ui` lane (§ 11.2b) and nowhere else: never a state, never the draft,
+never the badge, never an export, never a request body, and never the structure
+or its sidecar — so it does not travel with a saved file. **The picks do not
+persist at all** *(user, 2026-08-31)*: they name atoms in the molecule that is
+in the window, so a restore has nothing to restore them onto. They were
+persisted and re-adopted until then, guarded by an **atom count** — which two
+different three-atom molecules pass, so the readout came back quoting a bond
+length for atoms nobody had picked.
+
+**What a consumer may reach, and what it may not** *(user, 2026-08-31: "the
+internal selection states should not be accessible from outside the module …
+this is the only way to guarantee that you're not misusing any of those
+states")*. The model hands out a **surface**, not the store. It carries four
+things:
+
+| door | why it is open |
+|---|---|
+| `getState()` | the settled snapshot — the picks and whether the ruler is on, handed over whole (§ 8.4) |
+| `subscribe(fn)` | a reader repaints when the track changes |
+| `setActive(on)` | turning measuring on or off is a thing a **person** does |
+| `clear()` | so is emptying it — that is the chip's Clear |
+
+**`toggle` is not on it.** Writing a pick goes through `pickAtom` and nowhere
+else, because that is the one place that decides whether a click means
+measuring or selecting, and the one place a drawn index has already been
+translated to a real one. A second writer is how the routing rule comes to have
+an exception — and handing out the store published `toggle` to every consumer
+that asked for the track.
+
+**`adopt` does not exist.** It restored a session's picks from the view-context
+lane, guarded only by an atom count, which two different three-atom molecules
+pass. The picks do not persist at all now, so there is nothing to adopt them
+from, and a door left standing is an invitation to write that restore again.
+
+**And one read, not two spellings of it.** `get()` returned the picks while
+`getState()` returned the picks *and* the ruler's state, so two callers asked
+one question two ways. The store keeps `get()` for the model's own `readPicks`;
+the surface offers the snapshot.
+
+**WHEN IT CLEARS — every situation, and nothing outside this list**
+*(user, 2026-08-31: "define all situations that measurement selection will be
+cleared")*.
+
+Two causes, and they are different kinds of thing:
+
+**1. The molecule or its data changed.** The picks name atoms in the structure
+that was in the window, so they do not survive it changing. The rule lives in
+`settle`, which the model already calls *"every change to the structure — so it
+is settled HERE, once"*, and **no door decides it for itself**:
+
+| what happened | door |
+|---|---|
+| any edit — delete, translate, rotate, orient, add atom, slab | `applyOp` |
+| a cell commit | `commitPeriodicityOp` |
+| a structure loaded or replaced | `installMolecule` |
+| Retract, or restoring a saved state | `restoreState` |
+| writing a label | `writeLabel` |
+
+It was three call sites before this, and the fourth door proved the point
+before anyone wrote it down: the cell commit raised `history.edited()` and left
+the picks standing.
+
+**2. The user ended it.** Turning the **ruler off** clears them — the toggle is
+the session, so leaving it ends the session — and so does the chip's **Clear**,
+which empties the track *without* leaving the mode.
+
+Off used to keep them, on the reasoning that returning to a half-finished
+measurement costs nothing. It was not free: the Cell page's pick buttons read
+the COUNT, so they stayed enabled with the ruler off and a title reading *"turn
+measuring on"*, and pressing one staged a cell row from picks nothing on screen
+was showing. Off-with-picks and off-without behaved differently and looked
+identical. **Off now means nothing is being measured — one state, not two.**
+
+**WHAT DOES NOT CLEAR THEM, each for its own reason:**
+
+| | why it must not |
+|---|---|
+| frames arriving from a running job (`reloadFrames`, `addFrame`, `addFrames`, `setForces`) | § 12.4 is measuring **while a trajectory plays**: the picks are indices, the readout re-reads the current frame, and the value follows the movie. These doors **prove** the atoms are unchanged (`requireSameAtoms` runs before they land), which is what makes the exemption a fact rather than a judgement call — they pass `keepsAtoms` |
+| moving the displayed frame — scrubbing, playing | same reason: the value follows, the picks do not move |
+| isolate on or off | the picks are ORIGINAL indices and the marks survive isolate by design (§ 6.5) |
+| the selection changing — All, Invert, a filter, a label tick | a different track entirely (§ 9.5) |
+
+**And they never come back.** The picks are not persisted, so a reload or a
+restored session starts empty rather than re-adopting them.
+
+**What it reads.** Its atoms come from `measurement`, in **pick order** — which is
+why the vertex of a three-atom angle is the atom picked second, not the middle one
+by number. Its coordinates come from the **master copy at the current frame**
+(§ 6.3), never from the drawing.
+
+**What it shows.** Every picked atom's coordinates, at every count — the position
+is what a reader checks the derived number against. At two atoms, the distance
+**and** the signed `Δ = (Δx, Δy, Δz)`, second minus first, so it reads as *to get
+from the first atom to the second, go this far along each axis*. At three, the
+angle.
+
+**And the marks carry the ORDER** *(user, 2026-08-30: "the measurement
+selection need some indicator at the atom?"; 2026-08-31: "using arrows to show
+what is the item that is selected and the direction of that selection ... then
+the orientation, the order, and everything is already shown in the drawing")*.
+The chip names the atoms; the marks say which ones they are **on the molecule**,
+which is the difference between picking and picking blind.
+
+| picks | drawn |
+|---|---|
+| 1 | a mark on that atom — there is no direction yet to show |
+| 2 | one arrow, **first → second** |
+| 3 | two arrows, first → second and second → third |
+
+**Why arrows and not a glow.** A glow said *which* atoms and nothing else, so an
+ordered pick and an unordered one looked identical — and that is not a cosmetic
+complaint: it is why `orient` reading a **sorted set** as though it were a click
+order went unnoticed for as long as it did (§ 11.1's `ordered` column). An arrow
+per step says which was first, so the picture stops needing the caption. At
+three picks the second arrow's tail is the angle's vertex, which is the same
+thing the readout says in words.
+
+**Its own shapes, not the arrow overlay.** Force arrows are ranked by length so
+the largest draws gold (§ 1.1); a measurement arrow in that bucket could be the
+longest and take the gold off the force that earned it. Two overlays, two
+buckets, no interaction.
+
+**A pick that is not on screen costs the arrows, not their correctness.** Under
+isolate a picked atom may not be drawn, and joining the two that *are* drawn
+would assert a step the user never made — so a broken chain falls back to
+marking what is visible. It says less rather than something untrue.
+
+Content only, as § 10.3's table has it: the pipeline emits *which* atoms in what
+order, and the sealed layer owns what a mark looks like.
+
+> **This replaced two doors nobody used.** The sealed layer carried `markers` and
+> `halos` — identical spheres-per-atom apart from a default opacity, both
+> hard-coded to `[]` by their only caller since the embed they came from was
+> retired, and both taking their colour and radius **from the caller**, which
+> § 6.5 gives to the sealed layer. They are gone; one glow primitive draws the
+> selection and the ruler from two lists and two constants this layer owns.
+
+**When it repaints.** On a change to the track **or** a frame change — it
+subscribes to both (§ 6.4).
+
+That is what makes it correct in the two places a drawing-derived readout would be
+wrong: while a trajectory plays, because it re-reads the current frame; and under
+isolate, because the drawn numbering no longer matches the real one and it never
+looked at the drawn numbering (§ 6.5). Under isolate the 3D window stops feeding
+the ruler too, for the same reason it stops feeding the selection: the index a
+click yields is not the atom, and a measurement built from it would be the wrong
+atoms quoted to three decimal places.
+
+**Clear sits on the chip.** The selection panel has a Clear three inches away that
+empties something else; two buttons with one word meaning two things, in one card,
+is the confusion this whole layer exists to avoid. This one names what it clears by
+sitting on it, and appears only while there is something to clear. It is also why
+the chip is the one overlay that may be clicked at all.
+
+**It is kept where looking is kept.** The ruler's on/off persists in the
+`<owner>:ui` lane (§ 11.2b) and nowhere else: never a state, never the draft,
+never the badge, never an export, never a request body, and never the structure
+or its sidecar — so it does not travel with a saved file. **The picks do not
+persist at all** *(user, 2026-08-31)*: they name atoms in the molecule that is
+in the window, so a restore has nothing to restore them onto. They were
+persisted and re-adopted until then, guarded by an **atom count** — which two
+different three-atom molecules pass, so the readout came back quoting a bond
+length for atoms nobody had picked.
+
+**What a consumer may reach, and what it may not** *(user, 2026-08-31: "the
+internal selection states should not be accessible from outside the module …
+this is the only way to guarantee that you're not misusing any of those
+states")*. The model hands out a **surface**, not the store. It carries four
+things:
+
+| door | why it is open |
+|---|---|
+| `getState()` | the settled snapshot — the picks and whether the ruler is on, handed over whole (§ 8.4) |
+| `subscribe(fn)` | a reader repaints when the track changes |
+| `setActive(on)` | turning measuring on or off is a thing a **person** does |
+| `clear()` | so is emptying it — that is the chip's Clear |
+
+**`toggle` is not on it.** Writing a pick goes through `pickAtom` and nowhere
+else, because that is the one place that decides whether a click means
+measuring or selecting, and the one place a drawn index has already been
+translated to a real one. A second writer is how the routing rule comes to have
+an exception — and handing out the store published `toggle` to every consumer
+that asked for the track.
+
+**`adopt` does not exist.** It restored a session's picks from the view-context
+lane, guarded only by an atom count, which two different three-atom molecules
+pass. The picks do not persist at all now, so there is nothing to adopt them
+from, and a door left standing is an invitation to write that restore again.
+
+**And one read, not two spellings of it.** `get()` returned the picks while
+`getState()` returned the picks *and* the ruler's state, so two callers asked
+one question two ways. The store keeps `get()` for the model's own `readPicks`;
+the surface offers the snapshot.
+
+**When it clears — one rule, in one place** *(user, 2026-08-31: "this should be
+a system-wide handling framework of how and when to clear it up")*. A change to
+the structure clears the picks, and **no door decides that for itself**. The
+rule lives in `settle`, which the model already calls *"every change to the
+structure — so it is settled HERE, once"*, beside the notices rule that is
+settled there for the same reason.
+
+It had been three call sites, and the fourth door proved the point before
+anyone wrote this down: the **cell commit** raised `history.edited()` and left
+the picks standing.
+
+**The one exemption is not a judgement call.** A door is exempt when it has
+*proved* the atoms are unchanged — `requireSameAtoms` and `requireMatch` run
+before it lands — which is exactly the four doors that carry a running job's
+frames (`reloadFrames`, `addFrame`, `addFrames`, `setForces`). They must not
+clear, because § 12.4 is measuring an angle **while a trajectory plays**: the
+picks are indices, the readout re-reads the current frame, and clearing there
+would delete the measurement that feature exists to show. Everything else takes
+the default, a label write included — a label is data, and the rule is not worth
+an exception it does not need.
 
 > **What this replaced, and why it is gone.** The readout used to take its atoms
 > from `selection`, which can arrive with **no pick order at all** — from *All*,
@@ -4208,7 +4521,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.10 — the offered frames are drawable | appending to a structure with no movie rebuilds instead of extending nothing; a short drawing heals |
 | § 10.10 — only the master copy's count is offered | the count a consumer reads never comes from the drawing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |
-| § 11.1 — an empty selection means what the table says | with nothing selected, `translate` acts on every atom, `orient` refuses and `electrode` centres on the origin — three different answers, each read from the table rather than hand-coded per operation |
+| § 11.1 — an empty selection means what the table says | with nothing selected, `translate` acts on every atom, `orient` refuses, `delete` refuses and `slab` acts anyway — each read from the table rather than hand-coded per operation |
 | § 11.1 — a failed edit changes nothing | when the server refuses, the structure is exactly as it was and no history state is recorded |
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
@@ -4314,7 +4627,7 @@ neither does this document (§ 4).
 
 > **Planned, not built.** Saving more than one frame of a trajectory, and finer
 > control over exactly which parts of a drawing need refreshing, live in
-> [`roadmap.md`](?doc=roadmap.md).
+> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md).
 
 > **What is described here is what ships.** Being owned (§ 5.6) and its
 > consequences — one model per viewer, the handle as the way in rather than a

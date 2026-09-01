@@ -29,7 +29,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Matches the molbuilder/<name>@<major> convention used by
 # scheduler/record.py and bench/result.py (the same check_schema gate --
@@ -102,13 +102,23 @@ class Resources:
     #: and here for the reason the paragraph above gives: this is the road a
     #: field takes from a job to its wrapper, and the alternative is a second
     #: hand-maintained one.  Set from `task.json`'s `notify` block at prep
-    #: (`plans/bench-and-junction-plan.md` § 2.9).
+    #: (`archive/2026-09-01-bench-and-junction-plan.md` § 2.9).
     #:
     #: WHERE to send it is deliberately absent: the destination and its
     #: credential are the user's own file on the machine that runs the job,
     #: because a description travels and a token must not travel with it.
     notify_on_scf:      Optional[bool]  = None
     notify_every_hours: Optional[float] = None
+    #: WHICH channels, by NAME -- the only part of "where" that may ride
+    #: here, and it rides for the same reason the two above do.  A name is a
+    #: label the person chose on the machine that runs the job; the address
+    #: and the key it resolves to stay in that machine's own file.
+    #:
+    #: ``None`` is unset AND "every channel that machine has" -- the two
+    #: coincide, so an unset field renders no flag and behaves exactly as it
+    #: did before this existed.  An empty tuple is a real value meaning
+    #: none, and it renders a flag (`run-reports.md` 3.0).
+    notify_channels: Optional[Tuple[str, ...]] = None
     #: WHICH binary the wrapper launches; ``None`` = the engine's own
     #: (``siesta`` for a ``.fdf``).  Also not a SLURM flag -- the same
     #: job-to-wrapper road as ``continue_retries``.  Set by the transport
@@ -127,7 +137,8 @@ class Resources:
     #  be forgotten by one of them (generator.md § 5).
 
     def __post_init__(self) -> None:
-        """``time`` and ``mem`` hold the RECORD's spelling, always.
+        """``time`` and ``mem`` hold the RECORD's spelling, always, and a
+        sequence field holds its own type.
 
         The two fields are documented above as SLURM's own -- ``-t`` takes
         ``D-HH:MM:SS``, ``--mem`` takes ``80G`` -- while a person says
@@ -148,6 +159,18 @@ class Resources:
             self.time = canonical_time(self.time)
         if self.mem:
             self.mem = canonical_mem(self.mem)
+        # A TUPLE OUT, A TUPLE BACK.  `to_dict` is `asdict`, so a job-set
+        # file stores the names as a JSON array and `from_dict` hands them
+        # back as a LIST -- and a list never equals the tuple it was written
+        # from.  Every value this class holds was a scalar until 2026-08-31,
+        # so nothing here had to think about it; the first sequence field
+        # broke round-tripping the moment it landed, and quietly: the names
+        # still reach the wrapper, and only equality lies.
+        #
+        # Normalising HERE for the reason the paragraph above gives -- four
+        # roads reach this class, and a fix at one of them leaves three.
+        if self.notify_channels is not None:
+            self.notify_channels = tuple(self.notify_channels)
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

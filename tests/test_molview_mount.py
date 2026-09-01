@@ -440,7 +440,7 @@ def test_a_switch_and_a_selection_reach_the_drawing():
         const labelled = globalThis.__countCalls("addLabel");
 
         globalThis.__resetCalls();
-        viewer.data.selection.toggle(1);
+        viewer.data.pickAtom(1);
         const highlighted = globalThis.__countCalls("addSphere");
 
         // Isolate changes WHICH atoms are drawn, so the movie is reloaded and
@@ -713,7 +713,7 @@ def test_each_write_costs_what_the_cost_table_says_it_costs():
         counted.append = reloads();
 
         globalThis.__resetCalls();
-        viewer.data.selection.toggle(0);
+        viewer.data.pickAtom(0);
         viewer.data.selection.writeLabel("L-electrode");
         await new Promise((r) => setTimeout(r, 0));
         counted.tag = reloads();
@@ -793,27 +793,32 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
         viewer.data.measurement.setActive(true);
         const emptyTrack = readout.hidden;
 
+        // Picks go in through `pickAtom`, the one router -- writing them
+        // straight into the store would skip the rule that decides whether a
+        // click means measuring or selecting, which is the thing under test.
+        // (`toggle` is not on the handed-out surface at all any more.)
+
         // One atom: where it is.
-        viewer.data.measurement.toggle(1);
+        viewer.data.pickAtom(1);
         const one = lines();
 
         // Two: both positions, the distance, and the signed delta.
-        viewer.data.measurement.toggle(2);
+        viewer.data.pickAtom(2);
         const two = lines();
 
         // Three, picked 2nd-1st-3rd, so the VERTEX IS ATOM 0 — the one picked
         // second — even though atom 1 is the middle by number and by geometry.
         viewer.data.measurement.clear();
-        viewer.data.measurement.toggle(1);
-        viewer.data.measurement.toggle(0);
-        viewer.data.measurement.toggle(2);
+        viewer.data.pickAtom(1);
+        viewer.data.pickAtom(0);
+        viewer.data.pickAtom(2);
         const picked = result();
 
         // A BULK SELECTION CANNOT REACH THE TRACK, so the no-trail case the
         // geometric guess existed for cannot arise.
         viewer.data.selection.all(3);
         const afterBulk = result();
-        const trackAfterBulk = viewer.data.measurement.get();
+        const trackAfterBulk = viewer.data.measurement.getState().picks;
 
         // It follows the frame, because it re-reads the master copy.
         viewer.data.setCurrentFrame(1);
@@ -1018,7 +1023,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
 
         // A label, so there is something for the export to lose.
-        viewer.data.selection.toggle(0);
+        viewer.data.pickAtom(0);
         viewer.data.selection.writeLabel("L-electrode");
 
         const card = host.querySelector(".molviewer-card");
@@ -1830,7 +1835,7 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
 
         // Selecting an atom redraws the panel from the same snapshot — and must
         // not take the row out from under the typing either.
-        viewer.data.selection.toggle(0);
+        viewer.data.pickAtom(0);
         const survivedSelection =
             card.querySelector(".molviewer-filter-text") === typedInto;
 
@@ -2445,4 +2450,94 @@ def test_every_class_the_module_writes_is_one_the_stylesheet_defines():
     assert invented == {}, (
         f"these controls are drawn with classes the stylesheet never defines, so "
         f"they have no design at all: {invented}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# § 9.2 — what leaves through the handle is narrower than the module
+# ---------------------------------------------------------------------------
+
+def test_the_handle_hands_out_surfaces_not_the_stores():
+    """User, 2026-08-31: *"why would you expose all internal when there is no
+    need for outside user to have them?"*
+
+    `mount` returns `data`, and a tab is not the module.  The one door left out
+    of each store is the one with a ROUTER: a pick is written by `pickAtom`,
+    which decides measuring-vs-selecting, so `toggle` must not be reachable
+    beside it.  (`measurement` never had a public `toggle`; `selection` did.)
+    """
+    out = _run("""
+        const { viewer } = await mounted();
+        console.log(JSON.stringify({
+            selToggle:  typeof viewer.data.selection.toggle,
+            measToggle: typeof viewer.data.measurement.toggle,
+            measAdopt:  typeof viewer.data.measurement.adopt,
+            measure:    Object.keys(viewer.data.measurement).sort(),
+            // the doors a consumer was found to need still work
+            hasGet:     typeof viewer.data.selection.get,
+            hasSwitch:  typeof viewer.data.selection.setSwitch,
+            hasViewSet: typeof viewer.data.view.set,
+            // and everything else on the model still passes through
+            hasApplyOp: typeof viewer.data.applyOp,
+            hasInstall: typeof viewer.data.installMolecule,
+            hasPick:    typeof viewer.data.pickAtom,
+        }));
+    """)
+    assert out["selToggle"] == "undefined", (
+        "`selection.toggle` is reachable from a tab — a caller can write a pick "
+        "without `pickAtom`, so the measuring-vs-selecting rule never runs"
+    )
+    assert out["measToggle"] == "undefined"
+    assert out["measAdopt"] == "undefined"
+    assert out["measure"] == ["clear", "getState", "positions",
+                              "requestPicking", "setActive", "subscribe"]
+    for door in ("hasGet", "hasSwitch", "hasViewSet", "hasApplyOp",
+                 "hasInstall", "hasPick"):
+        assert out[door] == "function", f"{door} stopped passing through"
+
+
+# ---------------------------------------------------------------------------
+# § 11.6 — the ruler's marks carry the ORDER
+# ---------------------------------------------------------------------------
+
+def test_a_pick_reaches_the_drawing_as_a_mark_then_an_arrow():
+    """The whole chain, end to end: a click goes through `pickAtom`, the engine
+    derives the marks, and the sealed layer draws them — one pick a mark, two
+    an arrow running first→second (§ 11.6).
+
+    Two atoms, because that is what this harness's server stand-in returns
+    whatever is installed; the three-pick chain is covered where the drawing
+    layer is driven directly (`test_molview_3dmol_embed.py`).
+    """
+    out = _run("""
+        const { viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await waitForDrawing(() => globalThis.__lastCall("addModelsAsFrames"),
+                             "the structure never reached the window");
+        const frame = viewer.data.getFrameAllAtoms(viewer.data.currentFrame());
+        viewer.data.measurement.setActive(true);
+
+        globalThis.__resetCalls();
+        viewer.data.pickAtom(1);
+        const one = { arrows: globalThis.__countCalls("addArrow"),
+                      marks:  globalThis.__countCalls("addSphere") };
+
+        globalThis.__resetCalls();
+        viewer.data.pickAtom(0);
+        const arrow = globalThis.__lastCall("addArrow");
+        console.log(JSON.stringify({
+            one,
+            twoArrows: globalThis.__countCalls("addArrow"),
+            start: arrow ? arrow.args[0].start.x : null,
+            end:   arrow ? arrow.args[0].end.x   : null,
+            atom1x: frame[1][0], atom0x: frame[0][0],
+        }));
+    """)
+    assert out["one"]["arrows"] == 0, "one pick has no direction to draw"
+    assert out["one"]["marks"] >= 1, "...but it is marked, or the pick is invisible"
+    assert out["twoArrows"] == 1, "the second pick makes it an arrow"
+    assert (out["start"], out["end"]) == (out["atom1x"], out["atom0x"]), (
+        f"the arrow runs {out['start']} -> {out['end']}, but atom 1 was picked "
+        f"FIRST (x={out['atom1x']}) and atom 0 second (x={out['atom0x']}) — the "
+        f"arrow must follow the click order, which is what it exists to show"
     )

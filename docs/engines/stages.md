@@ -1313,18 +1313,96 @@ separate question and still open (`project-layout.md § 8`).
 
 ### 6.8a `allocation` — what this calculation asks the scheduler for
 
-*(Added 2026-08-24, user.)* Three optional fields, and absent means
-**unstated**:
+*(Added 2026-08-24, user.  Extended 2026-09-01: the machine-answered
+values, and a per-stage form — see § 6.8b.)*  Optional fields, and absent
+means **unstated**:
 
 ```json
 "allocation": { "domain": "htc", "time": "0-04:00:00", "mem": "128G" }
 ```
+
+and, once the machine-answered values below are read, the same block carries
+them beside those three — `"mpi_np": 8, "omp_threads": 6, "use_gpu": true`.
 
 | field | what it says |
 |---|---|
 | `domain` | which **queue** — the same answer `--domain` gives |
 | `time` | the **wall**. Unstated, the target queue's own ceiling is requested |
 | `mem` | the **memory ask**. Unstated, the scheduler's own default decides |
+| *machine-answered items* | the values the **run** should use — `mpi_np`, `omp_threads`, `use_gpu` and any other catalogue item the template declares `allocation` (`template.md` § 6.2). One value each, never a list |
+
+**Why the machine-answered values are allowed here, when `bench` may not
+hold a chosen one.** § 6.8's rule stands and this does not bend it: *the
+file records what a person asked, never what a machine found.* `"measure
+ranks at 4, 8, 16"* is a plan and belongs in `bench`; **`"run it at 8"` is
+equally an ask**, made by a person who has read the benchmark — or who
+already knows. What § 6.8 refuses is a *finding* copied back into the
+description, and what `read_template` refuses is a value on an allocation
+item in the **template**, which is a different file with a different job.
+
+This is the same argument § 6.8a already made for `domain`: a queue name is
+not portable either, and it is here because *choosing it* is a decision
+about this calculation. A rank count chosen by a person is the same kind of
+statement. What would still be wrong is `summarize` writing one back — that
+is a finding, and its home is `run-config.toml`, unchanged.
+
+**Precedence, field by field**, and it extends the existing rule rather than
+replacing it:
+
+> a `prep` **flag** > this block > the stage's `run-config.toml` > the
+> wrapper's runtime policy
+
+`run-config.toml` is still *"the proposal you edit"* — it now fills the
+fields **neither** your flags nor your description stated. Stating a value
+here is the browser's way of doing what editing that file does at a
+terminal, and it works **before any prep has run**, which the file cannot:
+it lives inside the bundle a prep creates.
+
+### 6.8b Per stage, when the stages differ
+
+A ladder's rungs do not always want the same machine — a coarse rung is
+cheap and a tight one is not, and the wall above all. So `allocation` takes
+a per-stage form, and the flat form above is the default every stage
+inherits:
+
+```json
+"allocation": { "domain": "htc", "time": "0-04:00:00", "mem": "128G" },
+"stage_allocation": {
+  "tight": { "time": "2-00:00:00", "mpi_np": 16 }
+}
+```
+
+**Field by field, again.** A stage's block overrides only the fields it
+names; everything else comes from the flat block, and what neither states
+is unstated. One rung asking for a longer wall does not have to restate the
+queue.
+
+**Absent is a state**, as everywhere else here: no `stage_allocation` key
+means every stage uses the flat block, which is exactly what every
+description written before 2026-09-01 says.
+
+### 6.8c `bench_allocation` — measuring is not running
+
+*(user, 2026-09-01: "launch target for run may be different from bench (due
+to the time requirement etc) so you should be careful to differentiate the
+time limit that is for bench only and the time limit for actual run.")*
+
+A benchmark is short by construction — `max_scf_iter: 3`, one point, no
+relaxation — and a run is not. Asking for the run's wall while measuring
+queues a thirty-second job behind a two-day reservation; asking for the
+bench's wall while running kills the calculation. They are two asks:
+
+```json
+"bench_allocation": { "domain": "general", "time": "0-00:30:00" }
+```
+
+Same fields as `allocation`, same field-by-field precedence, and **absent
+means "use `allocation`"** — so nothing that already works changes. It is a
+flat key rather than a member of `bench` because `bench` maps an axis to
+its points and a reader should not have to tell a knob from a wall.
+
+The machine-answered values have no meaning here: what to measure is
+`bench`'s own list, and one of those points is what each trial runs.
 
 **Why it is here and not in `bench`.** § 6.8's rule still holds — the file
 records what a person *asked*, never what a machine *found* — and these are
@@ -1654,7 +1732,7 @@ rule and the reasoning.
 > covered everything** *(corrected 2026-08-11)*. It read *"nothing schedules a
 > stage after another, **here or anywhere**"* — and the transport composite's
 > bias chain runs a scan's points in sequence under one submission
-> (`plans/transport-design.md` § 4.3; it was `transport bundle`'s
+> (`archive/2026-09-01-transport-design.md` § 4.3; it was `transport bundle`'s
 > `run-transport.sh` until the composite retired it, 2026-08-29).
 >
 > **The two are different relationships, and the difference is what the rule is
@@ -1931,7 +2009,7 @@ were written for a flat directory and would silently have lost data in a tree.
   bundled** (retired 2026-08-29; `job-contracts.md` § 5 holds the closure).  A
   calculation that builds on a finished result names the attempt explicitly
   (a directory whose files satisfy the § 4.1b condition) and `prep` composes from it —
-  [`plans/transport-design.md`](?doc=plans/transport-design.md) § 4.1 is the
+  [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1 is the
   shipped instance.  The which-script tie-break question the old handoff carried
   died with it: a citation names ONE attempt, so there is nothing to guess.
 - **What a checkpoint history must always hold** —
@@ -1940,5 +2018,5 @@ were written for a flat directory and would silently have lost data in a tree.
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
   [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
-  [`roadmap.md`](?doc=roadmap.md) — the *status-lives-in-the-roadmap* rule,
+  [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — the *status-lives-in-the-roadmap* rule,
   not § 4's R3.

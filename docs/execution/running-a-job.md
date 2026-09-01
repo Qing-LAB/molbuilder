@@ -549,7 +549,7 @@ run-viewer will reuse (the status note below).
 > **ETA** timing (`estimated_remaining_s` is a Phase-1 `None` stub) — is **not
 > built and has been superseded**: the forward plan reuses *this* shipped
 > decoder directly in the web front-end (see
-> [`roadmap.md`](?doc=roadmap.md) workstream 1, "Batch execution reaches the
+> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) workstream 1, "Batch execution reaches the
 > web"), rather than a separate monitor/webhook service. (The standalone
 > `molbuilder monitor` CLI poller in § 4.1 is a different, simpler subsystem —
 > don't conflate the two.)
@@ -581,9 +581,10 @@ values provenance may print.)*
 
 ### 5.1 Where config lives, and merge order
 
-- **Server-wide** `molbuilder.json` — looked up in the current directory first,
-  then the XDG fallback (`$XDG_CONFIG_HOME/molbuilder/molbuilder.json`, else
-  `~/.config/molbuilder/molbuilder.json`). Only one server-wide file is read.
+- **Server-wide** `molbuilder.json` — **one file**, in the config directory:
+  `$MOLBUILDER_CONFIG_DIR` if set, else `$XDG_CONFIG_HOME/molbuilder/`, else
+  `~/.config/molbuilder/`. There is no search and no working-directory step; a
+  `./molbuilder.json` is not read (`configuration.md` § 2.1a).
 - **Project** `.molbuilder.json` — in the project directory.
 - **Merge** — objects deep-merge, scalars/arrays replace, and **project wins**.
   (`script_generation` has a bespoke merge: preambles concatenate server-then-
@@ -703,7 +704,7 @@ from:**
 
 | file | scope | found where |
 |---|---|---|
-| `molbuilder.json` (no dot) | **this machine** — activation, scheduler, `execution.mode` | the directory the command runs from, else `~/.config/molbuilder/` |
+| `molbuilder.json` (no dot) | **this machine** — activation, scheduler, `execution.mode` | the config directory: `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` |
 | `.molbuilder.json` (dotted) | **this calculation** — travels with the folder | inside the calculation, beside `task.json`; **wins on conflict** |
 
 `prep` and `launch` print the provenance — every path consulted, found or

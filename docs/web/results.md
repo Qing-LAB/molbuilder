@@ -214,7 +214,7 @@ ruling): **one kind of job never bundles itself up for another.**  A
 calculation that builds on a finished result CITES it — the transport
 tab picks the junction attempt actively and prep fuses the final
 geometry with the labels itself, with the sort and the gates the bundle
-never had (`plans/transport-design.md` § 4.1,
+never had (`archive/2026-09-01-transport-design.md` § 4.1,
 `transport/compose.py`).  Structure → execution hand-overs
 (builder/modify → parameter tab → Task setup) are a different thing and
 remain.  History: `docs/archive/2026-08-29-handoff-bundle.md`.
@@ -353,7 +353,7 @@ The Results shell is still **classic**: `results/viewer.js` plus
 (`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
 load in order. Converting them is task #103 (the "remaining classic modules" pass,
 alongside the runtime registry and the shared primitives —
-[`roadmap.md § 3`](?doc=roadmap.md)). The heavy viewers this shell *mounts* are on
+[`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md)). The heavy viewers this shell *mounts* are on
 a different track — the trajectory and spectra engines convert in the #102
 file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
 

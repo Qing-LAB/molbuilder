@@ -1512,9 +1512,14 @@ def test_the_count_requirement_is_checked_before_the_request_goes_out():
 
 
 def test_an_empty_selection_means_what_the_table_says():
-    """§ 13.3: "with nothing selected, `translate` acts on every atom, `orient`
-    refuses and `electrode` centres on the origin — three different answers, each
-    read from the table rather than hand-coded per operation."
+    """§ 13.3: with nothing selected, `translate` acts on every atom, `orient`
+    refuses, `delete` refuses and `slab` acts anyway — each read from the table
+    rather than hand-coded per operation.
+
+    *It used to pin `electrode` here, as the one op whose empty-selection
+    answer was `"origin"` — fall back to centring on the world origin. That op
+    and that column value both went on 2026-09-01, so the case is gone; what
+    the test is FOR is unchanged, and the remaining answers still differ.*
     """
     out = _run(
         """
@@ -1522,20 +1527,23 @@ def test_an_empty_selection_means_what_the_table_says():
         globalThis.__requests = [];
         const translate = await m.applyOp("translate");
         const orient = await m.applyOp("orient");
-        const electrode = await m.applyOp("electrode");
+        const del = await m.applyOp("delete");
+        const slab = await m.applyOp("slab");
         console.log(JSON.stringify({
             translate: translate !== null,
             orient: orient !== null,
-            electrode: electrode !== null,
+            del: del !== null,
+            slab: slab !== null,
             routes: globalThis.__requests.map(r => r.route),
         }));
         """
     )
     assert out["translate"] is True, "translate with nothing selected acts on all atoms"
     assert out["orient"] is False, "orient with nothing selected refuses"
-    assert out["electrode"] is True, "electrode falls back to centring on the origin"
-    assert out["routes"] == ["/api/modify/translate", "/api/modify/electrode"], (
-        f"three different answers, and only two go out: {out['routes']}"
+    assert out["del"] is False, "delete with nothing selected refuses"
+    assert out["slab"] is True, "slab reads no selection, so it acts anyway"
+    assert out["routes"] == ["/api/modify/translate", "/api/modify/slab"], (
+        f"the two that refuse must not reach the network: {out['routes']}"
     )
 
 

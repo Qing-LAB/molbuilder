@@ -1477,7 +1477,7 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "staging",
         "label":     "Use GPU (NVIDIA)",
         # OPTIONAL accelerator on top of an ELPA ``diag_algorithm``
-        # (engines/siesta.md § 13).  It does NOT select ELPA -- that's
+        # (engines/siesta.md § 7).  It does NOT select ELPA -- that's
         # the ``diag_algorithm`` field.  use_gpu only decides where an
         # already-chosen ELPA solve runs:
         #   * ON  -> ``Diag.ELPA.GPU .true.``  (GPU-only, no CPU fallback)
@@ -1530,7 +1530,7 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "budget",
         "label":     "Diagonalizer",
         # The EIGENSOLVER choice -- independent of hardware (engines/
-        # siesta.md § 13, rewritten 2026-06-29).  ELPA runs on CPU AND
+        # siesta.md § 7, rewritten 2026-06-29).  ELPA runs on CPU AND
         # GPU; ``use_gpu`` only moves an ELPA solve onto the GPU.
         #   * ScaLAPACK -> emit NOTHING (SIESTA's built-in Divide-and-
         #     Conquer default); runs in the precompiled ``molbuilder-siesta``.

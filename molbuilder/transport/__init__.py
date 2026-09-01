@@ -1,6 +1,6 @@
 """Electronic transport — the COMPOSITE calculation's engine layer.
 
-The front door of `plans/transport-design.md` § 4.1: one calculation
+The front door of `archive/2026-09-01-transport-design.md` § 4.1: one calculation
 cites a finished junction attempt and derives five stages.  What lives
 here:
 

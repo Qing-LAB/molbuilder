@@ -395,8 +395,8 @@ class Structure:
     # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
     vacuum:        Optional[Tuple[float, float, float]] = None
     # World-space LOW CORNER an EXPLICIT ``cell`` emanates from (Angstrom), or None
-    # = (0,0,0) (structure-periodicity.md § 3c).  Editing convenience: an op that
-    # builds a cell AROUND off-origin atoms (e.g. add_electrode_slab, whose slabs
+    # = (0,0,0) (structure-periodicity.md § 6).  Editing convenience: an op that
+    # builds a cell AROUND off-origin atoms (e.g. add_slab, whose slabs
     # straddle the origin) sets this to the structure's low corner so the cell WRAPS
     # the atoms WITHOUT moving them -- the molecule/selection stays pinned where the
     # user placed it.  SIESTA correctness is restored at generation: render_fdf
@@ -415,7 +415,7 @@ class Structure:
     # every existing call site is unchanged.
     annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
     #: Free-form, NON-structural metadata (user, 2026-08-29 --
-    #: `plans/structure-info-plan.md`): a JSON dict of key -> value that
+    #: `archive/2026-09-01-structure-info-plan.md`): a JSON dict of key -> value that
     #: DESCRIBES the structure (a recorded electronic contract, a note)
     #: without being part of it.  Deliberately outside METADATA_FIELDS:
     #: that set is the strictly-enumerated STRUCTURAL block (unknown keys
@@ -579,7 +579,7 @@ class Structure:
         The consumer contract: the viewer draws the cell wireframe FROM this corner
         (so the box wraps the structure), and ``render_fdf`` translates atoms by
         ``-resolve_cell_origin()`` so SIESTA receives them inside ``[0, cell)`` with
-        the cell at ``(0,0,0)``.  Three cases (structure-periodicity.md § 3c):
+        the cell at ``(0,0,0)``.  Three cases (structure-periodicity.md § 6):
 
           * EXPLICIT cell + ``cell_origin`` set (an electrode junction: the cell was
             built AROUND off-origin atoms) -> ``cell_origin``.  The box wraps the
@@ -915,7 +915,7 @@ class Structure:
         (the flat ``atoms`` list, ``issues``, ``text``, ``extra``); it must NOT
         re-list any periodicity / metadata field.  Not round-tripped by
         :meth:`from_dict` -- ``resolved_*`` are derived, read-only fields."""
-        # The ONE resolver (structure-periodicity.md § 3a/3c), run once, here.
+        # The ONE resolver (structure-periodicity.md §§ 4, 6), run once, here.
         # A periodic axis without a lattice raises -> no resolved box (None),
         # matching the previous hand-rolled behaviour in _shared.
         try:
@@ -958,7 +958,7 @@ class Structure:
                 # structure-periodicity.md.)
             },
             "annotations":   annotations_to_json(self.annotations),
-            # The `info` store (plans/structure-info-plan.md): sent whole
+            # The `info` store (archive/2026-09-01-structure-info-plan.md): sent whole
             # so the viewer's Metadata pane shows exactly what the pair
             # will carry.
             "info":          dict(self.info),
@@ -1720,7 +1720,7 @@ class Structure:
         """Return a deep-ish copy: all metadata lists are duplicated;
         ``positions`` is copied so the new Structure can be mutated
         without affecting the original.  Used by op helpers that
-        return the input unchanged (e.g. ``add_electrode_slab`` with
+        return the input unchanged (e.g. ``add_slab`` with
         ``n_layers <= 0`` short-circuits to ``struct.copy()`` rather
         than open-coding the field-by-field rebuild three times).
         """
@@ -1851,7 +1851,7 @@ class Structure:
                     annotations, remap_annotations(s.annotations, off))
             atom_offset += s.n_atoms
         # Carry the FIRST input's lattice (the conventional base when
-        # concatenating, e.g. add_electrode_slab builds onto a base
+        # concatenating, e.g. add_slab builds onto a base
         # structure).  The caller owns making the cell big enough for
         # the merged atoms — concat can't infer a new lattice.
         base_cell = next((s.cell for s in structures if s.cell is not None),

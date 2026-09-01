@@ -74,7 +74,7 @@ REGION_BRIDGE          = "bridge"
 #: Atoms excluded from the NEGF region entirely (``TS.Atoms.Buffer``):
 #: padding at the OUTER ends of the device, beyond the electrode blocks.
 #: Optional -- most 2-terminal junctions need none.  Named 2026-08-28 with
-#: the transport composite design (plans/transport-design.md § 4.1a); the
+#: the transport composite design (archive/2026-09-01-transport-design.md § 4.1a); the
 #: categorical sort places buffer atoms outermost, by transport coordinate.
 REGION_BUFFER          = "buffer"
 

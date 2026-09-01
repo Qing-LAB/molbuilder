@@ -190,22 +190,7 @@ label[title] > select { cursor: auto; }
 }
 
 
-/* THE VIEWER IS WIDE CONTENT BELOW ITS OWN FLOOR (2026-08-23).
- *
- * MolView declares what it needs to render at all --
- * `--molviewer-size-card-min-width`, 368px: the wider of its two stacked
- * pieces plus the card's padding and border.  A viewport that cannot give it
- * that is not a layout to fix; the module says so itself, and its card
- * correctly refuses to shrink past the floor.
- *
- * What was wrong was the CLIPPING.  The card stuck 18px out of its host and
- * the knob bar's right-hand controls were simply gone -- no scrollbar, no
- * sign anything was missing.  `ui-contract.md` § 3's rule for content wider
- * than its container is that it scrolls inside its OWN box rather than
- * dragging the page sideways, and a 3-D viewer with a control bar is exactly
- * that content on a phone.
- *
- * Above the floor this rule never engages: there is nothing to scroll. */
-#viewer-host {
-    overflow-x: auto;
-}
+/* The viewer host's overflow rule lives with the module that needs it
+   (`lib/molview/molview.css`, `.molviewer-host`) -- it was this same 18-line
+   comment and one declaration in TWO tab sheets, differing only in the id.
+   `ui-contract.md` § 1: a widget used on more than one page has one owner. */

@@ -93,7 +93,7 @@ def test_the_accumulative_records_name_no_deck_keyword():
 
 
 def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
-    """P5 (transport-design.md 4.3) split the two TS rows: `.TSDE` is
+    """P5 (archive/2026-09-01-transport-design.md 4.3) split the two TS rows: `.TSDE` is
     the NEGF density -- THE warm state of a continued device run and the
     file the bias chain hands along -- so it carries; `.TSHS` stays
     inventory-only ON PURPOSE (a product of its own deck; the device's

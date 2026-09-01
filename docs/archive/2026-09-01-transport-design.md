@@ -1,5 +1,13 @@
 # Transport — the composite calculation, designed top-down
 
+
+> **ARCHIVED 2026-09-01.**  Its open items moved to the one plan,
+> [`plans/plan.md`](?doc=plans/plan.md); what stays here is the record of
+> what was decided and built.  Nine plan documents were consolidated that
+> day *(user: "We don't need ten plan files scattered")*, and a fact-check
+> against the code found three of the nine headers stating the opposite of
+> what had shipped.
+
 **Role:** plan (design of record once approved; graduates to a contract
 when built)
 **Domain:** execution

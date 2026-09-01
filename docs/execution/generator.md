@@ -12,7 +12,7 @@ steps, and § 2.3.1a's *framework vs specialisation* split, which this makes
 executable;
 [`execution/job-contracts.md`](?doc=execution/job-contracts.md) — the file
 formats it writes;
-[`roadmap.md`](?doc=roadmap.md) — how much of this the code holds today.
+[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — how much of this the code holds today.
 
 > **This document says what every value is, and where it came from.** It is the
 > authority for the *data spine* of execution — catalogue → template →
@@ -24,7 +24,7 @@ formats it writes;
 > order, and what each engine supplies at each one. Values here, files there —
 > and the two have different readers, which is why they are two documents.
 > It says nothing about *when* any of it gets built — that is
-> [`roadmap.md`](?doc=roadmap.md) and the staged-runs plan.
+> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) and the staged-runs plan.
 
 ---
 

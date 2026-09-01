@@ -1,4 +1,4 @@
-"""The categorical sort — `plans/transport-design.md` § 4.1a.
+"""The categorical sort — `archive/2026-09-01-transport-design.md` § 4.1a.
 
 TranSIESTA identifies electrode atoms by POSITION in the device's atom
 list (Brandbyge et al., PRB 65, 165401 (2002) § III; the 4.1+

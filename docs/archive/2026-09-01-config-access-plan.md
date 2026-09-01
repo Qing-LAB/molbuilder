@@ -1,5 +1,13 @@
 # One root for the server's own configuration
 
+
+> **ARCHIVED 2026-09-01.**  Its open items moved to the one plan,
+> [`plans/plan.md`](?doc=plans/plan.md); what stays here is the record of
+> what was decided and built.  Nine plan documents were consolidated that
+> day *(user: "We don't need ten plan files scattered")*, and a fact-check
+> against the code found three of the nine headers stating the opposite of
+> what had shipped.
+
 **Role:** plan (steps 1–4 built 2026-08-31; step 5, the read/write door, open)
 **Domain:** ops · execution
 **Started:** 2026-08-31
@@ -8,9 +16,23 @@ contract this settles, edited as each step landed ·
 [`ops/deployment.md`](?doc=ops/deployment.md) § 5 — the operator's view
 
 
-> **Status.** Design, settled 2026-08-31. **No code yet** — written first on
-> the user's instruction, and consolidated from four rounds of correction into
-> one reading rather than a chronology of them.
+> **Status.** Settled 2026-08-31, and **steps 1–4 are built**; step 5 is
+> substantially built too. `config_dir.py` now names `config_dir()`,
+> `state_dir()`, `runtime_dir()` **and the files themselves** — `session_key`,
+> `google_client_secret`, `logs_dir`, `reports_dir`, `serve_pidfile`,
+> `serve_log`, `serve_stacks_log` — and `paths.logs` / `run` / `reports` are
+> retired and refused (`runtime_config.py`).
+>
+> **Four hand-joins remain** of § 5.1's nine, and one of them is not residue:
+> `monitor.py` owns `NOTIFY_FILENAME` / `NOTIFY_KEYS_FILENAME` deliberately,
+> because that module ships to a compute node with nothing else importable and
+> is the format owner for the exchange (A11). The other three —
+> `runtime_config`'s `molbuilder.json`, `scheduler/record`'s
+> `environment.json` — are step 5's remainder.
+>
+> *This block read "**No code yet** — written first on the user's instruction"
+> until 2026-09-01, while the header two lines above already said steps 1–4
+> were built. One document, two answers.*
 >
 > The rules here are what the code will be held to. Where they change a rule
 > `configuration.md` already states, that document is the one that must be

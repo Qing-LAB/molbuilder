@@ -694,68 +694,141 @@
     font: inherit;
     font-variant-numeric: tabular-nums;
 }
-/* Where the messages go is machine setup, not a calculation's decision --
-   said quietly, because it is a pointer rather than a control. */
-.ts-notify-where { display: block; margin-top: var(--space-xs); }
+/* `.ts-notify-where` was here and matched nothing -- no markup ever carried
+   it, in this revision or in any before it, and no code composes the name
+   (`ui-contract.md` § 8's traps 1 and 4 both checked).  What it described --
+   a quiet pointer to where the messages go -- is the This-machine tab now,
+   and lives in that tab's own sheet.  Removed 2026-09-01. */
 
-/* ---------- where the reports go (a MACHINE setting) ---------- */
-/* A sibling of .ts-notify-*, not a variant of it: that card writes
-   task.json and this one writes a file on this machine.  Sharing a class
-   would invite one restyle to move both. */
-
-.ts-reports-path { display: block; margin-top: var(--space-xs); }
-
-.ts-reports-state {
-    margin: var(--space-sm) 0;
+/* ---------- one tab per rung (task-setup.md 11) ---------- */
+/* The alternative grows the page by one block per stage; a five-rung ladder
+   becomes a page nobody scrolls to the bottom of. */
+.ts-steptabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-soft);
+}
+.ts-steptab {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-xs);
+    border: 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: transparent;
     color: var(--text-secondary);
 }
-/* State reads as text FIRST and colour second: a person who cannot
-   distinguish these hues still gets the whole answer from the sentence. */
-.ts-reports-state[data-state="set"] { color: var(--text-primary); }
-/* `--error`, which the palette defines.  It was `--danger` for one
-   revision -- a token that does not exist anywhere, so the colour was
-   simply unset.  The sheet is tested for raw hex, NOT for whether a token
-   is real, so nothing would have said. */
-.ts-reports-state[data-state="bad"] { color: var(--error); }
+.ts-steptab:hover { color: var(--text-primary); }
+/* AN ACCENT, NOT AN OVERLAP.  The usual "tab sits on the rule" treatment
+   wants a -1px pull, and § 4 admits no value off the scales -- a hairline
+   nudge is exactly the magic number the guard is there to catch.  A filled
+   tab with an accent edge says the same thing with tokens only. */
+.ts-steptab.is-active {
+    color: var(--text-primary);
+    background: var(--bg-card);
+    box-shadow: inset 0 var(--space-xs) 0 calc(-1 * var(--space-xs) + 2px)
+                var(--accent);
+}
+/* `display:flex` on the class outranks the `hidden` attribute's own
+   `display:none`, so a closed panel would stay in the layout while the code
+   believed it was gone -- the failure `test_css_hidden_attribute_audit.py`
+   exists for. */
+.ts-next-step[hidden] { display: none; }
 
-.ts-reports-form { display: flex; flex-direction: column; gap: var(--space-sm); }
-/* `display: flex` on a class OUTRANKS the `hidden` attribute's own
-   `display: none`, so the form would stay in the layout while the code
-   believed it was gone.  This is the failure `test_css_hidden_attribute_
-   audit.py` exists for, and it caught it. */
-.ts-reports-form[hidden] { display: none; }
+/* ---------- what a prep will write, per stage (task-setup.md 7.1) --- */
+.ts-plan { margin-top: var(--space-md); }
+.ts-plan[hidden] { display: none; }
 
-.ts-reports-row {
+.ts-planlist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
+    flex-direction: column;
+    gap: var(--space-xs);
 }
-/* The two labels share a column so the inputs line up; the width is the
-   longer word plus breathing room, not a magic number tuned by eye. */
-.ts-reports-label { flex: none; width: 5rem; color: var(--text-secondary); }
-.ts-reports-input {
-    flex: 1 1 auto;
-    min-width: 0;                    /* or a long url forces the card wide */
-    font-family: var(--font-mono, monospace);
+.ts-planrow {
+    display: grid;
+    /* stage | directory | what it asks for.  The ask is the elastic one:
+       a rung that states nothing and one that states four values must not
+       move the two columns a reader scans down. */
+    grid-template-columns: max-content max-content minmax(0, 1fr);
+    gap: var(--space-xs) var(--space-sm);
+    align-items: baseline;
+    font-size: var(--text-sm);
+}
+.ts-plan-stage { font-weight: 600; }
+.ts-plan-dir { color: var(--text-secondary); }
+.ts-plan-ask {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+/* The bench is a row of the same list because it is prepared the same way;
+   quieter because it is a measurement, not the calculation. */
+.ts-planrow--bench .ts-plan-stage { font-weight: 400; color: var(--text-muted); }
+
+/* ---------- the bench's own queue and wall (stages.md 6.8c) ---------- */
+/* COLLAPSED because absent means "use the run's", which is the common case.
+   Reuses `.ts-asks` / `.ts-ask` from the queue card -- the same two fields
+   asking the same two questions, one measurement over. */
+.ts-benchalloc { margin: var(--space-sm) 0; }
+.ts-benchalloc > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
     font-size: var(--text-sm);
 }
 
-/* The far-machine case: a block to copy, so it scrolls on its own rather
-   than stretching the page (`ui-contract.md` -- wide content owns its
-   overflow). */
-.ts-reports-cmd {
-    overflow-x: auto;
-    padding: var(--space-sm);
-    background: var(--bg-card-elev);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    white-space: pre;
+/* ---------- what the RUN will use (task-setup.md 6.2b) ---------- */
+/* COMPOSITION ONLY.  The rows reuse `.ts-row` / `.ts-points` / `.ts-fit`
+   from the bench block above -- one value each is the same shape as one
+   point, and giving the run its own row vocabulary would be a second
+   owner for one look. */
+
+.ts-runvals { margin-top: var(--space-md); }
+.ts-runvals[hidden] { display: none; }
+
+/* An unstated row is not an error -- it is the state every description was
+   in before this card existed.  Quieter, never struck. */
+.ts-row[data-kind="unstated"] .ts-row-name { color: var(--text-secondary); }
+
+.ts-runval {
+    min-width: 0;
+    max-width: 14ch;
+    font-variant-numeric: tabular-nums;
 }
 
-/* The rule between the two halves of the notify card: ticks above write
-   task.json, the address below writes a file on this machine.  A visible
-   divider because they are two different questions and two different
-   files, even though one card is the right place to ask both. */
+/* ---------- which channels this calculation reports to ---------- */
+/* NAMES ONLY.  The address-and-key form that used to sit here moved to the
+   This-machine tab on 2026-08-31, with its `.ts-reports-{path,state,form,
+   row,label,input,cmd}` rules -- deleted rather than left behind, because a
+   sheet that still styles a control the page no longer has is a sheet
+   nobody can read the page from. */
+
+.ts-notify-channels {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin: var(--space-sm) 0;
+}
+
+/* A ticked name this machine does not have is a WARNING, not a failure --
+   the description is fine and the box is not.  Reads as text first and
+   colour second, so the sentence carries the whole answer on its own. */
+.ts-notify-sub[data-state="bad"] { color: var(--error); }
+
+/* A disabled tick still has to be readable: "every channel" is ON and these
+   show what that means, so greying them to illegibility would hide the
+   answer the row exists to give. */
+.ts-notify-channels input:disabled + span { opacity: 0.7; }
+
+/* The divider inside the notify card: WHEN above, WHERE below.  It used to
+   separate two FILES -- the ticks into task.json and the address+key into
+   this machine's own -- and the comment still said so after the second half
+   moved to the This-machine tab on 2026-08-31.  Both halves write task.json
+   now; the divider stays because "when should it speak" and "which channels"
+   are still two questions. */
 .ts-notify-rule {
     margin: var(--space-md) 0 var(--space-sm);
     border: 0;

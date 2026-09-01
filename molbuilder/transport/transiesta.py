@@ -2,7 +2,7 @@
 
 Registered as ``"transiesta"`` in the :mod:`molbuilder.transport` engine
 registry.  Since the composite landed (2026-08-28/29,
-`plans/transport-design.md`) this module is the RENDER layer under it:
+`archive/2026-09-01-transport-design.md`) this module is the RENDER layer under it:
 
 * :meth:`TransiestaEngine.render_script` — the device/transmission deck
   (modern SIESTA 4.1+/5.x NEGF syntax; ``TS.Voltage`` is the config's

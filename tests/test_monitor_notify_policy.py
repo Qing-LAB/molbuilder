@@ -9,7 +9,7 @@ seconds for the length of the run**.
 
 Sampling stays dense: `util.csv` is the diagnostic record and its whole
 point is showing whether the CPU/GPU/memory allocation is being used.
-Notifying becomes policy (`plans/bench-and-junction-plan.md` § 2.9), and the
+Notifying becomes policy (`archive/2026-09-01-bench-and-junction-plan.md` § 2.9), and the
 policy is the calculation's own — carried from `task.json`'s `notify` block.
 
 **The destination is not policy and does not live here.**  It is the user's
@@ -202,54 +202,185 @@ def test_a_stall_reports_whatever_the_policy_says(tmp_path):
 #  the destination -- the user's file, never the description              #
 # --------------------------------------------------------------------- #
 
-def test_a_configured_destination_is_read(tmp_path):
+def _file(tmp_path, channels):
+    f = tmp_path / "notify"
+    f.write_text(json.dumps({"channels": channels}))
+    return f
+
+
+def test_a_configured_channel_is_read(tmp_path):
     """A third party's shape: the credential is in the URL or a header,
     because Slack and Discord have nowhere else to keep one."""
-    f = tmp_path / "notify"
-    f.write_text(json.dumps({"url": "https://example/hook",
-                             "headers": {"Authorization": "Bearer t"}}))
-    assert M.load_destination(str(f)) == {
-        "url": "https://example/hook", "key": None,
-        "headers": {"Authorization": "Bearer t"}}
+    f = _file(tmp_path, {"slack": {"url": "https://example/hook",
+                                   "headers": {"Authorization": "Bearer t"}}})
+    assert M.load_channels(str(f)) == {
+        "slack": {"url": "https://example/hook", "key": None,
+                  "headers": {"Authorization": "Bearer t"}}}
 
 
-def test_a_molbuilder_destination_carries_a_signing_key(tmp_path):
+def test_a_molbuilder_channel_carries_a_signing_key(tmp_path):
     """Our own listener's shape: a plain url and a `key` that signs the
     body and never travels (`run-reports.md` § 4.1)."""
-    f = tmp_path / "notify"
-    f.write_text(json.dumps({"url": "https://qlab/api/x7Kq", "key": "s3cr3t"}))
-    assert M.load_destination(str(f)) == {
-        "url": "https://qlab/api/x7Kq", "key": "s3cr3t", "headers": {}}
+    f = _file(tmp_path, {"lab": {"url": "https://qlab/api/x7Kq",
+                                 "key": "s3cr3t"}})
+    assert M.load_channels(str(f)) == {
+        "lab": {"url": "https://qlab/api/x7Kq", "key": "s3cr3t",
+                "headers": {}}}
 
 
-def test_a_key_that_is_not_a_string_refuses_the_whole_destination(tmp_path):
+def test_several_channels_are_all_read(tmp_path):
+    """The point of naming them: one run can reach a Slack AND a listener.
+
+    The single destination this replaced could not, so pointing it at Slack
+    silently replaced whatever was there (`run-reports.md` § 1).
+    """
+    f = _file(tmp_path, {"slack": {"url": "https://example/hook"},
+                         "lab": {"url": "https://qlab/api/x", "key": "k"}})
+    assert sorted(M.load_channels(str(f))) == ["lab", "slack"]
+
+
+def test_one_bad_channel_does_not_cost_the_others(tmp_path):
+    """A file with three channels and a typo in one reports on two.
+
+    Refusing the file whole would turn one mistake into total silence, which
+    is the failure this whole area keeps producing.  This is the rule that
+    CHANGED when the file became a map: a non-string key used to refuse the
+    only destination there was, because there was nothing else to keep.
+    """
+    f = _file(tmp_path, {"good": {"url": "https://qlab/api/x", "key": "k"},
+                         "badkey": {"url": "https://qlab/api/y", "key": 12345},
+                         "nourl": {"key": "k"},
+                         "bad name": {"url": "https://qlab/api/z"}})
+    assert list(M.load_channels(str(f))) == ["good"]
+
+
+def test_a_key_that_is_not_a_string_skips_that_channel(tmp_path):
     """Not "ignore the key and send unsigned" -- an unsigned report is one
-    the listener will drop, and it would drop it in SILENCE. Refusing here
-    is the failure the user can actually see, in the monitor log."""
-    f = tmp_path / "notify"
-    f.write_text(json.dumps({"url": "https://qlab/api/x7Kq", "key": 12345}))
-    assert M.load_destination(str(f)) is None
+    the listener will drop, and it would drop it in SILENCE."""
+    f = _file(tmp_path, {"lab": {"url": "https://qlab/api/x7Kq",
+                                 "key": 12345}})
+    assert M.load_channels(str(f)) == {}
 
 
 def test_no_file_means_no_notifier_and_no_complaint(tmp_path):
     """Absent is not an error -- it is the feature being off, which is the
     default state for everybody who has not set it up."""
-    assert M.load_destination(str(tmp_path / "nothing-here")) is None
+    assert M.load_channels(str(tmp_path / "nothing-here")) == {}
 
 
 @pytest.mark.parametrize("body,why", [
-    ("{not json",            "unparseable"),
-    ('{"headers": {}}',      "no url"),
-    ('{"url": ""}',          "empty url"),
-    ('["not", "an object"]', "not an object"),
+    ("{not json",                  "unparseable"),
+    ('{"channels": []}',           "channels is not an object"),
+    ('["not", "an object"]',       "not an object"),
+    ('{}',                         "no channels key"),
 ])
-def test_a_broken_destination_degrades_rather_than_raises(tmp_path, body, why):
+def test_a_broken_file_degrades_rather_than_raises(tmp_path, body, why):
     """This is a MONITOR.  Refusing to watch a job because a notification
     could not be configured would be the tail wagging the dog: the run is
     the thing, and it is already going."""
     f = tmp_path / "notify"
     f.write_text(body)
-    assert M.load_destination(str(f)) is None, why
+    assert M.load_channels(str(f)) == {}, why
+
+
+def test_the_old_single_destination_file_is_named_not_just_skipped(tmp_path):
+    """`{"url": ...}` is a valid JSON object, so a silent skip would be
+    indistinguishable from never having set anything up -- which is the
+    exact failure the setup surface exists to stop.  It says which."""
+    f = tmp_path / "notify"
+    f.write_text(json.dumps({"url": "https://hooks.slack.com/services/T/B/X"}))
+    log = tmp_path / "m.log"
+    log.write_text("")
+    assert M.load_channels(str(f), log=log) == {}
+    text = log.read_text()
+    assert "old single-destination file" in text
+    assert "channels" in text, "it must say what the shape is now"
+
+
+# --------------------------------------------------------------------- #
+#  which channels one run uses -- `run-reports.md` § 3.0                  #
+# --------------------------------------------------------------------- #
+
+def test_naming_none_means_every_channel_the_machine_has():
+    """The reading of a description that predates channels, and of one
+    written by hand.  Nothing that already worked stops working."""
+    have = {"a": {"url": "u"}, "b": {"url": "v"}}
+    chosen, missing = M.channels_for(None, have)
+    assert chosen == have and missing == []
+
+
+def test_an_empty_list_means_nowhere_and_is_not_the_same_as_absent():
+    """Two spellings because they are two intentions: reports off for THIS
+    calculation, on a machine where they are otherwise set up.  Collapsing
+    them sends a report to a channel the person just unticked."""
+    have = {"a": {"url": "u"}}
+    assert M.channels_for((), have) == ({}, [])
+    assert M.channels_for(None, have) == (have, [])
+
+
+def test_a_named_channel_the_machine_lacks_comes_back_as_missing():
+    """The travelling case -- written at a desk, opened on a cluster.  It is
+    not an error (the run is fine) and it must not be silent (a channel that
+    resolves to nothing sends nothing, which looks exactly like working)."""
+    chosen, missing = M.channels_for(("a", "gone"), {"a": {"url": "u"}})
+    assert list(chosen) == ["a"]
+    assert missing == ["gone"]
+
+
+def test_the_two_halves_of_the_mirror_answer_alike():
+    """`NotifyPolicy` and `task.Notify` are the same policy on two machines
+    -- the class docstring says so, and says why they cannot be one class
+    (this module ships to a compute node with no molbuilder importable).
+
+    A mirror whose halves disagree is worse than two unrelated classes: the
+    reader trusts one and gets the other. `channels=()` is the case that
+    catches it, because it is the only value that is falsy and meaningful.
+    """
+    from molbuilder.task import Notify
+    cases = [
+        ({}, {}),
+        ({"on_scf": True}, {"on_scf_converged": True}),
+        ({"every_hours": 6}, {"every_hours": 6}),
+        ({"channels": ()}, {"channels": ()}),
+        ({"channels": ("a",)}, {"channels": ("a",)}),
+    ]
+    for here, there in cases:
+        assert bool(M.NotifyPolicy(**here)) == bool(Notify(**there)), \
+            f"{here} and {there} disagree"
+
+
+def test_the_notify_line_has_ONE_prefix_on_both_roads(tmp_path, capsys):
+    """It was written twice -- a closure in `load_channels` and a copy in
+    `_install_env_notifiers` that stamped the timestamp and then printed it
+    under a second prefix. The log got the bare form and stdout got
+    `[monitor] [2026-...] [NOTIFY] ...`, which is the shape of a message
+    nobody greps successfully."""
+    log = tmp_path / "m.log"
+    log.write_text("")
+    M._notify_say("something to say", log)
+    text = log.read_text().strip()
+    assert text.count("[NOTIFY]") == 1
+    assert not text.startswith("[monitor]"), "the log form is not prefixed"
+
+    M._notify_say("something to say", None)
+    out = capsys.readouterr().out.strip()
+    assert out == "[monitor] something to say", out
+
+
+def test_a_missing_channel_is_said_in_the_monitor_log(tmp_path, monkeypatch):
+    """Returned by `channels_for` is not enough: it has to reach the file a
+    person actually opens."""
+    monkeypatch.delenv("MB_NOTIFY_URL", raising=False)
+    f = _file(tmp_path, {"here": {"url": "https://example/hook"}})
+    monkeypatch.setattr(M, "default_notify_path", lambda: f)
+    M.clear_notifiers()
+    log = tmp_path / "m.log"
+    log.write_text("")
+    M._install_env_notifiers(log, None, ("here", "elsewhere"))
+    M.clear_notifiers()
+    text = log.read_text()
+    assert "elsewhere" in text
+    assert "not set up on this machine" in text
 
 
 def test_the_webhook_body_is_json_a_channel_can_render(tmp_path):
@@ -343,7 +474,7 @@ def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path):
     log = tmp_path / "m.log"
     log.write_text("")
 
-    assert M.load_destination(str(dest), log=log) is None
+    assert M.load_channels(str(dest), log=log) == {}
     text = log.read_text()
     assert "not valid JSON" in text
     assert str(dest) in text, "the message must name the file to go and fix"
@@ -353,10 +484,11 @@ def test_the_users_secret_is_never_echoed_into_the_log(tmp_path):
     """The log is written into the run directory, which travels.  A
     complaint about a bad destination must not quote the destination."""
     dest = tmp_path / "notify"
-    dest.write_text('{"url": "https://hooks.slack.com/services/T/B/SECRET"')
+    dest.write_text('{"channels": {"s": {"url": '
+                    '"https://hooks.slack.com/services/T/B/SECRET"}}')
     log = tmp_path / "m.log"
     log.write_text("")
-    M.load_destination(str(dest), log=log)
+    M.load_channels(str(dest), log=log)
     assert "SECRET" not in log.read_text()
     assert "hooks.slack.com" not in log.read_text()
 

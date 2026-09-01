@@ -1,6 +1,18 @@
 # The tab CSS system — a proposal
 
-**Role:** plan (proposed, not started)
+
+> **ARCHIVED 2026-09-01.**  Its open items moved to the one plan,
+> [`plans/plan.md`](?doc=plans/plan.md); what stays here is the record of
+> what was decided and built.  Nine plan documents were consolidated that
+> day *(user: "We don't need ten plan files scattered")*, and a fact-check
+> against the code found three of the nine headers stating the opposite of
+> what had shipped.
+
+**Role:** plan — **started, and partly landed.** Steps A and B are done
+(2026-08-02), C, E and F are partly done, and § 7's three questions are still
+yours to answer. *The header read "proposed, not started" until 2026-09-01,
+four weeks after step A deleted a stylesheet and step B produced the inventory
+this whole plan rests on — § 4's own table had the ticks all along.*
 **Domain:** web
 **Started:** 2026-08-02
 **Companions:** [`tabs.md`](?doc=web/tabs.md) — the pages this covers.

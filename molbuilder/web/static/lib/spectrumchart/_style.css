@@ -3,7 +3,7 @@
  *
  * Contract: docs/web/spectrumchart.md § 11. Three blocks, in this order — the
  * root and its values, the frame, the surface. The repository's CSS conventions
- * (docs/plans/css-system-plan.md) apply here as everywhere else and are not
+ * (docs/archive/2026-09-01-css-system-plan.md) apply here as everywhere else and are not
  * restated. Nothing outside this module may style a `spectrumchart-` name, and
  * nothing here styles anything else.
  */

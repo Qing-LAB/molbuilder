@@ -15,20 +15,25 @@ Routes (no url_prefix; each carries its own full path):
                                                     angle)
     POST /api/modify/translate             rigid translate ({dx,dy,dz}
                                                     or {recenter:true})
-    POST /api/modify/electrode             add_electrode_slab (single
-                                            mode: one slab on +z or -z
-                                            of one anchor)
-                                            (pair mode: collinear-z
-                                            slabs separated by gap)
+    POST /api/modify/calibrate             set the lattice constant from
+                                                    a measured spacing
+    POST /api/modify/slab                  add_slab -- ONE fcc slab,
+                                                    placed absolutely
+    POST /api/modify/lattice-from-run      read a lattice constant out
+                                                    of a finished run
     GET  /api/modify/meta                  dropdown enums (FCC
                                             elements + planes) for
                                             the UI; reads from the
                                             single-source-of-truth
                                             tuples in molbuilder.modify.
 
-M3 covered the per-atom ops; M4 added orient + rotate; M5 added
-the two electrode endpoints below.  The /api/modify/* surface is
-now feature-complete relative to the molbuilder.modify Python API.
+**The electrode routes are gone.**  ``symmetric_electrodes`` (the pair)
+went with the Junction panel, and ``electrode`` (per-side, centred on a
+selection) went on 2026-09-01 once nothing in the browser called it --
+`add_slab` had replaced it and been proven (`modify-redesign-plan.md`
+3.4a).  Deleting the pair left four orphaned continuation lines in this
+very list, describing two routes that no longer existed; they are the
+reason this list is now written out rather than patched.
 
 JSON body shape (shared by every op):
 
@@ -75,7 +80,7 @@ catch it.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -98,7 +103,6 @@ from molbuilder.modify import (
     SUPPORTED_FCC_PLANES,
     FCC_ORTHOGONAL_CHOICES,
     add_atom as _add_atom,
-    add_electrode_slab as _add_electrode_slab,
     calibrate_to_cell as _calibrate_to_cell,
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
@@ -144,7 +148,7 @@ def api_modify_meta():
         lattice_table = load_fcc_lattice_full()
     except Exception as exc:                                # pragma: no cover -- defensive
         lattice_error = str(exc)
-    # Layers per stacking period, by surface -- so the Junction panel can say
+    # Layers per stacking period, by surface -- so the Slab panel can say
     # whether the chosen layer count makes a whole period without carrying its
     # own copy of the crystallography (science/junction-cell.md § 3.1).  Same
     # anti-drift reason as the two lists above.
@@ -470,7 +474,7 @@ def api_modify_translate():
 
 @bp.route("/api/modify/calibrate", methods=["POST"])
 def api_modify_calibrate():
-    """Calibrate coordinates to the cell (structure-periodicity.md § 3c).
+    """Calibrate coordinates to the cell (structure-periodicity.md § 6).
 
     The unified "last step": translate every atom by ``-resolve_cell_origin()`` so the
     atoms sit inside ``[0, cell)`` with the cell anchored at ``(0,0,0)``, and
@@ -492,153 +496,6 @@ def api_modify_calibrate():
 
 
 # --------------------------------------------------------------------- #
-#  Electrode-shared parsing helpers                                     #
-# --------------------------------------------------------------------- #
-
-
-def _parse_electrode_common(body):
-    """Validate and unpack the fields the two electrode endpoints
-    share: element, plane, size, orthogonal, offset, lattice_constant,
-    pad_interlayer_gap.
-
-    Returns ``(element, plane, size, orthogonal, offset, lattice_constant,
-    pad_interlayer_gap)``
-    on success, or raises ``ValueError`` (the caller turns into HTTP
-    400 via :func:`._err`).
-    """
-    element = body.get("element")
-    if not isinstance(element, str) or element not in SUPPORTED_FCC_ELEMENTS:
-        raise ValueError(
-            f"element must be one of {SUPPORTED_FCC_ELEMENTS}; "
-            f"got {element!r}"
-        )
-    plane = body.get("plane")
-    if not isinstance(plane, str) or plane not in SUPPORTED_FCC_PLANES:
-        raise ValueError(
-            f"plane must be one of {SUPPORTED_FCC_PLANES}; got {plane!r}"
-        )
-    size = body.get("size")
-    if (not isinstance(size, list)) or len(size) != 3:
-        raise ValueError(
-            "'size' must be a 3-element [m, n, n_layers] list"
-        )
-    try:
-        m, n, n_layers = (int(size[0]), int(size[1]), int(size[2]))
-    except (TypeError, ValueError):
-        raise ValueError("'size' entries must be integers")
-    if m < 1 or n < 1 or n_layers < 1:
-        raise ValueError(
-            f"'size' components must all be >= 1; got ({m}, {n}, {n_layers})"
-        )
-    orthogonal = bool(body.get("orthogonal", False))
-    offset = body.get("offset", [0.0, 0.0])
-    if (not isinstance(offset, list)) or len(offset) != 2:
-        raise ValueError("'offset' must be a 2-element [dx, dy] list")
-    try:
-        offset_t = (float(offset[0]), float(offset[1]))
-    except (TypeError, ValueError):
-        raise ValueError("'offset' entries must be numeric")
-    lattice_constant = body.get("lattice_constant")
-    if lattice_constant is not None:
-        try:
-            lattice_constant = float(lattice_constant)
-        except (TypeError, ValueError):
-            raise ValueError("'lattice_constant' must be numeric or null")
-    # Default TRUE, matching the builder: an un-padded box collides with its
-    # own periodic image (science/junction-cell.md § 6).  A client that omits
-    # the key must get the correct cell, not the historical one.
-    pad_gap = bool(body.get("pad_interlayer_gap", True))
-    return (element, plane, (m, n, n_layers), orthogonal, offset_t,
-            lattice_constant, pad_gap)
-
-
-# --------------------------------------------------------------------- #
-#  /api/modify/electrode  (single mode)                                 #
-# --------------------------------------------------------------------- #
-
-
-@bp.route("/api/modify/electrode", methods=["POST"])
-def api_modify_electrode():
-    """Append one FCC slab, centred on the selected atom group.
-
-    Body: ``{xyz, [...metadata...], element, plane, size:[m,n,n_layers],
-             center_indices?, contact_distance?, side?, orthogonal?,
-             offset?, lattice_constant?, inter_layer_offset?}``.
-
-    ``center_indices`` is the selected atoms whose centroid the slab
-    centres on (1 -> that atom, 2 -> midpoint, N -> centroid); omit /
-    empty -> the world origin.  ``side`` is ``"+z"`` or ``"-z"``;
-    ``contact_distance`` is the centre-to-closest-layer distance.  Per-side single mode is the
-    one to use when the user wants asymmetric junctions (different
-    metal / size on each side); for canonical pair junctions, prefer
-the retired pair route, which took ``gap``
-    directly.
-    """
-    body = request.get_json(silent=True) or {}
-    try:
-        struct = _struct_from_body(body)
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    try:
-        element, plane, size, orthogonal, offset, lat_a, pad_gap = \
-            _parse_electrode_common(body)
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    # Slab CENTRE = the centroid of ``center_indices`` (the user's selection);
-    # omitted / empty -> the origin.  Same rule as the symmetric op (1 atom ->
-    # that atom, 2 -> midpoint, N -> centroid).
-    center_indices = body.get("center_indices")
-    center_idx: Optional[List[int]]
-    if center_indices is None:
-        center_idx = None
-    else:
-        if not isinstance(center_indices, list):
-            return _err(
-                "'center_indices' must be omitted or a list of atom indices", 400)
-        try:
-            center_idx = [int(i) for i in center_indices]
-        except (TypeError, ValueError):
-            return _err("'center_indices' entries must be integers", 400)
-        for i in center_idx:
-            if not (0 <= i < struct.n_atoms):
-                return _err(
-                    f"center index {i} out of range for {struct.n_atoms}-atom "
-                    f"structure", 400)
-    try:
-        contact_distance = _finite_float(
-            "contact_distance", body.get("contact_distance", 2.4))
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    if contact_distance <= 0.0:
-        return _err("'contact_distance' must be > 0 Å", 400)
-    side = (body.get("side") or "+z").strip()
-    if side not in ("+z", "-z"):
-        return _err(f"'side' must be '+z' or '-z'; got {side!r}", 400)
-    inter_layer_offset = body.get("inter_layer_offset")
-    if inter_layer_offset is not None:
-        try:
-            inter_layer_offset = float(inter_layer_offset)
-        except (TypeError, ValueError):
-            return _err("'inter_layer_offset' must be numeric or null", 400)
-    try:
-        new_struct = _add_electrode_slab(
-            struct, element, plane, size, center_idx,
-            contact_distance=contact_distance,
-            side=side,
-            orthogonal=orthogonal,
-            pad_interlayer_gap=pad_gap,
-            offset=offset,
-            lattice_constant=lat_a,
-            inter_layer_offset=inter_layer_offset,
-        )
-    except (ValueError, NotImplementedError) as exc:
-        return _err(f"add_electrode_slab failed: {exc}", 400)
-    # No selection_remap: the client CLEARS the selection on any atom-count
-    # change (molview.md § 11.1, "Effect on atom count").
-    return _ok_response(new_struct)
-
-
-# --------------------------------------------------------------------- #
 #  /api/modify/slab                                                     #
 # --------------------------------------------------------------------- #
 
@@ -656,8 +513,10 @@ def api_modify_slab():
     picked.  The client's OPERATIONS table says so too (`molview.md` § 11.1),
     which is why no `indices` key reaches here.
 
-    Beside ``/api/modify/electrode``, not replacing it: the old panel stays
-    until this one is proven (§ 3.4 lists what goes when it is).
+    **It replaced ``/api/modify/electrode``**, which placed a slab relative
+    to a selection.  Built beside it under the user's build-then-replace
+    rule; the old route went on 2026-09-01, once nothing in the browser
+    called it (`modify-redesign-plan.md` § 3.4a).
     """
     body = request.get_json(silent=True) or {}
     try:
@@ -839,7 +698,7 @@ def api_modify_lattice_from_run():
     Body: ``{path, element?}`` -> ``{ok, element, a, d_nn, coordination,
     second_shell_ratio, n_atoms, source, notes}``.
 
-    THE DIVISION OF LABOUR IS THE USER'S OWN (plans/modify-redesign-plan.md
+    THE DIVISION OF LABOUR IS THE USER'S OWN (archive/2026-09-01-modify-redesign-plan.md
     § 3.3): *"the user needs to make sure this setup is correct, and the
     backend just extracts the lattice from that result."*  So **they**
     guarantee the pseudopotential, basis and mesh cutoff; this measures what

@@ -86,7 +86,8 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
-             "allocation", "notify", "slots", "bias")
+             "allocation", "bench_allocation", "stage_allocation",
+             "notify", "slots", "bias")
 _BIAS_KEYS = ("voltages_v",)
 
 #: A slot citation names a DIRECTORY, explicitly, by its tree-relative
@@ -98,8 +99,25 @@ _BIAS_KEYS = ("voltages_v",)
 #: the file-condition check live where the filesystem is (`init`
 #: resolves, `prep` composes -- transport/compose.classify_citation).
 _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
+#: The three SCHEDULER asks.  Everything else in an `allocation` block is a
+#: machine-answered VALUE (`stages.md` § 6.8a) and lands in `Allocation.values`
+#: -- shape-checked here, membership checked where the catalogue is read
+#: (`validation/task.py`), exactly as `bench` splits the same question.
 _ALLOCATION_KEYS = ("domain", "time", "mem")
-_NOTIFY_KEYS = ("on_scf_converged", "every_hours")
+_NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels")
+
+#: A channel NAME, as a description may carry one.
+#:
+#: **Written twice, and it has to be.**  `monitor.is_channel_name` holds the
+#: same rule, and that module is the one the file those names must match is
+#: read by -- but it ships to a compute node as a standalone stdlib-only
+#: script, so it sits at L2 and cannot be imported from here (L1) without
+#: inverting the layering.  This is the same shape as `sign_report`, which
+#: `monitor` and `web/blueprints/notify.py` also write twice for the same
+#: reason, and it is kept honest the same way: by a test that feeds one
+#: side's answer to the other rather than by a comment asking nicely.
+#: `tests/test_task_notify.py::test_the_name_rule_is_the_same_on_both_sides`.
+_CHANNEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -173,9 +191,40 @@ class Allocation:
     domain: str = ""
     time: str = ""
     mem: str = ""
+    #: THE MACHINE-ANSWERED VALUES THE RUN SHOULD USE -- `mpi_np`,
+    #: `omp_threads`, `use_gpu`, whatever else the template declares
+    #: `allocation` (`stages.md` § 6.8a, extended 2026-09-01).  One value
+    #: each, never a list: a list is `bench`'s job, and the difference
+    #: between them is the difference between running and measuring.
+    #:
+    #: **This is an ASK, not a finding**, which is the whole of why it may
+    #: live in a description at all.  § 6.8's rule bars `summarize` from
+    #: writing a MEASUREMENT back here; a number a person chose after
+    #: reading one is the same kind of statement as `domain`, and that has
+    #: been allowed since 2026-08-24 for the same reason.
+    #:
+    #: SHAPE ONLY here (L1).  Whether a name is a field the catalogue
+    #: declares machine-answered is a MEMBERSHIP question and needs the
+    #: catalogue, which is L2 -- the same split `bench` makes.
+    values: Dict[str, Any] = field(default_factory=dict)
 
     def __bool__(self) -> bool:
-        return bool(self.domain or self.time or self.mem)
+        return bool(self.domain or self.time or self.mem or self.values)
+
+    def merged_over(self, base: "Allocation") -> "Allocation":
+        """This block laid over ``base``, **field by field**.
+
+        The per-stage form (`stages.md` § 6.8b): a rung states only what it
+        differs in, and everything else comes from the flat block.  Whole
+        object precedence would let a stage that wanted a longer wall
+        silently drop the queue nobody restated -- the same loss § 6.8a's
+        field-by-field rule already ends between a flag and this block.
+        """
+        return Allocation(
+            domain=self.domain or base.domain,
+            time=self.time or base.time,
+            mem=self.mem or base.mem,
+            values={**base.values, **self.values})
 
 
 @dataclass(frozen=True)
@@ -206,9 +255,24 @@ class Notify:
     #: Fire every N hours.  ``0`` is off; HOURS, because the point of this is
     #: reassurance over a long run, not a live feed.
     every_hours: float = 0.0
+    #: WHICH channels, **by name** -- and a name is all that travels.  What
+    #: the name resolves to (an address, usually a credential) is the
+    #: machine's own file and is never here; that is 1's split, and a label
+    #: the person chose is safe to carry where a URL is not.
+    #:
+    #: ``None`` means every channel the running machine has, which is what a
+    #: description that says nothing has always meant.  An EMPTY tuple is a
+    #: different state and not a spelling of the same one: reports off for
+    #: this calculation, on a machine where they are set up.  Both are
+    #: writable, so the serializer below carries `()` explicitly instead of
+    #: dropping it the way it drops every other falsy field -- the one
+    #: exception to S1, and it is here because the alternative is an
+    #: unticked list quietly meaning *all of them*.
+    channels: Optional[Tuple[str, ...]] = None
 
     def __bool__(self) -> bool:
-        return bool(self.on_scf_converged or self.every_hours > 0)
+        return bool(self.on_scf_converged or self.every_hours > 0
+                    or self.channels is not None)
 
 
 @dataclass(frozen=True)
@@ -294,6 +358,15 @@ class Task:
     #: be told every time -- which is what makes a prepped bundle carry
     #: everything its launch needs.
     allocation: "Allocation" = field(default_factory=lambda: Allocation())
+    #: WHAT TO ASK FOR WHILE MEASURING, when it differs (`stages.md` § 6.8c).
+    #: A benchmark is short by construction -- capped SCF, one point, no
+    #: relaxation -- and a run is not.  Absent means "use `allocation`", so
+    #: one wall serving both stays the default it always was.
+    bench_allocation: "Allocation" = field(
+        default_factory=lambda: Allocation())
+    #: PER-RUNG OVERRIDES, field by field over `allocation` (§ 6.8b).  A ladder
+    #: whose rungs want the same machine writes nothing here.
+    stage_allocation: Dict[str, "Allocation"] = field(default_factory=dict)
 
     #: WHEN this calculation should say something (:class:`Notify`).  The
     #: policy only -- the destination and its credential stay on the machine
@@ -368,19 +441,19 @@ class Task:
                     "task: a transport calculation carries exactly one "
                     f"slot, 'junction' (got {sorted(self.slots) or 'none'})"
                     " -- the relaxed junction it composes from "
-                    "(plans/transport-design.md 4.1)")
+                    "(archive/2026-09-01-transport-design.md 4.1)")
             if self.structure is not None:
                 raise ValueError(
                     "task: a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
-                    "copied in at prep (plans/transport-design.md 4.1)")
+                    "copied in at prep (archive/2026-09-01-transport-design.md 4.1)")
             if self.shape != "hierarchical":
                 raise ValueError(
                     f"task: a transport calculation is hierarchical "
                     f"(got {self.shape!r}) -- its five stages exchange "
                     f"files through their own attempts, which the flat "
                     f"shape has no directories to hold "
-                    f"(plans/transport-design.md 4.2)")
+                    f"(archive/2026-09-01-transport-design.md 4.2)")
         else:
             if self.slots:
                 raise ValueError(
@@ -403,7 +476,7 @@ class Task:
                     f"directory citable is its FILES -- a finished "
                     f"relaxation's .fdf+.XV together, or a labeled "
                     f".xyz+.molstruct.json pair "
-                    f"(plans/transport-design.md 4.1b)")
+                    f"(archive/2026-09-01-transport-design.md 4.1b)")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)
                    for v in self.bias):
@@ -414,7 +487,7 @@ class Task:
                     f"task: the bias list must start at 0.0 (got "
                     f"{self.bias[0]!r}) -- each point warm-starts from the "
                     "previous one's .TSDE, and the chain starts from "
-                    "equilibrium (plans/transport-design.md 4.3)")
+                    "equilibrium (archive/2026-09-01-transport-design.md 4.3)")
         if self.stages is not None and not self.stages:
             raise ValueError(
                 "task: 'stages' is present but empty. A job has at least one "
@@ -494,7 +567,7 @@ class Task:
         § 3 rule 3 rules out, one layer up."""
         # transport: the coordinates ARE the cited attempt, so the
         # citation is the identity's second half (run-identity.md § 2's
-        # rule, extended by plans/transport-design.md 4.1 -- an id that
+        # rule, extended by archive/2026-09-01-transport-design.md 4.1 -- an id that
         # named no input would collide across every junction).
         identity = (self.slots.get("junction", "")
                     if self.calculation == "transport"
@@ -623,7 +696,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         if "structure" in obj:
             _refuse("a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
-                    "copied in at prep (plans/transport-design.md 4.1)",
+                    "copied in at prep (archive/2026-09-01-transport-design.md 4.1)",
                     where="structure")
         structure = None
     else:
@@ -705,6 +778,9 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc, bench=bench,
                 allocation=_allocation_from_obj(obj),
+                bench_allocation=_allocation_from_obj(
+                    obj, key="bench_allocation"),
+                stage_allocation=_stage_allocation_from_obj(obj),
                 notify=_notify_from_obj(obj),
                 slots=slots, bias=bias)
 
@@ -742,7 +818,8 @@ def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
     return out
 
 
-def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
+def _allocation_from_obj(obj: Mapping[str, Any], *, key: str = "allocation",
+                         where: str = "") -> "Allocation":
     """``allocation`` -> :class:`Allocation`; absent is an empty one.
 
     **The two asks are read and normalised here; the queue name is not
@@ -764,35 +841,83 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
       refuse a file that is perfectly correct where it is going.  The
       machine record answers that, at launch, where the machine is known.
     """
-    raw = obj.get("allocation")
+    where = where or key
+    raw = obj.get(key)
     if raw is None:
         return Allocation()
     if not isinstance(raw, Mapping) or not raw:
-        _refuse("'allocation' is present but not a non-empty object. Omit "
-                "the key entirely when nothing is asked for -- absent and "
-                "empty would be two spellings of one state")
-    _check_keys(raw, _ALLOCATION_KEYS, where="allocation")
+        _refuse(f"{where!r} is present but not a non-empty object. Omit "
+                f"the key entirely when nothing is asked for -- absent "
+                f"and empty would be two spellings of one state")
+    # NOT `_check_keys`: an unknown key here is the ordinary case now, not a
+    # typo.  Everything that is not one of the three asks is a machine-answered
+    # VALUE (§ 6.8a), and whether the name is one the catalogue declares is a
+    # membership question this layer cannot answer -- `validation/task.py`
+    # does, with the vocabulary in hand.  Shape is what is checked here.
     for k in _ALLOCATION_KEYS:
         v = raw.get(k)
         if v is not None and not isinstance(v, str):
-            _refuse(f"allocation.{k} must be a string -- write it the way "
+            _refuse(f"{where}.{k} must be a string -- write it the way "
                     f"you would type it (\"4h\", \"128G\", "
                     f"\"7-00:00:00\"); got {type(v).__name__}")
+    values: Dict[str, Any] = {}
+    for k, v in raw.items():
+        if k in _ALLOCATION_KEYS:
+            continue
+        if isinstance(v, (list, tuple, dict)):
+            # A LIST IS `bench`'s SHAPE, and the confusion is worth naming
+            # rather than refusing generically: several points is a
+            # measurement, one value is a run (§ 6.8a).
+            _refuse(f"{where}.{k} takes ONE value, not a list -- a list of "
+                    f"points to try is `bench`'s, and the difference between "
+                    f"them is the difference between running and measuring "
+                    f"(engines/stages.md 6.8a)")
+        if v is not None:
+            values[k] = v
     # Normalised on the way in, so nothing downstream meets two spellings
     # (the class docstring says why).  A refusal here names the field and
     # the forms it takes, because "invalid allocation" tells a person
     # nothing about which of three values to go and look at.
-    def _canon(fn, key):
-        v = raw.get(key)
+    def _canon(fn, _k):
+        v = raw.get(_k)
         if not v:
             return ""
         try:
             return fn(v) or ""
         except ValueError as exc:
-            _refuse(f"allocation.{key}: {exc}")
+            _refuse(f"{where}.{_k}: {exc}")
     return Allocation(domain=str(raw.get("domain") or ""),
                       time=_canon(canonical_time, "time"),
-                      mem=_canon(canonical_mem, "mem"))
+                      mem=_canon(canonical_mem, "mem"),
+                      values=values)
+
+
+def _stage_allocation_from_obj(obj: Mapping[str, Any]) -> Dict[str, "Allocation"]:
+    """``stage_allocation`` -> ``{stage name: Allocation}`` (§ 6.8b).
+
+    Absent is the common state and writes no key.  A stage NAME is not
+    checked against the ladder here for the reason the queue name is not
+    judged: this is L1 shape, and `validation/task.py` -- which already
+    walks the stages -- is where a name that matches no rung is a finding
+    a person can act on.
+    """
+    raw = obj.get("stage_allocation")
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping) or not raw:
+        _refuse("'stage_allocation' is present but not a non-empty object. "
+                "Omit the key entirely when every stage asks for the same "
+                "thing -- absent and empty would be two spellings of one "
+                "state (engines/stages.md 6.8b)")
+    out: Dict[str, "Allocation"] = {}
+    for name, block in raw.items():
+        if not isinstance(block, Mapping) or not block:
+            _refuse(f"stage_allocation[{name!r}] must be a non-empty object "
+                    f"with the fields that rung differs in -- omit the rung "
+                    f"entirely when it asks for what every other one does")
+        out[str(name)] = _allocation_from_obj({"allocation": block},
+                                              where=f"stage_allocation[{name}]")
+    return out
 
 
 def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
@@ -832,7 +957,29 @@ def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
     if hours < 0:
         _refuse(f"notify.every_hours cannot be negative (got {hours}) -- "
                 f"use 0, or omit the key, to report on nothing but the end")
-    return Notify(on_scf_converged=scf, every_hours=hours)
+
+    # ABSENT AND EMPTY ARE TWO STATES here and nowhere else in this file
+    # (`run-reports.md` 3.0).  `None` is every channel the running machine
+    # has; `[]` is none of them.  Which is why the read is `"channels" in
+    # raw` rather than a truthiness test -- the latter would collapse the
+    # two and send a report to a channel the person had just unticked.
+    chans: Optional[Tuple[str, ...]] = None
+    if "channels" in raw:
+        got = raw["channels"]
+        if not isinstance(got, list):
+            _refuse(f"notify.channels must be a list of channel NAMES, not "
+                    f"{type(got).__name__} -- omit the key for every channel "
+                    f"the machine has, or write [] for none")
+        names = []
+        for item in got:
+            if not (isinstance(item, str) and _CHANNEL_RE.match(item)):
+                _refuse(f"notify.channels: {item!r} is not a channel name -- "
+                        f"letters, digits, '-' and '_'. A name is all that "
+                        f"travels; the address and key stay on the machine")
+            if item not in names:
+                names.append(item)
+        chans = tuple(names)
+    return Notify(on_scf_converged=scf, every_hours=hours, channels=chans)
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -992,10 +1139,31 @@ def _task_to_dict(task: Task) -> dict:
             k: v for k, v in (("domain", task.allocation.domain),
                               ("time", task.allocation.time),
                               ("mem", task.allocation.mem)) if v}
+        # THE VALUES AFTER THE ASKS, sorted, so one description has one
+        # spelling on disk however the browser happened to add them.
+        for k in sorted(task.allocation.values):
+            out["allocation"][k] = task.allocation.values[k]
+    if task.bench_allocation:
+        out["bench_allocation"] = {
+            k: v for k, v in (("domain", task.bench_allocation.domain),
+                              ("time", task.bench_allocation.time),
+                              ("mem", task.bench_allocation.mem)) if v}
+    if task.stage_allocation:
+        out["stage_allocation"] = {
+            name: {k: v for k, v in (("domain", a.domain), ("time", a.time),
+                                     ("mem", a.mem)) if v}
+                  | {k: a.values[k] for k in sorted(a.values)}
+            for name, a in task.stage_allocation.items()}
     if task.notify:
         out["notify"] = {
             k: v for k, v in (("on_scf_converged", task.notify.on_scf_converged),
                               ("every_hours", task.notify.every_hours)) if v}
+        # THE ONE FIELD THAT IS WRITTEN WHEN FALSY.  `[]` says "send this
+        # calculation nowhere" and absent says "everywhere this machine
+        # has"; dropping the empty list would silently turn the first into
+        # the second (`run-reports.md` 3.0).
+        if task.notify.channels is not None:
+            out["notify"]["channels"] = list(task.notify.channels)
     if task.stages:
         out["varies"] = list(task.varies or ())
         out["stages"] = [{"name": s.name, "enabled": s.enabled,

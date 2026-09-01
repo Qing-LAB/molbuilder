@@ -273,7 +273,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     """`init --calculation transport` -- floor 2 is task.json ALONE.
 
     The structure, the pseudos and the electronic template all arrive at
-    prep from the junction citation (plans/transport-design.md 4.1, Q5:
+    prep from the junction citation (archive/2026-09-01-transport-design.md 4.1, Q5:
     one template governs everything, physically enforced by deriving) --
     so every option that would supply them here is refused naming that
     rule rather than silently ignored.
@@ -299,7 +299,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         if given is not None and given != ():
             raise click.ClickException(
                 f"{flag} does not apply to a transport calculation -- "
-                f"{why} (plans/transport-design.md 4.1).")
+                f"{why} (archive/2026-09-01-transport-design.md 4.1).")
     if engine != "siesta":
         raise click.ClickException(
             f"transport is SIESTA-first (TranSIESTA); engine {engine!r} "
@@ -323,7 +323,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
             "-- the directory holding the relaxed junction it composes "
             "from: a finished relaxation's .fdf+.XV together, or a "
             "labeled .xyz+.molstruct.json pair "
-            "(plans/transport-design.md 4.1b).")
+            "(archive/2026-09-01-transport-design.md 4.1b).")
 
     # The cited directory goes through the SAME tree fence every
     # calculation path uses (2.5b) and is classified against the 4.1b
@@ -430,11 +430,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                    "--slot junction=<dir> (a directory whose files "
                    "satisfy transport-design.md 4.1b).  The "
                    "attempt is named explicitly, never picked "
-                   "(plans/transport-design.md, ruling Q1).")
+                   "(archive/2026-09-01-transport-design.md, ruling Q1).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
               help="transport only: the bias sweep in volts, starting at "
                    "0.0 -- each point warm-starts from the previous one's "
-                   ".TSDE (plans/transport-design.md 4.3).")
+                   ".TSDE (archive/2026-09-01-transport-design.md 4.3).")
 def init_cmd(structure, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str, slots_opt, bias_opt) -> None:
@@ -476,7 +476,7 @@ def init_cmd(structure, bundle: str, shape: str,
     if slots_opt or bias_opt:
         raise click.ClickException(
             "--slot / --bias belong to --calculation transport alone "
-            "(plans/transport-design.md 4.1).")
+            "(archive/2026-09-01-transport-design.md 4.1).")
     if structure is None:
         raise click.ClickException(
             "--structure is required -- it is what this calculation "
@@ -866,7 +866,7 @@ def _refuse_if_measured_elsewhere(base, root, stage) -> None:
     **A refusal, not a warning** (S3).  A warning about a number that is
     already wrong asks the person to do the comparison the framework was
     holding both halves of.  Two grounds, from the P4 table
-    (`plans/machine-identity-plan.md`):
+    (`archive/2026-09-01-machine-identity-plan.md`):
 
     * **the trials ran on several kinds of node** -- the verdict ranked
       measurements of different machines against each other, so there is

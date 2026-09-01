@@ -1,6 +1,6 @@
 """P4a — prep COMPOSES the transport calculation from its one citation.
 
-`plans/transport-design.md` § 4.1–4.2: resolve the junction citation on
+`archive/2026-09-01-transport-design.md` § 4.1–4.2: resolve the junction citation on
 the machine where prep runs (strict composition, ruling Q2 — a missing
 or unconcluded attempt is a refusal naming what to run first, never a
 trigger to run it); PARSE the relaxed geometry from the attempt's own

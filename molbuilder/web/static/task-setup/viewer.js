@@ -415,6 +415,217 @@ function paintFit(host, body) {
     }
 }
 
+/* ---------- what the RUN will use (§ 6.2b) ---------- */
+/*
+ * ONE VALUE EACH, TYPED.  The rows mirror the bench's parameters -- the
+ * thing you measured is the thing you are deciding about -- and take more,
+ * because a run may want a knob a measurement never touched.
+ *
+ * The bench's points sit beside each row as INFORMATION and fill nothing.
+ * A summarized winner is MARKED, never applied: the concealment this card
+ * exists to end was `run-config.toml`'s verdict arriving for every field
+ * the description had not stated, with no way to state one.
+ */
+
+/** The run's stated values, live on the model. */
+function runValuesOf() {
+    if (!_task) return null;
+    const a = _task.allocation || (_task.allocation = {});
+    return a;
+}
+
+/* ROWS THE PERSON ASKED TO SEE but has not filled in.  Purely the page's
+ * state and deliberately not the file's: an unstated row is not a fact
+ * about the calculation, and writing `"mpi_np": ""` into `task.json` would
+ * make it one -- a value the reader would then have to invent a meaning
+ * for.  Absent-is-a-state, all the way down. */
+const _extraRunRows = new Set();
+
+/** The parameters this card offers: the bench's, plus any the run adds. */
+function runValueNames(task) {
+    const bench = (task && task.bench) || {};
+    const alloc = (task && task.allocation) || {};
+    const out = [];
+    for (const n of Object.keys(bench)) {
+        if (machineAnswers(n)) out.push(n);
+    }
+    for (const n of Object.keys(alloc)) {
+        // The three scheduler asks have their own inputs above.
+        if (n === "domain" || n === "time" || n === "mem") continue;
+        if (out.indexOf(n) === -1) out.push(n);
+    }
+    for (const n of _extraRunRows) {
+        if (out.indexOf(n) === -1) out.push(n);
+    }
+    return out;
+}
+
+function setRunValue(name, raw) {
+    const a = runValuesOf(); if (!a) return;
+    const v = coercePoint(raw);
+    if (v === null || raw === "") {
+        // BLANK IS A STATE, and the one every description was in before
+        // this card existed: leave it to run-config.toml, then to policy.
+        delete a[name];
+    } else {
+        a[name] = v;
+    }
+    if (!Object.keys(a).length) delete _task.allocation;
+    syncFromModel();
+}
+
+function dropRunValue(name) {
+    const a = runValuesOf(); if (!a) return;
+    delete a[name];
+    _extraRunRows.delete(name);
+    if (!Object.keys(a).length) delete _task.allocation;
+    syncFromModel();
+}
+
+function renderRunValues(task) {
+    const box = $("ts-runvals");
+    const host = $("ts-run-rows");
+    if (!box || !host) return;
+    host.textContent = "";
+
+    const names = runValueNames(task);
+    const bench = (task && task.bench) || {};
+    const alloc = (task && task.allocation) || {};
+    box.hidden = _mode !== "description";
+    if (box.hidden) { scheduleRunFit(null); return; }
+
+    for (const name of names) {
+        const stated = alloc[name];
+        const pts = Array.isArray(bench[name]) ? bench[name] : [];
+
+        const legal = legalValues(name);
+        let input;
+        if (legal) {
+            input = el("select", { class: "ts-runval",
+                                   "aria-label": "value for " + name });
+            input.appendChild(el("option", { value: "" }, "\u2014 not stated"));
+            for (const v of legal) {
+                const o = el("option", { value: String(v) }, String(v));
+                if (stated !== undefined && String(stated) === String(v)) {
+                    o.selected = true;
+                }
+                input.appendChild(o);
+            }
+        } else {
+            input = el("input", { class: "ts-runval",
+                                  placeholder: "\u2014 not stated",
+                                  "aria-label": "value for " + name });
+            input.value = stated === undefined ? "" : String(stated);
+        }
+        input.addEventListener("change", () => setRunValue(name, input.value));
+
+        // THE BENCH'S POINTS, as information.  Grey, beside the field,
+        // filling nothing -- so you can see what was tried while you type
+        // what you want.
+        const measured = pts.length
+            ? el("small", { class: "ts-row-note" },
+                 "measured: " + pts.join(", "))
+            : null;
+
+        const drop = el("button", { type: "button",
+                                    class: "ts-rowbtn ts-rowbtn-drop",
+                                    title: "Stop stating " + name }, "\u00d7");
+        drop.addEventListener("click", () => dropRunValue(name));
+
+        host.appendChild(el("div", { class: "ts-row",
+                                     "data-kind": stated === undefined
+                                         ? "unstated" : "chosen" },
+            el("div", { class: "ts-row-name", title: helpText(name) }, name,
+               measured),
+            el("div", { class: "ts-points" }, input),
+            drop));
+    }
+    if (!names.length) {
+        host.appendChild(el("p", { class: "hint" },
+            "Nothing stated \u2014 the run will take the stage's "
+            + "run-config.toml, and then the wrapper's own policy. Add a "
+            + "setting to decide it here instead."));
+    }
+    scheduleRunFit(statedRunValues(task));
+}
+
+/** Only what is actually stated — the door checks a point, not a blank. */
+function statedRunValues(task) {
+    const alloc = (task && task.allocation) || {};
+    const out = {};
+    for (const n of runValueNames(task)) {
+        if (alloc[n] !== undefined) out[n] = alloc[n];
+    }
+    return out;
+}
+
+let _runFitTimer = null;
+let _runFitSeq = 0;
+let _runFitValues = null;
+
+function scheduleRunFit(values) {
+    _runFitValues = values;
+    if (_runFitTimer) clearTimeout(_runFitTimer);
+    _runFitTimer = setTimeout(refreshRunFit, 300);
+}
+
+async function refreshRunFit() {
+    const host = $("ts-run-fit");
+    if (!host) return;
+    const values = _runFitValues;
+    if (_mode !== "description" || !_dir || !values
+            || !Object.keys(values).length) {
+        host.hidden = true;
+        return;
+    }
+    const seq = ++_runFitSeq;
+    let body;
+    try {
+        const r = await fetch("/api/task-setup/run-fit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dest: _dir, target: _machine || "",
+                                   values: values }),
+        });
+        body = await r.json();
+    } catch (e) {
+        body = null;
+    }
+    if (seq !== _runFitSeq) return;
+    /* A CHECK THAT CANNOT LOAD HIDES ITSELF.  The fields above are the
+     * substance and stay usable without it -- the same rule the grid block
+     * follows, learned when an unguarded fetch left a whole card absent. */
+    if (!body || !body.ok) { host.hidden = true; return; }
+    paintRunFit(host, body);
+}
+
+function paintRunFit(host, body) {
+    host.textContent = "";
+    host.hidden = false;
+    const cell = body.cell;
+    if (!cell) {
+        host.appendChild(el("p", { class: "status warn" },
+            "No queue on the chosen machine takes this ask \u2014 lower it, "
+            + "or choose a different machine."));
+        return;
+    }
+    const why = (cell.why || [])[0];
+    if (why) {
+        host.appendChild(el("div", { class: "ts-fit-row ts-fit-row--out" },
+            el("span", { class: "ts-fit-shape" }, cell.shape),
+            // THE NUMBERS, not a verdict word: the reason says what to
+            // change, which is why the struck form is shown at all.
+            el("span", { class: "ts-fit-why" }, why)));
+        return;
+    }
+    host.appendChild(el("div", { class: "ts-fit-row" },
+        el("span", { class: "ts-fit-shape" }, cell.shape),
+        el("span", { class: "ts-fit-where" },
+           "fits " + (cell.fits || []).slice(0, 4).join(", ")
+           + ((cell.fits || []).length > 4 ? " \u2026" : ""))));
+}
+
+
 function renderMachine(task) {
     const card = $("ts-machine-card");
     const host = $("ts-machine-rows");
@@ -789,6 +1000,8 @@ async function loadFolder(projects, dir) {
     renderStages(task);
     renderNext(task);
     renderMachine(task);
+    renderRunValues(task);
+    schedulePlan(task);
     // The card reflects the DESCRIPTION on open, so reopening a folder
     // shows what it already asks for instead of an empty card.
     readAsksFromTask(task);
@@ -815,7 +1028,9 @@ async function syncFromModel() {
     // it was changing.
     await loadSweepChoices(_handoverEngine(_task || {}));
     renderMachine(_task);
+    renderRunValues(_task);
     renderNext(_task);
+    schedulePlan(_task);
     refreshPickers();
     refreshSave();
 }
@@ -1152,6 +1367,17 @@ async function refreshPickers() {
         fillPicker($("ts-add-setting"), sweep,
                    Object.keys((_task && _task.bench) || {}),
                    "every sweepable setting is already listed");
+        // THE RUN'S OWN PICKER, over the MACHINE-ANSWERED items only:
+        // § 6.2b's rows state what the run will use, and only a
+        // machine-answered field is a thing a run can be told to use.
+        // Already-listed means already stated OR already measured -- the
+        // rows mirror the bench, so offering one it already shows would
+        // add a duplicate row.
+        fillPicker($("ts-add-runval"),
+                   (sweep || []).filter((it) =>
+                       machineAnswers(typeof it === "string" ? it : it.name)),
+                   runValueNames(_task || {}),
+                   "every machine setting is already listed");
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
 }
 
@@ -1343,6 +1569,94 @@ function removeColumn(name) {
  * names what it continues from, because `prep` refuses to guess (`stages.md`
  * § 6.5: every verb is given the stage's name).
  */
+/* ---------- what a prep will write, per stage (§ 7.1) ---------- */
+/*
+ * SERVED, NEVER COMPOSED.  Flat and hierarchical name directories
+ * differently, and the allocation a rung carries is `_allocation_for`'s
+ * answer -- so both come from the door that asks the producers.  A list
+ * built here would be a second account of the same facts, free to promise
+ * a wall the run will not ask for.
+ */
+
+let _planTimer = null;
+let _planSeq = 0;
+
+function schedulePlan(task) {
+    if (_planTimer) clearTimeout(_planTimer);
+    const snapshot = task;
+    _planTimer = setTimeout(() => refreshPlan(snapshot), 300);
+}
+
+async function refreshPlan(task) {
+    const box = $("ts-plan");
+    const host = $("ts-plan-list");
+    if (!box || !host) return;
+    if (_mode !== "description" || !task || !(task.stages || []).length) {
+        box.hidden = true;
+        return;
+    }
+    const seq = ++_planSeq;
+    let body;
+    try {
+        const r = await fetch("/api/task-setup/prep-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task: task }),
+        });
+        body = await r.json();
+    } catch (e) {
+        body = null;
+    }
+    if (seq !== _planSeq) return;
+    /* A DESCRIPTION MID-EDIT IS OFTEN UNREADABLE, and that is ordinary --
+     * the list hides rather than showing a stale plan for a document that
+     * no longer says what it did.  The cards above are the substance. */
+    if (!body || !body.ok) { box.hidden = true; return; }
+    paintPlan(box, host, body);
+}
+
+function askLine(a) {
+    const bits = [];
+    for (const k of Object.keys(a.values || {})) {
+        bits.push(k + "=" + a.values[k]);
+    }
+    if (a.domain) bits.push(a.domain);
+    if (a.time) bits.push(a.time);
+    if (a.mem) bits.push(a.mem);
+    // NOTHING STATED IS A REAL ANSWER, and naming it is the point: the run
+    // takes run-config.toml and then the wrapper's policy, and a blank line
+    // would read as "no idea" rather than "not yet decided".
+    return bits.length ? bits.join(" \u00b7 ")
+                       : "nothing stated \u2014 run-config.toml, then policy";
+}
+
+function paintPlan(box, host, body) {
+    host.textContent = "";
+    box.hidden = false;
+    for (const row of body.stages || []) {
+        host.appendChild(el("li", { class: "ts-planrow" },
+            el("span", { class: "ts-plan-stage" }, row.stage),
+            el("code", { class: "ts-plan-dir" },
+               row.dir === "." ? "(the bundle root)" : row.dir + "/"),
+            el("span", { class: "ts-plan-ask" }, askLine(row.allocation))));
+    }
+    if (body.bench) {
+        const axes = Object.keys(body.bench.axes || {})
+            .map((k) => k + " " + (body.bench.axes[k] || []).join(","))
+            .join(" \u00d7 ");
+        host.appendChild(el("li", { class: "ts-planrow ts-planrow--bench" },
+            el("span", { class: "ts-plan-stage" }, "bench"),
+            el("code", { class: "ts-plan-dir" }, "bench-<token>/"),
+            el("span", { class: "ts-plan-ask" },
+               axes + " \u00b7 " + askLine(body.bench.allocation))));
+    }
+}
+
+
+//: WHICH RUNG'S TAB IS OPEN.  Page state, not the description's: which
+//: stage you are reading says nothing about the calculation.
+let _stepTab = "";
+
 function renderNext(task) {
     const card = $("ts-next-card");
     const host = $("ts-next");
@@ -1414,6 +1728,22 @@ function renderNext(task) {
      * hints rather than choosing. */
     const benchKeys = Object.keys((task && task.bench) || {});
 
+    /* ONE TAB PER RUNG (§ 11, user 2026-09-01: "we can make the stage axis
+     * as a tab to organize the cards for prep bench and run so the whole
+     * page won't extend too long").  The alternative grows the page by one
+     * block per stage, and a five-rung ladder becomes a page nobody
+     * scrolls to the bottom of. */
+    const nav = el("nav", { class: "ts-steptabs", role: "tablist",
+                            "aria-label": "stages to prepare" });
+    const panels = el("div", { class: "ts-steppanels" });
+    host.appendChild(nav);
+    host.appendChild(panels);
+    const names = enabled.map((e) => e.st.name || "");
+    // THE CHOICE SURVIVES A REPAINT.  Every edit re-renders this card, and
+    // snapping back to the first rung would lose the tab a person was
+    // reading each time they typed.
+    if (names.indexOf(_stepTab) === -1) _stepTab = names[0] || "";
+
     enabled.forEach((e, i) => {
         const name = e.st.name || "";
         const ov = e.st.overrides || {};
@@ -1427,9 +1757,22 @@ function renderNext(task) {
             from = " --from " + token + "/run-0";
         }
         const runs = _runs[name];
-        const block = el("div", { class: "ts-next-step" },
-            el("div", { class: "ts-next-stage" }, name,
-               (runs ? el("span", { class: "ts-ran" }, runs + "\u00d7 run") : null)));
+        const active = name === _stepTab;
+        const tab = el("button", {
+            type: "button", class: "ts-steptab", role: "tab",
+            id: "ts-steptab-" + i, "aria-controls": "ts-steppanel-" + i,
+            "aria-selected": active ? "true" : "false" }, name);
+        if (active) tab.classList.add("is-active");
+        tab.addEventListener("click", () => { _stepTab = name;
+                                              renderNext(_task || task); });
+        if (runs) tab.appendChild(el("span", { class: "ts-ran" },
+                                     runs + "\u00d7"));
+        nav.appendChild(tab);
+
+        const block = el("div", {
+            class: "ts-next-step", role: "tabpanel",
+            id: "ts-steppanel-" + i, "aria-labelledby": "ts-steptab-" + i });
+        block.hidden = !active;
 
         /* MEASURE first, when the description declares axes to measure.
          * The order is shown because it is load-bearing: `summarize`
@@ -1470,7 +1813,7 @@ function renderNext(task) {
         // loud (`project-layout.md` § 1.6), and a button would have to pick
         // a default.  The command above still shows it when it applies.
         if (!from) block.appendChild(prepButton("run", name));
-        host.appendChild(block);
+        panels.appendChild(block);
     });
 
     card.hidden = false;
@@ -2191,6 +2534,46 @@ function readAsksFromTask(task) {
     // no auto mark and no queue click may replace them.
     if (t) { t.value = a.time || ""; delete t.dataset.mbAuto; }
     if (m) { m.value = a.mem || ""; delete m.dataset.mbAuto; }
+    readBenchAllocFromTask(task);
+}
+
+/* ---------- what to ask for while MEASURING (§ 6.8c) ---------- */
+/*
+ * A benchmark is short by construction -- capped SCF, one point, no
+ * relaxation -- and a run is not.  Absent means "use the run's", which is
+ * what every description said before 2026-09-01, so the block is collapsed
+ * and writes nothing until someone types in it.
+ */
+
+function readBenchAllocFromTask(task) {
+    const b = (task && task.bench_allocation) || {};
+    const d = $("ts-bench-domain");
+    const t = $("ts-bench-time");
+    if (d) d.value = b.domain || "";
+    if (t) t.value = b.time || "";
+    // Opened when it HAS something to say, so a description that sets a
+    // different bench wall does not hide it behind a closed disclosure.
+    // BY ID, not `.closest()`: the audit cannot tell an `.open` from a
+    // `.hidden` through a traversal, and it is right not to guess -- the
+    // page addresses every other control by id anyway.
+    const box = $("ts-benchalloc");
+    if (box && (b.domain || b.time)) box.open = true;
+}
+
+function applyBenchAllocToDoc() {
+    if (!_task) return;
+    const d = ($("ts-bench-domain") || {}).value || "";
+    const t = ($("ts-bench-time") || {}).value || "";
+    const out = {};
+    if (d.trim()) out.domain = d.trim();
+    if (t.trim()) out.time = t.trim();
+    const had = JSON.stringify(_task.bench_allocation || null);
+    // ABSENT-IS-A-STATE: an empty block writes NO key, so a description
+    // whose bench asks for what the run asks for round-trips untouched.
+    if (Object.keys(out).length) _task.bench_allocation = out;
+    else delete _task.bench_allocation;
+    if (JSON.stringify(_task.bench_allocation || null) === had) return;
+    syncFromModel();
 }
 
 /* ---------- when this run should tell you something ---------- */
@@ -2199,7 +2582,7 @@ function readAsksFromTask(task) {
  *
  * WHEN only.  Where to send it is the user's own file on the machine that
  * runs the job, because a description travels and a token must not travel
- * with it (`plans/bench-and-junction-plan.md` § 2.9).
+ * with it (`archive/2026-09-01-bench-and-junction-plan.md` § 2.9).
  *
  * The triggers are independent -- checkboxes, not a picker -- so either,
  * both or neither is a valid answer.  Finish is not among them: a run
@@ -2218,6 +2601,12 @@ function notifyValues() {
         // a boundary is how "4h" reached sbatch as `-t 4h`.
         if (isFinite(n) && n > 0) out.every_hours = n;
     }
+    // ABSENT AND EMPTY ARE DIFFERENT and only this field is written when
+    // falsy: `[]` says send nowhere, absent says everywhere the running
+    // machine has.  `task.py` carries the same exception for the same
+    // reason (`run-reports.md` 3.0).
+    const chans = channelSelection();
+    if (chans !== null) out.channels = chans;
     return out;
 }
 
@@ -2264,6 +2653,14 @@ function readNotifyFromTask(task) {
     // The box keeps its offered default when the description says nothing,
     // so ticking the row does not first make the user think of a number.
     if (hrs && isFinite(every) && every > 0) hrs.value = String(every);
+    // `"channels" in n`, NOT truthiness: an empty array is a real answer and
+    // a truthiness test would read it as "the description says nothing" and
+    // silently tick every channel back on.
+    const named = (n && Object.prototype.hasOwnProperty.call(n, "channels")
+                   && Array.isArray(n.channels)) ? n.channels : null;
+    const all = $("ts-notify-all");
+    if (all) all.checked = named === null;
+    paintChannelTicks(named);
     paintNotifyNote();
 }
 
@@ -2276,9 +2673,19 @@ function paintNotifyNote() {
     if (v.on_scf_converged) parts.push("each SCF convergence");
     if (v.every_hours) parts.push(`every ${v.every_hours} h`);
     parts.push("and when it ends");
-    note.textContent = parts.length > 1
+    let line = parts.length > 1
         ? "Reports " + parts.slice(0, -1).join(", ") + " " + parts[parts.length - 1]
         : "Reports only when it ends";
+    // WHERE, in the same sentence as WHEN, because "reports every 6 h" with
+    // no channel ticked is a promise the run cannot keep.
+    if (v.channels && !v.channels.length) {
+        line = "Reports nothing — no channel is ticked";
+    } else if (v.channels) {
+        line += " \u2014 to " + v.channels.join(", ");
+    } else {
+        line += " \u2014 to every channel on the machine that runs it";
+    }
+    note.textContent = line;
 }
 
 /** What a `prep` would resolve for the open folder, and from which file.
@@ -2428,7 +2835,9 @@ function setShape(shape) {
             try { _task = JSON.parse(text); } catch (_) { _task = null; }
             return setEditorText(text).then(() => {
                 if (_task) { renderStages(_task); renderNext(_task);
-                             renderMachine(_task); refreshPickers(); }
+                             renderMachine(_task);
+                             renderRunValues(_task);
+                             refreshPickers(); }
             });
         }).catch(() => {
             const text = proposedFromHandover(_handover, shape, []);
@@ -2643,7 +3052,7 @@ function start(projects) {
     // WIRED BEFORE THE FOLDER LOADS, and independent of it: the
     // destination is a MACHINE setting, so it is neither gated on a
     // calculation being open nor reset when you pick a different one.
-    wireDestination();
+    wireChannels();
 
     // `getCurrentDir` is the public accessor; reading sessionStorage directly
     // would duplicate the sidebar's own key name in a second place.
@@ -2691,6 +3100,25 @@ function start(projects) {
     };
     const goBtn = $("ts-add-setting-go");
     if (goBtn) goBtn.addEventListener("click", addSetting);
+    for (const id of ["ts-bench-domain", "ts-bench-time"]) {
+        const f = $(id);
+        // On `change`, like every other ask on this page: the editor's text
+        // is the one source of truth and a control holding its value beside
+        // it would be a second answer.
+        if (f) f.addEventListener("change", applyBenchAllocToDoc);
+    }
+    const runBtn = $("ts-add-runval-go");
+    if (runBtn) runBtn.addEventListener("click", () => {
+        const sel = $("ts-add-runval");
+        if (!sel || !sel.value) return;
+        // A row starts UNSTATED, not at a guess: the whole point of § 6.2b
+        // is that the number is yours.  Adding the row says "I intend to
+        // decide this"; typing in it is the decision.
+        _extraRunRows.add(sel.value);
+        sel.value = "";
+        renderRunValues(_task);
+        refreshPickers();
+    });
     const addBtn = $("ts-add-stage");
     if (addBtn) addBtn.addEventListener("click", addStage);
     const colBtn = $("ts-add-col-go");
@@ -2729,183 +3157,173 @@ function boot() {
              "molbuilder-runtime.js must load before every other script.");
 }
 
-/* ---------- where the reports go: a MACHINE setting ---------- */
+/* ---------- which channels this calculation reports to ---------- */
 /*
- * A different card from the policy one above, and a different file.  The
- * policy card writes task.json, which TRAVELS -- so it never sees a key.
- * This writes config_dir()/notify on this machine, which never travels
- * (`run-reports.md` 1 and 3.1).
+ * NAMES ONLY.  Until 2026-08-31 this card also held the address and the key
+ * and wrote a second file with them; both now live on the This-machine tab,
+ * where they are a fact about the box rather than about a calculation
+ * (`this-machine.md` 1).  What is left writes `task.json` and nothing else,
+ * which is the rule the card used to hold with a comment.
  *
- * It is also machine-wide, so it does NOT hide with the calculation: what
- * it sets outlives whichever folder you happen to have open, and hiding
- * it would suggest otherwise.
+ * The three states of `notify.channels` are three states of this control,
+ * and they are not collapsible (`run-reports.md` 3.0):
+ *
+ *   the "every channel" box ticked  -> the key is ABSENT, and the
+ *                                      description uses whatever is set up
+ *                                      wherever it lands
+ *   some names ticked               -> ["those"]
+ *   the box clear and none ticked   -> [], which means send nowhere
  */
 
-/** The key is write-only: shown as a placeholder, never fetched back. */
-function paintDestination(d) {
-    const state = $("ts-reports-state");
-    const path = $("ts-reports-path");
-    const form = $("ts-reports-form");
-    const away = $("ts-reports-elsewhere");
-    if (!state) return;
-    if (path) path.textContent = d.path ? ("It lives at " + d.path + ".") : "";
+//: What this machine has, from `GET /api/notify/channels`.  Names and
+//: evidence; the route hands out nothing else, so there is nothing here to
+//: leak.  Empty until it answers, and an empty list is a real answer.
+let _machineChannels = [];
+//: Has the server answered yet?  Distinct from "the list is empty", and the
+//: distinction is visible: before the answer, a name in the description
+//: cannot be called missing, and painting it as missing would flash a
+//: warning about a channel that is in fact set up.
+let _channelsKnown = false;
 
-    if (d.problem) {
-        // A BROKEN file and NO file both mean nothing is sent, and they
-        // look identical from the outside.  Saying which is the whole
-        // reason this card is worth having.
-        state.textContent = "There is a file, but it cannot be read: "
-            + d.problem + " \u2014 nothing is being sent.";
-        state.setAttribute("data-state", "bad");
-    } else if (d.configured) {
-        state.textContent = "Reports go to " + d.url
-            + (d.has_key ? " (signed)" : " (no key \u2014 the address is the credential)")
-            + (d.mode && d.mode !== "0o600"
-               ? "  \u2014 warning: the file is " + d.mode + ", not 0600" : "");
-        state.setAttribute("data-state", "set");
-    } else {
-        state.textContent = "Nothing is set up, so no reports are sent.";
-        state.setAttribute("data-state", "none");
-    }
-
-    // WHICH MACHINE RUNS THE JOBS decides what this card can do.  On a
-    // submit machine the file belongs on the cluster, which this server
-    // cannot write -- so it hands over the exact command instead of
-    // offering a button that would write the file somewhere useless.
-    const here = d.can_write_here !== false;
-    if (form) form.hidden = !here;
-    if (away) away.hidden = here;
-    const cmd = $("ts-reports-cmd");
-    if (cmd && !here) {
-        const url = ($("ts-reports-url") && $("ts-reports-url").value.trim())
-            || d.url || "https://YOUR-SERVER:8888/api/<segment>";
-        /* THE PATH IS RESOLVED ON THE FAR MACHINE, so the rule has to travel
-         * as shell rather than as an answer -- this server's config directory
-         * is not the cluster's.  It must be the WHOLE rule
-         * (`configuration.md` § 2.1c): MOLBUILDER_CONFIG_DIR first and exactly
-         * as given, then XDG_CONFIG_HOME/molbuilder, then ~/.config/molbuilder.
-         *
-         * It implemented only the last two until 2026-08-31, so on any machine
-         * with MOLBUILDER_CONFIG_DIR set, following this card wrote the file
-         * where the monitor does not look -- and silently, because an absent
-         * notify file simply means "no notifier".  That is the same failure
-         * `notify_setup.py` records from the card's previous life, when it
-         * named `~/.molbuilder/notify` while the monitor read
-         * `config_dir()/notify`.  Fixing the spelling last time left the
-         * hardcoding in place; this states the rule instead.
-         *
-         * `tests/test_task_setup_notify_js.py` pins all three branches. */
-        cmd.textContent =
-            'cfg="${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}"\n'
-            + 'mkdir -p -m 700 "$cfg"\n'
-            + 'cat > "$cfg/notify" <<\'EOF\'\n'
-            + '{\n  "url": "' + url + '",\n  "key": "PASTE-THE-KEY"\n}\nEOF\n'
-            + 'chmod 600 "$cfg/notify"';
-    }
-    if (d.configured && $("ts-reports-url") && !$("ts-reports-url").value) {
-        $("ts-reports-url").value = d.url;
-    }
-    // THE EMPTY KEY FIELD MEANS "UNCHANGED", so it must not read as
-    // "none set".  The field is cleared after every save -- a secret left
-    // in the DOM ends up in a screenshot -- and saving again with it blank
-    // KEEPS the stored key, so the placeholder has to say so or the next
-    // person assumes they have wiped it.
-    const kf = $("ts-reports-key");
-    if (kf) {
-        kf.placeholder = d.has_key
-            ? "unchanged \u2014 type a new one to replace it"
-            : "from `molbuilder notify-token`";
-    }
+/** The names ticked right now, or `null` for "every channel". */
+function channelSelection() {
+    const all = $("ts-notify-all");
+    if (all && all.checked) return null;
+    const host = $("ts-notify-channels");
+    if (!host) return null;
+    return Array.from(host.querySelectorAll("input[type=checkbox]"))
+        .filter(b => b.checked)
+        .map(b => b.value);
 }
 
-async function loadDestination() {
-    try {
-        const r = await fetch("/api/notify/destination");
-        paintDestination(await r.json());
-    } catch (e) {
-        const s = $("ts-reports-state");
-        if (s) s.textContent = "Could not ask this server: " + e;
-    }
-}
-
-/** Say something under the destination controls.
+/** Paint one tick per channel: this machine's, plus any the description
+ *  names that this machine does not have.
  *
- * `data-state`, because that is what every other `.ts-ask-note` on this
- * page already uses and the sheet already styles (`[data-state="bad"]`).
- * A first version set an `is-bad` CLASS instead -- a second convention for
- * one idea on one page, and shaped exactly like `modify/viewer.js`'s own
- * status setter, which `test_no_duplicated_ui_components` caught: *one
- * function written twice is two places for a fix to miss.*
+ *  THE MISSING ONES ARE SHOWN, NOT HIDDEN.  That is the travelling case --
+ *  a description written at a desk and opened on a cluster -- and it is the
+ *  one worth seeing BEFORE submitting, because a channel that resolves to
+ *  nothing is silent by design.
  */
-function destNote(text, bad) {
-    const n = $("ts-reports-note");
-    if (!n) return;
-    n.textContent = text;
-    n.setAttribute("data-state", bad ? "bad" : "ok");
-}
+function paintChannelTicks(chosen) {
+    const host = $("ts-notify-channels");
+    if (!host) return;
+    const have = _machineChannels.map(c => c.name);
+    const named = Array.isArray(chosen) ? chosen : [];
+    const every = have.concat(named.filter(n => have.indexOf(n) === -1));
+    const all = $("ts-notify-all");
+    const picking = !(all && all.checked);
 
-async function saveDestination() {
-    const url = ($("ts-reports-url") || {}).value || "";
-    const key = ($("ts-reports-key") || {}).value || "";
-    destNote("saving\u2026", false);
-    try {
-        const r = await fetch("/api/notify/destination", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: url.trim(), key: key.trim() }),
+    host.textContent = "";
+    if (!every.length) {
+        const p = document.createElement("p");
+        p.className = "hint";
+        p.textContent = _channelsKnown
+            ? "No channels are set up on this machine yet — a run still "
+              + "reports nowhere until one is."
+            : "Asking this server which channels it has\u2026";
+        host.appendChild(p);
+        return;
+    }
+    for (const name of every) {
+        const known = _machineChannels.find(c => c.name === name);
+        const id = "ts-ch-" + name;
+        const label = document.createElement("label");
+        label.className = "ts-notify-opt";
+        label.setAttribute("for", id);
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = id;
+        box.value = name;
+        box.checked = Array.isArray(chosen) ? named.indexOf(name) !== -1 : true;
+        box.disabled = !picking;
+        box.addEventListener("change", () => {
+            applyNotifyToDoc();
+            paintNotifyNote();
         });
-        const d = await r.json();
-        if (!d.ok) { destNote(d.error || "could not save", true); return; }
-        // CLEARED ON SUCCESS: the field is write-only, and leaving a
-        // secret sitting in the DOM is how it ends up in a screenshot.
-        if ($("ts-reports-key")) $("ts-reports-key").value = "";
-        paintDestination(d);
-        destNote("Saved. Send a test report to be sure it works.", false);
-    } catch (e) {
-        destNote(String(e), true);
+        const text = document.createElement("span");
+        text.textContent = name + " ";
+        const sub = document.createElement("span");
+        sub.className = "ts-notify-sub";
+        if (!known && !_channelsKnown) {
+            sub.textContent = "asking this server about it\u2026";
+        } else if (!known) {
+            sub.textContent = "named here, but not set up on this machine — "
+                + "nothing is sent there from this box";
+            sub.setAttribute("data-state", "bad");
+        } else if (known.tested_ok === true) {
+            sub.textContent = known.kind + ", reached when last tested";
+        } else if (known.tested_ok === false) {
+            sub.textContent = known.kind + ", failed when last tested";
+            sub.setAttribute("data-state", "bad");
+        } else {
+            sub.textContent = known.kind + ", never tested";
+        }
+        text.appendChild(sub);
+        label.appendChild(box);
+        label.appendChild(text);
+        host.appendChild(label);
     }
 }
 
-async function clearDestination() {
-    destNote("removing\u2026", false);
+/** Ask this server what it can report to.  **Names, never secrets** -- and
+ *  that is enforced at the route, not here (`notify_setup.py::_row`). */
+async function loadChannelNames() {
+    if (!$("ts-notify-channels")) return;
     try {
-        const d = await (await fetch("/api/notify/destination",
-                                     { method: "DELETE" })).json();
-        if ($("ts-reports-url")) $("ts-reports-url").value = "";
-        if ($("ts-reports-key")) $("ts-reports-key").value = "";
-        paintDestination(d);
-        destNote("Removed \u2014 nothing is sent now.", false);
-    } catch (e) { destNote(String(e), true); }
+        const d = await (await fetch("/api/notify/channels")).json();
+        _machineChannels = Array.isArray(d.channels) ? d.channels : [];
+        _channelsKnown = true;
+        const note = $("ts-reports-note");
+        if (note) {
+            note.textContent = _machineChannels.length ? "" :
+                "Nothing is set up on this machine — add a channel on the "
+                + "This machine tab and it appears here.";
+            note.setAttribute("data-state",
+                              _machineChannels.length ? "ok" : "bad");
+        }
+    } catch (e) {
+        _machineChannels = [];
+        // KNOWN, in the sense that asking is over.  A page that stayed in
+        // "asking..." after a failed request would look like it was still
+        // trying, which is the one thing it is certainly not doing.
+        _channelsKnown = true;
+        const note = $("ts-reports-note");
+        if (note) {
+            note.textContent = "Could not ask this server which channels it "
+                + "has: " + e;
+            note.setAttribute("data-state", "bad");
+        }
+    }
+    readNotifyFromTask(currentTask());
 }
 
-async function testDestination() {
-    destNote("sending one report\u2026", false);
+/** The open description, or `null` when the editor holds no valid JSON. */
+function currentTask() {
+    if (!_cm) return null;
     try {
-        const d = await (await fetch("/api/notify/destination/test",
-                                     { method: "POST" })).json();
-        if (d.ok) { destNote("It arrived.", false); return; }
-        // The listener refuses every way identically, so the hint names
-        // all of the possibilities rather than guessing between them.
-        destNote(d.error || d.hint
-                 || ("the destination answered " + d.status), true);
-    } catch (e) { destNote(String(e), true); }
+        const t = JSON.parse(_cm.getValue());
+        return (t && typeof t === "object") ? t : null;
+    } catch (e) {
+        return null;
+    }
 }
 
-function wireDestination() {
-    // The destination lives INSIDE the notify card now (user, 2026-08-27:
-    // "where the notification should be sent should be configurable in
-    // this card too"), so there is no card of its own to reveal -- the
-    // notify card's own gate governs both halves.  Which is a behaviour
-    // change worth naming: the destination is machine-wide, so it is now
-    // only reachable with a calculation open.  That is the trade for
-    // having it where a person is actually thinking about it, and the CLI
-    // (`molbuilder notify-token`) is the door that needs no calculation.
-    if (!$("ts-reports-state")) return;
-    const on = (id, fn) => { const b = $(id); if (b) b.addEventListener("click", fn); };
-    on("ts-reports-save", saveDestination);
-    on("ts-reports-clear", clearDestination);
-    on("ts-reports-test", testDestination);
-    loadDestination();
+function wireChannels() {
+    const all = $("ts-notify-all");
+    if (all) {
+        all.addEventListener("change", () => {
+            // REPAINT FIRST, then write.  `applyNotifyToDoc` asks
+            // `channelSelection` again, and what that reads is the set of
+            // boxes now in the DOM -- which this repaint is what creates.
+            // Writing first would record the tick set from before the
+            // toggle, so turning "every channel" off would write the
+            // previous answer rather than the new one.
+            paintChannelTicks(channelSelection());
+            applyNotifyToDoc();
+            paintNotifyNote();
+        });
+    }
+    loadChannelNames();
 }
 
 if (document.readyState === "loading") {

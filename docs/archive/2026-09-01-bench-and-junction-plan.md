@@ -1,5 +1,13 @@
 # Benchmark measurement + junction placement — the standing work
 
+
+> **ARCHIVED 2026-09-01.**  Its open items moved to the one plan,
+> [`plans/plan.md`](?doc=plans/plan.md); what stays here is the record of
+> what was decided and built.  Nine plan documents were consolidated that
+> day *(user: "We don't need ten plan files scattered")*, and a fact-check
+> against the code found three of the nine headers stating the opposite of
+> what had shipped.
+
 **Role:** plan (partly built, partly designed)
 **Domain:** execution · science · web
 **Started:** 2026-08-26

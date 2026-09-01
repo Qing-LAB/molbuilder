@@ -5,7 +5,7 @@
 **Companions:** [`architecture.md`](?doc=architecture.md) (the reuse map —
 the same system by *layer*, task → tool); [`backend-architecture.md`](?doc=backend-architecture.md)
 (the same backend by *functional concern*); [`README.md`](?doc=README.md) (the
-doc index + the rules); [`roadmap.md`](?doc=roadmap.md) (open work);
+doc index + the rules); [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) (open work);
 [`process/package-layout.md`](?doc=process/package-layout.md) (where each file
 lives).
 
@@ -306,7 +306,7 @@ now lives in full:
 | 2026-04-30 | **Merge `molwatch` into `molbuilder`** — already coupled by file format, web stack, and author; one repo removes the drift surface | *(history — see the archived log)* |
 
 New durable decisions are appended to `design.md` *and* recorded in full; open
-*plans* live in [`roadmap.md`](?doc=roadmap.md), never here (a contract holds
+*plans* live in [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md), never here (a contract holds
 decisions, the roadmap holds plans).
 
 ---

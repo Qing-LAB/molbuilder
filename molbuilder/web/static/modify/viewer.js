@@ -35,6 +35,26 @@ const displayNumber = (index) => index + 1;
  *                here looks a viewer up: the only way to one is the handle you
  *                were handed (molview.md § 5.6), and there is nowhere to look.
  */
+/* THE ONE OP WRAPPER, LENT TO THE SIBLING PANELS.
+ *
+ * `postOp` below owns four things no panel should own twice: the in-flight
+ * lock, the edit-status line, the selection refresh and the state-timeline
+ * refresh.  The Slab panel needs all four -- it had none, so a refused slab
+ * and a built one looked identical and a second click during a slow build did
+ * nothing without saying so.
+ *
+ * It is created inside `init` because it closes over this page's state, so the
+ * door is published here once init has run.  One Modify page per document, so
+ * one door.  (ui-contract.md § 1: a thing used by more than one caller has
+ * exactly one owner.) */
+let _postOp = null;
+
+export function runOp(path, extraBody, label) {
+    return _postOp
+        ? _postOp(path, extraBody, label)
+        : Promise.resolve(null);
+}
+
 export function init(viewer) {
     "use strict";
 
@@ -83,9 +103,15 @@ export function init(viewer) {
         const d = _data();
         return (d && d.selection) ? d.selection : null;
     }
-    /* WHICH ATOMS ARE SELECTED, IN THE ORDER THEY WERE PICKED.
+    /* WHICH ATOMS ARE SELECTED — AS A SET, AND NOT IN ANY ORDER.
      *
-     * `get()` is the selection door's read for exactly this and hands back its
+     * This said "in the order they were picked" and it was never true: the
+     * store SORTS (`add()` does), and *All* / *Invert* / a filter build one
+     * with no pick order at all.  The sentence is what made `orient` reading
+     * `sel[0]`/`sel[1]` look correct for as long as it did.  Ordered gestures
+     * read the ruler's track instead — `pickedInOrder()` below.
+     *
+     * `get()` is the selection door's read and hands back its
      * own copy (molview.md § 9.5). This used to ask for `getState().indices` —
      * a key on no snapshot the store has ever produced, so the read was
      * `undefined.slice()`, a TypeError on the FIRST line of every refresh.
@@ -98,6 +124,15 @@ export function init(viewer) {
         const s = _selStore();
         return s ? s.get() : [];
     }
+    /* THE ORDERED TRACK, for the gestures whose answer is WHICH WAS FIRST
+     * (molview.md § 11.6).  `model-jobs.js`'s `ordered` column already sends
+     * these ops the picks; this is the same read, so the readout above a
+     * button names the atoms the server will actually be given. */
+    function pickedInOrder() {
+        const d = _data();
+        return (d && d.measurement) ? d.measurement.getState().picks : [];
+    }
+
     // Structure reads through the unified API -- the SINGLE source (no state.* mirror).
     // Cheap accessors: getElements/getCoordinates map the store atoms without a full clone.
     function _elements() {
@@ -154,6 +189,9 @@ export function init(viewer) {
     // selection panel.
     function refreshSelectionUI() {
         const sel    = selectedIndices();
+        // The ordered ops read the ruler, so their readouts and their
+        // enablement must read the same thing the server will be sent.
+        const picks  = pickedInOrder();
         const locked = state.inFlight;
         const els    = _elements();   // LIVE elements from molview.data (no state.* mirror)
 
@@ -183,8 +221,8 @@ export function init(viewer) {
         const orientBtn = $("orient-apply");
         const orientReadout = $("orient-anchor-readout");
         if (orientBtn && orientReadout) {
-            if (sel.length === 2) {
-                const [a, b] = sel;
+            if (picks.length === 2) {
+                const [a, b] = picks;
                 orientBtn.disabled = locked;
                 orientReadout.textContent =
                     `Anchors: #${displayNumber(a)} ${els[a]} → ` +
@@ -192,9 +230,9 @@ export function init(viewer) {
             } else {
                 orientBtn.disabled = true;
                 orientReadout.textContent =
-                    sel.length === 0
-                        ? "Anchors: pick two atoms"
-                        : sel.length === 1
+                    picks.length === 0
+                        ? "Anchors: pick two atoms with the ruler"
+                        : picks.length === 1
                             ? "Anchors: pick one more atom"
                             : "Anchors: pick exactly two atoms";
             }
@@ -467,6 +505,8 @@ export function init(viewer) {
         }
     }
 
+    _postOp = postOp;   // publish the door for the sibling panels
+
     async function applyDelete() {
         // The module resolves the acting group from the live selection and
         // rejects an empty one (delete's empty-policy = "reject"); the Delete
@@ -534,8 +574,9 @@ export function init(viewer) {
     }
 
     async function applyAddAtom() {
-        // The module resolves the single anchor from the selection and enforces
-        // arity 1 (add_atom's empty-policy = "reject", arity = 1); the Add
+        // The module resolves the single anchor from the SELECTION and
+        // enforces arity 1 (`add_atom` needs exactly one, and a set of one has
+        // no ambiguous first, so it is not an `ordered` row); the Add
         // button is disabled unless exactly one atom is picked.  We pass the
         // op-params only (element + placement offset) -- NOT the anchor index.
         const element = ($("add-element").value || "H").trim();
@@ -571,11 +612,13 @@ export function init(viewer) {
     }
 
     async function applyOrient() {
-        // The module resolves the two anchors from the selection and enforces
-        // arity 2 (orient's empty-policy = "reject", arity = 2); the Orient
-        // button is disabled unless exactly two atoms are picked.  Anchor order
-        // follows the selection order (a0 -> a1 sets the tilt direction in
-        // orient_along_axis).  We pass the op-params only -- NOT the anchors.
+        // The module resolves the two anchors from THE RULER'S TRACK and
+        // enforces arity 2 (`orient` declares `ordered: true` and
+        // `needsExactly: 2` in the op table); the button is disabled unless
+        // exactly two atoms are picked.  Anchor order is the CLICK order, so
+        // first -> second sets the tilt direction in orient_along_axis -- and
+        // it is a click order now, not a sorted set pretending to be one.
+        // We pass the op-params only -- NOT the anchors.
         const axis  = getCheckedRadio("orient-axis") || "z";
         const angle = Number($("orient-angle").value);
         const center = $("orient-center").value || "midpoint";
@@ -625,6 +668,14 @@ export function init(viewer) {
         if (_store) {
             _store.subscribe(() => refreshSelectionUI());
         }
+        /* ...and the ordered track, for the same reason: Orient and Add atom
+         * are enabled by the PICKS now, so a click that changes them has to
+         * reach these buttons.  Subscribing to the selection alone left them
+         * stale for exactly the gestures that moved to the ruler. */
+        const _d0 = _data();
+        if (_d0 && _d0.measurement && _d0.measurement.subscribe) {
+            _d0.measurement.subscribe(() => refreshSelectionUI());
+        }
         // Composite model subscriber — the "Save to project" button's enable
         // rule depends on isDirty() + a saved target, and the Save-state /
         // Retract controls depend on the LIVE state_index / uncommitted timeline
@@ -672,6 +723,27 @@ export function init(viewer) {
         // "Save state" -> save(1).  #undo-op keeps its id for
         // continuity; its label/title in modify.html now read
         // "Retract".
+        /* THE TRANSFORM TAB NEEDS ORDERED PICKS NOW, so it does what the Cell
+         * page does: turns the ruler on when reached, and says so (§ 11.6).
+         * On the TAB CLICK, never at module load -- announcing a mode change
+         * nobody asked for is what greeted a fresh page once. */
+        const transformTab = document.querySelector('[data-op-tab="transform"]');
+        if (transformTab) {
+            transformTab.addEventListener("click", () => {
+                const d = _data();
+                if (d && d.measurement && d.measurement.requestPicking()) {
+                    const notify = (window.molbuilder || {}).notify;
+                    if (notify && notify.show) {
+                        notify.show({ id: "ruler-on-transform-tab",
+                            level: "info", message: "Measuring is on: the "
+                            + "Transform tab picks atoms with the ruler, in "
+                            + "the order you click them. Turn it off when you "
+                            + "are done here." });
+                    }
+                }
+            });
+        }
+
         const undoBtn = $("undo-op");
         if (undoBtn) undoBtn.addEventListener("click", retractState);
         const saveStateBtn = $("save-state");

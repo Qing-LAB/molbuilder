@@ -1,4 +1,4 @@
-"""The categorical sort — `plans/transport-design.md` § 4.1a (build P2).
+"""The categorical sort — `archive/2026-09-01-transport-design.md` § 4.1a (build P2).
 
 Properties under guard, each named for its failure:
 

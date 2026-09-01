@@ -1,5 +1,5 @@
 """P4b — prep renders the transport composite's five stages
-(`plans/transport-design.md` § 4.2, the arm in `jobset/prep.py` +
+(`archive/2026-09-01-transport-design.md` § 4.2, the arm in `jobset/prep.py` +
 `transport/stages.py`).
 
 The design's own gate row, verbatim: *"A fixture junction preps
@@ -658,7 +658,7 @@ class TestTheCliRoute:
 
 
 class TestTheBiasScan:
-    """P5b — the bias chain (transport-design.md § 4.3; layout ruled
+    """P5b — the bias chain (archive/2026-09-01-transport-design.md § 4.3; layout ruled
     2026-08-29: plain v-dirs, one attempt ladder per point, one
     submission walking them with the .TSDE handed forward)."""
 

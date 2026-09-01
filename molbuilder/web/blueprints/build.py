@@ -707,7 +707,7 @@ def api_build_load():
     # atom-scoped keys, so the parsed geometry / cell above stay intact.
     atom_metadata_text: str = ""
     # WHAT THE CALLER KNOWS ABOUT THESE ATOMS THAT IS NOT THE ATOMS
-    # (`plans/structure-info-plan.md`, `web/molview.md` § 8.4a): the free
+    # (`archive/2026-09-01-structure-info-plan.md`, `web/molview.md` § 8.4a): the free
     # ``info`` store, a dict of key -> value that DESCRIBES the structure.
     # § 8.4a states it "rides installMolecule in and exportFile out", and
     # this is the in: a text load parses a file, and a file being parsed
@@ -1892,6 +1892,132 @@ def api_task_setup_bench_grid():
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "cells": rows,
                     "kept": sum(1 for r in rows if not r["why"])})
+
+
+@bp.route("/api/task-setup/run-fit", methods=["POST"])
+def api_task_setup_run_fit():
+    """Would the RUN's own numbers fit a queue on the target?
+
+    **It is the grid door with a grid of one.**  `task-setup.md` § 6.2b's
+    rows state one value per parameter, which is a sweep of length one --
+    so this builds a one-point axis from each and asks the SAME enumerator
+    the bench block asks.  A second admission path here could say a run is
+    fine where `launch` refuses it, which is the exact class of drift
+    `generator.md` § 4.3a's rebuild removed; there is nothing to keep in
+    step because there is only one of them.
+
+    POST ``{dest, target?, values, domain?}``.  ``values`` is the card's
+    model as it is being typed -- ``{"mpi_np": 8, "omp_threads": 6}`` --
+    not what is saved, so the answer tracks the keystroke.
+
+    Answers 200 with ``cell: null`` when the point survives nothing: *this
+    ask fits no queue here* is a result to show beside the field that
+    caused it, not a failure of the request.
+    """
+    body = request.get_json(silent=True) or {}
+    dest_raw = str(body.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False, "error": "no folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"not a directory: {dest_raw}"}), 400
+    values = body.get("values")
+    if values is not None and not isinstance(values, dict):
+        return jsonify({"ok": False,
+                        "error": "values: must be an object of "
+                                 "parameter -> one value"}), 400
+    if not values:
+        # NOTHING STATED IS NOT A REFUSAL.  A description that leaves the
+        # run to `run-config.toml` and the wrapper's policy is ordinary,
+        # and § 6.2b's block simply has nothing to check.
+        return jsonify({"ok": True, "cell": None, "stated": False})
+
+    from molbuilder.scheduler.record import LOCAL_TARGET
+    target = body.get("target") or None
+    if target in ("(this machine)", LOCAL_TARGET):
+        target = None
+
+    import contextlib
+    import io as _io
+
+    from molbuilder.jobset._cli import _bench_inputs
+    # ONE POINT PER PARAMETER -- the run IS a sweep of length one, which is
+    # the sentence § 6.2's card has always carried.
+    grid = {k: [v] for k, v in values.items()}
+    rows: list = []
+    try:
+        with contextlib.redirect_stdout(_io.StringIO()):
+            _bench_inputs(dest, target, bench_override=grid, report=rows)
+    except Exception as exc:                      # noqa: BLE001
+        if rows:
+            return jsonify({"ok": True, "cell": rows[0], "stated": True,
+                            "note": str(exc)})
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    cell = rows[0] if rows else None
+    return jsonify({"ok": True, "cell": cell, "stated": True,
+                    "fits": bool(cell and not cell.get("why")),
+                    "domain": body.get("domain") or ""})
+
+
+@bp.route("/api/task-setup/prep-plan", methods=["POST"])
+def api_task_setup_prep_plan():
+    """What a `prep` would write, stage by stage — `task-setup.md` § 7.1.
+
+    **The names come from the producer, never from the page.**  Flat and
+    hierarchical name directories differently (§ 4), so a list composed in
+    the browser would be a second answer free to disagree with the thing it
+    describes.  `prep.token_for` is the one namer (decision 27) and
+    `Shape.stage_dir` the one layout, and this asks both.
+
+    The allocation each stage would carry comes from `prep._allocation_for`,
+    which is the same function the prep itself resolves through -- so the
+    row cannot promise a wall the run will not ask for.
+
+    POST ``{task}`` -- the description AS IT IS BEING EDITED, not what is
+    saved, for the reason the grid door gives: the card's edits live in the
+    browser's model until the person saves.  No folder is needed; none of
+    this touches a filesystem.
+    """
+    body = request.get_json(silent=True) or {}
+    raw = body.get("task")
+    if not isinstance(raw, dict):
+        return jsonify({"ok": False,
+                        "error": "task: must be the description object"}), 400
+    from molbuilder.jobset.prep import _allocation_for, token_for
+    from molbuilder.jobset.shape import Shape
+    from molbuilder.task import Task
+    try:
+        task = Task.from_dict(raw)
+        shape = Shape.named(task.shape)
+    except Exception as exc:                      # noqa: BLE001
+        # A description mid-edit is often unreadable, and that is ordinary.
+        # Its own words, so the card can say why rather than going blank.
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    def _one(alloc, values_first=False):
+        out = {"domain": alloc.domain, "time": alloc.time, "mem": alloc.mem,
+               "values": dict(alloc.values)}
+        return out
+
+    rows = []
+    for st in task.stages:
+        if st.enabled is False:
+            continue
+        token = token_for(task, st.name)
+        rows.append({"stage": st.name, "token": token,
+                     "dir": shape.stage_dir(token),
+                     "allocation": _one(_allocation_for(task, st.name))})
+    bench = None
+    if task.bench:
+        bench = {"axes": {k: list(v) for k, v in task.bench.items()},
+                 "allocation": _one(_allocation_for(task, None,
+                                                    measuring=True))}
+    return jsonify({"ok": True, "shape": shape.name, "stages": rows,
+                    "bench": bench})
 
 
 @bp.route("/api/task-setup/machines", methods=["GET"])

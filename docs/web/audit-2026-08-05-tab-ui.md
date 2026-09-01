@@ -3,7 +3,7 @@
 **Role:** audit report
 
 > **Scheduled 2026-08-22.** The findings below are evidence; the open ones
-> are scheduled as **roadmap 7.4** (`?doc=roadmap.md`). §§ A2, C1, C2 are
+> are scheduled as **roadmap 7.4** (`?doc=archive/2026-09-01-roadmap.md`). §§ A2, C1, C2 are
 > closed; § C5 (`setStatus` ×6) is now ×12 and § C8 (three dialog
 > scaffolds) turned out to include two modals with no CSS at all.
 
@@ -17,11 +17,11 @@ Method: static only — no browser, no test run.
 **Superseded in part (2026-08-29):** every Transport-tab finding below
 (§ A3, § B2, and the transport rows of the tables) describes the retired
 Generate lane — the tab was rewired to the composite's describe surface
-(`plans/transport-design.md` P7b); read those rows as history only.
+(`archive/2026-09-01-transport-design.md` P7b); read those rows as history only.
 **Companions:** [`tabs.md`](?doc=web/tabs.md) — the contract these pages are read
 against. [`results.md`](?doc=web/results.md) § 2 — the picker contract § E1 cites.
 [`vibrationview.md`](?doc=web/vibrationview.md) — the module § A1 finds dead.
-[`css-system-plan.md`](?doc=plans/css-system-plan.md) — the plan § D belongs to.
+[`css-system-plan.md`](?doc=archive/2026-09-01-css-system-plan.md) — the plan § D belongs to.
 [`process/code-audit.md`](?doc=process/code-audit.md) — the playbook.
 
 ---
@@ -365,7 +365,7 @@ pattern was named and then copied instead of extracted.
 
 ## D. CSS — tab sheets overriding the shell
 
-Belongs to [`css-system-plan.md`](?doc=plans/css-system-plan.md); these are the
+Belongs to [`css-system-plan.md`](?doc=archive/2026-09-01-css-system-plan.md); these are the
 concrete instances found in the tab sheets.
 
 ### D1. `spectra/style.css` redefines shell rules with different values — `open`
@@ -485,4 +485,4 @@ Recorded so a later pass doesn't redo it:
 4. **B2, B3, B4, B5, B6** — comment and dead-code sweep; independent, cheap.
 5. **E1, E2** — contract alignment.
 6. **A3, C3-C8, D** — the rest, in whatever order suits the work in flight.
-   § D folds into [`css-system-plan.md`](?doc=plans/css-system-plan.md).
+   § D folds into [`css-system-plan.md`](?doc=archive/2026-09-01-css-system-plan.md).

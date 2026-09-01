@@ -1159,6 +1159,57 @@ def test_electrode_gap_is_refused_by_name_not_as_a_typo():
         cli._parse_electrode_spec("Au:111:3x3x2@gap=8.0:5,10")
 
 
+def _run_electrode(tmp_path, st, spec):
+    """Build `st`, run one `--electrode` flag over it, return the result."""
+    from molbuilder.structure import Structure
+    inp = tmp_path / "in.xyz"
+    st.to_xyz(inp)
+    out = tmp_path / "out.xyz"
+    assert cli.main(["modify", str(inp), str(out), "--electrode", spec]) == 0
+    return Structure.from_xyz(out)
+
+
+def _closest_metal_z(struct, above):
+    zs = [float(p[2]) for e, p in zip(struct.elements, struct.positions)
+          if e == "Au"]
+    return min(z for z in zs if z > above)
+
+
+def test_the_centroid_rule_moved_here_with_the_placement(tmp_path):
+    """**The rule survived its builder, so its test moved with it.**
+
+    `--electrode ...:+z=I,J` centres on the CENTROID of the trailing index
+    list — 1 index is that atom, 2 their midpoint, N their centroid. That
+    arithmetic lived in `modify.add_electrode_slab` until 2026-09-01, when
+    the second slab builder was deleted (`archive/2026-09-01-modify-redesign-plan.md` § 3.4b).
+    It is the CLI's now, because the convenience is the CLI's; `add_slab`
+    takes an absolute `start_z` and reads no selection at all.
+    """
+    from molbuilder.structure import Structure
+
+    # four atoms at z = 0, 2, 4, 6
+    st = Structure(elements=["S"] * 4,
+                   positions=np.array([[0., 0., 0.], [0., 0., 2.],
+                                       [0., 0., 4.], [0., 0., 6.]]))
+    for idx, anchor_z in (("1", 2.0), ("0,2", 2.0), ("0,1,2,3", 3.0)):
+        out = _run_electrode(tmp_path, st,
+                             f"Au:111:2x2x1@contact=2.4:+z={idx}")
+        got = _closest_metal_z(out, above=anchor_z)
+        assert got == pytest.approx(anchor_z + 2.4, abs=1e-6), idx
+
+
+def test_a_centre_index_off_the_end_is_refused_by_the_flag(tmp_path):
+    """It was an `IndexError` out of the builder; with the builder gone the
+    flag checks it, and says which index and how many atoms there are."""
+    from molbuilder.structure import Structure
+    st = Structure(elements=["S"], positions=np.array([[0., 0., 0.]]))
+    inp = tmp_path / "in.xyz"
+    st.to_xyz(inp)
+    with pytest.raises(SystemExit):
+        cli.main(["modify", str(inp), str(tmp_path / "o.xyz"),
+                  "--electrode", "Au:111:2x2x1@contact=2.4:+z=5"])
+
+
 def test_electrode_still_builds_one_slab_per_flag():
     from molbuilder import cli
     spec = cli._parse_electrode_spec("Au:111:3x3x2@contact=2.4:+z=3")

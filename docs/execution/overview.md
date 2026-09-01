@@ -44,7 +44,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
 | What a saved history must always guarantee — the 31 rules behind `molbuilder checkpoint` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
-| How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`plans/transport-design.md`](?doc=plans/transport-design.md) § 4.1; the old handoff bundle retired 2026-08-29) |
+| How a **finished run** becomes the starting point of the next calculation | **cite it** — the transport composite names the attempt and prep composes ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1; the old handoff bundle retired 2026-08-29) |
 | What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
 | What a **template** is — the file that carries every parameter with its value, and which layer owns each one | **[`engines/template.md`](?doc=engines/template.md)** — in `engines/`, by the same rule: a template is nothing but parameters |
 
@@ -154,7 +154,7 @@ executed, and the whole `execution/` domain is shaped by it:
 So the honest one-line status of the whole domain: **describe in the browser,
 act on the terminal, observe on either — shipped and proven for structure
 optimization on a workstation; the cluster proof and a web plan/status view
-remain (`roadmap.md` workstream 1); spectra (2026-08-21) and transport
+remain (`archive/2026-09-01-roadmap.md` workstream 1); spectra (2026-08-21) and transport
 (2026-08-29, the composite) both migrated onto the framework.**
 
 ```mermaid
@@ -188,7 +188,7 @@ flowchart TB
 | SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
 | Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ⏳ | `checkpointing.md § 7.1` |
 
-`✅` shipped · `⏳` planned (see [`roadmap.md`](?doc=roadmap.md) workstream 1) ·
+`✅` shipped · `⏳` planned (see [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) workstream 1) ·
 `—` not applicable / not planned for that surface.
 
 Two facts keep the picture honest:
@@ -198,7 +198,7 @@ Two facts keep the picture honest:
   routes were deleted (2026-08-18) — they hand over to Task setup, which
   writes the description; `prep`/`launch` run where the machine is. What the
   web still lacks is the observe half beyond the Results tab: a plan view
-  and a per-stage status roll-up (`roadmap.md` workstream 1).
+  and a per-stage status roll-up (`archive/2026-09-01-roadmap.md` workstream 1).
 - **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
   in `task.json` and executes one rung per job, exactly as SIESTA's does
   ([`stages.md § 1.1a`](?doc=engines/stages.md), decided 2026-08-18 — the
@@ -314,7 +314,7 @@ When two docs need the same fact, it lives once, in `job-contracts.md`:
   `job-contracts.md § 3`.
 - **Warm / cold restart semantics** — `job-contracts.md § 4`.
 - **The handoff bundle** (a finished run → the next calculation) —
-  the citation model (`plans/transport-design.md` § 4.1) — the old
+  the citation model (`archive/2026-09-01-transport-design.md` § 4.1) — the old
   handoff-bundle contract retired 2026-08-29.
 - **The persisted-artifact registry, the `@major` schema rule, and the
   config ↔ scheduler parameter vocabulary** — `job-contracts.md § 6`.

@@ -18,8 +18,9 @@ this is the rule for how it tells you what it sees.
 
 **The sentence the whole design follows:**
 
-> **When** to speak belongs to the calculation. **Where** to speak belongs to
-> the machine. They are never written in the same file.
+> **When** to speak, and **which channels**, belongs to the calculation.
+> **What a channel actually is** — an address, and usually a secret — belongs
+> to the machine. They are never written in the same file.
 
 ---
 
@@ -36,8 +37,16 @@ So the two halves live apart, and every rule below is a consequence:
 
 | | lives in | travels? |
 |---|---|---|
-| **the policy** — when to speak | `task.json`'s `notify` block | **yes**, and safely: *"tell me every six hours"* is true wherever the file is opened |
-| **the destination** — where to speak, and the secret | the user's own file, `$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`), mode `0600` | **no**, ever |
+| **the policy** — when to speak, and which channels **by name** | `task.json`'s `notify` block | **yes**, and safely: *"every six hours, to `slack`"* is true wherever the file is opened |
+| **the channels** — what each name resolves to: the address, and the secret | the user's own file, `$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`), mode `0600` | **no**, ever |
+
+**A name travels; what it points at does not** — and that is what lets a
+description say where its reports go at all. `"slack"` is a label the person
+chose on their own machine. It is not a credential, it grants nothing, and on a
+machine that has no channel by that name it resolves to nothing and says so in
+the monitor log. Before 2026-08-31 there was one unnamed destination per
+machine, so a description could not express a choice and pointing at Slack
+silently replaced the listener you were already using.
 
 The portability test is [`task-setup.md`](?doc=web/task-setup.md) § 6.1's, and
 it is the same one that lets a queue name into a description while keeping
@@ -113,11 +122,21 @@ One mechanism, two kinds of destination. Both are a `POST` with a short
 timeout, individually guarded, **silent on failure** — an unreachable server
 must never cost the run anything.
 
-`config_dir()/notify` is a JSON object:
+`config_dir()/notify` is a JSON object of **named channels**:
 
 ```json
-{ "url": "https://…", "key": "…" }
+{
+  "channels": {
+    "slack":       { "url": "https://hooks.slack.com/services/…" },
+    "my-listener": { "url": "https://molbuilder.example.edu:8888/api/GfmVt99",
+                     "key": "…" }
+  }
+}
 ```
+
+A name is the person's own label — letters, digits, `-` and `_`, so it can be
+written into a description and read back without quoting. Nothing generates one
+and nothing has a special meaning.
 
 | destination | how it is authorized | note |
 |---|---|---|
@@ -136,54 +155,147 @@ wagging the dog. It says so **in the monitor log**, because the wrapper
 backgrounds the process as `>/dev/null 2>&1 &` and anything printed goes
 nowhere.
 
+**And one bad channel does not cost the others.** A file with three channels
+and a typo in the second reports on two, and names the third in the log.
+Refusing the file whole is what the single destination had to do, because
+there was nothing else to keep; keeping it now would turn one mistake into
+total silence, which is the failure this whole area keeps producing.
+
 A third destination shape exists and is not in the table because nothing we
 ship needs it: **`headers`**, for a generic endpoint that wants a credential in
 a header and has no other way to be told who is calling. It is read if present
 and never required.
 
 `MB_NOTIFY_URL` overrides the file, for testing a destination once without
-editing anything.
+editing anything. It names no channel and needs none — one URL, used directly,
+**and § 3.0's selection does not apply to it**: a run whose description says
+`channels: []` still posts there, because the override is not one of the named
+channels the description was talking about. Setting it is the act of asking for
+this one report.
 
-### 3.1 Setting the destination up — BUILT 2026-08-27
+### 3.0 Which channels one run uses
+
+The description names them, and the two ways of saying nothing mean different
+things — which is the price of letting a checkbox list mean what it looks like:
+
+| `notify.channels` in `task.json` | the run reports to |
+|---|---|
+| **absent** | **every channel on this machine.** The reading of a description that predates channels, and of one written by hand |
+| `["slack", "my-listener"]` | those, and only those |
+| `[]` | **nothing.** Not an error: reports off for this calculation, on a machine where they are otherwise set up |
+
+Absent and empty are two spellings only because they are two intentions, and
+the serializer writes `[]` explicitly rather than dropping it the way it drops
+every other falsy field. That is the one exception in `task.py`'s round-trip
+rule (S1) and it is here because the alternative — an unticked list quietly
+meaning *all of them* — sends a report to a channel the person just unticked.
+
+**A named channel this machine does not have is skipped, and said in the
+monitor log.** That is the travelling case: a description written at a desk,
+opened on a cluster. It cannot be an error — the run is not wrong — and it must
+not be silent, because silence here is indistinguishable from working.
+
+### 3.1 Setting the channels up — BUILT 2026-08-27, named 2026-08-31
 
 **The format is the hard part, and it is the part a person should not have to
-get right from memory.** Today the flow is: run `notify-token`, copy the JSON,
-reach the machine that runs the jobs, `mkdir -p -m 700`, paste, `chmod 600`,
-and remember the directory. Four chances to be wrong and **every one of them
-fails silently** — absent or malformed means no notifier, which is
+get right from memory.** Without a surface the flow is: run `notify-token`,
+copy the JSON, reach the machine that runs the jobs, `mkdir -p -m 700`, paste,
+`chmod 600`, and remember the directory. Four chances to be wrong and **every
+one of them fails silently** — absent or malformed means no notifier, which is
 indistinguishable from never having set it up. The wrong-path defect found in
-the browser on 2026-08-27 came from exactly this.
+the browser on 2026-08-27 came from exactly this, and it is still the flow on
+a machine this server cannot write to — which is why the page hands over the
+exact bytes rather than pretending otherwise.
 
-**This does not touch § 1's split.** That rule is about what *travels*: policy
-into `task.json`, destination and secret into a file that never leaves the
-machine. A surface that writes the **non-travelling half, on the machine it
-belongs to** is not carrying a secret anywhere — it is putting one where the
-contract says it lives. The task-setup card's own rule (*it sets policy; it
-never sees a key*) stays exactly as it is, because that card writes
-`task.json`.
+**This does not touch § 1's split.** That rule is about what *travels*: the
+policy and the channel **names** into `task.json`, the addresses and their
+secrets into a file that never leaves the machine. A surface that writes the
+**non-travelling half, on the machine it belongs to** is not carrying a secret
+anywhere — it is putting one where the contract says it lives. The Task-setup
+card's own rule (*it sets policy; it never sees a key*) is stronger than it
+was, not weaker: that card writes `task.json` and, since 2026-08-31, has no
+control that could reach anything else.
 
-**Where it is.** Four signed-in routes under `/api/notify/destination`
-(`web/blueprints/notify_setup.py`, and `web-api.md` § 4 lists them), and the
-card is the second half of *Tell me how it is going* on the Task-setup tab
-(`task-setup.md` § 9b). A **separate blueprint from the listener**, which is
-the public receiving end: that one has no session, appends only, and its whole
-value is being small enough to reason about.
+**Where it is.** Signed-in routes under `/api/notify/channels` and
+`/api/notify/listener` (`web/blueprints/notify_setup.py`, and `web-api.md` § 4
+lists them), behind the **This machine** tab (`this-machine.md`). A **separate
+blueprint from the listener**, which is the public receiving end: that one has
+no session, appends only, and its whole value is being small enough to reason
+about.
 
-**Two cases, and `execution.mode` already tells them apart:**
+**It is its own tab because it is not about a calculation.** It lived inside
+the Task-setup notify card until 2026-08-31, which put a machine-wide setting
+behind *having a calculation open* and needed a warning comment in the template
+to keep two files straight in one card. Task setup now writes `task.json` and
+nothing else, and the rule *it sets policy; it never sees a key* is true by
+construction rather than by discipline.
 
-| | what the surface can do |
-|---|---|
-| **jobs run here** (`direct`) | **write the file.** Same filesystem, and the key is generated server-side, so it never leaves the machine. Through `auth_setup.write_secret_file`, which sets the mode before the first byte, and to `config_dir()` — the same function the monitor reads from, so the two cannot name different directories |
-| **jobs run on a cluster** (`submit`) | it cannot reach that filesystem. It shows the exact JSON and one install command, both with the route segment already in the URL — which is the format problem solved, even though the writing is not |
+**Nothing on that tab reads a secret back.** A stored key reports only
+*present* or *absent*, and **every address is masked to its host and last few
+characters** — because for Slack and Discord the URL *is* the credential
+(§ 3), so returning it whole is returning the secret. The route that preceded
+this returned every stored URL in full on the strength of *"an address, not a
+secret"*, which was true of a listener URL and false of the Slack one actually
+in the file.
 
-**A save updates; it does not replace.** The card writes the fields it
-manages over whatever the file already holds. Writing a fresh object instead
-destroyed everything else in it, two ways: the key (the card clears that field
-after each save, so the ordinary next action — fixing a typo in the address —
-arrived with none) and a `headers` block the page has no input for but
-`load_destination` reads. **Both failed silently**, because an unsigned report
-gets the listener's `404` and the notifier swallows it. Removing something
-deliberately is *Remove*, then save.
+**Every address, not only a webhook's**, because the alternative asks *which
+kind is this* — and the kind is derived from whether a key is stored, so a
+Slack URL saved with a key in the box would be classed a listener and printed
+whole. A rule that mislabelling can defeat is not a rule. A listener address
+loses nothing by it: the masked tail still names the segment, § 4's own
+section shows the route in full, and an address is proved by **testing** it
+rather than by reading it.
+
+**A key is shown exactly once**, when it is issued, and never again — the same
+deal a terminal gives you (§ 4.3). Issuing a secret and displaying a stored one
+are different acts; only the second is the one that must never happen.
+
+**One case: it writes the file, here.** *(user, 2026-09-01: every config file
+molbuilder manages is saved on the machine molbuilder runs on.)* Through
+`auth_setup.write_secret_file`, which sets the mode before the first byte, and
+to `config_dir()` — the same function the monitor reads from, so the two
+cannot name different directories.
+
+> **It read `execution.mode` and branched on it until 2026-09-01**, treating
+> `submit` as *"the jobs run on a cluster this server cannot reach"* and
+> offering a copy-paste recipe instead of a save. That is a misreading of the
+> setting: § 5.4 of [`running-a-job.md`](?doc=execution/running-a-job.md)
+> defines `mode` as `direct` (run in place) or through the scheduler, gating
+> `.sbatch` **on this machine**. A login node with SLURM is `submit` and is
+> exactly where the file belongs, so the branch refused the machine that
+> needed it most — while the genuine remote case, a laptop preparing for a
+> cluster, is `direct` and was never detected.
+
+**The remote case is real and is the user's to carry.** A bundle is prepared
+on one machine and copied to the one that runs it
+([`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)
+§ 1); the monitor reads its channels *there*. Putting the secret on that
+machine is the user's job **by design**, and the wrapper carries **no
+cleartext secret** — embedding one would violate the security protocol. What
+a surface may do about it is **say what the script will look for and where**,
+which is `this-machine.md` § 3.1. It may not generate a file for a machine it
+cannot see.
+
+Either way the **names** are what Task setup offers, so a description can be
+written against channels that only exist on the far machine.
+
+**A save updates one channel; it does not replace the file.** Two merges,
+and both are load-bearing. *Across* channels: saving `slack` must not disturb
+`my-listener`, so the write is keyed by name and touches nothing else.
+*Within* one: the fields the page manages go over whatever that channel already
+holds. Writing a fresh object instead destroyed the rest of it two ways — the
+key (the page clears that field after each save, so the ordinary next action,
+fixing a typo in the address, arrived with none) and a `headers` block the page
+has no input for but the monitor reads. **Both failed silently**, because an
+unsigned report gets the listener's `404` and the notifier swallows it.
+Removing a channel deliberately is *Remove*.
+
+**The single exception is the previous format.** A save clears the top-level
+`url`, `key` and `headers` a one-destination file carried: once the file has a
+`channels` map nothing reads them, and a credential nothing reads is a
+credential nobody will think to rotate. By name, not by *"anything that is not
+`channels`"* — the merge rule above is what protects a field added later, and
+it still does.
 
 **Whose file is it?** `config_dir()` belongs to the OS account the server runs
 as, while a molbuilder login is a person. **molbuilder does not manage that
@@ -371,39 +483,54 @@ code this project would own forever.
 ### 4.3 The two files, and issuing them
 
 `molbuilder notify-token <user>` generates the key, writes the server half, and
-prints the cluster half:
+prints the cluster half. `--channel` names the channel it prints (default
+`molbuilder`); that name is what a description ticks, so re-issuing under the
+same name replaces the credential without touching any description:
 
-| | file | mode |
-|---|---|---|
-| the server | `notify_keys` in the config directory — `{user: key}` | `0600` |
-| the cluster | `notify` in the config directory — `{"url": …, "key": …}` | `0600` |
+| | file | shape | mode |
+|---|---|---|---|
+| the server | `notify_keys` in the config directory | `{"route": …, "keys": {user: key}}` | `0600` |
+| the cluster | `notify` in the config directory | `{"channels": {"<name>": {"url": …, "key": …}}}` | `0600` |
 
-`molbuilder.json` needs **both** keys before the route exists at all:
-`notify_keys_file` (a path, never the keys) and `notify_route` (the generated
-segment, which is not a secret). Either one missing means no route is
-registered — `access-control.md` § 8 rule 1, *the safe state is the one you get
-by doing nothing*.
+**`molbuilder.json` needs nothing.** The key file **is** the switch: the
+listener is registered when that file exists and carries a route, and not
+otherwise — `access-control.md` § 8 rule 1, *the safe state is the one you get
+by doing nothing*, unchanged. No file, no route in it, no listener.
 
-> **It also generates a route segment — every single time, unless you say
-> otherwise.** The command cannot read `molbuilder.json`, so it has no way to
-> know a route is already in service. **Issuing a second person's key without
-> `--route` prints a NEW segment**, and pasting that into the config moves the
-> route out from under everyone already set up — their reports would stop, and
-> silently, because a notifier swallows failures by design.
+> **It took two settings until 2026-08-31, and they were the defect**
+> *(user: "why would `notify_keys_file` not by default be the one that the task
+> setup writes to? … the fact that you have to repeat the `notify_route` twice,
+> with one in the file and one in the `molbuilder.json` which has its own
+> pointer to that same file")*.
 >
-> So the first key is issued plainly, and **every one after it passes the
-> segment already in `molbuilder.json`**:
+> `notify_keys_file` was a path to the file molbuilder had itself chosen and
+> written; `notify_route` was a copy of the segment molbuilder had itself
+> issued. Neither was information the operator held. What they bought was a
+> working key file sitting beside a listener that had never been registered —
+> answering 404 to everything, which by design is indistinguishable from an
+> unconfigured server, so nothing said what was wrong.
+>
+> The duplication had a second cost, which this section used to describe as a
+> procedure: because the command could not read `molbuilder.json`, issuing a
+> second person's key generated a **new** segment, and pasting it moved the
+> route out from under everyone already set up — silently, since a notifier
+> swallows failures. With the route in the file the command reads what it
+> issued, so **the second key joins the first automatically** and there is
+> nothing to pass.
 >
 > ```console
 > $ molbuilder notify-token alice --host https://molbuilder.example.edu:8888
->   ...  "notify_route": "Ie8PB3cbJBoGoC"
+>   first key here, so the route segment was generated: GfmVt99yUpOzGyp2
 >
-> $ molbuilder notify-token bob   --host https://molbuilder.example.edu:8888 \
->       --route Ie8PB3cbJBoGoC
+> $ molbuilder notify-token bob   --host https://molbuilder.example.edu:8888
+>   joined the route already in that file (GfmVt99yUpOzGyp2), so everybody
+>   already set up keeps working.
 > ```
 >
-> The command says which of the two it just did, in as many words. Read that
-> line before you paste anything.
+> **`--route` survives for one job**: adopting a segment that is already live
+> somewhere else — a destination file issued before the file carried its route.
+> Passing one that differs from the file's says so, in as many words, because it
+> stops every key issued under the old segment.
 
 **The key is printed once, and that is a deliberate exception.** `auth-setup`
 never prints a secret and is right not to — a session key never leaves the
@@ -458,12 +585,14 @@ damage if a destination is ever compromised: the worst it buys is noise.
 | how it reaches the wrapper | `jobset.Resources`, the road `continue_retries` already rides |
 | how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.py` line |
 | when to fire | `monitor.run_monitor` |
-| where to send | `monitor.load_destination` → `config_dir()/notify` |
-| where results land | `$XDG_STATE_HOME/molbuilder/reports/<user>.jsonl` (default `~/.local/state/molbuilder/`), JSON Lines, 0600 (§ 4.1a).  `paths.reports` moves it |
+| what a channel name resolves to | `monitor.load_channels` → `config_dir()/notify` |
+| which channels one run uses | `task.Notify.channels` → `--notify-channels` (§ 3.0) |
+| where results land | `$XDG_STATE_HOME/molbuilder/reports/<user>.jsonl` (default `~/.local/state/molbuilder/`), JSON Lines, 0600 (§ 4.1a).  `$XDG_STATE_HOME` moves it -- `paths.reports` was retired 2026-08-31 and is now refused (`configuration.md` § 2.1d) |
 | what identifies a report | `monitor.run_identity` — label, job id, host (§ 4.1a) |
 | overriding that once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |
-| the card that sets it | the Task-setup tab, `task-setup.md` § 7 |
+| the card that sets **when**, and ticks the names | the Task-setup tab, `task-setup.md` § 7 |
+| the tab that sets **what a name is** | *This machine*, `this-machine.md` |
 | how a report is signed | HMAC-SHA256 over the body, both ends, standard library only (§ 4.1) |
-| the receiving end | `web/blueprints/notify.py`, registered by `web/app.py` only when **both** `notify_keys_file` and `notify_route` are set |
+| the receiving end | `web/blueprints/notify.py`, registered by `web/app.py` only when the key file exists and carries a route (§ 4.3) |
 | issuing a key, and the route segment | `molbuilder notify-token` (§ 4.3) |
 | who may rotate a key | a person, never `serve` (§ 4.4) |

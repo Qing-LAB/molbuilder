@@ -69,7 +69,7 @@ def _build_au_bdt_au_coords():
     """Return list of (element, (x, y, z)) tuples in the canonical
     L-electrode -> bridge -> R-electrode order -- GEOMETRIC order:
     the L block is the LOWER one and the list ascends along z
-    (transport-design.md § 4.1a, the one convention:
+    (archive/2026-09-01-transport-design.md § 4.1a, the one convention:
     L-electrode is the LOW-z lead;
     mirrored 2026-08-29 when the preflight learned to check geometry,
     which exposed the old fixture as L-on-top-listed-first).

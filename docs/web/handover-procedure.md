@@ -216,7 +216,7 @@ are fixed by design, the electronic contract arrives from the cited
 attempt's own deck at prep, and the knobs ride the stages' override bags.
 So the Transport tab describes DIRECTLY — `POST /api/transport/describe`
 answers with the finished `task.json`, the browser writes it where the
-user chose, and **nothing is awaiting** ([`plans/transport-design.md`](?doc=plans/transport-design.md)
+user chose, and **nothing is awaiting** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
 P7b).  The `transport-handover@1` schema this section once proposed was
 never needed: with no open questions there is no hand-over payload to
 carry.  Task setup remains the run surface that READS the description —

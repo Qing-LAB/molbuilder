@@ -237,13 +237,83 @@ export async function mount(hostEl, workspace, opts) {
      * There is no other way to it, and no other viewer's model is reachable from
      * it. The handle CONTAINS the model; it does not mirror it.
      */
+    /* ── WHAT LEAVES THROUGH THE HANDLE (§ 9.2, § 9.3) ─────────────────────
+     *
+     * The module's own pieces -- the panel, the view context, the render engine
+     * -- are handed `model` itself, because they ARE the module.  A TAB IS NOT,
+     * and it gets less: the three stores are replaced by surfaces carrying the
+     * doors a consumer legitimately needs and nothing more.
+     *
+     * WHY (user, 2026-08-31: "why would you expose all internal when there is
+     * no need for outside user to have them?").  `selection` alone has eighteen
+     * doors; outside code uses three.  Among the fifteen it does not use is
+     * `toggle` -- and a consumer calling `selection.toggle(i)` writes a pick
+     * without going through `pickAtom`, so the rule that decides
+     * measuring-vs-selecting never runs.  That is not hypothetical: it is
+     * exactly the defect the measurement track had until this was written.
+     *
+     * The line is: READS ARE OPEN, and the only writes that leave are the ones
+     * a consumer was found to need.  Everything else -- adding, removing,
+     * inverting, filtering, labelling, adopting, picking -- is the panel's, and
+     * the panel is inside.
+     *
+     * It is `Object.create(model)` so every OTHER door (`applyOp`,
+     * `installMolecule`, the frame doors, the history, the getters) passes
+     * through unchanged: this narrows three properties, it does not re-list the
+     * model.
+     */
+    const data = Object.create(model);
+    Object.defineProperties(data, {
+        /* THE SELECTION, MINUS THE ONE DOOR THAT HAS A ROUTER.
+         *
+         * Everything here is an honest selection operation a consumer may ask
+         * for.  `toggle` is not, and it is the only one left out: a pick is
+         * routed by `pickAtom`, which decides whether a click means measuring
+         * or selecting.  A consumer calling `toggle` writes straight past that
+         * -- which is the defect the measurement track had, one store over.
+         * Anything wanting to toggle an atom calls `pickAtom`. */
+        selection: { enumerable: true, value: {
+            get:           () => model.selection.get(),
+            getState:      () => model.selection.getState(),
+            subscribe:     (fn) => model.selection.subscribe(fn),
+            add:           (a) => model.selection.add(a),
+            remove:        (a) => model.selection.remove(a),
+            clear:         () => model.selection.clear(),
+            all:           (n) => model.selection.all(n),
+            invert:        (n) => model.selection.invert(n),
+            adopt:         (a) => model.selection.adopt(a),
+            setSwitch:     (n, v) => model.selection.setSwitch(n, v),
+            setIsolate:    (on) => model.selection.setIsolate(on),
+            writeLabel:    (n, a, v) => model.selection.writeLabel(n, a, v),
+            setEditor:     (m) => model.selection.setEditor(m),
+            addFilter:     (r) => model.selection.addFilter(r),
+            updateFilter:  (i, p) => model.selection.updateFilter(i, p),
+            removeFilter:  (i) => model.selection.removeFilter(i),
+            setCombinator: (c) => model.selection.setCombinator(c),
+        } },
+        view: { enumerable: true, value: {
+            get:       () => model.view.get(),
+            subscribe: (fn) => model.view.subscribe(fn),
+            // `lib/transport/core.js` picks the style its page wants.
+            set:       (name, value) => model.view.set(name, value),
+        } },
+        measurement: { enumerable: true, value: {
+            getState:       () => model.measurement.getState(),
+            subscribe:      (fn) => model.measurement.subscribe(fn),
+            setActive:      (on) => model.measurement.setActive(on),
+            clear:          () => model.measurement.clear(),
+            positions:      () => model.measurementPositions(),
+            requestPicking: () => model.requestPicking(),
+        } },
+    });
+
     const handle = {
         ok: true,
         error: null,
 
         // The one route. Everything a tab wants to read or change about this
         // viewer's data is here, behind the rules and the read-only gate.
-        data: model,
+        data: data,
 
         // Playback. Owning the timer is the handle's job; owning what the frame
         // number IS remains the model's.

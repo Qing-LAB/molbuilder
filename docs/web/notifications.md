@@ -5,7 +5,7 @@
 **Companions:** [`runtime.md`](?doc=web/runtime.md) — the registry it registers
 with, and the other shared building blocks; [`workspace.md`](?doc=web/workspace.md)
 — the one built-in source today (a failed save); [`overview.md`](?doc=web/overview.md)
-— the module registry; [`roadmap.md`](?doc=roadmap.md) — the pending ES-module pass.
+— the module registry; [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — the pending ES-module pass.
 
 `notify` (`lib/app-notifications.js`, `window.molbuilder.notify`) is the **one
 consistent surface for system-level messages** that matter regardless of which

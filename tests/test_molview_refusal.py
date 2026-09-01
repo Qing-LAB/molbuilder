@@ -264,8 +264,12 @@ def test_nothing_to_do_answers_null_and_says_nothing():
         const m      = await loaded();
 
         console.log(JSON.stringify({
-            // nothing loaded
-            emptyEdit: await outcome(() => empty.applyOp("translate", { dx: 1 })),
+            // Nothing loaded, at the CELL door: a cell is a property OF a
+            // structure, so with none there is no box to change (§ 6.9).
+            // `applyOp` is deliberately NOT here -- an empty structure is a
+            // structure, and an edit on one sends the request like any other,
+            // which is what lets `slab` build the first thing on a blank
+            // canvas (§ 6.9, corrected 2026-08-31).
             emptyCell: await outcome(() => empty.commitPeriodicityOp(
                 "vacuum", [1,1,1])),
             // a viewer that does not edit (§ 9.4)

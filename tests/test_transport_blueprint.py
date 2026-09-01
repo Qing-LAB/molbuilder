@@ -180,7 +180,7 @@ class TestTransportPageRendering:
 
     def test_send_button_is_disabled_until_a_junction_is_cited(self, web):
         """The composite's one hard requirement is the citation
-        (transport-design.md 4.1); the button says so and starts
+        (archive/2026-09-01-transport-design.md 4.1); the button says so and starts
         disabled -- core.js enables it when a junction is picked."""
         body = web.get("/transport-calculation").data.decode()
         assert (

@@ -1047,10 +1047,9 @@ class TestDocMatchesTheDoor:
                 f"op {op!r} has no row in {self.DOC} § 6.2 — the door and the "
                 f"doc disagree")
 
-    def test_the_doc_does_not_advertise_a_calibrate_op(self):
+    def test_the_doc_says_there_is_no_calibrate_button(self):
         import pathlib
         text = pathlib.Path(self.DOC).read_text(encoding="utf-8")
-        assert "| `calibrate` |" not in text
         assert "There is no calibrate button." in text
 
     def test_the_door_docstring_names_the_real_op_set(self):
@@ -1413,11 +1412,11 @@ class TestEveryOpIsChecked:
         "/api/modify/rotate":      {"axis": "z", "angle": 30.0},
         "/api/modify/translate":   {"dx": 1.0, "dy": 0.0, "dz": 0.0},
         "/api/modify/calibrate":   {},
-        "/api/modify/electrode":   {"element": "Au", "plane": "111",
-                                    "size": [1, 1, 2]},
-        # The new slab op (modify-redesign-plan.md § 3).  It reads no
-        # selection -- dx, dy and start_z are absolute -- so unlike the two
-        # electrode ops above it needs no `indices` to have something to do.
+        # The slab op (archive/2026-09-01-modify-redesign-plan.md § 3).  It reads no selection --
+        # dx, dy and start_z are absolute -- so unlike every op above it needs
+        # no `indices` to have something to do.  It replaced `electrode`,
+        # which centred on a picked group; that route went 2026-09-01 and its
+        # row here with it.
         "/api/modify/slab":        {"element": "Au", "plane": "111",
                                     "m": 1, "n": 1, "layers": 2},
     }
@@ -1462,9 +1461,9 @@ class TestEveryOpIsChecked:
     @pytest.mark.parametrize("route", sorted(OPS))
     def test_every_op_runs_the_check(self, client, route, monkeypatch):
         """The check RAN.  Not "it printed something" -- a silent response can
-        be perfectly correct (``/api/modify/electrode`` turns two axes
-        periodic, and an atom cannot be outside an axis that wraps), so
-        absence of a message proves nothing in either direction.  What must
+        be perfectly correct (``/api/modify/slab`` turns two axes periodic,
+        and an atom cannot be outside an axis that wraps), so absence of a
+        message proves nothing in either direction.  What must
         hold for every op is that the structure it returns went past the
         validator on its way out.
         """

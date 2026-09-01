@@ -147,7 +147,7 @@ shared API.
 > four duplicate verbs died), and `transport` migrated 2026-08-29 (the
 > composite: one citation → five stages through the ordinary jobset verbs;
 > the `bundle` verb and its bash chain driver deleted,
-> [`plans/transport-design.md`](?doc=plans/transport-design.md)).  No edges
+> [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)).  No edges
 > came back: a bias scan is ONE submission whose walker chains the points'
 > `.TSDE` inside a single job, so the job set still carries no dependency
 > vocabulary.

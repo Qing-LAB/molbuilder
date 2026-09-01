@@ -193,7 +193,7 @@ def test_transport_help_carries_worked_examples():
 
 
 def test_the_bundle_spelling_is_dead():
-    """P7 (transport-design.md 4.4): the pre-framework three-run driver
+    """P7 (archive/2026-09-01-transport-design.md 4.4): the pre-framework three-run driver
     retired with the composite -- no shims, and this guard is what keeps
     the name from coming back.  Deriving and running the pieces IS the
     composite's job (`jobset init --calculation transport`)."""

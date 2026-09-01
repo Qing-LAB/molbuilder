@@ -607,39 +607,10 @@ header h1 {
  * them up against the edges with the labels touching the inputs.
  * Lay them out as an even three-column grid with breathing room so
  * each labelled input stays readable. */
-.modify-edit-panel [data-op-panel="junction"] .modify-op-row {
-    /* Slightly more vertical room between rows; the panel has 8+
-       parameters and the default 0.4rem read as cramped. */
-    margin: var(--space-sm) 0;
-}
-.modify-edit-panel [data-op-panel="junction"] .modify-op-row
-    label:not(.modify-check-row) {
-    /* Labels stay above their input -- two-line layout reads better
-       than the default single-line label+input cluster when several
-       sit side-by-side.
-       The :not() is load-bearing.  This was a blanket `label` selector,
-       so it also caught the checkbox rows it was never written for:
-       `flex-direction: column` put the box ABOVE its text, and
-       `align-items: stretch` widened the <input> to the full row, which
-       paints the tick centred in ~380px of empty space.  Scoped rather
-       than out-specified -- an override would be a second rule to keep
-       true (the same call task-setup/style.css makes for .ts-asks). */
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-xs);
-    font-size: var(--text-sm);
-    flex: 1 1 0;
-}
-/* A checkbox sits INLINE, before its text -- the box is a fixed-size
-   glyph, never a stretched row.  Used by the junction panel's two
-   switches; page-shell already owns how the box itself is painted, so
-   this is arrangement only (ui-contract.md § 1).
-   Note the neighbour: `.modify-edit-panel .modify-op-row label` above is
-   MORE specific than this rule and already sets display/align-items/gap
-   to the same values, so the two agree rather than compete.  Only
-   `flex-direction` is genuinely this rule's -- if that generic rule ever
-   sets a direction of its own, this one stops winning and the box goes
-   back above its text.  Keep them agreeing, or qualify this selector. */
+/* A checkbox sits INLINE, before its text -- the box is a fixed-size glyph,
+   never a stretched row.  Carried by the Slab panel's "Orthogonal cell"
+   switch; page-shell already owns how the box itself is painted, so this is
+   arrangement only (ui-contract.md § 1). */
 .modify-edit-panel .modify-check-row {
     display: flex;
     flex-direction: row;
@@ -650,29 +621,7 @@ header h1 {
 .modify-edit-panel .modify-check-row input[type="checkbox"] {
     flex: 0 0 auto;
 }
-.modify-edit-panel [data-op-panel="junction"] input[type="number"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: var(--space-xs) var(--space-sm);
-    font: inherit;
-    width: 100%;
-}
-.modify-edit-panel [data-op-panel="junction"] input[type="number"]:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: var(--focus-ring);
-}
-/* The Apply Add Electrode button + Undo button share a row so the
-   Undo affordance is right next to the action it rolls back. */
-.modify-edit-panel .modify-electrode-actions {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: var(--space-sm);
-    align-items: center;
-    margin-top: var(--space-sm);
-}
+
 
 /* ---- Geom subtab: Δx Δy Δz row ----
  *
@@ -691,19 +640,15 @@ header h1 {
     gap: var(--space-xs);
     font-size: var(--text-sm);
 }
+/* COMPOSITION ONLY (ui-contract.md 1 and 5).  page-shell.css:295 owns what a
+   number box LOOKS like on every page; this rule owns only how much room it
+   takes in the row.  The appearance half used to be restated here and had
+   drifted from the shell -- a softer border (--border-soft for the shell's
+   --border-strong), a different focus ring, and no focus background -- so
+   these three boxes were the only number inputs in the app that looked
+   slightly unlike the rest. */
 .modify-edit-panel .modify-translate-row input[type="number"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: var(--space-xs) var(--space-sm);
-    font: inherit;
     width: 100%;
-}
-.modify-edit-panel .modify-translate-row input[type="number"]:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: var(--focus-ring);
 }
 
 /* ---- Footer ---- */
@@ -796,6 +741,26 @@ footer a:hover { color: var(--accent-hover); }
 }
 .modify-cell-select { font-family: var(--font-sans); text-align: left; }
 .modify-cell-actions { display: flex; gap: var(--space-sm); }
+
+/* A GROUP OF SMALL COUNTS -- "m x n x layers" is one quantity written as
+   three numbers, so the boxes sit together and are sized to the DIGITS they
+   hold (one or two), not to an equal share of the row.  `.modify-cell-triple`
+   beside it is the other shape and stays as it is: its clients (vacuum,
+   origin) hold decimals and do want the row split three ways.
+   `ch` is the width of a "0", so the size is stated in the content's own
+   unit rather than a pixel guess.  Wraps rather than squeezing when the
+   card is narrow. */
+.modify-edit-panel .modify-count-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+}
+.modify-edit-panel .modify-count-group input[type="number"] {
+    flex: 0 0 auto;
+    width: 6ch;
+}
+
 
 /* A CELL FIELD THAT IS CURRENTLY INERT (structure-periodicity.md § 6.1a).
    When the structure states an explicit cell, that cell IS the box and the

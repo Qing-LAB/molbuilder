@@ -162,7 +162,7 @@ Spectrum, Transport, and Results.
 | TranSIESTA zero-bias device-input generation | Shipped |
 | Transport output parsing, transmission charts, and multi-bias I-V scans | Planned |
 
-The [roadmap](docs/roadmap.md) is the single source of truth for planned work.
+The [plan](docs/plans/plan.md) is the single source of truth for planned work.
 
 ## Run locally or deploy for a lab
 
@@ -197,7 +197,7 @@ configuration details.
   [validation](docs/science/validation.md)
 - **Developing molbuilder:** [design](docs/design.md),
   [architecture](docs/architecture.md), and the in-app [documentation index](docs/README.md)
-- **Current work:** [roadmap](docs/roadmap.md) and
+- **Current work:** [the plan](docs/plans/plan.md) and
   [document migration audit](docs/archive/2026-07-28-document-migration.md)
 
 ## License

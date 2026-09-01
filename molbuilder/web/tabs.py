@@ -56,6 +56,14 @@ TABS: Final[List[Tab]] = [
     {"key": "results",
      "path": "/results",
      "label": "Results"},
+    # LAST BUT ONE, beside Documents: neither is about a calculation, and
+    # both are places you go once rather than every session.  Putting a
+    # machine-level settings tab among the calculation tabs would suggest it
+    # belonged to whichever one you had open, which is exactly the confusion
+    # it was split out of (`this-machine.md` 1).
+    {"key": "this-machine",
+     "path": "/this-machine",
+     "label": "This machine"},
     {"key": "documents",
      "path": "/documents",
      "label": "Documents"},

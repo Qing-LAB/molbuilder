@@ -67,6 +67,26 @@ rather than a table.
 
 ---
 
+## 2a. FCC only, and which metals
+
+The builder makes **face-centred cubic** slabs and nothing else: `Ag`, `Au`,
+`Cu`, `Ni`, `Pd`, `Pt`. The list is closed, so the UI dropdown and the Python
+API cannot drift apart, and an element outside it is refused by name rather
+than built wrong.
+
+**Why the restriction is real and not a gap to fill in passing.** Everything
+this document says about a seam is fcc arithmetic: the stacking period (§ 3.1)
+is 3 on (111) and 2 on (100)/(110) *because* of the ABC stacking; the registry
+step is `a/√6` on fcc(111); the spacings in § 2 are `a/√3`, `a/2`,
+`a/(2√2)`. A bcc or hcp metal has a different period, different registries and
+a different set of low-index surfaces, so it is not a table entry — it is a
+second set of rules with its own seam conditions.
+
+**What a bcc/hcp electrode would need**, if it is ever wanted: its own spacing
+and period rows in § 2 and § 3.1, its own registry step for the seam classifier
+(`cell.classify_seam`), and — for hcp — a `c/a` ratio, which fcc does not have.
+Until those exist the honest answer is a refusal that says so.
+
 ## 2b. The cell shape is not a free switch
 
 The slab builders take an `orthogonal` flag, but on two of the three surfaces
@@ -154,10 +174,13 @@ on (111).**
 This is the condition that is easy to miss, because every obvious symmetry
 operation fails it, and fails it identically.
 
-`add_electrode_slab(side="-z")` places the second slab by **mirroring**
+`add_slab(grow="-z", stacking="mirror")` places a slab by **mirroring**
 (`z → −z`). A mirror maps the slab's outermost layer to the *other* slab's
 outermost layer — the same layer index — so both faces meeting at the cell
-boundary carry the **same in-plane registry** and are eclipsed.
+boundary carry the **same in-plane registry** and are eclipsed. The deleted
+`add_electrode_slab` did this *unconditionally* for `side="-z"`, with no way
+to ask for anything else; `stacking="continue"` is the alternative the
+redesign added, and it is what `--electrode` now uses.
 
 Choosing a different symmetry does not help, and the reason is structural rather
 than incidental: **each close-packed layer is itself a centrosymmetric 2-D
@@ -267,11 +290,15 @@ to derive the bulk lead's z-period, together with a note telling the user to
 confirm the layer count is a whole stacking period. Moving it to `cell` (L1)
 lets the junction builder use the same function instead of growing a second
 copy — the two callers are `transport.wizard.extract_electrode_model` and
-`modify.add_electrode_slab`.
+`modify.add_slab`.
 
 **The monolayer case.** A one-layer slab has no spacing to *measure* — there
-is only one layer to measure between. `add_electrode_slab` handles it by asking
-the same ASE builder for a two-layer slab at the same `(m, n)` and
+is only one layer to measure between. This mattered while the builder PADDED
+the cell for you; § 6 retired that on 2026-08-31 and `add_slab` sets
+`c = z_extent` verbatim, so nothing needs the spacing at build time any more.
+The probe below is how `add_electrode_slab` handled it, kept as the method
+for anyone who needs the number: ask the same ASE builder for a two-layer
+slab at the same `(m, n)` and
 `orthogonal` and reading `d` off that; using the caller's own lateral size
 matters, since a probe at `(1, 1, 2)` would trip ASE's "second number must be
 even" constraint on orthogonal fcc(111).

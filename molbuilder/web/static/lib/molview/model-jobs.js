@@ -80,7 +80,7 @@ export const FROZEN_LABEL = "frozen_atoms";
  * once, above. */
 /* THE RESERVED TRANSPORT LABELS.  Descriptions say what each is FOR and
  * when to use it, because a transport calculation reads them as physics
- * (plans/transport-design.md § 4.1a): the electrode blocks are extracted
+ * (archive/2026-09-01-transport-design.md § 4.1a): the electrode blocks are extracted
  * as the semi-infinite leads, so mislabeling silently changes the device.
  * Names are the Python constants in config/transport.py -- one rename,
  * one place. */
@@ -703,11 +703,30 @@ export function createWriteOut(handed) {
  * One small table declares each operation's shape, rather than each one being
  * hand-coded (§ 11.1). These columns drive one generic piece of code.
  *
- *   `emptySelection` — what an empty selection means for THIS operation, and the
- *                      three answers are genuinely different: act on all, refuse,
- *                      or fall back to centring on the origin.
+ *   `emptySelection` — what an empty selection means for THIS operation, and
+ *                      the answers are genuinely different: act on all, or
+ *                      refuse.  There was a third, `"origin"` -- fall back to
+ *                      centring on the world origin -- and only `electrode`
+ *                      ever used it; it went with that op on 2026-09-01.
+ *                      Note it was never a branch HERE: `applyOp` acts on
+ *                      `"refuse"` and lets everything else through, and the
+ *                      server did the centring.  A value with no code behind
+ *                      it and no row using it is worth deleting twice over.
  *   `needsExactly`   — checked BEFORE the request goes out, so `orient` with one
  *                      atom selected never reaches the network.
+ *   `ordered`        — WHICH TRACK THE GROUP COMES FROM, and it is the whole
+ *                      of § 11.6's split expressed as data.  `selection` is a
+ *                      SET -- `add()` sorts, and *All* / *Invert* / a filter
+ *                      produce one with no pick order at all -- so an op whose
+ *                      answer depends on WHICH ATOM WAS FIRST cannot read it.
+ *                      `orient` did, and the same two atoms picked by clicking
+ *                      and by shift-range oriented in OPPOSITE directions,
+ *                      silently.  An `ordered` op reads the measurement track
+ *                      instead, which is built only by clicks and promises
+ *                      exactly what these ops need: a first and a second.
+ *                      Set operations leave it unset -- order is meaningless
+ *                      to a delete or a whole-structure rotation, and reading
+ *                      an ordered track would cap them at three atoms.
  *   `wholeStructure` — THE SELECTION IS NOT SENT for this operation.  Two ops
  *                      set it, for two different reasons, and the rule is the
  *                      same one: `calibrate` rigidly maps every atom into the
@@ -723,12 +742,16 @@ export const OPERATIONS = {
                              group: "indices" },
     rotate:                { emptySelection: "all",    needsExactly: null,
                              group: "indices" },
+    // ORDERED: the tilt direction is first -> second, so which was first is
+    // the answer, not a detail of how the two were picked.
     orient:                { emptySelection: "refuse", needsExactly: 2,
-                             group: "anchors" },
+                             group: "anchors", ordered: true },
+    // NOT ordered, and the arity is the reason: a set of ONE has no ambiguous
+    // first.  It also shares the Atom tab with Delete, which is a set gesture
+    // -- turning the ruler on there to serve an op with no order problem would
+    // take Delete's clicks away for nothing.
     add_atom:              { emptySelection: "refuse", needsExactly: 1,
                              group: "anchor_index", scalar: true },
-    electrode:             { emptySelection: "origin", needsExactly: null,
-                             group: "center_indices" },
     delete:                { emptySelection: "refuse", needsExactly: null,
                              group: "indices" },
     calibrate:             { emptySelection: "all",    needsExactly: null,
@@ -778,7 +801,11 @@ export function createEdits(handed) {
          * which is the honest answer to asking. */
         const structure = handed.readStructure()
             || { elements: [], annotations: [], periodicity: null };
-        let selection = handed.readSelection();
+        /* ONE LINE DECIDES THE TRACK, from the row's own declaration -- so a
+         * new ordered op is a column, not a fourth place that remembers. */
+        let selection = spec.ordered
+            ? handed.readPicks()
+            : handed.readSelection();
         if (spec.wholeStructure) selection = [];
 
         // The count requirement is checked BEFORE the request goes out.

@@ -289,7 +289,7 @@ the two built-in engine translations (`frozen_atoms` → `Geometry.Constraints`,
 tags → transport blocks); the region-label vocabulary + `is_electrode_label`
 (Python + JS); the JS L1/L2/L3 channel model + the generalized filter.
 
-**Open work** (tracked in `roadmap.md`): **`value`-channel filtering
+**Open work** (tracked in `archive/2026-09-01-roadmap.md`): **`value`-channel filtering
 end-to-end** — the server must include `value` channels in
 `/api/selection/atoms` and resolve a `by_value` rule, and there is no
 `value`-channel *producer* yet (no feature writes per-atom charge/spin), so the

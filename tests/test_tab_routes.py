@@ -13,7 +13,7 @@ Pins the routing contract from `docs/web/tabs.md` § 3:
     legacy-path 301; renamed paths break by design (commit + push,
     bookmark updates, move on).
 
-  * The nav bar on every canonical page shows all five tabs in the
+  * The nav bar on every canonical page shows every tab in the
     documented order with the correct active-tab marker.
 """
 from __future__ import annotations
@@ -99,7 +99,7 @@ def test_pre_rename_paths_return_404(web, legacy_path):
 
 
 # --------------------------------------------------------------------- #
-#  Nav bar — every canonical page shows the 5-tab nav in order          #
+#  Nav bar — every canonical page shows the whole nav, in order         #
 # --------------------------------------------------------------------- #
 
 
@@ -115,10 +115,14 @@ _EXPECTED_NAV_LINKS = _expected_nav_links()
 
 
 @pytest.mark.parametrize("page_path", [p for p, _ in _EXPECTED_NAV_LINKS])
-def test_nav_bar_lists_all_five_tabs_in_order(web, page_path):
-    """Every tab page renders the same 5-tab bar in the same order
-    with the same labels.  A regression that drops a tab or reorders
-    them surfaces here.
+def test_nav_bar_lists_every_tab_in_order(web, page_path):
+    """Every tab page renders the same bar, in the same order, with the
+    same labels.  A regression that drops a tab or reorders them surfaces
+    here.
+
+    It said "5-tab" in its own name until 2026-08-31, when the eighth tab
+    arrived -- the count was never asserted (it comes from `TABS`), so the
+    name was decoration that had been wrong since the sixth.
 
     NOTE: the regex relies on each ``<a class="app-tab">`` containing
     only plain-text label content (no nested ``<svg>`` icons etc.).

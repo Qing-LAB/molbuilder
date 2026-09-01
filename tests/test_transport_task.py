@@ -1,4 +1,4 @@
-"""The transport calculation KIND — `plans/transport-design.md` § 4.1
+"""The transport calculation KIND — `archive/2026-09-01-transport-design.md` § 4.1
 (build P3): one slot by explicit citation, the bias axis, floor 2 =
 task.json alone.
 

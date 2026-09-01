@@ -177,7 +177,7 @@ class TestTransportTabContract:
 
     def test_the_tab_posts_no_structure(self, transport_src):
         """The composite's structure arrives at prep from the citation
-        (transport-design.md 4.1).  A structure in the tab's send would
+        (archive/2026-09-01-transport-design.md 4.1).  A structure in the tab's send would
         be a SECOND source for the same facts -- exactly the class
         molview.md 9.3a exists to prevent, one level up."""
         assert "calculation: \"transport\"" in transport_src

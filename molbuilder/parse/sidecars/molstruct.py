@@ -146,7 +146,7 @@ def _normalised_dict(
         **identity,
         # The `info` block (schema 9): carried whole when the file holds
         # one -- the store is open by design, so nothing here enumerates
-        # its keys (plans/structure-info-plan.md).
+        # its keys (archive/2026-09-01-structure-info-plan.md).
         **({"info": dict(info)} if isinstance(info, dict) and info else {}),
         "selection_rules": normed_rules,
         "created_by":      str(created_by),
@@ -238,7 +238,7 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
     from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
     # `info` (schema 9): the free-form NON-structural store -- known by
     # NAME here (the block is open by design, so its keys are not
-    # enumerated; plans/structure-info-plan.md).
+    # enumerated; archive/2026-09-01-structure-info-plan.md).
     known = (set(METADATA_FIELDS) | set(IDENTITY_FIELDS)
              | set(ENVELOPE_KEYS) | {"info"})
     stray = sorted(k for k in data if k not in known)

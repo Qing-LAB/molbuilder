@@ -47,7 +47,7 @@ def _load_device(device_xyz, sidecar_path, cell_fdf):
 
 _TRANSPORT_EPILOG = """\
 \b
-A conductance run is the transport COMPOSITE (plans/transport-design.md):
+A conductance run is the transport COMPOSITE (archive/2026-09-01-transport-design.md):
 cite a finished junction relaxation, and prep derives everything else --
 the sorted copy, both electrode cells, the seed, the device SCF and the
 TBtrans transmission -- as one five-stage calculation in the tree:

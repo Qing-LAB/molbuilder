@@ -1,0 +1,200 @@
+/* This machine — composition only (`ui-contract.md` § 1).
+ *
+ * Every control on this page is the app's own: `.card`, `.hint`, `.status`,
+ * the bare `button` and its `.primary` / `.danger` variants, and the shared
+ * `input` rule in page-shell.  What lives here is the ARRANGEMENT — the
+ * column, the channel rows, and the two blocks meant to be copied out of.
+ *
+ * `tm-` throughout, so nothing here can reach a control on another tab.
+ */
+
+.tm-tab {
+    /* One column: the two cards are read top to bottom, and a page whose
+       reading order is fixed has no reason to be a grid.  The measure is the
+       app's own reading width -- prose here is long-form, not labels. */
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: var(--space-lg) var(--space-md) var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+/* ---------- the channel list ---------- */
+
+.tm-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin: var(--space-md) 0;
+}
+.tm-list:empty { display: none; }
+
+.tm-row {
+    display: grid;
+    /* name | address | evidence | actions.  The address column is the only
+       elastic one: a masked webhook is short and a listener url is long, and
+       neither should push the buttons off the card. */
+    grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr)
+                           max-content max-content;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--bg-card-elev);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+}
+
+.tm-row-name { font-weight: 600; }
+
+.tm-row-where {
+    min-width: 0;
+    overflow-x: auto;
+    font-family: var(--font-mono, monospace);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.tm-row-kind {
+    font-size: var(--text-2xs);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* Evidence reads as TEXT first and colour second, so a person who cannot
+   distinguish these hues still gets the whole answer from the words. */
+.tm-row-test { font-size: var(--text-sm); color: var(--text-muted); }
+.tm-row-test[data-state="ok"]  { color: var(--success); }
+.tm-row-test[data-state="bad"] { color: var(--error); }
+
+.tm-row-actions { display: flex; gap: var(--space-xs); }
+
+/* ---------- the forms ---------- */
+
+/* `display:flex` on the class outranks the `hidden` attribute's own
+   `display:none`, so the whole form would stay in the layout on a submit
+   machine while the code believed it was gone. */
+.tm-form[hidden] { display: none; }
+.tm-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-soft);
+}
+
+.tm-sub {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+}
+
+.tm-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+/* `display:flex` on the class outranks the `hidden` attribute's own
+   `display:none`, so a hidden field would stay in the layout while the code
+   believed it was gone -- the failure `test_css_hidden_attribute_audit.py`
+   exists for. */
+.tm-field[hidden] { display: none; }
+
+.tm-label {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    padding: 0;
+}
+
+.tm-input {
+    min-width: 0;                    /* or a long url forces the card wide */
+    font-family: var(--font-mono, monospace);
+    font-size: var(--text-sm);
+}
+/* A NAME IS SHORT AND AN ADDRESS IS NOT.  Sizing the name box to the value
+   it holds is what stops a two-word field spanning the card. */
+.tm-input-name { max-width: 22ch; }
+
+.tm-kinds { display: flex; flex-direction: column; gap: var(--space-xs); }
+
+.tm-kind {
+    display: flex;
+    align-items: start;
+    gap: var(--space-sm);
+    cursor: pointer;
+}
+.tm-kind input { margin-top: 0.25em; flex: none; }
+
+.tm-sub-note {
+    display: block;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.tm-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.tm-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin: var(--space-sm) 0;
+}
+.tm-user {
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-card-elev);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+}
+
+/* ---------- blocks meant to be copied out of ---------- */
+/* Wide content owns its overflow (`ui-contract.md`), so these scroll on
+   their own rather than stretching the page. */
+.tm-cmd {
+    overflow-x: auto;
+    margin: var(--space-sm) 0 0;
+    padding: var(--space-sm);
+    background: var(--bg-card-elev);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    white-space: pre;
+    user-select: all;
+}
+
+/* WHAT THE OTHER MACHINE MUST ALREADY HAVE -- a statement, not a generator.
+   `.tm-elsewhere` was here and held a copy-paste shell block that wrote a
+   file with a key in it; both the block and the `execution.mode` gate that
+   revealed it went on 2026-09-01. */
+.tm-expects { margin: var(--space-md) 0; }
+.tm-expects > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+.tm-expects-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--space-xs) var(--space-md);
+    margin: var(--space-sm) 0 0;
+}
+.tm-expects-list dt { color: var(--text-secondary); }
+.tm-expects-list dd { margin: 0; }
+
+.tm-issued {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm);
+}
+.tm-issued[hidden] { display: none; }

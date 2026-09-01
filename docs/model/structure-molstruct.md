@@ -113,7 +113,7 @@ READABLE_VERSIONS = frozenset({7, 8, 9})
 strictness rule is about **where facts live**, not about the number:
 v8 only **added** the optional identity columns, and v9 only **added**
 the optional `info` block (free-form, NON-structural metadata —
-`plans/structure-info-plan.md`; absent means "nothing recorded"), so a
+`archive/2026-09-01-structure-info-plan.md`; absent means "nothing recorded"), so a
 v7 or v8 file reads whole under v9 rules.  Refusing them would have
 invalidated every pair on disk for changes that lose nothing.  A
 version whose facts moved homes (v3's top-level frozen atoms) stays

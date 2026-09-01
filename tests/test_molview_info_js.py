@@ -1,5 +1,5 @@
 """The `info` store's JS surface (molview.md § 8.4a,
-plans/structure-info-plan.md): source pins over the module files, the
+archive/2026-09-01-structure-info-plan.md): source pins over the module files, the
 same style the other wiring guards use — the doors exist and are
 ungated, the pane exists, and the wire carries the store both ways.
 """

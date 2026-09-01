@@ -1,4 +1,4 @@
-"""The transport composite's five stages — `plans/transport-design.md`
+"""The transport composite's five stages — `archive/2026-09-01-transport-design.md`
 § 4.2, build step P4b.
 
 This module owns TWO facts and the renders that follow from them:

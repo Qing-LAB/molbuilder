@@ -61,7 +61,7 @@ calculation.
 ## `fcc_lattice.json`
 
 Lattice constants of the FCC metals supported by the Modify-tab
-electrode builder (`molbuilder.modify.add_electrode_slab`).  The list is
+slab builder (`molbuilder.modify.add_slab`).  The list is
 **closed** at six entries — only the canonical metal-electrode materials
 used in single-molecule junction / NEGF transport DFT work.  Adding a
 new entry here is intentionally a deliberate act, not a casual
@@ -103,7 +103,7 @@ The values above were also verified against:
 
 These are room-temperature *experimental* values.  Override (either by
 editing the JSON or by passing `lattice_constant=` to
-`add_electrode_slab` per call) when:
+`add_slab` per call) when:
 
 * You want a strained-lattice slab (epitaxial growth on a different
   substrate).

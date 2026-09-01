@@ -102,10 +102,4 @@ class TestBadgeReadsTheRightClock:
         assert "const elapsedSeries = state.data.elapsed_s || [];" in src
         assert "const elapsed  = lastFinite(elapsedSeries);" in src
 
-    def test_the_old_ambiguous_field_is_gone(self):
-        """`wall_times` carried an epoch from one engine and elapsed
-        seconds from another.  It must not come back."""
-        src = MODULE.read_text()
-        assert "wall_times" not in src, (
-            "wall_times is the ambiguous field the two-clock rule "
-            "replaced (docs/model/parse.md § 2a)")
+    

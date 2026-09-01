@@ -1,6 +1,6 @@
 /* Modify tab -- the Cell op-tab's per-GROUP periodicity editors.
  *
- * Contract: docs/model/structure-periodicity.md § 3b; docs/web/molview.md § 9.3.
+ * Contract: docs/model/structure-periodicity.md § 7; docs/web/molview.md § 9.3.
  * Owns:     the form. One Update button per group (vacuum / periodicity / unit
  *           cell / origin) so each can independently stay at its default or be
  *           committed. Editing a field only stages; the button commits.
@@ -24,6 +24,7 @@
  * geometry.)
  */
 "use strict";
+
 
 export function init(viewer) {
     var root = window;
@@ -121,21 +122,12 @@ export function init(viewer) {
         if (!w || !w.measurement) return [];
         return w.measurement.getState().picks;
     }
-    //: Where those atoms are AT THE FRAME ON SCREEN -- the same door the
-    //  measurement readout reads, so a trajectory gives the axis of the frame
-    //  the user is looking at rather than of frame zero.
-    function positionsOf(indices) {
-        var w = data();
-        var frame = w ? w.getFrameAllAtoms(w.currentFrame()) : null;
-        if (!frame) return null;
-        var out = [];
-        for (var i = 0; i < indices.length; i++) {
-            var p = frame[indices[i]];
-            if (!p) return null;
-            out.push(p);
-        }
-        return out;
-    }
+    /* WHERE THE PICKED ATOMS ARE comes from the module (§ 11.6).
+     *
+     * This walked `getFrameAllAtoms(currentFrame())` itself, which was the
+     * SAME walk the module's own readout does, staleness guard included -- one
+     * question answered in two places, one of them outside the module that
+     * owns it.  `measurement.positions()` is that answer. */
 
     /* THE REFUSAL THIS GESTURE WILL ACTUALLY HIT, said before the request.
      *
@@ -224,23 +216,21 @@ export function init(viewer) {
      * saying so").  Leaving the page releases the lock and LEAVES THE RULER
      * ON -- turning it off again is the person's to do, not ours to undo
      * behind them. */
+    /* The MODULE decides whether the ruler needed turning on; this page only
+       says so, because only it knows which panel is asking and the notice is
+       the app's own component (MolView reads no global, § 4). */
+    function sayRulerIsOn(where) {
+        var notify = (window.molbuilder || {}).notify;
+        if (!notify || !notify.show) return;
+        notify.show({ id: "ruler-on-" + where.toLowerCase().replace(/\s+/g, "-"),
+            level: "info", message: "Measuring is on: the " + where
+            + " picks atoms with the ruler, in the order you click them. "
+            + "Turn it off when you are done here." });
+    }
+
     function rulerIsOn() {
         var w = data();
         return !!(w && w.measurement && w.measurement.getState().active);
-    }
-    function lockRulerForPicking() {
-        var w = data();
-        if (!w || !w.measurement) return;
-        if (!rulerIsOn()) {
-            w.measurement.setActive(true);
-            var notify = (window.molbuilder || {}).notify;
-            if (notify && notify.show) {
-                notify.show({ id: "cell-ruler-lock", level: "info", message:
-                    "Measuring is on: the Cell page picks atoms with the "
-                    + "ruler, in the order you click them. Turn it off when "
-                    + "you are done here." });
-            }
-        }
     }
 
     /* ONE RULE FOR BOTH GESTURES: read the picks in order and take what you
@@ -297,13 +287,22 @@ export function init(viewer) {
         if (!frame || !frame.length) return null;
         var row = stagedCell()[axisRow];
         var len = norm(row);
-        // Along the axis's own direction when it has one, so a tilted `c`
-        // measures the span that matters rather than the bounding box's.
-        // With no direction yet, z is the honest reading: it is the axis this
-        // control exists for and the one a slab is built along.
-        var u = len > LENGTH_QUIET
-            ? [row[0] / len, row[1] / len, row[2] / len]
-            : [0, 0, 1];
+        /* Along the axis's own direction when it has one, so a tilted `c`
+           measures the span that matters rather than the bounding box's.
+           With no direction yet, z is the honest reading FOR `c` ONLY -- it is
+           the axis this control exists for and the one a slab is built along.
+           For `a` or `b` it is not honest at all: it reported the span
+           measured along z under `a`'s label, and pressing Use then wrote
+           `a = (0, 0, want)`, which lies on top of `c` and collapses the box
+           to no volume.  No direction, no answer. */
+        var u;
+        if (len > LENGTH_QUIET) {
+            u = [row[0] / len, row[1] / len, row[2] / len];
+        } else if (axisRow === 2) {
+            u = [0, 0, 1];
+        } else {
+            return null;
+        }
         var lo = Infinity, hi = -Infinity;
         for (var i = 0; i < frame.length; i++) {
             var p = frame[i];
@@ -314,13 +313,22 @@ export function init(viewer) {
         return (hi > lo || hi === lo) ? hi - lo : null;
     }
 
+    /* WHAT GAP DID THE USER ASK FOR -- one reader, because two disagreed.
+       An empty box is UNANSWERED (NaN), not zero: `Number("")` is 0, which
+       enabled Use and printed "= 0" as though the user had chosen it. */
+    function askedGap() {
+        var box = $("pv-cell-gap");
+        var raw = box ? box.value : "";
+        return (raw === "" || raw == null) ? NaN : Number(raw);
+    }
+
     function renderSpan() {
         var out = $("pv-cell-span");
         var btn = $("pv-cell-span-plus-gap");
         var note = $("pv-cell-span-note");
         if (!out) return;
         var span = spanAlong(chosenAxis());
-        var gap = Number($("pv-cell-gap") ? $("pv-cell-gap").value : NaN);
+        var gap = askedGap();
         out.textContent = span == null ? "\u2014" : round(span) + " \u00c5";
         var ready = span != null && isFinite(gap) && gap >= 0;
         if (btn) {
@@ -336,7 +344,8 @@ export function init(viewer) {
             note.hidden = !ready;
             if (ready) {
                 note.textContent =
-                    "c = " + round(span) + " + " + round(gap) + " = "
+                    "abc".charAt(chosenAxis()) + " = "
+                    + round(span) + " + " + round(gap) + " = "
                     + round(span + gap) + " \u00c5.  For a boundary that "
                     + "continues the crystal the gap is one layer spacing -- "
                     + "measure it with the ruler.  The seam check reports on "
@@ -599,6 +608,7 @@ export function init(viewer) {
         cellInputs.forEach(function (inp) {
             inp.addEventListener("input", function () {
                 labelCellAxes(); syncLengthBox(); refreshHandedness();
+                renderSpan();   /* the span is measured ALONG this row */
             });
         });
         var axisPick = $("pv-cell-axis");
@@ -606,14 +616,16 @@ export function init(viewer) {
 
         var fromSel = $("pv-cell-from-selection");
         if (fromSel) fromSel.addEventListener("click", function () {
-            var picked = pickedInOrder();
-            if (picked.length < 2) return;
-            var pos = positionsOf(picked.slice(0, 2));
+            var pos = (function () {
+                var all = data().measurement.positions();
+                return (all && all.length >= 2) ? all.slice(0, 2) : null;
+            })();
             if (!pos) return;
             setStagedRow(chosenAxis(), [pos[1][0] - pos[0][0],
                                         pos[1][1] - pos[0][1],
                                         pos[1][2] - pos[0][2]]);
             labelCellAxes(); syncLengthBox(); refreshHandedness();
+            renderSpan();       /* the direction moved, so the span did too */
         });
 
         var gapBox = $("pv-cell-gap");
@@ -623,15 +635,21 @@ export function init(viewer) {
         var spanPlus = $("pv-cell-span-plus-gap");
         if (spanPlus) spanPlus.addEventListener("click", function () {
             var span = spanAlong(chosenAxis());
-            var gap = Number($("pv-cell-gap") ? $("pv-cell-gap").value : NaN);
+            var gap = askedGap();
             if (span == null || !isFinite(gap) || gap < 0) return;
             var r = chosenAxis();
             var row = stagedCell()[r];
             var have = norm(row);
             var want = span + gap;
             if (have < LENGTH_QUIET) {
-                // No direction yet: this control is for the axis a slab is
-                // built along, so give it z rather than refusing.
+                /* No direction yet.  `c` gets z -- it is the axis this control
+                   exists for and the one a slab is built along.  `a` and `b`
+                   are refused, because writing (0, 0, want) into either puts
+                   it on top of `c`: determinant zero, and the gate answers
+                   NO VOLUME.  `spanAlong` already returns null for them, so
+                   this is unreachable through the button; it stays because a
+                   guard that depends on a caller checking first is not one. */
+                if (r !== 2) return;
                 setStagedRow(r, [0, 0, want]);
             } else {
                 var k = want / have;
@@ -658,10 +676,9 @@ export function init(viewer) {
 
         var orgFromSel = $("pv-org-from-selection");
         if (orgFromSel) orgFromSel.addEventListener("click", function () {
-            var picked = pickedInOrder();
-            if (!picked.length) return;
-            var pos = positionsOf([picked[0]]);
-            if (!pos) return;
+            var all = data().measurement.positions();
+            if (!all || !all.length) return;
+            var pos = [all[0]];          // the origin is the FIRST atom picked
             /* Written DIRECTLY, not through `setIdle`.
              *
              * NOT A BUG FIX, and it is worth saying so: I changed this
@@ -732,7 +749,12 @@ export function init(viewer) {
          * to the tab button rather than a panel-visibility watcher, because
          * the button press is the intent and the panel is only its effect. */
         var cellTab = $("optab-btn-cell");
-        if (cellTab) cellTab.addEventListener("click", lockRulerForPicking);
+        if (cellTab) cellTab.addEventListener("click", function () {
+            var w = data();
+            if (w && w.measurement && w.measurement.requestPicking()) {
+                sayRulerIsOn("Cell page");
+            }
+        });
         /* NOT ON STARTUP, and this is a correction rather than an omission.
          * It also ran here when the panel happened to be visible as the module
          * loaded -- which turned measuring on, and announced it, before the

@@ -1,6 +1,6 @@
 """`cell.classify_seam` — what the periodic boundary does to the crystal.
 
-`plans/bench-and-junction-plan.md` § 2.4.  **The distance alone is not the
+`archive/2026-09-01-bench-and-junction-plan.md` § 2.4.  **The distance alone is not the
 test**: a twin has the correct bulk bond length, so a distance check passes it;
 only the registry separates continuation from a twin.
 

@@ -56,7 +56,7 @@ __all__ = [
 DIRNAME = "molbuilder"
 
 #: Name this and it IS the root, exactly as given
-#: (`plans/config-access-plan.md` § 3.1).
+#: (`archive/2026-09-01-config-access-plan.md` § 3.1).
 #:
 #: Spelled like ``MOLBUILDER_DATA_DIR`` and ``MOLBUILDER_PROJECTS``, which are
 #: already the convention for "the program's own <thing> directory".
@@ -98,7 +98,7 @@ def state_dir() -> Path:
     """Where operational state lives -- logs and reports.
 
     ``$XDG_STATE_HOME/molbuilder``, else ``~/.local/state/molbuilder``
-    (`plans/config-access-plan.md` § 3.2).
+    (`archive/2026-09-01-config-access-plan.md` § 3.2).
 
     ``XDG_STATE_HOME`` entered the Base Directory spec in 0.8 for state that
     persists across restarts but is not portable or important enough for

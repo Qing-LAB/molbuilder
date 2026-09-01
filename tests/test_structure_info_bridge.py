@@ -1,6 +1,6 @@
 """The metadata bridge — a run's ``info`` store, end to end.
 
-`plans/structure-info-plan.md` § 5, settled 2026-08-30.  ``info`` is a
+`archive/2026-09-01-structure-info-plan.md` § 5, settled 2026-08-30.  ``info`` is a
 structure's free store (`web/molview.md` § 8.4a): a dict of key -> value
 that DESCRIBES a structure without being part of it.  § 8.4a states it
 "rides ``installMolecule`` in and ``exportFile`` out"; this file pins the

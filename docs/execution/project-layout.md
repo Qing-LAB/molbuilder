@@ -14,7 +14,7 @@ calculation's files share.
 
 What this document adds is the *whole*: which
 directory owns what, how parameter tuning and resource tuning nest, and where the
-saved history sits.  *(Status lives in `roadmap.md`, never in a contract — `conventions.md`'s R3.
+saved history sits.  *(Status lives in `archive/2026-09-01-roadmap.md`, never in a contract — `conventions.md`'s R3.
 The Status block that stood here was also FALSE: it called `task.json`, its
 reader and § 4's stage naming unbuilt long after all three shipped, which is
 exactly why that rule keeps status out of contracts.)*
@@ -155,7 +155,7 @@ directory there is one set of warm files, so the geometry is simply *the latest*
 > directory owns its subdirectories (`checkpointing.md` **L1**).
 >
 > **And *bundle* was already overloaded twice over**: a **handoff bundle** is one
-> finished run carried forward (by CITATION since 2026-08-29 — `plans/transport-design.md` § 4.1),
+> finished run carried forward (by CITATION since 2026-08-29 — `archive/2026-09-01-transport-design.md` § 4.1),
 > a **benchmark bundle** is a self-contained measurement (§ 2.6). A third sense
 > for *the calculation folder itself* is the one that had to go — `README.md` R5
 > forbids exactly this collision. What keeps the name legitimately is the
@@ -1061,7 +1061,7 @@ that allocation**, producing a deck sized for it. Benchmarking is the same act
 repeated — § 2.3.1a, which is why it is not a separate machine.
 
 Status of these rules against the code lives in
-[`roadmap.md`](?doc=roadmap.md) § 6 (`conventions.md`'s R3 — contracts hold the rule, the roadmap
+[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) § 6 (`conventions.md`'s R3 — contracts hold the rule, the roadmap
 holds what is left to do).
 
 #### 2.3.1a `prep` is the framework; benchmarking is one thing you prep

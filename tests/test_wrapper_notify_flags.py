@@ -123,6 +123,92 @@ def test_both_triggers_are_emitted_together(tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  which channels -- names, and the two ways of saying none              #
+# --------------------------------------------------------------------- #
+
+def test_the_names_survive_a_job_set_file(tmp_path):
+    """**A tuple out, a tuple back.**
+
+    `Resources.to_dict` is `asdict`, so a job-set file stores the names as a
+    JSON array and `from_dict` hands them back as a LIST -- which never
+    equals the tuple it was written from. Every field this class held was a
+    scalar until 2026-08-31, so nothing had ever had to think about it, and
+    the first sequence field broke round-tripping the moment it landed.
+
+    It breaks QUIETLY, which is why this test exists rather than a comment:
+    the names still reach the wrapper either way, and only equality lies --
+    so the symptom would surface somewhere far from the cause.
+    """
+    import json as _json
+    from molbuilder.jobset.model import Resources
+
+    for channels in (("slack", "lab"), (), None):
+        r = Resources(mpi_np=4, notify_channels=channels)
+        back = Resources.from_dict(_json.loads(_json.dumps(r.to_dict())))
+        assert back == r, f"{channels!r} did not survive the file"
+        assert back.notify_channels == channels
+
+
+def test_a_list_of_names_is_accepted_and_normalised():
+    """Four roads reach `Resources` (the CLI, `run-config.toml`, `prep`'s
+    fold, and a job-set file somebody edited). A caller handing a list is
+    not wrong; the class holds its own invariant, exactly as it does for
+    `time` and `mem`."""
+    from molbuilder.jobset.model import Resources
+    assert Resources(notify_channels=["a", "b"]).notify_channels == ("a", "b")
+
+
+def test_naming_no_channels_emits_no_flag(tmp_path):
+    """Absent means *every channel the running machine has*, so a wrapper
+    for a description written before channels existed looks exactly as it
+    did before they did."""
+    line = _monitor_line(tmp_path, notify_on_scf=True)
+    assert "--notify-channels" not in line
+
+
+def test_the_names_reach_the_monitor_as_one_comma_list(tmp_path):
+    """A name is all that may ride here.  The address and the credential
+    are the machine's own file and must never be baked into a wrapper."""
+    line = _monitor_line(tmp_path, notify_on_scf=True,
+                         notify_channels=("slack", "lab"))
+    assert '--notify-channels "slack,lab"' in line
+
+
+def test_an_EMPTY_selection_still_emits_the_flag(tmp_path):
+    """**The distinction the whole field exists for.** `[]` is *send this
+    calculation nowhere*, and the only way the monitor can be told apart
+    from *nothing was said* is a flag with an empty value
+    (`run-reports.md` § 3.0).  Dropping it hands the job every channel on
+    the machine, which is the opposite of what was asked.
+    """
+    line = _monitor_line(tmp_path, notify_on_scf=True, notify_channels=())
+    assert '--notify-channels ""' in line
+
+
+def test_the_monitor_reads_back_what_the_wrapper_emitted(tmp_path):
+    """Two files, one command line.  A wrapper that renders a value the
+    monitor parses differently fails backgrounded and silent."""
+    from molbuilder import monitor as M
+    for channels, expected in ((None, None), (("slack", "lab"),
+                                              ("slack", "lab")), ((), ())):
+        line = _monitor_line(tmp_path, notify_on_scf=True,
+                             notify_channels=channels)
+        m = re.search(r'--notify-channels "([^"]*)"', line)
+        got = M._channels_from_flag(None if m is None else m.group(1))
+        assert got == expected, (channels, line)
+
+
+def test_a_name_that_could_not_be_shell_is_refused_at_the_wrapper(tmp_path):
+    """`task.json` checks every name on the way in, but `Resources` can be
+    built directly -- and this is where a name becomes SHELL.  A value that
+    reaches a generated script unchecked is a quoting bug waiting for the
+    one caller that does not go through a description.
+    """
+    with pytest.raises(runwrap.WrapperError, match="letters, digits"):
+        _monitor_line(tmp_path, notify_channels=('a" ; rm -rf /',))
+
+
+# --------------------------------------------------------------------- #
 #  the flags the monitor actually has                                    #
 # --------------------------------------------------------------------- #
 

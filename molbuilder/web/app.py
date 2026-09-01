@@ -359,12 +359,21 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.notify_setup import bp as notify_setup_bp
     app.register_blueprint(notify_setup_bp)
 
-    from ..runtime_config import get_notify_keys_file, get_notify_route
-    _notify_keys = get_notify_keys_file(config or {})
-    _notify_route = get_notify_route(config or {})
-    if _notify_keys and _notify_route:
+    # THE KEY FILE IS THE SWITCH (user, 2026-08-31).  It took two settings in
+    # `molbuilder.json` -- a path pointing at this file, and a copy of the
+    # route the file's own command had generated.  Both were things molbuilder
+    # already knew: it writes the file at `notify_keys_path()`, and it issued
+    # the route.  Requiring them retyped is how a working key file sat beside a
+    # listener that had never been registered, answering 404 to everything,
+    # which is indistinguishable from missing code by design.
+    #
+    # The safe state is unchanged and still the one you get by doing nothing
+    # (`access-control.md` § 8 rule 1): no file, no route in it, no listener.
+    from ..monitor import read_notify_keys, notify_keys_path
+    _notify_route, _notify_keys = read_notify_keys()
+    if _notify_route and _notify_keys:
         from .blueprints.notify import bp as notify_bp
-        app.config["MB_NOTIFY_KEYS_FILE"] = _notify_keys
+        app.config["MB_NOTIFY_KEYS_FILE"] = str(notify_keys_path())
         app.config["MB_NOTIFY_ROUTE"] = _notify_route
         app.register_blueprint(notify_bp)
 
@@ -516,6 +525,14 @@ def create_app(*, config=None) -> Flask:
     # there).
         # The contract is docs/web/task-setup.md.
         return render_template("task_setup.html")
+
+    @app.route("/this-machine")
+    def this_machine_page():
+        # This machine tab: the box you are signed in to, not a calculation --
+        # its notification channels and its run-report listener.  The ONLY
+        # surface where a secret is typed, and it never reads one back.
+        # The contract is docs/web/this-machine.md.
+        return render_template("this_machine.html")
 
     @app.route("/transport-calculation")
     def transport_calculation_page():

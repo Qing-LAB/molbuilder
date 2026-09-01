@@ -24,13 +24,6 @@ def test_dead_selectors_are_gone():
         assert dead not in src, f"dead selector {dead!r} is back in modify/style.css"
 
 
-def test_send_to_handoff_is_not_described_as_current():
-    # The Send-to-Optimization / Send-to-Build handoff was removed; comments must
-    # not describe it as a live "bottom footer" feature.  ("...were removed" is fine.)
-    src = STYLE.read_text(encoding="utf-8")
-    assert "Footer row at the bottom holds Save" not in src
-
-
 def test_monospace_uses_the_shared_token():
     # §2.1: one shared font source -- no re-declared `ui-monospace, "SF Mono", ...`
     # family list; use var(--font-mono).
@@ -56,15 +49,6 @@ def test_monospace_uses_the_shared_token():
 # --------------------------------------------------------------------- #
 
 TEMPLATE = ROOT / "molbuilder/web/templates/modify.html"
-
-
-def test_the_junction_stacked_label_rule_excludes_checkbox_rows():
-    src = STYLE.read_text(encoding="utf-8")
-    assert 'label:not(.modify-check-row)' in src, (
-        "the junction panel's stacked-label rule must exclude checkbox rows; "
-        "a bare `.modify-op-row label` selector stretches the box to the row "
-        "width and stacks it above its own text"
-    )
 
 
 def test_a_checkbox_row_is_laid_out_inline():

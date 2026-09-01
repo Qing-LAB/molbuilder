@@ -11,15 +11,10 @@ Public surface (all pure functions; each returns a new ``Structure``):
                                                 -> Structure
     rotate_around_axis(struct, axis="z", angle=0.0, *, center="origin")
                                                 -> Structure
-    add_electrode_slab(struct, element, plane, size, center_indices=None, *,
-                       contact_distance=None, side="+z", orthogonal=False,
-                       offset=(0.0, 0.0), lattice_constant=None,
-                       inter_layer_offset=None, pad_interlayer_gap=True)
-                                                -> Structure
     add_slab(struct, element, plane, size, *, start_registry=0,
              start_z=0.0, grow="+z", stacking="continue",
              orthogonal=False, offset=(0.0, 0.0),
-                             lattice_constant=None, pad_interlayer_gap=True)
+                             lattice_constant=None)
                                                 -> Structure
 
 Every function preserves the per-atom metadata (``atom_names``,
@@ -40,19 +35,20 @@ Geometry conventions for the nanojunction workflow:
       ``a0`` sits at the origin and ``a1`` is on +z.  This is the
       DFT-transport convention -- z is the transport direction; the
       two electrodes extend along ±z.
-    * The slab is CENTRED on the centroid of ``center_indices`` -- the
-      atoms the user selected (1 index -> that atom, 2 -> their midpoint,
-      N -> their centroid).  Omit / pass ``None`` and the slab centres on
-      the world origin.  This is the same rule the pair helper uses so
-      the junction sits on the molecule the user picked.
-    * ``add_electrode_slab(side="+z")`` places the first (closest)
-      layer at z = centre.z + contact_distance, with subsequent layers
-      extending outward in the +z direction.  Use ``side="-z"`` for the
-      bottom electrode.
-    * ``add_slab`` places from ABSOLUTE coordinates instead -- a stated
-      ``start_z`` and growth direction, reading no selection at all.  It is
-      the one to reach for; ``add_electrode_slab``'s anchor-relative rule
-      above is the older path.
+    * ``add_slab`` places from ABSOLUTE coordinates -- a stated
+      ``start_z``, a growth direction and a starting registry -- and reads
+      no selection at all.  **It is the only slab builder.**
+    * ``add_electrode_slab`` was the other one, and it placed RELATIVE to a
+      selection: the centroid of ``center_indices``, plus a
+      ``contact_distance``, with ``side="-z"`` mirroring the slab.  That
+      mirror is the accidental layer-order flip
+      ``archive/2026-09-01-bench-and-junction-plan.md`` § 2.3 records, and the redesign
+      set out to make it *unreachable rather than switchable* -- which it
+      did for the browser on 2026-08-30, while this function kept it
+      reachable from the CLI for two more days.  Deleted 2026-09-01
+      (``archive/2026-09-01-modify-redesign-plan.md`` § 3.4b); ``--electrode`` is now the
+      same convenience expressed over ``add_slab``, so the anchor-relative
+      grammar survives and the placement logic does not.
 """
 
 from __future__ import annotations
@@ -402,7 +398,7 @@ def orient_along_axis(
         t = np.zeros(3)
     # orient is ALWAYS a whole-structure rotation (the anchors only DEFINE the
     # rotation; every atom moves), so the unit-cell box rotates WITH the atoms --
-    # lattice vectors + the cell_origin corner (structure-periodicity.md § 3c),
+    # lattice vectors + the cell_origin corner (structure-periodicity.md § 6),
     # via the ONE affine primitive.  (A partial-selection edit never reaches orient:
     # its role is "anchor", so applyOp always takes the whole-structure path.)
     return struct.affine(R, t)
@@ -471,7 +467,7 @@ def rotate_around_axis(
     #
     # WHOLE STRUCTURE: routed through ``Structure.affine`` so the whole box --
     # lattice VECTORS (cell) AND the world-space CORNER (cell_origin) -- rotates
-    # WITH the atoms (structure-periodicity.md § 3c); nothing moved relative to
+    # WITH the atoms (structure-periodicity.md § 6); nothing moved relative to
     # anything else, and a box left behind would stop wrapping the atoms.
     #
     # A SUBSET: only those atoms turn, and the box stays.  The pivot is the
@@ -514,7 +510,7 @@ def rotate_around_axis(
 #
 # Future-extension note: when a BCC / HCP electrode is needed, add a
 # parallel data file (``bcc_lattice.json`` / ``hcp_lattice.json``) and a
-# sibling ``add_electrode_slab_bcc`` / ``..._hcp`` function rather than
+# sibling ``add_slab_bcc`` / ``..._hcp`` function rather than
 # overloading this one.  Same closed-list rule applies.
 
 
@@ -676,8 +672,13 @@ def _get_fcc_lattice() -> dict:
 
 
 # Metal-element-aware default contact distances (Å) loaded from
-# ``data/contact_distance.json``.  Used by ``add_electrode_slab``
-# when the caller doesn't override ``contact_distance``: Au-S
+# ``data/contact_distance.json``.  **Read by nobody in the package since
+# 2026-09-01**, when `add_electrode_slab` -- the one caller -- was deleted:
+# `add_slab` takes an absolute `start_z`, so no builder asks "how far from
+# the molecule should this metal sit" any more.  The TABLE is kept because
+# it is measured physics a person needs when typing `--electrode @contact=`,
+# and `default_contact_distance` is the published way to ask; wiring it in
+# as that flag's default is a decision, not a cleanup.  Au-S
 # canonical 2.40 Å is wrong for Pt-N (2.05) or Ag-S (2.50), so the
 # element-aware default is a real win over the previous hardcoded
 # 2.4 default.  Lazy-load + cache pattern matches the FCC lattice
@@ -758,8 +759,10 @@ def _check_fcc_element(element: str) -> None:
             f"unsupported electrode element {element!r}; "
             f"supported FCC metals are: "
             f"{', '.join(SUPPORTED_FCC_ELEMENTS)}.  "
-            f"For BCC / HCP electrodes, see "
-            f"docs/web/tabs.md § 'Off-scope'."
+            f"The builder is fcc-only: a bcc or hcp metal has a different "
+            f"stacking period and registry, so it is a second set of seam "
+            f"rules rather than a table entry "
+            f"(docs/science/junction-cell.md § 2a)."
         )
 
 
@@ -815,32 +818,28 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
 
 
 # --------------------------------------------------------------------- #
-#  The new slab builder (plans/modify-redesign-plan.md § 3)              #
+#  The new slab builder (archive/2026-09-01-modify-redesign-plan.md § 3)              #
 # --------------------------------------------------------------------- #
 
 
-def _finish_slab(struct, metal_pos, element, full, *,
-                 d_interlayer, pad_interlayer_gap):
+def _finish_slab(struct, metal_pos, element, full):
     """Append placed metal atoms and capture the box they imply.
 
-    EXTRACTED 2026-08-30 so ``add_slab`` and ``add_electrode_slab`` share
-    it rather than each carrying a copy.  The two builders differ entirely
-    in WHERE the slab goes -- one from an anchor and a contact distance,
-    one from an absolute start z and a growth direction -- and not at all
-    in what happens afterwards: the metadata, the cell, its origin, and the
-    axis kinds are the same facts about the same atoms.
+    EXTRACTED 2026-08-30 so two builders could share it rather than each
+    carrying a copy.  There is one builder now -- ``add_slab`` -- and this
+    is still its own function, because what it does (the metadata, the
+    cell, its origin, the axis kinds) is a different question from WHERE
+    the slab goes, and mixing the two is what made the placement bug in the
+    builder this outlived hard to see.
 
-    ``d_interlayer`` is the crystal's layer spacing, in Angstrom, and it is
-    the CALLER's to supply.  This function used to take the whole build
-    recipe instead -- ``plane``, ``m``, ``n``, ``a``, ``orthogonal`` -- five
-    parameters whose only purpose was to re-run ``_build_ase_slab`` for a
-    two-layer probe when the real slab held one layer and had no spacing to
-    measure.  Passing a builder its own recipe alongside its own product is
-    a smell, and it made this helper build things: ``add_slab`` had already
-    built a TALLER slab it could have measured, and paid for a second one.
-    The spacing is one number both callers already hold.
-
-    Everything else below is the original body, moved unchanged.
+    **It took two more parameters until 2026-09-01**, and both existed only
+    for ``add_electrode_slab``: ``pad_interlayer_gap``, which added one
+    layer spacing to the captured ``c``, and ``d_interlayer``, the spacing
+    to use when a monolayer had none to measure.  ``junction-cell.md`` § 6
+    retired that padding on the user's decision -- **`c` is measured and
+    set, never invented** -- and ``add_slab`` had already been passing
+    ``False``.  With the old builder gone the flag had one value, so it and
+    the number it guarded went with it.
     """
     # Assemble metadata for the new metal atoms.
     n_new = metal_pos.shape[0]
@@ -866,28 +865,17 @@ def _finish_slab(struct, metal_pos, element, full, *,
     elc_axis_kind = None
     elc_cell_origin = None
     if z_extent > 1e-6:
+        # `c` IS THE ATOMS' EXTENT, VERBATIM.  A block here used to add one
+        # layer spacing to it; `junction-cell.md` § 6 retired that on the
+        # user's decision and the caller had already stopped asking for it.
         z_len = z_extent
-        if pad_interlayer_gap:
-            # Measure the METAL layers only: they are what meets across the
-            # boundary, and a molecule that reaches past the slabs must not set
-            # the crystal's spacing.
-            # Measured on the slab AS BUILT where there is more than one
-            # layer, so an ``inter_layer_offset`` override is honoured without
-            # being passed in.  A MONOLAYER has no spacing to measure and the
-            # caller supplies the crystal's instead -- see `d_interlayer`.
-            metal_layers = _cell.detect_layers(metal_pos[:, 2])
-            spacing = d_interlayer
-            if len(metal_layers) >= 2:
-                _zp, spacing, _n = _cell.bulk_z_period(metal_layers)
-            if spacing:
-                z_len = z_extent + spacing
         elc_cell = np.array([
             [slab_cell[0, 0], slab_cell[0, 1], 0.0],
             [slab_cell[1, 0], slab_cell[1, 1], 0.0],
             [0.0, 0.0, z_len],
         ], dtype=float)
         elc_axis_kind = ("periodic", "periodic", "transport")
-        # cell_origin (structure-periodicity.md § 3c): the captured cell is built
+        # cell_origin (structure-periodicity.md § 6): the captured cell is built
         # AROUND atoms that straddle the origin (the molecule stays pinned there;
         # the slabs sit at +/- gap/2).  Anchor the cell at the structure's LOW
         # CORNER so the box WRAPS the atoms WITHOUT moving them -- z runs
@@ -983,11 +971,22 @@ def add_slab(
         raise ValueError(
             f"stacking must be 'continue' or 'mirror'; got {stacking!r}")
     _check_fcc_element(element)
+    # THE PLANE IS CHECKED BEFORE THE REGISTRY, and the order is the whole
+    # point.  The registry lookup below also rejects an unknown plane, but it
+    # says "no stacking period is known for fcc(101)" -- which names neither
+    # what is wrong nor what is allowed.  `_ase_slab_builder` names the closed
+    # list.  The deleted `add_electrode_slab` checked the plane first and
+    # this one did not, so its removal briefly cost the better message
+    # (caught by its own test on 2026-09-01, repointed here).
+    _ase_slab_builder(plane)
     a = (lattice_constant if lattice_constant is not None
          else _get_fcc_lattice()[element])
 
     period = _cell.STACKING_PERIOD.get(plane)
-    if period is None:
+    if period is None:                              # pragma: no cover
+        # Unreachable while STACKING_PERIOD covers the three supported
+        # planes; kept because the two lists are separate facts and this is
+        # the message if they ever disagree.
         raise ValueError(
             f"no stacking period is known for fcc({plane}), so a start "
             f"registry cannot be interpreted")
@@ -1015,7 +1014,6 @@ def add_slab(
     full = _build_ase_slab(element, plane, (m, n, tall), orthogonal, a)
     all_pos = np.asarray(full.positions, dtype=float)
     zs = sorted({round(float(z), 6) for z in all_pos[:, 2]})
-    d_layer = float(zs[1] - zs[0]) if len(zs) > 1 else 0.0
 
     # WHICH LAYER LANDS ON `start_z`, and therefore which window carries the
     # registry the caller asked for.  Growing up, or mirrored, it is the
@@ -1083,243 +1081,9 @@ def add_slab(
     # COLLISION until a person sets it on the Cell page.  That is deliberate
     # -- the missing step is visible where it is taken, and `classify_seam`
     # names it on every build rather than a builder guessing.
-    return _finish_slab(
-        struct, metal_pos, element, full,
-        d_interlayer=d_layer, pad_interlayer_gap=False)
+    return _finish_slab(struct, metal_pos, element, full)
 
 
-def add_electrode_slab(
-    struct: Structure,
-    element: str,
-    plane: str,
-    size: Tuple[int, int, int],
-    center_indices: Optional[Sequence[int]] = None,
-    *,
-    contact_distance: Optional[float] = None,
-    side: str = "+z",
-    orthogonal: bool = False,
-    offset: Tuple[float, float] = (0.0, 0.0),
-    lattice_constant: Optional[float] = None,
-    inter_layer_offset: Optional[float] = None,
-    pad_interlayer_gap: bool = True,
-) -> Structure:
-    """Append a single FCC electrode slab on one side of an anchor atom.
-
-    Single-electrode primitive.  A junction is two of these, one per side,
-    each with ``contact_distance = gap/2`` -- which is all the retired
-    ``add_symmetric_electrodes`` wrapper ever did (redesign plan § 3.4).
-    Slabs are built one at a time now, and where each one goes is stated
-    rather than inferred from a pair.
-
-    The slab is built by ASE's ``fcc{100,110,111}`` builder with
-    ``size=(m, n, n_layers)`` where every layer has the same lateral
-    ``(m, n)`` (uniform across layers).
-
-    The slab CENTRE is the centroid of ``center_indices`` (the atoms the
-    user selected -- 1 index -> that atom, 2 -> their midpoint, N -> their
-    centroid); omit / pass ``None`` and it defaults to the world origin.
-    The whole slab is then translated so:
-
-      * The slab's lateral centroid sits at ``(centre.x + offset[0],
-        centre.y + offset[1])``.
-      * The closest layer's z is ``centre.z + sign * contact_distance``
-        (sign = +1 for ``side="+z"``, -1 for ``"-z"``); subsequent
-        layers extend outward at the slab's natural inter-layer
-        spacing.
-
-    Parameters
-    ----------
-    struct
-        Existing structure (typically the molecule + already on-axis).
-    element
-        Metal symbol; must be one of ``SUPPORTED_FCC_ELEMENTS``
-        (Au / Ag / Cu / Ni / Pt / Pd).
-    plane
-        "100" / "110" / "111".
-    size
-        ``(m, n, n_layers)`` -- in-plane repeat counts and number of
-        layers.  Uniform across all layers.  ``n_layers == 0`` returns
-        ``struct`` unchanged.
-    center_indices
-        The selected atoms whose centroid defines the electrode placement
-        reference (``None`` / empty -> the world origin).
-    contact_distance
-        Distance (Å) from the anchor atom along the side direction to
-        the closest electrode layer's z plane.  Default 2.4 Å (a
-        typical Au-S contact distance).  Single-electrode-only param
-        -- the pair version uses ``gap`` (electrode-to-electrode
-        distance) and computes contact distances internally.
-    side
-        ``"+z"`` (default) or ``"-z"``.
-    orthogonal
-        Cell-shape choice.  ``False`` (default) requests the primitive
-        in-plane unit cell (hexagonal parallelogram for fcc(111);
-        rectangular for fcc(100) / fcc(110), which is also their
-        primitive cell).  ``True`` forces an orthogonal/rectangular
-        supercell -- relevant only for fcc(111), where it imposes
-        ASE's "second-axis repeat count must be even" constraint.
-        Compatibility is enforced **by passing through to ASE**; if
-        the (plane, orthogonal, size) tuple is rejected, ASE's own
-        error message is re-raised as a ``ValueError`` so the caller
-        / UI can display it as a hint and the user can adjust manually.
-        See ``docs/web/tabs.md``.
-    offset
-        ``(Δx, Δy)`` lateral shift in Å applied to the slab's centroid
-        relative to the anchor's xy.  Default ``(0.0, 0.0)`` puts the
-        slab centroid directly above (or below) the anchor -- the atop
-        site for that anchor.  Non-zero values shift the slab so the
-        anchor sits at a bridge site (between two surface atoms),
-        a hollow site (in a 3-fold hollow on fcc(111)), or wherever
-        the user wants the molecule-surface contact point to fall.
-    lattice_constant
-        Override the value loaded from
-        ``molbuilder/data/fcc_lattice.json`` (Å).
-    inter_layer_offset
-        Override the slab's natural inter-layer spacing (Å).  Default
-        ``None`` lets the ASE slab decide (the experimentally-correct
-        spacing for the chosen lattice constant + plane).  Useful for
-        strained-distance studies where the contact's interlayer
-        spacing is intentionally different from bulk.
-    pad_interlayer_gap
-        Add ONE interlayer spacing to the captured cell's z length so the
-        box tiles without colliding with itself (science/junction-cell.md
-        § 1).  Default ``True``: without it the bottom atom's periodic image
-        lands exactly on the top atom and SIESTA stops.  Set ``False`` to
-        reproduce a structure built before this rule, or when you supply the
-        cell yourself -- an explicit cell wins over this either way
-        (structure-periodicity.md § 4, branch 1).
-
-    Returns
-    -------
-    Structure
-        ``struct`` with the electrode atoms appended.  The electrode
-        atoms get residue name ``"ELC"`` and a fresh residue id; the
-        atom_names are set to the element symbol.
-    """
-    m, n, n_layers = (int(s) for s in size)
-    if n_layers <= 0:
-        return struct.copy()
-    # Element-aware default: 2.4 A is Au-S; Pt-N wants 2.05, Ag-S
-    # 2.50, etc.  Loaded from data/contact_distance.json so users
-    # can audit / override per molbuilder/data/README.md.
-    if contact_distance is None:
-        contact_distance = default_contact_distance(element)
-    if side not in ("+z", "-z"):
-        raise ValueError(f"side must be '+z' or '-z'; got {side!r}")
-    _check_fcc_element(element)
-    a = lattice_constant if lattice_constant is not None else _get_fcc_lattice()[element]
-
-    # Use ASE's slab builder (principle #8: "Don't reinvent wheels").
-    # The ``orthogonal`` flag is user-selectable; ``_build_ase_slab``
-    # passes it straight through to ASE and re-raises ASE's error
-    # verbatim (with operation context) if the (plane, orthogonal,
-    # size) tuple is unsupported -- the user reads the error and
-    # adjusts (m, n) manually.  Slab is uniform in (m, n) across
-    # layers, so the returned atom set is exactly what we want -- no
-    # per-layer cropping needed.
-    full = _build_ase_slab(
-        element, plane,
-        size=(m, n, n_layers),
-        orthogonal=orthogonal,
-        a=a,
-    )
-    metal_pos = np.asarray(full.positions, dtype=float).copy()
-
-    # Identify per-layer z values for the gap-anchor and the optional
-    # inter-layer override.  ASE orders atoms by layer; we round to
-    # absorb FP noise and group.
-    z_vals = metal_pos[:, 2]
-    z_unique = sorted({round(float(z), 4) for z in z_vals})
-    z_min = z_unique[0]
-
-    # Sanity-check ASE's slab orientation: every atom in a given
-    # layer must have the same z (within FP tolerance), i.e. the slab
-    # surface normal is parallel to z.  ASE's ``fcc{100,110,111}``
-    # builders honour this convention today; the assertion is a guard
-    # so a future ASE convention change (or a misinterpreted custom
-    # ``lattice_constant``) can't silently produce a tilted slab,
-    # which would invalidate transport-DFT lead self-energy
-    # assumptions.
-    for z_layer in z_unique:
-        in_layer = metal_pos[np.abs(metal_pos[:, 2] - z_layer) < 1e-3, 2]
-        if len(in_layer) and float(np.std(in_layer)) > 1e-6:
-            raise RuntimeError(
-                f"ASE slab is not z-perpendicular (layer at z={z_layer} "
-                f"has within-layer z-std {np.std(in_layer):.2e} > 1e-6). "
-                f"Surface normal must be along z for transport-DFT "
-                f"electrodes.  Aborting; this is a build-tool regression."
-            )
-
-    # Placement REFERENCE = the centroid of the selected atom group
-    # (``center_indices``); empty / None -> the ORIGIN.  ONE consistent rule for
-    # single AND symmetric electrodes: 1 atom -> that atom, 2 -> their midpoint,
-    # N -> their centroid, nothing selected -> the origin (0, 0, 0).
-    if center_indices:
-        _cidx = [int(i) for i in center_indices]
-        for _i in _cidx:
-            if not (0 <= _i < struct.n_atoms):
-                raise IndexError(
-                    f"center index {_i} out of range for {struct.n_atoms}-atom "
-                    f"structure"
-                )
-        anchor = struct.positions[_cidx].mean(axis=0)
-    else:
-        anchor = np.zeros(3, dtype=float)
-
-    # Translate so the slab's lateral centroid (average xy of every electrode
-    # atom) lands at ``(centre.x + offset[0], centre.y + offset[1])``.  The
-    # default ``offset=(0, 0)`` puts the slab centroid directly over the centre;
-    # non-zero ``offset`` shifts it laterally (bridge / hollow site).
-    offset_x, offset_y = float(offset[0]), float(offset[1])
-    slab_centroid_xy = metal_pos[:, :2].mean(axis=0)
-    metal_pos[:, 0] += (anchor[0] + offset_x) - slab_centroid_xy[0]
-    metal_pos[:, 1] += (anchor[1] + offset_y) - slab_centroid_xy[1]
-
-    # z-positioning: closest layer at anchor.z + sign * gap, others
-    # extending outward at the slab's natural inter-layer spacing
-    # (which ASE has already set correctly for the chosen lattice
-    # constant + plane).
-    sign = +1.0 if side == "+z" else -1.0
-    if side == "+z":
-        metal_pos[:, 2] += (anchor[2] + contact_distance) - z_min
-    else:
-        # Mirror across the closest-layer z so the stack extends -z.
-        z_in = metal_pos[:, 2] - z_min
-        metal_pos[:, 2] = anchor[2] - contact_distance - z_in
-
-    # Optional per-layer-spacing override (rare; pulls layers together
-    # or pushes them further out for strained-distance studies).
-    # Rescales spacing around the closest layer's z.  Only meaningful
-    # for n_layers >= 2.  Group atoms into per-layer z bands at 1e-9
-    # precision so a precise ``inter_layer_offset`` round-trips exactly
-    # (the rounded ``z_unique`` from earlier was 4-decimal, too coarse).
-    if inter_layer_offset is not None and n_layers > 1:
-        z_layers_precise = sorted({round(float(z), 9) for z in metal_pos[:, 2]})
-        if len(z_layers_precise) > 1:
-            natural_spacing = abs(z_layers_precise[1] - z_layers_precise[0])
-            if natural_spacing > 1e-9:
-                scale = inter_layer_offset / natural_spacing
-                closest_z = anchor[2] + sign * contact_distance
-                metal_pos[:, 2] = closest_z + (metal_pos[:, 2] - closest_z) * scale
-
-    # THE CRYSTAL'S LAYER SPACING, for the monolayer case where the slab
-    # itself has none to measure.  Asked of the same builder with the same
-    # (m, n) and ``orthogonal``, so it cannot hit an ASE shape constraint
-    # this call already passed.  Only built when it is actually needed --
-    # with two or more layers `_finish_slab` measures the real slab and this
-    # is never consulted.
-    d_crystal = 0.0
-    if n_layers < 2 and pad_interlayer_gap:
-        probe_z = np.asarray(
-            _build_ase_slab(element, plane, (m, n, 2), orthogonal, a).positions,
-            dtype=float)[:, 2]
-        probe_layers = _cell.detect_layers(probe_z)
-        if len(probe_layers) >= 2:
-            _zp, d_crystal, _n = _cell.bulk_z_period(probe_layers)
-
-    return _finish_slab(
-        struct, metal_pos, element, full,
-        d_interlayer=d_crystal, pad_interlayer_gap=pad_interlayer_gap)
 def calibrate_to_cell(struct: Structure) -> Structure:
     """Move the structure into its cell's SIESTA coordinate frame (§ 3c).
 
@@ -1367,7 +1131,6 @@ __all__ = [
     "add_atom",
     "orient_along_axis",
     "rotate_around_axis",
-    "add_electrode_slab",
     "calibrate_to_cell",
     "SUPPORTED_FCC_ELEMENTS",
     "SUPPORTED_FCC_PLANES",

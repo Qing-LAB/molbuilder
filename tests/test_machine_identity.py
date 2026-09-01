@@ -4,7 +4,7 @@
 sbatch-accept, when no node exists yet); what it LANDED ON is the monitor's,
 written on the compute node as the log's first line.
 
-The guards here are named for the two traps in `machine-identity-plan.md`
+The guards here are named for the two traps in `archive/2026-09-01-machine-identity-plan.md`
 § 2, because each would produce a feature that runs, reports, and means
 nothing:
 

@@ -92,7 +92,8 @@ class ResolveError(Exception):
 #: sweeps them.  Listed here so `ALLOCATION_FIELDS` keeps meaning *the
 #: machine axes*, which is the question that list actually answers.
 _RIDERS: Tuple[str, ...] = ("continue_retries", "use_gpu",
-                            "notify_on_scf", "notify_every_hours")
+                            "notify_on_scf", "notify_every_hours",
+                            "notify_channels")
 
 ALLOCATION_FIELDS: Tuple[str, ...] = tuple(
     f.name for f in dataclasses.fields(Resources) if f.name not in _RIDERS)

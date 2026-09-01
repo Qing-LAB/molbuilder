@@ -97,6 +97,7 @@ def preflight(task, config_cls=None, *,
     # nothing silently, which is why this is an error rather than a warning.
     out.extend(_bench_names_a_speed_knob(task, cls))
     out.extend(_bench_points_fit_their_items(task))
+    out.extend(_allocation_values_name_a_machine_knob(task, cls))
 
     # (step 2 -- the schema fingerprint -- retired 2026-08-14 with the
     # fingerprint itself; stages.md § 6.6 records the deletion)
@@ -154,6 +155,43 @@ def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
             f"different calculation at each point and the comparison would "
             f"mean nothing. Sweepable here: {known}",
             where=f"task.bench.{name}"))
+    return out
+
+
+def _allocation_values_name_a_machine_knob(task, cls) -> List[Issue]:
+    """§ 6.8a: every value in an ``allocation`` block names a field the
+    catalogue declares **machine-answered**.
+
+    The codec checks the shape -- one value, never a list -- and stops
+    there, because deciding what a name MEANS takes the vocabulary and
+    `task.py` is L1.  This is the membership half, and it is the same split
+    `_bench_names_a_speed_knob` makes one concern over.
+
+    **It is what makes an unknown key a refusal again.**  Until 2026-09-01
+    the reader itself rejected any key outside `domain`/`time`/`mem`; the
+    machine-answered values made that impossible, so a typo like ``cores``
+    would have been carried silently as a value nothing reads.  The refusal
+    did not go away -- it moved to where the answer is knowable.
+    """
+    blocks = [("allocation", getattr(task, "allocation", None)),
+              ("bench_allocation", getattr(task, "bench_allocation", None))]
+    for name, alloc in (getattr(task, "stage_allocation", None) or {}).items():
+        blocks.append((f"stage_allocation.{name}", alloc))
+    machine = {f.name for f in dataclasses.fields(cls)
+               if f.metadata.get("allocation")}
+    out: List[Issue] = []
+    for where, alloc in blocks:
+        for key in sorted(getattr(alloc, "values", None) or {}):
+            if key in machine:
+                continue
+            known = ", ".join(sorted(machine)) or "(none)"
+            out.append(Issue(
+                "error",
+                f"{where} names {key!r}, which {task.engine} does not declare "
+                f"as a machine-answered parameter -- so nothing would read "
+                f"it, and a run would quietly use a number nobody applied. "
+                f"Machine-answered here: {known}",
+                where=f"task.{where}.{key}"))
     return out
 
 

@@ -6,7 +6,7 @@
 found through it — [`molview.md`](?doc=web/molview.md),
 [`projects.md`](?doc=web/projects.md), [`workspace.md`](?doc=web/workspace.md),
 [`presenters.md`](?doc=web/presenters.md). `form-schema.md` — the engine-config
-form builder (its own doc). [`roadmap.md`](?doc=roadmap.md) § 3 — the pending
+form builder (its own doc). [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) § 3 — the pending
 ES-module conversion of the registry and these primitives.
 
 This doc covers the **runtime registry** — the small piece that lets the web
@@ -150,7 +150,7 @@ is still a **classic `window.molbuilder.*` script** today. The one exception is
 its not-yet-converted callers).
 
 Converting the registry and these primitives to ES modules is a planned pass
-([`roadmap.md § 3`](?doc=roadmap.md)) — grouped **by kind**, not lumped into one
+([`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md)) — grouped **by kind**, not lumped into one
 "runtime" bag (a `path.basename` caller shouldn't drag in a notification bar):
 
 - **`notify`** → its own ESM framework + auto-dismiss — **task #105**

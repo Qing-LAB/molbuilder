@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; This machine</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='this-machine/style.css') }}">
+{# molbuilder-runtime.js MUST load before any other molbuilder script. #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
+</head>
+<body>
+
+{% set active_tab = "this-machine" %}
+{% include "_app_header.html" %}
+
+{# THE ONLY SURFACE WHERE A SECRET IS TYPED, and it never shows one back
+   (`this-machine.md` 2).  Every other tab is about a calculation; this one
+   is about the box, so nothing here is scoped to a project and nothing here
+   hides when no folder is open. #}
+<main class="tm-tab">
+
+  <section class="card" id="tm-channels-card">
+    <h2>Where run reports go</h2>
+    <p class="hint">A long calculation tells you how it is going by posting to
+      a <strong>channel</strong> &mdash; your Slack, or a molbuilder server
+      listening for reports. Channels are set up here, once, and a calculation
+      picks the ones it wants <em>by name</em> on the Task&nbsp;setup tab. The
+      address and key never leave this machine.</p>
+
+    <p class="status muted" id="tm-file">Checking&hellip;</p>
+
+    <div class="tm-list" id="tm-list" role="list"></div>
+
+    <form class="tm-form" id="tm-form">
+      <h3 class="tm-sub">Add a channel</h3>
+      <div class="tm-field">
+        <label class="tm-label" for="tm-name">Name</label>
+        <input type="text" id="tm-name" class="tm-input tm-input-name"
+               placeholder="slack" autocomplete="off" spellcheck="false"
+               pattern="[A-Za-z0-9_-]{1,64}" required>
+        <span class="hint">What you will tick on a calculation. Letters,
+          digits, <code>-</code> and <code>_</code>. Saving an existing name
+          updates it.</span>
+      </div>
+
+      <fieldset class="tm-field tm-kinds">
+        <legend class="tm-label">Kind</legend>
+        <label class="tm-kind" for="tm-kind-webhook">
+          <input type="radio" name="tm-kind" id="tm-kind-webhook"
+                 value="webhook" checked>
+          <span>Slack or Discord webhook
+            <span class="tm-sub-note">the address is the whole credential, so
+              there is no separate key &mdash; and this page shows it back
+              only masked</span></span>
+        </label>
+        <label class="tm-kind" for="tm-kind-listener">
+          <input type="radio" name="tm-kind" id="tm-kind-listener"
+                 value="listener">
+          <span>A molbuilder listener
+            <span class="tm-sub-note">a plain address plus a key that signs
+              each report and never travels with it</span></span>
+        </label>
+      </fieldset>
+
+      <div class="tm-field">
+        <label class="tm-label" for="tm-url">Address</label>
+        <input type="url" id="tm-url" class="tm-input"
+               placeholder="https://hooks.slack.com/services/&hellip;"
+               autocomplete="off" spellcheck="false" required>
+      </div>
+
+      <div class="tm-field" id="tm-key-field" hidden>
+        <label class="tm-label" for="tm-key">Key</label>
+        <input type="password" id="tm-key" class="tm-input"
+               placeholder="from `molbuilder notify-token`, or issue one below"
+               autocomplete="new-password" spellcheck="false">
+      </div>
+
+      <div class="tm-actions">
+        <button type="submit" class="primary" id="tm-save">Save channel</button>
+        <span class="status" id="tm-form-note"></span>
+      </div>
+    </form>
+
+    {#- WHAT THE OTHER MACHINE MUST ALREADY HAVE.
+       Every config file molbuilder manages is saved on the machine
+       molbuilder runs on (user, 2026-09-01).  Carrying a secret to wherever
+       the task is built or run is the user's own job by design, and the
+       generated run script assumes it happened -- it embeds no cleartext
+       secret, because that would violate the security protocol.
+
+       So this is a STATEMENT OF EXPECTATIONS, not a generator.  It emits no
+       shell and holds no key: it says what the script will look for and
+       where, which is the one thing this page can honestly tell you about a
+       machine it cannot see. -#}
+    <details class="tm-expects">
+      <summary>What the target machine needs, if it is not this one</summary>
+      <p class="hint">A prepared bundle is copied to the machine that runs it,
+        and the monitor beside the job reads its channels <em>there</em>.
+        Nothing in the run script carries an address or a key &mdash; it
+        assumes you have put them in place. What it looks for:</p>
+      <dl class="tm-expects-list">
+        <dt><code>&lt;config dir&gt;/notify</code></dt>
+        <dd>the channels file, mode <code>0600</code>, in the same shape as
+          the one on this page. A channel a description ticks must exist there
+          by the same name, or nothing is sent to it &mdash; the monitor log
+          says which.</dd>
+        <dt>&lt;config dir&gt; is</dt>
+        <dd><code>$MOLBUILDER_CONFIG_DIR</code> exactly as given; else
+          <code>$XDG_CONFIG_HOME/molbuilder</code>; else
+          <code>~/.config/molbuilder</code>. Resolved <strong>on that
+          machine</strong>, so it need not match this one's.</dd>
+      </dl>
+      <p class="hint">Running molbuilder there and using this page is the
+        simplest way to put it in place; copying the file across works too.</p>
+    </details>
+
+  </section>
+
+  <section class="card" id="tm-listener-card">
+    <h2>This server&rsquo;s listener</h2>
+    <p class="hint">Whether <em>this</em> server accepts run reports from
+      jobs, and who may send them. A key is shown <strong>once</strong>, when
+      it is issued &mdash; it has to reach the machine that runs the jobs, and
+      there is no way to read it back afterwards.</p>
+
+    <p class="status muted" id="tm-listener-state">Checking&hellip;</p>
+
+    <div class="tm-users" id="tm-users"></div>
+
+    <form class="tm-form" id="tm-key-form">
+      <div class="tm-field">
+        <label class="tm-label" for="tm-user">Issue to</label>
+        <input type="text" id="tm-user" class="tm-input tm-input-name"
+               placeholder="your molbuilder user id" autocomplete="off"
+               spellcheck="false" required>
+        <span class="hint">It becomes a filename in the report log, so it is
+          limited to letters, digits and <code>. _ @ + -</code>.</span>
+      </div>
+      <label class="tm-kind" for="tm-replace">
+        <input type="checkbox" id="tm-replace">
+        <span>Replace an existing key
+          <span class="tm-sub-note">the old one stops working immediately,
+            and any job still running with it goes silent</span></span>
+      </label>
+      <div class="tm-actions">
+        <button type="submit" id="tm-issue">Issue a key</button>
+        <span class="status" id="tm-listener-note"></span>
+      </div>
+    </form>
+
+    {#- THE ONE MOMENT A SECRET IS ON SCREEN.  It is not fetched, it is the
+       response to the act that created it, and nothing can bring it back. -#}
+    <div class="tm-issued" id="tm-issued" hidden>
+      <h3 class="tm-sub">Copy this now &mdash; it is not shown again</h3>
+      <pre class="tm-cmd" id="tm-issued-body"></pre>
+      <div class="tm-actions">
+        <button type="button" class="danger" id="tm-issued-hide">I have
+          copied it</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='this-machine/page.js') }}"></script>
+</body>
+</html>

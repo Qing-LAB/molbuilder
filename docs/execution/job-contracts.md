@@ -69,7 +69,7 @@ warm-file vocabulary (what carries a run into the next) is § 4.
 | The `project / topic / structure` folder tree and its fixed topic names | **§ 2.5** |
 | The comment blocks molbuilder reserves inside a `.fdf` / `.py` / `.run.sh` | **§ 3 — The generated-script contract** |
 | What "warm restart", `--continue`, and `--cold` actually do | **§ 4 — Warm & cold restart** |
-| How a finished run flows into the next calculation | **it is CITED** (`plans/transport-design.md` § 4.1) — the handoff-bundle contract retired 2026-08-29 |
+| How a finished run flows into the next calculation | **it is CITED** (`archive/2026-09-01-transport-design.md` § 4.1) — the handoff-bundle contract retired 2026-08-29 |
 | What a persisted file is called system-wide, and how a config value becomes a SLURM flag | **§ 6 — The shared data vocabulary** |
 
 Two conventions bind everything below and are stated once here:
@@ -1364,7 +1364,7 @@ if _os.path.exists(_chk) and _os.path.getsize(_chk) > 0:
 > (`_PYSCF_WARM_RESTART_INVENTORY` in `tests/test_runwrap.py`) fails if a hook
 > gains a read-side but forgets the glob.
 
-### 4.2a The warm-file rules file — the inventory as data *(contract 2026-08-13; user decision — implementation tracked in `roadmap.md`)*
+### 4.2a The warm-file rules file — the inventory as data *(contract 2026-08-13; user decision — implementation tracked in `archive/2026-09-01-roadmap.md`)*
 
 **The concrete problem this solves.** When SIESTA's next version adds a
 restart file, or a stage gains a new optimizer, or PySCF changes what its
@@ -1598,7 +1598,7 @@ for the next tab to load.  That whole model retired with the user's ruling:
 builds on a finished result CITES it — the transport composite names its
 junction attempt explicitly and prep does the fuse, richer than the bundle
 ever was and inside the job system
-([`plans/transport-design.md`](?doc=plans/transport-design.md) § 4.1).
+([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1).
 Structure → execution hand-overs (builder/modify → parameter tab → Task
 setup) are a different thing and remain.  History:
 `docs/archive/2026-08-29-handoff-bundle.md` (it had moved out of this
@@ -1812,8 +1812,8 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **thirteen** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the six
+The `jobset.Resources` dataclass holds exactly **fourteen** fields — `domain`,
+`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the seven
 riders that become no scheduler flag: `program` (**added 2026-08-28**, the
 transport composite — WHICH binary the wrapper launches; unset means the
 engine's own, siesta. The transmission stage runs tbtrans over the SAME
@@ -1839,7 +1839,17 @@ copied argument list twice. **WHERE to send it does not ride here and must
 not**: a wrapper is a file on disk in the run directory, copied into handoff
 bundles and readable by anyone who can see the filesystem, so the URL and its
 credential stay in the user's own config directory, mode 0600, on the
-machine that runs the job).
+machine that runs the job), and `notify_channels` (**added 2026-08-31** —
+WHICH of that machine's channels, **by name**. It is the only part of *where*
+that may ride here, and it may because a name is a label the person chose on
+the machine that runs the job: it grants nothing, and on a machine with no
+channel by that name it resolves to nothing and says so in the monitor log.
+The address and the credential it resolves to stay in that machine's own
+file, exactly as above. `None` is unset and also *every channel that machine
+has*, so an unset field renders no flag; an **empty tuple is a real value**
+meaning none at all, and it renders one — `run-reports.md` § 3.0, and the one
+place in this codebase where absent and empty are two states rather than two
+spellings of one).
 *(This sentence said "exactly seven" while its own table already carried
 `continue_retries` — amended U19, 2026-08-12, and pinned by an equality
 test in both directions.)*  `partition` and `qos` are **not** `Resources`

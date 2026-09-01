@@ -480,57 +480,39 @@ def _read_auth(raw: Mapping[str, Any]):
 _NOTIFY_ROUTE_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
-def _read_notify_keys_file(raw: Mapping[str, Any]):
-    """Path to the run-report signing-key file.  A top-level SCALAR, like
-    ``secret_key_file`` and for the same reason: the config carries the
-    PATH, and the keys live in a 0600 file beside it.
+#: Both retired 2026-08-31.  The listener is switched on by the key file
+#: itself, which now carries its own route.
+_NOTIFY_SETTINGS_MOVED = (
+    "{f}: '{key}' was retired on 2026-08-31 and is no longer read.\n"
+    "\n"
+    "The listener is switched on by the KEY FILE, which carries its own\n"
+    "route: `<config dir>/notify_keys`, written by `molbuilder\n"
+    "notify-token`.  Both settings were things molbuilder already knew --\n"
+    "it chose the path and it issued the route -- so requiring them typed\n"
+    "here meant a working key file could sit beside a listener that was\n"
+    "never registered, answering 404 to everything.\n"
+    "\n"
+    "Delete this key.  If you have no `notify_keys` yet, run\n"
+    "`molbuilder notify-token <user>`; if you have one from before the\n"
+    "change, re-issue with `--route <your existing segment>` so the\n"
+    "destinations already in service keep working."
+)
 
-    Renamed from ``notify_tokens_file`` 2026-08-27: the secret stopped
-    being a bearer token and became a signing key that never travels
-    (`run-reports.md` § 4.1).  No compatibility shim -- a stale key under
-    the old name would leave the route unregistered, which is the safe
-    reading and the one `access-control.md` § 8 rule 1 asks for.
+
+def _read_notify_retired(key):
+    """Refuse a retired notify setting by name, with what to do instead.
+
+    Silently ignoring it would be worse than refusing: the operator would
+    have a config that looks configured and a listener that is not, which
+    is the exact state this change exists to end.
     """
-    value = raw.get("notify_keys_file")
-    if value is None:
-        return None
-    if not isinstance(value, str):
+    def read(raw: Mapping[str, Any]):
+        if raw.get(key) is None:
+            return None
         raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'notify_keys_file' must be a "
-            f"string path; got {type(value).__name__}."
-        )
-    return value
+            _NOTIFY_SETTINGS_MOVED.format(f=CONFIG_FILENAME, key=key))
+    return read
 
-
-def _read_notify_route(raw: Mapping[str, Any]):
-    """The listener's URL segment, generated per deployment.
-
-    **Not a secret** -- it is in every access log, as any path is -- but
-    never a fixed word either: this repository is public, so a word chosen
-    in the source is exactly as public as ``notify`` and less honest about
-    what it does (`access-control.md` § 8 rule 7).  ``notify-token``
-    generates it the same way it generates the key.
-
-    There is no default.  A default would be a fixed word again, and it is
-    what makes rule 1 hold here: with this key absent there is no route at
-    all, so nothing can be probed for.
-    """
-    value = raw.get("notify_route")
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'notify_route' must be a string; "
-            f"got {type(value).__name__}."
-        )
-    seg = value.strip().strip("/")
-    if not seg or not _NOTIFY_ROUTE_RE.match(seg):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'notify_route' must be one URL segment "
-            f"of letters, digits, '-' or '_' (got {value!r}).  "
-            f"`molbuilder notify-token` generates one."
-        )
-    return seg
 
 
 def _require_object_section(raw: Mapping[str, Any], name: str):
@@ -622,7 +604,7 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
 
     ``logs``, ``run`` and ``reports`` name where OPERATIONAL STATE goes,
     overriding the XDG directories `config_dir.state_dir` and
-    `config_dir.runtime_dir` default to (`plans/config-access-plan.md` § 3.2).
+    `config_dir.runtime_dir` default to (`archive/2026-09-01-config-access-plan.md` § 3.2).
     They are read through :func:`logs_dir`, :func:`run_dir` and
     :func:`reports_dir`, which is also where the defaults live -- so a person
     with a small ``$HOME`` and a large scratch puts the logs on scratch
@@ -652,7 +634,7 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
             f"molbuilder.json: unknown key(s) in `paths`: "
             f"{', '.join(sorted(unknown))}.  The keys are "
             f"{', '.join(_PATH_KEYS)} (architecture.md § 8.2, "
-            f"plans/config-access-plan.md § 3.2).")
+            f"archive/2026-09-01-config-access-plan.md § 3.2).")
     for key in _PATH_KEYS:
         val = section.get(key)
         if val is None:
@@ -671,9 +653,9 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
                           "scopes": ("machine",), "provenance_safe": False},
     "auth":              {"read": _read_auth,
                           "scopes": ("machine",), "provenance_safe": False},
-    "notify_keys_file":  {"read": _read_notify_keys_file,
+    "notify_keys_file":  {"read": _read_notify_retired("notify_keys_file"),
                           "scopes": ("machine",), "provenance_safe": False},
-    "notify_route":      {"read": _read_notify_route,
+    "notify_route":      {"read": _read_notify_retired("notify_route"),
                           "scopes": ("machine",), "provenance_safe": False},
     "execution":         {"read": lambda raw: _require_object_section(
                               raw, "execution"),
@@ -771,27 +753,6 @@ def get_providers(cfg: Mapping[str, Any]) -> list:
     configured.  Ergonomic shorthand for ``get_auth(cfg).get("providers", [])``.
     """
     return list(cfg.get("auth", {}).get("providers", []))
-
-
-def get_notify_keys_file(cfg: Mapping[str, Any]) -> Optional[str]:
-    """The path to the run-report signing-key file, or ``None``.
-
-    With this **or** ``notify_route`` absent the listener blueprint is never
-    registered, so the route does not exist at any path -- `run-reports.md`
-    § 4.3, and `access-control.md` § 8 rule 1: *the safe state is the one
-    you get by doing nothing.*
-    """
-    return cfg.get("notify_keys_file")
-
-
-def get_notify_route(cfg: Mapping[str, Any]) -> Optional[str]:
-    """The listener's generated URL segment, or ``None``.
-
-    Not a secret; it appears in every access log.  What it buys is that a
-    scanner sweeping fixed paths finds nothing, and the value never entered
-    this repository (`access-control.md` § 8 rule 7).
-    """
-    return cfg.get("notify_route")
 
 
 def get_tls(cfg: Mapping[str, Any]) -> Dict[str, str]:
@@ -1168,7 +1129,7 @@ def machine_config_path() -> Tuple[Path, str]:
     *"which file said this"* and the reader that raises about it could describe
     different files.
     """
-    # ONE LOCATION (`plans/config-access-plan.md` § 3.3).  A working-directory
+    # ONE LOCATION (`archive/2026-09-01-config-access-plan.md` § 3.3).  A working-directory
     # `molbuilder.json` was step 1 of a first-found-wins search until
     # 2026-08-31, and it is gone: it was redundant with the project scope --
     # `.molbuilder.json`, which MERGES rather than replaces -- and it was the

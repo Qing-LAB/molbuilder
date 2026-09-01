@@ -1,7 +1,7 @@
 """``contract_of`` — the electronic contract a directory's deck records.
 
 The ONE interface behind the Results tab's contract recording
-(`plans/structure-info-plan.md` I5): given a directory, find the one
+(`archive/2026-09-01-structure-info-plan.md` I5): given a directory, find the one
 engine deck in it and answer the electronic contract it states, in the
 exact field names ``TransportConfig`` speaks — so a recorded block
 (`info.calculation`) fills a transport config 1:1 when a pair carrying

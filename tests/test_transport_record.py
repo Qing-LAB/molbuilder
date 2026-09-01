@@ -1,4 +1,4 @@
-"""P6 — the transport record (`plans/transport-design.md` § 7,
+"""P6 — the transport record (`archive/2026-09-01-transport-design.md` § 7,
 `transport/record.py` + `summarize run`'s transport arm + the
 transmission walk).
 

@@ -27,7 +27,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -757,8 +756,8 @@ def _parse_electrode_spec(spec):
     pair's own parameter and had no meaning for a single slab, so it went with
     it rather than being kept as a second way to say ``contact``.
 
-    Returns a dict with key ``"mode"`` set to ``"pair"`` or
-    ``"single"`` and the appropriate fields.
+    Returns a dict whose ``"mode"`` is always ``"single"`` -- one slab per
+    flag, with its own side and stand-off.
     """
     main, sep, after_at = spec.partition("@")
     if not sep or not after_at:
@@ -793,13 +792,6 @@ def _parse_electrode_spec(spec):
             f"--electrode {spec!r}: '@{keyval}' must be "
             f"'@contact=NUM' (key=value form)"
         )
-    try:
-        distance = float(val)
-    except ValueError:
-        raise click.BadParameter(
-            f"--electrode {spec!r}: distance {val!r} after '@{key}=' must be a float"
-        )
-
     if key == "gap":
         # PAIR MODE IS GONE, and `gap` went with it -- it was the PAIR's
         # parameter, the electrode-to-electrode distance, meaningless for one
@@ -816,6 +808,13 @@ def _parse_electrode_spec(spec):
             f"per side, each with '@contact=NUM:+z=I' or ':-z=I' -- which is "
             f"what the pair did internally, with the two positions now "
             f"stated rather than derived from a gap.")
+    try:
+        distance = float(val)
+    except ValueError:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: distance {val!r} after '@{key}=' must be a float"
+        )
+
     if key == "contact":
         # Single mode: trailing field is "+z=I,J,..." or "-z=I,J,..."
         side, has_eq2, idx_str = rest.partition("=")
@@ -835,8 +834,7 @@ def _parse_electrode_spec(spec):
             "side": side, "center_indices": center_indices,
         }
     raise click.BadParameter(
-        f"--electrode {spec!r}: unknown key {key!r}; expected 'gap' (pair) "
-        f"or 'contact' (single)"
+        f"--electrode {spec!r}: unknown key {key!r}; expected 'contact'"
     )
 
 
@@ -930,20 +928,22 @@ def cmd_modify(input_path, output_path,
       --rotate AXIS:ANGLE      spin every atom around AXIS
       --electrode SPEC         add an FCC electrode (multi-instance allowed)
 
-    Examples -- canonical Au-bdt-Au junction in a 3-step pipe:
+    Examples -- canonical Au-bdt-Au junction in a 3-step pipe.  One slab
+    per flag: each says which side it goes on and how far it stands off.
 
         # input: relaxed BDT geometry with 4 atoms (S-C-C-S)
         molbuilder modify bdt.xyz - --orient-axis 0,3 --center midpoint |
           molbuilder modify - junction.xyz \\
-              --electrode Au:111:3x3x2@gap=9.0:3,0
+              --electrode Au:111:3x3x2@contact=2.4:+z=3 \\
+              --electrode Au:111:3x3x2@contact=2.4:-z=0
 
-    Stepped 3×3 + 4×4 contact, both sides, in one electrode call:
+    Stepped 3×3 + 4×4 contact on the same side:
 
         molbuilder modify oriented.xyz junction.xyz \\
-            --electrode Au:111:3x3x1@gap=9.0:3,0 \\
-            --electrode Au:111:4x4x1@gap=14.0:3,0
+            --electrode Au:111:3x3x1@contact=2.4:+z=3 \\
+            --electrode Au:111:4x4x1@contact=2.4:+z=3
 
-    Asymmetric junction (Au top, Cu bottom) -- two single-mode calls:
+    Asymmetric junction (Au top, Cu bottom):
 
         molbuilder modify oriented.xyz step1.xyz \\
             --electrode Au:111:3x3x2@contact=2.4:+z=3
@@ -954,8 +954,10 @@ def cmd_modify(input_path, output_path,
     constraint table; ASE's own error message bubbles up if the
     requested (m, n) doesn't satisfy the chosen cell shape.
     """
+    import numpy as np
+
     from .modify import (
-        add_electrode_slab,
+        add_slab,
         delete_atoms, orient_along_axis, rotate_around_axis,
     )
 
@@ -1047,19 +1049,50 @@ def cmd_modify(input_path, output_path,
             struct = rotate_around_axis(struct, axis=ax, angle=ang)
 
         else:  # electrode
+            # THE FLAG IS THE CONVENIENCE; `add_slab` IS THE BUILDER.
+            #
+            # `--electrode` says "put a slab this far from these atoms, on
+            # this side" -- a genuinely useful way to ask, and the reason the
+            # flag survives.  What went (2026-09-01) is the SECOND BUILDER it
+            # used to call: `add_electrode_slab` placed relative to the
+            # anchor itself, and mirrored the slab for `-z`, which is the
+            # accidental layer-order flip `bench-and-junction-plan.md` § 2.3
+            # records and the redesign set out to make unreachable.
+            #
+            # So the arithmetic happens HERE, where the convenience lives,
+            # and the placement goes to the one builder: centroid -> an
+            # absolute `start_z`, side -> `grow`, and the anchor's xy folded
+            # into the absolute `offset`.  `stacking="continue"` is the
+            # redesign's answer -- the crystal carries on downward instead of
+            # reflecting -- so `-z` no longer flips the layer order.
             offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
             for spec_str in electrode:
                 spec = _parse_electrode_spec(spec_str)
-                struct = add_electrode_slab(
+                idx = spec["center_indices"]
+                if idx:
+                    for i in idx:
+                        if not (0 <= i < struct.n_atoms):
+                            raise click.BadParameter(
+                                f"--electrode {spec_str!r}: centre index {i} "
+                                f"is out of range for a {struct.n_atoms}-atom "
+                                f"structure")
+                    anchor = np.asarray(
+                        struct.positions, dtype=float)[idx].mean(axis=0)
+                else:
+                    anchor = np.zeros(3, dtype=float)
+                sign = 1.0 if spec["side"] == "+z" else -1.0
+                struct = add_slab(
                     struct,
                     element=spec["element"],
                     plane=spec["plane"],
                     size=spec["size"],
-                    center_indices=spec["center_indices"],
-                    contact_distance=spec["contact_distance"],
-                    side=spec["side"],
+                    start_z=float(anchor[2]
+                                  + sign * spec["contact_distance"]),
+                    grow=spec["side"],
+                    stacking="continue",
                     orthogonal=orthogonal,
-                    offset=offset_xy,
+                    offset=(float(anchor[0]) + offset_xy[0],
+                            float(anchor[1]) + offset_xy[1]),
                     lattice_constant=lattice_constant,
                 )
     except (ValueError, IndexError) as exc:
@@ -1401,11 +1434,14 @@ def _check_tls_readable(cert, key) -> None:
                    "DOMAIN (e.g. 'asu.edu').  May be passed multiple "
                    "times.  Default: no restriction.")
 @click.option("--output", type=click.Path(dir_okay=False), default=None,
-              help="where to write the molbuilder.json.  Default: THE FILE "
-                   "THE SERVER WILL READ -- ``./molbuilder.json`` when one is "
-                   "already there, otherwise "
-                   "``~/.config/molbuilder/molbuilder.json`` (honouring "
-                   "XDG_CONFIG_HOME).")
+              help="where to write the molbuilder.json.  Default: THE ONE "
+                   "FILE THE SERVER READS -- "
+                   "``$MOLBUILDER_CONFIG_DIR/molbuilder.json`` if that "
+                   "variable is set, else "
+                   "``$XDG_CONFIG_HOME/molbuilder/molbuilder.json``, else "
+                   "``~/.config/molbuilder/molbuilder.json``.  A "
+                   "``./molbuilder.json`` in the launch directory is NOT "
+                   "read.")
 @click.option("--force", is_flag=True,
               help="overwrite an existing molbuilder.json's auth block.  "
                    "Other top-level sections (envs, tls, ...) survive.")
@@ -1786,13 +1822,6 @@ def _supervise_forever() -> int:
         return code
 
 
-#: A user id becomes a log FILENAME on the server, so it is
-#: constrained here -- the same set `web/blueprints/notify.py`
-#: enforces when it writes.  Refusing at issue time is cheaper
-#: than a token that authenticates and then cannot be recorded.
-_NOTIFY_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
-
-
 @cli.command("notify-token",
               short_help="issue a run-report signing key for one user, and "
                          "say where to put it")
@@ -1809,28 +1838,32 @@ _NOTIFY_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
                    "one.  Pass the value already in molbuilder.json when "
                    "issuing a key for a SECOND user -- a new segment would "
                    "move the route and silence everyone else.")
+@click.option("--channel", default="molbuilder",
+              help="the name this listener is called on the cluster.  It is "
+                   "what a description ticks, so re-issuing under the same "
+                   "name replaces the credential and no description changes.")
 @click.option("--replace", is_flag=True,
               help="reissue for a user who already has one.  The old key "
                    "stops working immediately.")
-def cmd_notify_token(user, host, keys_file, route, replace):
+def cmd_notify_token(user, host, keys_file, route, channel, replace):
     """Issue a signing key so one person's jobs can report progress.
 
     Two files, two machines, one secret:
 
     \b
-      * THIS machine (the server) gets `notify_keys`, which maps the user
-        to their key.  Point `molbuilder.json`'s `notify_keys_file` at it,
-        AND set `notify_route` to the segment printed below -- with either
-        missing the listener is not registered at all and there is no path
-        to find.
-      * THE CLUSTER gets `notify`, holding the url and the key, read by
-        the monitor beside a running job.
+      * THIS machine (the server) gets `notify_keys`, which carries the
+        route segment and maps the user to their key.  That file IS the
+        switch: the listener is registered because it exists and names a
+        route, and `molbuilder.json` needs nothing at all.
+      * THE CLUSTER gets `notify`, holding the named channels the monitor
+        reads beside a running job.  This adds one to it.
 
     Both are mode 0600 and neither is ever placed in `molbuilder.json`:
-    the config carries PATHS (`ops/deployment.md` 5.1).  The route segment
-    IS in `molbuilder.json`, because it is not a secret -- it appears in
-    every access log, as any path does.  What it buys is that a scanner
-    sweeping fixed paths finds nothing.
+    the config carries PATHS (`ops/deployment.md` 5.1).  It carried
+    `notify_keys_file` and `notify_route` until 2026-08-31, which was one
+    fact in two places -- a path to a file molbuilder had itself written,
+    and a copy of a segment molbuilder had itself issued.  Both are retired
+    and both are now refused.
 
     **The key signs the body and never travels.**  A bearer token -- what
     this issued until 2026-08-27 -- is on the wire on every report, so one
@@ -1854,86 +1887,83 @@ def cmd_notify_token(user, host, keys_file, route, replace):
     new file across.
     """
     import json as _json
-    import secrets as _secrets
     from . import auth_setup as _as
-    from .config_dir import config_dir
+    from .monitor import is_channel_name, notify_keys_path
 
-    if not _NOTIFY_USER_RE.match(user):
+    if not is_channel_name(channel):
         raise click.UsageError(
-            f"{user!r} is not usable as a user id here. It becomes a log "
-            f"FILENAME on the server, so it is limited to letters, digits "
-            f"and . _ @ + - (max 128).")
-
-    from .monitor import notify_keys_path
+            f"{channel!r} is not a channel name. Letters, digits, '-' and "
+            f"'_' -- it is written into a description and rendered into the "
+            f"monitor's command line.")
     path = Path(keys_file) if keys_file else notify_keys_path()
+    # ONE DOOR (`auth_setup.issue_notify_key`), shared with the This-machine
+    # tab.  Issuing written twice would be free to generate a second route
+    # segment from the same file and silence everyone already set up.
     try:
-        existing = _json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(existing, dict):
-            existing = {}
-    except (OSError, ValueError):
-        existing = {}
-
-    if user in existing and not replace:
-        raise click.UsageError(
-            f"{user!r} already has a key in {path}. Re-run with "
-            f"--replace to issue a new one -- the old one stops working "
-            f"the moment you do.")
-
-    token = _secrets.token_urlsafe(32)
-    existing[user] = token
-    _as.write_secret_file(path, _json.dumps(existing, indent=2) + "\n")
-
-    # THE ROUTE SEGMENT IS GENERATED, NOT NAMED.  A word chosen in the
-    # source would be committed to a public repository and so be exactly as
-    # public as `notify`, only less honest about what it does
-    # (`access-control.md` § 8 rule 7).  It is not a secret -- it lands in
-    # every access log -- it is merely unguessable, which is what stops a
-    # scanner finding the route at all.
-    #
-    # `--route` exists because a SECOND user must join the existing route:
-    # generating a new one would move it and silence everybody already set
-    # up.
-    seg = route or _secrets.token_urlsafe(12).replace("-", "").replace("_", "")
-
+        token, seg, existing_route = _as.issue_notify_key(
+            user, path=path, route=route, replace=replace)
+    except _as.NotifyKeyError as exc:
+        raise click.UsageError(str(exc))
     base = (host or "https://YOUR-SERVER:8888").rstrip("/")
-    client = _json.dumps({"url": f"{base}/api/{seg}", "key": token}, indent=2)
+    client = _json.dumps(
+        {"channels": {channel: {"url": f"{base}/api/{seg}", "key": token}}},
+        indent=2)
 
     click.echo(f"\nIssued a run-report signing key for {user}.\n")
     click.echo(f"  server side, written now : {path}  (0600)")
-    if not keys_file:
-        click.echo(f"  molbuilder.json needs    : "
-                   f'"notify_keys_file": "{path}",')
-        click.echo(f"                             "
-                   f'"notify_route": "{seg}"')
-        click.echo( "                             "
-                    "(BOTH -- with either missing there is no route at all)")
-    if route:
-        click.echo( "\n  reusing the route segment you passed, so everybody "
-                    "already set up keeps working.")
+    click.echo( "  molbuilder.json needs    : nothing.  The file above IS the "
+                "switch --")
+    click.echo( "                             it carries the route, and the "
+                "server reads it.")
+    if route and existing_route and route != existing_route:
+        click.echo(f"\n  MOVED the route from {existing_route} to {seg} "
+                   f"because you passed --route.")
+        click.echo( "  Every key issued under the old segment stops working, "
+                    "and silently.")
+    elif existing_route:
+        click.echo(f"\n  joined the route already in that file ({seg}), so "
+                   f"everybody already set up keeps working.")
+    elif route:
+        click.echo(f"\n  adopted the segment you passed ({seg}); it is now "
+                   f"kept in the file.")
     else:
-        click.echo( "\n  the route segment was GENERATED just now.  If a "
-                    "listener is already running,")
-        click.echo( "  pass its existing segment with --route instead, or "
-                    "this moves the route and")
-        click.echo( "  silences every key already issued.")
-    click.echo("\nOn the CLUSTER, save this as "
-               "$XDG_CONFIG_HOME/molbuilder/notify")
-    click.echo("(or ~/.config/molbuilder/notify), mode 0600:\n")
+        click.echo(f"\n  first key here, so the route segment was generated: "
+                   f"{seg}")
+        click.echo( "  every later key joins it automatically -- there is "
+                    "nothing to pass.")
+    # THE WHOLE RULE, NOT TWO THIRDS OF IT (configuration.md § 2.1c).  The
+    # config directory is $MOLBUILDER_CONFIG_DIR first, exactly as given, and
+    # only then the XDG pair.  These lines printed the XDG pair alone, so on
+    # any machine with MOLBUILDER_CONFIG_DIR set -- which is the case this
+    # session's cutover created -- following them wrote the key where the
+    # monitor does not look, and silently: a notifier swallows failures by
+    # design, so the job simply never reports.  The Task-setup card emits the
+    # same three branches (task-setup/viewer.js); it stays shell text on both
+    # surfaces because it resolves on the FAR machine, not this one.
+    click.echo(f"\nOn the CLUSTER this is the channel `{channel}`, in the "
+               f"config directory's `notify`, mode 0600:\n")
     click.echo(client)
-    click.echo("\n  mkdir -p -m 700 \"${XDG_CONFIG_HOME:-$HOME/.config}"
-               "/molbuilder\"")
-    click.echo("  # paste the JSON above into "
-               "\"${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder/notify\"")
-    click.echo("  chmod 600 \"${XDG_CONFIG_HOME:-$HOME/.config}"
-               "/molbuilder/notify\"")
+    click.echo("\n  cfg=\"${MOLBUILDER_CONFIG_DIR:-"
+               "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}\"")
+    click.echo("  mkdir -p -m 700 \"$cfg\"")
+    click.echo("  # paste the JSON above into \"$cfg/notify\"")
+    click.echo("  chmod 600 \"$cfg/notify\"")
+    # MERGE, NOT OVERWRITE -- and it has to be said, because the file now
+    # holds every channel rather than one destination.  Pasting over a file
+    # that already has a Slack channel in it deletes that channel, and
+    # silently: nothing is sent there and nothing says why.
+    click.echo(f"\n  If `$cfg/notify` already exists, add `{channel}` to its "
+               f"`channels` object")
+    click.echo( "  instead of replacing the file -- pasting over it deletes "
+                "the others, silently.")
     click.echo("\nOn an HPC login node $HOME is usually NFS-mounted and "
                "backed up.")
     click.echo("Setting XDG_CONFIG_HOME to somewhere local keeps the key "
                "off it.\n")
     click.echo("The key is shown ONCE. Copy it before this scrolls away.")
-    click.echo("Then pick what is worth a message on the Task-setup tab; "
-               "with nothing")
-    click.echo("ticked a run still reports when it ends.\n")
+    click.echo(f"Then tick `{channel}` and what is worth a message on the "
+               f"Task-setup tab;")
+    click.echo("with nothing ticked a run still reports when it ends.\n")
     return 0
 
 

@@ -4,7 +4,7 @@ Module: ``parse/dirs`` (directory-level composers — the ONE parse layer
 allowed to touch the filesystem), beside
 ``atom_metadata_json_for_run_dir``.
 
-``info`` is a structure's free store (`plans/structure-info-plan.md`,
+``info`` is a structure's free store (`archive/2026-09-01-structure-info-plan.md`,
 `web/molview.md` § 8.4a): a dict of key -> value that DESCRIBES a
 structure without being part of it.  The tab a viewer sits in is the one
 that knows what describes the run it is showing (user, 2026-08-30: *"it

@@ -1,12 +1,14 @@
-"""`POST /api/modify/slab` — the new slab op's door (redesign plan § 3).
+"""`POST /api/modify/slab` — the slab op's door (redesign plan § 3).
 
-Beside `/api/modify/electrode`, not replacing it: the old panel stays until
-this one is proven (§ 3.4 lists what goes when it is).
+It was built **beside** `/api/modify/electrode` under the user's
+build-then-replace rule, and replaced it: that route placed a slab relative to
+a picked group, and went on 2026-09-01 once nothing in the browser called it
+(§ 3.4a).
 
 **The door reads no selection**, and that is asserted here rather than assumed,
-because it is the difference between the two ops: the old one places relative
-to a picked group, this one from absolute coordinates.  Sending `indices`
-must change nothing.
+because it is the whole difference the redesign turned on: the old op placed
+relative to a picked group, this one from absolute coordinates.  Sending
+`indices` must change nothing.
 """
 from __future__ import annotations
 
@@ -83,9 +85,9 @@ class TestItBuildsWhatItWasTold:
 class TestItReadsNoSelection:
 
     def test_sending_indices_changes_nothing(self, client):
-        """The difference between this op and the old electrode one, asserted
-        as behaviour: placement is absolute, so a selection is not merely
-        ignored by the client — it cannot reach the answer even if sent."""
+        """The difference the redesign turned on, asserted as behaviour:
+        placement is absolute, so a selection is not merely ignored by the
+        client — it cannot reach the answer even if sent."""
         plain = _post(client).get_json()["xyz"]
         with_sel = _post(client, indices=[0], center_indices=[0, 1]).get_json()["xyz"]
         assert plain == with_sel

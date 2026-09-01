@@ -78,7 +78,7 @@ Three scopes exist. They are read in this order, and **later wins**:
 
 | # | scope | where | what may live here |
 |---|---|---|---|
-| 1 | **machine** | `molbuilder.json` — its **home** is the per-user config directory; a working-directory copy still wins today and is warned about (§ 2.1a) | every section |
+| 1 | **machine** | `molbuilder.json` — **one file**, in the config directory named by `$MOLBUILDER_CONFIG_DIR` or the XDG default. A copy in the working directory is **not read**, and you are told so (§ 2.1a) | every section |
 | 2 | **project** | `.molbuilder.json` in a project or calculation folder | `execution`, `script_generation`, `scheduler` — **and nothing else** |
 | 3 | **calculation** | the folder itself: `task.json`, `<label>.template.toml`, `environment.json`, an optional `warm-files.toml` | what this one calculation is |
 
@@ -108,7 +108,7 @@ named.
 
 | file | looked for, in order | combining rule |
 |---|---|---|
-| `molbuilder.json` (machine) | 1. `./molbuilder.json` — the **working directory**, legacy and **warned about** (§ 2.1a)<br>2. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>3. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>4. `~/.config/molbuilder/molbuilder.json` | **one file, never both** — the first found is the machine scope, entire |
+| `molbuilder.json` (machine) | 1. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file.** There is no search: the branches above choose a DIRECTORY, and the file is the one in it. A `./molbuilder.json` in the working directory is not read (§ 2.1a) |
 | `.molbuilder.json` (project) | `<project-dir>/.molbuilder.json` | **deep-merged** over the machine file, project wins — *the one merge in this document*. Objects recurse, scalars and arrays replace |
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<machine scope>/environments/<name>.json`<br>3. `$XDG_CONFIG_HOME/molbuilder/environment.json`, else `~/.config/molbuilder/environment.json`<br>4. a fresh probe — **only when the caller asked for one** | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
@@ -138,46 +138,38 @@ if that variable is set, else `~/.config/molbuilder/`. That is where
 `auth-setup` writes, where `environment.json` already lives, and what every
 instruction should name.
 
-**`./molbuilder.json` still wins when it exists, and that is exactly the
-problem.** Step 1 of § 2.1's search is a *first-found-wins* stop, so a working-
-directory file silently stands in front of the per-user one — the per-user file
-is not merged, not consulted, and not mentioned. Two files hold configuration,
-one takes effect, and nothing says which.
+**`./molbuilder.json` is NOT READ** *(landed 2026-08-31)*. It was step 1 of a
+first-found-wins search until then, which is the state this section was written
+to end: a working-directory file stood silently in front of the per-user one —
+not merged, not consulted, not mentioned — so two files held configuration, one
+took effect, and nothing said which.
 
-Worse, **the cwd step is redundant**: per-directory configuration already has a
-scope of its own, `.molbuilder.json`, which *merges* properly and is documented
-as the one merge in this document. Anything a cwd `molbuilder.json` can express,
-the project scope expresses better and without shadowing anything.
+It was also redundant. Per-directory configuration already has a scope of its
+own, `.molbuilder.json`, which *merges* properly and is documented as the one
+merge in this document. Anything a cwd `molbuilder.json` could express, the
+project scope expresses better and without shadowing anything.
 
 So the rule is:
 
-1. **A machine-scope file belongs in the per-user config directory.** New
-   installs write there; documentation names that path.
+1. **A machine-scope file belongs in the config directory** — the one named by
+   `$MOLBUILDER_CONFIG_DIR` (§ 2.1c), else `$XDG_CONFIG_HOME/molbuilder/`, else
+   `~/.config/molbuilder/`. `machine_config_path()` has one branch and no
+   search; there is nowhere else for it to stop.
 2. **Per-directory configuration is the project scope's job** —
    `<project-dir>/.molbuilder.json`, which merges rather than replaces.
-3. **A `./molbuilder.json` is honoured and WARNED about.** It is not silently
-   obeyed and not refused: refusing would break a machine that has one today,
-   and obeying quietly is what caused the confusion. Every surface that resolves
-   the machine scope says so — `runtime_config.machine_config_shadow()` is the
-   one place that phrasing lives, and it names **both** paths, says which is in
-   effect, and says plainly when a per-user file **exists and is being
-   ignored**. That last case is the one worth the noise: it is the only state in
-   which the same setting can be written twice and read once.
-4. **The cwd step is on its way out**, and the decision is now taken rather
-   than pending: `plans/config-access-plan.md` § 3.3 retires it, with **no
-   migration and no compatibility layer** (user, 2026-08-31: *"no old design
-   should be expected"*). Until that lands the step works as described above.
-   When it lands, the warning below changes job — from *"this wins, and you may
-   not want it to"* to *"this is not read; move it"* — and this section is the
-   one that must be edited to say so.
+3. **A `./molbuilder.json` is reported, not obeyed.** Leaving it silently
+   ignored would recreate the confusion in the other direction — a file you
+   edited that does nothing. So `runtime_config.machine_config_shadow()` says
+   it is **not read** and names the file that is. That phrasing lives in one
+   place, and every surface that resolves the machine scope shows it.
 
-The warning is not a diagnosis aid bolted on afterwards; it is the price of
-keeping a search step whose whole failure mode is being invisible.
+Retiring the step took **no migration and no compatibility layer** (user,
+2026-08-31: *"no old design should be expected"*).
 
 > **All of it landed on 2026-08-31**, and each piece is described where it
 > belongs: the root override in § 2.1c, the state and runtime directories with
 > their `paths` block in § 2.1d, and the session key's one home in § 2.1e.
-> `plans/config-access-plan.md` holds the reasoning and the order it was taken
+> `archive/2026-09-01-config-access-plan.md` holds the reasoning and the order it was taken
 > in; **this document describes what is.**
 
 ### 2.1b It holds secrets, so it is `0600` — checked, not just written
@@ -218,7 +210,7 @@ the quiet case is the correct one.
 
 ### 2.1c Naming the root outright — `MOLBUILDER_CONFIG_DIR`
 
-*(Built 2026-08-31. `plans/config-access-plan.md` § 3.1.)*
+*(Built 2026-08-31. `archive/2026-09-01-config-access-plan.md` § 3.1.)*
 
 `config_dir()` resolves the per-user root in three steps:
 
@@ -250,7 +242,7 @@ module reads either variable itself.
 
 ### 2.1d Operational state — `$XDG_STATE_HOME`, and `paths` may name it
 
-*(Built 2026-08-31. `plans/config-access-plan.md` § 3.2.)*
+*(Built 2026-08-31. `archive/2026-09-01-config-access-plan.md` § 3.2.)*
 
 Logs, pidfiles and reports are **not configuration**, and they do not live in
 the config root. XDG has directories for exactly this:
@@ -391,6 +383,13 @@ Twelve sections. Each declares which scopes may carry it, and whether its values
 may be printed in a provenance log. Both facts live in one registry in
 `runtime_config._SECTIONS`, which is why they cannot disagree.
 
+**Two of the twelve are gravestones.** `notify_keys_file` and `notify_route`
+were retired on 2026-08-31 and are now **refused wherever they appear** — they
+carry no scope and reach nothing. They stay in the registry so that writing one
+is answered *by name*, with what to do instead; dropping them would make the
+same file fail as an unknown key, which tells the person nothing
+([`run-reports.md`](?doc=execution/run-reports.md) § 4.3).
+
 | section | scopes | in provenance logs? |
 |---|---|---|
 | `execution` | machine · project | **yes** |
@@ -402,8 +401,8 @@ may be printed in a provenance log. Both facts live in one registry in
 | `envs` | machine | no |
 | `checkpoint` | machine | no |
 | `rate_limit` | machine | no |
-| `notify_keys_file` | machine | no |
-| `notify_route` | machine | no |
+| `notify_keys_file` | — | — |
+| `notify_route` | — | — |
 | `paths` | machine | **yes** |
 
 **Why the provenance column exists and why most rows say no.**

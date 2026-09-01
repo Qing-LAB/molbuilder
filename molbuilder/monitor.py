@@ -29,6 +29,8 @@ per wake is a message every ten seconds for the length of a run -- which
 is what a notifier registered here received until 2026-08-26.  When to
 tell is the calculation's, carried from `task.json`'s ``notify`` block:
 ``--notify-on-scf``, ``--notify-every-hours``, and a run ending, always.
+So is WHICH CHANNELS, by name -- ``--notify-channels``, absent for all of
+them and ``""`` for none (`run-reports.md` 3.0).
 
 CLI (also available as ``molbuilder monitor``)::
 
@@ -37,9 +39,10 @@ CLI (also available as ``molbuilder monitor``)::
         --log job.monitor.log --util job.util.csv \\
         --notify-every-hours 6 --watch-pid $$ &
 
-**Where** to send it is never here and never in the description: it is the
-user's own file, :func:`default_notify_path`, mode 0600 on the machine
-that runs the job.  ``MB_NOTIFY_URL`` (with ``MB_NOTIFY_KEY`` for our
+**Where** a name POINTS is never here and never in the description: the
+addresses and their credentials are the user's own file,
+:func:`default_notify_path`, mode 0600 on the machine that runs the job.
+A description carries names; this reads what they mean.  ``MB_NOTIFY_URL`` (with ``MB_NOTIFY_KEY`` for our
 own listener) overrides it for a one-off.  A notifier can
 also be registered programmatically::
 
@@ -79,7 +82,8 @@ import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import (Any, Callable, Dict, List, Optional, Sequence,
+                    Tuple)
 
 
 # --------------------------------------------------------------------- #
@@ -767,6 +771,68 @@ def notify_keys_path():
     return _config_dir() / NOTIFY_KEYS_FILENAME
 
 
+# ── The server's key file, whole (A11: this module owns the format) ──────────
+#
+# IT CARRIES ITS OWN ROUTE (user, 2026-08-31: *"why would you have to repeat
+# the notify_route twice, with one in the file and one in the molbuilder.json
+# which has its own pointer to that same file"*).
+#
+# It was `{user: key}`, with the route in `molbuilder.json` beside a path
+# pointing back at this very file.  Two places for one fact, and the cost is
+# written down in `run-reports.md` § 4.3 as a procedure to follow carefully:
+# `notify-token` "cannot read molbuilder.json", so issuing a second key
+# generated a NEW segment, and pasting it moved the route out from under
+# everyone already set up -- silently, because a notifier swallows failures.
+# That hazard was the duplication, not a step people kept getting wrong.
+#
+# With the route in here the command reads what it already issued, the server
+# reads the same file, and `molbuilder.json` needs nothing at all.
+
+#: One URL segment: letters, digits, '-' or '_'.  A value with a slash in it
+#: would silently mean a different path than the one written down, and the
+#: destination file's url is built from this -- so the two ends would disagree
+#: about where reports go.  The rule lived on the retired `notify_route`
+#: config key; it belongs with the file that now carries the value.
+_ROUTE_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def read_notify_keys(path=None):
+    """``(route, {user: key})`` from the operator's 0600 file.
+
+    ``(None, {})`` when the file is absent, unreadable, malformed, or carries
+    no route -- and that is the safe reading in every case: no route means the
+    listener is not registered, and no keys means it accepts nothing.  A
+    misconfiguration here removes a capability; it never grants one.
+    """
+    p = Path(path) if path else notify_keys_path()
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, {}
+    if not isinstance(obj, dict):
+        return None, {}
+    route = obj.get("route")
+    keys = obj.get("keys")
+    if not isinstance(route, str):
+        return None, {}
+    route = route.strip().strip("/")      # whitespace first, then the slashes
+    if not _ROUTE_RE.match(route):
+        return None, {}
+    if not isinstance(keys, dict):
+        return None, {}
+    return route, {str(k): str(v) for k, v in keys.items()
+                   if isinstance(v, str) and v}
+
+
+def notify_keys_document(route, keys):
+    """The file's bytes, from the two things it holds.
+
+    One writer, so the shape cannot drift from :func:`read_notify_keys`.
+    """
+    return json.dumps({"route": route, "keys": dict(keys)}, indent=2) + "\n"
+
+
+
 @dataclass(frozen=True)
 class NotifyPolicy:
     """WHEN to speak -- the two settable occasions, as one value.
@@ -786,21 +852,82 @@ class NotifyPolicy:
     """
     on_scf: bool = False
     every_hours: float = 0.0
+    #: WHICH channels, by name.  ``None`` means every channel this machine
+    #: has -- the reading of a description that names none, which is every
+    #: description written before 2026-08-31 and every one written by hand.
+    #: An EMPTY tuple is the opposite and is not the same state: reports off
+    #: for this calculation on a machine where they are set up.  The two
+    #: spellings exist because they are two intentions (`run-reports.md`
+    #: 3.0); collapsing them would send a report to a channel the person
+    #: had just unticked.
+    channels: Optional[Tuple[str, ...]] = None
 
     def __bool__(self) -> bool:
-        return bool(self.on_scf or self.every_hours > 0)
+        # `channels is not None` COUNTS, exactly as it does on the twin this
+        # class mirrors (`task.Notify`).  An empty tuple is a policy -- send
+        # this calculation nowhere -- and a truthiness test that missed it
+        # would answer "nothing was asked for" about the one description that
+        # asked for silence most explicitly.  Nothing calls this today; the
+        # point is that the first caller gets the same answer from both
+        # halves of a pair the docstring above calls a mirror.
+        return bool(self.on_scf or self.every_hours > 0
+                    or self.channels is not None)
 
 
-def load_destination(path: Optional[str] = None,
-                     log: Optional[Path] = None) -> Optional[Dict[str, Any]]:
-    """The webhook destination, or ``None`` when the user has not set one.
+#: A channel NAME: letters, digits, '-' or '_'.  It is written into a
+#: description and read back out of one, so it must survive that round trip
+#: without quoting -- and it must not look like anything else the file format
+#: could mean.  Nothing generates a name; the person picks it.
+_CHANNEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-    A JSON object: ``url``, plus ``key`` or ``headers``.  Two shapes of
-    destination, one mechanism -- Slack and Discord put the credential IN
-    the url, because a third party handed nothing but a URL has nowhere
-    else to keep one; a molbuilder listener takes a plain url and a ``key``
-    that **signs the body and never travels**.  Either way the file is the
-    user's own, mode 0600, and nothing here is created on anybody's behalf.
+
+def _notify_say(msg: str, log: Optional[Path] = None) -> None:
+    """Say something about notification setup, where it can be READ.
+
+    The wrapper backgrounds this process as ``... >/dev/null 2>&1 &``, so
+    anything printed goes nowhere: a misconfigured channel would produce no
+    notifications and no explanation, which is the worst of both.  ``log`` is
+    the monitor log the user actually opens; printing is the fallback for a
+    caller that has no log yet -- an interactive `molbuilder monitor`, or a
+    test.
+
+    **One writer**, because it was two: `load_channels` had a closure and
+    `_install_env_notifiers` had a copy that stamped the timestamp and then
+    printed it under a second prefix -- `[monitor] [2026-...] [NOTIFY] ...`
+    on stdout and the bare form in the log.  One function written twice is
+    two places for a fix to miss.
+    """
+    line = f"[{_iso(time.time())}] [NOTIFY] {msg}"
+    if log is not None:
+        _append(Path(log), line)
+    else:
+        print(f"[monitor] {msg}", flush=True)
+
+
+def is_channel_name(name: str) -> bool:
+    """Is this a usable channel name?
+
+    **The door for everyone**, and it has to be here: this module ships to a
+    compute node as a standalone stdlib-only file, so it can import nothing
+    from the package -- which makes it the only end of the exchange that
+    CAN own the rule.  `task.py` validates the names a description carries
+    by asking this, rather than restating a regex that would then be free to
+    drift from the file those names have to match.
+    """
+    return bool(isinstance(name, str) and _CHANNEL_RE.match(name))
+
+
+def load_channels(path: Optional[str] = None,
+                  log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """The named webhook channels, or ``{}`` when none are set up.
+
+    The file is ``{"channels": {name: {"url": ..., "key"?: ...,
+    "headers"?: ...}}}``.  Two shapes of channel, one mechanism -- Slack and
+    Discord put the credential IN the url, because a third party handed
+    nothing but a URL has nowhere else to keep one; a molbuilder listener
+    takes a plain url and a ``key`` that **signs the body and never
+    travels**.  Either way the file is the user's own, mode 0600, and
+    nothing here is created on anybody's behalf.
 
     **Absent is not an error.**  No file means no notifier, and the run
     proceeds exactly as it does with the feature switched off.  A malformed
@@ -808,54 +935,126 @@ def load_destination(path: Optional[str] = None,
     job because a notification could not be configured would be the tail
     wagging the dog.  It says so and carries on.
 
+    **One bad channel does not cost the others.**  A file with three
+    channels and a typo in the second reports on two.  Refusing the file
+    whole would turn one mistake into total silence, which is the failure
+    this whole area keeps producing.
+
     **It says so in the LOG**, not on stdout.  The wrapper backgrounds this
     process as ``... >/dev/null 2>&1 &``, so anything printed goes nowhere:
-    a misconfigured destination would produce no notifications and no
+    a misconfigured channel would produce no notifications and no
     explanation, which is the worst of both.  ``log`` is the monitor log the
     user actually reads.  Printing is the fallback for a caller that has no
     log yet -- an interactive `molbuilder monitor`, or a test.
     """
     def _say(msg: str) -> None:
-        line = f"[{_iso(time.time())}] [NOTIFY] {msg}"
-        if log is not None:
-            _append(Path(log), line)
-        else:
-            print(f"[monitor] {msg}", flush=True)
+        _notify_say(msg, log)
 
     try:
         p = Path(os.path.expanduser(path)) if path else default_notify_path()
     except ImportError:
         # The shipped monitor could not find `config_dir.py` beside it, so
-        # WHERE the destination lives cannot be answered.  Absent is off
-        # (`run-reports.md` § 1): a monitor that cannot report must still
+        # WHERE the channels live cannot be answered.  Absent is off
+        # (`run-reports.md` 1): a monitor that cannot report must still
         # MONITOR -- dying here cost every status line, the util series
         # and the [MACHINE] record, silently, when a staging defect
         # shipped the monitor without its companion (2026-08-28).
         _say("no config_dir.py beside the monitor -- reports off")
-        return None
+        return {}
     try:
         raw = p.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return {}
     try:
         obj = json.loads(raw)
     except ValueError as exc:
         _say(f"{p}: not valid JSON ({exc}); not notifying")
+        return {}
+    if not isinstance(obj, dict):
+        _say(f"{p}: needs a JSON object; not notifying")
+        return {}
+    chans = obj.get("channels")
+    if not isinstance(chans, dict):
+        # NAMED SINCE 2026-08-31, and the old single-destination file is not
+        # read.  Saying which is the whole point: `{"url": ...}` is a valid
+        # JSON object, so a silent skip here is indistinguishable from never
+        # having set anything up -- the exact failure `run-reports.md` 3.1
+        # exists to stop.
+        if isinstance(obj.get("url"), str):
+            _say(f"{p}: this is the old single-destination file. It is now a "
+                 f"map of named channels -- re-save it on the This machine "
+                 f"tab, or wrap it as "
+                 f'{{"channels": {{"<name>": {{...}}}}}}. Not notifying')
+        else:
+            _say(f"{p}: needs a 'channels' object; not notifying")
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for name, spec in chans.items():
+        name = str(name)
+        if not _CHANNEL_RE.match(name):
+            _say(f"{p}: channel name {name!r} is not letters, digits, '-' "
+                 f"or '_'; skipping it")
+            continue
+        if not isinstance(spec, dict) or not isinstance(spec.get("url"), str) \
+                or not spec["url"]:
+            _say(f"{p}: channel {name!r} needs an object with a 'url' "
+                 f"string; skipping it")
+            continue
+        headers = spec.get("headers") or {}
+        if not isinstance(headers, dict):
+            _say(f"{p}: channel {name!r}: 'headers' must be an object; "
+                 f"ignoring them")
+            headers = {}
+        key = spec.get("key")
+        if key is not None and not (isinstance(key, str) and key):
+            _say(f"{p}: channel {name!r}: 'key' must be a non-empty string; "
+                 f"skipping it")
+            continue
+        out[name] = {"url": spec["url"], "key": key,
+                     "headers": {str(k): str(v) for k, v in headers.items()}}
+    return out
+
+
+def _channels_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
+    """``--notify-channels`` as :class:`NotifyPolicy` carries it.
+
+    ``None`` -- the flag absent -- stays ``None``, which means every channel
+    this machine has.  ``""`` becomes the empty tuple, which means none.
+    **Those two are the reason this is a function**: they are one character
+    apart on a command line and opposite in meaning, and the conversion was
+    an expression inside a constructor call where nothing could reach it to
+    check.
+    """
+    if value is None:
         return None
-    if not isinstance(obj, dict) or not isinstance(obj.get("url"), str) \
-            or not obj["url"]:
-        _say(f"{p}: needs an object with a 'url' string; not notifying")
-        return None
-    headers = obj.get("headers") or {}
-    if not isinstance(headers, dict):
-        _say(f"{p}: 'headers' must be an object; ignoring them")
-        headers = {}
-    key = obj.get("key")
-    if key is not None and not (isinstance(key, str) and key):
-        _say(f"{p}: 'key' must be a non-empty string; not notifying")
-        return None
-    return {"url": obj["url"], "key": key,
-            "headers": {str(k): str(v) for k, v in headers.items()}}
+    return tuple(n for n in (part.strip() for part in value.split(",")) if n)
+
+
+def channels_for(wanted: Optional[Sequence[str]],
+                 available: Dict[str, Dict[str, Any]]
+                 ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """``(chosen, missing)`` -- **the one door** for `run-reports.md` 3.0.
+
+    ``wanted`` is the description's ``notify.channels``: ``None`` for every
+    channel this machine has, a list for those and only those, an empty list
+    for none at all.  Written once here rather than at each caller, because
+    a rule with three cases and two of them spelled almost the same is the
+    shape that gets restated slightly wrong.
+
+    ``missing`` is what the description named and this machine does not
+    have.  Returned rather than logged, so the caller decides where it goes
+    -- and it must go SOMEWHERE: a channel that resolves to nothing is
+    silent by design, and this is the only moment anything knows.
+    """
+    if wanted is None:
+        return dict(available), []
+    chosen, missing = {}, []
+    for name in wanted:
+        if name in available:
+            chosen[name] = available[name]
+        else:
+            missing.append(name)
+    return chosen, missing
 
 
 def sign_report(key: str, timestamp: str, body: bytes) -> str:
@@ -976,19 +1175,28 @@ def run_identity(out: Optional[Path] = None) -> Dict[str, str]:
 
 
 def _install_env_notifiers(log: Optional[Path] = None,
-                           ident: Optional[Dict[str, str]] = None) -> None:
-    """Register the user's notifier, if they configured one.
+                           ident: Optional[Dict[str, str]] = None,
+                           channels: Optional[Sequence[str]] = None) -> None:
+    """Register the user's notifiers, if they configured any.
 
     ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
-    how you test a destination once without editing a file.  Pair it with
-    ``MB_NOTIFY_KEY`` for a molbuilder listener; a third party that keeps
-    its credential in the URL (Slack, Discord) needs no key.  Otherwise the
-    standing configuration at :func:`default_notify_path` is used.  Neither present
-    means no notifier at all.
+    how you test a destination once without editing a file.  It names no
+    channel and needs none: one URL, used directly, and ``channels`` is not
+    consulted.  Pair it with ``MB_NOTIFY_KEY`` for a molbuilder listener; a
+    third party that keeps its credential in the URL (Slack, Discord) needs
+    no key.  Otherwise the standing configuration at
+    :func:`default_notify_path` is used.  Neither present means no notifier
+    at all.
 
-    **Registers at most one.**  :data:`_NOTIFIERS` is module state and
+    ``channels`` is the description's own selection, straight from
+    :class:`NotifyPolicy`; :func:`channels_for` owns what its three states
+    mean.  **One notifier per chosen channel**, so a run can reach a Slack
+    and a listener at once -- which the single destination this replaced
+    could not, and pointing it at one silently replaced the other.
+
+    **Registers once per process.**  :data:`_NOTIFIERS` is module state and
     ``run_monitor`` calls this every time, so without the guard a second
-    call in one process adds a second copy of the same webhook and every
+    call in one process adds a second copy of every webhook and every
     event is POSTed twice.  A shipped `mb_monitor.py` runs one job per
     process and would never have shown it; anything embedding this would.
     """
@@ -1007,8 +1215,17 @@ def _install_env_notifiers(log: Optional[Path] = None,
         register_notifier(make_webhook_notifier(
             url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident))
         return
-    dest = load_destination(log=log)
-    if dest:
+    chosen, missing = channels_for(channels, load_channels(log=log))
+    if missing:
+        # NAMED IN THE DESCRIPTION, ABSENT HERE -- the travelling case, and
+        # the run is not wrong, so this cannot be an error.  It must not be
+        # silent either: a channel that resolves to nothing sends nothing,
+        # which is indistinguishable from a channel that is working.
+        _notify_say(f"this calculation asks for {', '.join(sorted(missing))}"
+                    f" -- not set up on this machine, so nothing is sent "
+                    f"there", log)
+    for name in sorted(chosen):
+        dest = chosen[name]
         register_notifier(make_webhook_notifier(
             dest["url"], key=dest.get("key"), headers=dest["headers"],
             ident=ident))
@@ -1090,7 +1307,7 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     """
     out, timing, log = Path(out), Path(timing), Path(log)
     start = clock() if start_epoch is None else start_epoch
-    _install_env_notifiers(log, run_identity(out))
+    _install_env_notifiers(log, run_identity(out), notify.channels)
 
     st0 = parse_status(out, timing, start, clock())
     # FIRST line, before [MONITOR] start: the machine is known now, and a
@@ -1376,6 +1593,15 @@ def main(argv=None) -> int:
     p.add_argument("--notify-every-hours", type=float, default=0.0,
                    dest="notify_every_hours",
                    help="notify every N hours; 0 = never (default)")
+    # WHICH channels -- names only, never an address and never a key.  The
+    # flag is absent for a description that names none, which means every
+    # channel this machine has; `--notify-channels ""` is the other state
+    # and means none at all (`run-reports.md` 3.0).  A default of None is
+    # what keeps those two apart on the command line.
+    p.add_argument("--notify-channels", type=str, default=None,
+                   dest="notify_channels",
+                   help="comma-separated channel names to report to; "
+                        "omit for all of them, pass '' for none")
     a = p.parse_args(argv)
     try:
         os.nice(max(0, a.nice_level))
@@ -1387,8 +1613,10 @@ def main(argv=None) -> int:
                 stall_heartbeat_s=a.stall_heartbeat_s,
                 util_path=a.util_path,
                 util_keepalive_s=a.util_keepalive_s,
-                notify=NotifyPolicy(on_scf=a.notify_on_scf,
-                                    every_hours=a.notify_every_hours))
+                notify=NotifyPolicy(
+                    on_scf=a.notify_on_scf,
+                    every_hours=a.notify_every_hours,
+                    channels=_channels_from_flag(a.notify_channels)))
     return 0
 
 
@@ -1400,7 +1628,9 @@ __all__ = [
     "clear_notifiers",
     "make_webhook_notifier",
     "make_log_notifier",
-    "load_destination",
+    "load_channels",
+    "channels_for",
+    "is_channel_name",
     "NotifyPolicy",
     "NOTIFY_FILENAME",
     "default_notify_path",

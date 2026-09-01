@@ -16,7 +16,7 @@ Pins the contract documented in
 
 The electrode derivation lives in ``transport/wizard.py`` driven by
 ``transport/compose.py``; the composite's design of record is
-``docs/plans/transport-design.md``.
+``docs/archive/2026-09-01-transport-design.md``.
 """
 from __future__ import annotations
 

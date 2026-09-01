@@ -19,7 +19,7 @@ three protocols that cut across all of them**.
 
 ## 1. The tab roster and the shared shell
 
-There are **seven tabs**, and their order is defined in exactly one place — the
+There are **eight tabs**, and their order is defined in exactly one place — the
 `TABS` list in `tabs.py`. In canonical order:
 
 | Tab | Path | What it's for | Own doc |
@@ -30,6 +30,7 @@ There are **seven tabs**, and their order is defined in exactly one place — th
 | **Transport** | `/transport-calculation` | describe the transport COMPOSITE: cite a finished junction attempt, set the bias, and write the finished `task.json` directly (no hand-over) | this doc § 4 |
 | **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
+| **This machine** | `/this-machine` | the box you are signed in to, not a calculation: its notification channels and its run-report listener. **The only surface where a secret is typed** | [`this-machine.md`](?doc=web/this-machine.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
 
 > **Task setup is a shared surface** that starts from a calculation folder
@@ -65,7 +66,9 @@ edit to `TABS`, never a template hunt.
 
 Every build/edit tab also mounts the **projects sidebar**
 ([`projects.md`](?doc=web/projects.md)) down the left — the file browser you pick
-a structure from. The one exception is Documents, which needs no files of yours.
+a structure from. The exceptions are Documents and This machine, which need no
+files of yours — the second because it is about the machine rather than about
+anything you are working on.
 
 **Each route spells out its tab's visible label** — `/structure-optimization`,
 not `/optimize`. The URL is then self-describing in browser history and a shared
@@ -118,12 +121,22 @@ below. The controller code is deliberately thin glue:
   mount the module, turn a sidebar file-pick into a *candidate* (you still click
   "Load" to commit — a stray click can't swap your structure mid-edit), and
   respect a restored canvas so a reload doesn't clobber it.
-- **`modify/viewer.js` wires the Modify op-tabs** — Atom (add/delete), Transform
-  (translate/center/rotate/orient), Junction (electrode), plus the state timeline
+- **`modify/viewer.js` wires the Modify op-tabs** — Atom (add/delete),
+  Transform (translate/center/rotate/orient), plus the state timeline
   (save-state / undo). Crucially, applying an op does **not** hand-roll a fetch:
   it calls `molview.data.applyOp(op)` and lets the module talk to the server
-  (`/api/modify/<op>`). The only route this controller fetches directly is
-  `GET /api/modify/meta`, to fill the electrode dropdowns.
+  (`/api/modify/<op>`).
+
+  *There was a fourth, **Junction (electrode)**, and it is gone: the panel with
+  the pair op (2026-08-31) and the per-side route with it (2026-09-01,
+  `modify-redesign-plan.md` § 3.4a). **Slab** is what replaced it, and it is
+  its own controller below.*
+- **`modify/slab-panel.js` is the Slab op-tab** — one fcc slab, placed from
+  absolute coordinates rather than relative to a picked group, which is the
+  whole point of the redesign (`modify-redesign-plan.md` § 3). It is the one
+  controller that fetches a route directly: `GET /api/modify/meta`, for the
+  element and plane menus, so the closed list of supported metals has one home
+  rather than a copy in the page.
 - **`modify/periodicity.js`** is the Cell op-tab — vacuum, per-axis periodicity,
   the unit cell, the cell origin — and commits through
   `molview.data.commitPeriodicity` (the server re-resolves the effective cell).
@@ -184,7 +197,7 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 
 ## 4. Transport — the composite's describe surface
 
-> **Rewired 2026-08-29** ([`plans/transport-design.md`](?doc=plans/transport-design.md)
+> **Rewired 2026-08-29** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
 > P7b + the same-day rulings).  The old Generate lane — sidebar pick, form,
 > device-`.fdf` preview, Copy/download — is gone; decks render at `prep`, on
 > the machine that runs them, like every other kind.
@@ -410,7 +423,7 @@ ones (`selection-bootstrap` and the three viewers) have one foot in ESM — they
 `import` the viewer — while their own bodies are still legacy IIFEs that publish
 globals; the structure-generation set plus the Documents controller are fully
 classic. Finishing these off is part of the "remaining classic modules" ESM
-workstream (`roadmap.md § 3`).
+workstream (`archive/2026-09-01-roadmap.md § 3`).
 
 ## 9. Test map
 

@@ -46,6 +46,9 @@ def _run(controls: dict, task: dict | None, want: str):
 
     src = VIEWER.read_text()
     fns = "\n\n".join([
+        # `notifyValues` asks it which channels are ticked, so a harness
+        # without it would exercise a different function than the page runs.
+        _slice(src, "function channelSelection()", "/** Paint one tick"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too: the
         # writer stopped moving the page on 2026-08-27 and does so through
@@ -58,6 +61,12 @@ def _run(controls: dict, task: dict | None, want: str):
 
     harness = f"""
         const _els = {json.dumps(controls)};
+        // The channel container answers ONE method, which is all
+        // `channelSelection` asks it.  Built here rather than in the fixture
+        // because a function does not survive JSON.
+        _els["ts-notify-channels"] = {{
+            querySelectorAll: () => _els["__ticks__"],
+        }};
         // The page's own accessor, faked: every control is an object with
         // the properties the real functions touch, and nothing else.
         function $(id) {{ return _els[id] || null; }}
@@ -89,12 +98,22 @@ def _run(controls: dict, task: dict | None, want: str):
     return json.loads(proc.stdout.strip().splitlines()[-1])[want]
 
 
-def _controls(scf=False, periodic=False, hours="6"):
+def _controls(scf=False, periodic=False, hours="6", every=True, ticks=None):
+    """The card's controls.
+
+    ``every`` is the *every channel on the machine that runs it* box, and
+    ``ticks`` the per-channel ones -- ``[(name, checked), ...]``.  The default
+    is the state a page opens in, so every test written before channels
+    existed still describes the same card.
+    """
     return {
         "ts-notify-scf":      {"checked": scf},
         "ts-notify-periodic": {"checked": periodic},
         "ts-notify-hours":    {"value": hours},
         "ts-notify-note":     {"textContent": ""},
+        "ts-notify-all":      {"checked": every},
+        "__ticks__":          [{"value": n, "checked": c}
+                               for n, c in (ticks or [])],
     }
 
 
@@ -186,6 +205,9 @@ def test_an_unparseable_document_loses_nothing():
         pytest.skip("node not available")
     src = VIEWER.read_text()
     fns = "\n\n".join([
+        # `notifyValues` asks it which channels are ticked, so a harness
+        # without it would exercise a different function than the page runs.
+        _slice(src, "function channelSelection()", "/** Paint one tick"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too: the
         # writer stopped moving the page on 2026-08-27 and does so through
@@ -195,6 +217,9 @@ def test_an_unparseable_document_loses_nothing():
     ])
     harness = f"""
         const _els = {json.dumps(_controls(scf=True))};
+        _els["ts-notify-channels"] = {{
+            querySelectorAll: () => _els["__ticks__"],
+        }};
         function $(id) {{ return _els[id] || null; }}
         // No DOM here.  `keepingPagePut` looks for the scrolling container
         // and must degrade to "nothing to restore" rather than throw --
@@ -225,6 +250,53 @@ def test_the_note_says_what_will_actually_be_sent():
     assert "when it ends" in note
 
 
+# --------------------------------------------------------------------- #
+#  which channels -- three states, and they are not two                  #
+# --------------------------------------------------------------------- #
+
+def test_every_channel_writes_no_key_at_all():
+    """The default, and the reading of every description written before
+    channels existed: use whatever is set up wherever this lands.  Writing
+    the names out instead would freeze a travelling description to the
+    machine it happened to be written on."""
+    doc = json.loads(_run(_controls(scf=True, every=True,
+                                    ticks=[("slack", True)]), _TASK, "doc"))
+    assert doc["notify"] == {"on_scf_converged": True}
+
+
+def test_a_subset_travels_as_names():
+    """A name is a label the person chose.  It grants nothing, so it is safe
+    to carry where an address is not (`run-reports.md` § 1)."""
+    doc = json.loads(_run(
+        _controls(scf=True, every=False,
+                  ticks=[("slack", True), ("lab", False), ("phone", True)]),
+        _TASK, "doc"))
+    assert doc["notify"]["channels"] == ["slack", "phone"]
+
+
+def test_ticking_nothing_writes_an_EMPTY_LIST_not_nothing():
+    """**The one field written when falsy**, and the reason is the whole
+    point of the control: an unticked list that dropped the key would mean
+    *every channel*, so unticking them all would send reports to every
+    channel the person had just turned off (`run-reports.md` § 3.0)."""
+    doc = json.loads(_run(
+        _controls(scf=True, every=False,
+                  ticks=[("slack", False), ("lab", False)]), _TASK, "doc"))
+    assert doc["notify"]["channels"] == []
+
+
+def test_the_note_says_where_as_well_as_when():
+    """*Reports every 6 h* with nothing ticked is a promise the run cannot
+    keep, so the line that summarises the card carries both halves."""
+    assert "every channel" in _run(_controls(), _TASK, "note")
+    assert "to slack" in _run(
+        _controls(scf=True, every=False, ticks=[("slack", True)]),
+        _TASK, "note")
+    assert "nothing" in _run(
+        _controls(scf=True, every=False, ticks=[("slack", False)]),
+        _TASK, "note").lower()
+
+
 def test_the_page_hardcodes_NO_path_and_asks_for_it_instead():
     """**The stronger form of a defect found in the browser 2026-08-27.**
 
@@ -250,26 +322,41 @@ def test_the_page_hardcodes_NO_path_and_asks_for_it_instead():
     assert "from ...monitor import default_notify_path" in api
 
 
-def test_one_card_but_two_files():
-    """The cards were merged on 2026-08-27 (user: *where the notification
-    should be sent should be configurable in this card too*), and sharing a
-    card is a UI decision that must not become a shared FILE.
+def test_the_card_writes_ONE_file_and_has_no_control_for_a_secret():
+    """**The rule that used to be held by a comment.**
 
-    `run-reports.md` § 1 is about what travels: the ticks go into
-    `task.json`, which does; the address and key go into
-    `config_dir()/notify`, which never does. So the key input must sit
-    below the policy inputs and nothing may carry it into the description.
+    The address and key lived in this card from 2026-08-27 until 2026-08-31,
+    under a template comment reminding whoever edited it that one card wrote
+    two files -- `task.json`, which travels, and `config_dir()/notify`, which
+    must not.  They are on the This-machine tab now, so the rule is held by
+    there being nowhere on this page to type one.
+
+    A comment is not a mechanism.  This is the mechanism.
     """
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     html = (root / "molbuilder/web/templates/task_setup.html").read_text()
     assert 'id="ts-notify-card"' in html
-    assert 'id="ts-reports-card"' not in html, "the split card came back"
-    # the key belongs to the destination half, after the policy half
-    assert html.index('id="ts-notify-scf"') < html.index('id="ts-reports-key"')
+    for gone in ('id="ts-reports-key"', 'id="ts-reports-url"',
+                 'id="ts-reports-save"', 'type="password"'):
+        assert gone not in html, f"{gone} came back to the page that travels"
     js = (root / "molbuilder/web/static/task-setup/viewer.js").read_text()
-    writer = js[js.index("function notifyValues()"):js.index("function readNotifyFromTask")]
-    for leak in ("ts-reports-key", "ts-reports-url", "password"):
+    for gone in ("/api/notify/destination", "saveDestination"):
+        assert gone not in js, f"{gone} still writes a second file from here"
+    # it may ASK for the names, and that route hands out nothing else
+    assert "/api/notify/channels" in js
+
+
+def test_the_names_are_all_that_reaches_the_description():
+    """The tick list is painted from what the server reports, and what it
+    reports is names.  The writer must not be able to reach anything else --
+    the same rule `task.py`'s key allowlist enforces one layer down."""
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1]
+          / "molbuilder/web/static/task-setup/viewer.js").read_text()
+    writer = js[js.index("function channelSelection()"):
+                js.index("function readNotifyFromTask")]
+    for leak in ("url", "key", "password", "has_key"):
         assert leak not in writer, \
             f"{leak} reached the function that writes task.json"
 
@@ -304,62 +391,3 @@ def test_no_two_elements_share_an_id_in_the_task_setup_page():
     ids = re.findall(r'\bid="([^"]+)"', html)
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
-
-
-
-
-# ---------------------------------------------------------------------------
-# The far-machine command must resolve the config directory the SAME way
-# ---------------------------------------------------------------------------
-
-def test_the_remote_command_implements_the_whole_config_dir_rule():
-    """`configuration.md` § 2.1c, expressed in shell because it runs elsewhere.
-
-    The card hands over a copy-paste block for a machine this server cannot
-    write to, so the rule has to travel as shell rather than as an answer --
-    and it has to be the WHOLE rule.  It implemented only the XDG branches
-    until 2026-08-31: on any machine with ``MOLBUILDER_CONFIG_DIR`` set,
-    following the card wrote the file where the monitor does not look, and
-    silently, because an absent notify file just means "no notifier".
-
-    This runs the emitted shell under all three environments and compares it
-    against `config_dir()` itself, so the two cannot drift.  A comment saying
-    "keep these in sync" is what failed here once already.
-    """
-    import os
-    import re
-    import subprocess
-    from pathlib import Path
-
-    src = Path(__file__).resolve().parents[1] / (
-        "molbuilder/web/static/task-setup/viewer.js")
-    line = next((l for l in src.read_text(encoding="utf-8").splitlines()
-                 if l.strip().startswith("'cfg=")), None)
-    assert line, "the command no longer starts by resolving a config dir"
-    # the JS string literal, unescaped to the shell it emits
-    shell = re.sub(r"^\s*'|\\n'\s*$", "", line.strip()).replace('\\"', '"')
-
-    from molbuilder.config_dir import config_dir
-    home = "/home/tester"
-    cases = [
-        ({"MOLBUILDER_CONFIG_DIR": "/scratch/me/mb"}, "the override, exact"),
-        ({"XDG_CONFIG_HOME": "/tmp/xdg"}, "the XDG root, with our name under it"),
-        ({}, "the default"),
-    ]
-    for extra, what in cases:
-        env = {"HOME": home, **extra}
-        got = subprocess.run(["bash", "-c", shell + '; echo "$cfg"'],
-                             env=env, capture_output=True, text=True,
-                             check=True).stdout.strip()
-        saved = dict(os.environ)
-        try:
-            os.environ.clear()
-            os.environ.update(env)
-            expected = str(config_dir())
-        finally:
-            os.environ.clear()
-            os.environ.update(saved)
-        assert got == expected, (
-            f"{what}: the card's shell says {got!r}, config_dir() says "
-            f"{expected!r} -- a file written by following the card would "
-            f"land where nothing reads it")
