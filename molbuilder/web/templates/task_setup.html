@@ -169,11 +169,13 @@
            state one -- so the recommendation was the only input, it was
            never shown, and a run needed a benchmark to have been EXECUTED. #}
         <div class="ts-runvals" id="ts-runvals" hidden>
-          <h3 class="ts-reports-head">What the run will use</h3>
+          <h3 class="ts-reports-head">What the run will use, for every
+            stage</h3>
           <p class="hint">One value each &mdash; <strong>your decision</strong>,
-            not the benchmark's. What you leave blank falls to the stage's
-            <code>run-config.toml</code> and then to the wrapper's own policy,
-            and the tab says which.</p>
+            not the benchmark's. This is the whole calculation's answer; a rung
+            that disagrees says so in <em>its own tab</em> below. What you
+            leave blank falls to the stage's <code>run-config.toml</code> and
+            then to the wrapper's own policy, and the tab says which.</p>
           <div class="ts-rows" id="ts-run-rows"></div>
           <div class="ts-fit" id="ts-run-fit" hidden></div>
           <div class="ts-actions">
@@ -268,6 +270,112 @@
         </div>
       </section>
 
+      {#- THE DESCRIPTION ITSELF, FOLDED, IN THE COLUMN WITH EVERYTHING
+         ELSE (task-setup.md 9a.1, user 2026-09-01: "we should allow the
+         task.json view to be foldable, and have its width to be consistent
+         with the other cards, such that the 'what gets written' card can
+         travel as we scroll the window down").
+
+         It was full width BELOW both columns, on the argument that a JSON
+         document reads badly in a narrow rail -- and it cost the page its
+         second column partway down, so the aside could not follow.  The
+         argument measured the wrong thing: the MAIN COLUMN is not the rail,
+         and it is wide enough to read JSON in.  So this is a card like the
+         others, at the same width open or closed.
+
+         CLOSED BY DEFAULT, and forced open by an unsaved edit -- a buffer
+         that differs from disk may never be hidden (`syncFromModel`). #}
+      <details class="card ts-editor-card" id="ts-editor-card">
+        <summary>
+          <h2>task.json</h2>
+          <span class="ts-editor-sum">the file itself &mdash; open it to
+            check or correct what the cards above say</span>
+          <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not
+            saved</span>
+        </summary>
+        <div class="ts-editor" id="ts-editor"></div>
+        <div class="ts-steps">
+          <label class="ts-step">
+            <input type="checkbox" id="ts-ckpt" checked>
+            <span><b>Save the folder's state first</b> &mdash; so whatever you
+            are about to change can be brought back.</span>
+          </label>
+          <input id="ts-ckpt-note" class="ts-cell ts-cell-name"
+          placeholder="what you are about to change"
+          aria-label="note for the saved state">
+        </div>
+        <div class="ts-editor-bar">
+          <button type="button" class="primary" id="ts-save" disabled>
+            Save to this folder</button>
+        </div>
+        <p class="hint" id="ts-save-why">Pick a folder first.</p>
+      </details>
+
+      <section class="card" id="ts-next-card" hidden>
+        <h2>Preparing, stage by stage</h2>
+        <p class="hint">This page writes a description and stops &mdash; a deck
+          carries values only the target knows. <strong>One tab per
+          rung</strong>; inside each, what that stage will use, what it will
+          produce, and the exact commands &mdash; measure it, or run it.</p>
+        <div id="ts-next"></div>
+      </section>
+
+    </div>
+
+    <aside class="ts-aside">
+
+      <section class="card">
+        <h2>What gets written</h2>
+        {# What the FOLDER holds, not only what this page writes.  The
+           structure is listed because it is what the calculation is OF: a
+           person checking a description before a week of compute is checking
+           the geometry as much as the parameters, and a list that omitted it
+           was the page's own claim that the folder had two files in it. #}
+        <p class="hint">What is in the folder. This page writes the first
+          two.</p>
+        <ul class="ts-files" id="ts-file-list">
+          <li>
+            <span class="ts-file-name">task.json</span>
+            <span class="ts-file-what">what varies, the stages,
+              what to measure<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-task">not there yet</span></span>
+          </li>
+          <li>
+            <span class="ts-file-name" id="ts-f-tmpl-name">&lt;label&gt;.template.toml</span>
+            <span class="ts-file-what">every parameter, with its value<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-tmpl">not there yet</span></span>
+          </li>
+          <li>
+            <span class="ts-file-name" id="ts-f-struct-name">&lt;label&gt;.xyz</span>
+            <span class="ts-file-what">the structure this is of — the one
+              <code>task.json</code> names<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-struct">not there yet</span></span>
+          </li>
+          <li>
+            <span class="ts-file-name" id="ts-f-side-name">&lt;label&gt;.molstruct.json</span>
+            <span class="ts-file-what">its cell and region labels<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-side">not there yet</span></span>
+          </li>
+        </ul>
+
+        {#- AND WHAT A PREP WILL WRITE, PER STAGE (task-setup.md 7.1, user
+           2026-09-01: "we should have an explicit list of the run tasks for
+           each stage in that tab so that this information is confirmed and
+           clear").
+
+           A CONFIRMATION, NOT A SECOND ANSWER: the names and the numbers
+           come from /api/task-setup/prep-plan, which asks the one namer
+           (`prep.token_for`) and the one layout (`Shape.stage_dir`).  Flat
+           and hierarchical name directories differently, and a list this
+           page composed would be free to disagree with the thing it is
+           describing. -#}
+        <div class="ts-plan" id="ts-plan" hidden>
+          <h3 class="ts-reports-head">And when you prep, per stage</h3>
+          <ul class="ts-planlist" id="ts-plan-list"></ul>
+        </div>
+      </section>
+
+
       {# LAST in the flow, deliberately (user, 2026-08-27: it "breaks the
          flow of the setup").  Everything above is what the calculation IS;
          this is what it says while it runs -- a different question, and it
@@ -327,99 +435,8 @@
         <span class="ts-ask-note" id="ts-reports-note"></span>
       </section>
 
-    </div>
-
-    <aside class="ts-aside">
-
-      <section class="card">
-        <h2>What gets written</h2>
-        {# What the FOLDER holds, not only what this page writes.  The
-           structure is listed because it is what the calculation is OF: a
-           person checking a description before a week of compute is checking
-           the geometry as much as the parameters, and a list that omitted it
-           was the page's own claim that the folder had two files in it. #}
-        <p class="hint">What is in the folder. This page writes the first
-          two.</p>
-        <ul class="ts-files" id="ts-file-list">
-          <li>
-            <span class="ts-file-name">task.json</span>
-            <span class="ts-file-what">what varies, the stages,
-              what to measure<br>
-              <span class="ts-file-state" data-exists="no" id="ts-f-task">not there yet</span></span>
-          </li>
-          <li>
-            <span class="ts-file-name" id="ts-f-tmpl-name">&lt;label&gt;.template.toml</span>
-            <span class="ts-file-what">every parameter, with its value<br>
-              <span class="ts-file-state" data-exists="no" id="ts-f-tmpl">not there yet</span></span>
-          </li>
-          <li>
-            <span class="ts-file-name" id="ts-f-struct-name">&lt;label&gt;.xyz</span>
-            <span class="ts-file-what">the structure this is of — the one
-              <code>task.json</code> names<br>
-              <span class="ts-file-state" data-exists="no" id="ts-f-struct">not there yet</span></span>
-          </li>
-          <li>
-            <span class="ts-file-name" id="ts-f-side-name">&lt;label&gt;.molstruct.json</span>
-            <span class="ts-file-what">its cell and region labels<br>
-              <span class="ts-file-state" data-exists="no" id="ts-f-side">not there yet</span></span>
-          </li>
-        </ul>
-
-        {#- AND WHAT A PREP WILL WRITE, PER STAGE (task-setup.md 7.1, user
-           2026-09-01: "we should have an explicit list of the run tasks for
-           each stage in that tab so that this information is confirmed and
-           clear").
-
-           A CONFIRMATION, NOT A SECOND ANSWER: the names and the numbers
-           come from /api/task-setup/prep-plan, which asks the one namer
-           (`prep.token_for`) and the one layout (`Shape.stage_dir`).  Flat
-           and hierarchical name directories differently, and a list this
-           page composed would be free to disagree with the thing it is
-           describing. -#}
-        <div class="ts-plan" id="ts-plan" hidden>
-          <h3 class="ts-reports-head">And when you prep, per stage</h3>
-          <ul class="ts-planlist" id="ts-plan-list"></ul>
-        </div>
-      </section>
-
     </aside>
   </div>
-
-  {#- The description itself, FULL WIDTH below the panels: it is the thing
-  that gets written, and a JSON document reads badly in a narrow rail. -#}
-  <section class="card">
-    <h2>task.json</h2>
-    <p class="hint">The file itself &mdash; edit it here and check it before
-    it is written.</p>
-    <div class="ts-editor" id="ts-editor"></div>
-    <div class="ts-steps">
-      <label class="ts-step">
-        <input type="checkbox" id="ts-ckpt" checked>
-        <span><b>Save the folder's state first</b> — so whatever you are
-        about to change can be brought back.</span>
-      </label>
-      <input id="ts-ckpt-note" class="ts-cell ts-cell-name"
-      placeholder="what you are about to change"
-      aria-label="note for the saved state">
-    </div>
-    <div class="ts-editor-bar">
-      <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not saved</span>
-      <button type="button" class="primary" id="ts-save" disabled>
-      Save to this folder
-    </button>
-  </div>
-  <p class="hint" id="ts-save-why">Pick a folder first.</p>
-  </section>
-
-  <section class="card" id="ts-next-card" hidden>
-    <h2>Preparing, stage by stage</h2>
-    <p class="hint">This page writes a description and stops &mdash; a deck
-      carries values only the target knows. <strong>One tab per rung</strong>;
-      inside each, what that stage will produce and the exact commands
-      &mdash; measure it, or run it.</p>
-    <div id="ts-next"></div>
-  </section>
-
 
 </main>
 

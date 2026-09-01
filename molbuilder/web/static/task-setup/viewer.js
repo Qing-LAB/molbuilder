@@ -100,7 +100,15 @@ function rowNote(name) {
 }
 
 let _cm = null;
-let _loadedText = "";
+/* WHAT IS ACTUALLY IN THE FOLDER -- "" when nothing is.  This replaced
+ * `_loadedText`, the last text PUT INTO the editor, which the cards change all
+ * the time; the question "is there something unsaved" is about the FILE, and
+ * answering it from the last write said no every time a card had just
+ * written the buffer.
+ * That was invisible while the editor was always on screen with its Save
+ * button; folding it (`task-setup.md` 9a.1) made it the difference between
+ * seeing your unsaved work and not. */
+let _diskText = "";
 let _dir        = "";     // the folder currently open
 let _shape      = "";     // "" until chosen — never defaulted (§ 4)
 let _mode       = "";     // "description" | "handover" | "empty"
@@ -427,11 +435,50 @@ function paintFit(host, body) {
  * the description had not stated, with no way to state one.
  */
 
-/** The run's stated values, live on the model. */
-function runValuesOf() {
+/** The run's stated values, live on the model.
+ *
+ * TWO BLOCKS, AND WHICH ONE IS THE WHOLE POINT (`task-setup.md` § 6.2c).
+ * `stage` empty is the calculation's answer -- flat `allocation`, asked once
+ * in the queue card.  A stage name is that rung DISAGREEING, and lands in
+ * `stage_allocation.<stage>`, which exists only while a disagreement does.
+ *
+ * `make` is false for a read: creating the block just to look in it would
+ * write `"stage_allocation": {"coarse": {}}` into a description whose author
+ * only scrolled past the tab.
+ */
+function runValuesOf(stage, make) {
     if (!_task) return null;
-    const a = _task.allocation || (_task.allocation = {});
-    return a;
+    if (!stage) {
+        if (!_task.allocation && !make) return null;
+        return _task.allocation || (_task.allocation = {});
+    }
+    const per = _task.stage_allocation;
+    if (!make) return (per && per[stage]) || null;
+    const box = _task.stage_allocation || (_task.stage_allocation = {});
+    return box[stage] || (box[stage] = {});
+}
+
+/** What `stage` would use with nothing of its own: the flat block. */
+function inheritedRunValues(task) {
+    const a = (task && task.allocation) || {};
+    const out = {};
+    for (const k of Object.keys(a)) {
+        if (k === "domain" || k === "time" || k === "mem") continue;
+        out[k] = a[k];
+    }
+    return out;
+}
+
+/** What the rung actually asks for: its own answers over the inherited ones. */
+function mergedRunValues(task, stage) {
+    const out = inheritedRunValues(task);
+    const per = (task && task.stage_allocation && task.stage_allocation[stage])
+              || {};
+    for (const k of Object.keys(per)) {
+        if (k === "domain" || k === "time" || k === "mem") continue;
+        out[k] = per[k];
+    }
+    return out;
 }
 
 /* ROWS THE PERSON ASKED TO SEE but has not filled in.  Purely the page's
@@ -439,63 +486,118 @@ function runValuesOf() {
  * about the calculation, and writing `"mpi_np": ""` into `task.json` would
  * make it one -- a value the reader would then have to invent a meaning
  * for.  Absent-is-a-state, all the way down. */
-const _extraRunRows = new Set();
+const _extraRunRows = new Map();      // "" = the whole calculation
 
-/** The parameters this card offers: the bench's, plus any the run adds. */
-function runValueNames(task) {
+function extraRows(stage) {
+    const key = stage || "";
+    let set = _extraRunRows.get(key);
+    if (!set) { set = new Set(); _extraRunRows.set(key, set); }
+    return set;
+}
+
+/** The parameters a block offers: the bench's, plus any the run adds.
+ *
+ * A STAGE TAB OFFERS WHAT THE CALCULATION OFFERS, so the two read as the
+ * same question asked at two scopes -- every row the queue card shows is a
+ * row a rung can disagree about, whether or not it does.
+ */
+function runValueNames(task, stage) {
     const bench = (task && task.bench) || {};
     const alloc = (task && task.allocation) || {};
+    const per = (stage && task && task.stage_allocation
+                 && task.stage_allocation[stage]) || {};
     const out = [];
+    const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
     for (const n of Object.keys(bench)) {
-        if (machineAnswers(n)) out.push(n);
+        if (machineAnswers(n)) add(n);
     }
-    for (const n of Object.keys(alloc)) {
-        // The three scheduler asks have their own inputs above.
-        if (n === "domain" || n === "time" || n === "mem") continue;
-        if (out.indexOf(n) === -1) out.push(n);
+    for (const src of [alloc, per]) {
+        for (const n of Object.keys(src)) {
+            // The three scheduler asks have their own inputs above.
+            if (n === "domain" || n === "time" || n === "mem") continue;
+            add(n);
+        }
     }
-    for (const n of _extraRunRows) {
-        if (out.indexOf(n) === -1) out.push(n);
-    }
+    for (const n of extraRows("")) add(n);
+    if (stage) { for (const n of extraRows(stage)) add(n); }
     return out;
 }
 
-function setRunValue(name, raw) {
-    const a = runValuesOf(); if (!a) return;
+function setRunValue(name, raw, stage) {
     const v = coercePoint(raw);
-    if (v === null || raw === "") {
+    const blank = (v === null || raw === "");
+    const a = runValuesOf(stage, !blank);
+    if (!a) { if (blank) { syncFromModel(); return; } return; }
+    if (blank) {
         // BLANK IS A STATE, and the one every description was in before
-        // this card existed: leave it to run-config.toml, then to policy.
+        // this card existed: in the queue card, leave it to run-config.toml
+        // and then to policy; in a stage tab, blank is the ABSENCE of a
+        // disagreement, so the rung goes back to the calculation's answer.
         delete a[name];
     } else {
         a[name] = v;
     }
-    if (!Object.keys(a).length) delete _task.allocation;
+    pruneRunValues(stage);
     syncFromModel();
 }
 
-function dropRunValue(name) {
-    const a = runValuesOf(); if (!a) return;
-    delete a[name];
-    _extraRunRows.delete(name);
-    if (!Object.keys(a).length) delete _task.allocation;
+function dropRunValue(name, stage) {
+    const a = runValuesOf(stage, false);
+    extraRows(stage).delete(name);
+    if (a) { delete a[name]; pruneRunValues(stage); }
     syncFromModel();
 }
 
-function renderRunValues(task) {
-    const box = $("ts-runvals");
-    const host = $("ts-run-rows");
-    if (!box || !host) return;
+/** An empty block is not a fact -- absent-is-a-state, all the way down. */
+function pruneRunValues(stage) {
+    if (!_task) return;
+    if (!stage) {
+        if (_task.allocation && !Object.keys(_task.allocation).length) {
+            delete _task.allocation;
+        }
+        return;
+    }
+    const per = _task.stage_allocation;
+    if (!per) return;
+    if (per[stage] && !Object.keys(per[stage]).length) delete per[stage];
+    if (!Object.keys(per).length) delete _task.stage_allocation;
+}
+
+/** § 6.2b's rows, rendered into whichever block asked for them.
+ *
+ * `opts.stage` empty is the queue card -- the calculation's answer.  Named,
+ * it is that rung's tab (§ 11): the same rows, each showing what it WOULD
+ * inherit, writing `stage_allocation.<stage>` only where you type over it.
+ */
+function renderRunValues(task, opts) {
+    opts = opts || {};
+    const stage = opts.stage || "";
+    const box = opts.box || (stage ? null : $("ts-runvals"));
+    const host = opts.host || (stage ? null : $("ts-run-rows"));
+    const fit = opts.fit || (stage ? null : $("ts-run-fit"));
+    if (!host) return;
     host.textContent = "";
 
-    const names = runValueNames(task);
+    const names = runValueNames(task, stage);
     const bench = (task && task.bench) || {};
-    const alloc = (task && task.allocation) || {};
-    box.hidden = _mode !== "description";
-    if (box.hidden) { scheduleRunFit(null); return; }
+    const alloc = stage
+        ? ((task && task.stage_allocation && task.stage_allocation[stage]) || {})
+        : ((task && task.allocation) || {});
+    const inherited = stage ? inheritedRunValues(task) : {};
+    if (box) {
+        box.hidden = _mode !== "description";
+        if (box.hidden) { scheduleRunFit(stage, fit, null); return; }
+    }
 
     for (const name of names) {
         const stated = alloc[name];
+        const from = inherited[name];
+        // WHAT IT WOULD INHERIT, SHOWN WHERE THE OVERRIDE IS MADE -- the
+        // default is visible in the field that replaces it, so "8" and
+        // "8 because every stage says 8" are never the same picture.
+        const ghost = from === undefined
+            ? "\u2014 not stated"
+            : "\u2014 " + String(from) + " (every stage)";
         const pts = Array.isArray(bench[name]) ? bench[name] : [];
 
         const legal = legalValues(name);
@@ -503,7 +605,7 @@ function renderRunValues(task) {
         if (legal) {
             input = el("select", { class: "ts-runval",
                                    "aria-label": "value for " + name });
-            input.appendChild(el("option", { value: "" }, "\u2014 not stated"));
+            input.appendChild(el("option", { value: "" }, ghost));
             for (const v of legal) {
                 const o = el("option", { value: String(v) }, String(v));
                 if (stated !== undefined && String(stated) === String(v)) {
@@ -513,11 +615,12 @@ function renderRunValues(task) {
             }
         } else {
             input = el("input", { class: "ts-runval",
-                                  placeholder: "\u2014 not stated",
+                                  placeholder: ghost,
                                   "aria-label": "value for " + name });
             input.value = stated === undefined ? "" : String(stated);
         }
-        input.addEventListener("change", () => setRunValue(name, input.value));
+        input.addEventListener("change",
+                               () => setRunValue(name, input.value, stage));
 
         // THE BENCH'S POINTS, as information.  Grey, beside the field,
         // filling nothing -- so you can see what was tried while you type
@@ -530,11 +633,13 @@ function renderRunValues(task) {
         const drop = el("button", { type: "button",
                                     class: "ts-rowbtn ts-rowbtn-drop",
                                     title: "Stop stating " + name }, "\u00d7");
-        drop.addEventListener("click", () => dropRunValue(name));
+        drop.addEventListener("click", () => dropRunValue(name, stage));
 
         host.appendChild(el("div", { class: "ts-row",
-                                     "data-kind": stated === undefined
-                                         ? "unstated" : "chosen" },
+                                     "data-kind": stated !== undefined
+                                         ? "chosen"
+                                         : (from !== undefined ? "inherited"
+                                                               : "unstated") },
             el("div", { class: "ts-row-name", title: helpText(name) }, name,
                measured),
             el("div", { class: "ts-points" }, input),
@@ -546,39 +651,57 @@ function renderRunValues(task) {
             + "run-config.toml, and then the wrapper's own policy. Add a "
             + "setting to decide it here instead."));
     }
-    scheduleRunFit(statedRunValues(task));
+    // THE ASK THAT IS CHECKED IS THE ASK THAT LANDS: a rung's own answers
+    // over the inherited ones, which is what `prep run` will merge
+    // (`stages.md` § 6.8b) and so the only combination worth admitting.
+    scheduleRunFit(stage, fit,
+                   stage ? mergedRunValues(task, stage)
+                         : statedRunValues(task));
 }
 
 /** Only what is actually stated — the door checks a point, not a blank. */
 function statedRunValues(task) {
     const alloc = (task && task.allocation) || {};
     const out = {};
-    for (const n of runValueNames(task)) {
+    for (const n of runValueNames(task, "")) {
         if (alloc[n] !== undefined) out[n] = alloc[n];
     }
     return out;
 }
 
-let _runFitTimer = null;
-let _runFitSeq = 0;
-let _runFitValues = null;
+/* ONE PENDING CHECK PER BLOCK ("" is the queue card, a name is that rung).
+ * The element is held rather than looked up by id: the stage panels are
+ * rebuilt on every repaint, so an id would name a node that no longer
+ * exists, while a detached one merely goes unseen. */
+const _fits = new Map();
 
-function scheduleRunFit(values) {
-    _runFitValues = values;
-    if (_runFitTimer) clearTimeout(_runFitTimer);
-    _runFitTimer = setTimeout(refreshRunFit, 300);
+function scheduleRunFit(stage, host, values) {
+    const key = stage || "";
+    let f = _fits.get(key);
+    if (!f) { f = { seq: 0, timer: null }; _fits.set(key, f); }
+    if (f.timer) clearTimeout(f.timer);
+    f.timer = null;
+    f.host = host; f.values = values; f.stage = key;
+    /* NO HOST, NO ASK.  Every repaint rebuilds EVERY stage panel, and a
+     * five-rung ladder that checked all five would put four requests on the
+     * wire per keystroke for answers nobody can see -- the hidden panels
+     * pass no element, and the tab they belong to asks when it is opened. */
+    if (!host) return;
+    f.timer = setTimeout(() => refreshRunFit(key), 300);
 }
 
-async function refreshRunFit() {
-    const host = $("ts-run-fit");
+async function refreshRunFit(key) {
+    const f = _fits.get(key || "");
+    if (!f) return;
+    const host = f.host;
     if (!host) return;
-    const values = _runFitValues;
+    const values = f.values;
     if (_mode !== "description" || !_dir || !values
             || !Object.keys(values).length) {
         host.hidden = true;
         return;
     }
-    const seq = ++_runFitSeq;
+    const seq = ++f.seq;
     let body;
     try {
         const r = await fetch("/api/task-setup/run-fit", {
@@ -591,7 +714,7 @@ async function refreshRunFit() {
     } catch (e) {
         body = null;
     }
-    if (seq !== _runFitSeq) return;
+    if (seq !== f.seq) return;
     /* A CHECK THAT CANNOT LOAD HIDES ITSELF.  The fields above are the
      * substance and stay usable without it -- the same rule the grid block
      * follows, learned when an unguarded fetch left a whole card absent. */
@@ -774,9 +897,16 @@ async function _bootEditor() {
         lineWrapping: true,
         readOnly:    false,
     });
+    /* THE FOLD REFRESHES THE EDITOR.  CodeMirror measures itself when it
+     * mounts, and inside a closed `<details>` every measurement is zero --
+     * so an editor first opened by hand painted one blank line and put the
+     * cursor in the wrong place until something else resized it. */
+    const card = $("ts-editor-card");
+    if (card) card.addEventListener("toggle", () => {
+        if (card.open && _cm) _cm.refresh();
+    });
     _cm.on("change", () => {
-        const dirty = _cm.getValue() !== _loadedText;
-        $("ts-dirty").hidden = !dirty;
+        _setDirty(_cm.getValue() !== _diskText);
         // A hand edit in the editor re-parses into the model, so the table
         // keeps showing what the buffer says.  Debounced, and silent when the
         // text is mid-typing and does not parse — an editor that flashed a
@@ -794,12 +924,28 @@ async function _bootEditor() {
     return _cm;
 }
 
-async function setEditorText(text) {
+/** Say whether the buffer differs from disk — and, when it does, OPEN.
+ *
+ * `task-setup.md` § 9a.1: the editor is closed by default because the cards
+ * above already say what the description says.  An unsaved edit is the one
+ * thing they do not say, so it may never be hidden -- a fold that could
+ * swallow "edited, not saved" would be a page that lost your work quietly.
+ */
+function _setDirty(dirty) {
+    const flag = $("ts-dirty");
+    if (flag) flag.hidden = !dirty;
+    const card = $("ts-editor-card");
+    if (dirty && card && !card.open) card.open = true;
+}
+
+/** Put `text` in the editor.  `fromDisk` says it is what the folder holds --
+ *  the loader and nothing else, since only a read tells you that. */
+async function setEditorText(text, opts) {
     const cm = await ensureEditor();
-    _loadedText = text;
+    if (opts && opts.fromDisk) _diskText = text;
     cm.setValue(text);
     cm.clearHistory();          // a fresh file is not an undo step of the last
-    $("ts-dirty").hidden = true;
+    _setDirty(text !== _diskText);
     cm.refresh();               // it mounted inside a card that may have been
                                 // hidden or resized since
 }
@@ -849,6 +995,12 @@ async function loadFolder(projects, dir) {
     }
 
     const taskText = await readOptional(projects, dir + "/" + TASK_JSON);
+    /* THE BASELINE IS SET THE MOMENT IT IS KNOWN, not when the editor is
+     * finally filled at the end of this function.  Loading paints cards, and
+     * a card that paints can push the model into the buffer (`setShape` ->
+     * `syncFromModel`) -- against the PREVIOUS folder's baseline, which reads
+     * as "unsaved" and forced the fold open on every folder opened. */
+    _diskText = taskText || "";
     const overText = taskText
         ? null
         : await readOptional(projects, dir + "/" + TASK_HANDOVER);
@@ -933,7 +1085,7 @@ async function loadFolder(projects, dir) {
         // costs one fetch per engine per page-load, and nothing on repeat.
         await loadSweepChoices(_handoverEngine(over));
         renderMachine(over || {});
-        if (!_shape) await setEditorText(overText);   // until a shape is picked
+        if (!_shape) await setEditorText(overText, { fromDisk: true });
         refreshSave();
         return;
     }
@@ -951,7 +1103,7 @@ async function loadFolder(projects, dir) {
         $("ts-stages-card").hidden = true;
         { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         $("ts-machine-card").hidden = true;
-        await setEditorText("");
+        await setEditorText("", { fromDisk: true });
         return;
     }
 
@@ -966,7 +1118,7 @@ async function loadFolder(projects, dir) {
         $("ts-stages-card").hidden = true;
         { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         $("ts-machine-card").hidden = true;
-        await setEditorText(taskText);
+        await setEditorText(taskText, { fromDisk: true });
         return;
     }
 
@@ -1010,7 +1162,7 @@ async function loadFolder(projects, dir) {
     // nothing open there is nothing for a tick to land in.
     { const c = $("ts-notify-card"); if (c) c.hidden = false; }
     renderQueues();
-    await setEditorText(taskText);
+    await setEditorText(taskText, { fromDisk: true });
 }
 
 /* ---------- the table edits the description ---------- */
@@ -1794,11 +1946,22 @@ function renderNext(task) {
             block.appendChild(prepButton("bench", name));
         }
 
+        /* WHAT THE RUN WILL USE, BESIDE THE COMMAND THAT USES IT (§ 6.2c,
+         * user 2026-09-01: "the what the run will use should be next to the
+         * prep run card within the tabs").  The same rows the queue card
+         * shows, each ghosted with what it would inherit; typing writes
+         * `stage_allocation.<stage>`, clearing it deletes the key.
+         *
+         * Between the measuring and the running, because that is the order
+         * the questions are asked: measure it, read the numbers, decide,
+         * then run what you decided. */
+        block.appendChild(stageRunValues(task, name, active));
+
         block.appendChild(el("p", { class: "hint" },
             benchKeys.length
-                ? "Run it \u2014 applies run-config.toml for anything you "
-                  + "did not state. Add --np / --omp / --time to override "
-                  + "the measured verdict."
+                ? "Run it \u2014 what you left blank above falls to "
+                  + "run-config.toml, and then to the wrapper's own policy. "
+                  + "Add --np / --omp / --time to override either."
                 : "Run it \u2014 the wrapper sizes the launch on the "
                   + "machine it lands on. Add --np / --omp / --time to say "
                   + "otherwise."));
@@ -1817,6 +1980,46 @@ function renderNext(task) {
     });
 
     card.hidden = false;
+}
+
+/** One rung's copy of § 6.2b: the rows, the admission check, and a picker.
+ *
+ * Built here rather than in the template because there is one per enabled
+ * stage and the ladder is not known until a description is read -- the same
+ * reason the commands above it are built and not written.
+ */
+function stageRunValues(task, stage, active) {
+    const box = el("div", { class: "ts-runvals ts-runvals--stage" });
+    box.appendChild(el("h3", { class: "ts-reports-head" },
+                       "What this run will use"));
+    box.appendChild(el("p", { class: "hint" },
+        "One value each. Blank takes the calculation's answer above \u2014 "
+        + "fill one in only where this rung disagrees."));
+    const rows = el("div", { class: "ts-rows" });
+    const fit = el("div", { class: "ts-fit", hidden: "" });
+    box.appendChild(rows);
+    box.appendChild(fit);
+
+    const sel = el("select", { class: "ts-pick",
+                               "aria-label": "add a setting for " + stage });
+    const go = el("button", { type: "button", class: "btn" }, "+ Add setting");
+    go.addEventListener("click", () => {
+        if (!sel.value) return;
+        // A row starts UNSTATED, not at a guess (§ 6.2b).
+        extraRows(stage).add(sel.value);
+        sel.value = "";
+        renderNext(_task || task);
+    });
+    box.appendChild(el("div", { class: "ts-actions" }, sel, go));
+    // The same set the queue card's picker offers -- machine-answered only,
+    // from the cached sweepable vocabulary (`refreshPickers`).
+    fillPicker(sel, (_sweep || []).filter((it) => machineAnswers(it.name)),
+               runValueNames(task, stage),
+               "every machine setting is already listed");
+
+    renderRunValues(task, { stage: stage, host: rows,
+                            fit: active ? fit : null });
+    return box;
 }
 
 //: Every prep widget on the page, so the machine choice can reach them.

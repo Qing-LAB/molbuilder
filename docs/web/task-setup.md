@@ -444,10 +444,41 @@ what you want. When a benchmark has been summarized its winner is marked, and
 `run-config.toml`: that file lives *inside* a prepared bundle, so the browser
 cannot write it before the prep it is meant to configure.
 
-**And it is checked, in this card, as you type.** The same admission the
-grid block runs, over the one combination this states — the queue's core
-ceiling, its wall, its device count. A run whose ask no queue can hold is
-worth knowing before you copy the command, not after `launch` refuses it.
+**And it is checked as you type**, in whichever card you are typing in. The
+same admission the grid block runs, over the one combination stated — the
+queue's core ceiling, its wall, its device count. A run whose ask no queue can
+hold is worth knowing before you copy the command, not after `launch` refuses
+it.
+
+### 6.2c The same fields in two places, and the difference between them
+
+*(user, 2026-09-01: "the 'what the run will use' should be next to the 'prep
+run' card within the tabs of 'preparing, stage by stage'".)*
+
+The values belong beside the command that consumes them, and that command is
+per rung — so the fields appear in § 11's stage tabs. They also appear **once**
+here, and the two are not a duplication: they write different blocks, and
+which one you are editing is the difference between *"this calculation"* and
+*"this rung"*.
+
+| where | writes | reads as |
+|---|---|---|
+| **this card** — *for every stage* | `allocation` (`stages.md` § 6.8a) | the calculation's answer. A ladder whose rungs want the same machine is answered here, once |
+| **a stage's tab** (§ 11) | `stage_allocation.<stage>` (§ 6.8b) | *this rung disagrees.* Written only when you change it |
+
+**A tab's field shows what it would inherit, greyed** — `8 (every stage)` —
+so the default is visible where the override is made. Typing over it writes
+the rung's own block; **clearing it deletes that key**, and the field goes
+back to showing the inherited value. Blank is not a value; it is the absence
+of a disagreement.
+
+**Why not per-rung only.** A five-rung ladder that wants one answer would
+make you type it five times, and `task.json` would hold five identical blocks
+where one flat block said it — worse than the concealment this replaced.
+
+**Why not calculation-wide only.** § 6.8b exists because rungs genuinely
+differ; a coarse rung is cheap and a tight one is not, the wall above all. An
+override with nowhere to be typed is a key only a hand-editor can reach.
 
 ### 6.3 Only speed knobs may be measured
 
@@ -582,14 +613,54 @@ language is one row there rather than a second copy per surface.
 description before it is written; § 8 is what writes it. An edited buffer that
 has not been saved says so.
 
+### 9a.1 Folded by default, and in the column with everything else
+
+*(user, 2026-09-01: "we should allow the task.json view to be foldable, and
+have its width to be consistent with the other cards, such that the 'what gets
+written' card can travel as we scroll the window down".)*
+
+The editor was **full width, below both columns**, on the argument that a JSON
+document reads badly in a narrow rail. That is true of an *open* editor and it
+cost something real: the page stopped being two columns partway down, so the
+aside could not follow you. *What gets written* — which since § 7.1 lists what
+every stage will produce — sat at the top while you edited the stages it
+describes.
+
+So it **folds**, and folded it joins the main column:
+
+- **closed by default.** The description is what the cards above already say;
+  the editor is for checking and correcting it, which is a thing you go and do
+  rather than a thing you watch. An unsaved edit forces it open — a buffer
+  that differs from disk may never be hidden.
+- **column width, open or closed** (user: *"have its width to be consistent
+  with the other cards"*). The old argument for full width — a JSON document
+  reads badly in a narrow rail — was answered by the wrong measurement: the
+  main column is not the rail. It is the widest thing on the page after the
+  page itself, and a card that matched it would have cost the second column
+  for a few characters of line length.
+- **the aside travels.** With one grid the whole way down, the rail is sticky
+  — and **capped, with its own scroll**: a five-rung ladder's per-stage list is
+  tall, and an aside that outgrows the viewport pins its own top out of reach.
+
+**The rail holds the two cards that are about the whole calculation**, in this
+order: *What gets written* (§ 7), then *Tell me how it is going* (§ 9b). The
+main column is the sequence you work through — folder, shape, machine, queue,
+stages, then a tab per rung; the rail is what is true of all of it, and what is
+true of all of it should stay on screen while you work through the parts.
+
 ---
 
 ## 9b. *Tell me how it is going* — and the one file it writes
 
-**It is last in the flow, deliberately.** Everything above is what the
+**It is out of the flow, deliberately** — it lives in the sticky rail under
+*What gets written* (§ 9a.1). Everything in the main column is what the
 calculation *is*; this is what it *says while it runs*, which is a different
-question. It sat between "Where it runs" and "Stages" until 2026-08-27 and
-interrupted the setup (user: *"it breaks the flow"*).
+question, and one answer covers every stage. It sat between "Where it runs" and
+"Stages" until 2026-08-27 and interrupted the setup (user: *"it breaks the
+flow"*); it sat at the bottom of the column until 2026-09-01, where being last
+made it easy to miss (user: *"visually would be easy to find and logically
+that's a global setup too"*). The rail is both: never in the way, never off
+screen.
 
 **This card writes `task.json` and nothing else.** It was one card over two
 files until 2026-08-31 — the ticks into the description, the address and key
@@ -659,13 +730,28 @@ will be prepared and hand you the exact command — and it does that **in a tab
 strip keyed by stage**, because the alternative grows the page by one block per
 rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 
-**One tab per enabled stage.** Inside a tab, everything about that rung:
+**One tab per enabled stage.** Inside a tab, everything about that rung, in
+the order the questions are asked:
 
 | | |
 |---|---|
-| **what the run will use** | § 6.2b's rows for this stage — one value each, inherited from the flat `allocation` and overridden here when this rung differs (`stages.md` § 6.8b) |
-| **what it will produce** | the directory this prep writes, its deck and wrapper, and the allocation each carries |
-| **the two commands** | `prep bench <stage>` → `launch bench` → `summarize bench`, and `prep run <stage>` → `launch run` |
+| **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
+| **what the run will use** | § 6.2b's rows for **this** stage — one value each, greyed with what they would inherit, writing `stage_allocation.<stage>` only when you change one (§ 6.2c) — and § 6.2b's admission check over what this rung actually asks for |
+| **run it** | `prep run <stage>` → `launch run` |
+
+**What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
+travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:
+`01_coarse/` beside `02_medium/` is how you check that the shape is what you
+meant, and a per-tab copy would show you one line of it at a time. The rail
+stays on screen while you work through the tabs, so both are visible at once
+without either being duplicated.
+
+**The decision sits above the command that consumes it**, which is the whole
+reason the rows moved here *(user, 2026-09-01)*. They were in the queue card
+alone, three cards up and one bench card away from `prep run` — so the number
+and the command that reads it were never on screen together, and the ordering
+was backwards besides: the card sits **above** § 6.2's rows, asking for a
+run's ranks before you had said what to measure.
 
 **A stage is either something to measure or something to run, and which is
 a decision only you can make** — unchanged from the card this replaces:
@@ -684,19 +770,21 @@ a hint rather than choosing.
 **The order is shown because it is load-bearing.** `summarize bench` writes
 `run-config.toml`, and `prep run` applies it to any field neither your flags
 nor your description stated. Skipping the middle step is no longer silent,
-though: with § 6.2b's rows filled the run has an answer of its own, and the
-tab says which of the two it will use.
+though: the rows are right there, filled or blank, above the command that
+consumes them — and the line between them states the order, so a blank row
+reads as *this one falls to `run-config.toml`* rather than as nothing.
 
 **The directory names come from the producer.** Flat and hierarchical name
 things differently (§ 4), and a page that composed them itself would be a
 second answer free to disagree with `prep` — the same rule § 6.2a states for
-the grid. What the tab shows is what `prep` reports it would write.
+the grid. What § 7.1's list shows is what `prep` reports it would write.
 
-**Bench and run may target different machines and different walls**, and the
-tab shows both without making you hold them in your head: the run's from
-§ 6.2b and `allocation`, the bench's from `bench_allocation` when it is set
-(`stages.md` § 6.8c). A thirty-second measurement queued behind a two-day
-reservation is the ordinary cost of one wall serving both.
+**Bench and run may ask for different queues and different walls.** The run's
+come from § 6.2b's rows and `allocation`; the bench's from `bench_allocation`
+when it is set (`stages.md` § 6.8c), asked in the machine card beside the grid
+it applies to. A thirty-second measurement queued behind a two-day reservation
+is the ordinary cost of one wall serving both, which is why they are two
+blocks and not one field.
 
 **It works the same on a workstation and against a cluster.** Nothing here
 reads `execution.mode`: the commands are the commands, the admission check is

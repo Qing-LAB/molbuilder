@@ -118,6 +118,68 @@ class TestTheCheckIsBesideTheField:
         assert "different machine" in text or "lower" in text
 
 
+def _writers() -> str:
+    """The three functions that turn a typed field into the model."""
+    src = VIEWER.read_text(encoding="utf-8")
+    return "\n\n".join([
+        _slice(src, "function coercePoint(raw)", "function benchOf()"),
+        _slice(src, "function runValuesOf(stage, make)",
+               "/* ROWS THE PERSON ASKED TO SEE"),
+        _slice(src, "function setRunValue(name, raw, stage)",
+               "/** An empty block is not a fact"),
+        _slice(src, "function pruneRunValues(stage)", "/** \u00a7 6.2b's rows"),
+    ])
+
+
+class TestARungOnlyWritesWhenItDisagrees:
+    """`task-setup.md` § 6.2c. The same fields sit in the queue card and in
+    every stage tab, and which block they write is the difference between
+    *this calculation* and *this rung*. Getting it wrong either way is a real
+    defect: writing every tab's field into `stage_allocation` grows five
+    identical blocks on a five-rung ladder, and writing a tab's field into
+    the flat block changes every OTHER rung silently."""
+
+    def test_a_tab_writes_the_rungs_own_block(self):
+        out = _run(
+            """
+            let _task = { allocation: { domain: "htc", mpi_np: 8 } };
+            function syncFromModel() {}
+            setRunValue("mpi_np", "16", "tight");
+            console.log(JSON.stringify({ task: _task }));
+            """, _writers())
+        assert out["task"]["stage_allocation"] == {"tight": {"mpi_np": 16}}
+        # the calculation's own answer is untouched — every other rung still
+        # inherits 8, which is the whole reason the two blocks exist
+        assert out["task"]["allocation"] == {"domain": "htc", "mpi_np": 8}
+
+    def test_clearing_a_tab_field_deletes_the_key_and_the_block(self):
+        """Blank is not a value; it is the absence of a disagreement. A
+        leftover `{"tight": {}}` would say a rung differs when it does not."""
+        out = _run(
+            """
+            let _task = { allocation: { mpi_np: 8 },
+                          stage_allocation: { tight: { mpi_np: 16 } } };
+            function syncFromModel() {}
+            setRunValue("mpi_np", "", "tight");
+            console.log(JSON.stringify({ task: _task }));
+            """, _writers())
+        assert "stage_allocation" not in out["task"], out["task"]
+        assert out["task"]["allocation"] == {"mpi_np": 8}
+
+    def test_reading_a_tab_creates_nothing(self):
+        """Scrolling past a tab is not a decision. `runValuesOf` without
+        `make` must not conjure the block it was asked to look in."""
+        out = _run(
+            """
+            let _task = { allocation: { mpi_np: 8 } };
+            function syncFromModel() {}
+            const got = runValuesOf("tight", false);
+            console.log(JSON.stringify({ got, task: _task }));
+            """, _writers())
+        assert out["got"] is None
+        assert "stage_allocation" not in out["task"], out["task"]
+
+
 def test_the_page_computes_no_verdict_of_its_own():
     """One admission path (`generator.md` § 4.3a). A grid computed in the
     page would be a second decider, free to say a run is fine where `launch`
@@ -139,11 +201,6 @@ def test_an_unstated_row_is_never_written_into_the_description():
     # DRIVEN, not grepped: a source that merely CONTAINS the delete passes a
     # substring check with the branch disabled, which is exactly what a
     # mutation showed on 2026-09-01.
-    fns = "\n\n".join([
-        _slice(src, "function coercePoint(raw)", "function benchOf()"),
-        _slice(src, "function runValuesOf()", "/** The parameters"),
-        _slice(src, "function setRunValue(name, raw)", "function dropRunValue"),
-    ])
     out = _run(
         """
         let _task = { allocation: { domain: "htc", mpi_np: 8 } };
@@ -152,7 +209,7 @@ def test_an_unstated_row_is_never_written_into_the_description():
         const afterBlank = JSON.parse(JSON.stringify(_task));
         setRunValue("mpi_np", "16");
         console.log(JSON.stringify({ afterBlank, afterTyped: _task }));
-        """, fns)
+        """, _writers())
     assert "mpi_np" not in out["afterBlank"]["allocation"], (
         f"a blank was stored rather than removed: {out['afterBlank']}")
     assert out["afterBlank"]["allocation"] == {"domain": "htc"}
