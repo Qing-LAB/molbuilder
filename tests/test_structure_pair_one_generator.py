@@ -45,6 +45,17 @@ def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
         # (conftest's `product_toolchain_is_the_suites_own`).
         "script_generation": {"preamble": "", "activation": "conda activate"}}))
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
+    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
+    # and nowhere else -- no probe of the running box, no fallback
+    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
+    # unprobed machine, so a fixture that renders one probes first,
+    # exactly as a person does:  molbuilder jobset probe --write
+    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
+    (root / "environment.json").write_text(
+        _Env(scheduler="slurm",
+             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+        + "\n")
+
 
 
 

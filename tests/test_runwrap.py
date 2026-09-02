@@ -44,6 +44,16 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
             "activation": "source activate",
         }
     }))
+    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
+    # and nowhere else -- no probe of the running box, no fallback
+    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
+    # unprobed machine, so a fixture that renders one probes first,
+    # exactly as a person does:  molbuilder jobset probe --write
+    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
+    (tmp_path / "environment.json").write_text(
+        _Env(scheduler="slurm",
+             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+        + "\n")
     yield tmp_path
 
 
@@ -294,12 +304,19 @@ def test_render_siesta_auto_mpi_clamps_to_n_atoms(monkeypatch):
 
 
 def test_render_siesta_auto_mpi_no_clamp_when_atoms_geq_cores(monkeypatch):
-    """Auto-mpi path: when n_atoms >= physical_cores, no clamp --
-    use all cores (the original auto behaviour)."""
+    """Auto-mpi path: when n_atoms >= the target's width, no clamp -- use
+    the whole machine.
+
+    It patched `physical_core_count` until 2026-09-02; the width now comes
+    from the record and nowhere else (`running-a-job.md` § 3.1), so the
+    record is passed directly.  The rule under test -- *no clamp when the
+    atoms outnumber the cores* -- is untouched."""
+    from molbuilder.scheduler import Environment, Topology
     _bind()
-    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
-                        lambda: 8)
-    text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200, resources=Resources())
+    rec = Environment(scheduler="slurm",
+                      topology=Topology(sockets=1, cores_per_socket=8))
+    text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200,
+                              resources=Resources(), machine_record=rec)
     assert "_mpi_np_default=8" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "clamped" not in text
@@ -328,8 +345,12 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
     + CLI both invoke write_run_wrapper, never render_run_wrapper
     directly with n_atoms."""
     _bind()
-    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
-                        lambda: 32)
+    # THE RECORD, NOT THIS BOX (`running-a-job.md` § 3.1, 2026-09-02).  This
+    # monkeypatched `physical_core_count` until then; that function is no
+    # longer consulted, so the patch pinned a source the code had stopped
+    # reading.  The rule under test is the CLAMP, and it survives intact --
+    # only where the width comes from changed.  The fixture's record is
+    # 2 x 32 = 64 cores.
     fdf_text = (
         "SystemName        tiny\n"
         "SystemLabel       tiny\n"
@@ -345,24 +366,26 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
         "from .fdf (not 32 = physical cores)"
     )
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
-    assert "auto-mpi clamped from 32" in text
+    assert "auto-mpi clamped from 64" in text
 
 
-def test_write_run_wrapper_unparseable_fdf_falls_back(tmp_path,
-                                                       monkeypatch):
-    """If the .fdf doesn't have a parseable NumberOfAtoms line
-    (truncated / corrupted / pre-emission stub) the wrapper falls
-    back to the un-clamped auto-mpi (physical_cores) -- better to
-    render SOMETHING than to refuse."""
+def test_write_run_wrapper_unparseable_fdf_renders_unclamped(tmp_path,
+                                                             monkeypatch):
+    """A deck with no parseable `NumberOfAtoms` (truncated, corrupted, a
+    pre-emission stub) still renders -- better to render SOMETHING than to
+    refuse -- and the width is simply not clamped.
+
+    It said "falls back to physical_cores" and patched that function until
+    2026-09-02.  There is no fallback now: the width comes from the record
+    either way (`running-a-job.md` § 3.1), and what the missing atom count
+    costs is the CLAMP, not the number."""
     _bind()
-    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
-                        lambda: 4)
     fdf_path = tmp_path / "broken.fdf"
     fdf_path.write_text("# .fdf with no NumberOfAtoms line\n")
     wrapper_path = write_run_wrapper(fdf_path, resources=Resources())
     text = wrapper_path.read_text()
-    # Falls back to physical_cores (4) without clamping.
-    assert "_mpi_np_default=4" in text
+    # The record's width (2 x 32), unclamped -- nothing to clamp against.
+    assert "_mpi_np_default=64" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "clamped" not in text
 

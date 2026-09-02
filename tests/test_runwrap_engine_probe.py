@@ -74,6 +74,16 @@ def wrapper(tmp_path, monkeypatch):
     (tmp_path / "molbuilder.json").write_text(json.dumps({
         "script_generation": {"preamble": "module load mamba",
                               "activation": "source activate"}}))
+    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
+    # and nowhere else -- no probe of the running box, no fallback
+    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
+    # unprobed machine, so a fixture that renders one probes first,
+    # exactly as a person does:  molbuilder jobset probe --write
+    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
+    (tmp_path / "environment.json").write_text(
+        _Env(scheduler="slurm",
+             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+        + "\n")
     set_capabilities(Capabilities(
         runtime_config={}, conda_binary="/usr/bin/conda",
         conda_envs=frozenset(["molbuilder-siesta"])))
