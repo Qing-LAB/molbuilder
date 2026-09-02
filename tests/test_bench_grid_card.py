@@ -360,6 +360,36 @@ def _plan(client, task):
                        json={"task": task}).get_json()
 
 
+def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
+    """`build.py` does `task = read_task(desc)`: the prep door takes a FOLDER.
+
+    One assembly serves the CLI and the browser (A12), and the CLI has only
+    the file -- so the document is not a channel here, and a browser holding
+    unsaved edits is holding something prep cannot see.  That asymmetry is
+    real and load-bearing; what it must never do is go unsaid, which is why
+    the page now refuses to prep while its buffer differs from disk
+    (2026-09-02: the run card's values reached the fit line, which IS posted
+    them, and not the A13 block, which is not).
+
+    Asserted by CONTRADICTION: post a document that disagrees with the file
+    and check the answer follows the file."""
+    import json
+    d = json.loads((bundle / "task.json").read_text())
+    d["stages"][0]["execution"] = {"mpi_np": 7}
+    (bundle / "task.json").write_text(json.dumps(d, indent=2))
+
+    r = client.post("/api/task-setup/prep", json={
+        "dest": str(bundle), "kind": "run", "stage": "coarse", "plan": True,
+        # a document saying something ELSE -- it must be ignored
+        "task": {"stages": [{"name": "coarse", "execution": {"mpi_np": 999}}]},
+    })
+    assert r.status_code == 200, r.get_data(as_text=True)
+    chosen = r.get_json().get("chosen") or {}
+    assert chosen.get("mpi_np") == 7, (
+        "the prep door honoured a POSTED document -- it must read the file, "
+        f"or the CLI and the browser are two assemblies: {chosen}")
+
+
 class TestTheBenchPreviewSaysNothingAboutTheRun:
     """A13 is the RUN's rule, and it is told in the run's card.
 

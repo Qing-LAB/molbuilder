@@ -2574,3 +2574,31 @@ def test_every_command_the_page_teaches_is_a_REAL_cli_verb():
             assert kind in choices, (
                 f"the page teaches `jobset {verb} {kind}`, but {verb} takes "
                 f"{choices}")
+
+
+def test_prep_refuses_while_the_card_is_unsaved():
+    """**The contradiction this closes** *(user, 2026-09-02: "all the
+    parameter settings in 'what this run will use' fucking did nothing")*.
+
+    The prep door takes a FOLDER, not a document — `build.py` does
+    `task = read_task(desc)`, because one assembly serves the CLI and the
+    browser alike (A12) and the CLI has only the file. The browser posts
+    `{dest, kind, stage, plan}` and never the document.
+
+    So an unsaved run card is not in the document prep reads, and the page
+    said three things at once: the fit line agreed with the card (bench-grid
+    IS posted the values), the A13 block disagreed with it (prep reads the
+    file), and `Write it` prepped the file regardless.
+
+    A prep that cannot see your edits must say so instead of running."""
+    src = VIEWER.read_text(encoding="utf-8")
+    guard = src[src.index("function prepButton("):]
+    guard = guard[:guard.index("\n}\n")]
+    assert "_diskText" in guard, (
+        "prepButton no longer compares the buffer against disk -- an unsaved "
+        "card can reach a prep that cannot see it")
+    assert "Save first" in guard
+    # and the emitted block names which document it is describing
+    assert "from the saved task.json" in src, (
+        "the A13 block does not say it reflects the SAVED file, so it reads "
+        "as a contradiction of the card rather than a fact about the file")

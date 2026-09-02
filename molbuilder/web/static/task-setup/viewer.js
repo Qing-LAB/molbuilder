@@ -1977,122 +1977,155 @@ const _PREP_WIDGETS = [];
  * the launch door keeps (`submission.md` S4), for the same reason.
  */
 function prepButton(kind, stage, continues) {
-    // `continues` is the ` --from <token>/run-N` tail when this rung carries
-    // one.  It makes the button a PREVIEW: everything A13 shows still
-    // resolves, and the write is left to the command, which is the only
-    // place the attempt can be named.
+    /* TWO BUTTONS, AND ONE ENABLES THE OTHER.
+     *
+     * This was ONE button that changed what it did between clicks: the first
+     * click planned and relabelled it "Write it", the second wrote.  The
+     * decision lived in a `planned` closure variable -- and `renderNext`
+     * rebuilds every stage panel, so any repaint (typing in the run card
+     * calls `syncFromModel` -> `renderNext`) destroyed the button and made a
+     * fresh one with `planned = null`.  The click you thought was the write
+     * was a new button's first click.  "Write it wrote absolutely nothing"
+     * (user, 2026-09-02), and nothing on screen said why.
+     *
+     * Now each button does ONE thing, always, and the only state is
+     * `disabled` -- which is on screen.  A repaint puts Prep back to
+     * disabled, which is the truth (nothing has been previewed yet) rather
+     * than a button that has silently changed its mind.
+     */
     const wrap = el("div", { class: "ts-prep" });
-    const btn = el("button", { type: "button", class: "btn" },
-                   continues ? "Show what this would launch"
-                             : "Prep " + kind + " here");
     const say = el("div", { class: "ts-prep-say" });
-    let planned = null;
+    const btnPreview = el("button", { type: "button", class: "btn" },
+                          "Preview " + kind);
+    const btnWrite = el("button", { type: "button", class: "btn", disabled: "" },
+                        "Prep " + kind + " here");
 
-    let emitted = null;
-    btn.addEventListener("click", async () => {
-        // A MACHINE IS THE FIRST QUESTION, and this asked it by firing into
-        // the server's refusal -- a paragraph about targets and probe
-        // commands, which reads as a fault rather than as "you skipped a
-        // step".  After any page load nothing is chosen (`loadMachines`
-        // ends at `setMachine("")` whenever more than one could be meant),
-        // so this was the ORDINARY path, not an edge case (reported
-        // 2026-08-24).  Answered here, in the page's own words, and the
-        // card that answers it is scrolled to.
+    /* WHAT BOTH MUST ANSWER BEFORE EITHER RUNS.  Returns a reason, or null. */
+    function blocked() {
+        /* PREP READS `task.json` FROM DISK -- the door takes a FOLDER, not a
+         * document (`build.py`: `task = read_task(desc)`), because one
+         * assembly serves the CLI and the browser alike (A12) and the CLI has
+         * only the file.  An unsaved card is not in the document prep reads,
+         * which is why the fit line agreed with the card and the A13 block
+         * did not. */
+        if (_cm && _cm.getValue() !== _diskText) {
+            const ed = $("ts-editor-card");
+            if (ed && ed.scrollIntoView) ed.scrollIntoView({ block: "center" });
+            return "Save first — prep reads task.json from disk, and "
+                 + "these edits are not in it yet.";
+        }
         if (!_machine) {
-            say.textContent = "Pick a machine first \u2014 \u201cWhich "
-                + "machine is this for\u201d, just above.";
-            say.setAttribute("data-state", "warn");
             const card = $("ts-target-card");
             if (card && card.scrollIntoView) {
                 card.scrollIntoView({ behavior: "smooth", block: "center" });
             }
-            return;
+            return "Pick a machine first — “Which machine is this "
+                 + "for”, just above.";
         }
-        btn.disabled = true;
+        return null;
+    }
+
+    function refuse(msg) {
+        say.textContent = msg;
+        say.setAttribute("data-state", "warn");
+        btnWrite.disabled = true;
+    }
+
+    btnPreview.addEventListener("click", async () => {
+        const no = blocked();
+        if (no) return refuse(no);
+        btnPreview.disabled = true;
         try {
-            if (!planned) {
-                const r = await _prepCall(kind, stage, true);
-                if (!r.ok) { say.textContent = r.error; say.setAttribute("data-state", "bad"); return; }
-                planned = r;
-                const bits = ["for " + r.machine];
-                /* VARYING AND CHOSEN ARE DIFFERENT THINGS, and the length
-                 * of a row is which (`generator.md` § 4.3a).  Listing a
-                 * one-point axis as "varying" said a benchmark would sweep
-                 * a value you had already decided.
-                 *
-                 * Both come from the SERVER: `chosen` is
-                 * `prep._declared_launch_shape`'s answer, so this line and
-                 * the allocation the prep actually builds cannot disagree
-                 * -- and the run's preview, which has no axes to infer
-                 * from, names the shape too. */
-                const varying = [];
-                for (const k of Object.keys(r.bench_axes || {})) {
-                    if ((r.bench_axes[k] || []).length > 1) varying.push(k);
-                }
-                const chosen = Object.keys(r.chosen || {})
-                    .map((k) => k + "=" + r.chosen[k]);
-                if (varying.length) bits.push("varying " + varying.join(", "));
-                if (chosen.length) bits.push("at " + chosen.join(", "));
-                /* A13 -- THE END POINT, spelled out.  A run is hours or days
-                 * and a wrong width is found when it finishes, so what the
-                 * .sbatch will carry is shown before the second click, with
-                 * the source of every number.  Rendered as its own block
-                 * rather than folded into the line above, because the line
-                 * says what you ASKED and this says what will HAPPEN. */
-                if ((r.emitted || []).length) {
-                    emitted = r.emitted;
-                }
-                const a = r.allocation || {};
-                bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
-                bits.push(a.mem ? "memory " + a.mem
-                                : "NO MEMORY STATED \u2014 the scheduler's "
-                                  + "own default decides");
-                bits.push(a.time ? "time " + a.time : "no time stated");
-                say.textContent = bits.join(" \u00b7 ") + ".  Click again to write it.";
-                say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
-                if (emitted) {
-                    const box = el("div", { class: "ts-emitted" });
-                    box.appendChild(el("div", { class: "ts-emitted-head" },
-                        "What this run will actually be launched with"));
-                    for (const row of emitted) {
-                        box.appendChild(el("div", { class: "ts-emitted-row" },
-                            el("code", { class: "ts-emitted-flag" }, row.flag),
-                            el("span", { class: "ts-emitted-val" },
-                               String(row.value)),
-                            el("span", { class: "ts-emitted-why" },
-                               row.source)));
-                    }
-                    const old = wrap.querySelector(".ts-emitted");
-                    if (old) old.remove();
-                    wrap.appendChild(box);
-                }
-                if (continues) {
-                    // NAMED, not hidden: the person can see what will be
-                    // launched and is told the one command that writes it.
-                    say.textContent += "  This rung continues from a named "
-                        + "attempt, so the command below writes it \u2014 "
-                        + "the button cannot choose which attempt for you.";
-                    planned = null;
-                    return;
-                }
-                btn.textContent = "Write it";
+            const r = await _prepCall(kind, stage, true);
+            if (!r.ok) {
+                say.textContent = r.error;
+                say.setAttribute("data-state", "bad");
+                btnWrite.disabled = true;
                 return;
             }
-            say.textContent = "Preparing\u2026";
+            const bits = ["for " + r.machine];
+            /* VARYING AND CHOSEN ARE DIFFERENT THINGS, and the length of a
+             * row is which (`generator.md` § 4.3a).  Both come from the
+             * SERVER, so this line and the allocation the prep builds cannot
+             * disagree. */
+            const varying = [];
+            for (const k of Object.keys(r.bench_axes || {})) {
+                if ((r.bench_axes[k] || []).length > 1) varying.push(k);
+            }
+            const chosen = Object.keys(r.chosen || {})
+                .map((k) => k + "=" + r.chosen[k]);
+            if (varying.length) bits.push("varying " + varying.join(", "));
+            if (chosen.length) bits.push("at " + chosen.join(", "));
+            const a = r.allocation || {};
+            bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
+            bits.push(a.mem ? "memory " + a.mem
+                            : "NO MEMORY STATED — the scheduler's own "
+                              + "default decides");
+            bits.push(a.time ? "time " + a.time : "no time stated");
+            say.textContent = bits.join(" · ") + ".";
+            say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
+
+            /* A13 -- THE END POINT, spelled out before anything is written. */
+            const old = wrap.querySelector(".ts-emitted");
+            if (old) old.remove();
+            if ((r.emitted || []).length) {
+                const box = el("div", { class: "ts-emitted" });
+                box.appendChild(el("div", { class: "ts-emitted-head" },
+                    "What this run will actually be launched with"));
+                // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
+                // and saying so is the difference between a contradiction
+                // and a fact.
+                box.appendChild(el("div", { class: "hint" },
+                    "from the saved task.json — save the card above to "
+                    + "change these"));
+                for (const row of r.emitted) {
+                    box.appendChild(el("div", { class: "ts-emitted-row" },
+                        el("code", { class: "ts-emitted-flag" }, row.flag),
+                        el("span", { class: "ts-emitted-val" },
+                           String(row.value)),
+                        el("span", { class: "ts-emitted-why" }, row.source)));
+                }
+                wrap.appendChild(box);
+            }
+
+            if (continues) {
+                /* A CONTINUING RUNG CANNOT BE WRITTEN FROM A BUTTON: which
+                 * attempt you continue from is a scientific choice and the
+                 * prep door carries no `--from` on purpose
+                 * (`project-layout.md` § 1.6).  The preview still resolves,
+                 * which is the half A13 needs. */
+                say.textContent += "  This rung continues from a named "
+                    + "attempt, so the command below writes it — a "
+                    + "button cannot choose which attempt for you.";
+                btnWrite.disabled = true;
+                return;
+            }
+            btnWrite.disabled = false;
+        } finally {
+            btnPreview.disabled = false;
+        }
+    });
+
+    btnWrite.addEventListener("click", async () => {
+        const no = blocked();
+        if (no) return refuse(no);
+        btnWrite.disabled = true;
+        btnPreview.disabled = true;
+        try {
+            say.textContent = "Preparing…";
             say.setAttribute("data-state", "ok");
             const r = await _prepCall(kind, stage, false);
             if (!r.ok) {
                 say.textContent = r.error;
                 say.setAttribute("data-state", "bad");
-                planned = null; btn.textContent = "Prep " + kind + " here";
                 return;
             }
-            say.textContent = "Prepared for " + r.machine + " \u2014 "
-                + r.dirs.length + " director" + (r.dirs.length === 1 ? "y" : "ies")
-                + ": " + r.dirs.slice(0, 3).join(", ")
-                + (r.dirs.length > 3 ? ", \u2026" : "");
+            const dirs = r.dirs || [];
+            say.textContent = "Prepared for " + r.machine + " — "
+                + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
+                + ": " + dirs.slice(0, 3).join(", ")
+                + (dirs.length > 3 ? ", …" : "");
             say.setAttribute("data-state", "ok");
-            planned = null; btn.textContent = "Prep " + kind + " here";
             // The folder now holds decks and wrappers it did not before --
             // the same announcement a restore makes, so every open view
             // re-reads rather than showing the folder as it was.
@@ -2101,11 +2134,21 @@ function prepButton(kind, stage, continues) {
                 p.publishFolderChanged(_dir);
             }
         } finally {
-            btn.disabled = false;
+            btnPreview.disabled = false;
+            // STAYS DISABLED after a write: what was previewed has been
+            // written, so the next write needs a fresh preview to describe
+            // it.  Re-enabling would offer a second write of a plan nobody
+            // has looked at since.
         }
     });
-    wrap.append(btn, say);
-    _PREP_WIDGETS.push({ btn, say, kind });
+
+    wrap.append(btnPreview, btnWrite, say);
+    /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
+     * `disabled = !machine` on everything it holds -- so registering the
+     * write button would hand its enabled-ness a SECOND owner, and picking a
+     * machine would enable a write nobody had previewed.  The machine gate
+     * still applies to it, through `blocked()`, which both buttons ask. */
+    _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
     _syncPrepButtons();
     return wrap;
 }
