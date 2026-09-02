@@ -128,8 +128,39 @@ export async function mount(hostEl, workspace, opts) {
         embed = createEmbed(card.canvas, {});
         parts.push(() => embed.dispose());
     } catch (e) {
-        writeSizingError(card, 0, 0, "The 3D viewer could not start.");
-        return fail("mount: the drawing could not start — " + (e && e.message));
+        /* NAME THE CAUSE ON THE CARD.  This said only "The 3D viewer could
+         * not start." for BOTH failures, which are unrelated and have
+         * unrelated fixes -- the vendor script missing (a deployment
+         * problem, on the server) and no WebGL context (a browser problem,
+         * on the machine looking at it).  A person reading the card could
+         * not tell which, and neither could anyone they reported it to.
+         * Reported 2026-09-02, after the ambiguity cost a debugging session
+         * on the wrong machine. */
+        const why = String((e && e.message) || e || "");
+        let said;
+        if (/must be loaded first/i.test(why) || typeof $3Dmol === "undefined") {
+            said = "The 3D viewer could not start: the 3Dmol library did not "
+                 + "load. That is a SERVER problem \u2014 check that "
+                 + "/static/vendor/3Dmol-min.js is served (a wheel install "
+                 + "may omit static files; run from the checkout).";
+        } else {
+            let gl = null;
+            try {
+                gl = card.root.ownerDocument.createElement("canvas")
+                         .getContext("webgl2")
+                  || card.root.ownerDocument.createElement("canvas")
+                         .getContext("webgl");
+            } catch (_) { gl = null; }
+            said = gl
+                ? "The 3D viewer could not start: 3Dmol refused this canvas "
+                  + "\u2014 " + why
+                : "The 3D viewer could not start: this browser has no WebGL. "
+                  + "That is a BROWSER problem, not the server \u2014 check "
+                  + "chrome://gpu, or hardware acceleration in settings. "
+                  + "Remote desktop and VM sessions often disable it.";
+        }
+        writeSizingError(card, 0, 0, said);
+        return fail("mount: the drawing could not start — " + why);
     }
 
     /* `owner` goes down as well as onto the card. It is the viewer's identity
