@@ -922,3 +922,41 @@ def test_the_cover_reaches_the_screen_before_the_work_starts():
         "the browser's first chance to draw came only AFTER the rebuild work had "
         "started, so the cover cannot have been painted -- raise it, yield to a "
         "real task boundary, THEN work")
+
+
+def test_a_model_emptied_to_NOTHING_still_clears_the_drawing():
+    """**The reported bug** *(user, 2026-09-02: "when i click 'start empty'
+    the atom list is clear, but 3dmol is not updated with an empty window.
+    it stays with the old model displayed")*.
+
+    `doRebuild` opened with `if (!s || !processed.length) return;` — it told
+    the drawing NOTHING when there was nothing to draw, so a model emptied to
+    null left the previous molecule on screen beside an empty atom list.
+
+    Deleting every atom took a different route and so looked fixed: there a
+    structure still EXISTS with zero elements, `loadFrames` is reached, and
+    the embed clears itself (molview.md § 6.7a). This is the same mistake one
+    layer up — *nothing to draw* read as *nothing to do* — and it is the layer
+    `clear()` goes through."""
+    out = _run("""
+        const w = wired(3, 2);
+        await w.engine.dataChanged();          // a real molecule is drawn
+        const drew = calls("loadFrames").length;
+        globalThis.__embedCalls = [];
+        // what `model.clear()` does: no structure at all
+        w.src.structure = null;
+        w.src.frames = [];
+        await w.engine.dataChanged();
+        const after = calls("loadFrames");
+        console.log(JSON.stringify({
+            drew: drew,
+            clearedWith: after.length ? after[after.length - 1].args : null,
+        }));
+    """)
+    assert out["drew"] >= 1, "the fixture never drew anything to begin with"
+    assert out["clearedWith"] is not None, (
+        "emptying the model told the drawing nothing -- the previous molecule "
+        "is still on screen")
+    elements, frames = out["clearedWith"][0], out["clearedWith"][1]
+    assert not elements and not frames, (
+        f"the drawing was not asked to clear: {out['clearedWith']!r}")

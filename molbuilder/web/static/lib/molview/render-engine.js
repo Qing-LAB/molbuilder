@@ -532,6 +532,25 @@ export function createRenderEngine(embed) {
         const processed = processAll();
         const s = structure();
         if (!s || !processed.length) {
+            /* NOTHING TO DRAW IS SOMETHING TO DRAW (molview.md § 6.7a).
+             *
+             * This returned without telling the drawing anything, so a model
+             * emptied to NOTHING -- `clear()`, which sets the structure to
+             * null -- left the previous molecule on screen while the panel's
+             * atom list emptied beside it.  Reported 2026-09-02: "when i
+             * click 'start empty' the atom list is clear, but 3dmol is not
+             * updated ... it stays with the old model displayed".
+             *
+             * Deleting every atom took a different route and so looked
+             * fixed: there the structure still EXISTS with zero elements, so
+             * `loadFrames` was reached and cleared the viewer itself.  The
+             * guard here is the same mistake one layer up -- "nothing to
+             * draw" read as "nothing to do". */
+            embed.beginBatch();
+            embed.loadFrames([], []);      // clears models, keeps the triad
+            applyScene();
+            embed.endBatch();
+            drawnKey = currentDrawnKey();
             costLog.push(REBUILD);
             return;
         }
