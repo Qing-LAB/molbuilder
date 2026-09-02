@@ -397,3 +397,70 @@ def test_no_two_elements_share_an_id_in_the_task_setup_page():
     ids = re.findall(r'\bid="([^"]+)"', html)
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
+
+
+def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
+    """**The silent-loss race** (`task-setup.md` § 9a).
+
+    `_task` is the model the cards are a view of; the buffer is what `save`
+    sends.  Two writers patched the BUFFER ONLY -- the asks and the notify
+    ticks -- while `syncFromModel` serialises `_task` OVER the buffer.  So:
+    tick a channel, then touch anything that syncs (add a stage, edit a run
+    row) and the stale `_task` was written over the top.  The tick was gone,
+    silently, and the editor's own re-parse is debounced 400 ms -- exactly
+    long enough to click the next control.
+
+    `patchDoc` is the one door now, and it writes BOTH.  Asserted by doing
+    what the race did: patch, then serialise the model, and check the patch
+    survived."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = VIEWER.read_text(encoding="utf-8")
+    fns = "\n\n".join([
+        _slice(src, "const REPORT_ITEMS = [", "/** Paint one tick per report"),
+        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
+        _slice(src, "function notifyValues()", "/** Write the policy INTO"),
+        _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
+        _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
+    ])
+    harness = f"""
+        let _doc = JSON.stringify({{ run: {{ id: "r" }}, stages: [] }}, null, 2);
+        let _task = JSON.parse(_doc);
+        const _els = {{
+            "ts-notify-scf":  {{ checked: true }},
+            "ts-notify-all":  {{ checked: true }},
+            "ts-report-all":  {{ checked: true }},
+        }};
+        const $ = (id) => _els[id] || null;
+        _els["ts-notify-channels"] = {{ querySelectorAll: () => [] }};
+        _els["ts-report-items"]    = {{ querySelectorAll: () => [] }};
+        // No DOM: `keepingPagePut` must degrade to "nothing to restore".
+        const document = {{ querySelector: () => null }};
+        const requestAnimationFrame = (f) => f();
+        const _cm = {{
+            getValue: () => _doc,
+            setValue: (t) => {{ _doc = t; }},
+            getCursor: () => null,
+            setCursor: () => {{}},
+        }};
+        {fns}
+        applyNotifyToDoc();                       // a card writes
+        const afterPatch = JSON.parse(_doc).notify || null;
+        // ...and now the thing that used to destroy it: the model is
+        // serialised over the buffer.
+        _doc = JSON.stringify(_task, null, 2) + "\\n";
+        console.log(JSON.stringify({{
+            afterPatch: afterPatch,
+            afterSync: JSON.parse(_doc).notify || null,
+        }}));
+    """
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
+                          capture_output=True, text=True, timeout=20)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out["afterPatch"], "the card wrote nothing at all"
+    assert out["afterSync"] == out["afterPatch"], (
+        "serialising the model destroyed what the card had just written -- "
+        "`patchDoc` did not move `_task` with the buffer")

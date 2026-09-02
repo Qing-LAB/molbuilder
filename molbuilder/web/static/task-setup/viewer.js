@@ -940,6 +940,41 @@ async function readOptional(projects, path) {
     }
 }
 
+/* EVERY PER-FOLDER FACT, IN ONE PLACE.
+ *
+ * `loadFolder`'s own comment claimed "every per-folder fact resets before the
+ * branch"; it reset three of them.  The rest are module state that outlived a
+ * folder change, and `task-setup.md` § 2.1 is explicit -- *"the page holds no
+ * state of its own ... no remembered form, no in-progress buffer that outlives
+ * a directory change."*
+ *
+ * The one that corrupted data: `_queue` and the two ask boxes feed
+ * `askValues()`, which `applyAsksToDoc` writes into `task.allocation`.  Open
+ * folder A with a wall and a memory, switch to B, touch any ask field or
+ * notify tick -- and A's numbers were written into B's task.json.
+ *
+ * The one that destroyed work without warning: `_pendingDrop` is the two-click
+ * column-drop guard.  Arm `×` on A's `mesh_cutoff`, switch folder, and ONE
+ * click removed B's column -- the warning had already been given, for a
+ * different file.
+ *
+ * A list is a thing to forget to add to, so this is the only place that knows
+ * it, and it is called before the branch rather than in each arm. */
+function _resetPerFolderState() {
+    _extraRunRows.clear();   // rows added to a run card, per stage
+    _runFits.clear();        // the admission answer per stage
+    _fitBench = {};          // the bench card's last posted axes
+    _runs = {};              // attempts on disk, per stage
+    _pendingDrop = "";       // the armed column drop
+    _stepTab = "";           // which rung's tab was open
+    _queue = "";             // the chosen domain -- goes into `allocation`
+    for (const id of ["ts-ask-time", "ts-ask-mem"]) {
+        const box = $(id);
+        if (box) box.value = "";
+    }
+}
+
+
 async function loadFolder(projects, dir) {
     /* The resolved-config view is per FOLDER (the bundle's own
      * .molbuilder.json is one of the scopes), so it repaints with one.
@@ -956,6 +991,7 @@ async function loadFolder(projects, dir) {
     _task = null;
     _shape = "";
     _handover = null;
+    _resetPerFolderState();
     showPath(dir);
     // Before anything renders: what this folder's template answers is the
     // baseline every empty cell names.
@@ -2740,25 +2776,51 @@ function keepingPagePut(fn) {
  * Absent-is-a-state, matching `task.py`: nothing asked writes NO key, so
  * a description that says nothing round-trips byte-identical.
  */
-function applyAsksToDoc() {
-    if (!_cm) return;
-    const text = _cm.getValue();
+/* THE DOCUMENT CHANGES IN ONE PLACE, AND BOTH COPIES MOVE TOGETHER.
+ *
+ * `_task` is the model the cards are a view of; the buffer is what `save`
+ * sends.  Two writers patched the BUFFER ONLY -- the asks and the notify
+ * ticks -- while `syncFromModel` serialises `_task` OVER the buffer.  So:
+ * type a memory, blur (the buffer gains `allocation`, `_task` does not),
+ * then touch anything that syncs -- add a stage, edit a run row -- and the
+ * stale `_task` is written over the top.  The memory is gone, silently.
+ *
+ * The editor's own re-parse would have repaired it, but it is debounced
+ * 400 ms: the loss window is real and it is exactly as long as it takes to
+ * click the next control.
+ *
+ * `patchDoc` is the one door for "change the open document from a card": it
+ * reads the buffer (the newer of the two, since a hand edit lands there
+ * first), applies the change, and writes BOTH.  A caller that returns false
+ * changed nothing and nothing is written. */
+function patchDoc(change) {
+    if (!_cm) return false;
     let task;
     try {
-        task = JSON.parse(text);
+        task = JSON.parse(_cm.getValue());
     } catch (e) {
-        return;              // mid-edit and unparseable; say nothing, lose nothing
+        return false;        // mid-edit and unparseable; say nothing, lose nothing
     }
-    if (!task || typeof task !== "object") return;
-    const asks = askValues();
-    const had = JSON.stringify(task.allocation || null);
-    if (Object.keys(asks).length) task.allocation = asks;
-    else delete task.allocation;
-    if (JSON.stringify(task.allocation || null) === had) return;   // no-op
+    if (!task || typeof task !== "object") return false;
+    if (change(task) === false) return false;
+    _task = task;            // the model moves with the buffer, never after it
     const cur = _cm.getCursor && _cm.getCursor();
     keepingPagePut(() => {
         _cm.setValue(JSON.stringify(task, null, 2) + "\n");
         if (cur && _cm.setCursor) _cm.setCursor(cur);
+    });
+    return true;
+}
+
+
+function applyAsksToDoc() {
+    patchDoc((task) => {
+        const asks = askValues();
+        const had = JSON.stringify(task.allocation || null);
+        if (Object.keys(asks).length) task.allocation = asks;
+        else delete task.allocation;
+        // no-op: nothing to write, and nothing to move the page for
+        return JSON.stringify(task.allocation || null) !== had;
     });
 }
 
@@ -2823,23 +2885,12 @@ function notifyValues() {
  * so a description that reports on nothing round-trips byte-identical.
  */
 function applyNotifyToDoc() {
-    if (!_cm) return;
-    let task;
-    try {
-        task = JSON.parse(_cm.getValue());
-    } catch (e) {
-        return;              // mid-edit and unparseable; say nothing, lose nothing
-    }
-    if (!task || typeof task !== "object") return;
-    const want = notifyValues();
-    const had = JSON.stringify(task.notify || null);
-    if (Object.keys(want).length) task.notify = want;
-    else delete task.notify;
-    if (JSON.stringify(task.notify || null) === had) return;   // no-op
-    const cur = _cm.getCursor && _cm.getCursor();
-    keepingPagePut(() => {
-        _cm.setValue(JSON.stringify(task, null, 2) + "\n");
-        if (cur && _cm.setCursor) _cm.setCursor(cur);
+    patchDoc((task) => {
+        const want = notifyValues();
+        const had = JSON.stringify(task.notify || null);
+        if (Object.keys(want).length) task.notify = want;
+        else delete task.notify;
+        return JSON.stringify(task.notify || null) !== had;
     });
 }
 

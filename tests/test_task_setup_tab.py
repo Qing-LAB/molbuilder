@@ -2602,3 +2602,60 @@ def test_prep_refuses_while_the_card_is_unsaved():
     assert "from the saved task.json" in src, (
         "the A13 block does not say it reflects the SAVED file, so it reads "
         "as a contradiction of the card rather than a fact about the file")
+
+
+def test_every_per_folder_fact_resets_when_a_folder_changes():
+    """`task-setup.md` § 2.1: *"the page holds no state of its own ... no
+    remembered form, no in-progress buffer that outlives a directory
+    change."*
+
+    `loadFolder`'s own comment claimed every per-folder fact reset before the
+    branch. It reset three. The rest outlived a folder change, and two of
+    them cost real work:
+
+      * `_queue` and the two ask boxes feed `askValues()`, which
+        `applyAsksToDoc` writes into `task.allocation` — so folder A's wall
+        and memory were written into folder B's task.json.
+      * `_pendingDrop` is the two-click column-drop guard: arm `×` on A's
+        `mesh_cutoff`, switch folder, and ONE click removed B's column. The
+        warning had been given, for a different file.
+
+    Driven rather than grepped: the function is lifted whole and its state
+    is set dirty first, so a reset that stops clearing one of them fails."""
+    import json as _json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = VIEWER.read_text(encoding="utf-8")
+    i = src.index("function _resetPerFolderState() {")
+    j = src.index("\n}\n", i) + 3
+    prog = ("const _extraRunRows = new Map([['coarse', new Set(['mesh_cutoff'])]]);\n"
+            "const _runFits = new Map([['coarse', {}]]);\n"
+            "let _fitBench = { mpi_np: [8] };\n"
+            "let _runs = { coarse: 3 };\n"
+            "let _pendingDrop = 'mesh_cutoff';\n"
+            "let _stepTab = 'tight';\n"
+            "let _queue = 'htc';\n"
+            "const _boxes = { 'ts-ask-time': { value: '2-00:00:00' },\n"
+            "                 'ts-ask-mem':  { value: '256G' } };\n"
+            "const $ = (id) => _boxes[id] || null;\n"
+            + src[i:j]
+            + "_resetPerFolderState();\n"
+            "console.log(JSON.stringify({\n"
+            "  extraRows: _extraRunRows.size, fits: _runFits.size,\n"
+            "  bench: Object.keys(_fitBench).length, runs: Object.keys(_runs).length,\n"
+            "  drop: _pendingDrop, tab: _stepTab, queue: _queue,\n"
+            "  time: _boxes['ts-ask-time'].value, mem: _boxes['ts-ask-mem'].value,\n"
+            "}));")
+    out = subprocess.run([node, "--input-type=commonjs", "-e", prog],
+                         capture_output=True, text=True, timeout=20)
+    if out.returncode != 0:
+        pytest.fail(out.stderr)
+    got = _json.loads(out.stdout.strip().splitlines()[-1])
+    assert got == {"extraRows": 0, "fits": 0, "bench": 0, "runs": 0,
+                   "drop": "", "tab": "", "queue": "",
+                   "time": "", "mem": ""}, (
+        "a per-folder fact survived a folder change: " + repr(got))
