@@ -540,18 +540,27 @@ written twice: every tab already has a schema, so every tab gets this.
   "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04 } }
 ```
 
-**Three fields, and no others.**
+**Four fields, and no others.**
 
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now) |
 | `enabled` | bool | whether this stage is rendered at all |
 | `overrides` | map | schema field name → that stage's value |
+| `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
 
 `overrides` may name **any field of the shared schema** and **never** `name` or
 `enabled`. A description carrying a stage-field name inside `overrides` is
 refused: two homes for one fact is how the previous model produced fields that
 lived in both places and silently disagreed.
+
+**`overrides` and `execution` are not two names for one thing**, and the
+difference is what reads them. `overrides` changes what the calculation *is* —
+a mesh cutoff, a force tolerance — and lands in the deck through `varies`
+(§ 6.2). `execution` changes how this rung *runs* — ranks, threads, the device,
+the solver — and lands in the launch, by the direct map `generator.md` § 4.3a
+states. A field that changes the answer may never appear in `execution`, and
+validation refuses one by name.
 
 ---
 
@@ -1014,9 +1023,15 @@ that omits a varied key renders with the template's value for it (§ 4).
 
 There is no separate list of promotable settings, and there must not be one: § 1.2
 already says a stage may name any field of the shared schema, and the description
-is already forbidden to hold the settings the machine answers — how many ranks,
-how many cores per rank, how much memory ([`template.md`](?doc=engines/template.md)
-§ 7). Those two rules together give the column set with nothing left to decide.
+is already forbidden to hold the settings the machine answers *as a column* —
+how many ranks, how many cores per rank, how much memory. Those two rules
+together give the column set with nothing left to decide.
+
+*(A machine-answered setting is not column material because it is not a
+per-stage **parameter**; it is what the job is launched AS, and it has its own
+block — `execution`, § 6.8d. `template.md` § 7's refusal is the **template's**
+and stays absolute; the description's own channel is a different file with a
+different job, which § 7 now says in as many words.)*
 It is the same membership `prep` already applies when it accepts or refuses an
 override, a pin, or a benchmark axis, so a column the table offers is a column
 `prep` will accept, by construction rather than by agreement.
@@ -1378,6 +1393,63 @@ numbers had no home that travelled with the calculation.
 description written before this existed still says exactly what it always
 said, byte for byte.
 
+### 6.8d `execution` — the ONE condition the run uses
+
+*(User, 2026-09-02: "run parameter is independent from bench grid or bench
+result. User can run without bench… bench and run share the same framework to
+choose/set parameters but run does not produce grid but a single user defined
+condition to run." And: "bench is bench and run is run. They are structurally
+separated in their dir and they are functionally different as the user decides
+to use either.")*
+
+```json
+"execution": { "mpi_np": 8, "omp_threads": 2, "diag_algorithm": "ELPA-2STAGE" }
+```
+
+**One value per parameter, never a list.** A list is `bench`'s shape, and a
+list here is refused by name with that said — the two blocks are the same
+vocabulary at different arity, so the arity is what tells them apart.
+
+| | | |
+|---|---|---|
+| **`bench`** | several values per axis | *measure these* → N trials, in `<stage>/bench/` |
+| **`execution`** | one value per parameter | *use this* → one run, in `<stage>/run-N/` |
+
+**Independent, and both optional.** Declare a bench and no run condition, a
+run condition and no bench, both, or neither. **A run never requires a
+benchmark** — not to have been executed, not to have been declared. The two
+lanes have separate directories (`project-layout.md` § 1.5b) because they are
+separate things, and the file says so too.
+
+**Both calculation-wide and per stage.** The top-level block is what this
+calculation runs at; a rung that wants something else says so on itself, and
+the two compose **field by field** — a stage naming only `mpi_np` keeps the
+calculation's solver and its thread count:
+
+```json
+"stages": [{ "name": "tight", "execution": { "mpi_np": 16 } }]
+```
+
+**Absent is a state, as everywhere here.** No block means the run is sized by
+`run-config.toml` if a benchmark left one, and by the wrapper's own policy if
+not — which `prep` names out loud rather than implying
+([`running-a-job.md § 3`](?doc=execution/running-a-job.md)).
+
+**Which names may appear** is the same membership `bench` uses — the
+catalogue's `execution` items — and the same split decides where each lands:
+a machine-answered item becomes the launch shape, anything else a pin over
+the template. `generator.md` § 4.3a owns how, and the answer is that the block
+is handed to the one grid enumerator as a declaration of length one, so a run
+earns the typed device ask, the `G × K` rank split, the by-name refusal and
+the queue check that a trial gets, with no translation of its own.
+
+**Why not `allocation`.** That block is what this calculation asks the
+**scheduler** for — the queue, the wall, the memory (§ 6.8a). `execution` is
+what the **job** runs as. A `--mem` and an `mpi_np` are answered by different
+things and refused by different doors, and one block holding both was tried on
+2026-09-01 and made the reader unable to say which of the two a key belonged
+to.
+
 ### 6.8 `bench` — a plan to measure, never a measurement
 
 **The problem it solves.** A calculation's resource settings — ranks, threads,
@@ -1392,18 +1464,21 @@ it belongs in the description, and nothing else in `task.json` could hold it:
 > `task.json` records what the person **asked** — points to try, or a value
 > they chose. It never records what a machine **found**.
 
-**And ONE point is a chosen value** *(user rule, 2026-08-20 — the override
-lane; extended to the machine axes 2026-09-01)*: `use_gpu: [true]` and
-`mpi_np: [8]` are both the person's answer, applied at prep for the bench's
-trials and the run alike — and **refused by name on a machine that cannot
-honor it, never clamped**, which is what keeps a declaration a *question put
-to the target* rather than a silent assumption about one.
+**And ONE point on a NON-MACHINE entry is a chosen value** *(user rule,
+2026-08-20 — the override lane)*: `use_gpu: [true]` is the person's answer,
+applied at prep as a pin over the template for the bench's trials **and the
+run alike**.
 
-**How much of the block has to be decided before a RUN takes it is
-[`generator.md § 4.3a`](?doc=execution/generator.md)'s**, and it is not
-per-axis: the machine axes resolve together into one cell, so a block with
-any of them still open is a plan to measure. This section owns what a point
-*means*; that one owns what a run *does with it*.
+**A machine-answered entry is never an answer here, at any length.**
+`mpi_np: [8]` is *measure eight* — one trial, not a decision. What the RUN
+uses is `execution`, its own block (§ 6.8d), and the two are independent: a
+grid and a decision coexist, because narrowing a row to state the run would
+destroy the plan to measure.
+
+> **This section said otherwise for one day.** On 2026-09-01 the machine axes
+> were pulled into the override lane, so a one-point `mpi_np` was read as the
+> run's shape; `execution` replaced that on 2026-09-02 and the exclusion is
+> back. `generator.md` § 4.3a carries the argument.
 
 > **The machine axes were excluded from this until 2026-09-01**, on the
 > grounds that *"use 16"* is true on one cluster where *"try 4, 8, 16"* is
@@ -1550,6 +1625,56 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 **The test:** the decks are portable — an engine with no molbuilder present runs
 them correctly. The wrappers are not, and are not meant to be: they are baked for
 a target (§ 8).
+
+### 6.9 `notify.report` — WHAT each report carries
+
+`notify` says **when** this calculation speaks (§ 6.8's neighbour: `on_scf_converged`,
+`every_hours`) and **to whom** (`channels`). `report` says **what is in the
+message**.
+
+```json
+"notify": {"every_hours": 6, "channels": ["lab"],
+           "report": ["elapsed_s", "n_iters", "energy"]}
+```
+
+**The name is not on the list, because it is not optional.** Every report
+carries the calculation's label and, when there is one, the scheduler job id —
+in the title, first. A report you cannot attribute to a job is a notification
+you have to go and look up, which is the thing a notification exists to save
+you. So the list below is *what else*, and it can be empty; it can never
+remove the name.
+
+| item | what it is |
+|---|---|
+| `elapsed_s` | wall seconds since the monitor started watching |
+| `n_iters` | SCF iterations in the current cycle |
+| `energy` | the last energy printed |
+| `geom_step` | which geometry move the relaxation is on |
+| `per_iter_s` | seconds per SCF iteration — the number that says *is this
+  going to finish* |
+
+**Absent is every item**, not none. `notify.report` omitted means the report
+carries everything the monitor could determine, which is what every
+description written before 2026-09-02 already meant and must keep meaning.
+An empty list `[]` is a real answer and a different one: *the name, the state
+and the summary line, and no field grid*.
+
+**Anything the monitor could not determine stays absent**, list or no list.
+Asking for `energy` on a run that has not printed one yields no `energy`
+field, not an empty one — § 4.1a of [`run-reports.md`](?doc=execution/run-reports.md)
+is the rule and this does not weaken it. **A list is a ceiling, never a
+floor.**
+
+**It is fixed at `prep`, not read at run time.** The selection is baked into
+the monitor's own command line by the wrapper, exactly as the cadence and the
+channel names already are (§ 8) — so what a running job reports cannot change
+under it because somebody edited `task.json` while it was queued, and the
+monitor needs no access to the description at all.
+
+**One vocabulary.** These are the report's own field names
+([`run-reports.md § 4.1a`](?doc=execution/run-reports.md)), not a second set of
+labels — so what you tick, what travels, and what a listener parses are the
+same words. A name that is not one of them is refused at save, by name.
 
 ### 7.1 The layout: portable above, machine-specific below
 

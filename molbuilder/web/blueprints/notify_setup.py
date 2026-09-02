@@ -163,19 +163,28 @@ def _row(name: str, spec: Dict[str, Any]) -> Dict[str, Any]:
     **One door out**, so no route can forget: the key never appears, and the
     address appears in full only for the kind whose address is not a secret.
 
-    The kind is DERIVED rather than stored, from the one thing that actually
-    differs: a channel with a key is a molbuilder listener (the key signs the
-    body, so the URL is only an address); a channel without one keeps its
-    credential in the URL, because a third party handed nothing but a URL has
-    nowhere else to put it (`run-reports.md` § 3).  Storing a `kind` field
-    would be a second answer to a question the file already answers, free to
-    disagree with it.
+    **The kind is the MONITOR'S**, read through :func:`channel_kind` -- the
+    same function the sender uses to choose an envelope, so what this page
+    shows is what the wire will carry.
+
+    It was derived here instead, as ``"listener" if key else "webhook"``, on
+    the reasoning that *having a key* is the one thing that differs.  That
+    was true while there were two kinds and the question was *who holds the
+    credential*.  There are three wire formats (`run-reports.md` § 4.1b), and
+    having a key cannot tell Slack from Discord -- so the page collapsed the
+    one distinction the sender cannot avoid making, and a Discord channel was
+    saved, listed and tested as though it were a Slack one.
+
+    ``has_key`` stays a field of its own, because *is a signature attached*
+    is a genuinely separate question from *what shape is the body*.
     """
+    from ...monitor import channel_kind
     has_key = bool(spec.get("key"))
     ok = spec.get("tested_ok")
+    kind = channel_kind(spec)
     return {
         "name":      name,
-        "kind":      "listener" if has_key else "webhook",
+        "kind":      kind,
         "where":     _mask(str(spec.get("url") or "")),
         "has_key":   has_key,
         "headers":   sorted(spec.get("headers") or {}),
@@ -281,6 +290,7 @@ def save_channel(name: str):
     body = request.get_json(silent=True) or {}
     url = str(body.get("url") or "").strip()
     key = str(body.get("key") or "").strip()
+    kind = str(body.get("kind") or "").strip().lower()
     if not url:
         return jsonify({"ok": False, "error": "a url is required"}), 400
     if not (url.startswith("https://") or url.startswith("http://")):
@@ -296,6 +306,25 @@ def save_channel(name: str):
     spec["url"] = url
     if key:
         spec["key"] = key
+    # WHICH WIRE FORMAT, in the file, in the monitor's own vocabulary.  The
+    # page offered "Slack or Discord" as ONE kind until 2026-09-02, which is
+    # a distinction the sender cannot avoid making: Slack renders a bare
+    # `text` and Discord refuses a body without `content` or `embeds`
+    # (`run-reports.md` § 4.1b).  A page that collapses them makes the
+    # backend guess -- and guessing from the host is the DEFAULT, not the
+    # answer, so a proxied webhook had no way to be told apart.
+    from ...monitor import _KINDS
+    if kind:
+        if kind not in _KINDS:
+            return jsonify({"ok": False,
+                            "error": f"kind must be one of "
+                                     f"{', '.join(sorted(_KINDS))}"}), 400
+        spec["kind"] = kind
+    else:
+        # Absent means "read it off the host" -- and it must CLEAR a stored
+        # one, or a channel edited from Discord to Slack would keep the old
+        # envelope with the new address.
+        spec.pop("kind", None)
     # A CHANGED ADDRESS IS AN UNTESTED ONE.  Carrying the old verdict over
     # would leave a green tick beside a channel nobody has ever reached, and
     # this page's whole claim is that the tick means something.
@@ -365,23 +394,23 @@ def test_channel(name: str):
     with nothing behind it is exactly the silent failure this area keeps
     producing.
     """
-    from ...monitor import load_channels, sign_report
+    from ...monitor import load_channels, webhook_request
     dest = load_channels().get(name)
     if not dest:
         return jsonify({"ok": False,
                         "error": f"no channel called {name!r} is set up "
                                  f"here"}), 404
-    body = json.dumps({
+    # THE MONITOR'S OWN PRODUCER, not a second one.  This function built the
+    # body and the headers itself until 2026-09-02, which made the button
+    # that exists to prove the path a DIFFERENT path -- it could pass while
+    # a real report failed, and for Discord both failed for two separate
+    # reasons the button could not have shown (`run-reports.md` § 4.1b).
+    body, headers = webhook_request(dest, {
         "event": "test",
         "text": f"a test report from molbuilder, for the channel {name!r}",
         "state": "test",
         "run": "notify-setup-test",
-    }).encode()
-    headers = {"Content-Type": "application/json", **(dest.get("headers") or {})}
-    if dest.get("key"):
-        ts = "%d" % int(time.time())
-        headers["X-Molbuilder-Timestamp"] = ts
-        headers["X-Molbuilder-Signature"] = sign_report(dest["key"], ts, body)
+    })
     req = urllib.request.Request(dest["url"], data=body, method="POST",
                                  headers=headers)
     try:

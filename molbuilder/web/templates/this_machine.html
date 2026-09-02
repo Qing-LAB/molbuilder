@@ -50,17 +50,31 @@
 
       <fieldset class="tm-field tm-kinds">
         <legend class="tm-label">Kind</legend>
-        <label class="tm-kind" for="tm-kind-webhook">
-          <input type="radio" name="tm-kind" id="tm-kind-webhook"
-                 value="webhook" checked>
-          <span>Slack or Discord webhook
+        {#- THREE, NOT TWO.  "Slack or Discord" was one option until
+            2026-09-02, and that is the one distinction the sender cannot
+            avoid making: Slack renders a bare `text`, Discord refuses a body
+            without `content` or `embeds` (`run-reports.md` § 4.1b).  The
+            value each radio carries is the MONITOR'S own kind, so the page
+            and the wire use one vocabulary. -#}
+        <label class="tm-kind" for="tm-kind-slack">
+          <input type="radio" name="tm-kind" id="tm-kind-slack"
+                 value="slack" checked>
+          <span>Slack webhook
             <span class="tm-sub-note">the address is the whole credential, so
               there is no separate key &mdash; and this page shows it back
               only masked</span></span>
         </label>
+        <label class="tm-kind" for="tm-kind-discord">
+          <input type="radio" name="tm-kind" id="tm-kind-discord"
+                 value="discord">
+          <span>Discord webhook
+            <span class="tm-sub-note">same &mdash; the address is the
+              credential. Reports arrive as an embed, coloured by state, the
+              same card Slack gets</span></span>
+        </label>
         <label class="tm-kind" for="tm-kind-listener">
           <input type="radio" name="tm-kind" id="tm-kind-listener"
-                 value="listener">
+                 value="molbuilder">
           <span>A molbuilder listener
             <span class="tm-sub-note">a plain address plus a key that signs
               each report and never travels with it</span></span>

@@ -113,7 +113,8 @@ def test_the_retired_type_is_named_nowhere_as_live():
 #: map rather than a literal so raising the count is one edit here plus one in
 #: the contract, which is exactly the pair this test exists to keep together.
 _COUNT_WORD = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
-               12: "twelve", 13: "thirteen", 14: "fourteen"}
+               12: "twelve", 13: "thirteen", 14: "fourteen",
+               15: "fifteen", 16: "sixteen"}
 
 
 def test_the_tab_count_is_stated_in_prose_and_true():

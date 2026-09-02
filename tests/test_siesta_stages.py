@@ -146,11 +146,18 @@ def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
         assert differing == set(), differing
 
 
-def test_a_stage_has_exactly_the_three_fields_of_section_2():
+def test_a_stage_has_exactly_the_four_fields_of_section_2():
     """§ 2.  Anything else a stage seemed to need turned out to belong to
-    the shared schema or to a producer's input (§ 3)."""
+    the shared schema or to a producer's input (§ 3).
+
+    `execution` joined on 2026-09-02 (§ 6.8d) and is the fourth: WHAT THIS
+    RUNG RUNS AT, where `overrides` is what it *is*.  Two maps and not one
+    because different things read them -- `overrides` reaches the deck
+    through `varies`, `execution` reaches the launch through the grid
+    enumerator -- and a field that changes the answer is refused from
+    `execution` by name."""
     assert [f.name for f in dataclasses.fields(Stage)] == [
-        "name", "enabled", "overrides"]
+        "name", "enabled", "overrides", "execution"]
 
 
 def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():

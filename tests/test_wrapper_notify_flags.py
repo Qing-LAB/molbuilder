@@ -198,6 +198,58 @@ def test_the_monitor_reads_back_what_the_wrapper_emitted(tmp_path):
         assert got == expected, (channels, line)
 
 
+def test_the_two_copies_of_the_report_vocabulary_agree():
+    """**Written twice, and it has to be.**  `task.REPORT_ITEMS` is what a
+    description is validated against; `monitor.REPORT_ITEMS` is what the
+    monitor accepts -- and `monitor.py` ships to a compute node as a
+    standalone file with no molbuilder importable, so it cannot import the
+    first.  The wire between them is `--notify-report`, and a field in one
+    list and not the other is a tick that silently never arrives
+    (`stages.md` § 6.9)."""
+    from molbuilder import monitor as M
+    from molbuilder.task import REPORT_ITEMS as FROM_TASK
+    assert tuple(M.REPORT_ITEMS) == tuple(FROM_TASK)
+    # ...and the card displays exactly those, no more and no fewer: a key in
+    # `_CARD_FIELDS` that is not a report item could never be asked for, and
+    # an item with no card row could be asked for and never shown.
+    assert tuple(k for _, k, _ in M._CARD_FIELDS) == tuple(FROM_TASK)
+
+
+def test_the_report_selection_reaches_the_monitor(tmp_path):
+    """Baked at `prep`, so a running job's format cannot change because
+    `task.json` was edited while it queued (`stages.md` § 6.9)."""
+    line = _monitor_line(tmp_path,
+                         notify_report=("elapsed_s", "energy"))
+    assert '--notify-report "elapsed_s,energy"' in line, line
+
+
+def test_an_EMPTY_report_selection_still_emits_the_flag(tmp_path):
+    """Absent is every field; `()` is the summary line alone.  Two answers,
+    so the empty one must reach the monitor as a flag rather than as
+    silence -- the same shape the channels have."""
+    assert '--notify-report ""' in _monitor_line(tmp_path, notify_report=())
+    assert "--notify-report" not in _monitor_line(tmp_path)
+
+
+def test_the_monitor_reads_back_the_report_selection(tmp_path):
+    """Two files, one command line."""
+    from molbuilder import monitor as M
+    for sel, expected in ((None, None), (("elapsed_s", "energy"),
+                                         ("elapsed_s", "energy")), ((), ())):
+        line = _monitor_line(tmp_path, notify_report=sel)
+        m = re.search(r'--notify-report "([^"]*)"', line)
+        got = M._report_from_flag(None if m is None else m.group(1))
+        assert got == expected, (sel, line)
+
+
+def test_a_report_field_that_is_not_one_is_refused_at_the_wrapper(tmp_path):
+    """`task.json` checks the names on the way in, but `Resources` can be
+    built directly -- and a field that silently never arrives is the failure
+    this whole area keeps producing."""
+    with pytest.raises(runwrap.WrapperError, match="the fields are"):
+        _monitor_line(tmp_path, notify_report=("cpu_temperature",))
+
+
 def test_a_name_that_could_not_be_shell_is_refused_at_the_wrapper(tmp_path):
     """`task.json` checks every name on the way in, but `Resources` can be
     built directly -- and this is where a name becomes SHELL.  A value that

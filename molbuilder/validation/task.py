@@ -96,6 +96,7 @@ def preflight(task, config_cls=None, *,
     # comparison the benchmark exists to make says nothing, and it says
     # nothing silently, which is why this is an error rather than a warning.
     out.extend(_bench_names_a_speed_knob(task, cls))
+    out.extend(_execution_names_a_speed_knob(task))
     out.extend(_bench_points_fit_their_items(task))
 
     # (step 2 -- the schema fingerprint -- retired 2026-08-14 with the
@@ -154,6 +155,41 @@ def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
             f"different calculation at each point and the comparison would "
             f"mean nothing. Sweepable here: {known}",
             where=f"task.bench.{name}"))
+    return out
+
+
+def _execution_names_a_speed_knob(task) -> List[Issue]:
+    """`stages.md` § 6.8d: every name in an ``execution`` block -- the
+    calculation's or a stage's -- is an `execution` catalogue item.
+
+    THE SAME MEMBERSHIP `bench` USES, asked here because the two blocks are
+    one vocabulary at two arities.  A name outside it would be carried to
+    prep and refused there, or worse, carried into a deck as a value nobody
+    can read back.
+    """
+    from ..template import catalogue, select
+    blocks = [("execution", getattr(task, "execution", None) or {})]
+    for st in (getattr(task, "stages", None) or ()):
+        if getattr(st, "execution", None):
+            blocks.append((f"stage {st.name!r} execution", dict(st.execution)))
+    if not any(b for _w, b in blocks):
+        return []
+    known = {i.name for i in select(catalogue(), engine=task.engine)
+             if "execution" in (i.category or ())}
+    out: List[Issue] = []
+    for where, block in blocks:
+        for name in sorted(block):
+            if name in known:
+                continue
+            out.append(Issue(
+                "error",
+                f"{where} names {name!r}, which is not an execution setting "
+                f"of {task.engine}.  This block says what the RUN uses -- "
+                f"ranks, threads, the device, the solver.  A physics value "
+                f"belongs in the template, and a per-stage one in that "
+                f"stage's `overrides` (engines/stages.md 6.2).  Execution "
+                f"settings here: {', '.join(sorted(known)) or '(none)'}",
+                where=f"task.{where}.{name}"))
     return out
 
 

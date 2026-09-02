@@ -830,179 +830,390 @@ def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
     assert len(seen) > 1, "all wrappers share one rank count -- the stomp"
 
 
-class TestTheDescriptionsOwnValuesReachTheLaunch:
-    """`generator.md` § 4.3a: a `bench` entry with ONE point is the value in
-    force -- for the trials and for the run alike.
+class TestTheRunsOwnCondition:
+    """`stages.md` § 6.8d — `execution` is the ONE condition a run uses, and
+    it is INDEPENDENT of `bench`.
 
-    **Driven through the CLI**, because the producer is the CLI's: `prep run`
-    asks the one grid enumerator and takes its answer when the enumeration
-    is a single cell (§ 2 -- a run is a sweep of length one). A test that
-    called `prep_calculation` directly would pass with the shape never
-    computed at all, which is exactly what a second translation in `prep`
-    did until 2026-09-01 -- it got the GPU type wrong, the CPU gating wrong,
-    and never knew about the G x K rank split, and no test noticed because
-    every test drove the copy.
+    *(user, 2026-09-02: "run parameter is independent from bench grid or bench
+    result.  User can run without bench… bench and run share the same
+    framework to choose/set parameters but run does not produce grid but a
+    single user defined condition to run."  And: "bench is bench and run is
+    run.  They are structurally separated in their dir and they are
+    functionally different as the user decides to use either.")*
+
+    A design that made a one-point `bench` row the run's shape shipped on
+    2026-09-01 and was wrong for one reason that no test then covered: it
+    made the two share a block, so `{mpi_np: [4, 8, 16]}` could not coexist
+    with *"run at 8"* — narrowing the row to say what the run uses DESTROYS
+    the plan to measure.  The first test here is that case.
+
+    Driven through the CLI, because the producer is the CLI's.
     """
 
-    @staticmethod
-    def _describe(calc, **chosen):
-        """Each knob at ONE point -- which is what makes it a decision
-        rather than a one-item list to measure."""
-        doc = json.loads((calc / "task.json").read_text())
-        doc["allocation"] = {"time": "0-01:00:00"}
-        doc["bench"] = {k: [v] for k, v in chosen.items()}
-        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+    BENCH = {"mpi_np": [4, 8, 16], "omp_threads": [1, 2]}
 
     @staticmethod
-    def _run(calc, *extra):
+    def _write(calc, **doc):
+        d = json.loads((calc / "task.json").read_text())
+        d["allocation"] = {"time": "0-01:00:00"}
+        d.update(doc)
+        (calc / "task.json").write_text(json.dumps(d, indent=2))
+
+    @staticmethod
+    def _run(calc, stage="coarse", *extra):
+        """Prep one stage's run and return THAT stage's job.
+
+        The root plan MERGES across stages (`test_prep_run_of_a_second_stage_
+        merges_the_root_plan`), so `jobs[0]` is whichever stage was prepped
+        first -- which is how a per-stage assertion silently reads the
+        previous rung's numbers."""
         from click.testing import CliRunner
 
         from molbuilder.jobset._cli import jobset_group
         r = CliRunner().invoke(jobset_group,
-                               ["prep", "run", "coarse", "--bundle",
-                                str(calc), "--no-sbatch", *extra])
+                               ["prep", "run", stage, "--bundle", str(calc),
+                                "--no-sbatch", *extra])
         assert r.exit_code == 0, r.output
-        return json.loads((calc / "job-set.json").read_text())["jobs"][0]
+        jobs = json.loads((calc / "job-set.json").read_text())["jobs"]
+        mine = [j for j in jobs if stage in j["name"]]
+        assert len(mine) == 1, [j["name"] for j in jobs]
+        return mine[0]
 
-    def test_the_whole_shape_reaches_the_job(self, calc):
-        """Ranks, cores per rank AND the device ask, in one go -- the fixture
-        is a GPU description, so the enumerator resolves the CPU/GPU family
-        from it and the device ask carries the TYPE the target records."""
-        self._describe(calc, mpi_np=2, omp_threads=2, gpu_count=1,
-                       use_gpu=True)
+    def test_a_grid_and_a_run_condition_COEXIST(self, calc):
+        """The case the conflated design could not express at all."""
+        self._write(calc, bench=self.BENCH,
+                    execution={"mpi_np": 2, "omp_threads": 2})
         r = self._run(calc)["resources"]
-        assert r["mpi_np"] == 2
-        assert r["cpus_per_task"] == 2
-        # TYPED, from the machine's own record -- never invented here and
-        # never named by the description (`template.md` § 7).
+        assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
+        # AND THE PLAN TO MEASURE SURVIVES, byte for byte
+        assert json.loads((calc / "task.json").read_text())["bench"] \
+            == self.BENCH
+
+    def test_a_run_needs_no_bench_at_all(self, calc):
+        """*"User can run without bench."*  Not executed, not summarized,
+        not even declared."""
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2})
+        assert "bench" not in json.loads((calc / "task.json").read_text())
+        r = self._run(calc)["resources"]
+        assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
+
+    def test_a_bench_alone_sizes_no_run(self, calc):
+        """The other half of the separation: a grid is a plan to measure and
+        says nothing about the run, whatever its arity.  With no condition
+        the run falls to `run-config.toml` and then the wrapper's policy,
+        which `prep` names out loud."""
+        for bench in (self.BENCH, {"mpi_np": [8], "omp_threads": [2]}):
+            self._write(calc, bench=bench)
+            (calc / "task.json").write_text(
+                json.dumps({k: v for k, v in
+                            json.loads((calc / "task.json").read_text()).items()
+                            if k != "execution"}, indent=2))
+            r = self._run(calc)["resources"]
+            assert r.get("mpi_np") is None, (bench, r)
+
+    def test_a_stage_lays_its_own_over_the_calculations(self, calc):
+        """Both scopes, FIELD BY FIELD: a rung naming only `mpi_np` keeps the
+        calculation's thread count."""
+        d = json.loads((calc / "task.json").read_text())
+        stages = [dict(s) for s in d["stages"]]
+        stages[0]["execution"] = {"mpi_np": 2}
+        self._write(calc, execution={"mpi_np": 1, "omp_threads": 2},
+                    stages=stages)
+        first = self._run(calc, stages[0]["name"])["resources"]
+        assert (first["mpi_np"], first["cpus_per_task"]) == (2, 2)
+        second = self._run(calc, stages[1]["name"])["resources"]
+        assert (second["mpi_np"], second["cpus_per_task"]) == (1, 2)
+
+    def test_the_whole_condition_reaches_the_launch_and_the_deck(self, calc):
+        """One block, two destinations, split by the catalogue's own answer:
+        machine items become the launch shape, the rest pin the template."""
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "gpu_count": 1, "use_gpu": True,
+                                     "diag_algorithm": "ELPA-2STAGE"})
+        job = self._run(calc)
+        r = job["resources"]
+        assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
+        # TYPED, from the machine's record -- never named by the description
         assert r["gres"] == "gpu:a100:1", r["gres"]
+        deck = next((calc / "01_coarse").glob("*.fdf")).read_text()
+        assert "Diag.Algorithm     ELPA-2STAGE" in deck
 
-    def test_a_CPU_run_gets_no_device_ask(self, calc):
-        """The gating the enumerator does by construction: G=0 is the CPU
-        family and its translation emits no `gres` at all.  A hand-written
-        name map got this wrong -- `gpu_count` became `gpu:2` on a run that
-        would never touch a device."""
-        self._describe(calc, mpi_np=2, omp_threads=2, use_gpu=False)
+    def test_a_device_count_survives_when_use_gpu_is_only_in_the_TEMPLATE(
+            self, calc):
+        """The ordinary GPU description: the template says `use_gpu = true`
+        and the condition names only how many devices.
+
+        `declared_run_shape` asked the shipped CATALOGUE whether this was GPU
+        work, and the catalogue's `use_gpu` value is `false` -- so the test
+        was a constant and the typed `gpu_count` was SILENTLY DELETED unless
+        the condition also spelled `use_gpu`.  `run_uses_device` reads the
+        calculation's own template, which is what `_bench_inputs` always
+        did."""
+        from molbuilder.jobset._cli import run_uses_device
+        from molbuilder.task import read_task
+
+        # the `calc` fixture's template carries use_gpu = True
+        self._write(calc, execution={"mpi_np": 2, "gpu_count": 1})
+        t = read_task(calc / "task.json")
+        assert run_uses_device(calc, t, "coarse") is True
+        r = self._run(calc)["resources"]
+        assert r["gres"] == "gpu:a100:1", (
+            "a typed device count was dropped: " + repr(r.get("gres")))
+
+    def test_a_CPU_condition_gets_no_device_ask(self, calc):
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "use_gpu": False})
+        assert self._run(calc)["resources"].get("gres") is None
+
+    def test_the_condition_outranks_the_machines_verdict(self, calc):
+        """`generator.md` § 10.0: the person's ask beats the machine's
+        finding, in both ladders where they meet.
+
+        `run-config.toml` is a RECOMMENDATION `summarize` wrote and is yours
+        to edit or delete; `execution` is what a person typed into the file
+        that records asks.  A verdict quietly overriding a typed condition is
+        the concealment this whole round exists to end -- and the assembly
+        got it backwards until the diagram was drawn (2026-09-02), because
+        the verdict was folded first and `execution` only filled what was
+        left.
+        """
+        from molbuilder.jobset.materialize import bench_container
+        from molbuilder.jobset.prep import token_for
+        from molbuilder.jobset.shape import Shape
+        from molbuilder.task import read_task
+
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "use_gpu": False})
+        t = read_task(calc / "task.json")
+        cont = calc / bench_container(Shape.named(t.shape),
+                                      token_for(t, "coarse"))
+        cont.mkdir(parents=True, exist_ok=True)
+        # A verdict that disagrees with the condition, in every field
+        (cont / "run-config.toml").write_text(
+            'schema = "molbuilder/run-config@1"\n'
+            "[resources]\nmpi_np = 4\ncpus_per_task = 1\n")
+        r = self._run(calc)["resources"]
+        assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2), (
+            "the machine's verdict overrode what the person asked for")
+
+    def test_the_calculations_wall_and_memory_outrank_the_verdict(self, calc):
+        """`architecture.md` § 5.2's scheduler ladder is
+        `unstated < allocation < flag` -- there is NO verdict rung, because
+        `summarize` stopped proposing a wall and a memory on 2026-08-24:
+        "the two asks stay the person's".
+
+        The reader stayed wider than the writer, and the fold ran after it,
+        so a hand-edited `run-config.toml` silently beat the description --
+        over exactly the two fields whose absence killed five Sol jobs
+        (62039301-05)."""
+        from molbuilder.jobset.materialize import bench_container
+        from molbuilder.jobset.prep import token_for
+        from molbuilder.jobset.shape import Shape
+        from molbuilder.task import read_task
+
+        d = json.loads((calc / "task.json").read_text())
+        d["allocation"] = {"time": "2-00:00:00", "mem": "256G"}
+        d["execution"] = {"mpi_np": 2, "use_gpu": False}
+        (calc / "task.json").write_text(json.dumps(d, indent=2))
+        t = read_task(calc / "task.json")
+        cont = calc / bench_container(Shape.named(t.shape),
+                                      token_for(t, "coarse"))
+        cont.mkdir(parents=True, exist_ok=True)
+        (cont / "run-config.toml").write_text(
+            'schema = "molbuilder/run-config@1"\n'
+            '[resources]\nmem = "128G"\ntime = "0-00:10:00"\n')
+        r = self._run(calc)["resources"]
+        assert r["mem"] == "256G", "the verdict overrode the person's memory ask"
+        assert r["time"] == "2-00:00:00", "…and the wall"
+
+    def test_the_verdict_still_fills_what_nobody_stated(self, calc):
+        """The other side: a recommendation is not ignored, it is UNDER the
+        ask.  With no condition it answers, exactly as before."""
+        from molbuilder.jobset.materialize import bench_container
+        from molbuilder.jobset.prep import token_for
+        from molbuilder.jobset.shape import Shape
+        from molbuilder.task import read_task
+
+        self._write(calc)
+        d = json.loads((calc / "task.json").read_text())
+        d.pop("execution", None)
+        (calc / "task.json").write_text(json.dumps(d, indent=2))
+        t = read_task(calc / "task.json")
+        cont = calc / bench_container(Shape.named(t.shape),
+                                      token_for(t, "coarse"))
+        cont.mkdir(parents=True, exist_ok=True)
+        (cont / "run-config.toml").write_text(
+            'schema = "molbuilder/run-config@1"\n'
+            "[resources]\nmpi_np = 2\ncpus_per_task = 2\n")
+        r = self._run(calc)["resources"]
+        assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
+
+    def test_a_surface_with_no_flags_passes_an_EMPTY_ask(self, calc):
+        """§ 6.0a's contract, and the crash it was written after.
+
+        The browser has no flags, so it hands the assembly nothing -- and
+        `None` is not nothing, it is the absence of the object the verdict is
+        folded UNDER field by field.  The tab's prep button died with
+        ``'NoneType' object has no attribute 'mpi_np'`` on 2026-09-02 for
+        exactly this."""
+        from molbuilder.jobset._cli import prep_run_inputs
+        from molbuilder.jobset.model import Resources
+        from molbuilder.task import read_task
+
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "use_gpu": False})
+        task = read_task(calc / "task.json")
+        for ask in (None, Resources()):
+            alloc, _pins, chosen = prep_run_inputs(
+                calc, None, task, "coarse", ask)
+            assert isinstance(alloc, Resources), ask
+            assert alloc.mpi_np == 2 and alloc.cpus_per_task == 2
+            assert chosen["mpi_np"] == 2
+
+    def test_a_flag_still_wins_field_by_field(self, calc):
+        """`generator.md` § 4.3a: template < a bench pin < run-config <
+        `execution` < a flag.  A person typing a number now is answering
+        about now -- and must not erase the device ask nobody mentioned."""
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "gpu_count": 1, "use_gpu": True})
+        r = self._run(calc, "coarse", "--cpus-per-task", "16")["resources"]
+        assert r["cpus_per_task"] == 16, "the flag lost to the description"
+        assert r["gres"] == "gpu:a100:1", "the flag erased the device ask"
+
+    def test_prep_writes_a_big_ask_and_does_not_second_guess_it(self, calc):
+        """`generator.md` § 4.3a: an over-large condition is refused where
+        every other over-large ask is -- at `launch`, by the admission door,
+        which is the one floor that knows what a queue takes.
+
+        `prep` writes what you asked for, exactly as it does for `--np 999`.
+        It refused here for one afternoon on 2026-09-02, because the run's
+        shape was being produced BY the sweep's enumerator, whose job is to
+        cross out cells -- so a run inherited a bench's verdict on its own
+        numbers, in the bench's words ("no bench cell survived"), for a legal
+        `max_memory_mb` among others."""
+        self._write(calc, execution={"mpi_np": 64, "omp_threads": 8,
+                                     "use_gpu": False})
+        r = self._run(calc)["resources"]
+        assert (r["mpi_np"], r["cpus_per_task"]) == (64, 8), (
+            "prep second-guessed a number it was handed")
+
+    def test_every_machine_item_is_carried_not_just_the_grids_three(self, calc):
+        """The sweep resolves `mpi_np`, `omp_threads` and `gpu_count` and
+        refuses anything else as an axis it does not know.  A CONDITION is not
+        a sweep: every machine-answered catalogue item with a `Resources`
+        field is carried, `max_memory_mb` among them -- it is settable as
+        `--max-memory-mb`, so a description may say it too."""
+        self._write(calc, execution={"mpi_np": 2, "max_memory_mb": 4000,
+                                     "use_gpu": False})
         r = self._run(calc)["resources"]
         assert r["mpi_np"] == 2
-        assert r.get("gres") is None, r.get("gres")
+        assert r["max_memory_mb"] == 4000
 
-    def test_several_points_is_a_QUESTION_and_asks_for_nothing(self, calc):
-        """The other half of the rule: three points is *measure these*, so
-        the enumeration is not one cell and the run takes nothing from it.
-        A fold that read any `bench` entry would launch at whichever point
-        sorted first -- a number nobody chose."""
-        self._describe(calc, use_gpu=False)
-        doc = json.loads((calc / "task.json").read_text())
-        doc["bench"]["mpi_np"] = [2, 4, 8]
-        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+    def test_an_unstated_field_is_left_for_the_wrapper(self, calc):
+        """`architecture.md` § 5.2 track B: an unnamed machine item is not a
+        gap to fill.  It is answered by `run-config.toml` if a benchmark left
+        one and by the wrapper's own chain at run time if not, so prep must
+        write NOTHING for it.
+
+        Routed through the enumerator, `{omp_threads: 4}` came back as
+        `mpi_np=1` -- a single-rank job nobody asked for, from a default a
+        grid needs and a condition does not."""
+        self._write(calc, execution={"omp_threads": 4, "use_gpu": False})
         r = self._run(calc)["resources"]
+        assert r["cpus_per_task"] == 4
         assert r.get("mpi_np") is None, (
-            "a three-point axis sized the run -- it is a question, not an ask")
+            "prep invented a rank count the description never named")
 
-    def test_a_DECIDED_shape_the_machine_cannot_hold_refuses(self, calc):
-        """Silently running at the wrapper's default is the concealment this
-        channel exists to end, so a decision that does not fit is a refusal
-        with the numbers in it -- not a smaller job nobody asked for."""
-        from click.testing import CliRunner
+    def test_an_unstated_rank_count_asks_for_the_TARGETS_machine(self, calc):
+        """*(user, 2026-09-02: "is it possible to let the default mpi core be
+        max core number for any cases when it is not set… having it be 1 core
+        would be an overlook")*
 
-        from molbuilder.jobset._cli import jobset_group
-        self._describe(calc, mpi_np=64, omp_threads=8, use_gpu=False)
-        r = CliRunner().invoke(jobset_group,
-                               ["prep", "run", "coarse", "--bundle",
-                                str(calc), "--no-sbatch"])
-        assert r.exit_code != 0, r.output
-        assert "64" in r.output, r.output
+        Two things were wrong and they compounded. The `.sbatch` header
+        floored at ``-n 1`` when nothing stated a rank count — and under
+        sbatch the wrapper reads ``SLURM_NTASKS`` from that very header, so a
+        64-core node ran the job on ONE rank and the wrapper's own auto path
+        never got a chance. Meanwhile that auto path read
+        `physical_core_count()` — the machine doing the PREP, not the one
+        that will run it.
 
-    def test_a_bench_it_cannot_run_HERE_still_runs(self, calc):
-        """The other side of that: a QUESTION whose cells do not fit this
-        box is not a decision, so a plain run is unaffected and takes the
-        wrapper's own policy, exactly as an undeclared description does."""
-        self._describe(calc, use_gpu=False)
-        doc = json.loads((calc / "task.json").read_text())
-        doc["bench"]["mpi_np"] = [64, 128]
-        (calc / "task.json").write_text(json.dumps(doc, indent=2))
-        r = self._run(calc)["resources"]
-        assert r.get("mpi_np") is None
+        Both now come from `auto_ranks(machine_record, n_atoms)`: the
+        target's own record, clamped to the atom count because
+        ``mpi_np > n_atoms`` aborts SIESTA at ``propor IMAX=0``. The header
+        and the wrapper therefore agree by construction (rule A9).
+        """
+        import re
 
-    def test_a_PARTLY_decided_declaration_decides_nothing(self, calc):
-        """`generator.md` § 4.3a: the machine axes are not independent knobs
-        -- `G x K` is the rank count and the device ask rides the family, so
-        the enumerator resolves them together into ONE cell or not at all.
+        from molbuilder.runwrap import auto_ranks, header_ntasks
 
-        Ranks fixed while cores vary is a plan to MEASURE, and running one of
-        the two configurations you asked to compare, picked arbitrarily,
-        would be worse than running neither."""
-        self._describe(calc, use_gpu=False)
-        doc = json.loads((calc / "task.json").read_text())
-        doc["bench"] = {"mpi_np": [2], "omp_threads": [1, 2],
-                        "use_gpu": [False]}
-        (calc / "task.json").write_text(json.dumps(doc, indent=2))
-        r = self._run(calc)["resources"]
-        assert r.get("mpi_np") is None and r.get("cpus_per_task") is None, r
+        # the fixture's record: 1 socket x 4 cores, and H2 -> 2 atoms
+        assert auto_ranks(None) is None, "no record, no invented number"
+        self._write(calc)
+        d = json.loads((calc / "task.json").read_text())
+        d.pop("execution", None)
+        (calc / "task.json").write_text(json.dumps(d, indent=2))
+        self._run(calc)
+        w = next((calc / "01_coarse").glob("*.run.sh")).read_text()
+        baked = {int(v) for v in re.findall(r"^\s*_mpi_np_default=(\d+)$",
+                                            w, re.M)}
+        assert baked and max(baked) <= 4, (
+            "the wrapper baked more ranks than the target has cores: " 
+            + repr(baked))
+        assert "the selected target/domain's cores" in w, (
+            "the wrapper still names the PREP machine's core count")
 
-    def test_a_VALUE_axis_makes_it_a_question_too(self, calc):
-        """The second guard, and the only case that reaches it: every rank
-        axis decided while a VALUE axis stays open.
+    def test_nothing_to_go_on_REFUSES_rather_than_guessing(self):
+        """*(user, 2026-09-02: "environment.json should be available, if not,
+        the user is required to do that. otherwise it's all blind.")*
 
-        `use_gpu: [false, true]` enumerates the machine grid once per family
-        (`generator.md` § 4.3a), so the declaration passes the all-decided
-        check and the ENUMERATION still comes back with more than one cell.
-        Two families is two different machines to run on; picking one would
-        be the arbitrary choice the whole channel exists to prevent."""
-        self._describe(calc, use_gpu=False)
-        doc = json.loads((calc / "task.json").read_text())
-        doc["bench"] = {"mpi_np": [2], "omp_threads": [2],
-                        "use_gpu": [False, True]}
-        (calc / "task.json").write_text(json.dumps(doc, indent=2))
-        r = self._run(calc)["resources"]
-        assert r.get("mpi_np") is None, (
-            "one family of a two-family enumeration sized the run")
-        assert r.get("gres") is None, r.get("gres")
+        The two silent answers were a header that floors at ``-n 1`` and a
+        default read off whichever box ran `prep`.  Both look like a value
+        and neither is about the machine that will run the job, so the
+        producer returns nothing and the caller refuses by name."""
+        from molbuilder.runwrap import header_ntasks
+        assert header_ntasks(8, auto=64)[0] == 8, "a stated value still wins"
+        assert header_ntasks(None, auto=64)[0] == 64
+        n, why = header_ntasks(None, auto=None)
+        assert n is None, "a rank count was invented with nothing to go on"
+        assert "probe" in why and "state one" in why, why
+
+    def test_a_domain_wider_than_the_probe_node_is_what_is_asked_for(self):
+        """`auto_ranks` reads the SELECTED domain first: a queue's width is
+        not the login node's, and `admit._widest_node` is the one reader of
+        "cores of the largest machine in this row"."""
+        import types
+
+        from molbuilder.runwrap import auto_ranks
+        from molbuilder.scheduler.record import Domain
+        rec = types.SimpleNamespace(
+            domains=[Domain(name="public", partition="public", qos="public",
+                            max_cores=128)],
+            topology=types.SimpleNamespace(sockets=1, cores_per_socket=8))
+        assert auto_ranks(rec, None, "public") == 128
+        assert auto_ranks(rec, None, None) == 8, "no domain -> the topology"
+        assert auto_ranks(rec, 4, "public") == 4, "clamped to the atoms"
 
     def test_which_machine_is_a_REFUSAL_not_a_traceback(self, calc):
-        """`workflow.md` § 9: a gate refuses with the reason.
-
-        Asking the enumerator reaches `_environment_for`, so an unnamed
-        target on a machine holding several records raises the same
-        which-machine question the bench arm catches -- and it was caught
-        there on 2026-08-28 precisely because it had leaked a traceback.
-        The run arm now reaches the same code and needs the same catch."""
-        import json as _json
+        """`workflow.md` § 9.  Resolving the condition reaches
+        `_environment_for`, so it meets the same which-machine question the
+        bench arm catches -- caught there on 2026-08-28 after it leaked a
+        traceback, and the run arm now makes the same call."""
         from click.testing import CliRunner
 
         from molbuilder.jobset._cli import jobset_group
-        self._describe(calc, mpi_np=2, omp_threads=2, use_gpu=False)
-        # A NAMED RECORD AND NO SNAPSHOT is what makes the question real
-        # (`record.machine_for`: "this machine" is always a candidate, so any
-        # named record makes it ambiguous).  The sandbox fixture points HOME
-        # at a temp dir, so this writes into that run's own records dir.
         from molbuilder.scheduler.record import environments_dir
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "use_gpu": False})
         (calc / "environment.json").unlink()
-        d = environments_dir()
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "alpha.json").write_text(_json.dumps(
+        d = environments_dir(); d.mkdir(parents=True, exist_ok=True)
+        (d / "alpha.json").write_text(json.dumps(
             {"schema": "molbuilder/environment@1", "scheduler": "slurm"}))
         r = CliRunner().invoke(jobset_group,
                                ["prep", "run", "coarse", "--bundle",
                                 str(calc), "--no-sbatch"])
-        # HANDLED BY CLICK, not escaped: an `AmbiguousTarget` reaching the
-        # runner uncaught is exactly the traceback this guards against, and
-        # `CliRunner` reports that as the exception rather than as output.
         assert isinstance(r.exception, SystemExit), (
             f"{type(r.exception).__name__} escaped: {r.exception!r}")
-        assert "several machines could be meant" in r.output, r.output
-        assert "--target" in r.output
-
-    def test_a_flag_still_wins_field_by_field(self, calc):
-        """§ 4.3a's precedence at its first seam: a person typing a number
-        now is answering about now -- and it must not erase the device ask
-        nobody mentioned."""
-        self._describe(calc, mpi_np=2, omp_threads=2, gpu_count=1,
-                       use_gpu=True)
-        r = self._run(calc, "--cpus-per-task", "16")["resources"]
-        assert r["cpus_per_task"] == 16, "the flag lost to the description"
-        assert r["gres"] == "gpu:a100:1", "the flag erased the device ask"
+        assert "several machines could be meant" in r.output
 
 
 def test_stage_plan_records_the_config_provenance(calc):

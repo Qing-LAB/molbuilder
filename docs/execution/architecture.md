@@ -84,7 +84,7 @@ with more than one element.** No axis is a fork.
 
 **And one property makes it flexible: the contract stays small, and the
 directory structure carries the variety.** Two reasons for a directory — the
-science changed, or you continued (`project-layout.md § 1.5a`) — is the whole
+science changed, or you continued (`project-layout.md § 1.5b`) — is the whole
 rule, and you can read a folder and know what happened without opening a file.
 
 > **The failure this is written against** is the one that shows up in every
@@ -216,7 +216,7 @@ note records the deletion.)*
 | **4** | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `decode_run_dir` | — | write anything |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
 **The rule that makes it a layering:** *a floor may call down and return up; it
 may never reach across.* Floor 5 deciding a rank count that floor 3 already
@@ -522,6 +522,181 @@ read here at all*, the other *is this a sound calculation*. They are ordered, so
 a description aimed at an engine this backend does not have never receives a
 lecture about its mesh cutoff first.
 
+### 5.2 Where a VALUE is fixed — the four ladders
+
+§ 5 orders the *decisions*. This orders the **values**, because *"where does
+this number come from?"* is the question a person actually asks, and it has
+one answer only if nothing appears in two ladders.
+
+```mermaid
+flowchart TB
+    subgraph SURF["floor 7 · surfaces — collect what the person said, compose nothing"]
+        direction LR
+        CLI["<b>CLI</b><br/>flags: --np --omp --gpus<br/>--domain --time --mem"]
+        WEB["<b>Task-setup tab</b><br/>edits floor 2;<br/>presses prep with an EMPTY ask"]
+    end
+    subgraph DESC["floor 2 · description — portable, names no machine"]
+        direction LR
+        TMPL["<b>&lt;label&gt;.template.toml</b><br/>every parameter, with its value"]
+        TASK["<b>task.json</b><br/><code>stages[].overrides</code> · <code>bench</code><br/><code>execution</code> · <code>allocation</code>"]
+    end
+    subgraph MACH["floor 1 · machine — measured, never in the description"]
+        ENV["<b>environment.json</b> · <b>molbuilder.json</b>"]
+    end
+    VERD["<b>&lt;stage&gt;/bench/run-config.toml</b><br/>what the machine FOUND — yours to edit or delete"]
+    ASM["<b>the assembly</b><br/>composes the declared sources in order<br/>→ (allocation, pins, chosen)"]
+    RES["<b>floor 3 · resolve()</b> → ParameterSet"]
+    OUT["<b>the deck</b> · <b>the wrapper</b> · <b>the .sbatch</b>"]
+    WEB -->|edits| TASK
+    CLI --> ASM
+    WEB --> ASM
+    TASK --> ASM
+    VERD --> ASM
+    ENV --> ASM
+    ASM --> RES
+    TMPL --> RES
+    TASK --> RES
+    ENV --> RES
+    RES --> OUT
+```
+
+#### The full chain, for ONE parameter, birth to artifact
+
+**Every parameter already has a value** — that is the premise, and it is the
+catalogue's doing. The only exceptions are the four the catalogue declares
+**valueless** (`template.md` § 6.4), and they are valueless because floor 2
+may not assert a machine's number. So there are exactly two tracks:
+
+```mermaid
+flowchart TB
+    CAT["<b>the catalogue</b><br/>every parameter: type · range · unit · default"]
+
+    subgraph VAL["track A — a VALUED parameter (mesh_cutoff, diag_algorithm, basis…)"]
+        direction TB
+        A1["<b>1 · describe</b><br/>writes <code>&lt;label&gt;.template.toml</code><br/><i>the value, from the Structure-optimization UI or the default</i>"]
+        A2["<b>2 · task.json</b><br/><code>varies</code> promotes it · <code>stages[i].overrides</code> sets this rung's"]
+        A3["<b>3 · a pin at prep</b><br/>a one-point <code>bench</code> entry · <code>run-config.toml</code> <code>[pins]</code> · <code>execution</code>"]
+        A1 --> A2 --> A3
+    end
+
+    subgraph MACH["track B — a VALUELESS parameter (mpi_np · omp_threads · gpu_count · max_memory_mb)"]
+        direction TB
+        B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
+        B2["<b>2 · task.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
+        B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>run-config.toml</code> <code>[resources]</code> fills what neither<br/>a flag nor <code>execution</code> stated"]
+        B4["<b>3b · still nothing?</b> — <code>auto_ranks</code><br/>the selected DOMAIN's widest node,<br/>else the TARGET's topology, clamped to n_atoms<br/><b>never this box · no record ⇒ REFUSE</b>"]
+        B1 --> B2 --> B3 --> B4
+    end
+
+    RES["<b>4 · resolve()</b> — floor 3<br/>template ⊕ overrides ⊕ pins ⊕ allocation → <b>ParameterSet</b>"]
+    DECK["<b>5 · the deck</b><br/>records the rank count it assumed"]
+    SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← <code>header_ntasks</code>"]
+    WRAP["<b>5 · the wrapper</b><br/><code>_mpi_np_default=</code> ← the same two producers"]
+    RUN["<b>6 · run time</b>, inside the wrapper<br/><code>-np flag &gt; MB_NP &gt; SLURM_NTASKS &gt; PBS_NP &gt; the baked default</code><br/><i>and SLURM_NTASKS is what step 5's header asked for</i>"]
+    CARD["<b>A13 · the run card</b><br/>shows the EMITTED value + its source,<br/>through those same producers"]
+
+    CAT --> A1
+    CAT --> B1
+    A3 --> RES
+    B3 --> RES
+    B4 --> SB
+    B4 --> WRAP
+    RES --> DECK
+    RES --> SB
+    RES --> WRAP
+    SB --> RUN
+    WRAP --> RUN
+    B4 -.-> CARD
+    SB -.-> CARD
+```
+
+**Read the two tracks and the confusion goes away:**
+
+- **Track A never reaches step 6.** A mesh cutoff is fixed by step 4 and
+  written into the deck; no run-time chain touches it. *"What if nobody set
+  it?"* cannot arise — the template holds a value for every one.
+- **Track B is the only place an unstated value exists**, and step 3b is what
+  answers it — from the **selected domain**'s widest node, else the target's
+  topology, clamped to the atom count. Never from the box running `prep`, and
+  **never invented**: a record that carries no core count is a refusal, not a
+  fallback, because a number taken from the wrong machine looks exactly like
+  a right one.
+- **Step 5's two artifacts share step 3b's producers**, which is why the
+  `.sbatch` header and the wrapper's baked default agree (A9). They did not
+  until 2026-09-02: the header floored at `-n 1` while the wrapper read this
+  box's core count — and since step 6 reads `SLURM_NTASKS` *from that header*,
+  a 64-core node ran the job on one rank.
+
+> **This is why nothing at prep may invent a track-B value.** An unstated
+> `mpi_np` is already answered — twice over, by `run-config.toml` if a
+> benchmark left one and by the wrapper if not. A layer that fills it in
+> *"because it must be decided"* overwrites both. That is the defect the run
+> lane had for one afternoon on 2026-09-02: routed through the sweep's
+> enumerator, `{omp_threads: 4}` came back as a **single-rank job** — the
+> enumerator's `mpi_np or [1]`, an axis a grid must have and a condition need
+> not. The fix was to stop working anything out: map the names, write the
+> values, and let steps 3 and 6 do what they already did.
+
+#### A run shows its END POINT, never its inputs
+
+*(User, 2026-09-02: "for run, we cannot have surprises, because this is a long
+task and it is unclear until the task finishes. Any implicit discrepancy would
+be a disastrous surprise. I suggest for the run card/result, we need to always
+explicitly show what would be the end point emitted parameter that at the
+execution time used.")*
+
+> **A13 — the run's surface shows the EMITTED value and its source, for every
+> launch parameter, resolved by the same code that emits it.** Not what you
+> typed; not what the description holds; **what the `.sbatch` will carry and
+> what the wrapper will use.**
+
+**Why a run and not a bench.** A benchmark is short by construction and its
+answer is the comparison — a trial that ran at the wrong width is a data point
+you discard. A run is hours or days, and a wrong width is discovered when it
+finishes. So the two surfaces owe different things: the measure card shows
+*what will be tried*, and the run card shows *what will be executed*.
+
+**The surprise this exists to stop, verified 2026-09-02.** A description that
+states no `mpi_np` emits `#SBATCH -n 1` — a header floor in
+`runwrap._render_sbatch_for` — so on a 64-core node the job runs on **one
+rank**. Nothing anywhere said so: the card showed an empty field, the
+description held nothing, and the number appeared two layers below both. Track
+B's chain (above) is correct and complete, and it is still invisible unless a
+surface reads it back out.
+
+**So the card reads the chain back**, per parameter: the value, and which rung
+of § 5.2's ladder supplied it — *you*, `run-config.toml`, a flag, the header
+floor, or the wrapper at run time. A field left blank is not shown blank; it
+is shown as **what blank resolves to**.
+
+**And it is resolved by the emitter, not re-derived.** A13 is A12 applied to
+display: a surface that computed the emitted value itself would be a second
+implementation of the thing it is reporting, and would agree with the
+`.sbatch` only until one of them changed.
+
+**Four kinds, four ladders, weakest first — and no value is in two of them:**
+
+| kind | example | weakest → strongest |
+|---|---|---|
+| **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` |
+| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → a one-point `bench` pin → `run-config.toml`'s `[pins]` → **`execution`** |
+| **launch shape** | `mpi_np` · `omp_threads` · `gpu_count` | the wrapper's runtime policy → `run-config.toml`'s `[resources]` → **`execution`** → a `prep` **flag** |
+| **scheduler ask** | `domain` · `time` · `mem` | unstated (the queue's own ceiling) → `allocation` → a `prep` **flag** |
+
+**The person's ask outranks the machine's finding**, in both ladders where the
+two meet. `run-config.toml` is a *recommendation* `summarize` wrote and is
+yours to edit or delete; `execution` is what a person typed into the file that
+records asks. So the verdict fills only what **neither** the flags **nor** the
+condition stated. *(The code had this backwards until the diagram above was
+drawn, 2026-09-02 — the verdict was folded first and `execution` got the
+remainder. Nothing in the prose was wrong; nothing in the prose was a picture
+either.)*
+
+**Where the UI enters, and it is only two places** — which is § 5's *"the
+browser lives in rows 3–5 only"*, restated as values: it **edits floor 2**,
+and it **presses prep with an empty ask**, having no flags. Everything between
+is the same code the command line runs (A12).
+
 ### 5.1 How the chain and the floors line up
 
 They are not a re-labelling of each other — the chain spans domains the floors
@@ -597,6 +772,8 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
 | **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | `test_architecture_rules` — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
+| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing | `test_bench_grid_card` — the browser's prep door must call `prep_run_inputs` and must call none of the pieces it is made of |
+| **A13** | **a run shows its end point.** Every launch parameter the run will be executed with is displayed with its value and its source, resolved by the emitter — never re-derived by the surface, and never left blank when blank resolves to a number | `test_task_setup_tab` — the run card renders an emitted value for every launch parameter, including the ones the description does not state |
 
 > **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
 > who may build an object, who may import whom, who may take one apart — and no
@@ -629,6 +806,31 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > spellings each name their anchor (`job-contracts.md` § 2.5), and a miss is
 > reported against the one anchor the spelling asked for.
 >
+> **A12 is A4 widened from objects to ROUTES.** A4 says each object in § 3
+> has one owning function; A12 says the same of the *input tuple* a route
+> consumes. It exists because the browser and the command line both prepare
+> runs, and for one afternoon on 2026-09-02 they assembled that tuple
+> separately: the browser had no `run-config.toml` verdict, no bench pins,
+> and at first no condition pins — so a solver chosen on the run card reached
+> the sbatch's neighbour and not the deck. **Two surfaces that assemble
+> separately do not drift eventually; they drift on the first change**, and
+> nothing about either one looks wrong in isolation.
+>
+> Its contract is stated where the assembly lives, because a vague one is
+> what broke it a second time the same day: the ask handed in is what the
+> person is saying *right now* — the CLI's flags, or an **empty** `Resources()`
+> from a surface that has none. Never `None`: the verdict is folded *under*
+> it field by field, and there is no field-by-field merge onto nothing.
+>
+> **A12 currently sits on the wrong floor, and that is recorded rather than
+> hidden.** `prep_run_inputs` and `_bench_inputs` both live in
+> `jobset/_cli.py` — floor 7 — so `web/` reaches **across** to them, which is
+> exactly what A7 forbids. It is one door, which is the property A12 is
+> about; it is on the wrong storey, which is A7's. The target is a floor-3
+> module below both surfaces, and the blocker is named: `_bench_inputs`
+> raises `click.ClickException`, so moving it means giving the refusal a type
+> that is not a surface's.
+
 > **A11 is A1 widened from names to roots and filenames.** A1 stops a second
 > module *assembling* a name; A11 stops a second module *arriving at* a place —
 > by climbing `.parent.parent` to the install root, or by re-typing a filename

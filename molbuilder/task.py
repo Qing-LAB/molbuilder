@@ -78,7 +78,7 @@ SHAPES = ("flat", "hierarchical")
 
 #: § 2 — "three fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
-STAGE_FIELDS = ("name", "enabled", "overrides")
+STAGE_FIELDS = ("name", "enabled", "overrides", "execution")
 
 #: § 6.6 — a stage name becomes a filename, so the set is the narrow one.
 STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
@@ -86,7 +86,7 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
-             "allocation",
+             "allocation", "execution",
              "notify", "slots", "bias")
 _BIAS_KEYS = ("voltages_v",)
 
@@ -104,7 +104,17 @@ _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
 #: not here: it is a `bench` entry with one point (`generator.md` § 4.3a),
 #: because a knob you might instead measure has one home, not two.
 _ALLOCATION_KEYS = ("domain", "time", "mem")
-_NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels")
+_NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
+
+#: WHAT a report may carry, in the report's OWN field names
+#: (`run-reports.md` § 4.1a).  One vocabulary, so what a person ticks, what
+#: travels and what a listener parses are the same words -- a second set of
+#: labels here would be a translation table nobody could see
+#: (`stages.md` § 6.9).
+#:
+#: **The name is not on this list because it is not optional**: every report
+#: carries the calculation's label and its job id, in the title, first.
+REPORT_ITEMS = ("elapsed_s", "n_iters", "energy", "geom_step", "per_iter_s")
 
 #: A channel NAME, as a description may carry one.
 #:
@@ -239,6 +249,13 @@ class Notify:
     #: unticked list quietly meaning *all of them*.
     channels: Optional[Tuple[str, ...]] = None
 
+    #: WHAT each report carries, beyond the name (`stages.md` § 6.9).
+    #: ``None`` is every field the monitor could determine; ``()`` is the
+    #: summary line with no field grid.  **The calculation's label and job id
+    #: are not settable**: a report you cannot attribute to a job is a
+    #: notification you have to go and look up.
+    report: Optional[Tuple[str, ...]] = None
+
     def __bool__(self) -> bool:
         return bool(self.on_scf_converged or self.every_hours > 0
                     or self.channels is not None)
@@ -259,10 +276,15 @@ class StructureRef:
 
 @dataclass(frozen=True)
 class Stage:
-    """§ 2 — a name, an enabled flag, and the cells that differ."""
+    """§ 2 — a name, an enabled flag, the cells that differ, and what this
+    rung RUNS at when it differs from the calculation's own answer."""
     name: str
     enabled: bool = True
     overrides: Mapping[str, Any] = field(default_factory=dict)
+    #: § 6.8d, per stage: one value per parameter, laid over the top-level
+    #: block FIELD BY FIELD.  A rung naming only `mpi_np` keeps the
+    #: calculation's solver and its thread count.
+    execution: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """The name rule holds for the object too, not only for the file.
@@ -356,6 +378,15 @@ class Task:
     #: question; as an item value it would be an assertion about a machine
     #: this description has not met.
     bench: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
+
+    #: THE ONE CONDITION A RUN USES (`stages.md` § 6.8d) -- one value per
+    #: parameter, never a list.  INDEPENDENT of ``bench``: a calculation may
+    #: declare a grid to measure, a condition to run, both, or neither, and a
+    #: run never requires a benchmark.  The two are the same vocabulary at
+    #: different arity, which is why they are two keys and not one: narrowing
+    #: a `bench` row to say what the run uses would DESTROY the plan to
+    #: measure, and a person needs both at once (user, 2026-09-02).
+    execution: Dict[str, Any] = field(default_factory=dict)
 
     #: THE COMPOSITE'S INPUTS (transport-design.md § 4.1) -- slot name ->
     #: an EXPLICIT directory citation (a tree-relative path whose FILES
@@ -726,6 +757,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 '"overrides": {}}]')
 
     bench = _bench_from_obj(obj)
+    execution = _execution_from_obj(obj)
 
     raw_stages = obj["stages"]
     if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
@@ -747,6 +779,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc, bench=bench,
+                execution=execution,
                 allocation=_allocation_from_obj(obj),
                 notify=_notify_from_obj(obj),
                 slots=slots, bias=bias)
@@ -904,7 +937,64 @@ def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
             if item not in names:
                 names.append(item)
         chans = tuple(names)
-    return Notify(on_scf_converged=scf, every_hours=hours, channels=chans)
+
+    # ABSENT IS EVERY ITEM, `[]` IS NONE -- two states again, and for the
+    # same reason: a description written before 2026-09-02 says what it
+    # always said by omitting the key, and a person who unticked every field
+    # asked for something different from a person who never looked
+    # (`stages.md` § 6.9).
+    report: Optional[Tuple[str, ...]] = None
+    if "report" in raw:
+        got = raw["report"]
+        if not isinstance(got, list):
+            _refuse(f"notify.report must be a list of report FIELD NAMES, "
+                    f"not {type(got).__name__} -- omit the key for every "
+                    f"field the monitor can determine, or write [] for the "
+                    f"summary line alone")
+        items = []
+        for item in got:
+            if item not in REPORT_ITEMS:
+                _refuse(f"notify.report: {item!r} is not a report field. "
+                        f"The fields are {', '.join(REPORT_ITEMS)} -- these "
+                        f"are the report's own names (run-reports.md 4.1a), "
+                        f"not labels. The calculation's name and job id are "
+                        f"always sent and are not on the list")
+            if item not in items:
+                items.append(item)
+        report = tuple(items)
+    return Notify(on_scf_converged=scf, every_hours=hours, channels=chans,
+                  report=report)
+
+
+def _execution_from_obj(obj: Mapping[str, Any], *, where: str = "") -> Dict[str, Any]:
+    """``execution`` -> ``{name: one value}`` (`stages.md` § 6.8d).
+
+    **The one condition a RUN uses**, and the arity is what tells it from
+    `bench`: several values per axis is a plan to measure, one value per
+    parameter is what to use.  So a LIST here is refused by name, with the
+    block it belongs in said out loud -- "invalid" would send a person
+    looking for a typo instead of to the other lane.
+
+    MEMBERSHIP is not this function's question, exactly as it is not
+    `_bench_from_obj`'s: a name must be an `execution` catalogue item, and
+    `validation/task.py` owns that because deciding what a name MEANS takes
+    the vocabulary and this module is L1.  Shape is checked here.
+    """
+    raw = obj.get("execution")
+    if raw is None:
+        return {}
+    at = f"{where} execution" if where else "execution"
+    out: Dict[str, Any] = {}
+    for key, val in _as_object(raw, where=at).items():
+        if isinstance(val, (list, tuple)):
+            _refuse(f"{key!r} takes ONE value here, not a list -- a list of "
+                    f"points to try is `bench`'s shape, and the two are "
+                    f"separate blocks on purpose (engines/stages.md 6.8d)",
+                    where=at)
+        if isinstance(val, Mapping):
+            _refuse(f"{key!r} takes a scalar, got an object", where=at)
+        out[key] = val
+    return out
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -921,6 +1011,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
         _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
                 "a filename (engines/stages.md 6.6)")
 
+    execution = _execution_from_obj(obj, where=where)
     overrides = dict(_as_object(obj.get("overrides") or {},
                                 where=f"{where} overrides"))
     for key in overrides:
@@ -945,7 +1036,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                 "(engines/stages.md 6.2)", where=where)
 
     return Stage(name=name, enabled=bool(obj.get("enabled", True)),
-                 overrides=overrides)
+                 overrides=overrides, execution=execution)
 
 
 def varies_for(overrides_seq) -> Tuple[str, ...]:
@@ -1056,6 +1147,11 @@ def _task_to_dict(task: Task) -> dict:
     # exactly what it always said.
     if task.bench:
         out["bench"] = {k: list(v) for k, v in task.bench.items()}
+    # BESIDE IT, NEVER INSIDE IT (§ 6.8d): one value per parameter, and the
+    # two blocks coexist because a plan to measure and a condition to run are
+    # different things a person needs at the same time.
+    if task.execution:
+        out["execution"] = dict(task.execution)
     # Absent when nothing is asked for, and each field omitted when unset --
     # so "unstated" has ONE spelling on disk (S1), and a description from
     # before 2026-08-24 round-trips byte-identical.
@@ -1076,9 +1172,13 @@ def _task_to_dict(task: Task) -> dict:
             out["notify"]["channels"] = list(task.notify.channels)
     if task.stages:
         out["varies"] = list(task.varies or ())
-        out["stages"] = [{"name": s.name, "enabled": s.enabled,
-                          "overrides": dict(s.overrides)}
-                         for s in task.stages]
+        out["stages"] = [
+            # `execution` omitted when empty, like every other block here:
+            # a rung that runs at the calculation's own answer says nothing.
+            {"name": s.name, "enabled": s.enabled,
+             "overrides": dict(s.overrides),
+             **({"execution": dict(s.execution)} if s.execution else {})}
+            for s in task.stages]
     return out
 
 

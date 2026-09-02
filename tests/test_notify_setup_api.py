@@ -111,16 +111,58 @@ def test_every_address_is_masked_even_a_listeners(client):
     assert "T0/B0" not in body, "a mislabelled webhook was printed whole"
 
 
-def test_the_kind_is_derived_from_the_key_not_stored_beside_it(client):
-    """One question, one answer. A stored `kind` would be a second one, free
-    to disagree with the file — and it is the file the monitor reads."""
+def test_the_kind_this_page_shows_is_the_one_the_SENDER_will_use(client):
+    """**Replaced the test that asserted the opposite** (2026-09-02).
+
+    It read `test_the_kind_is_derived_from_the_key_not_stored_beside_it`, on
+    the rule that *having a key* is the one thing that differs.  That held
+    while there were two kinds.  There are three wire formats now
+    (`run-reports.md` § 4.1b) and having a key cannot tell Slack from
+    Discord -- so the derivation collapsed the one distinction the sender
+    cannot avoid making, and a Discord channel was saved, listed and tested
+    as though it were a Slack one.
+
+    The rule now: this page reports `monitor.channel_kind`, the SAME
+    function that chooses the envelope.  A test that pinned the old
+    derivation would fail the next time the right thing is done, which is
+    what it just did."""
+    from molbuilder.monitor import channel_kind
     c, path = client
-    c.put(CH + "/slack", json={"url": WEBHOOK})
+    c.put(CH + "/team", json={"url": WEBHOOK})
     c.put(CH + "/lab", json={"url": "https://qlab/api/x", "key": SECRET})
-    assert _row(c, "slack")["kind"] == "webhook"
-    assert _row(c, "lab")["kind"] == "listener"
+    c.put(CH + "/chat", json={"url": "https://discord.com/api/webhooks/1/tok",
+                              "kind": "discord"})
+    assert _row(c, "team")["kind"] == "slack"       # off the host
+    assert _row(c, "lab")["kind"] == "molbuilder"
+    assert _row(c, "chat")["kind"] == "discord"     # declared
+    # And what the page shows is what the SENDER reads -- one function, not
+    # a page-side lookalike.
     stored = json.loads(path.read_text())["channels"]
-    assert "kind" not in stored["slack"] and "kind" not in stored["lab"]
+    for name in ("team", "lab", "chat"):
+        assert _row(c, name)["kind"] == channel_kind(stored[name])
+
+
+def test_a_declared_kind_is_stored_and_a_cleared_one_is_removed(client):
+    """A channel edited from Discord to Slack must not keep the old
+    envelope with the new address -- so an absent `kind` CLEARS a stored
+    one rather than leaving it standing."""
+    c, path = client
+    c.put(CH + "/x", json={"url": "https://relay.example/hook",
+                           "kind": "discord"})
+    assert json.loads(path.read_text())["channels"]["x"]["kind"] == "discord"
+    c.put(CH + "/x", json={"url": "https://relay.example/hook"})
+    assert "kind" not in json.loads(path.read_text())["channels"]["x"]
+    assert _row(c, "x")["kind"] == "molbuilder"     # back to the host's word
+
+
+def test_a_misspelled_kind_is_refused_by_name(client):
+    """Named and wrong is not the same as absent: absent means *read it off
+    the host*, and a typo taking that default would send a Slack-shaped body
+    to Discord and earn a 400 nobody could trace back to a spelling."""
+    c, _ = client
+    r = c.put(CH + "/x", json={"url": WEBHOOK, "kind": "discrod"})
+    assert r.status_code == 400
+    assert "discord" in r.get_json()["error"]
 
 
 def test_the_file_is_written_0600_in_a_0700_directory(client):
@@ -410,14 +452,62 @@ def test_testing_a_channel_that_is_not_set_up_says_so(client):
     assert "nope" in r.get_json()["error"]
 
 
-def test_the_test_report_is_signed_by_the_MONITORS_own_function(client):
-    """A second signing implementation here could pass while the real one
-    failed. It signs with `monitor.sign_report`, so a signature this
-    produces is one the listener accepts."""
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/notify_setup.py").read_text()
-    assert "from ...monitor import load_channels, sign_report" in src
-    assert "sign_report(dest[" in src and "], ts, body)" in src
+def test_the_test_button_sends_what_the_MONITOR_would_send(client,
+                                                           monkeypatch):
+    """**A second implementation here could pass while the real one failed**
+    -- and for Discord it did, twice over: no `User-Agent` (403 at
+    Cloudflare) and no `content`/`embeds` (400 at Discord).
+
+    This asserted a SOURCE STRING until 2026-09-02, so it broke on a
+    refactor that kept the rule and would have passed on a copy-paste that
+    broke it.  It now sends for real, to a recording stand-in, and compares
+    the bytes against `monitor.webhook_request` -- the producer both senders
+    call (`run-reports.md` § 4.1b)."""
+    import urllib.request
+    from molbuilder import monitor as M
+
+    c, _ = client
+    c.put(CH + "/chat", json={"url": "https://discord.com/api/webhooks/1/t",
+                              "kind": "discord"})
+    c.put(CH + "/lab", json={"url": "https://qlab/api/seg", "key": SECRET})
+
+    seen = {}
+
+    class _Resp:
+        status = 204
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def close(self): pass
+
+    def _fake(req, timeout=None, **kw):
+        seen["url"] = req.full_url
+        seen["body"] = req.data
+        seen["headers"] = {k.lower(): v for k, v in req.headers.items()}
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", _fake)
+
+    # -- the Discord channel: an embed, and a real User-Agent --------------
+    assert c.post(CH + "/chat/test").status_code == 200
+    body = json.loads(seen["body"])
+    assert "embeds" in body, (
+        "Discord ignores a bare `text` and refuses a body with neither "
+        "`content` nor `embeds`: " + repr(sorted(body)))
+    ua = seen["headers"].get("User-agent".lower()) or ""
+    assert ua and "python-urllib" not in ua.lower(), (
+        "Discord's edge answers a default urllib User-Agent with 403 "
+        "(Cloudflare 1010): " + repr(ua))
+    assert "x-molbuilder-signature" not in seen["headers"], (
+        "a signature means nothing to Discord and is not sent there")
+
+    # -- the listener: the record, whole, signed by the monitor's own rule -
+    assert c.post(CH + "/lab/test").status_code == 200
+    rec = json.loads(seen["body"])
+    assert rec["state"] == "test" and rec["run"] == "notify-setup-test"
+    ts = seen["headers"]["x-molbuilder-timestamp"]
+    assert (seen["headers"]["x-molbuilder-signature"]
+            == M.sign_report(SECRET, ts, seen["body"])), (
+        "the signature is not the one the listener verifies")
 
 
 def test_a_404_is_explained_rather_than_reported_bare(client, monkeypatch):

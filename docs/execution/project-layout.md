@@ -531,7 +531,7 @@ an ordinary thing to do — on a laptop, on a login node, or inside a scheduler'
 job script. A directory that only worked when launched from elsewhere would be
 one you could not debug.
 
-#### 1.5a Two levels, two reasons — the directory says what happened
+#### 1.5b Two levels, two reasons — the directory says what happened
 
 *Settled with the user, 2026-08-11.* **A directory exists for a reason, and there
 are exactly two.**
@@ -1004,9 +1004,15 @@ Naming them apart is what makes step 1 answerable.
   type, the scheduler, which queues you may use, which account to charge, the
   activation command. It is a property of *the machine*, and it is the same for
   every calculation you run there.
-- **D2 · Allocation** — **what one run asks for**, chosen from inside a
-  capability. Ranks, cores per rank, GPUs, wall time, memory, which queue. It is
-  a property of *this run*, and two runs on the same machine routinely differ.
+- **D2 · Allocation** — **what one run asks the SCHEDULER for**, chosen from
+  inside a capability: wall time, memory, which queue. It is a property of
+  *this run*, and two runs on the same machine routinely differ.
+  **Ranks, cores per rank and GPUs are not here.** They are the launch's
+  SHAPE, they belong to `task.json`'s `execution` block, and they travel a
+  ladder of their own — the two are separate rungs in
+  [`architecture.md § 5.2`](?doc=execution/architecture.md) precisely because
+  a queue that grants a wall clock grants no rank count
+  *(split 2026-09-02; `Allocation` carried all six until then)*.
 - **D3 · The machine record** — `environment.json`
   (`molbuilder/environment@2`), the **whole probed answer**: topology, scheduler,
   site, and the reachable domains. It exists at two scopes — written per-machine
@@ -1030,7 +1036,7 @@ Naming them apart is what makes step 1 answerable.
 | **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them you **want** — the default partition and QoS, the account, the activation command, `gpu.exclusive`, `gpu.mem`, `defaults`. **A machine reports what exists; only you can say what you want** — and when the machine is not the one you are standing on, you state its facts yourself (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
 | **M2a** | **A fact may be PROBED or DECLARED, and the probe wins when there is one.** *What partitions and QoS you can reach* is a fact: detected when you are on the machine, written down by hand when you are not (describing on a workstation for a cluster). *Which one this run wants* is a preference and stays in `molbuilder.json`. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
-| **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
+| **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape now IS a description field — `task.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
 | **M5** | **`launch` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
 | **M6** | ~~A workstation needs no config file~~ — **AMENDED 2026-08-17 (user): a workstation records its capability in a config file too, in the same shape a cluster uses.** Detection still answers *what is here*; the file answers *what a run may have*, and `prep` needs the second to refuse an over-ask rather than discover it at launch | The original reasoning was *nothing is rationed*, which held only while nothing checked. Once `prep` enforces capability ⊇ allocation ([`generator.md § 4.1`](?doc=execution/generator.md)), a workstation with no stated ceiling is the one machine where the check cannot run — so the rule that was sparing the user a file was instead sparing them the error. **One shape for both kinds of machine** also means the probe verb, the config reader and `prep`'s bound have one path rather than a workstation special case. |
 
@@ -1251,10 +1257,15 @@ instead.
 molbuilder jobset prep run tight
 
   applied 02_tight/bench/run-config.toml: mpi_np=4, cpus_per_task=6,
-  gres=gpu:a100:1, mem=97GB, time=0-00:11:29; pins: use_gpu=True,
-  diag_algorithm=ELPA-1STAGE
+  gres=gpu:a100:1; pins: use_gpu=True, diag_algorithm=ELPA-1STAGE
   (edit or delete the file to change this)
 ```
+
+**No wall clock and no memory in that line.** `summarize` stopped proposing
+those two on 2026-08-24: a benchmark measures how fast a shape runs, which is
+not evidence about how long *your* job needs or how much it will hold, and the
+two asks stay the person's ([`architecture.md § 5.2`](?doc=execution/architecture.md)'s
+scheduler ladder has no verdict rung).
 
 **The question is a file, and editing it — or deleting it — is your
 answer.** A benchmark lives inside the stage it measured, so prep can
@@ -1263,9 +1274,11 @@ always *find* one — but finding is not permission. Permission is
 disagree with, and `prep run` applies what the file says **to the fields
 your flags did not state** — an explicit flag always wins over the file,
 exactly as it won over the machine before. Beneath the file sits the
-description's own one-point declaration lane (`generator.md` § 4.3a:
-template < declaration < this file < flags) — the verdict refines what you
-declared, and deleting the file falls back to the declaration, not to
+description's own declaration lane and **above** it sits the run's condition:
+the full ladder is [`architecture.md § 5.2`](?doc=execution/architecture.md)
+— template < a one-point `bench` pin < **this file** < `execution` < flags.
+The verdict refines what a bench declared and is itself refined by what a
+person asked for; deleting the file falls back to the declaration, not to
 silence. Delete the file and the
 benchmark is declined; `summarize bench` writes it afresh should you change
 your mind. *(Until 2026-08-19 this was an interactive question — `use it?

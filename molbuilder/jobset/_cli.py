@@ -1437,79 +1437,239 @@ def _cell_shape(g, k, c, gtype) -> str:
     return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
 
 
-def declared_run_shape(base, target, task):
-    """The launch shape a description DECIDES — as `Resources` fields, or
-    ``{}`` when it decides none.
+def run_condition(task, stage=None):
+    """What this run uses — the calculation's block with the rung's over it,
+    FIELD BY FIELD (`stages.md` § 6.8d).
 
-    **A run is a sweep of length one** (`generator.md` § 2), and this is that
-    sentence used rather than paraphrased: the run asks the SAME enumerator
-    the benchmark does, and takes its answer when the description has decided
-    every machine axis.  Several points on any of them is a *question*
-    (*"try 4, 8, 16"*), and a question is not an ask.
-
-    **Everything the device axis needs is already inside that enumerator**,
-    which is why this is glue and not a translation:
-
-      * whether there IS a device -- the GPU family, from the template's
-        ``use_gpu`` overridden by a declared one-point pin;
-      * the refusal when ``gpu_count`` contradicts a CPU family, by name;
-      * the count, against the machine's own record;
-      * the EVEN-SPLIT rule -- ``G x K`` is the rank count, and an uneven
-        pair is dropped by name (`tuning.md` § 2.12);
-      * WHICH card, from `_gpu_type_for_bench` -- a machine fact a
-        description may not name (`template.md` § 7);
-      * and `MachineTranslation.to_resources`, which emits a TYPED
-        ``--gres`` for a device cell and none at all for a CPU one.
-
-    A second translation stood in `prep.py` for one day on 2026-09-01 -- a
-    name map from ``gpu_count`` to an untyped ``gpu:N``.  It got the type
-    wrong, the CPU gating wrong, and never knew about ``G x K``; and no test
-    caught it, because every test drove the copy.  Deleted; this asks the one
-    that was already right.
-
-    **A DECIDED SHAPE THE MACHINE CANNOT HOLD REFUSES, and that is the
-    point.**  The enumerator raises when nothing survives, and that refusal
-    is let through: running at the wrapper's default instead would be the
-    concealment this whole channel exists to end.  It is only asked when the
-    answer is usable -- no machine axes, or any of them multi-point, and it
-    is not asked at all, so a description carrying a bench it cannot run
-    HERE still runs at the wrapper's own policy, as it always did.
-
-    **Guarded by the engine**, because the bench lane speaks SIESTA alone and
-    says so by refusing: a PySCF run must not inherit that refusal for a
-    question it never asked.
+    A stage naming only ``mpi_np`` keeps the calculation's solver and its
+    thread count; whole-object precedence would drop the two nobody
+    mentioned, which is the class of silent loss this file's every other
+    merge avoids.
     """
-    if not getattr(task, "bench", None) or str(task.engine) != "siesta":
-        return {}
-    _pins, declared_axes, _value_axes = _declared_execution_pins(
-        base, task.engine)
-    # DECIDED means every machine axis carries exactly one point.  None
-    # declared is nothing to decide; any of them longer is a question.
-    if not declared_axes or any(len(v) != 1 for v in declared_axes.values()):
-        return {}
-    import contextlib
-    import io as _io
-    # The enumerator PRINTS its working for the terminal -- the cells it
-    # enumerated and the ones it crossed out.  A RUN does not want the
-    # bench's table when it succeeds; it very much wants it when it does
-    # not, because the refusal below ends "see the crossed-out list above"
-    # and that list is the evidence.  So it is captured, not discarded.
-    said = _io.StringIO()
+    out = dict(getattr(task, "execution", None) or {})
+    for st in (getattr(task, "stages", None) or ()):
+        if stage is not None and st.name == stage:
+            out.update(dict(getattr(st, "execution", None) or {}))
+    return out
+
+
+#: The catalogue's words for a launch field, and `Resources`' own.  Most
+#: agree; these three never did.  It is a NAME MAP and nothing else -- no
+#: default, no enumeration, no arithmetic.
+_AS_RESOURCE = {
+    "omp_threads": "cpus_per_task",
+    "gpu_count": "gres",
+    "max_memory_mb": "max_memory_mb",
+}
+
+
+def run_uses_device(base, task, stage=None):
+    """Does this RUN use a device? — the TEMPLATE's ``use_gpu``, overridden by
+    the condition's.
+
+    **ONE PRODUCER, because two readers had two answers.**  `declared_run_shape`
+    asked the shipped CATALOGUE, whose ``use_gpu`` value is ``false`` — so the
+    test was a constant, and `execution: {"gpu_count": 2}` on a GPU
+    calculation had its device ask **silently deleted** unless the condition
+    also spelled ``use_gpu``.  Meanwhile the Task-setup card asked
+    ``bool(gres)`` and the emitter asked `_wants_gpu`, so the card could print
+    a rank count the header would not carry — the discrepancy A13 exists to
+    end.  `_bench_inputs` had it right all along (it reads the template), and
+    this is that read, named once.
+    """
+    cond = run_condition(task, stage)
+    if "use_gpu" in cond:
+        return bool(cond["use_gpu"])
     try:
-        with contextlib.redirect_stdout(said):
-            points, _p, translation = _bench_inputs(base, target)
-    except click.ClickException as exc:
-        raise click.ClickException(
-            f"this description DECIDES its launch shape -- "
-            f"{', '.join(f'{k} = {v[0]}' for k, v in sorted(declared_axes.items()))}"
-            f" -- and this machine cannot hold it.\n"
-            f"{said.getvalue().rstrip()}\n  {exc.format_message()}\n"
-            f"  Change the declaration on the machine card, or say what to "
-            f"use for this prep alone with --np / --cpus-per-task / --gpus."
-        ) from exc
-    if len(points) != 1:
+        from ..template import read_template, template_path
+        from ..template import select as _tsel
+        tmpl = read_template(
+            template_path(Path(base), task.label).read_text(encoding="utf-8"))
+        return any(i.name == "use_gpu" and bool(i.value)
+                   for i in _tsel(tmpl, engine=task.engine))
+    except Exception:                                         # noqa: BLE001
+        # No template (the transport composite has none) -- nothing claims a
+        # device, which is the same answer an absent flag gives.
+        return False
+
+
+def declared_run_shape(base, target, task, stage=None):
+    """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
+    fields.  ``{}`` when the condition states none.
+
+    **A DIRECT MAP, because there is nothing to work out.** Every parameter
+    already has a value: the template carries the physics and the deck knobs
+    (`template.md` § 5), and a machine-answered item that this block does not
+    name is resolved by the wrapper at run time, by the chain
+    `running-a-job.md` § 3.1 states — ``-np`` flag > ``MB_NP`` >
+    ``SLURM_NTASKS`` > the generation default. So an unnamed field is not a
+    gap to fill; it is a field this layer does not write, and the pipeline
+    already answers it.
+
+    > **This went through the grid enumerator for one afternoon**
+    > (2026-09-02) on the argument that a run is a sweep of length one. It is
+    > — *below* `resolve()`, which is where the shared pipeline actually is.
+    > `_bench_inputs` sits ABOVE that and is a sweep's own machinery: it must
+    > invent the axes a condition does not mention. So `{omp_threads: 4}`
+    > came back as a **single-rank job** (its `mpi_np or [1]` default),
+    > `{use_gpu: true, mpi_np: 8}` came back **empty** because G enumerated
+    > three cells and "not one cell" was read as "nothing decided", and
+    > `max_memory_mb` was refused as a bench axis the translation did not
+    > know. Reusing a wheel is right; reusing the wrong wheel invents the
+    > problem it then solves.
+
+    The device ask is the one field needing a fact this block may not hold:
+    WHICH card. That comes from the target's own record through
+    `_gpu_type_for_bench`, the same producer the sweep uses — a description
+    may not name a machine (`template.md` § 7).
+    """
+    cond = run_condition(task, stage)
+    if not cond:
         return {}
-    return dict(translation.to_resources(points[0], None) or {})
+    from ..template import catalogue, select
+    from .model import Resources
+    items = {i.name: i for i in select(catalogue(),
+                                       engine=getattr(task, "engine", ""))}
+    known = {f.name for f in __import__("dataclasses").fields(Resources)}
+    out, want_devices = {}, None
+    for name, val in sorted(cond.items()):
+        it = items.get(name)
+        if it is None:
+            continue                    # membership is validation's refusal
+        if name == "use_gpu":
+            want_devices = bool(val)    # a PIN for the deck; read here as a gate
+            continue
+        if not it.allocation:
+            continue                    # a parameter -- pins, never the launch
+        field = _AS_RESOURCE.get(name, name)
+        if field == "gres":
+            out["gres"] = int(val)      # resolved below, once the type is known
+        elif field in known:
+            out[field] = val
+    if "gres" in out:
+        # WHETHER there is a device is the description's answer (the template's
+        # `use_gpu`, overridden by this condition's); HOW MANY is this block's;
+        # WHICH KIND is the machine's.  A count without a device run is not an
+        # ask -- it is a contradiction, and validation names it.
+        if want_devices is None:
+            want_devices = run_uses_device(base, task, stage)
+        if not want_devices:
+            del out["gres"]
+        else:
+            from ..scheduler import machine_for
+            topo = getattr(machine_for(Path(base), target=target,
+                                       probe=(target is None)), "topology", None)
+            gtype = _gpu_type_for_bench(base, topo)
+            n = out["gres"]
+            out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
+    return out
+
+
+def run_inputs(base, target, task, stage=None):
+    """The run's two halves from its condition — ``(chosen, pins)``.
+
+    One block, two destinations, split by the catalogue's own answer: a
+    machine-answered item is the launch SHAPE (`declared_run_shape`), anything
+    else is a PIN over the template — through `_declared_execution_pins`, the
+    same door the bench's one-point declarations go through, so the two lanes
+    cannot disagree about what a name means.
+    """
+    cond = run_condition(task, stage)
+    if not cond:
+        return {}, {}
+    pins, _axes, _value_axes = _declared_execution_pins(
+        base, task.engine, {k: [v] for k, v in cond.items()})
+    return declared_run_shape(base, target, task, stage), dict(pins or {})
+
+
+def prep_run_inputs(base, target, task, stage, allocation=None):
+    """Everything ``prep run`` needs, assembled ONCE -- ``(allocation, pins,
+    chosen)``.
+
+    **`architecture.md` A12**, and the contract stated there: the ask handed
+    in is what the person is saying RIGHT NOW -- flags, or an EMPTY
+    `Resources()` from a surface that has none, never ``None``.
+
+    **THE UI IS NOT A SECOND FRAMEWORK** *(user, 2026-09-02: "I go through
+    the same back end to generate the execution script or the CLI command.
+    This is important because if you handcraft two branches to collect the
+    parameter and generate the thing, then you have to maintain two branches
+    of the logic.  The UI is not a different thing.  It goes through the same
+    framework.  It just helps the user to visualize and to decide.")*
+
+    So the browser's prep button and ``molbuilder jobset prep run`` call
+    THIS, and neither assembles anything of its own.  Three sources compose
+    here, weakest first (`generator.md` § 4.3a):
+
+      1. the bench's one-point NON-machine declarations -- pins in force for
+         the trials and the run alike (user rule, 2026-08-20);
+      2. ``run-config.toml`` -- what the benchmark FOUND, filling the
+         allocation fields no flag stated, and its own pins;
+      3. ``execution`` -- what the person ASKED for, the most specific thing
+         the file says: its machine items are the launch shape, the rest are
+         pins over both of the above.
+
+    A flag beats all three and is already in ``allocation`` when it arrives.
+
+    **It was three branches for an hour on 2026-09-02** and each divergence
+    was a different run: the browser had no verdict, no bench pins, and at
+    first no condition pins -- so a solver chosen on the run card reached the
+    sbatch's neighbour and not the deck.  That is the class of bug one
+    assembly makes impossible rather than merely unlikely.
+    """
+    import dataclasses as _dc
+
+    from .model import Resources
+
+    # NEVER NONE (§ 6.0a's contract): the verdict is folded UNDER this field
+    # by field, and there is no field-by-field merge onto nothing.  A surface
+    # with no flags passes an empty ask, not an absent one.
+    allocation = allocation if allocation is not None else Resources()
+
+    # 1 · THE CONDITION FIRST, because it outranks the verdict
+    #     (`architecture.md` 5.2's launch-shape ladder): a machine's finding
+    #     may not quietly override what a person typed.
+    #     Folded here rather than in `prep` so `_apply_run_config` below sees
+    #     it as already-stated and leaves it alone.
+    chosen, cond_pins = run_inputs(base, target, task, stage)
+    known = {f.name for f in _dc.fields(Resources)}
+    patch = {k: v for k, v in chosen.items()
+             if k in known and getattr(allocation, k, None) in (None, "")}
+    if patch:
+        allocation = _dc.replace(allocation, **patch)
+
+    # 1b · AND THE CALCULATION'S SCHEDULER ASK, before the verdict for the
+    #      same reason: `architecture.md` § 5.2's scheduler ladder is
+    #      `unstated < allocation < flag` and has NO verdict rung.  Folded
+    #      after the verdict, a `run-config.toml` carrying `mem` would beat a
+    #      description that asked for more -- over the two fields whose
+    #      absence killed five Sol jobs.  `summarize` stopped writing them on
+    #      2026-08-24, so this closes a reader wider than any writer.
+    if getattr(task, "allocation", None):
+        _ask = task.allocation
+        _p = {n: v for n, v in (("domain", _ask.domain), ("time", _ask.time),
+                                ("mem", _ask.mem))
+              if v and getattr(allocation, n, None) in (None, "")}
+        if _p:
+            allocation = _dc.replace(allocation, **_p)
+
+    # 2 · THEN THE VERDICT, filling what neither a flag, the condition nor
+    #     the calculation's own ask stated (§ 2.3.2).  Skipped stage-less --
+    #     a verdict is per stage, and `resolve` gives the better refusal.
+    verdict_pins = None
+    if stage is not None:
+        allocation, verdict_pins = _apply_run_config(
+            base, allocation, stage=stage, engine=task.engine)
+
+    # 3 · THE PINS, weakest first: the bench's one-point declarations, the
+    #     verdict's, then the condition's -- 5.2's deck/speed ladder.
+    declared_pins, _axes, _value_axes = _declared_execution_pins(
+        base, task.engine)
+    pins = {**declared_pins, **(verdict_pins or {}), **cond_pins} or None
+    # `chosen` is returned for the PREVIEW to name; it is already folded in.
+    return allocation, pins, chosen
+
+
 
 
 def _bench_inputs(base, target, *, bench_override=None, report=None):
@@ -2245,42 +2405,13 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # and device ask.  Folding a base shape underneath would put a
             # second answer where the grid already gives one.
         elif kind == "run":
-            # § 2.3.2's other half: the stage's run-config.toml (the
-            # editable proposal summarize wrote) fills the allocation
-            # fields the user did not state; with neither file nor
-            # flags, the wrapper's runtime policy is NAMED, not implied.
-            #
-            # SKIPPED when no stage is named (review 2026-08-21, B1): a
-            # verdict is per stage, and reaching for it stage-less died
-            # with the BENCHMARK's "which stage's benchmark?" question --
-            # falling through instead lets resolve give the right
-            # refusal, the ladder listed by name.
-            verdict_pins = None
-            if stage is not None:
-                allocation, verdict_pins = _apply_run_config(
-                    base, allocation, stage=stage, engine=_pf_task.engine)
-            # The declaration's one-point values pin the run too (user
-            # rule, 2026-08-20), UNDER the measured verdict: template <
-            # declaration < run-config < flags (§ 4.3a's precedence).
-            # value_axes pin nothing at `prep run` (§ 4.3a): the
-            # verdict's run-config answers; absent one, the template
-            # stands.
-            declared_pins, _axes, _value_axes = _declared_execution_pins(
-                base, _pf_task.engine)
-            pins = {**declared_pins, **(verdict_pins or {})} or None
-            # AND THE SHAPE THE DESCRIPTION DECIDES, from the one grid
-            # enumerator (`generator.md` § 2 -- a run is a sweep of length
-            # one).  Weakest of the three, exactly as § 4.3a states:
-            # a flag beats the verdict, and the verdict beats this.
-            #
-            # THE SAME WHICH-MACHINE CATCH THE BENCH ARM MAKES, and for the
-            # same reason it was added there on 2026-08-28: this reaches
-            # `_environment_for` too, so an unnamed target on a two-record
-            # machine would leak a TRACEBACK where the arm used to speak
-            # plainly (workflow.md § 9 -- a gate refuses with the reason).
+            # ONE ASSEMBLY, and the browser's prep door calls the same one:
+            # the bench's pins, the verdict, and this run's own condition,
+            # composed in `prep_run_inputs`.  Nothing is put together here.
             from ..scheduler import AmbiguousTarget, UnknownTarget
             try:
-                chosen = declared_run_shape(base, target, _pf_task)
+                allocation, pins, chosen = prep_run_inputs(
+                    base, target, _pf_task, stage, allocation)
             except (UnknownTarget, AmbiguousTarget) as exc:
                 raise click.ClickException(str(exc))
         if kind == "run":

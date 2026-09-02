@@ -1708,6 +1708,10 @@ def _with_notify(flags, declared) -> "Resources":
     # every channel on the machine instead (`run-reports.md` 3.0).
     if declared.channels is not None and out.notify_channels is None:
         patch["notify_channels"] = declared.channels
+    # SAME RULE, SAME REASON: `()` here means "the summary line and no field
+    # grid", which is a real answer and not an absent one (`stages.md` § 6.9).
+    if declared.report is not None and out.notify_report is None:
+        patch["notify_report"] = declared.report
     return _dc.replace(out, **patch) if patch else out
 
 

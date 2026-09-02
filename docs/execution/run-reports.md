@@ -423,12 +423,57 @@ sent empty, so a reader can tell *unknown* from *wrong*.
 | `run` | the **label** (`run-identity.md` § 2 — *the stem of every file*), taken off the `.out` the monitor watches, `-runN` stripped |
 | `job`, `host` | `SLURM_JOB_ID` and the node's own name |
 | `sent_at` / `received_at` | the sender's clock and ours. **Both**, because when they disagree that is itself worth seeing |
-| `text` | the same one-line summary a Slack or Discord channel renders, so one body is readable in a chat window and parseable here |
+| `text` | the one-line summary. A Slack channel renders it; **Discord does not** — see § 4.1b, which is the rule for what each destination is actually sent |
 | `user` | **stamped from the key that verified**, never read from the payload — there is no user field to send |
 | `v` | the record's shape, so a reader a year from now does not infer it from which keys happen to be present |
 
 Anything the monitor could not determine is simply **absent**, which a reader
 can tell from a wrong value.
+
+#### 4.1b One report, three envelopes — decided 2026-09-02
+
+**The body above is the REPORT. It is not the request.** What goes on the wire
+is that report put in the envelope its destination reads, and the three
+destinations do not read the same one:
+
+| kind | body | why |
+|---|---|---|
+| `molbuilder` | the § 6.4 record, whole, plus `X-Molbuilder-Timestamp` / `X-Molbuilder-Signature` | our own listener parses it and verifies it |
+| `slack` | `{"text": <the summary>}` | Slack renders a bare `text` |
+| `discord` | `{"embeds": [{...}]}` — title, description, `color` keyed to `state`, and the numeric fields as embed fields | **Discord ignores `text` entirely.** Its Execute Webhook endpoint requires at least one of `content`, `embeds`, `components`, `file` or `poll`, and a body carrying none of them is refused `400` |
+
+> **This section exists because the table above was WRONG.** It said `text` was
+> *"the same one-line summary a Slack or Discord channel renders"*. Slack does;
+> Discord never has. Both senders implemented that sentence faithfully, so
+> every Discord channel ever configured here was one `400` away from working
+> even once its other problem was fixed.
+
+**Every request carries a `User-Agent`, and that is not cosmetic.** Discord's
+edge answers a default `Python-urllib/3.x` with **`403`, Cloudflare code
+1010** — before the request reaches Discord at all, so a dead webhook and a
+live one look identical and the status says nothing about either. With a real
+one, a wrong URL answers `{"message": "Unknown Webhook", "code": 10015}`, which
+is a sentence a person can act on. *(Measured 2026-09-02 against a
+nonexistent webhook id: default UA → `403 1010`; named UA → `404 10015`.)*
+
+**A `key` is never sent to Slack or Discord.** For those the URL *is* the
+credential (§ 3); a signature header is for a listener that verifies one, and
+attaching it to a third party sends a header that means nothing to the
+receiver and everything to us.
+
+**WHICH kind is DECLARED, and the host only supplies a default.** The channel
+file may carry `"kind": "molbuilder" | "slack" | "discord"`; absent, it is read
+off the URL host (`hooks.slack.com` → `slack`,
+`discord.com` / `discordapp.com` `/api/webhooks` → `discord`, anything else →
+`molbuilder`). Declared wins, so a webhook reached through a proxy or a
+relay is still expressible — a rule discovered from a string is a rule that
+stops holding the moment the string changes.
+
+**ONE PRODUCER.** `monitor.webhook_request(dest, report)` returns the
+`(body, headers)` pair, and every sender calls it — the monitor's notifier and
+the setup page's *Test* button both. They built the pair separately until
+2026-09-02, which meant the button that exists to prove the path could pass
+while the path failed.
 
 **A volume cap, per key.** Sixty reports a minute — generous by orders of
 magnitude against a monitor that speaks on convergence, every N hours, and

@@ -579,17 +579,7 @@
     overflow-wrap: anywhere;
 }
 
-/* ---- The hand-off: the next command ---- */
 
-.ts-next-step { margin-bottom: var(--space-md); }
-.ts-next-step:last-child { margin-bottom: 0; }
-.ts-next-stage {
-    font-family: var(--font-sans);
-    font-weight: var(--weight-semibold);
-    font-size: var(--text-sm);
-    color: var(--text-primary);
-    margin-bottom: var(--space-xs);
-}
 .ts-cmd {
     margin: 0;
     padding: var(--space-md);
@@ -816,6 +806,69 @@
 /* The bench is a row of the same list because it is prepared the same way;
    quieter because it is a measurement, not the calculation. */
 .ts-planrow--bench .ts-plan-stage { font-weight: 400; color: var(--text-muted); }
+
+/* ---------- what the RUN uses (stages.md 6.8d) ---------- */
+/* PER RUNG, inside that rung's tab and immediately above `prep run` -- the
+   card is separated from the measure card by a rule so that "this is the
+   run's" is visible without reading a word. */
+.ts-runcard {
+    margin: var(--space-md) 0;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-soft);
+}
+/* COMPOSITION ONLY.  The rows reuse `.ts-row` / `.ts-points` / `.ts-fit`
+   from the grid card -- one value each is the same shape as one point, and
+   giving the run its own row vocabulary would be a second owner for one
+   look.  What differs is the block it writes, not how it reads. */
+.ts-runval {
+    min-width: 0;
+    max-width: 16ch;
+    font-variant-numeric: tabular-nums;
+}
+/* An unstated row is not an error -- it is the state every description was
+   in before this card existed.  Quieter, never struck. */
+.ts-row[data-kind="unstated"] .ts-row-name { color: var(--text-secondary); }
+/* NOR IS AN INHERITED ONE.  A blank field on this rung means "no
+   disagreement", and the value it takes is in the field's own placeholder --
+   so the row reads as answered, just not HERE. */
+.ts-row[data-kind="inherited"] .ts-row-name { color: var(--text-secondary); }
+.ts-row[data-kind="inherited"] .ts-runval { color: var(--text-muted); }
+
+/* ---------- what the run will be LAUNCHED with (architecture.md A13) ---- */
+/* THE END POINT, not the inputs.  A run is hours or days and a wrong width is
+   found when it finishes, so every launch parameter is shown with its value
+   and its source before the second click. */
+.ts-emitted {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+}
+.ts-emitted-head {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-xs);
+}
+.ts-emitted-row {
+    display: grid;
+    grid-template-columns: 5rem 6rem minmax(0, 1fr);
+    gap: var(--space-sm);
+    align-items: baseline;
+    font-size: var(--text-sm);
+}
+@media (max-width: 700px) {
+    .ts-emitted-row { grid-template-columns: minmax(0, 1fr); }
+}
+.ts-emitted-flag { font-family: var(--font-mono); color: var(--text-muted); }
+.ts-emitted-val {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.ts-emitted-why { color: var(--text-muted); font-size: var(--text-xs); }
 
 /* ---------- which channels this calculation reports to ---------- */
 /* NAMES ONLY.  The address-and-key form that used to sit here moved to the

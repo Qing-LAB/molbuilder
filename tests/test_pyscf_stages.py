@@ -2,7 +2,7 @@
 
 Contract: ``docs/engines/stages.md`` § 1.1 (**no engine config carries a
 stage list**) and § 1.1a (a PySCF ladder is N decks and N jobs, declared in
-``task.json``, exactly as SIESTA's is), § 2 (a stage has three fields),
+``task.json``, exactly as SIESTA's is), § 2 (a stage has four fields),
 § 4 (``template ⊕ overrides``).
 
 **This file replaced one that tested ``StageSpec``, ``_default_stages`` and
@@ -131,11 +131,12 @@ def test_no_shipped_ladder_says_anything_about_restart():
             assert "restart" not in st.overrides, (strategy, st.name)
 
 
-def test_a_stage_has_exactly_the_three_fields_of_section_2():
-    """§ 2 -- the same three for both engines, because a ``Stage`` is not
-    an engine's type."""
+def test_a_stage_has_exactly_the_four_fields_of_section_2():
+    """§ 2 -- the same four for both engines, because a ``Stage`` is not an
+    engine's type.  `execution` joined on 2026-09-02 (§ 6.8d): what this rung
+    RUNS at, where `overrides` is what it *is*."""
     assert [f.name for f in dataclasses.fields(Stage)] == [
-        "name", "enabled", "overrides"]
+        "name", "enabled", "overrides", "execution"]
 
 
 def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():

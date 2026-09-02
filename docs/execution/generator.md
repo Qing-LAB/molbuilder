@@ -221,7 +221,7 @@ families, and they differ in *who is allowed to bound them*:
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
 | **parameter** | `block_size` · `mesh_cutoff` · `pao_energy_shift` | the template item's own `range` · `choices` · `type` | **the catalogue** | it is a parameter, and § 7 of `template.md` makes every parameter of the calculation an item |
-| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, and marked as one the machine answers (`template.md` § 6.4) | **the allocation** — see § 4.1 | the **template** must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1). A one-point `bench` entry in the **description** may, and states the allocation — § 4.3a |
+| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, and marked as one the machine answers (`template.md` § 6.4) | **the allocation** — see § 4.1 | the **template** must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1). The **description** may, in its own block — `execution` (`stages.md` § 6.8d), never `bench`, whose points are always things to try |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
 for every parameter; the allocation is stated for this run and is itself bounded
@@ -238,7 +238,8 @@ data that was declared for other reasons — never by a table inside the generat
 > machine's VALUE"* until 2026-09-01, which was two rules in one sentence. The
 > **template's** half never moved and is still absolute — `read_template`
 > refuses a hand-written `mpi_np`. The **description's** half was the carve-out
-> § 4.3a has now closed: one point in `bench` is a decision, on every axis.
+> § 4.3a has now closed: the run's condition is `execution`, its own block —
+> a `bench` point is a thing to measure at any length.
 
 > **The worked case, because it is the one that goes wrong.** `block_size` (the
 > item; `BlockSize` is the SIESTA keyword it anchors) is a
@@ -327,11 +328,18 @@ measures and a person then pins for the real run.
 > it becoming a general "override anything at `prep`" back door. A second member
 > would have to argue the same dependency; none does today.
 
-### 4.3 Neither one ever enters the description
+### 4.3 A sweep is declared; an allocation is asked for
 
-**A sweep and an allocation are both inputs to `prep`, never fields of the
-description.** This is forced, not chosen: M4 already says so for the allocation,
-and a machine axis *is* an allocation. Putting a parameter axis in the
+*(Retitled 2026-09-02. It read "Neither one ever enters the description" and
+was written when neither did. A **sweep** has been declared in `task.json`
+since 2026-08-17 (§ 4.3a), and the run's own condition since 2026-09-02
+(`stages.md` § 6.8d) — what stays out is the **scheduler's** grant, which is
+what M4 was always about. The paragraph below is kept because its reasoning
+about splitting one concept across two floors is still the reason the two are
+one block each rather than four.)*
+
+**A sweep and an allocation reach `prep` together**, and a machine axis is
+resolved *against* an allocation rather than being one. Putting a parameter axis in the
 description while a machine axis arrives at `prep` would split one concept
 across two floors for no reason.
 
@@ -354,13 +362,14 @@ because both halves are real and they are different acts:
 | | | |
 |---|---|---|
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
-| **what is chosen outright** | a `bench` entry with **one** point — *"use_gpu: [true]"*, *"mpi_np: [8]"* | **declared**, and applied at prep, for the bench's trials and the run alike *(user rule, 2026-08-20; extended to the machine axes 2026-09-01 — see below)* |
+| **what is chosen outright** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template, for the bench's trials and the run alike *(user rule, 2026-08-20)*. A machine axis is never "in force" this way — what the RUN uses is `execution`, its own block (below) |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
 | **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep run` |
 
-> **Precedence when three sources name one knob** *(weakest to strongest)*:
-> the template → a one-point `bench` declaration → the benchmark verdict's
-> `run-config.toml` pins → explicit CLI flags.  The measured verdict refines
+> **Precedence when several sources name one knob** — the full ladder is
+> [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a deck
+> knob it reads: the template → a one-point `bench` declaration → the
+> verdict's `run-config.toml` pins → **`execution`** → explicit CLI flags.  The measured verdict refines
 > the declaration (the decision file is yours to edit or delete), and flags
 > beat everything, exactly as they do today.  A **multi-point** non-machine
 > entry is a **value axis** — the rule below *(built 2026-08-21; it was
@@ -368,86 +377,117 @@ because both halves are real and they are different acts:
 > nothing: the verdict's `run-config.toml` answers, and without one the
 > template's value stands.
 
-#### One point is a decision, on EVERY axis
+#### The run's condition is its OWN declaration — `execution`
 
-*(User, 2026-09-01, closing a carve-out that had no argument left: "the user
-decides what to do and sets the parameters as chosen, and that's basically
-updating the task.json. And then prep just takes that json file to prepare
-whatever it is, because it's already in there.")*
+*(User, 2026-09-02, correcting a design that had conflated the two: "run
+parameter is independent from bench grid or bench result. User can run
+without bench. Bench and run share the same framework to choose/set
+parameters but run does not produce grid but a single user defined condition
+to run.")*
 
-**Several points = try them. One point = use it. That is the whole rule, and
-it now holds for the machine axes too** — `mpi_np: [8]` means *run at eight*,
-exactly as `use_gpu: [true]` means *run on the device*.
+**Two declarations, one framework:**
 
-**A run takes the shape only when the description decides ALL of it**, and
-that is a property of what a shape *is* rather than a caution. The machine
-axes are not independent knobs: `G × K` is the rank count, the device ask
-rides the family, and the enumerator resolves them together into one cell.
-So `{mpi_np: [8], omp_threads: [1, 2]}` is **a plan to measure** — two cells,
-ranks fixed while cores vary — and running one of the two configurations you
-asked to compare, picked arbitrarily, would be worse than running neither.
-The run says so: with no decided shape and no flags, `prep` names the
-wrapper's own policy out loud rather than going quiet (`running-a-job.md`
-§ 3). A value axis counts the same way — `use_gpu: [false, true]` enumerates
-two families, so it is a question however the rank axes are declared.
+| | shape | means | produces |
+|---|---|---|---|
+| `bench` | *several* values per axis | **measure these** | N cells, one trial each |
+| `execution` | **one** value per parameter | **use this** | one cell — the run |
 
-Until 2026-09-01 the machine axes were excluded — one point meant *"a short
-list to try"* and `prep run` dropped it. The exclusion existed to keep § 4.3's
-portability rule, and it cost more than it bought:
+**They are independent, and both are optional.** A calculation may declare a
+bench and no run condition, a run condition and no bench, both, or neither. A
+run **never requires a benchmark** — not to have been executed, not to have
+been declared. That is the whole of the user's complaint that opened this
+work, and it is a property of the data model rather than of any surface.
 
-- **It left the person's decision with nowhere to go.** The whole
-  benchmark → run sequence exists so that **you** choose the configuration
-  (§ 4.1), and the file that records what you asked had no room for the
-  answer. Every attempt to give it one has invented a second channel beside
-  `bench` — and each was a second way to say what `bench` could already say.
-- **The portability it protected was already conditional.** `allocation`
-  carries `domain` / `time` / `mem` (`stages.md` § 6.8a, user 2026-08-24), and
-  a queue name is no more portable than a rank count. The line was already
-  drawn by *decision vs finding*, not by *portable vs not*.
-- **The failure it feared is already handled, loudly.** A declared point the
-  target cannot hold is **refused by name, never clamped** (§ 4.3a's rule for
-  every axis). So `mpi_np: [64]` opened on a 48-core machine refuses and says
-  so — which is what you want from a description that travels, and strictly
-  better than the silent mis-size that no channel at all produced.
+> **Why a one-point `bench` entry is NOT the run's condition** *(a design that
+> shipped on 2026-09-01 and was wrong)*. It made the two share one block, so
+> `bench: {mpi_np: [4, 8, 16]}` could not coexist with *"run at 8"*: narrowing
+> the row to say what the run uses **destroys the plan to measure**. You could
+> have a bench or a run decision, never both — which is exactly what a person
+> doing this work needs at the same time.
+>
+> The 2026-08-20 rule it over-read is untouched: a one-point **non-machine**
+> `bench` entry is still a pin in force for the trials and the run alike. What
+> was wrong was extending that to the machine axes and then reading the
+> bench's grid as the run's shape.
 
-**Where a one-point machine axis lands.** Not in the template — `template.md`
-§ 7's refusal of a hand-written `mpi_np` **is untouched**, and the item stays
-valueless. It becomes **the allocation for this prep**, and it gets there by
-`prep run` **asking the grid enumerator** and taking its answer when the
-description has decided every machine axis. § 2's *a run is a sweep of length
-one*, meant literally rather than paraphrased.
+**Same framework, different arity — and the framework is the pipeline BELOW
+`resolve()`.** Both lanes end in `prep_calculation → resolve() → ParameterSet
+→ the renderers`, and that is what "one framework" means. What differs is the
+step above it: a bench hands down a sweep and its translation; a run hands
+down one condition, split by the catalogue into the launch shape and the pins
+(`_declared_execution_pins` for the second half, unchanged).
 
-That is not an implementation note; it is what makes the rule *correct*
-rather than merely stated. Everything the device axis needs already lives in
-that one enumerator:
+**The run does NOT go through the grid enumerator.** `_bench_inputs` is a
+sweep's own machinery — it must invent the axes a condition does not mention —
+so the machine half is a **direct map** from the catalogue's name to the
+`Resources` field. See *"Where `execution`'s machine values land"* below, and
+the recorded detour that proves why.
 
-- whether there **is** a device — the GPU family, from the template's
-  `use_gpu` overridden by a declared one-point pin;
-- the refusal when `gpu_count` contradicts a CPU family, **by name**;
-- the count, against the machine's own record;
-- the **even-split rule** — `G × K` is the rank count, and an uneven pair is
-  dropped by name (`tuning.md` § 2.12);
-- **which card**, resolved from the target, because a description may not
-  name a machine (`template.md` § 7);
-- and `MachineTranslation.to_resources`, which emits a **typed** `--gres` for
-  a device cell and none at all for a CPU one.
+**It is both calculation-wide and per stage** (`stages.md` § 6.8d): the block
+says what this calculation runs at, and a rung that differs says so on
+itself, field by field over the calculation's.
 
-> **A second translation was written instead, and lasted one day**
-> (2026-09-01): a name map turning `gpu_count` into an untyped `gpu:N`. It
-> got the card wrong, put a device ask on CPU runs, and never knew `G × K`
-> existed — while the enumerator two modules away had answered all three
-> correctly since August. Recorded because the failure is instructive: the
-> gap was never a missing mechanism, only a caller that did not ask.
+**Precedence gains one rung, and it goes where the person's own words go:**
 
-**A decided shape the machine cannot hold refuses**, with the crossed-out
-cell and its numbers. Running smaller than the file says would be exactly the
-concealment this channel exists to end. A *question* whose cells do not fit
-here is not a decision and does not refuse — a description carrying a bench
-you cannot run on this box still runs, at the wrapper's own policy.
+> template < a one-point `bench` pin < `run-config.toml` < **`execution`** <
+> a `prep` flag
 
-**Precedence is unchanged in shape and gains no rung**: a `prep` flag still
-wins, and `run-config.toml` — the **machine's** finding — still fills only what
-neither the flags nor the declaration stated.
+`run-config.toml` is what a machine **found** and is *"yours to edit or
+delete"* (`project-layout.md` § 2.3.2); `execution` is what a person **asked
+for**, in the file that records asks. A verdict silently overriding a typed
+condition is the concealment this whole round exists to end — so the ask wins,
+and only a flag, which is a person speaking about right now, wins over it.
+
+> **Why not a one-point `bench` entry, which is where this went first.** On
+> 2026-09-01 the machine axes were pulled into the 2026-08-20 override lane,
+> so `mpi_np: [8]` meant *run at eight*. It could not express the ordinary
+> case — a grid to measure **and** a decision to run at the same time —
+> because narrowing the row to state the run destroys the plan to measure.
+> `execution` replaced it on 2026-09-02 and the exclusion is back: a `bench`
+> point is a thing to try, at any length.
+
+**Where `execution`'s machine values land.** Not in the template —
+`template.md` § 7's refusal of a hand-written `mpi_np` **is untouched**, and
+the item stays valueless. They become **the allocation for this prep**, by a
+direct map from the catalogue's name to the `Resources` field: `omp_threads`
+→ `cpus_per_task`, `gpu_count` → a typed `--gres`, the rest one to one.
+
+**Nothing is worked out, and that is the rule.** A field the condition does
+not name is not a gap to fill — `architecture.md` § 5.2's track B: it is
+answered by `run-config.toml` if a benchmark left one, and by the wrapper's
+own chain at run time if not (`running-a-job.md` § 3.1: `-np` > `MB_NP` >
+`SLURM_NTASKS` > the baked default). A layer that fills it in *because it must
+be decided* overwrites both.
+
+The one fact the map cannot hold is **which card** a device ask names — a
+description may not name a machine (`template.md` § 7) — so the count is the
+person's and the type is the target's, read from its own record by the same
+producer the sweep uses.
+
+> **It went through the grid enumerator for one afternoon** (2026-09-02) on
+> the argument that a run is a sweep of length one. It is — *below*
+> `resolve()`, which is where the shared pipeline actually is. `_bench_inputs`
+> sits **above** that and is a sweep's own machinery: it must invent the axes
+> a condition does not mention. So `{omp_threads: 4}` came back as a
+> **single-rank job** (its `mpi_np or [1]` default), `{use_gpu: true,
+> mpi_np: 8}` came back **empty** because the device axis enumerated three
+> cells and *"not one cell"* was read as *"nothing decided"*, and
+> `max_memory_mb` was refused as an axis the sweep's translation does not
+> know. Reusing a wheel is right; reusing the **wrong** wheel invents the
+> problem it then solves.
+
+**A condition the machine cannot hold is refused where every other
+over-large ask is** — at `launch`, by the admission door, which is the one
+floor that knows what a queue takes (`submission.md`). `prep` writes what you
+asked for, exactly as it does for `--np 999`; it does not second-guess a
+number on the way past. The Task-setup tab shows the same door's answer
+beside the fields, so the refusal is visible while you type rather than after
+you submit.
+
+**Precedence gains one rung**, and it is the one above: `execution` is what a
+person asked for, so `run-config.toml` — the **machine's** finding — fills only
+what neither the flags nor the condition stated. The full ladder is
+[`architecture.md § 5.2`](?doc=execution/architecture.md).
 
 > **§ 4.3 above forbids a MACHINE'S OPINION in the description, not a
 > DECISION.** What floor 2 may never hold is what a machine **found** —
@@ -797,6 +837,19 @@ flowchart TB
 the resolver returns a list, the benchmark's build-and-lay-out half has nothing
 left to implement.
 
+### 6.0a One assembly, two surfaces
+
+**The rule is [`architecture.md`](?doc=execution/architecture.md) A12**, and it
+is stated there because that document owns *who may know about whom*: a route's
+inputs are composed in **one** function, every surface calls it, and a surface
+composes nothing. Its contract — including that the ask handed in is never
+`None` — is in A12's note.
+
+**What this document adds is the shape of that tuple for `prep`:**
+`(allocation, pins, chosen)`, composed from the three declared sources in
+§ 4.3a's order. The picture of where each *value* comes from is
+[`architecture.md § 5.2`](?doc=execution/architecture.md).
+
 ### 6.1 What each floor may know
 
 | floor | may read | must never |
@@ -943,9 +996,21 @@ floors.
 |---|---|---|---|---|
 | **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis, `restart` | **describe** (floor 2) | the user, per stage | the **catalogue** — the single source § 3 draws; the template carries the answer |
 | **2 · structure facts** | cell, **vacuum**, frozen atoms, regions | before describe (the structure file), or **at describe** (`--vacuum`) | whoever built the structure | *unset* — a cell is resolved from the structure at render, with a named default and a warning when nobody chose |
-| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | the detected **Environment** and the scheduler config — never the **template** ([`engines/template.md`](?doc=engines/template.md) § 7 forbids a value there). *What you asked for* may be stated in the description: `allocation` for the queue, wall and memory, a one-point `bench` entry for the rest (§ 4.3a) |
+| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | the detected **Environment** and the scheduler config — never the **template** ([`engines/template.md`](?doc=engines/template.md) § 7 forbids a value there). *What you asked for* may be stated in the description: `allocation` for the queue, wall and memory, `execution` for the launch shape (`stages.md` § 6.8d). An item neither names is answered by the wrapper at run time — `running-a-job.md` § 3.1's chain, which is a resolver and not a gap |
 | **4 · runtime overrides** | `-np` / `-omp` flags, `MB_NP`, `OMP_NUM_THREADS`, `--mps` / `--no-mps` | **launch**, inside the wrapper | the person or scheduler launching | the values class 3 baked; see the chain below |
 | **5 · policy** | `continue_retries`, stage `restart` policy | **describe** (floor 2) | the user | the catalogue, like class 1 — a policy is portable, which is why it is *not* class 3 |
+
+### 10.0 The whole picture
+
+**The diagram and the four ladders are
+[`architecture.md § 5.2`](?doc=execution/architecture.md)** — where every value
+comes from, who may change it, and where the two surfaces hand theirs in. It
+lives there because § 5 of that document owns *in what order decisions get
+fixed*, and a value's provenance is that question asked about a number.
+
+The five classes below are the same fact read per-parameter rather than
+per-ladder: which class a parameter is in tells you *who* decides it and
+*when*, and § 5.2 tells you what beats what inside that class.
 
 ### 10.1 Class 1 — physics: the catalogue is the only default table
 
@@ -1006,15 +1071,19 @@ whole reason describe and prep are two verbs
 There is no catalogue default for `mpi_np` — its item is declared **valueless**
 and marked as one the machine answers ([`template.md`](?doc=engines/template.md)
 § 6.4) — so the default is **derived from the
-machine standing under the command** (physical cores, clamped — see
+selected target and domain** (the domain row's widest node, else that
+record's topology, clamped — never the box running `prep`; see
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.1), which
 is why it may not appear in a floor-2 template at all.
 
-**"No default" is not "no answer".** *Derived from the machine* is what
-happens when nobody said; a one-point `bench` entry is somebody saying, and it
-wins over the derivation exactly as a flag does (§ 4.3a). The item stays
-valueless in the template either way — the decision lives in the description,
-which is a different file with a different job.
+**"No default" is not "no answer".** *Read off the target* is what happens
+when nobody said; `execution` is somebody saying, and it wins over that
+reading exactly as a flag does (§ 4.3a). The item stays valueless in the
+template either way — the decision lives in the description, which is a
+different file with a different job. **And when the target's record says
+nothing either, that is a refusal**, not a third fallback: a rank count taken
+from the wrong machine looks exactly like a right one
+([`architecture.md § 5.2`](?doc=execution/architecture.md)).
 
 ### 10.4 Class 4 — runtime: the wrapper's chain, highest wins
 

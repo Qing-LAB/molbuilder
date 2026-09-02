@@ -48,7 +48,10 @@ def _run(controls: dict, task: dict | None, want: str):
     fns = "\n\n".join([
         # `notifyValues` asks it which channels are ticked, so a harness
         # without it would exercise a different function than the page runs.
-        _slice(src, "function channelSelection()", "/** Paint one tick"),
+        # `notifyValues` asks BOTH selectors, so the harness needs both or
+        # it exercises a different function than the page runs.
+        _slice(src, "const REPORT_ITEMS = [", "/** Paint one tick per report"),
+        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too: the
         # writer stopped moving the page on 2026-08-27 and does so through
@@ -207,7 +210,10 @@ def test_an_unparseable_document_loses_nothing():
     fns = "\n\n".join([
         # `notifyValues` asks it which channels are ticked, so a harness
         # without it would exercise a different function than the page runs.
-        _slice(src, "function channelSelection()", "/** Paint one tick"),
+        # `notifyValues` asks BOTH selectors, so the harness needs both or
+        # it exercises a different function than the page runs.
+        _slice(src, "const REPORT_ITEMS = [", "/** Paint one tick per report"),
+        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too: the
         # writer stopped moving the page on 2026-08-27 and does so through

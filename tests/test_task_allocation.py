@@ -105,6 +105,51 @@ def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it():
     assert "did you mean 'time'" in str(e.value) and "bench" not in str(e.value)
 
 
+class TestTheRunsConditionIsOneValueEach:
+    """`stages.md` § 6.8d.  `bench` and `execution` are one vocabulary at two
+    arities, so the ARITY is what tells them apart -- and a list in the wrong
+    one has to say which block it belongs in, because "invalid" would send a
+    person hunting for a typo instead of to the other lane."""
+
+    def test_a_list_is_refused_and_names_the_block_it_belongs_in(self):
+        with pytest.raises(Exception) as e:
+            _task(execution={"mpi_np": [4, 8]})
+        assert "ONE value" in str(e.value) and "bench" in str(e.value), e.value
+
+    def test_a_single_point_list_is_refused_too(self):
+        """A one-item list is still `bench`'s shape.  Accepting it would make
+        two spellings of one thing, and the next reader would have to check
+        both."""
+        with pytest.raises(Exception) as e:
+            _task(execution={"mpi_np": [8]})
+        assert "ONE value" in str(e.value)
+
+    def test_a_scalar_is_what_it_takes(self):
+        t = _task(execution={"mpi_np": 8, "diag_algorithm": "ELPA-2STAGE"})
+        assert t.execution == {"mpi_np": 8, "diag_algorithm": "ELPA-2STAGE"}
+        assert t.to_dict()["execution"] == t.execution
+
+    def test_a_name_that_is_not_an_execution_setting_is_refused(self):
+        """Membership is the catalogue's, checked where the vocabulary is
+        (`validation/task.py`) -- the same split `bench` makes.  A physics
+        value here would otherwise ride to prep and land in a deck as
+        something nobody can read back."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation.task import preflight
+        found = [i for i in preflight(_task(execution={"mesh_cutoff": 400}),
+                                      SiestaConfig)
+                 if "execution" in (i.where or "")]
+        assert found, "a physics value passed as a run condition"
+        assert "not an execution setting" in found[0].message
+        # and it says where it DOES belong, rather than only that it is wrong
+        assert "template" in found[0].message
+
+    def test_absent_writes_no_key(self):
+        """Absent-is-a-state: a description that runs at the wrapper's own
+        policy round-trips without gaining a block."""
+        assert "execution" not in _task().to_dict()
+
+
 def test_a_number_is_refused_with_the_spelling_it_wants():
     """`{"mem": 128}` is ambiguous -- 128 what? -- so it is refused rather
     than guessed at."""

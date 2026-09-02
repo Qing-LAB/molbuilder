@@ -267,21 +267,29 @@ case-insensitively, because they key filenames
 
 ---
 
-## 6. The machine — what to try, and what to use
+## 6. The machine — what to measure, and what to run
 
 **This is the page's other half, and it is where the GPU is decided.**
 
-One row per setting. **One point is your choice; several is a measurement** —
-the same row does both, because a run is a sweep of length one
+**Two cards, and they are independent** (§ 6.2b): *What to measure* declares
+the grid, *What the run will use* states one value each. Both go through the
+same resolver — a run is a sweep of length one
 ([`generator.md § 2`](?doc=execution/generator.md): *`prep` step 2 always
 produces a list of resolved configurations; a production run is that list with
-one element, a benchmark is the same list with N*).
+one element, a benchmark is the same list with N*) — and neither reads the
+other's block.
 
-| setting | points | what that means |
+| card | row | what that means |
 |---|---|---|
-| `use_gpu` | `off` | **chosen** — one point, so it is a value |
-| `mpi_np` | `4` `8` `16` | measured — 3 trials |
-| `omp_threads` | `1` `2` | measured — 2 trials |
+| measure | `mpi_np` `4` `8` `16` | 3 trials |
+| measure | `omp_threads` `1` `2` | × 2 → 6 combinations |
+| run | `mpi_np` = `8` | what the run asks for |
+| run | *(blank)* | `run-config.toml`, then the wrapper's policy |
+
+**A one-point row in the MEASURE card is still one trial, not a decision** —
+except for the non-machine items, where the 2026-08-20 override rule stands:
+`use_gpu: [true]` pins the template for the trials and the run alike
+(`generator.md` § 4.3a).
 
 ### 6.1 Two kinds of setting live here, and the difference is not cosmetic
 
@@ -311,19 +319,18 @@ the answer *is* right now, not what it is defined as.
 > ([`stages.md § 6.2`](?doc=engines/stages.md)) — the page's two halves
 > disagreeing about one setting, in one document, three sections apart.
 
-So ranks, threads and memory are **points**, and how many you leave in a row is
-what that row means: several is *measure these*, one is *use this* (§ 6.2b).
-Either way, what a run finally gets is resolved at `prep` on the target, and a
-point the target cannot hold is refused by name.
+So ranks, threads and memory in the **measure** card are always *points to
+try* — one of them is one trial, never an answer. What a run uses is the
+**run** card, `execution`'s own block (§ 6.2b), and the two cards never read
+each other.
 
-> **A one-point machine row read as *"a short list of one"* until
-> 2026-09-01**, on the argument that *"try 4, 8, 16"* is true on any machine
-> while *"use 16"* is true on one. The argument is answered in
-> [`generator.md § 4.3a`](?doc=execution/generator.md): the line is **decision
-> vs finding**, not portable vs not — this file has carried a queue name since
-> 2026-08-24, and a queue name is no more portable than a rank count. What it
-> may never hold is what a *machine found*, which is why `summarize` writes its
-> verdict to `run-config.toml` instead.
+> **The line is decision vs finding, not portable vs not.** A description may
+> hold *"run it at eight"* — that is a person asking — and may never hold what
+> a **machine found**, which is why `summarize` writes its verdict to
+> `run-config.toml` instead. The argument is
+> [`generator.md § 4.3a`](?doc=execution/generator.md)'s;
+> [`architecture.md § 5.2`](?doc=execution/architecture.md) carries the
+> ladders.
 
 > **This is about CATALOGUE ITEMS, and the tab also holds something else**
 > *(2026-08-24)*. The queue card ("Where it runs, and what it may use") sets
@@ -416,68 +423,59 @@ calculation will fit in the card it asked for; that is a runtime failure
 the person deals with, and [`scheduler.md § 0`](?doc=execution/scheduler.md)
 says why submission must not answer it.
 
-### 6.2b One point is your decision — the same rows, read the other way
+### 6.2b What the run will use — its own card, one value each
 
-*(user, 2026-09-01: "the user decides what to do and sets the parameters as
-chosen, and that's basically updating the task.json. And then prep just takes
-that json file to prepare whatever it is, because it's already in there.")*
+*(user, 2026-09-02: "run parameter is independent from bench grid or bench
+result. User can run without bench… bench and run share the same framework to
+choose/set parameters but run does not produce grid but a single user defined
+condition to run." And: "bench is bench and run is run. They are structurally
+separated in their dir and they are functionally different as the user decides
+to use either.")*
 
-**Every row in this card answers two questions at once, and how many points it
-carries is which one it is answering:**
+**Two cards, because they answer two questions**, and neither reads the
+other:
 
-| the row | means | what `prep` does with it |
+| card | writes | shape |
 |---|---|---|
-| `mpi_np` · **4, 8, 16** | *measure these* | `prep bench` builds one trial per point |
-| `mpi_np` · **8** | *use eight* | `prep run` runs at eight — and `prep bench` measures only eight |
+| **What to measure** | `task.json`'s `bench` | several values per row — one trial per combination, in `<stage>/bench/` |
+| **What the run will use** | `task.json`'s `execution` (`stages.md` § 6.8d) | **one value each** — the run, in `<stage>/run-N/` |
 
-That is `stages.md` § 6.8's rule, and it is the whole of the run's setup. **There
-is no second card and no second key**: the thing you would type a decision into
-is the thing you already typed the axis into, and narrowing a row from three
-chips to one *is* deciding.
+**The run card offers the bench's parameters and does not read them.**
+Whatever the grid varies appears here as a row, because the thing you measured
+is the thing you are deciding about — and the grid's points sit beside each
+field in grey (*measuring: 4, 8, 16*) as **information that fills nothing**.
+It carries its own *+ Add setting* for a knob no benchmark touched, since a
+run may want one a measurement did not.
 
-**A run takes the shape only when every machine row is down to one point**
-([`generator.md § 4.3a`](?doc=execution/generator.md)), because those rows
-resolve together into a single cell — `G × K` is the rank count and the
-device ask rides the family. So a card with ranks decided and cores still
-varying is a card that describes a **measurement**, and the tab's admission
-block shows exactly that: more than one row in it means more than one thing
-to run.
+**A run needs no benchmark.** Not executed, not summarized, not declared. Open
+a fresh calculation, type what you want, prep the run. That is the complaint
+this whole redesign answers *(user, 2026-09-01: "it requires the bench to be
+fully executed… it tries to conceal all decision from user")*, and it is a
+property of the data model rather than of this page.
 
-**This is what ended the concealment** *(user, 2026-09-01: "it requires the
-bench to be fully executed … it tries to conceal all decision from user")*. The
-run used to take `run-config.toml`'s verdict for every field the description had
-not stated, and this card had no way to state one for a machine knob — one point
-there meant *"a short list to try"*, and `prep run` dropped it. So the
-recommendation was the only input, what it chose was never shown, and a run
-needed a benchmark to have been **executed**. The rule changed rather than the
-page: `generator.md` § 4.3a now reads one point as a decision on **every** axis,
-and this card gained the meaning it looked like it already had.
+**Blank is a state, and it is the ordinary one.** What no row states falls to
+the stage's `run-config.toml` and then to the wrapper's own policy, and the
+card says so.
 
-**A verdict is shown beside the row and fills nothing.** Once a benchmark has
-been summarized, its winner is marked — `measured: 8` — and marked is all it is.
-The chips stay as you left them, and taking the recommendation is you dropping
-the other chips.
+**And it is checked in the card, as you type** — the same admission door the
+grid card asks, over a grid of one. A run is a sweep of length one, so there
+is no second check to keep in step (`generator.md` § 2). Six combinations in
+the card above and one in this card is the ordinary picture: a plan to
+measure, and a decision, side by side.
 
-**What the queue card holds is different and stays there**: `domain`, `time` and
-`mem` are the calculation's ask to the scheduler (`stages.md` § 6.8a), not a
-knob a benchmark can vary. A bench that wants its own shorter wall says so at
-its own `prep` — measuring and running are two preps, each with its own
-allocation (`generator.md` § 4.1).
+> **A single card served both for one day** (2026-09-01), on the rule that
+> narrowing a `bench` row to one point *was* the decision. It could not
+> express the ordinary case: `{mpi_np: [4, 8, 16]}` and *"run at 8"* at the
+> same time. Narrowing the row to say what the run uses **destroyed the plan
+> to measure** — you could have a bench or a run decision, never both.
 
-**And the check in § 6.2a covers both readings**, because they are one thing to
-the door it asks: a one-point grid is a grid with one cell, so *"does what I
-chose fit?"* is answered by the same enumerator that answers *"do the points I
-want to measure fit?"* — `generator.md` § 2's *a run is a sweep of length one*,
-taken literally rather than approximated with a second endpoint.
-
-> **A second lane stood here from 2026-09-01 until later the same day** — the
-> run's values as their own card, writing `allocation`, `stage_allocation` and
-> `bench_allocation`, with a `/api/task-setup/run-fit` door of its own. Every
-> piece of it was a second way to say something `bench` could already say, and
-> the endpoint was `bench-grid` called with a list of length one. Recorded
-> because the mistake is instructive: the missing thing was never a channel, it
-> was three lines in `_declared_execution_pins` that dropped a one-point machine
-> axis on the floor.
+**A rung that differs says so on itself.** `execution` is both
+calculation-wide and per stage (`stages.md` § 6.8d), and the two compose field
+by field. **This card writes the rung's own block** — it is built per rung,
+inside that rung's tab (§ 11); the calculation-wide block is shown behind
+each field as its placeholder and is a
+`task.json` edit today, and § 7.1's per-stage list shows the **effective**
+values for each rung either way.
 
 ### 6.3 Only speed knobs may be measured
 
@@ -505,7 +503,8 @@ its point count:
 |---|---|---|
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
-| a machine-card setting — **any** point count, **any** kind | `task.json`'s `bench` | **the one lane** *(user rule, 2026-08-20; the machine axes joined it 2026-09-01)*: several points = values to **try** (a bench axis); **one point = the value in force**, for the bench's trials and the run alike. A non-machine value lands as a pin over the template, a machine value as the allocation — one door each, chosen by the item, never by a second key. Nothing migrates between files; the description stays exactly as edited, and prep is where a declaration is resolved (`generator.md` § 4.3a) |
+| a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is also a pin in force over the template, for the trials and the run alike *(user rule, 2026-08-20)*; a machine axis is only ever a point to measure |
+| a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. A machine item becomes the launch shape, anything else a pin over the template — one door each, chosen by the catalogue, never by a second key |
 | a notify-card tick | `task.json`'s `notify` | **when this run should say something, and to which channels by name** — on each SCF convergence, every N hours, or neither; a run ending always reports and so is not offered. Portable in the way § 6.1 requires: *"every six hours, to `slack`"* is true wherever the file is opened, because a name is a label the person chose and grants nothing. **What that name resolves to is not written here and must not be** — a description travels, so the address and its credential stay in the config directory of the machine that runs the job, set on the [This machine](?doc=web/this-machine.md) tab |
 | a queue, a wall, a memory ask | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — three fields, each optional. Not the launch shape: that is a machine-card row, one row above |
 
@@ -734,7 +733,6 @@ rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 |---|---|
 | **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
 | **run it** | `prep run <stage>` → `launch run` |
-| **run it** | `prep run <stage>` → `launch run` |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:
@@ -743,12 +741,17 @@ meant, and a per-tab copy would show you one line of it at a time. The rail
 stays on screen while you work through the tabs, so both are visible at once
 without either being duplicated.
 
-**What the run will use is NOT asked here.** It is § 6.2b's rows, in the
-machine card, where narrowing a row to one point is the decision — and the tab
-does not restate them. A tab per rung with its own copy of those fields was
-built on 2026-09-01 and deleted the same day: a second surface writing the same
-answer is how two surfaces come to disagree, and the machine card had the rows
-already.
+**What the run will use is asked HERE, in the rung's own tab**, immediately
+above the `prep run` line that consumes it *(user, 2026-09-02: "that selection
+panel card should be next to the prep for run button such that it's obvious
+that this is designed for the run. This is not mixed up with the existing
+functional bench setup")*. It writes that rung's `stages[i].execution`
+(`stages.md` § 6.8d); a field left blank takes the calculation's own block,
+which the field shows as its placeholder.
+
+There is exactly one such card per rung and none anywhere else — it stood in
+the main column for part of 2026-09-02, two cards away from the button it
+decides for, which reads as part of the bench setup.
 
 **So a tab is about doing, not deciding**: what this rung will produce, and the
 two commands that produce it. The decision is above, made once, and visible in
@@ -760,7 +763,7 @@ a decision only you can make** — unchanged from the card this replaces:
 | | what it does | when |
 |---|---|---|
 | **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what allocation this stage wants. The verdict is written to `run-config.toml`, which the run then applies **to the fields you left blank** |
-| **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark you read, from § 6.2b's one-point rows, or from flags |
+| **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark you read, from § 6.2b's card, or from flags |
 
 **Any stage may be benchmarked, not only the first.** The bench axes are
 declared once for the calculation (§ 6.3), so every enabled stage can be

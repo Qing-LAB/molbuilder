@@ -1812,8 +1812,8 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **fourteen** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the seven
+The `jobset.Resources` dataclass holds exactly **fifteen** fields — `domain`,
+`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the eight
 riders that become no scheduler flag: `program` (**added 2026-08-28**, the
 transport composite — WHICH binary the wrapper launches; unset means the
 engine's own, siesta. The transmission stage runs tbtrans over the SAME
@@ -1849,7 +1849,12 @@ file, exactly as above. `None` is unset and also *every channel that machine
 has*, so an unset field renders no flag; an **empty tuple is a real value**
 meaning none at all, and it renders one — `run-reports.md` § 3.0, and the one
 place in this codebase where absent and empty are two states rather than two
-spellings of one).
+spellings of one), and `notify_report` (**added 2026-09-02**,
+`stages.md` § 6.9 — WHAT each report carries beyond the calculation's own
+name, which is never optional. Same road and the same reason as the three
+above; same absent-vs-empty rule as `notify_channels`, because `None` is
+*every field the monitor could determine* and `()` is *the summary line
+alone*).
 *(This sentence said "exactly seven" while its own table already carried
 `continue_retries` — amended U19, 2026-08-12, and pinned by an equality
 test in both directions.)*  `partition` and `qos` are **not** `Resources`

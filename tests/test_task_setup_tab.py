@@ -562,7 +562,7 @@ def _row_badge(name, points, machine):
     if node is None:
         pytest.skip("node not available")
     src = VIEWER.read_text(encoding="utf-8")
-    i = src.index("        const chosen = pts.length === 1;")
+    i = src.index("        const chosen = pts.length === 1 && !machineAnswers(name);")
     j = src.index("`;", i) + 2
     prog = (f"const pts = {_json.dumps(points)};\n"
             f"const name = {_json.dumps(name)};\n"
@@ -576,6 +576,45 @@ def _row_badge(name, points, machine):
     return _json.loads(out.stdout.strip().splitlines()[-1])
 
 
+def test_the_run_preview_shows_the_EMITTED_launch(web_client):
+    """`architecture.md` A13: the run's surface shows the value the `.sbatch`
+    will carry and where it came from — resolved by the emitter, and never
+    left blank when blank resolves to a number.
+
+    **The failure this pins**: the preview called `header_ntasks` WITHOUT
+    `auto=`, so an unstated rank count rendered the no-record refusal while
+    the header carried the domain's own width. The card was wrong about the
+    one number it exists to surface (caught by review, 2026-09-02).
+    """
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
+    door = src[src.index("def api_task_setup_prep("):
+               src.index("def api_task_setup_save(")]
+    assert "_emitted_launch" in door, "the preview reports no emitted launch"
+    call = door[door.index("ntasks, why = header_ntasks("):]
+    call = call[:call.index(")\n")]
+    assert "auto=" in call, (
+        "the card asks the emitter a DIFFERENT question than the emitter "
+        "asks itself -- `auto=` is what turns 'cannot size' into the "
+        "domain's width")
+    assert "auto_ranks(" in call, (
+        "the default must come from the same producer the header uses")
+
+
+def test_the_emitted_rows_cover_every_launch_parameter(web_client):
+    """A13 again, on the shape: `-n`, `-c`, `--gres`, `--mem`, `-t`, `-p`.
+    A parameter missing from the block is a parameter that can surprise."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
+    body = src[src.index("def _emitted_launch("):]
+    body = body[:body.index("\n    # ---- the PLAN")]
+    for flag in ("-n", "-c", "--gres", "--mem", "-t", "-p"):
+        assert f'"{flag}"' in body, f"{flag} is not reported to the card"
+    assert '"source"' in body, "a value without its source is half the rule"
+
+
 def test_one_point_is_a_choice_and_several_a_measurement():
     """`generator.md` § 2 — a run is a sweep of length one, so both states are
     the same structure at different lengths.  Verified legal by the reader:
@@ -586,23 +625,37 @@ def test_one_point_is_a_choice_and_several_a_measurement():
         == "measured \u00b7 2 points"
 
 
-def test_length_decides_for_a_MACHINE_row_too():
-    """`generator.md` § 4.3a, 2026-09-01: one point is a decision on EVERY
-    axis.  A machine-answered row was pinned to *"to try"* at any length
-    until then, so `mpi_np: [8]` read as a short list of one and `prep run`
-    dropped it — which is how the run's decision came to have nowhere to
-    live.
+def test_a_ONE_POINT_MACHINE_row_is_a_trial_not_a_decision():
+    """**Replaced the test that asserted the opposite** (2026-09-02).
+
+    It read `test_length_decides_for_a_MACHINE_row_too` and pinned the
+    design that lasted one day: *one point is a decision on every axis*.
+    Narrowing a `bench` row to say what the RUN uses destroyed the plan to
+    measure, so the two were separated -- `mpi_np: [8]` is *measure eight*,
+    one trial, and `prep run` never reads it (`stages.md` § 6.8).  What the
+    run uses is `execution`, asked in the rung's own tab.
+
+    The measure card said "chosen · 1 point" beside such a row, which told
+    a person their run was decided by a row the run does not consult.
 
     The `machine` KIND survives, and that is deliberate: it tints the row,
-    because which kind of setting this is stays worth seeing.  What it must
-    no longer do is decide what the POINTS mean."""
+    because which kind of setting this is stays worth seeing."""
     one = _row_badge("mpi_np", [8], True)
-    assert one["verdict"] == "chosen \u00b7 1 point", (
-        "a one-point machine row still reads as a list to try")
+    assert one["verdict"] == "measured \u00b7 1 point", (
+        "a one-point machine row still claims to be the run's decision")
     assert one["kind"] == "machine", "the row lost its tint"
     many = _row_badge("mpi_np", [4, 8, 16], True)
     assert many["verdict"] == "measured \u00b7 3 points"
     assert many["kind"] == "machine"
+
+
+def test_a_one_point_row_that_is_NOT_machine_answered_is_still_a_choice():
+    """The other half, so the fix is not "call everything measured": a deck
+    knob with one point is the value that stage runs at (`generator.md`
+    § 4.3a).  Only the machine-answered rows changed."""
+    one = _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)
+    assert one["verdict"] == "chosen \u00b7 1 point"
+    assert one["kind"] == "chosen"
 
 
 def test_measuring_never_discards_the_chosen_value():

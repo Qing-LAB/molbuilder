@@ -255,18 +255,52 @@ rank count `N` is resolved by precedence, **highest wins**:
 -np / --np flag   >   MB_NP   >   SLURM_NTASKS   >   PBS_NP   >   generation default
 ```
 
-When `mpi_np` was left auto at generation, the baked default is the machine's
-**physical core count**, **clamped to the atom count** (`n_atoms`, parsed from
-`NumberOfAtoms` in the `.fdf`), with a printed note. A user who *explicitly*
+When `mpi_np` was left auto at generation, the baked default is **the selected
+target/domain's core count** — the domain row's widest node where a queue is
+chosen, else the target record's own topology, and **never the machine that
+ran `prep`** (`architecture.md` § 5.2 step 3b, which owns the rule). It is
+**clamped to the atom count** (`n_atoms`, parsed from `NumberOfAtoms` in the
+`.fdf`), with a printed note.
+
+**A rank count is read from a record, and nowhere else.** No probe of the box
+that happens to be running, no fallback, no floor — **nothing is guessed**
+*(user, 2026-09-02: "so we are not guess at all")*. When nothing states a rank
+count and no record answers, molbuilder **refuses and says which command
+fixes it**:
+
+```
+molbuilder jobset probe --write                 # this machine
+molbuilder jobset probe --write --name NAME     # on the target
+```
+
+**This holds for the local machine too** *(user, 2026-09-02: "even for the
+current machine, the environment.json must be present otherwise user is
+required to run jobset probe first")*. A workstation briefly fell back to its
+own `physical_core_count` on the reasoning that *this box IS the machine, so
+its own count is not about somewhere else*. That is true and still the wrong
+shape: the number would then come from a different source depending on how the
+bundle was set up, so *"where did 20 come from"* would have two answers. One
+source, one answer, and probing is one command.
+
+*(It read "the machine's physical core count" until 2026-09-02. That is the
+box running `prep`, which for a bundle prepped at a desk and run on a cluster
+is the wrong machine — and the number looked exactly like a right one.)* A user who *explicitly*
 sets `mpi_np > n_atoms` is honoured and warned.
 
-> **The auto-rank `.sbatch` floor (F15, recorded 2026-08-13).** A GPU job
-> generated with auto ranks writes `#SBATCH -n <gpu count>` as a header
-> floor — and inside the job, `SLURM_NTASKS` from that floor outranks the
-> runtime GPU policy, so the job runs at the floor, not the policy.  This
-> path is unreachable in the jobset workflow (prep always resolves an
-> explicit rank count) and moot wherever `mpi_np` is set explicitly — the
-> project's practice.  The guard for the remaining case is the `--dry-run`
+> **The auto-rank `.sbatch` floor (F15, recorded 2026-08-13; corrected
+> 2026-09-02).** With no rank count stated, the header used to floor at
+> `-n 1` on a CPU job and `#SBATCH -n <gpu count>` on a GPU one — and inside
+> the job `SLURM_NTASKS` **comes from that very header**, so the floor
+> outranked everything below it in the chain above. This box called the path
+> *"unreachable in the jobset workflow (prep always resolves an explicit rank
+> count)"*, and it was not: an ordinary description that states no `mpi_np`
+> took it, and a 64-core node ran the job on **one rank**.
+>
+> The CPU floor is gone — the header now asks for the selected
+> target/domain's width (`header_ntasks`, the same producer the wrapper's
+> baked default uses, so the two agree by A9). **The GPU rung remains**: with
+> a device asked for and no rank count stated, the header carries one rank
+> per device, which is the placement policy's own starting point.  The guard for the remaining case is the `--dry-run`
 > inspection: it names each value's source and warns when the sibling
 > header's `-n` disagrees with the resolved count, so the mistake cannot
 > pass the check you run before spending a queue slot.

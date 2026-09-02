@@ -423,6 +423,266 @@ function paintFit(host, body) {
     }
 }
 
+/* ---------- what the RUN uses -- its own block (stages.md 6.8d) ---------- */
+/*
+ * ONE VALUE EACH, and INDEPENDENT of the bench.  A design that made a
+ * one-point bench row the run's shape shipped on 2026-09-01 and could not
+ * express the ordinary case -- a grid to measure AND a decision to run, at
+ * once -- because narrowing the row to say what the run uses destroyed the
+ * plan to measure (user, 2026-09-02).
+ *
+ * The rows OFFER the bench's parameters because the thing you measured is
+ * the thing you are deciding about; they do not READ them.  What is written
+ * is `task.execution`, and nothing here touches `task.bench`.
+ */
+
+//: Rows a person asked to see on a rung but has not filled in.  PAGE
+//: state, never the file's: an unstated row is not a fact, and writing
+//: `"mpi_np": ""` would make the reader invent a meaning for it.
+const _extraRunRows = new Map();
+
+function extraRunRows(stage) {
+    let set = _extraRunRows.get(stage);
+    if (!set) { set = new Set(); _extraRunRows.set(stage, set); }
+    return set;
+}
+
+/** This rung's condition: the calculation's block with the stage's over it,
+ *  field by field -- `run_condition` on the server, same rule. */
+function runConditionOf(task, stage) {
+    const out = Object.assign({}, (task && task.execution) || {});
+    for (const st of ((task && task.stages) || [])) {
+        if (st && st.name === stage) Object.assign(out, st.execution || {});
+    }
+    return out;
+}
+
+/** The parameters this card offers: every setting a bench MAY vary, plus
+ *  whatever the condition already states, plus any the person added here.
+ *
+ *  OFFERED, NEVER READ (user, 2026-09-02): the bench's own points do not
+ *  reach this card's values -- what the run uses is `execution`, and the
+ *  grid is only what is worth deciding about.
+ */
+function runRowNames(task, stage) {
+    const out = [];
+    const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
+    for (const n of Object.keys((task && task.bench) || {})) add(n);
+    for (const n of Object.keys(runConditionOf(task, stage))) add(n);
+    for (const n of extraRunRows(stage)) add(n);
+    return out;
+}
+
+/** Where this rung's answer is written: `stages[i].execution`. */
+function stageExecutionOf(stage, make) {
+    if (!_task || !Array.isArray(_task.stages)) return null;
+    const st = _task.stages.find((x) => x && x.name === stage);
+    if (!st) return null;
+    if (!st.execution && !make) return null;
+    return st.execution || (st.execution = {});
+}
+
+function setRunValue(name, raw, stage) {
+    const v = coercePoint(raw);
+    const blank = (v === null || raw === "");
+    const box = stageExecutionOf(stage, !blank);
+    if (box) {
+        // BLANK IS A STATE: run-config.toml, then the wrapper's policy.
+        if (blank) delete box[name]; else box[name] = v;
+        if (!Object.keys(box).length) {
+            const st = _task.stages.find((x) => x && x.name === stage);
+            if (st) delete st.execution;
+        }
+    }
+    syncFromModel();
+}
+
+function dropRunRow(name, stage) {
+    extraRunRows(stage).delete(name);
+    const box = stageExecutionOf(stage, false);
+    if (box) {
+        delete box[name];
+        if (!Object.keys(box).length) {
+            const st = _task.stages.find((x) => x && x.name === stage);
+            if (st) delete st.execution;
+        }
+    }
+    syncFromModel();
+}
+
+/** THE RUN CARD, built per rung and placed beside that rung's `prep run`
+ *  button (user, 2026-09-02: "that selection panel card should be next to
+ *  the prep for run button such that it's obvious that this is designed for
+ *  the run.  This is not mixed up with the existing functional bench
+ *  setup.").
+ *
+ *  ONE VALUE EACH, never a combination.  The settings offered are the
+ *  bench's own vocabulary -- compute resources AND the other execution
+ *  knobs, the diagonaliser among them -- because what is worth measuring is
+ *  what is worth deciding.  What it WRITES is this stage's `execution`
+ *  block; it never touches `bench`.
+ */
+function stageRunCard(task, stage, active) {
+    const box = el("div", { class: "ts-runcard" });
+    box.appendChild(el("h3", { class: "ts-reports-head" },
+                       "What this run will use"));
+    box.appendChild(el("p", { class: "hint" },
+        "One value each \u2014 not a grid. Blank falls to this stage's "
+        + "run-config.toml and then to the wrapper's own policy."));
+    const rows = el("div", { class: "ts-rows" });
+    const fit = el("div", { class: "ts-fit", hidden: "" });
+    box.appendChild(rows);
+    box.appendChild(fit);
+
+    const bench = (task && task.bench) || {};
+    // WHAT THE RUNG ITSELF SAYS is what the field holds; the calculation's
+    // own block is the PLACEHOLDER behind it.  Filling the field from the
+    // merged value made blank and × unreachable for an inherited row --
+    // `setRunValue("")` and `dropRunRow` both write `stages[i].execution`,
+    // so with nothing there they wrote nothing and the field snapped back.
+    const own = (((task && task.stages) || [])
+        .find((x) => x && x.name === stage) || {}).execution || {};
+    const inherited = (task && task.execution) || {};
+    const stated = runConditionOf(task, stage);
+    const names = runRowNames(task, stage);
+
+    for (const name of names) {
+        const value = own[name];
+        const from = inherited[name];
+        const legal = legalValues(name);
+        let input;
+        if (legal) {
+            input = el("select", { class: "ts-runval",
+                                   "aria-label": "value for " + name });
+            input.appendChild(el("option", { value: "" },
+                from === undefined ? "\u2014 not stated"
+                                   : "\u2014 " + String(from)
+                                     + " (every stage)"));
+            for (const v of legal) {
+                const o = el("option", { value: String(v) }, String(v));
+                if (value !== undefined && String(value) === String(v)) {
+                    o.selected = true;
+                }
+                input.appendChild(o);
+            }
+        } else {
+            input = el("input", { class: "ts-runval",
+                                  placeholder: from === undefined
+                                      ? "\u2014 not stated"
+                                      : "\u2014 " + String(from)
+                                        + " (every stage)",
+                                  "aria-label": "value for " + name });
+            input.value = value === undefined ? "" : String(value);
+        }
+        input.addEventListener("change",
+                               () => setRunValue(name, input.value, stage));
+
+        // THE BENCH'S POINTS, as information.  Grey, beside the field,
+        // filling nothing -- what is being measured, while you type what
+        // you want.  The two blocks never read each other.
+        const pts = Array.isArray(bench[name]) ? bench[name] : [];
+        const measured = pts.length
+            ? el("small", { class: "ts-row-note" },
+                 "measuring: " + pts.join(", "))
+            : null;
+
+        const drop = el("button", { type: "button",
+                                    class: "ts-rowbtn ts-rowbtn-drop",
+                                    title: "Stop stating " + name }, "\u00d7");
+        drop.addEventListener("click", () => dropRunRow(name, stage));
+
+        rows.appendChild(el("div", { class: "ts-row",
+                                     "data-kind": value !== undefined
+                                         ? "chosen"
+                                         : (from !== undefined ? "inherited"
+                                                              : "unstated") },
+            el("div", { class: "ts-row-name", title: helpText(name) }, name,
+               measured),
+            el("div", { class: "ts-points" }, input),
+            drop));
+    }
+    if (!names.length) {
+        rows.appendChild(el("p", { class: "hint" },
+            "Nothing stated \u2014 this run takes run-config.toml, and then "
+            + "the wrapper's own policy. Add a setting to decide it here."));
+    }
+
+    const sel = el("select", { class: "ts-pick",
+                               "aria-label": "add a setting for " + stage });
+    const go = el("button", { type: "button", class: "btn" }, "+ Add setting");
+    go.addEventListener("click", () => {
+        if (!sel.value) return;
+        extraRunRows(stage).add(sel.value);
+        sel.value = "";
+        renderNext(_task || task);
+    });
+    box.appendChild(el("div", { class: "ts-actions" }, sel, go));
+    // THE SAME VOCABULARY THE BENCH OFFERS -- every sweepable execution
+    // item, resources and solver alike.
+    fillPicker(sel, _sweep || [], names,
+               "every setting is already listed");
+
+    // Only the OPEN tab asks the door; a hidden panel is rebuilt on every
+    // repaint and its answer could not be seen anyway.
+    // THE MERGE is what this rung will actually run at, so it is what the
+    // door is asked about -- the fields show where each value came from.
+    scheduleRunFit(stage, active ? fit : null, stated);
+    return box;
+}
+
+/* THE SAME DOOR THE GRID CARD ASKS, over a grid of one (`generator.md` § 2).
+ * There is no second endpoint: a `/run-fit` route was exactly this call with
+ * a list of length one, and it was deleted rather than kept in step.
+ *
+ * ONE PENDING CHECK PER RUNG, holding the ELEMENT rather than an id: the
+ * stage panels are rebuilt on every repaint, so an id would name a node that
+ * no longer exists, while a detached one merely goes unseen. */
+const _runFits = new Map();
+
+function scheduleRunFit(stage, host, values) {
+    let f = _runFits.get(stage);
+    if (!f) { f = { seq: 0, timer: null }; _runFits.set(stage, f); }
+    if (f.timer) clearTimeout(f.timer);
+    f.timer = null;
+    f.host = host; f.values = values;
+    // NO HOST, NO ASK: every repaint rebuilds every rung's panel, and
+    // checking all of them would put one request per rung on the wire for
+    // answers nobody can see.  The open tab passes an element; the rest do
+    // not, and ask when they are opened.
+    if (!host) return;
+    f.timer = setTimeout(() => refreshRunFit(stage), 300);
+}
+
+async function refreshRunFit(stage) {
+    const f = _runFits.get(stage);
+    if (!f || !f.host) return;
+    const host = f.host, values = f.values;
+    if (_mode !== "description" || !_dir || !values
+            || !Object.keys(values).length) {
+        host.hidden = true;
+        return;
+    }
+    const seq = ++f.seq;
+    let body;
+    try {
+        const r = await fetch("/api/task-setup/bench-grid", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                dest: _dir, target: _machine || "",
+                // ONE VALUE EACH, handed over as one-point axes -- which is
+                // what makes this the same question the grid card asks.
+                bench: Object.keys(values).reduce(
+                    (g, k) => { g[k] = [values[k]]; return g; }, {}) }),
+        });
+        body = await r.json();
+    } catch (e) { body = null; }
+    if (seq !== f.seq) return;
+    // A CHECK THAT CANNOT LOAD HIDES ITSELF -- the fields are the substance.
+    if (!body || !body.ok) { host.hidden = true; return; }
+    paintFit(host, body);
+}
+
 function renderMachine(task) {
     const card = $("ts-machine-card");
     const host = $("ts-machine-rows");
@@ -445,12 +705,16 @@ function renderMachine(task) {
          * `machine` survives as a look, not a meaning: those rows are tinted
          * because WHICH KIND of setting it is stays worth seeing, and it is
          * a fact about the item rather than about the points. */
-        const chosen = pts.length === 1;
+        const chosen = pts.length === 1 && !machineAnswers(name);
         const kind = machineAnswers(name) ? "machine"
                                           : (chosen ? "chosen" : "measured");
+        // A ONE-POINT MACHINE ROW IS ONE TRIAL, NOT AN ANSWER.  `mpi_np: [8]`
+        // is *measure eight* (`stages.md` § 6.8); what the run uses is the
+        // card in the rung's own tab.  Calling it "chosen" here told the
+        // person their run was decided by a row `prep run` never reads.
         const verdict = chosen
             ? "chosen · 1 point"
-            : `measured · ${pts.length} points`;
+            : `measured · ${pts.length} point${pts.length === 1 ? "" : "s"}`;
 
         const chips = pts.map((p, i) => {
             const drop = el("button", { type: "button", class: "ts-pt-x",
@@ -1618,15 +1882,18 @@ function renderNext(task) {
             block.appendChild(prepButton("bench", name));
         }
 
+        /* WHAT THIS RUN WILL USE, IMMEDIATELY ABOVE THE COMMAND THAT USES
+         * IT (user, 2026-09-02: "that selection panel card should be next to
+         * the prep for run button such that it's obvious that this is
+         * designed for the run.  This is not mixed up with the existing
+         * functional bench setup").  One value each, this rung's own, and it
+         * writes `stages[i].execution` -- never `bench`. */
+        block.appendChild(stageRunCard(task, name, active));
+
         block.appendChild(el("p", { class: "hint" },
-            benchKeys.length
-                ? "Run it \u2014 at whatever the machine card's one-point "
-                  + "rows say. What no row decides falls to "
-                  + "run-config.toml, and then to the wrapper's own policy. "
-                  + "Add --np / --omp / --time to override either."
-                : "Run it \u2014 the wrapper sizes the launch on the "
-                  + "machine it lands on. Add --np / --omp / --time to say "
-                  + "otherwise."));
+            "Run it \u2014 at what the card above says. What no row states "
+            + "falls to run-config.toml, and then to the wrapper's own "
+            + "policy. Add --np / --omp / --time to override either."));
         block.appendChild(el("pre", { class: "ts-cmd" },
             // The bundle is NAMED, from the projects root, so the line
             // works from wherever the user is standing
@@ -1668,6 +1935,7 @@ function prepButton(kind, stage) {
     const say = el("div", { class: "ts-prep-say" });
     let planned = null;
 
+    let emitted = null;
     btn.addEventListener("click", async () => {
         // A MACHINE IS THE FIRST QUESTION, and this asked it by firing into
         // the server's refusal -- a paragraph about targets and probe
@@ -1712,6 +1980,15 @@ function prepButton(kind, stage) {
                     .map((k) => k + "=" + r.chosen[k]);
                 if (varying.length) bits.push("varying " + varying.join(", "));
                 if (chosen.length) bits.push("at " + chosen.join(", "));
+                /* A13 -- THE END POINT, spelled out.  A run is hours or days
+                 * and a wrong width is found when it finishes, so what the
+                 * .sbatch will carry is shown before the second click, with
+                 * the source of every number.  Rendered as its own block
+                 * rather than folded into the line above, because the line
+                 * says what you ASKED and this says what will HAPPEN. */
+                if ((r.emitted || []).length) {
+                    emitted = r.emitted;
+                }
                 const a = r.allocation || {};
                 bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
                 bits.push(a.mem ? "memory " + a.mem
@@ -1720,6 +1997,22 @@ function prepButton(kind, stage) {
                 bits.push(a.time ? "time " + a.time : "no time stated");
                 say.textContent = bits.join(" \u00b7 ") + ".  Click again to write it.";
                 say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
+                if (emitted) {
+                    const box = el("div", { class: "ts-emitted" });
+                    box.appendChild(el("div", { class: "ts-emitted-head" },
+                        "What this run will actually be launched with"));
+                    for (const row of emitted) {
+                        box.appendChild(el("div", { class: "ts-emitted-row" },
+                            el("code", { class: "ts-emitted-flag" }, row.flag),
+                            el("span", { class: "ts-emitted-val" },
+                               String(row.value)),
+                            el("span", { class: "ts-emitted-why" },
+                               row.source)));
+                    }
+                    const old = wrap.querySelector(".ts-emitted");
+                    if (old) old.remove();
+                    wrap.appendChild(box);
+                }
                 btn.textContent = "Write it";
                 return;
             }
@@ -2408,6 +2701,10 @@ function notifyValues() {
     // reason (`run-reports.md` 3.0).
     const chans = channelSelection();
     if (chans !== null) out.channels = chans;
+    // SAME EXCEPTION, SAME REASON (`stages.md` § 6.9): `[]` says "the summary
+    // line alone", absent says "every field the monitor can work out".
+    const rep = reportSelection();
+    if (rep !== null) out.report = rep;
     return out;
 }
 
@@ -2462,7 +2759,16 @@ function readNotifyFromTask(task) {
     const all = $("ts-notify-all");
     if (all) all.checked = named === null;
     paintChannelTicks(named);
+    // `"report" in n` for the same reason `"channels" in n` is used above: an
+    // empty array is a real answer, and truthiness would read it as silence
+    // and tick every field back on.
+    const rep = (n && Object.prototype.hasOwnProperty.call(n, "report")
+                 && Array.isArray(n.report)) ? n.report : null;
+    const repAll = $("ts-report-all");
+    if (repAll) repAll.checked = rep === null;
+    paintReportTicks(rep);
     paintNotifyNote();
+    paintReportNote();
 }
 
 /** One line saying what this calculation will actually send. */
@@ -2967,6 +3273,93 @@ let _machineChannels = [];
 let _channelsKnown = false;
 
 /** The names ticked right now, or `null` for "every channel". */
+/* WHAT A REPORT MAY CARRY -- the report's own field names, and their labels.
+ * `stages.md` § 6.9.  The keys are the wire's (`run-reports.md` § 4.1a); the
+ * labels are this page's, and only this page's.
+ *
+ * THE CALCULATION'S NAME IS NOT HERE, on purpose: it is always sent, so
+ * offering a box for it would be offering a choice that does not exist. */
+const REPORT_ITEMS = [
+    ["elapsed_s",  "How long it has been running"],
+    ["n_iters",    "SCF iterations"],
+    ["energy",     "The last energy"],
+    ["geom_step",  "Which geometry step"],
+    ["per_iter_s", "Seconds per SCF iteration"],
+];
+
+/** The ticked report fields, or `null` for "every field it can work out".
+ *  Same two-state shape as `channelSelection`, for the same reason. */
+function reportSelection() {
+    const all = $("ts-report-all");
+    if (all && all.checked) return null;
+    const host = $("ts-report-items");
+    if (!host) return null;
+    // ORDER IS THE VOCABULARY'S, not the DOM's -- two people who ticked the
+    // same boxes must write the same file.
+    const on = new Set(Array.from(host.querySelectorAll("input[type=checkbox]"))
+                            .filter(b => b.checked).map(b => b.value));
+    return REPORT_ITEMS.map(p => p[0]).filter(k => on.has(k));
+}
+
+/** Paint one tick per report field. */
+function paintReportTicks(chosen) {
+    const host = $("ts-report-items");
+    if (!host) return;
+    const named = Array.isArray(chosen) ? chosen : null;
+    const all = $("ts-report-all");
+    const picking = !(all && all.checked);
+    host.textContent = "";
+    for (const [key, label] of REPORT_ITEMS) {
+        const id = "ts-rep-" + key;
+        const row = document.createElement("label");
+        row.className = "ts-notify-opt";
+        row.setAttribute("for", id);
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = id;
+        box.value = key;
+        box.disabled = !picking;
+        // When the description names no list, every box reads ticked -- which
+        // is the truth: absent means every field.
+        box.checked = named === null ? true : named.indexOf(key) !== -1;
+        box.addEventListener("change", () => {
+            applyNotifyToDoc();
+            paintReportNote();
+            refreshSave();
+        });
+        const span = document.createElement("span");
+        span.textContent = label;
+        const code = document.createElement("span");
+        code.className = "ts-notify-sub";
+        code.textContent = key;
+        span.appendChild(code);
+        row.appendChild(box);
+        row.appendChild(span);
+        host.appendChild(row);
+    }
+}
+
+/** One line saying what a message will actually carry. */
+function paintReportNote() {
+    const note = $("ts-report-note");
+    if (!note) return;
+    const sel = reportSelection();
+    // THE NAME IS NAMED, every time, because it is the part that is not a
+    // choice and the part a person most needs to know is there.
+    if (sel === null) {
+        note.textContent = "Each message: this calculation's name and job id,"
+            + " the state, and every field the monitor can work out.";
+    } else if (!sel.length) {
+        note.textContent = "Each message: this calculation's name and job id,"
+            + " the state, and the one-line summary \u2014 no field grid.";
+    } else {
+        const labels = REPORT_ITEMS.filter(p => sel.indexOf(p[0]) !== -1)
+                                   .map(p => p[1].toLowerCase());
+        note.textContent = "Each message: this calculation's name and job id,"
+            + " the state, plus " + labels.join(", ") + ".";
+    }
+}
+
 function channelSelection() {
     const all = $("ts-notify-all");
     if (all && all.checked) return null;
@@ -3104,6 +3497,19 @@ function wireChannels() {
             paintNotifyNote();
         });
     }
+    const repAll = $("ts-report-all");
+    if (repAll) {
+        repAll.addEventListener("change", () => {
+            // Same order and the same reason as above: the repaint is what
+            // creates the boxes `reportSelection` then reads.
+            paintReportTicks(reportSelection());
+            applyNotifyToDoc();
+            paintReportNote();
+            refreshSave();
+        });
+    }
+    paintReportTicks(null);
+    paintReportNote();
     loadChannelNames();
 }
 

@@ -1843,6 +1843,21 @@ def render_run_wrapper(script_path: Path, *,
                 f"description and rendered into the monitor's command line, "
                 f"and anything else would mean one thing in the file and "
                 f"another in the shell.")
+    notify_report = r.notify_report
+    if notify_report is not None:
+        # SAME REASON as the channel names above: this becomes SHELL.
+        # And the vocabulary is closed, so a name outside it is a typo
+        # the person can still fix rather than a field that silently
+        # never arrives (`stages.md` 6.9).
+        from .task import REPORT_ITEMS
+        bad = [n for n in notify_report if n not in REPORT_ITEMS]
+        if bad:
+            raise WrapperError(
+                f"notify report field(s) {', '.join(map(repr, bad))}: "
+                f"the fields are {', '.join(REPORT_ITEMS)}.  These are "
+                f"the report's own names, not labels, and the "
+                f"calculation's own name is always sent and is not "
+                f"among them.")
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
     category = EXTENSION_TO_CATEGORY.get(suffix)
@@ -2076,15 +2091,67 @@ def render_run_wrapper(script_path: Path, *,
         # USER-SET path is honoured verbatim (sovereign override) but
         # tagged with a runtime warning so the user sees what's about
         # to crash.
-        from .runtime_info import physical_core_count
-        phys = physical_core_count()
+        # THE TARGET'S CORES, NOT THIS BOX'S (user, 2026-09-02).  A bundle
+        # prepped on a 20-core desk for a 64-core node baked 20 and, run
+        # bare there (`launch --mode direct`), used 20 -- a number about the
+        # wrong machine.  Under sbatch it was masked, because SLURM_NTASKS
+        # wins; direct execution has no such cover.  `machine_record` is the
+        # target's own record, already carried here for exactly this class of
+        # fact, and `auto_ranks` is the same rule the .sbatch header uses --
+        # so the two agree by construction rather than by coincidence.
+        # THE SAME DOOR THE `.sbatch` PATH USES.  It resolves the record from
+        # the project directory when the caller passed none; this path only
+        # looked at the argument, so the pair A9 governs read two different
+        # records -- the header sized from the target and the baked default
+        # refused, for one and the same job.
+        _rec = machine_record
+        if _rec is None:
+            try:
+                from .scheduler import machine_for
+                _rec = machine_for(project_dir or script_path.parent)
+            except Exception:                                 # noqa: BLE001
+                # AmbiguousTarget and friends: no record is an answer here,
+                # and the refusal below is the one that names the command.
+                _rec = None
+        _target = auto_ranks(_rec, None,
+                             getattr(resources, "domain", None))
+        _whose = "the selected target/domain's cores"
+        if _target is None and (mpi_np is None or int(mpi_np) < 1):
+            # ONE RULE, NO SPECIAL CASE (user, 2026-09-02: "even for the
+            # current machine, the environment.json must be present
+            # otherwise user is required to run jobset probe first").
+            #
+            # A workstation was allowed to fall back to `physical_core_count`
+            # for part of this day, on the reasoning that *this box IS the
+            # machine, so its own count is not about somewhere else*.  True,
+            # and still the wrong shape: the number then comes from a
+            # different source depending on how the bundle was set up, so
+            # "where did 20 come from" has two answers -- and probing is one
+            # command.  The record is the ONE place a core count is read
+            # from (`running-a-job.md` § 3.1).
+            _local = _rec is None
+            raise WrapperError(
+                "cannot size this job: nothing states a rank count and "
+                + ("this machine has no record."
+                   if _local else
+                   "the target's record carries no core count.")
+                + "\n  Either state it -- `execution` in task.json, or "
+                  "--np N on the prep -- or record the machine's topology:\n"
+                + ("    molbuilder jobset probe --write\n"
+                   if _local else
+                   "    molbuilder jobset probe --write --name NAME"
+                   "   (on that machine)\n")
+                + "  A rank count is read from a record and nowhere else, so "
+                  "that a number is never about the wrong machine."
+            )
+        phys = _target or 1
         clamp_note = ""
         if mpi_np is None or int(mpi_np) < 1:
             raw = max(1, phys)
             if n_atoms is not None and raw > int(n_atoms):
                 resolved_mpi = max(1, int(n_atoms))
                 mpi_source = (
-                    f"auto: physical_cores ({phys}) clamped to "
+                    f"auto: {_whose} ({phys}) clamped to "
                     f"n_atoms ({n_atoms}) -- mpi_np > n_atoms would "
                     f"abort SIESTA at propor IMAX=0"
                 )
@@ -2095,7 +2162,7 @@ def render_run_wrapper(script_path: Path, *,
                 )
             else:
                 resolved_mpi = raw
-                mpi_source = f"auto: physical_cores ({phys})"
+                mpi_source = f"auto: {_whose} ({phys})"
         else:
             resolved_mpi = int(mpi_np)
             if n_atoms is not None and resolved_mpi > int(n_atoms):
@@ -3424,6 +3491,14 @@ def render_run_wrapper(script_path: Path, *,
             # renders no flag, exactly as it did before channels existed.
             + ("" if notify_channels is None
                else f'--notify-channels "{",".join(notify_channels)}" ')
+            # ABSENT is "every field the monitor can determine" and ""
+            # is "the summary line alone", so -- exactly as for the
+            # channels -- the flag is emitted whenever the description
+            # said anything at all (`stages.md` 6.9).  BAKED HERE, so a
+            # running job's report format cannot change because
+            # `task.json` was edited while it sat in the queue.
+            + ("" if notify_report is None
+               else f'--notify-report "{",".join(notify_report)}" ')
             + f'--watch-pid $$ >/dev/null 2>&1 &\n'
             f'    _monitor_pid=$!\n'
             f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
@@ -3984,6 +4059,7 @@ def render_wrappers(script_path: Path, *,
     # invocation's overrides.
     if emit_sbatch:
         sbatch = _render_sbatch_for(script_path, resources=r, env=env,
+                                    n_atoms=n_atoms,
                                     project_dir=project_dir,
                                     machine_record=machine_record)
         if sbatch is not None:
@@ -4087,12 +4163,98 @@ def _placement_for(resources, domain_pq, project_dir, *, prefer_gpu=False):
         return None
 
 
+def auto_ranks(machine_record, n_atoms=None, domain=None):
+    """The rank count to use when NOBODY stated one — read off the SELECTED
+    target and domain.  ``None`` when the record does not say, and the caller
+    must then refuse rather than guess.
+
+    *(user, 2026-09-02: "the default should come from the selected
+    target/domain, environment.json should be available, if not, the user is
+    required to do that. otherwise it's all blind.")*
+
+    **The domain first, when one is chosen.** A queue's width is not the
+    node's: `public` and `debug` on one cluster hold different machines, and
+    the row records them. `admit._widest_node` is the one reader of *"cores of
+    the largest machine in this row"* — from ``node_types`` when the record
+    lists them, from ``max_cores`` otherwise — and asking it here is what
+    keeps the default and the admission check answering from one place.
+
+    **Then the target's topology**, for a record with no domain menu — a
+    workstation is its own machine.
+
+    **Never this box.** A bundle prepped on a 20-core desk for a 64-core node
+    must ask for the node's width; `physical_core_count()` would answer about
+    the desk, and did until 2026-09-02.
+
+    **Clamped to the atoms**, because ``mpi_np > n_atoms`` aborts SIESTA at
+    ``propor IMAX=0`` — the same clamp the wrapper's auto path applies, so the
+    header and the wrapper agree rather than the header over-asking.
+    """
+    cores = None
+    if domain:
+        for row in (getattr(machine_record, "domains", None) or ()):
+            if getattr(row, "name", None) != domain:
+                continue
+            try:
+                from .scheduler.admit import _widest_node
+                cores = _widest_node(row)[0]
+            except Exception:                                 # noqa: BLE001
+                cores = getattr(row, "max_cores", None)
+            break
+    if not cores:
+        topo = getattr(machine_record, "topology", None)
+        cps = getattr(topo, "cores_per_socket", None) if topo else None
+        if cps:
+            cores = int(cps) * int(getattr(topo, "sockets", None) or 1)
+    if not cores or int(cores) < 1:
+        return None
+    cores = int(cores)
+    if n_atoms is not None and cores > int(n_atoms):
+        return max(1, int(n_atoms))
+    return cores
+
+
+def header_ntasks(mpi_np, *, gpu=False, gpu_count=None, auto=None):
+    """``#SBATCH -n`` and WHERE IT CAME FROM — ``(ntasks, source)``.
+
+    **ONE RULE, TWO READERS** (`architecture.md` A13).  The emitter calls this
+    to write the header; the Task-setup tab's run card calls it to *show* what
+    the header will say.  A surface that worked the number out itself would
+    agree with the `.sbatch` only until one of them changed — and this is the
+    number a person most needs to see before spending a queue slot.
+
+    ``--gres`` carries the GPU COUNT; ``-n`` is the MPI RANK count, and the
+    two are INDEPENDENT: under the K-ranks-per-GPU load-balance model
+    (`running-a-job.md` § 3.3) ranks may exceed GPUs — eight ranks sharing one
+    A100 via MPS.  So ntasks is `mpi_np`, never the device count.
+
+    **THE FLOOR IS THE SURPRISE THIS EXISTS TO SURFACE.**  With no rank count
+    stated, a CPU header floors at ``-n 1``: under sbatch the launcher reads
+    ``SLURM_NTASKS`` (§ 3.1), which is what this header just set, so a
+    64-core node runs the job on ONE rank.  That is defensible as a header
+    that always allocates and indefensible as a silence — hence the source
+    string, and hence A13.
+    """
+    if mpi_np and int(mpi_np) >= 1:
+        return int(mpi_np), "stated"
+    if gpu:
+        return int(gpu_count or 1), "one rank per device (no rank count stated)"
+    if auto and int(auto) >= 1:
+        return int(auto), ("nothing stated -- the selected target/domain's "
+                           "own core count, clamped to the atom count")
+    return None, ("nothing states a rank count and the target's record says "
+                  "no core count -- probe the machine (`molbuilder jobset "
+                  "probe --write --name NAME`) or state one, because a "
+                  "default invented here would be about the wrong machine")
+
+
 def _render_sbatch_for(script_path: Path, *,
                        project_dir: Optional[Path] = None,
                        resources: "Resources",
                        env: Optional[str],
                        domain_pq: Optional[Tuple[str, str]] = None,
-                       machine_record=None
+                       machine_record=None,
+                       n_atoms: Optional[int] = None,
                        ) -> Optional[str]:
     """Resolve the per-job header values and RETURN the ``.sbatch`` text when
     this machine has a queue; ``None`` when it does not.
@@ -4230,19 +4392,26 @@ def _render_sbatch_for(script_path: Path, *,
         gpu_type, gpu_count = _parse_gres_flag(gres)
         gpu = True  # an explicit --gres forces a GPU header
 
-    if gpu:
-        # ``--gres`` carries the GPU COUNT; ``-n`` (ntasks) is the MPI
-        # RANK count.  These are INDEPENDENT -- under the K-ranks-per-GPU
-        # load-balance model (running-a-job.md § 3.3) ranks may exceed GPUs (e.g. 8 ranks
-        # sharing 1 A100 via MPS).  So ntasks = mpi_np, NOT the GPU count.
-        if gpu_count is None:
-            gpu_count = 1   # default to 1 GPU when --gres count not given
-        ntasks = mpi_np if (mpi_np and mpi_np >= 1) else gpu_count
-    else:
-        # CPU job: ntasks = mpi_np (the rank count).  When unset, 1 is a
-        # safe header floor -- under sbatch the launcher reads
-        # SLURM_NTASKS (running-a-job.md § 3.1), so the user controls scale via -n.
-        ntasks = mpi_np if (mpi_np and mpi_np >= 1) else 1
+    if gpu and gpu_count is None:
+        gpu_count = 1       # default to 1 GPU when --gres count not given
+    # WHEN NOBODY SAID, ASK FOR THE MACHINE (user, 2026-09-02: "is it possible
+    # to let the default mpi core be max core number... having it be 1 core
+    # would be an overlook").  It floored at 1 until then, so an unstated run
+    # submitted to a 64-core node was allocated ONE task and ran on one rank
+    # -- SLURM_NTASKS is read from this very header, so the wrapper's own
+    # auto path never got a chance to answer.
+    ntasks, _ntasks_src = header_ntasks(
+        mpi_np, gpu=gpu, gpu_count=gpu_count,
+        auto=auto_ranks(env_rec, n_atoms, getattr(resources, "domain", None)))
+    if ntasks is None:
+        # BLIND IS NOT A DEFAULT (user, 2026-09-02).  A header with no rank
+        # count allocates one task; a rank count invented from THIS box is
+        # about the wrong machine.  Both are silent, and a run is hours.
+        raise WrapperError(
+            f"cannot size this job: {_ntasks_src}.\n"
+            f"  Either state it -- `execution` in task.json, or --np N on "
+            f"the prep -- or give the target a record with its core count."
+        )
 
     # A HEADER MUST BE SUBMITTABLE ON ITS OWN (2026-08-23).
     #

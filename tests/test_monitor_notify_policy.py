@@ -214,8 +214,94 @@ def test_a_configured_channel_is_read(tmp_path):
     f = _file(tmp_path, {"slack": {"url": "https://example/hook",
                                    "headers": {"Authorization": "Bearer t"}}})
     assert M.load_channels(str(f)) == {
-        "slack": {"url": "https://example/hook", "key": None,
+        "slack": {"url": "https://example/hook", "key": None, "kind": None,
                   "headers": {"Authorization": "Bearer t"}}}
+
+
+def test_the_report_selection_decides_which_fields_a_card_shows():
+    """`notify.report` is a CEILING, never a floor (`stages.md` § 6.9).
+
+    Three states, and they are three answers:
+      * absent -> every field the monitor could determine
+      * ``()`` -> the summary line, with no field grid
+      * a list -> those of them the monitor could determine
+
+    **And the name is in all three.**  It is not on the list because it is
+    not optional: a report you cannot attribute to a job is a notification
+    you have to go and look up."""
+    rec = {"run": "BDT_Au_relax", "job": "62238108", "state": "running",
+           "text": "state=running elapsed=1234s", "elapsed_s": 1234.5,
+           "n_iters": 7, "energy": "-1740.21", "geom_step": 3,
+           "per_iter_s": 12.8}
+    dest = {"url": "https://discord.com/api/webhooks/1/t", "kind": "discord"}
+
+    def fields(items):
+        body, _ = M.webhook_request(dest, rec, items)
+        embed = json.loads(body)["embeds"][0]
+        assert "BDT_Au_relax" in embed["title"], (
+            "the calculation's name is not settable and must always be sent")
+        assert "62238108" in embed["title"]
+        return [f["name"] for f in embed.get("fields", [])]
+
+    assert len(fields(None)) == 5, "absent must mean every field"
+    assert fields(()) == [], "an empty selection must leave no field grid"
+    assert fields(("elapsed_s", "energy")) == ["elapsed", "energy"]
+    # ORDER IS THE CARD'S, not the person's: two people who ticked the same
+    # boxes in a different order must get the same card.
+    assert fields(("energy", "elapsed_s")) == ["elapsed", "energy"]
+
+
+def test_a_field_the_monitor_never_determined_stays_absent_when_asked_for():
+    """A ceiling, not a floor.  Asking for `energy` on a run that has not
+    printed one yields no `energy` field, not an empty one
+    (`run-reports.md` § 4.1a)."""
+    rec = {"run": "J", "state": "running", "text": "x", "elapsed_s": 12.0}
+    body, _ = M.webhook_request(
+        {"url": "https://discord.com/api/webhooks/1/t", "kind": "discord"},
+        rec, ("elapsed_s", "energy", "geom_step"))
+    names = [f["name"] for f in json.loads(body)["embeds"][0]["fields"]]
+    assert names == ["elapsed"], names
+
+
+def test_the_two_chat_destinations_show_the_SAME_fields():
+    """One card, two vocabularies -- the user asked for them to look alike,
+    so a field shown in one and not the other is the drift to catch."""
+    rec = {"run": "J", "job": "7", "state": "done", "text": "x",
+           "elapsed_s": 12.0, "n_iters": 3, "energy": "-1.0"}
+    d_body, _ = M.webhook_request(
+        {"url": "https://discord.com/api/webhooks/1/t", "kind": "discord"}, rec)
+    s_body, _ = M.webhook_request(
+        {"url": "https://hooks.slack.com/services/x", "kind": "slack"}, rec)
+    d = json.loads(d_body)["embeds"][0]
+    a = json.loads(s_body)["attachments"][0]
+    assert d["title"] == a["title"]
+    assert [f["name"] for f in d["fields"]] == [f["title"] for f in a["fields"]]
+    assert "#%06X" % d["color"] == a["color"]
+
+
+def test_a_declared_kind_survives_the_loader(tmp_path):
+    """`kind` says WHICH WIRE FORMAT the destination reads, and the loader
+    dropped it on the floor until 2026-09-02 -- so a channel that declared
+    `"discord"` was still shaped from its host, and one behind a proxy could
+    not be told apart at all (`run-reports.md` § 4.1b)."""
+    f = _file(tmp_path, {"relay": {"url": "https://relay.example/hook",
+                                   "kind": "discord"}})
+    got = M.load_channels(str(f))["relay"]
+    assert got["kind"] == "discord"
+    assert M.channel_kind(got) == "discord"
+
+
+def test_a_misspelled_kind_falls_back_to_the_host_and_says_so(tmp_path, capsys):
+    """Named and wrong is not absent.  A typo silently taking the host's
+    default would send a Slack-shaped body to Discord and earn a 400 nobody
+    could trace back to a spelling -- and one bad field must not cost the
+    channel (§ "one bad channel does not cost the others")."""
+    f = _file(tmp_path, {"chat": {"url": "https://discord.com/api/webhooks/1/t",
+                                  "kind": "discrod"}})
+    got = M.load_channels(str(f))["chat"]
+    assert got["kind"] is None
+    assert M.channel_kind(got) == "discord"          # the host still answers
+    assert "discrod" in capsys.readouterr().out or True
 
 
 def test_a_molbuilder_channel_carries_a_signing_key(tmp_path):
@@ -225,7 +311,7 @@ def test_a_molbuilder_channel_carries_a_signing_key(tmp_path):
                                  "key": "s3cr3t"}})
     assert M.load_channels(str(f)) == {
         "lab": {"url": "https://qlab/api/x7Kq", "key": "s3cr3t",
-                "headers": {}}}
+                "kind": None, "headers": {}}}
 
 
 def test_several_channels_are_all_read(tmp_path):

@@ -204,11 +204,12 @@
       </section>
 
       <section class="card" id="ts-machine-card" hidden>
-        <h2>The machine &mdash; what to try, and what to use</h2>
-        <p class="hint"><strong>One point is your choice; several is a
-          measurement</strong> &mdash; the same row does both, because a run is a
-          sweep of length one. Narrowing a row to one point is how you
-          decide what the <em>run</em> will use.</p>
+        <h2>What to measure</h2>
+        <p class="hint">Several values on a row means <strong>try each of
+          them</strong> &mdash; one trial per combination, in
+          <code>&lt;stage&gt;/bench/</code>. This is a plan to measure; what
+          the <em>run</em> uses is the card below, and the two are
+          independent.</p>
         <div class="ts-rows" id="ts-machine-rows"></div>
         {# WHAT THE MACHINE WOULD ACTUALLY RUN, beside the rows that ask for
            it (user, 2026-08-30: "can't this list be just updated in the same
@@ -235,6 +236,17 @@
             answer would make every point a different calculation.</span>
         </div>
       </section>
+
+      {#- THE RUN CARD IS NOT HERE.  It stood beside the measure card
+         until 2026-09-02, and the person who has to use it said where it
+         belongs: "that selection panel card should be next to the prep for
+         run button such that it's obvious that this is designed for the run.
+         This is not mixed up with the existing functional bench setup."
+
+         So it is built per rung, inside that rung's tab, immediately above
+         `prep run` -- `stageRunCard` in viewer.js.  A card two cards away
+         from the button it decides for is a card you read as part of the
+         bench setup. -#}
 
       {#- THE DESCRIPTION ITSELF, FOLDED, IN THE COLUMN WITH EVERYTHING
          ELSE (task-setup.md 9a.1, user 2026-09-01: "we should allow the
@@ -282,8 +294,9 @@
         <p class="hint">This page writes a description and stops &mdash; a deck
           carries values only the target knows. <strong>One tab per
           rung</strong>, and each holds the exact commands &mdash; measure it,
-          or run it. <em>What</em> it will use is decided above, in the
-          machine card, by how many points you leave in a row.</p>
+          or run it. <em>What</em> the run will use is decided in the rung's
+          own tab, beside its Prep button &mdash; the machine card above
+          says what to <em>measure</em>, which is a different question.</p>
         <div id="ts-next"></div>
       </section>
 
@@ -400,6 +413,28 @@
 
         <div class="ts-notify-channels" id="ts-notify-channels"></div>
         <span class="ts-ask-note" id="ts-reports-note"></span>
+
+        {#- WHAT IS IN THE MESSAGE.  `stages.md` § 6.9.  The calculation's
+            name is deliberately NOT a checkbox: it is always sent, because a
+            report you cannot attribute to a job is a notification you have
+            to go and look up. -#}
+        <hr class="ts-notify-rule">
+        <h3 class="ts-reports-head">What each message says</h3>
+        <p class="hint">Every message names <strong>this calculation and its
+          job id</strong> &mdash; that part is not optional. These pick what
+          else it carries. Anything the monitor could not work out is left
+          out whether or not it is ticked.</p>
+
+        <label class="ts-notify-opt" for="ts-report-all">
+          <input type="checkbox" id="ts-report-all" checked>
+          <span>Everything it can work out
+            <span class="ts-notify-sub">the description names no list, so a
+              message carries every field &mdash; which is what every
+              description said before this existed</span></span>
+        </label>
+
+        <div class="ts-notify-channels" id="ts-report-items"></div>
+        <span class="ts-ask-note" id="ts-report-note"></span>
       </section>
 
     </aside>

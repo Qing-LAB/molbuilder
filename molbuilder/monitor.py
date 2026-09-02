@@ -850,6 +850,11 @@ class NotifyPolicy:
     `tests/test_wrapper_notify_flags.py` pins that the wrapper only ever
     emits flags this file accepts.
     """
+    #: WHAT each report carries beyond the name (`stages.md` § 6.9).
+    #: `None` is every field this monitor could determine; `()` is the
+    #: summary line alone.
+    report: Optional[Tuple[str, ...]] = None
+
     on_scf: bool = False
     every_hours: float = 0.0
     #: WHICH channels, by name.  ``None`` means every channel this machine
@@ -917,12 +922,171 @@ def is_channel_name(name: str) -> bool:
     return bool(isinstance(name, str) and _CHANNEL_RE.match(name))
 
 
+#: What molbuilder calls itself on the wire.  **Not decoration**: Discord's
+#: edge answers a default ``Python-urllib/3.x`` with ``403`` and Cloudflare
+#: code 1010 -- before the request reaches Discord, so a live webhook and a
+#: deleted one look identical and the status says nothing about either
+#: (`run-reports.md` § 4.1b).
+USER_AGENT = "molbuilder (https://github.com/qqing/molbuilder, 1.0)"
+
+#: Report colours, keyed to `JobStatus.state`.  A channel is read at a glance
+#: or it is not read at all.  ONE table for both chat destinations, because
+#: the two are meant to look alike (user, 2026-09-02): Discord takes the int,
+#: Slack takes the same value as ``#rrggbb``.
+_STATE_COLOR = {
+    "done":     0x2ECC71,   # green
+    "failed":   0xE74C3C,   # red
+    "running":  0x3498DB,   # blue
+    "test":     0x95A5A6,   # grey
+}
+_COLOR_FALLBACK = 0x95A5A6
+
+#: WHAT a report may carry, in the report's own field names.
+#:
+#: **Written twice, and it has to be** -- exactly as `is_channel_name` is.
+#: `task.REPORT_ITEMS` is the copy a description is validated against; this
+#: is the copy the MONITOR uses, and this module ships to a compute node as
+#: a standalone file with no molbuilder importable.  The wire between them is
+#: the `--notify-report` flag, and `tests/test_wrapper_notify_flags.py` pins
+#: that the two lists agree.
+REPORT_ITEMS = ("elapsed_s", "n_iters", "energy", "geom_step", "per_iter_s")
+
+#: The numeric fields a chat card shows, in order, with their units.  ONE
+#: list, so Discord and Slack cannot drift apart in what they display.  Its
+#: keys are `REPORT_ITEMS`, in display order.
+_CARD_FIELDS = (("elapsed",   "elapsed_s",  " s"),
+                ("SCF iters", "n_iters",    ""),
+                ("energy",    "energy",     ""),
+                ("geom step", "geom_step",  ""),
+                ("per iter",  "per_iter_s", " s"))
+
+
+def _card(report: Dict[str, Any],
+          items: "Optional[Tuple[str, ...]]" = None) -> Dict[str, Any]:
+    """The report as a CHAT CARD, before either vocabulary is chosen.
+
+    Discord embeds and Slack attachments are the same picture -- a coloured
+    bar, a title, a summary, a grid of short fields -- so the picture is
+    built once here and each sender only spells it
+    (`run-reports.md` § 4.1b).  Building it twice is how two channels of
+    the same event stop looking alike.
+    """
+    state = str(report.get("state") or "")
+    # THE NAME IS ALWAYS IN THE TITLE.  A report you cannot attribute to a
+    # job is a notification you have to go and look up, which is the thing
+    # a notification exists to save you (`stages.md` § 6.9).
+    run = str(report.get("run") or "molbuilder")
+    job = str(report.get("job") or "")
+    title = run + (f" · {job}" if job else "") + (f" — {state}" if state else "")
+    # `items` IS A CEILING, NEVER A FLOOR (`stages.md` § 6.9).  `None` is
+    # every field the monitor could determine; `()` is the summary line with
+    # no grid; and a field the monitor never determined stays absent whether
+    # or not it was asked for.
+    fields = []
+    for label, key, suffix in _CARD_FIELDS:
+        if items is not None and key not in items:
+            continue
+        val = report.get(key)
+        if val is None or val == "":
+            continue                 # absent stays absent -- unknown is not 0
+        fields.append((label, f"{val}{suffix}"))
+    return {"title": title[:256],
+            "text": str(report.get("text") or "") or "(no summary)",
+            "color": _STATE_COLOR.get(state, _COLOR_FALLBACK),
+            "fields": fields}
+
+
+#: The three wire formats.  `run-reports.md` § 4.1b.
+_KINDS = ("molbuilder", "slack", "discord")
+
+
+def channel_kind(dest: Dict[str, Any]) -> str:
+    """Which wire format this channel wants -- DECLARED, host as the default.
+
+    `run-reports.md` § 4.1b.  The file may say ``"kind"``; absent, the URL's
+    host supplies one.  Declared wins, so a webhook reached through a proxy
+    or a relay is still expressible -- a rule discovered from a string stops
+    holding the moment the string changes.
+    """
+    said = str(dest.get("kind") or "").strip().lower()
+    if said in _KINDS:
+        return said
+    host = urllib.parse.urlparse(str(dest.get("url") or "")).hostname or ""
+    host = host.lower()
+    if host == "hooks.slack.com":
+        return "slack"
+    if host in ("discord.com", "www.discord.com", "discordapp.com",
+                "ptb.discord.com", "canary.discord.com"):
+        return "discord"
+    return "molbuilder"
+
+
+def webhook_request(dest: Dict[str, Any],
+                    report: Dict[str, Any],
+                    items: "Optional[Tuple[str, ...]]" = None
+                    ) -> "tuple[bytes, Dict[str, str]]":
+    """THE ONE PRODUCER of a webhook's ``(body, headers)`` pair.
+
+    The report is one thing; the ENVELOPE it travels in is the
+    destination's, and the three destinations do not read the same one
+    (`run-reports.md` § 4.1b).  Every sender calls this -- the monitor's
+    notifier and the setup page's *Test* button both.  They built the pair
+    separately until 2026-09-02, which meant the button that exists to prove
+    the path could pass while the path failed.
+    """
+    kind = channel_kind(dest)
+    text = str(report.get("text") or "")
+    head = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
+
+    if kind in ("slack", "discord"):
+        card = _card(report, items)
+
+        if kind == "slack":
+            # `attachments` rather than a bare `text`: same picture as the
+            # Discord embed, in Slack's words.  `text` at the top level is
+            # the notification/fallback line, which is what a phone shows.
+            att = {"color": "#%06X" % card["color"],
+                   "title": card["title"],
+                   "text": card["text"],
+                   "fallback": card["title"]}
+            if card["fields"]:
+                att["fields"] = [{"title": n, "value": v, "short": True}
+                                 for n, v in card["fields"][:10]]
+            return json.dumps({"text": card["title"],
+                               "attachments": [att]}).encode(), head
+
+        # DISCORD IGNORES `text` ENTIRELY.  Execute Webhook wants at least one
+        # of content / embeds / components / file / poll, and a body with none
+        # of them is refused 400.
+        embed = {"title": card["title"],
+                 "description": card["text"][:4096],
+                 "color": card["color"]}
+        if card["fields"]:
+            embed["fields"] = [{"name": n, "value": v, "inline": True}
+                               for n, v in card["fields"][:25]]
+        return json.dumps({"embeds": [embed]}).encode(), head
+
+    # A molbuilder listener: the § 6.4 record, whole, signed.
+    body = json.dumps(report).encode()
+    head.update(dest.get("headers") or {})
+    if dest.get("key"):
+        # The timestamp is signed WITH the body, not sent beside it --
+        # otherwise it could be rewritten freely.
+        ts = "%d" % int(time.time())
+        head["X-Molbuilder-Timestamp"] = ts
+        head["X-Molbuilder-Signature"] = sign_report(dest["key"], ts, body)
+    return body, head
+
+
 def load_channels(path: Optional[str] = None,
                   log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """The named webhook channels, or ``{}`` when none are set up.
 
     The file is ``{"channels": {name: {"url": ..., "key"?: ...,
-    "headers"?: ...}}}``.  Two shapes of channel, one mechanism -- Slack and
+    "kind"?: ..., "headers"?: ...}}}``.  ``kind`` is
+    ``"molbuilder" | "slack" | "discord"`` and says which WIRE FORMAT the
+    destination reads; absent, it is read off the URL's host
+    (`run-reports.md` § 4.1b).  Two shapes of channel, one mechanism -- Slack and
     Discord put the credential IN the url, because a third party handed
     nothing but a URL has nowhere else to keep one; a molbuilder listener
     takes a plain url and a ``key`` that **signs the body and never
@@ -1010,9 +1174,37 @@ def load_channels(path: Optional[str] = None,
             _say(f"{p}: channel {name!r}: 'key' must be a non-empty string; "
                  f"skipping it")
             continue
-        out[name] = {"url": spec["url"], "key": key,
+        kind = spec.get("kind")
+        if kind is not None and str(kind).strip().lower() not in _KINDS:
+            # NAMED AND WRONG is not the same as absent: the host would
+            # supply a default here, and a typo'd `"kind": "discrod"` would
+            # silently take it -- sending a Slack-shaped body to Discord and
+            # getting a 400 nobody could trace back to a spelling.
+            _say(f"{p}: channel {name!r}: 'kind' must be one of "
+                 f"{', '.join(sorted(_KINDS))}; reading it off the URL "
+                 f"instead")
+            kind = None
+        out[name] = {"url": spec["url"], "key": key, "kind": kind,
                      "headers": {str(k): str(v) for k, v in headers.items()}}
     return out
+
+
+def _report_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
+    """``--notify-report`` as :class:`NotifyPolicy` carries it.
+
+    Absent is ``None`` -- every field this monitor can determine.  ``""`` is
+    ``()`` -- the summary line with no grid.  The two are different answers
+    and the default of ``None`` is what keeps them apart
+    (`stages.md` § 6.9).
+
+    **An unknown name is dropped, not fatal.**  The wrapper already refused
+    one at `prep`; a monitor that died here would cost a running job its
+    whole report over a field it could simply not show.
+    """
+    if value is None:
+        return None
+    return tuple(n for n in (p.strip() for p in value.split(","))
+                 if n in REPORT_ITEMS)
 
 
 def _channels_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
@@ -1078,7 +1270,9 @@ def sign_report(key: str, timestamp: str, body: bytes) -> str:
 def make_webhook_notifier(url: str, *,
                           key: Optional[str] = None,
                           headers: Optional[Dict[str, str]] = None,
-                          ident: Optional[Dict[str, str]] = None
+                          ident: Optional[Dict[str, str]] = None,
+                          kind: Optional[str] = None,
+                          report: Optional[Sequence[str]] = None
                           ) -> Notifier:
     """A stdlib webhook notifier: POSTs ``event`` + the status summary to
     ``url`` as JSON.  Best-effort, short timeout, never raises out.
@@ -1098,7 +1292,7 @@ def make_webhook_notifier(url: str, *,
     types in a row is exactly the shape that invites it.
     """
     def _hook(status: JobStatus, event: str) -> None:
-        body = json.dumps({
+        record = {
             # WHO AND WHERE, first, so a line is self-contained: run label,
             # scheduler job id, host.  `sent_at` is the SENDER's clock --
             # the listener stamps its own arrival separately, and when they
@@ -1107,22 +1301,23 @@ def make_webhook_notifier(url: str, *,
             "sent_at":    round(time.time(), 3),
             "event":      event,
             "text":       status.as_text(),
-            # Slack and Discord both render a bare "text" field, so the
-            # same body is readable in a channel and parseable by us.
+            # The one-line summary.  A chat card uses it as its description;
+            # our own listener parses the fields beside it.  It is NOT the
+            # whole Discord body -- Discord ignores a bare `text`
+            # (`run-reports.md` § 4.1b).
             "state":      status.state,
             "elapsed_s":  round(status.elapsed_s, 1),
             "n_iters":    status.n_iters,
             "energy":     status.energy,
             "geom_step":  status.geom_step,
             "per_iter_s": status.per_iter_s,
-        }).encode()
-        head = {"Content-Type": "application/json", **(headers or {})}
-        if key:
-            # The timestamp is signed WITH the body, not sent beside it --
-            # otherwise it could be rewritten freely.
-            ts = "%d" % int(time.time())
-            head["X-Molbuilder-Timestamp"] = ts
-            head["X-Molbuilder-Signature"] = sign_report(key, ts, body)
+        }
+        # THE ENVELOPE IS THE DESTINATION'S, and one producer decides it --
+        # the User-Agent among it, without which Discord's edge answers 403
+        # before the request arrives (`run-reports.md` § 4.1b).
+        body, head = webhook_request(
+            {"url": url, "key": key, "headers": headers, "kind": kind},
+            record, tuple(report) if report is not None else None)
         req = urllib.request.Request(
             url, data=body, method="POST", headers=head)
         try:
@@ -1176,7 +1371,8 @@ def run_identity(out: Optional[Path] = None) -> Dict[str, str]:
 
 def _install_env_notifiers(log: Optional[Path] = None,
                            ident: Optional[Dict[str, str]] = None,
-                           channels: Optional[Sequence[str]] = None) -> None:
+                           channels: Optional[Sequence[str]] = None,
+                           report: Optional[Sequence[str]] = None) -> None:
     """Register the user's notifiers, if they configured any.
 
     ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
@@ -1213,7 +1409,8 @@ def _install_env_notifiers(log: Optional[Path] = None,
         # 2026-08-27; the override was written when the listener took a
         # bearer token in a header.)
         register_notifier(make_webhook_notifier(
-            url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident))
+            url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident,
+            report=report))
         return
     chosen, missing = channels_for(channels, load_channels(log=log))
     if missing:
@@ -1228,7 +1425,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
         dest = chosen[name]
         register_notifier(make_webhook_notifier(
             dest["url"], key=dest.get("key"), headers=dest["headers"],
-            ident=ident))
+            ident=ident, kind=dest.get("kind"), report=report))
 
 
 # --------------------------------------------------------------------- #
@@ -1307,7 +1504,8 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     """
     out, timing, log = Path(out), Path(timing), Path(log)
     start = clock() if start_epoch is None else start_epoch
-    _install_env_notifiers(log, run_identity(out), notify.channels)
+    _install_env_notifiers(log, run_identity(out), notify.channels,
+                           notify.report)
 
     st0 = parse_status(out, timing, start, clock())
     # FIRST line, before [MONITOR] start: the machine is known now, and a
@@ -1602,6 +1800,15 @@ def main(argv=None) -> int:
                    dest="notify_channels",
                    help="comma-separated channel names to report to; "
                         "omit for all of them, pass '' for none")
+    # WHAT each report carries.  Same two-state shape as the channels above:
+    # absent is every field this monitor can determine, `""` is the summary
+    # line alone (`stages.md` 6.9).  The calculation's own name is always
+    # sent and is not one of these.
+    p.add_argument("--notify-report", type=str, default=None,
+                   dest="notify_report",
+                   help="comma-separated report fields ("
+                        + ", ".join(REPORT_ITEMS)
+                        + "); omit for all of them, pass '' for none")
     a = p.parse_args(argv)
     try:
         os.nice(max(0, a.nice_level))
@@ -1616,7 +1823,8 @@ def main(argv=None) -> int:
                 notify=NotifyPolicy(
                     on_scf=a.notify_on_scf,
                     every_hours=a.notify_every_hours,
-                    channels=_channels_from_flag(a.notify_channels)))
+                    channels=_channels_from_flag(a.notify_channels),
+                    report=_report_from_flag(a.notify_report)))
     return 0
 
 
@@ -1632,6 +1840,9 @@ __all__ = [
     "channels_for",
     "is_channel_name",
     "NotifyPolicy",
+    "REPORT_ITEMS",
+    "webhook_request",
+    "channel_kind",
     "NOTIFY_FILENAME",
     "default_notify_path",
     "NOTIFY_TIMEOUT_S",

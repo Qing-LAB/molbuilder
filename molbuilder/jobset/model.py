@@ -119,6 +119,13 @@ class Resources:
     #: did before this existed.  An empty tuple is a real value meaning
     #: none, and it renders a flag (`run-reports.md` 3.0).
     notify_channels: Optional[Tuple[str, ...]] = None
+
+    #: WHAT each report carries beyond the name (`stages.md` § 6.9).  `None`
+    #: is every field the monitor could determine; `()` is the summary line
+    #: alone.  Baked into the monitor's command line at `prep`, like the
+    #: cadence and the channel names -- so a running job's format cannot
+    #: change under it because `task.json` was edited while it queued.
+    notify_report: Optional[Tuple[str, ...]] = None
     #: WHICH binary the wrapper launches; ``None`` = the engine's own
     #: (``siesta`` for a ``.fdf``).  Also not a SLURM flag -- the same
     #: job-to-wrapper road as ``continue_retries``.  Set by the transport
@@ -171,6 +178,8 @@ class Resources:
         # roads reach this class, and a fix at one of them leaves three.
         if self.notify_channels is not None:
             self.notify_channels = tuple(self.notify_channels)
+        if self.notify_report is not None:
+            self.notify_report = tuple(self.notify_report)
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

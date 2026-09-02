@@ -1402,19 +1402,96 @@ def api_task_setup_prep():
                                  f"calculation: " + ", ".join(stages)}), 400
 
     def _plan_chosen(dest, target, task):
-        """The shape for the PREVIEW, which must never refuse.
+        """The shape for the PREVIEW -- THE SAME ASSEMBLY the write uses, so
+        what a person is shown before clicking is what clicking does.
 
-        A preview is a person asking *what would this do* -- so a machine it
-        cannot hold, or a target it cannot name, is something to SHOW rather
-        than to fail on.  The write path above refuses in its own words; this
-        one falls back to naming what the description declares, so the card
-        still says a number instead of going blank."""
-        from molbuilder.jobset._cli import declared_run_shape
+        It must never refuse, though: a preview is a person asking *what
+        would this do*, so a machine that cannot hold the condition, or a
+        target it cannot name, is something to SHOW rather than to fail on.
+        The write path refuses in its own words; this falls back to the
+        condition AS WRITTEN, so the card says a number instead of going
+        blank."""
+        import contextlib
+        import io as _io
+
+        from molbuilder.jobset._cli import prep_run_inputs, run_condition
         try:
-            return declared_run_shape(dest, target, task)
+            with contextlib.redirect_stdout(_io.StringIO()):
+                _alloc, _pins, chosen = prep_run_inputs(
+                    dest, target, task, stage)
+            return chosen
         except Exception:                                     # noqa: BLE001
-            return {k: v[0] for k, v in (task.bench or {}).items()
-                    if len(v) == 1}
+            return run_condition(task, stage)
+
+    def _emitted_launch(dest, target, task, stage):
+        """What the launch will actually carry, per parameter, with sources.
+
+        Resolved through the same assembly `prep` uses and the same header
+        rule the emitter uses -- A13 forbids a surface working either out
+        again.  A parameter nobody stated is reported as WHAT BLANK RESOLVES
+        TO, never as blank.
+        """
+        import contextlib
+        import io as _io
+
+        from molbuilder.jobset._cli import prep_run_inputs
+        from molbuilder.runwrap import auto_ranks, header_ntasks
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                alloc, _pins, _chosen = prep_run_inputs(dest, target, task,
+                                                        stage)
+        except Exception:                                     # noqa: BLE001
+            return []
+        gres = getattr(alloc, "gres", None)
+        # THE SAME QUESTION THE EMITTER ASKS.  `bool(gres)` is a different
+        # one: a GPU description that names no device count has no gres yet
+        # and would read as CPU here, so the card printed the target's full
+        # width where the header will carry one rank per device.
+        from molbuilder.jobset._cli import run_uses_device
+        gpu = bool(gres) or run_uses_device(dest, task, stage)
+        n_gpu = None
+        if gres:
+            try:
+                from molbuilder.scheduler.quantities import parse_gres
+                n_gpu = sum(parse_gres(gres).values()) or None
+            except Exception:                                 # noqa: BLE001
+                n_gpu = None
+        # THE SAME ARGUMENTS THE EMITTER PASSES, or the card reports a
+        # different number than the .sbatch will carry -- which is the one
+        # failure A13 exists to prevent.  `auto=` was omitted when this was
+        # written and the card rendered the no-record refusal while the
+        # header carried the domain's width (caught by review, 2026-09-02).
+        try:
+            from molbuilder.scheduler import machine_for
+            _rec = machine_for(dest, target=target, probe=(target is None))
+        except Exception:                                     # noqa: BLE001
+            _rec = None
+        _n_atoms = getattr(getattr(task, "structure", None), "atoms", None)
+        ntasks, why = header_ntasks(
+            getattr(alloc, "mpi_np", None), gpu=gpu, gpu_count=n_gpu,
+            auto=auto_ranks(_rec, _n_atoms, getattr(alloc, "domain", None)))
+        if ntasks is None:
+            # The producer's refusal, shown as the value it is -- a run that
+            # cannot be sized is exactly what a person must see BEFORE the
+            # second click, not after it.
+            ntasks = "\u2014 cannot size"
+        rows = [{"name": "MPI ranks", "flag": "-n", "value": ntasks,
+                 "source": why}]
+        cpus = getattr(alloc, "cpus_per_task", None)
+        rows.append({"name": "cores per rank", "flag": "-c",
+                     "value": cpus if cpus else "\u2014",
+                     "source": "stated" if cpus else
+                     "unset -- the wrapper resolves OMP at run time "
+                     "(OMP_NUM_THREADS > SLURM_CPUS_PER_TASK > its default)"})
+        for label, flag, val in (("devices", "--gres", gres),
+                                 ("memory", "--mem", getattr(alloc, "mem", None)),
+                                 ("wall", "-t", getattr(alloc, "time", None)),
+                                 ("queue", "-p", getattr(alloc, "domain", None))):
+            rows.append({"name": label, "flag": flag,
+                         "value": val if val else "\u2014",
+                         "source": "stated" if val else
+                         "unset -- the queue's own default applies"})
+        return rows
 
     # ---- the PLAN: what this would do, writing nothing ----------------- #
     if plan_only:
@@ -1423,6 +1500,11 @@ def api_task_setup_prep():
             "ok": True, "plan": True, "kind": kind, "stage": stage,
             "machine": "(this machine)" if target == LOCAL_TARGET
                        else (target or "(this machine)"),
+            # A13 IS THE RUN'S RULE.  Shown under a bench preview it named
+            # the run's condition -- `mpi_np=8` beside a grid of trials that
+            # use no such thing -- which is a surprise of exactly the kind
+            # the rule exists to prevent, told in the wrong card
+            # (`architecture.md` § 5.2, "why a run and not a bench").
             "bench_axes": {k: list(v) for k, v in (task.bench or {}).items()}
                           if kind == "bench" else {},
             # WHAT THE RUN WILL ACTUALLY USE, on the run's own preview too
@@ -1431,7 +1513,15 @@ def api_task_setup_prep():
             # the wall and the memory and said nothing about the launch
             # shape -- which is the number a person is checking before
             # spending a queue slot.
-            "chosen": _plan_chosen(dest, target, task),
+            "chosen": _plan_chosen(dest, target, task) if kind == "run"
+                      else {},
+            # A13 -- THE END POINT, not the inputs.  A run is hours or days
+            # and a wrong width is discovered when it finishes, so the card
+            # shows what the `.sbatch` will carry and where each number came
+            # from.  `header_ntasks` is the EMITTER's own rule, called here
+            # rather than repeated.
+            "emitted": (_emitted_launch(dest, target, task, stage)
+                        if kind == "run" else []),
             # What the description asks the scheduler for -- shown because
             # an unstated memory is the thing that killed five real jobs.
             "allocation": {"domain": alloc.domain, "time": alloc.time,
@@ -1448,19 +1538,29 @@ def api_task_setup_prep():
     from molbuilder.scheduler.record import UnknownTarget as _UnknownTarget
     kwargs = {}
     if kind == "run":
-        # THE SHAPE THE DESCRIPTION DECIDES, from the one grid enumerator --
-        # the same call the CLI makes, so the button and the command line
-        # cannot prepare two different runs (`generator.md` § 2).
+        # THE SAME ASSEMBLY THE COMMAND LINE USES -- the bench's pins, the
+        # `run-config.toml` verdict and this run's own condition, composed
+        # by `prep_run_inputs`.  This door puts NOTHING together itself:
+        # the UI is not a second framework, it is a way to see and decide
+        # (user, 2026-09-02).  It assembled its own for an hour that day and
+        # was missing the verdict and the bench's pins both.
         #
         # ITS REFUSALS ARE THE USER'S, like every other refusal at this door:
         # "which machine is this for" and "this machine cannot hold your
-        # declared shape" are both answers only a person has, and both would
-        # be a 500 uncaught.
-        from molbuilder.jobset._cli import declared_run_shape
+        # condition" are answers only a person has, and both would be a 500
+        # uncaught.  The echo `_apply_run_config` writes for a terminal is
+        # swallowed -- a server log is not where that reader is.
+        import contextlib
+        import io as _io
+
+        from molbuilder.jobset._cli import prep_run_inputs
         try:
-            kwargs = {"chosen": declared_run_shape(dest, target, task)}
+            with contextlib.redirect_stdout(_io.StringIO()):
+                allocation, pins, chosen = prep_run_inputs(
+                    dest, target, task, stage)
         except Exception as exc:                              # noqa: BLE001
             return jsonify({"ok": False, "error": str(exc)}), 400
+        kwargs = {"chosen": chosen, "allocation": allocation, "pins": pins}
     if kind == "bench":
         if not (task.bench or {}):
             return jsonify({
@@ -1894,10 +1994,24 @@ def api_task_setup_bench_grid():
         return jsonify({"ok": False,
                         "error": "bench: must be an object of "
                                  "axis -> points"}), 400
-    # The same translation the prep door does (and for its reason): the
-    # picker offers "(this machine)" as a LABEL, and `_bench_inputs` reads
-    # ``None`` as "this machine".  Spelled once here so the two doors
-    # cannot disagree about what the label means.
+    # The picker offers "(this machine)" as a LABEL; `None` is what the
+    # record reader takes for it here.
+    #
+    # NOT `LOCAL_TARGET`, which is what the prep door translates to -- and
+    # the difference is deliberate, not drift.  `LOCAL_TARGET` means *the
+    # box I am on, explicitly*, and reads this machine's own scope record;
+    # `None` means *nobody named one*, which lets `record_scopes` prefer
+    # THE BUNDLE'S OWN `environment.json` -- the snapshot a described
+    # calculation carries and the grid must be measured against.  Forcing
+    # the two doors to one value on 2026-09-02 threw that snapshot away and
+    # a GPU grid stopped resolving.
+    #
+    # The gap this leaves is narrow and real: on a NOT-YET-PREPPED folder,
+    # on a machine that has named records, `None` has no snapshot to prefer
+    # and `record.py` raises `AmbiguousTarget` -- a 400 whose callers hide
+    # themselves, so both fit blocks vanish with no message while the Prep
+    # button beside them works.  That is a surfacing bug in the callers,
+    # not a reason to discard the snapshot here.
     from molbuilder.scheduler.record import LOCAL_TARGET
     target = body.get("target") or None
     if target in ("(this machine)", LOCAL_TARGET):
@@ -1954,7 +2068,7 @@ def api_task_setup_prep_plan():
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
-    from molbuilder.jobset._cli import declared_run_shape
+    from molbuilder.jobset._cli import run_condition
     from molbuilder.jobset.prep import token_for
     from molbuilder.jobset.shape import Shape
     from molbuilder.task import Task
@@ -1973,10 +2087,9 @@ def api_task_setup_prep_plan():
     alloc = {"domain": task.allocation.domain, "time": task.allocation.time,
              "mem": task.allocation.mem}
     # The plan card reads the DESCRIPTION as posted, mid-edit, with no
-    # machine resolved -- so it reports what the description decides
-    # without asking the enumerator, which needs a target.  `dest` is not
-    # in hand here either: the body carries the document, not the folder.
-    chosen = {k: v[0] for k, v in (task.bench or {}).items() if len(v) == 1}
+    # machine resolved -- so it reports the condition as WRITTEN, without
+    # asking the enumerator, which needs a target.  `dest` is not in hand
+    # here either: the body carries the document, not the folder.
 
     rows = []
     for st in task.stages:
@@ -1985,7 +2098,10 @@ def api_task_setup_prep_plan():
         token = token_for(task, st.name)
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
-                     "allocation": alloc, "chosen": chosen})
+                     "allocation": alloc,
+                     # PER STAGE, because the condition is (§ 6.8d): the
+                     # calculation's block with this rung's laid over it.
+                     "chosen": run_condition(task, st.name)})
     bench = None
     if task.bench:
         # Every axis, with its points.  A row of length one is a DECISION and

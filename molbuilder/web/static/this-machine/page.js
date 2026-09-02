@@ -142,7 +142,8 @@
         var name = ($("tm-name") || {}).value || "";
         var url = ($("tm-url") || {}).value || "";
         var key = ($("tm-key") || {}).value || "";
-        var listener = $("tm-kind-listener") && $("tm-kind-listener").checked;
+        var kind = selectedKind();
+        var listener = kind === "molbuilder";
         name = name.trim();
         if (!name) { say("tm-form-note", "a name is required", "error"); return; }
         // ANY OTHER ACTION CANCELS A PENDING REMOVE.  An arm is a momentary
@@ -158,6 +159,11 @@
                 body: JSON.stringify({
                     url: url.trim(),
                     key: listener ? key.trim() : "",
+                    // THE MONITOR'S OWN VOCABULARY, sent as chosen.  The page
+                    // offered "Slack or Discord" as one kind until
+                    // 2026-09-02, leaving the sender to guess from the host --
+                    // which is the DEFAULT, not the answer.
+                    kind: kind,
                 }),
             });
             var d = await r.json();
@@ -299,20 +305,35 @@
 
     /* ---------- wiring ---------- */
 
+    /* WHICH KIND IS TICKED -- one reader, in the monitor's own words
+       ("slack" | "discord" | "molbuilder").  `run-reports.md` § 4.1b. */
+    var KIND_IDS = ["tm-kind-slack", "tm-kind-discord", "tm-kind-listener"];
+
+    function selectedKind() {
+        for (var i = 0; i < KIND_IDS.length; i++) {
+            var el = $(KIND_IDS[i]);
+            if (el && el.checked) return el.value;
+        }
+        return "slack";
+    }
+
     function syncKindField() {
-        var listener = $("tm-kind-listener") && $("tm-kind-listener").checked;
+        var kind = selectedKind();
+        var listener = kind === "molbuilder";
         var field = $("tm-key-field");
         if (field) field.hidden = !listener;
         var url = $("tm-url");
         if (url) {
-            url.placeholder = listener
-                ? "https://your-server:8888/api/<segment>"
-                : "https://hooks.slack.com/services/…";
+            url.placeholder =
+                listener ? "https://your-server:8888/api/<segment>"
+              : kind === "discord"
+                    ? "https://discord.com/api/webhooks/…"
+                    : "https://hooks.slack.com/services/…";
         }
     }
 
     function init() {
-        ["tm-kind-webhook", "tm-kind-listener"].forEach(function (id) {
+        KIND_IDS.forEach(function (id) {
             var el = $(id);
             if (el) el.addEventListener("change", syncKindField);
         });

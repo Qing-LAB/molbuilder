@@ -25,6 +25,7 @@ import pytest
 from molbuilder import diagnostics
 from molbuilder.diagnostics import Capabilities
 from molbuilder.jobset.model import Resources
+from molbuilder import runwrap
 from molbuilder.runwrap import write_run_wrapper
 
 
@@ -144,3 +145,29 @@ def test_the_door_refuses_a_loose_allocation(project):
     fdf.write_text(_DECK)
     with pytest.raises(TypeError):
         write_run_wrapper(fdf, mpi_np=16, cpus_per_task=8)
+
+
+def test_nothing_answering_the_rank_count_is_a_REFUSAL_naming_the_command(
+        project):
+    """**A rank count is read from a record and nowhere else** -- no probe of
+    the box that happens to be running, no fallback, no floor
+    (`running-a-job.md` § 3.1; user, 2026-09-02: *"even for the current
+    machine, the environment.json must be present"*, *"so we are not guess at
+    all"*).
+
+    One rule, so one test: a record that says nothing about width and no
+    record at all are the same case, and a refusal is only useful if it says
+    what to do.
+
+    A record-less render fell back to this box's `physical_core_count` for
+    part of 2026-09-02, with a test pinning the fallback -- a test asserting a
+    rule no document stated, which would have kept the guess alive through the
+    next rewrite.  Both are retired."""
+    from molbuilder.scheduler import Environment
+    fdf = project / "j.fdf"
+    fdf.write_text("SystemLabel j\nNumberOfAtoms 512\n")
+    for record in (None, Environment(scheduler="slurm")):   # absent, and silent
+        with pytest.raises(runwrap.WrapperError) as exc:
+            runwrap.render_run_wrapper(fdf, resources=Resources(),
+                                       machine_record=record)
+        assert "jobset probe --write" in str(exc.value), str(exc.value)

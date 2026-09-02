@@ -1468,11 +1468,13 @@ Three things are **not** items, each excluded by a rule that already exists:
 > and every machine, and a rank count is true of neither.
 >
 > `task.json` is the other file and answers a different question — *what did
-> the person ASK for* — so a **one-point `bench` entry** there states a machine
-> value and is the design's own channel for it
-> ([`generator.md § 4.3a`](?doc=execution/generator.md)). Nothing about this
-> section changes: the item here is still valueless, and a value written here
-> is still refused. The two files simply are not one rule.
+> the person ASK for* — so its **`execution` block** states a machine value
+> and is the design's own channel for it
+> ([`stages.md § 6.8d`](?doc=engines/stages.md)). A one-point `bench` entry
+> is NOT that channel: `mpi_np: [8]` is *measure eight*, one trial, and the
+> run never reads it ([`generator.md § 4.3a`](?doc=execution/generator.md)).
+> Nothing about this section changes: the item here is still valueless, and a
+> value written here is still refused. The two files simply are not one rule.
 
 **A parameter that cannot be given a `kind` is a gap in this vocabulary**, and
 the loud version of that is the only one that gets fixed: whatever writes a

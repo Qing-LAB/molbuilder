@@ -271,6 +271,44 @@ class TestTheBrowserDoesNotEnumerate:
 #  The RUN's own numbers — the same door, a grid of one                  #
 # --------------------------------------------------------------------- #
 
+def test_the_browser_assembles_nothing_of_its_own():
+    """**The UI is not a second framework** *(user, 2026-09-02: "if you
+    handcraft two branches to collect the parameter and generate the thing,
+    then you have to maintain two branches of the logic… The user can do the
+    same thing using CLI").*
+
+    So the prep door calls `prep_run_inputs` and composes nothing itself.
+    It DID compose its own for an hour on 2026-09-02, and every divergence
+    was a different run: no `run-config.toml` verdict, no bench pins, and at
+    first no condition pins -- a solver chosen on the run card reached the
+    sbatch's neighbour and not the deck.
+
+    Source-level because that is where the rule lives: a behavioural test
+    would need a benchmark, a verdict and a condition all at once, and would
+    still pass the day someone re-derived ONE of the three here.
+    """
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
+    door = src[src.index("def api_task_setup_prep("):
+               src.index("def api_task_setup_save(")]
+    assert "prep_run_inputs(" in door, (
+        "the browser's prep door no longer calls the one assembly")
+    # CALLS, not mentions, and on a WORD boundary: the door's own comments
+    # name these to say why it does not reach for them, and `run_inputs` is
+    # a substring of the very function it is supposed to call.
+    #
+    # `run_condition` is allowed: a pure read of the posted document for
+    # DISPLAY (the preview's fallback when the machine cannot hold the
+    # condition), not a step in assembling what prep receives.
+    import re as _re
+    for reassembled in ("_apply_run_config", "_declared_execution_pins",
+                        "declared_run_shape", "run_inputs"):
+        assert not _re.search(rf"(?<![\w.]){reassembled}\(", door), (
+            f"the door calls {reassembled} itself -- that is the second "
+            f"branch of logic the one assembly exists to prevent")
+
+
 def test_there_is_exactly_ONE_admission_door():
     """`generator.md` § 2: a run is a sweep of length one.
 
@@ -319,6 +357,37 @@ def _plan(client, task):
                        json={"task": task}).get_json()
 
 
+class TestTheBenchPreviewSaysNothingAboutTheRun:
+    """A13 is the RUN's rule, and it is told in the run's card.
+
+    The plan door returned `emitted` and `chosen` for `kind == "bench"` as
+    well, and the page renders them with no kind check -- so a **bench**
+    preview carried the heading "What this run will actually be launched
+    with" over the run condition's numbers, which no trial uses.  A surprise
+    of exactly the kind A13 exists to prevent, told in the wrong card."""
+
+    def test_a_bench_preview_carries_no_emitted_launch(self, client, bundle):
+        r = client.post("/api/task-setup/prep", json={
+            "dest": str(bundle), "kind": "bench", "stage": "coarse",
+            "plan": True})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body.get("emitted") == [], (
+            "the bench preview named the run's launch: "
+            + repr(body.get("emitted")))
+        assert not body.get("chosen"), (
+            "the bench preview named the run's condition: "
+            + repr(body.get("chosen")))
+
+    def test_a_run_preview_still_carries_one(self, client, bundle):
+        """The other half -- the gate must not have emptied both cards."""
+        r = client.post("/api/task-setup/prep", json={
+            "dest": str(bundle), "kind": "run", "stage": "coarse",
+            "plan": True})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert r.get_json().get("emitted"), "the run lost its A13 block"
+
+
 class TestThePlanComesFromTheProducer:
     """§ 7.1: a confirmation, not a second answer.  Flat and hierarchical
     name directories differently, and a list the page composed would be free
@@ -348,14 +417,21 @@ class TestThePlanComesFromTheProducer:
             assert row["allocation"] == {"domain": "htc",
                                          "time": "1-00:00:00", "mem": ""}
 
-    def test_the_chosen_launch_shape_is_the_ONE_POINT_axes(self, client):
-        """§ 4.3a: one point is a decision, several are a question. The card
-        reports the decisions so *what will this run actually use* is
-        answerable without reading the grid."""
+    def test_the_chosen_shape_is_EXECUTION_never_the_bench(self, client):
+        """`stages.md` § 6.8d: the run's condition is `execution`, its own
+        block.  A `bench` row is a thing to measure at any length -- including
+        length one, which is one trial.
+
+        This asserted the opposite for one day (2026-09-01), when a one-point
+        bench row WAS the run's shape.  The two blocks are independent now,
+        and this is the test that says so from the surface's side."""
         d = _plan(client, _PLAN_TASK)
         for row in d["stages"]:
-            assert row["chosen"] == {"omp_threads": 4}, (
-                "a three-point axis is not a decision, and a one-point one is")
+            assert row["chosen"] == {}, (
+                "a bench row reached the run's shape: " + repr(row["chosen"]))
+        withcond = dict(_PLAN_TASK, execution={"mpi_np": 8})
+        for row in _plan(client, withcond)["stages"]:
+            assert row["chosen"] == {"mpi_np": 8}
 
     def test_the_bench_row_carries_every_axis(self, client):
         d = _plan(client, _PLAN_TASK)
