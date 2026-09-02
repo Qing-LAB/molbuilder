@@ -140,6 +140,84 @@ the ones that survive contact with the code are the twenty-odd rows above in
 
 ---
 
+## 5b. Open — found 2026-09-02, the run-decision round
+
+Two code-review agents and six test-audit agents, every acted-on claim verified
+by hand. **Priority is the first column and means: P0 misleads a person right
+now; P1 is a check that silently is not checking; P2 is a gap in what shipped
+today; P3 is cleanup, large and mechanical.**
+
+### The front end — what a person is told to run
+
+| P | # | item | evidence |
+|---|---|---|---|
+| **P0** | **R1** | **`--from` is composed in the browser and is wrong for `flat`.** `viewer.js:1872` builds `01_coarse/run-0`; `Shape.stage_dir` returns `"."` for flat, so the taught command names a directory that does not exist. It also hard-codes `run-0`, so a stage with three attempts is taught to continue from the first. `/api/task-setup/prep-plan` already returns the correct `token` and `dir` | **this is V2 of the 2026-08-13 program, resurfaced.** Closed on the CLI, never on the browser |
+| **P0** | **R2** | **The Prep-run button is withheld from every continuing rung** (`viewer.js:1935`, `if (!from)`) — and with it the A13 emitted block, from exactly the long runs A13 exists for | verified |
+| **P2** | **R3** | **Page state survives a folder change**, against `task-setup.md` § 2.1's *"the page holds no state of its own"*: `_extraRunRows`, `_pendingDrop`, `_queue`. The `_pendingDrop` one is the sharpest — arm a column delete on folder A, switch, and one click removes B's column with no warning | verified |
+| **P2** | **R4** | **Three writers, one buffer, a 400 ms loss window.** `syncFromModel` writes from `_task`; `applyAsksToDoc` and `applyNotifyToDoc` patch the buffer and never touch `_task`. Type a memory value, blur, click "+ Add stage" inside the debounce and the `allocation` block is gone | verified |
+| **P3** | **R5** | **`"(this machine)"` means `LOCAL_TARGET` at the prep door and `None` at the bench-grid door.** Real asymmetry, but **the fix is not unification** — `None` is what lets the reader prefer the bundle's own snapshot, and forcing them together broke a live GPU test. The narrow gap: on an unprepped folder with named records, both fit blocks 400 and hide themselves. Fix the *surfacing*, not the value | tried and reverted 2026-09-02; the reasoning is in the code |
+
+### Tests that are not testing
+
+| P | # | item | evidence |
+|---|---|---|---|
+| **P1** | **T1** | **`tuning.md:919` claims the SIESTA tier tables are checked against the code by `test_doc_claims.py`. They are not** — only the two PySCF tables are registered in `TIER_TABLES`. There is no SIESTA doc-parity check anywhere | verified |
+| **P1** | **T2** | **`test_layering.py:476`** uses a relative `Path("molbuilder").rglob(...)` where every other path in the file resolves from `__file__`. Under any cwd but the repo root the set is empty and the test passes proving nothing | verified |
+| **P1** | **T3** | **`test_diagnostics.py:175`** — `pytest.raises((AttributeError, Exception))`; the second member subsumes the first, so any exception passes | reported, spot-checked |
+| **P1** | **T4** | **Four tests actively block a correct change**: `test_review_fixes.py:237` (`assert Config is SiestaConfig`) and the three `runtime_config._FLAT_ALIASES` tests pin **backward-compat shims** against the project's no-shims rule; `test_envs_siesta_gpu_recipe.py:89` pins `gcc=14` where `installation.md:202` reverses it; `test_structure_envelope_protocol.py:87` pins a deleted legacy branch — **and that one needs the doc fixed first**, since `web-api.md` still claims `/api/modify/*` accepts the old flattened shape | verified |
+
+### Test bloat — measured, not estimated
+
+**163 test files added, 36 deleted since 2026-08-01.** Whole files *do* get
+retired; what never happens is pruning inside a surviving file — one commit
+added 19 test definitions to `test_checkpoint_states.py` and removed none,
+several of them written to *replace* pieces left standing. **That single habit
+is 47 of 77 findings in one partition.**
+
+**The rule this earns, and the only one that prevents the next round:**
+
+> **A consolidating test deletes the pieces it consolidates, in the same
+> commit.**
+
+| P | # | item | size |
+|---|---|---|---|
+| **P3** | **B1** | **58 tests pin an archived design proposal** — `test_results_state_contract_js.py` (33) + `..._spectra_js.py` (25) cite "§ 13" of a contract whose live version has 10 sections; their vocabulary (`fileState`, `fetchSeq`, `uiPrefs`) is in **zero** live docs and exists only in `archive/old_docs/protocols/results-state-contract.md`, *"Status: v1, design proposal, 2026-06-17"* | 58 |
+| **P3** | **B2** | **Tests that cannot fail.** A class whose body is only a docstring (collects zero tests); `assert len(KNOWN) <= 1` on a dict declared in the same file; an assertion built by searching for the string it then asserts; a test asserting a **code comment** exists | ~45 |
+| **P3** | **B3** | **233 front-end tests assert substrings of `.js`/`.css`**, one pinning six spaces of column alignment. The cure exists at the deck layer (`tests/_deck.py`, written after padding broke 45 tests across eight files) and the front end never got it. **Build the equivalent first, then convert** — deleting these loses real coverage | 233 |
+| **P3** | **B4** | **De-duplication that already regressed.** `tests/support/envelope.py` has a section headed *"WHY THIS FILE EXISTS"* — six files had grown their own `_envelope()`; six have again. Also 20 hand-rolled copies of the documented `tests/_node_esm.py` harness (7 of 48 files use it, against a doc that says 49 do), 19 retyped `flask_server` fixtures | ~7,900 lines |
+| **P3** | **B5** | **One test has never run** — `test_molview_mount.py` defines the same name twice at module scope; Python keeps the second | 46 lines |
+
+### Gaps in what shipped today — mine
+
+| P | # | item |
+|---|---|---|
+| **P2** | **M1** | **`notify.report` has no test** in `test_task_notify.py` — the reader, the two-state absent/`[]` rule, and the refusal are all unpinned at the description layer |
+| **P2** | **M2** | **The run card's JS has no test** — `stageRunCard`, `setRunValue`, `dropRunRow`, `runConditionOf`, `LANE_ASKS`. The backend is covered; the browser half is not. Blocked behind **B3**: the honest way to test it is a node harness, not a source-grep |
+| **P2** | **M3** | **`_under_description`'s third parameter is dead** — zero callers pass it, and `_prep_transport` declares it while `prep_calculation` never forwards it. The deletion is staged and was never applied |
+
+### Documents that state something false
+
+| P | # | item |
+|---|---|---|
+| **P0** | **D4** | **`web-api.md`** says `/api/modify/*` *"still accepts its old flattened columns"*. It does not — `_shared.py` raises without the envelope, and the sibling test says *"THE LEGACY SHAPE IS GONE"*. Blocks **T4** |
+| **P1** | **D5** | **`process/testing.md` § 4** says the `*_js.py` tests drive `tests/_node_esm.py`; 41 of 48 do not. Same file: *"~275 test files"*, actual 419 |
+| **P1** | **D6** | **`web/molview.md`** § 6.6 / § 13.3 say **five** predefined labels; there are six — `buffer` is real and documented in `engines/transport.md:182`. Fix the doc, keep the test |
+| **P2** | **D7** | **`ui-contract.md` § 2** says module-private tokens live in one file; `test_css_no_hex_literals.py:165` says per-file namespaced extensions are fine. One of them is wrong |
+
+### The 2026-08-13 V-program — closed, with one survivor
+
+Task #11 carried V1–V24 from `memory/project_final_fix_program.md`. Spot-checked
+against the tree on 2026-09-02: **V1, V3–V7, V19, V22, V24 verified closed**
+(one `_stage_bench_dir` owner; `continue_retries` on `Resources`;
+`validate_ladder` gone; the config split resolved; floor-2 gates filter on field
+metadata; the named dead symbols absent; `bench/` is the unified jobset stack).
+**V2 is open and is R1 above** — closed on the CLI, never on the browser, and
+found again by a fresh agent three weeks later. The tier-2 and tier-3 items
+(test-logic, doc sweeps) are superseded where they overlap by §§ 5b's test and
+document rows, which were measured against the current tree.
+
+---
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |
