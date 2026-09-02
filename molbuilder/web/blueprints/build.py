@@ -1401,6 +1401,21 @@ def api_task_setup_prep():
                         "error": f"{stage!r} is not a stage of this "
                                  f"calculation: " + ", ".join(stages)}), 400
 
+    def _plan_chosen(dest, target, task):
+        """The shape for the PREVIEW, which must never refuse.
+
+        A preview is a person asking *what would this do* -- so a machine it
+        cannot hold, or a target it cannot name, is something to SHOW rather
+        than to fail on.  The write path above refuses in its own words; this
+        one falls back to naming what the description declares, so the card
+        still says a number instead of going blank."""
+        from molbuilder.jobset._cli import declared_run_shape
+        try:
+            return declared_run_shape(dest, target, task)
+        except Exception:                                     # noqa: BLE001
+            return {k: v[0] for k, v in (task.bench or {}).items()
+                    if len(v) == 1}
+
     # ---- the PLAN: what this would do, writing nothing ----------------- #
     if plan_only:
         alloc = task.allocation
@@ -1410,6 +1425,13 @@ def api_task_setup_prep():
                        else (target or "(this machine)"),
             "bench_axes": {k: list(v) for k, v in (task.bench or {}).items()}
                           if kind == "bench" else {},
+            # WHAT THE RUN WILL ACTUALLY USE, on the run's own preview too
+            # (`generator.md` § 4.3a).  A bench preview shows the axes and
+            # could infer this from them; a RUN preview showed the queue,
+            # the wall and the memory and said nothing about the launch
+            # shape -- which is the number a person is checking before
+            # spending a queue slot.
+            "chosen": _plan_chosen(dest, target, task),
             # What the description asks the scheduler for -- shown because
             # an unstated memory is the thing that killed five real jobs.
             "allocation": {"domain": alloc.domain, "time": alloc.time,
@@ -1425,6 +1447,20 @@ def api_task_setup_prep():
     from molbuilder.scheduler.record import AmbiguousTarget as _AmbiguousTarget
     from molbuilder.scheduler.record import UnknownTarget as _UnknownTarget
     kwargs = {}
+    if kind == "run":
+        # THE SHAPE THE DESCRIPTION DECIDES, from the one grid enumerator --
+        # the same call the CLI makes, so the button and the command line
+        # cannot prepare two different runs (`generator.md` § 2).
+        #
+        # ITS REFUSALS ARE THE USER'S, like every other refusal at this door:
+        # "which machine is this for" and "this machine cannot hold your
+        # declared shape" are both answers only a person has, and both would
+        # be a 500 uncaught.
+        from molbuilder.jobset._cli import declared_run_shape
+        try:
+            kwargs = {"chosen": declared_run_shape(dest, target, task)}
+        except Exception as exc:                              # noqa: BLE001
+            return jsonify({"ok": False, "error": str(exc)}), 400
     if kind == "bench":
         if not (task.bench or {}):
             return jsonify({
@@ -1894,75 +1930,6 @@ def api_task_setup_bench_grid():
                     "kept": sum(1 for r in rows if not r["why"])})
 
 
-@bp.route("/api/task-setup/run-fit", methods=["POST"])
-def api_task_setup_run_fit():
-    """Would the RUN's own numbers fit a queue on the target?
-
-    **It is the grid door with a grid of one.**  `task-setup.md` § 6.2b's
-    rows state one value per parameter, which is a sweep of length one --
-    so this builds a one-point axis from each and asks the SAME enumerator
-    the bench block asks.  A second admission path here could say a run is
-    fine where `launch` refuses it, which is the exact class of drift
-    `generator.md` § 4.3a's rebuild removed; there is nothing to keep in
-    step because there is only one of them.
-
-    POST ``{dest, target?, values, domain?}``.  ``values`` is the card's
-    model as it is being typed -- ``{"mpi_np": 8, "omp_threads": 6}`` --
-    not what is saved, so the answer tracks the keystroke.
-
-    Answers 200 with ``cell: null`` when the point survives nothing: *this
-    ask fits no queue here* is a result to show beside the field that
-    caused it, not a failure of the request.
-    """
-    body = request.get_json(silent=True) or {}
-    dest_raw = str(body.get("dest") or "")
-    if not dest_raw:
-        return jsonify({"ok": False, "error": "no folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not dest.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"not a directory: {dest_raw}"}), 400
-    values = body.get("values")
-    if values is not None and not isinstance(values, dict):
-        return jsonify({"ok": False,
-                        "error": "values: must be an object of "
-                                 "parameter -> one value"}), 400
-    if not values:
-        # NOTHING STATED IS NOT A REFUSAL.  A description that leaves the
-        # run to `run-config.toml` and the wrapper's policy is ordinary,
-        # and § 6.2b's block simply has nothing to check.
-        return jsonify({"ok": True, "cell": None, "stated": False})
-
-    from molbuilder.scheduler.record import LOCAL_TARGET
-    target = body.get("target") or None
-    if target in ("(this machine)", LOCAL_TARGET):
-        target = None
-
-    import contextlib
-    import io as _io
-
-    from molbuilder.jobset._cli import _bench_inputs
-    # ONE POINT PER PARAMETER -- the run IS a sweep of length one, which is
-    # the sentence § 6.2's card has always carried.
-    grid = {k: [v] for k, v in values.items()}
-    rows: list = []
-    try:
-        with contextlib.redirect_stdout(_io.StringIO()):
-            _bench_inputs(dest, target, bench_override=grid, report=rows)
-    except Exception as exc:                      # noqa: BLE001
-        if rows:
-            return jsonify({"ok": True, "cell": rows[0], "stated": True,
-                            "note": str(exc)})
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    cell = rows[0] if rows else None
-    return jsonify({"ok": True, "cell": cell, "stated": True,
-                    "fits": bool(cell and not cell.get("why")),
-                    "domain": body.get("domain") or ""})
-
-
 @bp.route("/api/task-setup/prep-plan", methods=["POST"])
 def api_task_setup_prep_plan():
     """What a `prep` would write, stage by stage — `task-setup.md` § 7.1.
@@ -1973,7 +1940,7 @@ def api_task_setup_prep_plan():
     describes.  `prep.token_for` is the one namer (decision 27) and
     `Shape.stage_dir` the one layout, and this asks both.
 
-    The allocation each stage would carry comes from `prep._allocation_for`,
+    The allocation each stage would carry is `task.allocation`,
     which is the same function the prep itself resolves through -- so the
     row cannot promise a wall the run will not ask for.
 
@@ -1987,7 +1954,8 @@ def api_task_setup_prep_plan():
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
-    from molbuilder.jobset.prep import _allocation_for, token_for
+    from molbuilder.jobset._cli import declared_run_shape
+    from molbuilder.jobset.prep import token_for
     from molbuilder.jobset.shape import Shape
     from molbuilder.task import Task
     try:
@@ -1998,10 +1966,17 @@ def api_task_setup_prep_plan():
         # Its own words, so the card can say why rather than going blank.
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    def _one(alloc, values_first=False):
-        out = {"domain": alloc.domain, "time": alloc.time, "mem": alloc.mem,
-               "values": dict(alloc.values)}
-        return out
+    # ONE allocation for the calculation (`stages.md` § 6.8a), and the launch
+    # shape the description CHOSE -- every machine-answered `bench` entry that
+    # carries one point (`generator.md` § 4.3a).  Two reads because they are
+    # two questions; neither is recomputed here.
+    alloc = {"domain": task.allocation.domain, "time": task.allocation.time,
+             "mem": task.allocation.mem}
+    # The plan card reads the DESCRIPTION as posted, mid-edit, with no
+    # machine resolved -- so it reports what the description decides
+    # without asking the enumerator, which needs a target.  `dest` is not
+    # in hand here either: the body carries the document, not the folder.
+    chosen = {k: v[0] for k, v in (task.bench or {}).items() if len(v) == 1}
 
     rows = []
     for st in task.stages:
@@ -2010,12 +1985,13 @@ def api_task_setup_prep_plan():
         token = token_for(task, st.name)
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
-                     "allocation": _one(_allocation_for(task, st.name))})
+                     "allocation": alloc, "chosen": chosen})
     bench = None
     if task.bench:
+        # Every axis, with its points.  A row of length one is a DECISION and
+        # measures one cell; the card says which is which (§ 6.2b).
         bench = {"axes": {k: list(v) for k, v in task.bench.items()},
-                 "allocation": _one(_allocation_for(task, None,
-                                                    measuring=True))}
+                 "allocation": alloc}
     return jsonify({"ok": True, "shape": shape.name, "stages": rows,
                     "bench": bench})
 

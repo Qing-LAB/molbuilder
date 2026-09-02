@@ -546,21 +546,63 @@ def test_disabling_a_stage_keeps_its_values():
 #  T4 machine rows · T5 what has run                                     #
 # --------------------------------------------------------------------- #
 
+def _row_badge(name, points, machine):
+    """What the machine card says a row IS — the real source, driven.
+
+    A regex over `viewer.js` stood here until 2026-09-01 and broke on a
+    refactor that kept the rule exactly ("the row's length no longer decides
+    what it is" — it still did). A source grep pins a spelling; this pins the
+    behaviour, which is the thing the contract states.
+    """
+    import json as _json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = VIEWER.read_text(encoding="utf-8")
+    i = src.index("        const chosen = pts.length === 1;")
+    j = src.index("`;", i) + 2
+    prog = (f"const pts = {_json.dumps(points)};\n"
+            f"const name = {_json.dumps(name)};\n"
+            f"const machineAnswers = () => {_json.dumps(bool(machine))};\n"
+            + src[i:j].replace("const ", "var ") + "\n"
+            "console.log(JSON.stringify({kind: kind, verdict: verdict}));")
+    out = subprocess.run([node, "--input-type=commonjs", "-e", prog],
+                         capture_output=True, text=True, timeout=20)
+    if out.returncode != 0:
+        pytest.fail(out.stderr)
+    return _json.loads(out.stdout.strip().splitlines()[-1])
+
+
 def test_one_point_is_a_choice_and_several_a_measurement():
-    """`generator.md § 2` — a run is a sweep of length one, so both states are
+    """`generator.md` § 2 — a run is a sweep of length one, so both states are
     the same structure at different lengths.  Verified legal by the reader:
     `bench` takes a non-empty list, and a one-element list parses."""
-    src = VIEWER.read_text()
-    assert re.search(r'pts\.length === 1 \? "chosen" : "measured"', src), (
-        "the row's length no longer decides what it is")
+    assert _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)["verdict"] \
+        == "chosen \u00b7 1 point"
+    assert _row_badge("diag_algorithm", ["A", "B"], False)["verdict"] \
+        == "measured \u00b7 2 points"
 
 
-def test_a_machine_answered_setting_is_never_a_choice():
-    """mpi_np / omp_threads / max_memory_mb may never carry a value in a
-    description (`template.md § 6.4`), so even one point is a point to TRY."""
-    src = VIEWER.read_text()
-    assert re.search(r'machineAnswers\(name\)\s*\n?\s*\?\s*"machine"', src), (
-        "a machine-answered setting can render as `chosen`")
+def test_length_decides_for_a_MACHINE_row_too():
+    """`generator.md` § 4.3a, 2026-09-01: one point is a decision on EVERY
+    axis.  A machine-answered row was pinned to *"to try"* at any length
+    until then, so `mpi_np: [8]` read as a short list of one and `prep run`
+    dropped it — which is how the run's decision came to have nowhere to
+    live.
+
+    The `machine` KIND survives, and that is deliberate: it tints the row,
+    because which kind of setting this is stays worth seeing.  What it must
+    no longer do is decide what the POINTS mean."""
+    one = _row_badge("mpi_np", [8], True)
+    assert one["verdict"] == "chosen \u00b7 1 point", (
+        "a one-point machine row still reads as a list to try")
+    assert one["kind"] == "machine", "the row lost its tint"
+    many = _row_badge("mpi_np", [4, 8, 16], True)
+    assert many["verdict"] == "measured \u00b7 3 points"
+    assert many["kind"] == "machine"
 
 
 def test_measuring_never_discards_the_chosen_value():

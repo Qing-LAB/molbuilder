@@ -1457,9 +1457,22 @@ Three things are **not** items, each excluded by a rule that already exists:
 
 | not an item | why | where it lives instead |
 |---|---|---|
-| **a machine fact's VALUE** — how many ranks this job got, which queue, what wall time | floor 2 must never *assert* a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json`. The **item** may be declared (§ 6.4) so a surface can ask and the wrapper writer knows to look; writing a `value` to one is what a reader **refuses** |
+| **a machine fact's VALUE** — how many ranks this job got, which queue, what wall time | this file must never *assert* a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json`. The **item** may be declared (§ 6.4) so a surface can ask and the wrapper writer knows to look; writing a `value` to one **here** is what a reader **refuses** |
 | **the ladder** — the list of stages | an item is a parameter; a list of stages is the mission | `task.json` ([`stages.md`](?doc=engines/stages.md) § 1.1) |
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
+
+> **This rule is the TEMPLATE's, and it stays absolute** *(clarified
+> 2026-09-01)*. It was written as *"floor 2 must never assert a machine"*, and
+> floor 2 is two files. `read_template` refuses a hand-written `mpi_np` and
+> always will: this file is what a run's parameters ARE, shared by every stage
+> and every machine, and a rank count is true of neither.
+>
+> `task.json` is the other file and answers a different question — *what did
+> the person ASK for* — so a **one-point `bench` entry** there states a machine
+> value and is the design's own channel for it
+> ([`generator.md § 4.3a`](?doc=execution/generator.md)). Nothing about this
+> section changes: the item here is still valueless, and a value written here
+> is still refused. The two files simply are not one rule.
 
 **A parameter that cannot be given a `kind` is a gap in this vocabulary**, and
 the loud version of that is the only one that gets fixed: whatever writes a

@@ -85,43 +85,24 @@ def test_a_human_spelling_is_accepted_at_the_door_and_normalised():
     assert t.to_dict()["allocation"] == {"time": "0-04:00:00", "mem": "80G"}
 
 
-def test_a_machine_answered_value_is_read_as_one():
-    """§ 6.8a, extended 2026-09-01: the block carries what the RUN should
-    use, beside what it asks the scheduler for.  One value each."""
-    t = _task(allocation={"domain": "htc", "mpi_np": 8, "use_gpu": True})
-    assert t.allocation.values == {"mpi_np": 8, "use_gpu": True}
-    assert t.to_dict()["allocation"] == {
-        "domain": "htc", "mpi_np": 8, "use_gpu": True}
+def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it():
+    """`generator.md` § 4.3a: ranks, threads and devices are a `bench` entry
+    -- several points to measure, one point to use -- so the knob you might
+    instead measure has ONE home.  This block is the SCHEDULER's ask.
 
+    The refusal has to say that, because it is not a typo: `mpi_np` is a real
+    setting in the wrong block, and "unknown key" alone sends a person
+    looking for a spelling mistake they did not make.  (It IS what this block
+    briefly held, on 2026-09-01.)"""
+    for value in ([4, 8], 8):
+        with pytest.raises(Exception) as e:
+            _task(allocation={"mpi_np": value})
+        assert "bench" in str(e.value) and "ONE point" in str(e.value), e.value
 
-def test_a_list_is_refused_with_the_difference_named():
-    """Several points is a measurement and one value is a run.  A list here
-    is `bench`'s shape arriving in the wrong block, and the refusal says
-    which -- "invalid" would send a person to the wrong file."""
+    # and a real typo still gets the near-miss, not the lecture
     with pytest.raises(Exception) as e:
-        _task(allocation={"mpi_np": [4, 8]})
-    assert "bench" in str(e.value) and "ONE value" in str(e.value)
-
-
-def test_an_unknown_key_is_refused_by_VALIDATION_not_the_reader():
-    """**The refusal moved; it did not go away.**
-
-    The reader rejected any key outside `domain`/`time`/`mem` until
-    2026-09-01. The machine-answered values made that impossible -- an
-    unknown key is now indistinguishable, at L1, from a value the catalogue
-    declares. So the check moved to where the vocabulary is in hand, which
-    is the same split `bench` has always made: shape in `task.py`,
-    membership in `validation/task.py`.
-
-    A typo carried silently would be the worst outcome: a number nobody
-    applies, in a file that looks configured.
-    """
-    from molbuilder.validation.task import preflight
-    t = _task(allocation={"domain": "htc", "cores": 48})
-    assert t.allocation.values == {"cores": 48}          # shape: fine
-    issues = [i for i in preflight(t) if i.severity == "error"]
-    assert any("cores" in i.message for i in issues), (
-        f"an unknown allocation key passed validation: {issues}")
+        _task(allocation={"tyme": "4h"})
+    assert "did you mean 'time'" in str(e.value) and "bench" not in str(e.value)
 
 
 def test_a_number_is_refused_with_the_spelling_it_wants():
@@ -191,49 +172,3 @@ def test_no_declaration_leaves_the_flags_alone():
 # --------------------------------------------------------------------- #
 #  Per stage, and the bench's own — §§ 6.8b, 6.8c                        #
 # --------------------------------------------------------------------- #
-
-def test_a_rung_overrides_field_by_field_over_the_flat_block():
-    """§ 6.8b: a stage states only what it differs in.  Whole-object
-    precedence would let a rung that wanted a longer wall silently drop the
-    queue nobody restated -- the loss § 6.8a's rule already ends between a
-    flag and the block."""
-    t = _task(allocation={"domain": "htc", "time": "0-04:00:00",
-                          "mem": "128G", "mpi_np": 8},
-              stage_allocation={"tight": {"time": "2-00:00:00",
-                                          "mpi_np": 16}})
-    merged = t.stage_allocation["tight"].merged_over(t.allocation)
-    assert merged.domain == "htc"                     # inherited
-    assert merged.mem == "128G"                       # inherited
-    assert merged.time == "2-00:00:00"                # overridden
-    assert merged.values == {"mpi_np": 16}            # overridden
-
-
-def test_the_bench_may_ask_for_a_different_wall():
-    """§ 6.8c: a benchmark is short by construction and a run is not.  One
-    wall serving both queues a thirty-second job behind a two-day
-    reservation, or kills the calculation."""
-    t = _task(allocation={"domain": "htc", "time": "2-00:00:00"},
-              bench_allocation={"domain": "general", "time": "0-00:30:00"})
-    assert t.allocation.time == "2-00:00:00"
-    assert t.bench_allocation.time == "0-00:30:00"
-    assert t.bench_allocation.domain == "general"
-    assert Task.from_dict(t.to_dict()).bench_allocation == t.bench_allocation
-
-
-def test_absent_means_use_the_runs_and_writes_no_key():
-    """Absent-is-a-state, everywhere here.  A description written before
-    2026-09-01 says exactly what it always said, byte for byte."""
-    t = _task(allocation={"domain": "htc"})
-    assert not t.bench_allocation and not t.stage_allocation
-    d = t.to_dict()
-    assert "bench_allocation" not in d and "stage_allocation" not in d
-
-
-def test_the_three_blocks_round_trip_together():
-    t = _task(allocation={"domain": "htc", "time": "1-00:00:00", "mpi_np": 8},
-              bench_allocation={"time": "0-00:30:00"},
-              stage_allocation={"tight": {"mpi_np": 16}})
-    back = Task.from_dict(t.to_dict())
-    assert back.allocation == t.allocation
-    assert back.bench_allocation == t.bench_allocation
-    assert back.stage_allocation == t.stage_allocation

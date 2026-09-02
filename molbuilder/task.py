@@ -86,7 +86,7 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
-             "allocation", "bench_allocation", "stage_allocation",
+             "allocation",
              "notify", "slots", "bias")
 _BIAS_KEYS = ("voltages_v",)
 
@@ -99,10 +99,10 @@ _BIAS_KEYS = ("voltages_v",)
 #: the file-condition check live where the filesystem is (`init`
 #: resolves, `prep` composes -- transport/compose.classify_citation).
 _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
-#: The three SCHEDULER asks.  Everything else in an `allocation` block is a
-#: machine-answered VALUE (`stages.md` § 6.8a) and lands in `Allocation.values`
-#: -- shape-checked here, membership checked where the catalogue is read
-#: (`validation/task.py`), exactly as `bench` splits the same question.
+#: The three SCHEDULER asks, and the whole of an `allocation` block
+#: (`stages.md` § 6.8a).  The launch SHAPE -- ranks, threads, devices -- is
+#: not here: it is a `bench` entry with one point (`generator.md` § 4.3a),
+#: because a knob you might instead measure has one home, not two.
 _ALLOCATION_KEYS = ("domain", "time", "mem")
 _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels")
 
@@ -191,40 +191,9 @@ class Allocation:
     domain: str = ""
     time: str = ""
     mem: str = ""
-    #: THE MACHINE-ANSWERED VALUES THE RUN SHOULD USE -- `mpi_np`,
-    #: `omp_threads`, `use_gpu`, whatever else the template declares
-    #: `allocation` (`stages.md` § 6.8a, extended 2026-09-01).  One value
-    #: each, never a list: a list is `bench`'s job, and the difference
-    #: between them is the difference between running and measuring.
-    #:
-    #: **This is an ASK, not a finding**, which is the whole of why it may
-    #: live in a description at all.  § 6.8's rule bars `summarize` from
-    #: writing a MEASUREMENT back here; a number a person chose after
-    #: reading one is the same kind of statement as `domain`, and that has
-    #: been allowed since 2026-08-24 for the same reason.
-    #:
-    #: SHAPE ONLY here (L1).  Whether a name is a field the catalogue
-    #: declares machine-answered is a MEMBERSHIP question and needs the
-    #: catalogue, which is L2 -- the same split `bench` makes.
-    values: Dict[str, Any] = field(default_factory=dict)
 
     def __bool__(self) -> bool:
-        return bool(self.domain or self.time or self.mem or self.values)
-
-    def merged_over(self, base: "Allocation") -> "Allocation":
-        """This block laid over ``base``, **field by field**.
-
-        The per-stage form (`stages.md` § 6.8b): a rung states only what it
-        differs in, and everything else comes from the flat block.  Whole
-        object precedence would let a stage that wanted a longer wall
-        silently drop the queue nobody restated -- the same loss § 6.8a's
-        field-by-field rule already ends between a flag and this block.
-        """
-        return Allocation(
-            domain=self.domain or base.domain,
-            time=self.time or base.time,
-            mem=self.mem or base.mem,
-            values={**base.values, **self.values})
+        return bool(self.domain or self.time or self.mem)
 
 
 @dataclass(frozen=True)
@@ -362,11 +331,6 @@ class Task:
     #: A benchmark is short by construction -- capped SCF, one point, no
     #: relaxation -- and a run is not.  Absent means "use `allocation`", so
     #: one wall serving both stays the default it always was.
-    bench_allocation: "Allocation" = field(
-        default_factory=lambda: Allocation())
-    #: PER-RUNG OVERRIDES, field by field over `allocation` (§ 6.8b).  A ladder
-    #: whose rungs want the same machine writes nothing here.
-    stage_allocation: Dict[str, "Allocation"] = field(default_factory=dict)
 
     #: WHEN this calculation should say something (:class:`Notify`).  The
     #: policy only -- the destination and its credential stay on the machine
@@ -634,15 +598,21 @@ def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
 
 
 def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
-                where: str) -> None:
+                where: str, note: str = "") -> None:
     """§ 6.1 rule 1 — an unknown key is refused, not ignored, because an
-    ignored key is a calculation quietly different from the one asked for."""
+    ignored key is a calculation quietly different from the one asked for.
+
+    ``note`` is appended when there is no near-miss: *"unknown"* is true but
+    useless when the name is a real setting that belongs in a DIFFERENT block,
+    and sending a person to look for a typo they did not make is worse than
+    saying nothing.
+    """
     for key in obj:
         if key in allowed:
             continue
         near = difflib.get_close_matches(key, allowed, n=1, cutoff=0.7)
         hint = f" -- did you mean {near[0]!r}?" if near else \
-               f" (known keys: {', '.join(allowed)})"
+               f" (known keys: {', '.join(allowed)}){note}"
         _refuse(f"unknown key {key!r}{hint}", where=where)
 
 
@@ -778,9 +748,6 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc, bench=bench,
                 allocation=_allocation_from_obj(obj),
-                bench_allocation=_allocation_from_obj(
-                    obj, key="bench_allocation"),
-                stage_allocation=_stage_allocation_from_obj(obj),
                 notify=_notify_from_obj(obj),
                 slots=slots, bias=bias)
 
@@ -818,8 +785,7 @@ def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
     return out
 
 
-def _allocation_from_obj(obj: Mapping[str, Any], *, key: str = "allocation",
-                         where: str = "") -> "Allocation":
+def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
     """``allocation`` -> :class:`Allocation`; absent is an empty one.
 
     **The two asks are read and normalised here; the queue name is not
@@ -841,83 +807,42 @@ def _allocation_from_obj(obj: Mapping[str, Any], *, key: str = "allocation",
       refuse a file that is perfectly correct where it is going.  The
       machine record answers that, at launch, where the machine is known.
     """
-    where = where or key
-    raw = obj.get(key)
+    raw = obj.get("allocation")
     if raw is None:
         return Allocation()
     if not isinstance(raw, Mapping) or not raw:
-        _refuse(f"{where!r} is present but not a non-empty object. Omit "
-                f"the key entirely when nothing is asked for -- absent "
-                f"and empty would be two spellings of one state")
-    # NOT `_check_keys`: an unknown key here is the ordinary case now, not a
-    # typo.  Everything that is not one of the three asks is a machine-answered
-    # VALUE (§ 6.8a), and whether the name is one the catalogue declares is a
-    # membership question this layer cannot answer -- `validation/task.py`
-    # does, with the vocabulary in hand.  Shape is what is checked here.
+        _refuse("'allocation' is present but not a non-empty object. Omit "
+                "the key entirely when nothing is asked for -- absent and "
+                "empty would be two spellings of one state")
+    # A LAUNCH SHAPE LANDING HERE IS THE ORDINARY MISTAKE, not a typo: it is
+    # what the block held for one day in 2026-09-01, and what a person
+    # reasonably reaches for.  The refusal names the block it belongs in.
+    _check_keys(raw, _ALLOCATION_KEYS, where="allocation",
+                note=". Ranks, threads and devices are not asked here -- a "
+                     "launch shape is a `bench` entry with ONE point "
+                     "(\"mpi_np\": [8]), so the knob you might instead "
+                     "measure has one home (generator.md 4.3a)")
     for k in _ALLOCATION_KEYS:
         v = raw.get(k)
         if v is not None and not isinstance(v, str):
-            _refuse(f"{where}.{k} must be a string -- write it the way "
+            _refuse(f"allocation.{k} must be a string -- write it the way "
                     f"you would type it (\"4h\", \"128G\", "
                     f"\"7-00:00:00\"); got {type(v).__name__}")
-    values: Dict[str, Any] = {}
-    for k, v in raw.items():
-        if k in _ALLOCATION_KEYS:
-            continue
-        if isinstance(v, (list, tuple, dict)):
-            # A LIST IS `bench`'s SHAPE, and the confusion is worth naming
-            # rather than refusing generically: several points is a
-            # measurement, one value is a run (§ 6.8a).
-            _refuse(f"{where}.{k} takes ONE value, not a list -- a list of "
-                    f"points to try is `bench`'s, and the difference between "
-                    f"them is the difference between running and measuring "
-                    f"(engines/stages.md 6.8a)")
-        if v is not None:
-            values[k] = v
     # Normalised on the way in, so nothing downstream meets two spellings
     # (the class docstring says why).  A refusal here names the field and
     # the forms it takes, because "invalid allocation" tells a person
     # nothing about which of three values to go and look at.
-    def _canon(fn, _k):
-        v = raw.get(_k)
+    def _canon(fn, key):
+        v = raw.get(key)
         if not v:
             return ""
         try:
             return fn(v) or ""
         except ValueError as exc:
-            _refuse(f"{where}.{_k}: {exc}")
+            _refuse(f"allocation.{key}: {exc}")
     return Allocation(domain=str(raw.get("domain") or ""),
                       time=_canon(canonical_time, "time"),
-                      mem=_canon(canonical_mem, "mem"),
-                      values=values)
-
-
-def _stage_allocation_from_obj(obj: Mapping[str, Any]) -> Dict[str, "Allocation"]:
-    """``stage_allocation`` -> ``{stage name: Allocation}`` (§ 6.8b).
-
-    Absent is the common state and writes no key.  A stage NAME is not
-    checked against the ladder here for the reason the queue name is not
-    judged: this is L1 shape, and `validation/task.py` -- which already
-    walks the stages -- is where a name that matches no rung is a finding
-    a person can act on.
-    """
-    raw = obj.get("stage_allocation")
-    if raw is None:
-        return {}
-    if not isinstance(raw, Mapping) or not raw:
-        _refuse("'stage_allocation' is present but not a non-empty object. "
-                "Omit the key entirely when every stage asks for the same "
-                "thing -- absent and empty would be two spellings of one "
-                "state (engines/stages.md 6.8b)")
-    out: Dict[str, "Allocation"] = {}
-    for name, block in raw.items():
-        if not isinstance(block, Mapping) or not block:
-            _refuse(f"stage_allocation[{name!r}] must be a non-empty object "
-                    f"with the fields that rung differs in -- omit the rung "
-                    f"entirely when it asks for what every other one does")
-        out[str(name)] = _allocation_from_obj({"allocation": block},
-                                              where=f"stage_allocation[{name}]")
-    return out
+                      mem=_canon(canonical_mem, "mem"))
 
 
 def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
@@ -1139,21 +1064,6 @@ def _task_to_dict(task: Task) -> dict:
             k: v for k, v in (("domain", task.allocation.domain),
                               ("time", task.allocation.time),
                               ("mem", task.allocation.mem)) if v}
-        # THE VALUES AFTER THE ASKS, sorted, so one description has one
-        # spelling on disk however the browser happened to add them.
-        for k in sorted(task.allocation.values):
-            out["allocation"][k] = task.allocation.values[k]
-    if task.bench_allocation:
-        out["bench_allocation"] = {
-            k: v for k, v in (("domain", task.bench_allocation.domain),
-                              ("time", task.bench_allocation.time),
-                              ("mem", task.bench_allocation.mem)) if v}
-    if task.stage_allocation:
-        out["stage_allocation"] = {
-            name: {k: v for k, v in (("domain", a.domain), ("time", a.time),
-                                     ("mem", a.mem)) if v}
-                  | {k: a.values[k] for k in sorted(a.values)}
-            for name, a in task.stage_allocation.items()}
     if task.notify:
         out["notify"] = {
             k: v for k, v in (("on_scf_converged", task.notify.on_scf_converged),

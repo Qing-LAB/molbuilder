@@ -307,14 +307,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     "STAGE_NAME_RE": (
         11, "molbuilder/task.py",
         "the filename-safe set § 6.6 requires of a stage name"),
-    "_stage_allocation_from_obj": (
-        11, "molbuilder/task.py",
-        "reads `stage_allocation` -- a rung's own scheduler ask, laid over "
-        "the flat block field by field (stages.md § 6.8b, 2026-09-01).  It "
-        "expresses a stage by NAMING one, and the name it uses is `Stage`'s "
-        "own: a key matching no rung is a finding validation reports, not a "
-        "second vocabulary"),
-
     # -- not a way of expressing a stage -------------------------------
     #  `stage_completion_tag` and `parse_stage_completion_tag` used to sit
     #  here.  Both are GONE, retired with the auto-tagger by

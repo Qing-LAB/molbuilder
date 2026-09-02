@@ -271,68 +271,29 @@ class TestTheBrowserDoesNotEnumerate:
 #  The RUN's own numbers — the same door, a grid of one                  #
 # --------------------------------------------------------------------- #
 
-def _fit(client, dest, values, target="(this machine)"):
-    return client.post("/api/task-setup/run-fit",
-                       json={"dest": str(dest), "target": target,
-                             "values": values}).get_json()
+def test_there_is_exactly_ONE_admission_door():
+    """`generator.md` § 2: a run is a sweep of length one.
 
-
-class TestTheRunFitIsTheSameEnumerator:
-    """`task-setup.md` § 6.2b: the run states one value per parameter, which
-    is a sweep of length one — so the check is the grid door with a grid of
-    one, and there is no second admission path to keep in step."""
-
-    def test_a_run_that_fits_says_which_queues_would_take_it(self, client,
-                                                             bundle):
-        d = _fit(client, bundle, {"mpi_np": 48, "omp_threads": 1,
-                                  "use_gpu": False})
-        assert d["ok"] is True, d
-        assert d["stated"] is True and d["fits"] is True
-        assert set(d["cell"]["fits"]) == {"short", "public"}, d["cell"]
-        assert d["cell"]["ranks"] == 48
-
-    def test_a_run_no_queue_can_hold_is_a_RESULT_not_a_failure(self, client,
-                                                               bundle):
-        """A struck answer beside the field that caused it is the point.  A
-        400 would leave the card with nothing to show and send the person to
-        the CLI to find out why — the failure this whole lane was rebuilt to
-        remove."""
-        d = _fit(client, bundle, {"mpi_np": 100000, "omp_threads": 1,
-                                  "use_gpu": False})
-        assert d["ok"] is True, d
-        assert d.get("fits") is not True
-        assert d["cell"] is None or d["cell"]["why"], d
-
-    def test_stating_nothing_is_ordinary_and_checks_nothing(self, client,
-                                                            bundle):
-        """A description that leaves the run to `run-config.toml` and the
-        wrapper's policy is the state every description was in before
-        2026-09-01."""
-        d = _fit(client, bundle, {})
-        assert d["ok"] is True and d["stated"] is False and d["cell"] is None
-
-    def test_it_reads_the_values_SENT_not_the_ones_on_disk(self, client,
-                                                           bundle):
-        """Same reason the grid door does: the card's edits live in the
-        browser's model until the person saves."""
-        a = _fit(client, bundle, {"mpi_np": 48, "omp_threads": 1,
-                                  "use_gpu": False})
-        b = _fit(client, bundle, {"mpi_np": 24, "omp_threads": 2,
-                                  "use_gpu": False})
-        assert a["cell"]["ranks"] == 48 and b["cell"]["ranks"] == 24
-
-
-def test_there_is_exactly_one_admission_path():
-    """Both doors call `_bench_inputs` and neither computes a verdict of its
-    own.  A second one could say a run is fine where `launch` refuses it."""
+    So there is one door and not two that agree: a `/run-fit` endpoint stood
+    beside `bench-grid` on 2026-09-01, building a one-point axis from each
+    value and calling the same `_bench_inputs` -- its own contract row said
+    so. Deleted the same day. This fails if a second one comes back, because
+    two doors is how one comes to say a run fits where `launch` refuses it.
+    """
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1]
            / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
-    door = src[src.index("def api_task_setup_run_fit"):
-               src.index("def api_task_setup_machines")]
-    assert "_bench_inputs" in door
+    calls = [ln for ln in src.splitlines()
+             if "_bench_inputs(" in ln and not ln.lstrip().startswith("#")]
+    assert len(calls) == 2, (
+        "the browser asks the enumerator from exactly two places -- the grid "
+        "card's door and the prep door -- and neither enumerates its own: "
+        + "\n".join(calls))
+    assert "run_fit" not in src and "run-fit" not in src
+    door = src[src.index("def api_task_setup_bench_grid"):
+               src.index("def api_task_setup_prep_plan")]
     for invented in ("max_cores", "admit(", "def _fits"):
-        assert invented not in door, f"the run door computes {invented} itself"
+        assert invented not in door, f"the grid door computes {invented} itself"
 
 
 # --------------------------------------------------------------------- #
@@ -346,10 +307,10 @@ _PLAN_TASK = {
     "varies": [],
     "stages": [{"name": "coarse", "enabled": True, "overrides": {}},
                {"name": "tight", "enabled": True, "overrides": {}}],
-    "allocation": {"domain": "htc", "time": "1-00:00:00", "mpi_np": 8},
-    "stage_allocation": {"tight": {"time": "2-00:00:00", "mpi_np": 16}},
-    "bench": {"mpi_np": [4, 8, 16]},
-    "bench_allocation": {"time": "0-00:30:00"},
+    "allocation": {"domain": "htc", "time": "1-00:00:00"},
+    # THREE points on one axis and ONE on the other: an axis to measure
+    # beside a decision already made (`generator.md` § 4.3a).
+    "bench": {"mpi_np": [4, 8, 16], "omp_threads": [4]},
 }
 
 
@@ -377,24 +338,29 @@ class TestThePlanComesFromTheProducer:
         d = _plan(client, t)
         assert [r["dir"] for r in d["stages"]] == ["."]
 
-    def test_a_rung_shows_what_IT_will_ask_for(self, client):
-        """§ 6.8b at the surface: `tight` overrides the wall and the ranks
-        and inherits the queue nobody restated."""
+    def test_every_stage_shows_the_ONE_allocation(self, client):
+        """§ 6.8a: the calculation asks the scheduler for one queue, one
+        wall, one memory.  A per-rung block stood here on 2026-09-01 and was
+        deleted with the key -- `prep run <stage>` is already per stage, so
+        a rung that wants a different wall says so on its own command."""
         d = _plan(client, _PLAN_TASK)
-        coarse, tight = d["stages"]
-        assert coarse["allocation"]["time"] == "1-00:00:00"
-        assert coarse["allocation"]["values"] == {"mpi_np": 8}
-        assert tight["allocation"]["time"] == "2-00:00:00"
-        assert tight["allocation"]["values"] == {"mpi_np": 16}
-        assert tight["allocation"]["domain"] == "htc", "the queue is inherited"
+        for row in d["stages"]:
+            assert row["allocation"] == {"domain": "htc",
+                                         "time": "1-00:00:00", "mem": ""}
 
-    def test_the_bench_row_shows_its_OWN_wall(self, client):
-        """§ 6.8c: measuring is short and running is not.  The row exists so
-        that is visible beside the runs rather than inferred."""
+    def test_the_chosen_launch_shape_is_the_ONE_POINT_axes(self, client):
+        """§ 4.3a: one point is a decision, several are a question. The card
+        reports the decisions so *what will this run actually use* is
+        answerable without reading the grid."""
         d = _plan(client, _PLAN_TASK)
-        assert d["bench"]["allocation"]["time"] == "0-00:30:00"
+        for row in d["stages"]:
+            assert row["chosen"] == {"omp_threads": 4}, (
+                "a three-point axis is not a decision, and a one-point one is")
+
+    def test_the_bench_row_carries_every_axis(self, client):
+        d = _plan(client, _PLAN_TASK)
+        assert d["bench"]["axes"] == {"mpi_np": [4, 8, 16], "omp_threads": [4]}
         assert d["bench"]["allocation"]["domain"] == "htc"
-        assert d["bench"]["axes"] == {"mpi_np": [4, 8, 16]}
 
     def test_a_disabled_rung_is_not_listed(self, client):
         t = dict(_PLAN_TASK,

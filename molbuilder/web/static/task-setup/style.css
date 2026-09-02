@@ -817,54 +817,6 @@
    quieter because it is a measurement, not the calculation. */
 .ts-planrow--bench .ts-plan-stage { font-weight: 400; color: var(--text-muted); }
 
-/* ---------- the bench's own queue and wall (stages.md 6.8c) ---------- */
-/* COLLAPSED because absent means "use the run's", which is the common case.
-   Reuses `.ts-asks` / `.ts-ask` from the queue card -- the same two fields
-   asking the same two questions, one measurement over. */
-.ts-benchalloc { margin: var(--space-sm) 0; }
-.ts-benchalloc > summary {
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-}
-
-/* ---------- what the RUN will use (task-setup.md 6.2b) ---------- */
-/* COMPOSITION ONLY.  The rows reuse `.ts-row` / `.ts-points` / `.ts-fit`
-   from the bench block above -- one value each is the same shape as one
-   point, and giving the run its own row vocabulary would be a second
-   owner for one look. */
-
-.ts-runvals { margin-top: var(--space-md); }
-.ts-runvals[hidden] { display: none; }
-
-/* An unstated row is not an error -- it is the state every description was
-   in before this card existed.  Quieter, never struck. */
-.ts-row[data-kind="unstated"] .ts-row-name { color: var(--text-secondary); }
-/* NOR IS AN INHERITED ONE.  In a stage tab a blank field means "no
-   disagreement", and the value it would take is in the field's own ghost --
-   so the row reads as answered, just not HERE. */
-.ts-row[data-kind="inherited"] .ts-row-name { color: var(--text-secondary); }
-.ts-row[data-kind="inherited"] .ts-runval { color: var(--text-muted); }
-
-/* One rung's copy, inside its tab (task-setup.md 11).  Composition only --
-   the rows, the picker and the fit are the same elements the queue card
-   uses; what differs is which block they write. */
-.ts-runvals--stage {
-    margin: var(--space-md) 0;
-    padding-top: var(--space-md);
-    border-top: 1px solid var(--border-soft);
-}
-/* WIDE ENOUGH FOR THE GHOST, which is the point of these fields: the value
-   is a number and fits anywhere, but "— 20 (every stage)" is what tells you
-   the rung agrees, and a clipped one reads as a number you cannot see. */
-.ts-runvals--stage .ts-runval { max-width: 22ch; }
-
-.ts-runval {
-    min-width: 0;
-    max-width: 14ch;
-    font-variant-numeric: tabular-nums;
-}
-
 /* ---------- which channels this calculation reports to ---------- */
 /* NAMES ONLY.  The address-and-key form that used to sit here moved to the
    This-machine tab on 2026-08-31, with its `.ts-reports-{path,state,form,

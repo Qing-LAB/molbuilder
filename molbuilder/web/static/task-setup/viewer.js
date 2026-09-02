@@ -423,332 +423,6 @@ function paintFit(host, body) {
     }
 }
 
-/* ---------- what the RUN will use (§ 6.2b) ---------- */
-/*
- * ONE VALUE EACH, TYPED.  The rows mirror the bench's parameters -- the
- * thing you measured is the thing you are deciding about -- and take more,
- * because a run may want a knob a measurement never touched.
- *
- * The bench's points sit beside each row as INFORMATION and fill nothing.
- * A summarized winner is MARKED, never applied: the concealment this card
- * exists to end was `run-config.toml`'s verdict arriving for every field
- * the description had not stated, with no way to state one.
- */
-
-/** The run's stated values, live on the model.
- *
- * TWO BLOCKS, AND WHICH ONE IS THE WHOLE POINT (`task-setup.md` § 6.2c).
- * `stage` empty is the calculation's answer -- flat `allocation`, asked once
- * in the queue card.  A stage name is that rung DISAGREEING, and lands in
- * `stage_allocation.<stage>`, which exists only while a disagreement does.
- *
- * `make` is false for a read: creating the block just to look in it would
- * write `"stage_allocation": {"coarse": {}}` into a description whose author
- * only scrolled past the tab.
- */
-function runValuesOf(stage, make) {
-    if (!_task) return null;
-    if (!stage) {
-        if (!_task.allocation && !make) return null;
-        return _task.allocation || (_task.allocation = {});
-    }
-    const per = _task.stage_allocation;
-    if (!make) return (per && per[stage]) || null;
-    const box = _task.stage_allocation || (_task.stage_allocation = {});
-    return box[stage] || (box[stage] = {});
-}
-
-/** What `stage` would use with nothing of its own: the flat block. */
-function inheritedRunValues(task) {
-    const a = (task && task.allocation) || {};
-    const out = {};
-    for (const k of Object.keys(a)) {
-        if (k === "domain" || k === "time" || k === "mem") continue;
-        out[k] = a[k];
-    }
-    return out;
-}
-
-/** What the rung actually asks for: its own answers over the inherited ones. */
-function mergedRunValues(task, stage) {
-    const out = inheritedRunValues(task);
-    const per = (task && task.stage_allocation && task.stage_allocation[stage])
-              || {};
-    for (const k of Object.keys(per)) {
-        if (k === "domain" || k === "time" || k === "mem") continue;
-        out[k] = per[k];
-    }
-    return out;
-}
-
-/* ROWS THE PERSON ASKED TO SEE but has not filled in.  Purely the page's
- * state and deliberately not the file's: an unstated row is not a fact
- * about the calculation, and writing `"mpi_np": ""` into `task.json` would
- * make it one -- a value the reader would then have to invent a meaning
- * for.  Absent-is-a-state, all the way down. */
-const _extraRunRows = new Map();      // "" = the whole calculation
-
-function extraRows(stage) {
-    const key = stage || "";
-    let set = _extraRunRows.get(key);
-    if (!set) { set = new Set(); _extraRunRows.set(key, set); }
-    return set;
-}
-
-/** The parameters a block offers: the bench's, plus any the run adds.
- *
- * A STAGE TAB OFFERS WHAT THE CALCULATION OFFERS, so the two read as the
- * same question asked at two scopes -- every row the queue card shows is a
- * row a rung can disagree about, whether or not it does.
- */
-function runValueNames(task, stage) {
-    const bench = (task && task.bench) || {};
-    const alloc = (task && task.allocation) || {};
-    const per = (stage && task && task.stage_allocation
-                 && task.stage_allocation[stage]) || {};
-    const out = [];
-    const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
-    for (const n of Object.keys(bench)) {
-        if (machineAnswers(n)) add(n);
-    }
-    for (const src of [alloc, per]) {
-        for (const n of Object.keys(src)) {
-            // The three scheduler asks have their own inputs above.
-            if (n === "domain" || n === "time" || n === "mem") continue;
-            add(n);
-        }
-    }
-    for (const n of extraRows("")) add(n);
-    if (stage) { for (const n of extraRows(stage)) add(n); }
-    return out;
-}
-
-function setRunValue(name, raw, stage) {
-    const v = coercePoint(raw);
-    const blank = (v === null || raw === "");
-    const a = runValuesOf(stage, !blank);
-    if (!a) { if (blank) { syncFromModel(); return; } return; }
-    if (blank) {
-        // BLANK IS A STATE, and the one every description was in before
-        // this card existed: in the queue card, leave it to run-config.toml
-        // and then to policy; in a stage tab, blank is the ABSENCE of a
-        // disagreement, so the rung goes back to the calculation's answer.
-        delete a[name];
-    } else {
-        a[name] = v;
-    }
-    pruneRunValues(stage);
-    syncFromModel();
-}
-
-function dropRunValue(name, stage) {
-    const a = runValuesOf(stage, false);
-    extraRows(stage).delete(name);
-    if (a) { delete a[name]; pruneRunValues(stage); }
-    syncFromModel();
-}
-
-/** An empty block is not a fact -- absent-is-a-state, all the way down. */
-function pruneRunValues(stage) {
-    if (!_task) return;
-    if (!stage) {
-        if (_task.allocation && !Object.keys(_task.allocation).length) {
-            delete _task.allocation;
-        }
-        return;
-    }
-    const per = _task.stage_allocation;
-    if (!per) return;
-    if (per[stage] && !Object.keys(per[stage]).length) delete per[stage];
-    if (!Object.keys(per).length) delete _task.stage_allocation;
-}
-
-/** § 6.2b's rows, rendered into whichever block asked for them.
- *
- * `opts.stage` empty is the queue card -- the calculation's answer.  Named,
- * it is that rung's tab (§ 11): the same rows, each showing what it WOULD
- * inherit, writing `stage_allocation.<stage>` only where you type over it.
- */
-function renderRunValues(task, opts) {
-    opts = opts || {};
-    const stage = opts.stage || "";
-    const box = opts.box || (stage ? null : $("ts-runvals"));
-    const host = opts.host || (stage ? null : $("ts-run-rows"));
-    const fit = opts.fit || (stage ? null : $("ts-run-fit"));
-    if (!host) return;
-    host.textContent = "";
-
-    const names = runValueNames(task, stage);
-    const bench = (task && task.bench) || {};
-    const alloc = stage
-        ? ((task && task.stage_allocation && task.stage_allocation[stage]) || {})
-        : ((task && task.allocation) || {});
-    const inherited = stage ? inheritedRunValues(task) : {};
-    if (box) {
-        box.hidden = _mode !== "description";
-        if (box.hidden) { scheduleRunFit(stage, fit, null); return; }
-    }
-
-    for (const name of names) {
-        const stated = alloc[name];
-        const from = inherited[name];
-        // WHAT IT WOULD INHERIT, SHOWN WHERE THE OVERRIDE IS MADE -- the
-        // default is visible in the field that replaces it, so "8" and
-        // "8 because every stage says 8" are never the same picture.
-        const ghost = from === undefined
-            ? "\u2014 not stated"
-            : "\u2014 " + String(from) + " (every stage)";
-        const pts = Array.isArray(bench[name]) ? bench[name] : [];
-
-        const legal = legalValues(name);
-        let input;
-        if (legal) {
-            input = el("select", { class: "ts-runval",
-                                   "aria-label": "value for " + name });
-            input.appendChild(el("option", { value: "" }, ghost));
-            for (const v of legal) {
-                const o = el("option", { value: String(v) }, String(v));
-                if (stated !== undefined && String(stated) === String(v)) {
-                    o.selected = true;
-                }
-                input.appendChild(o);
-            }
-        } else {
-            input = el("input", { class: "ts-runval",
-                                  placeholder: ghost,
-                                  "aria-label": "value for " + name });
-            input.value = stated === undefined ? "" : String(stated);
-        }
-        input.addEventListener("change",
-                               () => setRunValue(name, input.value, stage));
-
-        // THE BENCH'S POINTS, as information.  Grey, beside the field,
-        // filling nothing -- so you can see what was tried while you type
-        // what you want.
-        const measured = pts.length
-            ? el("small", { class: "ts-row-note" },
-                 "measured: " + pts.join(", "))
-            : null;
-
-        const drop = el("button", { type: "button",
-                                    class: "ts-rowbtn ts-rowbtn-drop",
-                                    title: "Stop stating " + name }, "\u00d7");
-        drop.addEventListener("click", () => dropRunValue(name, stage));
-
-        host.appendChild(el("div", { class: "ts-row",
-                                     "data-kind": stated !== undefined
-                                         ? "chosen"
-                                         : (from !== undefined ? "inherited"
-                                                               : "unstated") },
-            el("div", { class: "ts-row-name", title: helpText(name) }, name,
-               measured),
-            el("div", { class: "ts-points" }, input),
-            drop));
-    }
-    if (!names.length) {
-        host.appendChild(el("p", { class: "hint" },
-            "Nothing stated \u2014 the run will take the stage's "
-            + "run-config.toml, and then the wrapper's own policy. Add a "
-            + "setting to decide it here instead."));
-    }
-    // THE ASK THAT IS CHECKED IS THE ASK THAT LANDS: a rung's own answers
-    // over the inherited ones, which is what `prep run` will merge
-    // (`stages.md` § 6.8b) and so the only combination worth admitting.
-    scheduleRunFit(stage, fit,
-                   stage ? mergedRunValues(task, stage)
-                         : statedRunValues(task));
-}
-
-/** Only what is actually stated — the door checks a point, not a blank. */
-function statedRunValues(task) {
-    const alloc = (task && task.allocation) || {};
-    const out = {};
-    for (const n of runValueNames(task, "")) {
-        if (alloc[n] !== undefined) out[n] = alloc[n];
-    }
-    return out;
-}
-
-/* ONE PENDING CHECK PER BLOCK ("" is the queue card, a name is that rung).
- * The element is held rather than looked up by id: the stage panels are
- * rebuilt on every repaint, so an id would name a node that no longer
- * exists, while a detached one merely goes unseen. */
-const _fits = new Map();
-
-function scheduleRunFit(stage, host, values) {
-    const key = stage || "";
-    let f = _fits.get(key);
-    if (!f) { f = { seq: 0, timer: null }; _fits.set(key, f); }
-    if (f.timer) clearTimeout(f.timer);
-    f.timer = null;
-    f.host = host; f.values = values; f.stage = key;
-    /* NO HOST, NO ASK.  Every repaint rebuilds EVERY stage panel, and a
-     * five-rung ladder that checked all five would put four requests on the
-     * wire per keystroke for answers nobody can see -- the hidden panels
-     * pass no element, and the tab they belong to asks when it is opened. */
-    if (!host) return;
-    f.timer = setTimeout(() => refreshRunFit(key), 300);
-}
-
-async function refreshRunFit(key) {
-    const f = _fits.get(key || "");
-    if (!f) return;
-    const host = f.host;
-    if (!host) return;
-    const values = f.values;
-    if (_mode !== "description" || !_dir || !values
-            || !Object.keys(values).length) {
-        host.hidden = true;
-        return;
-    }
-    const seq = ++f.seq;
-    let body;
-    try {
-        const r = await fetch("/api/task-setup/run-fit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ dest: _dir, target: _machine || "",
-                                   values: values }),
-        });
-        body = await r.json();
-    } catch (e) {
-        body = null;
-    }
-    if (seq !== f.seq) return;
-    /* A CHECK THAT CANNOT LOAD HIDES ITSELF.  The fields above are the
-     * substance and stay usable without it -- the same rule the grid block
-     * follows, learned when an unguarded fetch left a whole card absent. */
-    if (!body || !body.ok) { host.hidden = true; return; }
-    paintRunFit(host, body);
-}
-
-function paintRunFit(host, body) {
-    host.textContent = "";
-    host.hidden = false;
-    const cell = body.cell;
-    if (!cell) {
-        host.appendChild(el("p", { class: "status warn" },
-            "No queue on the chosen machine takes this ask \u2014 lower it, "
-            + "or choose a different machine."));
-        return;
-    }
-    const why = (cell.why || [])[0];
-    if (why) {
-        host.appendChild(el("div", { class: "ts-fit-row ts-fit-row--out" },
-            el("span", { class: "ts-fit-shape" }, cell.shape),
-            // THE NUMBERS, not a verdict word: the reason says what to
-            // change, which is why the struck form is shown at all.
-            el("span", { class: "ts-fit-why" }, why)));
-        return;
-    }
-    host.appendChild(el("div", { class: "ts-fit-row" },
-        el("span", { class: "ts-fit-shape" }, cell.shape),
-        el("span", { class: "ts-fit-where" },
-           "fits " + (cell.fits || []).slice(0, 4).join(", ")
-           + ((cell.fits || []).length > 4 ? " \u2026" : ""))));
-}
-
-
 function renderMachine(task) {
     const card = $("ts-machine-card");
     const host = $("ts-machine-rows");
@@ -759,16 +433,24 @@ function renderMachine(task) {
 
     for (const name of names) {
         const pts = Array.isArray(bench[name]) ? bench[name] : [bench[name]];
-        // The tab's one idea: length decides what this row IS.  A machine-
-        // answered setting stays `machine` at any length -- a description may
-        // never assert a value for it, so even one point is a point to TRY.
-        const kind = machineAnswers(name)
-            ? "machine"
-            : (pts.length === 1 ? "chosen" : "measured");
-        const verdict = kind === "chosen"
+        /* THE TAB'S ONE IDEA: LENGTH DECIDES WHAT THIS ROW IS, and it now
+         * decides for EVERY row.  A machine-answered setting was pinned to
+         * "to try" at any length until 2026-09-01, on the rule that a
+         * description may never assert a machine's value -- so one point
+         * read as *a short list of one* and `prep run` dropped it, which is
+         * how the run's decision came to have nowhere to live.
+         * `generator.md` § 4.3a closed that: one point is a decision on
+         * every axis, and this row says so.
+         *
+         * `machine` survives as a look, not a meaning: those rows are tinted
+         * because WHICH KIND of setting it is stays worth seeing, and it is
+         * a fact about the item rather than about the points. */
+        const chosen = pts.length === 1;
+        const kind = machineAnswers(name) ? "machine"
+                                          : (chosen ? "chosen" : "measured");
+        const verdict = chosen
             ? "chosen · 1 point"
-            : `${kind === "machine" ? "to try" : "measured"} · ${pts.length} `
-              + `point${pts.length === 1 ? "" : "s"}`;
+            : `measured · ${pts.length} points`;
 
         const chips = pts.map((p, i) => {
             const drop = el("button", { type: "button", class: "ts-pt-x",
@@ -1152,7 +834,6 @@ async function loadFolder(projects, dir) {
     renderStages(task);
     renderNext(task);
     renderMachine(task);
-    renderRunValues(task);
     schedulePlan(task);
     // The card reflects the DESCRIPTION on open, so reopening a folder
     // shows what it already asks for instead of an empty card.
@@ -1180,7 +861,6 @@ async function syncFromModel() {
     // it was changing.
     await loadSweepChoices(_handoverEngine(_task || {}));
     renderMachine(_task);
-    renderRunValues(_task);
     renderNext(_task);
     schedulePlan(_task);
     refreshPickers();
@@ -1519,17 +1199,6 @@ async function refreshPickers() {
         fillPicker($("ts-add-setting"), sweep,
                    Object.keys((_task && _task.bench) || {}),
                    "every sweepable setting is already listed");
-        // THE RUN'S OWN PICKER, over the MACHINE-ANSWERED items only:
-        // § 6.2b's rows state what the run will use, and only a
-        // machine-answered field is a thing a run can be told to use.
-        // Already-listed means already stated OR already measured -- the
-        // rows mirror the bench, so offering one it already shows would
-        // add a duplicate row.
-        fillPicker($("ts-add-runval"),
-                   (sweep || []).filter((it) =>
-                       machineAnswers(typeof it === "string" ? it : it.name)),
-                   runValueNames(_task || {}),
-                   "every machine setting is already listed");
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
 }
 
@@ -1724,10 +1393,10 @@ function removeColumn(name) {
 /* ---------- what a prep will write, per stage (§ 7.1) ---------- */
 /*
  * SERVED, NEVER COMPOSED.  Flat and hierarchical name directories
- * differently, and the allocation a rung carries is `_allocation_for`'s
- * answer -- so both come from the door that asks the producers.  A list
- * built here would be a second account of the same facts, free to promise
- * a wall the run will not ask for.
+ * differently, and which `bench` rows are DECISIONS rather than questions is
+ * `prep._declared_launch_shape`'s answer -- so both come from the door that
+ * asks the producers.  A list built here would be a second account of the
+ * same facts, free to promise a shape the run will not ask for.
  */
 
 let _planTimer = null;
@@ -1767,10 +1436,12 @@ async function refreshPlan(task) {
     paintPlan(box, host, body);
 }
 
-function askLine(a) {
+function askLine(a, chosen) {
     const bits = [];
-    for (const k of Object.keys(a.values || {})) {
-        bits.push(k + "=" + a.values[k]);
+    // THE CHOSEN SHAPE FIRST -- the one-point axes (`generator.md` § 4.3a),
+    // which is what a person wants to check before spending a queue slot.
+    for (const k of Object.keys(chosen || {})) {
+        bits.push(k + "=" + chosen[k]);
     }
     if (a.domain) bits.push(a.domain);
     if (a.time) bits.push(a.time);
@@ -1790,7 +1461,8 @@ function paintPlan(box, host, body) {
             el("span", { class: "ts-plan-stage" }, row.stage),
             el("code", { class: "ts-plan-dir" },
                row.dir === "." ? "(the bundle root)" : row.dir + "/"),
-            el("span", { class: "ts-plan-ask" }, askLine(row.allocation))));
+            el("span", { class: "ts-plan-ask" },
+               askLine(row.allocation, row.chosen))));
     }
     if (body.bench) {
         const axes = Object.keys(body.bench.axes || {})
@@ -1946,20 +1618,10 @@ function renderNext(task) {
             block.appendChild(prepButton("bench", name));
         }
 
-        /* WHAT THE RUN WILL USE, BESIDE THE COMMAND THAT USES IT (§ 6.2c,
-         * user 2026-09-01: "the what the run will use should be next to the
-         * prep run card within the tabs").  The same rows the queue card
-         * shows, each ghosted with what it would inherit; typing writes
-         * `stage_allocation.<stage>`, clearing it deletes the key.
-         *
-         * Between the measuring and the running, because that is the order
-         * the questions are asked: measure it, read the numbers, decide,
-         * then run what you decided. */
-        block.appendChild(stageRunValues(task, name, active));
-
         block.appendChild(el("p", { class: "hint" },
             benchKeys.length
-                ? "Run it \u2014 what you left blank above falls to "
+                ? "Run it \u2014 at whatever the machine card's one-point "
+                  + "rows say. What no row decides falls to "
                   + "run-config.toml, and then to the wrapper's own policy. "
                   + "Add --np / --omp / --time to override either."
                 : "Run it \u2014 the wrapper sizes the launch on the "
@@ -1980,46 +1642,6 @@ function renderNext(task) {
     });
 
     card.hidden = false;
-}
-
-/** One rung's copy of § 6.2b: the rows, the admission check, and a picker.
- *
- * Built here rather than in the template because there is one per enabled
- * stage and the ladder is not known until a description is read -- the same
- * reason the commands above it are built and not written.
- */
-function stageRunValues(task, stage, active) {
-    const box = el("div", { class: "ts-runvals ts-runvals--stage" });
-    box.appendChild(el("h3", { class: "ts-reports-head" },
-                       "What this run will use"));
-    box.appendChild(el("p", { class: "hint" },
-        "One value each. Blank takes the calculation's answer above \u2014 "
-        + "fill one in only where this rung disagrees."));
-    const rows = el("div", { class: "ts-rows" });
-    const fit = el("div", { class: "ts-fit", hidden: "" });
-    box.appendChild(rows);
-    box.appendChild(fit);
-
-    const sel = el("select", { class: "ts-pick",
-                               "aria-label": "add a setting for " + stage });
-    const go = el("button", { type: "button", class: "btn" }, "+ Add setting");
-    go.addEventListener("click", () => {
-        if (!sel.value) return;
-        // A row starts UNSTATED, not at a guess (§ 6.2b).
-        extraRows(stage).add(sel.value);
-        sel.value = "";
-        renderNext(_task || task);
-    });
-    box.appendChild(el("div", { class: "ts-actions" }, sel, go));
-    // The same set the queue card's picker offers -- machine-answered only,
-    // from the cached sweepable vocabulary (`refreshPickers`).
-    fillPicker(sel, (_sweep || []).filter((it) => machineAnswers(it.name)),
-               runValueNames(task, stage),
-               "every machine setting is already listed");
-
-    renderRunValues(task, { stage: stage, host: rows,
-                            fit: active ? fit : null });
-    return box;
 }
 
 //: Every prep widget on the page, so the machine choice can reach them.
@@ -2072,8 +1694,24 @@ function prepButton(kind, stage) {
                 if (!r.ok) { say.textContent = r.error; say.setAttribute("data-state", "bad"); return; }
                 planned = r;
                 const bits = ["for " + r.machine];
-                const axes = Object.keys(r.bench_axes || {});
-                if (axes.length) bits.push("varying " + axes.join(", "));
+                /* VARYING AND CHOSEN ARE DIFFERENT THINGS, and the length
+                 * of a row is which (`generator.md` § 4.3a).  Listing a
+                 * one-point axis as "varying" said a benchmark would sweep
+                 * a value you had already decided.
+                 *
+                 * Both come from the SERVER: `chosen` is
+                 * `prep._declared_launch_shape`'s answer, so this line and
+                 * the allocation the prep actually builds cannot disagree
+                 * -- and the run's preview, which has no axes to infer
+                 * from, names the shape too. */
+                const varying = [];
+                for (const k of Object.keys(r.bench_axes || {})) {
+                    if ((r.bench_axes[k] || []).length > 1) varying.push(k);
+                }
+                const chosen = Object.keys(r.chosen || {})
+                    .map((k) => k + "=" + r.chosen[k]);
+                if (varying.length) bits.push("varying " + varying.join(", "));
+                if (chosen.length) bits.push("at " + chosen.join(", "));
                 const a = r.allocation || {};
                 bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
                 bits.push(a.mem ? "memory " + a.mem
@@ -2737,46 +2375,6 @@ function readAsksFromTask(task) {
     // no auto mark and no queue click may replace them.
     if (t) { t.value = a.time || ""; delete t.dataset.mbAuto; }
     if (m) { m.value = a.mem || ""; delete m.dataset.mbAuto; }
-    readBenchAllocFromTask(task);
-}
-
-/* ---------- what to ask for while MEASURING (§ 6.8c) ---------- */
-/*
- * A benchmark is short by construction -- capped SCF, one point, no
- * relaxation -- and a run is not.  Absent means "use the run's", which is
- * what every description said before 2026-09-01, so the block is collapsed
- * and writes nothing until someone types in it.
- */
-
-function readBenchAllocFromTask(task) {
-    const b = (task && task.bench_allocation) || {};
-    const d = $("ts-bench-domain");
-    const t = $("ts-bench-time");
-    if (d) d.value = b.domain || "";
-    if (t) t.value = b.time || "";
-    // Opened when it HAS something to say, so a description that sets a
-    // different bench wall does not hide it behind a closed disclosure.
-    // BY ID, not `.closest()`: the audit cannot tell an `.open` from a
-    // `.hidden` through a traversal, and it is right not to guess -- the
-    // page addresses every other control by id anyway.
-    const box = $("ts-benchalloc");
-    if (box && (b.domain || b.time)) box.open = true;
-}
-
-function applyBenchAllocToDoc() {
-    if (!_task) return;
-    const d = ($("ts-bench-domain") || {}).value || "";
-    const t = ($("ts-bench-time") || {}).value || "";
-    const out = {};
-    if (d.trim()) out.domain = d.trim();
-    if (t.trim()) out.time = t.trim();
-    const had = JSON.stringify(_task.bench_allocation || null);
-    // ABSENT-IS-A-STATE: an empty block writes NO key, so a description
-    // whose bench asks for what the run asks for round-trips untouched.
-    if (Object.keys(out).length) _task.bench_allocation = out;
-    else delete _task.bench_allocation;
-    if (JSON.stringify(_task.bench_allocation || null) === had) return;
-    syncFromModel();
 }
 
 /* ---------- when this run should tell you something ---------- */
@@ -3039,7 +2637,6 @@ function setShape(shape) {
             return setEditorText(text).then(() => {
                 if (_task) { renderStages(_task); renderNext(_task);
                              renderMachine(_task);
-                             renderRunValues(_task);
                              refreshPickers(); }
             });
         }).catch(() => {
@@ -3303,25 +2900,6 @@ function start(projects) {
     };
     const goBtn = $("ts-add-setting-go");
     if (goBtn) goBtn.addEventListener("click", addSetting);
-    for (const id of ["ts-bench-domain", "ts-bench-time"]) {
-        const f = $(id);
-        // On `change`, like every other ask on this page: the editor's text
-        // is the one source of truth and a control holding its value beside
-        // it would be a second answer.
-        if (f) f.addEventListener("change", applyBenchAllocToDoc);
-    }
-    const runBtn = $("ts-add-runval-go");
-    if (runBtn) runBtn.addEventListener("click", () => {
-        const sel = $("ts-add-runval");
-        if (!sel || !sel.value) return;
-        // A row starts UNSTATED, not at a guess: the whole point of § 6.2b
-        // is that the number is yours.  Adding the row says "I intend to
-        // decide this"; typing in it is the decision.
-        _extraRunRows.add(sel.value);
-        sel.value = "";
-        renderRunValues(_task);
-        refreshPickers();
-    });
     const addBtn = $("ts-add-stage");
     if (addBtn) addBtn.addEventListener("click", addStage);
     const colBtn = $("ts-add-col-go");

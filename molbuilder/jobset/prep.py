@@ -697,6 +697,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      emit_sbatch: bool = True,
                      sweep=None, pins=None, translation=None,
                      target: Optional[str] = None,
+                     chosen=None,
                      pipeline_log: bool = False) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
@@ -812,12 +813,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # person typing `--mem` now is answering about now.  Field by field,
     # not object by object: `--np 8` alone must not erase the file's
     # memory ask, which a whole-object override would do silently.
-    # MEASURING IS `sweep` BEING PRESENT, and it is the caller's own signal:
-    # `prep bench` hands the grid down, `prep run` hands nothing.  Asked here
-    # rather than passed as a second flag, because two ways to say one thing
-    # is how they come to disagree.
-    allocation = _under_description(
-        allocation, _allocation_for(task, stage, measuring=sweep is not None))
+    # AND THE SHAPE IT DECIDES, when it decides one.  It arrives
+    # as an argument because its producer asks the grid enumerator, which
+    # lives one floor up in the CLI -- so `prep` folds what it is handed and
+    # owns no second translation (`generator.md` § 2).
+    allocation = _under_description(allocation, task.allocation, chosen)
     # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
     # prepped bundle needs no flag to know it.  A separate line rather than a
@@ -1146,6 +1146,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     emit_sbatch: bool = True,
                     sweep=None, pins=None, translation=None,
                     target: Optional[str] = None,
+                    chosen=None,
                     pipeline_log: bool = False) -> List[Path]:
     """`prep` for the transport COMPOSITE — the same five steps, with
     step 2/3's template-resolve replaced by § 4.2's compose sequence:
@@ -1290,9 +1291,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         (vdir / script).write_text(point_text, encoding="utf-8")
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
-    allocation = _with_notify(_under_description(allocation,
-                                                 task.allocation),
-                              task.notify)
+    allocation = _with_notify(
+        _under_description(allocation, task.allocation, chosen), task.notify)
     res = allocation or Resources()
     if stage == "transmission":
         # TBtrans post-processes the device run FROM THE SAME DECK TEXT,
@@ -1629,66 +1629,43 @@ def _siesta_shared_package(base: Path) -> List[str]:
     return grouped or sorted(p.name for p in base.glob("*.psml"))
 
 
-def _allocation_for(task, stage=None, *, measuring=False):
-    """WHICH allocation block this prep is under (`stages.md` §§ 6.8a-6.8c).
-
-    Three states, and they compose field by field over the flat block:
-
-      * **measuring** -> ``bench_allocation`` over it.  A benchmark is short
-        by construction -- capped SCF, one point, no relaxation -- so one
-        wall serving both queues a thirty-second job behind a two-day
-        reservation, or kills the calculation.  Absent means the run's, which
-        is what every description said before 2026-09-01.
-      * **a named stage** -> that rung's ``stage_allocation`` block over it.
-        A ladder's rungs do not always want the same machine.
-      * **neither** -> the flat block, unchanged.
-
-    The bench does not take a rung's override: a stage block says what that
-    rung's RUN wants, and what a trial runs is one of `bench`'s own points.
-    """
-    base = task.allocation
-    if measuring:
-        bench = getattr(task, "bench_allocation", None)
-        return bench.merged_over(base) if bench else base
-    per = (getattr(task, "stage_allocation", None) or {}).get(stage or "")
-    return per.merged_over(base) if per else base
-
-
-def _under_description(flags, declared) -> "Resources":
+def _under_description(flags, declared, chosen=None) -> "Resources":
     """The caller's allocation over the description's -- FIELD by field.
 
-    `task.json`'s ``allocation`` is what this calculation asks for; a flag
-    is what the person is asking for right now, so a stated flag wins and
-    an unstated one leaves the file's answer standing.  Whole-object
-    precedence would make `--np 8` erase a memory ask nobody mentioned,
-    which is the class of silent loss this whole round has been about.
+    Two things come out of `task.json`, and they are two because they answer
+    two questions:
 
-    ``domain`` rides `Resources.domain`, the same field `--domain` fills.
+      * ``allocation`` -- the queue, the wall, the memory this calculation
+        asks the SCHEDULER for (`stages.md` § 6.8a).
+      * a ``bench`` entry with ONE point on a machine-answered item -- the
+        launch SHAPE the person chose: *"run it at eight"*
+        (`generator.md` § 4.3a).  Several points is a question to measure and
+        is not an ask at all, so only length one is read here.
 
-    **The machine-answered VALUES fold the same way** (`stages.md` § 6.8a,
-    2026-09-01): `mpi_np`, `omp_threads`, `use_gpu` and their kin are what
-    the RUN should use, stated by a person who read a benchmark or already
-    knew.  A flag still wins, field by field, and what neither states is
-    left for the stage's `run-config.toml` and then the wrapper's policy --
-    which is the precedence § 6.8a spells out, unchanged except that the
-    description now has a place in it.
+    A flag is what the person is asking for right now, so a stated flag wins
+    and an unstated one leaves the file's answer standing.  Whole-object
+    precedence would make `--np 8` erase a memory ask nobody mentioned, which
+    is the class of silent loss this whole round has been about.
+
+    **A PURE FOLD**: the two pieces arrive as arguments, so this function
+    reads no file and no enumerator and can be exercised with two objects.
+    The SHAPE's producer is `_cli.declared_run_shape`, which asks the one
+    grid enumerator and takes its answer only when the description decides
+    everything -- a run is a sweep of length one (`generator.md` § 2).
     """
     out = flags or Resources()
-    if not declared:
-        return out
     import dataclasses as _dc
     patch = {}
-    for name, val in (("domain", declared.domain),
-                      ("time", declared.time),
-                      ("mem", declared.mem)):
-        if val and getattr(out, name, None) in (None, ""):
-            patch[name] = val
+    if declared:
+        for name, val in (("domain", declared.domain),
+                          ("time", declared.time),
+                          ("mem", declared.mem)):
+            if val and getattr(out, name, None) in (None, ""):
+                patch[name] = val
+    # ALREADY IN `Resources`' OWN WORDS -- `to_resources` speaks them, so
+    # there is no name map here and no second place for one to drift.
     known = {f.name for f in _dc.fields(Resources)}
-    for name, val in sorted((getattr(declared, "values", None) or {}).items()):
-        # A name `Resources` does not carry is not silently dropped here:
-        # `validation/task.py` refuses one the catalogue does not declare,
-        # and one it DOES declare that this class has no field for is a
-        # translation gap the emitter's own door reports (`resolve.py`).
+    for name, val in sorted((chosen or {}).items()):
         if name in known and getattr(out, name, None) in (None, ""):
             patch[name] = val
     return _dc.replace(out, **patch) if patch else out

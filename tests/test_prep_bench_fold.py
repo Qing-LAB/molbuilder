@@ -8,6 +8,7 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 from __future__ import annotations
 
 import json
+import re
 import pathlib
 import os
 
@@ -827,6 +828,181 @@ def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
         assert all(int(v) == g * k for v in vals), (name, vals)
         seen.add(g * k)
     assert len(seen) > 1, "all wrappers share one rank count -- the stomp"
+
+
+class TestTheDescriptionsOwnValuesReachTheLaunch:
+    """`generator.md` § 4.3a: a `bench` entry with ONE point is the value in
+    force -- for the trials and for the run alike.
+
+    **Driven through the CLI**, because the producer is the CLI's: `prep run`
+    asks the one grid enumerator and takes its answer when the enumeration
+    is a single cell (§ 2 -- a run is a sweep of length one). A test that
+    called `prep_calculation` directly would pass with the shape never
+    computed at all, which is exactly what a second translation in `prep`
+    did until 2026-09-01 -- it got the GPU type wrong, the CPU gating wrong,
+    and never knew about the G x K rank split, and no test noticed because
+    every test drove the copy.
+    """
+
+    @staticmethod
+    def _describe(calc, **chosen):
+        """Each knob at ONE point -- which is what makes it a decision
+        rather than a one-item list to measure."""
+        doc = json.loads((calc / "task.json").read_text())
+        doc["allocation"] = {"time": "0-01:00:00"}
+        doc["bench"] = {k: [v] for k, v in chosen.items()}
+        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+
+    @staticmethod
+    def _run(calc, *extra):
+        from click.testing import CliRunner
+
+        from molbuilder.jobset._cli import jobset_group
+        r = CliRunner().invoke(jobset_group,
+                               ["prep", "run", "coarse", "--bundle",
+                                str(calc), "--no-sbatch", *extra])
+        assert r.exit_code == 0, r.output
+        return json.loads((calc / "job-set.json").read_text())["jobs"][0]
+
+    def test_the_whole_shape_reaches_the_job(self, calc):
+        """Ranks, cores per rank AND the device ask, in one go -- the fixture
+        is a GPU description, so the enumerator resolves the CPU/GPU family
+        from it and the device ask carries the TYPE the target records."""
+        self._describe(calc, mpi_np=2, omp_threads=2, gpu_count=1,
+                       use_gpu=True)
+        r = self._run(calc)["resources"]
+        assert r["mpi_np"] == 2
+        assert r["cpus_per_task"] == 2
+        # TYPED, from the machine's own record -- never invented here and
+        # never named by the description (`template.md` § 7).
+        assert r["gres"] == "gpu:a100:1", r["gres"]
+
+    def test_a_CPU_run_gets_no_device_ask(self, calc):
+        """The gating the enumerator does by construction: G=0 is the CPU
+        family and its translation emits no `gres` at all.  A hand-written
+        name map got this wrong -- `gpu_count` became `gpu:2` on a run that
+        would never touch a device."""
+        self._describe(calc, mpi_np=2, omp_threads=2, use_gpu=False)
+        r = self._run(calc)["resources"]
+        assert r["mpi_np"] == 2
+        assert r.get("gres") is None, r.get("gres")
+
+    def test_several_points_is_a_QUESTION_and_asks_for_nothing(self, calc):
+        """The other half of the rule: three points is *measure these*, so
+        the enumeration is not one cell and the run takes nothing from it.
+        A fold that read any `bench` entry would launch at whichever point
+        sorted first -- a number nobody chose."""
+        self._describe(calc, use_gpu=False)
+        doc = json.loads((calc / "task.json").read_text())
+        doc["bench"]["mpi_np"] = [2, 4, 8]
+        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+        r = self._run(calc)["resources"]
+        assert r.get("mpi_np") is None, (
+            "a three-point axis sized the run -- it is a question, not an ask")
+
+    def test_a_DECIDED_shape_the_machine_cannot_hold_refuses(self, calc):
+        """Silently running at the wrapper's default is the concealment this
+        channel exists to end, so a decision that does not fit is a refusal
+        with the numbers in it -- not a smaller job nobody asked for."""
+        from click.testing import CliRunner
+
+        from molbuilder.jobset._cli import jobset_group
+        self._describe(calc, mpi_np=64, omp_threads=8, use_gpu=False)
+        r = CliRunner().invoke(jobset_group,
+                               ["prep", "run", "coarse", "--bundle",
+                                str(calc), "--no-sbatch"])
+        assert r.exit_code != 0, r.output
+        assert "64" in r.output, r.output
+
+    def test_a_bench_it_cannot_run_HERE_still_runs(self, calc):
+        """The other side of that: a QUESTION whose cells do not fit this
+        box is not a decision, so a plain run is unaffected and takes the
+        wrapper's own policy, exactly as an undeclared description does."""
+        self._describe(calc, use_gpu=False)
+        doc = json.loads((calc / "task.json").read_text())
+        doc["bench"]["mpi_np"] = [64, 128]
+        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+        r = self._run(calc)["resources"]
+        assert r.get("mpi_np") is None
+
+    def test_a_PARTLY_decided_declaration_decides_nothing(self, calc):
+        """`generator.md` § 4.3a: the machine axes are not independent knobs
+        -- `G x K` is the rank count and the device ask rides the family, so
+        the enumerator resolves them together into ONE cell or not at all.
+
+        Ranks fixed while cores vary is a plan to MEASURE, and running one of
+        the two configurations you asked to compare, picked arbitrarily,
+        would be worse than running neither."""
+        self._describe(calc, use_gpu=False)
+        doc = json.loads((calc / "task.json").read_text())
+        doc["bench"] = {"mpi_np": [2], "omp_threads": [1, 2],
+                        "use_gpu": [False]}
+        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+        r = self._run(calc)["resources"]
+        assert r.get("mpi_np") is None and r.get("cpus_per_task") is None, r
+
+    def test_a_VALUE_axis_makes_it_a_question_too(self, calc):
+        """The second guard, and the only case that reaches it: every rank
+        axis decided while a VALUE axis stays open.
+
+        `use_gpu: [false, true]` enumerates the machine grid once per family
+        (`generator.md` § 4.3a), so the declaration passes the all-decided
+        check and the ENUMERATION still comes back with more than one cell.
+        Two families is two different machines to run on; picking one would
+        be the arbitrary choice the whole channel exists to prevent."""
+        self._describe(calc, use_gpu=False)
+        doc = json.loads((calc / "task.json").read_text())
+        doc["bench"] = {"mpi_np": [2], "omp_threads": [2],
+                        "use_gpu": [False, True]}
+        (calc / "task.json").write_text(json.dumps(doc, indent=2))
+        r = self._run(calc)["resources"]
+        assert r.get("mpi_np") is None, (
+            "one family of a two-family enumeration sized the run")
+        assert r.get("gres") is None, r.get("gres")
+
+    def test_which_machine_is_a_REFUSAL_not_a_traceback(self, calc):
+        """`workflow.md` § 9: a gate refuses with the reason.
+
+        Asking the enumerator reaches `_environment_for`, so an unnamed
+        target on a machine holding several records raises the same
+        which-machine question the bench arm catches -- and it was caught
+        there on 2026-08-28 precisely because it had leaked a traceback.
+        The run arm now reaches the same code and needs the same catch."""
+        import json as _json
+        from click.testing import CliRunner
+
+        from molbuilder.jobset._cli import jobset_group
+        self._describe(calc, mpi_np=2, omp_threads=2, use_gpu=False)
+        # A NAMED RECORD AND NO SNAPSHOT is what makes the question real
+        # (`record.machine_for`: "this machine" is always a candidate, so any
+        # named record makes it ambiguous).  The sandbox fixture points HOME
+        # at a temp dir, so this writes into that run's own records dir.
+        from molbuilder.scheduler.record import environments_dir
+        (calc / "environment.json").unlink()
+        d = environments_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "alpha.json").write_text(_json.dumps(
+            {"schema": "molbuilder/environment@1", "scheduler": "slurm"}))
+        r = CliRunner().invoke(jobset_group,
+                               ["prep", "run", "coarse", "--bundle",
+                                str(calc), "--no-sbatch"])
+        # HANDLED BY CLICK, not escaped: an `AmbiguousTarget` reaching the
+        # runner uncaught is exactly the traceback this guards against, and
+        # `CliRunner` reports that as the exception rather than as output.
+        assert isinstance(r.exception, SystemExit), (
+            f"{type(r.exception).__name__} escaped: {r.exception!r}")
+        assert "several machines could be meant" in r.output, r.output
+        assert "--target" in r.output
+
+    def test_a_flag_still_wins_field_by_field(self, calc):
+        """§ 4.3a's precedence at its first seam: a person typing a number
+        now is answering about now -- and it must not erase the device ask
+        nobody mentioned."""
+        self._describe(calc, mpi_np=2, omp_threads=2, gpu_count=1,
+                       use_gpu=True)
+        r = self._run(calc, "--cpus-per-task", "16")["resources"]
+        assert r["cpus_per_task"] == 16, "the flag lost to the description"
+        assert r["gres"] == "gpu:a100:1", "the flag erased the device ask"
 
 
 def test_stage_plan_records_the_config_provenance(calc):

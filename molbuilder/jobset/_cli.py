@@ -1437,6 +1437,81 @@ def _cell_shape(g, k, c, gtype) -> str:
     return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
 
 
+def declared_run_shape(base, target, task):
+    """The launch shape a description DECIDES — as `Resources` fields, or
+    ``{}`` when it decides none.
+
+    **A run is a sweep of length one** (`generator.md` § 2), and this is that
+    sentence used rather than paraphrased: the run asks the SAME enumerator
+    the benchmark does, and takes its answer when the description has decided
+    every machine axis.  Several points on any of them is a *question*
+    (*"try 4, 8, 16"*), and a question is not an ask.
+
+    **Everything the device axis needs is already inside that enumerator**,
+    which is why this is glue and not a translation:
+
+      * whether there IS a device -- the GPU family, from the template's
+        ``use_gpu`` overridden by a declared one-point pin;
+      * the refusal when ``gpu_count`` contradicts a CPU family, by name;
+      * the count, against the machine's own record;
+      * the EVEN-SPLIT rule -- ``G x K`` is the rank count, and an uneven
+        pair is dropped by name (`tuning.md` § 2.12);
+      * WHICH card, from `_gpu_type_for_bench` -- a machine fact a
+        description may not name (`template.md` § 7);
+      * and `MachineTranslation.to_resources`, which emits a TYPED
+        ``--gres`` for a device cell and none at all for a CPU one.
+
+    A second translation stood in `prep.py` for one day on 2026-09-01 -- a
+    name map from ``gpu_count`` to an untyped ``gpu:N``.  It got the type
+    wrong, the CPU gating wrong, and never knew about ``G x K``; and no test
+    caught it, because every test drove the copy.  Deleted; this asks the one
+    that was already right.
+
+    **A DECIDED SHAPE THE MACHINE CANNOT HOLD REFUSES, and that is the
+    point.**  The enumerator raises when nothing survives, and that refusal
+    is let through: running at the wrapper's default instead would be the
+    concealment this whole channel exists to end.  It is only asked when the
+    answer is usable -- no machine axes, or any of them multi-point, and it
+    is not asked at all, so a description carrying a bench it cannot run
+    HERE still runs at the wrapper's own policy, as it always did.
+
+    **Guarded by the engine**, because the bench lane speaks SIESTA alone and
+    says so by refusing: a PySCF run must not inherit that refusal for a
+    question it never asked.
+    """
+    if not getattr(task, "bench", None) or str(task.engine) != "siesta":
+        return {}
+    _pins, declared_axes, _value_axes = _declared_execution_pins(
+        base, task.engine)
+    # DECIDED means every machine axis carries exactly one point.  None
+    # declared is nothing to decide; any of them longer is a question.
+    if not declared_axes or any(len(v) != 1 for v in declared_axes.values()):
+        return {}
+    import contextlib
+    import io as _io
+    # The enumerator PRINTS its working for the terminal -- the cells it
+    # enumerated and the ones it crossed out.  A RUN does not want the
+    # bench's table when it succeeds; it very much wants it when it does
+    # not, because the refusal below ends "see the crossed-out list above"
+    # and that list is the evidence.  So it is captured, not discarded.
+    said = _io.StringIO()
+    try:
+        with contextlib.redirect_stdout(said):
+            points, _p, translation = _bench_inputs(base, target)
+    except click.ClickException as exc:
+        raise click.ClickException(
+            f"this description DECIDES its launch shape -- "
+            f"{', '.join(f'{k} = {v[0]}' for k, v in sorted(declared_axes.items()))}"
+            f" -- and this machine cannot hold it.\n"
+            f"{said.getvalue().rstrip()}\n  {exc.format_message()}\n"
+            f"  Change the declaration on the machine card, or say what to "
+            f"use for this prep alone with --np / --cpus-per-task / --gpus."
+        ) from exc
+    if len(points) != 1:
+        return {}
+    return dict(translation.to_resources(points[0], None) or {})
+
+
 def _bench_inputs(base, target, *, bench_override=None, report=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
@@ -2142,6 +2217,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         # explicit points, the G/K/C translation, and the trial pins
         # (§ 2.3.1a -- benchmarking is prep whose parameters are a set).
         sweep = pins = translation = None
+        chosen = {}
         if kind == "bench":
             if stage is None:
                 # A benchmark measures ONE stage's configuration, and there
@@ -2164,6 +2240,10 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 sweep, pins, translation = _bench_inputs(base, target)
             except (UnknownTarget, AmbiguousTarget) as exc:
                 raise click.ClickException(str(exc))
+            # `chosen` STAYS EMPTY for a bench: a trial's shape is its own
+            # point's, and `translation` gives each cell its ranks, cores
+            # and device ask.  Folding a base shape underneath would put a
+            # second answer where the grid already gives one.
         elif kind == "run":
             # § 2.3.2's other half: the stage's run-config.toml (the
             # editable proposal summarize wrote) fills the allocation
@@ -2188,6 +2268,21 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             declared_pins, _axes, _value_axes = _declared_execution_pins(
                 base, _pf_task.engine)
             pins = {**declared_pins, **(verdict_pins or {})} or None
+            # AND THE SHAPE THE DESCRIPTION DECIDES, from the one grid
+            # enumerator (`generator.md` § 2 -- a run is a sweep of length
+            # one).  Weakest of the three, exactly as § 4.3a states:
+            # a flag beats the verdict, and the verdict beats this.
+            #
+            # THE SAME WHICH-MACHINE CATCH THE BENCH ARM MAKES, and for the
+            # same reason it was added there on 2026-08-28: this reaches
+            # `_environment_for` too, so an unnamed target on a two-record
+            # machine would leak a TRACEBACK where the arm used to speak
+            # plainly (workflow.md § 9 -- a gate refuses with the reason).
+            from ..scheduler import AmbiguousTarget, UnknownTarget
+            try:
+                chosen = declared_run_shape(base, target, _pf_task)
+            except (UnknownTarget, AmbiguousTarget) as exc:
+                raise click.ClickException(str(exc))
         if kind == "run":
             # § 6's say-what-is-there, and the 2026-08-12 plan A3/U14 ask
             # when a run already happened here.
@@ -2211,6 +2306,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                                     env=env, emit_sbatch=emit_sbatch,
                                     sweep=sweep, pins=pins,
                                     translation=translation, target=target,
+                                    chosen=chosen,
                                     pipeline_log=pipeline_log)
         except (UnknownTarget, AmbiguousTarget) as exc:
             # Both are the same class of refusal -- WHICH machine is this

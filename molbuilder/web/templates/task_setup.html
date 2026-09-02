@@ -158,33 +158,18 @@
           </div>
         </div>
 
-        {# WHAT THE RUN WILL USE -- one value each, typed (task-setup.md
-           6.2b).  The rows mirror the bench's parameters because the thing
-           you measured is the thing you are deciding about; the bench's
-           points appear beside each as INFORMATION and fill nothing.
+        {#- THE RUN'S VALUES ARE NOT ASKED HERE.  They stood in this card
+           until 2026-09-01, writing the flat `allocation` as a
+           calculation-wide default that each stage tab could then override
+           -- and the person who has to use it deleted them: "I don't see
+           why what the run will use for every stage needs to be set up
+           front and then repeat again."  One card, in the rung's own tab
+           (task-setup.md 6.2c), beside the `prep run` line that reads it.
 
-           This is the concealment the card was rebuilt to end (user,
-           2026-09-01): the run took run-config.toml's verdict for every
-           field the description had not stated, and the tab gave no way to
-           state one -- so the recommendation was the only input, it was
-           never shown, and a run needed a benchmark to have been EXECUTED. #}
-        <div class="ts-runvals" id="ts-runvals" hidden>
-          <h3 class="ts-reports-head">What the run will use, for every
-            stage</h3>
-          <p class="hint">One value each &mdash; <strong>your decision</strong>,
-            not the benchmark's. This is the whole calculation's answer; a rung
-            that disagrees says so in <em>its own tab</em> below. What you
-            leave blank falls to the stage's <code>run-config.toml</code> and
-            then to the wrapper's own policy, and the tab says which.</p>
-          <div class="ts-rows" id="ts-run-rows"></div>
-          <div class="ts-fit" id="ts-run-fit" hidden></div>
-          <div class="ts-actions">
-            <select id="ts-add-runval" class="ts-pick"
-                    aria-label="add a setting for the run"></select>
-            <button type="button" class="btn" id="ts-add-runval-go">+ Add
-              setting</button>
-          </div>
-        </div>
+           WHAT THIS CARD KEEPS IS WHAT IT OWNS: the queue menu, and
+           `domain`/`time`/`mem` for the calculation as a whole.  A rung
+           wanting a different queue or wall adds that row to its own card,
+           where it reads as THIS RUNG DIFFERS. -#}
 
         {# A `ts-queue-state` block stood here, hidden, with a title and a
            body no JS ever wrote -- markup added on the assumption it would
@@ -219,10 +204,11 @@
       </section>
 
       <section class="card" id="ts-machine-card" hidden>
-        <h2>The machine, and what to try on it</h2>
+        <h2>The machine &mdash; what to try, and what to use</h2>
         <p class="hint"><strong>One point is your choice; several is a
           measurement</strong> &mdash; the same row does both, because a run is a
-          sweep of length one.</p>
+          sweep of length one. Narrowing a row to one point is how you
+          decide what the <em>run</em> will use.</p>
         <div class="ts-rows" id="ts-machine-rows"></div>
         {# WHAT THE MACHINE WOULD ACTUALLY RUN, beside the rows that ask for
            it (user, 2026-08-30: "can't this list be just updated in the same
@@ -231,35 +217,15 @@
            /api/task-setup/bench-grid -- the terminal's own report, as data,
            so the browser never enumerates the grid a second way. #}
         <div class="ts-fit" id="ts-machine-fit" hidden></div>
-        {# MEASURING IS NOT RUNNING (stages.md 6.8c, user 2026-09-01: "launch
-           target for run may be different from bench (due to the time
-           requirement etc)").  A benchmark is short by construction --
-           capped SCF, one point, no relaxation -- so one wall serving both
-           queues a thirty-second job behind a two-day reservation.
+        {#- A `ts-benchalloc` disclosure stood here on 2026-09-01, writing a
+           `bench_allocation` key so a measurement could ask for its own
+           queue and wall.  Deleted the same day with the key: measuring and
+           running are TWO PREPS (generator.md 4.1), so a bench that wants a
+           shorter wall says `prep bench --time 30m` on its own command, and
+           `task.json` holds one allocation because the calculation has one
+           ask.  A second key was a second answer to a question the command
+           line already answered. -#}
 
-           COLLAPSED, because the common case is that they are the same and
-           absent means "use the run's".  Opening it is the whole cost of
-           the uncommon one. #}
-        <details class="ts-benchalloc" id="ts-benchalloc">
-          <summary>Measure on a different queue or wall</summary>
-          <p class="hint">Left alone, a benchmark asks for whatever the run
-            asks for. These override that <strong>for the measurement
-            only</strong>.</p>
-          <div class="ts-asks">
-            <div class="ts-ask">
-              <label class="ts-ask-label" for="ts-bench-domain">Queue</label>
-              <input class="ts-ask-input" id="ts-bench-domain" type="text"
-                     autocomplete="off" placeholder="&mdash; the run's">
-            </div>
-            <div class="ts-ask">
-              <label class="ts-ask-label" for="ts-bench-time">Time limit</label>
-              <input class="ts-ask-input" id="ts-bench-time" type="text"
-                     autocomplete="off" placeholder="e.g. 30m"
-                     aria-describedby="ts-bench-time-note">
-              <span class="ts-ask-note" id="ts-bench-time-note"></span>
-            </div>
-          </div>
-        </details>
         <div class="ts-actions" id="ts-machine-actions" hidden>
           <select id="ts-add-setting" class="ts-pick"
                   aria-label="add a setting to measure"></select>
@@ -315,8 +281,9 @@
         <h2>Preparing, stage by stage</h2>
         <p class="hint">This page writes a description and stops &mdash; a deck
           carries values only the target knows. <strong>One tab per
-          rung</strong>; inside each, what that stage will use, what it will
-          produce, and the exact commands &mdash; measure it, or run it.</p>
+          rung</strong>, and each holds the exact commands &mdash; measure it,
+          or run it. <em>What</em> it will use is decided above, in the
+          machine card, by how many points you leave in a row.</p>
         <div id="ts-next"></div>
       </section>
 

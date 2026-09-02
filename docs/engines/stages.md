@@ -1313,96 +1313,18 @@ separate question and still open (`project-layout.md § 8`).
 
 ### 6.8a `allocation` — what this calculation asks the scheduler for
 
-*(Added 2026-08-24, user.  Extended 2026-09-01: the machine-answered
-values, and a per-stage form — see § 6.8b.)*  Optional fields, and absent
-means **unstated**:
+*(Added 2026-08-24, user.)* Three optional fields, and absent means
+**unstated**:
 
 ```json
 "allocation": { "domain": "htc", "time": "0-04:00:00", "mem": "128G" }
 ```
-
-and, once the machine-answered values below are read, the same block carries
-them beside those three — `"mpi_np": 8, "omp_threads": 6, "use_gpu": true`.
 
 | field | what it says |
 |---|---|
 | `domain` | which **queue** — the same answer `--domain` gives |
 | `time` | the **wall**. Unstated, the target queue's own ceiling is requested |
 | `mem` | the **memory ask**. Unstated, the scheduler's own default decides |
-| *machine-answered items* | the values the **run** should use — `mpi_np`, `omp_threads`, `use_gpu` and any other catalogue item the template declares `allocation` (`template.md` § 6.2). One value each, never a list |
-
-**Why the machine-answered values are allowed here, when `bench` may not
-hold a chosen one.** § 6.8's rule stands and this does not bend it: *the
-file records what a person asked, never what a machine found.* `"measure
-ranks at 4, 8, 16"* is a plan and belongs in `bench`; **`"run it at 8"` is
-equally an ask**, made by a person who has read the benchmark — or who
-already knows. What § 6.8 refuses is a *finding* copied back into the
-description, and what `read_template` refuses is a value on an allocation
-item in the **template**, which is a different file with a different job.
-
-This is the same argument § 6.8a already made for `domain`: a queue name is
-not portable either, and it is here because *choosing it* is a decision
-about this calculation. A rank count chosen by a person is the same kind of
-statement. What would still be wrong is `summarize` writing one back — that
-is a finding, and its home is `run-config.toml`, unchanged.
-
-**Precedence, field by field**, and it extends the existing rule rather than
-replacing it:
-
-> a `prep` **flag** > this block > the stage's `run-config.toml` > the
-> wrapper's runtime policy
-
-`run-config.toml` is still *"the proposal you edit"* — it now fills the
-fields **neither** your flags nor your description stated. Stating a value
-here is the browser's way of doing what editing that file does at a
-terminal, and it works **before any prep has run**, which the file cannot:
-it lives inside the bundle a prep creates.
-
-### 6.8b Per stage, when the stages differ
-
-A ladder's rungs do not always want the same machine — a coarse rung is
-cheap and a tight one is not, and the wall above all. So `allocation` takes
-a per-stage form, and the flat form above is the default every stage
-inherits:
-
-```json
-"allocation": { "domain": "htc", "time": "0-04:00:00", "mem": "128G" },
-"stage_allocation": {
-  "tight": { "time": "2-00:00:00", "mpi_np": 16 }
-}
-```
-
-**Field by field, again.** A stage's block overrides only the fields it
-names; everything else comes from the flat block, and what neither states
-is unstated. One rung asking for a longer wall does not have to restate the
-queue.
-
-**Absent is a state**, as everywhere else here: no `stage_allocation` key
-means every stage uses the flat block, which is exactly what every
-description written before 2026-09-01 says.
-
-### 6.8c `bench_allocation` — measuring is not running
-
-*(user, 2026-09-01: "launch target for run may be different from bench (due
-to the time requirement etc) so you should be careful to differentiate the
-time limit that is for bench only and the time limit for actual run.")*
-
-A benchmark is short by construction — `max_scf_iter: 3`, one point, no
-relaxation — and a run is not. Asking for the run's wall while measuring
-queues a thirty-second job behind a two-day reservation; asking for the
-bench's wall while running kills the calculation. They are two asks:
-
-```json
-"bench_allocation": { "domain": "general", "time": "0-00:30:00" }
-```
-
-Same fields as `allocation`, same field-by-field precedence, and **absent
-means "use `allocation`"** — so nothing that already works changes. It is a
-flat key rather than a member of `bench` because `bench` maps an axis to
-its points and a reader should not have to tell a knob from a wall.
-
-The machine-answered values have no meaning here: what to measure is
-`bench`'s own list, and one of those points is what each trial runs.
 
 **Why it is here and not in `bench`.** § 6.8's rule still holds — the file
 records what a person *asked*, never what a machine *found* — and these are
@@ -1470,20 +1392,33 @@ it belongs in the description, and nothing else in `task.json` could hold it:
 > `task.json` records what the person **asked** — points to try, or a value
 > they chose. It never records what a machine **found**.
 
-That keeps the description portable in exactly the way `template.md` § 7
-requires. *"Measure ranks at 4, 8, 16"* is true on every machine. *"Use 16"* is
-true on one, and writing it here would make the file a machine's opinion rather
-than a calculation's description — the same reason an allocation item is
-declared **valueless** and `read_template` refuses a hand-edited `mpi_np`.
+**And ONE point is a chosen value** *(user rule, 2026-08-20 — the override
+lane; extended to the machine axes 2026-09-01)*: `use_gpu: [true]` and
+`mpi_np: [8]` are both the person's answer, applied at prep for the bench's
+trials and the run alike — and **refused by name on a machine that cannot
+honor it, never clamped**, which is what keeps a declaration a *question put
+to the target* rather than a silent assumption about one.
 
-**And a non-machine execution entry with ONE point is a chosen value**
-*(user rule, 2026-08-20 — the override lane, `generator.md` § 4.3a)*:
-`use_gpu: [true]` is the person's portable intent, applied at prep as a
-pin over the template for the bench's trials and the run alike — and
-refused by name on a machine that cannot honor it, which is the
-declaration staying a *question to the target* rather than an answer about
-one. The machine-answered entries can never carry a value this way; for
-them, one point is still just a short list to try.
+**How much of the block has to be decided before a RUN takes it is
+[`generator.md § 4.3a`](?doc=execution/generator.md)'s**, and it is not
+per-axis: the machine axes resolve together into one cell, so a block with
+any of them still open is a plan to measure. This section owns what a point
+*means*; that one owns what a run *does with it*.
+
+> **The machine axes were excluded from this until 2026-09-01**, on the
+> grounds that *"use 16"* is true on one cluster where *"try 4, 8, 16"* is
+> true on all of them. The exclusion is gone, and the argument it rested on
+> is answered in `generator.md` § 4.3a: **the line is decision vs finding,
+> not portable vs not.** `allocation` has carried `domain` since 2026-08-24
+> and a queue name is no more portable than a rank count; what this file must
+> never hold is what a **machine found**, which is why `summarize` writes its
+> verdict to `run-config.toml` instead. A person who read a benchmark and
+> chose eight ranks is *asking*, and asks are what this file is for.
+>
+> `template.md` § 7 is untouched and still absolute: the **template** may not
+> carry a machine value, `read_template` still refuses a hand-edited
+> `mpi_np`, and the item stays valueless. That rule is about a different
+> file with a different job.
 
 **Where the answer goes instead.** `bench` runs on the target and writes
 `bench-result.json`, whose `choice` carries the measured value alongside the
