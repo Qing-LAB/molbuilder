@@ -577,7 +577,7 @@ flowchart TD
     CPU --> TRIALS["× the value settings = the trials,<br/>each input file carrying its own values"]
     GPU --> TRIALS
     TRIALS --> SHELF["submit: trials with the SAME resource ask<br/>share one scheduler job sized to fit them<br/>exactly — independent jobs, biggest first,<br/>CPU jobs hold no GPU"]
-    SHELF --> SUMM["summarize — run it any time:<br/>finished trials ranked, unfinished named,<br/>winner's ranks/cores/devices/values<br/>→ run-config.toml (yours to edit)"]
+    SHELF --> SUMM["summarize — run it any time:<br/>finished trials ranked, unfinished named,<br/>winner's ranks/cores/devices/values<br/>→ bench-recommendation.txt (yours to READ)"]
     SUMM --> RUN["prep run + submit run:<br/>the file fills in whatever your flags<br/>don't state; at launch the wrapper uses<br/>the devices actually granted"]
 ```
 
@@ -618,7 +618,7 @@ mode, so threads can never oversubscribe the cores). In GPU mode, no:
 when few ranks run, the wrapper widens each rank's threads to use the
 node's spare cores, unless you state a number. Either way it is an
 assumption you can replace with a measurement — declare `omp_threads` as
-an axis, and the winning C rides `run-config.toml` into the run.  One
+an axis, and the winning C is reported for you to write into `execution`.  One
 declaration measures all the full-node layouts: `mpi_np: [24, 48]` ×
 `omp_threads: [1, 2]` enumerates `G4 K12`, `G2 K24`, `G1 K48` (at the
 MPS ceiling) and their two-thread variants — and the verdict, not the
@@ -636,11 +636,10 @@ in § 2.11.
 
 **How the winner's G reaches the actual run.** The bench measures G; the
 run *inherits* it — there is no fixed CPU-to-GPU ratio anywhere:
-**(1)** the winner's whole shape, `gres = "gpu:a100:G"` included, is
-written into `run-config.toml`, and `prep run` applies the file to every
-field your flags leave unstated. **The file is also your override**: no
-command-line flag states a device count, on purpose — edit the `gres`
-line (or any line) and your edit is what runs. **(2)** With no verdict on
+**(1)** the winner's whole shape, the device count included, is reported
+in `bench-recommendation.txt` for you to write into `execution` — where
+a device count is stated as `gpu_count`, since no command-line flag
+states one, on purpose. **(2)** With no verdict on
 file, a GPU calculation's submission header asks for **one** device — a
 deliberate floor, not a scaling rule. **(3)** At launch, the wrapper
 counts the devices the scheduler actually granted, assigns ranks to
@@ -731,9 +730,7 @@ which configuration to run at — for the least machine time.
   finished trials are ranked, unfinished ones are listed as
   `incomplete`/`unknown` (never a failure of the set), and the coverage
   line states how partial the verdict is; a later summarize refreshes
-  the record over the fuller evidence (`run-config.toml`, once written,
-  is *yours* — delete it and summarize again for a proposal built from
-  the fuller record). When the curve has clearly bent, `scancel` the
+  the record over the fuller evidence (and rewrites its report from it). When the curve has clearly bent, `scancel` the
   remaining jobs — or skip the formal verdict entirely and set the run
   parameters yourself: explicit flags outrank everything, and the record
   keeps whatever completed. The declared matrix is an *upper bound* on
@@ -799,9 +796,9 @@ flowchart TD
 **One last rule, stated once more**
 ([`generator.md § 4.3a`](?doc=execution/generator.md)): CPU numbers carry
 across partitions built from the same silicon; GPU numbers belong to the
-build that produced them; and the verdict is a *proposal*
-(`run-config.toml`) — the trade between *fastest* and *soonest scheduled*
-stays yours.
+build that produced them; and the verdict is a *report*
+(`bench-recommendation.txt`) — the trade between *fastest* and *soonest
+scheduled* stays yours, and stays unmade until you write it down.
 
 ---
 

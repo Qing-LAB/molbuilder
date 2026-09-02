@@ -1861,10 +1861,13 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
     src = VIEWER.read_text()
     body = src.split("function renderNext", 1)[1].split(
         "what has already run", 1)[0]
+    # `run-config.toml` was an eighth needle until 2026-09-02.  It named a
+    # file `prep run` folded in; the file is a report now and the taught
+    # sequence does not mention it (`architecture.md` § 5.2).
     for needle in ("molbuilder jobset prep bench",
                    "molbuilder jobset launch bench",
                    "one job per resource shelf",
-                   "summarize bench", "run-config.toml",
+                   "summarize bench",
                    "prev.full + 1", "task.bench"):
         assert needle in body, f"next-steps lost {needle!r}"
     assert 'String(i).padStart' not in body, (
@@ -2118,13 +2121,16 @@ class TestEveryStageOffersBothThingsYouCanDoWithIt:
         assert "form-schema.css" not in head, (
             "the parameter form's stylesheet was pulled in for a hint")
 
-    def test_the_hint_says_what_overrides_the_verdict(self):
-        """A user who measured and then wants something else needs to know
-        the flags win -- otherwise the only visible path is to edit
-        run-config.toml by hand."""
+    def test_the_hint_says_a_flag_still_overrides_the_card(self):
+        """A person who filled the card and then wants something else for one
+        prep needs to know a flag wins -- otherwise the only visible path is
+        editing `task.json` again.
+
+        *(It also asserted `run-config.toml` appeared, until 2026-09-02.
+        That file is a report now and the UI does not name it: a benchmark
+        reports, and what the run uses is this card.)*"""
         src = VIEWER.read_text()
         assert "--np / --omp / --time" in src
-        assert "run-config.toml" in src
 
 
 class TestTheTabShowsWhatAPrepWouldResolve:

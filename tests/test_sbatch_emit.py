@@ -425,7 +425,7 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
     # each wrapper carrying its OWN translated resources is pinned in
     # test_prep_bench_fold.test_each_trials_resources_carry_its_own_
     # coordinate -- and a verdict reaches prep through
-    # `_apply_run_config`, pinned in ..._applies_the_proposal_file.)
+    # `execution` in task.json, pinned in test_prep_bench_fold.py.)
 
 
 def test_wrapper_gpu_has_no_mem_audit(project):

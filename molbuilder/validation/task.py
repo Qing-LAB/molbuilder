@@ -174,8 +174,13 @@ def _execution_names_a_speed_knob(task) -> List[Issue]:
             blocks.append((f"stage {st.name!r} execution", dict(st.execution)))
     if not any(b for _w, b in blocks):
         return []
+    # THE CATALOGUE'S `execution` ITEMS, PLUS THE TWO LANE ASKS.  `time` and
+    # `domain` are not catalogue items -- an engine has no opinion about a
+    # wall clock or a queue -- but a RUN owns them separately from the bench
+    # (`stages.md` § 6.8e), so they are admitted here by name.
+    from ..task import LANE_ASKS
     known = {i.name for i in select(catalogue(), engine=task.engine)
-             if "execution" in (i.category or ())}
+             if "execution" in (i.category or ())} | set(LANE_ASKS)
     out: List[Issue] = []
     for where, block in blocks:
         for name in sorted(block):

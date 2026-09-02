@@ -543,7 +543,7 @@ flowchart TB
     subgraph MACH["floor 1 · machine — measured, never in the description"]
         ENV["<b>environment.json</b> · <b>molbuilder.json</b>"]
     end
-    VERD["<b>&lt;stage&gt;/bench/run-config.toml</b><br/>what the machine FOUND — yours to edit or delete"]
+    VERD["<b>&lt;stage&gt;/bench/bench-recommendation.txt</b><br/>what the machine FOUND — a REPORT.<br/>read by a person, by no code"]
     ASM["<b>the assembly</b><br/>composes the declared sources in order<br/>→ (allocation, pins, chosen)"]
     RES["<b>floor 3 · resolve()</b> → ParameterSet"]
     OUT["<b>the deck</b> · <b>the wrapper</b> · <b>the .sbatch</b>"]
@@ -575,7 +575,7 @@ flowchart TB
         direction TB
         A1["<b>1 · describe</b><br/>writes <code>&lt;label&gt;.template.toml</code><br/><i>the value, from the Structure-optimization UI or the default</i>"]
         A2["<b>2 · task.json</b><br/><code>varies</code> promotes it · <code>stages[i].overrides</code> sets this rung's"]
-        A3["<b>3 · a pin at prep</b><br/>a one-point <code>bench</code> entry · <code>run-config.toml</code> <code>[pins]</code> · <code>execution</code>"]
+        A3["<b>3 · a pin at prep</b><br/>a one-point <code>bench</code> entry · <code>execution</code>"]
         A1 --> A2 --> A3
     end
 
@@ -583,8 +583,8 @@ flowchart TB
         direction TB
         B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
         B2["<b>2 · task.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
-        B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>run-config.toml</code> <code>[resources]</code> fills what neither<br/>a flag nor <code>execution</code> stated"]
-        B4["<b>3b · still nothing?</b> — <code>auto_ranks</code><br/>the selected DOMAIN's widest node,<br/>else the TARGET's topology, clamped to n_atoms<br/><b>never this box · no record ⇒ REFUSE</b>"]
+        B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>execution</code>, then a <code>prep</code> flag.<br/><i>no third source: a benchmark does not steer a run</i>"]
+        B4["<b>3b · nothing stated?</b> — <code>auto_ranks</code><br/>the selected DOMAIN's widest node,<br/>else the TARGET's topology, clamped to n_atoms<br/><b>never this box · no record ⇒ REFUSE</b>"]
         B1 --> B2 --> B3 --> B4
     end
 
@@ -628,9 +628,9 @@ flowchart TB
   a 64-core node ran the job on one rank.
 
 > **This is why nothing at prep may invent a track-B value.** An unstated
-> `mpi_np` is already answered — twice over, by `run-config.toml` if a
-> benchmark left one and by the wrapper if not. A layer that fills it in
-> *"because it must be decided"* overwrites both. That is the defect the run
+> `mpi_np` already has one answer and exactly one — `auto_ranks`, reading the
+> selected target's width, or a refusal. A layer that fills it in
+> *"because it must be decided"* overwrites that. That is the defect the run
 > lane had for one afternoon on 2026-09-02: routed through the sweep's
 > enumerator, `{omp_threads: 4}` came back as a **single-rank job** — the
 > enumerator's `mpi_np or [1]`, an axis a grid must have and a condition need
@@ -665,8 +665,7 @@ B's chain (above) is correct and complete, and it is still invisible unless a
 surface reads it back out.
 
 **So the card reads the chain back**, per parameter: the value, and which rung
-of § 5.2's ladder supplied it — *you*, `run-config.toml`, a flag, the header
-floor, or the wrapper at run time. A field left blank is not shown blank; it
+of § 5.2's ladder supplied it — *you*, a flag, or the target's own width. A field left blank is not shown blank; it
 is shown as **what blank resolves to**.
 
 **And it is resolved by the emitter, not re-derived.** A13 is A12 applied to
@@ -679,18 +678,44 @@ implementation of the thing it is reporting, and would agree with the
 | kind | example | weakest → strongest |
 |---|---|---|
 | **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` |
-| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → a one-point `bench` pin → `run-config.toml`'s `[pins]` → **`execution`** |
-| **launch shape** | `mpi_np` · `omp_threads` · `gpu_count` | the wrapper's runtime policy → `run-config.toml`'s `[resources]` → **`execution`** → a `prep` **flag** |
-| **scheduler ask** | `domain` · `time` · `mem` | unstated (the queue's own ceiling) → `allocation` → a `prep` **flag** |
+| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → a one-point `bench` pin → **`execution`** |
+| **launch shape** | `mpi_np` · `omp_threads` · `gpu_count` | `auto_ranks` (the target's width, else a refusal) → **`execution`** → a `prep` **flag** |
+| **scheduler ask** | `mem` | unstated (the queue's own ceiling) → `allocation` → a `prep` **flag** |
+| **scheduler ask, per lane** | `time` · `domain` | unstated → `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** |
 
-**The person's ask outranks the machine's finding**, in both ladders where the
-two meet. `run-config.toml` is a *recommendation* `summarize` wrote and is
-yours to edit or delete; `execution` is what a person typed into the file that
-records asks. So the verdict fills only what **neither** the flags **nor** the
-condition stated. *(The code had this backwards until the diagram above was
-drawn, 2026-09-02 — the verdict was folded first and `execution` got the
-remainder. Nothing in the prose was wrong; nothing in the prose was a picture
-either.)*
+**Two scheduler asks take a fifth rung, and only these two.** `allocation` is
+folded by the shared prep path, so `prep bench` and `prep run` read one `time`
+and one `domain` — and the two lanes want opposite things: a trial's steps are
+cut so it wants minutes, a run wants days. `execution` carries the run's own
+(`stages.md` § 6.8e). **`mem` does not join them**: a trial and a run compute
+the same system and hold about the same amount, so a second home for it would
+be a second place to look and no new answer.
+
+**A BENCHMARK DOES NOT STEER A RUN — it informs a person, who decides.**
+*(User ruling, 2026-09-02: "the run parameter needs to be explicitly
+decided/written … benchmark recommendation should be named such that it is
+understood not as a user input but for result presentation.")*
+
+There is no verdict rung in any of the four ladders. `summarize` writes
+`bench-recommendation.txt` beside `bench-result.json`; both are **read by a
+person and by no code**, and what the run uses is `execution` — which exists
+whether or not you ever benchmarked, and a run never requires one
+(`stages.md` § 6.8d).
+
+> **Why this rung went.** `run-config.toml` was an editable TOML the next
+> `prep run` folded into the launch, labelled *"recommendation, not decision"*
+> in the contract while functioning as a decision. That made it a SECOND way
+> for a run parameter to arrive — and every silent-value defect found on
+> 2026-09-02 was a second arrival route. It also inverted twice in one day
+> (the verdict folded before `execution`, then before `allocation`'s `mem`
+> and `time`), which is the signature of a rung that should not exist rather
+> than one ordered wrongly. **Deleting a rung settles an ordering question
+> permanently; ordering it correctly settles it until the next edit.**
+>
+> The consequence, stated because it is a real change: after a benchmark,
+> a run that does not name the winner in `execution` does **not** use the
+> winner — `auto_ranks` sizes it, or prep refuses. The measurement stops
+> reaching the launch by itself, which is the point.
 
 **Where the UI enters, and it is only two places** — which is § 5's *"the
 browser lives in rows 3–5 only"*, restated as values: it **edits floor 2**,
@@ -810,9 +835,9 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > has one owning function; A12 says the same of the *input tuple* a route
 > consumes. It exists because the browser and the command line both prepare
 > runs, and for one afternoon on 2026-09-02 they assembled that tuple
-> separately: the browser had no `run-config.toml` verdict, no bench pins,
-> and at first no condition pins — so a solver chosen on the run card reached
-> the sbatch's neighbour and not the deck. **Two surfaces that assemble
+> separately: the browser had no bench pins and at first no condition pins —
+> so a solver chosen on the run card reached the sbatch's neighbour and not
+> the deck. **Two surfaces that assemble
 > separately do not drift eventually; they drift on the first change**, and
 > nothing about either one looks wrong in isolation.
 >

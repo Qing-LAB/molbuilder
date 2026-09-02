@@ -1539,7 +1539,7 @@ def api_task_setup_prep():
     kwargs = {}
     if kind == "run":
         # THE SAME ASSEMBLY THE COMMAND LINE USES -- the bench's pins, the
-        # `run-config.toml` verdict and this run's own condition, composed
+        # this run's own condition and the calculation's ask, composed
         # by `prep_run_inputs`.  This door puts NOTHING together itself:
         # the UI is not a second framework, it is a way to see and decide
         # (user, 2026-09-02).  It assembled its own for an hour that day and
@@ -1548,7 +1548,7 @@ def api_task_setup_prep():
         # ITS REFUSALS ARE THE USER'S, like every other refusal at this door:
         # "which machine is this for" and "this machine cannot hold your
         # condition" are answers only a person has, and both would be a 500
-        # uncaught.  The echo `_apply_run_config` writes for a terminal is
+        # uncaught.  The note `prep_run_inputs` echoes for a terminal is
         # swallowed -- a server log is not where that reader is.
         import contextlib
         import io as _io

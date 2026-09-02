@@ -284,7 +284,7 @@ other's block.
 | measure | `mpi_np` `4` `8` `16` | 3 trials |
 | measure | `omp_threads` `1` `2` | × 2 → 6 combinations |
 | run | `mpi_np` = `8` | what the run asks for |
-| run | *(blank)* | `run-config.toml`, then the wrapper's policy |
+| run | *(blank)* | the target's own width (`auto_ranks`), else a refusal |
 
 **A one-point row in the MEASURE card is still one trial, not a decision** —
 except for the non-machine items, where the 2026-08-20 override rule stands:
@@ -326,8 +326,8 @@ each other.
 
 > **The line is decision vs finding, not portable vs not.** A description may
 > hold *"run it at eight"* — that is a person asking — and may never hold what
-> a **machine found**, which is why `summarize` writes its verdict to
-> `run-config.toml` instead. The argument is
+> a **machine found**, which is why `summarize` writes its verdict to a report
+> no code reads. The argument is
 > [`generator.md § 4.3a`](?doc=execution/generator.md)'s;
 > [`architecture.md § 5.2`](?doc=execution/architecture.md) carries the
 > ladders.
@@ -453,9 +453,10 @@ this whole redesign answers *(user, 2026-09-01: "it requires the bench to be
 fully executed… it tries to conceal all decision from user")*, and it is a
 property of the data model rather than of this page.
 
-**Blank is a state, and it is the ordinary one.** What no row states falls to
-the stage's `run-config.toml` and then to the wrapper's own policy, and the
-card says so.
+**Blank is a state, and it is the ordinary one.** What no row states is sized
+from the selected target's own width — or refused when that target has no
+record — and the card says which, by name.  **A benchmark never fills a blank
+row**: it reports, you decide (`architecture.md` § 5.2).
 
 **And it is checked in the card, as you type** — the same admission door the
 grid card asks, over a grid of one. A run is a sweep of length one, so there
@@ -762,7 +763,7 @@ a decision only you can make** — unchanged from the card this replaces:
 
 | | what it does | when |
 |---|---|---|
-| **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what allocation this stage wants. The verdict is written to `run-config.toml`, which the run then applies **to the fields you left blank** |
+| **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what shape this stage wants. The verdict is written to `bench-recommendation.txt` for **you** to read; nothing applies it, so the run uses it only once you have written it into this card |
 | **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark you read, from § 6.2b's card, or from flags |
 
 **Any stage may be benchmarked, not only the first.** The bench axes are
@@ -771,12 +772,11 @@ measured. Which one is worth measuring is a judgement — usually the cheapest
 rung that still has the expensive stage's shape — and the page states that as
 a hint rather than choosing.
 
-**The order is shown because it is load-bearing.** `summarize bench` writes
-`run-config.toml`, and `prep run` applies it to any field neither your flags
-nor your description stated. Skipping the middle step is no longer silent,
-though: the rows are right there, filled or blank, above the command that
-consumes them — and the line between them states the order, so a blank row
-reads as *this one falls to `run-config.toml`* rather than as nothing.
+**The order is shown because it is load-bearing.** `summarize bench` writes a
+report you read; **you** then fill these rows, and `prep run` uses them.
+Skipping the middle step is no longer silent: the rows are right there, filled
+or blank, above the command that consumes them — and a blank row reads as
+*this one falls to the target's own width* rather than as nothing.
 
 **The directory names come from the producer.** Flat and hierarchical name
 things differently (§ 4), and a page that composed them itself would be a

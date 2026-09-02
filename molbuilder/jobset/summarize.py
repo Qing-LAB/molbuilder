@@ -410,7 +410,7 @@ def run_summarize_jobset(jobset, bundle, *,
                          stage: Optional[str] = None):
     """Summarize a described sweep through the data-keyed reader: write
     ``bench-result.json`` (the record) and, when there is a verdict,
-    ``run-config.toml`` beside it (the editable proposal — § 2.3.2).
+    ``bench-recommendation.txt`` beside it (the report — § 2.3.2).
 
     Returns ``(BenchResult, out_path, (config_path, status))`` with
     status ``"written"`` (fresh proposal), ``"kept"`` (a file already
@@ -421,26 +421,26 @@ def run_summarize_jobset(jobset, bundle, *,
     res = bench_record(jobset, bundle, now_iso=now_iso)
     out_path = Path(out) if out else Path(bundle) / "bench-result.json"
     out_path.write_text(res.to_json() + "\n", encoding="utf-8")
-    cfg_path = out_path.parent / RUN_CONFIG_NAME
-    text = run_config_text(res, stage=stage)
+    cfg_path = out_path.parent / RECOMMENDATION_NAME
+    text = recommendation_text(res, stage=stage)
     if text is None:
         status = "none"
-    elif cfg_path.exists():
-        status = "kept"
     else:
+        # ALWAYS REFRESHED.  The old `run-config.toml` was kept when it
+        # already existed, because it was yours to edit and a rewrite would
+        # have discarded your edit.  A report is nobody's to edit, so a stale
+        # one is only a stale one -- and `summarize` is run again precisely
+        # when there is more evidence.
         cfg_path.write_text(text, encoding="utf-8")
         status = "written"
     return res, out_path, (cfg_path, status)
 
 
 
-RUN_CONFIG_SCHEMA = "molbuilder/run-config@1"
-RUN_CONFIG_NAME = "run-config.toml"
-
-#: The [resources] vocabulary, typed.  ``bool`` is checked exactly
-#: (a TOML ``true`` must not satisfy an int field and vice versa).
-_RC_RESOURCES = {"mpi_np": int, "cpus_per_task": int,
-                 "gres": str, "mem": str, "time": str}
+#: The benchmark's REPORT, beside its record.  Read by a person and by no
+#: code (`project-layout.md` § 2.3.2).  It was `run-config.toml`, an editable
+#: TOML `prep run` folded into the launch, until 2026-09-02.
+RECOMMENDATION_NAME = "bench-recommendation.txt"
 
 #: Catalogue item type -> the python type its TOML value must carry.
 #: Non-scalar types (lists, text) are absent on purpose: nothing sweeps
@@ -469,145 +469,95 @@ def _pins_vocabulary(engine: str) -> Dict[str, type]:
     return vocab
 
 
-def run_config_text(res: BenchResult, *, stage: Optional[str] = None
-                    ) -> Optional[str]:
-    """The editable proposal (``run-config.toml``) built from a verdict,
-    or ``None`` when the result concludes nothing.
+def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
+                        ) -> Optional[str]:
+    """The benchmark's REPORT (``bench-recommendation.txt``), or ``None``
+    when the result concludes nothing.
 
-    THE WRITER CHECKS ITSELF (``template.py``'s doctrine): ``tomllib``
-    reads TOML and does not write it, so the text is composed by hand
-    and re-read before it is returned — a composed line that does not
-    parse back to the same values never leaves this function.
+    **Nothing reads this file.**  It is what the sweep found, said in
+    sentences, for a person to read and act on -- and the action is writing
+    an ``execution`` block in ``task.json``, which is the only thing
+    ``prep run`` consults (`architecture.md` § 5.2).
+
+    It was ``run-config.toml`` until 2026-09-02: an editable TOML the next
+    ``prep run`` folded into the launch, labelled *"recommendation, not
+    decision"* while functioning as a decision.  That made a benchmark a
+    second way for a run parameter to arrive, and a second arrival route is
+    what every silent-value defect in this lane has been.  *(User ruling:
+    "the run parameter needs to be explicitly decided/written … benchmark
+    recommendation should be named such that it is understood not as a user
+    input but for result presentation.")*
+
+    So this writes the exact JSON to paste, rather than a file to edit: the
+    measurement stops one step short of the launch, and that step is a person
+    deciding, visibly, in the file that records decisions.
     """
-    import tomllib
     choice = res.choice or {}
     if not choice:
         return None
     knobs = choice.get("knobs") or {}
     mech = choice.get("mechanism") or {}
     stage_word = stage or "<stage>"
-    lines = [
-        f'schema = "{RUN_CONFIG_SCHEMA}"',
-        f"# What `jobset prep run {stage_word}` will use for this stage.",
-        "# Written by `jobset summarize bench` from the measured winner:",
-        f"#   {choice.get('rationale', choice.get('label', '?'))}",
-        "# Every value is yours to edit -- these are recommendations, not",
-        "# decisions.  Delete a line to leave that field to your",
-        "# flags/defaults; delete the file to decline the benchmark",
-        "# entirely (`jobset summarize bench` writes a fresh one).",
-    ]
-    expect: Dict = {"resources": {}, "pins": {}}
-    rows = []                     # (assignment, comment) -> aligned below
+
+    out = [f"molbuilder bench recommendation -- {stage_word}",
+           "NOTHING READS THIS FILE.  It is what the benchmark found.",
+           ""]
+    # The rationale already reads as a sentence ("G1K4C6 fastest (2.3
+    # s/iter); vs ..."), so it is not labelled again.
+    rationale = choice.get("rationale") or choice.get("label")
+    if rationale:
+        out += [f"  {rationale}", ""]
+
+    # WHAT TO WRITE -- the `execution` block that would use this winner.
+    # `omp_threads` and `gpu_count` are `execution`'s names for what the
+    # record calls `cpus_per_task` and a `gres` string (`_cli._AS_RESOURCE`);
+    # naming them here in the RECORD's vocabulary would hand over a block
+    # `task.json` refuses.
+    block: Dict = {}
     if knobs.get("mpi_np") is not None:
-        v = int(knobs["mpi_np"])
-        rows.append((f"mpi_np = {v}", "MPI ranks"))
-        expect["resources"]["mpi_np"] = v
+        block["mpi_np"] = int(knobs["mpi_np"])
     if knobs.get("cpus_per_task") is not None:
-        v = int(knobs["cpus_per_task"])
-        rows.append((f"cpus_per_task = {v}",
-                     "cores per rank (OMP threads follow this)"))
-        expect["resources"]["cpus_per_task"] = v
+        block["omp_threads"] = int(knobs["cpus_per_task"])
     if knobs.get("gres"):
-        v = str(knobs["gres"])
-        rows.append((f'gres = "{v}"', "scheduler GPU request"))
-        expect["resources"]["gres"] = v
-    # NO WALL AND NO MEMORY HERE (2026-08-24).  They were written from
-    # `recommend_resources`, which derived them from a safety factor and
-    # an assumed iteration count; `prep` then folded them in when no flag
-    # said otherwise and they reached `sbatch`.  What this file proposes
-    # is what the sweep MEASURED; the two asks stay the person's
-    # (`execution/submission.md` S1, S2).
-    # ABSENT, NOT EMPTY -- the header only when the section has rows, the
-    # same reading the rest of this codebase uses.  It was emitted
-    # unconditionally, and an empty `[resources]` parses back as
-    # `{"resources": {}}` while the self-check below drops empty sections,
-    # so the writer failed its own check.  Nothing reached it while the
-    # deleted `recommend` block always contributed a `mem` and a `time`;
-    # removing those exposed it for a winner whose knobs are all outside
-    # the readable set (2026-08-24).
-    if rows:
-        width = max(len(a) for a, _ in rows)
-        lines += ["", "[resources]"]
-        lines += [f"{a:<{width}}   # {c}" if c else a for a, c in rows]
-    # HOW the winner computed: the deck-read mechanism, then the winner's
-    # own VALUE coordinates over it (§ 4.3a) -- the coordinate is what was
-    # DECLARED and swept, so where both answer, the coordinate speaks.
-    # Membership through the one vocabulary door, so the writer can never
-    # emit a pin the reader refuses.
-    vocab = _pins_vocabulary(str((res.system or {}).get("engine")
-                                 or "siesta"))
-    pin_vals = dict(mech)
-    pin_vals.update({k: v for k, v in (choice.get("point") or {}).items()
-                     if k in vocab})
-    if pin_vals:
-        lines += ["",
-                  "[pins]                # HOW the winner computed, "
-                  "read from its own deck + coordinate"]
-        for k, v in pin_vals.items():
-            if isinstance(v, bool):
-                lines.append(f"{k} = {'true' if v else 'false'}")
-            elif isinstance(v, (int, float)):
-                lines.append(f"{k} = {v}")
-            else:
-                lines.append(f'{k} = "{v}"')
-            expect["pins"][k] = v
-    text = "\n".join(lines) + "\n"
-    got = tomllib.loads(text)
-    got.pop("schema", None)
-    expect = {k: v for k, v in expect.items() if v}
-    if got != expect:
-        raise AssertionError(
-            f"run-config writer self-check failed: composed {got!r}, "
-            f"intended {expect!r}")
-    return text
+        try:
+            from ..scheduler.quantities import parse_gres
+            n = sum(parse_gres(str(knobs["gres"])).values())
+            if n:
+                block["gpu_count"] = int(n)
+        except Exception:                                     # noqa: BLE001
+            pass
+    # THE VALUE AXES TOO, from the winner's own POINT -- not only from
+    # `mechanism`.  `mechanism` is HOW the winner computed (the eigensolver,
+    # the device); a value axis like `block_size` is a coordinate of the
+    # grid and lives in `point`.  Reading only `mechanism` dropped the
+    # measured `block_size` from a winner whose own label was
+    # `G0K4C1block_size128` -- a report that names a shape while silently
+    # omitting one of its measured coordinates sends a person to run at
+    # something nobody benchmarked.  (Caught by `test_value_axes.py`, which
+    # is the file that exists for exactly this axis, 2026-09-02.)
+    vocab = _pins_vocabulary(getattr(res, "engine", "") or "siesta")
+    for src in ((choice.get("point") or {}), (mech or {})):
+        for name, val in sorted(src.items()):
+            if name in vocab:
+                block[name] = val
 
+    if mech:
+        out += ["  it computed with"]
+        for name, val in sorted(mech.items()):
+            out += [f"      {name} = {val!r}"]
+        out += [""]
 
-def read_run_config(path: Path, *, engine: str) -> Dict:
-    """Read and validate a ``run-config.toml`` the user may have edited.
-
-    Returns ``{"resources": {...}, "pins": {...}}`` (either may be
-    empty).  Raises ``ValueError`` naming the exact problem — an unknown
-    key or a mistyped value is refused BY NAME, never skipped, because a
-    silently-dropped edit is a decision the user made and nobody obeyed
-    (the same doctrine as the bench grid's unknown axis).
-    """
-    import tomllib
-    from ..persist import check_schema
-    try:
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as e:
-        raise ValueError(f"{path.name} is not valid TOML: {e}") from e
-    check_schema(str(raw.pop("schema", "")), RUN_CONFIG_SCHEMA,
-                 label=path.name)
-    unknown = sorted(set(raw) - {"resources", "pins"})
-    if unknown:
-        raise ValueError(
-            f"{path.name} has no section named {', '.join(unknown)} -- "
-            f"it knows [resources] and [pins]")
-    out: Dict = {"resources": {}, "pins": {}}
-    for section, types in (("resources", _RC_RESOURCES),
-                           ("pins", _pins_vocabulary(engine))):
-        body = raw.get(section) or {}
-        if not isinstance(body, dict):
-            raise ValueError(f"{path.name}: [{section}] must be a table")
-        bad = sorted(set(body) - set(types))
-        if bad:
-            raise ValueError(
-                f"{path.name}: [{section}] has no field named "
-                f"{', '.join(bad)} -- it knows {', '.join(sorted(types))}")
-        for k, v in body.items():
-            want = types[k]
-            ok = (isinstance(v, bool) if want is bool
-                  else isinstance(v, int) and not isinstance(v, bool)
-                  if want is int
-                  else isinstance(v, (int, float)) and not isinstance(v, bool)
-                  if want is float else isinstance(v, str))
-            if not ok:
-                raise ValueError(
-                    f"{path.name}: [{section}] {k} must be "
-                    f"{want.__name__}, got {type(v).__name__} ({v!r})")
-            out[section][k] = v
-    return out
+    if block:
+        out += ["To run at it, put this in task.json and save:", ""]
+        import json as _json
+        body = _json.dumps(block, indent=2, sort_keys=True).split("\n")
+        out += ['    "execution": ' + body[0]]
+        out += ["    " + ln for ln in body[1:]]
+        out += [""]
+    out += ["Until you do, `prep run` sizes the launch from the target's own",
+            "width (architecture.md 5.2) -- a benchmark does not steer a run.",
+            ""]
+    return "\n".join(out)
 
 
 def _fmt_wall(seconds: float) -> str:
@@ -759,31 +709,26 @@ def summary_text(res: BenchResult, out_path: Path, *,
             lines.append(f"  coverage: {timed} of {len(res.points)} prepped "
                          f"points measured -- the verdict ranks what ran.")
     lines.append(f"  wrote: {out_path}  (the record)")
-    # THE CONNECTION SURFACE (roadmap § 0.1 B5, file-based since
-    # 2026-08-19): the summary ends with what to do, not only what was
-    # found.  The proposal is a FILE -- edit it and the next prep applies
-    # your edit; delete it and the verdict is declined (§ 2.3.2).
+    # THE CONNECTION SURFACE (roadmap § 0.1 B5): the summary ends with what
+    # to do, not only what was found.  What to do is WRITE THE DECISION --
+    # the report says what, and nothing applies it for you (§ 2.3.2).
     if res.choice:
         stage_word = stage or "<stage>"
-        cfg_name = RUN_CONFIG_NAME
+        cfg_name = RECOMMENDATION_NAME
         if run_config:
             cfg_path, status = run_config
             cfg_name = cfg_path.name
             if status == "written":
                 lines.append(f"  wrote: {cfg_path}  "
-                             f"(the proposal -- yours to edit)")
-            elif status == "kept":
-                lines.append(f"  kept:  {cfg_path}  (already exists -- "
-                             f"yours, possibly edited, so it is not "
-                             f"overwritten; delete it and summarize again "
-                             f"for a fresh proposal from this verdict)")
+                             f"(a report -- nothing reads it but you)")
         lines.append("  next:")
-        lines.append(f"    1. edit {cfg_name} where you disagree -- "
-                     f"the file is the decision")
-        lines.append(f"    2. molbuilder jobset prep run {stage_word}"
-                     f"     # applies the file to fields your flags "
-                     f"do not state")
-        lines.append(f"    3. molbuilder jobset launch run {stage_word}"
+        lines.append(f"    1. read {cfg_name} -- it names the winner and "
+                     f"the `execution` block that would use it")
+        lines.append(f"    2. put that block in task.json  "
+                     f"# stages[{stage_word}].execution, or calculation-wide")
+        lines.append(f"    3. molbuilder jobset prep run {stage_word}"
+                     f"     # uses what you wrote, and nothing else")
+        lines.append(f"    4. molbuilder jobset launch run {stage_word}"
                      f" --mode submit|direct")
     return "\n".join(lines)
 
@@ -965,6 +910,5 @@ __all__ = [
     "sweep_view", "swept_coordinates", "bundle_for_sweep_file",
     "bench_record",
     "summary_text", "utc_now_iso",
-    "RUN_CONFIG_NAME", "RUN_CONFIG_SCHEMA",
-    "run_config_text", "read_run_config",
+    "RECOMMENDATION_NAME", "recommendation_text",
 ]

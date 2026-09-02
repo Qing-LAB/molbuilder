@@ -464,6 +464,23 @@ function runConditionOf(task, stage) {
  *  reach this card's values -- what the run uses is `execution`, and the
  *  grid is only what is worth deciding about.
  */
+/* THE RUN'S OWN SCHEDULER ASKS (`stages.md` § 6.8e).  A bench and a run want
+ * different wall clocks -- a trial's steps are cut so it wants minutes, the
+ * run wants days -- and `allocation` is folded by the shared prep path, so
+ * one number cannot serve both.  These two are offered on THIS card only:
+ * the bench keeps `allocation`'s.
+ *
+ * `mem` is deliberately not here.  A trial and a run hold about the same
+ * amount, so a second home for it would be a second place to look. */
+const LANE_ASKS = [
+    { name: "time", label: "wall clock for this run",
+      help: "D-HH:MM:SS \u2014 the bench keeps the calculation's short one",
+      placeholder: "2-00:00:00" },
+    { name: "domain", label: "queue for this run",
+      help: "the bench can stay on a short-turnaround queue",
+      placeholder: "public" },
+];
+
 function runRowNames(task, stage) {
     const out = [];
     const add = (n) => { if (out.indexOf(n) === -1) out.push(n); };
@@ -487,7 +504,7 @@ function setRunValue(name, raw, stage) {
     const blank = (v === null || raw === "");
     const box = stageExecutionOf(stage, !blank);
     if (box) {
-        // BLANK IS A STATE: run-config.toml, then the wrapper's policy.
+        // BLANK IS A STATE: the target's own width, or a refusal.
         if (blank) delete box[name]; else box[name] = v;
         if (!Object.keys(box).length) {
             const st = _task.stages.find((x) => x && x.name === stage);
@@ -527,8 +544,8 @@ function stageRunCard(task, stage, active) {
     box.appendChild(el("h3", { class: "ts-reports-head" },
                        "What this run will use"));
     box.appendChild(el("p", { class: "hint" },
-        "One value each \u2014 not a grid. Blank falls to this stage's "
-        + "run-config.toml and then to the wrapper's own policy."));
+        "One value each \u2014 not a grid. Blank is sized from the target's "
+        + "own width; a benchmark reports here but never fills this in."));
     const rows = el("div", { class: "ts-rows" });
     const fit = el("div", { class: "ts-fit", hidden: "" });
     box.appendChild(rows);
@@ -566,11 +583,16 @@ function stageRunCard(task, stage, active) {
                 input.appendChild(o);
             }
         } else {
+            // A LANE ASK SHOWS AN EXAMPLE when nothing is stated: "not
+            // stated" is true but useless for a field whose format
+            // (`D-HH:MM:SS`) is the thing people get wrong.
+            const lane = LANE_ASKS.find((a) => a.name === name);
             input = el("input", { class: "ts-runval",
-                                  placeholder: from === undefined
-                                      ? "\u2014 not stated"
-                                      : "\u2014 " + String(from)
-                                        + " (every stage)",
+                                  placeholder: from !== undefined
+                                      ? "\u2014 " + String(from)
+                                        + " (every stage)"
+                                      : (lane ? "e.g. " + lane.placeholder
+                                              : "\u2014 not stated"),
                                   "aria-label": "value for " + name });
             input.value = value === undefined ? "" : String(value);
         }
@@ -603,8 +625,9 @@ function stageRunCard(task, stage, active) {
     }
     if (!names.length) {
         rows.appendChild(el("p", { class: "hint" },
-            "Nothing stated \u2014 this run takes run-config.toml, and then "
-            + "the wrapper's own policy. Add a setting to decide it here."));
+            "Nothing stated \u2014 this run is sized from the target's own "
+            + "width, or refused if that target has no record. Add a "
+            + "setting to decide it here."));
     }
 
     const sel = el("select", { class: "ts-pick",
@@ -617,9 +640,12 @@ function stageRunCard(task, stage, active) {
         renderNext(_task || task);
     });
     box.appendChild(el("div", { class: "ts-actions" }, sel, go));
-    // THE SAME VOCABULARY THE BENCH OFFERS -- every sweepable execution
-    // item, resources and solver alike.
-    fillPicker(sel, _sweep || [], names,
+    // THE BENCH'S VOCABULARY, PLUS THE RUN'S OWN TWO.  Every sweepable
+    // execution item, resources and solver alike -- and `time`/`domain`,
+    // which are not sweepable and never will be (a benchmark that swept its
+    // own wall clock would be measuring the queue), but which a RUN owns
+    // separately from the bench (`stages.md` § 6.8e).
+    fillPicker(sel, (_sweep || []).concat(LANE_ASKS), names,
                "every setting is already listed");
 
     // Only the OPEN tab asks the door; a hidden panel is rebuilt on every
@@ -772,7 +798,8 @@ function renderMachine(task) {
                       + "CPU trials never hold a GPU.")
                    : (pts.length + " points sweep as a value axis \u2014 "
                       + "the machine grid multiplies per value; the "
-                      + "winning combination lands in run-config.toml."))
+                      + "winning combination is REPORTED, for you to "
+                      + "write here."))
             : null;
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
             el("div", { class: "ts-row-name", title: helpText(name) }, name,
@@ -1711,10 +1738,10 @@ function askLine(a, chosen) {
     if (a.time) bits.push(a.time);
     if (a.mem) bits.push(a.mem);
     // NOTHING STATED IS A REAL ANSWER, and naming it is the point: the run
-    // takes run-config.toml and then the wrapper's policy, and a blank line
-    // would read as "no idea" rather than "not yet decided".
+    // is sized from the target's own width, and a blank line would read as
+    // "no idea" rather than "not yet decided".
     return bits.length ? bits.join(" \u00b7 ")
-                       : "nothing stated \u2014 run-config.toml, then policy";
+                       : "nothing stated \u2014 the target's own width";
 }
 
 function paintPlan(box, host, body) {
@@ -1770,9 +1797,9 @@ function renderNext(task) {
     // The bench lane, when the description PLANS a measurement
     // (`task.bench` non-empty -- stages.md § 6.8): the whole sequence,
     // taught once with the first stage as the example.  summarize
-    // writes bench-result.json (the record) AND run-config.toml (the
-    // editable proposal); `prep run` then applies what the accepted
-    // proposal says -- template < declaration < run-config < flags.
+    // writes bench-result.json (the record) AND bench-recommendation.txt
+    // (a REPORT nothing reads but you); `prep run` uses `execution` --
+    // template < declaration < execution < flags.
     /* `--bundle <path from the projects root>` for every command this
      * tab teaches.  Naming the bundle is what lets the line be pasted
      * from anywhere; the sidebar already knows the folder, so the user
@@ -1863,22 +1890,23 @@ function renderNext(task) {
         block.hidden = !active;
 
         /* MEASURE first, when the description declares axes to measure.
-         * The order is shown because it is load-bearing: `summarize`
-         * writes run-config.toml and `prep run` APPLIES it to any
-         * allocation field you did not state, so skipping the middle step
-         * does not fail -- it quietly prepares a run with no verdict
-         * behind it. */
+         * The order is shown because it is load-bearing -- but the middle
+         * step is now a PERSON: `summarize` reports, and what the run uses
+         * is what you then write in the card below (`architecture.md`
+         * § 5.2).  Skipping it does not fail; it runs at the target's full
+         * width, having measured nothing. */
         if (benchKeys.length) {
             block.appendChild(el("p", { class: "hint" },
                 "Measure it \u2014 varying " + benchKeys.join(", ")
                 + ". Worth doing on the cheapest rung that still has the "
-                + "expensive stage's shape; the verdict carries to the run."));
+                + "expensive stage's shape; the verdict is reported, and you "
+                + "write it into the card below."));
             block.appendChild(el("pre", { class: "ts-cmd" },
                 "molbuilder jobset prep bench " + name + _bundleArg() + _targetArg() + "\n"
                 + "molbuilder jobset launch bench " + name + _bundleArg()
                 + "      # one job per resource shelf; wait for the queue\n"
                 + "molbuilder jobset summarize bench " + name + _bundleArg()
-                + "   # writes bench-result.json + run-config.toml"));
+                + "   # writes the record + a report for you to read"));
             block.appendChild(prepButton("bench", name));
         }
 
@@ -1892,8 +1920,8 @@ function renderNext(task) {
 
         block.appendChild(el("p", { class: "hint" },
             "Run it \u2014 at what the card above says. What no row states "
-            + "falls to run-config.toml, and then to the wrapper's own "
-            + "policy. Add --np / --omp / --time to override either."));
+            + "is sized from the target's own width, or refused if that "
+            + "target has no record. Add --np / --omp / --time to override."));
         block.appendChild(el("pre", { class: "ts-cmd" },
             // The bundle is NAMED, from the projects root, so the line
             // works from wherever the user is standing

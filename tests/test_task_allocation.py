@@ -144,6 +144,33 @@ class TestTheRunsConditionIsOneValueEach:
         # and it says where it DOES belong, rather than only that it is wrong
         assert "template" in found[0].message
 
+    def test_the_two_LANE_ASKS_are_admitted_and_mem_is_not(self):
+        """`stages.md` § 6.8e -- the membership door, both directions.
+
+        `time` and `domain` are not catalogue items (no engine has an opinion
+        about a wall clock or a queue) and are admitted by name, because a
+        BENCH and a RUN want different ones: a trial's steps are cut so it
+        wants minutes; the run wants days.
+
+        `mem` is refused, and that is the load-bearing half.  A trial and a
+        run compute the same system with the same basis and hold about the
+        same amount, so a second home for it would be a second place to look
+        and no new answer -- and two places to write one value is how a run
+        ends up asking for something nobody typed."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation.task import preflight
+
+        def _bad(block):
+            return [i for i in preflight(_task(execution=block), SiestaConfig)
+                    if "execution" in (i.where or "")]
+
+        assert not _bad({"time": "2-00:00:00"}), "a run may state its wall"
+        assert not _bad({"domain": "public"}), "a run may state its queue"
+
+        found = _bad({"mem": "256G"})
+        assert found, "`mem` was admitted to `execution` -- it has one home"
+        assert "not an execution setting" in found[0].message
+
     def test_absent_writes_no_key(self):
         """Absent-is-a-state: a description that runs at the wrapper's own
         policy round-trips without gaining a block."""

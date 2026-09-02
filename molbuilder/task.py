@@ -116,6 +116,18 @@ _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
 #: carries the calculation's label and its job id, in the title, first.
 REPORT_ITEMS = ("elapsed_s", "n_iters", "energy", "geom_step", "per_iter_s")
 
+#: The two SCHEDULER asks a run owns, admitted to `execution` by name
+#: (`stages.md` § 6.8e).  They are not catalogue items and never will be: the
+#: catalogue describes what an ENGINE computes with, and no engine has an
+#: opinion about a wall clock or a queue.
+#:
+#: `mem` is deliberately absent.  The line is *does this differ between the
+#: bench lane and the run lane* -- a wall does (a trial's steps are cut) and a
+#: queue does (short work and long work belong in different ones); the memory
+#: a job holds does not, so a second home for it would be a second place to
+#: look and no new answer.
+LANE_ASKS = ("time", "domain")
+
 #: A channel NAME, as a description may carry one.
 #:
 #: **Written twice, and it has to be.**  `monitor.is_channel_name` holds the

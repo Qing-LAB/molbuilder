@@ -183,15 +183,20 @@ def test_a_sweep_proposes_no_wall_and_no_memory():
 
 def test_run_config_proposes_no_wall_and_no_memory():
     """The other end of the same path: whatever the sweep measured, the
-    toml it proposes must carry no `time` and no `mem` -- those are the two
-    fields `prep` folds into an allocation."""
-    from molbuilder.jobset.summarize import run_config_text
+    report must recommend no `time` and no `mem`.
+
+    A benchmark measures how fast a shape runs; it has no evidence about how
+    long *your* job needs or how much it will hold, and those two asks stay
+    the person's (2026-08-24).  The rule outlived the file it was written
+    for -- it was `run-config.toml`, which `prep` folded into an allocation,
+    and it is now a report nobody reads but you (`architecture.md` § 5.2)."""
+    from molbuilder.jobset.summarize import recommendation_text
     res = build_bench_result(
         _pts(), environment={"schema": "molbuilder/environment@1",
                              "scheduler": "slurm"}, system={})
-    text = run_config_text(res, stage="tight") or ""
-    assert "time =" not in text, text
-    assert "mem =" not in text, text
+    text = recommendation_text(res, stage="tight") or ""
+    assert '"time"' not in text, text
+    assert '"mem"' not in text, text
 
 
 def test_build_and_round_trip():

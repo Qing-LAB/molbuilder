@@ -151,7 +151,7 @@ class Resources:
         ``D-HH:MM:SS``, ``--mem`` takes ``80G`` -- while a person says
         ``4h`` and ``80GB``.  Normalising HERE rather than at each caller is
         the point: this class is reached by the CLI's ``--time``/``--mem``,
-        by ``run-config.toml``'s ``[resources]``, by `prep`'s fold of
+        by ``execution``, by `prep`'s fold of
         ``task.json``'s allocation, and by `from_dict` over a job-set file
         somebody edited -- four roads, and the fix that patched one of them
         would leave three.  A type that enforces its own invariant cannot
@@ -280,7 +280,7 @@ class Job:
     #: name is an identifier, never a parser target -- what varied travels
     #: here).  ``{}`` for a rung or a whole calculation.  `summarize` reads
     #: it to table value coordinates and to carry the winner's value pins
-    #: into ``run-config.toml`` (`generator.md` § 4.3a).
+    #: into the benchmark's report (`generator.md` § 4.3a).
     point:      Dict[str, Any]  = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:

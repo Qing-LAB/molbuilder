@@ -546,7 +546,7 @@ each in one owning document:
 |---|---|
 | how the pipeline **branches per engine** — what each engine supplies at every prep sub-step | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) § 4 (the per-engine table), § 5 (the step table) |
 | the **file-to-file information flow** — which file feeds which, one reader/one writer per file | § 3 of this page (the files diagram), [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (every format) |
-| how **template information flows** — catalogue → per-calculation template → resolved config → deck | [`engines/template.md`](?doc=engines/template.md) § 6 (incl. § 6.3’s kind-narrowing protocol), [`execution/generator.md`](?doc=execution/generator.md) § 4.3 (precedence: template < declaration < run-config < flags) |
+| how **template information flows** — catalogue → per-calculation template → resolved config → deck | [`engines/template.md`](?doc=engines/template.md) § 6 (incl. § 6.3’s kind-narrowing protocol), [`execution/generator.md`](?doc=execution/generator.md) § 4.3 (precedence: template < declaration < `execution` < flags) |
 | how the **UI flows** — the catalogue-rendered form, its collected params, the hand-over’s four files, `task.json` | [`web/form-schema.md`](?doc=web/form-schema.md), [`web/handover-procedure.md`](?doc=web/handover-procedure.md) §§ 2–6, [`web/task-setup.md`](?doc=web/task-setup.md) |
 | **which checks run for a given procedure**, and each check’s science | [`science/validation.md`](?doc=science/validation.md) § 1 (the layers), § 7 (where every validator lives — engine registry by config type, kind registry by declared fact) |
 | where a **person’s answers enter** the flow | § 6 of this page |

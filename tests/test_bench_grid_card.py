@@ -302,7 +302,10 @@ def test_the_browser_assembles_nothing_of_its_own():
     # DISPLAY (the preview's fallback when the machine cannot hold the
     # condition), not a step in assembling what prep receives.
     import re as _re
-    for reassembled in ("_apply_run_config", "_declared_execution_pins",
+    # `_apply_run_config` was the fourth name here until 2026-09-02.  It is
+    # deleted -- a benchmark no longer reaches a run at all -- and a name in
+    # this list that nothing defines is a check that cannot fail.
+    for reassembled in ("_declared_execution_pins",
                         "declared_run_shape", "run_inputs"):
         assert not _re.search(rf"(?<![\w.]){reassembled}\(", door), (
             f"the door calls {reassembled} itself -- that is the second "

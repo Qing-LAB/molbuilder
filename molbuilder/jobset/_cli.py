@@ -886,14 +886,13 @@ def _refuse_if_measured_elsewhere(base, root, stage) -> None:
     """
     from ..runtime_config import get_routing
     from ..scheduler.place import candidates
-    from .summarize import RUN_CONFIG_NAME
     measured = _measured_on(root)
     if not measured:
         return
-    ways_out = (f"  Either re-run the benchmark where the run will go, or "
-                f"state the allocation yourself with flags -- an explicit "
-                f"ask is always honoured, and deleting {RUN_CONFIG_NAME} "
-                f"declines the verdict outright.")
+    ways_out = ("  Either re-run the benchmark where the run will go, or "
+                "state the shape yourself -- `execution` in task.json, or "
+                "flags on the prep -- since a benchmark reports and never "
+                "decides.")
     if len(measured) > 1:
         raise click.ClickException(
             f"this benchmark's trials ran on {len(measured)} kinds of node "
@@ -965,132 +964,6 @@ def _memory(text):
         return parse_memory(text)
     except ValueError as e:
         raise click.ClickException(f"--mem: {e}")
-
-
-def _apply_run_config(base, allocation, stage=None, engine=None):
-    """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
-
-    Permission is ``run-config.toml``, the editable proposal `summarize`
-    writes beside the record: `prep run` applies what the file says to the
-    allocation fields the user did NOT state — your explicit flags stay
-    yours — and the file's ``[pins]`` arrive as engine pins.  Editing the
-    file is the answer; deleting it declines.  *(Until 2026-08-19 this was
-    an interactive ``use it? [y/N]`` — the doctrine is unchanged, the
-    answer moved into the tree where a scripted prep can carry it and a
-    re-prep weeks later still finds it.)*
-
-    With neither file nor flags, the wrapper's runtime policy sizes the
-    launch (`running-a-job.md` § 3) — and that is SAID, per engine, never
-    implied (user, 2026-08-19).  Returns ``(allocation, pins)``.
-    """
-    import dataclasses as _dc
-    import json as _json
-    from .summarize import RUN_CONFIG_NAME, read_run_config
-    container, _ = _stage_bench_dir(base, stage)
-    root = container if container is not None else Path(base)
-    cfg_path = root / RUN_CONFIG_NAME
-    result_path = root / "bench-result.json"
-
-    def _policy_note(applied_any):
-        # The explicit no-input default: nothing applied and no
-        # launch-shape flag stated -> the wrapper's runtime policy
-        # decides, and prep names the policy instead of going quiet.
-        if applied_any or any(getattr(allocation, f) is not None
-                              for f in ("mpi_np", "cpus_per_task", "gres")):
-            return
-        if engine == "pyscf":
-            click.echo(
-                "  no benchmark verdict and no thread flags -- PySCF's "
-                "wrapper resolves the OMP thread count at\n"
-                "  run time (-omp flag > OMP_NUM_THREADS > the scheduler's "
-                "allocation > this node's physical\n"
-                "  cores; running-a-job.md § 3).")
-        else:
-            click.echo(
-                "  no benchmark verdict and no rank/thread flags -- the "
-                "wrapper sizes the launch at run time on\n"
-                "  the machine it lands on (SIESTA: MPI over all physical "
-                "cores, clamped to the atom count; a\n"
-                "  GPU deck follows the ELPA-CUDA placement policy -- "
-                "running-a-job.md § 3)."
-                + (f"\n  To measure instead of guess:  molbuilder jobset "
-                   f"prep bench {stage}" if stage else ""))
-
-    if not cfg_path.is_file():
-        if result_path.is_file():
-            # A record with no proposal beside it is one of two stories:
-            # summarize concluded nothing (say the census -- roadmap
-            # § 0.1 B4), or a verdict exists and the proposal was deleted
-            # or never written (deleting declined it; point at summarize).
-            from ..bench.result import BenchResult
-            try:
-                res = BenchResult.from_dict(
-                    _json.loads(result_path.read_text(encoding="utf-8")))
-            except ValueError as e:
-                click.echo(f"  (bench-result.json unreadable -- ignored: "
-                           f"{e})", err=True)
-                _policy_note(False)
-                return allocation, {}
-            whose = ("stage " + repr(stage)) if stage else "this calculation"
-            if res.choice:
-                click.echo(
-                    f"  (a bench verdict exists for {whose} but no "
-                    f"{RUN_CONFIG_NAME} -- if you deleted it, that "
-                    f"declined it;\n   `jobset summarize bench` writes a "
-                    f"fresh proposal, or state flags yourself)")
-            else:
-                by_state = {}
-                for p_ in res.points:
-                    by_state[p_.state] = by_state.get(p_.state, 0) + 1
-                census = ", ".join(f"{n} {s}"
-                                   for s, n in sorted(by_state.items()))
-                click.echo(
-                    f"  (a benchmark record exists for {whose} but "
-                    f"concludes nothing -- {census or 'no points'}; "
-                    f"submit its trials and `jobset summarize bench` "
-                    f"again)")
-        _policy_note(False)
-        return allocation, {}
-
-    try:
-        cfg = read_run_config(cfg_path, engine=engine)
-    except ValueError as e:
-        # A file the user edited into an unreadable state STOPS the prep:
-        # skipping it would silently discard a decision they wrote down.
-        raise click.ClickException(str(e))
-    # S3 -- A MEASUREMENT IS NOT PORTABLE BY DEFAULT
-    # (`execution/submission.md` § 5).  Numbers measured on one kind of node
-    # do not describe another: a seconds-per-cycle taken on a 48-core GPU node
-    # says nothing about a 128-core CPU node, and a walltime derived from it
-    # is not conservative or optimistic, it is meaningless.  The measured
-    # kind comes from the verdict's own record -- the monitor's [MACHINE]
-    # line, carried through BenchPoint.machine -- since 2026-08-27; the
-    # declared `node_type` this read before was never written by the probe,
-    # so the check had never fired (machine-identity-plan.md P4).
-    _refuse_if_measured_elsewhere(base, root, stage)
-    stated = {}
-    for field_name in ("mpi_np", "cpus_per_task", "gres", "mem", "time"):
-        if (cfg["resources"].get(field_name) is not None
-                and getattr(allocation, field_name) is None):
-            stated[field_name] = cfg["resources"][field_name]
-    if stated:
-        allocation = _dc.replace(allocation, **stated)
-    pins = dict(cfg["pins"])
-    try:
-        _src = str(cfg_path.relative_to(Path(base)))
-    except ValueError:
-        _src = str(cfg_path)
-    _ledger(base, "prep", "run-config", stage=stage, source=_src,
-            applied=stated, pins=pins)
-    click.echo(f"  applied {_src}: "
-               + (", ".join(f"{k}={v}" for k, v in stated.items())
-                  or "(every field it names was stated explicitly -- "
-                     "flags win)")
-               + (f"; pins: "
-                  + ", ".join(f"{k}={v}" for k, v in pins.items())
-                  if pins else "")
-               + "\n  (edit or delete the file to change this)")
-    return allocation, pins
 
 
 def _declared_execution_pins(base, engine, bench_override=None):
@@ -1456,6 +1329,10 @@ def run_condition(task, stage=None):
 #: The catalogue's words for a launch field, and `Resources`' own.  Most
 #: agree; these three never did.  It is a NAME MAP and nothing else -- no
 #: default, no enumeration, no arithmetic.
+#: `stages.md` § 6.8e -- the run's own wall and queue, carried through the
+#: direct map under their own names (they are already `Resources` fields).
+from ..task import LANE_ASKS as _LANE_ASKS
+
 _AS_RESOURCE = {
     "omp_threads": "cpus_per_task",
     "gpu_count": "gres",
@@ -1533,6 +1410,13 @@ def declared_run_shape(base, target, task, stage=None):
     known = {f.name for f in __import__("dataclasses").fields(Resources)}
     out, want_devices = {}, None
     for name, val in sorted(cond.items()):
+        if name in _LANE_ASKS:
+            # THE RUN'S OWN SCHEDULER ASK (`stages.md` § 6.8e).  Not a
+            # catalogue item, so `items` does not have it -- and falling
+            # through the skip below would DROP a value a person typed,
+            # which is the defect class this lane keeps producing.
+            out[name] = val
+            continue
         it = items.get(name)
         if it is None:
             continue                    # membership is validation's refusal
@@ -1603,7 +1487,7 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
 
       1. the bench's one-point NON-machine declarations -- pins in force for
          the trials and the run alike (user rule, 2026-08-20);
-      2. ``run-config.toml`` -- what the benchmark FOUND, filling the
+      2. *(removed 2026-09-02)* -- the benchmark's verdict filled the
          allocation fields no flag stated, and its own pins;
       3. ``execution`` -- what the person ASKED for, the most specific thing
          the file says: its machine items are the launch shape, the rest are
@@ -1626,11 +1510,8 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
     # with no flags passes an empty ask, not an absent one.
     allocation = allocation if allocation is not None else Resources()
 
-    # 1 · THE CONDITION FIRST, because it outranks the verdict
-    #     (`architecture.md` 5.2's launch-shape ladder): a machine's finding
-    #     may not quietly override what a person typed.
-    #     Folded here rather than in `prep` so `_apply_run_config` below sees
-    #     it as already-stated and leaves it alone.
+    # 1 · THE CONDITION -- the only thing on the launch-shape ladder between
+    #     `auto_ranks` and a flag (`architecture.md` § 5.2).
     chosen, cond_pins = run_inputs(base, target, task, stage)
     known = {f.name for f in _dc.fields(Resources)}
     patch = {k: v for k, v in chosen.items()
@@ -1653,19 +1534,57 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
         if _p:
             allocation = _dc.replace(allocation, **_p)
 
-    # 2 · THEN THE VERDICT, filling what neither a flag, the condition nor
-    #     the calculation's own ask stated (§ 2.3.2).  Skipped stage-less --
-    #     a verdict is per stage, and `resolve` gives the better refusal.
-    verdict_pins = None
-    if stage is not None:
-        allocation, verdict_pins = _apply_run_config(
-            base, allocation, stage=stage, engine=task.engine)
+    # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict was folded in here
+    #     until 2026-09-02, from an editable `run-config.toml`.  It is now a
+    #     REPORT a person reads (`bench-recommendation.txt`), and what the
+    #     run uses is what that person then wrote in `execution`
+    #     (`architecture.md` § 5.2, user ruling: "the run parameter needs to
+    #     be explicitly decided/written").  A measurement that reaches the
+    #     launch on its own is a second arrival route, and every silent-value
+    #     defect this lane has had was a second arrival route.
 
-    # 3 · THE PINS, weakest first: the bench's one-point declarations, the
-    #     verdict's, then the condition's -- 5.2's deck/speed ladder.
+    # 3 · THE PINS, weakest first: the bench's one-point declarations, then
+    #     the condition's -- 5.2's deck/speed ladder, now two rungs not three.
     declared_pins, _axes, _value_axes = _declared_execution_pins(
         base, task.engine)
-    pins = {**declared_pins, **(verdict_pins or {}), **cond_pins} or None
+    pins = {**declared_pins, **cond_pins} or None
+
+    # 4 · SAY WHAT WILL HAPPEN WHEN NOTHING WAS STATED.  Not a decision --
+    #     the decision is `auto_ranks`, made in the emitter -- but prep must
+    #     not go silent about it: an unstated shape is the ordinary case, and
+    #     "sizing from the target" and "about to refuse" look identical until
+    #     one of them is said (`project-layout.md` § 2.3.3).
+    #
+    #     The note this replaces named the WRAPPER's runtime policy, because
+    #     an unstated shape used to be settled at run time on the machine the
+    #     job landed on.  It is settled at prep now, from the target's record.
+    if not any(getattr(allocation, f, None) not in (None, "")
+               for f in ("mpi_np", "cpus_per_task", "gres")):
+        _rec = None
+        try:
+            from ..scheduler import machine_for
+            _rec = machine_for(Path(base), target=target)
+        except Exception:                                     # noqa: BLE001
+            _rec = None
+        from ..runwrap import auto_ranks
+        _w = auto_ranks(_rec, None, getattr(allocation, "domain", None))
+        _where = (f"the selected target/domain"
+                  + (f" ({allocation.domain})" if allocation.domain else ""))
+        if _w:
+            click.echo(f"  no launch shape in `execution` and no rank/thread "
+                       f"flags --\n"
+                       f"  sizing from {_where}: {_w} core(s).\n"
+                       f"  To decide it yourself:  "
+                       f'"execution": {{"mpi_np": N}} in task.json\n'
+                       f"  To measure first:       "
+                       f"molbuilder jobset prep bench {stage or '<stage>'}")
+        else:
+            click.echo(f"  no launch shape in `execution`, no flags, and no "
+                       f"core count for {_where} --\n"
+                       f"  `prep` will refuse rather than guess.  Probe it:\n"
+                       f"  molbuilder jobset probe --write"
+                       + ("" if target is None else " --name " + str(target)))
+
     # `chosen` is returned for the PREVIEW to name; it is already folded in.
     return allocation, pins, chosen
 
@@ -2497,7 +2416,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                    f"resource shelf)")
         click.echo(f"then: molbuilder jobset summarize bench "
                    f"{stage or '<stage>'}{_b}"
-                   f"  -- writes bench-result.json + run-config.toml "
+                   f"  -- writes the record + a report to read "
                    f"(the editable proposal `prep run` applies)")
         return
 

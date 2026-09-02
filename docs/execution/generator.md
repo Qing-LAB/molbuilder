@@ -368,14 +368,14 @@ because both halves are real and they are different acts:
 
 > **Precedence when several sources name one knob** — the full ladder is
 > [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a deck
-> knob it reads: the template → a one-point `bench` declaration → the
-> verdict's `run-config.toml` pins → **`execution`** → explicit CLI flags.  The measured verdict refines
-> the declaration (the decision file is yours to edit or delete), and flags
-> beat everything, exactly as they do today.  A **multi-point** non-machine
-> entry is a **value axis** — the rule below *(built 2026-08-21; it was
-> refused by name until then)*.  At `prep run` a multi-point entry pins
-> nothing: the verdict's `run-config.toml` answers, and without one the
-> template's value stands.
+> knob it reads: the template → a one-point `bench` declaration →
+> **`execution`** → explicit CLI flags.  **A benchmark is not on this
+> ladder** *(2026-09-02)*: it writes a report a person reads, and what the
+> run uses is what that person then wrote.  Flags beat everything, exactly as
+> they do today.  A **multi-point** non-machine entry is a **value axis** —
+> the rule below *(built 2026-08-21; it was refused by name until then)*.  At
+> `prep run` a multi-point entry pins nothing and the template's value
+> stands, unless `execution` names one.
 
 #### The run's condition is its OWN declaration — `execution`
 
@@ -429,14 +429,20 @@ itself, field by field over the calculation's.
 
 **Precedence gains one rung, and it goes where the person's own words go:**
 
-> template < a one-point `bench` pin < `run-config.toml` < **`execution`** <
-> a `prep` flag
+> template < a one-point `bench` pin < **`execution`** < a `prep` flag
 
-`run-config.toml` is what a machine **found** and is *"yours to edit or
-delete"* (`project-layout.md` § 2.3.2); `execution` is what a person **asked
-for**, in the file that records asks. A verdict silently overriding a typed
-condition is the concealment this whole round exists to end — so the ask wins,
-and only a flag, which is a person speaking about right now, wins over it.
+`execution` is what a person **asked for**, in the file that records asks, and
+only a flag — a person speaking about right now — wins over it.
+
+**A measured verdict is not a rung.** It stood between the pin and
+`execution` for one day, as the editable `run-config.toml`
+(`project-layout.md` § 2.3.2), on the reasoning that a finding you had the
+chance to edit was a finding you had endorsed. In practice it inverted twice
+inside that day — folded before `execution`, then before `allocation`'s wall
+and memory — because a rung whose authority comes from *not having been
+deleted* has no natural place among rungs whose authority comes from having
+been typed. It is now a report: `bench-recommendation.txt`, read by a person,
+by no code.
 
 > **Why not a one-point `bench` entry, which is where this went first.** On
 > 2026-09-01 the machine axes were pulled into the 2026-08-20 override lane,
@@ -454,8 +460,8 @@ direct map from the catalogue's name to the `Resources` field: `omp_threads`
 
 **Nothing is worked out, and that is the rule.** A field the condition does
 not name is not a gap to fill — `architecture.md` § 5.2's track B: it is
-answered by `run-config.toml` if a benchmark left one, and by the wrapper's
-own chain at run time if not (`running-a-job.md` § 3.1: `-np` > `MB_NP` >
+answered by `auto_ranks`, reading the selected target's width, and at run
+time by the wrapper's own chain (`running-a-job.md` § 3.1: `-np` > `MB_NP` >
 `SLURM_NTASKS` > the baked default). A layer that fills it in *because it must
 be decided* overwrites both.
 
@@ -485,8 +491,8 @@ beside the fields, so the refusal is visible while you type rather than after
 you submit.
 
 **Precedence gains one rung**, and it is the one above: `execution` is what a
-person asked for, so `run-config.toml` — the **machine's** finding — fills only
-what neither the flags nor the condition stated. The full ladder is
+person asked for, and nothing a machine found sits beside it — a benchmark
+reports, and a person writes. The full ladder is
 [`architecture.md § 5.2`](?doc=execution/architecture.md).
 
 > **§ 4.3 above forbids a MACHINE'S OPINION in the description, not a
@@ -633,7 +639,7 @@ framework rule, not a script patch)*:
 - **Comparability is stated, not assumed**: CPU trials compare across
   same-silicon partitions; GPU numbers are the GPU build's own; the
   verdict reports per-combination facts and choosing stays yours
-  (`run-config.toml` is a proposal).
+  (`bench-recommendation.txt` is a report; nothing reads it but you).
 
 > **Designing the matrix — the background with references** (what the GPU
 > actually accelerates, ranks-per-device and MPS, and how to cut points
@@ -645,7 +651,9 @@ changes between a coarse stage and a tight one — different mesh cutoff and
 basis size mean a different grid and matrix, so a different best rank count
 ([`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)). `prep bench`
 therefore takes a stage name, writes into that stage's own `bench/` container,
-and that stage's next run reads the proposal `summarize` wrote there (`run-config.toml` — `project-layout.md` § 2.3.3).
+and `summarize` writes its report there for you to read
+(`bench-recommendation.txt` — `project-layout.md` § 2.3.2).  **The next run
+reads none of it**: what it uses is `execution` (§ 4.3a).
 
 ---
 

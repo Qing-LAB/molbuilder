@@ -1430,15 +1430,18 @@ calculation's solver and its thread count:
 "stages": [{ "name": "tight", "execution": { "mpi_np": 16 } }]
 ```
 
-**Absent is a state, as everywhere here.** No block means the run is sized by
-`run-config.toml` if a benchmark left one, and by the wrapper's own policy if
-not — which `prep` names out loud rather than implying
-([`running-a-job.md § 3`](?doc=execution/running-a-job.md)).
+**Absent is a state, as everywhere here.** No block means the run is sized
+from the selected target's own width (`auto_ranks`) — or refused when that
+target has no record — which `prep` names out loud rather than implying
+([`running-a-job.md § 3.1`](?doc=execution/running-a-job.md)).  **A benchmark
+does not fill it**: it writes a report, and what the run uses is what you
+wrote here ([`architecture.md § 5.2`](?doc=execution/architecture.md)).
 
-**Which names may appear** is the same membership `bench` uses — the
-catalogue's `execution` items — and the same split decides where each lands:
-a machine-answered item becomes the launch shape, anything else a pin over
-the template. `generator.md` § 4.3a owns how, and the answer is that the block
+**Which names may appear** is the catalogue's `execution` items — the same
+membership `bench` uses — **plus `time` and `domain`**, which are not
+catalogue items at all (§ 6.8e). The same split decides where each of the
+catalogue names lands: a machine-answered item becomes the launch shape,
+anything else a pin over the template. `generator.md` § 4.3a owns how, and the answer is that the block
 is handed to the one grid enumerator as a declaration of length one, so a run
 earns the typed device ask, the `G × K` rank split, the by-name refusal and
 the queue check that a trial gets, with no translation of its own.
@@ -1449,6 +1452,52 @@ what the **job** runs as. A `--mem` and an `mpi_np` are answered by different
 things and refused by different doors, and one block holding both was tried on
 2026-09-01 and made the reader unable to say which of the two a key belonged
 to.
+
+#### 6.8e `time` and `domain` in `execution` — the two asks a RUN owns
+
+**A benchmark and a run want different wall clocks, and one field cannot hold
+both.** *(User, 2026-09-02, choosing this over a split `allocation`:
+"explicit, right next to prep run so easy to see and confirm.")*
+
+`allocation` is folded by the shared prep path, so `prep bench` and `prep run`
+read the same `time` and the same `domain`. That is one number for two jobs
+with opposite needs:
+
+| `allocation.time` | the benchmark | the real run |
+|---|---|---|
+| `0-04:00:00` | fine | **killed at four hours** |
+| `2-00:00:00` | every ten-minute trial asks for two days, and queues behind everything | fine |
+
+The second row is the one that is easy to miss: a short ask is scheduled into
+gaps almost at once, so a benchmark that asks for two days waits a day to
+start — and a benchmark is the thing you run to *save* time.
+
+```json
+"allocation": { "time": "0-04:00:00", "domain": "debug", "mem": "256G" },
+
+"stages": [{ "name": "tight",
+             "execution": { "mpi_np": 64,
+                            "time": "2-00:00:00", "domain": "public" } }]
+```
+
+**`allocation` is the calculation's ask and the BENCH's; `execution` is this
+RUN's.** So the scheduler ladder gains one rung, for these two names only:
+
+> unstated → `allocation` → **`execution`** → a `prep` flag
+
+**`mem` is deliberately NOT among them.** The line is *does this differ
+between the two lanes* — and memory does not: a trial and a run compute the
+same system with the same basis, so they hold about the same amount. A wall
+clock differs because a trial's step count is cut; a queue differs because
+short work and long work belong in different ones. A field that would hold
+the same value in both blocks would only be a second place to look.
+
+**They are not catalogue items, and that is not an oversight.** The catalogue
+describes what an *engine* computes with; a wall clock and a queue are what a
+*scheduler* is asked for, and no engine has an opinion about either. They are
+admitted to this block by name — which is also why a run's condition can never
+turn one into a `bench` axis: `bench` takes catalogue items only, and a
+benchmark that swept its own wall clock would be measuring the queue.
 
 ### 6.8 `bench` — a plan to measure, never a measurement
 
@@ -1487,8 +1536,9 @@ destroy the plan to measure.
 > not portable vs not.** `allocation` has carried `domain` since 2026-08-24
 > and a queue name is no more portable than a rank count; what this file must
 > never hold is what a **machine found**, which is why `summarize` writes its
-> verdict to `run-config.toml` instead. A person who read a benchmark and
-> chose eight ranks is *asking*, and asks are what this file is for.
+> verdict to a report of its own (`bench-recommendation.txt`) that no code
+> reads. A person who read a benchmark and chose eight ranks is *asking*, and
+> asks are what this file is for.
 >
 > `template.md` § 7 is untouched and still absolute: the **template** may not
 > carry a machine value, `read_template` still refuses a hand-edited

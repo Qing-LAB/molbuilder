@@ -52,6 +52,17 @@ def _isolated(monkeypatch, tmp_path_factory):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cwd))
+    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
+    # and nowhere else -- no probe of the running box, no fallback
+    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
+    # unprobed machine, so a fixture that renders one probes first,
+    # exactly as a person does:  molbuilder jobset probe --write
+    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
+    (cwd / "environment.json").write_text(
+        _Env(scheduler="slurm",
+             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+        + "\n")
+
 
 
 #: `git` as a COMMAND WORD: at the start of a line, after a shell operator

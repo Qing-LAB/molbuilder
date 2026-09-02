@@ -41,7 +41,7 @@ unchanged; `prep` adds stage dirs; `launch` adds attempts.
     run-0/  run-1/                      <- attempts: one try each, warm files linked
       *-run0.out  *.concluded           the output + the conclusion marker (rc inside)
   bench-K2C1/run-0/                     <- a benchmark trial is its own attempt
-  run-config.toml                       summarize's RECOMMENDATION -- yours to edit
+  bench-recommendation.txt              summarize's REPORT -- read by you, by no code
 ```
 
 | key rule | one line | where |
@@ -50,7 +50,7 @@ unchanged; `prep` adds stage dirs; `launch` adds attempts.
 | **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at init, never inferred | § 1 |
 | **attempt = run-N** | every try is its own numbered dir; warm files LINK from the previous attempt | § 1.5 |
 | **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means killed — the launch gate ASKS, never decides | § 1.6 |
-| **recommendation, not decision** | `run-config.toml` is summarize's suggestion; edit a line, delete a line, or delete the file | § 2.3.2 |
+| **a report, not an input** | `bench-recommendation.txt` says what was measured and what to write; **no code reads it**. What a run uses is `task.json`'s `execution` | § 2.3.2 |
 | **who writes where** | init → the portable floor; prep → stage dirs; launch/monitor → attempts; a person → anything, said aloud | § 2 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
 
@@ -1221,81 +1221,86 @@ silent eigensolver fallback shows in the table itself, not only in the
 excluded-row note. A value nothing measured prints `--`, and the GPU
 columns appear only when the sweep has GPU points.)*
 
-And beside the record it writes **the proposal, as a file you edit** —
-`run-config.toml`:
+And beside the record it writes **the report** — `bench-recommendation.txt`:
 
-```toml
-schema = "molbuilder/run-config@1"
-# What `jobset prep run tight` will use for this stage.
-# Written by `jobset summarize bench` from the measured winner:
-#   G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter
-# Every value is yours to edit -- these are recommendations, not
-# decisions.  Delete a line to leave that field to your
-# flags/defaults; delete the file to decline the benchmark
-# entirely (`jobset summarize bench` writes a fresh one).
+```
+molbuilder bench recommendation -- 02_tight, measured 2026-08-06
+NOTHING READS THIS FILE.  It is what the benchmark found.
 
-[resources]
-mpi_np = 4            # MPI ranks
-cpus_per_task = 6     # cores per rank (OMP threads follow this)
-gres = "gpu:a100:1"   # scheduler GPU request
+  fastest        G1K4C6   2.3 s/iter   (gpu-bound)
+  runner-up      G1K8C2   3.1 s/iter
+  it computed with           use_gpu = true, diag_algorithm = ELPA-1STAGE
 
-[pins]                # HOW the winner computed, read from its own deck
-use_gpu = true
-diag_algorithm = "ELPA-1STAGE"
+To run at it, put this in task.json and save:
+
+    "execution": {
+      "mpi_np": 4,
+      "omp_threads": 6,
+      "gpu_count": 1,
+      "use_gpu": true,
+      "diag_algorithm": "ELPA-1STAGE"
+    }
+
+Until you do, `prep run` sizes the launch from the target's own width
+(architecture.md 5.2) -- a benchmark does not steer a run.
 ```
 
-**You read the table. You edit the file. The file is the decision.**
-`bench-result.json` stays what it is — the measurement record,
-schema-checked and never edited by hand — and the toml is the proposal
-built from it. A verdict-less sweep (no completed, timed trial) writes no
-proposal, and the summary prints the state census that explains why
-instead.
+**You read the report. You write the decision.** `bench-result.json` stays
+what it is — the measurement record, schema-checked and never edited by hand
+— and this is that record said in sentences. A verdict-less sweep (no
+completed, timed trial) writes no report, and the summary prints the state
+census that explains why instead.
+
+> **This file was `run-config.toml` until 2026-09-02, and `prep run` read it.**
+> It was labelled *"recommendation, not decision"* here while functioning as a
+> decision: the next prep folded its `[resources]` into the launch and its
+> `[pins]` into the deck. That made a benchmark a second way for a run
+> parameter to arrive, which is the shape of every silent-value defect this
+> project has had. **The measurement is not less useful for being read by a
+> person instead of by `prep` — it is only slower by one paste, and a paste
+> is a decision you can see in `git diff`.**
 
 #### 2.3.3 Job two — the real run, with what you measured
 
 ```
 molbuilder jobset prep run tight
 
-  applied 02_tight/bench/run-config.toml: mpi_np=4, cpus_per_task=6,
-  gres=gpu:a100:1; pins: use_gpu=True, diag_algorithm=ELPA-1STAGE
-  (edit or delete the file to change this)
+  execution    mpi_np=4, omp_threads=6, gpu_count=1
+               pins: use_gpu=True, diag_algorithm=ELPA-1STAGE
+               (task.json -> stages[tight].execution)
 ```
 
-**No wall clock and no memory in that line.** `summarize` stopped proposing
-those two on 2026-08-24: a benchmark measures how fast a shape runs, which is
-not evidence about how long *your* job needs or how much it will hold, and the
-two asks stay the person's ([`architecture.md § 5.2`](?doc=execution/architecture.md)'s
-scheduler ladder has no verdict rung).
+**Every number in that line came from `task.json`.** Not from the benchmark,
+which reports and does not steer; not from this box, which is not the target.
+A parameter nobody stated is answered by `auto_ranks` — the selected
+target/domain's width — or refused by name
+([`architecture.md § 5.2`](?doc=execution/architecture.md)). There is no
+fourth source, and there is deliberately no rung between the two: **a run's
+launch is what a person wrote, or a refusal telling them what to write.**
 
-**The question is a file, and editing it — or deleting it — is your
-answer.** A benchmark lives inside the stage it measured, so prep can
-always *find* one — but finding is not permission. Permission is
-`run-config.toml`: `summarize` writes the proposal, you change what you
-disagree with, and `prep run` applies what the file says **to the fields
-your flags did not state** — an explicit flag always wins over the file,
-exactly as it won over the machine before. Beneath the file sits the
-description's own declaration lane and **above** it sits the run's condition:
-the full ladder is [`architecture.md § 5.2`](?doc=execution/architecture.md)
-— template < a one-point `bench` pin < **this file** < `execution` < flags.
-The verdict refines what a bench declared and is itself refined by what a
-person asked for; deleting the file falls back to the declaration, not to
-silence. Delete the file and the
-benchmark is declined; `summarize bench` writes it afresh should you change
-your mind. *(Until 2026-08-19 this was an interactive question — `use it?
-[y/N]`, asked at every prep, silence-is-no. The doctrine is unchanged —
-nothing is applied that you did not hand back — but the answer now lives in
-the tree, where a scripted prep can carry it, a re-prep three weeks later
-still finds it, and the ledger can cite it.)*
+**FINDING IS NOT PERMISSION, AND THERE IS NO LONGER A FILE THAT GRANTS IT.**
+A benchmark lives inside the stage it measured, so prep can always *find*
+one — and it never reads it. Permission is `task.json`'s `execution`, which
+you write: the full ladder is
+[`architecture.md § 5.2`](?doc=execution/architecture.md) — template < a
+one-point `bench` pin < `execution` < flags, with **no rung between the bench
+and the run**.
 
-**And when there is neither file nor flags, the wrapper's runtime policy
-sizes the launch — and `prep` says so out loud:**
+*(Three designs stood here. Until 2026-08-19 prep asked interactively —
+`use it? [y/N]`, silence-is-no. Until 2026-09-02 the answer lived in an
+editable `run-config.toml` that prep folded in. Both shared one premise: that
+a measurement should reach the launch by itself, if only the person nodded.
+The premise is what changed — a run's parameters are declared in the file that
+records asks, and a benchmark's job is to tell you what to declare.)*
+
+**And when `execution` states no launch shape, `prep` does not guess — it
+reads the target's own width, and refuses when the target has no record:**
 
 ```
-  no benchmark verdict (no run-config.toml) and no rank/thread flags --
-  the wrapper sizes the launch at run time on the machine it lands on
-  (SIESTA: MPI over all physical cores, clamped to the atom count; a GPU
-  deck follows the ELPA-CUDA placement policy -- running-a-job.md § 3).
-  To measure instead of guess:  molbuilder jobset prep bench tight
+  no launch shape in `execution` and no rank/thread flags --
+  sizing from the selected target/domain: public, 64 cores/node.
+  To decide it yourself:  "execution": {"mpi_np": N} in task.json
+  To measure first:       molbuilder jobset prep bench tight
 ```
 
 The policy itself is [`running-a-job.md`](?doc=execution/running-a-job.md)
@@ -1324,7 +1329,7 @@ environment. It does not — the packaged SIESTA runs ELPA on CPU, so
 `prep` prints what it resolved, and that report is the point:
 
 ```
-  reading      02_tight/bench/run-config.toml  (from the bench measured here, 2026-08-06)
+  execution    task.json -> stages[tight].execution
   resources    elpa · G=1 K=4 C=6 · mem 96G
   02_tight/bdt_au.fdf   rendered   BlockSize 8, Diag.Algorithm elpa
                                    (500 orbitals / 32 ranks = 15 -> 8)
@@ -1463,11 +1468,11 @@ sequenceDiagram
     C->>E: run the trials
     E-->>T: timings
     U->>C: jobset summarize bench tight
-    C->>T: bench-result.json + run-config.toml
+    C->>T: bench-result.json + bench-recommendation.txt
 
-    Note over U: you read the table, edit run-config.toml
+    Note over U: you read the report, write `execution` in task.json
 
-    U->>C: jobset prep run tight --from 01_coarse/run-0 (applies run-config.toml)
+    U->>C: jobset prep run tight --from 01_coarse/run-0 (uses `execution`)
     C->>T: 02_tight/<label>_02_tight.fdf · run-0/ · copied .XV
     C-->>U: what it resolved, and what it copied
     U->>C: submit tight
@@ -2304,11 +2309,12 @@ than no invariant, because it fails a directory that is working correctly.
 1. ~~**Does a trial's answer feed the stage automatically?**~~ **Answered
    2026-08-07: no — nothing is applied that the user did not hand back.**
    `bench-result.json` sits beside the stage that was measured, so prep can
-   always *find* one; finding is not permission. Permission is
-   `run-config.toml`, the editable proposal `summarize` writes beside the
-   record and `prep run <stage>` reads (§ 2.3.3) *(2026-08-19 — the hand-back
-   was an interactive `use it? [y/N]` until then; the doctrine held, the
-   answer moved into the tree)*. What a *surface* does with the same
+   always *find* one; finding is not permission. **Permission is `task.json`'s
+   `execution`, which a person writes** (§ 2.3.3) *(2026-08-19 — the hand-back
+   was an interactive `use it? [y/N]` until then; 2026-09-02 — it was an
+   editable `run-config.toml` prep folded in until then. The doctrine never
+   moved; what moved is that the answer is now written where every other ask
+   is written, and read by the same one assembly)*. What a *surface* does with the same
    information — how it shows a verdict whose environment or source deck has
    since changed — is still the surface's to decide.
 2. **Must every stage be measured?** Measuring each of five stages costs five

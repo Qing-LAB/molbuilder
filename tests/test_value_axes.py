@@ -397,14 +397,19 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
 #  summarize: the coordinate rides the record and the proposal           #
 # --------------------------------------------------------------------- #
 
-def test_the_winners_coordinates_ride_run_config(sol_calc):
-    """The winner's VALUE coordinates land in the proposal's ``[pins]``
-    (typed: int stays bare TOML), and `prep run`'s reader accepts its own
-    writer's output — the hand vocabulary that refused ``block_size`` is
-    gone."""
+def test_the_winners_value_coordinates_reach_the_report(sol_calc):
+    """The winner's VALUE coordinates must reach the report, and reach it in
+    the vocabulary `execution` accepts -- a value axis is the whole subject
+    of this file, and a report that named the winner's ranks but dropped its
+    `block_size` would send a person to run at a shape nobody measured.
+
+    *(It asserted these landed in `run-config.toml`'s `[pins]` and read back
+    through `read_run_config` until 2026-09-02.  That lane is gone -- a
+    benchmark reports, a person writes `execution` (`architecture.md`
+    § 5.2) -- so what is asserted is that the REPORT carries them.)*"""
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.jobset.summarize import (read_run_config,
+    from molbuilder.jobset.summarize import (
                                              run_summarize_jobset)
     _declare(sol_calc, _small_matrix())
     _prep(sol_calc)
@@ -439,11 +444,10 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     assert by_label[winner].point["use_gpu"] is False
 
     text = cfg_path.read_text()
-    assert "block_size = 128" in text
-    assert 'diag_algorithm = "ELPA-1STAGE"' in text
-    cfg = read_run_config(cfg_path, engine="siesta")
-    assert cfg["pins"]["block_size"] == 128
-    assert cfg["pins"]["use_gpu"] is False
+    assert '"block_size": 128' in text, text
+    assert '"diag_algorithm": "ELPA-1STAGE"' in text, text
+    # and it hands over a block `task.json` accepts, not the record's names
+    assert "cpus_per_task" not in text, text
 
 
 # --------------------------------------------------------------------- #
@@ -585,11 +589,12 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
         js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse",
         **_out_kw)
     assert res2.choice["label"] == "G0K4C1block_size128"
-    # the PROPOSAL file is the user's after first write: kept, with the
-    # refresh taught in the summary text
-    assert rc2[1] == "kept"
-    assert "delete it and summarize again" in summary_text(
-        res2, _o, run_config=rc2, stage="coarse")
+    # THE REPORT IS ALWAYS REFRESHED.  It was "kept" once written, because
+    # it was the user's to edit and a rewrite would have discarded that edit.
+    # Nobody edits a report, so a stale one is only stale -- and summarize is
+    # re-run precisely when there is more evidence (2026-09-02).
+    assert rc2[1] == "written"
+    assert "read " in summary_text(res2, _o, run_config=rc2, stage="coarse")
 
 
 # --------------------------------------------------------------------- #
@@ -697,8 +702,7 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
     trial finishing fastest must become the verdict, and the run's
     config must apply ITS pins — use_gpu=true included — not the CPU
     family's."""
-    from molbuilder.jobset._cli import (_apply_run_config,
-                                        _load_bench_set,
+    from molbuilder.jobset._cli import (_load_bench_set,
                                         _stage_bench_dir)
     from molbuilder.jobset.materialize import job_dir_names, shape_of
     from molbuilder.jobset.model import Resources
@@ -736,10 +740,9 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
     rc_path, rc_state = rc
     assert rc_state == "written"
     text = rc_path.read_text()
-    assert "use_gpu = true" in text, (
-        "the proposal does not carry the winner's family")
-    alloc, pins = _apply_run_config(sol_calc, Resources(), stage="coarse")
-    assert pins.get("use_gpu") is True, (
-        f"the run's pins lost the GPU family: {pins}")
-    assert alloc.gres and "gpu" in str(alloc.gres), (
-        f"the run's allocation carries no GPU ask: {alloc!r}")
+    assert '"use_gpu": true' in text, (
+        f"the report does not carry the winner's family: {text}")
+    # AND ITS DEVICE COUNT, in `execution`'s vocabulary -- the record holds a
+    # `gres` string, which `task.json` would refuse.
+    assert '"gpu_count":' in text, (
+        f"the report names no device count to write: {text}")

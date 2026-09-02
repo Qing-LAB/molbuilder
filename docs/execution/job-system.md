@@ -25,7 +25,7 @@ jobset init        write the portable description        (your laptop)
 jobset prep        derive decks + scripts FOR this machine   (the target)
 jobset plan        show what would run, warm files, resources
 jobset launch      ONE job per invocation -- run or submit
-jobset summarize   read a sweep -> bench-result.json + run-config.toml
+jobset summarize   read a sweep -> bench-result.json + bench-recommendation.txt
 jobset status      per-stage status + the resume point
 ```
 
@@ -1203,7 +1203,7 @@ flowchart LR
     P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
     R["jobset launch bench &lt;stage&gt;<br/>one grouped job per resource shelf<br/>(a named trial submits alone)"]
     S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]
-    PR["jobset prep run &lt;stage&gt;<br/>APPLIES run-config.toml — your edit is the answer"]
+    PR["jobset prep run &lt;stage&gt;<br/>uses <code>execution</code> — what you wrote is the answer"]
     D --> P --> R --> S --> PR
 ```
 

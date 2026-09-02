@@ -7,7 +7,7 @@ writes ``bench-result@1``.  Its ``choice`` block is the decision as DATA
 (U13, 2026-08-12): the winner's ``label``, its ``knobs`` in the job-set's
 own exchange vocabulary (mpi_np / cpus_per_task / gres), and its
 ``mechanism`` read from the winning trial's deck -- materialised by
-`summarize` into the editable ``run-config.toml`` that `jobset prep run`
+`summarize` into the report ``bench-recommendation.txt`` that a PERSON
 applies (§ 2.3.2; interactive ask until 2026-08-19).  The adapter re-resolution this paragraph used to describe
 died with `prep-run` (step 6 u5).
 
@@ -623,7 +623,7 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
     # inside the rationale prose, so anything needing the winning trial
     # back -- the mechanism read, a human's cross-check -- had to parse a
     # sentence.  The id is the id.  ``point`` rides for the same reason
-    # (§ 4.3a): the winner's VALUE coordinates become `run-config.toml`
+    # (§ 4.3a): the winner's VALUE coordinates are reported
     # pins, and they must come from the record, not from its name.
     return {"label": win.label, "engine": win.engine,
             "knobs": dict(win.knobs), "point": dict(win.point),
