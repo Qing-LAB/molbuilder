@@ -255,10 +255,14 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     the facts beside them, so a caller holding coordinates never has to write a
     coordinate document to ask a question about them.
 
-    **Which shape a body is: it carries a ``structure`` key, or it does not.**
-    That is the whole test.  A body carrying BOTH is a caller mid-migration --
-    the envelope wins and the legacy fields are ignored entirely, never merged,
-    because merging lets a stale field silently override a fresh one.
+    **A body carries ``structure``, or it is refused** -- by name, naming the
+    shape it wanted.
+
+    It read the flattened `{xyz, atom_names, ...}` columns as a second shape
+    during the migration, and a body carrying BOTH took the envelope and
+    ignored the rest (never merged, because merging lets a stale field
+    silently override a fresh one).  That window is closed: there is no second
+    shape left for the both-keys rule to arbitrate, and the rule went with it.
     """
     envelope = body.get("structure")
     if not isinstance(envelope, dict):

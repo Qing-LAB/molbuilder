@@ -1864,12 +1864,25 @@ function renderNext(task) {
         const ov = e.st.overrides || {};
         // `continue` carries from the stage before it — and `prep` is TOLD
         // which attempt, never left to guess (`project-layout.md` § 1.6).
+        /* FLAT HAS NO ATTEMPT DIRECTORIES, so it has no `--from`: the
+         * shared warm set lies in the bundle root and continuing is free
+         * (`project-layout.md` § 1).  `prepare_attempt` REFUSES an explicit
+         * `--from` there, by name -- so teaching one taught a command that
+         * cannot run, naming a directory (`01_coarse/run-0`) that a flat
+         * bundle does not have either.  Both wrong at once, until
+         * 2026-09-02.
+         *
+         * And the attempt is the LAST one, not `run-0`.  A stage with three
+         * attempts was taught to continue from the first -- the page knows
+         * the count (`_runs`, filled by `runsForStages`) and now uses it. */
         let from = "";
-        if (i > 0 && String(ov.restart || "") === "continue") {
+        const hierarchical = _shape === "hierarchical";
+        if (i > 0 && String(ov.restart || "") === "continue" && hierarchical) {
             const prev = enabled[i - 1];
             const token = String(prev.full + 1).padStart(2, "0")
                         + "_" + (prev.st.name || "");
-            from = " --from " + token + "/run-0";
+            const had = Number(_runs[prev.st.name || ""]) || 0;
+            from = " --from " + token + "/run-" + (had > 0 ? had - 1 : 0);
         }
         const runs = _runs[name];
         const active = name === _stepTab;
@@ -1932,7 +1945,14 @@ function renderNext(task) {
         // continue from is a scientific choice the CLI makes you say out
         // loud (`project-layout.md` § 1.6), and a button would have to pick
         // a default.  The command above still shows it when it applies.
-        if (!from) block.appendChild(prepButton("run", name));
+        /* THE PREVIEW IS NEVER WITHHELD.  This read `if (!from)` until
+         * 2026-09-02, which took the A13 emitted block away from every
+         * continuing rung -- from exactly the long runs A13 exists for.
+         * What a continuing rung cannot do is WRITE: the prep door carries
+         * no `--from` on purpose (which attempt you continue from is a
+         * scientific choice, `project-layout.md` § 1.6), so the button
+         * previews and then names the command that does the writing. */
+        block.appendChild(prepButton("run", name, from));
         panels.appendChild(block);
     });
 
@@ -1956,10 +1976,15 @@ const _PREP_WIDGETS = [];
  * scheduler for -- and shows it; the second click runs it.  The same rule
  * the launch door keeps (`submission.md` S4), for the same reason.
  */
-function prepButton(kind, stage) {
+function prepButton(kind, stage, continues) {
+    // `continues` is the ` --from <token>/run-N` tail when this rung carries
+    // one.  It makes the button a PREVIEW: everything A13 shows still
+    // resolves, and the write is left to the command, which is the only
+    // place the attempt can be named.
     const wrap = el("div", { class: "ts-prep" });
     const btn = el("button", { type: "button", class: "btn" },
-                   "Prep " + kind + " here");
+                   continues ? "Show what this would launch"
+                             : "Prep " + kind + " here");
     const say = el("div", { class: "ts-prep-say" });
     let planned = null;
 
@@ -2040,6 +2065,15 @@ function prepButton(kind, stage) {
                     const old = wrap.querySelector(".ts-emitted");
                     if (old) old.remove();
                     wrap.appendChild(box);
+                }
+                if (continues) {
+                    // NAMED, not hidden: the person can see what will be
+                    // launched and is told the one command that writes it.
+                    say.textContent += "  This rung continues from a named "
+                        + "attempt, so the command below writes it \u2014 "
+                        + "the button cannot choose which attempt for you.";
+                    planned = null;
+                    return;
                 }
                 btn.textContent = "Write it";
                 return;

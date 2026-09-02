@@ -97,10 +97,14 @@ caller holds.
 > **The old shapes are gone, not deprecated.** `/api/structure/periodicity` used
 > to take `{data: {xyz, sidecar}}`; it now answers 400 to that, which is how the
 > defect was found — the one caller that exists could not produce a coordinate
-> document, so the door had never once opened. `/api/modify/*` still accepts its
-> old flattened `{xyz, atom_names, …}` columns for callers that have not moved;
-> a body carrying both keys takes the envelope and ignores the rest, never merges
-> (`_shared.py::struct_from_body`).
+> document, so the door had never once opened. **`/api/modify/*`'s flattened
+> `{xyz, atom_names, …}` columns are gone too**: `struct_from_body` refuses a
+> body with no `structure` key, by name, and there is no second shape left for
+> a both-keys rule to arbitrate. *(This paragraph said the flattened columns
+> were still accepted "for callers that have not moved" until 2026-09-02. They
+> were not — the transition finished and the sentence did not, which is the
+> drift a migration note is most prone to: it is written while both shapes are
+> live and reads as true long after one is gone.)*
 
 Both of the defects that drove this are worth keeping, because each was silent:
 
@@ -208,9 +212,9 @@ re-serialised the sidecar's JSON, a second answer to a question
 The envelope is **added, not swapped**, and that has to be mechanical rather than
 aspirational or the transition is a second protocol in disguise.
 
-**Which shape a request is.** A body carrying a `structure` key is an envelope; a
-body without one is read the old way. That is the whole test — one key, present or
-absent.
+**Which shape a request is.** There is one shape: a body carries `structure`,
+or it is refused. The two-shape test — *"a body without one is read the old
+way"* — described the migration window, and the window is closed.
 
 **If a body carries both**, the envelope wins and the legacy fields are ignored
 entirely. Not merged: a caller that sends both is a caller mid-migration, and

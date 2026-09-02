@@ -576,6 +576,70 @@ def _row_badge(name, points, machine):
     return _json.loads(out.stdout.strip().splitlines()[-1])
 
 
+def _continue_tail(shape, restart, prev_runs):
+    """What `renderNext` teaches as the continue tail -- the real source,
+    driven under node rather than grepped.
+
+    The block is lifted whole and given its three inputs, so a refactor that
+    keeps the rule keeps this passing, and one that breaks it fails here."""
+    import json as _json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = VIEWER.read_text(encoding="utf-8")
+    i = src.index("        let from = \"\";")
+    j = src.index("        const runs = _runs[name];", i)
+    prog = ("const i = 1;\n"
+            f"const _shape = {_json.dumps(shape)};\n"
+            f"const _runs = {_json.dumps(prev_runs)};\n"
+            f"const ov = {{ restart: {_json.dumps(restart)} }};\n"
+            "const enabled = [{ full: 0, st: { name: 'coarse' } },\n"
+            "                 { full: 1, st: { name: 'tight'  } }];\n"
+            + src[i:j].replace("const ", "var ").replace("let ", "var ")
+            + "\nconsole.log(JSON.stringify({from: from}));")
+    out = subprocess.run([node, "--input-type=commonjs", "-e", prog],
+                         capture_output=True, text=True, timeout=20)
+    if out.returncode != 0:
+        pytest.fail(out.stderr)
+    return _json.loads(out.stdout.strip().splitlines()[-1])["from"]
+
+
+def test_a_FLAT_bundle_is_taught_no_from_at_all():
+    """**Flat keeps no attempt directories**, so it has no `--from`: the
+    shared warm set lies in the bundle root and continuing is free
+    (`project-layout.md` § 1).  `prepare_attempt` refuses an explicit
+    `--from` there by name.
+
+    The page taught `--from 01_coarse/run-0` on every continuing rung
+    regardless of shape until 2026-09-02 -- a command that cannot run,
+    naming a directory a flat bundle does not have.  Two wrongs at once,
+    and the second hid the first."""
+    assert _continue_tail("flat", "continue", {"coarse": 2}) == ""
+
+
+def test_a_HIERARCHICAL_continue_names_the_LAST_attempt_not_the_first():
+    """A stage with three attempts was taught to continue from `run-0`.
+
+    The page knows the count -- `_runs`, filled by `runsForStages` -- and a
+    hard-coded index is the kind of guess that reads as a fact: `run-0`
+    exists, so the command succeeds and continues from the wrong place."""
+    assert _continue_tail("hierarchical", "continue",
+                          {"coarse": 3}) == " --from 01_coarse/run-2"
+    # one attempt, and none at all, both name run-0
+    assert _continue_tail("hierarchical", "continue",
+                          {"coarse": 1}) == " --from 01_coarse/run-0"
+    assert _continue_tail("hierarchical", "continue",
+                          {}) == " --from 01_coarse/run-0"
+
+
+def test_a_rung_that_does_not_continue_is_taught_no_tail():
+    """The other half, so the fix is not "always emit a tail"."""
+    assert _continue_tail("hierarchical", "", {"coarse": 3}) == ""
+
+
 def test_the_run_preview_shows_the_EMITTED_launch(web_client):
     """`architecture.md` A13: the run's surface shows the value the `.sbatch`
     will carry and where it came from — resolved by the emitter, and never
