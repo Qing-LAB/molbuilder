@@ -1900,3 +1900,93 @@ def test_a_count_preserving_EDIT_still_keeps_the_selection():
         console.log(JSON.stringify({ kept: m.selection.get().length }));
     """)
     assert out["kept"] == 2, out
+
+
+# --------------------------------------------------------------------- #
+#  § 6.7a — empty is a state, and it is drawn                           #
+# --------------------------------------------------------------------- #
+
+def test_an_empty_structure_raises_the_axis_triad():
+    """`molview.md` § 6.7a.  An axis in an empty window is how you tell a
+    working viewer from a broken one -- the thing a blank card cannot say.
+
+    The condition is *the window is empty*, not *which door emptied it*, so
+    it settles in `put` where the atom count is known -- the same shape as
+    `stores.js`'s "isolate turns itself off when the selection empties"."""
+    out = _run("""
+        const m = await loaded();
+        const before = m.selection.switches().showAxis;
+        m.selection.all(2);                       // delete rejects an empty pick
+        globalThis.__nextPayload = globalThis.__payload([]);   // every atom gone
+        await m.applyOp("delete", {});
+        console.log(JSON.stringify({
+            before: before,
+            after:  m.selection.switches().showAxis,
+        }));
+    """)
+    assert out["before"] is False, "the switch starts off (SWITCH_DEFAULTS)"
+    assert out["after"] is True, "an empty window did not raise the triad"
+
+
+def test_deleting_every_atom_is_an_ORDINARY_EDIT():
+    """**It keeps the metadata and the cell** *(user, 2026-09-02: "clear is
+    just the init status or clear operation, but atom deletion would just
+    update list properly")*.
+
+    An earlier draft wiped `info` here.  That made an ordinary edit quietly
+    destructive -- a second thing the button does that its label does not
+    say.  `clear()` is the door that means START EMPTY, and § 6.7a's table is
+    the difference between them."""
+    out = _run("""
+        const m = await loaded();
+        m.info.set("recorded_contract", {"engine": "siesta"});
+        m.selection.all(2);
+        /* THE STAND-IN SPEAKS THE SERVER'S NAMES (§ 13.1).  `info` is a real
+         * `Structure` field that round-trips through to_dict/from_dict, so a
+         * real delete hands it back -- a payload that dropped it would be
+         * testing the stand-in's omission, not the module's rule. */
+        globalThis.__nextPayload = globalThis.__payload(
+            [], { structure: { info: { recorded_contract: { engine: "siesta" } } } });
+        await m.applyOp("delete", {});
+        console.log(JSON.stringify({
+            info: m.info.get(),
+            mode: m.mode,
+        }));
+    """)
+    assert out["info"] == {"recorded_contract": {"engine": "siesta"}}, (
+        "deleting atoms destroyed the metadata -- that is `clear`'s job")
+
+
+def test_clear_is_the_door_that_means_start_empty():
+    """§ 6.7a's other row: `clear()` returns the viewer to EMPTY -- nothing
+    loaded, no atom identity -- and takes the metadata with it.
+
+    Not the same as deleting every atom, and the `unit` half is why: in
+    HOLDING `addFrames` accepts frames for the structure being held; in EMPTY
+    it refuses by name (§ 10.8).  A `clear` that left the viewer HOLDING
+    would leave it accepting frames for a structure that is not there."""
+    out = _run("""
+        const m = await loaded();
+        m.info.set("note", "keep me");
+        const ok = m.clear();
+        /* The refusal must be EMPTY's, by name.  Asserting only "it threw"
+         * passed with `unit` left at HOLDING -- a null structure throws for
+         * its own reasons, so the weaker check could not tell the two
+         * lifecycle states apart (mutation-tested 2026-09-02). */
+        let refusal = "";
+        try { m.addFrames([[[0, 0, 0]]]); } catch (e) { refusal = String(e.message || e); }
+        console.log(JSON.stringify({
+            ok: ok,
+            info: m.info.get(),
+            atoms: m.getElements(),
+            refusal: refusal,
+            showAxis: m.selection.switches().showAxis,
+        }));
+    """)
+    assert out["ok"] is True
+    assert out["info"] == {}, "`clear` left the metadata behind"
+    assert out["atoms"] is None, "`clear` left a structure held"
+    assert "nothing loaded" in out["refusal"], (
+        "after `clear` the viewer did not refuse frames as EMPTY does "
+        "(§ 10.8) -- it is still HOLDING: " + repr(out["refusal"]))
+    assert out["showAxis"] is True

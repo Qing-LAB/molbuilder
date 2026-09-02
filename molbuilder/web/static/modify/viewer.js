@@ -507,6 +507,26 @@ export function init(viewer) {
 
     _postOp = postOp;   // publish the door for the sibling panels
 
+    /* START EMPTY.  Not a server op -- there is nothing to send and nothing
+     * to compute, so it does not go through `postOp`: it asks the module for
+     * an empty viewer and the module decides what empty MEANS (molview.md
+     * § 6.7a).  This tab never builds a structure of its own (§ 5.4), which
+     * is also why "and it takes the cell" is not spelled out here. */
+    function applyClear() {
+        const d = _data();
+        if (!d || typeof d.clear !== "function") {
+            setEditStatus("Clear failed: data model unavailable.", "error");
+            return;
+        }
+        if (d.clear() === false) {         // a read-only viewer says no
+            setEditStatus("This viewer is read-only.", "error");
+            return;
+        }
+        setEditStatus("Cleared — start from nothing.", "ok");
+        refreshSelectionUI();
+        refreshUndoButton();
+    }
+
     async function applyDelete() {
         // The module resolves the acting group from the live selection and
         // rejects an empty one (delete's empty-policy = "reject"); the Delete
@@ -767,6 +787,8 @@ export function init(viewer) {
         // M3: delete + add-atom op buttons.
         const delBtn = $("delete-apply");
         if (delBtn) delBtn.addEventListener("click", applyDelete);
+        const clearBtn = $("clear-apply");
+        if (clearBtn) clearBtn.addEventListener("click", applyClear);
         const addBtn = $("add-apply");
         if (addBtn) addBtn.addEventListener("click", applyAddAtom);
         // Live distance readout: every slider input refreshes the

@@ -702,3 +702,44 @@ def test_the_measured_marks_are_arrows_in_pick_order():
         f"the arrow runs x={start['x']} -> x={end['x']}; it must follow the "
         f"CLICK order, which is the whole thing it exists to show"
     )
+
+
+# ---------------------------------------------------------------------------
+# § 6.7a — no atoms is a structure, not a non-event
+# ---------------------------------------------------------------------------
+
+def test_loading_NO_atoms_clears_what_is_drawn():
+    """**The reported bug** *(user, 2026-09-02: "when i delete all atoms in
+    molview, the list of atom is empty but the 3dmol view stayed the same")*.
+
+    `loadFrames` opened with `if (!elements.length) return false` and returned
+    before touching the viewer, so deleting the last atom emptied the panel's
+    atom list -- which reads the store -- while the drawing kept the previous
+    model on screen.  Two surfaces disagreeing, and the one still showing a
+    molecule was the stale one.
+
+    "No atoms" is a structure to draw, and drawing it means removing what was
+    there (§ 6.7a)."""
+    out = _run(
+        """
+        const e = fresh(null);
+        e.loadFrames(ELEMENTS, [F0, F1]);
+        const before = { movie: e.hasMovie(), frames: e.drawnFrameCount() };
+        globalThis.__resetCalls();
+        const landed = e.loadFrames([], []);
+        console.log(JSON.stringify({
+            before,
+            landed,
+            after: { movie: e.hasMovie(), frames: e.drawnFrameCount() },
+            cleared: globalThis.__callNames().indexOf("removeAllModels") !== -1,
+        }));
+        """
+    )
+    assert out["before"]["frames"] == 2, "the fixture did not load a movie"
+    assert out["landed"] is True, (
+        "an empty structure was reported as a non-event -- the caller cannot "
+        "tell 'nothing to do' from 'the viewer refused'")
+    assert out["cleared"] is True, (
+        "loading no atoms never asked the library to remove the old model -- "
+        "the previous molecule is still on screen")
+    assert out["after"]["frames"] == 0, out["after"]

@@ -481,6 +481,31 @@ export function createModel(opts) {
         // Only a LOAD names a structure. An edit replaces the atoms of the one
         // already open, so it keeps the name it came in under.
         if (name !== undefined) sourceName = name;
+
+        /* ── AN EMPTY WINDOW STILL SHOWS THE AXES (§ 6.7a) ────────────────
+         *
+         * The same shape as `stores.js`'s *"isolate turns itself off when the
+         * selection empties"*: a rule that depends on a fact lives beside the
+         * fact.  The fact here is the ATOM COUNT, which the selection store
+         * does not hold, so it settles here.
+         *
+         * THIS IS ALL THAT HAPPENS.  Deleting the last atom is an ORDINARY
+         * EDIT that leaves zero atoms -- the drawing redraws to show zero
+         * atoms and the list empties, and nothing else is touched.  The
+         * metadata and the cell survive, because an edit that quietly
+         * destroyed either would be a second thing the button does that its
+         * label does not say (user, 2026-09-02: "clear is just the init
+         * status or clear operation, but atom deletion would just update
+         * list properly").  `clear()` is the door that means START EMPTY,
+         * and it is the only one that takes them.
+         *
+         * The triad goes up either way, because the condition is *the window
+         * is empty*, not *which door emptied it*: an axis in an empty window
+         * is how you tell a working viewer from a broken one.  Turned ON
+         * only -- a person who then hides it stays hidden. */
+        const empty = !structure || !Array.isArray(structure.elements)
+                   || !structure.elements.length;
+        if (empty) selection.setSwitch("showAxis", true);
     }
 
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
@@ -873,6 +898,35 @@ export function createModel(opts) {
             }
             return installMolecule(input);
         },
+        /* START EMPTY (§ 6.7a).  ONE DOOR, because the alternative is every
+         * host building a zero-atom structure for itself -- which would make
+         * the host know the shape of the thing MolView exists to conceal
+         * (§ 5.3, § 9.2a).  The tab asks for *nothing loaded*; what that
+         * means is decided here.
+         *
+         * It returns the viewer to EMPTY -- the state it mounts in, where
+         * there is no atom identity at all -- rather than to a held
+         * structure with zero atoms.  That is the difference between this
+         * and deleting every atom, and it is why this one takes the CELL
+         * too: "begin with an empty view" asks for nothing, not for an
+         * empty box (user, 2026-09-02).
+         *
+         * GATED: it changes the core data, which is § 9.4's one question. */
+        clear: gated(function () {
+            settle(() => {
+                structure = null;
+                frames = null;
+                forcesPerFrame = null;
+                sourceName = null;
+                unit = EMPTY;
+            }, { resetFrame: true });
+            selection.clear();
+            // The triad, for the same reason `put` raises it: an empty window
+            // with an axis in it is visibly working; a blank one is not.
+            selection.setSwitch("showAxis", true);
+            return true;
+        }, false),
+
         applyOp:              gated(applyOp, Promise.resolve(null)),
         commitPeriodicityOp:  gated(commitPeriodicityOp, Promise.resolve(null)),
 

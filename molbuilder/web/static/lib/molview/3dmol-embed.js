@@ -182,6 +182,13 @@ function styleSpec(view) {
  * 3Dmol object: a consumer that could reach it would make § 5.3 false, and every
  * "just for tests" hatch that ever existed here became a production read.
  */
+/* How far back the camera sits when there is nothing but the axis triad
+ * (§ 6.7a).  A number rather than `zoomTo`'s fit, because an empty scene has
+ * no bounding box to fit to -- and because "empty" should look identical
+ * every time rather than inheriting wherever the last structure left it. */
+const EMPTY_VIEW_ZOOM = 0.35;
+
+
 export function create(hostEl, opts) {
     const $3Dmol = root.$3Dmol;
     if (!$3Dmol) {
@@ -605,8 +612,39 @@ export function create(hostEl, opts) {
         // below stays the same whether there is one frame or four hundred.
         loadFrames(elements, frames) {
             if (state.disposed) return false;
-            if (!Array.isArray(elements) || !elements.length) return false;
-            if (!Array.isArray(frames) || !frames.length) return false;
+            /* NO ATOMS IS A STRUCTURE, NOT A NON-EVENT (§ 6.7a).
+             *
+             * This read `if (!elements.length) return false` and returned
+             * before touching the viewer, so deleting the last atom emptied
+             * the panel's list -- which reads the store -- while the drawing
+             * kept the previous model on screen.  Two surfaces disagreeing,
+             * and the one still showing a molecule was the stale one. */
+            const none = !Array.isArray(elements) || !elements.length
+                      || !Array.isArray(frames) || !frames.length;
+            if (none) {
+                try { state.viewer.removeAllModels(); } catch (_) {}
+                try { state.viewer.removeAllShapes(); } catch (_) {}
+                try { state.viewer.removeAllLabels(); } catch (_) {}
+                state.pickWired = false;
+                /* THE OVERLAYS STAY.  The world triad is one of them and it
+                 * is what tells an empty viewer from a broken one -- it has
+                 * a fixed length at the world origin (`render-engine.js`'s
+                 * CARTESIAN_AXIS_LENGTH), so unlike the cell's a/b/c triad
+                 * it needs no atoms and no lattice to be drawable.  Turning
+                 * the switch ON for an empty structure is the MODEL's call,
+                 * not this layer's (§ 6.7a); all this layer must not do is
+                 * throw the arrows away with the atoms. */
+                replaceOverlays();
+                redrawArrows();
+                /* Frame the triad rather than inheriting the last zoom, so
+                 * empty looks the same every time. `zoomTo` with nothing
+                 * loaded has no bounding box to find, so the distance is
+                 * set outright. */
+                try { state.viewer.zoomTo(); } catch (_) {}
+                try { state.viewer.zoom(EMPTY_VIEW_ZOOM); } catch (_) {}
+                paint();
+                return true;
+            }
             const xyz = multiFrameXyz(elements, frames);
             try {
                 state.viewer.removeAllModels();
@@ -902,6 +940,32 @@ export function create(hostEl, opts) {
             try { state.viewer.removeAllShapes(); } catch (_) {}
             try { state.viewer.removeAllLabels(); } catch (_) {}
             state.viewer = null;
+
+            /* RELEASE THE WEBGL CONTEXT, EXPLICITLY.
+             *
+             * Emptying the scene is not releasing the device.  This dropped
+             * the models and nulled the reference and stopped there, leaving
+             * the canvas -- and its live GL context -- in the host, to be
+             * freed whenever GC happened to run.  Measured 2026-09-02:
+             * fifteen create/dispose cycles left fifteen canvases alive.
+             *
+             * A browser grants a bounded number of contexts, so "eventually"
+             * is not good enough for a page whose tabs each mount a viewer:
+             * they accumulate across a session until `createViewer` starts
+             * throwing, and the card then says the viewer could not start on
+             * every tab at once, on any server, until the browser is
+             * restarted.  `WEBGL_lose_context` is the only way to hand one
+             * back on purpose. */
+            try {
+                const cv = hostEl && hostEl.querySelector
+                    ? hostEl.querySelector("canvas") : null;
+                if (cv) {
+                    const gl = cv.getContext("webgl2") || cv.getContext("webgl");
+                    const ext = gl && gl.getExtension("WEBGL_lose_context");
+                    if (ext) ext.loseContext();
+                    if (cv.remove) cv.remove();
+                }
+            } catch (_) {}
         },
     };
 }

@@ -416,6 +416,20 @@
         </button>
       </fieldset>
 
+      <!-- Clear: start from nothing.  NOT "delete every atom" -- that is
+           Delete with everything selected, and it keeps the cell (molview.md
+           § 6.7a).  This asks the module for an EMPTY viewer, cell and all,
+           through the one door that decides what empty means: the tab never
+           builds a structure of its own (§ 5.4). -->
+      <fieldset class="modify-op-block">
+        <legend>Clear</legend>
+        <button id="clear-apply" class="full-btn" type="button">
+          Start empty
+        </button>
+        <p class="hint">Removes the structure, its metadata and its cell, and
+          leaves the axes showing so you can see the viewer is live.</p>
+      </fieldset>
+
       <!-- Add atom: anchor = single-selected atom; element + offset
            sliders set the new atom's species and (dx, dy, dz) from
            the anchor.  Live |offset| readout helps the user pick a

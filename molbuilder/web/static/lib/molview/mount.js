@@ -138,11 +138,18 @@ export async function mount(hostEl, workspace, opts) {
          * on the wrong machine. */
         const why = String((e && e.message) || e || "");
         let said;
-        if (/must be loaded first/i.test(why) || typeof $3Dmol === "undefined") {
-            said = "The 3D viewer could not start: the 3Dmol library did not "
-                 + "load. That is a SERVER problem \u2014 check that "
-                 + "/static/vendor/3Dmol-min.js is served (a wheel install "
-                 + "may omit static files; run from the checkout).";
+        /* THE LIBRARY IS NOT NAMED HERE (§ 5.3).  Only the sealed layer may
+         * name it, and it does: its own refusal carries the script's name,
+         * and that message is shown verbatim below.  Naming it here made the
+         * name appear in two files, which is the one thing § 5.3 forbids --
+         * caught by `test_the_graphics_library_is_named_in_exactly_one_file`
+         * the same day the message was written (2026-09-02). */
+        if (/must be loaded first/i.test(why)) {
+            said = "The 3D viewer could not start: its drawing library did "
+                 + "not load. That is a SERVER problem \u2014 the viewer's "
+                 + "vendor script is not being served (a wheel install may "
+                 + "omit static files; run from the checkout). "
+                 + why;
         } else {
             let gl = null;
             try {
@@ -152,8 +159,8 @@ export async function mount(hostEl, workspace, opts) {
                          .getContext("webgl");
             } catch (_) { gl = null; }
             said = gl
-                ? "The 3D viewer could not start: 3Dmol refused this canvas "
-                  + "\u2014 " + why
+                ? "The 3D viewer could not start: the drawing library "
+                  + "refused this canvas \u2014 " + why
                 : "The 3D viewer could not start: this browser has no WebGL. "
                   + "That is a BROWSER problem, not the server \u2014 check "
                   + "chrome://gpu, or hardware acceleration in settings. "

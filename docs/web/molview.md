@@ -857,6 +857,82 @@ question about where anything lives.
 **"Loaded wire.xyz" and "Saved to runs/out.xyz" are the tab's to say**, for the
 same reason: the tab did the operation, so the tab reports it.
 
+### 6.7a Empty is a state, and it is drawn *(user, 2026-09-02)*
+
+**A structure with no atoms is a real thing to hold, not a failure to hold
+one.** It is where you start before loading anything, and where you land when
+you delete the last atom.
+
+> **The defect this closes.** `loadFrames` opened with
+> `if (!elements.length) return false` — it read *no atoms* as *nothing to do*
+> and returned before touching the viewer. Delete every atom and the panel's
+> atom list emptied, because it reads the store, while the drawing kept the
+> previous model on screen. The two surfaces disagreed, and the one showing
+> the molecule was the stale one *(reported 2026-09-02: "the list of atom is
+> empty but the 3dmol view stayed the same")*.
+
+**What an empty window looks like:**
+
+| | |
+|---|---|
+| the drawing | no models, no shapes, no labels — and **the axis triad, turned on for you** |
+| the triad | the world's x/y/z, at `render-engine.js`'s fixed `CARTESIAN_AXIS_LENGTH` from the world origin. It needs no atoms and no lattice, unlike the cell's a/b/c triad, which is why it is the one that can be drawn with nothing loaded |
+| the camera | framed on the triad, so empty looks the same every time rather than inheriting wherever you had zoomed |
+
+**Two doors reach it, and they are not the same door.**
+
+| | delete every atom | `Clear` |
+|---|---|---|
+| what it is | an **ordinary edit** that happens to leave zero atoms | the **start-empty operation** |
+| atoms | gone | gone |
+| metadata (`info`) | **kept** | gone |
+| the cell | **kept** | gone |
+| `unit` | `HOLDING` — a structure is held, and it has no atoms | `EMPTY` — nothing is loaded, and there is no atom identity |
+
+> *(User, 2026-09-02: "clear is just the init status or clear operation, but
+> atom deletion would just update list properly." An earlier draft had the
+> delete path also wiping metadata; that made an ordinary edit quietly
+> destructive — a second thing the button does that its label does not say.
+> Undo would have restored it, since a history snapshot copies the whole
+> structure and `info` rides on it — but *recoverable* is not the same as
+> *right*.)*
+
+**The `unit` row is why they cannot be one door.** In `HOLDING`, `addFrames`
+accepts frames for the structure being held; in `EMPTY` it refuses by name
+(*"nothing loaded — there is no atom identity to append to"*, § 10.8). A
+`Clear` that left the viewer `HOLDING` would leave it accepting frames for a
+structure that is not there.
+
+**The triad goes up either way**, because the condition is *the window is
+empty*, not *which door emptied it*. It is turned ON and then left alone: a
+person who hides it afterwards stays hidden, because a viewer that re-asserted
+the switch would be overriding a choice, and remembering "what it was before"
+would be hidden state nobody asked for.
+
+**It settles where the fact lives**, in `put()` — the same shape as
+`stores.js`'s *"isolate turns itself off when the selection empties"*: a rule
+that depends on a fact sits beside that fact, not in whichever control happened
+to change it.
+
+**The host asks for the state, never builds it.** A tab that wrote
+`{elements: [], positions: [], periodicity: null}` would know the shape of the
+thing this module exists to conceal (§ 5.4, § 9.2a) — and would own the
+cell-or-no-cell decision, so the next tab to add a Clear button would answer it
+differently. `data.clear()` is the whole of what a host says.
+
+**The triad is turned ON, and never forced back off.** Showing it is how you
+tell an empty viewer from a broken one — the thing a blank card cannot tell
+you. It is turned on and then left alone: a person who hides it afterwards
+stays hidden, because a viewer that re-asserted the switch would be overriding
+a choice, and remembering "what it was before" would be hidden state nobody
+asked for.
+
+**It settles where the fact lives**, in `put()` — the same shape as
+`stores.js`'s *"isolate turns itself off when the selection empties"*: a rule
+that depends on a fact sits beside that fact, not in whichever control happened
+to change it. Delete, `Clear`, an undo back to nothing and a load of an empty
+file all arrive at one line.
+
 ### 6.8 Notices — what the server warns about, and how long it stays true
 
 Some answers come back with **notices**: `{level, message, where, about}`, in plain language,
