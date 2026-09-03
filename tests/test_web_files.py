@@ -1112,12 +1112,10 @@ class TestFilesWrite:
         assert "string" in r.get_json()["error"]
 
 
-class TestGenerateWritesToWorkspace:
-    """Spectra + Build Generate buttons go through the unified
-    ``window.molbuilder.projects.saveToWorkspace()`` API after a
-    successful render.  Tests pin both layers: the API exists on the
-    sidebar JS, and each tab calls it instead of duplicating fetch
-    + refresh logic."""
+# A ``TestGenerateWritesToWorkspace`` class stood here saying "Tests pin
+# both layers" and holding no tests.  Both layers are pinned in
+# `test_projects_public_surface_js.py`: ``saveToWorkspace`` on the sidebar
+# surface, and ``safeSave`` wrapping it with the three terminal outcomes.
 
 class TestFileOperationStubs:
     """All three previously-stubbed endpoints (upload, write, delete)

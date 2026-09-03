@@ -172,11 +172,11 @@ class TestWorkspacePayloadCanonicalKeys:
         assert payload["extra"]["backend_used"] == "rdkit"
 
 
-class TestWorkspacePayloadRegionsAndFrozen:
-    """The atoms list inside the payload must surface regions +
-    is_frozen the same way the selection store expects (atom-selection
-    protocol § 2 / Atom schema)."""
-
+# A ``TestWorkspacePayloadRegionsAndFrozen`` class stood here with a
+# docstring and no test methods.  The rule it named -- the per-atom payload
+# carries regions + is_frozen -- is pinned in
+# `test_atom_metadata_results_bridge.py`, at the door that applies the
+# block (`/api/build/load`), which is where it can actually fail.
 
 
 class TestStructureToDictLegacyShim:

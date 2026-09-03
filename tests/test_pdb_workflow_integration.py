@@ -332,10 +332,12 @@ def simple_pdb_under_root(tmp_path, monkeypatch):
     return p
 
 
-class TestBuildSiestaHonorsSidecarFrozenAtoms:
-    """Mirrors TestPdbWorkflowEndToEnd's pattern: one structure, one
-    sidecar, three steps walked in order."""
-
-
+# A ``TestBuildSiestaHonorsSidecarFrozenAtoms`` class stood here with a
+# docstring and no test methods -- a promise of coverage that collected
+# nothing, which reads as "yes, that is checked" to anyone scanning.  The
+# coverage exists: `test_fdf_generator_roundtrip.py` walks a frozen atom
+# from the sidecar into ``%block Geometry.Constraints`` (the only thing
+# that actually holds an atom still), and the three-step walk it said it
+# mirrored is TestPdbWorkflowEndToEnd, above.
 
 
