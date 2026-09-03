@@ -65,7 +65,12 @@ def workstation_with_a_named_target(tmp_path, monkeypatch):
     look before it becomes automatic for every test in the suite.
     """
     monkeypatch.chdir(tmp_path)
-    from molbuilder.scheduler import environments_dir
+    from molbuilder.scheduler import environments_dir, machine_scope_path
+    # THIS MACHINE HAS NO PROBE OF ITS OWN -- which is the whole subject.
+    # The suite writes one for every test (a probed box is prep's
+    # precondition since 2026-09-02), so this fixture takes it away again
+    # rather than test a shape that is not the reported one.
+    machine_scope_path().unlink(missing_ok=True)
     d = environments_dir()
     d.mkdir(parents=True, exist_ok=True)
     (d / "sol.json").write_text(json.dumps(_SOL))

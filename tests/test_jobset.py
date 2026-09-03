@@ -27,6 +27,11 @@ def _sandbox(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("HOME", str(box / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (box / "home").mkdir()
+    # ...and the box is probed.  Moving HOME moves the machine scope out
+    # from under conftest's own record, and prep refuses without one
+    # (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
 from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit
@@ -2605,36 +2610,42 @@ def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
     assert importlib.util.find_spec("molbuilder.bench.environment") is None
 
 
-def test_a_machine_that_will_not_probe_does_not_stop_the_prep(tmp_path,
-                                                              monkeypatch):
-    """Best-effort, and the docstring said so before anything checked it — a
-    mutation making the probe fatal left every test green.
+def test_a_machine_WITHOUT_A_RECORD_stops_the_prep(tmp_path, monkeypatch):
+    """**Reversed 2026-09-02.**  It read *"a machine that will not probe does
+    not stop the prep"* -- best-effort, on the reasoning that `prep` has four
+    other steps and the deck/launch agreement is what refuses a wrong launch.
 
-    `prep` has four other steps, and the one that actually refuses a wrong
-    launch is the deck/launch agreement, not the probe. A machine molbuilder
-    cannot describe is still a machine you can render a wrapper for and lay a
-    tree on; failing the whole prep would turn a missing *description* into a
-    missing *calculation*.
+    That was true and is now the wrong trade.  What a best-effort step 1
+    produced was a wrapper whose numbers came from **whichever box happened
+    to run prep**, which for a bundle described at a desk and run on a
+    cluster is the wrong machine -- and the number looks exactly like a right
+    one, so nothing downstream can tell.  A missing *description* becoming a
+    missing *calculation* is the cheaper failure by far: it costs one command
+    *(user, 2026-09-02: "all environments have to be explicitly probed and
+    stored. no environment json, error")*.
+
+    So the probe is gone entirely -- there is nothing left to be
+    best-effort ABOUT -- and a record-less machine is refused, by name, with
+    the command.
     """
-    # The MODULE that defines it, not the package that re-exports it: the
-    # call site is a module-global lookup inside `scheduler/record.py`, so
-    # patching the package attribute would rebind a name nobody reads.
-    import molbuilder.scheduler.record as env_mod
-    from molbuilder.jobset.prep import prep_jobset
+    from molbuilder.jobset.prep import PrepError, prep_jobset
+    from molbuilder.scheduler import machine_scope_path
 
-    def boom(*a, **k):
-        raise OSError("no /proc on this box")
-    monkeypatch.setattr(env_mod, "resolve_environment", boom)
+    # NOTHING is probed: the record the suite writes for every test is gone.
+    Path(machine_scope_path()).unlink(missing_ok=True)
 
     js = _sweep()
     _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
-    dirs = prep_jobset(js, tmp_path, emit_sbatch=False)
+    with pytest.raises(PrepError) as exc:
+        prep_jobset(js, tmp_path, emit_sbatch=False)
 
-    assert len(dirs) == 2                                   # the tree is laid
-    assert (tmp_path / "bench" / "bench-G1K1C4"
-            / "job-gpu.run.sh").is_file()               # wrappers rendered
-    assert not (tmp_path / "environment.json").exists()     # and it said nothing
+    said = str(exc.value)
+    assert "no machine record" in said, said
+    assert "jobset probe --write" in said, (
+        "the refusal does not name the command that fixes it: " + said)
+    assert not (tmp_path / "environment.json").exists(), (
+        "a refused prep left a record behind -- it probed after all")
 
 
 # --------------------------------------------------------------------- #
@@ -2674,6 +2685,10 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
+    # The record follows the config root: this env var moves the
+    # machine scope, and prep refuses without a record there.
+    from conftest import write_machine_record
+    write_machine_record()
     prep_jobset(js, base, env="molbuilder-siesta")
     return base
 
@@ -2776,6 +2791,10 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
+    # The record follows the config root: this env var moves the
+    # machine scope, and prep refuses without a record there.
+    from conftest import write_machine_record
+    write_machine_record()
 
     from molbuilder import runwrap as _rw
 
@@ -2860,6 +2879,11 @@ def test_submit_honours_the_bundles_own_execution_block(tmp_path,
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
+    # ...and the box is probed.  Moving HOME moves the machine scope out
+    # from under conftest's own record, and prep refuses without one
+    # (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
     bundle = tmp_path / "b"
     bundle.mkdir()
     _sweep().write(bundle / "job-set.json")
@@ -2898,6 +2922,11 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
+    # ...and the box is probed.  Moving HOME moves the machine scope out
+    # from under conftest's own record, and prep refuses without one
+    # (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
     bundle = tmp_path / "b"
     bundle.mkdir()
     _sweep().write(bundle / "job-set.json")
@@ -2932,6 +2961,11 @@ def test_an_explicit_direct_mode_survives_a_configured_domain(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
+    # ...and the box is probed.  Moving HOME moves the machine scope out
+    # from under conftest's own record, and prep refuses without one
+    # (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
     bundle = tmp_path / "b"
     bundle.mkdir()
     _sweep().write(bundle / "job-set.json")

@@ -1141,21 +1141,37 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # a typo silent: `--target nope` on an already-prepped folder prepped
     # happily against whatever was snapshotted, which is precisely the mistake
     # this flag exists to catch.
-    if target == LOCAL_TARGET:
-        # EXPLICIT "the box I am on".  Goes down the same door the R9
-        # re-check uses, so there is one reader for "what does this
-        # machine know", and C1 below is skipped because the question it
-        # guards -- which machine is meant -- has just been answered.
-        env = read_environment(machine_scope_path())
-        if env is not None or not probe:
-            return env
-        try:
-            return resolve_environment()
-        except Exception:          # pragma: no cover - probing is optional
-            return None
+    # `LOCAL_TARGET` NAMES WHICH MACHINE; IT IS NOT A DIFFERENT WAY OF FINDING
+    # ONE.  So it reads the same scopes saying nothing reads -- the
+    # calculation's snapshot first (`workflow.md` § 5 step 1: *"read the
+    # record -- the calculation's, else this machine's"*) -- and only the
+    # NAMED-target machinery below is skipped, because there is no
+    # `environments/this.json` to validate against: the name is reserved and
+    # `jobset probe --name this` is refused.  C1 is skipped for the reason it
+    # always was -- the question it guards, WHICH machine is meant, has just
+    # been answered.
+    #
+    # It used to read ONLY the machine scope.  That made naming the local
+    # machine DISCARD the calculation's own `environment.json` while saying
+    # nothing kept it -- one box, two answers, and the explicit road was the
+    # worse one.  It reaches everybody: the task-setup tab can only send the
+    # label `(this machine)`, so every local prep from the browser took it,
+    # and `--target this` is what C1's own refusal tells people to type.  With
+    # no machine-scope file the read then returned `None` and prep refused in
+    # REMOTE words -- "on this, run jobset probe --write --name this, then
+    # copy the record into ~/.config/ here" -- advice that means nothing for
+    # the box you are sitting at (found by the task-setup e2e, 2026-09-02).
+    #
+    # A record stored beside the calculation IS a stored record, which is what
+    # `running-a-job.md` § 3.1 asks for: *"read from a record, and nowhere
+    # else"*, carving out no exception for the local box (user, 2026-09-02:
+    # *"even for the current machine, the environment.json must be present"*,
+    # and again: *"all environments have to be explicitly probed and stored.
+    # no environment json, error"*).
+    _by_name = target is not None and target != LOCAL_TARGET
 
     _named = named_environments()
-    if target is not None and target not in _named:
+    if _by_name and target not in _named:
         raise UnknownTarget(target, _named)
 
     # A NAMED target is validated WHOLE, here, before any scope is walked --
@@ -1170,8 +1186,8 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # first, and an already-prepped bundle returns there.  A check placed in
     # the loop would fire for a fresh bundle and stay silent for a prepped
     # one -- the same flag, two behaviours.
-    _want = read_environment(_named[target]) if target is not None else None
-    if target is not None and _want is None:
+    _want = read_environment(_named[target]) if _by_name else None
+    if _by_name and _want is None:
         raise UnknownTarget.unreadable(target, _named[target])
 
     # C1 -- SEVERAL MACHINES, NOBODY SAID WHICH.  Only when the question is
@@ -1194,7 +1210,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
         env = read_environment(path)
         if env is None:
             continue
-        if label == "calculation" and target is not None:
+        if label == "calculation" and _by_name:
             # A NAMED target that contradicts the snapshot is a question
             # nobody can answer for the user: refuse rather than silently
             # keeping the old one or silently replacing it.

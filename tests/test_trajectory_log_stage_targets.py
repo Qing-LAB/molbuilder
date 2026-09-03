@@ -47,6 +47,11 @@ def _isolated(monkeypatch, tmp_path_factory):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cwd))
+    # AND THE RECORD GOES IN LAST, after every scope-moving call above:
+    # it is written where `machine_scope_path()` resolves NOW, and prep
+    # refuses without one (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
 
 
 # A 3-D (non-linear) molecule so the derived vacuum cell isn't degenerate at

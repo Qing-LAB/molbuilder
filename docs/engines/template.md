@@ -397,6 +397,31 @@ no other reader.
 
 ## 4. The format: one TOML file
 
+### 4.0a `help` is TEXT with line structure, and never markup
+
+**Measured, not asserted: 37 of SIESTA's 49 help strings carry newlines**, and
+they carry meaning — a lead sentence, then the warning that stops someone
+using the parameter for the wrong thing (`electronic_temperature` opens with
+what it is, then *"THIS IS NOT THE TEMPERATURE OF YOUR SIMULATION"* on its own
+line). Collapsing that to one paragraph loses the emphasis the author put
+there.
+
+**So it is plain text whose breaks are load-bearing, and there is no markup in
+it.** Two consequences, both already true in the code and stated here so the
+next author does not undo one of them:
+
+- **Rendering preserves the breaks.** The form draws help into a `<div>` with
+  `white-space: pre-wrap` and sets `textContent`, never `innerHTML` — the
+  breaks survive and nothing in the string is interpreted. Short help also
+  rides a native `title=` tooltip, which is single-line by nature; that is why
+  the long/short split exists rather than a style choice.
+- **Comparing normalises whitespace.** A config class mirrors the catalogue's
+  help in a Python string wrapped to fit source, so the two legitimately
+  differ in where the lines break. `test_catalogue_agreement` compares them
+  with whitespace collapsed, so it stays pointed at the fact it guards — a
+  stale sentence, other bounds, another engine's wording — rather than firing
+  on a re-wrap.
+
 ### 4.1 Why TOML, and why not the three alternatives
 
 | | **correctness** | **readability** | **hand-editable** |
@@ -1865,7 +1890,7 @@ flowchart TD
     end
 
     subgraph F1["floor 1 · the machine"]
-      ENV["probe → environment.json<br/><i>ranks · threads · memory</i>"]
+      ENV["<code>jobset probe --write</code> → environment.json<br/><i>ranks · threads · memory</i><br/>read by prep, never probed by it"]
     end
 
     subgraph F3["floor 3 · plan — engine-agnostic"]

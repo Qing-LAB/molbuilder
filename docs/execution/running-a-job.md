@@ -275,7 +275,21 @@ molbuilder jobset probe --write --name NAME     # on the target
 
 **This holds for the local machine too** *(user, 2026-09-02: "even for the
 current machine, the environment.json must be present otherwise user is
-required to run jobset probe first")*. A workstation briefly fell back to its
+required to run jobset probe first"; and "all environments have to be
+explicitly probed and stored. no environment json, error")*.
+
+> **Naming this machine is not a second way of finding it.** `--target this`
+> — and the task-setup tab's `(this machine)`, which is that same name wearing
+> a label — says WHICH machine, and then reads the records everything else
+> reads, **the calculation's snapshot first** (`workflow.md` § 5 step 1). It
+> took a private road that read only `~/.config/molbuilder/environment.json`,
+> so a carried bundle prepped explicitly for the box in front of you
+> **discarded its own record** while saying nothing kept it: one machine, two
+> answers, the explicit one worse. With no machine-scope file it then refused
+> in *remote* words — *"on this, run `jobset probe --write --name this`, then
+> copy the record into `~/.config/` here"* — advice with no meaning for the
+> box you are sitting at. Found by the task-setup end-to-end test on
+> 2026-09-02; the browser could only ever take that road. A workstation briefly fell back to its
 own `physical_core_count` on the reasoning that *this box IS the machine, so
 its own count is not about somewhere else*. That is true and still the wrong
 shape: the number would then come from a different source depending on how the

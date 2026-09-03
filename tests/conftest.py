@@ -221,7 +221,7 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def config_root_is_never_the_developers(tmp_path, monkeypatch):
+def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     """**No test may read or write the real per-user config directory.**
 
     `config_dir()` resolves ``$MOLBUILDER_CONFIG_DIR`` FIRST and does not fall
@@ -249,7 +249,15 @@ def config_root_is_never_the_developers(tmp_path, monkeypatch):
     fallback lands in a temporary directory rather than ``~/.config``.
     """
     monkeypatch.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "_xdg-config"))
+    # `tmp_path_factory`, NOT `tmp_path` -- the same lesson
+    # `_isolated_machine_scope` states below: a config root inside the
+    # directory a test builds and then WALKS shows up in that test's own
+    # listing.  It did not matter while the variable was only set and the
+    # directory never created; it does now that the machine record is
+    # written into it, and it surfaced as "unexpected temp files:
+    # [.../_xdg-config]" in an atomic-write test that lists its siblings.
+    monkeypatch.setenv("XDG_CONFIG_HOME",
+                       str(tmp_path_factory.mktemp("xdg-config")))
 
 
 @pytest.fixture(autouse=True)
@@ -583,6 +591,68 @@ def _isolated_machine_scope(tmp_path_factory, monkeypatch):
     """
     monkeypatch.setenv("XDG_CONFIG_HOME",
                        str(tmp_path_factory.mktemp("machine-scope")))
+
+
+@pytest.fixture(autouse=True)
+def _this_machine_has_been_probed(_isolated_machine_scope,
+                                  config_root_is_never_the_developers):
+    """**The box has a machine record**, as a real one does after one
+    ``jobset probe --write``.
+
+    Since 2026-09-02 that is a PRECONDITION of prep rather than something
+    prep does for you: a machine with no record is refused, naming the
+    command, so the numbers in a wrapper can always be traced to a file
+    somebody can look at *(user: "all environments have to be explicitly
+    probed and stored. no environment json, error"; `running-a-job.md`
+    § 3.1)*.  Before that, `resolve_target` probed and wrote the answer
+    itself, so every test got a machine for free.
+
+    **It asks `machine_scope_path()` where to write** rather than composing
+    the path: TWO autouse fixtures set ``XDG_CONFIG_HOME`` -- this file's
+    machine-scope one and `config_root_is_never_the_developers` -- and which
+    of them wins is fixture-ordering, not something to encode here.  Both are
+    depended on above so this runs after whichever that is.
+
+    Deliberately MODEST -- two sockets, eight cores each, no scheduler -- so
+    nothing passes by accident on a generous fixture: a test that needs a
+    cluster writes one.  A test that wants the REFUSAL deletes this file.
+    """
+    write_machine_record()
+
+
+def write_machine_record(at=None, **over):
+    """Write the machine-scope record, wherever the scope currently resolves.
+
+    Exposed because **42 test files re-isolate ``HOME`` or ``XDG_CONFIG_HOME``
+    in a fixture of their own**, which runs after this file's and moves the
+    scope out from under it.  A file that does that and then preps calls this
+    at the end of its own fixture -- one line, and it says out loud that the
+    machine has been probed, which since 2026-09-02 is a precondition rather
+    than something prep arranges.
+
+    ``over`` replaces fields on the modest default -- ``topology=`` for a
+    machine with more cores, ``scheduler="slurm"`` for a queue system.
+
+    ``at`` names the config DIRECTORY to write into, for a test that hands a
+    child process its own ``MOLBUILDER_CONFIG_DIR``: this process's
+    ``machine_scope_path()`` is not that child's, and the child is the one
+    that preps.
+    """
+    from molbuilder.scheduler import (Environment, Topology,
+                                      machine_scope_path, write_environment)
+    # NO `script_generation` BY DEFAULT.  The record ALWAYS travels to the
+    # generator (2026-08-24), so a preamble stated here REPLACES the one a
+    # test put in its own `.molbuilder.json` -- which is how the vibration
+    # end-to-end came to bake `preamble: true` over `source .../conda.sh`,
+    # activate an env that was never initialised, and land no artifact.
+    # The record says what the MACHINE is; how to enter an environment is
+    # the test's to state, and the ones that need it pass it here.
+    fields = dict(scheduler="",          # a workstation: no queue system
+                  topology=Topology(sockets=2, cores_per_socket=8))
+    fields.update(over)
+    out = (Path(at) / "environment.json") if at else Path(machine_scope_path())
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return write_environment(Environment(**fields), out)
 
 
 @pytest.fixture(autouse=True)

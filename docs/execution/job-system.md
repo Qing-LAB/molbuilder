@@ -1142,6 +1142,26 @@ system** adds is submission and routing:
   activation and launch. You submit the outer file; it hands off to the inner
   one. This split means the scheduler header and the run logic evolve
   independently, and the exact same `.run.sh` works with or without a scheduler.
+- **The `.sbatch` is not always written, and there are two reasons it may not
+  be.** The `.run.sh` is always there; the header beside it appears only when
+  there is a queue to address. It is withheld when:
+  1. **the machine record says `workstation`** — that machine has no queue, so
+     a header for it would be a file nobody can submit. A record saying
+     `slurm`, **or no record at all**, keeps emitting: absent evidence is not
+     evidence of absence, and refusing on a cluster nobody probed is worse
+     than an extra file. *(Until 2026-08-17 this asked whether a `scheduler`
+     **block** was configured, on the premise that a workstation needs no
+     config. `configuration.md` M6 retired that premise — a workstation
+     records its capability too — and block-presence stopped discriminating:
+     a workstation with one config got 14 `.sbatch` files for a queue it does
+     not have.)*
+  2. **no `(partition, qos)` pair can be resolved** — the caller's own
+     resolved pair is used, else the routing menu's first row, which
+     `get_routing` documents as the recommendation. Only when there is no
+     pair at all is there genuinely no queue to write a header for.
+
+  So *"I prepped and got no `.sbatch`"* has exactly these two answers, and
+  both are about the **machine**, never about the calculation.
 - **One `sbatch` per invocation, per-job flags win.** The submitter passes each job's
   resources as command-line `sbatch` flags (`-J`, `-n`, `-c`, `--gres`, `-t`,
   `--exclusive`), which **override** the rendered header — so a whole sweep can
@@ -1200,7 +1220,7 @@ parameters are a set, `project-layout.md` § 2.3.1a)*:
 ```mermaid
 flowchart LR
     D["jobset init<br/>(host)<br/>the portable calculation"]
-    P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
+    P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>read the record → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
     R["jobset launch bench &lt;stage&gt;<br/>one grouped job per resource shelf<br/>(a named trial submits alone)"]
     S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]
     PR["jobset prep run &lt;stage&gt;<br/>uses <code>execution</code> — what you wrote is the answer"]

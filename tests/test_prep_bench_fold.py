@@ -88,6 +88,11 @@ def _sandbox(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("HOME", str(box / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (box / "home").mkdir()
+    # ...and the box is probed.  Moving HOME moves the machine scope out
+    # from under conftest's own record, and prep refuses without one
+    # (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
 
 
 @pytest.fixture
@@ -1715,6 +1720,13 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
+    # THE BOX IS PROBED, AND STATES NO ACTIVATION -- which is the condition
+    # under test.  Moving HOME moves the machine scope out from under
+    # conftest's own record, and prep refuses without one at all; the default
+    # record carries a `script_generation`, which would supply the very field
+    # this test removes and the refusal would never fire.
+    from conftest import write_machine_record
+    write_machine_record(script_generation={})
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),

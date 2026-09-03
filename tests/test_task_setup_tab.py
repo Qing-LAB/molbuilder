@@ -1381,6 +1381,11 @@ def _child_env_with_a_config(tmp_path):
         "script_generation": {"preamble": "module load mamba",
                               "activation": "source activate"},
     }))
+    # AND THE CHILD'S MACHINE IS PROBED.  The child resolves its scope from
+    # the env var below, not from this process's -- and prep refuses without
+    # a record there (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record(at=root)
     env = dict(os.environ)
     env["MOLBUILDER_CONFIG_DIR"] = str(root)
     return env
@@ -2096,6 +2101,10 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         import json as _json
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        # ...and the box is probed: this moves the machine scope, and
+        # prep refuses without a record (`running-a-job.md` § 3.1).
+        from conftest import write_machine_record
+        write_machine_record()
         cfg = tmp_path / "home" / ".config" / "molbuilder"
         (cfg / "environments").mkdir(parents=True)
         rec = {"schema": "molbuilder/environment@2", "scheduler": "slurm",
@@ -2120,6 +2129,10 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         import json as _json
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        # ...and the box is probed: this moves the machine scope, and
+        # prep refuses without a record (`running-a-job.md` § 3.1).
+        from conftest import write_machine_record
+        write_machine_record()
         cfg = tmp_path / "home" / ".config" / "molbuilder"
         (cfg / "environments").mkdir(parents=True)
         (cfg / "environments" / "sol.json").write_text('{"schema": "nope@9"}')
@@ -2216,6 +2229,10 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         # without naming the directory the write lands in a file nothing
         # opens, and the test passes having configured nothing.
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+        # ...and the box is probed: this moves the machine scope, and
+        # prep refuses without a record (`running-a-job.md` § 3.1).
+        from conftest import write_machine_record
+        write_machine_record()
         (tmp_path / "molbuilder.json").write_text(_json.dumps(
             {"script_generation": {"preamble": "source /home/local/conda.sh",
                                    "activation": "conda activate"}}))

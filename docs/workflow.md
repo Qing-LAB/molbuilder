@@ -264,7 +264,7 @@ produced.**
 
 ```mermaid
 flowchart TB
-    S1["<b>1 · settle which machine this is for</b><br/><i>read the record — the calculation's, else this machine's;<br/>probe only if neither exists</i><br/>→ snapshot <code>environment.json</code>"]
+    S1["<b>1 · settle which machine this is for</b><br/><i>READ the record — the calculation's, else this machine's.<br/>Neither? prep refuses and names <code>jobset probe --write</code></i><br/>→ snapshot <code>environment.json</code>"]
     S2["<b>2 · settle the numbers</b><br/><i>template + description + machine + your ask</i><br/>→ the configuration(s), in memory. <b>Writes nothing.</b>"]
     S3["<b>3 · write the engine's input</b><br/>→ <code>&lt;label&gt;_01_coarse.fdf</code>"]
     S4["<b>4 · write the wrapper and the submission</b><br/><i>reads the deck just written</i>"]

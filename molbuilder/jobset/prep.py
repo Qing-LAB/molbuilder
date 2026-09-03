@@ -83,6 +83,23 @@ def _user_error_as_prep():
         raise PrepError(str(exc) + (f"\n  ({note})" if note else "")) from exc
 
 
+#: What a prep says when no machine record answers.
+#:
+#: ONE SENTENCE OF WHY, then the command.  The rule is `running-a-job.md`
+#: § 3.1's -- a machine's facts are read from a record and nowhere else, the
+#: local box included -- and the reason it is worth a refusal rather than a
+#: probe is that a probed-on-the-fly number is indistinguishable from a
+#: recorded one once it is in a wrapper.
+_NO_RECORD = (
+    "no machine record for {which}, so there is nothing to prep against.\n"
+    "  Record it, once:\n"
+    "      {cmd}\n"
+    "  A machine's cores, GPUs and queues are read from a record and never "
+    "probed on the fly -- so the numbers in a wrapper can always be traced "
+    "to a file you can look at (running-a-job.md 3.1)."
+)
+
+
 def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
     § 2.3.1) — probe cores, GPUs, scheduler and conda, and persist the answer
@@ -108,10 +125,21 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     stages of one calculation disagree about their own target for no reason a
     user asked for. Delete it to force a re-probe.
 
-    Returns the path to ``environment.json``.  Failure to probe is **not**
-    fatal here — `prep` still has wrappers to render and a tree to lay out,
-    and the deck/launch agreement (`agreement.launch_agreement`) is what
-    actually refuses a wrong launch.
+    **IT DOES NOT PROBE.  A machine that has no record is a REFUSAL**
+    *(user, 2026-09-02: "all environments have to be explicitly probed and
+    stored. no environment json, error")*, and it names the one command that
+    fixes it.
+
+    This step used to run a fresh probe and write the answer down whenever no
+    scope answered — which read as helpful and is the guess
+    `running-a-job.md` § 3.1 forbids: the numbers a wrapper carries would
+    then come from *whichever box happened to run prep*, and for a bundle
+    described at a desk and run on a cluster that is the wrong machine, with
+    a number that looks exactly like a right one.  Probing is one command and
+    it is the user's to run, so the record is always something they can point
+    at and say where it came from.
+
+    Returns the path to ``environment.json``.
     """
     from ..scheduler import FILENAME, machine_for, write_environment
     out = Path(base_dir) / FILENAME
@@ -119,17 +147,21 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
         return out
     # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
     # just early-returned if it did), so this is the MACHINE scope -- what
-    # `jobset probe` wrote -- and a fresh probe only when that is absent too.
-    # Snapshotting the machine's answer rather than re-probing is what makes
-    # one probe serve every calculation here (configuration.md § 5, M-3).
-    # ``target`` names WHICH machine this is for (P2).  Without it: this
-    # machine's record, else a fresh probe.  With it: the named record, and an
-    # error naming the ones that exist if it is not among them -- a benchmark
-    # prepped for a cluster was silently measured against the workstation it
-    # was prepped ON, because there was one record and nobody said otherwise.
-    env = machine_for(target=target, probe=(target is None))
-    if env is None:                       # pragma: no cover - probe is best-effort
-        return out
+    # `jobset probe` wrote.  Snapshotting that answer rather than re-probing
+    # is what makes one probe serve every calculation here
+    # (configuration.md § 5, M-3).  ``target`` names WHICH machine this is
+    # for (P2); an unknown name is `machine_for`'s own error, naming the ones
+    # that exist.
+    #
+    # NO `probe=`.  Nothing here detects anything: a record is read or the
+    # prep stops.
+    env = machine_for(target=target)
+    if env is None:
+        raise PrepError(_NO_RECORD.format(
+            which=("this machine" if target is None else repr(target)),
+            cmd=("molbuilder jobset probe --write" if target is None
+                 else f"molbuilder jobset probe --write --name {target}"
+                      "   (on that machine)")))
     return write_environment(env, out)
 
 
@@ -642,10 +674,10 @@ def _environment_for(base: Path, target: Optional[str] = None):
     """
     from ..scheduler import machine_for
     resolve_target(base, target)       # step 1 proper: snapshot, idempotent
-    # probe=True: this IS step 1, and if the snapshot could not be written
-    # (read-only tree, a racing prep) `prep` still needs an answer to resolve
-    # against rather than a None that silently drops the machine.
-    return machine_for(base, target=target, probe=(target is None))
+    # NO `probe=`: step 1 above has already refused if no record answers, so
+    # by here one exists.  A probe as a fallback would be the guess § 3.1
+    # forbids, arriving one call later.
+    return machine_for(base, target=target)
 
 
 def _structure_for(task, base: Path):
@@ -702,7 +734,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
-    1. **resolve the machine** — probe it, persist ``environment.json``;
+    1. **resolve the machine** — READ its record, persist the snapshot as
+       ``environment.json``; refuse when no record answers (§ 3.1);
     2. **resolve the parameters** — the description ⊕ this stage ⊕ the sweep ⊕
        the pins, into a :class:`~molbuilder.resolve.ParameterSet`;
     3. **render the deck(s)** — one per element of that set;
@@ -735,10 +768,17 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     except Exception:
         _t_calc = None   # no/invalid description: the named refusal below owns it
     if _t_calc == "transport":
+        # `chosen` TRAVELS.  It is the run's launch shape -- what the person
+        # decided on the run card, or `--np` on the command line -- and this
+        # hand-off dropped it, so a transport run silently fell back to the
+        # target's own width while every other calculation honoured it.  Both
+        # sides have always declared the parameter; only the forwarding was
+        # missing, which is why nothing named it.
         return _prep_transport(base_dir, stage, allocation=allocation,
                                env=env, emit_sbatch=emit_sbatch,
                                sweep=sweep, pins=pins,
                                translation=translation, target=target,
+                               chosen=chosen,
                                pipeline_log=pipeline_log)
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve

@@ -907,8 +907,8 @@ The last row is the point. The portable half did not move; only what the machine
 decided did.
 
 This is the same shape the benchmark already ships: `jobset prep bench` runs
-on the target, detects the machine, writes `environment.json`, and formats the
-scripts for it — *"the user never hand-edits a queue name or a core count; this is what
+on the target, **reads** the machine's record into `environment.json`, and
+formats the scripts for it — *"the user never hand-edits a queue name or a core count; this is what
 makes the bundle portable."* The staged path reuses that shape rather than
 inventing a second one.
 
@@ -972,16 +972,33 @@ each one.
 **What stays here is step 5's product** — the tree those scripts are laid out
 into, which is the rest of this document.
 
-**Step 1 reads before it probes, and that is precedence rather than
-detection.** `environment.machine_for` walks the scopes — the calculation's own
-snapshot, then this machine's record, then a named target — and **the first one
-found is the whole answer**, with no field-level merge. A fresh probe happens
-only when no scope answered, and only for the caller that writes the answer
-down. That is what lets you `prep` for a cluster from a workstation: the
-cluster's record was declared, not detected, and declaring is how a fact about
-a machine you are not standing on arrives ([`configuration.md § 5`](?doc=configuration.md)
-M-1, M-3). *(This box said "detect cores, GPUs, scheduler, conda" until
-2026-08-17, which described the last resort as though it were the rule.)*
+**Step 1 READS. It does not probe, ever.** `environment.machine_for` walks the
+scopes — the calculation's own snapshot, then this machine's record, then a
+named target — and **the first one found is the whole answer**, with no
+field-level merge. **When none answers, `prep` refuses** and names the one
+command that fixes it:
+
+```
+molbuilder jobset probe --write                 # this machine
+molbuilder jobset probe --write --name NAME     # on the target
+```
+
+*(User, 2026-09-02: "all environments have to be explicitly probed and stored.
+no environment json, error".)* That is what lets you `prep` for a cluster from
+a workstation: the cluster's record was declared, not detected, and declaring
+is how a fact about a machine you are not standing on arrives
+([`configuration.md § 5`](?doc=configuration.md) M-1, M-3).
+
+> **Why refusing beats probing.** Step 1 used to run a fresh probe when no
+> scope answered, and write the answer down. It reads as helpful and it is the
+> guess [`running-a-job.md § 3.1`](?doc=execution/running-a-job.md) forbids:
+> the numbers a wrapper then carries come from *whichever box happened to run
+> `prep`* — for a bundle described at a desk and run on a cluster, the wrong
+> machine, with a number that looks exactly like a right one. Probing is one
+> command; a record is a file somebody can point at. *(This box said "detect
+> cores, GPUs, scheduler, conda" until 2026-08-17, which described the last
+> resort as though it were the rule; the last resort itself went on
+> 2026-09-02.)*
 
 **Why the order is forced** is argued in
 [`script-preparation.md`](?doc=execution/script-preparation.md) § 4.1, pair by

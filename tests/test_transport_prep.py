@@ -160,6 +160,11 @@ def _isolated(monkeypatch, tmp_path_factory):
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    # ...and the box is probed.  Moving HOME moves the machine scope
+    # out from under conftest's own record, and prep refuses without
+    # one (`running-a-job.md` § 3.1).
+    from conftest import write_machine_record
+    write_machine_record()
     monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
 
 
@@ -196,6 +201,29 @@ class TestTheLadderPreps:
         js = json.loads((calc / "job-set.json").read_text())
         assert [j["name"] for j in js["jobs"]] == ["seed"]
         assert (calc / "STAGE-PLAN.md").is_file()
+
+    def test_the_RUNS_CHOSEN_SHAPE_reaches_a_transport_stage(self, calc):
+        """**The run's launch shape travels into the transport arm.**
+
+        `prep_calculation` takes `chosen` -- what the person decided on the
+        run card, or `--np` on the command line -- and the transport
+        hand-off DROPPED it: every other calculation honoured the decision
+        and a transport run silently fell back to the target's own width.
+        Both sides had always declared the parameter; only the forwarding
+        was missing, which is why no signature check and no type checker
+        could see it.
+
+        Read off the WRAPPER, which is the artifact the cluster runs, rather
+        than off an intermediate: a value that reaches an inner function and
+        not the header is the failure this whole class of test exists for.
+        """
+        prep_calculation(calc, "seed", chosen={"mpi_np": 7})
+        text = (calc / "01_seed" / "T_01_seed.run.sh").read_text()
+        assert "_mpi_np_default=7" in text, (
+            "the run card asked for 7 ranks and the wrapper was rendered "
+            "for something else:\n"
+            + "\n".join(ln for ln in text.splitlines()
+                         if "mpi_np" in ln or "np_default" in ln))
 
     def test_the_electrode_deck_is_the_tshs_the_device_asks_for(self, calc):
         prep_calculation(calc, "electrode_L")

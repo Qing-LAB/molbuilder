@@ -257,3 +257,93 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         bundle = machines.tree / "P" / "optimization" / "w"
         assert not (bundle / "environment.json").is_file(), (
             "a refused prep must not leave this machine's record behind")
+
+    def test_naming_THIS_MACHINE_reads_the_same_records_as_naming_nothing(
+            self, machines):
+        """`--target this` says WHICH machine; it is not a second way of
+        finding one.
+
+        `workflow.md` § 5 step 1: *"read the record — the calculation's,
+        else this machine's"*.  `LOCAL_TARGET` took a private road that read
+        ONLY the machine scope, so naming the local machine DISCARDED the
+        calculation's own snapshot while saying nothing kept it -- one box,
+        two answers, and the explicit road was the worse one.
+
+        It reaches everybody.  The task-setup tab can only send the label
+        `(this machine)`, which the prep door translates to `LOCAL_TARGET`,
+        so every local prep from the browser took that road; and `--target
+        this` is what C1's own refusal above tells people to type.
+
+        **The scenario is a bundle that has been carried.**  It was prepped
+        where a machine record existed, and it is prepped again somewhere
+        that has none of its own -- which is the case the snapshot exists
+        for (`running-a-job.md` § 3.1: read from a record, and the local box
+        is no exception).  Before the fix this refused in REMOTE words --
+        *"on this, run jobset probe --write --name this, then copy the
+        record into ~/.config/ here"* -- advice that means nothing for the
+        box you are sitting at.
+        """
+        machines.this_machine(scheduler="slurm")
+        first = _prep("P/optimization/w")
+        assert first.exit_code == 0, first.output
+        bundle = machines.tree / "P" / "optimization" / "w"
+        snapshot = bundle / "environment.json"
+        assert snapshot.is_file(), "step 1 wrote no snapshot to read back"
+
+        # The machine scope goes away; only the calculation's own record is
+        # left, which is exactly what a carried bundle has.
+        (machines.cfg / "environment.json").unlink()
+
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        res = CliRunner().invoke(jobset_group, [
+            "prep", "run", "coarse", "--bundle", "P/optimization/w",
+            "--target", "this"])
+        assert res.exit_code == 0, (
+            "naming this machine refused a bundle carrying its own record:\n"
+            + res.output)
+
+        # And it read THAT record -- not a fresh probe of the box, which
+        # would be the guess § 3.1 forbids.
+        from molbuilder.scheduler.record import machine_for
+        named = machine_for(bundle, target="this")
+        silent = machine_for(bundle, target=None)
+        assert named is not None and silent is not None
+        assert named.to_dict() == silent.to_dict(), (
+            "naming this machine and naming nothing resolved DIFFERENT "
+            "records for the same box")
+
+    def test_no_machine_record_at_all_is_a_REFUSAL_naming_the_probe(
+            self, machines):
+        """**A machine that has not been probed cannot be prepped for**
+        *(user, 2026-09-02: "all environments have to be explicitly probed
+        and stored. no environment json, error")*.
+
+        Step 1 used to run a fresh probe here and write the answer down.
+        That reads as helpful and is the guess `running-a-job.md` § 3.1
+        forbids: the numbers the wrapper then carries come from *whichever
+        box happened to run prep*, which for a bundle described at a desk
+        and run on a cluster is the wrong machine -- and the number looks
+        exactly like a right one.
+
+        The refusal has to carry the command, because "no machine record"
+        is only actionable if you are told the one thing that makes one.
+        """
+        from molbuilder.scheduler import machine_scope_path
+
+        # NOTHING is probed: no named records, and the record the suite's
+        # own fixture writes for every test is removed.
+        Path(machine_scope_path()).unlink(missing_ok=True)
+
+        res = _prep("P/optimization/w")
+        assert res.exit_code != 0, (
+            "a bundle with no machine record anywhere was prepped anyway -- "
+            "against what, then?\n" + res.output)
+        assert "no machine record" in res.output, res.output
+        assert "jobset probe --write" in res.output, (
+            "the refusal does not name the command that fixes it: "
+            + res.output)
+        bundle = machines.tree / "P" / "optimization" / "w"
+        assert not (bundle / "environment.json").is_file(), (
+            "a refused prep left a machine record behind -- it probed after "
+            "all, and the next prep would silently use it")
