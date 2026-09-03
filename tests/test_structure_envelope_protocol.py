@@ -28,12 +28,14 @@ from molbuilder.workingcopy_structure import StructureCodec
 
 
 def _envelope(**metadata):
-    """`frozen_atoms=` is accepted here as a convenience and written where it
+    """An envelope is the structure's own canonical dict -- `Structure.to_dict()`'s
+    shape -- so these tests build it the way the codec does, not a shape invented
+    beside it.
+
+    `frozen_atoms=` is accepted here as a convenience and written where it
     belongs -- into `regions`. The metadata dict itself has no such key; the
-    gate refuses one rather than dropping it."""
-    """An envelope is the structure's own canonical dict — `Structure.to_dict()`'s
-    shape — so these tests build it the way the codec does, not a shape invented
-    beside it."""
+    gate refuses one rather than dropping it.
+    """
     columns = {k: metadata.pop(k) for k in
                ("atom_names", "residue_ids", "residue_names", "chain_ids", "title")
                if k in metadata}

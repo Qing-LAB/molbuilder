@@ -375,12 +375,8 @@ class TestPseudosEndpoint:
         own tests green."*  The chemistry below is unchanged; only the
         delivery moved, and it moved onto the shape the tabs use.
         """
-        from molbuilder.structure import Structure
-        st = Structure.from_xyz(xyz)
-        return {"structure": {"elements": list(st.elements),
-                              "positions": [list(map(float, r))
-                                            for r in st.positions],
-                              "metadata": {}}}
+        from support.envelope import from_xyz
+        return {"structure": from_xyz(xyz)}
 
     def test_structure_analyze_organic_no_metals(self):
         """No metals -> closed-shell singlet (or doublet for odd-e)."""

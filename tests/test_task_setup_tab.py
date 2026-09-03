@@ -263,9 +263,12 @@ def _fresh_calc_dir():
 
 
 def _envelope():
-    return {"structure": {"elements": ["H", "H"],
-                          "positions": [[0, 0, 0], [0, 0, 0.74]],
-                          "metadata": {}}}
+    """Through the ONE builder (`tests/support/envelope.py`), so a field the
+    envelope grows lands here rather than being forgotten in a hand-listed
+    copy."""
+    from support.envelope import envelope
+    return {"structure": envelope(["H", "H"],
+                                  [[0, 0, 0], [0, 0, 0.74]])}
 
 
 def test_handover_renders_and_writes_nothing(web_client):
@@ -1409,13 +1412,15 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
     try:
         # a periodic slab: a cell, a region label, a frozen atom
         cell = [[5.77, 0.0, 0.0], [2.885, 4.997, 0.0], [0.0, 0.0, 20.0]]
-        env = _envelope()
-        env["structure"]["elements"] = ["Au", "Au", "S"]
-        env["structure"]["positions"] = [[0, 0, 0], [2.885, 0, 0], [0, 0, 4.755]]
-        env["structure"]["metadata"] = {
-            "regions": {"frozen_atoms": [0], "slab": [0, 1]},
-            "cell": cell, "cell_origin": None, "axis_kind": None, "vacuum": None,
-        }
+        # BUILT, not a two-atom envelope overwritten field by field: the
+        # canonical dict carries the per-atom columns too, and replacing
+        # `elements` alone left `atom_names` describing the old atoms.
+        from support.envelope import envelope
+        env = {"structure": envelope(
+            ["Au", "Au", "S"],
+            [[0, 0, 0], [2.885, 0, 0], [0, 0, 4.755]],
+            regions={"frozen_atoms": [0], "slab": [0, 1]},
+            cell=cell)}
         r = web_client.post("/api/task-setup/handover", json=dict(
             env, engine="siesta", name="chain",
             params={"system_label": "chain", "kgrid": [8, 8, 1],
