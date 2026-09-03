@@ -370,6 +370,44 @@ assumes `{ ok, … }`: the **tab pages** (`/`, `/molbuilder`, …), the HTML
 **`/partials/*`** fragments, **`/api/files/download`** (a raw byte stream), and
 **`/vendor/plotly.min.js`**.
 
+## 1a. What may run inside a request — the three-second rule
+
+**Anything that can take more than three seconds runs as a job, and the page
+shows progress** *(user ruling, 2026-09-03)*. A request thread is a seat in a
+waiting room: while it is occupied the person who opened it is looking at a
+spinner, and — for some work — so is everybody else.
+
+**Two different costs, and they are not the same problem.** Measured on this
+tree, 2026-09-03:
+
+| work | time | what it costs |
+|---|---|---|
+| an RDKit embed (a C₆₀ alkane from SMILES) | **4.5 s** | one thread. RDKit releases the GIL, so other requests run at 99% of full speed |
+| a SIESTA `.out` parse, 25 MB | **4.7 s** | **every other request drops to ~8% speed** for the whole time — it is pure Python and holds the GIL |
+| the same parse, 51 MB | 9.6 s | the same, for twice as long |
+
+So the slow thing and the freezing thing are different things, and the audit
+finding that opened this ("in-request heavy work can freeze every user") was
+right about the symptom and wrong about which work causes it. A 25 MB `.out` is
+an ordinary long relaxation, not a pathological input.
+
+**The rule that follows has two halves:**
+
+1. **Over three seconds → not in a request.** Whatever it costs others, it has
+   already cost the person waiting. It runs as a job and the page shows
+   progress rather than a spinner that cannot say how far along it is.
+2. **Pure-Python heavy work is off the request thread even under three
+   seconds**, because the cost is not its own: it holds the GIL, so it is
+   *everyone's* three seconds. The remedy is a **subprocess**, not a thread —
+   a thread would hold the same lock. This is the shape the GPU half already
+   took: every driver read is a timed subprocess behind a cache, after a frozen
+   child holding `/dev/nvidia*` froze the page widget.
+
+**A timeout is a failure of the inquiry, never of the system** — the same rule
+the GPU reads follow. A job that overruns says so and the page stays usable.
+
+---
+
 ## 2. Security posture
 
 Set on every response by an `after_request` hook (`app.py`):

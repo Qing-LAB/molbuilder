@@ -564,11 +564,24 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     failure.  Cheap when the file is unchanged.
 
     Locking strategy: snapshot path/mtime/parser under the lock, then
-    drop the lock during the actual parse so other concurrent requests
-    aren't blocked for the duration of a multi-MB log re-parse.  After
-    parsing we re-acquire and only commit the result if the active file
-    hasn't changed under us (defensive against a /api/load racing with
-    a /api/data poll).
+    drop the lock during the actual parse.  After parsing we re-acquire
+    and only commit the result if the active file hasn't changed under us
+    (defensive against a /api/load racing with a /api/data poll).
+
+    **Dropping the lock does NOT stop this blocking other requests, and
+    the sentence here used to claim it did** (measured 2026-09-03).  The
+    parse is pure Python, so it holds the GIL: with a 25 MB ``.out`` it
+    runs 4.7 s and every other request in the process drops to about 8%
+    of full speed for the whole of it; 51 MB is 9.6 s.  Releasing the
+    lock lets another request *enter* -- it does not let it *run*.
+
+    The file is re-parsed WHOLE whenever its mtime advanced, and a live
+    run's mtime advances constantly, so each watching viewer pays this
+    every poll.  Both halves are `web-api.md` § 1a's case: over three
+    seconds, and pure-Python work that is everyone's three seconds
+    rather than its own.  The remedy is a subprocess (a thread holds the
+    same lock) or an incremental parse; neither is done yet, and saying
+    so here beats a comment that reads as though it were.
     """
     # ---- Snapshot under the lock --------------------------------
     with _lock:
