@@ -386,10 +386,10 @@ tree, 2026-09-03:
 | a SIESTA `.out` parse, 25 MB | **4.7 s** | **every other request drops to ~8% speed** for the whole time — it is pure Python and holds the GIL |
 | the same parse, 51 MB | 9.6 s | the same, for twice as long |
 
-So the slow thing and the freezing thing are different things, and the audit
-finding that opened this ("in-request heavy work can freeze every user") was
-right about the symptom and wrong about which work causes it. A 25 MB `.out` is
-an ordinary long relaxation, not a pathological input.
+**Nobody has ever hit this** *(user, 2026-09-03)*, and the numbers are here so
+that stays the answer rather than being re-derived: this is a small-lab server,
+concurrent heavy requests are not a thing it sees. The rule is what to do IF
+the case arises — not a defect waiting for a fix.
 
 **The rule that follows has two halves:**
 

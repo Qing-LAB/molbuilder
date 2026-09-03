@@ -575,13 +575,11 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     of full speed for the whole of it; 51 MB is 9.6 s.  Releasing the
     lock lets another request *enter* -- it does not let it *run*.
 
-    The file is re-parsed WHOLE whenever its mtime advanced, and a live
-    run's mtime advances constantly, so each watching viewer pays this
-    every poll.  Both halves are `web-api.md` § 1a's case: over three
-    seconds, and pure-Python work that is everyone's three seconds
-    rather than its own.  The remedy is a subprocess (a thread holds the
-    same lock) or an incremental parse; neither is done yet, and saying
-    so here beats a comment that reads as though it were.
+    The file is re-parsed WHOLE whenever its mtime advanced.  **This has
+    never been a problem in practice** (user, 2026-09-03) -- a small-lab
+    server does not see concurrent heavy requests -- so the numbers are
+    recorded rather than acted on, and `web-api.md` § 1a says what to do
+    if it ever does arise.
     """
     # ---- Snapshot under the lock --------------------------------
     with _lock:
