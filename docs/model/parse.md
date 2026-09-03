@@ -581,6 +581,14 @@ These stop the next round of parallel parse paths:
 8. **No time field without a clock in its name** (§ 2a). `wall_clock_s` is an
    epoch, `elapsed_s` counts from the run's start, and a value the file does not
    carry stays `None` rather than being converted from the other kind.
+9. **No silent absorption.** A token the parser does not recognise is recorded
+   AND flagged — a `ParseWarning` (§ 2), or a refusal where the value is
+   load-bearing — never quietly accepted as what the run did. A future print
+   shape from an engine must surface as something a reader can see; the
+   alternative is a value that looks measured and is not. Four sites across
+   three modules carry it today (`parse/engines/siesta.py` ×2,
+   `parse/sidecars/transport.py`, `transport/results.py`), each naming the
+   vocabulary it validated against.
 
 ---
 

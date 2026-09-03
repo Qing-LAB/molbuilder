@@ -4,7 +4,8 @@ proposed ``scheduler`` config block (job-system.md § 7).
 Probes ``sinfo``/``sacctmgr`` on the target's login node and DERIVES the
 ``scheduler.{directives,gpu,routing}`` block the user would otherwise
 hand-write by reading those tools (§ 4.1, § 4.3 — these and the section
-references below cite the archived job-execution.md design record; the
+references below cite the archived `docs/archive/old_docs/job-execution.md`
+design record; the
 live surface is `molbuilder bench probe-scheduler`, job-system § 7).  The
 framework hardcodes
 NO partition names or limits -- everything here comes from the live system

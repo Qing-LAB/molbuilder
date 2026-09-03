@@ -185,7 +185,7 @@ def _now_iso_z() -> str:
 def structure_fields_via_dataclass(
     n_atoms_total: int, raw: Dict[str, Any]) -> Dict[str, Any]:
     """Validate + canonicalise the Structure metadata fields through the ONE
-    dataclass authority (data-vocabulary.md): apply ``raw`` to a scratch
+    dataclass authority (`model/structure.md` § 2.2): apply ``raw`` to a scratch
     N-atom :class:`~molbuilder.structure.Structure` -- which validates every
     field exactly as a live structure does -- then read it back normalised via
     ``metadata_to_dict``.  Shared by the write validator (:func:`to_dict`) and
@@ -506,7 +506,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     Delegates the whole field set (regions / frozen_atoms / cell / cell_origin /
     pbc / axis_kind / vacuum / annotations) to
     :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
-    dict->struct authority (data-vocabulary.md).  Because the writer
+    dict->struct authority (`model/structure.md` § 2.2).  Because the writer
     (``Structure.metadata_to_dict``) and this reader share that one method, they
     can no longer drift a field (the class of bug that dropped ``cell_origin`` on
     reload).  ``selection_rules`` is a sidecar-only pass-through (not a Structure

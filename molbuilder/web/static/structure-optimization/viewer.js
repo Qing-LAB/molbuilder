@@ -27,7 +27,7 @@
  * trusts"* — and was wrong in the other direction at the same time.  Those
  * two deck-rendering routes were deleted outright on 2026-08-17.
  *
- * MolView is consumed through its ONE public door (molview-esm-finalization.md): the ES-module
+ * MolView is consumed through its ONE public door (web/molview.md § 9.1): the ES-module
  * import below.  No `window.molbuilder.molview` / `.fmt` global reads — those are the transitional
  * shims we are dumping.  Workspace (`window.molbuilder.workspace`) is a SEPARATE module, still a
  * classic global, read at call time.
@@ -848,7 +848,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             const mySeq = ++_sidebarLoadSeq;
             const filename = f.split("/").pop();
             setStatus("load-status", `Loading ${filename}…`);
-            // ONE load door (structure-load-save-contract.md): read the .xyz + its
+            // ONE load door (web/molview.md § 9.3 + model/structure.md § 2.4): read the .xyz + its
             // .molstruct.json sidecar via the concealed projects parser and install the
             // MODEL -- labels/regions/frozen ride along, so the read-only viewer shows
             // them.  This replaces the old SECOND load path (hand-rolled /api/files/read

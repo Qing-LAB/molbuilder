@@ -5,7 +5,7 @@
  * Build + Modify will pick this up if they ever need to round-trip
  * an XYZ string client-side instead of through /api/build/load).
  *
- * STATELESS — so per the ESM rule (molview-esm-finalization.md §1.2) module consumers
+ * STATELESS — so per the ESM rule (web/presenters.md) module consumers
  * ``import { parse, toText }`` directly.  The classic-script door
  * ``window.molbuilder.xyz.parse/.toText`` stays published for not-yet-converted consumers
  * (spectra/core.js).

@@ -1907,7 +1907,8 @@ def get_execution(
     """Return the effective ``execution`` block: the run-vs-submit launch
     policy, read at prep time on the target.  The nearest live contract is
     `running-a-job.md` § 5.4 — the section this block's retired home
-    (*job-execution.md § 8.13*, 2026-07 migration) maps to; the key's own
+    (*docs/archive/old_docs/job-execution.md* § 8.13,
+    2026-07 migration) maps to; the key's own
     full contract is still to be written (`job-system.md` § "The loop").
 
     Server-wide and project scopes are deep-merged (project wins).

@@ -47,7 +47,11 @@ RETIRED = re.compile(
     # CONTAINS the substring ``docs/tabs/`` -- without the lookbehind
     # this arm flagged exactly the citations the old_docs arm permits.
     r"(?<!old_)docs/(?:protocols|types|tabs)/"
-    r"|docs/(?:config|deployment|README_install|installation"
+    # Same collision, one arm down: ``old_docs/job-execution.md`` ENDS
+    # WITH ``docs/job-execution.md``, so without this lookbehind the
+    # sanctioned history citation trips the retired-root-level arm --
+    # and the two tests then disagree about the one form each requires.
+    r"|(?<!old_)docs/(?:config|deployment|README_install|installation"
     r"|job-execution|science|MIGRATION)\.md"
     r"|(?<![\w/])README_install\.md"
     r"|(?<!archive/)(?<![\w])old_docs/"
@@ -184,27 +188,47 @@ def measure_bare_archived_citations() -> list[str]:
     return hits
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "OPEN — decision 32 in docs/archive/2026-08-19-staged-runs-implementation-plan.md "
-    "§ 8.  111 bare citations of 23 archived-only documents (was 277 of 31); "
-    "the biggest is now molview-module.md (14).  Two are CLOSED and they are "
-    "the worked examples, one per failure mode:\n\n"
-    "slurm-integration.md (51) — all repointed to running-a-job.md and "
-    "job-system.md.  A successor is found by reading what the live doc "
-    "POINTS AT (job-system § 6 names its two owners in its first sentence), "
-    "not by grepping successors for words you expect to see; that method gave "
-    "the wrong answer and a recommendation to un-archive a correctly-"
-    "superseded document.\n\n"
-    "parse-module.md (46) — a citation is not always a wrong pointer.  Half "
-    "of these were module headers whose PROSE was false: they said the legacy "
-    "`molbuilder/parsers/` package 'stays in place until H4' and that "
-    "consumers 'still use it until H3', when H4b deleted that package on "
-    "2026-06-21.  A reader was being told a parallel implementation exists.  "
-    "Those became one provenance line each; only the rule-citing ones moved "
-    "to model/parse.md (old § 9 forbidden #N is § 7 #N).\n\n"
-    "Run `python -m tests.test_no_retired_doc_paths` for the current count.  "
-    "Strict, so this fails loudly the moment the last one is resolved."))
 def test_no_active_source_cites_an_archived_doc_as_authority():
+    """No active source may specify its behaviour by citing an archived-only
+    document.
+
+    **CLOSED 2026-09-03** (decision 32 in
+    ``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` § 8).  This
+    was ``xfail(strict=True)`` at 277 bare citations of 31 documents; it is now
+    an ordinary guard, and the count is zero.
+
+    An archive records how a decision was REACHED.  A citation that specifies
+    live behaviour needs a document somebody maintains -- ``docs/README.md``
+    calls the archive "Not a source of truth", so code specified by one is code
+    with no maintained contract, and a rule that moves becomes invisible.  Each
+    citation was resolved by reading the code it sits beside, checking whether
+    the live contract already stated the rule, WRITING it there when it did
+    not, and only then re-pointing.
+
+    Three failure modes turned up, and they want different fixes -- which is
+    why "grep and replace the name" was never the method:
+
+    1. **A pointer aimed at the wrong document.**  The successor is found by
+       reading what the live doc POINTS AT (``job-system`` § 6 names its two
+       owners in its first sentence), not by grepping successors for words you
+       expect to see -- that method gave the wrong answer and a recommendation
+       to un-archive a correctly-superseded document.
+       (``slurm-integration.md``, 51.)
+    2. **Prose that had gone false under a correct pointer.**  Half of
+       ``parse-module.md``'s 46 were module headers saying the legacy
+       ``molbuilder/parsers/`` package "stays in place until H4" -- H4b deleted
+       it on 2026-06-21.  A reader was being told a parallel implementation
+       exists.  Those became one provenance line each; only the rule-citing
+       ones moved.
+    3. **A rule with no live home at all.**  The citation was load-bearing and
+       nothing maintained said it -- so the rule was written from the code
+       first (the app shell, the poll's keep-on-``undefined`` apply rule, the
+       two bias walks' opposite failure policies, the five spectra selectors,
+       "no silent absorption").
+
+    Narrating history is still fine, and is what the sanctioned
+    ``docs/archive/old_docs/...`` form is for; specifying against it is not.
+    """
     hits = measure_bare_archived_citations()
     assert not hits, (
         f"{len(hits)} bare citations of archived-only documents.  "

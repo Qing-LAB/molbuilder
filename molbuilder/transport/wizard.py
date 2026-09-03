@@ -1,7 +1,7 @@
 """Electrode wizard — derive a bulk-lead ``.fdf`` from a labeled device.
 
-What this solves (transiesta-workflow.md § 6.2)
-================================================
+What this solves (``engines/transport.md`` § 5, invariants I2/I5/I6/I10)
+=======================================================
 
 The #1 TranSIESTA footgun is that the device run and the separate
 electrode run must share **one geometry + one numerical contract**, yet
@@ -315,7 +315,8 @@ def electrode_wizard(
     if not found:
         raise ValueError(
             "no *-electrode regions on the device; label the lead atoms "
-            "(region picker / region-labels.md) before deriving electrodes")
+            "(region picker / `engines/transport.md` § 4) before deriving "
+            "electrodes")
 
     if which == "both":
         targets = [lab for lab, _name, _idxs in found]

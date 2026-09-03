@@ -18,7 +18,7 @@
  * The viewer, click-select, halos, measurement, toggles, and persistence are all the
  * module's (mounted by modify/selection-bootstrap.js into the empty #molview-host).
  *
- * Spec: docs/web/tabs.md; docs/web/molview.md; molview-migration-plan.md.
+ * Spec: docs/web/tabs.md; docs/web/molview.md.
  */
 import { formula as mvFormula } from "/static/lib/molview/index.js";
 
@@ -1053,7 +1053,8 @@ export function init(viewer) {
     // ``loadStructureText`` because it genuinely accepts both formats.
     // NOTE (ESM finalization): the Sources-card generators NO LONGER read this global -- they
     // import { data } and inject their own ``(text,filename)=>data.installMolecule(...)`` adapter
-    // (molview-esm-finalization.md §4.1).  This alias is RETAINED only as (a) the page-mount E2E
+    // (web/molview.md § 9.1 -- mount and formula are the only imports).  This alias is
+    // RETAINED only as (a) the page-mount E2E
     // hook (test_molbuilder_e2e.py) and (b) the loader that emits the Modify #status feedback.
     // FOLLOW-UP: remove it once the E2E hook is repointed to data.installMolecule and the "Loaded
     // N-atom" status is rewired (it is the last window.molbuilder.* alias this file publishes).

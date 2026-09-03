@@ -7,7 +7,7 @@ WHERE THE INDEX IS FIRST DEFINED (the fact).
     in the source file when it is parsed (``.xyz`` / ``.pdb`` / … → Structure);
     that order IS the identity.  Every layer references this identity, and all
     per-atom metadata (``frozen_atoms``, ``regions``, ``annotations``) are
-    0-based indices into it.  See ``data-vocabulary.md`` § 3.1–3.2.
+    0-based indices into it.  See ``model/overview.md`` § 2 + § 2.1.
 
 WHERE THE TRANSLATION HAPPENS (this module).
     The engine-facing translators (``siesta/input.py``, ``pyscf/input.py``,

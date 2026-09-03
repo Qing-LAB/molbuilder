@@ -291,7 +291,9 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
         "field on the way to the HTTP response.  Threshold lines on "
         "the trajectory inspector force plot will be missing.")
     ct = runtime_info["convergence_targets"]
-    # Every documented key from results-tab.md § 4.6 + the source tag.
+    # Every key the threshold lines need, + the source tag
+    # (`web/trajectory.md` § 3: the targets come from the run's own
+    # output, and the label says which reader found them).
     for key in ("max_force_tol_eV_per_A", "dm_tolerance",
                 "max_scf_iter", "max_geom_iter", "max_displ_ang", "source"):
         assert key in ct, (

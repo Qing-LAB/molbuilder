@@ -879,7 +879,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > review programme that ran on 2026-08-12 lettered its own items A3…A8, and
 > eight comments in `jobset/` still cite them. That plan is not in the doc set:
 > the letters are the programme's own history and **resolve nowhere**, exactly
-> as R8 says of `job-execution.md`'s section numbers. They are kept, in that
+> as R8 says of `docs/archive/old_docs/job-execution.md`'s section numbers. They are kept, in that
 > one spelling — *"2026-08-12 plan A4"*, never a bare `A4` — because they
 > correlate the eight sites with each other, which is the only thing they can
 > still do. **This table is the only live meaning of an A-letter.** If you are

@@ -462,8 +462,8 @@ def spec_for(struct: Structure,
         # runwrap's ``--cold`` glob moves ``_optimized.xyz`` aside when
         # the user wants a fresh start; otherwise the script auto-resumes
         # from the relaxed geometry on the next ``--continue`` invocation
-        # (analog to SIESTA's automatic ``.XV`` read, per script-execution.md
-        # "Cross-engine equivalence table").
+        # (analog to SIESTA's automatic ``.XV`` read -- the per-engine
+        # warm-file inventory, `execution/job-contracts.md` § 4.2).
         #
         # Two guards: ``os.path.exists`` AND ``getsize > 0`` so a stale
         # 0-byte file from a crashed prior run doesn't trigger a parse on

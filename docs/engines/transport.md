@@ -216,6 +216,14 @@ device. The convention (the *vocabulary* is owned by
   `electrode` (case-insensitive) is a lead — so `tip-electrode`, `gate-electrode`
   work without code changes (`config.transport.is_electrode_label`).
 
+**A label this engine does not consume is WARNED about, never dropped in
+silence.** TranSIESTA reads the canonical 2-terminal set plus `buffer`; a
+structure carrying any other region label still runs, and the preflight says
+which label played no part — so a person who labelled something on purpose
+finds out here rather than from a result that quietly ignored it. (The warning
+is raised before the missing-region check returns, so it surfaces even on an
+incomplete region set.)
+
 **Emitter behavior** (`transiesta.py::_emit_transiesta_block`,
 `_find_electrode_regions`): electrode regions are discovered, **sorted by
 z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one

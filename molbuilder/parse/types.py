@@ -121,14 +121,18 @@ class SidecarResult(ParseResult):
 
 @dataclass(frozen=True)
 class ScriptResult(ParseResult):
-    """The 6 reserved blocks of script-contract.md (HEADER /
-    PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM)
-    extracted from a single ``.fdf`` / ``.py`` text body.
+    """The five reserved blocks a generated deck can carry (HEADER /
+    PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM --
+    ``execution/job-contracts.md`` § 3.1), extracted from a single
+    ``.fdf`` / ``.py`` text body.  The sixth marker pair in
+    ``script_emit`` (``effective-parameters``) is not one of these: the
+    wrapper prints it into the LOG at launch, not into the deck
+    (§ 2.6).
 
     Each sub-block carries a presence semantics: ``None`` ==
     "block absent"; empty collection / empty string == "block
     present but empty" (which matters for the ATOM-METADATA
-    emission rule in script-contract.md § 4.4).
+    emission rule -- § 3.4).
     """
     header:        Optional[str] = None
     provenance:    Optional[Dict[str, str]] = None

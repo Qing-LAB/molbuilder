@@ -80,7 +80,9 @@ ENGINE_BODY_KEYS: Tuple[str, ...] = (
 class JobTypeAmbiguousError(ValueError):
     """Raised when sniff finds markers for more than one engine type
     in the same .fdf and no script-contract declaration breaks the
-    tie.  Per § 4 step 2 of job-decoder.md."""
+    tie.  The sniff itself is ``model/parse.md`` § 6's rule for an engine
+    FileParser (content markers in the first few hundred lines);
+    ambiguity is refused rather than guessed."""
 
 
 # Internal patterns ---------------------------------------------------- #

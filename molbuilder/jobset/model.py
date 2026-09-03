@@ -423,9 +423,10 @@ class JobSet:
 
     def write(self, path) -> Path:
         """Persist to ``job-set.json`` -- the bundle's plan, carried
-        host->target (the exchange vocabulary, job-contracts § 6.2; its
-    original home data-vocabulary.md is archived).  Pretty JSON so a human can
-        read/diff the plan in the bundle."""
+        host->target (the exchange vocabulary, `job-contracts.md` § 6.2;
+        the persisted-artifacts registry is that document's § 6, absorbed
+        from a doc retired in the 2026-07 migration).  Pretty JSON so a
+        human can read/diff the plan in the bundle."""
         from ..persist import write_json
         return write_json(path, self.to_dict())
 

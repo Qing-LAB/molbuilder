@@ -1,7 +1,9 @@
 """Chemistry-rule validators (engine-agnostic, callable from any engine).
 
 The home for every validator that asks a question the chemistry
-analyzer can answer.  Per docs/science/validation.md + Rule 1 of web-ui-coherence.md: every UI / preflight surface
+analyzer can answer.  Per docs/science/validation.md § 4 (chip and validator both derive from
+the ONE ``analyze_structure`` result, so they cannot disagree): every UI /
+preflight surface
 that gates on "open-shell or closed?", "metal basis adequate?",
 "protonation matches charge?" calls into THIS module — not its own
 parallel logic.

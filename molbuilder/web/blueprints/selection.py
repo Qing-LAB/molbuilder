@@ -313,7 +313,7 @@ def selection_atoms():
 def _struct_from_atoms(atoms: list) -> Structure:
     """Build a Structure from the workspace's IN-MEMORY atom list (the store's
     ``atoms``) so a filter evaluates against MEMORY, not the stale saved file
-    (molview-migration-plan.md A5b). The filter rules are label/element/index/
+    (`web/molview.md` § 9.5). The filter rules are label/element/index/
     residue only -- no geometry -- so positions are placeholders. The workspace
     module (ws.*) is the single source of truth."""
     if not isinstance(atoms, list):
@@ -344,7 +344,7 @@ def selection_eval():
     """Evaluate a rule against the workspace and return the selected indices.
 
     Preferred body (Modify): ``{atoms: [...store atoms...], rule}`` -- evaluate
-    against the IN-MEMORY workspace (molview-migration-plan.md A5b), so filters
+    against the IN-MEMORY workspace (`web/molview.md` § 9.5), so filters
     reflect unsaved edits.  Legacy/Results body ``{structure_path, rule}`` still
     loads the file on disk (a saved result legitimately lives there)."""
     try:

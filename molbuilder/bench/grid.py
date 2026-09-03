@@ -28,8 +28,8 @@ def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
     """Default cores-per-rank set for a given K: the *bracket*
     ``{1, cores//K, 2*cores//K}`` -- starved / one-socket / cross-socket --
     so each K row probes minimal, the conventional full-socket footprint, AND
-    a deliberately cross-socket one (archived job-execution.md § 8.12, the
-    design record).  Deduped, >=1.
+    a deliberately cross-socket one (the archived design
+    record, `docs/archive/old_docs/job-execution.md` § 8.12).  Deduped, >=1.
     Falls back to ``_FALLBACK_CS`` when cores/socket is unknown."""
     if not cps:
         return list(_FALLBACK_CS)

@@ -13,7 +13,8 @@ It parses BOTH fdfs and reports OK / WARN / ERROR per check.  It validates
 catches the device-vs-electrode mismatches that silently give wrong
 transmission, before any compute is spent.
 
-Scientific basis + the parameter rationale: transiesta-workflow.md § 4.
+Scientific basis + the parameter rationale: ``engines/transport.md`` § 5 (the
+invariant set, each gate traced to its reference) and § 7.
 """
 
 from __future__ import annotations
@@ -289,7 +290,7 @@ def preflight(device: FdfParams, electrode: FdfParams, *,
               min_electrode_thickness_ang: float = 12.0,
               electrode_kz_warn: int = 20,
               z_vacuum_warn_ang: float = 3.0) -> PreflightReport:
-    """Run the cross-run consistency gates (transiesta-workflow.md § 6.3).
+    """Run the cross-run consistency gates (``engines/transport.md`` § 5).
 
     ``device`` is the NEGF run, ``electrode`` the bulk lead run.
     """
@@ -312,7 +313,7 @@ def preflight(device: FdfParams, electrode: FdfParams, *,
     if not electrode.saves_ts_hs:
         add("electrode.saveHS", "warn",
             "electrode fdf has no TS.HS.Save/SaveHS true -> it won't write "
-            "the .TSHS the device needs (transiesta-workflow.md § 4 step 2)")
+            "the .TSHS the device needs (I13)")
 
     # C4: transverse lattice vectors must match (clone prerequisite)
     cells_match = _vecs_close(device.cell_ang, electrode.cell_ang, tol_ang)

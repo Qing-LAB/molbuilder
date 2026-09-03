@@ -655,7 +655,7 @@ class SpectraResults:
         # True partition: the union must be EXACTLY range(n_atoms_total).  A
         # count-only check passed an out-of-range index (e.g. free=[0,1,5],
         # frozen=[], n=3) -- which would then silently drop that atom's
-        # displacement in the frontend scatter (spec.md § 5.1 invariant 1).
+        # displacement in the frontend scatter (`web/spectra.md` § 8).
         expected = set(range(self.n_atoms_total))
         union    = free_set | frozen_set
         if union != expected:
@@ -664,7 +664,7 @@ class SpectraResults:
             raise ValueError(
                 f"SpectraResults: free_atom_idxs + frozen_atom_idxs must "
                 f"partition range({self.n_atoms_total}) "
-                f"(spec.md § 5.1 invariant 1); "
+                f"(web/spectra.md § 8); "
                 f"missing={missing} out-of-range/extra={extra}"
             )
         # Phase status validation.

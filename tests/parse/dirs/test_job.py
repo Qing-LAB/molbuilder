@@ -361,8 +361,9 @@ def test_jobresult_is_frozen(tmp_path):
 
 def test_no_direct_out_grep_in_decoder():
     """The JobDirParser module must NOT contain regex/grep calls
-    against .out content.  Enforces job-decoder.md § 9 forbidden #2
-    mechanically.
+    against .out content.  Enforces ``model/parse.md`` § 7 #1
+    (a DirParser composes registered parsers -- no inline file-level
+    parsing) mechanically.
 
     Allowed: filesystem-level checks (mtime / size / glob).
     Forbidden: re.search against .out body — must go through

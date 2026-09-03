@@ -960,7 +960,7 @@ other.
 > gates submission*).
 >
 > ⚠ **That key has no live contract.** It is validated by code and cited
-> throughout `molbuilder/bench/` as *"job-execution.md § 8.13"* — a document
+> throughout `molbuilder/bench/` as *"docs/archive/old_docs/job-execution.md § 8.13"* — a document
 > **retired in the 2026-07 migration** (`archive/2026-07-28-document-migration.md`
 > maps it to `execution/running-a-job.md`, whose section numbers did not
 > survive). So `execution` is a config section the code enforces and no live

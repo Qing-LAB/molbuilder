@@ -737,7 +737,7 @@ class TransiestaEngine:
         # silently shipped a Bloch-periodic 'transport' run.  The cross-run
         # `transport preflight` CLI catches this (preflight.py C2), but the web
         # Generate path dispatches to THIS engine preflight -- so the invariant
-        # must live here too (transiesta-workflow.md § 1 / § 4 / I8).
+        # must live here too (`engines/transport.md` § 5, I8).
         try:
             kz = int(cfg.k_mesh_transverse[2])
         except (TypeError, ValueError, IndexError):
@@ -757,7 +757,7 @@ class TransiestaEngine:
                 where="config.k_mesh_transverse",
             ))
 
-        # No silent absorption (sidecar-contract.md § 6): TranSIESTA
+        # No silent absorption (`engines/transport.md` § 4): TranSIESTA
         # consumes only the canonical 2-terminal region labels.  A
         # structure carrying any OTHER region label has it silently
         # ignored unless we say so -- warn (don't drop quietly) so the
@@ -765,7 +765,7 @@ class TransiestaEngine:
         # Emitted before the missing-region early return so it surfaces
         # even on an otherwise-incomplete region set.
         # ``buffer`` joined the consumed set 2026-08-28: the emitter
-        # writes it as TS.Atoms.Buffer (transport-design.md § 3), so
+        # writes it as TS.Atoms.Buffer (`engines/transport.md` § 4), so
         # warning that it is ignored would be false.
         consumed = set(EXPECTED_REGIONS_2T) | {REGION_BUFFER}
         unknown_regions = [r for r in regions if r not in consumed]

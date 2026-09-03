@@ -740,7 +740,8 @@ class Structure:
         return corner
 
     # ------------------------------------------------------------------ #
-    #  Sidecar-metadata contract -- the ONE get/set (data-vocabulary.md)  #
+    #  Sidecar-metadata contract -- the ONE get/set                       #
+    #  (`model/structure.md` § 2.2)                                     #
     # ------------------------------------------------------------------ #
     # The persisted ``.molstruct.json`` sidecar IS the serialization of this
     # dataclass's metadata.  These TWO methods are the SINGLE place the

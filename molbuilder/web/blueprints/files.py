@@ -2418,7 +2418,7 @@ def api_files_delete():
 
     # Remove the paired sidecar in lockstep.  The structure file is already gone, so a
     # sidecar-removal failure is surfaced (the user can clean it up) but does not resurrect
-    # the structure.  See projects-sidebar-ui.md § 5.2 (sidecar pairing).
+    # the structure.  See `web/projects.md` § 4.1 (the pair moves as one).
     sidecar_removed = None
     if paired_sidecar is not None:
         try:

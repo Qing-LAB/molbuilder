@@ -1,5 +1,5 @@
 """Versioned-document helpers — the shared ``molbuilder/<name>@<major>``
-schema convention + JSON IO (data-vocabulary.md § 1).
+schema convention + JSON IO (`execution/job-contracts.md` § 6).
 
 The major-version check was hand-rolled identically in three persisted
 artifacts (``scheduler/record.py``, ``bench/result.py``, ``jobset/model.py``),

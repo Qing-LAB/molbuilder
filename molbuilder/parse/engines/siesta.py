@@ -156,8 +156,8 @@ _SIESTA_GPU_DEVICE_RE = re.compile(
 # still record whatever SIESTA printed, but a token OUTSIDE these sets
 # is flagged as a ParseWarning rather than silently becoming "what the
 # binary ran with" -- a future SIESTA print shape we don't understand
-# must surface, not masquerade as ground truth (sidecar-contract.md
-# "no silent absorption"; audit-2026-06-26 T1 BLOCKER 3).
+# must surface, not masquerade as ground truth (`model/parse.md`
+# § 7 #9, no silent absorption; audit-2026-06-26 T1 BLOCKER 3).
 #
 # Parallelisation modes SIESTA prints on its ``Parallelisations:`` line.
 _SIESTA_PARALLELISATIONS = frozenset({"MPI", "OPENMP"})

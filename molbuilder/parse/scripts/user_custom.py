@@ -7,7 +7,7 @@ module on 2026-06-21 (provenance:
 
 USER-CUSTOM is user-owned territory between the BEGIN/END markers;
 molbuilder preserves it byte-for-byte across regenerations
-(script-contract.md § 4.6).  This module reads it; the write-side
+(`execution/job-contracts.md` § 3.5).  This module reads it; the write-side
 helpers (``replace_user_custom_inner`` /
 ``merge_user_custom_from_target``) stay in ``molbuilder.script_contract``
 until H2 rehomes them.

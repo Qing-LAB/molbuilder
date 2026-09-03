@@ -10,7 +10,8 @@ one to resume from) — so the manual continue is a one-glance decision.
 
 REUSE, not reinvention: per-stage run state comes from
 ``parse.dirs.job.decode_run_dir`` (the directory decoder behind the Results
-tab + JobMonitor, ``job-decoder.md``); this module only adds the cross-stage
+tab + JobMonitor; its schema is pinned by ``execution/running-a-job.md``
+§ 4, the composer pattern by ``model/parse.md`` § 5); this module only adds the cross-stage
 view (warm-file inventory + first-incomplete pointer).  It is **read-only**:
 it inspects the tree, changes nothing.
 """
@@ -294,7 +295,7 @@ def render_status(status: JobSetStatus) -> str:
             f"First incomplete stage: {status.first_incomplete}.  "
             "molbuilder does NOT auto-resume -- you decide: re-submit that "
             "stage (the engine warm-starts from its own restart files) or "
-            "switch parameters (staged-relaxation-guide.md).")
+            "switch parameters (`engines/stages.md`).")
     return "\n".join(lines)
 
 

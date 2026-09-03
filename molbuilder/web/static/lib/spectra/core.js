@@ -3151,7 +3151,7 @@
 
     }   // ----- end of mountInspector(rootEl, opts) -----
 
-    // The free-row -> global-atom eigenvector scatter (spec.md § 5.1 invariant 3)
+    // The free-row -> global-atom eigenvector scatter (`web/spectra.md` § 8)
     // belongs to VibrationView and is reached only through its one door: this file
     // hands over a mode and the module reads its own basis (vibrationview.md § 6.3).
 

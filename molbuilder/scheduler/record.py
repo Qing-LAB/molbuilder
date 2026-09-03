@@ -7,8 +7,8 @@ JSON record they produce (``environment@1`` — registry row: job-contracts
 § 6.1; produced by ``resolve_target`` at prep step 1) that every later stage
 and any external tool reads.
 
-**Section references below cite the archived job-execution.md design
-record** (the live homes are job-system § 7 and job-contracts § 6.1; R8,
+**Section references below cite the archived
+`docs/archive/old_docs/job-execution.md` design record** (the live homes are job-system § 7 and job-contracts § 6.1; R8,
 2026-08-12 — the numbers no longer resolve in the live doc set and are
 kept as the design's own history).  Detection priority for topology
 (§ 4.6 there): the **compute node**, not where

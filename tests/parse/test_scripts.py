@@ -5,7 +5,8 @@ Pins:
     fields default-None.
   * Block-absent → field stays None (not empty dict / empty
     string) — the present-vs-absent distinction is load-bearing
-    for the script-contract.md § 4.4 emission rule.
+    for the ATOM-METADATA emission rule
+    (`execution/job-contracts.md` § 3.1 + § 3.4).
   * Umbrella ScriptSourceTextParser composes all 5 + merges
     schema_versions.
   * parse_text() dispatches via the TextParser ABC (no
@@ -94,7 +95,7 @@ def test_header_extracts_when_present():
 
 def test_header_returns_none_when_absent():
     """Block-absent → field stays None (NOT empty string).  The
-    present-vs-absent distinction matters for script-contract.md
+    present-vs-absent distinction matters for `job-contracts.md`
     § 4.4 emission rule."""
     minimal = "SystemLabel test\n"   # no HEADER block
     result = parse_text(minimal, parser=HeaderTextParser)

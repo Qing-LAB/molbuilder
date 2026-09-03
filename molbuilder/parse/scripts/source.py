@@ -37,8 +37,8 @@ class ScriptSourceTextParser(TextParser):
     populated.  Each field is None when its block is absent; an
     empty dict / empty list when the block is present-but-empty
     (matching the legacy ``ScriptSource`` semantics — the
-    distinction matters for the script-contract.md § 4.4
-    "emission rule" decision).
+    distinction matters for the ATOM-METADATA emission rule --
+    `execution/job-contracts.md` § 3.1 + § 3.4).
     """
 
     name   = "fdf-script-source"
