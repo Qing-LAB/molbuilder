@@ -1,5 +1,9 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+# >=62.3 for RECURSIVE ``**`` in package-data (below).  On an older
+# setuptools the pattern matches nothing and the wheel ships no static
+# files at all -- a louder failure than the silent partial list it
+# replaced, but a floor is what stops it happening.
+requires = ["setuptools>=62.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -125,18 +129,19 @@ include = ["molbuilder*"]
 [tool.setuptools.package-data]
 molbuilder = [
     "web/templates/*.html",
-    "web/static/*.css", "web/static/*.js",
-    "web/static/lib/*.css", "web/static/lib/*.js",
-    "web/static/lib/projects/*.js",
-    "web/static/lib/inspectors/*.js",
-    "web/static/lib/trajectory/*.js",
-    # Browser dependencies, their notices, and all nested vendor assets.
-    # Keep this broad: license texts must ship with every built wheel.
-    "web/static/vendor/*", "web/static/vendor/*/*",
-    "web/static/watch/*.js",
-    "web/static/modify/*.css",  "web/static/modify/*.js",
-    "web/static/spectra/*.css", "web/static/spectra/*.js",
-    "web/static/results/*.css", "web/static/results/*.js",
+    # THE WHOLE STATIC TREE, recursively.  This was a hand-kept list of
+    # per-directory globs, and on 2026-09-03 a built wheel was measured
+    # carrying 90 of the 141 files on disk: the entire MolView module
+    # (13 files), the structure page (9), VibrationView (5), and the
+    # Task-setup, Documents, Transport and This-machine tabs' own assets
+    # -- every directory added after the list was last touched.  An
+    # installed copy served a broken UI while the repo worked, which is
+    # the same shape as the .toml omission noted below.
+    #
+    # A list that must be edited whenever a directory is added will be
+    # wrong again; a recursive glob cannot be.  Vendor licence texts are
+    # covered by it too, and they must ship with every wheel.
+    "web/static/**/*",
     # Fundamental-data tables loaded at import time.  See
     # molbuilder/data/README.md for citations + the override mechanism.
     "data/*.json", "data/*.md",
