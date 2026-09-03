@@ -182,11 +182,19 @@ function styleSpec(view) {
  * 3Dmol object: a consumer that could reach it would make § 5.3 false, and every
  * "just for tests" hatch that ever existed here became a production read.
  */
-/* How far back the camera sits when there is nothing but the axis triad
- * (§ 6.7a).  A number rather than `zoomTo`'s fit, because an empty scene has
- * no bounding box to fit to -- and because "empty" should look identical
- * every time rather than inheriting wherever the last structure left it. */
-const EMPTY_VIEW_ZOOM = 0.35;
+/* How close the camera sits on the axis triad, once the triad is what the
+ * window holds (§ 6.7a).
+ *
+ * `zoomTo` DOES have something to fit here -- the triad's own arrows are in
+ * the scene, handed down before the models are cleared -- so this is not a
+ * distance plucked out of the air: it is a modest zoom-in on that fit, which
+ * leaves the 1.5 Angstrom arrows filling a comfortable share of the window
+ * with their x/y/z labels clear of the edges.  Chosen by looking at it in the
+ * browser at 0.35 (a speck), 1.0 (small but legible) and 1.6.
+ *
+ * A FIT AND NOT AN INHERITED POSE, so "empty" looks the same every time
+ * rather than keeping wherever the last structure left the camera. */
+const EMPTY_VIEW_ZOOM = 1.6;
 
 
 export function create(hostEl, opts) {

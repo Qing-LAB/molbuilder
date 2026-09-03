@@ -707,7 +707,7 @@ name and next to the description each one shows a user. That is deliberate, so
 that adding a reserved MEANING touches that list and its translator and nothing
 else — not this document, and nothing in the viewer.
 
-The viewer holds the same five as **spellings to offer** (below). The two are
+The viewer holds the same six as **spellings to offer** (below). The two are
 different things and they are allowed to be in different places: a spelling costs
 nothing to know, a meaning is what § 6.6 keeps out of here.
 
@@ -718,10 +718,16 @@ input or a freeze list for a geometry optimiser — is decided by the code that
 generates the input, not here. The viewer's job ends at "these atoms carry this
 name".
 
-**The viewer does hold the SPELLINGS, and only the spellings.** Five names are
+**The viewer does hold the SPELLINGS, and only the spellings.** Six names are
 offered before anyone has used them — `L-electrode`, `R-electrode`, `bridge`,
-`interface`, `frozen_atoms` — as `PREDEFINED_LABELS` in `model-jobs.js`, beside
-`FROZEN_LABEL` and built from it rather than repeating it. **The list is
+`interface`, `buffer`, `frozen_atoms` — as `PREDEFINED_LABELS` in
+`model-jobs.js`, the last built from `FROZEN_LABEL` rather than repeating it.
+
+> *(It read **five** until 2026-09-02, omitting `buffer` — atoms excluded from
+> the transport region entirely, padding beyond the electrode blocks
+> (`engines/transport.md`). The name has always been in the list the code
+> ships; the count and the enumeration here were a hand-kept copy that fell one
+> behind. The test reads the module, so only this document was wrong.)* **The list is
 MolView's own, and each entry carries the colour its chip wears and the sentence
 it shows on hover.**
 
@@ -735,14 +741,15 @@ it shows on hover.**
 > conveniences, so the module that offers them keeps them.**
 
 That is not the module acquiring a meaning. A predefined name is a **spelling**:
-it exists so that the five names nearly every device structure needs are picked
+it exists so that the six names nearly every device structure needs are picked
 rather than typed, because a retyped name is how `L-electrode` and `L-Electrode`
 become two regions that look like one. MolView still assigns none of them,
 interprets none of them, and treats a user's own name identically.
 
-**What the colours say, and what they do not.** Four of the five —
-`L-electrode`, `R-electrode`, `bridge`, `interface` — each wear a different tone
-for one reason: so they can be told apart on a crowded atom list. That is a
+**What the colours say, and what they do not.** Five of the six —
+`L-electrode`, `R-electrode`, `bridge`, `interface`, `buffer` — each wear a
+different tone for one reason: so they can be told apart on a crowded atom
+list. That is a
 reading aid, not a meaning. **`frozen_atoms` is the exception and looks it**: the
 calculation acts on it, so it wears the tone a warning wears here, and a user is
 told what it does before tagging atoms with it by accident. *"This changes your
@@ -904,15 +911,15 @@ accepts frames for the structure being held; in `EMPTY` it refuses by name
 structure that is not there.
 
 **The triad goes up either way**, because the condition is *the window is
-empty*, not *which door emptied it*. It is turned ON and then left alone: a
-person who hides it afterwards stays hidden, because a viewer that re-asserted
-the switch would be overriding a choice, and remembering "what it was before"
-would be hidden state nobody asked for.
+empty*, not *which door emptied it*.
 
-**It settles where the fact lives**, in `put()` — the same shape as
-`stores.js`'s *"isolate turns itself off when the selection empties"*: a rule
-that depends on a fact sits beside that fact, not in whichever control happened
-to change it.
+> **Raising the switch is not the same as drawing the arrows.** The pipeline's
+> empty rebuild must HAND the triad down, not leave the drawing to redraw
+> arrows it is already holding — a page reopened onto an empty canvas has
+> handed none down, so there is nothing to redraw and the window comes back
+> blank with *Show axes* reading ON. The camera then has a bounding box to
+> fit, which is what makes "framed on the triad" a fit rather than a guessed
+> distance.
 
 **The host asks for the state, never builds it.** A tab that wrote
 `{elements: [], positions: [], periodicity: null}` would know the shape of the
@@ -927,11 +934,43 @@ stays hidden, because a viewer that re-asserted the switch would be overriding
 a choice, and remembering "what it was before" would be hidden state nobody
 asked for.
 
-**It settles where the fact lives**, in `put()` — the same shape as
-`stores.js`'s *"isolate turns itself off when the selection empties"*: a rule
-that depends on a fact sits beside that fact, not in whichever control happened
-to change it. Delete, `Clear`, an undo back to nothing and a load of an empty
-file all arrive at one line.
+**It settles where the fact lives — in `settle()`, the one place every change
+to the structure passes through.** The same shape as `stores.js`'s *"isolate
+turns itself off when the selection empties"*: a rule that depends on a fact
+sits beside that fact, not in whichever control happened to change it. The
+fact here is the atom count, and `settle` is where the atom count becomes
+final.
+
+> **Why not at the doors.** It lived at the two doors that empty the window on
+> purpose — the edit path and `clear()` — and there is a **third** way to
+> arrive empty that neither of them is: reopening a page whose saved state is
+> the empty canvas. That path restores through `settle` without touching
+> either door, so it raised nothing, and a cleared page came back a grey
+> rectangle indistinguishable from a broken viewer. One rule at one place
+> covers all three, and the next way of arriving empty for free.
+
+#### `Clear` is where the sequence starts again
+
+`Clear` does not only empty the window. It re-anchors the timeline
+(§ 11.2) — position and high-water mark back to **#0**, the unsaved badge
+down, and **the empty canvas written as point 0 and as the draft**, so a
+reload finds the empty canvas rather than the structure that was discarded.
+*(User, 2026-09-02: "timeline state should be #0, persistent data should be
+cleared" … "when `clear()` is called, that becomes the persistent state and
+start of state".)*
+
+**That is why it is asked for first.** Every state saved before it stops being
+reachable from here, and an operation with that reach announces itself: the
+host puts the app's own confirmation in front of it — never `window.confirm`,
+which blocks the page — and calls `data.clear()` only on a yes. This is a
+**host** responsibility, not the viewer's: `data.clear()` is a door, and a
+door that interrogated its caller could not be driven by a test or by any
+other host.
+
+**And the page's own note goes with it.** *Which file is on the canvas* is the
+page's state, not the viewer's (§ 6.7) — so a host that clears calls
+`structurePage.markLoadedFrom(null)` in the same breath. Left standing, the
+page went on believing the file it had just discarded was still open.
 
 ### 6.8 Notices — what the server warns about, and how long it stays true
 
@@ -4542,7 +4581,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.3 — the draft and a saved point are separate files | an edit rewrites the draft and leaves every point exactly as it was, so Retract returns you to what you chose; and the badge answers only whether work is on the sequence |
 | § 6.7 — a viewer holds no file path | nothing a viewer answers, saves or restores names a file it was read from; a structure built with no file behaves exactly like one read from disk, and the only name kept is what an export gets called |
 | § 11.2 — a read waits for a write that has not finished | "put me back where I am", asked while a save is on its way, answers about the point that save creates and returns its bytes — not the point before it; and a write that failed ends the wait too, rather than leaving the read hanging |
-| § 6.6 — the predefined names are offered, not typed | the five appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
+| § 6.6 — the predefined names are offered, not typed | the six appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
 | § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
 | § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |

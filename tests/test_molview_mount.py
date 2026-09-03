@@ -1077,53 +1077,12 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     )
 
 
-def test_a_picture_is_the_view_and_leaves_through_saveBinary():
-    """§ 11.3's Image, single frame: the dialog asks a RESOLUTION (the user's
-    2026-08-19 addition; no range — one frame never asks one), the picture is
-    asked of the drawing (§ 9.7's bounded asking), and the bytes leave
-    through the door's binary half named `<stem>.png`."""
-    out = _run(
-        """
-        const saved = [];
-        const host = globalThis.__makeHost();
-        const viewer = await MV.mount(host, workspace, {
-            owner: "x",
-            files: {
-                save: async () => ({ ok: true }),
-                saveBinary: async (destination, filename, blob) => {
-                    saved.push({ destination, filename,
-                                 isBlob: typeof blob === "object" && !!blob });
-                    return { ok: true };
-                },
-            },
-        });
-        await viewer.data.installMolecule({ text: "x", filename: "wire.xyz" });
-
-        const card = host.querySelector(".molviewer-card");
-        const imageRow = card.querySelectorAll(".molviewer-export-section")[1];
-        imageRow.querySelectorAll(".molviewer-export-btn")[1].click(); // Download
-        await new Promise((r) => setTimeout(r, 10));
-        const dialog = card.querySelector(".molviewer-export-dialog");
-        const rangeInputs = dialog ? dialog.querySelectorAll("input").length : -1;
-        const actions = dialog.querySelectorAll(".molviewer-export-btn");
-        actions[actions.length - 1].click();          // Export at defaults
-        await new Promise((r) => setTimeout(r, 30));
-
-        console.log(JSON.stringify({
-            rangeInputs,
-            saved,
-        }));
-        """
-    )
-    assert out["rangeInputs"] == 0, (
-        "a one-frame Image export asked a frame range (§ 11.3: it never asks)"
-    )
-    assert out["saved"] == [{"destination": "download",
-                             "filename": "wire.png", "isBlob": True}], (
-        f"the picture did not leave as <stem>.png through saveBinary: "
-        f"{out['saved']}"
-    )
-
+# `test_a_picture_is_the_view_and_leaves_through_saveBinary` was defined
+# TWICE at module scope, 48 lines apart and character-identical but for the
+# whitespace in one `console.log`.  Python keeps the second, so the first had
+# never run since the day it was pasted -- it read as coverage in the file and
+# was not in the suite.  Deleted 2026-09-02, and
+# `test_no_test_is_shadowed_by_a_later_one` now makes the class unwritable.
 
 def test_a_picture_is_the_view_and_leaves_through_saveBinary():
     """§ 11.3's Image, single frame: the dialog asks a RESOLUTION (the user's

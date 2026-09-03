@@ -291,6 +291,27 @@ export function createModel(opts) {
          * current frame, and the value follows the movie.  Clearing there
          * would delete the measurement the feature exists to show. */
         if (!opts.keepsAtoms) measurement.clear();
+
+        /* ── AN EMPTY WINDOW STILL SHOWS THE AXES (§ 6.7a) ────────────────
+         *
+         * The same shape as `stores.js`'s *"isolate turns itself off when the
+         * selection empties"*: a rule that depends on a fact lives beside the
+         * fact.  The fact here is the ATOM COUNT.
+         *
+         * HERE, because `settle` is the ONE place every change to the
+         * structure passes through -- the last atom deleted, `clear()`, and a
+         * reopened page adopting an empty draft.  It lived at the two doors
+         * that empty the window on purpose, and the third way of arriving
+         * empty was the one that stayed blank: reload a cleared page and the
+         * restore path raised nothing, so the viewer came back a grey
+         * rectangle indistinguishable from a broken one.
+         *
+         * Turned ON only -- a person who then hides it stays hidden. */
+        if (!structure || !Array.isArray(structure.elements)
+                       || !structure.elements.length) {
+            selection.setSwitch("showAxis", true);
+        }
+
         const count = Array.isArray(frames) ? frames.length : 0;   // 2
         const wanted = opts.resetFrame ? 0 : frameIndex;
         const resolved = count                                      // 3
@@ -482,30 +503,19 @@ export function createModel(opts) {
         // already open, so it keeps the name it came in under.
         if (name !== undefined) sourceName = name;
 
-        /* ── AN EMPTY WINDOW STILL SHOWS THE AXES (§ 6.7a) ────────────────
+        /* DELETING THE LAST ATOM IS AN ORDINARY EDIT that leaves zero atoms
+         * -- the drawing redraws to show zero atoms and the list empties, and
+         * nothing else is touched.  The metadata and the cell SURVIVE,
+         * because an edit that quietly destroyed either would be a second
+         * thing the button does that its label does not say (user,
+         * 2026-09-02: "clear is just the init status or clear operation, but
+         * atom deletion would just update list properly").  `clear()` is the
+         * door that means START EMPTY, and it is the only one that takes
+         * them.
          *
-         * The same shape as `stores.js`'s *"isolate turns itself off when the
-         * selection empties"*: a rule that depends on a fact lives beside the
-         * fact.  The fact here is the ATOM COUNT, which the selection store
-         * does not hold, so it settles here.
-         *
-         * THIS IS ALL THAT HAPPENS.  Deleting the last atom is an ORDINARY
-         * EDIT that leaves zero atoms -- the drawing redraws to show zero
-         * atoms and the list empties, and nothing else is touched.  The
-         * metadata and the cell survive, because an edit that quietly
-         * destroyed either would be a second thing the button does that its
-         * label does not say (user, 2026-09-02: "clear is just the init
-         * status or clear operation, but atom deletion would just update
-         * list properly").  `clear()` is the door that means START EMPTY,
-         * and it is the only one that takes them.
-         *
-         * The triad goes up either way, because the condition is *the window
-         * is empty*, not *which door emptied it*: an axis in an empty window
-         * is how you tell a working viewer from a broken one.  Turned ON
-         * only -- a person who then hides it stays hidden. */
-        const empty = !structure || !Array.isArray(structure.elements)
-                   || !structure.elements.length;
-        if (empty) selection.setSwitch("showAxis", true);
+         * The empty window is drawn with its axes either way -- but that is
+         * `settle`'s rule, not this door's, because the condition is *the
+         * window is empty* and not *which door emptied it* (§ 6.7a). */
     }
 
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
@@ -920,10 +930,19 @@ export function createModel(opts) {
                 sourceName = null;
                 unit = EMPTY;
             }, { resetFrame: true });
-            selection.clear();
-            // The triad, for the same reason `put` raises it: an empty window
-            // with an axis in it is visibly working; a blank one is not.
-            selection.setSwitch("showAxis", true);
+            selection.clear();      // the picks are settle's; these are not
+            notices = null;
+            /* THE TIMELINE STARTS AGAIN AT #0, and THIS is state 0.
+             *
+             * `Clear` means start from nothing, so the sequence that could
+             * bring the old structure back is not the sequence of the thing
+             * now on the canvas.  `anchor()` is history's own door for
+             * exactly this -- it puts the position and the high-water mark
+             * back to 0, drops the unsaved badge, and persists the empty
+             * canvas as the state the timeline starts from (user,
+             * 2026-09-02: "when clear() is called, that becomes the
+             * persistent state and start of state"). */
+            history.anchor();
             return true;
         }, false),
 

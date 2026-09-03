@@ -960,3 +960,61 @@ def test_a_model_emptied_to_NOTHING_still_clears_the_drawing():
     elements, frames = out["clearedWith"][0], out["clearedWith"][1]
     assert not elements and not frames, (
         f"the drawing was not asked to clear: {out['clearedWith']!r}")
+
+
+def test_an_empty_rebuild_HANDS_DOWN_the_triad_rather_than_assuming_it_is_there():
+    """§ 6.7a: *"the axis triad, turned on for you"* -- and the arrows have to
+    ARRIVE for that to be true.
+
+    The embed's empty path redraws the arrows it is HOLDING, which reads as
+    correct when a structure was on screen a moment ago.  It is false on the
+    path that matters: a page reopened onto an empty canvas has handed no
+    arrows down at all, so there was nothing to redraw and the window came
+    back a blank rectangle with *Show axes* reading ON -- exactly the
+    "working viewer or broken one?" question the triad exists to answer
+    (browser walk, 2026-09-02).
+
+    Two arrivals, one rule, so both are checked here: an emptied model, and a
+    FIRST rebuild that was empty from the start.
+    """
+    out = _run("""
+        // (a) a molecule on screen, then emptied
+        const w = wired(3, 2);
+        w.src.switches.showAxis = true;
+        await w.engine.dataChanged();
+        globalThis.__embedCalls = [];
+        w.src.structure = null;
+        w.src.frames = [];
+        await w.engine.dataChanged();
+        const emptied = calls("setArrows").map((c) => c.args[0]);
+
+        // (b) a viewer whose FIRST rebuild is the empty one -- a reopened page
+        const fresh = wired(3, 2);
+        fresh.src.switches.showAxis = true;
+        fresh.src.structure = null;
+        fresh.src.frames = [];
+        globalThis.__embedCalls = [];
+        await fresh.engine.dataChanged();
+        const firstEver = calls("setArrows").map((c) => c.args[0]);
+
+        // (c) and the switch is still obeyed: axes off means no arrows
+        const off = wired(3, 2);
+        off.src.switches.showAxis = false;
+        off.src.structure = null;
+        off.src.frames = [];
+        globalThis.__embedCalls = [];
+        await off.engine.dataChanged();
+        const switchedOff = calls("setArrows").map((c) => c.args[0]);
+
+        console.log(JSON.stringify({ emptied, firstEver, switchedOff }));
+    """)
+    assert out["emptied"] and max(out["emptied"]) == 3, (
+        "emptying the model did not hand the three axis arrows down: "
+        f"{out['emptied']}")
+    assert out["firstEver"] and max(out["firstEver"]) == 3, (
+        "a viewer whose first rebuild was empty drew no triad -- the drawing "
+        "was left to redraw arrows it had never been given: "
+        f"{out['firstEver']}")
+    assert not out["switchedOff"] or max(out["switchedOff"]) == 0, (
+        "the empty path drew the triad with `Show axes` switched off -- the "
+        f"switch is still the switch: {out['switchedOff']}")

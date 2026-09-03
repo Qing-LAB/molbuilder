@@ -1911,8 +1911,12 @@ def test_an_empty_structure_raises_the_axis_triad():
     working viewer from a broken one -- the thing a blank card cannot say.
 
     The condition is *the window is empty*, not *which door emptied it*, so
-    it settles in `put` where the atom count is known -- the same shape as
-    `stores.js`'s "isolate turns itself off when the selection empties"."""
+    it settles in `settle` -- the one place every change to the structure
+    passes through, and where the atom count becomes final.  The same shape
+    as `stores.js`'s "isolate turns itself off when the selection empties".
+
+    This is the FIRST of the three ways to arrive empty; the other two are
+    `clear()` (below) and reopening a page whose saved state is empty."""
     out = _run("""
         const m = await loaded();
         const before = m.selection.switches().showAxis;
@@ -1990,3 +1994,158 @@ def test_clear_is_the_door_that_means_start_empty():
         "after `clear` the viewer did not refuse frames as EMPTY does "
         "(§ 10.8) -- it is still HOLDING: " + repr(out["refusal"]))
     assert out["showAxis"] is True
+
+
+def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
+    """§ 6.7a, *"`Clear` is where the sequence starts again"*.
+
+    `Clear` means START EMPTY, so the sequence that could bring the old
+    structure back is not the sequence of the thing now on the canvas: the
+    position and the high-water mark go back to **#0**, the unsaved badge
+    goes down, and the empty canvas is written as point 0 **and** as the
+    draft -- so a reload finds the empty canvas rather than the structure
+    that was discarded *(user, 2026-09-02: "timeline state should be #0,
+    persistent data should be cleared" ... "when `clear()` is called, that
+    becomes the persistent state and start of state")*.
+
+    Both files are checked, because they are two writes with two rules
+    (§ 11.3) and one of them was enough to pass while the other still held
+    the discarded molecule.  The high-water mark is checked through
+    behaviour -- a step forward off #0 finds nothing -- rather than by
+    reading a number the module does not publish.
+    """
+    out = _run(
+        """
+        const files = new Map();
+        const store = {
+            workspaceId: (tag) => "id-" + tag,
+            persist: (tag, bytes, identity) => {
+                files.set(identity.workspace_id + ":" + identity.state_index,
+                          JSON.parse(JSON.stringify(bytes)));
+                return true;
+            },
+            readState: async (identity) => {
+                const key = identity.workspace_id + ":" + identity.state_index;
+                return files.has(key) ? files.get(key) : null;
+            },
+            pruneStatesAbove: (id, index) => {
+                for (const key of Array.from(files.keys())) {
+                    const at = Number(key.slice(key.lastIndexOf(":") + 1));
+                    if (key.startsWith(id + ":") && at > index) files.delete(key);
+                }
+            },
+        };
+
+        // A structure, an edit, and a saved point above 0 -- so there is a
+        // real sequence for `clear` to have to end.
+        const m = createModel({ owner: "s", workspace: store });
+        await m.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
+                                  filename: "x.xyz" });
+        await m.save();                       // point 1
+        m.selection.all(2);
+        globalThis.__nextPayload = globalThis.__payload(
+            [globalThis.__atomRow(0, "C", 0)]);
+        await m.applyOp("delete", {});        // unsaved work on top of it
+        await new Promise((r) => setTimeout(r, 0));
+        const wasAt = m.state_index, wasDirty = m.uncommitted;
+
+        m.clear();
+        await new Promise((r) => setTimeout(r, 0));
+
+        /* WHAT IS ON DISK, both files.  `state.structure` is null for an
+         * empty canvas; anything else means the discarded molecule is still
+         * the thing a reload would find. */
+        const point0 = files.get("id-s:0");
+        const draft  = files.get("id-s-draft:0");
+        const held = (f) => !f ? "missing"
+            : (f.state && f.state.structure ? "a structure" : "empty");
+
+        // And a FRESH viewer over the same store, which is what a reopened
+        // page builds.
+        const two = createModel({ owner: "s", workspace: store });
+        await two.load(0);
+
+        console.log(JSON.stringify({
+            wasAt, wasDirty,
+            at: m.state_index, dirty: m.uncommitted,
+            point0: held(point0), draft: held(draft),
+            draftAt: draft ? draft.at : null,
+            reopenedAtoms: two.getElements(),
+            aboveIsGone: !files.has("id-s:1"),
+        }));
+        """
+    )
+    assert out["wasAt"] == 1 and out["wasDirty"] is True, (
+        "the setup did not build a sequence to end -- this test would pass "
+        f"on a viewer that was already at #0: {out}")
+    assert out["at"] == 0, (
+        f"`clear` left the timeline standing at #{out['at']}")
+    assert out["dirty"] is False, "`clear` left the unsaved badge up"
+    assert out["point0"] == "empty", (
+        f"point 0 still holds {out['point0']} -- a Retract would bring the "
+        "discarded structure back")
+    assert out["draft"] == "empty", (
+        f"the draft still holds {out['draft']} -- reopening the page would "
+        "restore the structure that was cleared")
+    assert out["draftAt"] == 0, (
+        f"the draft says the user is standing at #{out['draftAt']}")
+    assert out["reopenedAtoms"] is None, (
+        f"a reopened page came back holding atoms: {out['reopenedAtoms']}")
+    assert out["aboveIsGone"] is True, (
+        "the point above 0 was left on the server, so a later session could "
+        "still step forward into the discarded structure")
+
+
+def test_reopening_a_cleared_page_still_shows_the_triad():
+    """§ 6.7a's *"Why not at the doors"*: the THIRD way to arrive empty.
+
+    Neither the edit path nor `clear()` runs when a page is reopened -- the
+    restore path installs the saved state through `settle` and touches
+    neither door.  While the rule lived at the two doors, this arrival
+    raised nothing: a cleared page came back a grey rectangle
+    indistinguishable from a broken viewer.
+
+    A fresh viewer is the point.  The switch starts OFF on one
+    (`SWITCH_DEFAULTS`), so nothing here can pass by inheriting the switch
+    the first viewer raised.
+    """
+    out = _run(
+        """
+        const files = new Map();
+        const store = {
+            workspaceId: (tag) => "id-" + tag,
+            persist: (tag, bytes, identity) => {
+                files.set(identity.workspace_id + ":" + identity.state_index,
+                          JSON.parse(JSON.stringify(bytes)));
+                return true;
+            },
+            readState: async (identity) => {
+                const key = identity.workspace_id + ":" + identity.state_index;
+                return files.has(key) ? files.get(key) : null;
+            },
+            pruneStatesAbove: () => {},
+        };
+
+        const one = createModel({ owner: "s", workspace: store });
+        await one.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
+                                    filename: "x.xyz" });
+        one.clear();
+        await new Promise((r) => setTimeout(r, 0));
+
+        const two = createModel({ owner: "s", workspace: store });
+        const fresh = two.selection.switches().showAxis;
+        await two.load(0);
+        console.log(JSON.stringify({
+            fresh,
+            atoms: two.getElements(),
+            showAxis: two.selection.switches().showAxis,
+        }));
+        """
+    )
+    assert out["fresh"] is False, (
+        "the switch did not start off on a fresh viewer, so this test cannot "
+        "tell the rule from an inherited switch")
+    assert out["atoms"] is None, "the reopened page did not come back empty"
+    assert out["showAxis"] is True, (
+        "a reopened empty page drew nothing at all -- the triad rule did not "
+        "reach the restore path")

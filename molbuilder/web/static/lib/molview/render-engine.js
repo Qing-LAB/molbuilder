@@ -547,7 +547,23 @@ export function createRenderEngine(embed) {
              * guard here is the same mistake one layer up -- "nothing to
              * draw" read as "nothing to do". */
             embed.beginBatch();
-            embed.loadFrames([], []);      // clears models, keeps the triad
+            /* THE TRIAD IS HANDED DOWN HERE, not assumed to be sitting in
+             * the drawing already.
+             *
+             * `loadFrames([], [])` redraws the arrows the drawing is HOLDING
+             * -- which is right when a structure was on screen a moment ago
+             * and wrong on the path that matters most: a page reopened onto
+             * an empty canvas has never handed any arrows down, so there was
+             * nothing to redraw and the window came back a blank rectangle
+             * with "Show axes" reading ON (browser walk, 2026-09-02).
+             *
+             * Sent BEFORE the clear, so the arrows are in hand when
+             * `loadFrames` redraws them and sets the empty view's distance.
+             * The overlays go out empty for the same reason the models do:
+             * labels and highlights belong to atoms that are gone. */
+            embed.setOverlays({ labels: [], highlight: [], measured: [] });
+            embed.setArrows(switches().showAxis ? sceneNow().axes : []);
+            embed.loadFrames([], []);      // clears models, redraws the triad
             applyScene();
             embed.endBatch();
             drawnKey = currentDrawnKey();

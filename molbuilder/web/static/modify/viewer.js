@@ -334,10 +334,22 @@ export function init(viewer) {
         //   * clean & idx==0 -> nothing to retract.
         const statusEl = $("timeline-status");
         if (statusEl) {
-            if (_nAtoms() === 0) {
-                statusEl.textContent = "";
-                statusEl.className = "modify-timeline-status";
-            } else if (dirty) {
+            /* AN EMPTY CANVAS STILL HAS A TIMELINE, and it stands at #0.
+             *
+             * This branch used to blank the readout whenever the canvas held
+             * no atoms, from back when "no atoms" could only mean "nothing
+             * has been loaded, so there is no sequence".  `Clear` made that
+             * false: it ANCHORS a fresh point 0 on the empty canvas
+             * (molview.md § 6.7a), so after clearing there is a sequence and
+             * the user is standing at its start -- and the row went blank
+             * instead of saying so (user, 2026-09-02: "time line
+             * retract/save should be cleared to #0").
+             *
+             * So the empty case falls through to the branches below, which
+             * read the model: #0, clean, nothing to retract -- which is
+             * exactly what Retract does there, in both the cleared case and
+             * on a page where nothing has ever been loaded. */
+            if (dirty) {
                 statusEl.textContent = `● unsaved — Retract → #${idx}`;
                 statusEl.className = "modify-timeline-status is-dirty";
                 statusEl.title =
@@ -512,17 +524,46 @@ export function init(viewer) {
      * an empty viewer and the module decides what empty MEANS (molview.md
      * § 6.7a).  This tab never builds a structure of its own (§ 5.4), which
      * is also why "and it takes the cell" is not spelled out here. */
-    function applyClear() {
+    async function applyClear() {
         const d = _data();
         if (!d || typeof d.clear !== "function") {
             setEditStatus("Clear failed: data model unavailable.", "error");
             return;
         }
+        /* ASKED FOR, NEVER ASSUMED.  This does not only empty the canvas: it
+         * re-anchors the timeline at #0 and persists the empty canvas as the
+         * state it starts from, so every saved state before it stops being
+         * reachable from here.  That is not something to discover afterwards
+         * (user, 2026-09-02: "clear() need to be confirmed by the user
+         * because of this clear of all saved state").
+         *
+         * Through the app's own modal, never `window.confirm`: a native
+         * dialog blocks the page's event loop, and this app's other
+         * destructive steps all go through this one door. */
+        const modal = window.molbuilder && window.molbuilder.warningModal;
+        if (modal && typeof modal.confirmDiscardUnsaved === "function") {
+            const go = await modal.confirmDiscardUnsaved({
+                title: "Start empty?",
+                body: "This removes the structure, its metadata and its "
+                    + "cell, and restarts the timeline at #0 — the saved "
+                    + "states before it will no longer be reachable here.",
+                confirmLabel: "Start empty",
+            });
+            if (!go) return;
+        }
         if (d.clear() === false) {         // a read-only viewer says no
             setEditStatus("This viewer is read-only.", "error");
             return;
         }
-        setEditStatus("Cleared — start from nothing.", "ok");
+        /* THE PAGE'S OWN NOTE GOES TOO.  Which file is on the canvas is the
+         * PAGE's state, not the viewer's (molview.md § 6.7), and it is
+         * persisted -- so a `Clear` that left it standing left the page
+         * believing the file it had just discarded was still open. */
+        const page = window.molbuilder && window.molbuilder.structurePage;
+        if (page && typeof page.markLoadedFrom === "function") {
+            page.markLoadedFrom(null);
+        }
+        setEditStatus("Cleared — empty canvas, timeline back to #0.", "ok");
         refreshSelectionUI();
         refreshUndoButton();
     }

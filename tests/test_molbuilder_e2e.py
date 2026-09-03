@@ -269,14 +269,21 @@ def test_the_status_line_says_what_landed(page, flask_server, labelled_xyz):
 
 def test_the_loader_readout_tells_picked_from_loaded(
         page, flask_server, labelled_xyz):
-    """Picked (chosen in the sidebar) and Loaded (on the canvas) look different,
-    and Load goes dead once there is nothing left to do.
+    """Picked (chosen in the sidebar) and Loaded (on the canvas) look
+    different.
 
     The page keeps this note itself: the viewer tracks contents, not files
-    (§ 6.7).  It used to ask the selection snapshot for ``sourceFile`` — a key no
-    snapshot has ever carried — so the readout said "Picked" with that very file
-    on screen and the button never disabled.  A no-op click looked exactly like a
-    real one.
+    (§ 6.7).  It used to ask the selection snapshot for ``sourceFile`` — a key
+    no snapshot has ever carried — so the readout said "Picked" with that very
+    file on screen.
+
+    **The button's state is NOT part of this**, since 2026-09-02.  It also
+    asserted that Load goes dead once the pick matches what is loaded, and
+    that veto is gone: loading the same file again is a real action — it is
+    how you throw your edits away and go back to what is on disk (user:
+    *"why do we have this guard of not allowing to pick the same file
+    again?"*).  The readout still SAYS which it is, which is the part that
+    was ever about telling a no-op from a real click.
     """
     _open(page, flask_server)
     page.evaluate(
@@ -293,7 +300,9 @@ def test_the_loader_readout_tells_picked_from_loaded(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
         timeout=_ACT_MS)
-    assert page.locator("#load-candidate-btn").is_disabled()
+    assert not page.locator("#load-candidate-btn").is_disabled(), (
+        "loading the same file again is how you discard your edits and go "
+        "back to what is on disk -- the button must stay live")
 
 
 # --------------------------------------------------------------------- #
@@ -790,12 +799,25 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     _open(page, flask_server)
     _load(page, labelled_xyz)
 
+    # TWO QUESTIONS NOW, in this order: WHERE, then what to call it
+    # (`tabs.md` § 6 -- the door owns the destination).  It was one dialog of
+    # the panel's own, which forced the sidebar's current directory; that went
+    # with `save-dialog.js` on 2026-09-02.
     page.locator("#save-to-source-btn").click()
-    name = page.locator(".molbuilder-save-name-modal input[data-role='name-input']")
+
+    # 1. WHERE.  The picker's Choose stays disabled until a folder is
+    #    selected -- clicking a row is the selection, which is what a person
+    #    does and what the old single-dialog flow never asked.
+    row = page.locator("dialog .tp-row:not(.tp-row--inert)").first
+    row.wait_for(state="visible", timeout=_ACT_MS)
+    row.click()
+    page.locator("dialog [data-action='confirm']").first.click()
+
+    # 2. WHAT TO CALL IT.
+    name = page.locator("dialog input[data-role='name']")
     name.wait_for(state="visible", timeout=_ACT_MS)
     name.fill("saved_by_test")
-    page.locator(
-        ".molbuilder-save-name-modal button[data-action='save']").click()
+    page.locator("dialog [data-action='confirm']").last.click()
 
     page.wait_for_function(
         "() => /Saved/.test(document.getElementById('save-status').textContent)",
@@ -819,11 +841,15 @@ def test_the_page_remembers_which_file_it_is_showing_across_a_reload(
     `modify:panel`.  Two tags, two slots.
 
     THE BUG THIS CLOSES.  `loadedFrom` used to live in a closure variable, set
-    only by the path that READS A FILE.  When a reload was served by the viewer's
-    restore instead — now the normal case — it was empty while a structure was
-    plainly on the canvas, so the readout fell back to "Picked:" and **the Load
-    button re-enabled against the very file the work came from**.  One press
-    discarded the restored work through the dirty gate.
+    only by the path that READS A FILE.  When a reload was served by the
+    viewer's restore instead — now the normal case — it was empty while a
+    structure was plainly on the canvas, so the readout fell back to
+    "Picked:" after a reload that had lost nothing.
+
+    It also checked that the Load button came back DISABLED.  That half is
+    retired with the veto it pinned (2026-09-02): the button stays live
+    because re-loading is a real action, and the readout is what carries the
+    fact across the reload.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -844,10 +870,6 @@ def test_the_page_remembers_which_file_it_is_showing_across_a_reload(
         "() => /^Loaded:/.test("
         "  document.getElementById('load-candidate-readout').textContent)",
         timeout=_ACT_MS)
-    assert page.locator("#load-candidate-btn").is_disabled(), (
-        "the Load button came back enabled against the file the structure is "
-        "already showing — pressing it discards the restored work"
-    )
 
 
 def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):

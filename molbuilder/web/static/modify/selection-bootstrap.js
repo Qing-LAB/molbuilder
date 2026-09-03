@@ -290,7 +290,17 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         function _refreshLoadUI() {
             const isLoaded = !!_candidate && _candidate === _loadedFrom();
             if (_loadBtn) {
-                _loadBtn.disabled = !_candidate || isLoaded;
+                /* LOADING THE SAME FILE AGAIN IS A REAL ACTION -- it is how
+                 * you throw your edits away and go back to what is on disk.
+                 * The button was disabled when the pick matched what was
+                 * last loaded, which forbade the most natural way to revert
+                 * and, after `Clear`, was simply false: the canvas is empty
+                 * and `loadedFrom` still named the file, so the one file you
+                 * could not re-open was the one you had just cleared.
+                 *
+                 * The readout still SAYS which it is; only the veto is gone
+                 * (user, 2026-09-02). */
+                _loadBtn.disabled = !_candidate;
             }
             if (_readout) {
                 if (!_candidate) {
