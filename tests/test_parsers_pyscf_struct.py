@@ -1,4 +1,4 @@
-"""L1 tests for molbuilder.parsers.pyscf_struct.
+"""L1 tests for ``molbuilder.parse.coords.pyscf_geom``.
 
 Pins the ``<JOB>_optimized.xyz`` reader and the ``.py`` initial-coords
 parser.  See ``docs/execution/job-contracts.md`` for source

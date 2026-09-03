@@ -1,4 +1,6 @@
-"""Tests for ``molbuilder.parsers.spectra_json``.
+"""Tests for the ``.spectra.json`` sidecar door
+(``molbuilder.sidecars.spectra``: the write side, plus the read side it
+re-exports from ``molbuilder.parse.sidecars.spectra``).
 
 Pin the schema_version gate, the malformed-input handling, the
 field-error wrapping, and the missing-file case so the live-watch

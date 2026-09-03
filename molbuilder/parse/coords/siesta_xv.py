@@ -1,11 +1,9 @@
 """SIESTA ``.XV`` (final-coordinates) FileParser.
 
-H1 of parse-module.md migration (was Phase E wrapper around
-``molbuilder.parsers.siesta_struct.read_xv``): absorbed the legacy
-``SiestaXVError`` + ``read_xv`` body directly so this module no
-longer imports from ``molbuilder.parsers``.  The legacy module stays
-in place until H4; consumers (script_bundle, .out parser sidecar)
-still use it until H3.
+Absorbed from the legacy ``molbuilder.parsers.siesta_struct``
+(``SiestaXVError`` + ``read_xv``); that package was deleted 2026-06-21
+and this is the only ``.XV`` reader (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 The legacy ``read_xv`` returned a :class:`Structure` (geometry-only);
 cell vectors were read from the file but dropped per a historical

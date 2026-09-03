@@ -1,10 +1,11 @@
 """``.molstruct.json`` sidecar — write-side + consumer helpers.
 
-H2 of parse-module.md migration: absorbed from the legacy
-:mod:`molbuilder.parsers.molstruct_json` module's write-side
-surface.  The read-side (``load`` + ``_normalised_dict``) lives in
-:mod:`molbuilder.parse.sidecars.molstruct` per the parse-module
-contract.
+The ONE DOOR for this sidecar: the write side lives here, and the read
+side is re-exported from :mod:`molbuilder.parse.sidecars.molstruct`, so
+a caller needs one import for both. Absorbed from the legacy
+``molbuilder.parsers.molstruct_json`` (deleted 2026-06-21).  The split
+is what ``model/parse.md`` § 4 requires (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 Public surface here
 -------------------

@@ -1,9 +1,10 @@
 """molbuilder.script_emit — write-side of the script-contract blocks.
 
-H2 of parse-module.md migration: absorbed from the legacy
-:mod:`molbuilder.script_contract` module's write-side surface.  The
-read-side (per-block extractors) lives in :mod:`molbuilder.parse.scripts`
-per the parse-module contract.
+The WRITE side.  Absorbed from the retired
+:mod:`molbuilder.script_contract` (deleted 2026-06-21); the read side --
+the per-block extractors -- is :mod:`molbuilder.parse.scripts`, which is
+where ``model/parse.md`` § 4 requires it to live (provenance: `docs/archive/old_docs/protocols/parse-module.md`
+§ 8).
 
 This module is the canonical home for the shared building blocks of
 the script-contract reserved blocks (HEADER / PROVENANCE /
@@ -759,7 +760,7 @@ def generated_at_now() -> str:
 # --------------------------------------------------------------------- #
 #
 # The block extractors live next to their TextParser definitions in
-# ``molbuilder/parse/scripts/`` (Phase F per parse-module.md § 8) --
+# ``molbuilder/parse/scripts/`` (``model/parse.md`` § 4) --
 # the umbrella ``extract_script_source`` included, since the bundle
 # parser it once rode with retired (2026-08-29: calculation-to-
 # calculation passing is gone; the composite CITES).  Surface them

@@ -1,10 +1,9 @@
 """SIESTA .out / .log FileParser.
 
-H1 of parse-module.md migration (was Phase C wrapper around
-``molbuilder.parsers.siesta.SiestaParser``): absorbed the legacy
-parse body directly so this module no longer imports from
-``molbuilder.parsers``.  The legacy module stays in place until H4;
-consumers (web blueprints) still use it until H3.
+Absorbed from the legacy ``molbuilder.parsers.siesta.SiestaParser``;
+that package was deleted 2026-06-21 and this is the only SIESTA output
+parser (provenance: `docs/archive/old_docs/protocols/parse-module.md` §
+8).
 
 For each completed CG/MD step the parser extracts:
 

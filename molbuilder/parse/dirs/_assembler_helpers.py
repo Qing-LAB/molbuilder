@@ -1,11 +1,11 @@
 """Private helpers for the bundle + job DirParsers.
 
-H1 of parse-module.md migration: absorbed from
-``molbuilder.parsers.{siesta_struct,pyscf_struct}`` (the read-side
+Absorbed from the legacy
+``molbuilder.parsers.{siesta_struct,pyscf_struct}`` -- the read-side
 helpers the legacy ``script_bundle.assemble_from_run_dir`` consumed
-beyond just ``read_xv`` / ``read_optimized_xyz``).  The legacy
-modules stay in place until H4; consumers that still use them keep
-working.
+beyond ``read_xv`` / ``read_optimized_xyz``. Both that package and
+``script_bundle`` were deleted 2026-06-21 (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 What lives here
 ---------------

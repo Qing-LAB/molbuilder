@@ -1,10 +1,11 @@
 """``.spectra.json`` sidecar — write-side + exception classes.
 
-H2 of parse-module.md migration: absorbed from the legacy
-:mod:`molbuilder.parsers.spectra_json` module's write-side surface.
-The read-side parser lives in
-:mod:`molbuilder.parse.sidecars.spectra` per the parse-module
-contract.
+The ONE DOOR for this sidecar: the write side lives here, and the read
+side is re-exported from :mod:`molbuilder.parse.sidecars.spectra`, so a
+caller needs one import for both. Absorbed from the legacy
+``molbuilder.parsers.spectra_json`` (deleted 2026-06-21).  The split is
+what ``model/parse.md`` § 4 requires (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 This module is the canonical home for the spectra-JSON exception
 classes (``SpectraJsonError`` etc.); the read-side re-imports them

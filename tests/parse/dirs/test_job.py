@@ -350,7 +350,7 @@ def test_progress_carries_cg_step_count(tmp_path):
 
 def test_jobresult_is_frozen(tmp_path):
     """ParseResult subclasses (incl. JobResult) are frozen — mutation
-    raises FrozenInstanceError per parse-module.md § 9 forbidden #4."""
+    raises FrozenInstanceError per model/parse.md § 7 forbidden #4."""
     decoded = decode_run_dir(_single_stage(tmp_path))
     with pytest.raises(Exception):       # dataclasses.FrozenInstanceError
         decoded.job_type = "spectrum"    # noqa

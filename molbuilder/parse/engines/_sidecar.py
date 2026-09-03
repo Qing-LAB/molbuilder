@@ -1,9 +1,9 @@
 """Helpers: read ``frozen_atoms`` indices from sources adjacent to a
 trajectory file.
 
-H1 of parse-module.md migration: absorbed copy of the legacy
-``molbuilder.parsers._sidecar`` module.  Both copies coexist during
-the H1-H4 migration window; the legacy file is deleted in H4.
+Absorbed from the legacy ``molbuilder.parsers._sidecar``, deleted with
+that package on 2026-06-21 -- this is the only copy (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 Three sources are supported.  All return a set of 0-based int indices;
 the empty set means "no frozen atoms known from this source."  A

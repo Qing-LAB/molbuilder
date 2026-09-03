@@ -1,4 +1,4 @@
-"""L1 tests for molbuilder.parsers.siesta_struct.
+"""L1 tests for ``molbuilder.parse.coords.siesta_xv``.
 
 Pins the .XV and .fdf-initial-coords readers' contracts.  See
 ``docs/execution/job-contracts.md`` for source priority.

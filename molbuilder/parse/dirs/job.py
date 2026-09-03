@@ -21,9 +21,8 @@ which extracts a CURATED list of ~21 SIESTA engine-body directives.
 That list is frozen by the doc; adding a key requires a doc update
 + a test.
 
-Phase B of parse-module.md migration: ``decode_run_dir`` now returns
-a :class:`JobResult` frozen dataclass.  The class API
-(:class:`JobDirParser`) is the canonical entry point;
+``decode_run_dir`` returns a :class:`JobResult` frozen dataclass.  The
+class API (:class:`JobDirParser`) is the canonical entry point;
 ``decode_run_dir`` is a thin module-level convenience.
 """
 
@@ -892,7 +891,7 @@ class JobDirParser(DirParser):
     """Parse a project directory (any SIESTA / PySCF run dir) into a
     :class:`JobResult`.
 
-    Per parse-module.md § 7, composes registered FileParsers + the
+    Per model/parse.md § 5, composes registered FileParsers + the
     script-contract extractors — no inline file-level parsing.
     """
     name   = "job-dir"

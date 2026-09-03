@@ -10,7 +10,7 @@ Submodules:
                dependency)
 
 Both submodules emit the same v1 spec.  The reader for the format
-lives at :mod:`molbuilder.parsers.molwatch_log`.
+lives at :mod:`molbuilder.parse.engines.molwatch`.
 """
 
 from .emitter import MolwatchEmitter

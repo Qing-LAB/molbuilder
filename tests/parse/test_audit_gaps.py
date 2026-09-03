@@ -8,7 +8,7 @@ Pins:
   * parse_text() is exercised end-to-end via the umbrella
     ScriptSourceTextParser (audit found parse_text in __all__
     but no direct smoke test).
-  * Forbidden patterns per parse-module.md § 9:
+  * Forbidden patterns per model/parse.md § 7:
       - P2 (TextParser no I/O) — formal lint test on parse/scripts/*
       - P3 (FileParser no subprocess) — lint test on every
         FileParser source file
@@ -69,7 +69,7 @@ def test_top_level_re_exports_match_subpackage_classes():
 
 
 def test_parsewarning_constructible_with_documented_fields():
-    """ParseWarning is a frozen dataclass per parse-module.md § 3."""
+    """ParseWarning is a frozen dataclass per model/parse.md § 2."""
     w = ParseWarning(
         source="/path/to/file.out",
         line_no=42,
@@ -118,7 +118,7 @@ def test_parse_text_dispatches_to_text_parser_class():
     assert result.atom_metadata is None
 
 
-# ---- Forbidden-pattern lint tests (parse-module.md § 9) -------- #
+# ---- Forbidden-pattern lint tests (model/parse.md § 7) -------- #
 
 
 _PARSE_DIR = REPO / "molbuilder" / "parse"
@@ -136,7 +136,7 @@ def _glob_py(rel_subdir: str) -> list[Path]:
 
 
 def test_forbidden_p2_textparsers_do_no_io():
-    """parse-module.md § 9 forbidden #2: TextParsers do NO I/O.
+    """model/parse.md § 7 forbidden #2: TextParsers do NO I/O.
     They take a string in memory; reading the file is the caller's
     job.  Lint every parse/scripts/*.py for I/O tokens."""
     forbidden = (
@@ -151,11 +151,11 @@ def test_forbidden_p2_textparsers_do_no_io():
             assert token not in text, (
                 f"{p.relative_to(_PARSE_DIR)} contains forbidden "
                 f"I/O token {token!r} — TextParsers operate on "
-                f"text in memory only (parse-module.md § 9 #2)")
+                f"text in memory only (model/parse.md § 7 #2)")
 
 
 def test_forbidden_p3_fileparsers_no_subprocess_or_network():
-    """parse-module.md § 9 forbidden #3: FileParsers do NO
+    """model/parse.md § 7 forbidden #3: FileParsers do NO
     subprocess / network / threads.  Lint parse/engines/* +
     parse/sidecars/* + parse/coords/* for the forbidden tokens."""
     forbidden = (
@@ -176,11 +176,11 @@ def test_forbidden_p3_fileparsers_no_subprocess_or_network():
                 assert token not in text, (
                     f"{p.relative_to(_PARSE_DIR)} contains forbidden "
                     f"token {token!r} — FileParsers must do no "
-                    f"subprocess/network/threads (parse-module.md § 9 #3)")
+                    f"subprocess/network/threads (model/parse.md § 7 #3)")
 
 
 def test_forbidden_p6_no_engine_specific_code_in_core():
-    """parse-module.md § 9 forbidden #7 (was #6 in earlier drafts):
+    """model/parse.md § 7 forbidden #7 (was #6 in earlier drafts):
     engine-specific code only in parse/engines/ and parse/coords/.
     The core layer (parse/types.py, parse/base.py, parse/registry.py,
     parse/errors.py) must NOT mention engine names — that's a sign
@@ -207,4 +207,4 @@ def test_forbidden_p6_no_engine_specific_code_in_core():
                 f"parse/{fname} contains engine name matching "
                 f"{pat} OUTSIDE docstrings/comments — engine-specific "
                 f"concepts must live in parse/engines/ or "
-                f"parse/coords/ (parse-module.md § 9 #7)")
+                f"parse/coords/ (model/parse.md § 7 #7)")

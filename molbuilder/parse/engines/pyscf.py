@@ -1,10 +1,9 @@
 """PySCF / geomeTRIC trajectory FileParser.
 
-H1 of parse-module.md migration (was Phase C wrapper around
-``molbuilder.parsers.pyscf.PySCFParser``): absorbed the legacy parse
-body directly so this module no longer imports from
-``molbuilder.parsers``.  The legacy module stays in place until H4;
-consumers (web blueprints) still use it until H3.
+Absorbed from the legacy ``molbuilder.parsers.pyscf.PySCFParser``; that
+package was deleted 2026-06-21 and this is the only PySCF trajectory
+parser (provenance: `docs/archive/old_docs/protocols/parse-module.md` §
+8).
 
 When molbuilder generates a PySCF script with `prefix=JOB+'_geom'`
 on the optimize() call (the default), geomeTRIC streams a multi-frame
@@ -639,7 +638,7 @@ class PySCFParser:
     round-trip); use :class:`PySCFOutFileParser` for a typed
     :class:`TrajectoryResult`.
 
-    Mirrors the legacy ``molbuilder.parsers.pyscf.PySCFParser`` API:
+    Mirrors the API of the legacy ``PySCFParser`` it replaced:
     ``can_parse(path) -> bool`` + ``parse(path) -> Trajectory``,
     plus ``name`` / ``label`` / ``hint`` class attributes so
     introspecting callers (registry diagnostics, tests) see the same

@@ -1,12 +1,10 @@
 """``.transport.json`` sidecar FileParser.
 
-H1 of parse-module.md migration (was Phase D wrapper around
-``molbuilder.parsers.transport_json.parse_transport_json``): absorbed
-the read-side ``parse_transport_json`` + supporting validators +
-exception classes directly so this module no longer imports from
-``molbuilder.parsers``.  The legacy module stays in place until H4;
-consumers (web blueprints) still use it for the write-side helper
-``dump_transport_json`` which H2 rehomes.
+The READ side. Absorbed from the legacy
+``molbuilder.parsers.transport_json`` (deleted 2026-06-21) with its
+validators and exception classes; the write side is
+:mod:`molbuilder.sidecars.transport` (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 The legacy ``parse_transport_json`` returns a typed
 :class:`molbuilder.transport.results.TransportResults` dataclass.

@@ -28,7 +28,7 @@ The class is named without a leading underscore here because it's
 the public surface of this module; the generated script also uses
 the same name (the inlined source is verbatim).  Treat it as a
 public spec contract -- changing the format breaks the molwatch
-parser at :mod:`molbuilder.parsers.molwatch_log`.
+parser at :mod:`molbuilder.parse.engines.molwatch`.
 """
 
 from __future__ import annotations

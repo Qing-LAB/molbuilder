@@ -1,9 +1,9 @@
 """HEADER block TextParser.
 
-H1 of parse-module.md migration (was Phase F wrapper around
-``script_contract.extract_header_text``): absorbed the extractor
-body directly so this module no longer imports from
-``molbuilder.script_contract``.
+Absorbed from the retired
+``molbuilder.script_contract.extract_header_text``, deleted with that
+module on 2026-06-21 (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 HEADER is human-readable prose between the BEGIN/END markers — no
 structure, just verbatim text with the leading ``# `` comment

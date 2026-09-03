@@ -1,10 +1,10 @@
 """Shared block markers + regex for the script-contract reserved
 blocks.
 
-H2 of parse-module.md migration: re-exports the canonical
-:data:`BLOCK_*` constants and :data:`MARKER_RE` from
-:mod:`molbuilder.script_emit` so the read-side parsers stay in
-lock-step with the write-side emitters.
+Re-exports the canonical :data:`BLOCK_*` constants and
+:data:`MARKER_RE` from :mod:`molbuilder.script_emit`, so the read-side
+parsers stay in lock-step with the write-side emitters -- one spelling
+of every marker, not two.
 
 The script-contract reserved blocks (HEADER / PROVENANCE /
 BENCH-MARKS / ATOM-METADATA / USER-CUSTOM) are bracketed by literal

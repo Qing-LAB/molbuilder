@@ -1,6 +1,6 @@
 """L1 unit tests for the SIESTA .fdf Geometry.Constraints parser.
 
-``molbuilder/parsers/_sidecar.py::read_frozen_atoms_from_siesta_fdf``
+``molbuilder/parse/engines/_sidecar.py::read_frozen_atoms_from_siesta_fdf``
 recovers per-atom frozen indices from a SIESTA ``.fdf`` input file
 paired with a trajectory output.  Fallback path for runs that have
 no ``.molstruct.json`` sidecar — without it, the trajectory

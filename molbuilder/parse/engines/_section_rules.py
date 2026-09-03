@@ -1,10 +1,8 @@
 """Section-rule primitives for free-form text-output parsers.
 
-H1 of parse-module.md migration: absorbed copy of the legacy
-``molbuilder.parsers._rules`` module so ``parse/engines/`` has no
-dependency on ``molbuilder.parsers``.  The legacy file stays in
-place until H4 deletes it; identical implementations live in both
-modules during the H1-H4 migration window.
+Absorbed from the legacy ``molbuilder.parsers._rules``, deleted with
+that package on 2026-06-21 -- this is the only copy (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 The model: a parser is a list of :class:`SectionRule` objects + a
 tiny state-machine driver.  In the SCAN state, each rule's ``start``

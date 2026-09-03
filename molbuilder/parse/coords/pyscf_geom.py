@@ -1,10 +1,9 @@
 """PySCF / geomeTRIC final-geometry ``<job>_optimized.xyz`` FileParser.
 
-H1 of parse-module.md migration (was Phase E wrapper around
-``molbuilder.parsers.pyscf_struct.read_optimized_xyz``): absorbed
-the legacy reader directly so this module no longer imports from
-``molbuilder.parsers``.  The legacy module stays in place until H4;
-consumers (script_bundle) still use it until H3.
+Absorbed from the legacy ``molbuilder.parsers.pyscf_struct``
+``read_optimized_xyz``; that package was deleted 2026-06-21 and this is
+the only reader (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 PySCF's optimized geometry comes back as a plain .xyz with the final
 coords.  The reader is a thin wrapper over

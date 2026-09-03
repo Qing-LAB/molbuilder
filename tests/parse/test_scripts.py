@@ -171,7 +171,7 @@ def test_script_source_handles_no_blocks():
 
 
 def test_text_parsers_do_no_io():
-    """Per parse-module.md § 9 forbidden #2: TextParsers do NO I/O.
+    """Per model/parse.md § 7 forbidden #2: TextParsers do NO I/O.
     Lint by importing each module's source + asserting no
     open / read_text / Path() with .read in it."""
     from pathlib import Path as _Path
@@ -186,7 +186,7 @@ def test_text_parsers_do_no_io():
             assert token not in text, (
                 f"parse/scripts/{mod} contains forbidden I/O token "
                 f"{token!r} — TextParsers must operate on text in "
-                f"memory only (parse-module.md § 9 forbidden #2)"
+                f"memory only (model/parse.md § 7 forbidden #2)"
             )
 
 

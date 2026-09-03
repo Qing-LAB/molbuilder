@@ -1,9 +1,9 @@
 """BENCH-MARKS block TextParser.
 
-H1 of parse-module.md migration (was Phase F wrapper around
-``script_contract.extract_bench_marks_dict``): absorbed the
-extractor body directly so this module no longer imports from
-``molbuilder.script_contract``.
+Absorbed from the retired
+``molbuilder.script_contract.extract_bench_marks_dict``, deleted with that
+module on 2026-06-21 (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 BENCH-MARKS declares which fields in ENGINE BODY are safe for bench
 tooling to override + their type/range/default.  Schema ``version

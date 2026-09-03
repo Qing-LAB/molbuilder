@@ -18,7 +18,7 @@ to
         ...
 
 The two implementations are designed to be semantically identical (see
-:class:`molbuilder.parsers._rules.CompiledRules`).  But "designed to be"
+:class:`molbuilder.parse.engines._section_rules.CompiledRules`).  But "designed to be"
 is not "is".  This test parses a representative set of real SIESTA .out
 files and compares the resulting :class:`Trajectory` against a frozen
 JSON signature.

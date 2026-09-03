@@ -1,5 +1,5 @@
 """Unit tests for the section-rule primitives in
-``molbuilder/parsers/_rules.py``.
+``molbuilder/parse/engines/_section_rules.py``.
 
 The primitives are tiny pure functions; these tests pin the
 case-insensitivity guarantee + the OR-combinator semantics + the

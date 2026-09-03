@@ -109,7 +109,7 @@ def _detect_one(path: Path,
     # Foot-gun nudges: each registered parser exposes its own
     # ``footgun_hint_for(filename)`` (default returns ``None``),
     # so engine-specific knowledge (".fdf is INPUT not OUTPUT")
-    # stays in the engine module per parse-module.md § 9 #7.
+    # stays in the engine module per model/parse.md § 7 #7.
     nudges = []
     for c in pool:
         hint_fn = getattr(c, "footgun_hint_for", None)

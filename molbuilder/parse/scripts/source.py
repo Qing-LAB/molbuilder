@@ -1,6 +1,6 @@
 """Umbrella ScriptSource TextParser.
 
-Phase F of parse-module.md migration.  Composes the 5 per-block
+Composes the 5 per-block
 TextParsers (HeaderTextParser, ProvenanceTextParser,
 BenchMarksTextParser, AtomMetadataTextParser, UserCustomTextParser)
 into a single :class:`ScriptResult` carrying every block.

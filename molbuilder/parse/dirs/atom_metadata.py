@@ -3,7 +3,7 @@
 Module: ``parse/dirs`` (directory-level composers — the ONE parse
 layer allowed to touch the filesystem).  The text-level extraction
 stays in ``parse/scripts/atom_metadata`` (``AtomMetadataTextParser``),
-which is memory-only by contract (parse-module.md § 9 forbidden #2,
+which is memory-only by contract (model/parse.md § 7 forbidden #2,
 enforced by ``test_text_parsers_do_no_io``) — that contract is WHY
 this glob/read helper lives here and not next to the TextParser.
 

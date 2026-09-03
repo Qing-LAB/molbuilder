@@ -186,15 +186,23 @@ def measure_bare_archived_citations() -> list[str]:
 
 @pytest.mark.xfail(strict=True, reason=(
     "OPEN — decision 32 in docs/archive/2026-08-19-staged-runs-implementation-plan.md "
-    "§ 8.  277 bare citations of 31 archived-only documents; the biggest are "
-    "parse-module.md (46) and job-execution.md (41).  slurm-integration.md was "
-    "the largest and is now CLOSED — all 51 repointed to running-a-job.md and "
-    "job-system.md.  It is also the worked example for the rest: a successor "
-    "is found by reading what the live doc POINTS AT (job-system § 6 names its "
-    "two owners in its first sentence), not by grepping successors for words "
-    "you expect to see — that method gave the wrong answer and a "
-    "recommendation to un-archive a correctly-superseded document.  Run "
-    "`python -m tests.test_no_retired_doc_paths` for the current count.  "
+    "§ 8.  111 bare citations of 23 archived-only documents (was 277 of 31); "
+    "the biggest is now molview-module.md (14).  Two are CLOSED and they are "
+    "the worked examples, one per failure mode:\n\n"
+    "slurm-integration.md (51) — all repointed to running-a-job.md and "
+    "job-system.md.  A successor is found by reading what the live doc "
+    "POINTS AT (job-system § 6 names its two owners in its first sentence), "
+    "not by grepping successors for words you expect to see; that method gave "
+    "the wrong answer and a recommendation to un-archive a correctly-"
+    "superseded document.\n\n"
+    "parse-module.md (46) — a citation is not always a wrong pointer.  Half "
+    "of these were module headers whose PROSE was false: they said the legacy "
+    "`molbuilder/parsers/` package 'stays in place until H4' and that "
+    "consumers 'still use it until H3', when H4b deleted that package on "
+    "2026-06-21.  A reader was being told a parallel implementation exists.  "
+    "Those became one provenance line each; only the rule-citing ones moved "
+    "to model/parse.md (old § 9 forbidden #N is § 7 #N).\n\n"
+    "Run `python -m tests.test_no_retired_doc_paths` for the current count.  "
     "Strict, so this fails loudly the moment the last one is resolved."))
 def test_no_active_source_cites_an_archived_doc_as_authority():
     hits = measure_bare_archived_citations()

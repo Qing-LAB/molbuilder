@@ -52,7 +52,7 @@ class FileParser(ABC):
         Engine-specific knowledge (file-extension semantics,
         common mistakes) belongs HERE — not in the registry — so
         ``parse/registry.py`` stays engine-agnostic per
-        parse-module.md § 9 #7.
+        model/parse.md § 7 #7.
         """
         return None
 

@@ -22,8 +22,9 @@ branch of /api/watch/load follows the discovery chain in
 ``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for job_name,
 then a generic ``*.out`` / ``*_geom*_optim.xyz`` fallback.
 
-Format support is plugin-style: see ``molbuilder/parsers/`` for the
-registered parsers and the auto-detection registry.
+Format support is plugin-style: see ``molbuilder/parse/`` for the
+registered parsers and the auto-detection registry
+(``model/parse.md`` § 3).
 
 State model: a single global "current file" dict guarded by a Lock.
 This is intentional -- the trajectory inspector is single-user /

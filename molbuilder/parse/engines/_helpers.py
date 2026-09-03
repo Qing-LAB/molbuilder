@@ -1,12 +1,11 @@
 """Helpers shared across engine wrappers.
 
-H2 of parse-module.md migration: adds
-:func:`trajectory_result_to_legacy_dict` as the canonical adapter
-between a :class:`TrajectoryResult` and the legacy molwatch v1 JSON
-dict the 3Dmol.js frontend consumes.  The legacy
-``molbuilder.parsers.trajectory_to_legacy_dict`` still exists for
-consumers that haven't migrated yet; H3 wires them onto the new
-function, H4 deletes the legacy adapter.
+:func:`trajectory_result_to_legacy_dict` is the ONE adapter between a
+:class:`TrajectoryResult` and the molwatch v1 JSON dict the 3Dmol.js
+frontend consumes. "Legacy" names the WIRE SHAPE, not this code: the
+older ``molbuilder.parsers.trajectory_to_legacy_dict`` was deleted with
+that package on 2026-06-21 (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 Public surface:
 
@@ -160,11 +159,9 @@ def trajectory_result_to_legacy_dict(
 
     The watch web layer (``molbuilder/web/blueprints/watch.py``)
     calls this to keep returning the same JSON shape the existing
-    3Dmol.js client consumes.  H2 of parse-module.md migration:
-    canonical home for the adapter; the legacy
-    ``molbuilder.parsers.trajectory_to_legacy_dict`` re-exports this
-    function so callers can switch over incrementally before H4
-    deletes the legacy entry point.
+    3Dmol.js client consumes.  This is the adapter's one home; the
+    retired ``molbuilder.parsers.trajectory_to_legacy_dict`` re-exported
+    it until that package was deleted (2026-06-21).
 
     Output shape::
 

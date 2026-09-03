@@ -323,7 +323,7 @@ def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
 
 def _emit_atomic_writer() -> List[str]:
     """Inline the same atomic-write helper as
-    :func:`molbuilder.parsers.spectra_json.dump_spectra_json` so
+    :func:`molbuilder.sidecars.spectra.dump_spectra_json` so
     the script doesn't need molbuilder at runtime.
 
     Safety rules (mirror the dump helper):

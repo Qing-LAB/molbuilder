@@ -1,12 +1,10 @@
 """``.spectra.json`` sidecar FileParser.
 
-H1 of parse-module.md migration (was Phase D wrapper around
-``molbuilder.parsers.spectra_json.parse_spectra_json``): absorbed
-the read-side ``parse_spectra_json`` + supporting validators +
-exception classes directly so this module no longer imports from
-``molbuilder.parsers``.  The legacy module stays in place until H4;
-consumers (web blueprints) still use it for the write-side helper
-``dump_spectra_json`` which H2 rehomes.
+The READ side. Absorbed from the legacy
+``molbuilder.parsers.spectra_json`` (deleted 2026-06-21) with its
+validators and exception classes; the write side is
+:mod:`molbuilder.sidecars.spectra` (provenance:
+`docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 The legacy ``parse_spectra_json`` returns a typed
 :class:`molbuilder.spectra.results.SpectraResults` dataclass.  The

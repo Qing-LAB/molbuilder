@@ -1,13 +1,11 @@
 """``.molstruct.json`` sidecar FileParser.
 
-H1 of parse-module.md migration (was Phase D wrapper around
-``molbuilder.parsers.molstruct_json.load``): absorbed the read-side
-``load`` + supporting validators directly so this module no longer
-imports from ``molbuilder.parsers``.  The legacy module stays in
-place until H4; consumers (web blueprints' /api/selection/save and
-similar) still use it for the write-side helpers (``save``,
-``with_lock``, ``sidecar_path_for``, ``to_dict``,
-``apply_to_structure``, ``sha256_of_file``) which H2 rehomes.
+The READ side. Absorbed from the legacy
+``molbuilder.parsers.molstruct_json.load`` (deleted 2026-06-21) with its
+validators; the write side -- ``save``, ``with_lock``,
+``sidecar_path_for``, ``to_dict``, ``apply_to_structure``,
+``sha256_of_file`` -- is :mod:`molbuilder.sidecars.molstruct`
+(provenance: `docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 The sidecar carries per-atom region + frozen-atom metadata that
 rides next to a structure file (``<stem>.molstruct.json``).
