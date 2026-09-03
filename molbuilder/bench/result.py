@@ -89,18 +89,17 @@ def parse_util_bound(monitor_log: str) -> Optional[str]:
     terminal branch, so a trial killed by the scheduler leaves a csv and
     no summary — and two readers of one fact had already diverged once.
 
-    **The two are not the same number, and this used to claim they
-    were** (corrected 2026-09-03).  It said the summary is *"a digest of
-    the same samples util.csv records raw"*.  It is not: the monitor
-    accumulates EVERY tick (``util_accum.add`` runs unconditionally)
-    while the csv is **change-gated** — a row lands only when a metric
-    moved ≥ 10% or a 300 s keepalive elapsed (``monitor.py``, the
-    util-sampling header).  So the summary's mean is exact over every
-    sample and :func:`parse_util_csv`'s is a reconstruction over a
-    subset.  Preferring the summary when it exists and falling back to
-    the csv would get both exactness and coverage — that is a design
-    call against the two-readers lesson above, not a cleanup, and it is
-    `plan.md` **E2**.
+    **The NUMBERS are read again since 2026-09-03**, by
+    :func:`parse_utilisation` — the summary's means where the monitor wrote
+    them, the csv's where it did not.  This function still answers only the
+    verdict, and the reason is the middle one above: the summary line can be
+    missing, so something must always be able to answer, and the choice
+    between the two belongs in ONE place rather than at each call site.
+
+    (The first reason listed here until then was false.  It said the summary
+    is *"a digest of the same samples util.csv records raw"*.  It is not: the
+    monitor accumulates EVERY tick while the csv is change-gated — a row
+    lands only when a metric moved ≥ 10% or a 300 s keepalive elapsed.)
     """
     line = ""
     for ln in monitor_log.splitlines():
@@ -108,6 +107,64 @@ def parse_util_bound(monitor_log: str) -> Optional[str]:
             line = ln                                # last one wins
     v = _VERDICT.search(line)
     return _BOUND_MAP.get(v.group(1)) if v else None
+
+
+#: The means the monitor computed itself, on the ``[UTIL-SUMMARY]`` line.
+#: ``cpu mean=NN% (mm-MM); gpu0 sm mean=NN% (mm-MM) -> verdict``
+_SUMMARY_CPU = re.compile(r"cpu mean=(\d+(?:\.\d+)?)%")
+_SUMMARY_GPU = re.compile(r"gpu\d+ sm mean=(\d+(?:\.\d+)?)%")
+
+
+def parse_utilisation(monitor_log: str, csv_text: str) -> Dict[str, float]:
+    """The utilisation numbers — **the monitor's own means where it stated
+    them, the samples where it did not** *(user ruling, 2026-09-03)*.
+
+    Two sources describe one fact, and each is better at something:
+
+    | | basis | availability |
+    |---|---|---|
+    | ``[UTIL-SUMMARY]`` | **every tick** — ``util_accum.add`` runs unconditionally | only if the monitor reached its terminal branch |
+    | ``util.csv`` | a **change-gated** subset — a row lands when a metric moves ≥ 10% or a 300 s keepalive elapses | always |
+
+    So the summary is the right number and the csv is the one that is always
+    there.  A trial the scheduler KILLS has a csv and no summary — and that is
+    the trial a benchmark most needs to read, which is why the csv path cannot
+    simply be dropped.
+
+    **One function, not two readers.**  The pair was collapsed into the csv
+    alone on 2026-08-19 after two readers of one fact diverged.  The lesson
+    holds; the answer is that the choice lives HERE, in one place, rather than
+    at each call site — so there is still exactly one thing to be wrong.
+
+    **Resolution is not the same as accuracy.**  The monitor prints its means
+    at whole percent (``:.0f``) while the csv reconstruction carries one
+    decimal — but a change-gated subset can be biased by several percent,
+    where rounding costs at most half of one.  The better basis wins.
+
+    Keys are `parse_util_csv`'s, plus ``util_basis`` naming the source of the
+    means (``"monitor-summary"`` | ``"util-csv"``) so a reader can tell an
+    exact figure from a reconstruction.  Peak RSS, the sampled wall window and
+    peak VRAM come from the csv either way: the summary does not carry them.
+    """
+    out = parse_util_csv(csv_text)
+    line = ""
+    for ln in (monitor_log or "").splitlines():
+        if "[UTIL-SUMMARY]" in ln:
+            line = ln                                # last one wins
+    cpu = _SUMMARY_CPU.search(line)
+    gpu = [float(v) for v in _SUMMARY_GPU.findall(line)]
+    if not cpu and not gpu:
+        if out:
+            out["util_basis"] = "util-csv"
+        return out
+    if cpu:
+        out["cpu_mean_pct"] = float(cpu.group(1))
+    if gpu:
+        # MAX across devices, the same rule the csv path uses -- or the two
+        # sources would answer differently on a multi-GPU node.
+        out["gpu_sm_mean_pct"] = max(gpu)
+    out["util_basis"] = "monitor-summary"
+    return out
 
 
 _MACHINE = re.compile(
@@ -269,6 +326,12 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
     flat.  **The tell is free**: that same branch writes
     ``[UTIL-SUMMARY]``, so a monitor log without one is a log whose
     ``wall_s`` is a lower bound.
+
+    **Not the door for a point's metrics — :func:`parse_utilisation` is.**
+    This reads the samples; that one decides between these numbers and the
+    monitor's own, which are better where they exist (user ruling,
+    2026-09-03).  Calling this directly for a metric is how the summary stops
+    being read again.
 
     **The means are TIME-WEIGHTED because the series is change-gated.**
     ``util.csv`` holds a row only when a metric moved ≥ 10% or a

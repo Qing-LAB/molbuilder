@@ -32,7 +32,7 @@ from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
     machine_brief, machine_census, mismatch_phrase, parse_effective_run,
     parse_machine, parse_mpi_ranks, parse_scf_timing, parse_util_bound,
-    parse_util_csv,
+    parse_utilisation,
 )
 
 _RUN_IDX = re.compile(r"-run(\d+)\.")
@@ -146,6 +146,7 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # and every one is read the same way.
     bound = None
     machine: Dict = {}
+    _mon_text = ""
     mon = _latest_run_file(d, basename, "monitor.log")
     if mon is not None:
         _mon_text = _read(mon)
@@ -154,11 +155,13 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
         # first, the [UTIL-SUMMARY] verdict its last.
         machine = parse_machine(_mon_text)
 
-    # Utilisation NUMBERS come from the raw samples, the verdict from the
-    # monitor (parse_util_bound's docstring owns the why).
+    # Utilisation numbers: the monitor's OWN means when it wrote them, the
+    # samples otherwise -- one reader decides, so the two sources cannot
+    # disagree here (`parse_utilisation` owns the why; user ruling
+    # 2026-09-03).
     util = _latest_run_file(d, basename, "util.csv")
     if util is not None:
-        metrics.update(parse_util_csv(_read(util)))
+        metrics.update(parse_utilisation(_mon_text, _read(util)))
 
     # The .out is read TWICE, one window each, because its two answers
     # live at opposite ends: the end-of-run markers in the tail, and the
