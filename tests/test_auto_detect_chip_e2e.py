@@ -42,7 +42,6 @@ for this gate.
 """
 from __future__ import annotations
 
-import threading
 from textwrap import dedent
 
 import pytest
@@ -66,18 +65,9 @@ _AU4_XYZ = dedent("""\
 
 @pytest.fixture(scope="module")
 def flask_server():
-    from werkzeug.serving import make_server
-    from molbuilder.web.app import create_app
-    app = create_app(config={})
-    server = make_server("127.0.0.1", 0, app, threaded=True)
-    port = server.server_port
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
+    from support.live_server import serve
+    with serve() as base_url:
+        yield base_url
 
 
 def _register_tmp_as_picker_root(tmp_path, monkeypatch):

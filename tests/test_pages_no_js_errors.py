@@ -28,7 +28,6 @@ alone because the unhandled rejection is async).
 
 from __future__ import annotations
 
-import threading
 
 import pytest
 
@@ -47,20 +46,9 @@ pytest.importorskip("flask")
 
 @pytest.fixture(scope="module")
 def flask_server():
-    from werkzeug.serving import make_server
-
-    from molbuilder.web.app import create_app
-
-    app = create_app(config={})
-    server = make_server("127.0.0.1", 0, app, threaded=True)
-    port = server.server_port
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
+    from support.live_server import serve
+    with serve() as base_url:
+        yield base_url
 
 
 # --------------------------------------------------------------------- #

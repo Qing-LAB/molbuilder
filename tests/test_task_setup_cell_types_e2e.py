@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import threading
 
 import pytest
 
@@ -84,17 +83,9 @@ def calc_dir():
 
 @pytest.fixture(scope="module")
 def flask_server():
-    from werkzeug.serving import make_server
-
-    from molbuilder.web.app import create_app
-    server = make_server("127.0.0.1", 0, create_app(config={}), threaded=True)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}"
-    finally:
-        server.shutdown()
-        t.join(timeout=5)
+    from support.live_server import serve
+    with serve() as base_url:
+        yield base_url
 
 
 def _open(page, base, calc):
