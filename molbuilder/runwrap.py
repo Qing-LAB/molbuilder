@@ -113,6 +113,14 @@ def _phys_cores_probe_block() -> str:
         'then _n_sockets=1; fi\n'
         '_cps=$(( _phys_cores / _n_sockets ))\n'
         '[ "$_cps" -lt 1 ] && _cps=1\n'
+        # ONE PROBE, ONE REPORT.  The echo used to live in the GPU
+        # block, so a CPU sweep -- which is most sweeps -- recorded no
+        # node shape at all, and `bench/result.py`'s `node_phys_cores`
+        # (the field that exists so a sweep spread over different node
+        # types can SAY so) could never be filled for one.  It belongs
+        # with the probe: whoever measures it says what it measured.
+        'echo "molbuilder: detected phys_cores=$_phys_cores, '
+        'n_sockets=$_n_sockets, cores_per_socket=$_cps" >&2\n'
     )
 
 
@@ -1358,7 +1366,9 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         # substitution fails triggers errexit, so with lscpu absent the
         # wrapper died HERE -- before the nproc fallback written for
         # exactly that case, and before -h could print usage (R9).
-        + _phys_cores_probe_block() +
+        # (the probe itself is hoisted to `env_prefix`, so it runs on
+        # the CPU path too; $_phys_cores / $_n_sockets / $_cps are
+        # already set when this block starts.)
         # ---- MPS availability ----
         # NVIDIA Multi-Process Service: a daemon that lets multiple
         # CUDA client processes share one GPU CONCURRENTLY via Hyper-Q
@@ -1383,9 +1393,10 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# daemon per GPU -- the ranks share it).\n'
         '_have_mps_str="no"; '
         '[ "$_have_mps" = "1" ] && _have_mps_str="yes"\n'
-        'echo "molbuilder: detected phys_cores=$_phys_cores, '
-        'n_sockets=$_n_sockets, cores_per_socket=$_cps, '
-        'mps_available=$_have_mps_str" >&2\n'
+        # The topology half of this line moved to the probe that
+        # measures it (see _phys_cores_probe_block); what is left is
+        # GPU's own.
+        'echo "molbuilder: mps_available=$_have_mps_str" >&2\n'
         # ---- MPI rank policy ----
         # With MPS: target ~4 ranks/GPU (ELPA User Guide §"ELPA -
         # Usability" reports 4 ranks/GPU as the sweet spot without
@@ -2554,7 +2565,11 @@ def render_run_wrapper(script_path: Path, *,
         )
 
         env_prefix = (
-            (_gpu_runtime_defaults_block(n_atoms) if gpu_mode else "")
+            # EVERY path, not just the GPU one: the node's shape is
+            # provenance for any trial, and a CPU sweep is the case that
+            # most needs it (`plan.md` E4).
+            _phys_cores_probe_block()
+            + (_gpu_runtime_defaults_block(n_atoms) if gpu_mode else "")
             + siesta_args_block
             # GPU load-balance: derive ranks-per-GPU from the resolved
             # rank count so MPS gates on real sharing + the per-rank

@@ -255,10 +255,20 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
 
     Returns only the keys it could derive — an empty dict for an empty
     or headerless file — so a caller can fold the result straight into a
-    point's metrics.  Keys: ``peak_rss_gb``, ``wall_s`` (last sample −
-    first sample; the monitor runs for the life of the job, so this is
-    the job's wall time to sampling resolution), ``cpu_mean_pct``,
+    point's metrics.  Keys: ``peak_rss_gb``, ``wall_s``, ``cpu_mean_pct``,
     ``gpu_sm_mean_pct``, ``gpu_vram_peak_gb``.
+
+    **``wall_s`` is the MONITORED WINDOW, not the job's wall time**
+    (corrected 2026-09-03; this said "the monitor runs for the life of
+    the job, so this is the job's wall time to sampling resolution").
+    It is last written row − first, and both ends are anchored only when
+    the monitor reaches its terminal branch: the first sample is always
+    written, and the last is force-written there.  A trial the scheduler
+    KILLS never reaches it, so the series ends at the last CHANGED row —
+    up to a keepalive (300 s) short, and further if the metrics had gone
+    flat.  **The tell is free**: that same branch writes
+    ``[UTIL-SUMMARY]``, so a monitor log without one is a log whose
+    ``wall_s`` is a lower bound.
 
     **The means are TIME-WEIGHTED because the series is change-gated.**
     ``util.csv`` holds a row only when a metric moved ≥ 10% or a

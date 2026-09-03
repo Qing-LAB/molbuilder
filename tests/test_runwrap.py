@@ -133,6 +133,44 @@ def test_render_siesta_always_uses_mpirun():
     assert text.startswith("#!/usr/bin/env bash\n")
 
 
+def test_the_node_it_ran_on_is_recorded_on_EVERY_path():
+    """**The node's shape is provenance for any trial, not a GPU extra.**
+
+    The wrapper measures ``phys_cores`` / ``n_sockets`` /
+    ``cores_per_socket`` with ``lscpu`` and echoes them, and
+    ``bench/result.py::parse_effective_run`` reads that line into
+    ``node_phys_cores`` -- the field that exists so a sweep whose trials
+    landed on different node types can SAY so instead of quoting a number
+    none of them used (Au-BDT-Au ran on a 2x24 node while the probed record
+    said 2x32).
+
+    Until 2026-09-03 the echo lived inside ``_gpu_runtime_defaults_block``,
+    so a **CPU** sweep -- which is most sweeps, and the one this field was
+    written for -- recorded no node shape at all and the field could never
+    be filled.  The probe now reports what it measured, on every path.
+
+    The GPU wrapper must carry it exactly ONCE: the probe was hoisted out
+    of the GPU block rather than duplicated, and a second copy would give
+    the reader two answers.
+    """
+    _bind()
+    cpu = render_run_wrapper(Path("/somewhere/cpu-job.fdf"),
+                             resources=Resources(mpi_np=4, cpus_per_task=2))
+    assert cpu.count("detected phys_cores=") == 1, (
+        "a CPU trial records no node shape -- `node_phys_cores` cannot be "
+        "filled for it, and a sweep spread over two node types reads as one")
+    assert "mps_available=" not in cpu, (
+        "the CPU wrapper reports an MPS capability that only matters on a GPU")
+
+    # And the field the parser wants really comes out of that line.
+    from molbuilder.bench.result import parse_effective_run
+    line = [ln for ln in cpu.splitlines() if "detected phys_cores=" in ln][0]
+    eff = parse_effective_run("", line.replace("$_phys_cores", "20")
+                                     .replace("$_n_sockets", "2")
+                                     .replace("$_cps", "10"))
+    assert eff["node_phys_cores"] == 20 and eff["node_sockets"] == 2, eff
+
+
 def test_render_siesta_with_mpi_ranks():
     """mpi_np from the form becomes the DEFAULT for -np; the launcher
     line uses the runtime $_mpi_np shell variable so user can override."""
