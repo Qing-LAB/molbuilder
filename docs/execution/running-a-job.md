@@ -993,14 +993,27 @@ it was. The folder is then in a state no save ever produced, and **that mess is
 yours**. You will not be quietly fooled, though: the next restore checks content,
 refuses, and names the files that differ.
 
-### 6.5 What is not built
+### 6.5 What is not built, and what is not going to be
+
+**Retired 2026-09-03 — decided, not deferred** *(user: "retire all of them")*.
+These were named in the original design, never built, and had no recorded
+decision either way, so they went on reading as *coming*. They are not:
+
+- **`checkpoint diff`** — no verb, on any surface, and none is planned. The
+  commit-graph viewer in the sidebar is how two states get compared.
+- **`prune`** — nothing is ever reclaimed, and under *"every saved state stays
+  restorable"* almost nothing can be, so the verb would mostly refuse. Delete
+  the folder if you want the space.
+- **The `snippets/` library** — reusable deck fragments. The template and its
+  `overrides` are how a calculation varies; a second vocabulary for the same
+  job is what this contract exists to prevent.
+- **Wrapper-git "Path B"** — an alternative checkpoint mechanism, drafted
+  beside the one that shipped. One mechanism is the point.
+
+**Still open, and deliberately so:**
 
 - **`checkpoint verify`** — the archive check exists and is reachable only by
   attempting a restore, which is the worst moment to learn an archive is gone.
-- **`checkpoint diff`** — no verb, on any surface.
-- **`prune`** — nothing is ever reclaimed, and under "every saved state stays
-  restorable" almost nothing can be. The one genuine case is an archive left by
-  a save interrupted before its state was recorded.
 - **A save offered at `prep`** — the moment a folder is about to be overwritten
   is where a save should be offered, and nothing offers it yet. Until it does,
   saving before a rerun is yours to remember.

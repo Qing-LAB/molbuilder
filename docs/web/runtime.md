@@ -122,8 +122,11 @@ generator panel. The modal blocks the triggering action; only *Discard and
 continue* proceeds. `tests/test_structure_warning_modal_js.py` pins all four
 strings against this table, so a wording change has to update both together.
 
-*(A browser-level `beforeunload` guard was part of the original design and was
-never shipped — closing the tab does not warn you.)*
+*(A browser-level `beforeunload` guard was part of the original design, was
+never shipped, and is **retired 2026-09-03** — closing the tab does not warn
+you, and will not. The modal above guards the actions that discard work inside
+the app, which is where the work is; a browser dialog on tab close is a
+different, coarser thing that the platform half-honours anyway.)*
 
 **These are *not* runtime primitives** — they were catalogued here only because
 they share the `lib/` folder, but their substance lives with their real subject:

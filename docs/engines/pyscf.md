@@ -403,6 +403,15 @@ in-script loop over stages, and no stage list in the engine config.
   `prep` when the next rung's `restart` says `continue` — the same pair SIESTA
   carries as `.XV` and `.DM`, declared in
   [`job-contracts.md` § 4.2a](?doc=execution/job-contracts.md)'s warm-file rules.
+
+  > **A `.chk` from somewhere else is not adopted** *(retired 2026-09-03, user:
+  > "retire all of them")*. "Smart chkfile detection" — a `--warm-restart-any`
+  > that would hunt for any usable checkpoint rather than the one the previous
+  > rung produced — was named in the design and never built, and it is not
+  > coming. A warm start is a declared hand-off between named rungs, so what
+  > gets read is decided by `restart`, not found by searching. A checkpoint that
+  > merely happens to be lying in the folder is a density from a calculation
+  > nobody said to continue.
 - **What a deck decides on its own** is one rung's non-convergence policy:
   `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} with
   `geom_continue_retries` for the middle one. A deck cannot see the other rungs,

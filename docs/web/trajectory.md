@@ -28,6 +28,14 @@ draws): a **scale** (Å per eV/Å), a **minimum** (hide arrows below a force),
 and **exclude frozen atoms** (skip the constraint-artifact forces on fixed
 atoms — this affects the arrows only; hiding atoms in the 3D box is MolView's).
 
+> **This is the trajectory surface, and there is no second one coming**
+> *(retired 2026-09-03, user: "retire all of them")*. A separate **MD
+> viewer/editor** was named in the design and never built. A relaxation and an
+> MD run both arrive as frames with forces, which is exactly what this reads —
+> a second viewer would be a second answer to *show me the frames*, and the
+> thing that would actually differ (editing a trajectory) belongs to whatever
+> writes one, not to the reader.
+
 ## 2. The four plots
 
 Below the movie are up to four plots, each answering one question about the run:

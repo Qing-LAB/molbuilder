@@ -833,8 +833,12 @@ block is emitted by every engine):
 > HEADER block and `script_emit.emit_header` exists, but no generator calls it
 > today; run instructions instead ride in the engine-body banner. The slot is
 > kept in the ordering so tools that *parse* for it degrade cleanly.
-> **BENCH-MARKS is SIESTA-only today** — the PySCF `.py` bench block is a known
-> gap (§ 3.3).
+> **BENCH-MARKS is SIESTA-only, and stays that way** *(retired 2026-09-03,
+> user: "retire all of them")*. A PySCF bench block was named in the design and
+> never built; it is not a gap awaiting a fix. The bench lane speaks SIESTA
+> (`stages.md` § 6.8) — its measurement pins are SIESTA catalogue fields —
+> so a block declaring overrides for an engine the lane refuses would be the
+> deck advertising something nothing can use.
 
 ### 3.2 PROVENANCE — the generation snapshot
 
@@ -1038,8 +1042,11 @@ a catalogue that says `1000` and `300.0`.)*
 > `tests/test_template_declarations.py` matches each `field` line to the config
 > item that anchors its keyword and refuses a disagreement on `type`.
 
-> **Gap:** the PySCF `.py` does not yet carry a BENCH-MARKS block. When it
-> lands, its `field` declarations get listed here.
+> **The PySCF `.py` carries no BENCH-MARKS block, by decision** *(retired
+> 2026-09-03)*. See § 3.1: the bench lane is SIESTA's, so there is nothing for
+> a PySCF block to declare. Extending the lane to another engine means giving
+> that engine its own measurement pins first; the block would follow, not
+> lead.
 
 ### 3.4 ATOM-METADATA — labels that ride with the script (`.fdf` / `.py`)
 

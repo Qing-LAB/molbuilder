@@ -5,10 +5,18 @@
  *
  *   - Clicking Load on the load-from-project panel.
  *   - Clicking Generate on any generator panel (SMILES, 3DNA, ...).
- *   - The browser fires beforeunload (tab close / refresh / navigate
- *     away).  The beforeunload handler is registered by the tab UI
- *     module — NOT this primitive — because beforeunload requires
- *     a sync return value, not an async confirmation modal.
+ *
+ * TWO triggers, and there is no third.  A `beforeunload` handler was listed
+ * here as the third — "registered by the tab UI module" — and no tab UI module
+ * ever registered one, so closing the tab has never warned about an unsaved
+ * canvas.  Retired 2026-09-03 (user: "retire all of them") rather than left
+ * reading as a thing that exists: this modal guards the actions that discard
+ * work INSIDE the app, which is where the work is.
+ *
+ * (`lib/inspectors/markdown.js` does use `beforeunload`, for unsaved edits in
+ * the file-preview editor.  That one is real and is not affected — it is a
+ * different surface guarding a different thing, and it can be sync because it
+ * has no modal to await.)
  *
  * Surface:
  *

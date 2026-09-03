@@ -66,6 +66,14 @@ Both engines ship a **three-rung ladder** that bakes these tiers into the defaul
 rung is **disabled by default**: most runs are `coarse` + `medium`, and `tight` is
 opted into for vib/IR/production work.
 
+**Three rungs, and a fourth is not coming** *(retired 2026-09-03, user: "retire
+all of them")*. A stage-4 "refinement" preset was named in the design and never
+built. `tight` already targets the SCF noise floor, so a rung past it would
+have to be tighter than the thing the tiers call tightest — and a ladder that
+loosens or repeats is worse than one that stops. What a specific study needs
+beyond `tight` is that study's own stage, written as an override, not a fourth
+name everybody carries.
+
 ---
 
 ## 2. Parameter-by-parameter
