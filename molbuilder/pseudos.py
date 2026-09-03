@@ -140,7 +140,17 @@ class PsmlInfo:
     relativistic:        str             # "no" | "scalar" | "spin-orbit"
     generator:           str             # "ONCVPSP" / "ATOM" / "Hamann" / etc.
     valence_config:      str             # "[Ar] 3d6 4s2" etc. (free-form)
-    suggested_mesh_ry:   Optional[float] # PseudoDojo's recommended cutoff
+    #: ---- what the file REQUIRES OF THE CALCULATION (layer 2) ----------
+    #: `science/pseudopotentials.md` § 2a: a pseudo does not only have to be
+    #: sound, it STATES things the calculation must satisfy.  These are read
+    #: here and compared by `validation/siesta.py`, never by this module --
+    #: parsing a requirement and judging a configuration are two jobs.
+    suggested_mesh_ry:   Optional[float] # the `normal` hint; the threshold
+    cutoff_hints_ry:     Dict[str, float] = field(default_factory=dict)
+                                         # {"low","normal","high"} as stated,
+                                         # empty when the file states none
+                                         # (v0.4 files do not; the eleven
+                                         # elements v0.5 re-generated do)
     null_channels:       List[str] = field(default_factory=list)
                                          # l-letters (s/p/d/f) whose ENTIRE
                                          # Kleinman-Bylander channel has
@@ -148,6 +158,14 @@ class PsmlInfo:
                                          # pseudo (the BDT S.psml had a dead
                                          # 'p' channel; triggers propor
                                          # IMAX=0 AND gives wrong physics).
+    semilocal_only_channels: List[str] = field(default_factory=list)
+                                         # VALENCE l-channels whose KB
+                                         # projectors are all ~zero but which
+                                         # an <slps> semilocal block carries.
+                                         # Valid PSML -- and SIESTA was
+                                         # observed not to rebuild the channel
+                                         # from it (S, PseudoDojo v0.5,
+                                         # 2026-06).  § 2a.2.
     parse_warnings:      List[str] = field(default_factory=list)
 
 
@@ -216,7 +234,8 @@ def parse_psml_header(path: Path) -> PsmlInfo:
             xc_family="unknown", xc_authors="unknown",
             relativistic="unknown", generator="unknown",
             valence_config="", suggested_mesh_ry=None,
-            null_channels=[],
+            cutoff_hints_ry={}, null_channels=[],
+            semilocal_only_channels=[],
             parse_warnings=[f"could not parse XML: {exc}"],
         )
 
@@ -394,6 +413,36 @@ def parse_psml_header(path: Path) -> PsmlInfo:
         for s in _findall_local(root, "slps")
         if (s.attrib.get("l") or "").strip()
     }
+    def _as_float(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    #: ---- the file's REQUIREMENTS (layer 2, § 2a.1) ---------------------
+    #: PseudoDojo states its recommended mesh cutoffs on an <annotation> as
+    #: `cutoff_hint_low` / `_normal` / `_high` (Ry).  Only the eleven elements
+    #: v0.5 re-generated carry them; a v0.4 file states nothing, and stating
+    #: nothing is a real answer -- it must not be read as "any cutoff will do"
+    #: (§ 2a.1: silence abstains, it does not vote for a lower number).
+    cutoff_hints: Dict[str, float] = {}
+    for ann in _findall_local(root, "annotation"):
+        for k, v in ann.attrib.items():
+            if k.startswith("cutoff_hint_"):
+                f = _as_float(v)
+                if f is not None:
+                    cutoff_hints[k[len("cutoff_hint_"):]] = f
+
+    #: Which l-channels are OCCUPIED, from the file's own valence
+    #: configuration (`<shell n=.. l=.. occupation=..>`).  Read here rather
+    #: than assumed from the element, because the file is the authority on
+    #: what IT put in valence.
+    valence_ls = {
+        (sh.attrib.get("l") or "").strip().lower()
+        for sh in _findall_local(root, "shell")
+        if (sh.attrib.get("l") or "").strip()
+        and _as_float(sh.attrib.get("occupation")) not in (None, 0.0)
+    }
     proj_by_l: Dict[str, List[float]] = {}
     for pr in _findall_local(root, "proj"):
         l_letter = (pr.attrib.get("l") or "").strip().lower()
@@ -404,18 +453,30 @@ def parse_psml_header(path: Path) -> PsmlInfo:
         except (TypeError, ValueError):
             continue
         proj_by_l.setdefault(l_letter, []).append(ekb)
-    null_channels = sorted(
-        l for l, eks in proj_by_l.items()
-        if eks and all(e < _EKB_NULL for e in eks)
-        and l not in semilocal_ls          # semilocal block carries it
-    )
+    #: Channels with nothing in their KB projectors, split by whether the
+    #: file offers a fallback.  BOTH are read from one pass, because they are
+    #: the same measurement asked two ways -- and keeping them apart is the
+    #: § 2a.2 distinction: `null` is a file that is BROKEN, `semilocal_only`
+    #: is a file that is VALID and may still be unusable.
+    _dead = {l for l, eks in proj_by_l.items()
+             if eks and all(e < _EKB_NULL for e in eks)}
+    null_channels = sorted(_dead - semilocal_ls)
+    #: Valence only.  A dead channel the semilocal block carries matters when
+    #: the channel is OCCUPIED -- sulfur's p (3s2 3p4) is what made the run
+    #: wrong; an unoccupied one is a representation choice with nothing
+    #: riding on it.
+    semilocal_only_channels = sorted(
+        (_dead & semilocal_ls) & valence_ls)
 
     return PsmlInfo(
         path=path, element=element, atomic_number=atomic_number,
         xc_family=xc_family, xc_authors=xc_authors,
         relativistic=relativistic, generator=generator,
         valence_config=valence_config,
-        suggested_mesh_ry=suggested_mesh,
+        suggested_mesh_ry=(cutoff_hints.get("normal")
+                           if cutoff_hints else suggested_mesh),
+        cutoff_hints_ry=cutoff_hints,
+        semilocal_only_channels=semilocal_only_channels,
         null_channels=null_channels,
         parse_warnings=warnings,
     )
@@ -452,23 +513,27 @@ class CoverageEntry:
     status:   str       # "ok" | "missing" | "dead_projector" |
                         # "xc_family_mismatch" | "xc_mismatch" |
                         # "relativistic_mismatch" | "generator_mismatch" |
-                        # "parse_warning"
+                        # "parse_warning" | "semilocal_only"
     message:  str
     path:     Optional[Path] = None
 
 
 #: The `CoverageEntry.status` values that BLOCK — a run with any of these
 #: cannot be correct: a pseudo is absent (SIESTA won't start), a valence
-#: channel is physically missing (wrong Hamiltonian), or the XC *family* is
-#: wrong (silently-wrong energies).  This is the SINGLE source of truth for
-#: "which statuses are ERROR"; the SIESTA preflight
+#: channel is physically missing (wrong Hamiltonian), the XC *family* is wrong
+#: (silently-wrong energies), or a valence channel is present and states a
+#: strength of ZERO (``semilocal_only`` — the same silently-wrong-energies
+#: case, added 2026-09-03 by user ruling after PseudoDojo v0.5's sulfur ran
+#: with no p channel).  This is the SINGLE source of truth for "which statuses
+#: are ERROR"; the SIESTA preflight
 #: (``validation.siesta._check_siesta_pseudo_coverage``) and the CLI
 #: (``cli.cmd_pseudo_check``) both consume it so the two surfaces cannot
 #: drift (they did until 2026-07-26: the CLI omitted ``xc_family_mismatch``).
 #: Everything else — ``xc_mismatch`` (same-family author diff),
 #: ``relativistic_mismatch``, ``generator_mismatch``, ``parse_warning`` — is
 #: advisory (WARN); ``ok`` is a silent pass.
-ERROR_STATUSES = frozenset({"missing", "dead_projector", "xc_family_mismatch"})
+ERROR_STATUSES = frozenset({"missing", "dead_projector", "xc_family_mismatch",
+                            "semilocal_only"})
 
 
 #: XC authors -> the FAMILY a pseudopotential must belong to.
@@ -567,6 +632,44 @@ def check_coverage(elements: Iterable[str],
                          f"'propor: ERROR: IMAX=0'.  Replace it with a "
                          f"vetted pseudo (PseudoDojo) matching the rest "
                          f"of your set's generator version + XC."),
+                path=info.path,
+            ))
+            continue
+        # VALID, AND POSSIBLY UNUSABLE (§ 2a.2).  A valence channel whose
+        # KB projectors are all zero, carried by the <slps> semilocal block
+        # instead.  That is legitimate PSML -- which is exactly why C5 above
+        # exempts it and is right to -- but SIESTA was observed not to
+        # rebuild the channel from it: PseudoDojo v0.5's sulfur has no p
+        # projectors, S's valence is 3s2 3p4, and the run was wrong until
+        # the v0.4 file replaced it (2026-06).
+        #
+        # ERROR (user ruling, 2026-09-03).  The file states something FALSE
+        # about a channel that carries valence electrons -- sulfur's p holds
+        # four of its six -- and nothing in the file says to read the
+        # semilocal block instead.  So a reader doing the normal thing is
+        # reading the file correctly and gets wrong physics with no crash to
+        # notice: the `xc_family_mismatch` case, and it blocks for the same
+        # reason.  A user whose reader consumes the semilocal form points
+        # `psml_lib` at a set that does not carry the claim (v0.4.1).
+        if info.semilocal_only_channels:
+            chans = "/".join(info.semilocal_only_channels)
+            out.append(CoverageEntry(
+                element=key, status="semilocal_only",
+                message=(f"{key}.psml carries the VALENCE '{chans}' channel "
+                         f"only as a semilocal <slps> block: its "
+                         f"Kleinman-Bylander projectors are present and set "
+                         f"to ZERO -- not omitted, which is how PSML says "
+                         f"'nothing here', but written out as zeros, which "
+                         f"claims the projector IS zero.  It is not, and "
+                         f"NOTHING in the file says to read the semilocal "
+                         f"block instead -- so a reader that takes the "
+                         f"nonlocal block at its word is reading the file "
+                         f"correctly and gets no '{chans}' for {key} at all: "
+                         f"wrong bonding, not a crash you would notice.  "
+                         f"PseudoDojo v0.5 re-generated eleven elements this "
+                         f"way (Ba, Bi, I, Pb, Po, Rb, Rn, S, Te, Tl, Xe); "
+                         f"v0.4.1 of the same element does not.  See "
+                         f"science/pseudopotentials.md 2a.2."),
                 path=info.path,
             ))
             continue

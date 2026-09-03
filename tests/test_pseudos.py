@@ -665,9 +665,18 @@ class TestErrorStatusesSharedBySurfaces:
     now consume ``pseudos.ERROR_STATUSES`` so the surfaces can't disagree."""
 
     def test_error_statuses_is_the_blocking_set(self):
+        """The four things that make a run wrong rather than suspect.
+
+        `semilocal_only` joined 2026-09-03 (user ruling): a valence channel
+        whose projectors STATE a strength of zero, which PseudoDojo v0.5 does
+        for eleven elements.  Same class as `xc_family_mismatch` -- the run
+        completes and the physics is wrong -- so it blocks for the same
+        reason.
+        """
         from molbuilder.pseudos import ERROR_STATUSES
         assert ERROR_STATUSES == frozenset(
-            {"missing", "dead_projector", "xc_family_mismatch"})
+            {"missing", "dead_projector", "xc_family_mismatch",
+             "semilocal_only"})
 
     def test_cli_exits_nonzero_on_xc_family_mismatch(self, tmp_path):
         # LDA pseudo on a PBE (GGA) calc -> xc_family_mismatch -> ERROR.

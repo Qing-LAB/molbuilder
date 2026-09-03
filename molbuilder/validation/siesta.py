@@ -117,9 +117,69 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     return out
 
 
-def _check_siesta_mesh_cutoff(cfg) -> List[Issue]:
-    """SIESTA-specific: mesh_cutoff below the production-defensible
-    floor (150 Ry).
+def _declared_cutoff_ry(struct, cfg, *, dest_dir=None):
+    """The strictest mesh cutoff THE PSEUDOS THEMSELVES ask for, or ``None``.
+
+    Layer 2 of `science/pseudopotentials.md` § 2a: a pseudopotential does not
+    only have to be sound, it **states** what the calculation must give it.
+    PseudoDojo writes `cutoff_hint_normal` (Ry) into the file; this reads it
+    back for the elements actually in the structure.
+
+    **The MAXIMUM wins, because there is one grid.** The mesh is a single
+    global real-space grid and every species' density lives on it, so it must
+    satisfy the most demanding element. An average, or a minimum, would answer
+    *lower* the more species a system has — backwards, since adding a species
+    can only make the grid's job harder.
+
+    **Silence abstains.** Only the eleven elements v0.5 re-generated carry
+    hints, so a real system states fewer numbers than it has atoms — BDT on
+    gold states exactly one (S, 147 Ry). An element with no hint must not pull
+    the requirement down; it simply does not raise it.
+
+    Returns ``(ry, element)`` for the element that set the bar, or
+    ``(None, None)``. Silent on every failure the coverage check already
+    reports — a missing directory is an INTEGRITY finding, and layer 2 has
+    nothing to add to it.
+    """
+    psml_lib = getattr(cfg, "psml_lib", None)
+    if not psml_lib:
+        return (None, None)
+    try:
+        from ..pseudos import parse_psml_header, resolve_psml_lib
+        psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
+        if not psml_dir.is_dir():
+            return (None, None)
+        best_ry, best_el = None, None
+        for el in sorted(set(getattr(struct, "elements", []) or [])):
+            f = psml_dir / f"{el}.psml"
+            if not f.is_file():
+                continue
+            ry = parse_psml_header(f).suggested_mesh_ry
+            if ry is not None and (best_ry is None or ry > best_ry):
+                best_ry, best_el = float(ry), el
+        return (best_ry, best_el)
+    except Exception:                                    # noqa: BLE001
+        # A requirement we could not read is not a requirement we may invent.
+        return (None, None)
+
+
+def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]:
+    """Is the mesh cutoff adequate — asked of the FILES first, the
+    literature only when they are silent.
+
+    **One question, one check, two sources for the answer** *(§ 2a.1,
+    2026-09-03)*. A pseudo that states its own recommended cutoff has measured
+    this calculation; a 150 Ry literature floor has not. So a declared number
+    outranks the floor, and the floor answers only where nothing is declared —
+    the same rule the rank count follows (`running-a-job.md` § 3.1: read from
+    a record, never guessed). Two separate checks would have put a guess and a
+    measurement on one field and let the user pick.
+
+    The threshold is the `normal` hint; `high` is named in the message,
+    because it is what tight and vibrational work wants (`tuning.md` § 1) and
+    that is a decision, not a bar everyone must clear.
+
+    Below, the original floor, unchanged and now scoped to its real case:
 
     Why 150 Ry as the warn threshold (vs. the slider's hard floor of
     100 Ry):
@@ -146,6 +206,37 @@ def _check_siesta_mesh_cutoff(cfg) -> List[Issue]:
         mc_val = float(mc)
     except (TypeError, ValueError):
         return []
+
+    # THE FILES FIRST.  When any pseudo in this calculation states a
+    # recommended cutoff, that number is about THIS calculation and the
+    # literature floor is not -- so it answers, and the floor stays quiet.
+    declared, el = (_declared_cutoff_ry(struct, cfg, dest_dir=dest_dir)
+                    if struct is not None else (None, None))
+    if declared is not None:
+        if mc_val >= declared:
+            return []
+        from ..pseudos import parse_psml_header, resolve_psml_lib
+        high = None
+        try:
+            f = resolve_psml_lib(getattr(cfg, "psml_lib", ""),
+                                 dest_dir=dest_dir) / f"{el}.psml"
+            high = parse_psml_header(f).cutoff_hints_ry.get("high")
+        except Exception:                                # noqa: BLE001
+            pass
+        return [Issue(
+            "warn",
+            (f"mesh_cutoff = {mc_val:g} Ry is below {declared:g} Ry, which "
+             f"is what {el}'s own pseudopotential asks for "
+             f"(PseudoDojo's `normal` hint, read from {el}.psml).  The mesh "
+             f"is ONE grid for the whole calculation, so the most demanding "
+             f"element sets it"
+             + (f"; {el} is that element here" if el else "")
+             + ".  Below it that element's density is under-resolved, and "
+               "the error sits on those atoms rather than averaging away."
+             + (f"  For tight or vibrational work the same file suggests "
+                f"{high:g} Ry." if high else "")),
+            "config.mesh_cutoff",
+        )]
     # Gated on >= 100 Ry: the dataclass metadata-range check (lower
     # bound 100) already warns for values below the slider floor with
     # the SAME ``where`` field (``config.mesh_cutoff``).  Without the
@@ -411,7 +502,7 @@ def _validate_siesta(struct: Structure, cfg,
     # MeshCutoff floor: warn below 150 Ry (production-defensible
     # threshold).  The dataclass slider lower bound is 100 Ry; this
     # rule catches the 100-149 Ry window with a soft nudge.
-    issues += _check_siesta_mesh_cutoff(cfg)
+    issues += _check_siesta_mesh_cutoff(cfg, struct, dest_dir=dest_dir)
 
     # Makov-Payne notice: charged-supercell image-charge bias.
     # We DON'T auto-apply the correction (see function docstring +

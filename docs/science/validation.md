@@ -57,6 +57,56 @@ Three typed boundaries:
 | `Adapter.to_params(analysis)` | per-engine `auto_defaults.py` | `ChemistryAnalysis` → engine `*SuggestedParams` |
 | `check_open_shell_metal(struct, …)` | `validation/chemistry.py` | `Structure` + engine params → `List[Issue]` |
 
+### 1.1 Three kinds of question, one door *(framework, 2026-09-03)*
+
+The layers above are **one** of the three things validation does, and the three
+differ in what they take in and — the part that decides where a finding
+belongs — **what their verdict is about**:
+
+```mermaid
+flowchart TB
+    subgraph Q["the three questions"]
+      direction LR
+      A["<b>ANALYSIS</b> — what IS this?<br/><i>in:</i> the structure<br/><i>verdict about:</i> facts<br/>L1-L4 above"]
+      I["<b>INTEGRITY</b> — is this artifact sound?<br/><i>in:</i> ONE artifact<br/><i>verdict about:</i> that artifact<br/>a .psml missing · dead channel · wrong XC"]
+      F["<b>FITNESS</b> — do the pieces fit?<br/><i>in:</i> the artifacts <b>+ the config</b><br/><i>verdict about:</i> <b>the configuration</b><br/>mesh_cutoff vs what these pseudos ask"]
+    end
+    D["<b>the ONE door</b><br/>validate(struct, cfg) → List[Issue]<br/>report(issues) — raises on ERROR"]
+    A --> D
+    I --> D
+    F --> D
+    D --> S1["<b>script generation</b><br/>render_deck"]
+    D --> S2["<b>the web preflight</b><br/>the issues panel"]
+    D --> S3["<b>jobset prep</b><br/>before a folder is written"]
+```
+
+| | analysis | integrity | fitness |
+|---|---|---|---|
+| **input** | the structure | ONE artifact | every artifact **+ the config** |
+| **verdict about** | facts — *what this molecule is* | that artifact | **the configuration** |
+| **keyed to** | nothing to fix | the element / file | the **config field** a person edits |
+| **example** | *this has an open-shell metal* | *`S.psml` is absent* | *`mesh_cutoff` is below what these pseudos state* |
+
+**Why the distinction earns its keep: it decides where a finding goes, and
+being wrong about that hides it.** A fitness verdict keyed to an element reads
+as *"something is wrong with sulfur"* when what is wrong is a number in the
+form — so the person goes and re-downloads a perfectly good file. Key it to
+`config.mesh_cutoff` and it lands on the field they change.
+
+**An artifact may DECLARE a requirement, and then the configuration must
+satisfy it — the strictest one in the set wins.** That is the fitness rule in
+one sentence, and it is general: a PseudoDojo v0.5 file states its own
+recommended cutoff, and any future declared fact (a required relativity, a
+minimum basis) enters through the same reader and the same comparison. Where a
+file states nothing, a literature default answers instead — **a declared number
+outranks a guess**, the same rule the rank count follows
+(`running-a-job.md` § 3.1: *read from a record, never guessed*).
+
+**All three reach every surface through the one door, and that is the test of
+placement.** `report(validate(...))` is called by script generation, the web
+preflight and `jobset prep`; a finding that needed new plumbing to reach a
+surface would be a finding put in the wrong layer.
+
 ---
 
 ## 2. The analyzer (L2)

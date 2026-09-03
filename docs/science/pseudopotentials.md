@@ -44,15 +44,45 @@ Two entry points, one engine:
 
 ```mermaid
 flowchart TB
-    P["SIESTA preflight — validation/siesta.py:25<br/>(every render_fdf / Build / jobset prep)"]
-    C["CLI — molbuilder pseudo check &lt;dir&gt; — cli.py:342<br/>(manual audit)"]
-    CC["pseudos.check_coverage(elements, dir, …) — pseudos.py:443<br/>→ List[CoverageEntry(element, status, message, path)]"]
-    ST["8 statuses: ok · missing · dead_projector · xc_family_mismatch ·<br/>xc_mismatch · relativistic_mismatch · generator_mismatch · parse_warning"]
-    SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR (blocks): missing · dead_projector · xc_family_mismatch<br/>WARN: the rest · ok: silent"]
-    P --> CC
-    C --> CC
-    CC --> ST --> SEV
+    F[".psml files in the calculation"]
+    RD["parse_psml_header → PsmlInfo<br/><b>identity</b>: element · XC · relativity · generator<br/><b>requirements</b>: cutoff_hint low/normal/high"]
+
+    subgraph L1["LAYER 1 — file integrity (§ 2) · per FILE"]
+      CC["pseudos.check_coverage(elements, dir, …)<br/>→ List[CoverageEntry(element, status, …)]"]
+      ST["9 statuses: ok · missing · dead_projector · xc_family_mismatch ·<br/>xc_mismatch · relativistic_mismatch · generator_mismatch ·<br/>parse_warning · <b>semilocal_only</b> (§ 2a.2)"]
+      SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR: missing · dead_projector · xc_family_mismatch ·<br/><b>semilocal_only</b><br/>WARN: the rest · ok: silent"]
+      CC --> ST --> SEV
+    end
+
+    subgraph L2["LAYER 2 — calculation fitness (§ 2a) · the SET + the CONFIG"]
+      REQ["the strictest requirement in the set<br/><b>max</b> over the elements that state one;<br/>silence abstains (§ 2a.1)"]
+      CMP["cfg.mesh_cutoff vs that number<br/>→ Issue(warn, where=<b>config.mesh_cutoff</b>)"]
+      FLOOR["no file states one?<br/>→ the 150 Ry literature floor answers"]
+      REQ --> CMP
+      REQ -.-> FLOOR
+    end
+
+    F --> RD
+    RD --> CC
+    RD --> REQ
+
+    SEV --> DOOR
+    CMP --> DOOR
+    FLOOR --> DOOR
+    DOOR["<b>the ONE door</b> — validate() → report()<br/>(validation.md § 1.1)"]
+    DOOR --> S1["script generation<br/>render_deck"]
+    DOOR --> S2["the web preflight<br/>the issues panel"]
+    DOOR --> S3["jobset prep"]
+    DOOR --> S4["CLI — molbuilder pseudo check<br/>(layer 1 only; it audits a directory,<br/>and has no config to be fit for)"]
 ```
+
+**Read the two subgraphs by what their verdict is keyed to.** Layer 1 answers
+per **element** — *this file is missing / defective / the wrong XC*. Layer 2
+answers per **config field** — *your `mesh_cutoff` is below what these files
+ask for*. A finding in the wrong one sends a person to fix the wrong thing:
+told that something is wrong with sulfur, they re-download a perfectly good
+file; told that `mesh_cutoff` is low, they change the number that is actually
+low.
 
 Both surfaces call the **same** `pseudos.check_coverage`, which parses each PSML
 header once (`parse_psml_header` → `PsmlInfo`, `pseudos.py:168`) and returns
@@ -64,7 +94,7 @@ non-zero, `cli.py:386`) **cannot disagree about what blocks**:
 
 | Severity | Statuses | Meaning |
 |---|---|---|
-| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `dead_projector`, **`xc_family_mismatch`** | the run **cannot be correct** — a file is absent (SIESTA won't start), a valence channel is physically missing (wrong Hamiltonian), or the XC *family* is wrong (silently-wrong energies) |
+| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `dead_projector`, **`xc_family_mismatch`**, **`semilocal_only`** | the run **cannot be correct** — a file is absent (SIESTA won't start), a valence channel is physically missing (wrong Hamiltonian), the XC *family* is wrong, or a valence channel is present and **claims a strength of zero** (§ 2a.2). The last three are all *silently* wrong: the run completes and the answer is not right |
 | **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
 | `ok` | — | silent pass |
 
@@ -206,6 +236,161 @@ null_channels = [
 malformed / truncated PSML is suspect; surface it but let SIESTA make the final
 call at startup. **How:** non-empty `PsmlInfo.parse_warnings` (bad XML, missing
 element, unparseable Z, …).
+
+---
+
+## 2a. Two layers, and why the second one is new *(design, 2026-09-03)*
+
+**Every check in § 2 answers one question: is this FILE sound?** One file in,
+one status out, keyed by element — present, parseable, right XC family, right
+relativity, no dead channel. Eight statuses, all of them properties of a file.
+
+A pseudopotential is also something else, and nothing was asking about it:
+
+> **A pseudopotential DECLARES REQUIREMENTS, and the calculation must satisfy
+> them.**
+
+That is a different question with a different shape. It takes the whole SET of
+files *and* the configuration, and its verdict is about the **configuration**,
+not about any file — so it lands on `config.mesh_cutoff`, which is the thing a
+person must change, rather than on an element.
+
+| | layer 1 — **file integrity** (§ 2) | layer 2 — **calculation fitness** |
+|---|---|---|
+| input | one file | every file in the set **+ the config** |
+| asks | *is this file sound, and does it match my XC?* | *does my configuration honour what these files require?* |
+| verdict about | the element | the **config field** |
+| output | `CoverageEntry(element, status, …)` | `Issue(severity, message, where="config.…")` |
+| the strictest what wins | — | the strictest **element** in the set |
+
+**Why a layer and not two more checks.** A file's declared requirement is not a
+special case of soundness — it is a fact the file states about the calculation
+it belongs to, and *any* such fact enters the same way. Today that is the
+recommended cutoff; a file that declared a required relativity, a valence
+assumption or a minimum basis would be read by the same reader and compared by
+the same rule. Bolting each one onto the coverage scan would make the scan
+answer two unrelated questions and key the answer to the wrong thing.
+
+**It costs no new wiring, and that is the test of the seam.** Layer 1 already
+flows through `pseudos.check_coverage`; layer 2 is an ordinary
+`validation/siesta.py` check, registered like every other. Both already reach
+all three surfaces through the one door — `report(validate(...))` is called by
+**script generation** (`render_deck`), the **web preflight**, and **`jobset
+prep`** — so the backend, the UI panel and the emitted deck get the new findings
+without a line of plumbing. A finding that needed new wiring to reach a surface
+would be a sign it was put in the wrong place.
+
+### 2a.1 A declared number outranks a literature floor
+
+`_check_siesta_mesh_cutoff` warns below **150 Ry** — a defensible production
+floor, and a *guess about this calculation*, because it knows nothing about the
+pseudos actually in it. A PseudoDojo v0.5 file states its own numbers
+(`cutoff_hint_low` / `_normal` / `_high`; sulfur: **72 / 147 / 162 Ry**).
+
+> **When the files say, the files win. The floor is what answers when they say
+> nothing.**
+
+The same shape as the rank count, settled the same day: *read from a record, and
+never guessed* (`running-a-job.md` § 3.1). A generic floor that overrides a
+file's own statement is a guess outranking a measurement.
+
+**The threshold is `normal`; `high` is named in the message.** `high` is for
+tight and vibrational work, which is what the `tight` rung exists to ask for
+(`tuning.md` § 1) — so it is information a person acts on, not a bar everyone
+must clear.
+
+#### With more than one element, the HIGHEST wins — and silence is not a vote
+
+The mesh cutoff is **one global real-space grid** for the whole calculation.
+Every species' density is represented on that same grid, so it must satisfy the
+**most demanding** element in the system. Take less and that element is
+under-resolved — and the error does not average away across the cell, it sits
+on that atom, which in a junction is usually exactly the atom the study is
+about (the metal, or the anchor).
+
+So: **the maximum over the elements that state a number.**
+
+**And an element that states nothing must not lower the bar.** In the v0.5
+table only the eleven re-generated elements carry hints at all — so a real
+system states fewer numbers than it has species:
+
+```
+BDT on gold — Au, C, H, S
+  Au   (no hint)
+  C    (no hint)
+  H    (no hint)
+  S    147 Ry          <- the only element that says anything
+  ------------------------------------------------------------
+  required: 147 Ry     (max of what was stated; silence abstains)
+```
+
+A rule that averaged, or that let a silent element pull the number down, would
+answer *lower* the more elements a system has — which is backwards: adding a
+species can only make a grid's job harder. Where nothing states a number, the
+literature floor (§ 2a.1) is what answers, unchanged.
+
+### 2a.2 Sound, and still unusable — the semilocal-only channel
+
+A file can pass every check in § 2 and still fail to run, and this is not
+hypothetical: it is the **S.psml incident of 2026-06**.
+
+PseudoDojo **v0.5** re-generated eleven elements — Ba, Bi, I, Pb, Po, Rb, Rn,
+**S**, Te, Tl, Xe — and in those files some valence channels carry **zero
+Kleinman-Bylander projectors** (`ekb=0`, and the radial data is all zeros),
+with the `<slps>` **semilocal** block carrying the channel instead. Measured
+over both whole tables: **11 of 72 elements in v0.5, 0 of 72 in v0.4.** The
+eleven are exactly the eleven the site's own release note names as updated.
+
+For sulfur the affected channel is **p**, and S's valence is 3s² 3p⁴ — so the
+channel with nothing in it is one of the two that make sulfur bond. The run
+failed; replacing that one file with v0.4 fixed it.
+
+**The file is schema-valid and its VALUES ARE WRONG** *(corrected 2026-09-03,
+user: "why do you call this a valid shipment? with values obviously wrong?")*.
+An earlier draft of this section called the zeros a legitimate representation
+choice. They are not, and the difference is one this codebase already draws
+elsewhere:
+
+> **absent ≠ present-but-zero.** A channel chosen as the local potential has
+> **no** `<proj>` at all — that is how PSML says *nothing to see here*.
+
+The v0.5 files do not do that. For sulfur they emit
+`<proj l='p' seq='1' ekb='0'>` followed by **462 explicit zeros**, twice — each
+one fully formed, with a `type`, an `eref`, a `seq` and a `<radfunc>`, exactly
+like a projector that means it. That is a positive claim: *there is a p
+projector and it is zero everywhere*. Sulfur's p channel is not zero.
+
+**And there is no markup that says otherwise** *(checked against the file,
+2026-09-03)*. PSML has no protocol here: nothing in the file points at another
+file, nothing marks the `<nonlocal-projectors>` block as a placeholder, and
+nothing declares `<semilocal-potentials>` authoritative — both carry the same
+`set="scalar_relativistic"`, and the one `action=` annotation is *provenance*
+(it records that generation ran semilocal-first, then projectors) rather than
+an instruction to the reader.
+
+So a consumer reading the nonlocal block is not failing to notice a hint —
+**there is no hint**. It reads the file correctly and gets sulfur with no p.
+The engine did the right thing with wrong data, and that is what makes this a
+defect in the file rather than a difference of opinion between two readers.
+
+**C5 is still right not to fire**, but for a narrower reason than "the file is
+fine": C5 asks *is a channel missing*, and this channel is present and lying.
+That is a different question, which is why it is a different check.
+
+**ERROR — it blocks** *(user ruling, 2026-09-03)*. The argument is the
+`xc_family_mismatch` argument: the run **completes** and the answer is wrong.
+There is no crash to investigate and no line in the output that looks
+suspicious, which is exactly the failure a preflight exists to catch — and it
+is what happened here, until a comparison against v0.4 explained it after the
+fact.
+
+The case for leaving it a warning was that these files' **semilocal** block is
+complete and correct, so a code consuming *that* representation gets right
+physics from the same file. That is true and it does not survive the ranking:
+this preflight runs for SIESTA, whose reader took the zeros, and a check that
+declines to block the reader it is protecting is not doing the job. A user
+whose reader consumes the semilocal form points `psml_lib` at a set that does
+not carry the claim — v0.4.1 of those eleven elements.
 
 ---
 
