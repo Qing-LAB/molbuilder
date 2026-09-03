@@ -158,6 +158,14 @@ class PsmlInfo:
                                          # pseudo (the BDT S.psml had a dead
                                          # 'p' channel; triggers propor
                                          # IMAX=0 AND gives wrong physics).
+    partial_projector_channels: List[str] = field(default_factory=list)
+                                         # VALENCE l-channels where SOME but
+                                         # not all projectors are zero -- the
+                                         # channel survives at less than the
+                                         # completeness the generator asked
+                                         # for.  Degraded, not absent: WARN.
+                                         # (v0.5: Bi, Pb, Po, Rn, Te, Tl all
+                                         # have p1 real and p2 zeroed.)
     semilocal_only_channels: List[str] = field(default_factory=list)
                                          # VALENCE l-channels whose KB
                                          # projectors are all ~zero but which
@@ -235,7 +243,7 @@ def parse_psml_header(path: Path) -> PsmlInfo:
             relativistic="unknown", generator="unknown",
             valence_config="", suggested_mesh_ry=None,
             cutoff_hints_ry={}, null_channels=[],
-            semilocal_only_channels=[],
+            semilocal_only_channels=[], partial_projector_channels=[],
             parse_warnings=[f"could not parse XML: {exc}"],
         )
 
@@ -467,6 +475,14 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     #: riding on it.
     semilocal_only_channels = sorted(
         (_dead & semilocal_ls) & valence_ls)
+    #: SOME projectors zero, not all -- the channel is still there, at less
+    #: than the completeness the generator's own input asked for.  Every
+    #: v0.5 element requests `nproj=2` for p; six of them shipped one real
+    #: and one empty, which costs transferability rather than the channel.
+    _partial = {l for l, eks in proj_by_l.items()
+                if eks and any(e < _EKB_NULL for e in eks)
+                and not all(e < _EKB_NULL for e in eks)}
+    partial_projector_channels = sorted(_partial & valence_ls)
 
     return PsmlInfo(
         path=path, element=element, atomic_number=atomic_number,
@@ -477,6 +493,7 @@ def parse_psml_header(path: Path) -> PsmlInfo:
                            if cutoff_hints else suggested_mesh),
         cutoff_hints_ry=cutoff_hints,
         semilocal_only_channels=semilocal_only_channels,
+        partial_projector_channels=partial_projector_channels,
         null_channels=null_channels,
         parse_warnings=warnings,
     )
@@ -670,6 +687,30 @@ def check_coverage(elements: Iterable[str],
                          f"way (Ba, Bi, I, Pb, Po, Rb, Rn, S, Te, Tl, Xe); "
                          f"v0.4.1 of the same element does not.  See "
                          f"science/pseudopotentials.md 2a.2."),
+                path=info.path,
+            ))
+            continue
+        # DEGRADED, not absent (WARN).  The channel survives -- one real
+        # projector -- but at less than the completeness the generator's own
+        # input asked for.  Every v0.5 element requests `nproj=2` for p and
+        # six shipped one real, one empty (Bi, Pb, Po, Rn, Te, Tl): a second
+        # projector is what makes a channel transferable across bonding
+        # environments, so losing it costs accuracy rather than the physics.
+        # Advisory, because the run is not wrong -- it is less good, and only
+        # the user knows whether that matters for what they are doing.
+        if info.partial_projector_channels:
+            chans = "/".join(info.partial_projector_channels)
+            out.append(CoverageEntry(
+                element=key, status="partial_projectors",
+                message=(f"{key}.psml has a ZERO projector on the valence "
+                         f"'{chans}' channel while another projector on the "
+                         f"same channel is real.  The channel still works, "
+                         f"at less than the completeness its own generator "
+                         f"input asked for (`nproj`), which costs "
+                         f"transferability rather than correctness.  "
+                         f"PseudoDojo v0.5 ships six elements this way (Bi, "
+                         f"Pb, Po, Rn, Te, Tl); v0.4.1 of the same element "
+                         f"does not.  science/pseudopotentials.md 2a.2."),
                 path=info.path,
             ))
             continue

@@ -377,7 +377,23 @@ defect in the file rather than a difference of opinion between two readers.
 fine": C5 asks *is a channel missing*, and this channel is present and lying.
 That is a different question, which is why it is a different check.
 
-**ERROR — it blocks** *(user ruling, 2026-09-03)*. The argument is the
+**Two tiers, because the consequence is not uniform** *(measured across all
+eleven, 2026-09-03)*. Every one of the eleven asks for `nproj=2` on its p
+channel in its own embedded generator input, and every one shipped at least one
+of those two empty:
+
+| | elements | the p channel | status |
+|---|---|---|---|
+| **both projectors zero** | S, Ba, I, Rb, Xe | contributes **nothing** | `semilocal_only` — **ERROR** |
+| **one of two zero** | Bi, Pb, Po, Rn, Te, Tl | survives, at half the requested completeness | `partial_projectors` — WARN |
+
+A second projector is what makes a channel transferable across bonding
+environments, so losing one costs **accuracy**; losing both costs the
+**channel**. Blocking the second case would refuse six elements over a
+degradation their owner may knowingly accept; staying silent about it would
+hide a defect the file's own input file contradicts.
+
+**ERROR for the first tier** *(user ruling, 2026-09-03)*. The argument is the
 `xc_family_mismatch` argument: the run **completes** and the answer is wrong.
 There is no crash to investigate and no line in the output that looks
 suspicious, which is exactly the failure a preflight exists to catch — and it

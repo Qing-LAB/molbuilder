@@ -156,6 +156,48 @@ def test_it_BLOCKS(tmp_path):
         "'missing' would send the reader looking for the wrong thing")
 
 
+#: Bismuth's shape in v0.5: p1 real, p2 zeroed — the channel survives.
+_BI_V05 = [("s", 3.1), ("s", 0.4),
+           ("p", 0.433266), ("p", 0.0),
+           ("d", 0.0), ("d", 2.1)]
+
+
+def test_a_PARTLY_zeroed_valence_channel_warns_rather_than_blocks(tmp_path):
+    """The other six of the eleven (Bi, Pb, Po, Rn, Te, Tl).
+
+    Their p channel asks for two projectors and ships one real, one empty.
+    A second projector is what makes a channel transferable across bonding
+    environments, so this costs accuracy — not the channel, which is why it
+    is not the ERROR above.  Blocking would refuse six elements over a
+    degradation their owner may knowingly accept; silence would hide a defect
+    the file's own generator input contradicts.
+    """
+    (tmp_path / "Bi.psml").write_text(
+        _psml("Bi", _BI_V05, z=83, semilocal="spd",
+              shells=[(6, "s", 2), (6, "p", 3), (5, "d", 1)]))
+    entries = [e for e in check_coverage(["Bi"], tmp_path,
+                                         expected_xc_family="GGA",
+                                         expected_xc_authors="PBE")
+               if e.status != "ok"]
+    assert [e.status for e in entries] == ["partial_projectors"], entries
+    assert "partial_projectors" not in ERROR_STATUSES, (
+        "the channel still works -- blocking would refuse six elements over "
+        "lost transferability the user may accept knowingly")
+    assert "p" in parse_psml_header(tmp_path / "Bi.psml"
+                                    ).partial_projector_channels
+
+
+def test_the_two_tiers_do_not_overlap(tmp_path):
+    """A channel is entirely dead or partly dead, never counted as both --
+    otherwise one file would raise an ERROR and a WARN about one channel and
+    the reader would not know which to act on."""
+    (tmp_path / "S.psml").write_text(
+        _psml("S", _S_V05, z=16, semilocal="spd", shells=_S_SHELLS))
+    info = parse_psml_header(tmp_path / "S.psml")
+    assert info.semilocal_only_channels == ["p"]
+    assert "p" not in info.partial_projector_channels
+
+
 # ===================================================================== #
 #  Layer 2 — the set + the config: what the files ask of the run        #
 # ===================================================================== #
