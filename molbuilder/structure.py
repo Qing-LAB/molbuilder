@@ -95,13 +95,13 @@ def _resolve_source(source: Union[str, Path]) -> str:
 
 
 # ---------------------------------------------------------------------- #
-#  Per-atom annotation channels (atom-annotations.md)                    #
+#  Per-atom annotation channels (model/structure-annotations.md)       #
 # ---------------------------------------------------------------------- #
 
 _CHANNEL_KINDS = ("tag", "flag", "value")
 
 #: THE spelling of the reserved "held still during relaxation" label
-#: (atom-annotations.md § 2, molview.md § 6.6).  It is an ORDINARY label: same
+#: (``model/structure-annotations.md`` § 2, ``web/molview.md`` § 6.6).  It is an ORDINARY label: same
 #: store (``Structure.regions``), same validation, same serialisation, same
 #: filtering, same panel row as ``L-electrode`` or anything a user types.  The
 #: only thing that makes it reserved is that something downstream ACTS on it --
@@ -175,7 +175,7 @@ def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
 
 @dataclass
 class AtomChannel:
-    """One named per-atom metadata channel (atom-annotations.md § 2).
+    """One named per-atom metadata channel (``model/structure-annotations.md`` § 2).
 
     ``kind``:
       * ``"tag"``  / ``"flag"`` — a *subset* of atoms; ``data`` is a
@@ -277,7 +277,7 @@ def remap_annotations(ann: "dict[str, AtomChannel]",
                       old_to_new: "dict[int, int]") -> "dict[str, AtomChannel]":
     """Remap every channel's atom indices through ``old_to_new`` (the
     all-channel generalization of ``modify.remap_frozen_and_regions``,
-    atom-annotations.md § 2.1).  Channels that end up empty are dropped."""
+    ``model/structure-annotations.md`` § 2.1).  Channels that end up empty are dropped."""
     out: "dict[str, AtomChannel]" = {}
     for name, ch in ann.items():
         remapped = ch.remapped(old_to_new)
@@ -406,7 +406,7 @@ class Structure:
     # origin is computed from atom extents) and for an imported crystal (atoms are
     # already in [0, cell), so the cell sits at the world origin).
     cell_origin:   Optional[np.ndarray]            = None
-    # Extensible per-atom annotations (atom-annotations.md).  Holds
+    # Extensible per-atom annotations (model/structure-annotations.md).  Holds
     # channels BEYOND the two built-ins (regions -> tag channels,
     # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
     # value channels (charge / spin / basis-override).  The unified read
@@ -1043,7 +1043,7 @@ class Structure:
                 ch.data = sorted({int(i) for i in ch.data})
 
     # ------------------------------------------------------------------ #
-    #  Unified annotation channels (atom-annotations.md § 2)             #
+    #  Unified annotation channels (model/structure-annotations.md § 2)  #
     # ------------------------------------------------------------------ #
 
     def channels(self) -> Dict[str, AtomChannel]:

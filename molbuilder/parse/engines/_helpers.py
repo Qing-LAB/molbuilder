@@ -214,8 +214,8 @@ def trajectory_result_to_legacy_dict(
     out_elapsed:    List[Any] = []
     # Per-frame "this frame is still being written" flag.  Set True
     # on the synthetic EOF-flush frame the SIESTA parser appends
-    # when the file ends mid-step so the JS results-state-contract.md
-    # § 4 Invariant 2 filter can omit it from plots.  The frame still
+    # when the file ends mid-step so the JS plottableFrames filter can
+    # omit it from plots (`web/results.md` § 4).  The frame still
     # ships — the inspector still shows it with a "computing..." badge
     # in the inspect list — but its energy/forces aren't real numbers
     # yet and don't belong in the energy/force plot.

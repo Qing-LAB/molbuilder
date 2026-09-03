@@ -397,7 +397,7 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
     """Emit the ATOM-METADATA block, or return ``None`` when there is
     nothing to emit.
 
-    This is **data-model persistence** (atom-annotations.md § 3) — the
+    This is **data-model persistence** (``model/structure-annotations.md`` § 4a) — the
     script's engine-agnostic, round-trippable copy of the per-atom data model,
     the same shape as the ``.molstruct.json`` sidecar.  It is NOT engine setup
     (frozen -> Geometry.Constraints etc. is a separate translation, § 4).

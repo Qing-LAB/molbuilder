@@ -75,7 +75,7 @@ def _reindex_transport_metadata(
     """Remap ``struct.regions`` and the extensible ``struct.annotations``
     channels after a slice/delete operation, dropping any index that fell off
     and renumbering survivors to their new 0-based position
-    (atom-annotations.md § 2.1).
+    (``model/structure-annotations.md`` § 2.1).
 
     ONE pass over the label store -- reserved labels are in it and remap by the
     same rule.  Until 2026-07-31 frozen was a second store and needed its own

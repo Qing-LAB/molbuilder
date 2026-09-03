@@ -1,5 +1,5 @@
 """fdf emit-strategy registry for extensible atom-annotation channels
-(atom-annotations.md § 4).
+(``model/structure-annotations.md`` § 4b).
 
 ADDITIVE, not a rewrite.  The two built-in channels keep their existing,
 Sol-validated emission:

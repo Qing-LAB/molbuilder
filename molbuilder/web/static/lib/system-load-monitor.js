@@ -472,7 +472,7 @@
                 catch (_) { /* private mode; ignore */ }
                 applyCollapsed(next);
             });
-            // results-state-contract.md § 9: COLLAPSED BY DEFAULT
+            // web/results.md § 6: COLLAPSED BY DEFAULT
             // on first visit.  Users opt in to the expanded strip;
             // it doesn't opt them in.  The expanded strip otherwise
             // overlays the bottom 48px of plots on every fresh

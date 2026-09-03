@@ -1260,7 +1260,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append("%endblock Geometry.Constraints")
             out.append("")
 
-        # Extensible annotation channels (atom-annotations.md § 4): emit fdf for
+        # Extensible annotation channels (model/structure-annotations.md § 4b -- the
+        # one-way translation into engine input): emit fdf for
         # any Structure.annotations channel that carries a REGISTERED fdf
         # strategy.  No registered strategies / no annotations -> no-op (the
         # frozen/region built-ins above are untouched).

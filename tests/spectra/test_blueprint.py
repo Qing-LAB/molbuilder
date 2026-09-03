@@ -704,9 +704,10 @@ class TestSpectraDisposeContract:
         callbacks (which themselves may dispatch events to listeners)
         don't fire against torn-down DOM.  Ordering matters.
 
-        Per results-state-contract.md § 2 ("All state changes go
-        through one function") the canonical site for poll-timer
-        cleanup is ``transition("IDLE")`` — its IDLE branch in
+        Per `web/results.md` § 4 (one ``transition(target)`` moves
+        between the states, and ``lifecycle`` is written only inside it --
+        the rule spectra.md § 7 points at for every Results-tab viewer)
+        the canonical site for poll-timer cleanup is ``transition("IDLE")`` — its IDLE branch in
         lib/spectra/core.js clears state.lifecycle.watchTimer
         (guarded with an ``if`` check, so a second call is a
         no-op).  This test asserts the ordering of the canonical
@@ -730,7 +731,7 @@ class TestSpectraDisposeContract:
         assert idle_idx > -1, (
             "dispose() does not call transition(\"IDLE\") — "
             "the canonical state-machine cleanup site per "
-            "results-state-contract.md § 2"
+            "`web/results.md` § 4"
         )
         assert teardown_idx < idle_idx, (
             "dispose() must tear the listeners down BEFORE calling "
@@ -741,8 +742,8 @@ class TestSpectraDisposeContract:
     def test_dispose_clears_every_long_lived_resource(self, web_client):
         """dispose() must tear down every long-lived resource the
         mount allocated: watch poller (cleared via the canonical
-        ``transition("IDLE")`` site per results-state-contract.md
-        § 2), the VibrationView mode viewer (``state.vib`` — the
+        ``transition("IDLE")`` site per `web/results.md` § 4), the
+        VibrationView mode viewer (``state.vib`` — the
         concealed normal-mode animation package, vibrationview.md,
         which owns its own vibration rAF + 3Dmol canvas; #231 Part B
         migrated the spectra mode viewer onto it, renaming the old
@@ -762,7 +763,7 @@ class TestSpectraDisposeContract:
             ('transition("IDLE")',
                 "live-watch poller (cleared via the canonical "
                 "transition('IDLE') site per "
-                "results-state-contract.md § 2)"),
+                "`web/results.md` § 4)"),
             ("state.vib.dispose()",
                 "VibrationView mode viewer (state.vib — the concealed "
                 "normal-mode animation package owns the vibration rAF "
@@ -863,7 +864,7 @@ class TestSpectraDisposeContract:
         #   IDLE-branch ``if (state.lifecycle.watchTimer)`` guard).
         #   dispose() invokes ``transition("IDLE")`` — that's the
         #   canonical state-machine site per
-        #   results-state-contract.md § 2 ("All state changes go
+        #   `web/results.md` § 4 ("All state changes go
         #   through one function").  A second dispose() call hits
         #   the same guard against a now-null timer and is a no-op.
         # * The VibrationView mode viewer (#231 Part B renamed the old

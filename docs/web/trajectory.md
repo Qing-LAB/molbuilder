@@ -141,6 +141,25 @@ bugs); a couple of guards make sure a late reply from a previous file can never
 paint into the current view, and partial (mid-write) frames are listed but kept
 out of the plots.
 
+### 5.1 Omitting a field and clearing it are different answers
+
+A poll's reply is applied field by field, and **a field the server leaves out
+is kept, not cleared** — `undefined` means *no news*. Clearing something takes
+an explicit `null`.
+
+That is what lets the two calls carry different amounts. The **load** always
+sends the run's metadata block — the region labels from the input script, the
+cell from the output logs, and `info` from the deck's stated parameters. A
+**poll** always omits it, because those three answer *what does this directory
+say about the structure it ran on?*, and that does not change while frames
+arrive. A poll that sent the block anyway would rewrite it on every tick; a
+poll that sent it as `null` would erase what the load recovered.
+
+The one caller with no run directory to search — an uploaded file — answers
+**deliberately**: `null` in every field, which reads as *nothing available*.
+Saying nothing would have meant *unchanged*, and there is nothing to be
+unchanged from.
+
 ## 6. Export
 
 One button, **Export all plot data (CSV)**, writes every plotted column (step,
@@ -152,6 +171,11 @@ header. The header's source-path line has the username redacted.
 - Two endpoints: `POST /api/watch/load` (parse a run) and
   `GET /api/watch/data?mtime=…` (poll for growth) — see
   [`web-api.md`](?doc=web/web-api.md).
+- **A parse is cached by (path, mtime, size), and a just-written file is not
+  cached at all.** A snapshot taken within 200 ms of the file's own mtime is
+  read but not stored, because a growing log is often replaced atomically and a
+  parse of the half-written version would then answer for the whole one. The
+  cache holds 64 entries.
 - The viewer is a small **state machine** (idle → loading → loaded / watching →
   error). All the "which state resets what" rules — why a file-switch clears the
   view but keeps your preferences, why Refresh is a full reload — live in that

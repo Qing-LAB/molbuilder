@@ -430,11 +430,11 @@ def _run_metadata(
     every field -- rather than by omission.
 
     Omission means something else on this route.  The browser's APPLY
-    rule is keep-on-``undefined`` (`results-state-contract.md` § 4),
-    which is what lets the 200 ms poll re-send the frames without
-    re-sending the metadata.  So the POLL omits this block on purpose
-    and the LOAD always sends it; a poll that carried it would clear a
-    run's metadata five times a second.
+    rule is keep-on-``undefined`` (`web/trajectory.md` § 5.1), which is
+    what lets a poll re-send the frames without re-sending the metadata.
+    So the POLL omits this block on purpose and the LOAD always sends
+    it; a poll that carried it would rewrite a run's metadata on every
+    tick.
 
     The three fields are three sources, not one: the labels come from the
     run's input script, the cell from its output logs, and ``info`` from
@@ -690,7 +690,7 @@ _MERGE_PARSE_CACHE_LRU_BOUND = 64
 # Don't cache snapshots taken less than this many seconds after the
 # file's mtime.  200ms covers the typical "atomic-replace" window
 # without being so long that warm runs lose cache benefit.  See
-# results-state-contract.md § 6 cache contract.
+# `web/trajectory.md` § 7.
 _MERGE_PARSE_FRESHNESS_S = 0.200
 
 
@@ -761,8 +761,8 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         "wall_clock_s": [], "elapsed_s": [],
         "iterations": [], "step_indices": [], "stages": [],
         # in_progress: per-frame bool array used by the JS
-        # plottableFrames filter (results-state-contract.md § 4
-        # Invariant 2).  Stays [] when no stage carries an
+        # plottableFrames filter (`web/results.md` § 4: partial
+        # frames are listed but kept out of the plots).  Stays [] when no stage carries an
         # in-progress frame (the typical case for completed runs).
         "in_progress": [],
     }
