@@ -1,7 +1,7 @@
 /* Persistent Projects sidebar -- always-visible left panel.
  *
  * Layout is owned by the APP SHELL (lib/page-shell.css, "App shell" section;
- * ui-design-contract.md §4.1-4.3): every tab sets ``<body data-sidebars=
+ * web/ui-contract.md § 3.1): every tab sets ``<body data-sidebars=
  * "projects">`` server-side, and the sidebar is an in-flow flex child of the
  * ``.app-body`` row, BELOW the nav -- pure CSS, correct on the first paint (no
  * fixed positioning, no JS-measured offset, so no flash).  This sheet owns the
@@ -43,7 +43,7 @@
   overflow: hidden;
 }
 
-/* App-shell mode (ui-design-contract.md §4.1-4.3): the desktop in-flow docking
+/* App-shell mode (web/ui-contract.md § 3.1): the desktop in-flow docking
  * (position:relative, height:100%, flex:0 0 auto) is the SHARED ``.dock-panel``
  * geometry in page-shell.css -- the aside carries the ``dock-panel`` class, so
  * it needs no per-sidebar override here.  This sheet owns only what is

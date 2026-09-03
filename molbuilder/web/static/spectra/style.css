@@ -9,7 +9,7 @@
  * lib/inspectors/spectra.css -- the shared sheet BOTH /spectra and /results
  * link, so the inspector partial is styled everywhere WITHOUT this page sheet
  * (and its bare element rules) ever loading on another page
- * (ui-design-contract §2.2).
+ * (`web/ui-contract.md` § 1).
  *
  * The schema-driven form (#spectra-form-container) is styled by
  * lib/form-schema.css; this sheet does NOT restyle the form fields.
@@ -117,7 +117,7 @@ button > code {
     min-height: 1.1em;
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
- * page-shell.css (ui-design-contract §2.3).  Note: .error unified onto the
+ * page-shell.css (`web/ui-contract.md` § 1.1).  Note: .error unified onto the
  * global --error (was the softer panel --ps-danger-fg) — one severity palette. */
 
 /* ---- Issues panel ---- */

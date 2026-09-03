@@ -903,7 +903,7 @@ class Structure:
         return s
 
     def to_wire(self) -> dict:
-        """The read-only server->client view (structure-authority.md § 3.2):
+        """The read-only server->client view (``model/structure.md`` § 2.1 + § 4):
         the metadata-bearing portion of the wire response, assembled by
         Structure so no blueprint enumerates a field.  It is the identity
         columns + the FULL ``periodicity`` block (the raw cell/origin PLUS the

@@ -951,7 +951,7 @@
     margin-top: 0.5rem;
 }
 
-/* THE small-caps caption for the whole panel (§2.1 shared class -- ui-design-contract):
+/* THE small-caps caption for the whole panel (§2.1 shared class -- `web/ui-contract.md`):
  * Combine/Target mini-labels AND the Cell-page captions (readout dt + the unit-cell
  * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
 .molviewer-selection-mini-label,

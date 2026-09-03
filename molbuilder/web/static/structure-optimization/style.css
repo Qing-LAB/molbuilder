@@ -1,6 +1,6 @@
 /* style.css — the INDEX (Build) page's OWN styles.
  *
- * Shared vocabulary moved out (ui-design-contract §2.2, CSS-migration step 2):
+ * Shared vocabulary moved out (`web/ui-contract.md` § 1, CSS-migration step 2):
  *   - global base (header / button / input / .card / .status / scrollbar) →
  *     lib/page-shell.css (loaded on every page)
  *   - form-page COMPONENTS (.app-grid, .auto-detect-*, .viewer-*, .issues-panel,

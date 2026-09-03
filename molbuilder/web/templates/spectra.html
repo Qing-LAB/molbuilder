@@ -31,7 +31,7 @@
 
 {% set active_tab = "spectrum-calculation" %}
 {% include "_app_header.html" %}
-{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+{#- app shell (web/ui-contract.md § 3.1): sidebar rail + content in one
     flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
 <div class="app-body">
 {% include "_projects_sidebar.html" %}
@@ -176,7 +176,7 @@
 
 {# MolView component stack (viewer + selection/cell panel + warning-modal) —
    card 1 mounts the read-only card.  One shared include instead of a hand-pasted
-   copy (ui-design-contract §2.1).  VibrationView borrows nothing from it: it is
+   copy (`web/ui-contract.md` § 1).  VibrationView borrows nothing from it: it is
    a sealed module with its own drawing surface (docs/web/vibrationview.md). #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>

@@ -372,7 +372,7 @@ button:disabled {
     line-height: 1.4;
 }
 /* Severity modifiers — the SINGLE home for the ``status <severity>`` convention
- * (ui-design-contract §2.3: one class = one owner).  page-shell is loaded on every
+ * (`web/ui-contract.md` § 1.1: one class = one owner).  page-shell is loaded on every
  * page, so these apply everywhere; a page's own ``.status {}`` base tunes position /
  * size / resting colour, but the severity colour lives here ONLY, using the global
  * palette tokens.  Do NOT re-declare these in a page/module sheet. */

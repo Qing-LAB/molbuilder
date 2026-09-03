@@ -2,7 +2,7 @@
  *
  * `projects.parser` owns the format-AWARE structure-file OPEN door --
  * `openMolecule` -- which knows the `.xyz` <-> `.molstruct.json` pairing.
- * FILE-ONLY (structure-authority.md § 3.3): it goes through the SERVER, so
+ * FILE-ONLY (model/structure.md § 2.4): it goes through the SERVER, so
  * Python owns the file access, the pairing, AND the sidecar schema:
  *
  *   * openMolecule(path) -> model.installMolecule({path}) -> POST /api/build/load
@@ -39,7 +39,7 @@ function _modelOf(viewer) {
 /**
  * openMolecule(viewer, path, { confirmDiscard? }) -- THE load door (contract §2).
  *
- * FILE-ONLY load (structure-authority.md § 3.3): hand the PATH to the model install
+ * FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model install
  * primitive (`molview.data.installMolecule({path})`), which POSTs it to `/api/build/load`
  * where the SERVER reads the `.xyz` AND its paired `.molstruct.json` via
  * `StructureCodec.read` and installs the whole model in ONE write.  The browser reads no
@@ -65,7 +65,7 @@ export async function openMolecule(viewer, path, opts) {
     const proceed = await opts.confirmDiscard();
     if (!proceed) return { ok: false, cancelled: true };
   }
-  // FILE-ONLY load (structure-authority.md): hand the PATH to the model; the SERVER
+  // FILE-ONLY load (model/structure.md § 2.4): hand the PATH to the model; the SERVER
   // reads the .xyz + paired .molstruct.json through StructureCodec.read -- Python owns
   // the file access AND the .xyz<->.molstruct pairing.  The browser no longer reads the
   // bytes or derives the sidecar path (that was the raw-text/second-file-stack seam the

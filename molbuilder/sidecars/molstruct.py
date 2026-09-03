@@ -348,7 +348,8 @@ def to_dict(
         # frozen_atoms / cell / cell_origin / pbc / axis_kind / vacuum /
         # annotations.  Spread -- NOT re-listed -- so a field added to the
         # dataclass rides onto the sidecar automatically and this layer can no
-        # longer drop or drift one (structure-authority.md § 3.4).
+        # longer drop or drift one (`model/structure.md` § 2.2: the ONE
+        # serialization authority; add a key there and nowhere else).
         **fields,
         # The identity columns (schema 8) -- absent entirely when nothing is
         # real, so an xyz-born sidecar is byte-identical to a schema-7 one

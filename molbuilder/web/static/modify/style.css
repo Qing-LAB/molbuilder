@@ -114,7 +114,7 @@ header h1 {
     margin-left: auto;   /* right-aligns the status in the Modify action row */
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
- * page-shell.css (ui-design-contract §2.3) — the "single CSS edit" home. */
+ * page-shell.css (`web/ui-contract.md` § 1.1) — the "single CSS edit" home. */
 
 /* ---- Vertical workflow (2026-06-08 restructure) ----
  *

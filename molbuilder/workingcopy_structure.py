@@ -266,7 +266,7 @@ class StructureCodec:
               frames: "Sequence | None" = None) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
         pair on disk and return the geometry path.  THE paired-file door
-        (structure-authority.md § 3.3): owns the pairing rule + the
+        (``model/structure.md`` § 2.4): owns the pairing rule + the
         both-or-neither atomicity so no caller re-derives the sidecar path or
         re-implements the write order.
 

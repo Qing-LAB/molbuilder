@@ -4,7 +4,7 @@
  * (tokens / page-shell cards+buttons / form-schema fieldsets /
  * form-components .full-btn + .auto-detect-*) -- created 2026-07 when the
  * template's inline styles + ownerless classes were pulled in here
- * (ui-design-contract: no inline styles, page sheets page-only). */
+ * (`web/ui-contract.md`: no inline styles, page sheets page-only). */
 
 .action-row {
     display: flex;

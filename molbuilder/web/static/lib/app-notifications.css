@@ -28,7 +28,7 @@
 }
 
 /* Severity = the left stripe + a matching leading glyph colour.  Semantic
- * colour only (distinct from --accent), per ui-design-contract.md. */
+ * colour only (distinct from --accent), per `web/ui-contract.md` § 4. */
 .app-notification--error { border-left-color: var(--error); }
 .app-notification--warn  { border-left-color: var(--warning); }
 .app-notification--info  { border-left-color: var(--accent); }

@@ -39,7 +39,7 @@
 
 {% set active_tab = "structure-optimization" %}
 {% include "_app_header.html" %}
-{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+{#- app shell (web/ui-contract.md § 3.1): sidebar rail + content in one
     flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
 <div class="app-body">
 {% include "_projects_sidebar.html" %}
@@ -298,7 +298,7 @@
 
 {# FULL MolView component stack (viewer + selection/cell panel + warning-modal +
    the selection stack) — the Inspect-structure card mounts the read-only fused
-   card.  One shared include instead of a hand-pasted copy (ui-design-contract
+   card.  One shared include instead of a hand-pasted copy (`web/ui-contract.md`
    §2.1); the include also provides 3Dmol + mol-viewer-embed. #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>

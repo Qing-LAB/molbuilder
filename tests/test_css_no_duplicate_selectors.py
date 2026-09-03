@@ -84,7 +84,7 @@ ALLOWLIST: dict[str, str] = {
     # row, `min-height` reserves a line, `margin-top` spaces it.
     ".status":         "phase 3: scope per-tab .status POSITION overrides",
     # .status.error/.ok/.warn/.muted: CONSOLIDATED into page-shell.css as the single
-    # home (ui-design-contract §2.3, CSS-migration step 1) — removed from the
+    # home (`web/ui-contract.md` § 1.1, CSS-migration step 1) — removed from the
     # allowlist so this invariant now ENFORCES the one-home rule for severity colours.
     # Also position-only since 2026-08-25 -- spectra kept a tighter top
     # margin and restated the colour + size verbatim.

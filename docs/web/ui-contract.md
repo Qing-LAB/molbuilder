@@ -150,6 +150,41 @@ and **40rem** (form-schema). All animation honors `prefers-reduced-motion`.
 omitted three that are — a doc inventory drifts silently because nothing
 fails when it does.)*
 
+### 3.1 The app shell — who scrolls, and what a tab has to say to get it
+
+A tab opts in with one attribute: `<body data-sidebars="projects">`. That makes
+the body a full-height flex **column** whose middle row is
+`[sidebar rail | content]`, and the tab supplies the two children:
+
+```html
+<body data-sidebars="projects">
+  <header>…</header>  <nav class="app-tabs">…</nav>
+  <div class="app-body">
+    <aside class="sidebar-rail">…</aside>
+    <div class="app-content">…the tab…</div>
+  </div>
+</body>
+```
+
+**The body never scrolls — the content pane does.** That one decision is what
+keeps the header and the tab nav on top: they are natural-height rows in a
+column that has nowhere to go, so they stay put without `position: fixed`,
+without JavaScript measuring the header, and therefore without the flash on tab
+switch that a measured layout gives you. The sidebar is an ordinary flex
+column, in the right place on the *first* paint.
+
+A **`.dock-panel`** is the shared geometry for anything docked in that rail: a
+full-height flex column that scrolls internally, so the rail itself never does.
+An instance sets only its own width and palette. The projects aside is the one
+dock panel today — a checkpoint panel shared the rail from 2026-07-25 to
+2026-08-19, and the checkpoint UI now lives inside the projects sidebar — and
+the geometry stays shared for the next panel that docks.
+
+Two rules elsewhere in this document are about this shell, and are not repeated
+here: the width at which a panel docks in-flow rather than sliding in as a
+drawer (§ 3, and it is derived, not chosen), and why a `.dock-panel` needs its
+own `[hidden]` guard (§ 6).
+
 ## 4. Staying visually consistent
 
 - **Message severities have one owner.** `.status.error` / `.ok` / `.warn` /

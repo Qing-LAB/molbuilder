@@ -26,7 +26,7 @@
    .spectrum-chart / .phase-indicator / .mode-viewer / .es-* ...).
    The spectra PAGE sheet is deliberately NOT linked here: its bare
    `button` / `textarea` / `.card` rules would override page-shell's
-   canonical controls across /results (ui-design-contract §2.2). -#}
+   canonical controls across /results (`web/ui-contract.md` § 1). -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/spectra.css') }}">
 {# The bench-sweep inspector's own sheet (docs/web/bench-summary.md). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/bench-summary.css') }}">
@@ -44,7 +44,7 @@
 
 {% set active_tab = "results" %}
 {% include "_app_header.html" %}
-{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+{#- app shell (web/ui-contract.md § 3.1): sidebar rail + content in one
     flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
 <div class="app-body">
 {% include "_projects_sidebar.html" %}

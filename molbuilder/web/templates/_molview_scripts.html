@@ -3,7 +3,7 @@
     The canonical load order for the FULL molview module (viewer + selection/cell panel
     + view toggles + frames), mounted via ``molview.mount(host, ws, {mode, owner})``.
     Extracted 2026-07 so a page adds the component with ONE include instead of a
-    hand-pasted copy (ui-design-contract §2.1 — one shared definition, not N copies).
+    hand-pasted copy (`web/ui-contract.md` § 1 — one shared definition, not N copies).
 
     Assumes the page has already loaded ``lib/molbuilder-runtime.js`` + ``lib/constants.js``
     (app-global, loaded early in <head>).  Vendor 3Dmol stays a classic global.

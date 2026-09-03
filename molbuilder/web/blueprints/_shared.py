@@ -441,7 +441,7 @@ def structure_to_dict(
     # The drift-prone block -- the full `periodicity` (raw cell/origin + the
     # server-RESOLVED cell/origin via the ONE resolver) + `annotations` + the
     # identity columns -- is assembled by the Structure itself
-    # (`struct.to_wire()`, structure-authority.md § 3.2).  This helper no longer
+    # (`struct.to_wire()`, `model/structure.md` § 2.1 + § 4).  This helper no longer
     # hand-lists a single metadata field or re-runs a resolver, so a field added
     # to `metadata_to_dict` rides onto every endpoint automatically and the
     # `cell_origin` drop-on-repack bug cannot recur.  The web layer only adds its

@@ -476,7 +476,7 @@ def api_periodicity():
 
 @bp.route("/api/structure/save", methods=["POST"])
 def api_structure_save():
-    """FILE-ONLY save through the ONE authority (structure-authority.md § 3.3), the
+    """FILE-ONLY save through the ONE authority (``model/structure.md`` § 2.4), the
     symmetric inverse of the file-only load below.  The browser hands the SETTLED model
     as the structure envelope (web-api.md § 1); the SERVER writes the ``<stem>.xyz`` + ``<stem>.molstruct.json``
     pair via ``StructureCodec.write``.  Python owns the pairing, the write order/atomicity,
@@ -629,7 +629,7 @@ def api_build_load():
     Returns the same JSON shape as /api/build/molecule so the front
     end can treat the result identically.
     """
-    # FILE-ONLY load through the ONE authority (structure-authority.md): a project
+    # FILE-ONLY load through the ONE authority (``model/structure.md`` § 2.4): a project
     # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via
     # StructureCodec.read -- Python owns the file access + the .xyz<->.molstruct
     # pairing, so there is NO raw-text hand-crafting and NO browser-side sidecar

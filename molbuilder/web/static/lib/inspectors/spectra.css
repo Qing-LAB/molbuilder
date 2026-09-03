@@ -8,7 +8,7 @@
  *   Extracted from spectra/style.css (2026-07) so /results no longer loads the
  *   spectra PAGE sheet -- whose bare `button` / `textarea` / `.card` rules were
  *   overriding page-shell's canonical controls across the whole /results page
- *   (ui-design-contract §2.2: one owner per pattern; a page sheet never
+ *   (`web/ui-contract.md` § 1: one owner per pattern; a page sheet never
  *   restyles another page).
  * USED BY: templates/spectra.html + templates/results.html (both <link> this
  *   sheet); spectra/style.css keeps ONLY the /spectra page chrome.
