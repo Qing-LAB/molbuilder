@@ -504,7 +504,7 @@ def create_app(*, config=None) -> Flask:
 
     @app.route("/molview-demo")
     def molview_demo_page():
-        # Standalone MolView component demo (molview-module.md §18): mounts the FULL
+        # Standalone MolView component demo (web/molview.md § 4, § 8): mounts the FULL
         # component via molview.mount's empty-host build path -- viewer + panel + toggles
         # + live render, all through ws.*, with NO modify-specific code.  A UI-evaluation
         # surface + the real integration test of the assembly.

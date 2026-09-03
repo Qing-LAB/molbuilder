@@ -70,7 +70,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         }
 
         // 1+2. Mount the WHOLE view-chrome through the embeddable molview component
-        // (molview.mount, molview-module.md §18): the panel + the view-controls bar + the
+        // (molview.mount, web/molview.md § 8.1): the panel + the view-controls bar + the
         // fold handle, all bound to the workspace.  We hand it the workspace object (the
         // uniform ws.* data interface) -- no store/embed/loader wiring here.  Modify's
         // DATA orchestration (loader, sidebar candidate, Load button) stays below; molview

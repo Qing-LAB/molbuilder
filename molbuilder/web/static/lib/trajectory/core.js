@@ -620,10 +620,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
     // MolView migration (task #34): the trajectory inspector no longer embeds
     // its own 3Dmol viewer.  It mounts the FULL concealed MolView module
-    // read-only (molview-module.md §18) into the empty #viewer-host and becomes
+    // read-only (web/molview.md § 4, § 8) into the empty #viewer-host and becomes
     // a DATA FEEDER — it hands MolView the parsed coordinate frames + raw
     // per-frame forces (molview.data.reloadFrames / addFrames / setForces; the
-    // ENGINE builds + styles the arrows, §14.5.1).  MolView owns the ENTIRE
+    // ENGINE builds + styles the arrows -- § 9.2: a host never hands in a
+    // finished appearance).  MolView owns the ENTIRE
     // view: playback + speed +
     // loop (the frame bar), unit-cell display, atom-index labels, selection +
     // measurement + picking, and atom hiding (its render pipeline's

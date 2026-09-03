@@ -209,7 +209,7 @@
    ========================================================================== */
 
 /* Fused molview card: the viewer (a fixed 1:1 SQUARE) + the selection/cell panel in ONE
- * card, with a foldable panel (molview-module.md).
+ * card, with a foldable panel (web/molview.md § 8.1 + § 8.3).
  *
  * The model (simple, container-query driven -- correct in any embed width):
  *   - VIEWER: a 1:1 square, bounded [--molviewer-size-window-min, --molviewer-size-window-edge].  It never stretches to

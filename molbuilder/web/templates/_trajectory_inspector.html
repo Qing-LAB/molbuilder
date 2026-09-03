@@ -99,7 +99,7 @@
 <section class="card viewer-card">
   {#- Empty host: molview.mount BUILDS the whole fused card (viewer +
       selection/Cell panel + view toggles + frame bar) INSIDE this div
-      (molview-module.md §18, §14.5).  The trajectory inspector is a DATA
+      (web/molview.md § 4, § 8.1).  The trajectory inspector is a DATA
       FEEDER: lib/trajectory/core.js hands MolView the parsed coordinate frames
       (molview.data.reloadFrames / addFrame) and lets MolView own the ENTIRE
       view — playback + speed + loop (the frame bar), unit-cell display,
@@ -108,13 +108,13 @@
       docs/web/overview.md -#}
   <div id="viewer-host" class="trajectory-viewer-slot"></div>
 
-  {#- The trajectory-specific controls: the FORCE-VECTOR PRODUCER's PARAMETERS.
-      Force arrows are ALWAYS built (with the largest force highlighted) whenever
-      the parser captured per-frame forces, and handed to MolView
-      (handle.setFrameArrows) — MolView never generates overlays (molview-module.md
-      §14.5.1).  Whether the arrows are DRAWN is MolView's single "show overlay"
-      view-toggle (the overlay IS the force vectors); there is no show/hide control
-      here.  These knobs only shape HOW the arrows are computed — length scale,
+  {#- The trajectory-specific controls: the FORCE PARAMETERS.  What this page
+      hands MolView is RAW per-frame forces (``molview.data.setForces``), never a
+      finished appearance: MolView's engine builds and styles the arrows from
+      them, with the largest force highlighted (web/molview.md § 9.2 — "there is
+      no set the arrows"; § 9.3 for the door).  Whether they are DRAWN is
+      MolView's single "show overlay" view-toggle (the overlay IS the force
+      vectors); there is no show/hide control here.  These knobs only shape HOW the arrows are computed — length scale,
       magnitude threshold, and whether frozen-atom arrows are excluded.  Changing
       any of them regenerates the arrows and MolView redraws them in place; the
       overlay's visibility is unchanged. -#}

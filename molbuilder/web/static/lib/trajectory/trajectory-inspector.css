@@ -322,8 +322,8 @@
  * measurement panel) were retired when the inspector migrated onto
  * MolView (task #34).  Atom picking, the atom list, and the
  * distance / angle measurement readout are now MolView's selection
- * panel + measurement overlay (lib/selection/*, molview-module.md
- * §14.5.3) — the trajectory inspector no longer owns that DOM. */
+ * panel + measurement overlay (lib/selection/*, web/molview.md § 8.1 +
+ * § 11.6) — the trajectory inspector no longer owns that DOM. */
 
 /* ``.workflow-*`` rules (staged-relaxation guide on /watch) were
  * removed 2026-05-19 along with /watch.  The guide was a /watch.html-

@@ -76,7 +76,8 @@
     var _viewer    = null;
     var _modal     = null;   // TEST override (set by _bind); production looks up (below)
 
-    // molview.data + warningModal are LOOKED UP at call time (molview-module.md §D.0): read the
+    // molview.data + warningModal are LOOKED UP at call time (web/molview.md § 5.2 + § 9.2 -- a
+    // cached reference is a second surface over the same fact): read the
     // LIVE model through the door, never import/auto-bind it (the molview module is deferred, so it
     // is not published when this classic script loads).  A test injects stubs via _bind.
     function _model()  { return (_viewer && _viewer.ok) ? _viewer.data : null; }
@@ -108,8 +109,8 @@
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
         }
-        // The ONE atomic whole-model load door (molview-module.md
-        // §19.3): it parses the text, replaces the whole model
+        // The ONE atomic whole-model load door (web/molview.md
+        // § 9.3): it parses the text, replaces the whole model
         // (canvas + atoms + render) and anchors the undo timeline at
         // index 0.  Provenance + sidecar ride ON the door (no
         // side-channel): the generator ``source`` (kind /

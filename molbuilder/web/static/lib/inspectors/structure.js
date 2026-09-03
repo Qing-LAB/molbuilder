@@ -1,8 +1,8 @@
 /* Structure-preview inspector: read-only 3-D view of a .xyz / .pdb
  * result file.
  *
- * This is the FIRST Results -> MolView conversion (molview-module.md §18,
- * §14.5.3).  The inspector no longer hand-assembles a viewer + an
+ * This is the FIRST Results -> MolView conversion (web/molview.md § 4 +
+ * § 12.3, the read-only viewer in the Results tab).  The inspector no longer hand-assembles a viewer + an
  * ephemeral selection store + a panel + measurement/view controls
  * controllers.  It mounts the WHOLE MolView module read-only with one
  * call -- ``molview.mount(host, workspace, {mode:"readonly", owner})``
@@ -48,8 +48,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
  * who asks later.  A reader kept "just in case" is how the dead branch survived
  * long enough to blank the tab. */
 
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+// molview.data is MolView's live internal state -> LOOK IT UP at read time
+// (web/molview.md § 5.2: one place holds each fact), never import it. Returns whatever MolView currently has (null = nothing loaded).
 (function (root) {
     "use strict";
 

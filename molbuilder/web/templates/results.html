@@ -182,7 +182,7 @@
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js. -#}
 <script type="module" src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
-{# The FULL MolView module (molview-module.md §18) -- the structure inspector mounts it
+{# The FULL MolView module (web/molview.md § 4 + § 9.1: mount is the only import) -- the structure inspector mounts it
    READ-ONLY via molview.mount's empty-host build path (same script set + dependency order
    as the /molview-demo template, molview/demo.js), including the persistence dispatcher.
    The Results view is a session like any other consumer: its state (opened file, current
