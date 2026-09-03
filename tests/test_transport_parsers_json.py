@@ -7,7 +7,8 @@ schema_version gate, malformed-input handling, field-error wrapping,
 and the missing-file case so any future reader keeps stable
 exception semantics.  The COMPOSITE's result record shares the
 suffix and is NOT this shape — the suffix-claim test below keeps the
-two apart (job-contracts § 6.1 names the record the suffix's owner).
+two apart (`execution/job-contracts.md` § 6.1, *Persisted artifacts*, names
+the record the suffix's owner).
 
 Pure JSON I/O + dataclass round trip — no engine work.
 """

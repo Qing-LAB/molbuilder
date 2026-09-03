@@ -206,6 +206,53 @@ half-refreshed-state bugs. Two guards back it up: a **late response from a
 previous file can't write into the current view**, and **partial frames** the
 parser flags as in-progress are shown in the list but kept out of the plots.
 
+### 4.1 A run is finished when it has said so **twice** *(written down 2026-09-02)*
+
+A watching viewer flips to *finished* only after **two consecutive** ticks
+report the run ended. One tick can lie: the parser may still be flushing
+trailing output, so a viewer that believed the first one stopped polling with
+the last few frames still on their way — and the plot you were left looking at
+was short of the end of the run you had just watched finish.
+
+A tick that reports *still running* **resets the count**: the buffer counts
+consecutive ticks, not ticks in total. A stopped or out-of-memory run is a
+different answer and is taken at once — those do not get better on a second
+look.
+
+> **Why this is here now.** The rule has been in the code since the state
+> machine landed, and the only place it was written down was the design
+> proposal this contract replaced — so the tests that enforce it cited a
+> section number in `archive/`, a document the project's own rule says to open
+> for history and never to decide what is open now. A behaviour with no live
+> home is one nobody can check the code against.
+
+**The buckets have names in the code — five, not the four described above.**
+Read from `lib/trajectory/core.js`, which is the shipped implementation:
+
+| bucket | holds | reset |
+|---|---|---|
+| `fileState` | path, mtime, format, label, the parsed data | replaced **atomically** on each `LOADING → LOADED` |
+| `viewState` | per-file interaction (first fit, picks) — **not the playhead**, MolView owns that | on a file switch |
+| `uiPrefs` | per-session knobs (hide-frozen, …) | never — this is the "survives a file switch" half |
+| `lifecycle` | the poll timer, the abort controllers, and the `fetchSeq` counter the late-response guard reads | on `LOADING` |
+| `derived` | recomputed from `fileState` (the SCF poll history) | with `fileState` |
+
+`derived` is the one the prose above folds into "the parsed file", and it is a
+separate bucket for a reason: it is **recomputed**, never written by a
+handler, so it resets with its source and cannot outlive it.
+
+One `transition(target)` moves between `IDLE`, `LOADING`, `LOADED`,
+`WATCHING` and `ERROR`. **`fileState`, `lifecycle` and `derived` are written
+only inside it**; `viewState` and `uiPrefs` are the two an event handler may
+touch directly, because a frame scrub and a hide-frozen toggle are not state
+transitions.
+
+> **Both shapes exist in the source, on purpose.** About 3,000 lines of render
+> code still read the flat `state.X` names, and the buckets carry
+> getter/setter aliases so those keep working — the storage moved, the callers
+> did not. It is a bridge, not a second design: there is one home for each
+> value and the alias reads it.
+
 ## 5. Sending a finished run to the next stage — RETIRED (2026-08-29)
 
 The always-visible **Bundle** card that stood below the viewer is gone,
@@ -363,3 +410,14 @@ file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
   order.
 - `test_results_folder_dispatch_e2e.py` — the pick → mount dispatch end to end.
 - `test_inspector_pageshow_refresh_e2e.py` — the re-scan on tab return.
+- `test_results_state_contract_js.py` — § 4's buckets, its two guards and
+  § 4.1's two-tick settle, on the trajectory side.
+- `test_results_state_contract_spectra_js.py` — the same rules on the spectra
+  side, which is a second inspector and not a copy.
+
+*(The last two were missing from this list until 2026-09-02, which is how they
+came to be read as tests of a retired design: the vocabulary they use —
+`fileState`, `fetchSeq`, `uiPrefs` — appears in no live document, so a search
+for it lands in `archive/` and nowhere else. It is the shipped code's own
+structure, 3,212 lines of it, and these are the only tests that hold it. § 4
+now names the buckets so the search lands here.)*

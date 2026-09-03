@@ -1,4 +1,5 @@
-"""SpectrumChart `_seal.js` — the obligations § 4, § 8.4 and § 11 lay on it.
+"""SpectrumChart `_seal.js` — the obligations `web/spectrumchart.md` § 4,
+§ 8.4 and § 11 lay on it.
 
 Two kinds of check, and the split is deliberate:
 

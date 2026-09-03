@@ -2,7 +2,8 @@
  *
  * ONE consistent surface for system-level messages that matter regardless of
  * tab -- debuting with the non-blocking/error-explicit persist failures
- * (workspace-contract.md §4.7).  A STACK of notifications the user clears
+ * (`notifications.md` § 3; the workspace side is `workspace.md` § 5's
+ * `onPersistError` -- "never silent").  A STACK of notifications the user clears
  * INDIVIDUALLY (× per row); dedup by id; errors persist until dismissed.
  *
  * Public: window.molbuilder.notify = { show, clear, clearAll, list }.
@@ -113,7 +114,7 @@
         });
     }
 
-    // ---- Source: workspace persist failures (workspace-contract.md §4.7) ---- //
+    // ---- Source: workspace persist failures (`notifications.md` § 3) ---- //
     // A burst of failures updates ONE row (stable id) instead of stacking.
     function _onPersistError(detail) {
         var where = (detail && detail.op) ? detail.op : "write";

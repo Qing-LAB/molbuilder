@@ -162,17 +162,36 @@ def test_every_stylesheet_is_actually_reached():
     assert len(seen) >= 20, f"only {len(seen)} stylesheets scanned"
 
 
-def test_token_file_is_unique_home_for_token_definitions():
-    """tokens.css owns the canonical global tokens (--bg-page,
-    --accent, --text-primary, etc.).  Per-file namespaced
-    extensions are fine — projects-sidebar defines its own
-    --ps-* palette in its :root, and that's a legitimate
-    component-scoped token system.
+def test_token_file_is_the_ONLY_home_for_token_definitions():
+    """**`lib/tokens.css` names every token once** (`ui-contract.md` § 2),
+    module-private ones included: *"these live in the same one file,
+    promoted out of scattered per-file blocks."*
 
-    This test guards against the specific bug where a global
-    token name gets REDEFINED outside tokens.css, fragmenting the
-    design palette."""
-    # Read the canonical token names from tokens.css itself.
+    **The rule is not "no redefinition", it is "no second home"**, and the
+    difference is what this test used to miss.  It exempted any name not
+    already canonical, on the docstring's reasoning that *"per-file
+    namespaced extensions are fine -- projects-sidebar defines its own
+    --ps-* palette in its :root"*.  That state had not existed since
+    2026-06-13, when those 37 tokens were promoted; what the exemption
+    protected in 2026-09-02's tree was three tokens with NO module prefix
+    at all -- `--page-max-width` and `--focus-ring` in `modify/style.css`,
+    `--shadow-soft` in the trajectory inspector, one of them labelled
+    *"inspector-only token additions"*.
+
+    **`:root` is not component-scoped.**  It matches the document wherever
+    the sheet is loaded, so an unprefixed name set by one component is set
+    for every page loading it -- and two components could set it
+    differently, with the last sheet in the `<head>` winning.  A palette
+    that depends on link order is the fragmentation § 2 exists to prevent,
+    arriving through the door marked "scoped".
+
+    So: no `:root` token definition outside `tokens.css`, prefixed or not.
+    A module-private token is welcome -- in the one file, under its
+    prefix, beside the others."""
+    # Read the canonical names anyway -- not to exempt anything, but so the
+    # failure can say whether this is a REDEFINITION of a name that already
+    # has a home, or a NEW token in the wrong place.  The two are different
+    # to fix and the message should not make the reader work it out.
     token_path = STATIC_ROOT / TOKEN_FILE
     canonical_names = set(
         re.findall(r"--([a-zA-Z][\w-]*)\s*:", token_path.read_text())
@@ -191,15 +210,18 @@ def test_token_file_is_unique_home_for_token_definitions():
         for root_m in _ROOT_BLOCK.finditer(body):
             for tok_m in re.finditer(r"--([a-zA-Z][\w-]*)\s*:",
                                      root_m.group(0)):
-                name = tok_m.group(1)
-                if name in canonical_names:
-                    bad.append((rel, name))
+                bad.append((rel, tok_m.group(1)))
     if bad:
         pytest.fail(
-            "Canonical token name(s) redefined outside lib/tokens.css.  "
-            "Move the definition into tokens.css so there's one source "
-            "of truth.  Per-file namespaced tokens (e.g. --ps-* in "
-            "projects-sidebar.css) are fine — only canonical names "
-            "trigger this check.\n\n"
-            + "\n".join(f"  {rel}: --{name}" for rel, name in bad)
+            "Token(s) defined in a `:root` outside lib/tokens.css.  A "
+            "`:root` block is global wherever the sheet loads, so this is "
+            "a second home for a name, not a component-scoped one — and "
+            "which value wins comes down to <head> order.  Move the "
+            "definition into tokens.css; a module-private token belongs "
+            "there too, under its prefix (ui-contract.md 2).\n\n"
+            + "\n".join(
+                f"  {rel}: --{name}"
+                + ("   (REDEFINES the one in tokens.css)"
+                   if name in canonical_names else "   (new token, wrong file)")
+                for rel, name in bad)
         )

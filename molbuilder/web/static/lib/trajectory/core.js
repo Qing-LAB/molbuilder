@@ -586,10 +586,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // existed in PR 2 but went unused and was deleted in PR 2.3 to
     // match implementation -- pulling the dead code prevents the
     // contract from being "aspirational in code, claimed in tests".
-    // If Invariant 3 becomes load-bearing later, the snapshot
-    // pattern lives at:
-    //   docs/web/results.md Invariant 3
-    // -- bring it back when the conversion is committed.)
+    // THIS COMMENT USED TO POINT AT "docs/web/results.md Invariant 3".
+    // There is no such section, and there should not be: the contract
+    // describes what this page DOES, and an invariant nothing enforces is
+    // not a thing it does.  The rule was written in the design proposal
+    // that contract replaced, and the pointer outlived it.  If the
+    // snapshot pattern ever becomes load-bearing, § 4 gains it THEN --
+    // written from the code that implements it, not before.)
 
     // Per-frame in-progress filter (contract § 4 Invariant 2).
     // The parser tags partial frames with in_progress=true

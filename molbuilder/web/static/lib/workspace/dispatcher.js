@@ -4,7 +4,7 @@
  *   ONE file: this one. It is the whole module -- the transport to the state
  *   files, the per-tag identity, and the non-blocking error surface.
  *   Server backend: POST /api/workspace-storage/{write,read,prune}
- *   the on-disk indexed STATE TIMELINE (workspace-contract §4.7).
+ *   the on-disk indexed STATE TIMELINE (`workspace.md` § 9).
  *
  * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
  *   interprets what it stores.  The MolView data model (lib/molview/data-model.js) owns the
@@ -128,7 +128,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      */
 
     // ─── The write (format-blind) ─────────────────────────────────── //
-    // The on-disk indexed STATE FILE (workspace-contract §4.7, the push-only state timeline).
+    // The on-disk indexed STATE FILE (`workspace.md` § 9, the state files
+    // on the server and their two ordering rules).
     // ``snapshotBlob`` is the consumer's already-serialised OPAQUE session snapshot; ``identity``
     // = {workspace_id, state_index} keys the filename ``<workspace_id>.<state_index>.wc.json``.
     // The server stores it FORMAT-BLIND (never through the structure codec).  Best-effort.

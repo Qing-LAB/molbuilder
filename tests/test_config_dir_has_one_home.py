@@ -87,7 +87,10 @@ def test_no_module_spells_the_rule_a_second_time():
 
 
 # ---------------------------------------------------------------------------
-# The override — archive/2026-09-01-config-access-plan.md § 3.1
+# The override — `configuration.md` § 2.1c, which carries the rule the
+# 2026-09-01 access plan decided.  (The comment cited the PLAN until
+# 2026-09-02; a plan records how a decision was reached, the contract
+# records what is true now, and only one of them is maintained.)
 # ---------------------------------------------------------------------------
 
 class TestTheRootCanBeNamedOutright:

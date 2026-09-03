@@ -75,7 +75,7 @@ _STATE_SUFFIX = ".wc.json"
 #: file at index 0, and a one-entry history has nothing to trim.
 _STATE_WINDOW = 30
 
-# Residue accounting (workspace-contract.md §4.2).  The rolling window bounds each
+# Residue accounting (`workspace.md` § 9.1).  The rolling window bounds each
 # LIVE workspace to <= _STATE_WINDOW files, but a crashed / closed tab leaves its
 # whole timeline behind: a new tab mints a fresh workspace_id, so the old id's files
 # are never touched again.  Crash RECOVERY is deliberately out of scope, and the

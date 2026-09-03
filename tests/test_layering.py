@@ -472,8 +472,18 @@ def test_every_name_imported_from_the_scheduler_package_resolves():
     import ast
     import molbuilder.scheduler as pkg
 
+    # FROM `__file__`, like every other path in this file.  It was
+    # `Path("molbuilder")`, relative to the CWD -- so run from anywhere but
+    # the repo root the two globs matched nothing, `wanted` stayed empty and
+    # the assertion passed having examined no callers at all.  A check that
+    # cannot fail is worse than no check: it reads as coverage.
+    _repo = Path(__file__).resolve().parent.parent
+    _sources = (list((_repo / "molbuilder").rglob("*.py"))
+                + list((_repo / "tests").rglob("*.py")))
+    assert _sources, f"no sources found under {_repo} -- this check is blind"
+
     wanted: dict[str, str] = {}
-    for p in list(Path("molbuilder").rglob("*.py")) + list(Path("tests").rglob("*.py")):
+    for p in _sources:
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:                       # pragma: no cover

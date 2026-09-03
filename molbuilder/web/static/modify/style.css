@@ -23,10 +23,9 @@
  *                      inline, so "make the ring thicker" was three edits and
  *                      the third was the one you forget.
  */
-:root {
-    --page-max-width: 1680px;
-    --focus-ring:     0 0 0 3px var(--accent-glow);
-}
+/* `--page-max-width` and `--focus-ring` were defined here, in a `:root`
+ * block that is global wherever this sheet loads.  They live in
+ * `lib/tokens.css` now -- the one palette file (`ui-contract.md` § 2). */
 
 
 /* No `*` reset here: `lib/page-shell.css` owns the document tier and its rule is

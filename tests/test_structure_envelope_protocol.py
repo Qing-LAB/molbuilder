@@ -84,25 +84,36 @@ def test_a_body_without_the_envelope_is_refused():
     assert struct.n_atoms == 3
 
 
-def test_when_a_body_carries_both_the_envelope_wins_and_the_legacy_is_ignored():
-    """"Not merged: a caller that sends both is a caller mid-migration, and
-    merging would let a stale field silently override a fresh one."
+def test_a_stray_TOP_LEVEL_key_beside_the_envelope_changes_nothing():
+    """**Retired and rewritten, 2026-09-02.**
 
-    The two halves here describe different structures on purpose — if anything
-    from the legacy half survives, the merge that must not happen happened.
+    This was *"when a body carries both, the envelope wins and the legacy is
+    ignored"* — a rule about arbitrating between two accepted shapes. There is
+    only one shape now: `struct_from_body`'s own contract says so in as many
+    words, *"there is no second shape left for the both-keys rule to
+    arbitrate, and the rule went with it"*, and the test above proves the flat
+    body is refused outright. A test asserting a rule the code it tests
+    declares retired is the shape this audit exists to find.
+
+    **What survives is a weaker, true property**, and it is worth keeping: the
+    door reads `structure` and nothing else, so an unrecognised top-level key
+    neither contributes nor refuses. Ignored rather than refused **on
+    purpose** — a request body is not a config file (where an unknown key IS
+    refused, `runtime_config._normalise`), because a client one version ahead
+    must not be broken by a field this server has not learned yet.
     """
     body = dict(_envelope(regions={"kept": [0]}))
     body["xyz"] = "1\n\nAu 9 9 9\n"          # a different structure entirely
     body["regions"] = {"stale": [0]}
     body["title"] = "the stale one"
+    body["a_field_from_next_year"] = 42
 
     struct = struct_from_body(body)
 
-    assert struct.n_atoms == 3, "the legacy geometry was used"
+    assert struct.n_atoms == 3, "a top-level key outside the envelope was read"
     assert list(struct.elements) == ["C", "O", "H"]
     assert struct.regions == {"kept": [0]}, (
-        f"a legacy field survived beside the envelope: {struct.regions}"
-    )
+        f"a stray top-level field reached the structure: {struct.regions}")
     assert struct.title != "the stale one"
 
 

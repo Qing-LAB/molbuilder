@@ -269,8 +269,13 @@ class Notify:
     report: Optional[Tuple[str, ...]] = None
 
     def __bool__(self) -> bool:
+        # `report` COUNTS.  Every field here is a thing a person stated, and
+        # a block that is falsy is dropped whole by the serializer -- so
+        # leaving `report` out of this made "send everywhere, but only these
+        # fields" unwritable: the one thing stated was the one thing that
+        # decided the block was empty.
         return bool(self.on_scf_converged or self.every_hours > 0
-                    or self.channels is not None)
+                    or self.channels is not None or self.report is not None)
 
 
 @dataclass(frozen=True)
@@ -1182,6 +1187,15 @@ def _task_to_dict(task: Task) -> dict:
         # the second (`run-reports.md` 3.0).
         if task.notify.channels is not None:
             out["notify"]["channels"] = list(task.notify.channels)
+        # AND `report`, BY THE SAME RULE AND FOR THE SAME REASON
+        # (`stages.md` § 6.9).  It was parsed by `read_task` and written by
+        # nothing, so a description carrying a field selection lost it on the
+        # first round trip -- read, write, and the person's choice was gone
+        # with no error anywhere.  `[]` is "the summary line alone" and
+        # absent is "every field the monitor can determine", so the empty
+        # tuple is written out rather than dropped, exactly as `channels` is.
+        if task.notify.report is not None:
+            out["notify"]["report"] = list(task.notify.report)
     if task.stages:
         out["varies"] = list(task.varies or ())
         out["stages"] = [

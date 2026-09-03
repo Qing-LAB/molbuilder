@@ -1010,7 +1010,7 @@ floors.
 
 ### 10.0 The whole picture
 
-**The diagram and the four ladders are
+**The diagram and the five ladders are
 [`architecture.md § 5.2`](?doc=execution/architecture.md)** — where every value
 comes from, who may change it, and where the two surfaces hand theirs in. It
 lives there because § 5 of that document owns *in what order decisions get

@@ -274,6 +274,36 @@ boundary registry differs.
 So the seam matters most for the **bulk electrode cell**, which by **I9** *is* a
 periodic run along z — and that cell is already derived correctly (§ 5).
 
+### 4.1 And the tab says which of these you have
+
+Every slab edit is answered with a seam verdict, carried back in the response's
+receipts slot and shown as a panel notice. It is not a distance check: § 3.1's
+point is that a twin has the correct bond length, so only the **registry**
+separates a continuation from a twin. The question with an answer is *which
+layer of this slab does the imaged bottom layer land on*, and in a crystal of
+period `p` that is decidable without any lattice arithmetic:
+
+| the image lands on | verdict | what you are told |
+|---|---|---|
+| layer `N − p` | `continues` | the crystal carries on — the spacing and the nearest-atom gap, as numbers |
+| the top layer | `eclipsed` | stacking repeats instead of advancing — § 4's head-on contact |
+| layer `N − 2` | `twin` | right bond length, reversed stacking — the case a distance check passes |
+| — (an open face) | `vacuum` | **not a warning.** An open face is what a slab calculation wants |
+
+One more verdict is a *warning about the slab rather than the seam*: a boundary
+that continues but with a repeat shorter than `STACKING_PERIOD` says for that
+plane (`too_thin`) — two layers of (111) are A,B, which is fcc and hcp alike,
+so such a slab does not determine its own stacking. It says *add layers*.
+
+**The period is measured, never passed in.** The plane never has to be stated,
+and a strained or unusual slab is judged on what it is.
+
+> **Why this is checked at the edit and not later.** Measured on a real
+> `Au-BDT-Au` junction, the seam is bit-identical before and after relaxation —
+> 2.4008 Å, step (0.000, 0.000) both times — because the layers that form it
+> are exactly the ones `Geometry.Constraints` pins. **No later check can catch
+> it, because nothing later changes it.**
+
 ---
 
 ## 5. Where this lives in the code
@@ -314,6 +344,7 @@ their own structure.
 | the rule `z_period = z_span + d` | `cell.bulk_z_period` |
 | grouping atoms into layers | `cell.detect_layers` |
 | layers per stacking period, by surface | `cell.STACKING_PERIOD` |
+| **what the boundary does to the crystal** | **`cell.classify_seam`** (§ 4.1) — the measurement; the wording is `blueprints/modify.py`, the same split `_lattice_notes` uses |
 | applying it to the bulk lead | `transport.wizard.extract_electrode_model` |
 | **setting it on a built slab** | **you**, on the Modify tab's Cell page (§ 6) |
 

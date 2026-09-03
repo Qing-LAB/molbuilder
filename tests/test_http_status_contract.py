@@ -1,12 +1,12 @@
 """Static-analysis test: every ``return jsonify({"ok": False, ...})``
 site in the blueprints carries an explicit HTTP status code in the
-documented set per ``docs/web/web-api.md`` § 1.6.
+documented set per ``docs/web/web-api.md`` § 1, *Status codes*.
 
 Why this exists
 ===============
 
-The § 1.6 audit (2026-06-17, commit ``0880899`` + ``4003edc``)
-codified the four-bucket rule:
+An audit on 2026-06-17 (commits ``0880899`` + ``4003edc``)
+codified the four-bucket rule, which § 1's *Status codes* now states:
 
     (a) ok:true   → 2xx (typically 200)
     (b) advisory  → 200  + ok:false  (validator hard-fail)
@@ -242,7 +242,7 @@ class TestKnownAdvisorySitesAreHTTP200:
         assert needle in src, (
             f"{path.name}: expected explicit ``, 200`` after the advisory "
             f"jsonify body.  Snippet searched: {needle!r}.  Per web-api.md "
-            f"§ 1.6 (b), validator-hard-fail returns HTTP 200 with "
+            f"§ 1's advisory row, a validator hard-fail returns HTTP 200 with "
             f"ok:false EXPLICITLY so the intent is visible at the call "
             f"site."
         )

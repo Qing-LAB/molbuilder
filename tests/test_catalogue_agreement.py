@@ -77,8 +77,8 @@ def test_every_mirrored_fact_agrees(engine, cls):
                 meta, mine = tuple(meta), tuple(mine)
             if key == "help":
                 # Compared with whitespace NORMALISED.  The catalogue's prose
-                # carries meaningful line structure (§ 40.5: structure, not
-                # markup); the class's copy is a mirror wrapped to fit Python
+                # carries meaningful line structure (`template.md` § 4.0a:
+                # text whose breaks are load-bearing, never markup); the class's copy is a mirror wrapped to fit Python
                 # source, so the two legitimately differ in line breaks.  What
                 # this guard is for is a different FACT -- a stale sentence,
                 # other bounds, another engine's wording -- and normalising

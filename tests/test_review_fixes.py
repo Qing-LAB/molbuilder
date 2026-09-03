@@ -230,12 +230,13 @@ def test_t5_web_uses_canonical_xyz_parser():
 
 
 # --------------------------------------------------------------------- #
-#  D1 -- Config and SiestaConfig coexist                                #
+#  D1 -- RETIRED 2026-09-02: `Config` was a backward-compat alias        #
+#                                                                       #
+#  `Config = SiestaConfig` existed so that code importing the old name   #
+#  kept working.  The project's rule is that a rename DELETES the old    #
+#  name everywhere rather than leaving a second spelling behind, and     #
+#  this test was what held the second spelling in place: the alias had   #
+#  no caller but this, and two docstring examples that taught it.        #
+#  Alias, both `__all__` entries, the examples and this test are gone    #
+#  together -- which is the only way a shim is actually removed.         #
 # --------------------------------------------------------------------- #
-
-
-def test_d1_siesta_config_alias():
-    from molbuilder.siesta import Config, SiestaConfig
-    assert Config is SiestaConfig
-    cfg = Config(system_label="x")
-    assert isinstance(cfg, SiestaConfig)

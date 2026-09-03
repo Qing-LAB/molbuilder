@@ -291,4 +291,20 @@
     --ts-here-bg:       var(--accent-bg);
     --ts-refuse-bg:     rgba(248, 113, 113, 0.10);
     --ts-refuse-fg:     var(--error);
+
+    /* --- Promoted here 2026-09-02 -------------------------------------
+     * Three tokens that were defined in a COMPONENT file's `:root`.  A
+     * `:root` block is global wherever the sheet is loaded, so an
+     * unprefixed name set in one component is set for every page that
+     * loads it -- and two components could set it differently, with the
+     * last sheet loaded winning.  That is the fragmentation § 2 forbids,
+     * arriving through the door marked "component-scoped".
+     *
+     * They kept their names because they READ global -- no module prefix
+     * -- and the fix for a global-looking name is a global home, not a
+     * rename that makes the collision quieter. */
+    --page-max-width:   1680px;             /* was modify/style.css */
+    --focus-ring:       0 0 0 3px var(--accent-glow);
+    --shadow-soft:      0 1px 0 rgba(255, 255, 255, 0.02) inset,
+                        0 2px 6px rgba(0, 0, 0, 0.25);
 }

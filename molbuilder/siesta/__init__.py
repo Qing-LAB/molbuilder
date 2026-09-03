@@ -8,7 +8,7 @@ The public symbols of ``input`` are re-exported here so existing imports
 became a package.
 """
 
-from ..config.siesta import Config, SiestaConfig
+from ..config.siesta import SiestaConfig
 from .input import (
     convert,
     copy_pseudopotentials,
@@ -23,7 +23,6 @@ from .input import (
 from .input import _auto_block_size, _detect_species
 
 __all__ = [
-    "Config",
     "SiestaConfig",
     "convert",
     "copy_pseudopotentials",

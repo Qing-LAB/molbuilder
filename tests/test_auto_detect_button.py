@@ -1,7 +1,10 @@
 """Tests for the Auto-detect button on the Optimization tab
-(``/structure-optimization``).  Phase 2 of the chemistry middle-
-layer work; see ``docs/science/validation.md`` § 2.5
-for the scientific-guard role.
+(``/structure-optimization``).  See ``docs/science/validation.md``
+§ 4 for the guard's role -- the analyzer runs FORWARD here
+(auto-detect pre-fills the form) and REVERSE at Generate-time, over
+the one analysis, so the chip and the validator cannot disagree.
+
+(It cited "§ 2.5", a section that document has never had.)
 
 The Markup test runs as a plain Flask test_client request; the
 end-to-end test drives the browser via Playwright (load a Fe-

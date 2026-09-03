@@ -912,10 +912,25 @@ default**.
 | **stage 2** (publishable) | Broyden · 200 · 0.04 eV/Å · 0.05 Å | `geometric` · 200 · `gmax` 4.5×10⁻⁴ · `conv_tol` 1×10⁻⁹ |
 | **stage 3** (tight, *off*) | Broyden · 100 · 0.01 eV/Å · 0.02 Å | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ |
 
-> **These numbers restate § 2.4 and § 2.5, which are their authority** — those
-> tables are checked against `PYSCF_STAGE_PRESETS` and `SIESTA_STAGE_PRESETS` by
-> `test_doc_claims.py`; this one is not. It is here because a reader comparing
-> two ladders wants them side by side. If they ever disagree, § 2.4 / § 2.5 win.
+> **These numbers restate the sections that own them, and each engine's
+> authority is a different section.** SIESTA's force tolerance is § 2.3's
+> table and its step budget is § 2.10's row; PySCF's five criteria are § 2.4
+> and its SCF tolerance § 2.5. This table is here because a reader comparing
+> two ladders wants them side by side; if it ever disagrees with one of those,
+> that section wins.
+>
+> **What is machine-checked**, by `test_doc_claims.py`'s `TIER_TABLES`: § 2.4
+> and § 2.5 against `PYSCF_STAGE_PRESETS`, and § 2.3 against
+> `SIESTA_STAGE_PRESETS`. The rest — this table, and § 2.10's step budgets —
+> are read by people only.
+>
+> *(Corrected 2026-09-02. It claimed § 2.4 and § 2.5 were the authority for
+> BOTH engines and that both were checked against both preset tables. Neither
+> half held: § 2.4 is geomeTRIC's and has no SIESTA column, § 2.5's SIESTA
+> column is one global rather than a ladder, and no SIESTA table was
+> registered at all — so the sentence asserting the check was the only thing
+> standing in for one. § 2.3 is now registered, which is what makes the
+> claim true rather than the claim being edited away.)*
 
 **The geometry flows from each stage to the next, and the optimizer history is
 reset at the boundary (§ 5). Both engines flow it the same way: a rung ends, a

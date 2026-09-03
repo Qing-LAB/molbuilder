@@ -311,6 +311,47 @@ ends of every call speak the one envelope.
 
 ### Status codes
 
+**Four buckets, and `ok:false` is not the same as an HTTP error.**
+
+| what happened | HTTP | `ok` |
+|---|---|---|
+| **it worked** | 2xx (200 in practice) | `true` |
+| **advisory** — the request was well-formed and the *validator* refused it | **200** | `false` |
+| **protocol** — the body was bad, the path escaped, the file was not there | 4xx | `false` |
+| **server fault** — an I/O error, an engine that fell over, a bug | 5xx | `false` |
+
+The advisory row is the one worth stating out loud. A deck that fails
+validation is a **successful answer to a valid question** — the caller asked
+*"is this all right?"* and got a complete reply saying no, with the findings
+in it. Returning 4xx there tells the browser's transport layer that the
+*request* was wrong, and a client that retries on 4xx, or a proxy that
+swallows the body, then loses the very list the user needed to read.
+
+**A failure states its status; a success does not have to.** Flask answers
+**200 when a view returns a bare body**, which is the right answer for
+`ok:true` — so those returns are written plainly, and 52 of them are. An
+`ok:false` return never relies on that default: forgetting `, 500` would ship
+an HTTP 200 carrying a server fault, silently, and read as correct. Nothing
+in the value distinguishes a deliberate advisory 200 from a forgotten one;
+the only difference is whether the author wrote it, so the author always
+writes it.
+
+**What the blueprints hold today**, counted from the source: envelope returns
+carrying a literal status are `400`×153, `500`×44, `404`×25, `409`×16,
+`403`×8, `200`×4, and one each of `413`, `422`, `501`; another 32 pass the
+status as a value — `err(msg, code)`'s default of 400, or a path error's own
+`status`. The advisory bucket is **three sites**: the notify channel probe,
+twice — *"could not reach it"* is news about somewhere else, and a 5xx there
+would claim this server broke — and transport's preflight, whose issue list
+IS the answer.
+
+> *(The four buckets were settled by an audit on 2026-06-17 that found five
+> misclassifications, including a catch-all `except Exception` returning 400
+> for what was plainly a server fault. They were written down here on
+> 2026-09-02 — until then the rule lived in that audit's commit messages, and
+> `notify_setup.py` carried a comment citing "§ 1's advisory bucket" that
+> § 1 did not contain.)*
+
 | Status | Meaning |
 |---|---|
 | 400 | bad body / validation / parse failure (the default of `err()`) |
@@ -542,7 +583,7 @@ auth routes.
 | ~~POST `/api/build/fdf`~~ | **deleted 2026-08-17** — rendered a deck in the browser; zero JS callers. A deck is rendered by `prep`, on the machine that will run it |
 | ~~POST `/api/build/pyscf`~~ | **deleted 2026-08-17** — same, and it had no caller at all |
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
-| POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
+| POST `/api/structure/analyze` | **two ways in**: the envelope `{structure}` for a structure the caller is holding, or a `structure_path` for one on disk — the browser sends both, depending on which it has. *(A third, `structure_text`, was retired here on 2026-09-02: it went from `/api/spectra/render` on 2026-08-03 because the viewer holds no coordinate document and writes none (`molview.md` § 11.7), and this route was missed by that sweep — no page posted it and only tests reached it.)* **Out:** `n_atoms`, `elements`, `n_electrons_neutral`, `metals`, `metal_hints`, `suggested_treatment`, and `suggested.<engine>` — one block per **registered** adapter, so a new engine appears here without this route changing. The detection chip reads `suggested_treatment`; the parameter forms read `suggested.<engine>` |
 | POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit and lives at `/api/modify/calibrate`. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
 | ~~POST `/api/run/install-wrapper`~~ · ~~POST `/api/siesta/install-pseudos`~~ | **retired 2026-08-21** — zero browser callers; the described route owns both (`prep` writes the wrapper beside every deck and installs the pseudopotentials itself) |
 

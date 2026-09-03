@@ -20,8 +20,8 @@ Public API:
     >>> atoms = s.to_ase()
 
     # SIESTA input file:
-    >>> from molbuilder.siesta import Config, render_fdf
-    >>> print(render_fdf(s, Config(system_label="bdt", kgrid=(1,1,1))))
+    >>> from molbuilder.siesta import SiestaConfig, render_fdf
+    >>> print(render_fdf(s, SiestaConfig(system_label="bdt", kgrid=(1,1,1))))
 
     # Browser UI for interactive building + SIESTA input generation:
     $ molbuilder serve
@@ -116,8 +116,8 @@ def load(path: Union[str, Path], *, format: str = "auto",
     >>> s = molbuilder.load("polymer.pdb")
     >>> s.n_atoms
     87
-    >>> from molbuilder.siesta import Config, render_fdf
-    >>> print(render_fdf(s, Config(system_label="loaded", kgrid=(1, 1, 1))))
+    >>> from molbuilder.siesta import SiestaConfig, render_fdf
+    >>> print(render_fdf(s, SiestaConfig(system_label="loaded", kgrid=(1, 1, 1))))
     """
     p = Path(path)
     fmt = format.lower()

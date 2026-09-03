@@ -5,7 +5,8 @@ Pins:
   * Anchor consistency — same .fdf provides coords AND regions
     AND cell (no Frankenstein from multiple sources).
   * AmbiguousFormatError — exercised when two parsers claim the
-    same path (doc § 10 promised test that didn't exist).
+    same path (`model/parse.md` § 3 states the rule; a retired § 10
+    promised the test and it did not exist).
   * Envelope-field consistency across phases B / C / D —
     parser_name is the slug, source is resolved.
   * Transport / Spectra sidecars produce JSON-serialisable
@@ -200,7 +201,8 @@ def test_engine_source_is_resolved_absolute_path():
 
 
 def test_registry_ambiguous_raises():
-    """Doc § 10 promised this test that did not exist.  Register a
+    """`model/parse.md` § 3: `detect()` raises `AmbiguousFormatError` when
+    more than one parser claims a path.  Register a
     bogus FileParser that claims the same path as molstruct, then
     confirm detect() raises AmbiguousFormatError.  Cleans up after
     itself so the real registry survives."""
@@ -254,7 +256,8 @@ def test_spectra_sidecar_payload_is_json_serialisable(tmp_path):
 
 
 def test_frozen_dataclass_invariant_on_each_result_kind():
-    """Doc § 10 promised test_parse_result_subclasses_are_frozen.
+    """`model/parse.md` § 2: every parser returns a FROZEN dataclass -- no
+    defensive copies at API boundaries, and hashable.
     The existing test only checks JobResult; extend to every
     registered output type to catch a future override drift."""
     from dataclasses import FrozenInstanceError

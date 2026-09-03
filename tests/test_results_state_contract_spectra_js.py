@@ -1,20 +1,25 @@
-"""Pin the spectra inspector's state-contract surface (PR 3).
+"""**`results.md` § 4 on the SPECTRA side** — the same rules, a second
+inspector, not a copy.
 
-Mirror of tests/test_results_state_contract_js.py for the trajectory
-inspector.  PR 3 brings spectra into the same bucketed state +
-transition() framework that trajectory's PR 2 / PR 2.1 / PR 2.2 /
-PR 2.3 land:
+§ 4 is about "a mounted viewer", and there is more than one: the trajectory
+inspector and this one hold the same four buckets (`fileState`, `viewState`,
+`uiPrefs`, `lifecycle`), move through one `transition()`, and carry the same
+two guards. Spectra adds `APPLY` — every write to `fileState` goes through it
+— and an `IDLE` state trajectory has no use for.
 
-* Bucketed state (fileState, viewState, uiPrefs, lifecycle, derived)
-* transition() orchestrator with LOADING / LOADED / WATCHING /
-  ERROR / IDLE / APPLY branches
-* File-identity guard at watchTick + loadByPath resolution
-* Refresh listener wired once at mount via _wireRefreshListener
-* fileState writes go SOLELY through transition('APPLY')
+**Why both files exist rather than one parametrized over two modules.** They
+are two implementations that agree, and a test that ran the same assertions
+against whichever module it was handed would pass while one of them drifted
+into the other's shape. The rule is *both inspectors obey § 4*, and the
+honest way to check it is twice.
 
-The trajectory contract file lives next to this one; both inspectors
-mirror the same skeleton so a future Transport inspector can follow
-the same template.
+> The sibling file records why these were nearly deleted on 2026-09-02 and
+> what the survey got wrong; § 4 and § 4.1 are now where the rules live.
+
+**Read as SOURCE-PINNING**, with the limitation the sibling states: this
+greps the module for structure rather than running it, so it catches a
+refactor that removes a guard and not one that keeps the shape and breaks the
+behaviour. Conversion to the node harness is **B3** in `plans/plan.md`.
 """
 from __future__ import annotations
 
@@ -64,14 +69,14 @@ class TestBucketedStateShape:
         assert re.search(
             r"^\s+" + bucket + r"\s*:\s*\{", window, re.MULTILINE,
         ), (f"spectra/core.js state object no longer carries the "
-            f"``{bucket}`` bucket.  PR 3 mirrors trajectory's "
+            f"``{bucket}`` bucket (`results.md` § 4).  Both inspectors "
             f"five-bucket partition.")
 
 
 class TestBackcompatAliases:
     """Existing render code throughout spectra/core.js reads the
     legacy flat shape (state.results, state.selectedMode,
-    state.modeFilter, state.watchPath, etc.).  PR 3 keeps those
+    state.modeFilter, state.watchPath, etc.).  The bucketing keeps those
     surfaces working via Object.defineProperty getter/setter aliases
     that route to the bucketed canonical home -- same pattern as
     trajectory's PR 2."""
@@ -213,7 +218,7 @@ class TestTransitionOrchestrator:
             "A finished run keeps polling forever.")
 
     def test_transition_apply_writes_filestate(self, core_body):
-        """PR 2.3 (trajectory) + PR 3 (spectra): APPLY is the
+        """APPLY is the
         SINGLE canonical fileState writer."""
         m = re.search(
             r"if\s*\(\s*target\s*===\s*[\"']APPLY[\"']\s*\)\s*\{"

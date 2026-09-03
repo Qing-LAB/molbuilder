@@ -213,47 +213,22 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
 
 
 def struct_from_body(body: Dict[str, Any]) -> Structure:
-    """Reconstruct a Structure from the canonical body shape::
-
-        {
-          "xyz":            "<xyz string>",
-          "atom_names":     [...],   # optional; len == n_atoms
-          "residue_ids":    [...],   # optional
-          "residue_names":  [...],   # optional
-          "chain_ids":      [...],   # optional
-          "title":          "..."    # optional
-        }
-
-    A metadata list is honoured only when its length matches the atom
-    count; otherwise the default from ``Structure.from_xyz``
-    (atom_names = elements, residue_ids = [1]*n, residue_names =
-    ["MOL"]*n, chain_ids = ["A"]*n) is kept so a malformed metadata
-    array can't corrupt the result.
-
-    Raises ``ValueError`` when the xyz field is missing or empty;
-    callers turn that into an HTTP 400 with the standard error shape.
-
-    Construction goes through a single ``Structure(...)`` call so all
-    invariants in ``Structure.__post_init__`` (parallel-array length
-    checks, dtype coercion of positions) fire on the final shape --
-    NOT via post-construction ``setattr`` that bypasses the contract.
-
-    OR THE ENVELOPE (web-api.md § 1, "The request envelope")::
+    """Reconstruct a Structure from THE ENVELOPE, which is the only shape
+    (`web-api.md` § 1, "The request envelope")::
 
         {"structure": {"elements": [...], "positions": [[x, y, z], …],
                        "metadata": {"regions": {...}, "cell": [...], ...}}}
 
     FLAT, with the per-atom facts beside the atoms and everything else under
-    ``metadata``.  This said ``geometry`` wrapped the elements and positions --
-    a shape ``_struct_from_envelope`` REFUSES, because ``geometry`` is not in
-    its known-key set and a stray key fails the whole body.  Written to the
-    letter, this docstring produced a 400.  It is also exactly what
-    ``molview``'s ``structureForServer`` emits, which is the only shape any
-    caller should be sending.
+    ``metadata`` -- the atoms as NUMBERS, and the facts beside them, so a
+    caller holding coordinates never has to write a coordinate document to ask
+    a question about them.  It is exactly what ``molview``'s
+    ``structureForServer`` emits, which is the only shape any caller sends.
 
-    which is the shape every door is being brought to: the atoms as NUMBERS, and
-    the facts beside them, so a caller holding coordinates never has to write a
-    coordinate document to ask a question about them.
+    *(This once said ``geometry`` wrapped the elements and positions -- a
+    shape ``_struct_from_envelope`` REFUSES, because ``geometry`` is not in
+    its known-key set and a stray key fails the whole body.  Written to the
+    letter, that docstring produced a 400.)*
 
     **A body carries ``structure``, or it is refused** -- by name, naming the
     shape it wanted.
@@ -289,8 +264,8 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
             "index":         int,
             "element":       "C" | "H" | ...,
             "x": float, "y": float, "z": float,   # COORDS -- the atom carries its
-                                                  # own geometry (workspace-contract
-                                                  # §1.2.1); no string re-parse
+                                                  # own geometry (web-api.md § 1: the
+                                                  # atoms as NUMBERS); no re-parse
             "regions":       [str, ...],     # EVERY label the atom carries,
                                              # reserved ones (`frozen`) included --
                                              # one representation, so the panel
@@ -314,8 +289,10 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
 
     rows: List[Dict[str, Any]] = []
     for i in range(n):
-        # Coordinates ride ON the atom (workspace-contract.md §1.2.1 -- the atom is
-        # the geometric truth, not a re-parsed xyz string).
+        # Coordinates ride ON the atom (`web-api.md` § 1 -- the atoms as
+        # numbers, so nobody has to write a coordinate document to ask a
+        # question about them; the atom is the geometric truth, not a
+        # re-parsed xyz string).
         pos = positions[i]
         row: Dict[str, Any] = {
             "index":     i,
@@ -491,7 +468,8 @@ def structure_to_dict(
         "lattice":       base["lattice"],
         # Structure-owned: full periodicity (incl. resolved_cell/_origin) +
         # annotations ride with the geometry into the store so a captured
-        # electrode cell survives the modify op (workspace-contract.md §4.0).
+        # electrode cell survives the modify op (`web-api.md` § 1, what
+        # the envelope must be able to carry).
         "periodicity":   wire["periodicity"],
         "annotations":   wire["annotations"],
         "issues":        base["issues"],

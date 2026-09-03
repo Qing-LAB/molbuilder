@@ -578,6 +578,11 @@ def _pyscf_presets():
     return PYSCF_STAGE_PRESETS
 
 
+def _siesta_presets():
+    from molbuilder.config.siesta import SIESTA_STAGE_PRESETS
+    return SIESTA_STAGE_PRESETS
+
+
 #: ``id: (document, section, {item: (row label, {tier: column})}, code table)``.
 #:
 #: A tier table is a claim of the same kind ``MEASURED`` holds -- a number
@@ -604,6 +609,22 @@ TIER_TABLES = {
                           ("publishable", {2: 1}),
                           ("tight", {3: 1})]},
         _pyscf_presets),
+    # SIESTA WAS CLAIMED AND NOT CHECKED until 2026-09-02.  § 2.6's note
+    # said its ladder was verified against `SIESTA_STAGE_PRESETS` here;
+    # nothing was -- only the two PySCF tables were registered, so the
+    # sentence asserting the check was the only thing standing in for it.
+    #
+    # § 2.3 is where the SIESTA per-tier force tolerance is actually
+    # stated, one row per tier with the SIESTA value first in the cell.
+    # (§ 2.4 is geomeTRIC's and has no SIESTA column at all; § 2.5's
+    # SIESTA column is a single global, not a ladder -- so the note pointed
+    # at the wrong two sections as well as at a check that did not exist.)
+    "SIESTA force convergence (tuning.md § 2.3)": (
+        "engines/tuning.md", "### 2.3",
+        {"relax_force_tol": [("loose preopt", {1: 0}),
+                             ("publishable", {2: 0}),
+                             ("tight — crystal/surface", {3: 0})]},
+        _siesta_presets),
 }
 
 

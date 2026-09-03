@@ -12,6 +12,7 @@ reset.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 from typing import Any, Dict, List
@@ -176,9 +177,16 @@ def test_capabilities_is_frozen():
     """No accidental attribute reassignment -- the snapshot is a stable
     contract.  (The ``runtime_config`` *dict* is mutable by Python
     semantics; treat it as read-only by convention -- see module
-    docstring.)"""
+    docstring.)
+
+    **THE EXCEPTION IS NAMED.**  It read
+    ``pytest.raises((AttributeError, Exception))``, where the second member
+    subsumes the first -- so ANY exception passed, including a `TypeError`
+    from a constructor that had drifted or an `ImportError` from a rename.
+    The refusal that matters is the dataclass's own, and it has a name.
+    """
     caps = _caps()
-    with pytest.raises((AttributeError, Exception)):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         caps.conda_binary = "/somewhere/else"   # type: ignore[misc]
 
 

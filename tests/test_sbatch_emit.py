@@ -6,9 +6,9 @@ went on 2026-08-18 (roadmap P6); one test below asserts its absence.
 Authoritative design: docs/execution/job-system.md  two-layer model (header delegates to the unchanged .run.sh)
   § 5  block-by-block header
   § 6  value-source matrix
-  § 7.4/7.5.1/8  GPU gating + 1-rank-per-GPU + enforce-binding
-  § 10 refuse-to-emit / skip-when-no-scheduler
-  § 13 testing strategy (L1/L2)
+  running-a-job.md § 3.3  GPU gating + ranks-per-GPU + enforce-binding
+  § 6   refuse-to-emit / skip-when-there-is-no-queue
+  process/testing.md  the L1/L2 split
 """
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def test_cpu_header_shape(tmp_path):
     assert "#SBATCH -J cpu-np64" in txt
     assert "#SBATCH -N 1" in txt
     assert "#SBATCH -n 64" in txt
-    assert "#SBATCH -p public" in txt          # NOT general (§ 7.0)
+    assert "#SBATCH -p public" in txt          # NOT general (job-system.md § 6, routing domains)
     assert "#SBATCH -q public" in txt
     assert "#SBATCH -t 0-04:00:00" in txt
     assert "#SBATCH -o slurm.%j.out" in txt
@@ -439,7 +439,11 @@ def test_wrapper_gpu_has_no_mem_audit(project):
 
 
 def test_no_scheduler_no_sbatch(tmp_path, monkeypatch):
-    """§ 10: with no scheduler block, only .run.sh is emitted.
+    """`job-system.md` § 6, gate 2: with no `(partition, qos)` pair
+    resolvable, there is no queue to address and only the `.run.sh` is
+    written.  (Gate 1 -- a record saying `workstation` -- is the other
+    reason, and is not what this exercises: here there is no record at all,
+    which by itself keeps emitting.)
 
     Isolation is HOME **and cwd**: the machine scope reads cwd-first
     (running-a-job.md § 5.2), so without the chdir this test's verdict

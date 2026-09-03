@@ -86,15 +86,33 @@ def test_no_siesta_conda_package(recipe):
 # --------------------------------------------------------------------- #
 
 
-def test_pins_gcc_14(recipe):
-    """gcc 14 is the default toolchain (locked decision #6).  The
-    CUDA-gcc compat preflight refuses to start if CUDA is too old for
-    gcc 14; that's the user's signal to override.  See
-    docs/ops/installation.md § 6"""
+def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
+    """**The minor is the whole point** (`ops/installation.md` § 6).
+
+    It asserted the substring ``gcc_linux-64=14``, which `14.3` satisfies
+    and `14.4` satisfies equally -- and **14.4's gfortran miscompiles
+    SIESTA's `kpoint_t.F90`**, silently, into wrong k-points.  So the one
+    thing the pin exists to prevent was the one thing the test could not
+    tell apart from success.
+
+    Checked as a PROPERTY -- three packages, one version, and that version
+    carrying a minor -- rather than by retyping `14.3` here: the number is
+    keyed to a SIESTA tag and moves when the tag does (§ 6: *"when the
+    SIESTA tag moves, re-test 14.4"*), and a test that hard-coded it would
+    have to be edited by whoever re-tests, which is how the copy drifts.
+    """
+    from molbuilder.envs.recipes import _GCC_VERSION
+    assert "." in _GCC_VERSION, (
+        f"the toolchain pin is {_GCC_VERSION!r} -- a MAJOR-only pin lets "
+        f"conda resolve 14.4, whose gfortran miscompiles SIESTA's "
+        f"kpoint_t.F90 into wrong k-points with no error "
+        f"(ops/installation.md § 6)")
     pkgs = " ".join(recipe.conda_packages)
-    assert "gcc_linux-64=14" in pkgs
-    assert "gxx_linux-64=14" in pkgs
-    assert "gfortran_linux-64=14" in pkgs
+    for tool in ("gcc", "gxx", "gfortran"):
+        want = f"{tool}_linux-64={_GCC_VERSION}"
+        assert want in pkgs, (
+            f"the GPU recipe does not pin {tool} to the toolchain version "
+            f"the rest of the family uses ({_GCC_VERSION}): {pkgs}")
 
 
 def test_pins_python_3_12(recipe):

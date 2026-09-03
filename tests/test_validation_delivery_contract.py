@@ -142,6 +142,24 @@ class TestF2NoSecondSource:
         assert not s.frozen_atoms
         assert not s.regions
 
+    # ── `test_in_body_labels_xhr.py` was retired here, 2026-09-02 ──────
+    #
+    # 214 lines and six collected tests that posted to `/api/build/fdf`
+    # and `/api/build/pyscf`.  **Neither route exists** -- the build
+    # blueprint offers `molecule`, `load`, `schema/<engine>` and
+    # `preflight` -- so every request 404'd, every body parsed to `{}`,
+    # and the file's ONE assertion sat inside `if body.get("ok") is True:`
+    # and never ran.  Six green tests, nothing checked.
+    #
+    # Its `TestBuildPyscfInBodyLabels` was a class with a docstring and no
+    # body at all, under a banner reading "mirror coverage", beside a
+    # `_post_pyscf` helper nothing called.
+    #
+    # The rule it claimed is F2, and F2 is checked above -- at
+    # `struct_from_body`, the door every route reads a structure through,
+    # which is where the property actually lives rather than at whichever
+    # endpoints happened to exist in May.
+
 
 
 def _strip_js_comments(src: str) -> str:

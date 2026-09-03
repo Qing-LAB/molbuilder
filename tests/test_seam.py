@@ -1,7 +1,7 @@
 """`cell.classify_seam` — what the periodic boundary does to the crystal.
 
-`archive/2026-09-01-bench-and-junction-plan.md` § 2.4.  **The distance alone is not the
-test**: a twin has the correct bulk bond length, so a distance check passes it;
+`science/junction-cell.md` § 4.1 (the verdicts) and § 3.1 (why a distance
+check is not enough).  **The distance alone is not the test**: a twin has the correct bulk bond length, so a distance check passes it;
 only the registry separates continuation from a twin.
 
 And the registry is not tested by arithmetic.  Two earlier versions compared
@@ -119,7 +119,7 @@ class TestTheFailuresAreToldApart:
         assert np.allclose(verdict.seam_step, (0.0, 0.0), atol=1e-6)
 
     def test_the_message_names_which_condition_failed(self):
-        """§ 2.4: "Name which condition failed: layer count or placement."
+        """§ 4.1: name which condition failed -- layer count or placement.
 
         And it does not follow from the verdict -- the real junction is
         `eclipsed` with 6 layers a side, a whole number of periods, so § 3.1
@@ -187,7 +187,7 @@ class TestTheWarningReachesTheUser:
         no padding the boundary is a collision first, and the stacking question
         cannot be asked of a box whose faces are on top of each other."""
         j = self._slab(client, layers=4)
-        assert j["ok"] is True, "a warning, never a refusal (§ 2.4)"
+        assert j["ok"] is True, "a warning, never a refusal (§ 4.1)"
         warns = [n for n in j["notices"] if n["level"] == "warn"]
         assert warns, "a slab with an unset c must say so"
         assert "collision" in warns[0]["message"]

@@ -1742,13 +1742,6 @@ NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shel
     })
 
 
-# Backwards-compatible alias.  External code that imports `Config` from
-# molbuilder.siesta or molbuilder.config.siesta keeps working; new code
-# should prefer `SiestaConfig` so it can coexist with PySCFConfig /
-# future engine configs in the same module.
-Config = SiestaConfig
-
-
 # --------------------------------------------------------------------- #
 #  SIESTA stage presets (minimum-viable per-stage defaults)             #
 #                                                                       #
@@ -1924,7 +1917,6 @@ SIESTA_STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
 
 __all__ = [
     "SiestaConfig",
-    "Config",
     "SIESTA_STAGE_NAMES",
     "SIESTA_STAGE_PRESETS",
     "apply_siesta_stage",

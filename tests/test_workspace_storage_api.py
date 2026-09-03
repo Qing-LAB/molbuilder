@@ -1,6 +1,7 @@
 """/api/workspace-storage/* — the workspace's byte storage (blueprints/workspace_storage.py).
 
-Format-blind indexed session snapshots (workspace-contract §4.7): ``state/write``
+Format-blind indexed session snapshots (`workspace.md` § 9, the state files on
+the server and their two ordering rules): ``state/write``
 stores an OPAQUE blob under ``<workspace_id>.<state_index>.wc.json``; ``state/read``
 round-trips the exact JSON (NOT through the {xyz,sidecar} codec); ``state/prune``
 tail-deletes above an index (-1 clears the whole timeline).  Extracted from the

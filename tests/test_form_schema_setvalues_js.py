@@ -2,8 +2,17 @@
 public helper added in Phase 2 of the chemistry middle-layer
 work that backs the Auto-detect button's "apply suggestion"
 path.  See ``molbuilder/web/static/lib/form-schema.js`` for the
-helper; see ``docs/science/validation.md`` § 5.1
-for the contract.
+helper, and ``docs/web/form-schema.md`` § 3.0a for what it
+guarantees.
+
+It cited ``science/validation.md`` § 5.1 until 2026-09-02 -- a
+section that document has never had, and a document this does not
+belong in: validation.md is the SCIENTIFIC machinery (analyzer,
+adapters, gates), and a helper that writes values into DOM inputs
+is the form module's own contract.  form-schema.md has carried
+``setValues`` in its API table all along; § 3.0a now states the
+two things it guarantees, which are the two a new field kind gets
+wrong by omission.
 
 These run as Playwright tests against a minimal HTML page that
 mounts a schema with one field of each kind (checkbox, int,

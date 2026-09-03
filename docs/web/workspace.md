@@ -288,7 +288,7 @@ structure in your saved bytes, not where it came from.
 Saving your work-in-progress (everything above) is a different thing from
 **saving a file into a project.** When you click Save-to-project, that runs
 through the Modify tab's Save panel (`modify/structure/save.js`) to the projects
-file door (`projects.saveMolecule` → `POST /api/structure/save`), which writes
+file door (`projects.molviewFiles.save` → `POST /api/structure/save`), which writes
 the `.xyz` + `.molstruct.json` pair. The workspace is **not** in that path at
 all. (The details live in the Modify-tab and projects docs.)
 

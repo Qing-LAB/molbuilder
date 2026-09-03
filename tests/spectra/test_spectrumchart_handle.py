@@ -1,6 +1,7 @@
 """SpectrumChart `index.js` — the handle, driven exactly as a page drives it.
 
-§ 12's middle level: node, with a stand-in that takes the drawing LIBRARY's
+`web/spectrumchart.md` § 12's middle level: node, with a stand-in that takes
+the drawing LIBRARY's
 place. Nothing here reaches past `mount`; every fact goes in through a door and
 the only thing that comes back is a click.
 """

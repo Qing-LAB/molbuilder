@@ -1,9 +1,11 @@
-"""`POST /api/modify/slab` — the slab op's door (redesign plan § 3).
+"""`POST /api/modify/slab` — the slab op's door (`web/tabs.md` § 2: *"one
+fcc slab, placed from absolute coordinates rather than relative to a picked
+group"*).
 
 It was built **beside** `/api/modify/electrode` under the user's
 build-then-replace rule, and replaced it: that route placed a slab relative to
 a picked group, and went on 2026-09-01 once nothing in the browser called it
-(§ 3.4a).
+(`archive/2026-09-01-modify-redesign-plan.md` § 3.4a, for the history).
 
 **The door reads no selection**, and that is asserted here rather than assumed,
 because it is the whole difference the redesign turned on: the old op placed

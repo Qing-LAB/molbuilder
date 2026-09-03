@@ -25,11 +25,10 @@
  * stub comments inline below for the deletion markers.
  */
 
-:root {
-    /* ---- Inspector-only token additions ---- */
-    --shadow-soft:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
-                      0 2px 6px rgba(0, 0, 0, 0.25);
-}
+/* `--shadow-soft` was defined here as an "inspector-only token addition".
+ * A `:root` block is not inspector-only -- it is global wherever this sheet
+ * loads -- and the name carries no module prefix, so it is global vocabulary
+ * either way.  It lives in `lib/tokens.css` now (`ui-contract.md` § 2). */
 
 /* ``.loader-bar`` + ``.loader`` + ``.loader button`` + ``.loader
  * input[type="text"]`` rules were removed 2026-05-19 along with the

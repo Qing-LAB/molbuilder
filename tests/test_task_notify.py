@@ -14,9 +14,15 @@ ending always reports, which is the reason the hook exists at all.
 **What is deliberately NOT here: the destination and its credential.**  This
 file travels — to a cluster, into a handoff bundle, to whoever is handed the
 calculation.  A policy is safe to carry; a token is not.  The URL and its
-secret live in `~/.molbuilder/notify` on the machine that runs the job, mode
-0600, and the split is what keeps the rest of the record shareable
-(`archive/2026-09-01-bench-and-junction-plan.md` § 2.9).
+secret live in **`config_dir()/notify`**, mode `0600`, on the machine that
+runs the job, and the split is what keeps the rest of the record shareable
+(`web/this-machine.md`, which owns that file; `run-reports.md` § 3 owns its
+format).
+
+*(This said `~/.molbuilder/notify` and cited the 2026-09-01 plan until
+2026-09-02.  The path was never right — it is the config directory, which
+`MOLBUILDER_CONFIG_DIR` may move — and the plan records how the split was
+decided rather than what is true now.)*
 """
 from __future__ import annotations
 
@@ -231,3 +237,117 @@ def test_finish_is_not_settable():
     someone turn off the one message the hook exists to deliver."""
     with pytest.raises(ValueError, match="unknown key"):
         _task(notify={"on_finish": False})
+
+
+# --------------------------------------------------------------------- #
+#  WHAT each report carries (`stages.md` § 6.9)                          #
+#                                                                        #
+#  `notify` says WHEN and TO WHOM; `report` says WHAT IS IN IT.  Added   #
+#  2026-09-02 and unpinned until now -- which is how the serializer came #
+#  to parse the key and write nothing.                                   #
+# --------------------------------------------------------------------- #
+
+def test_a_field_selection_survives_the_round_trip():
+    """**The defect this closes.** `read_task` parsed `notify.report` and
+    `to_dict` did not write it, so a description carrying a selection lost
+    it the first time anything read and wrote the file -- which the task-setup
+    tab does on every save.  No error anywhere; the ticks simply were not
+    there when you came back.
+    """
+    t = _task(notify={"every_hours": 6, "channels": ["lab"],
+                      "report": ["energy", "n_iters"]})
+    assert t.notify.report == ("energy", "n_iters")
+    assert t.to_dict()["notify"]["report"] == ["energy", "n_iters"], (
+        "the selection was parsed and then not written: "
+        + repr(t.to_dict()["notify"]))
+    assert Task.from_dict(t.to_dict()).notify == t.notify
+
+
+def test_ABSENT_is_every_field_and_an_EMPTY_LIST_is_the_summary_alone():
+    """Two states, not one falsy value (§ 6.9).
+
+    Absent means *everything the monitor could determine* -- what every
+    description written before this key existed already meant, and must keep
+    meaning.  `[]` is a real and different answer: the name, the state and
+    the summary line, with no field grid.  Dropping the empty list on the way
+    out would turn the second silently into the first, which is exactly the
+    `channels` rule one field over.
+    """
+    absent = _task(notify={"every_hours": 1})
+    assert absent.notify.report is None
+    assert "report" not in absent.to_dict()["notify"]
+
+    empty = _task(notify={"every_hours": 1, "report": []})
+    assert empty.notify.report == ()
+    assert empty.to_dict()["notify"]["report"] == [], (
+        "the empty list was dropped, so 'the summary line alone' came back "
+        "meaning 'every field'")
+    assert Task.from_dict(empty.to_dict()).notify.report == ()
+
+
+def test_a_selection_alone_is_a_policy_worth_writing():
+    """`Notify.__bool__` has to count it, or the block is dropped whole.
+
+    "Send it everywhere this machine has, but only these fields" is an
+    ordinary thing to want -- and it was unwritable, because the one field
+    stated was the one field that decided the block was empty.
+    """
+    t = _task(notify={"report": ["energy"]})
+    assert bool(t.notify)
+    assert t.to_dict()["notify"]["report"] == ["energy"]
+
+
+@pytest.mark.parametrize("bad,why", [
+    ("energy",              "a bare string, not a list"),
+    ({"energy": True},      "an object, not a list"),
+    (["wall_time"],         "a plausible name that is not a report field"),
+    (["name"],              "the name is always sent and is not settable"),
+    (["job_id"],            "nor is the job id"),
+])
+def test_a_field_that_is_not_a_report_field_is_refused_by_name(bad, why):
+    """One vocabulary (§ 6.9): what you tick, what travels, and what a
+    listener parses are the same words, so a name outside them is refused
+    at save rather than silently producing a report without it.
+
+    `name` and `job_id` are in this list on purpose: they ARE in every
+    report, and that is precisely why they are not selectable -- a report you
+    cannot attribute to a job is a notification you have to go and look up.
+    """
+    with pytest.raises(ValueError):
+        _task(notify={"report": bad})
+
+
+def test_the_refusal_names_the_fields_that_do_exist():
+    """A refusal that does not say what IS allowed makes the person guess."""
+    from molbuilder.task import REPORT_ITEMS
+    with pytest.raises(ValueError) as exc:
+        _task(notify={"report": ["nonsense"]})
+    said = str(exc.value)
+    for item in REPORT_ITEMS:
+        assert item in said, (
+            f"the refusal does not name {item!r}, so the reader cannot tell "
+            f"what to write instead: {said}")
+
+
+def test_a_repeated_field_is_kept_once_and_in_order():
+    """The same rule the channel names follow -- a list is a set with an
+    order, and a duplicate is a slip rather than a second request."""
+    t = _task(notify={"report": ["energy", "n_iters", "energy"]})
+    assert t.notify.report == ("energy", "n_iters")
+
+
+def test_the_two_vocabularies_are_the_same_list():
+    """`task.REPORT_ITEMS` is what a description is validated against;
+    `monitor.REPORT_ITEMS` is what the report actually builds.
+
+    They are written twice ON PURPOSE -- the monitor ships to a compute node
+    as a standalone stdlib-only script and cannot import from here -- so the
+    honest guard is to feed one to the other rather than to trust a comment.
+    A name accepted at save that the monitor does not know would be a tick
+    that silently does nothing.
+    """
+    from molbuilder.task import REPORT_ITEMS as DESCRIBED
+    from molbuilder.monitor import REPORT_ITEMS as BUILT
+    assert tuple(DESCRIBED) == tuple(BUILT), (
+        "the description's field list and the monitor's have drifted:\n"
+        f"  described: {DESCRIBED}\n  built:     {BUILT}")

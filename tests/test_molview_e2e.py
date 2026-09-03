@@ -1,4 +1,5 @@
-"""MolView in a real page — § 13.2's THIRD level, which this module has
+"""MolView in a real page — `web/molview.md` § 13.2's THIRD level, which this
+module has
 never had.
 
     | Level | Runs | Derived from | Shows |

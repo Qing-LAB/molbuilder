@@ -522,7 +522,7 @@ read here at all*, the other *is this a sound calculation*. They are ordered, so
 a description aimed at an engine this backend does not have never receives a
 lecture about its mesh cutoff first.
 
-### 5.2 Where a VALUE is fixed — the four ladders
+### 5.2 Where a VALUE is fixed — the five ladders
 
 § 5 orders the *decisions*. This orders the **values**, because *"where does
 this number come from?"* is the question a person actually asks, and it has
@@ -673,7 +673,11 @@ display: a surface that computed the emitted value itself would be a second
 implementation of the thing it is reporting, and would agree with the
 `.sbatch` only until one of them changed.
 
-**Four kinds, four ladders, weakest first — and no value is in two of them:**
+**Five kinds, five ladders, weakest first — and no value is in two of
+them.** *(It read "four" until 2026-09-02: § 6.8e split the scheduler
+ask in two — `mem`, which is the same in both lanes, and `time`/`domain`,
+which are not — and the row was added without the count above it being
+changed.)*
 
 | kind | example | weakest → strongest |
 |---|---|---|
@@ -696,7 +700,7 @@ be a second place to look and no new answer.
 decided/written … benchmark recommendation should be named such that it is
 understood not as a user input but for result presentation.")*
 
-There is no verdict rung in any of the four ladders. `summarize` writes
+There is no verdict rung in any of the five ladders. `summarize` writes
 `bench-recommendation.txt` beside `bench-result.json`; both are **read by a
 person and by no code**, and what the run uses is `execution` — which exists
 whether or not you ever benchmarked, and a run never requires one

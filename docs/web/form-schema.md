@@ -303,6 +303,28 @@ register with the runtime):
 | `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
 | `diffFromDefaults(host, schema)` | Which fields are **not** at the catalogue's recommended value, as `[{name, label, current, recommended, unit, help}]`. |
 
+### 3.0a What `setValues` guarantees, and the two ways it can fail quietly
+
+Both of these are things a *new field kind* gets wrong by omission, and both
+fail without an error — which is why they are written down rather than left to
+the reader of the function.
+
+**It fires `input` and `change` on everything it writes.** A programmatic fill
+that only sets `.value` looks applied on screen while every dirty-tracker,
+live preview and unsaved-marker on the page still believes nothing happened.
+The events are how the rest of the page finds out.
+
+**An `int-triple` is written through its sub-ids, not its own.** The three
+inputs are wrapped in an unidentified `<span>`, so there is no element
+carrying the field's `id` — the ordinary `#id` lookup returns null and the
+field is **skipped in silence**. It is handled by its own loop over
+`<id>-<label>` (the field's `labels`, else `x`/`y`/`z`), and a value that is
+not a 3-element array is skipped rather than half-applied.
+
+Everything else is written through `.value`, except a checkbox, which is
+written through `.checked`. A field absent from the values object is left
+alone — this is *push these*, not *reset to these*.
+
 ### 3.1 Why the difference is computed here
 
 `diffFromDefaults` needs both halves this module already owns — what the DOM

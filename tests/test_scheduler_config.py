@@ -2,14 +2,16 @@
 (``runtime_config.get_scheduler``).
 
 Authoritative design: docs/execution/job-system.md (schema),
-§ 6 (value sourcing), § 10 (refuse-to-emit).
+`job-system.md` § 6 -- both the value sourcing and the two
+reasons a `.sbatch` is withheld (a `workstation` record; no
+resolvable (partition, qos) pair).
 
 Pinned contracts:
   * absent ``scheduler`` block -> ``None`` (signal to emit only
-    ``.run.sh``; § 10).
+    ``.run.sh``; `job-system.md` § 6).
   * server-wide + project scopes deep-merge, project wins.
   * a ``slurm`` site MUST carry ``directives.partition`` + ``qos`` or
-    the reader raises (refuse-to-emit; § 10) -- even if completeness is
+    the reader raises (refuse-to-emit; `job-system.md` § 6) -- even if completeness is
     only reached after the scope merge.
   * type validation on directives / gpu / defaults.
 """
@@ -33,7 +35,7 @@ def sandbox(tmp_path, monkeypatch):
     """Clean cwd + isolated $HOME + cleared XDG so the server-wide lookup
     chain lands in tmp_path (mirrors test_runtime_config_multi_scope)."""
     monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).  The cwd step these
+    # THE SANDBOX IS THE CONFIG ROOT (`configuration.md` § 2.1c).  The cwd step these
     # tests were written against is gone, so without this every
     # config they write is a file nothing reads.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))

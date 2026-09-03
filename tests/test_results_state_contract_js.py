@@ -1,26 +1,35 @@
-"""Pin the load-bearing invariants from
-docs/web/results.md for the trajectory inspector
-(PR 2 of the migration).
+"""**`results.md` § 4 — what a mounted viewer remembers — enforced.**
 
-What this file covers
-=====================
+§ 4 states the shape in plain language: the parsed file (replaced whole on a
+file switch, never patched), your per-file view, your per-session preferences,
+and the poll timer.  The code names those buckets `fileState`, `viewState`,
+`uiPrefs` and `lifecycle`, moves between them through one `transition()`, and
+backs the whole thing with the two guards § 4 names -- a late response from a
+previous file cannot write into the current view (via `lifecycle.fetchSeq`),
+and in-progress frames stay out of the plots -- plus § 4.1's two-tick settle.
 
-The contract structures the inspector's state into five disjoint
-buckets with a single ``transition()`` orchestrator and three
-invariants (file-identity guard, in-progress frame filter,
-render-with-snapshot).  PR 2 lands the trajectory side; PR 3 will
-mirror it onto spectra.
+**These tests are the only place any of that is checked.**
 
-Each test below pins a different load-bearing property.  A future
-refactor that "simplifies" any of them re-introduces the bug class
-the contract was written to prevent.
+> **They were nearly deleted on 2026-09-02.**  A survey found their
+> vocabulary in *zero* live documents -- `fileState`, `fetchSeq`, `uiPrefs`
+> appear only in the design proposal this contract replaced -- and concluded
+> the file pinned a retired design.  It does not: `lib/trajectory/core.js` is
+> 3,212 lines built exactly this way, `fileState` alone appears 54 times in
+> it, and § 4 describes the same four buckets in prose.  What was true is
+> that the NAMES had no live home and the § 13 citations below pointed into
+> `archive/`, which the project's own rule says to open for history and never
+> to decide what is open now.  § 4 now names the buckets and § 4.1 states the
+> settle rule; the citations point there.
+>
+> **The lesson is about the survey, not the tests.**  A vocabulary search
+> across documents cannot tell a retired design from an undocumented one, and
+> the two want opposite actions.
 
-Out of scope for PR 2 (deferred to a future commit per the contract
-§ 10 migration plan):
-  * Snapshot-signature conversion of every render function.
-  * Plotly call-ladder optimization (.restyle / .relayout / .extendTraces).
-  * Spectra-side state-machine refactor (PR 3).
-  * Parser cache LRU + freshness gate (PR 4).
+**Read as SOURCE-PINNING, and that is a real limitation.**  Most of what
+follows greps `core.js` for structure rather than running it.  That catches a
+refactor that removes a guard and cannot catch one that keeps the shape and
+breaks the behaviour; the behavioural half lives in the e2e tests § 10 lists.
+Converting these to the node harness is tracked as **B3** in `plans/plan.md`.
 """
 from __future__ import annotations
 
@@ -266,8 +275,8 @@ class TestTransitionOrchestrator:
 
 
 class TestSettlePostLoad:
-    """The 2-consecutive-ticks WATCHING -> LOADED buffer (contract
-    § 2, § 13) lives in ``_settlePostLoad()``.  Called from both
+    """The 2-consecutive-ticks WATCHING -> LOADED buffer
+    (`results.md` § 4.1) lives in ``_settlePostLoad()``.  Called from both
     loadByPath and pollOnce; reads run_state, decides which
     transition to invoke."""
 
@@ -294,7 +303,8 @@ class TestSettlePostLoad:
             "2-tick buffer is broken.")
         assert ">= 2" in body or "> 1" in body, (
             "_settlePostLoad's finished-tick threshold isn't 2.  The "
-            "contract § 13 settled decision is M=2 consecutive ticks.")
+            "`results.md` § 4.1: a run is finished when it has said so "
+            "TWICE -- one tick can lie while the parser flushes.")
         # Both LOADED and WATCHING transitions referenced in the
         # finished-branch body.
         assert "LOADED" in body and "WATCHING" in body, (
@@ -451,7 +461,8 @@ class TestSettlePostLoad:
     def test_finishedTicks_reset_in_settle_ongoing_branch(self, core_body):
         """The ongoing branch of _settlePostLoad MUST reset
         finishedTicks -- an ongoing tick breaks any consecutive
-        finished streak.  Per contract § 13."""
+        finished streak (`results.md` § 4.1: the buffer counts CONSECUTIVE
+        ticks, not ticks in total)."""
         m = re.search(
             r"function\s+_settlePostLoad\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
             core_body, re.DOTALL,

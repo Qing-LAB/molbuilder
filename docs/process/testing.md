@@ -7,7 +7,7 @@ that enforce the conventions; [`package-layout.md`](?doc=process/package-layout.
 — where `tests/` sits; [`ops/installation.md`](?doc=ops/installation.md) — the
 conda envs the backend tests run against.
 
-The suite is ~275 test files. Most are fast Python unit/module tests you'll write
+The suite is ~360 test files. Most are fast Python unit/module tests you'll write
 constantly; a smaller set drives a real browser. This doc is the map: the pyramid,
 where tests go, how the front-end JS is tested without a browser, and the handful
 of Playwright patterns that keep the e2e tests from being flaky.
@@ -69,10 +69,19 @@ load-bearing elsewhere too).
 
 ## 4. Testing the front-end JS without a browser
 
-Most front-end logic is tested **in Node, no browser** — the `*_js.py` tests
-(~49 of them) drive `tests/_node_esm.py`. Its `run_node(files, snippet)` loads an
-ordered list of module files via dynamic `import()` and then runs a JS snippet
-against them.
+Most front-end logic is tested **in Node, no browser** — 48 `*_js.py` tests,
+plus a handful of others. `tests/_node_esm.py` is **the harness to use**, and
+its `run_node(files, snippet)` loads an ordered list of module files via
+dynamic `import()` and then runs a JS snippet against them.
+
+> **It is the harness to use, not the harness in use.** Of the 48 `*_js.py`
+> files, **7** drive `_node_esm`; 21 files across the whole suite do. The rest
+> hand-roll their own `subprocess.run(["node", ...])` — the duplication
+> recorded as **B4** in [`plans/plan.md`](?doc=plans/plan.md). This paragraph
+> claimed all of them did, which is the shape of drift worth naming: a
+> document describing the intended state in the present tense, so nobody
+> looking for the gap can see it. Reach for `_node_esm` in anything new;
+> converting the rest is B4's job.
 
 The clever part is that it spans the ESM migration: a classic IIFE file publishes
 its `window.molbuilder.*` global as a side effect, and a converted ES module
@@ -87,7 +96,7 @@ this, assert the result." Save the browser for what needs the DOM + 3Dmol.
 
 ## 5. The browser tests (Playwright / e2e)
 
-The ~19 `*_e2e.py` tests use **Playwright** against a real headless Chromium. Each
+The 19 `*_e2e.py` tests use **Playwright** against a real headless Chromium. Each
 spins up a **live Flask server** in a fixture (`flask_server`) built from
 `create_app`, and drives the `page` fixture (`page.goto(f"{base}/molbuilder")`, …).
 The default `web_client` fixture builds the app with **rate-limiting disabled**
