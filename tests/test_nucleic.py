@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from molbuilder import build_dna, build_rna
-from molbuilder.backends import available_backends
+from molbuilder.builders.backends import available_backends
 
 
 _BACKENDS = sorted(available_backends())

@@ -74,7 +74,7 @@ NOT read here any more."** It is open.
 | # | item | from | state |
 |---|---|---|---|
 | **C2** | **The wheel omits most of `static/`.** The packaging globs miss the core viewer and most of the front end; wants the globs fixed **and** a test that the wheel's file list covers every `static/` file a template references | roadmap § 4 | open |
-| **C3** | **`molbuilder/backends/` is the last no-shim violation.** A back-compat re-export package, still present — verified 2026-09-01. Ship-or-retire says retire | roadmap § 4 | open |
+| ~~**C3**~~ | **DONE 2026-09-03 — deleted.** The package was 35 lines re-exporting `molbuilder.builders.backends`, kept *"for external callers"*; and `build.py` carried a comment saying in-tree code goes direct. **Both halves were false**: `nucleic.py` and `web/app.py` imported the shim by RELATIVE path (`from .backends`, `from ..backends`), which an absolute-name grep does not see — the comment describing the rule was the only thing obeying it. 19 test references, two production imports and two module docstrings now name the real package | roadmap § 4 | done |
 | **C1** | **Step 5's remaining hand-joins.** Three of § 5.1's nine sites still join a filename onto a directory: `runtime_config` (`molbuilder.json`), `scheduler/record` (`environment.json`). `monitor`'s two are **not** residue — that module ships to a compute node with nothing else importable and owns the format (A11) | `config-access` § 5 | mostly done |
 
 ## 4. Open — the front end
@@ -131,7 +131,7 @@ gone."* A third re-read was overdue.
 | § 7.11 the two asks reach the browser | — | **done**, and says so |
 | § 3 **A4** — the disk-based selection endpoints, *"verify the live caller before deleting"* | open, caller named | **the caller is gone.** `_fetchAtoms` is absent from the MolView store; `/api/selection/atoms` is now caller-less — folded into **W8** |
 | § 7.4c **anonymous values** — 777 raw px/rem literals (2026-08-28) | open | **384.** Halved, not finished — **W13** |
-| § 4 **`molbuilder/backends/`** — the last no-shim violation | open | **still there** — **C3** |
+| § 4 **`molbuilder/backends/`** — the last no-shim violation | closed | **deleted 2026-09-03** — **C3** |
 | audits' **O1 O2 O3** (conclusion marker · supervisor respawn · stack-dump hook) | closed in the audit itself | closed, consistent |
 
 **What that leaves.** Of roughly forty items the roadmap presented as work,

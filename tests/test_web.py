@@ -174,7 +174,7 @@ def test_build_response_carries_validation_issues(web_client):
     X3DNA heavy-atom skeleton), the build response must include the
     h_ratio warn issue so the UI can flag it before the user clicks
     Generate FDF / PySCF."""
-    from molbuilder.backends import available_backends
+    from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
     r = web_client.post("/api/build/molecule",

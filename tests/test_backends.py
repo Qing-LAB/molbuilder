@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.backends import (
+from molbuilder.builders.backends import (
     BackendUnavailable,
     available_backends,
     dispatch,
@@ -69,7 +69,7 @@ def test_dispatch_explicit_backend_calls_only_that_one(monkeypatch):
 
 def test_dispatch_auto_prefers_amber_then_rdkit(monkeypatch):
     """auto mode picks the FIRST available backend in dispatch order
-    (amber > rdkit).  Documented in molbuilder/backends/__init__.py
+    (amber > rdkit).  Documented in molbuilder/builders/backends/__init__.py
     docstring; reflected here so a future re-ordering shows up.
     """
     calls = []
@@ -148,24 +148,24 @@ def test_dispatch_unknown_backend_raises_value_error():
 
 
 def test_rdkit_is_available_returns_bool():
-    from molbuilder.backends import _rdkit
+    from molbuilder.builders.backends import _rdkit
     assert isinstance(_rdkit.is_available(), bool)
 
 
 def test_amber_is_available_returns_bool():
-    from molbuilder.backends import _amber
+    from molbuilder.builders.backends import _amber
     assert isinstance(_amber.is_available(), bool)
 
 
 def test_threedna_is_available_returns_bool():
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     assert isinstance(_threedna.is_available(), bool)
 
 
 # --------------------------------------------------------------------- #
 #  3DNA detection chain                                                  #
 #                                                                        #
-#  Resolution priority (per molbuilder/backends/_threedna.py):           #
+#  Resolution priority (per molbuilder/builders/backends/_threedna.py):           #
 #    1. in-tree:  <repo_root>/x3dna-v*/  (preferred dev path)           #
 #    2. env var:  $X3DNA points at a complete install                   #
 #    3. PATH:     `fiber` on $PATH, derive root from its location        #
@@ -178,7 +178,7 @@ def test_threedna_is_available_returns_bool():
 def test_threedna_resolves_via_env_when_in_tree_missing(tmp_path, monkeypatch):
     """If no in-tree x3dna-v*/ is present but $X3DNA points at a
     valid install, the env path wins."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     fake_root = tmp_path / "x3dna-fake"
     (fake_root / "bin").mkdir(parents=True)
     (fake_root / "config").mkdir()
@@ -199,7 +199,7 @@ def test_threedna_unavailable_when_config_missing(tmp_path, monkeypatch):
     """An incomplete install (bin/fiber present but no config/) must
     NOT be claimed.  Without config/ the fiber binary fails at runtime
     with cryptic errors -- detection has to filter this case out."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     bad_root = tmp_path / "x3dna-broken"
     (bad_root / "bin").mkdir(parents=True)
     fiber = bad_root / "bin" / "fiber"
@@ -216,7 +216,7 @@ def test_threedna_unavailable_when_config_missing(tmp_path, monkeypatch):
 def test_threedna_unavailable_message_has_required_pieces(monkeypatch):
     """The unavailability message must mention all three failure modes
     plus the license / fallback contract from docs/design.md."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     monkeypatch.setattr(_threedna, "_find_in_tree", lambda: None)
     monkeypatch.delenv("X3DNA", raising=False)
     monkeypatch.setattr(_threedna, "_find_via_path", lambda: None)
@@ -238,7 +238,7 @@ def test_dispatch_threedna_unavailable_raises_with_message(monkeypatch):
     chain finds nothing, dispatch must raise BackendUnavailable
     carrying the full message contract.  Auto-mode falling through is
     NOT enough -- explicit request must surface the install hint."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     monkeypatch.setattr(_threedna, "_resolve", lambda: None)
     with pytest.raises(BackendUnavailable) as exc:
         dispatch("dna", "ATGC", backend="threedna")
@@ -282,7 +282,7 @@ def test_threedna_builds_real_dna_when_installed():
     must produce a chemically plausible Structure: at least one P, at
     least one of each base (DA/DT/DG/DC), backbone connectivity check
     passing.  Skipped on machines without 3DNA."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     if not _threedna.is_available():
         pytest.skip("3DNA not reachable on this machine")
     s = _threedna.build("dna", "ATGC", form="B", terminal="OH")
@@ -295,7 +295,7 @@ def test_threedna_a_form_differs_from_b_form():
     """A-form and B-form DNA have different helical parameters -- the
     geometries the fiber backend produces must actually differ.  This
     catches the case where the form flag isn't being plumbed through."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     if not _threedna.is_available():
         pytest.skip("3DNA not reachable on this machine")
     b = _threedna.build("dna", "ATGC", form="B", terminal="OH")
@@ -316,7 +316,7 @@ def test_threedna_is_alternating_gc_helper():
     sequences fiber's ``-z`` can build, plus rejects partial
     matches that would silently slip through to fiber's
     interactive 'Number of repeats' prompt."""
-    from molbuilder.backends import _threedna as _td
+    from molbuilder.builders.backends import _threedna as _td
     _is_alternating_gc = _td._is_alternating_gc
     # Accepted: strict alternation, both orientations, multiple
     # repeats.
@@ -344,7 +344,7 @@ def test_threedna_z_form_with_non_gc_sequence_rejects_fast():
     stdin under capture_output=True.  Skipped when 3DNA isn't
     reachable (the build() entry-point raises BackendUnavailable
     earlier in that case)."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     if not _threedna.is_available():
         pytest.skip("3DNA not reachable on this machine")
     with pytest.raises(ValueError, match=r"Z-DNA.*poly-d\(GC\)"):
@@ -355,7 +355,7 @@ def test_threedna_z_form_with_alternating_gc_succeeds():
     """The flip side: GCGCGC + form=Z must build cleanly under
     3DNA.  Catches the case where the new alternating-GC guard
     accidentally rejects a sequence fiber actually accepts."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     if not _threedna.is_available():
         pytest.skip("3DNA not reachable on this machine")
     s = _threedna.build("dna", "GCGCGC", form="Z", terminal="OH")
@@ -367,7 +367,7 @@ def test_threedna_rna_uses_uracil_not_thymine():
     """RNA must use U (uracil), not T (thymine).  fiber's `-rna` flag
     has to be set; if we accidentally call DNA mode for RNA, residue
     names will include DT and the structure will be chemically wrong."""
-    from molbuilder.backends import _threedna
+    from molbuilder.builders.backends import _threedna
     if not _threedna.is_available():
         pytest.skip("3DNA not reachable on this machine")
     r = _threedna.build("rna", "AUGC", form="A", terminal="OH")

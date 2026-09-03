@@ -638,7 +638,7 @@ def create_app(*, config=None) -> Flask:
         # (curl-able; the rate-limit tests probe it), a read-only
         # answer rather than a second writer, which is what kept it out
         # of the C-doors retirement.
-        from ..backends import auto_backend_name, available_backends
+        from ..builders.backends import auto_backend_name, available_backends
         return jsonify({
             "ok": True,
             "available": available_backends(),

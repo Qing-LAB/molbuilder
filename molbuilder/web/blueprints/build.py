@@ -331,9 +331,6 @@ def api_build_molecule():
             # which backend actually ran -- this matches dispatch()'s
             # selection logic exactly (see auto_backend_name docstring).
             if requested == "auto":
-                # Use the canonical path (the back-compat shim at
-                # molbuilder.backends is for external callers; in-tree
-                # code goes direct to builders.backends).
                 from molbuilder.builders.backends import auto_backend_name
                 backend_used = auto_backend_name()
             else:

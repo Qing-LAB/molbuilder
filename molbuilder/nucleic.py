@@ -6,7 +6,7 @@ Public API:
 
 All backends return the same :class:`molbuilder.structure.Structure`
 type, so file writers, the FDF generator, and the web UI don't care
-which backend produced the geometry.  See :mod:`molbuilder.backends`
+which backend produced the geometry.  See :mod:`molbuilder.builders.backends`
 for backend capabilities and install requirements.
 """
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .backends import dispatch
+from .builders.backends import dispatch
 # ``auto_backend_name`` resolves "auto" -> the chosen backend; used to gate
 # double-strand, which requires X3DNA.
 from .builders.backends import auto_backend_name

@@ -116,7 +116,7 @@ def test_h_ratio_organic_no_warn():
 def test_polymer_orientation_normal_chain_no_warn():
     """A clean 4-mer DNA chain with 5'->3' residue ordering must not
     trip the orientation validator."""
-    from molbuilder.backends import available_backends
+    from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
     from molbuilder import build_dna
@@ -134,7 +134,7 @@ def test_polymer_orientation_reversed_listing_warns():
     Build a normal chain, then flip residue_ids so the highest-numbered
     residue ends up at index 0.  Atom positions stay the same -- only
     the ID listing is reversed."""
-    from molbuilder.backends import available_backends
+    from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
     from molbuilder import build_dna
@@ -174,7 +174,7 @@ def test_h_ratio_runs_after_layer2_protonation():
     AFTER any add_hydrogens step at build time.  An X3DNA-built ATGC
     chain with default kwargs (add_hydrogens=True) must NOT trip the
     h_ratio warn -- protonation already happened, the ratio is healthy."""
-    from molbuilder.backends import available_backends
+    from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
     from molbuilder import build_dna
