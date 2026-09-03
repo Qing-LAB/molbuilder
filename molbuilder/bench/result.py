@@ -84,11 +84,23 @@ def parse_util_bound(monitor_log: str) -> Optional[str]:
     The verdict is the monitor's own call — it encodes the monitor's
     thresholds, so it is read from the monitor and nowhere else.  The
     utilisation NUMBERS on the same line are deliberately NOT read here
-    any more (2026-08-19): they are a digest of the same samples
-    ``util.csv`` records raw, the digest line can be missing entirely
-    (a trial that exits before the monitor's final write has a csv but
-    no summary), and two readers of one fact had already diverged once.
-    :func:`parse_util_csv` reads the samples; this reads the verdict.
+    (2026-08-19), for two reasons that still hold: the summary line can
+    be **missing entirely** — it is written only in the monitor's
+    terminal branch, so a trial killed by the scheduler leaves a csv and
+    no summary — and two readers of one fact had already diverged once.
+
+    **The two are not the same number, and this used to claim they
+    were** (corrected 2026-09-03).  It said the summary is *"a digest of
+    the same samples util.csv records raw"*.  It is not: the monitor
+    accumulates EVERY tick (``util_accum.add`` runs unconditionally)
+    while the csv is **change-gated** — a row lands only when a metric
+    moved ≥ 10% or a 300 s keepalive elapsed (``monitor.py``, the
+    util-sampling header).  So the summary's mean is exact over every
+    sample and :func:`parse_util_csv`'s is a reconstruction over a
+    subset.  Preferring the summary when it exists and falling back to
+    the csv would get both exactness and coverage — that is a design
+    call against the two-readers lesson above, not a cleanup, and it is
+    `plan.md` **E2**.
     """
     line = ""
     for ln in monitor_log.splitlines():
@@ -247,6 +259,15 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
     first sample; the monitor runs for the life of the job, so this is
     the job's wall time to sampling resolution), ``cpu_mean_pct``,
     ``gpu_sm_mean_pct``, ``gpu_vram_peak_gb``.
+
+    **The means are TIME-WEIGHTED because the series is change-gated.**
+    ``util.csv`` holds a row only when a metric moved ≥ 10% or a
+    keepalive elapsed, so a row stands for the interval until the next
+    one and a plain average over rows would weight a long steady stretch
+    the same as a brief spike.  That also makes these means a
+    RECONSTRUCTION: the monitor's own ``[UTIL-SUMMARY]`` averages every
+    tick and is exact, but is absent whenever a trial did not reach the
+    monitor's terminal branch (see :func:`parse_util_bound`).
     """
     lines = [ln for ln in csv_text.splitlines() if ln.strip()]
     if len(lines) < 2:
