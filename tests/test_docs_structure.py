@@ -284,17 +284,29 @@ def test_no_markdown_table_has_rows_orphaned_from_its_header():
     It happens when prose or a blockquote is written BETWEEN two rows, which
     looks entirely reasonable in the source.  The repair is to move the
     interruption below the completed table, never to delete rows.
+
+    **Fenced blocks are skipped** (2026-09-03).  A ``|`` inside ``` fences is
+    not a table row -- it is quoted output, and some of ours starts with one:
+    MolView's measurement readout prints ``|Au #12 - S #40| = 2.412 A``.  This
+    flagged that example the moment it was documented, which would have
+    pressured the doc to misquote the UI to satisfy a guard.
     """
     orphans = []
     for p in _new_tree_mds():
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
         i = 0
+        fenced = False
         while i < len(lines):
-            if not lines[i].lstrip().startswith("|"):
+            if lines[i].lstrip().startswith("```"):
+                fenced = not fenced
+                i += 1
+                continue
+            if fenced or not lines[i].lstrip().startswith("|"):
                 i += 1
                 continue
             start = i
-            while i < len(lines) and lines[i].lstrip().startswith("|"):
+            while (i < len(lines) and lines[i].lstrip().startswith("|")
+                   and not lines[i].lstrip().startswith("```")):
                 i += 1
             block = lines[start:i]
             if len(block) < 2 or "---" not in block[1]:

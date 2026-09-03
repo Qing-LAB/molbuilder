@@ -671,82 +671,19 @@ def _get_fcc_lattice() -> dict:
     return _FCC_LATTICE_A_CACHE
 
 
-# Metal-element-aware default contact distances (Å) loaded from
-# ``data/contact_distance.json``.  **Read by nobody in the package since
-# 2026-09-01**, when `add_electrode_slab` -- the one caller -- was deleted:
-# `add_slab` takes an absolute `start_z`, so no builder asks "how far from
-# the molecule should this metal sit" any more.  The TABLE is kept because
-# it is measured physics a person needs when typing `--electrode @contact=`,
-# and `default_contact_distance` is the published way to ask; wiring it in
-# as that flag's default is a decision, not a cleanup.  Au-S
-# canonical 2.40 Å is wrong for Pt-N (2.05) or Ag-S (2.50), so the
-# element-aware default is a real win over the previous hardcoded
-# 2.4 default.  Lazy-load + cache pattern matches the FCC lattice
-# table above.
-_CONTACT_DISTANCE_CACHE: Optional[dict] = None
-
-
-def _load_contact_distance() -> dict:
-    """Load the per-metal default contact-distance table from
-    ``contact_distance.json``.  Returns ``{element_symbol: float_A}``.
-    """
-    last_error: Optional[Exception] = None
-    for candidate_dir in _data_dir_candidates():
-        path = candidate_dir / "contact_distance.json"
-        if not path.is_file():
-            continue
-        try:
-            with open(path) as fh:
-                data = _json.load(fh)
-        except (_json.JSONDecodeError, OSError) as exc:
-            last_error = RuntimeError(
-                f"failed to read contact-distance table at {path!s}: {exc}"
-            )
-            continue
-        if not isinstance(data, dict) or "metals" not in data:
-            last_error = RuntimeError(
-                f"contact-distance table at {path!s} missing 'metals' key"
-            )
-            continue
-        out: dict = {}
-        for sym, entry in data["metals"].items():
-            try:
-                out[sym] = float(entry["d"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise RuntimeError(
-                    f"contact-distance entry {sym!r} in {path!s} "
-                    f"is malformed: {exc}"
-                ) from exc
-        if not out:
-            raise RuntimeError(
-                f"contact-distance table at {path!s} contains zero entries"
-            )
-        return out
-    raise RuntimeError(
-        f"could not locate contact_distance.json under any of: "
-        f"{[str(p) for p in _data_dir_candidates()]}.  "
-        f"Last error: {last_error}"
-    )
-
-
-def _get_contact_distance() -> dict:
-    """Return the per-metal default contact-distance dict, loading on
-    first call.  Cached for the rest of the process."""
-    global _CONTACT_DISTANCE_CACHE
-    if _CONTACT_DISTANCE_CACHE is None:
-        _CONTACT_DISTANCE_CACHE = _load_contact_distance()
-    return _CONTACT_DISTANCE_CACHE
-
-
-def default_contact_distance(element: str) -> float:
-    """Element-aware default contact distance (Å) for a metal anchor.
-
-    Falls back to 2.4 (canonical Au-S) when the element isn't in the
-    table -- preserves backward compatibility with callers that
-    relied on the old hardcoded default for unsupported metals.
-    """
-    table = _get_contact_distance()
-    return table.get(element, 2.4)
+# The metal-anchor contact distances (`data/contact_distance.json`) are NOT
+# read here any more.  `add_electrode_slab` -- the one caller -- was deleted
+# 2026-09-01, and `add_slab` takes an absolute ``start_z``, so no builder asks
+# "how far from the molecule should this metal sit": adding metal is manual
+# and a slab is placed by its z offset *(user, 2026-09-03: "we abandoned the
+# way how a junction is constructed by using bond distances")*.
+#
+# The table is measured physics and stays, as a REFERENCE rather than a
+# default: MolView's measurement readout shows the literature value when the
+# two atoms you picked are a known pair (`web/molview.md` § 11.6).  The
+# `default_contact_distance` / `_load_contact_distance` / `_get_contact_distance`
+# trio that served it as a default went with the last caller -- a lookup whose
+# whole purpose was to answer a question nobody asks.
 
 
 def _check_fcc_element(element: str) -> None:

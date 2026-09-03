@@ -887,6 +887,78 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     )
 
 
+def test_a_known_pair_shows_its_literature_distance():
+    """§ 11.6: measuring two atoms whose elements are a known metal-anchor pair
+    adds the reference distance beside the measured one.
+
+    **A reference, not a default and not a verdict** *(user ruling,
+    2026-09-03)*.  Junctions are not built from bond distances any more -- metal
+    is added by hand and a slab is placed by its z offset -- so the table's job
+    is to answer *"what is this bond usually"* at the moment you are looking at
+    one.  It is the number alone: no deviation, no judgement on a geometry you
+    may have set deliberately.
+
+    It shows at ANY distance.  Appearing only near the reference would make
+    silence mean two different things -- "not a known pair" and "you are far
+    off" -- and the second is the one worth seeing.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        globalThis.__nextAtoms = [
+            { index: 0, element: "Au", x: 0, y: 0, z: 0, regions: [] },
+            { index: 1, element: "S",  x: 0, y: 0, z: 2.412, regions: [] },
+            { index: 2, element: "C",  x: 0, y: 0, z: 4.0, regions: [] },
+        ];
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.reloadFrames([[[0,0,0], [0,0,2.412], [0,0,4.0]]]);
+        const card = host.querySelector(".molviewer-card");
+        const readout = card.querySelector(".molviewer-overlay--measure");
+        const refs = () => Array.from(
+            readout.querySelectorAll(".molviewer-measure-reference"))
+            .map((n) => n.textContent);
+
+        viewer.data.measurement.setActive(true);
+        viewer.data.pickAtom(0);
+        viewer.data.pickAtom(1);
+        const known = refs();
+
+        // The SAME pair the other way round: you may click the sulfur first.
+        viewer.data.measurement.clear();
+        viewer.data.pickAtom(1);
+        viewer.data.pickAtom(0);
+        const reversed = refs();
+
+        // Far apart, same pair -- the line does not go away.
+        viewer.data.reloadFrames([[[0,0,0], [0,0,7.5], [0,0,4.0]]]);
+        const farApart = refs();
+
+        // S-C is not in the table: nothing is said rather than something
+        // invented.
+        viewer.data.measurement.clear();
+        viewer.data.pickAtom(1);
+        viewer.data.pickAtom(2);
+        const unknown = refs();
+
+        // One atom is not a pair.
+        viewer.data.measurement.clear();
+        viewer.data.pickAtom(0);
+        const single = refs();
+        console.log(JSON.stringify({ known, reversed, farApart, unknown, single }));
+        """
+    )
+    assert out["known"] == ["Au–S reference: 2.40 Å"], out["known"]
+    assert out["reversed"] == ["Au–S reference: 2.40 Å"], (
+        "the pair must be unordered -- the click order is not chemistry: "
+        f"{out['reversed']}")
+    assert out["farApart"] == ["Au–S reference: 2.40 Å"], (
+        "the reference vanished at 7.5 Å.  Silence would then mean both "
+        f"'unknown pair' and 'far off', and the second is the useful one: "
+        f"{out['farApart']}")
+    assert out["unknown"] == [], f"S–C is not in the table: {out['unknown']}"
+    assert out["single"] == [], f"one atom is not a pair: {out['single']}"
+
+
 def test_two_viewers_on_one_page_share_no_name():
     """§ 5.6 and § 12.6: two mounts are two viewers that share nothing — and a
     NAME is something they can share by accident, because ids and radio-group

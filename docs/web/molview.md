@@ -3969,6 +3969,42 @@ is what a reader checks the derived number against. At two atoms, the distance
 from the first atom to the second, go this far along each axis*. At three, the
 angle.
 
+**And, at two atoms of a known pair, what that bond usually is** *(user,
+2026-09-03)*:
+
+```
+Au #12 — (0.000, 0.000, 0.000) Å
+S #40 — (0.000, 0.000, 2.412) Å
+|Au #12 – S #40| = 2.412 Å
+Δ = (0.000, 0.000, 2.412) Å
+Au–S reference: 2.40 Å
+```
+
+**A reference, not a default and not a verdict.** Junctions are no longer built
+from bond distances — metal is added by hand and a slab is placed by its z
+offset — so the measured table (`data/contact_distance.json`: Au–S 2.40, Ag–S
+2.50, Cu–S 2.30, Ni–S 2.20, Pt–N 2.05, Pd–S 2.30, each with its literature
+source) has one job left: answering *what is this bond usually* at the moment
+you are looking at one.
+
+Three rules follow, and each is the opposite of a plausible alternative:
+
+- **The number alone** — no deviation, no *"you are 0.3 Å off"*. A geometry may
+  be set deliberately, and a measurement is not the place to argue with it.
+- **At any distance.** Showing it only near the reference would make silence
+  mean two things — *not a known pair* and *far off* — and the second is the
+  one worth seeing.
+- **The pair reads in the TABLE's order**, metal–anchor, whichever atom you
+  clicked first. One reference, one name.
+
+The anchor element is half the key: Pt–N is 2.05 Å and Pt–S is 2.30, so a table
+keyed by the metal alone answers the wrong bond. (The retired
+`default_contact_distance` was keyed that way, which is why the table's own
+`anchor` and `note` fields were unreachable through it.) `molview/ui.js` carries
+the six numbers rather than fetching them per measurement, and
+`tests/test_contact_distance_reference.py` fails if that copy and the JSON
+disagree.
+
 **And the marks carry the ORDER** *(user, 2026-08-30: "the measurement
 selection need some indicator at the atom?"; 2026-08-31: "using arrows to show
 what is the item that is selected and the direction of that selection ... then

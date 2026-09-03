@@ -786,6 +786,14 @@
     color: var(--molviewer-color-text);
     font-weight: 600;
 }
+/* The literature value beside the measured one.  Dim and unemphasised on
+ * purpose: it is context, not the answer the click asked for, and giving it
+ * the result's weight would make it read as the number you were supposed to
+ * get. */
+.molviewer-measure-line.molviewer-measure-reference {
+    color: var(--molviewer-color-text-dim);
+    font-style: italic;
+}
 .molviewer-measure-clear {
     pointer-events: auto;           /* the exception, and the only one */
     align-self: flex-end;

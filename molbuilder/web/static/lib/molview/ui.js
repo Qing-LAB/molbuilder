@@ -1101,6 +1101,43 @@ function mountBadge(doc, card, model) {
 }
 
 
+/* ══ Contact-distance reference (§ 11.6) ══════════════════════════════════════
+ *
+ * Measured metal–anchor bond lengths, shown beside a two-atom measurement when
+ * the pair is one of these.  A REFERENCE, never a default: junctions are built
+ * by hand now — metal is added manually and a slab is placed by its z offset —
+ * so nothing here decides a geometry.  It answers "what is this bond usually",
+ * at the moment you are looking at one *(user, 2026-09-03)*.
+ *
+ * ONE HOME, MIRRORED UNDER GUARD.  The numbers and their literature sources
+ * live in `molbuilder/data/contact_distance.json`; this is a copy, because a
+ * fetch per measurement for six constants is not worth a round trip.
+ * `tests/test_contact_distance_reference.py` fails if the two disagree, which
+ * is the same arrangement `SIESTA_BENCH_FIELDS` has with the catalogue.
+ */
+const CONTACT_REFERENCE = {
+    "Au|S": 2.40, "Ag|S": 2.50, "Cu|S": 2.30,
+    "Ni|S": 2.20, "Pt|N": 2.05, "Pd|S": 2.30,
+};
+
+/** The literature entry for an unordered element pair, or null.
+ *
+ * Returns ``{ pair, d }`` where ``pair`` is the TABLE's own order
+ * (metal–anchor), not the click order: the reference is a fact about the bond,
+ * so "Au–S" reads the same whichever atom you picked first.  One reference,
+ * one name.
+ */
+export function contactReference(a, b) {
+    if (CONTACT_REFERENCE[a + "|" + b] !== undefined) {
+        return { pair: a + "–" + b, d: CONTACT_REFERENCE[a + "|" + b] };
+    }
+    if (CONTACT_REFERENCE[b + "|" + a] !== undefined) {
+        return { pair: b + "–" + a, d: CONTACT_REFERENCE[b + "|" + a] };
+    }
+    return null;
+}
+
+
 /* ══ The measurement readout (§ 11.6, § 8.5) ═════════════════════════════════
  *
  * Its own layer, and now its own INPUT: the atoms come from `measurement`, not
@@ -1191,6 +1228,17 @@ function mountReadout(doc, card, model) {
              * from the one the two clicks asked. */
             line("Δ = (" + [0, 1, 2].map((k) => fixed3(b[k] - a[k])).join(", ")
                  + ") Å", "molviewer-measure-result");
+            /* THE REFERENCE, when the pair is a known one.  The number only:
+             * what the bond usually is, beside what this one is, so the
+             * comparison is the reader's to make.  No deviation, no verdict —
+             * a geometry may be set deliberately, and a measurement is not the
+             * place to argue with it. */
+            const ref = contactReference(elements[picked[0]],
+                                         elements[picked[1]]);
+            if (ref !== null) {
+                line(ref.pair + " reference: " + ref.d.toFixed(2) + " Å",
+                     "molviewer-measure-reference");
+            }
         } else if (picked.length === 3) {
             // picked[1] is the vertex: the atom clicked SECOND.  Writing the
             // three in that order is what says which one it is — the middle

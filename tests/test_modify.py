@@ -762,28 +762,12 @@ def test_modify_module_falls_back_to_packaged_data_when_env_var_broken(
     importlib.reload(mod)
 
 
-# --------------------------------------------------------------------- #
-#  Element-aware default contact distance                               #
-# --------------------------------------------------------------------- #
-
-
-def test_default_contact_distance_table_has_supported_metals():
-    """The contact-distance table covers every metal the slab op
-    accepts; the Au-S canonical 2.40 A is the headline value, and
-    Pt-N is shorter (2.05) which is the whole reason for the table."""
-    from molbuilder.modify import (
-        default_contact_distance, SUPPORTED_FCC_ELEMENTS,
-    )
-    for sym in SUPPORTED_FCC_ELEMENTS:
-        d = default_contact_distance(sym)
-        assert isinstance(d, float)
-        assert 1.5 < d < 3.5, (sym, d)
-    assert default_contact_distance("Au") == 2.40
-    assert default_contact_distance("Pt") == 2.05
-    assert default_contact_distance("Ag") == 2.50
-    # Unsupported element falls back to the legacy Au-S value (back-
-    # compat with callers that relied on the old hardcoded default).
-    assert default_contact_distance("Fe") == 2.4
+# The element-aware DEFAULT contact distance retired 2026-09-03 with its
+# supplier.  Junctions are not built from bond distances any more -- metal is
+# added by hand, a slab is placed by its z offset -- so nothing asks for a
+# default gap.  The table itself lives on as a REFERENCE shown beside a
+# two-atom measurement; `tests/test_contact_distance_reference.py` owns it,
+# including the assertion that the supplier stays gone.
 
 
 # --------------------------------------------------------------------- #
