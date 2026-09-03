@@ -50,7 +50,7 @@ class PyscfAdapter:
     Open-shell treatment → UKS; closed-shell → RKS.  Doesn't pick
     between DFT and HF (the user picks the functional); the
     analyzer's job is the (charge, spin, treatment) triplet only.
-    See scientific-validation.md § 8 for what is intentionally out
+    See ``science/validation.md`` § 8 for what is intentionally out
     of scope.
     """
     name = "pyscf"

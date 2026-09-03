@@ -259,7 +259,8 @@ class TestSpectraPage:
         assert "auto-detect-btn" in js, (
             "spectra/viewer.js must wire the Auto-detect button "
             "(the scientific-guard step from "
-            "scientific-validation.md § 2.5).  Same chemistry that "
+            "`science/validation.md` § 4 -- loading fires the analysis, "
+            "the button applies it).  Same chemistry that "
             "drove the hemeC-dithiol incident lives here too — "
             "auto-detect surfaces it before Generate."
         )

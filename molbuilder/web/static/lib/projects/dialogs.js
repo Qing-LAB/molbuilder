@@ -2,7 +2,7 @@
  *
  * 2026-06-12: created when the foldable <details> create-form sections
  * + the per-entry "view"/"×" inline buttons were replaced with a single
- * + dropdown + a kebab menu (see projects-sidebar.md § Mutation UX).
+ * + dropdown + a kebab menu (see web/projects.md § 4).
  *
  * Each export opens a <dialog>, lets the user type / pick something,
  * and resolves with the chosen value (or null on cancel / ESC).  No

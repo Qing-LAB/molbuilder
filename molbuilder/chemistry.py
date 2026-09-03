@@ -712,8 +712,8 @@ class ChemistryAnalysis:
     chemistry by construction.
 
     All fields engine-agnostic.  Engine-specific translation lives
-    in per-engine adapter classes (see protocols/scientific-validation.md
-    § 4); adapters consume an instance of this class and emit a
+    in per-engine adapter classes (see ``science/validation.md``
+    § 3); adapters consume an instance of this class and emit a
     typed ``<Engine>SuggestedParams`` dataclass.
     """
     # Composition
@@ -771,7 +771,7 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
     carry chemistry-driven defaults; the rationale + warnings
     explain the choice.  Adapters translate these conclusions into
     each engine's parameter shape (see
-    ``protocols/scientific-validation.md`` § 4).
+    ``science/validation.md`` § 3).
 
     Spin policy (2026-06-13 — noble-metal-aware):
 
@@ -949,7 +949,7 @@ class EngineParameterAdapter(Protocol):
     Adapters live per-engine under ``molbuilder/<engine>/auto_defaults.py``
     and register themselves at import time via ``@register_adapter``.
 
-    Design rules (see scientific-validation.md § 4.4):
+    Design rules (see ``science/validation.md`` § 3):
 
     * PURE translator.  An adapter MUST NOT re-do chemistry detection,
       parity checks, or any other analysis.  All chemistry logic lives

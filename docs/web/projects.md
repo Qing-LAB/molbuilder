@@ -276,6 +276,27 @@ touch it. The parts:
   collapses it on desktop, and on a narrow screen it becomes a drawer. A lock
   banner covers the sidebar while an operation is in flight.
 
+### 4.1 Two rules the file operations follow, and why
+
+**A structure and its sidecar move as one.** Rename, move and copy check for the
+paired `.molstruct.json` and take both. If the second half fails, the first is
+rolled back, so you end up where you started rather than with `bridge.xyz`
+beside `water.molstruct.json` — a pairing the next load cannot find, which
+loses your labels silently. If the rollback *also* fails (same directory, same
+filesystem — rare), the refusal says exactly which file is where, because a
+half-renamed pair is the one state a person must be told about rather than left
+to discover. A destination whose sidecar already exists is refused up front
+rather than overwritten. The pairing rule itself is
+[`model/structure.md`](?doc=model/structure.md) § 2.4's; this is what the file
+operations owe it.
+
+**The newest navigation wins.** Opening a folder aborts the listing still in
+flight, so a slow earlier response cannot paint over the folder you are looking
+at now. On a local disk you would never see it; on a remote or networked
+filesystem a directory read can take seconds, and without this, clicking
+through three folders quickly leaves you looking at whichever listing happened
+to come back last.
+
 ## 5. The full public surface (reference)
 
 Everything below is on `window.molbuilder.projects`. The read/subscribe calls

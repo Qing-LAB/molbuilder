@@ -904,7 +904,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 + `${ext.toUpperCase()} from ${filename}.`, "ok");
             // Flip the load-bar readout to "Loaded: <name>", refresh the auto-detect
             // button, and auto-fire the analyzer (chemistry rationale visible by default;
-            // see scientific-validation.md § 2.5).  All hoisted, defined below in scope.
+            // see science/validation.md § 4).  All hoisted, defined below in scope.
             if (typeof _refreshLoadButton === "function") _refreshLoadButton();
             if (typeof _refreshAutoDetectButton === "function") _refreshAutoDetectButton();
             if (typeof _autoAnalyzeOnLoad === "function") _autoAnalyzeOnLoad(_sidebarLastFile);

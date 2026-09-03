@@ -41,7 +41,8 @@ Design note: this blueprint is the projects sidebar's full file-system
 surface.  The pre-2026-05-30 version was navigation-only ("intentionally
 read-only"); the 2026-05-30+ commits added mkdir / upload / write /
 delete / rename + the project-bootstrap endpoint to complete capability
-C4 in projects-sidebar.md.  Path-safety remains the invariant: every
+C4 (the mutation surface, ``web/projects.md`` § 4 + § 5).  Path-safety
+remains the invariant: every
 mutation runs through ``_resolve_within_roots`` + depth + canonical-
 topic checks before touching disk.
 """
@@ -1819,7 +1820,7 @@ def api_files_rename():
     # atomically (or both rollback).  Otherwise renaming water.xyz to
     # bridge.xyz orphans water.molstruct.json -- next load can't find
     # the sidecar from the new stem; the user's labels silently
-    # disappear.  See projects-sidebar.md § Rename.
+    # disappear.  See `web/projects.md` § 4.1.
     src_sidecar = _existing_paired_sidecar(resolved)
     dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
     if dst_sidecar is not None and dst_sidecar.exists():

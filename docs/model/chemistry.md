@@ -3,7 +3,7 @@
 **Role:** contract
 **Domain:** model
 **Companions:** `structure.md` (the `Structure` these operate on),
-`science/chemistry-correctness.md` + `science/scientific-validation.md` (the
+`science/chemistry-correctness.md` + `science/validation.md` (the
 **correctness** half of `chemistry.py` — spin/charge parity, open-shell metals,
 ECP resolution, the analyzer + engine adapters; migrating in the science wave),
 `engines/siesta.md` + `engines/pyscf.md` (the emitters that consume the
@@ -116,7 +116,7 @@ science wave), not the data model:
 | `detect_open_shell_metals` / `detect_transition_metals` | which metals need open-shell treatment | `science/chemistry-correctness.md` |
 | `explain_metal_spin`, `suggest_spin_total` | plausible spin states for a metal centre | `science/chemistry-correctness.md` |
 | `resolve_pyscf_ecp(struct, …)` | which atoms need an effective core potential | `engines/pyscf.md` |
-| `analyze_structure(struct)` → `ChemistryAnalysis` + `register_adapter` / `registered_adapters` | the analyzer + per-engine parameter adapters (the validation call graph) | `science/scientific-validation.md` |
+| `analyze_structure(struct)` → `ChemistryAnalysis` + `register_adapter` / `registered_adapters` | the analyzer + per-engine parameter adapters (the validation call graph) | `science/validation.md` |
 
 Keeping the correctness half in `science/` means a reviewer checking whether a
 default is scientifically defensible reads it alongside the other validation

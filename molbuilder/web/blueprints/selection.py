@@ -207,8 +207,8 @@ def _load_structure(structure_path: str) -> Structure:
 
 
 def _bad_request(msg: str, status: int = 400):
-    # Uniform error envelope (projects-sidebar.md § 12 + design.md
-    # 2026-05-25 "uniform {ok,error} envelope" decision).  Both ``ok``
+    # Uniform error envelope (`web/web-api.md` § 1 -- the four
+    # status buckets; decided 2026-05-25).  Both ``ok``
     # and ``error`` are load-bearing so a future client wrapper that
     # checks ``body.ok`` (as opposed to HTTP status) reads consistently
     # across blueprints.

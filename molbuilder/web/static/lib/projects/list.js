@@ -276,7 +276,7 @@ let _kebabActive = null;
 let _kebabGlobalsWired = false;
 // Last-call-wins navigation: the in-flight listing's AbortController, aborted when a
 // new openDir starts so a slow earlier response can't paint over a newer navigation
-// (projects-sidebar.md §5.5/§11.3 — matters on a remote filesystem).
+// (web/projects.md § 4.1 — matters on a remote filesystem).
 let _navController = null;
 
 function _dismissKebab() {

@@ -257,6 +257,17 @@ panels down) is to delete the parallel path, not patch it. So the analyzer runs
 in two directions over the one analysis: **forward** (auto-detect pre-fills the
 form) and **reverse** (Generate-time check).
 
+**Forward is two steps, and only the first is automatic.** Loading a structure
+fires the analysis at once (`lib/auto-detect.js::analyzeOnLoad`, shared by the
+Build and Spectra pages), so the chemistry rationale is on screen before you
+touch anything — *"Chemistry analyzed — click Auto-detect to apply suggested
+defaults to the form."* **The form is not filled in.** Writing values into a
+form is a decision about the calculation, so it stays behind the Auto-detect
+button; showing you what the molecule is, is not, and gating that behind a
+click is how a person generates a closed-shell SCF for an open-shell metal
+without ever seeing the reason not to. A stale-load guard drops the answer if
+you loaded something else while it was in flight.
+
 ---
 
 ## 4.1 The delivery contract — facts in, findings out (decided 2026-07-29)

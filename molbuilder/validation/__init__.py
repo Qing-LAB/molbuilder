@@ -63,7 +63,7 @@ from ..structure import Structure
 # because external modules (pyscf/vibration_deck, transport/transiesta,
 # tests/test_validation) imported them by name pre-split; renaming
 # them is the follow-up promotion proposed in
-# scientific-validation.md § 10 and is out of scope for this commit.
+# `science/validation.md` § 7 and is out of scope for this commit.
 from .chemistry import (_check_metal_basis_adequacy,
                         check_open_shell_metal,
                         _check_peptide_protonation)

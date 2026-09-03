@@ -235,7 +235,8 @@ export async function apiRename(path, newName, opts) {
 /** Move ``path`` into ``destDir``.  Sidecar-aware on .xyz/.pdb (the
  *  paired .molstruct.json moves atomically).  Optional ``opts.newName``
  *  renames during the move.  See /api/files/move docstring + the
- *  projects-sidebar.md spec.  Backend rejects directory sources in v1. */
+ *  web/projects.md § 4.1 (the pair moves as one).  Backend rejects
+ *  directory sources in v1. */
 export async function apiMove(path, destDir, opts) {
   opts = opts || {};
   const body = {path: path, dest_dir: destDir};

@@ -241,7 +241,7 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             // chemistry rationale is visible by default, not gated
             // behind the Auto-detect button.  Forms are NOT pre-
             // filled — the button still owns that explicit step.
-            // See scientific-validation.md § 2.5; same hook on
+            // See science/validation.md § 4; same hook on
             // /structure-optimization in static/viewer.js.
             if (typeof _autoAnalyzeOnLoad === "function") {
                 _autoAnalyzeOnLoad(f);
