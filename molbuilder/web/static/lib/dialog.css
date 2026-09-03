@@ -7,7 +7,8 @@
  *
  *   * the projects dialogs had a full vocabulary, written against the
  *     projects sidebar's PRIVATE `--ps-*` tokens;
- *   * `lib/warning-modal.js` and `modify/structure/save-dialog.js` wrote ten
+ *   * `lib/warning-modal.js` and the since-retired
+ *     `modify/structure/save-dialog.js` wrote ten
  *     class names between them that NO stylesheet defined, so the browser
  *     painted its own chrome -- a white box with default buttons, in an app
  *     that has no light theme at all.  Every unsaved-changes prompt and every

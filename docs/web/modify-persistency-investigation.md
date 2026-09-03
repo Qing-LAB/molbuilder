@@ -24,7 +24,7 @@ nothing keeps at all:
 | 2 | **do not lose this if the tab closes** — the draft | MolView's timeline, written on every edit | **yes** (same change) |
 | 3 | **take the structure away** — Export → Data | MolView's Export menu | n/a |
 | 4 | **take a picture away** — Export → Image | MolView's Export menu | n/a |
-| 5 | **put this in my project** — **Save to project** | **the tab**, via `projects.parser.saveMolecule` | n/a |
+| 5 | **put this in my project** — **Save to project** | **the tab**, via `projects.molviewFiles.save("project", …)` (2026-09-02; it was `parser.saveMolecule`) | n/a |
 | 6 | **where I was working** — which file, where it saved, which panel was open | **the tab, in memory only** | **NO** |
 
 Rows 5 and 6 are the subject of this document. Rows 1–4 are settled and correct.
@@ -38,7 +38,7 @@ land:
 | | Export → Data | Save to project |
 |---|---|---|
 | door | MolView's Export menu | the tab's Save panel |
-| reads | `exportFile(range)` | `exportFile(range)`, through `projects.parser.saveMolecule` |
+| reads | `exportFile(range)` | `exportFile(range)`, through `projects.molviewFiles` |
 | destination | a download | a path in the project tree |
 | names it | the export stem (§ 11.4) | the user, in a dialog |
 

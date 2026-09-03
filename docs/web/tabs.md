@@ -129,11 +129,12 @@ below. The controller code is deliberately thin glue:
 
   *There was a fourth, **Junction (electrode)**, and it is gone: the panel with
   the pair op (2026-08-31) and the per-side route with it (2026-09-01,
-  `modify-redesign-plan.md` § 3.4a). **Slab** is what replaced it, and it is
+  [`archive/2026-09-01-modify-redesign-plan.md`](?doc=archive/2026-09-01-modify-redesign-plan.md) § 3.4a — a plan,
+  for the history; this section is the rule). **Slab** is what replaced it, and it is
   its own controller below.*
 - **`modify/slab-panel.js` is the Slab op-tab** — one fcc slab, placed from
   absolute coordinates rather than relative to a picked group, which is the
-  whole point of the redesign (`modify-redesign-plan.md` § 3). It is the one
+  whole point of the redesign. It is the one
   controller that fetches a route directly: `GET /api/modify/meta`, for the
   element and plane menus, so the closed list of supported metals has one home
   rather than a copy in the page.
@@ -192,7 +193,7 @@ wrapper — is written by `prep` on the machine that runs it (the old
 `/api/siesta/install-pseudos` and `/api/run/install-wrapper` doors retired
 2026-08-21 with zero browser callers).  These files are written through the projects module's
 `safeSave` file-writer — note that's a *different* door from the structure-save in
-§6 (`saveMolecule` → `/api/structure/save`, which writes a molecule + sidecar
+§6 (`molviewFiles.save` → `/api/structure/save`, which writes a molecule + sidecar
 pair); a script isn't a molecule, so it takes the plain file-write door.
 
 ## 4. Transport — the composite's describe surface
@@ -357,27 +358,55 @@ the tree.
 
 ## 6. Save flow — the out-gate
 
-Every tab that saves a structure uses **one path out**, mirroring the one gate in
-(§2):
+**One door out, and the page does not own it.** Saving a structure is
+`projects.molviewFiles.save("project", stem, viewer.exportFile())` — the same
+door MolView's own Export → Data row goes through
+([`projects.md` § 5](?doc=web/projects.md)). A tab that saves supplies two
+things and no more: **what** (the viewer's export) and **a suggested stem**.
 
-1. You click **Save to project**; a dialog asks for a name (no default — you name
-   it deliberately). The target folder is **always the sidebar's current project
-   dir**.
-2. The model **serialises itself** — `molview.data.exportFile()` — so what's saved
-   is exactly what's on screen ("viewer is truth"). The tab does *not* scan the
-   structure for regions or frozen atoms; the model already knows them.
-3. That goes to **`POST /api/structure/save`** with `{path, blob, overwrite}`.
-   **The server writes the pair** — `<stem>.xyz` + `<stem>.molstruct.json` — and
-   stamps the sidecar's schema version and structure hash itself. The browser
-   never authors the sidecar (a past bug wrote a sidecar the load door then
-   rejected; the server-writes-it rule closed it).
-4. If the file exists and you didn't pass `overwrite`, the server replies
-   **`409 {needsOverwrite: true}`**; the tab pops an overwrite confirm and retries
-   with `overwrite: true`. On success the dirty bit clears and the sidebar
-   refreshes.
+1. You click **Save to project**. The door asks **where** — a folder, then a
+   name — through `projects.chooseSavePath`, *"one door for every flow that
+   deposits"*. Cancel at either step and nothing is written.
+2. The model **serialises itself** — `molview.data.exportFile()` — so what is
+   saved is exactly what is on screen (*viewer is truth*). The tab does **not**
+   scan the structure for regions or frozen atoms; the model already knows
+   them, and a browser-side scan is the second source § 7 forbids.
+3. The door posts **`POST /api/structure/save`** with `{path, structure,
+   frames?}`. **The server writes the pair** — `<stem>.xyz` +
+   `<stem>.molstruct.json` — and stamps the sidecar's schema version and
+   structure hash itself. The browser never authors the sidecar (a past bug
+   wrote one the load door then rejected; the server-writes-it rule closed
+   it), and it assembles no bytes at all.
+4. An existing file answers **`409 {needsOverwrite: true}`**; the door confirms
+   through `confirmDestructive` and retries with `overwrite: true`. On success
+   the sidebar refreshes and the periodicity gate's `notices` come back
+   verbatim.
 
-`saveMolecule` itself is documented in [`projects.md`](?doc=web/projects.md);
-here we've described the *page-level* save UX that calls it.
+**What the tab keeps is the panel, not the pipeline**: the readout beside the
+button — *"Target: `<name>.xyz`"*, *"Unsaved — Target: …"* once you edit
+again, and *"Not saved yet"* for a structure that has never been written —
+the
+button's enabled state, and recording where the bytes went — the page's own
+note, because the viewer tracks contents and not files
+([`molview.md` § 6.7](?doc=web/molview.md)).
+
+**The only precondition is that there is something to save.** There is no
+"pick a directory first": the directory is part of the question the dialog
+asks. A greyed-out Save whose reason is a selection somewhere else on the page
+is a control that cannot explain itself.
+
+> **Two implementations stood here, and this section described the older one.**
+> `modify/structure/save.js` was written before the front end had modules: it
+> could not `import`, so it took its collaborators off globals and grew its own
+> copy of the flow — its own name dialog, its own overwrite confirm, its own
+> refresh — while forcing the destination to the sidebar's current directory.
+> `molviewFiles` landed in 2026-08 on the modern path with the destination as a
+> question, and the Modify tab has mounted it into the viewer ever since; the
+> two reached the same route with the same body by two roads that were free to
+> drift, and had. The panel is now a panel and the door is the door.
+>
+> *(This section also said the request carries a `blob`. It has not since the
+> browser stopped assembling bytes — the field is `structure`.)*
 
 ## 7. Data coherence — one rule, enforced server-side
 
@@ -435,8 +464,13 @@ workstream (`archive/2026-09-01-roadmap.md § 3`).
 - `test_transport_render_endpoint.py`, `test_transport_transiesta.py`,
   `test_transport_generate_e2e.py`, `test_transport_preflight.py` — the transport
   render path, the engine, end-to-end generate, preflight.
-- `test_structure_save_endpoint.py`, `test_structure_save_js.py`,
-  `test_structure_save_dialog_js.py` — the save flow + its dialog.
+- `test_structure_save_endpoint.py` — the server end of § 6: the route, the
+  pair it writes, and the `409 needsOverwrite` contract.
+- `test_molview_files_door_js.py` — the door § 6 goes through.
+- `test_structure_save_js.py` — the panel: that it delegates, and that it
+  records the path the server answered. *(`test_structure_save_dialog_js.py`
+  went with `save-dialog.js` on 2026-09-02 — the panel's second copy of the
+  name-and-overwrite flow.)*
 - `test_smiles_fallback.py`, `test_structure_smiles_js.py` — the SMILES
   generator + the OpenBabel fallback.
 - `test_modify.py` — the Modify ops.

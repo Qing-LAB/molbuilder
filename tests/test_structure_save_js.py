@@ -1,14 +1,27 @@
-"""Unit tests for the Save panel module.
+"""The Save panel — `modify/structure/save.js`.
 
-Pins the public API of ``molbuilder/web/static/modify/structure/
-save.js`` — the Sources-card panel that writes the workspace
-structure back to disk.
+**It is a panel, not a save.**  `tabs.md` § 6: the writing is
+`projects.molviewFiles.save("project", stem, viewer.exportFile())` — the one
+door, which asks *where*, posts `/api/structure/save`, runs the overwrite
+confirmation and refreshes the sidebar.  What this file owns is the readout,
+the button's enabled state, and recording where the bytes went.
 
-Uses fake projects + structurePage + canvas surfaces so the
-target-resolution + writeFile + markSavedTo flow can be exercised
-without HTTP or sessionStorage.  The DOM wiring (``wirePanel``
-against the actual button + readout) is exercised by an e2e test
-in test_molbuilder_e2e.py.
+**What was retired here on 2026-09-02, and why.**  This file was 496 lines
+against a 456-line module, and its harness faked `projects.parser.saveMolecule`
+so it could exercise a save PIPELINE this panel no longer has: name
+normalisation, the overwrite retry, the sidebar refresh, fetch-level failures.
+All of that moved to `molviewFiles`, which had been mounted into this very tab's
+viewer since 2026-08 — two roads to one route, and this file tested the older
+one.
+
+Its coverage was not lost with it.  The door's own behaviour is
+`test_molview_files_door_js.py`; the server's 409 overwrite contract is
+`test_web.py`; the menu-to-door handoff is `test_molview_mount.py`.  Those are
+where the rules live, so a copy here would have been a second statement of them
+free to drift — which is exactly what it had become.
+
+What remains is what nothing else can say: that the PANEL delegates, and that it
+tells the page where the bytes went.
 """
 from __future__ import annotations
 
@@ -19,478 +32,294 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/save.js"
 
 
 def _run_node(snippet: str) -> object:
+    """Load save.js as a classic script and run `snippet` against its API.
+
+    It is an IIFE, not a module — the tab's scripts predate ESM and are
+    handed their collaborators rather than importing them — so it is loaded
+    through `module.exports`, which is the seam it already provides.
+    """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    module_path = MODULE.resolve()
     bootstrap = f"""
-        function _mkFakeCanvas(initial) {{
-            const state = Object.assign({{
-                empty: true, dirty: false,
-                structure: null,
-                source: {{kind: "blank", file: null,
-                         generator_input: null}},
-                lastSaveTo: null,
-            }}, initial || {{}});
-            const calls = [];
-            // save.js's SAVE door is the GLOBAL ``projects.parser.saveMolecule``
-            // (web/tabs.md § 6) -- NOT a canvas method.  Mount a fake
-            // there that records each call (path + overwrite) and returns a configurable
-            // envelope queue (default: success), so these tests pin save.js's COMPOSITION
-            // (name normalisation, overwrite retry, refresh, result mapping).  The write
-            // itself (exportFile -> POST /api/structure/save, the server writing the pair
-            // via StructureCodec.write) is covered by test_structure_save_endpoint.py.
-            // Recorded into the same ``calls`` array the tests read via ``c._saveCalls()``.
-            global.molbuilder = global.molbuilder || {{}};
-            global.molbuilder.projects = global.molbuilder.projects || {{}};
-            global.molbuilder.projects.parser = {{
-                saveMolecule: (viewer, path, opts) => {{
-                    calls.push({{path: path,
-                                 gotViewer: !!viewer,
-                                 overwrite: !!(opts && opts.overwrite)}});
-                    const q = state.saveResults;
-                    const r = (q && q.length) ? q.shift()
-                                              : {{ok: true, path: path}};
-                    return Promise.resolve(r);
-                }},
-            }};
-            /* A stand-in VIEWER on the surface molview.md § 9.3 lists. It used to
-             * answer isEmpty / isDirty / getSource / getLastSavedTo, none of which
-             * MolView has: where a structure came FROM and went TO are facts about
-             * file operations the PAGE performed, and the viewer tracks contents
-             * (§ 6.7). The page keeps them now, so they are not here. */
-            return {{
-                getStructure:   () => state.structure,
-                get uncommitted() {{ return state.dirty; }},
-                // save.js reads getStructure()/isEmpty(); the projects.parser door
-                // (faked above) is what serialises via exportFile.  Kept for shape.
-                exportFile: () => (state.structure ? {{
-                    xyz: (state.structure.text || ""),
-                    sidecar: {{ n_atoms_total: 0, structure_hash: "", regions: {{}},
-                               frozen_atoms: [], cell: null, axis_kind: null,
-                               vacuum: null, selection_rules: {{}} }},
-                }} : null),
-                subscribe:      () => () => {{}},
-                _calls:         () => calls.slice(),
-                _saveCalls:     () => calls.slice(),
-            }};
-        }}
-        function _mkFakeProjects(writeImpl) {{
-            const calls = [];
-            let refreshCount = 0;
-            return {{
-                writeFile: (path, text) => {{
-                    calls.push({{path, text}});
-                    return Promise.resolve(writeImpl(path, text));
-                }},
-                // Save triggers a sidebar refresh so the new file appears.
-                refresh: () => {{ refreshCount += 1; return Promise.resolve({{ok:true}}); }},
-                _refreshCount: () => refreshCount,
-                // 2026-06-09 (save dialog): save.js reads the current
-                // sidebar dir as the destination root.  Mirrors
-                // the workspace fixtures' ``/projects/p`` source dir
-                // so the saved path round-trips to the original
-                // location when the chosen filename matches the
-                // source basename.
-                getCurrentDir: () => "/projects/p",
-                _calls: () => calls.slice(),
-            }};
-        }}
-        /* The page coordinator. It is what REMEMBERS where this page last saved
-         * — the page chose the destination, and the viewer tracks contents, not
-         * files (molview.md § 6.7). `save.targetPath()` asks it, where it used to
-         * ask the viewer for `getLastSavedTo()` / `getSource()` and get
-         * `undefined` from both. */
-        function _mkFakeStructurePage(lastSaveTo) {{
-            const calls = [];
-            let saved = lastSaveTo || null;
-            return {{
-                markSavedTo: (p) => {{ saved = p; calls.push(p); }},
-                getCanvasSnapshot: () => ({{ lastSaveTo: saved }}),
-                _calls:      () => calls.slice(),
-            }};
-        }}
-        // web/tabs.md § 6: a Save now REQUIRES the name dialog (no default
-        // filename).  Mount a fake that returns ``chosenName`` and records the
-        // ``initial`` it was shown (must be blank) + overwrite confirmations.
-        function _mountDialog(chosenName, opts) {{
+        globalThis.window = globalThis;
+        globalThis.molbuilder = {{}};
+
+        /** A stand-in viewer DATA model: the two reads the panel makes, plus
+         *  the export it hands to the door. */
+        function fakeModel(opts) {{
             opts = opts || {{}};
-            const calls = {{ chooseSaveName: [], confirmOverwrite: [] }};
-            global.molbuilder = global.molbuilder || {{}};
-            global.molbuilder.structureSaveDialog = {{
-                chooseSaveName: (initial) => {{
-                    calls.chooseSaveName.push(initial);
-                    return Promise.resolve(chosenName);
-                }},
-                confirmOverwrite: (basename) => {{
-                    calls.confirmOverwrite.push(basename);
-                    return Promise.resolve(opts.confirmOverwrite !== false);
+            return {{
+                getStructure: () => (opts.empty ? null : {{ elements: ["C"] }}),
+                get uncommitted() {{ return !!opts.dirty; }},
+                exportFile: () => (opts.exportNull ? null : {{
+                    name: "x.xyz",
+                    structure: {{ elements: ["C"], positions: [[0, 0, 0]] }},
+                }}),
+                subscribe: (fn) => {{ fn(); return () => {{}}; }},
+            }};
+        }}
+
+        /** The door, recording what it was asked for and answering a queue. */
+        function fakeDoor(replies) {{
+            const calls = [];
+            return {{
+                calls,
+                save: (destination, stem, payload) => {{
+                    calls.push({{ destination, stem,
+                                  hasStructure: !!(payload && payload.structure) }});
+                    const q = replies || [];
+                    return Promise.resolve(
+                        q.length ? q.shift() : {{ ok: true, path: "/p/x.xyz" }});
                 }},
             }};
-            return calls;
         }}
-        const save = require({json.dumps(str(module_path))});
-        try {{
-            (async () => {{
-                {snippet}
-            }})().catch(err => {{
-                console.log(JSON.stringify({{
-                    __test_unexpected_throw: true,
-                    message: err && err.message ? err.message : String(err),
-                    stack:   err && err.stack ? err.stack : null,
-                }}));
-            }});
-        }} catch (err) {{
-            console.log(JSON.stringify({{
-                __test_unexpected_throw: true,
-                message: err && err.message ? err.message : String(err),
-                stack:   err && err.stack ? err.stack : null,
-            }}));
+
+        function fakePage(lastSaveTo, loadedFrom) {{
+            let saved = lastSaveTo || null;
+            const marks = [];
+            return {{
+                marks,
+                markSavedTo: (p) => {{ saved = p; marks.push(p); }},
+                getCanvasSnapshot: () => ({{ lastSaveTo: saved }}),
+                getLoadedFrom: () => (loadedFrom || null),
+            }};
         }}
+
+        const MODULE_PATH = {json.dumps(str(MODULE.resolve()))};
+        const mod = require(MODULE_PATH);
     """
     proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True,
-        text=True,
-        timeout=15,
+        ["node", "-e", bootstrap + "\n" + snippet],
+        capture_output=True, text=True, timeout=30,
     )
     if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    last_line = proc.stdout.strip().splitlines()[-1]
-    out = json.loads(last_line)
-    if isinstance(out, dict):
-        assert "__test_unexpected_throw" not in out, (
-            "module threw: " + str(out)
-        )
-    return out
+        pytest.fail(f"node exited {proc.returncode}\n"
+                    f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-# ----- Surface presence ------------------------------------------ #
+# --------------------------------------------------------------------- #
+#  The surface                                                          #
+# --------------------------------------------------------------------- #
+
+def test_the_panel_publishes_the_calls_the_page_wires():
+    """`useViewer` is how the page hands over the viewer it mounted — this
+    module cannot `import` it, which is the whole reason the bind door
+    exists (`selection-bootstrap.js`)."""
+    out = _run_node("""
+        console.log(JSON.stringify(
+            ["configure", "useViewer", "save", "targetPath", "wirePanel"]
+                .map((k) => typeof mod[k])));
+    """)
+    assert out == ["function"] * 5
 
 
-class TestSurfacePresence:
+# --------------------------------------------------------------------- #
+#  Where it last saved — the page's note, never the viewer's            #
+# --------------------------------------------------------------------- #
 
-    def test_methods_callable(self):
-        out = _run_node('''
-            console.log(JSON.stringify({
-                configure:  typeof save.configure,
-                save:       typeof save.save,
-                targetPath: typeof save.targetPath,
-                wirePanel:  typeof save.wirePanel,
-            }));
-        ''')
-        for fn in ("configure", "save", "targetPath", "wirePanel"):
-            assert out[fn] == "function"
+def test_the_target_is_the_pages_note_and_is_null_before_a_save():
+    """The viewer tracks contents, not files (`molview.md` § 6.7), so where
+    a structure went is `structurePage`'s to remember — and `targetPath` is
+    what the READOUT shows, not a destination.  The destination is the
+    question the door's dialog asks."""
+    out = _run_node("""
+        mod.configure({ structurePage: fakePage(null) });
+        const before = mod.targetPath();
+        mod.configure({ structurePage: fakePage("/p/done.xyz") });
+        console.log(JSON.stringify({ before, after: mod.targetPath() }));
+    """)
+    assert out["before"] is None
+    assert out["after"] == "/p/done.xyz"
 
 
-# ----- targetPath resolution ------------------------------------- #
+# --------------------------------------------------------------------- #
+#  Saving = delegating                                                  #
+# --------------------------------------------------------------------- #
+
+def test_save_hands_the_viewers_export_to_the_project_door():
+    """One door out (`tabs.md` § 6).  The panel supplies WHAT and a suggested
+    stem; the door owns WHERE, the overwrite flow and the refresh."""
+    out = _run_node("""
+        const door = fakeDoor();
+        molbuilder.projects = { molviewFiles: door };
+        mod.configure({ projects: molbuilder.projects,
+                        structurePage: fakePage(null, "/p/bdt.xyz"),
+                        workspace: fakeModel() });
+        mod.save().then((r) => {
+            console.log(JSON.stringify({ r, calls: door.calls }));
+        });
+    """)
+    assert out["r"]["ok"] is True
+    assert len(out["calls"]) == 1
+    call = out["calls"][0]
+    assert call["destination"] == "project", call
+    assert call["hasStructure"] is True, (
+        "the door was handed no structure -- the model serialises itself and "
+        "the panel passes that through")
+    assert call["stem"] == "bdt", (
+        f"the loaded file's stem should be SUGGESTED as the name: {call}")
 
 
-class TestTargetPath:
+def test_the_page_records_the_path_the_SERVER_answered():
+    """Not the one we asked for: `auto_rename` may have written
+    `<stem>-2.xyz`, and confirming a name we merely proposed would name a
+    file that does not exist."""
+    out = _run_node("""
+        molbuilder.projects = { molviewFiles:
+            fakeDoor([{ ok: true, path: "/p/bdt-2.xyz" }]) };
+        const page = fakePage(null, "/p/bdt.xyz");
+        mod.configure({ projects: molbuilder.projects, structurePage: page,
+                        workspace: fakeModel() });
+        mod.save().then(() => {
+            console.log(JSON.stringify({ marks: page.marks,
+                                         target: mod.targetPath() }));
+        });
+    """)
+    assert out["marks"] == ["/p/bdt-2.xyz"]
+    assert out["target"] == "/p/bdt-2.xyz"
 
-    def test_returns_where_this_page_last_saved(self):
-        """Save writes back to wherever this page last wrote.
 
-        The answer comes from the page coordinator, which performed that save.
-        It used to come from the viewer, twice — `getLastSavedTo()` then
-        `getSource().file` — and the viewer has never had either: it tracks
-        contents, not files (molview.md § 6.7).
-        """
-        out = _run_node('''
-            const c = _mkFakeCanvas({ empty: false });
-            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
-                            structurePage: _mkFakeStructurePage("/p/saved.xyz")});
-            console.log(JSON.stringify(save.targetPath()));
-        ''')
-        assert out == "/p/saved.xyz"
+def test_a_cancelled_save_records_nothing():
+    """Cancelling either half of the door's dialog writes no file, so the
+    page must not claim a target it does not have."""
+    out = _run_node("""
+        molbuilder.projects = { molviewFiles:
+            fakeDoor([{ ok: false, cancelled: true }]) };
+        const page = fakePage(null, "/p/bdt.xyz");
+        mod.configure({ projects: molbuilder.projects, structurePage: page,
+                        workspace: fakeModel() });
+        mod.save().then((r) => {
+            console.log(JSON.stringify({ cancelled: !!r.cancelled,
+                                         marks: page.marks }));
+        });
+    """)
+    assert out["cancelled"] is True
+    assert out["marks"] == []
 
-    def test_null_before_this_page_has_saved_anything(self):
-        """Nothing saved yet -> no target -> Save is disabled and the user needs
-        Save-as. Opening a file no longer sets one: opening is not saving, and
-        the page records a destination only when it writes to one.
-        """
-        out = _run_node('''
-            const c = _mkFakeCanvas({ empty: false });
-            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
-                            structurePage: _mkFakeStructurePage()});
-            console.log(JSON.stringify(save.targetPath()));
-        ''')
-        assert out is None
 
-    def test_null_for_smiles_without_prior_save(self):
-        """SMILES-generated structure with no last_save_to → null
-        → Save button disables (Save-as comes later)."""
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                source: {kind: "smiles",
-                         generator_input: {smiles: "CCO"}},
-                lastSaveTo: null,
+# --------------------------------------------------------------------- #
+#  Refusals — said, never thrown                                        #
+# --------------------------------------------------------------------- #
+
+def test_nothing_loaded_is_refused_by_name():
+    """Nothing loaded reads as nothing (`molview.md` § 9.3)."""
+    out = _run_node("""
+        molbuilder.projects = { molviewFiles: fakeDoor() };
+        mod.configure({ projects: molbuilder.projects,
+                        structurePage: fakePage(null),
+                        workspace: fakeModel({ empty: true }) });
+        mod.save().then((r) => console.log(JSON.stringify(r)));
+    """)
+    assert out["ok"] is False
+    assert "No structure to save" in out["error"]
+
+
+def test_a_missing_collaborator_is_an_ENVELOPE_not_a_throw():
+    """The click handler shows `error` beside the button; a rejection would
+    leave a hung "Saving…" and tell the user nothing.  Both halves the panel
+    depends on are checked: the viewer the page hands over, and the door."""
+    out = _run_node("""
+        // no viewer
+        mod.configure({ projects: { molviewFiles: fakeDoor() },
+                        structurePage: fakePage(null) });
+        mod.save().then((noViewer) => {
+            // a viewer, but no door on this page
+            molbuilder.projects = {};
+            mod.configure({ projects: {}, structurePage: fakePage(null),
+                            workspace: fakeModel() });
+            return mod.save().then((noDoor) => {
+                console.log(JSON.stringify({ noViewer, noDoor }));
             });
-            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
-                            structurePage: _mkFakeStructurePage()});
-            console.log(JSON.stringify(save.targetPath()));
-        ''')
-        assert out is None
-
-    def test_null_on_empty_canvas(self):
-        out = _run_node('''
-            const c = _mkFakeCanvas();
-            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
-                            structurePage: _mkFakeStructurePage()});
-            console.log(JSON.stringify(save.targetPath()));
-        ''')
-        assert out is None
+        });
+    """)
+    assert out["noViewer"]["ok"] is False and "viewer" in out["noViewer"]["error"]
+    assert out["noDoor"]["ok"] is False and "door" in out["noDoor"]["error"]
 
 
-# ----- save() flow ----------------------------------------------- #
+def test_an_export_that_cannot_be_written_out_is_refused_not_sent():
+    """`exportFile()` answers null when the geometry and the per-atom facts
+    disagree (`molview.md` § 9.3).  Sending that would ask the server to
+    write a structure the viewer itself could not state."""
+    out = _run_node("""
+        const door = fakeDoor();
+        mod.configure({ projects: { molviewFiles: door },
+                        structurePage: fakePage(null),
+                        workspace: fakeModel({ exportNull: true }) });
+        mod.save().then((r) => console.log(JSON.stringify(
+            { ok: r.ok, error: r.error, calls: door.calls.length })));
+    """)
+    assert out["ok"] is False
+    assert out["calls"] == 0, "a refused export still reached the door"
 
 
-class TestSaveFlow:
+def test_the_readout_follows_the_model_whichever_arrives_first():
+    """**A race the page does not control, and neither order may lose.**
 
-    def test_delegates_to_the_save_coordinator_with_the_named_target(self):
-        """save.js composes the flow; the WRITE is the door's
-        (projects.parser.saveMolecule).  The user names the file; save() resolves
-        the sidebar dir + name, appends .xyz, and calls saveMolecule ONCE with
-        overwrite:false (no clobber on the first try)."""
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz",
-                            text: "3\\nH2O\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n"},
-                source: {kind: "file", file: "/projects/p/water.xyz"},
-                lastSaveTo: null,
-            });
-            _mountDialog("water-modified.xyz");
-            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
-                            structurePage: _mkFakeStructurePage()});
-            const r = await save.save();
-            console.log(JSON.stringify({ envelope: r, saveCalls: c._saveCalls() }));
-        ''')
-        assert out["envelope"] == {
-            "ok": True, "path": "/projects/p/water-modified.xyz"}
-        # `gotViewer` pins the other half: the save door writes FROM a viewer
-        # and is given one, rather than looking one up (molview.md § 5.6).
-        assert out["saveCalls"] == [
-            {"path": "/projects/p/water-modified.xyz",
-             "gotViewer": True, "overwrite": False}]
+    `wirePanel` runs from `DOMContentLoaded`; the viewer arrives later, after
+    an `await MV.mount(...)` in `selection-bootstrap.js`.  Either can be
+    second.  When the panel wired first there was no model to subscribe to,
+    the `_wired` guard stopped a second attempt, and **the readout never moved
+    again** — you could edit the structure and it went on saying
+    "Target: x.xyz" with no "Unsaved", for the rest of the session.
 
-    def test_base_name_gets_xyz_appended_and_sidebar_refreshes(self):
-        """The user names the structure WITHOUT an extension; the save owns the
-        suffixes.  A bare ``water`` -> target ``water.xyz`` (so the coordinate
-        file is reloadable), and on success the sidebar is refreshed so the new
-        pair appears without a manual reload."""
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "1\\nx\\nH 0 0 0\\n"},
-                source: {kind: "file", file: "/projects/p/orig.xyz"},
-                lastSaveTo: null,
-            });
-            const proj = _mkFakeProjects(() => ({ok:true}));
-            _mountDialog("water");                       // no extension typed
-            save.configure({canvas: c, projects: proj,
-                            structurePage: _mkFakeStructurePage()});
-            const r = await save.save();
-            console.log(JSON.stringify({
-                envelope:     r,
-                saveCalls:    c._saveCalls(),
-                refreshCount: proj._refreshCount(),
-            }));
-        ''')
-        assert out["envelope"]["ok"] is True
-        assert out["saveCalls"][0]["path"] == "/projects/p/water.xyz"  # .xyz appended
-        assert out["refreshCount"] == 1                    # sidebar refreshed on success
+    Nothing about that is visible in a reading of either file: each half is
+    correct on its own and the defect is in their order.  Pinned in both
+    directions because fixing one order and not the other is the shape the
+    bug already had.
+    """
+    out = _run_node("""
+        function panelDoc() {
+            const el = () => ({ textContent: "", disabled: false,
+                                addEventListener() {} });
+            const nodes = { "save-to-source-btn": el(),
+                            "save-readout": el(), "save-status": el() };
+            return { getElementById: (id) => nodes[id] || null, _nodes: nodes };
+        }
+        molbuilder.status = { set() {} };
 
-    def test_no_default_filename_dialog_gets_blank(self):
-        """§1: NO default filename -- even with a prior last_save_to, the dialog
-        opens BLANK (the Modify tab makes a modified version; we never pre-fill
-        the loaded/last-saved name)."""
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "x"},
-                source: {kind: "file", file: "/projects/p/orig.xyz"},
-                lastSaveTo: "/projects/p/renamed.xyz",
-            });
-            const dlg = _mountDialog("chosen.xyz");
-            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
-                            structurePage: _mkFakeStructurePage()});
-            await save.save();
-            console.log(JSON.stringify({
-                initialShown: dlg.chooseSaveName,
-                target:       c._saveCalls()[0].path,
-            }));
-        ''')
-        # Dialog was shown a BLANK initial -- no default, not the source name.
-        assert out["initialShown"] == [""]
-        # Saves to the sidebar dir + the user-chosen name (.xyz owned by the save).
-        assert out["target"] == "/projects/p/chosen.xyz"
+        /** A model that can be edited, and tells its subscribers. */
+        function liveModel() {
+            let dirty = false; const subs = [];
+            return {
+                getStructure: () => ({ elements: ["C"] }),
+                get uncommitted() { return dirty; },
+                exportFile: () => ({ structure: {} }),
+                subscribe: (fn) => { subs.push(fn); fn(); return () => {}; },
+                edit() { dirty = true; subs.forEach((f) => f()); },
+            };
+        }
 
+        function readoutAfterEdit(viewerFirst) {
+            // a fresh module instance per order -- `_wired` is module state
+            delete require.cache[require.resolve(MODULE_PATH)];
+            const m = require(MODULE_PATH);
+            const model = liveModel();
+            const doc = panelDoc();
+            m.configure({ structurePage: fakePage("/p/x.xyz") });
+            if (viewerFirst) {
+                m.useViewer({ ok: true, data: model });
+                m.wirePanel({ doc });
+            } else {
+                m.wirePanel({ doc });
+                m.useViewer({ ok: true, data: model });
+            }
+            model.edit();
+            return doc._nodes["save-readout"].textContent;
+        }
 
-# ----- Refusal paths --------------------------------------------- #
-
-
-class TestRefusals:
-
-    def test_empty_canvas_refused(self):
-        out = _run_node('''
-            const c = _mkFakeCanvas({empty: true});
-            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
-                            structurePage: _mkFakeStructurePage()});
-            const r = await save.save();
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is False
-        assert "No structure" in out["error"]
-
-    def test_no_target_refused(self):
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "x"},
-                source: {kind: "smiles",
-                         generator_input: {smiles: "C"}},
-                lastSaveTo: null,
-            });
-            let writeCalls = 0;
-            const p = {writeFile: () => { writeCalls++;
-                                          return Promise.resolve({ok:true});},
-                       getCurrentDir: () => null};
-            save.configure({canvas: c, projects: p,
-                            structurePage: _mkFakeStructurePage()});
-            const r = await save.save();
-            console.log(JSON.stringify({envelope: r, writeCalls}));
-        ''')
-        assert out["envelope"]["ok"] is False
-        # 2026-06-09: generator workspaces now get a Save-as path if
-        # the sidebar has a current directory.  The fake projects in
-        # this test doesn't implement getCurrentDir, so save() falls
-        # through to the "pick a project directory" refusal.
-        msg = out["envelope"]["error"].lower()
-        assert ("save as" in msg
-                or "pick a project directory" in msg), (
-            f"expected Save-as or pick-dir refusal; got {msg!r}"
-        )
-        assert out["writeCalls"] == 0
-
-
-# ----- Error paths ----------------------------------------------- #
-
-
-class TestErrorPaths:
-
-    def test_server_error_surfaces(self):
-        """A write failure from the coordinator is SURFACED (returned), never
-        swallowed -- and the sidebar is NOT refreshed for a failed save."""
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "x"},
-                source: {kind: "file", file: "/p/f.xyz"},
-                saveResults: [{ok: false, error: "permission denied"}],
-            });
-            const proj = _mkFakeProjects(() => ({ok:true}));
-            _mountDialog("f.xyz");
-            save.configure({canvas: c, projects: proj,
-                            structurePage: _mkFakeStructurePage()});
-            const r = await save.save();
-            console.log(JSON.stringify({
-                envelope: r, refreshCount: proj._refreshCount(),
-            }));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "permission denied" in out["envelope"]["error"]
-        # No refresh on a failed save.
-        assert out["refreshCount"] == 0
-
-    def test_network_throw_surfaces_envelope(self):
-        """The coordinator maps a network throw to a {ok:false, error} envelope;
-        save.js surfaces it verbatim."""
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "x"},
-                source: {kind: "file", file: "/p/f.xyz"},
-                saveResults: [{ok: false, error: "Save failed: Failed to fetch"}],
-            });
-            const proj = _mkFakeProjects(() => ({ok:true}));
-            _mountDialog("f.xyz");
-            save.configure({canvas: c, projects: proj,
-                            structurePage: _mkFakeStructurePage()});
-            const r = await save.save();
-            console.log(JSON.stringify({
-                envelope: r, refreshCount: proj._refreshCount(),
-            }));
-        ''')
-        assert out["envelope"]["ok"] is False
-        assert "Failed to fetch" in out["envelope"]["error"]
-        assert out["refreshCount"] == 0
-
-
-# ----- Configuration error surface ------------------------------- #
-
-
-class TestConfigurationErrors:
-
-    def test_save_rejects_when_canvas_unconfigured(self):
-        out = _run_node('''
-            const p = save.save();
-            let rejected = false, msg = "";
-            try { await p; }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({rejected, msg}));
-        ''')
-        assert out["rejected"] is True
-        # Phase 10 (web/workspace.md § 1): renamed from
-        # "canvas" to "workspace" — the legacy structureCanvas
-        # store is no longer the save panel's dependency.
-        assert "workspace" in out["msg"]
-
-    def test_save_rejects_when_projects_unconfigured(self):
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "x"},
-                source: {kind: "file", file: "/p/f.xyz"},
-            });
-            save.configure({canvas: c});
-            const p = save.save();
-            let rejected = false, msg = "";
-            try { await p; }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({rejected, msg}));
-        ''')
-        assert out["rejected"] is True
-        assert "projects" in out["msg"]
-
-    def test_save_rejects_when_structurePage_unconfigured(self):
-        out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                structure: {source_format: "xyz", text: "x"},
-                source: {kind: "file", file: "/p/f.xyz"},
-            });
-            save.configure({
-                canvas: c,
-                projects: {getCurrentDir: () => "/projects/p"},
-                // structurePage MISSING
-            });
-            const p = save.save();
-            let rejected = false, msg = "";
-            try { await p; }
-            catch (e) { rejected = true; msg = e.message; }
-            console.log(JSON.stringify({rejected, msg}));
-        ''')
-        assert out["rejected"] is True
-        assert "structurePage" in out["msg"]
+        console.log(JSON.stringify({
+            viewerFirst: readoutAfterEdit(true),
+            panelFirst:  readoutAfterEdit(false),
+        }));
+    """)
+    for order, said in out.items():
+        assert "Unsaved" in said, (
+            f"with the {order} order the readout did not follow the model "
+            f"after an edit: {said!r} -- the panel is wired to nothing")

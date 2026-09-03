@@ -355,7 +355,7 @@ Transport has none, which is the known "no in-app save to project" gap
 ### C8. Three independent `<dialog>` scaffolds — `open`
 
 `lib/warning-modal.js`, `lib/projects/dialogs.js` and
-`modify/structure/save-dialog.js` (which holds two) each re-implement: create the
+`modify/structure/save-dialog.js` (which held two; retired 2026-09-02) each re-implement: create the
 element, attach a `cancel` listener, `showModal()` with a fallback, guard against
 a second settle, `close()`. `lib/projects/dialogs.js:17` says so out loud —
 *"Each dialog runs the warning-modal pattern (save-dialog.js's idiom)"*. The

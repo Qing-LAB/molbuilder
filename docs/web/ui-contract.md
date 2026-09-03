@@ -56,8 +56,21 @@ Two naming tiers:
   layout/spacing/type scales (`--radius`, `--gap`, `--space-xs…xl`,
   `--text-2xs…xl`).
 - **Module-private (prefixed)** — a module's own tokens, kept out of the shared
-  namespace: `--ps-*` (projects sidebar), `--sp-*` (selection panel), and so on.
+  namespace: `--ps-*` (projects sidebar), `--ts-*` (task setup), and so on.
   These live in the same one file, promoted out of scattered per-file blocks.
+
+> **`:root` is not component-scoped, and that is why there is no exception.**
+> A `:root` block matches the document wherever its sheet is loaded, so a
+> token defined in a component file is set for every page that loads it — and
+> two components setting the same name differently is decided by `<head>`
+> order. `test_css_no_hex_literals` enforces the rule as stated: **no token
+> definition outside `tokens.css`, prefixed or not.** It used to exempt any
+> name that was not already canonical, on the reasoning that a per-file
+> namespaced palette is legitimate; what that exemption actually protected on
+> 2026-09-02 was three tokens with no prefix at all — `--page-max-width` and
+> `--focus-ring` in `modify/style.css`, `--shadow-soft` in the trajectory
+> inspector under the heading *"inspector-only token additions"*. All three
+> are here now.
 
 **The embed-safety pattern.** A component that can be dropped into a foreign host
 (the 3D embed, an inspector) writes `var(--token, #fallback)` — the token if the
@@ -348,7 +361,7 @@ before concluding anything.
 | rule | verdict | how it was settled |
 |---|---|---|
 | `.workflow-group--stage` | **live** | composed from `role`; 11 SIESTA fields carry it; 2 matches measured on the Build form |
-| `.mb-dialog-title`, `.mb-dialog-field` | **declared API — keep** | both dialog modes opened; neither uses them. But `dialog.css`'s own header names them as the component's vocabulary, and that sheet exists *because* JS once wrote ten classes no stylesheet answered and the browser painted its own chrome. Here the **dialogs** are the drift: `save-dialog.js` puts a bare `<h2>` where the vocabulary says `.mb-dialog-title`. Fix the markup, never the sheet. |
+| `.mb-dialog-title`, `.mb-dialog-field` | **declared API — keep** | both dialog modes opened; neither uses them. But `dialog.css`'s own header names them as the component's vocabulary, and that sheet exists *because* JS once wrote ten classes no stylesheet answered and the browser painted its own chrome. The one file that put a bare `<h2>` where the vocabulary says `.mb-dialog-title` was `modify/structure/save-dialog.js`, **retired 2026-09-02** when the Save panel moved onto `projects.chooseSavePath` — so the drift left with it rather than being patched. Any new dialog uses the vocabulary. |
 | `.mb-dialog::backdrop` | **live** | Trap 3 — not selectable, matches on every modal |
 | `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.workflow-group-apply-btn`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |
 

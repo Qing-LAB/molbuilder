@@ -143,15 +143,21 @@ labels). If the model already has unsaved edits, `openMolecule` can pause and
 ask first (pass a `confirmDiscard` function) and returns `{ ok:false,
 cancelled:true }` if you decline.
 
-**Saving — `projects.parser.saveMolecule(path)`:**
+**Saving — `projects.molviewFiles.save("project", stem, payload)`** *(it was
+`parser.saveMolecule(path)` until 2026-09-02; that door took a path it was
+given, so it needed a UI layer to decide one, and the tab's copy of that layer
+went with it — § 5):*
 
-1. It asks MolView for the file bytes (`molview.data.exportFile()` → the `.xyz`
-   plus its sidecar).
+0. It asks **where**: a folder, then a name (`chooseSavePath`). Cancel either
+   and nothing is written.
+1. The caller has already asked MolView for the file bytes
+   (`molview.data.exportFile()` → the `.xyz` plus its sidecar).
 2. It posts them to **`/api/structure/save`**; the **server** reconstructs the
    structure and writes the `.xyz` + `.molstruct.json` pair — the server owns
    the pairing *and* the sidecar's format (it stamps the schema version and a
    real content hash).
-3. On success MolView is marked saved.
+3. On success the sidebar refreshes, the gate's `notices` ride the result, and
+   the calling page records where the bytes went.
 
 Why the server writes the sidecar: a browser-written sidecar had no schema
 stamp, so the *load* door rejected it — a save-then-reload trap. Letting the
@@ -340,7 +346,7 @@ does not decide for the user.
 Cancel hook.
 
 **The molecule door** — `projects.parser.openMolecule(path, {confirmDiscard})`
-and `projects.parser.saveMolecule(path, {overwrite})` (§ 3).
+(§ 3). **There is no `parser.saveMolecule`** — saving is the files door below.
 
 **The MolView files door** — `projects.molviewFiles` *(2026-08-19)*: the one
 implementation of the `files` option every MolView mount hands in

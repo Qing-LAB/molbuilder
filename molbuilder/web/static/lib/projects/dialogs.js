@@ -13,7 +13,7 @@
  * returns the existing pending promise; opening dialog A while B is
  * open closes B and starts A.  No modal stacking.
  *
- * Each dialog runs the warning-modal pattern (save-dialog.js's idiom):
+ * Each dialog runs the warning-modal pattern (`lib/warning-modal.js`):
  *   * ESC + Cancel + clicking off the modal all resolve to null
  *   * primary input gets initial focus
  *   * destructive actions (overwrite) default-focus on Cancel
@@ -67,7 +67,9 @@ function _open(dialog) {
 // ─── Filename / dirname validation ───────────────────────────────── //
 
 // Same rules as the rename endpoint: basename-only, no separators,
-// not . / .. .  Mirrors save-dialog.js's _validate.
+// not . / .. .  (The rule came from `modify/structure/save-dialog.js`,
+// retired 2026-09-02 when the Save panel moved onto this module's own
+// `chooseSavePath`; this is now its only home.)
 function _validateName(raw) {
   const s = (raw || "").trim();
   if (!s) return { ok: false, reason: "" };

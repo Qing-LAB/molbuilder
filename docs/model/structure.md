@@ -352,10 +352,19 @@ A tab calls a door and nothing below it; reaching around a door (a second
 file stack, a browser-written sidecar, poking the store) is wrong by
 definition.
 
-### 3.1 The doors — `projects.parser.openMolecule` / `saveMolecule`
+### 3.1 The open door — `projects.parser.openMolecule`
 
-Both are **FILE-ONLY**: the door hands a `path` (and, on save, the structure
-itself as the wire envelope) to the **server**, which owns file access, the
+> **There was a save door beside it until 2026-09-02.**
+> `parser.saveMolecule` took a path it was GIVEN and posted it, handing a
+> `needsOverwrite` back for the caller to deal with — so it always needed a UI
+> layer on top, and `modify/structure/save.js` was that layer. When the Save
+> panel moved onto `projects.molviewFiles.save("project", …)`, which asks WHERE
+> and owns the overwrite flow itself ([`tabs.md` § 6](?doc=web/tabs.md)), the
+> half-door had no caller and was deleted rather than kept as a second way to
+> write one file. **Opening needs the pairing rule; saving needs a
+> destination** — different questions, one door each.
+
+It is **FILE-ONLY**: the door hands a `path` to the **server**, which owns file access, the
 `.xyz`↔`.molstruct.json` pairing, and the sidecar schema. The browser reads
 no bytes, derives no sidecar path, writes no coordinate document, and **never
 authors the sidecar schema** (a browser-written sidecar had no
@@ -365,19 +374,18 @@ task #75).
 | Door | Does | Server seam |
 |---|---|---|
 | `openMolecule(path, {confirmDiscard?})` | dirty-gate → `molview.data.installMolecule({path})` | `POST /api/build/load` (`build.py:841`) → `StructureCodec.read` |
-| `saveMolecule(path, {overwrite?, range?})` | `exportFile(range)` → `{name, structure, frames?}` (refuses a geometry↔labels desync) → POST | `POST /api/structure/save` (`build.py:713`) → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + real `structure_hash`) |
+| *(saving)* `projects.molviewFiles.save("project", stem, exportFile(range))` | asks WHERE (`chooseSavePath`) → POST → confirms an overwrite → refreshes the sidebar | `POST /api/structure/save` → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + real `structure_hash`) |
 
 `openMolecule` is **only** for a project-file path. Generated text
 (smiles/dna/…) has no file, so generators call
 `molview.data.installMolecule({text})` directly — the model primitive, not the
-door. **`saveMolecule` writes XYZ only** — the codec's generator emits a plain
-`.xyz` or an extended one and there is no PDB serializer, so a save to a `.pdb`
-path would receive XYZ bytes (the shipped caller forces `.xyz`). Asymmetry:
-`openMolecule` *loads* a `.pdb` (the parse seam sniffs PDB), but `saveMolecule`
-cannot save one.
-A 409 "exists" envelope → `{ok:false, needsOverwrite:true}` so the tab confirms
-and retries with `{overwrite:true}` (the dialog is UI policy, injected — the
-door + model layers stay DOM-free).
+door. **Saving writes XYZ only** — the codec's generator emits a plain `.xyz`
+or an extended one and there is no PDB serializer, so a save to a `.pdb` path
+would receive XYZ bytes (the door forces `.xyz`). Asymmetry: `openMolecule`
+*loads* a `.pdb` (the parse seam sniffs PDB); nothing saves one.
+A 409 "exists" envelope → `{needsOverwrite:true}`, and the door confirms and
+retries with `{overwrite:true}` — the dialog is `projects`' own
+(`confirmDestructive`), so the model layer stays DOM-free.
 
 ### 3.2 The model primitives + the JS key-namer
 
@@ -425,7 +433,7 @@ sequenceDiagram
 | Consumer | `file:function` | Call |
 |---|---|---|
 | Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `openMolecule(path, {confirmDiscard})` |
-| Molbuilder tab — Save panel | `modify/structure/save.js:_saveDataset` | `saveMolecule(path, {overwrite})` + dialog |
+| Molbuilder tab — Save panel | `modify/structure/save.js:save` | `projects.molviewFiles.save("project", stem, exportFile())` — the door asks WHERE and owns the overwrite flow (`tabs.md` § 6). **It does not go through `saveMolecule`**, and since 2026-09-02 nothing does |
 | Transport commit | `lib/transport/core.js:_showInMolview` | `openMolecule(path)` + `molview.mount` |
 | Spectra commit | `spectra/viewer.js:_commitStructure` | `openMolecule(path)` + `molview.mount` |
 | Results structure inspector | `lib/inspectors/structure.js` | `openMolecule(path)` + `molview.mount` |
@@ -457,7 +465,7 @@ flowchart TB
         B["Load / Save / sidebar dblclick"]
     end
     subgraph PR["molbuilder.projects — concealed sidebar package"]
-        DOORS["parser.openMolecule / saveMolecule (format-aware DOORS)"]
+        DOORS["parser.openMolecule (format-aware OPEN door)<br/>molviewFiles.save (the save flow)"]
         BYTES["readFile / writeFile (format-blind BYTES)"]
         DOORS -->|"move bytes via"| BYTES
     end
