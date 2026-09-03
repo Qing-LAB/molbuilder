@@ -1118,6 +1118,18 @@ def _machine_config_file() -> Path:
     return config_dir() / CONFIG_FILENAME
 
 
+def _project_config_file(project_dir) -> Path:
+    """The project scope's file, inside the project directory.
+
+    Its sibling above had a door and this scope did not, so
+    ``Path(project_dir) / PROJECT_CONFIG_FILENAME`` was written out at seven
+    call sites -- including inside two refusal messages, where a join that
+    drifted would print a path the reader cannot find.  One home, so the
+    spelling cannot differ between the reader and the message about it.
+    """
+    return Path(project_dir) / PROJECT_CONFIG_FILENAME
+
+
 def _read_scope(path: Path) -> Dict[str, Any]:
     """Read one scope's JSON file; ``{}`` if absent.
 
@@ -1277,7 +1289,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     mode_warning = machine_config_mode_warning()
 
     if project_dir is not None:
-        project_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
+        project_path = _project_config_file(project_dir)
         sources.append({"scope": "project", "path": str(project_path),
                         "found": project_path.is_file(), "via": "project"})
 
@@ -1294,7 +1306,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
             return {}
 
     machine_file = _raw_file(machine_path)
-    project_file = (_raw_file(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+    project_file = (_raw_file(_project_config_file(project_dir))
                     if project_dir is not None else {})
     effective: Dict[str, Dict[str, Any]] = {}
     for section in _PROVENANCE_SECTIONS:
@@ -1401,13 +1413,13 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
     silently dropped is worse than one that was never allowed -- it looks
     effective, and the folder is saved under rules nobody applied.
     """
-    scope = _read_scope(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+    scope = _read_scope(_project_config_file(project_dir))
     if "checkpoint" in scope:
         # The registry says machine-only too, but checkpoint keeps its own
         # message: S1c is the section-specific WHY, and the operator
         # reading this refusal is mid-mistake about exactly that.
         raise RuntimeConfigError(
-            f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: a 'checkpoint' "
+            f"{_project_config_file(project_dir)}: a 'checkpoint' "
             f"section may not live in a PROJECT-scope file "
             f"({PROJECT_CONFIG_FILENAME}, in a project or calculation "
             f"folder).  The "
@@ -1424,7 +1436,7 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
         allowed = ", ".join(n for n, spec in _SECTIONS.items()
                             if "project" in spec["scopes"])
         raise RuntimeConfigError(
-            f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: "
+            f"{_project_config_file(project_dir)}: "
             f"{', '.join(map(repr, misplaced))} may not live in a "
             f"PROJECT-scope file ({PROJECT_CONFIG_FILENAME}, in a project "
             f"or calculation folder) -- machine sections have one home, the "
@@ -1847,7 +1859,7 @@ def get_scheduler(
     project_raw: Optional[Mapping[str, Any]] = None
     project_path = None
     if project_dir is not None:
-        project_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
+        project_path = _project_config_file(project_dir)
         project_raw = _read_project(Path(project_dir)).get("scheduler")
 
     if server_raw is None and project_raw is None:
@@ -2051,7 +2063,7 @@ def write_config_scope(
                 f"a project-scope {PROJECT_CONFIG_FILENAME}: machine "
                 f"sections have one home, the server-wide {CONFIG_FILENAME}."
             )
-        target = Path(project_dir) / PROJECT_CONFIG_FILENAME
+        target = _project_config_file(project_dir)
 
     existing: Dict[str, Any] = {}
     if target.is_file():

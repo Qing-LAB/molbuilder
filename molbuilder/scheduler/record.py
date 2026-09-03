@@ -781,6 +781,17 @@ def machine_scope_path() -> Path:
     return config_dir() / FILENAME
 
 
+def calculation_record(bundle_dir) -> Path:
+    """The record a calculation carries, at its root.
+
+    The join lived at three sites -- ``record_scopes``, a refusal message and
+    the snapshot path -- and two of them are places a reader is TOLD a path.
+    A message naming a file the code does not read is worse than no message,
+    so the spelling has one home.
+    """
+    return Path(bundle_dir) / FILENAME
+
+
 def environments_dir() -> Path:
     """Where NAMED target records live — ``<machine scope>/environments/``.
 
@@ -936,7 +947,7 @@ def record_scopes(bundle_dir=None,
     """
     scopes: List[Tuple[str, Path]] = []
     if bundle_dir is not None:
-        scopes.append(("calculation", Path(bundle_dir) / FILENAME))
+        scopes.append(("calculation", calculation_record(bundle_dir)))
     if target is not None:
         known = named_environments()
         if target in known:
@@ -1042,7 +1053,7 @@ class UnknownTarget(Exception):
             f"--target {name!r} does not match the machine this calculation "
             f"was already prepped for.  A calculation is snapshotted once so "
             f"two stages cannot resolve against different machines.\n"
-            f"  To move it: delete {Path(bundle_dir) / FILENAME} and prep "
+            f"  To move it: delete {calculation_record(bundle_dir)} and prep "
             f"again with --target {name}.\n"
             f"  To keep it: drop --target."))
         return exc
@@ -1202,7 +1213,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # through to a fresh probe of the machine the user is sitting at, which
     # is the exact failure this refusal exists to stop.
     if target is None and _named:
-        _snapshot = (Path(bundle_dir) / FILENAME) if bundle_dir is not None else None
+        _snapshot = calculation_record(bundle_dir) if bundle_dir is not None else None
         if _snapshot is None or not _snapshot.is_file():
             raise AmbiguousTarget(list(_named) + ["(this machine)"])
 
@@ -1226,7 +1237,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
 
 
 __all__ = [
-    "SCHEMA", "FILENAME", "Topology", "Site", "Domain", "Environment",
+    "SCHEMA", "FILENAME", "calculation_record", "Topology", "Site", "Domain", "Environment",
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
