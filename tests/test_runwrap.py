@@ -316,79 +316,94 @@ def test_render_siesta_redirects_stdout_per_job_layout_v1():
     assert '_out_file="system-label-run${_run_n}.out"' in text
 
 
-def test_render_siesta_auto_mpi_clamps_to_n_atoms(monkeypatch):
-    """Auto-mpi path: when n_atoms is known + physical_cores >
-    n_atoms, resolved_mpi must clamp to n_atoms.  Otherwise SIESTA
-    aborts at propor IMAX=0 (small molecule + many-core host).
-    Caught by the 2026-05-28 holistic-math audit."""
-    _bind()
-    # Pretend the host has 64 physical cores.
-    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
-                        lambda: 64)
-    # 30-atom molecule, no user-set mpi_np -> auto.
-    text = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30, resources=Resources())
-    # The generation-time default must be 30, NOT 64.  The launcher
-    # itself uses ``$_mpi_np`` so user can also override at run time
-    # via ``-np N`` / ``MB_NP=N``.
-    assert "_mpi_np_default=30" in text, (
-        "auto-mpi must clamp default to n_atoms=30 (host has 64 cores, "
-        "but 30 atoms = max usable rank count)"
-    )
-    assert "_mpi_np_default=64" not in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
-    # The clamp note must be visible in the wrapper.
-    assert "auto-mpi clamped from 64" in text
-    assert "to 30 (n_atoms)" in text
+def test_the_rank_count_is_the_users_and_nothing_lowers_it():
+    """**No atom-count clamp, on either path** *(user ruling, 2026-09-03)*.
 
+    Three tests stood here.  The auto path lowered its default to `n_atoms`,
+    a user-set count above `n_atoms` got a WARNING predicting a
+    ``propor IMAX=0`` abort, and a third pinned the no-clamp case.  All three
+    encoded the same rule, and the rule was not science: *"whether mpi is too
+    big for a system is none of your business.  We had that problem because
+    of a psml related issue, not a size issue."*  It gave right-sounding
+    advice for a wrong reason where it fired, and refused good rank counts
+    everywhere else.
 
-def test_render_siesta_auto_mpi_no_clamp_when_atoms_geq_cores(monkeypatch):
-    """Auto-mpi path: when n_atoms >= the target's width, no clamp -- use
-    the whole machine.
-
-    It patched `physical_core_count` until 2026-09-02; the width now comes
-    from the record and nowhere else (`running-a-job.md` § 3.1), so the
-    record is passed directly.  The rule under test -- *no clamp when the
-    atoms outnumber the cores* -- is untouched."""
+    So: a 64-core target with a 30-atom molecule asks for 64, and a user who
+    says 200 gets 200.
+    """
     from molbuilder.scheduler import Environment, Topology
     _bind()
     rec = Environment(scheduler="slurm",
-                      topology=Topology(sockets=1, cores_per_socket=8))
-    text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200,
+                      topology=Topology(sockets=2, cores_per_socket=32))
+
+    auto = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30,
                               resources=Resources(), machine_record=rec)
-    assert "_mpi_np_default=8" in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
-    assert "clamped" not in text
+    assert "_mpi_np_default=64" in auto, (
+        "the auto default must be the target's width; it was lowered to the "
+        "atom count")
+    assert "_mpi_np_default=30" not in auto
+    assert "clamped" not in auto
+
+    user = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30,
+                              resources=Resources(mpi_np=200),
+                              machine_record=rec)
+    assert "_mpi_np_default=200" in user, "a stated rank count is honoured"
+    assert "propor IMAX" not in user, (
+        "the wrapper still predicts an abort from the system's size -- the "
+        "prediction the ruling removed")
+    assert "WARNING" not in user or "mpi_np" not in user.split("WARNING")[1][:120]
 
 
-def test_render_siesta_user_mpi_over_atoms_emits_warning(monkeypatch):
-    """User-set mpi_np > n_atoms is HONOURED verbatim (sovereign
-    override) but tagged with a runtime WARNING in the wrapper output
-    so the user sees what's about to crash + how to fix it."""
-    _bind()
-    text = render_run_wrapper(Path("/x/tiny.fdf"), n_atoms=10, resources=Resources(mpi_np=20))
-    # Honoured verbatim (we do NOT silently override user input).
-    assert "_mpi_np_default=20" in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
-    # But the warning is unmistakable.
-    assert "WARNING: user-set mpi_np=20 > n_atoms=10" in text
-    assert "propor IMAX=0" in text
-    assert "Lower mpi_np to <= 10" in text
+def test_the_notice_that_replaced_it_is_about_ORBITALS_and_only_advises():
+    """**The objective number, and it never refuses** *(user ruling)*.
+
+    SIESTA distributes ORBITALS across ranks, so ``n_orbitals / mpi_np`` is
+    the occupancy and it wants to be greater than one.  At or below it the
+    user is told *"your CPUs are not going to be fully used"* -- and the run
+    proceeds.
+
+    The orbital count is the ``10 x n_atoms`` DZP estimate the BlockSize
+    bound and the deck's BENCH-MARKS block already use, so the deck and the
+    notice cannot disagree.
+    """
+    import subprocess
+    from molbuilder.runwrap import _orbitals_per_rank_notice
+
+    notice = _orbitals_per_rank_notice(10)          # ~100 orbitals
+    assert "_norb_est=100" in notice
+
+    def _say(ranks):
+        r = subprocess.run(["bash", "-c", f"_mpi_np={ranks}\n" + notice],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        return (r.stdout + r.stderr).strip()
+
+    assert _say(20) == "", "20 ranks over ~100 orbitals is 5 each -- nothing to say"
+    for ranks in (100, 200):
+        out = _say(ranks)
+        assert "not going to be fully used" in out, out
+        assert str(ranks) in out and "100" in out, (
+            "the notice must show both numbers so the claim is checkable")
+        assert "not a limit" in out
+
+    assert _orbitals_per_rank_notice(None) == "", (
+        "a deck with no NumberOfAtoms gets no notice -- inventing the number "
+        "is what the ruling removed")
 
 
 def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
                                                     monkeypatch):
-    """End-to-end: write_run_wrapper parses NumberOfAtoms from the
-    .fdf so the auto-mpi clamp works WITHOUT the caller passing
-    n_atoms explicitly.  This is the live path -- the web flow
-    + CLI both invoke write_run_wrapper, never render_run_wrapper
-    directly with n_atoms."""
+    """End-to-end: write_run_wrapper parses NumberOfAtoms from the .fdf, so
+    the occupancy notice can state a number WITHOUT the caller passing
+    n_atoms explicitly.  This is the live path -- the web flow + CLI both
+    invoke write_run_wrapper, never render_run_wrapper directly with
+    n_atoms.
+
+    Until the 2026-09-03 ruling the parsed count fed a CLAMP, and this test
+    asserted the rank default had been lowered to it.  It feeds the notice
+    now; the rank count is the target's width either way.  The fixture's
+    record is 2 x 32 = 64 cores."""
     _bind()
-    # THE RECORD, NOT THIS BOX (`running-a-job.md` § 3.1, 2026-09-02).  This
-    # monkeypatched `physical_core_count` until then; that function is no
-    # longer consulted, so the patch pinned a source the code had stopped
-    # reading.  The rule under test is the CLAMP, and it survives intact --
-    # only where the width comes from changed.  The fixture's record is
-    # 2 x 32 = 64 cores.
     fdf_text = (
         "SystemName        tiny\n"
         "SystemLabel       tiny\n"
@@ -399,24 +414,25 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
     fdf_path.write_text(fdf_text)
     wrapper_path = write_run_wrapper(fdf_path, resources=Resources())
     text = wrapper_path.read_text()
-    assert "_mpi_np_default=12" in text, (
-        "expected wrapper to auto-clamp default to n_atoms=12 parsed "
-        "from .fdf (not 32 = physical cores)"
-    )
+    assert "_mpi_np_default=64" in text, (
+        "the rank default is the target's width; nothing lowers it now")
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
-    assert "auto-mpi clamped from 64" in text
+    # The parsed count reached the notice: 12 atoms -> ~120 orbitals.
+    assert "_norb_est=120" in text, (
+        "NumberOfAtoms was parsed but never reached the occupancy notice")
 
 
 def test_write_run_wrapper_unparseable_fdf_renders_unclamped(tmp_path,
                                                              monkeypatch):
     """A deck with no parseable `NumberOfAtoms` (truncated, corrupted, a
     pre-emission stub) still renders -- better to render SOMETHING than to
-    refuse -- and the width is simply not clamped.
+    refuse.
 
     It said "falls back to physical_cores" and patched that function until
-    2026-09-02.  There is no fallback now: the width comes from the record
-    either way (`running-a-job.md` § 3.1), and what the missing atom count
-    costs is the CLAMP, not the number."""
+    2026-09-02; the width comes from the record either way
+    (`running-a-job.md` § 3.1).  What a missing atom count costs is the
+    occupancy NOTICE -- it is simply not stated, rather than stated from an
+    invented number."""
     _bind()
     fdf_path = tmp_path / "broken.fdf"
     fdf_path.write_text("# .fdf with no NumberOfAtoms line\n")
@@ -425,7 +441,9 @@ def test_write_run_wrapper_unparseable_fdf_renders_unclamped(tmp_path,
     # The record's width (2 x 32), unclamped -- nothing to clamp against.
     assert "_mpi_np_default=64" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
-    assert "clamped" not in text
+    assert "_norb_est" not in text, (
+        "no atom count means no orbital estimate -- and no notice built on "
+        "one")
 
 
 # --------------------------------------------------------------------- #

@@ -258,9 +258,15 @@ rank count `N` is resolved by precedence, **highest wins**:
 When `mpi_np` was left auto at generation, the baked default is **the selected
 target/domain's core count** — the domain row's widest node where a queue is
 chosen, else the target record's own topology, and **never the machine that
-ran `prep`** (`architecture.md` § 5.2 step 3b, which owns the rule). It is
-**clamped to the atom count** (`n_atoms`, parsed from `NumberOfAtoms` in the
-`.fdf`), with a printed note.
+ran `prep`** (`architecture.md` § 5.2 step 3b, which owns the rule).
+
+**Nothing lowers it** *(user ruling, 2026-09-03)*. Until then the default was
+**clamped to the atom count**, and a user-set count above it was warned about,
+both citing SIESTA's `propor IMAX=0` abort. That abort came from a **PSML**
+problem, not from the system's size — so the rule was not science: it gave
+right-sounding advice for a wrong reason where it fired, and refused perfectly
+good rank counts everywhere else. *"Whether mpi is too big for a system is
+none of your business."*
 
 **A rank count is read from a record, and nowhere else.** No probe of the box
 that happens to be running, no fallback, no floor — **nothing is guessed**
@@ -298,8 +304,36 @@ source, one answer, and probing is one command.
 
 *(It read "the machine's physical core count" until 2026-09-02. That is the
 box running `prep`, which for a bundle prepped at a desk and run on a cluster
-is the wrong machine — and the number looked exactly like a right one.)* A user who *explicitly*
-sets `mpi_np > n_atoms` is honoured and warned.
+is the wrong machine — and the number looked exactly like a right one.)*
+
+### 3.1a What the wrapper says instead — occupancy, as a notice
+
+**SIESTA distributes ORBITALS across ranks**, not atoms, so the number that
+says whether the ranks have anything to hold is
+
+```
+n_orbitals / mpi_np        # want > 1
+```
+
+At or below one, ranks are idle by arithmetic, and the wrapper says so at run
+time — against the rank count **actually resolved**, not the one baked at
+generation, so an `-np` override is included:
+
+```
+molbuilder: NOTE -- 200 ranks for ~100 orbitals is <= 1 orbital per rank.
+  Your CPUs are not going to be fully used.  This is a notice, not a limit -- the run proceeds.
+```
+
+Both numbers are shown so the claim is checkable rather than a verdict, and
+**nothing is refused or lowered**.
+
+The orbital count is an **estimate and says so**: `10 × n_atoms`, the same
+rough double-zeta-polarised figure the `BlockSize` bound uses and the deck's
+BENCH-MARKS block already publishes as `n_orbitals_est` (`job-contracts.md`
+§ 3.3). One estimate in one place, or the deck and the notice would disagree.
+The true count needs every species' basis and is known only once SIESTA
+starts. A deck with no `NumberOfAtoms` — it is optional in SIESTA — gets **no
+notice at all** rather than one built on an invented number.
 
 > **The auto-rank `.sbatch` floor (F15, recorded 2026-08-13; corrected
 > 2026-09-02).** With no rank count stated, the header used to floor at
@@ -319,7 +353,7 @@ sets `mpi_np > n_atoms` is honoured and warned.
 > header's `-n` disagrees with the resolved count, so the mistake cannot
 > pass the check you run before spending a queue slot.
 
-> ### ⚠ The clamp is a heuristic guard, not the mechanism — corrected 2026-08-11
+> ### ⚠ The clamp is gone — corrected 2026-08-11, removed 2026-09-03
 >
 > This section used to say *"a run with more MPI ranks than atoms **aborts**
 > inside SIESTA at `propor IMAX = 0` (no `BlockSize` can fix it)"*, presenting
@@ -334,12 +368,19 @@ sets `mpi_np > n_atoms` is honoured and warned.
 > | **what it does not depend on** | `BlockSize` — *"SIESTA crashes identically with BlockSize = 1, 2, 4 at `mpi_np` = 15 on hemeC-dithiol"* |
 >
 > So `n_atoms` is **not** the quantity the failure is a function of. It is a
-> cheap, usually-conservative proxy: a molecule with few species and many atoms
-> can exceed it safely, and one with many species and few atoms can crash below
-> it. **The clamp is worth keeping** — it costs nothing and prevents the common
-> case — but stating it as the mechanism is what made a *guess* read as physics,
-> and would send someone with a `propor` crash to lower their rank count when
-> their species count is what matters.
+> cheap proxy: a molecule with few species and many atoms can exceed it safely,
+> and one with many species and few atoms can crash below it.
+>
+> **This paragraph used to end *"the clamp is worth keeping — it costs nothing
+> and prevents the common case"*. That was the wrong conclusion, and the clamp
+> was removed on 2026-09-03** *(user ruling)*. It does not cost nothing: it
+> refuses rank counts that would have run, and it teaches a rule that is not
+> true. And the case it was credited with preventing was not a size case at
+> all — *"we had that problem because of a psml related issue, not a size
+> issue"*, which is the cause the hint list below already ranks **first**.
+> Whether a rank count suits a system is the user's judgement, and what the
+> wrapper owes them is the objective number, not a limit: orbitals per rank,
+> § 3.1a.
 >
 > **This is the second place `n_atoms` stood where a different quantity belongs.**
 > The first was `BlockSize`'s bound, which is **orbitals** over ranks
@@ -348,11 +389,10 @@ sets `mpi_np > n_atoms` is honoured and warned.
 > **matrix distribution**, this is about **radial tables**. What they share is a
 > habit of reaching for the atom count because it is the number to hand.
 >
-> **What is not settled**, and is recorded rather than guessed: whether the auto
-> clamp should become a species-aware bound, and what the wrapper's post-run
-> `propor` hint should say instead of *"too many MPI ranks"*
-> ([`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-> § 5g, C12). The `.fdf` carries `NumberOfSpecies`, so the input exists.
+> **C12 is settled** (2026-09-03): the clamp is not replaced by a
+> species-aware bound. There is no bound. The `.fdf` carries
+> `NumberOfSpecies` and it stays available for a diagnostic, but a rank count
+> is not refused on a guess about the system.
 >
 > **And `propor: IMAX = 0` has at least three causes, only one of which is
 > ranks.** The wrapper's own failure hint (§ 4.1) already orders them correctly

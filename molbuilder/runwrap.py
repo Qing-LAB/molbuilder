@@ -552,6 +552,52 @@ def _cold_restart_block(basename: str, *, engine: str) -> str:
     )
 
 
+def _orbitals_per_rank_notice(n_atoms) -> str:
+    """A NOTICE about occupancy, checked against the rank count that is
+    actually used — never a limit *(user ruling, 2026-09-03)*.
+
+    **SIESTA distributes ORBITALS across ranks**, not atoms, so the number
+    that says whether the ranks have anything to hold is
+
+        n_orbitals / mpi_np
+
+    and it wants to be greater than one.  At or below it, ranks are idle by
+    arithmetic, and the user is told exactly that — *"your CPUs are not going
+    to be fully used"* — with both numbers shown, so the claim is checkable
+    rather than a verdict.
+
+    **It replaces a clamp that was not science.**  The wrapper used to lower
+    an auto rank count to ``n_atoms`` and warn about a user-set one above it,
+    citing the ``propor IMAX=0`` abort.  That abort came from a PSML problem,
+    not from the system's size; the rule helped by accident on the systems
+    where it fired and refused perfectly good rank counts on the others.
+
+    **The orbital count is an ESTIMATE and says so.**  The true count needs
+    the basis of every species and is known only once SIESTA starts, so this
+    uses ``10 * n_atoms`` — the same rough double-zeta-polarised figure the
+    BlockSize bound uses and the deck's BENCH-MARKS block already publishes
+    as ``n_orbitals_est`` (`job-contracts.md` § 3.3).  One estimate, one
+    place, or the deck and the notice would disagree.
+
+    Empty when the deck states no atom count (``NumberOfAtoms`` is optional
+    in SIESTA): a notice needs a number, and inventing one is what this
+    function exists to stop.
+    """
+    if n_atoms is None:
+        return ""
+    n_orb = 10 * int(n_atoms)
+    return (
+        f'# Occupancy notice: SIESTA distributes ORBITALS across ranks.\n'
+        f'_norb_est={n_orb}   # ~10 x {int(n_atoms)} atoms (DZP estimate)\n'
+        f'if [ "$_mpi_np" -ge "$_norb_est" ]; then\n'
+        f'    echo "molbuilder: NOTE -- $_mpi_np ranks for ~$_norb_est '
+        f'orbitals is <= 1 orbital per rank." >&2\n'
+        f'    echo "  Your CPUs are not going to be fully used.  '
+        f'This is a notice, not a limit -- the run proceeds." >&2\n'
+        f'fi\n'
+    )
+
+
 def _runtime_status_block(
     basename: str,
     *,
@@ -1313,7 +1359,7 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         at 4 (ELPA 2024.05 release notes report 4 ranks/GPU as the
         no-NCCL throughput optimum; BSC MareNostrum5 SIESTA-ACC report
         confirms on V100/A100/H100); without MPS, 2 dual-socket or
-        ``cps >= 16``, else 1.  Clamped <= n_atoms.
+        ``cps >= 16``, else 1.
       * ``_gpu_numa``: NUMA node the GPU is attached to.  Baked at
         script-generation time by :func:`_probe_gpu0_numa` (NVML
         ``nvmlDeviceGetPciInfo`` + kernel sysfs
@@ -1424,23 +1470,22 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '        _gpu_mpi_np_default=1\n'
         '    fi\n'
         'fi\n'
-        + (
-            # n_atoms clamp -- same rationale as CPU path (avoid empty
-            # propor blocks); only emit when generation-time parser
-            # found the value.
-            f'# n_atoms clamp (auto-parsed from .fdf): {n_atoms_lit}\n'
-            f'if [ "$_gpu_mpi_np_default" -gt {n_atoms_lit} ]; then\n'
-            f'    _gpu_mpi_np_default={n_atoms_lit}\n'
-            f'fi\n'
-            if n_atoms_lit else ""
-        )
-        # return 0, EXPLICITLY: without the n_atoms clamp above (absent
-        # whenever the .fdf has no NumberOfAtoms line -- optional in
-        # SIESTA, the coordinates block is authoritative), the body ends
-        # on the `[ ... -lt 1 ] && ...` guard, which FAILS on every box
-        # whose computed default is >= 1 -- and a function's return is
-        # its last command's status, so under set -e the wrapper died at
-        # the first bare call below (found 2026-08-12 by the F6 probe).
+        # NO ATOM-COUNT CLAMP (user ruling, 2026-09-03).  A clamp stood
+        # here mirroring the CPU path's, on the theory that
+        # ``mpi_np > n_atoms`` causes the ``propor IMAX=0`` abort.  That
+        # theory is wrong -- the abort came from a psml problem, not from
+        # the system's size -- and how many ranks to spend on a system is
+        # the user's decision, not the wrapper's.  What replaces it is a
+        # NOTICE about orbitals per rank, emitted once on the shared path
+        # below; see `_orbitals_per_rank_notice`.
+        #
+        # return 0, EXPLICITLY: the body would otherwise end on the
+        # `[ ... -lt 1 ] && ...` guard, which FAILS on every box whose
+        # computed default is >= 1 -- and a function's return is its last
+        # command's status, so under set -e the wrapper died at the first
+        # bare call below (found 2026-08-12 by the F6 probe).  It used to
+        # be the atom clamp that covered this; with the clamp gone the
+        # explicit return is the whole answer.
         + 'return 0\n'
         + '}\n'
         '_mb_gpu_rank_policy\n'
@@ -1650,14 +1695,14 @@ def _py_deck_reads_prior(script_path: Path) -> Optional[bool]:
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
 
-    The SIESTA wrapper auto-mpi path needs to know n_atoms so it can
-    clamp ``mpi_np <= n_atoms`` -- a rank count exceeding the atom
-    count makes the propor IMAX=0 abort unfixable regardless of
-    BlockSize.  Parsing the .fdf at install time keeps the wrapper
-    self-contained (the .fdf IS the source of truth for what SIESTA
-    will see) and avoids plumbing n_atoms through every caller.
-    Returns None if the file can't be read or the line isn't found;
-    callers fall back to the un-clamped behaviour in that case.
+The wrapper needs the atom count to state its occupancy NOTICE
+    (`_orbitals_per_rank_notice`); it clamps nothing with it since the
+    2026-09-03 ruling.  Parsing the .fdf keeps the wrapper self-contained
+    (the .fdf IS the source of truth for what SIESTA will see) and avoids
+    plumbing n_atoms through every caller.  Returns None if the file
+    can't be read or the line isn't found -- ``NumberOfAtoms`` is
+    OPTIONAL in SIESTA, the coordinates block being authoritative -- and
+    the notice is then simply not emitted.
     """
     import re
     try:
@@ -1816,12 +1861,10 @@ def render_run_wrapper(script_path: Path, *,
         is whatever ``Capabilities.env_for_category(<category>)`` returns.
       resources: the job's allocation, whole.  ``mpi_np`` is the SIESTA
         rank count and is ignored for ``.py`` scripts.
-      n_atoms: SIESTA atom count.  Used to clamp the auto-mpi default
-        (``resolved_mpi = min(physical_cores, n_atoms)``) -- otherwise
-        a small molecule on a many-core box gets mpi_np > n_atoms and
-        SIESTA aborts at propor IMAX=0 with no possible BlockSize fix.
-        Auto-parsed from the .fdf by ``render_wrappers`` when omitted;
-        pass None to keep the un-clamped behaviour.
+      n_atoms: SIESTA atom count.  It no longer clamps anything (user
+        ruling, 2026-09-03); it feeds the occupancy NOTICE, which needs an
+        orbital estimate.  Auto-parsed from the .fdf by ``render_wrappers``
+        when omitted; ``None`` simply means no notice can be stated.
     """
     r = resources
     mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
@@ -2093,15 +2136,8 @@ def render_run_wrapper(script_path: Path, *,
         # use MPI") instead of silently emitting a bare ``siesta``
         # invocation that ignores all but one core.
         #
-        # Clamp: mpi_np > n_atoms is mathematically impossible to
-        # serve without trailing-rank crashes (propor IMAX=0) --
-        # SIESTA's per-atom distribution leaves the last (mpi_np -
-        # ceil(n_atoms / BlockSize)) ranks empty regardless of
-        # BlockSize choice.  When n_atoms is known (auto-parsed from
-        # the .fdf by write_run_wrapper) we clamp the AUTO path; the
-        # USER-SET path is honoured verbatim (sovereign override) but
-        # tagged with a runtime warning so the user sees what's about
-        # to crash.
+        # No atom-count clamp: see the ruling recorded at the resolution
+        # below.
         # THE TARGET'S CORES, NOT THIS BOX'S (user, 2026-09-02).  A bundle
         # prepped on a 20-core desk for a 64-core node baked 20 and, run
         # bare there (`launch --mode direct`), used 20 -- a number about the
@@ -2156,39 +2192,28 @@ def render_run_wrapper(script_path: Path, *,
                   "that a number is never about the wrong machine."
             )
         phys = _target or 1
-        clamp_note = ""
+        # THE RANK COUNT IS THE USER'S (user ruling, 2026-09-03).  An
+        # atom-count clamp stood here -- the auto path silently lowered
+        # the default to ``n_atoms``, and a user-set value above it got a
+        # WARNING predicting a ``propor IMAX=0`` abort.  Both are gone.
+        # The abort they cited came from a PSML problem, not from the
+        # system's size, so the rule was unscientific: it gave the right
+        # advice for the wrong reason on the systems where it happened to
+        # help, and refused ranks that would have been fine on the rest.
+        # Whether a rank count suits a system is not the wrapper's
+        # judgement to make.
+        #
+        # What is objective, and is a NOTICE rather than a limit: SIESTA
+        # distributes ORBITALS across ranks, so orbitals-per-rank is the
+        # occupancy.  At or below one, ranks have nothing to hold -- see
+        # `_orbitals_per_rank_notice`, emitted below against the rank
+        # count actually resolved at run time.
         if mpi_np is None or int(mpi_np) < 1:
-            raw = max(1, phys)
-            if n_atoms is not None and raw > int(n_atoms):
-                resolved_mpi = max(1, int(n_atoms))
-                mpi_source = (
-                    f"auto: {_whose} ({phys}) clamped to "
-                    f"n_atoms ({n_atoms}) -- mpi_np > n_atoms would "
-                    f"abort SIESTA at propor IMAX=0"
-                )
-                clamp_note = (
-                    f"# auto-mpi clamped from {raw} (physical cores) "
-                    f"to {resolved_mpi} (n_atoms) so trailing ranks "
-                    f"aren't empty\n"
-                )
-            else:
-                resolved_mpi = raw
-                mpi_source = f"auto: {_whose} ({phys})"
+            resolved_mpi = max(1, phys)
+            mpi_source = f"auto: {_whose} ({phys})"
         else:
             resolved_mpi = int(mpi_np)
-            if n_atoms is not None and resolved_mpi > int(n_atoms):
-                mpi_source = (
-                    f"user-set; WARNING mpi_np ({resolved_mpi}) > "
-                    f"n_atoms ({n_atoms}) -- propor IMAX=0 expected"
-                )
-                clamp_note = (
-                    f"# WARNING: user-set mpi_np={resolved_mpi} > "
-                    f"n_atoms={n_atoms}; SIESTA will abort at propor "
-                    f"IMAX=0 regardless of BlockSize.  Lower mpi_np "
-                    f"to <= {n_atoms} to fix.\n"
-                )
-            else:
-                mpi_source = "user-set"
+            mpi_source = "user-set"
 
         # OMP threads.  SIESTA mainline is mostly NOT OMP-aware;
         # pure MPI + OMP=1 is the standard SIESTA recipe.  User can
@@ -2254,9 +2279,8 @@ def render_run_wrapper(script_path: Path, *,
         # form choices.
         user_set_mpi = mpi_np is not None
         user_set_omp = omp_threads is not None
-        # CPU-branch defaults: resolved_mpi already reflects user choice
-        # or auto-MPI clamp -- bake it verbatim (preserves the existing
-        # CPU-mode contract).
+        # CPU-branch defaults: resolved_mpi already reflects the user's
+        # choice or the target's own width -- bake it verbatim.
         cpu_mpi_default = str(resolved_mpi)
         cpu_omp_default = str(resolved_omp)
         # GPU-branch defaults: honour an explicit user-set choice, else
@@ -2579,8 +2603,8 @@ def render_run_wrapper(script_path: Path, *,
             + (_gpu_loadbalance_block() if gpu_mode else "")
             + f"# MPI rank count: $_mpi_np (default: $_mpi_np_default, "
             f"source: {mpi_source})\n"
-            f"{clamp_note}"
-            f"# --- Thread / BLAS pinning ------------------------------\n"
+            + _orbitals_per_rank_notice(n_atoms)
+            + f"# --- Thread / BLAS pinning ------------------------------\n"
             f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
             f"#     mostly not OMP-aware, so pure MPI with OMP=1 is the\n"
             f"#     standard recipe.  Bump only with an OMP-compiled\n"
@@ -4027,9 +4051,10 @@ def render_wrappers(script_path: Path, *,
     with a home in § 3's table arrives in that home or not at all.
 
     For a ``.fdf`` the deck is parsed for ``NumberOfAtoms`` and the count is
-    threaded into the wrapper so the auto-mpi path can clamp ``mpi_np <=
-    n_atoms`` (propor's IMAX=0 lower bound).  A parse failure reads as
-    *unknown* and falls back to the unclamped behaviour rather than refusing.
+    threaded into the wrapper, where it states the occupancy notice
+    (`_orbitals_per_rank_notice`).  A parse failure reads as *unknown* and the
+    notice is omitted rather than refusing -- ``NumberOfAtoms`` is optional in
+    SIESTA.
 
     Both shell texts go through ``bash -n`` (parse-only, no execution) before
     they are returned, so a caller never receives malformed shell to write.
@@ -4201,9 +4226,16 @@ def auto_ranks(machine_record, n_atoms=None, domain=None):
     must ask for the node's width; `physical_core_count()` would answer about
     the desk, and did until 2026-09-02.
 
-    **Clamped to the atoms**, because ``mpi_np > n_atoms`` aborts SIESTA at
-    ``propor IMAX=0`` — the same clamp the wrapper's auto path applies, so the
-    header and the wrapper agree rather than the header over-asking.
+    **No atom-count clamp** *(user ruling, 2026-09-03)*.  This lowered the
+    header's ``--ntasks`` to ``n_atoms``, matching a clamp the wrapper's auto
+    path also applied, both citing the ``propor IMAX=0`` abort.  That abort
+    came from a PSML problem rather than the system's size, so the rule was
+    not science — and how many ranks to spend is the user's call.  The two
+    still agree, because neither clamps now, and the wrapper emits an
+    occupancy NOTICE instead (`_orbitals_per_rank_notice`).
+
+    ``n_atoms`` stays in the signature: callers pass it, and dropping the
+    parameter would silently change every call site's positional arguments.
     """
     cores = None
     if domain:
@@ -4223,10 +4255,7 @@ def auto_ranks(machine_record, n_atoms=None, domain=None):
             cores = int(cps) * int(getattr(topo, "sockets", None) or 1)
     if not cores or int(cores) < 1:
         return None
-    cores = int(cores)
-    if n_atoms is not None and cores > int(n_atoms):
-        return max(1, int(n_atoms))
-    return cores
+    return int(cores)
 
 
 def header_ntasks(mpi_np, *, gpu=False, gpu_count=None, auto=None):
@@ -4256,7 +4285,7 @@ def header_ntasks(mpi_np, *, gpu=False, gpu_count=None, auto=None):
         return int(gpu_count or 1), "one rank per device (no rank count stated)"
     if auto and int(auto) >= 1:
         return int(auto), ("nothing stated -- the selected target/domain's "
-                           "own core count, clamped to the atom count")
+                           "own core count")
     return None, ("nothing states a rank count and the target's record says "
                   "no core count -- probe the machine (`molbuilder jobset "
                   "probe --write --name NAME`) or state one, because a "

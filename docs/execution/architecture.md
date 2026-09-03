@@ -584,7 +584,7 @@ flowchart TB
         B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
         B2["<b>2 · task.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
         B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>execution</code>, then a <code>prep</code> flag.<br/><i>no third source: a benchmark does not steer a run</i>"]
-        B4["<b>3b · nothing stated?</b> — <code>auto_ranks</code><br/>the selected DOMAIN's widest node,<br/>else the TARGET's topology, clamped to n_atoms<br/><b>never this box · no record ⇒ REFUSE</b>"]
+        B4["<b>3b · nothing stated?</b> — <code>auto_ranks</code><br/>the selected DOMAIN's widest node,<br/>else the TARGET's topology<br/><b>never this box · no record ⇒ REFUSE</b>"]
         B1 --> B2 --> B3 --> B4
     end
 

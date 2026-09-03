@@ -1088,9 +1088,11 @@ class TestTheRunsOwnCondition:
         that will run it.
 
         Both now come from `auto_ranks(machine_record, n_atoms)`: the
-        target's own record, clamped to the atom count because
-        ``mpi_np > n_atoms`` aborts SIESTA at ``propor IMAX=0``. The header
-        and the wrapper therefore agree by construction (rule A9).
+        target's own record, and nothing else. It was ALSO clamped to the
+        atom count until the 2026-09-03 ruling removed that -- the abort it
+        cited came from a PSML problem, not from the system's size. The
+        header and the wrapper agree by construction (rule A9) either way,
+        because they read the one function.
         """
         import re
 
@@ -1141,7 +1143,9 @@ class TestTheRunsOwnCondition:
             topology=types.SimpleNamespace(sockets=1, cores_per_socket=8))
         assert auto_ranks(rec, None, "public") == 128
         assert auto_ranks(rec, None, None) == 8, "no domain -> the topology"
-        assert auto_ranks(rec, 4, "public") == 4, "clamped to the atoms"
+        assert auto_ranks(rec, 4, "public") == 128, (
+            "the atom count must not lower the header's width -- the clamp "
+            "was removed by the 2026-09-03 ruling")
 
     def test_which_machine_is_a_REFUSAL_not_a_traceback(self, calc):
         """`workflow.md` § 9.  Resolving the condition reaches
