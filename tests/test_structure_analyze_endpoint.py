@@ -8,8 +8,10 @@ translation in each ``molbuilder.<engine>.auto_defaults`` module.
 These tests pin:
 
 * The response shape documented in
-  ``docs/web/web-api.md`` § 10 (every top-level key + each
-  ``suggested.<engine>`` sub-shape).
+  ``docs/web/web-api.md`` § 5's row for this route (every top-level
+  key + each ``suggested.<engine>`` sub-shape).  It cited a "§ 10"
+  that the contract has never had -- the shape had no home until
+  2026-09-02, so the row was written from this route's own source.
 * The new-engine on-ramp — a freshly-registered adapter appears
   in ``suggested`` without any endpoint code change.
 * The engine-agnostic rationale (no PySCF / SIESTA keyword in
@@ -42,6 +44,27 @@ def _post_analyze(web, body):
     return r, r.get_json()
 
 
+def _as_envelope(xyz: str) -> dict:
+    """The XYZ these tests are written around, delivered the way the route
+    takes it.
+
+    They posted ``structure_text`` until 2026-09-02, when that field was
+    removed -- it had been retired from `/api/spectra/render` on 2026-08-03
+    (the viewer holds no coordinate document and writes none, `molview.md`
+    § 11.7) and this route was missed by the sweep, so no page ever posted it
+    and only these tests reached it.  **Their SUBJECTS are unaffected** --
+    the response shape, the per-engine `suggested` blocks, the metal hints,
+    the engine-agnostic rationale -- exactly as when the same field left the
+    PDB workflow tests; only the delivery moved.
+    """
+    from molbuilder.structure import Structure
+    st = Structure.from_xyz(xyz)
+    return {"structure": {"elements": list(st.elements),
+                          "positions": [list(map(float, r))
+                                        for r in st.positions],
+                          "metadata": {}}}
+
+
 # --------------------------------------------------------------------- #
 #  Top-level envelope                                                   #
 # --------------------------------------------------------------------- #
@@ -52,7 +75,7 @@ def test_response_shape_carries_every_documented_key(web):
     response on the happy path.  Pin against a refactor that
     silently drops a field."""
     xyz = "1\nFe\nFe 0 0 0\n"
-    r, body = _post_analyze(web, {"structure_text": xyz})
+    r, body = _post_analyze(web, _as_envelope(xyz))
     assert r.status_code == 200
     assert body["ok"] is True
     for key in ("n_atoms", "elements", "n_electrons_neutral",
@@ -64,7 +87,7 @@ def test_response_suggested_includes_both_built_in_engines(web):
     """The built-in adapter registry covers SIESTA and PySCF.  Pin
     that both appear in the response."""
     xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, {"structure_text": xyz})
+    _, body = _post_analyze(web, _as_envelope(xyz))
     sug = body["suggested"]
     assert set(sug.keys()) >= {"siesta", "pyscf"}, (
         f"suggested missing built-in engines: {set(sug.keys())}"
@@ -76,7 +99,7 @@ def test_suggested_siesta_shape(web):
     ``suggested.siesta``.  Pin so a SiestaSuggestedParams rename
     breaks this test before it breaks the UI form-fill path."""
     xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, {"structure_text": xyz})
+    _, body = _post_analyze(web, _as_envelope(xyz))
     si = body["suggested"]["siesta"]
     assert set(si.keys()) == {
         "net_charge", "spin_treatment", "spin_total", "rationale"
@@ -90,7 +113,7 @@ def test_suggested_siesta_shape(web):
 def test_suggested_pyscf_shape(web):
     """Same for the PySCF adapter."""
     xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, {"structure_text": xyz})
+    _, body = _post_analyze(web, _as_envelope(xyz))
     py = body["suggested"]["pyscf"]
     assert set(py.keys()) == {"net_charge", "spin", "method", "rationale"}
     assert isinstance(py["spin"], int)
@@ -102,7 +125,7 @@ def test_metal_hints_are_dicts_not_dataclasses(web):
     The wire shape MUST be plain dicts so the JS consumer doesn't
     need to know about Python dataclass internals."""
     xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, {"structure_text": xyz})
+    _, body = _post_analyze(web, _as_envelope(xyz))
     hint = body["metal_hints"][0]
     assert isinstance(hint, dict)
     assert hint["element"] == "Fe"
@@ -125,7 +148,7 @@ def test_analyzer_rationale_does_not_leak_engine_strings(web):
     rationale (re-fragmenting cross-engine consistency) surfaces.
     """
     xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, {"structure_text": xyz})
+    _, body = _post_analyze(web, _as_envelope(xyz))
     # The analyzer's rationale is echoed into each adapter's
     # ``rationale`` field.  Either adapter's value would do here;
     # use PySCF.
@@ -144,26 +167,49 @@ def test_analyzer_rationale_does_not_leak_engine_strings(web):
 
 
 def test_missing_body_returns_400(web):
+    """An empty body is a 400 that NAMES THE WAYS IN.
+
+    It asserted the word "required", which the message happened to contain;
+    what makes a refusal useful is that it says what to send instead. The
+    envelope leads, because it is what this route reads first and what every
+    other door takes -- the message listed only the two convenience inputs
+    until 2026-09-02, pointing a caller away from the standard shape.
+    """
     r, body = _post_analyze(web, {})
     assert r.status_code == 400
     assert body["ok"] is False
-    assert "required" in body["error"].lower()
+    said = body["error"].lower()
+    assert "structure" in said and "envelope" in said, said
+    assert "structure_path" in said, (
+        f"the refusal does not name the other way in: {said}")
 
 
-def test_unparseable_structure_returns_400(web):
-    r, body = _post_analyze(web, {"structure_text": "garbage"})
-    assert r.status_code == 400
+def test_an_UNREADABLE_ENVELOPE_returns_400_not_500(web):
+    """Garbage in, a refusal out -- never a stack trace.
+
+    This posted ``structure_text: "garbage"`` until 2026-09-02.  With that
+    field gone, the same subject -- *a body this route cannot turn into a
+    structure is the CALLER's error* -- is reached through the envelope,
+    which is now the only shape carrying coordinates.
+    """
+    r, body = _post_analyze(web, {"structure": {"elements": ["C"],
+                                                "positions": "not a list"}})
+    assert r.status_code == 400, body
     assert body["ok"] is False
-    assert "could not parse" in body["error"].lower()
+    assert "could not restore structure" in body["error"].lower(), body
 
 
 def test_unknown_element_returns_400_not_500(web):
     """An unknown element symbol must surface as a clean 400 (it
     propagates from ``total_electrons`` via the analyzer).  Pre-Phase-1c
     this leaked a 500 with a stack trace."""
-    # 'Xx' is not a real element; total_electrons KeyErrors on it
-    xyz = "1\nXx\nXx 0 0 0\n"
-    r, body = _post_analyze(web, {"structure_text": xyz})
+    # 'Xx' is not a real element; total_electrons KeyErrors on it.
+    #
+    # Built BY HAND rather than through `_as_envelope`, which parses XYZ and
+    # would reject 'Xx' in the test process -- the subject is what the ROUTE
+    # does with an element it cannot weigh, so the symbol has to reach it.
+    r, body = _post_analyze(web, {"structure": {
+        "elements": ["Xx"], "positions": [[0.0, 0.0, 0.0]], "metadata": {}}})
     assert r.status_code == 400
     assert body["ok"] is False
     assert "Xx" in body["error"] or "unknown" in body["error"].lower()
@@ -205,7 +251,7 @@ def test_freshly_registered_adapter_appears_in_endpoint_response(web):
 
     try:
         xyz = "1\nFe\nFe 0 0 0\n"
-        r, body = _post_analyze(web, {"structure_text": xyz})
+        r, body = _post_analyze(web, _as_envelope(xyz))
         assert r.status_code == 200
         assert "stub_engine" in body["suggested"]
         stub = body["suggested"]["stub_engine"]

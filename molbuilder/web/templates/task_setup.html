@@ -273,10 +273,22 @@
         </summary>
         <div class="ts-editor" id="ts-editor"></div>
         <div class="ts-steps">
+          {#- NOT `checked`.  A checkpoint REQUIRES a note (checkpointing.md
+              L3 -- the backend refuses an empty one), and Save is disabled
+              while a ticked checkpoint has no note.  Shipped ticked, that
+              made Save DEAD ON ARRIVAL on every folder: the button was grey
+              from the moment the page opened, and the only clue was a hint
+              beside it.  "that fucking button 'write it' wrote absolutely
+              nothing" (user, 2026-09-02) -- nothing had ever been saved.
+
+              Ticking it is now a deliberate act, and typing the note it
+              needs is part of the same act.  The offer is unchanged; what
+              is gone is an offer that blocked the thing it was attached
+              to. -#}
           <label class="ts-step">
-            <input type="checkbox" id="ts-ckpt" checked>
+            <input type="checkbox" id="ts-ckpt">
             <span><b>Save the folder's state first</b> &mdash; so whatever you
-            are about to change can be brought back.</span>
+            are about to change can be brought back. <em>Needs a note.</em></span>
           </label>
           <input id="ts-ckpt-note" class="ts-cell ts-cell-name"
           placeholder="what you are about to change"
@@ -287,6 +299,13 @@
             Save to this folder</button>
         </div>
         <p class="hint" id="ts-save-why">Pick a folder first.</p>
+        {#- WHAT THE LAST SAVE DID, beside the button that did it.  Its own
+            element because `ts-save-why` is `refreshSave`'s (it says why the
+            button is enabled or not, and is rewritten on every repaint), and
+            the shared state box is `loadFolder`'s -- a save ends by reopening
+            the folder, which painted "Loaded ..." straight over the
+            confirmation.  One surface, one owner. -#}
+        <p class="ts-ask-note" id="ts-save-said" hidden></p>
       </details>
 
       <section class="card" id="ts-next-card" hidden>

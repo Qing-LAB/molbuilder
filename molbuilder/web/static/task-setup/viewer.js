@@ -368,16 +368,41 @@ async function refreshFit() {
     }
     if (seq !== _fitSeq) return;
 
-    /* A LIST THAT CANNOT LOAD HIDES ITSELF; it never breaks the card.
-     * The rows above are the substance and are usable without this --
-     * the same rule the label note follows, for the same reason (a card
-     * that vanishes gets reported as the feature being gone). */
+    /* A LIST THAT CANNOT LOAD SAYS SO.  It used to hide, and the reasoning
+     * -- "the rows above are the substance" -- is exactly why hiding is
+     * wrong: a blank where a verdict belongs reads as *nothing objected*. */
     if (!body || !body.ok || !Array.isArray(body.cells)) {
-        host.hidden = true;
+        sayUnknownFit(host, body && body.error);
         return;
     }
     paintFit(host, body);
 }
+
+/** SAY WHAT IS NOT KNOWN.  A check that could not run shows that it could
+ *  not run, and the reason -- it does not disappear.
+ *
+ * Both fit panels used to set `hidden` on every failure, on the reasoning
+ * that the rows above are the substance and the card should not break.  What
+ * that produced is the worst of the three possible readings: an empty space
+ * where an answer belongs is indistinguishable from *everything fits* and
+ * from *this feature is gone*, and the one thing it never says is the true
+ * one *(user, 2026-09-02: "we can't have a fit on. I just said, I don't
+ * know. Lack of information.")*.
+ *
+ * The server's own words when there are any -- it knows why, and a
+ * paraphrase here would be a second author for one sentence.
+ */
+function sayUnknownFit(host, why) {
+    if (!host) return;
+    host.textContent = "";
+    host.hidden = false;
+    host.appendChild(el("div", { class: "ts-fit-head" },
+                        "Cannot say whether this fits"));
+    host.appendChild(el("p", { class: "status warn" },
+        why || "the check could not run \u2014 no answer either way, "
+             + "not a pass."));
+}
+
 
 function paintFit(host, body) {
     const cells   = body.cells;
@@ -500,31 +525,35 @@ function stageExecutionOf(stage, make) {
 }
 
 function setRunValue(name, raw, stage) {
-    const v = coercePoint(raw);
-    const blank = (v === null || raw === "");
-    const box = stageExecutionOf(stage, !blank);
-    if (box) {
-        // BLANK IS A STATE: the target's own width, or a refusal.
-        if (blank) delete box[name]; else box[name] = v;
-        if (!Object.keys(box).length) {
-            const st = _task.stages.find((x) => x && x.name === stage);
-            if (st) delete st.execution;
+    return underFence("Writing " + name + "\u2026", async () => {
+        const v = coercePoint(raw);
+        const blank = (v === null || raw === "");
+        const box = stageExecutionOf(stage, !blank);
+        if (box) {
+            // BLANK IS A STATE: the target's own width, or a refusal.
+            if (blank) delete box[name]; else box[name] = v;
+            if (!Object.keys(box).length) {
+                const st = _task.stages.find((x) => x && x.name === stage);
+                if (st) delete st.execution;
+            }
         }
-    }
-    syncFromModel();
+        await syncFromModel();
+    });
 }
 
 function dropRunRow(name, stage) {
-    extraRunRows(stage).delete(name);
-    const box = stageExecutionOf(stage, false);
-    if (box) {
-        delete box[name];
-        if (!Object.keys(box).length) {
-            const st = _task.stages.find((x) => x && x.name === stage);
-            if (st) delete st.execution;
+    return underFence("Removing " + name + "\u2026", async () => {
+        extraRunRows(stage).delete(name);
+        const box = stageExecutionOf(stage, false);
+        if (box) {
+            delete box[name];
+            if (!Object.keys(box).length) {
+                const st = _task.stages.find((x) => x && x.name === stage);
+                if (st) delete st.execution;
+            }
         }
-    }
-    syncFromModel();
+        await syncFromModel();
+    });
 }
 
 /** THE RUN CARD, built per rung and placed beside that rung's `prep run`
@@ -704,8 +733,8 @@ async function refreshRunFit(stage) {
         body = await r.json();
     } catch (e) { body = null; }
     if (seq !== f.seq) return;
-    // A CHECK THAT CANNOT LOAD HIDES ITSELF -- the fields are the substance.
-    if (!body || !body.ok) { host.hidden = true; return; }
+    // AND HERE, for the run's grid of one.
+    if (!body || !body.ok) { sayUnknownFit(host, body && body.error); return; }
     paintFit(host, body);
 }
 
@@ -2813,16 +2842,77 @@ function patchDoc(change) {
 }
 
 
-function applyAsksToDoc() {
-    patchDoc((task) => {
-        const asks = askValues();
-        const had = JSON.stringify(task.allocation || null);
-        if (Object.keys(asks).length) task.allocation = asks;
-        else delete task.allocation;
-        // no-op: nothing to write, and nothing to move the page for
-        return JSON.stringify(task.allocation || null) !== had;
-    });
+/** Write one card's block INTO the open `task.json`, which is what Save sends.
+ *
+ * ONE FUNCTION FOR BOTH CARDS.  The queue card and the notify card were two
+ * copies of the same eleven lines -- read the controls, compare, write the
+ * key or delete it -- and the shape is not a coincidence: it is
+ * `task.json`'s own rule for an optional block, so a third card would have
+ * been a third copy.  What differs is the KEY and where the values come
+ * from, which is what the two parameters are.
+ *
+ * `read` returns the block as the controls now state it.  An EMPTY object
+ * means the card says nothing, and a block that says nothing is DELETED
+ * rather than written empty -- a description that asks for nothing
+ * round-trips byte-identical (`task.Notify`, `task.Allocation`).
+ *
+ * Returns whether anything actually changed, so `patchDoc` does not move
+ * the page's cursor for a keystroke that wrote the same text back.
+ */
+/** Run a write of the description behind the page-wide fence.
+ *
+ * `ui-contract.md` § 10: **one cover for every heavy click**, and while it is
+ * up *everything* -- tabs, sidebar, forms, this card -- is blocked by
+ * construction rather than wired per control.
+ *
+ * WHY A PARAMETER WRITE IS ONE OF THEM.  A card edit is three writes that
+ * must land together: this rung's `execution` in `_task`, the editor buffer
+ * that `Save` posts, and the panels rendered from both.  While that was
+ * merely *fast*, a second edit arriving inside it interleaved -- type a
+ * memory value, blur, click "+ Add stage" straight away, and the block the
+ * first edit was writing was gone.  Reasoning about how fast is fast enough
+ * is the wrong question: the framework already has a barrier, so the write
+ * takes it and the question does not arise *(user, 2026-09-02: "before the
+ * parameter is ready or persistently saved, the user can't do anything …
+ * what the fuck do you care about half a second")*.
+ *
+ * NESTED CLAIMS ARE THE CALLER'S BUG, not a case to handle: `claim()` throws
+ * when already claimed, which is § 10's design ("one heavy operation at a
+ * time"). So this checks and passes through rather than stacking a second
+ * cover -- the outer claim is already blocking everything this one would.
+ *
+ * `release()` is in a `finally`, per § 10's recovery contract, so a write
+ * that throws cannot leave the window covered.
+ */
+async function underFence(reason, write) {
+    /* `typeof window`, not a bare read: this module's writers are exercised
+     * headless in node (`tests/_node_esm.py`), where there is no window at
+     * all -- and a bare `window.molbuilder` there is a ReferenceError, not
+     * an undefined.  The same guard `page-busy.js` uses for its own
+     * classic-script door. */
+    const root = (typeof window === "object" && window) ? window : null;
+    const fence = root && root.molbuilder && root.molbuilder.pageBusy;
+    if (!fence || fence.isClaimed()) return await write();
+    fence.claim(reason);
+    try {
+        return await write();
+    } finally {
+        fence.release();
+    }
 }
+
+
+function applyBlockToDoc(key, read) {
+    return underFence("Writing " + key + "\u2026", async () => patchDoc((task) => {
+        const want = read();
+        const had = JSON.stringify(task[key] || null);
+        if (Object.keys(want).length) task[key] = want;
+        else delete task[key];
+        return JSON.stringify(task[key] || null) !== had;
+    }));
+}
+
+function applyAsksToDoc() { applyBlockToDoc("allocation", askValues); }
 
 /** Fill the card FROM the open description, so reopening a folder shows
  *  what it already asks for rather than an empty card. */
@@ -2884,15 +2974,7 @@ function notifyValues() {
  * Absent-is-a-state, matching `task.Notify`: nothing ticked writes NO key,
  * so a description that reports on nothing round-trips byte-identical.
  */
-function applyNotifyToDoc() {
-    patchDoc((task) => {
-        const want = notifyValues();
-        const had = JSON.stringify(task.notify || null);
-        if (Object.keys(want).length) task.notify = want;
-        else delete task.notify;
-        return JSON.stringify(task.notify || null) !== had;
-    });
-}
+function applyNotifyToDoc() { applyBlockToDoc("notify", notifyValues); }
 
 /** Fill the card FROM the open description, so reopening a folder shows
  *  what it already asks for rather than an empty card. */
@@ -3194,8 +3276,40 @@ function refreshSave() {
     }
 }
 
+/** What the last save did, beside the button that did it.
+ *
+ * Its own surface: `ts-save-why` belongs to `refreshSave` (it says why the
+ * button is enabled, and is rewritten on every repaint) and the state box
+ * belongs to `loadFolder` -- a save ends by reopening the folder, which
+ * painted "Loaded ..." over the confirmation the moment it appeared. */
+function saidSave(text, state) {
+    const n = $("ts-save-said");
+    if (!n) return;
+    n.textContent = text || "";
+    n.hidden = !text;
+    if (text) n.setAttribute("data-state", state || "ok");
+}
+
+/** Write the description to disk -- **the whole window is blocked while it
+ *  runs** (`ui-contract.md` § 10).
+ *
+ * It is the multi-step save § 10 names as its own example: a checkpoint,
+ * then a POST, then a re-read of the folder.  Only the button was disabled,
+ * so the sidebar stayed live and switching directories mid-save retargeted
+ * the steps after the switch -- the exact failure the fence exists for.
+ *
+ * The parameter writers take the same fence (`underFence`), so a card edit
+ * and a save can never be in flight together: whichever is first covers the
+ * window and the other cannot start *(user, 2026-09-02: "before the
+ * parameter is ready or persistently saved, the user can't do anything")*.
+ */
 async function save() {
     if (!_cm || !_dir) return;
+    return underFence("Saving task.json\u2026", _save);
+}
+
+async function _save() {
+    saidSave("");                       // the last result is not this one's
     const btn = $("ts-save");
     if (btn) btn.disabled = true;
 
@@ -3211,8 +3325,13 @@ async function save() {
      * safety net you asked for. */
     const projects0 = window.molbuilder && window.molbuilder.projects;
     const wantCkpt = wantsCheckpoint();
+    // DECLARED HERE because the confirmation at the end names it too.  It
+    // was block-scoped to the checkpoint branch, and the success message
+    // read it anyway -- so the write succeeded and then `save` threw on a
+    // name that did not exist, which is why a successful save said nothing
+    // at all.  Found by reading the function end to end (2026-09-02).
+    const ckptNote = wantCkpt ? checkpointNote() : "";
     if (wantCkpt && projects0 && projects0.checkpoint) {
-        const note = checkpointNote();
         /* `status` answers `ok:false` for a folder that simply has no history
          * yet -- `ok` there means "this folder is under checkpointing", not
          * "the query worked".  Reading it as the latter skipped `init` for
@@ -3228,6 +3347,7 @@ async function save() {
                                        && _task.engine.name) || undefined })
                 .catch(() => null);
             if (!started || !started.ok) {
+                saidSave("No state was saved, so nothing was written.", "bad");
                 setState("refuse", "No state was saved, so nothing was written",
                          "Could not start a history here: "
                          + ((started && started.error) || "unknown reason")
@@ -3236,9 +3356,10 @@ async function save() {
                 return;
             }
         }
-        const kept = await projects0.checkpoint.saveState(_dir, note)
+        const kept = await projects0.checkpoint.saveState(_dir, ckptNote)
             .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
         if (!kept || !kept.ok) {
+            saidSave("No state was saved, so nothing was written.", "bad");
             setState("refuse", "No state was saved, so nothing was written",
                      (kept && kept.error) || "the checkpoint failed");
             refreshSave();
@@ -3259,12 +3380,15 @@ async function save() {
         body = await r.json();
         if (!r.ok || !body || body.ok === false) {
             // Refused, not repaired — show the reader's own words.
+            saidSave("NOT written — " + ((body && body.error)
+                     || "the server refused."), "bad");
             setState("refuse", "Not written", (body && body.error)
                      || ("save failed (" + r.status + ")"));
             refreshSave();
             return;
         }
     } catch (e) {
+        saidSave("NOT written — the request failed.", "bad");
         setState("refuse", "Not written",
                  "Could not reach the server: " + (e && e.message ? e.message : e));
         refreshSave();
@@ -3288,8 +3412,30 @@ async function save() {
                          + "could not be removed:", gone && gone.error);
         }
     }
+    /* SAID THE MOMENT THE WRITE IS KNOWN TO HAVE SUCCEEDED.
+     *
+     * `loadFolder` re-reads the folder, the template values and the machine
+     * record.  If any of that throws, `save` throws with it and everything
+     * after is skipped -- the file is on disk and the page never says so.
+     * The confirmation belongs to the write, so it is said before the
+     * reload, and a reload failure is reported as its own thing. */
+    const wrote = ["task.json"];
+    if (body.template_name) wrote.push(body.template_name);
+    saidSave("Saved " + wrote.join(" + ") + " into this folder"
+             + (ckptNote ? " · state kept: \u201c" + ckptNote + "\u201d" : "")
+             + ".  `prep` reads this file, so it will use what you just "
+             + "wrote.", "ok");
+
     // Re-open the folder: it is now a description.
-    if (projects) await loadFolder(projects, _dir);
+    try {
+        if (projects) await loadFolder(projects, _dir);
+    } catch (e) {
+        saidSave("Saved " + wrote.join(" + ") + " \u2014 but the page could "
+                 + "not re-read the folder: " + ((e && e.message) || e)
+                 + ".  What you see may be the previous state; reload.",
+                 "warn");
+        return;
+    }
     /* Gate ③'s NON-refusing findings (sequence warnings) ride the OK
      * response, exactly what the CLI would have echoed -- and until the
      * U6 close they went on the floor while loadFolder repainted the
@@ -3297,6 +3443,10 @@ async function save() {
      * hand-over's notices arm just had fixed. */
     const warns = (Array.isArray(body.findings) ? body.findings : [])
         .filter((f) => f && f.severity !== "error");
+
+    /* The preflight's non-refusing notes go in the FOLDER's box, which
+     * `loadFolder` has just repainted -- they are about the description.
+     * The save's own result is beside the button, said above the reload. */
     if (warns.length) {
         setState("loaded",
                  "Saved — the preflight has "

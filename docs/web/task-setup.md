@@ -447,6 +447,14 @@ field in grey (*measuring: 4, 8, 16*) as **information that fills nothing**.
 It carries its own *+ Add setting* for a knob no benchmark touched, since a
 run may want one a measurement did not.
 
+**Two rows are the run's alone and are never the bench's**: `time` and
+`domain`, offered by *+ Add setting* beside the sweepable items and by name
+rather than from the catalogue — no engine has an opinion about a wall clock
+or a queue, and a benchmark that swept its own wall would be measuring the
+queue (`stages.md` § 6.8e). They are what makes *"the bench keeps the
+calculation's short wall, this run asks for two days"* sayable in one file.
+**`mem` is not among them**, and its absence is a decision, not a gap.
+
 **A run needs no benchmark.** Not executed, not summarized, not declared. Open
 a fresh calculation, type what you want, prep the run. That is the complaint
 this whole redesign answers *(user, 2026-09-01: "it requires the bench to be
@@ -458,8 +466,34 @@ from the selected target's own width — or refused when that target has no
 record — and the card says which, by name.  **A benchmark never fills a blank
 row**: it reports, you decide (`architecture.md` § 5.2).
 
+**Three states, and a row shows which one it is in.** They are the visible
+form of the placeholder rule above, so they are named rather than left to the
+styling: the row carries the state and the CSS reads it.
+
+| the row is | the field holds | it looks | because |
+|---|---|---|---|
+| **chosen** | this rung's own value, from `stages[i].execution` | ordinary | you decided it here |
+| **inherited** | *empty*, with the calculation-wide value as the placeholder, marked *(every stage)* | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank and `×` unreachable |
+| **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | the state every description was in before this card existed. **Not an error** |
+
+That the field is left EMPTY for an inherited row is the load-bearing half: an
+inherited value shown as text is indistinguishable from one you typed, and
+`×` and clear-to-blank both write this rung's own block — so with the merged
+value in the field they would write nothing and the field would snap back.
+
 **And it is checked in the card, as you type** — the same admission door the
-grid card asks, over a grid of one. A run is a sweep of length one, so there
+grid card asks, over a grid of one.
+
+> **A check that cannot run says so.** *"I don't know, and here is why"* is
+> one of the three answers, beside *fits* and *does not fit* — never a blank.
+> Both fit panels used to hide themselves on any failure, on the reasoning
+> that the rows above are the substance and the card must not break. That
+> produces the worst of the readings: an empty space where a verdict belongs
+> is indistinguishable from *everything fits* and from *this feature is
+> gone*, and the one thing it never says is the true one. The server's own
+> words carry the reason — it knows why, and a paraphrase here would be a
+> second author for one sentence. *(User, 2026-09-02: "we can't have a fit
+> on. I just said, I don't know. Lack of information.")* A run is a sweep of length one, so there
 is no second check to keep in step (`generator.md` § 2). Six combinations in
 the card above and one in this card is the ordinary picture: a plan to
 measure, and a decision, side by side.
@@ -505,9 +539,9 @@ its point count:
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
 | a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is also a pin in force over the template, for the trials and the run alike *(user rule, 2026-08-20)*; a machine axis is only ever a point to measure |
-| a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. A machine item becomes the launch shape, anything else a pin over the template — one door each, chosen by the catalogue, never by a second key |
+| a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (§ 6.8e, and the row below); every other catalogue item is a pin over the template |
 | a notify-card tick | `task.json`'s `notify` | **when this run should say something, and to which channels by name** — on each SCF convergence, every N hours, or neither; a run ending always reports and so is not offered. Portable in the way § 6.1 requires: *"every six hours, to `slack`"* is true wherever the file is opened, because a name is a label the person chose and grants nothing. **What that name resolves to is not written here and must not be** — a description travels, so the address and its credential stay in the config directory of the machine that runs the job, set on the [This machine](?doc=web/this-machine.md) tab |
-| a queue, a wall, a memory ask | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — three fields, each optional. Not the launch shape: that is a machine-card row, one row above |
+| a queue, a wall, a memory ask | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — three fields, each optional. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
 
 ```jsonc
 // task.json — molbuilder/task@1
@@ -549,6 +583,95 @@ before you copy a command, rather than one stage at a time in § 11's tabs.
 
 ---
 
+## 7a. The path a value takes, end to end *(2026-09-02)*
+
+**Every defect this tab had on 2026-09-02 was a break in this chain, and none
+of them was visible from the step either side of it.** So the chain is drawn
+once, here, and each step says what it reads and what it must say when it
+fails.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant Card as the run card
+    participant Model as _task + editor buffer
+    participant Save as save()
+    participant Disk as task.json
+    participant Prep as /api/task-setup/prep
+
+    You->>Card: type 48 into mpi_np
+    Card->>Model: stages[i].execution.mpi_np = 48
+    Note over Model: the unsaved marker appears.<br/>PREP CANNOT SEE THIS YET.
+
+    You->>Save: Save to this folder
+    Save->>Save: 1 · checkpoint, if ticked (needs a note)
+    Save->>Disk: 2 · POST the BUFFER
+    Disk-->>Save: written
+    Save->>You: 3 · "Saved task.json into this folder"
+    Save->>Model: 4 · re-open the folder
+
+    You->>Prep: Preview
+    Prep->>Disk: read_task(dir)
+    Prep-->>You: what the SAVED file would launch (A13)
+    You->>Prep: Prep run here (enabled only by Preview)
+    Prep->>Disk: decks + wrappers + run-N/
+```
+
+**And the window is covered while any of it runs.** A card edit, and the
+save, both claim the page-wide fence
+([`ui-contract.md` § 10](?doc=web/ui-contract.md)) — so nothing else on the
+page can start while a parameter is being written, and a save cannot begin
+inside an edit. **That is not a timing tolerance, it is a barrier**: a card
+edit is three writes that must land together (this rung's `execution` in the
+model, the buffer `Save` posts, and the panels rendered from both), and while
+it was merely *fast*, a second edit arriving inside it interleaved — type a
+memory value, blur, press *+ Add stage* straight away, and the block the
+first was writing was gone. *(User, 2026-09-02: "before the parameter is
+ready or persistently saved, the user can't do anything … what the fuck do
+you care about half a second".)*
+
+The save was the case § 10 already names as its own example — a multi-step
+operation — and only its own button was disabled, so the sidebar stayed live
+and switching directories mid-save retargeted the steps after the switch.
+
+**The rule the whole tab hangs on:** `prep` reads `task.json` **from disk**,
+never the browser's buffer. The door takes a FOLDER and does
+`task = read_task(desc)`, because one assembly serves the CLI and the browser
+([`architecture.md` A12](?doc=execution/architecture.md)) and the CLI has only
+the file. **So `Save` is not a convenience, it is the only bridge** — and a
+card whose values have not crossed it has done nothing, however complete it
+looks.
+
+| step | reads | must say, when it fails |
+|---|---|---|
+| **1 checkpoint** | the tick and its note | *"No state was saved, so nothing was written"* — and it **stops**: a checkpoint that was asked for and did not happen must not be silently skipped |
+| **2 write** | the **buffer**, not the model | *"NOT written — ⟨the server's words⟩"* |
+| **3 confirm** | — | **always**, beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
+| **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |
+| **preview** | `task.json` **on disk** | the server's refusal, verbatim |
+| **prep** | `task.json` **on disk** | the server's refusal, verbatim |
+
+**Four things this ordering forbids, each of which happened:**
+
+1. **An offer may not block the thing it is attached to.** The checkpoint tick
+   shipped `checked`, a ticked checkpoint requires a note
+   (`checkpointing.md` **L3**), and Save is disabled while it has none — so
+   **Save was disabled from the moment any folder opened**, with the reason in
+   a hint beside the greyed button. Nothing the page wrote ever reached disk.
+2. **Success is reported, not inferred.** Step 3 spoke only when the preflight
+   had notes, so a clean save was silent — indistinguishable from a dead
+   button.
+3. **A message about the write belongs to the write.** Step 3 sat *after*
+   step 4; a reload that threw skipped it, leaving the file written and the
+   page mute.
+4. **A preview and a write are two buttons.** One button that changed meaning
+   between clicks kept that meaning in a closure, and every repaint rebuilt
+   the button — so the click meant to write was a fresh preview
+   (§ 9a.2).
+
+---
+
 ## 8. Saving is two steps, and the first one is the checkpoint
 
 | | |
@@ -557,9 +680,20 @@ before you copy a command, rather than one stage at a time in § 11's tabs.
 | **2 · write the description** | `task.json` and the template, together |
 
 **The checkpoint is offered and never taken silently**
-([`checkpointing.md § 9`](?doc=execution/checkpointing.md)). A note field is
-yours to fill; a timestamp is added either way, so every state is identifiable
-in the list even when you type nothing.
+([`checkpointing.md § 9`](?doc=execution/checkpointing.md)), and **the offer
+starts unticked**.
+
+**A note is required, not optional** — `Repo.save` refuses an empty one
+(`checkpointing.md` **L3**: *"a state needs a note saying what happened and
+what you were about to do"*). So Save is disabled while a TICKED checkpoint
+has no note, and that is honest.
+
+*(This paragraph said the opposite until 2026-09-02 — "a timestamp is added
+either way, so every state is identifiable even when you type nothing" — and
+the tick shipped `checked`. Together they made Save disabled from the moment
+any folder opened, with the reason in a hint beside the greyed button. Nothing
+the page wrote ever reached disk, which is exactly how it was reported. The
+doc was wrong about the backend; the markup was wrong about the default.)*
 
 **Two tabs write one file**, so a stale-file handshake applies rather than
 last-write-wins: the folder may have changed between loads because a `prep` ran

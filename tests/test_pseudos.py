@@ -344,8 +344,12 @@ class TestPseudosEndpoint:
         client).  Code-review fix 2026-05-23."""
         from molbuilder.web.app import create_app
         c = create_app(config={}).test_client()
-        r = c.post("/api/structure/analyze", json={
-            "structure_text": "1\ntest\nXy 0 0 0\n"})
+        # BY HAND, not through `_envelope`: the subject is what the ROUTE
+        # does with a symbol it cannot weigh, so the symbol has to reach it
+        # rather than die in this process's own parser.
+        r = c.post("/api/structure/analyze", json={"structure": {
+            "elements": ["Xy"], "positions": [[0.0, 0.0, 0.0]],
+            "metadata": {}}})
         assert r.status_code == 400, r.data
         body = r.get_json()
         assert body["ok"] is False
@@ -357,13 +361,33 @@ class TestPseudosEndpoint:
         # pinning a phrase contradicted the test's own stated contract.
         assert "Xy" in body["error"]
 
+    @staticmethod
+    def _envelope(xyz: str) -> dict:
+        """The XYZ as the route takes it (`web-api.md` § 1).
+
+        These posted ``structure_text`` until 2026-09-02, when that field was
+        removed from the route -- it had gone from `/api/spectra/render` on
+        2026-08-03 and this door was missed by the sweep.  The file's own
+        `test_analyze_accepts_the_shape_its_callers_actually_send` recorded
+        the consequence a month earlier: *"No caller sends that … the covered
+        shape and the used shape are different, which is exactly how
+        install-pseudos answered 400 to every real save for weeks with its
+        own tests green."*  The chemistry below is unchanged; only the
+        delivery moved, and it moved onto the shape the tabs use.
+        """
+        from molbuilder.structure import Structure
+        st = Structure.from_xyz(xyz)
+        return {"structure": {"elements": list(st.elements),
+                              "positions": [list(map(float, r))
+                                            for r in st.positions],
+                              "metadata": {}}}
+
     def test_structure_analyze_organic_no_metals(self):
         """No metals -> closed-shell singlet (or doublet for odd-e)."""
         from molbuilder.web.app import create_app
         c = create_app(config={}).test_client()
         water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
-        r = c.post("/api/structure/analyze",
-                   json={"structure_text": water})
+        r = c.post("/api/structure/analyze", json=self._envelope(water))
         body = r.get_json()
         assert body["ok"] is True
         assert body["metals"] == []
@@ -381,8 +405,7 @@ class TestPseudosEndpoint:
         # 5 atoms: Fe with 4 N around it.  Total electrons = 26 + 4*7 = 54 (even).
         # spin=2 (even) is parity-compatible.
         xyz = "5\nFeN4\nFe 0 0 0\nN 2 0 0\nN -2 0 0\nN 0 2 0\nN 0 -2 0\n"
-        r = c.post("/api/structure/analyze",
-                   json={"structure_text": xyz})
+        r = c.post("/api/structure/analyze", json=self._envelope(xyz))
         body = r.get_json()
         assert body["metals"] == ["Fe"]
         sug = body["suggested"]["pyscf"]
@@ -696,12 +719,17 @@ def test_analyze_accepts_the_shape_its_callers_actually_send(tmp_path, monkeypat
     """THE GAP THAT LET THE install-pseudos BREAK GO UNNOTICED, closed one door
     over.
 
-    Every test above drives /api/structure/analyze with ``structure_text``.  No
-    caller sends that: structure-optimization, spectra and transport all send
+    Every test above drove /api/structure/analyze with ``structure_text``.  No
+    caller sent that: structure-optimization, spectra and transport all send
     ``structure_path`` (four call sites, checked 2026-08-04).  So the covered
-    shape and the used shape are different, which is exactly how
+    shape and the used shape were different, which is exactly how
     install-pseudos answered 400 to every real save for weeks with its own
     tests green -- the suite exercised a request nobody makes.
+
+    **Closed at the source on 2026-09-02**: the field is gone from the route,
+    and the tests above now send the envelope.  This one stays, because the
+    gap it names is not "that field" -- it is *the covered shape drifting
+    from the used shape*, which the next field could reopen.
 
     This pins the request the tabs actually make.  It is deliberately thin: the
     chemistry is tested above and does not need repeating; what needs a test is

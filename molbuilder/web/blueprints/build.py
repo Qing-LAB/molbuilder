@@ -166,10 +166,8 @@ def api_structure_analyze():
 
     Body (JSON)::
 
-      {
-        "structure_path":  "/abs/path/to/<.xyz|.pdb>",   # OR
-        "structure_text":  "<XYZ or PDB text>"
-      }
+      {"structure": {elements, positions, metadata}}   # OR
+      {"structure_path": "/abs/path/to/<.xyz|.pdb>"}
 
     Returns the ``ChemistryAnalysis`` dataclass serialised plus a
     ``suggested.<engine>`` block built by iterating every registered
@@ -210,20 +208,32 @@ def api_structure_analyze():
                                      f"{exc}"}), 400
         return _analyze_response(struct, analyze_structure,
                                  registered_adapters)
-    text_in = body.get("structure_text")
+    # `structure_text` WAS THE THIRD WAY IN, AND IT IS GONE (2026-09-02).
+    #
+    # It was retired from `/api/spectra/render` on 2026-08-03 for a reason
+    # that held here identically: the viewer holds no coordinate document and
+    # writes none (`molview.md` § 11.7), so no caller could send one.  The
+    # sweep missed this route.  Checked before removing: no page under
+    # `static/` posts it, no CLI path builds it, and the `<textarea
+    # id="structure-text">` that once backed it was itself retired in favour
+    # of an in-memory holder.  Only tests reached it -- which is the
+    # definition of a path that is not in production.
+    #
+    # Two ways in remain, and the browser uses both: the envelope for a
+    # structure it is holding, a path for one on disk.
     path_in = body.get("structure_path")
-    if path_in:
-        try:
-            p = _resolve_path_within_roots(path_in, require="file")
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
-        text_in = p.read_text()
-        ext = p.suffix.lower()
-    else:
-        ext = "." + _sniff_structure_format(text_in or "")
-    if not text_in:
+    if not path_in:
         return jsonify({"ok": False,
-                        "error": "structure_path or structure_text is required"}), 400
+                        "error": "no structure given: send it in the envelope "
+                                 "-- {\"structure\": {elements, positions, "
+                                 "metadata}} -- or name a file with "
+                                 "`structure_path`"}), 400
+    try:
+        p = _resolve_path_within_roots(path_in, require="file")
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    text_in = p.read_text()
+    ext = p.suffix.lower()
 
     try:
         if ext == ".pdb":
@@ -1477,20 +1487,52 @@ def api_task_setup_prep():
             ntasks = "\u2014 cannot size"
         rows = [{"name": "MPI ranks", "flag": "-n", "value": ntasks,
                  "source": why}]
-        cpus = getattr(alloc, "cpus_per_task", None)
+        # THE CONFIG DEFAULT IS A NUMBER THE HEADER CARRIES, so A13 forbids
+        # reporting it as blank.  `_render_sbatch_for` reads
+        # `scheduler.defaults` for BOTH of these:
+        #
+        #     cpus     = cpus_per_task if ... else defaults["cpus_per_task"]
+        #     walltime = time          if ... else defaults["time"]
+        #
+        # This modelled `-c` itself and said "unset -- the wrapper resolves
+        # OMP at run time", while the header was carrying `#SBATCH -c 8` from
+        # the config.  Caught by driving the buttons and reading the .sbatch
+        # they produced (2026-09-02) -- the same defect `-n` had, one row
+        # over, and the same rule: never blank when blank resolves to a
+        # number. 
+        _defaults = {}
+        try:
+            from molbuilder.runtime_config import get_scheduler
+            _defaults = dict((get_scheduler(dest) or {}).get("defaults") or {})
+        except Exception:                                     # noqa: BLE001
+            _defaults = {}
+
+        def _with_default(stated, key, blank_says):
+            if stated:
+                return stated, "stated"
+            fallback = _defaults.get(key)
+            if fallback:
+                return fallback, "unset -- the config default for this machine"
+            return "\u2014", blank_says
+
+        _cpu_val, _cpu_why = _with_default(
+            getattr(alloc, "cpus_per_task", None), "cpus_per_task",
+            "unset -- the wrapper resolves OMP at run time "
+            "(OMP_NUM_THREADS > SLURM_CPUS_PER_TASK > its default)")
         rows.append({"name": "cores per rank", "flag": "-c",
-                     "value": cpus if cpus else "\u2014",
-                     "source": "stated" if cpus else
-                     "unset -- the wrapper resolves OMP at run time "
-                     "(OMP_NUM_THREADS > SLURM_CPUS_PER_TASK > its default)"})
-        for label, flag, val in (("devices", "--gres", gres),
-                                 ("memory", "--mem", getattr(alloc, "mem", None)),
-                                 ("wall", "-t", getattr(alloc, "time", None)),
-                                 ("queue", "-p", getattr(alloc, "domain", None))):
+                     "value": _cpu_val, "source": _cpu_why})
+        _t_val, _t_why = _with_default(
+            getattr(alloc, "time", None), "time",
+            "unset -- the queue's own default applies")
+        for label, flag, val, why in (
+                ("devices", "--gres", gres, None),
+                ("memory", "--mem", getattr(alloc, "mem", None), None),
+                ("wall", "-t", _t_val, _t_why),
+                ("queue", "-p", getattr(alloc, "domain", None), None)):
             rows.append({"name": label, "flag": flag,
                          "value": val if val else "\u2014",
-                         "source": "stated" if val else
-                         "unset -- the queue's own default applies"})
+                         "source": why or ("stated" if val else
+                         "unset -- the queue's own default applies")})
         return rows
 
     # ---- the PLAN: what this would do, writing nothing ----------------- #
