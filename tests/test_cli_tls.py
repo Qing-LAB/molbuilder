@@ -60,14 +60,14 @@ def test_resolve_no_json_no_flags_returns_none_pair(monkeypatch, tmp_path):
 def test_resolve_json_supplies_both_when_no_flags(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"cert": "/etc/ssl/c.pem", "key": "/etc/ssl/k.pem"}))
+        {"tls": {"cert": "/etc/ssl/c.pem", "key": "/etc/ssl/k.pem"}}))
     assert _resolve_tls(None, None) == ("/etc/ssl/c.pem", "/etc/ssl/k.pem")
 
 
 def test_resolve_cli_flag_overrides_json(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"cert": "/from/json.pem", "key": "/from/json.key"}))
+        {"tls": {"cert": "/from/json.pem", "key": "/from/json.key"}}))
     # CLI cert wins, JSON key fills the gap.
     assert _resolve_tls("/from/cli.pem", None) == ("/from/cli.pem", "/from/json.key")
     # Both flags win outright.
@@ -77,7 +77,7 @@ def test_resolve_cli_flag_overrides_json(monkeypatch, tmp_path):
 def test_resolve_json_with_only_cert_falls_back_to_http(
         monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps({"cert": "/c.pem"}))
+    (tmp_path / "molbuilder.json").write_text(json.dumps({"tls": {"cert": "/c.pem"}}))
     assert _resolve_tls(None, None) == (None, None)
     err = capsys.readouterr().err
     assert "incomplete" in err
@@ -87,7 +87,7 @@ def test_resolve_json_with_only_cert_falls_back_to_http(
 def test_resolve_json_with_only_key_falls_back_to_http(
         monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps({"key": "/k.pem"}))
+    (tmp_path / "molbuilder.json").write_text(json.dumps({"tls": {"key": "/k.pem"}}))
     assert _resolve_tls(None, None) == (None, None)
     assert "incomplete" in capsys.readouterr().err
 
@@ -133,12 +133,12 @@ def test_resolve_refuses_unknown_keys(monkeypatch, tmp_path):
     full testrun.py batch is what caught it."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"cert": "/c.pem", "key": "/k.pem", "host": "example.com"}))
+        {"tls": {"cert": "/c.pem", "key": "/k.pem"}, "host": "example.com"}))
     with pytest.raises(Exception, match="unknown top-level key.*host"):
         _resolve_tls(None, None)
-    # the flat tls aliases themselves remain read, as ever
+    # ...and the section itself still reads
     (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"cert": "/c.pem", "key": "/k.pem"}))
+        {"tls": {"cert": "/c.pem", "key": "/k.pem"}}))
     assert _resolve_tls(None, None) == ("/c.pem", "/k.pem")
 
 
@@ -309,7 +309,7 @@ def test_serve_json_only_engages_https(
     cert = _touch(tmp_path / "c.pem")
     key  = _touch(tmp_path / "k.pem")
     (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"cert": cert, "key": key}))
+        {"tls": {"cert": cert, "key": key}}))
     res = CliRunner().invoke(
         cli.cli, ["serve", "foreground", "--port", "0", "--no-supervise"])
     assert res.exit_code == 0, res.output

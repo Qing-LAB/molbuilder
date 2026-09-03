@@ -393,12 +393,15 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 
 def _read_tls(raw: Mapping[str, Any]):
-    # Flat-shape ``cert``/``key`` fold in; nested wins (see _normalise's
-    # precedence note).
+    """The ``tls`` section, and only it.
+
+    A flat top-level ``cert``/``key`` used to fold in here, with the nested
+    value winning.  There is ONE spelling now (2026-09-02): a second one is a
+    second place to look, and a reader that quietly accepted either could not
+    tell a migrated file from an un-migrated one.  ``_normalise`` refuses the
+    flat keys by name and says what to write instead.
+    """
     tls = _read_section(raw, "tls")
-    for flat_key in ("cert", "key"):
-        if flat_key in raw and flat_key not in tls:
-            tls[flat_key] = raw[flat_key]
     for k, v in tls.items():
         if not isinstance(v, str):
             raise RuntimeConfigError(
@@ -684,9 +687,19 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
                           "scopes": ("machine",), "provenance_safe": True},
 }
 
-#: Top-level keys that are NOT section names but are still known: the
-#: legacy flat spelling of ``tls`` (folded by ``_read_tls``).
-_FLAT_ALIASES = ("cert", "key")
+#: The flat spelling of ``tls`` that this loader used to accept.  Kept ONLY
+#: to be refused by name: a person whose file says ``"cert"`` at the top
+#: level has to be told the nested spelling, not handed the generic
+#: unknown-key list and left to guess which of the sections it belongs in.
+_RETIRED_FLAT_TLS = ("cert", "key")
+
+#: What to say when one of them turns up.
+_FLAT_TLS_RETIRED = (
+    "{path}: 'tls' is a section, not top-level keys.  Found {found} at the "
+    "top level -- the flat spelling was removed on 2026-09-02 because two "
+    "spellings for one setting is two places to look.  Write:\n"
+    '    "tls": {{"cert": "...", "key": "..."}}'
+)
 
 
 def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
@@ -713,16 +726,22 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     # JSON has no comments and the committed templates lean on this idiom.
     # An explicit marker is not the typo class the refusal exists for.
     unknown = sorted(k for k in raw
-                     if k not in _SECTIONS and k not in _FLAT_ALIASES
-                     and not k.startswith("_"))
+                     if k not in _SECTIONS and not k.startswith("_"))
     if "secret_key_file" in unknown:
         raise RuntimeConfigError(_SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
+    # NAMED BEFORE THE GENERIC LIST.  These two were legal here until
+    # 2026-09-02, so the person who wrote them wrote a file that worked --
+    # they are owed the new spelling, not "unknown top-level key(s) 'cert'".
+    flat = [k for k in _RETIRED_FLAT_TLS if k in raw]
+    if flat:
+        raise RuntimeConfigError(_FLAT_TLS_RETIRED.format(
+            path=CONFIG_FILENAME,
+            found=", ".join(repr(k) for k in flat)))
     if unknown:
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: unknown top-level "
             f"key(s) {', '.join(map(repr, unknown))}.  Known sections: "
-            f"{', '.join(_SECTIONS)} (plus the flat tls aliases "
-            f"{', '.join(_FLAT_ALIASES)}).  A key this loader does not "
+            f"{', '.join(_SECTIONS)}.  A key this loader does not "
             f"know would be silently ineffective -- refused instead, so a "
             f"typo cannot masquerade as configuration "
             f"(running-a-job.md § 5).  A key starting with '_' is a "

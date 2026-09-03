@@ -124,40 +124,53 @@ def test_nested_envs_section_parses(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_flat_cert_key_folded_into_tls(monkeypatch, tmp_path):
-    """The file shipped before 2026-05-14 had bare top-level cert/key."""
+# --------------------------------------------------------------------- #
+#  ONE SPELLING FOR TLS (2026-09-02)                                    #
+#                                                                       #
+#  Three tests lived here for the flat top-level `cert`/`key`: that it   #
+#  folded into `tls`, that a nested value beat it, and that it filled a  #
+#  slot the section omitted.  All three described how two spellings get  #
+#  along.  There is one spelling now, so there is nothing to get along   #
+#  with -- and a fold that quietly accepted either could not tell a      #
+#  migrated file from an un-migrated one.  What replaces them is the     #
+#  refusal, below, because a person whose file worked yesterday is owed  #
+#  the new spelling rather than a generic unknown-key list.              #
+# --------------------------------------------------------------------- #
+
+
+def test_the_flat_tls_spelling_is_REFUSED_and_the_message_shows_the_new_one(
+        monkeypatch, tmp_path):
+    """Safety, not tidiness: TLS is how the server is reachable at all.
+
+    A file that quietly lost its certificate would fall back to plain HTTP
+    -- the failure would be *the site still loads*, over an unencrypted
+    connection nobody was told about.  So the flat spelling is not ignored
+    and not folded: it stops the loader, by name, with the section to write.
+    """
+    monkeypatch.chdir(tmp_path)
+    for body in ({"cert": "/c.pem", "key": "/k.pem"},
+                 {"key": "/k.pem"},
+                 {"cert": "/f.pem", "tls": {"cert": "/n.pem"}}):
+        (tmp_path / CONFIG_FILENAME).write_text(json.dumps(body))
+        with pytest.raises(RuntimeConfigError) as exc:
+            read_config()
+        said = str(exc.value)
+        assert "'tls' is a section" in said, said
+        # IT SHOWS THE ANSWER, not just the complaint.
+        assert '"tls": {"cert"' in said, (
+            "the refusal does not show the spelling to write: " + said)
+
+
+def test_the_tls_section_is_read(monkeypatch, tmp_path):
+    """The one spelling, whole and partial."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "cert": "/c.pem", "key": "/k.pem",
-    }))
-    cfg = read_config()
-    assert cfg == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
+        "tls": {"cert": "/c.pem", "key": "/k.pem"}}))
+    assert read_config() == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
 
-
-def test_nested_tls_wins_over_flat(monkeypatch, tmp_path):
-    """If a user adds the nested section but forgets to remove the
-    flat keys, the nested values should take precedence (so migrating
-    is non-destructive: the new section reflects the intended state)."""
-    monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "cert": "/old-flat.pem", "key": "/old-flat.key",
-        "tls": {"cert": "/new-nested.pem", "key": "/new-nested.key"},
-    }))
-    cfg = read_config()
-    assert cfg["tls"]["cert"] == "/new-nested.pem"
-    assert cfg["tls"]["key"]  == "/new-nested.key"
-
-
-def test_flat_fills_in_when_nested_partial(monkeypatch, tmp_path):
-    """nested.cert + flat.key is a valid combination (the flat key fills
-    in the slot the nested section omitted)."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "key": "/flat.key",
-        "tls": {"cert": "/nested.pem"},
-    }))
-    cfg = read_config()
-    assert cfg["tls"] == {"cert": "/nested.pem", "key": "/flat.key"}
+        "tls": {"cert": "/only.pem"}}))
+    assert read_config() == {"tls": {"cert": "/only.pem"}}
 
 
 # --------------------------------------------------------------------- #
