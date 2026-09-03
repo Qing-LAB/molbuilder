@@ -67,6 +67,52 @@ cleanly when that backend is absent, rather than failing. You design the test to
 fit the environment model — you never edit an env to make a test pass (that rule is
 load-bearing elsewhere too).
 
+## 3a. A test asserts on the END PRODUCT, never on the source that made it
+
+*(User ruling, 2026-09-03: "tests should be focusing on end product and
+behavior. Tests pinning source files are stupid, retarded, and absurd.")*
+
+> **Never assert that a string appears in a file the project ships.**
+
+```python
+js = client.get("/static/lib/spectra/core.js").data.decode()
+assert 'transition("IDLE")' in js          # ← this is not a test
+```
+
+That passes when the call is **deleted and its name left in a comment**, and
+fails when the code is correct and someone renames a local. It measures
+spelling, and spelling is not behaviour.
+
+**What to assert instead — the end product, which is whichever of these the
+code actually makes:**
+
+| the thing under test | the product to assert on | how |
+|---|---|---|
+| a route | the response — status, body, headers | the Flask test client |
+| a deck emitter | the rendered deck text | call the renderer |
+| a JS module | what it *does* — call it and check the result or the DOM it changed | `tests/_node_esm.py` (§ 4) |
+| a whole page's flow | what a person sees after acting | a Playwright `*_e2e.py` (§ 5) |
+
+**Reading a shipped file is not automatically wrong — asserting on its
+spelling is.** These are legitimate, because the *artifact itself* is the
+thing under test:
+
+- no inline `<script>` in a template — a CSP property of what ships;
+- a static file is served at all, with the right status and caching headers;
+- every asset a template names exists on disk
+  (`test_wheel_ships_the_front_end.py`);
+- a stylesheet declares no raw hex colours, or no duplicate selector.
+
+The test is *"which question is this asking?"* — a property of the shipped
+artifact, or the presence of one line of implementation.
+
+**When you meet an old one, investigate before deleting.** Work out what it
+was trying to establish, then either **redesign** it to observe that through
+behaviour, or **retire** it because the intent has no observable consequence.
+Deleting without reading loses coverage that was real; keeping without reading
+keeps a check that cannot fail. B3 in [`plans/plan.md`](?doc=plans/plan.md)
+tracks the backlog.
+
 ## 4. Testing the front-end JS without a browser
 
 Most front-end logic is tested **in Node, no browser** — 48 `*_js.py` tests,
