@@ -156,12 +156,40 @@ molbuilder jobset summarize run        # -> <label>.transport.json + the I-V tab
 | `transport electrode --which L-electrode\|R-electrode` | standalone helper: derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard` |
 | `transport preflight` | standalone helper: check the device ↔ electrode contract on decks you hand-edited | `preflight.py` |
 
-**Gotchas:** the citation names a DIRECTORY explicitly (its files must satisfy `transport-design.md` § 4.1b) —
+**Gotchas:** the citation names a DIRECTORY explicitly (§ 3.1 below) —
 nothing is ever picked for you; a re-pointed citation recomposes and makes
 every stale upstream attempt refuse by deck-mismatch; `--bias` must start at
 `0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
 deriving and running the pieces is the composite's job.)*
+
+### 3.1 What makes a directory citable — files, not layout
+
+**The condition is what the directory HOLDS, never where it sits or what it
+is called.** A citation is checked against two forms, and a directory that
+satisfies neither is refused by name — told what it holds and what the
+condition wants, rather than "not citable".
+
+| form | the directory holds | what it is |
+|---|---|---|
+| **A — a relaxation** | exactly one `.fdf` **and** exactly one `.XV` | the deck that ran, and the geometry it ended at |
+| **B — a structure** | exactly one `.xyz` **with** its `.molstruct.json` beside it | a structure and its labels, with no run behind it |
+
+**Form A wins when both are present**: the deck carries the contract, and more
+information never loses to less. **Two of anything inside one form is
+ambiguous and refused** — a citation names a directory, so the directory must
+answer unambiguously; keep one, or cite one that holds one.
+
+**Evidence is FILES, never a marker spelling of ours.** SIESTA writes
+`0_NORMAL_EXIT` as its last act on a clean exit, so a run carrying it ran to
+its own end *whatever wrapper — or no wrapper — launched it*. molbuilder's own
+record answers first only because it also carries the exit code.
+
+**Classifying is not composing.** A relaxation still running has record files
+that do not conclude; classification RECORDS that, because describing a
+transport calculation ahead of a finishing relax is legal. Composing from it
+refuses — you may plan against a run in flight, but you may not build a deck
+from a geometry that is still moving.
 
 ---
 
@@ -248,7 +276,7 @@ expansion in the shipped 2-terminal scope.)
 > `Left` = `electrode-position 1` + `-a1` + `mu V/2`). A junction labeled the other
 > way round is **not an error** — it biases the other end, which only its author
 > can judge — so the sort notes it, the preflight warns, and the Transport tab
-> offers a one-click rename. See `transport-design.md` § 4.1a.
+> offers a one-click rename.  *(How that was settled: [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1a.)*
 
 > **Bias direction.** Bias is `V_left − V_right`; the emitter binds
 > `L-electrode → chem-pot Left → μ = +V/2` **by name**, and the deck states which
@@ -320,7 +348,7 @@ and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
 |---|---|---|
 | Electrode wizard | `transport/wizard.py` (`electrode_wizard`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device; its z-period comes from `cell.bulk_z_period` (§ 7.1), the same derivation the Junction builder uses |
 | Composition | `transport/compose.py` | citation → parsed `.XV` → frozen gate → categorical sort → electrode extraction; the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars) |
-| Stages | `transport/stages.py` | the five-rung ladder, the § 4.2 DAG (`stage_inputs`), the one config from the citation's deck (`config_for`), the per-stage renders |
+| Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`) |
 | Consistency preflight | `transport/preflight.py` | the cross-run contract gates (§ 5) |
 | Engine | `transport/transiesta.py` (`TransiestaEngine`) | the NEGF `.fdf` emitter (`render_script`), `preflight`, `parse_output` |
@@ -342,6 +370,26 @@ flowchart LR
     DEVICE -->|"<label>.TS.HSX (5.x; the 4.x device .TSHS retired)<br/>+ .TSDE forward per bias point"| TBT["05_transmission<br/>(tbtrans; the deck says<br/>TBT.HS <label>.TS.HSX)"]
     TBT --> RESULT["<label>.transport.json<br/>(summarize run; T(E) per bias, G(E_F), I-V)"]
 ```
+
+> **A bias scan is one submission, and the two walks over its points fail
+> in opposite directions** (`jobset/submit.py::submit_transport_chain`).
+> Both are launcher layers — each `cd`s into the point's prepared attempt
+> and runs that point's own `.run.sh`. What differs is whether the points
+> depend on each other:
+>
+> - the **device** walk hands the previous point's `.TSDE` (the NEGF
+>   density) forward, so `V_{i+1}` converges from `V_i` instead of from
+>   scratch — and therefore **stops on a failed point**: walking on would
+>   converge from a state the failure poisoned;
+> - the **transmission** walk hands nothing forward — each point re-reads
+>   the device's saved H — so a bad point says nothing about the next: the
+>   walk **continues**, and the exit code reports any failure.
+>
+> (A bench group's points are independent too, which is why it does not
+> stop; a chain's are not. The rule follows the data, not the verb.)
+> Reading is asynchronous either way: `summarize run` is a READER, so a
+> point whose transmission has not run yet reads as **pending**, never as
+> a failure of the set (`transport/record.py`).
 
 (`diagon single-point` = the electrodes have **no** MD block — single bulk
 SCFs on cells DERIVED from the junction's labeled blocks.  The device H
@@ -496,7 +544,7 @@ single-point, or a relaxation if those layers are not frozen.
   ships with it (the `.TSDE`-chained walker).
 - **Web tab (rewired 2026-08-29, P7b + same-day review):** the tab is the
   composite's WHOLE describe surface — cite the junction through the
-  shared tree-picker (ANY directory choosable — what qualifies it is the § 4.1b FILE condition, and the meta line classifies each selection, reading
+  shared tree-picker (ANY directory choosable — what qualifies it is the § 3.1 FILE condition, and the meta line classifies each selection, reading
   the attempt's own `.fdf` via `/api/transport/describe_attempt`, and the
   VIEWER follows the citation: MolView loads the cited calculation's
   labeled structure and the chemistry analysis runs on it), state the

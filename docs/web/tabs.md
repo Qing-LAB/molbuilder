@@ -206,7 +206,7 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
 **The four cards, driven by ONE fact — the citation:**
 
 1. **The junction** — the shared tree-picker cites a finished relaxation
-   directory (ANY directory is choosable — the 4.1b FILE condition decides what qualifies: a finished relaxation's `.fdf`+`.XV`, or a labeled `.xyz`+`.molstruct.json` pair; the meta line classifies each selection and reads the
+   directory (ANY directory is choosable — [`engines/transport.md`](?doc=engines/transport.md) § 3.1's FILE condition decides what qualifies: a finished relaxation's `.fdf`+`.XV`, or a labeled `.xyz`+`.molstruct.json` pair; the meta line classifies each selection and reads the
    attempt's own `.fdf`, and says NOT CONCLUDED honestly).  Electrode
    labels the reverse of the usual convention (`L-electrode` low z) are
    **warned about, never blocked** — the junction cites and runs, the
@@ -227,7 +227,7 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
    the status names the folder it wrote.  The destination must be the
    calculation's OWN folder: describing into the cited directory is
    refused, because the calculation never lives inside its citation
-   (`transport-design.md` § 4.1b) — the sidebar selection lingers on the
+   ([`engines/transport.md`](?doc=engines/transport.md) § 3.1) — the sidebar selection lingers on the
    attempt the person just browsed to cite, so this is the easy mistake.
    Task setup then reads it as an ordinary description (the run surface,
    not a hand-over target).

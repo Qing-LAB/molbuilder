@@ -1,4 +1,5 @@
-"""How often the monitor LOOKS and how often it TELLS you are not the same.
+"""How often the monitor LOOKS and how often it TELLS you are not the same
+-- `execution/run-reports.md` § 2.1.
 
 **The defect this closes.** The monitor wakes on its interval, samples
 CPU/GPU/memory, and — in the same pass — called every registered notifier,

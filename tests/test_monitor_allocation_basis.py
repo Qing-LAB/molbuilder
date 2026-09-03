@@ -1,6 +1,6 @@
 """What a reported percentage is a fraction OF.
 
-`archive/2026-09-01-bench-and-junction-plan.md` § 2.12. The rule, in the user's words:
+`execution/run-reports.md` § 2.1a.  The rule, in the user's words:
 *we do need to know if we are using the cpu allocated effectively; we don't
 really care if additional cpus are used because it is unpredictable if they
 are there.*

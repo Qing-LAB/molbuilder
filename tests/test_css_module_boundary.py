@@ -6,8 +6,8 @@ reaching into it is the same category error as a tab reaching past ``mount`` —
 and it fails the same way, late and far from its cause: the module renames a
 part, and a page nobody was thinking about goes visually wrong.
 
-This guard is the boundary from ``docs/archive/2026-09-01-css-system-plan.md`` § 1, as an
-assert.  It runs in one direction only, on purpose: it checks that PAGE sheets do
+This guard is `web/ui-contract.md` § 1.1 as an assert.  *(Settled in
+``archive/2026-09-01-css-system-plan.md`` § 1.)*  It runs in one direction only, on purpose: it checks that PAGE sheets do
 not name MODULE classes.  It does not read the module sheets to judge them,
 because that is exactly the reach it exists to forbid.
 

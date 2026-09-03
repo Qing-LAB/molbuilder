@@ -1,10 +1,10 @@
 """P4b — prep renders the transport composite's five stages
-(`archive/2026-09-01-transport-design.md` § 4.2, the arm in `jobset/prep.py` +
+(`engines/transport.md` § 1 + § 3, the arm in `jobset/prep.py` +
 `transport/stages.py`).
 
-The design's own gate row, verbatim: *"A fixture junction preps
-end-to-end; each gate refuses its mutation; the emitter's own
-order-preflight never fires (prep sorted first)."*
+A fixture junction preps end-to-end; each gate refuses its mutation; the
+emitter's own order-preflight never fires, because prep sorted first
+(§ 4, *"in the composite it cannot fire in anger"*).
 
 Properties under guard, each named for its failure:
 
@@ -13,17 +13,20 @@ Properties under guard, each named for its failure:
   dirs) — no forked machinery;
 * the electronic contract (basis · XC · energy shift · mesh · k ·
   electronic T) is read from the CITED attempt's own deck and lands in
-  every stage's deck — one template governs (ruling Q5, fdf-is-truth);
+  every stage's deck — one template governs (§ 5's invariant set, baked
+  identically into all three fdfs; `stages.config_for`, fdf-is-truth);
 * the electrode deck's SystemLabel IS the ``.TSHS`` stem the device
   deck references — one spelling, both writers;
 * the emitter's order-preflight never fires: a source whose atom order
-  would trip it preps clean, because prep sorted first (§ 4.1a);
+  would trip it preps clean, because prep sorted first (§ 4);
 * buffer atoms emit ``TS.Atoms.Buffer`` + explicit electrode positions
-  (§ 3, buffer sanity);
+  (§ 4, the ``buffer`` label: with padding outermost, TranSIESTA's default
+  first-N/last-N placement no longer holds);
 * the composed record is written once, reused by later stages, travels
   with the folder, and a re-pointed citation recomposes;
 * refusals: unnamed/unknown/disabled stage, a sweep, a moved frozen
-  atom, a pseudopotential the citation cannot supply.
+  atom, a pseudopotential the citation cannot supply (§ 3.1 — a citation
+  names a directory, so the directory must hold what the stage consumes).
 """
 from __future__ import annotations
 

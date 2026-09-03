@@ -1,15 +1,24 @@
-"""M3 — P3's milestone, asserted as the plan states it.
+"""The two halves of the restart contract, asserted together.
 
-``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` P3:
+**`execution/run-identity.md` § 4 rules 2-3** -- `restart` is ONE field, and
+the renderer expands it into whatever that engine's group is (three declared
+keys for SIESTA).  So a stage that continues renders **every** bound
+parameter, a stage set to `clean` renders **none**, and nobody keeps the
+group in step by hand.
 
-  > A two-stage description whose second stage continues renders **every**
-  > bound parameter set, and a stage set to `clean` renders **none** —
-  > asserted together, because the failure mode is that they disagree. A
-  > second produce into a folder that already holds warm files **refuses
-  > unless told to overwrite, and never renames**.
+**`run-identity.md` § 6** -- *"say what is already there, and never rename"*:
+a second produce into a folder holding warm files refuses unless told to
+overwrite, and moves nothing aside.  (It moved them into an aside directory
+until 2026-08-18; keeping a state is `molbuilder checkpoint save`, and that
+is never automatic -- `job-contracts.md` § 4.2.)
 
-Both halves live here rather than in the unit files, so "did M3 pass" is one
-file and not an archaeology exercise.
+**They are asserted in one file because the failure mode is that they
+disagree**: a renderer that half-expands the group, or a produce that renames
+what a continue was about to read, each leave the other looking correct.
+
+*(This was "P3's milestone" from
+`archive/2026-08-19-staged-runs-implementation-plan.md`; the rules outlived
+the plan and the citation did not follow them.)*
 """
 from __future__ import annotations
 

@@ -465,6 +465,19 @@ does not rotate), the preflight names the frozen count, and the Methods
 paragraph spells out that the reported frequencies are those of the free
 atoms moving in the field of the fixed ones.
 
+**And the two lists must PARTITION the atoms — checked, not assumed.**
+`SpectraResults` refuses at construction unless `free_atom_idxs` and
+`frozen_atom_idxs` are disjoint *and* their union is exactly
+`range(n_atoms_total)`, and unless every mode's eigenvector carries one row
+per free atom. A result that fails either is a parser or programmer error,
+and catching it where the object is built beats meeting it when the viewer
+tries to draw a displacement.
+
+> **A count-only check is not the same test.** It passed `free=[0,1,5]`,
+> `frozen=[]`, `n=3` — three indices for three atoms, one of them not an atom
+> — and the frontend then silently dropped that displacement from the
+> scatter. Counting says *how many*; a partition says *which*.
+
 The old form field (`frozen_indices`, pre-filled by the schema route from the
 sidecar) retired with the P2 substitution: a form default was a **second
 copy** of a structure fact, editable into disagreement with the structure it
@@ -489,6 +502,54 @@ that does the file-viewer registry *and* the heavy engine cores it mounts (this
 `lib/spectra/core.js` among them), since converting them rewrites those files
 anyway. See [`presenters.md`](?doc=web/presenters.md) and
 [`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md).
+
+## 9a. Which modes get the expensive treatment, and what the paper says
+
+**Two things the deck decides that nothing else can, and both end up in what
+you publish.**
+
+### 9a.1 The five selectors
+
+Electronic structure at a displaced geometry is an SCF per mode, so which
+modes get one is a real cost decision. `es_mode_selection` takes one of five
+answers:
+
+| | picks |
+|---|---|
+| `skip` | none |
+| `all` | every mode |
+| `top_n` | the `es_top_n` strongest by Raman activity |
+| `threshold` | every mode above `es_threshold` Raman activity |
+| `explicit` | exactly the indices you list |
+
+**The frequency window filters the first four and is IGNORED by `explicit`** —
+naming a mode by index is saying *that one*, and a window that silently
+dropped it would answer a question you did not ask.
+
+**A mode that already has its electronic structure is skipped on a resume**,
+whatever the selector says: the result persists, so re-running it buys
+nothing.
+
+### 9a.2 The Methods paragraph is composed, not written
+
+`render_methods_md` builds the Markdown that ships **in the emitted script's
+header, in the preview modal, and beside the finished result** — one composer,
+so the three cannot describe different calculations. Every prose decision
+comes off the config: functional, basis, dispersion, the selector above, the
+amplitude convention (§ 4.1) and the frequency window.
+
+It has two forms and takes one optional engine paragraph:
+
+- **before the run** — no results, so it says *what will be done*;
+- **after** — the parsed results interpolate real mode counts and frequency
+  ranges;
+- **the engine fragment** is passed IN by the caller, because this composer is
+  engine-ignorant on purpose; the one producer that has an engine knows which
+  it is.
+
+`extract_citation_keys` reads the bibliography keys back out of the rendered
+prose, so what is cited is what was actually said rather than a second list
+kept beside it.
 
 ## 10. Test map
 

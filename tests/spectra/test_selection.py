@@ -1,6 +1,8 @@
 """L2 mode-selection tests: ``select_modes`` (the reference selector).
 
-archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 8 + § 8.1 + § 2.5.3.  Pure functions, exhaustively tested:
+`web/spectra.md` § 9a.1 -- the five selectors, the frequency window that
+filters four of them, and the resume skip.  Pure functions, exhaustively
+tested:
 
   * the five Model-2 selectors (skip / all / top_n / threshold /
     explicit) on a 6-mode fixture with varied (freq, Raman activity)

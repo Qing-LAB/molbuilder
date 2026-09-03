@@ -1,4 +1,6 @@
-"""The transport calculation KIND — `archive/2026-09-01-transport-design.md` § 4.1
+"""The transport calculation KIND — `engines/transport.md` § 1 and § 3.1: one
+slot, one explicitly named directory, nothing picked for you.  *(Settled in
+`archive/2026-09-01-transport-design.md` § 4.1
 (build P3): one slot by explicit citation, the bias axis, floor 2 =
 task.json alone.
 

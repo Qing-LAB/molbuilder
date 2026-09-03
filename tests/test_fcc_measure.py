@@ -1,6 +1,6 @@
 """Reading a lattice constant back out of a relaxed bulk result.
 
-`archive/2026-09-01-modify-redesign-plan.md` § 3.3, user's own design: *"we should have a
+`science/junction-cell.md` § 2c, the user's own design: *"we should have a
 backend to extract this from a .xyz or .XV result where one single periodic
 lattice is correctly optimized with the same pseudopotential/basis etc., but
 that is at user's hand … and the backend just extracts the lattice from that

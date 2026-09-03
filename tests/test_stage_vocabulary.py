@@ -1,23 +1,33 @@
 """The four questions that decide whether the staged-run design landed.
 
-``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` carries them as standing
-guards -- things a reader should be able to *check*, not believe.  They
-originated in a design draft archived 2026-08-11 as
-``docs/archive/2026-08-11-staged-runs-architecture.md`` § 8c:
+They are things a reader should be able to *check*, not believe, and the
+rules they check belong to the live contracts:
 
-  1. Is there one way to say "stage"?
-  2. Does a stage's name survive -- is no file named by a stage's *position*?
-  3. Does everything run through the wrapper?
-  4. Does each stage start because someone said so?
+  1. Is there one way to say "stage"?  -- `engines/stages.md` § 1 + § 1.4:
+     a stage is OURS, not the engine's, and one mechanism serves every
+     engine.
+  2. Does a stage's name survive -- is no file named by a stage's
+     *position*?  -- `engines/stages.md` § 7.3 R5, with the one place a
+     number does belong settled by `project-layout.md` § 4.1
+     (`<seq>_<name>`, assigned once).
+  3. Does everything run through the wrapper?  --
+     `execution/running-a-job.md` §§ 2 and 5: activation and the engine
+     launch live in the wrapper, nowhere else (`stages.md` § 8 hands them
+     over by name).
+  4. Does each stage start because someone said so?  -- `stages.md` § 8:
+     a producer "asks for nothing this file does not carry, because there
+     are no edges left to thread"; the job set carries none
+     (`job-system.md`), and the one sequenced thing that exists -- a
+     transport bias scan -- chains INSIDE one submission's walker
+     (`engines/transport.md` § 6).
 
-Three of the four answers are wrong today.  This module makes all four
+**All four are answered YES today** (Q2/Q3/Q4 on 2026-08-10, each noted at
+its own section below; Q1 by the agreed mechanism set).  Three of them were
+``xfail(strict=True)`` while the staged-run work was in flight -- strict, so
+the day the behaviour started working the suite failed until the record was
+updated.  What the module is FOR now is the other direction: each answer is
 mechanical, so a regression is caught by a test rather than by the next
-fresh-eyes review, and so the subtraction reviews of
-``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` have a number to point
-at instead of an opinion.  The three that are wrong are ``xfail(strict=True)``
-naming the phase that fixes each: strict matters, because it fails loudly the
-day the behaviour *starts* working, so a fix cannot land without the plan
-being updated.
+fresh-eyes review.
 
 Run it as a module, from the repository root, for the baseline table::
 
@@ -27,20 +37,26 @@ Run it as a module, from the repository root, for the baseline table::
 is not installed into the env -- see docs/process/testing.md.)
 
 WHAT THE LEDGERS BELOW ARE FOR.  Question 1 is answered by attributing every
-declaration in the package whose name carries "stage" to one of the ten
-mechanisms `the implementation plan` § 8b enumerates, or to a role that
-is not a mechanism at all.  Removing a mechanism is then a one-line edit --
-which is what makes phase P5's "these nine names are gone" provable rather
-than intended -- and growing an eleventh fails until somebody writes down what
-it is.  Same shape as ``test_css_no_duplicate_selectors.py``: enumerate
-mechanically, attribute by hand, assert the two agree.
+declaration in the package whose name carries "stage" to one of the
+mechanisms the design enumerates, or to a role that is not a mechanism at
+all.  Retiring a mechanism is then a one-line edit -- which is what made
+"these nine names are gone" provable rather than intended -- and growing a
+new one fails until somebody writes down what it is.  Same shape as
+``test_css_no_duplicate_selectors.py``: enumerate mechanically, attribute by
+hand, assert the two agree.
 
 THE BLIND SPOT, STATED SO NOBODY TRUSTS THIS FURTHER THAN IT GOES.  Detecting
 by name cannot find a mechanism that does not carry the word.
 ``molwatch_log_basename(label, stage=N)`` is exactly that: it takes a stage and
 writes its number into a filename, and no detector here sees it.  Question 2
-catches it instead -- which is the general answer, and the reason the plan's
-Review 2 says to search *by behaviour, not by name*.
+catches it instead -- which is the general answer, and the reason the design
+review says to search *by behaviour, not by name*.
+
+The dated measurements of these counts, and the phasing that moved them, are
+history: ``docs/archive/2026-08-11-staged-runs-architecture.md`` § 8c (where
+the four questions were first written) and
+``docs/archive/2026-08-19-staged-runs-implementation-plan.md``.  Read them for
+provenance, never to decide what the rule is.
 """
 from __future__ import annotations
 
@@ -814,7 +830,7 @@ def baseline() -> list[tuple[str, str, int, str, str]]:
 
 if __name__ == "__main__":  # pragma: no cover -- the reporting surface
     rows = baseline()
-    print("staged-run baseline -- docs/archive/2026-08-19-staged-runs-implementation-plan.md")
+    print("staged-run baseline -- engines/stages.md SS 1, 7.3 R5, 8")
     print()
     for q, measure, count, target, phase in rows:
         flag = "!!" if target == "0" and count else "  "

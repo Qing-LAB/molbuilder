@@ -1,7 +1,9 @@
 """Every class MolView's stylesheet defines is namespaced.
 
-Phase 5 of docs/archive/2026-08-20-molview-css-namespace-plan.md, and the reason the other
-four phases stay done.
+`web/ui-contract.md` § 1.1: a module owns its CSS, and `molviewer-*` is
+MolView's private vocabulary.  *(The renaming was
+`archive/2026-08-20-molview-css-namespace-plan.md`; this is the reason its
+four phases stay done.)*
 
 MolView's doctrine is concealment: one entry point, 3Dmol named in exactly one
 file, nothing on ``window``.  The stylesheet obeyed none of it -- 167 class

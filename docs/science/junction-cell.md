@@ -87,6 +87,27 @@ and period rows in § 2 and § 3.1, its own registry step for the seam classifie
 (`cell.classify_seam`), and — for hcp — a `c/a` ratio, which fcc does not have.
 Until those exist the honest answer is a refusal that says so.
 
+## 2c. Measuring `a` from your own relaxed bulk
+
+The spacings above are computed from a lattice constant, and the table's `a`
+is a literature value at the level of theory it was measured at. **Yours may
+differ**, and a slab built on someone else's `a` inherits a strain the
+calculation never asked for.
+
+`POST /api/modify/lattice-from-run` reads `a` back out of **your own relaxed
+bulk result** — a `.xyz` or `.XV` holding one periodic cell — and reports it
+alongside what it saw: the nearest-neighbour distance, the coordination
+number, and the second-shell ratio, so an answer that does not look fcc can be
+recognised as such.
+
+> **The division of labour is the user's** *(2026-09-01)*: *"the user needs to
+> make sure this setup is correct, and the backend just extracts the lattice
+> from that result."* **You** guarantee the pseudopotential, the basis and the
+> mesh cutoff — the things that decide whether the number means anything.
+> This **measures what the file says and reports what looks odd, without
+> refusing on your behalf.** A backend that second-guessed the setup would be
+> claiming to know a convergence you ran and it did not.
+
 ## 2b. The cell shape is not a free switch
 
 The slab builders take an `orthogonal` flag, but on two of the three surfaces

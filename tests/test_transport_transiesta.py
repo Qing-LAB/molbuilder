@@ -1,22 +1,30 @@
 """Tests for the TranSIESTA engine (the TranSIESTA deck emitter).
 
-Pins the contract documented in
-``molbuilder/transport/transiesta.py`` module docstring:
+The engine is one row of `engines/transport.md` § 6 — the NEGF `.fdf`
+emitter behind the `TransportEngine` Protocol.  What is pinned here:
 
 * Engine self-registers as ``"transiesta"`` on import of
-  :mod:`molbuilder.transport`.
+  :mod:`molbuilder.transport` (§ 6, Registry: a backend that registers
+  itself adds its engine choice back to the form).
 * ``render_script`` emits a device ``.fdf`` carrying every
-  TranSIESTA-required keyword for a zero-bias NEGF run.
-* ``preflight`` catches missing / empty region labels + warns on
-  multi-bias attempts (deferred scope).
+  TranSIESTA-required keyword for a zero-bias NEGF run -- the modern
+  4.1+/5.x syntax of § 4, *Emitter behavior*: one ``%block TS.Elec.<name>``
+  per lead, ``TS.ChemPots`` + per-name ``TS.ChemPot.<name>``, and
+  ``SolutionMethod transiesta``.
+* ``preflight`` catches missing / empty region labels, and warns on a
+  multi-bias attempt: ``TS.Voltage`` is one value per run, and a bias
+  scan is multiple runs walked by the chain (§ 4, last callout; § 8).
 * ``parse_output`` raises ``NotImplementedError`` with a clear
-  deferred-scope message (NOT a stack trace).
-* ``methods_fragment`` returns prose (placeholder today; the
-  full version lands with parse_output).
+  deferred-scope message (NOT a stack trace).  Reading a finished run is
+  `transport/record.py`'s job today (``summarize run`` -> the shipped
+  ``<label>.transport.json``, § 6); the engine gains its own reader with
+  the Results-tab transmission inspector (§ 8, Follow-up).
+* ``methods_fragment`` returns prose -- a placeholder, which is why no
+  document states its shape; the full version lands with parse_output.
 
 The electrode derivation lives in ``transport/wizard.py`` driven by
-``transport/compose.py``; the composite's design of record is
-``docs/archive/2026-09-01-transport-design.md``.
+``transport/compose.py`` (§ 6); the atom-ordering rule the preflight
+guards, and why it cannot fire inside the composite, is § 4.
 """
 from __future__ import annotations
 

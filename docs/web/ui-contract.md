@@ -41,6 +41,29 @@ flowchart TD
 things.** A shared element has exactly one owner — its rules are declared in one
 place, and other sheets don't redeclare them.
 
+### 1.1 A module owns its CSS the way it owns its JavaScript
+
+**A page sheet may not name a module's classes.** MolView is sealed at
+`index.js`; `molview.css` is that same seal in another language, and
+`molviewer-*` is its private vocabulary. A page stylesheet reaching into it is
+the same category error as a tab reaching past `mount` — and it fails the same
+way, **late and far from its cause**: the module renames a part, and a page
+nobody was thinking about goes visually wrong.
+
+**The rule runs in one direction**, and the asymmetry is deliberate. The guard
+checks that PAGE sheets do not name MODULE classes; it does not read the
+module sheets to judge them, because that is exactly the reach it exists to
+forbid.
+
+> **What this cost before it was a rule.** An inventory on 2026-08-02 found 20
+> rules in `results/style.css` styling `.inspector-card*` — elements built
+> entirely in JavaScript by `lib/inspectors/`. A module whose appearance was
+> half-owned by a page that could not see it.
+
+A page that needs a module to look different asks the module for a token or an
+option. It does not reach in — the same answer a tab gets when it wants the
+viewer to behave differently.
+
 ## 2. Design tokens — the one palette file
 
 `lib/tokens.css` names every color, spacing, size, and type value once, in a

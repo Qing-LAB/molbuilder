@@ -1,4 +1,4 @@
-"""P6 — the transport record (`archive/2026-09-01-transport-design.md` § 7,
+"""P6 — the transport record (`engines/transport.md` § 6,
 `transport/record.py` + `summarize run`'s transport arm + the
 transmission walk).
 
@@ -18,8 +18,12 @@ Properties under guard, each named for its failure:
   PENDING (never a failure of the set), nothing-ran refuses naming
   what to launch;
 * the record file + `summarize run`'s table;
-* the transmission walk CONTINUES past a failed point (independent
-  points — the device chain's stop rule deliberately does not apply).
+* the transmission walk CONTINUES past a failed point, and a
+  not-yet-run point reads as pending rather than broken — the two rules
+  of § 6's walk callout: nothing is handed forward, so a bad point says
+  nothing about the next, and `summarize` is a reader (the device
+  chain's stop rule deliberately does not apply, because ITS points do
+  chain a density).
 """
 from __future__ import annotations
 

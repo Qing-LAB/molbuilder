@@ -1,6 +1,7 @@
 """`POST /api/modify/lattice-from-run` — the user's own bulk relax, measured.
 
-`archive/2026-09-01-modify-redesign-plan.md` § 3.3.  The radio it replaces ("Your bulk run")
+`science/junction-cell.md` § 2c -- measure `a` from your own bulk rather
+than take the table's.  The radio it replaces ("Your bulk run")
 had been **unreachable since it shipped**: its only home was a packaged column
 that is `null` for all six metals and that nothing in the codebase writes, so
 the control greyed itself out — correctly — forever.

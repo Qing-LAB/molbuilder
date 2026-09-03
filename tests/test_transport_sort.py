@@ -1,4 +1,6 @@
-"""The categorical sort — `archive/2026-09-01-transport-design.md` § 4.1a (build P2).
+"""The categorical sort — `engines/transport.md` § 5 (the consistency
+contract) and § 7.1.  *(Settled in
+`archive/2026-09-01-transport-design.md` § 4.1a.)*
 
 Properties under guard, each named for its failure:
 

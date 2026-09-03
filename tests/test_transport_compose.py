@@ -1,4 +1,7 @@
-"""P4a — prep composes from the citation (`archive/2026-09-01-transport-design.md`
+"""Prep composes from the citation — `engines/transport.md` § 3.1 (what makes
+a directory citable) and § 1 (one citation, five derived stages).
+
+*(How it was designed: `archive/2026-09-01-transport-design.md`
 § 4.1–4.2, `transport/compose.py`).
 
 Properties under guard, each named for its failure:
@@ -798,7 +801,7 @@ class TestFormB:
 
 
 class TestTheRecordedContract:
-    """4.1b's third shade (archive/2026-09-01-structure-info-plan.md I6): a pair whose
+    """`transport.md` § 3.1's form B, third shade: a pair whose
     sidecar carries `info.calculation` seals like a cited deck."""
 
     def _recorded_pair(self, tmp_path):

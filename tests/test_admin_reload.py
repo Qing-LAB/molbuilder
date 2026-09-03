@@ -1,6 +1,8 @@
 """The admin Reload route, and the two locks on it.
 
-Contract: docs/archive/2026-08-19-server-reload-plan.md § 3.3 and § 4.
+Contract: `ops/access-control.md` -- *"`POST /api/admin/reload` is not
+registered at all unless both hold"*.  *(How the mechanism was designed:
+`archive/2026-08-19-server-reload-plan.md` § 3.3 and § 4.)*
 
 WHAT THIS ROUTE DOES: exits the process with a code the supervisor is waiting
 for, so a fresh server starts with every module imported again.  There is no

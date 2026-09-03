@@ -1,6 +1,9 @@
-"""``parse.contract.contract_of`` — the recorded-contract extractor
-(archive/2026-09-01-structure-info-plan.md I5): one deck in the directory defines the
-answer; anything else is None, never a guess."""
+"""``parse.contract.contract_of`` — the recorded-contract extractor.
+
+`model/parse.md` § 5b: one deck in the directory defines the answer; anything
+else is `None`, never a guess.  (Transport asks the same question as a
+REFUSAL, `transport.md` § 3.1 -- there you are citing the directory on
+purpose; here the caller is enriching a result it already has.)"""
 from __future__ import annotations
 
 from molbuilder.parse.contract import contract_of

@@ -1564,7 +1564,7 @@ by the `calculations` key (`template.md` § 6.3's sibling rule) and whose
 warm-file section `pyscf/warm-files.toml` already declares — and
 **`transport`**, the composite with its own codec rules (`task.py`:
 transport ⇒ hierarchical shape, exactly one `junction` slot cited
-cited as a tree-relative directory path whose files satisfy the § 4.1b condition, no `structure`, a `bias` list; `siesta/warm-files.toml`'s
+cited as a tree-relative directory path whose files satisfy [`transport.md`](?doc=engines/transport.md) § 3.1, no `structure`, a `bias` list; `siesta/warm-files.toml`'s
 `[transport]` section declares its warm vocabulary).
 
 **What may be swept is not a free list.** A key must name a field the engine
@@ -2118,7 +2118,7 @@ were written for a flat directory and would silently have lost data in a tree.
 - **Carrying a finished run into the next calculation** — **it is CITED, never
   bundled** (retired 2026-08-29; `job-contracts.md` § 5 holds the closure).  A
   calculation that builds on a finished result names the attempt explicitly
-  (a directory whose files satisfy the § 4.1b condition) and `prep` composes from it —
+  (a directory whose files satisfy [`transport.md`](?doc=engines/transport.md) § 3.1) and `prep` composes from it —
   [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1 is the
   shipped instance.  The which-script tie-break question the old handoff carried
   died with it: a citation names ONE attempt, so there is nothing to guess.

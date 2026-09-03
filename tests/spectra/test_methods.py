@@ -2,7 +2,7 @@
 ``render_methods_md`` across the pre-run / post-run / engine-fragment
 forms.
 
-archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 9.4 + § 11.1 + § 11.2.  These tests verify the Methods prose
+`web/spectra.md` § 9a.2.  These tests verify the Methods prose
 that ships embedded in the emitted script and in the post-run output:
 
   * citation keys parse cleanly from the prose's [Foo, Bar] markers;

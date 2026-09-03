@@ -411,6 +411,26 @@ what a registered FileParser can produce — add the missing FileParser instead.
 
 ---
 
+## 5b. The recorded contract — one deck defines the answer, or there is none
+
+`contract.contract_of(directory)` reads back **what a finished calculation was
+actually run with** — the `info.calculation` block: the engine, the fields the
+deck states (and only those), the deck's name, and its `sha256`.
+
+**Exactly one `.fdf` in the directory, or `None`.** Zero decks is nothing to
+read; two is a question the directory cannot answer, and picking one would be
+a guess wearing the look of a fact — the recorded contract's whole value is
+that it is *what ran*, so an answer that might be the other deck's is worth
+less than no answer.
+
+> **The same condition, two different answers, and both are right.** Transport
+> asks it as a REFUSAL ([`transport.md` § 3.1](?doc=engines/transport.md)):
+> you are citing that directory on purpose, so an ambiguous one is a mistake
+> to tell you about. Here it is a `None`: the caller is enriching a result it
+> already has, and a missing contract block is an ordinary state, not a
+> failure. A refusal would make every un-recordable directory an error at a
+> layer that is only ever adding detail.
+
 ## 5a. Sibling upgrade — when a second file sharpens the first
 
 Some engines write the *same* physics twice: once into the human-readable log,

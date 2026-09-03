@@ -97,6 +97,21 @@ advances constantly, so a webhook configured against it received a message
 every few seconds for the length of the run. The per-sample event is a line in
 the monitor log; who gets told, and when, is the table above.
 
+### 2.1a A percentage is a fraction of what the job HOLDS
+
+**Never of the node.** CPU is `used_ns / (elapsed × cores_allocated)`, and
+memory is read against the job's own cgroup limit — so 100% means *this
+calculation is using everything it asked for*, which is the only question a
+report can usefully answer *(user: "we do need to know if we are using the cpu
+allocated effectively; we don't really care if additional cpus are used
+because it is unpredictable if they are there")*.
+
+**Taken over the whole node it measures the cluster instead.** 48 ranks on a
+128-core node cannot move a node-wide reading past 37.5%, so the Au-BDT-Au
+sweep's **32.2% read as idleness while the job was at ~86% of what it held**.
+And a job that looks starved argues for a bigger machine — which is the queue
+this practice exists to stay out of.
+
 ### 2.2 A converged SCF is read from the geometry step
 
 The monitor sees a cycle converge because `geom_step` advanced — SIESTA prints
