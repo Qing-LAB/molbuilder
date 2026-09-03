@@ -4105,14 +4105,16 @@ the surface offers the snapshot.
 
 **WHEN IT CLEARS — every situation, and nothing outside this list**
 *(user, 2026-08-31: "define all situations that measurement selection will be
-cleared")*.
+cleared"; and the same day, "this should be a system-wide handling framework of
+how and when to clear it up")*.
 
 Two causes, and they are different kinds of thing:
 
 **1. The molecule or its data changed.** The picks name atoms in the structure
 that was in the window, so they do not survive it changing. The rule lives in
 `settle`, which the model already calls *"every change to the structure — so it
-is settled HERE, once"*, and **no door decides it for itself**:
+is settled HERE, once"* — beside the notices rule, settled there for the same
+reason — and **no door decides it for itself**:
 
 | what happened | door |
 |---|---|
@@ -4141,143 +4143,16 @@ identical. **Off now means nothing is being measured — one state, not two.**
 
 | | why it must not |
 |---|---|
-| frames arriving from a running job (`reloadFrames`, `addFrame`, `addFrames`, `setForces`) | § 12.4 is measuring **while a trajectory plays**: the picks are indices, the readout re-reads the current frame, and the value follows the movie. These doors **prove** the atoms are unchanged (`requireSameAtoms` runs before they land), which is what makes the exemption a fact rather than a judgement call — they pass `keepsAtoms` |
+| frames arriving from a running job (`reloadFrames`, `addFrame`, `addFrames`, `setForces`) | § 12.4 is measuring **while a trajectory plays**: the picks are indices, the readout re-reads the current frame, and the value follows the movie. These doors **prove** the atoms are unchanged — `requireSameAtoms` and `requireMatch` run before they land — which is what makes the exemption a fact rather than a judgement call, not a door somebody decided to trust: they pass `keepsAtoms` |
 | moving the displayed frame — scrubbing, playing | same reason: the value follows, the picks do not move |
 | isolate on or off | the picks are ORIGINAL indices and the marks survive isolate by design (§ 6.5) |
 | the selection changing — All, Invert, a filter, a label tick | a different track entirely (§ 9.5) |
 
+**Everything else takes the default, a label write included** — a label is
+data, and the rule is not worth an exception it does not need.
+
 **And they never come back.** The picks are not persisted, so a reload or a
 restored session starts empty rather than re-adopting them.
-
-**What it reads.** Its atoms come from `measurement`, in **pick order** — which is
-why the vertex of a three-atom angle is the atom picked second, not the middle one
-by number. Its coordinates come from the **master copy at the current frame**
-(§ 6.3), never from the drawing.
-
-**What it shows.** Every picked atom's coordinates, at every count — the position
-is what a reader checks the derived number against. At two atoms, the distance
-**and** the signed `Δ = (Δx, Δy, Δz)`, second minus first, so it reads as *to get
-from the first atom to the second, go this far along each axis*. At three, the
-angle.
-
-**And the marks carry the ORDER** *(user, 2026-08-30: "the measurement
-selection need some indicator at the atom?"; 2026-08-31: "using arrows to show
-what is the item that is selected and the direction of that selection ... then
-the orientation, the order, and everything is already shown in the drawing")*.
-The chip names the atoms; the marks say which ones they are **on the molecule**,
-which is the difference between picking and picking blind.
-
-| picks | drawn |
-|---|---|
-| 1 | a mark on that atom — there is no direction yet to show |
-| 2 | one arrow, **first → second** |
-| 3 | two arrows, first → second and second → third |
-
-**Why arrows and not a glow.** A glow said *which* atoms and nothing else, so an
-ordered pick and an unordered one looked identical — and that is not a cosmetic
-complaint: it is why `orient` reading a **sorted set** as though it were a click
-order went unnoticed for as long as it did (§ 11.1's `ordered` column). An arrow
-per step says which was first, so the picture stops needing the caption. At
-three picks the second arrow's tail is the angle's vertex, which is the same
-thing the readout says in words.
-
-**Its own shapes, not the arrow overlay.** Force arrows are ranked by length so
-the largest draws gold (§ 1.1); a measurement arrow in that bucket could be the
-longest and take the gold off the force that earned it. Two overlays, two
-buckets, no interaction.
-
-**A pick that is not on screen costs the arrows, not their correctness.** Under
-isolate a picked atom may not be drawn, and joining the two that *are* drawn
-would assert a step the user never made — so a broken chain falls back to
-marking what is visible. It says less rather than something untrue.
-
-Content only, as § 10.3's table has it: the pipeline emits *which* atoms in what
-order, and the sealed layer owns what a mark looks like.
-
-> **This replaced two doors nobody used.** The sealed layer carried `markers` and
-> `halos` — identical spheres-per-atom apart from a default opacity, both
-> hard-coded to `[]` by their only caller since the embed they came from was
-> retired, and both taking their colour and radius **from the caller**, which
-> § 6.5 gives to the sealed layer. They are gone; one glow primitive draws the
-> selection and the ruler from two lists and two constants this layer owns.
-
-**When it repaints.** On a change to the track **or** a frame change — it
-subscribes to both (§ 6.4).
-
-That is what makes it correct in the two places a drawing-derived readout would be
-wrong: while a trajectory plays, because it re-reads the current frame; and under
-isolate, because the drawn numbering no longer matches the real one and it never
-looked at the drawn numbering (§ 6.5). Under isolate the 3D window stops feeding
-the ruler too, for the same reason it stops feeding the selection: the index a
-click yields is not the atom, and a measurement built from it would be the wrong
-atoms quoted to three decimal places.
-
-**Clear sits on the chip.** The selection panel has a Clear three inches away that
-empties something else; two buttons with one word meaning two things, in one card,
-is the confusion this whole layer exists to avoid. This one names what it clears by
-sitting on it, and appears only while there is something to clear. It is also why
-the chip is the one overlay that may be clicked at all.
-
-**It is kept where looking is kept.** The ruler's on/off persists in the
-`<owner>:ui` lane (§ 11.2b) and nowhere else: never a state, never the draft,
-never the badge, never an export, never a request body, and never the structure
-or its sidecar — so it does not travel with a saved file. **The picks do not
-persist at all** *(user, 2026-08-31)*: they name atoms in the molecule that is
-in the window, so a restore has nothing to restore them onto. They were
-persisted and re-adopted until then, guarded by an **atom count** — which two
-different three-atom molecules pass, so the readout came back quoting a bond
-length for atoms nobody had picked.
-
-**What a consumer may reach, and what it may not** *(user, 2026-08-31: "the
-internal selection states should not be accessible from outside the module …
-this is the only way to guarantee that you're not misusing any of those
-states")*. The model hands out a **surface**, not the store. It carries four
-things:
-
-| door | why it is open |
-|---|---|
-| `getState()` | the settled snapshot — the picks and whether the ruler is on, handed over whole (§ 8.4) |
-| `subscribe(fn)` | a reader repaints when the track changes |
-| `setActive(on)` | turning measuring on or off is a thing a **person** does |
-| `clear()` | so is emptying it — that is the chip's Clear |
-
-**`toggle` is not on it.** Writing a pick goes through `pickAtom` and nowhere
-else, because that is the one place that decides whether a click means
-measuring or selecting, and the one place a drawn index has already been
-translated to a real one. A second writer is how the routing rule comes to have
-an exception — and handing out the store published `toggle` to every consumer
-that asked for the track.
-
-**`adopt` does not exist.** It restored a session's picks from the view-context
-lane, guarded only by an atom count, which two different three-atom molecules
-pass. The picks do not persist at all now, so there is nothing to adopt them
-from, and a door left standing is an invitation to write that restore again.
-
-**And one read, not two spellings of it.** `get()` returned the picks while
-`getState()` returned the picks *and* the ruler's state, so two callers asked
-one question two ways. The store keeps `get()` for the model's own `readPicks`;
-the surface offers the snapshot.
-
-**When it clears — one rule, in one place** *(user, 2026-08-31: "this should be
-a system-wide handling framework of how and when to clear it up")*. A change to
-the structure clears the picks, and **no door decides that for itself**. The
-rule lives in `settle`, which the model already calls *"every change to the
-structure — so it is settled HERE, once"*, beside the notices rule that is
-settled there for the same reason.
-
-It had been three call sites, and the fourth door proved the point before
-anyone wrote this down: the **cell commit** raised `history.edited()` and left
-the picks standing.
-
-**The one exemption is not a judgement call.** A door is exempt when it has
-*proved* the atoms are unchanged — `requireSameAtoms` and `requireMatch` run
-before it lands — which is exactly the four doors that carry a running job's
-frames (`reloadFrames`, `addFrame`, `addFrames`, `setForces`). They must not
-clear, because § 12.4 is measuring an angle **while a trajectory plays**: the
-picks are indices, the readout re-reads the current frame, and clearing there
-would delete the measurement that feature exists to show. Everything else takes
-the default, a label write included — a label is data, and the rule is not worth
-an exception it does not need.
 
 > **What this replaced, and why it is gone.** The readout used to take its atoms
 > from `selection`, which can arrive with **no pick order at all** — from *All*,
