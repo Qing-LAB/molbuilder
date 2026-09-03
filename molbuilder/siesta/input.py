@@ -568,9 +568,7 @@ def _parallel_facts(cfg) -> dict:
     # paragraph that stood here until 2026-08-12 still taught the
     # pre-sweep theory ("an explicit smaller BlockSize keeps every
     # distribution step well-conditioned") -- the OPPOSITE of the deck
-    # text emitted ten lines below, in the same function.  Nor is the
-    # keyword always emitted: block_size == 0 is the third
-    # state, no BlockSize line at all (tuning.md § 2.11, decision 35).
+    # text emitted ten lines below, in the same function.
     # TWO STATES (tuning.md § 2.11, revised 2026-08-15).  Unset means
     # AUTO, and auto means SIESTA'S OWN automatic -- the keyword is simply
     # not emitted.  The manual declares it: ``BlockSize [integer]
@@ -1051,9 +1049,16 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # these two differ on.
         provenance_defaults=lambda c: {
             "use_gpu": str(bool(c.use_gpu)).lower(),
+            # TWO states, matching the emitter above: unset omits the
+            # keyword, a value is written verbatim.  A `== 0` arm stood
+            # here saying "omitted (SIESTA's own)" for the retired
+            # sentinel -- and it would have LIED: with 0 the emitter
+            # writes `BlockSize 0` into the deck (0 is not None), so
+            # PROVENANCE claimed an omission the deck contradicts.  The
+            # validator refuses 0 outright now (`_validate_block_size`),
+            # so the state has no way in and no arm here.
             "BlockSize": (
-                "omitted (SIESTA's own)" if c.block_size == 0
-                else f"auto -> {_derived.get('block_size')}"
+                f"auto -> {_derived.get('block_size')}"
                 if c.block_size is None
                 else f"user-set -> {_derived.get('block_size')}"
             ),
