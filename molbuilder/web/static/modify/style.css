@@ -181,7 +181,8 @@ header h1 {
 /* ---- Dedicated message region -------------------------------------- */
 /* Op result + validation advisories live HERE, in a clear space-ample band
  * below the header -- NOT crammed into the card title.  While editing, these
- * are advisory only, shown non-blockingly (design.md § 6 validation contract). */
+ * are advisory only, shown non-blockingly -- `web/ui-contract.md` § 5.1,
+ * one look for a finding on every tab. */
 .modify-messages {
     display: flex;
     flex-direction: column;

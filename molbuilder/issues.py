@@ -115,7 +115,7 @@ class ValidationError(ValueError):
 
 # --------------------------------------------------------------------- #
 #  The HOOK BOUNDARY -- an engine's callable, and whose it was when it    #
-#  raises (`execution/script-preparation.md` § 4.6)                       #
+#  raises (`execution/script-preparation.md` § 4.4 + § 4.5)               #
 # --------------------------------------------------------------------- #
 
 

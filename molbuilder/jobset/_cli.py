@@ -1666,7 +1666,7 @@ def _bench_inputs(base, target, *, bench_override=None, report=None):
     # with a message blaming settings the user never wrote -- and the
     # accident evaporates the day PySCFConfig grows any same-named
     # field, after which a `use_gpu` sweep silently enumerates a CPU
-    # grid (generator.md § 12.1 row 9's recorded hazard).
+    # grid (`engines/stages.md` § 6.8's recorded hazard).
     if str(task.engine) != "siesta":
         raise click.ClickException(
             f"this description's engine is {task.engine!r}, and the "
@@ -1674,7 +1674,7 @@ def _bench_inputs(base, target, *, bench_override=None, report=None):
             f"pins (a capped-SCF probe run) name SIESTA settings, so a "
             f"{task.engine} bench would measure nothing meaningful.  "
             f"Benchmark support for other engines is a recorded design "
-            f"(generator.md § 12.1 row 9); for now, size the run from "
+            f"(engines/stages.md § 6.8); for now, size the run from "
             f"the engine's own scaling guidance in docs/engines/tuning.md.")
     tmpl = read_template(
         template_path(Path(base), task.label).read_text(encoding="utf-8"))
@@ -2374,7 +2374,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         raise click.ClickException(str(e))
 
     # WHERE the effective config came from -- part of "prep prints what it
-    # resolved" (job-system.md § 2.3.3): a person debugging a machine
+    # resolved" (job-system.md § 5.3): a person debugging a machine
     # difference reads which file supplied each setting, at the moment it
     # took effect (user request 2026-08-12; secrets excluded by design).
     # The same facts go to the bundle's LEDGER: the terminal is gone when
@@ -2521,10 +2521,11 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
 def _echo_resolved(js, base, stage_name: str, attempt) -> None:
     """The resolved half of the prep report (P6 unit 6).
 
-    `job-system.md` § 2.3.3: *"**Printing what it resolved is what makes
-    `launch` a plain yes.**  It is the only place the measured numbers, the
-    chosen geometry and the rendered deck appear together, which is exactly
-    where a person should be looking before spending a week."*
+    `job-system.md` § 5.3: *"**`prep` prints what it resolved, which is what
+    makes `launch` a plain yes.**  It is the only place the measured numbers,
+    the chosen starting geometry and the rendered deck appear together --
+    exactly where a person should be looking before committing cluster
+    time."*
 
     Two of those three are available today, and this prints those two rather
     than a placeholder for the third:
@@ -3495,7 +3496,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     notes = []
     # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
     # `Domain.max_mem_gb` has wanted since the row was designed
-    # (`execution/submission.md` § 8, step 1).
+    # (`execution/scheduler.md` § 2).
     sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c|%m"])
     if sinfo_txt is None:
         # NOT a refusal.  M-2: a workstation records its capability in the same

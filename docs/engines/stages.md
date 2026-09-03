@@ -1573,6 +1573,20 @@ already declares sweepable — the `execution` category, which
 speed and not the answer"*. Sweeping something outside it means each point
 silently measures a different calculation, and the comparison is meaningless.
 
+**The bench lane speaks SIESTA today, and `prep bench` says so by name.** A
+trial is a MEASUREMENT, and what makes it one is the pin set applied over
+every point: cap the SCF at three cycles, no relaxation steps, force a cold
+start, no continue-retries, and let an unconverged cap end cleanly rather than
+abort. Those five are SIESTA catalogue fields. A PySCF description declares
+none of them, so the pins would resolve against settings the user never wrote
+— and the accident that stops it today is only that the names do not exist:
+the day `PySCFConfig` grows one of them, a `use_gpu` sweep would silently
+enumerate a CPU grid and call it a measurement. So the refusal is explicit,
+raised at `prep bench` before any trial is rendered, and it points at the
+engine's own scaling guidance ([`tuning.md`](?doc=engines/tuning.md)) instead.
+Extending the lane to another engine means giving that engine its own pin set,
+not relaxing the check.
+
 > **Why this is `@1` and not a new major.** The key is optional, and absent is
 > the correct reading of every `task.json` written before it existed: no bench
 > was planned. A major bump would invalidate every description on disk to add

@@ -939,7 +939,7 @@ def api_load():
         return jsonify({"ok": False, "error": "Empty path."}), 400
     # 2026-06-18 security fix (audit B1): the JSON-path mode now
     # routes through the canonical ``_resolve_within_roots`` helper
-    # like every other path-taking endpoint, per web-api.md § 1.2.
+    # like every other path-taking endpoint, per web-api.md § 2.1.
     # Pre-fix this site used ``os.path.realpath(expanduser(...))``
     # with an OPTIONAL ``MOLBUILDER_WATCH_ROOT`` gate that was unset
     # in the default deployment — a logged-in user could POST
@@ -1170,10 +1170,10 @@ def api_data():
     client_mtime = request.args.get("mtime", type=float)
     state, err = _refresh_if_changed()
     if err:
-        # web-api.md § 1.6 (d) server fault: parse / IO error on a
+        # web-api.md § 1, *Status codes* -- server fault: parse / IO error on a
         # user-selected trajectory file.  The sibling /api/watch/load
         # returns 500 on the same failure class (line 884); aligning
-        # this site closes the inconsistency that motivated § 1.6's
+        # this site closes the inconsistency that motivated that rule's
         # codification.  JS poll-loop reads body.ok so its behaviour
         # is unchanged; external consumers (curl / CI / monitoring)
         # gating on HTTP status now see the actual failure.

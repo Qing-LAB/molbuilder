@@ -122,7 +122,7 @@ def test_load_by_json_path_rejects_path_outside_picker_roots(
     BEFORE any disk read attempt — proving the read-arbitrary-file
     primitive is gone.
 
-    Pinned to web-api.md § 1.2 (every path-taking endpoint goes
+    Pinned to web-api.md § 2.1 (every path-taking endpoint goes
     through ``_resolve_within_roots``).
     """
     r = client_with_default_roots.post(
@@ -283,7 +283,7 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
     data = body["data"]
     assert "runtime_info" in data, (
         "data.runtime_info missing from /api/watch/data response — "
-        "web-api.md § 8.4 documents it as part of the contract")
+        "web-api.md § 4 documents it as part of the contract")
     runtime_info = data["runtime_info"]
     assert "convergence_targets" in runtime_info, (
         "runtime_info.convergence_targets missing — the SIESTA parser "

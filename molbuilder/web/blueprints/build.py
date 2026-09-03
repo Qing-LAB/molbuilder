@@ -357,7 +357,8 @@ def api_build_molecule():
         return jsonify({"ok": False,
                         "error": f"missing dependency: {exc}"}), 500
     except Exception as exc:
-        # web-api.md § 1.6 (d): an unhandled exception from the
+        # web-api.md § 1, *Status codes* (server fault -> 5xx): an
+        # unhandled exception from the
         # builder dispatch is server fault, not protocol error.
         # The user's input passed shape validation (kind + input)
         # before reaching here; whatever went wrong is on us.

@@ -623,9 +623,9 @@ def api_transport_render() -> Any:
         # absence to drive the script-preview card visibility.
         # Mirrors /api/build/fdf, /api/build/pyscf,
         # /api/spectra/render.
-        # web-api.md § 1.6 (b) scientific advisory: HTTP 200
-        # explicit — the form's workflow cards (web-ui-coherence
-        # Rule 2) render the findings inline.
+        # web-api.md § 1, *Status codes* -- a scientific advisory is
+        # HTTP 200 with ok:false, and the form's workflow cards render
+        # the findings inline (`web/ui-contract.md` § 5.1).
         return jsonify({
             "ok":          False,
             "engine":      cfg.engine,

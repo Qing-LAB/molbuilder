@@ -13,7 +13,7 @@ machine difference is then *reading the ledger in order*, not re-running.
 decision data (a picked trial, a provenance table, a merged plan) and the
 SURFACE that acted on it appends the line — policy stays at the verb, the
 ledger only records.  Per-job launch provenance already has a home
-(``run.json``, `job-contracts.md` § 1.6) and is not duplicated here; the
+(``run.json``, `job-contracts.md` § 6.1) and is not duplicated here; the
 ledger is the bundle-level ORDER of decisions across verbs.
 
 Append-only JSONL, never rotated by us, and never fatal: a run must not

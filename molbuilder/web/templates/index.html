@@ -299,7 +299,8 @@
 {# FULL MolView component stack (viewer + selection/cell panel + warning-modal +
    the selection stack) — the Inspect-structure card mounts the read-only fused
    card.  One shared include instead of a hand-pasted copy (`web/ui-contract.md`
-   §2.1); the include also provides 3Dmol + mol-viewer-embed. #}
+   § 1 — one shared definition, not N copies); the include also provides
+   3Dmol + mol-viewer-embed. #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>

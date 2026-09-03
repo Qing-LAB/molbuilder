@@ -99,7 +99,7 @@ class Partition:
     max_cpus: Optional[int] = None
     #: MEMORY PER NODE, in MB, of the SMALLEST node group -- the safe reading
     #: for a ceiling, the same rule ``gpu_cores`` uses.  Measured 2026-08-23
-    #: (`execution/submission.md` § 8, step 1): `Domain.max_mem_gb` had been a field
+    #: (`execution/scheduler.md` § 2): `Domain.max_mem_gb` had been a field
     #: nothing filled, so nothing could tell a 128 G ask that `htc` holds 64 G
     #: a node -- and the ask fell through to the 2 TB partition instead.
     mem_mb: Optional[int] = None
@@ -459,7 +459,7 @@ def derive_domains(
         if widest:
             row["max_cores"] = widest
         # THE TWO MEMORY FACTS, measured 2026-08-23
-        # (`execution/submission.md` § 8, step 1).  Both fields have been on the
+        # (`execution/scheduler.md` § 2).  Both fields have been on the
         # row since it was designed and neither was ever filled, so nothing
         # could tell a 128 G ask that `htc` holds less than that per node --
         # and the ask fell through to the 2 TB partition instead.

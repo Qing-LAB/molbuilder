@@ -366,10 +366,6 @@ class Task:
     #: be told every time -- which is what makes a prepped bundle carry
     #: everything its launch needs.
     allocation: "Allocation" = field(default_factory=lambda: Allocation())
-    #: WHAT TO ASK FOR WHILE MEASURING, when it differs (`stages.md` § 6.8c).
-    #: A benchmark is short by construction -- capped SCF, one point, no
-    #: relaxation -- and a run is not.  Absent means "use `allocation`", so
-    #: one wall serving both stays the default it always was.
 
     #: WHEN this calculation should say something (:class:`Notify`).  The
     #: policy only -- the destination and its credential stay on the machine

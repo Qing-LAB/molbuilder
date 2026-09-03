@@ -327,7 +327,7 @@ def snapshot() -> Dict[str, Any]:
 def api_system_load():
     """Return the current load snapshot.
 
-    Response envelope (web-api.md § 1.1.1):
+    Response envelope (web-api.md § 1):
 
         { "ok": true, "data": { ...snapshot... } }
 

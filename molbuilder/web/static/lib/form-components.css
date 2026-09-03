@@ -1,6 +1,6 @@
 /* form-components.css — the shared form-PAGE component vocabulary.
  *
- * `web/ui-contract.md` § 1 / §2.3: these classes were stranded in the
+ * `web/ui-contract.md` § 1 + § 1.1: these classes were stranded in the
  * index page's ``style.css`` (headed "Build page styles") even though the
  * Build, Spectra and Transport pages all use them.  Extracted here as a
  * NAMED shared sheet so each form page links ONE component library instead

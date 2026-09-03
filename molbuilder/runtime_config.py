@@ -705,9 +705,11 @@ _FLAT_TLS_RETIRED = (
 def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """Read every registered section + validate values; refuse the rest.
 
-    Precedence: when both the nested ``tls`` section AND the flat
-    ``cert``/``key`` keys are present, the nested value wins.  Migrating
-    from flat to nested is therefore non-destructive.
+    ``tls`` is a SECTION.  The flat top-level ``cert``/``key`` spelling
+    was removed 2026-09-02 and is now refused BY NAME, showing the
+    section to write -- those two were legal until that date, so the
+    person who wrote them wrote a file that worked and is owed the new
+    spelling rather than "unknown top-level key". 
 
     **An unknown top-level key is an ERROR, not tolerance** (U7,
     2026-08-12; running-a-job.md § 5 amended).  "Ignored silently" was the
@@ -1676,7 +1678,7 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"\n"
                 f"On ASU Sol use partition/qos \"public\" (the \"general\" "
                 f"partition went private in May 2026).  See "
-                f"docs/execution/job-system.md, § 7.0, § 10."
+                f"docs/execution/asu-sol.md § 3 (partition and QOS are one pair)."
             )
 
     # String-typed directives must actually be strings (catch e.g. a

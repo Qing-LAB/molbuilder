@@ -204,6 +204,73 @@ def test_every_cross_document_section_citation_resolves():
           "number, which is how a pointer becomes prose nobody can follow).")
 
 
+#: Where CODE lives.  A citation in a docstring or a comment is followed by
+#: a person exactly as a citation in a document is -- and until 2026-09-03
+#: nothing checked those.  That is how a citation of section "2.5" in the
+#: retired scientific-validation document survived in three files, pointing
+#: at a section that has never existed in any version of it, archived or
+#: live.  (Written without the file name and number adjacent, because this
+#: guard would otherwise read its own illustration as a live citation.)
+CODE_DIRS = ("molbuilder", "tests", "scripts")
+CODE_EXTS = {".py", ".js", ".css", ".html"}
+
+
+def test_every_section_citation_in_code_resolves():
+    """Same rule as the guard above, applied to the other half of the tree.
+
+    A comment naming a document and a section number is a promise that the
+    section answers the question the code is about.  When it does not, the reader
+    spends their time and comes back with nothing -- and the code keeps
+    looking specified.  The failure is quieter than a wrong doc-to-doc
+    pointer, because a person reading source is usually mid-task and less
+    likely to go check.
+
+    Same two exemptions as the sibling: a basename that is not unique in the
+    tree cannot be resolved to one file, and an archived target is frozen so
+    its sections cannot be repaired.  A citation of ``§ 4`` is satisfied by a
+    document whose numbering starts at ``4.1`` -- naming the parent of a
+    subsectioned area is a normal thing to do.
+    """
+    docs = _new_tree_mds()
+    by_name = {}
+    for p in docs:
+        by_name.setdefault(p.name, []).append(p)
+    headings = {p: _headings(p) for p in docs}
+
+    broken = []
+    for base in CODE_DIRS:
+        for f in (REPO / base).rglob("*"):
+            if not (f.is_file() and f.suffix in CODE_EXTS):
+                continue
+            if "__pycache__" in f.parts:
+                continue
+            try:
+                text = f.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            for lineno, line in enumerate(text.splitlines(), 1):
+                for m in _CITATION.finditer(line):
+                    name = Path(m.group(1)).name
+                    section = m.group(2)
+                    targets = by_name.get(name)
+                    if not targets or len(targets) != 1:
+                        continue
+                    H = headings[targets[0]]
+                    if any(h == section or h.startswith(section + ".")
+                           for h in H):
+                        continue
+                    broken.append(
+                        f"{f.relative_to(REPO)}:{lineno} -> {name} § {section}")
+
+    assert not broken, (
+        "these code citations name a section that does not exist:\n  "
+        + "\n  ".join(sorted(broken))
+        + "\n\nFind where the content went and repoint.  If the rule the "
+          "comment states has no live home at all, WRITE IT in the owning "
+          "contract first -- deleting the number leaves the code specified "
+          "by nothing.")
+
+
 # --------------------------------------------------------------------- #
 #  5. Tables — no row orphaned from its header                          #
 # --------------------------------------------------------------------- #
