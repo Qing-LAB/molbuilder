@@ -285,8 +285,13 @@ test:
 
 | core | the test that catches it | what it drives |
 |---|---|---|
-| trajectory | `test_no_trajectory_poll_survives_dispose` | a real multi-frame `*_geom_optim.xyz` |
-| spectra | `test_the_viewer_reads_a_run_this_suite_just_computed` | a real `.spectra.json` |
+| trajectory | `test_the_viewer_draws_the_run_this_suite_just_optimised` | a CO2 relaxation, run by the test (~4 s) |
+| spectra | `test_the_viewer_reads_a_run_this_suite_just_computed` | a CO2 frequency job, run by the test (~2 s) |
+
+One branch stays unexercised and is named rather than implied: the
+**no-new-content** arm of the trajectory's `APPLY`, which runs only on a
+watch tick that finds the file unchanged. Reaching it needs a run that is
+still going while the page watches it, which neither test above sets up.
 
 The spectra half was unprovable for a day, and the reason is worth keeping:
 **no test in this suite had ever loaded a real spectra result.** Every

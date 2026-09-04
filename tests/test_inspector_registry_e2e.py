@@ -19,6 +19,7 @@ driven /results architecture.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -34,51 +35,84 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def ongoing_trajectory() -> str:
-    """A multi-frame ``*_geom_optim.xyz`` that reads as a RUNNING job.
+    """A multi-frame `*_geom_optim.xyz` from a REAL optimisation, mid-run.
 
-    **Nothing here is invented.**  Every part of this file is the project's
-    own:
+    **This was hand-written until 2026-09-04**, and replacing it is the point.
+    The old version built frames with `Structure.to_xyz()` and a comment line
+    I guessed at.  The guess was close, which is worse than wrong: what the
+    test then proved was my expectation of geomeTRIC's output, not the
+    program's.  It also could not show what a real run directory shows -- the
+    viewer prefers a `.molwatch.log` when one sits beside the trajectory, and
+    a fixture with no log beside it hid that preference entirely.
 
-    * the NAME follows ``projects.py::_GEOM_OUTPUT_PATTERNS`` —
-      ``*_geom_optim.xyz`` is the geomeTRIC trajectory convention the picker
-      and the inspector both key on;
-    * the DIRECTORY is under the real projects root, because
-      ``/api/watch/load`` resolves through ``_resolve_within_roots`` and
-      refuses anything outside ``Capabilities.file_picker_roots()``.  A
-      ``tmp_path`` file would be rejected — correctly — and the test would be
-      exercising the refusal instead of the timer;
-    * each FRAME is written by ``Structure.to_xyz()``, molbuilder's own
-      writer, rather than a hand-typed block.  A multi-frame trajectory is
-      those frames concatenated, which is what the convention above names
-      and what geomeTRIC emits.
+    So this runs CO2 stretched to 1.30 A, which relaxes to about 1.19 in
+    ~4 seconds, and keeps ONLY the trajectory file it wrote.
 
-    The run reads as ONGOING because it carries no completion marker:
-    ``_settlePostLoad`` treats an absent ``run_state`` as "still going" and
-    transitions to WATCHING, which starts the poll.  That is the state whose
-    timer must not survive dispose.
+    Only the `.xyz`, deliberately: `_settlePostLoad` reads a completion
+    marker to decide LOADED versus WATCHING, and a finished run's log says
+    finished -- which stops the poll this fixture exists to start.  A
+    trajectory with no log beside it is the state a run is genuinely in
+    while it is still going, and it is the state whose timer must not
+    survive dispose.
     """
+    env = _pyscf_env()
+    if env is None:
+        pytest.skip("no conda env routes PySCF on this machine")
+
     import numpy as np
 
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.pyscf.input import spec_for
+    from molbuilder.script_emit import prepare_deck
     from molbuilder.structure import Structure
 
     root = ROOT / "projects/_t_timer_e2e"
     if root.exists():
         shutil.rmtree(root)
-    d = root / "optimization"
-    d.mkdir(parents=True)
-    f = d / "probe_geom_optim.xyz"
-    frames = [
-        Structure(elements=["H", "H"],
-                  positions=np.array([[0.0, 0.0, 0.0],
-                                      [0.0, 0.0, z]])).to_xyz(
-            comment=f"Iteration {i} Energy -1.1{i}")
-        for i, z in enumerate((0.74, 0.72))
-    ]
-    f.write_text("".join(frames), encoding="utf-8")
+    work = root / "_run"
+    live = root / "optimization"
+    work.mkdir(parents=True)
+    live.mkdir(parents=True)
     try:
-        yield str(f.resolve())
+        struct = Structure(
+            elements=["C", "O", "O"],
+            positions=np.array([[0.0, 0.0, 0.0],
+                                [0.0, 0.0, 1.30],
+                                [0.0, 0.0, -1.30]]))
+        cfg = PySCFConfig(job_name="probe", method="RHF", basis="STO-3G")
+        deck = work / "probe.py"
+        prepare_deck(spec_for(struct, cfg, calculation="optimization"),
+                     struct, cfg, deck, verbose=False)
+        proc = subprocess.run(
+            ["conda", "run", "-n", env, "python", deck.name],
+            cwd=str(work), capture_output=True, text=True, timeout=900)
+        src = work / "probe_geom_optim.xyz"
+        assert src.exists(), (
+            f"the optimisation ran (exit {proc.returncode}) but wrote no "
+            f"trajectory.\n{proc.stdout[-1500:]}\n{proc.stderr[-1500:]}")
+        dest = live / "probe_geom_optim.xyz"
+        shutil.copy2(src, dest)          # the trajectory ALONE -- see above
+        yield str(dest.resolve())
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def _pyscf_env():
+    """The env molbuilder routes PySCF to, if it exists here.
+
+    `env_for_category`, not `routed_env`: PySCF is a CATEGORY in the four-env
+    model and `TOOL_TO_CATEGORY` maps executables, so `routed_env("pyscf")`
+    answers None and the whole thing skips on a machine where the env is
+    right there.  And `detect()`, not `Capabilities()`, whose env set
+    defaults to empty.
+    """
+    from molbuilder.diagnostics import detect
+    try:
+        caps = detect()
+        env = caps.env_for_category("pyscf")
+        return env if env and caps.env_available(env) else None
+    except Exception:
+        return None
 
 
 @pytest.fixture(scope="module")

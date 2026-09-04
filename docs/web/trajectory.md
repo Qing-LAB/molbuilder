@@ -203,18 +203,27 @@ header. The header's source-path line has the username redacted.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
 - **The poll loop.** `test_live_poll_invariants_audit.py` was retired
   2026-09-03: 18 of its 21 tests asserted on the spelling of lines in
-  `lib/trajectory/core.js` (`process/testing.md` § 3a). Its one *observable*
-  claim — that a poll timer does not outlive the inspector — is driven now by
-  `test_inspector_registry_e2e.py::TestInspectorListenerTeardown::test_no_
-  trajectory_poll_survives_dispose`, which mounts an ongoing run in a browser,
-  confirms the poll is live, disposes, and asserts it is gone.
-  The rest (`applyNewData`'s no-new-content guard, `resultsFingerprint`,
-  `scfFingerprint`, `priorStillValid`, `POLL_MS`) are **unpinned**: they are
-  closure-private in a core that exports only `mount`, so nothing can reach
-  them without either exporting them or lifting the shared state machine into
-  `lib/inspectors/lifecycle.js`. The greps did not cover them either — they
-  measured spelling — so this records a gap that was always there rather than
-  one the retirement made.
+  `lib/trajectory/core.js` (`process/testing.md` § 3a). What replaced it is
+  a **real optimisation**, not a fixture — `test_trajectory_from_a_real_run
+  _e2e.py` stretches CO2 to 1.30 Å, relaxes it through the production deck
+  in the env the four-env model routes PySCF to (~4 s), and opens the
+  `*_geom_optim.xyz` it wrote on /results. It checks the physics (the bond
+  comes back to ~1.19 Å, the energy falls monotonically) and then the
+  drawing (the energy curve has one point per step, falling).
+  `test_inspector_registry_e2e.py`'s poll-timer fixture runs the same
+  optimisation and keeps the trajectory alone, because a finished run's log
+  says finished and stops the poll the test exists to watch.
+
+  **What that turned up, and a fixture could not have.** The viewer does not
+  read the `.xyz` when a `.molwatch.log` sits beside it — the discovery
+  chain prefers the richer per-step log, whose first record is
+  `kind: initial_preview`: the geometry as handed in, before any SCF. So the
+  energy curve carries one more point than geomeTRIC wrote frames, and that
+  point has **no energy** and plots as a null. Both counts are right for
+  what they are. The hand-built fixture this replaced was a bare `.xyz` with
+  no log beside it, so the viewer's actual file-preference was invisible to
+  every test built on it.
+
 - `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
   reads the timestamp series and its "total" reads the duration series, and
   that the per-iteration rung refuses a timestamp.
