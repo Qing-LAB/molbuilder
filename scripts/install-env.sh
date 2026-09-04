@@ -231,6 +231,23 @@ Environment variables:
   MOLBUILDER_CUDA_CC             siesta-gpu: force CUDA compute
                                  capability (e.g. 8.0) when nvidia-smi
                                  is unavailable.
+  MOLBUILDER_SYSROOT             source-build recipes: which glibc the
+                                 toolchain COMPILES AGAINST (default
+                                 2.17).  Not the compiler version -- the
+                                 floor of C-library symbols the built
+                                 binaries will demand from the host at
+                                 runtime.  glibc is backward but not
+                                 forward compatible, so this must be <=
+                                 the glibc of every node the result will
+                                 RUN on; 2.17 is conda-forge's floor and
+                                 runs everywhere.  Raise it only if a
+                                 dependency demands it and you know your
+                                 cluster is uniformly newer.  Preflight
+                                 verifies the resulting env against this
+                                 host and refuses a build that would
+                                 produce unrunnable binaries.
+                                 Pair with --clean to change an env that
+                                 already exists.
   MOLBUILDER_GCC                 source-build recipes: which
                                  gcc/gxx/gfortran_linux-64 to install.
                                  Default 14.3 -- a MINOR-version pin,

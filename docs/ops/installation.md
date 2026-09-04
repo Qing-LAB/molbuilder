@@ -281,6 +281,84 @@ activate hook sets `OMPI_MCA_orte_tmpdir_base` to a local tmp (only if you haven
 set it yourself), and the deactivate hook unsets only what it set — so a
 scheduler-provided value is never trampled.
 
+### 6.2 Sysroot — which glibc the build targets
+
+> **⚠ This is not the compiler version.** It is the floor of C-library symbols
+> the built binaries will demand from the **host** at runtime. Get it wrong and
+> the toolchain compiles and links without a single complaint, then produces
+> executables that will not start.
+
+A conda env is not a container. It supplies the compiler, headers, and libraries
+you build against — but the binary it produces is loaded by the *host's* dynamic
+loader against the *host's* C library. Conda ships no glibc runtime and does not
+point its binaries at the sysroot's loader:
+
+```bash
+readelf -p .interp $CONDA_PREFIX/bin/python
+#   [     0]  /lib64/ld-linux-x86-64.so.2      ← the host's, not the env's
+```
+
+glibc is **backward compatible and not forward compatible**:
+
+| built against | runs on |
+|---|---|
+| 2.17 | 2.17 and everything above — every host you will meet |
+| 2.39 | 2.39 and above only |
+
+So the rule is one-directional: **the sysroot must be at or below the glibc of
+every node the result will run on.** The recipe pins `sysroot_linux-64=2.17`,
+conda-forge's portability floor and what every prebuilt package already in the
+env targets (`objdump -T` on the env's own python tops out at `GLIBC_2.17`).
+
+**Why it is pinned rather than inherited.** `gcc_impl_linux-64` depends on a
+bare, unversioned `sysroot_linux-64` — there is no compatibility information
+anywhere in the dependency graph, so the solver takes the newest. As of 2026-09
+that is 2.39, which does not run on RHEL/Rocky-class hosts. Deleting the line
+does not help; solved without it, the toolchain alone still resolves 2.39. Nor
+could the solver ever get this right: the correct value depends on the glibc of
+machines that are not in the graph and are not necessarily the build host.
+Conda's `__glibc` virtual package describes the build host only, and
+`sysroot_linux-64` does not constrain against it. Nobody in the chain knows the
+answer, which is why it is stated in the recipe.
+
+**What it looks like when it is wrong.** ELPA's configure, five steps into the
+build:
+
+```
+checking whether the C++ compiler works... yes
+checking whether we are cross compiling... configure: error: cannot run C++ compiled programs.
+```
+
+Compiled fine. Linked fine. Would not run. `config.log` carries the real reason
+(`version 'GLIBC_2.38' not found`); nothing on the console mentions glibc.
+
+**Preflight now catches this before the build starts.** It reads the host's
+libc with `os.confstr('CS_GNU_LIBC_VERSION')`, compares it against the env's
+installed sysroot, and additionally compiles and runs a trivial program with the
+env's own compiler — the check that catches the whole family, including noexec
+build directories and architecture mismatches. Both sides are always reported:
+
+```
+Host glibc         2.28        (runtime C library; sysroot must not exceed it)
+Env sysroot        2.17        (what the toolchain compiles against)
+```
+
+**To target a different floor** — only if a dependency demands it *and* you know
+every node you will run on is at least that new:
+
+```bash
+MOLBUILDER_SYSROOT=2.28 bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
+```
+
+Like `--gcc`, this only affects a fresh solve, so pair it with `--clean`. Note
+that a **login node is not evidence about a compute node** — probe the partition
+you will actually run on before raising this. Preflight will refuse a build whose
+sysroot exceeds the glibc of the machine doing the building, but it cannot know
+about the nodes your jobs will land on.
+
+`kernel-headers_linux-64` is deliberately **not** pinned: `sysroot_linux-64=2.17`
+pins it to 3.10.0 exactly. One decision, one place.
+
 ## 7. Appendix — installing X3DNA (3DNA), the helix builder
 
 X3DNA is the only true-helix nucleic-acid backend
@@ -366,3 +444,10 @@ follow-up). Workaround: create the host env by hand with micromamba, then use
 - `test_envs_nfs_shmem_fix.py` — the NFS shared-memory hook + the host psutil floor.
 - `test_envs_clean.py` — `molbuilder envs clean` (build dirs go, load-bearing dirs stay).
 - `test_envs_readme_consistency.py` — a drift guard tying the recipes to the install guide.
+- `test_envs_abi.py` — the build-time/run-time ABI contract (§ 6.2): version
+  ordering, the host/env scope split, the rule table, and the compile-and-run
+  check. Asserts on finding *codes*, never on message prose.
+- `test_envs_solve_drift.py` — the only test that runs a **real solve** and
+  compares the result against what the recipe intends. Slow, network-bound, and
+  self-skipping; it is what catches conda-forge moving a default underneath a
+  spec that never changed. Run nightly: `pytest tests/test_envs_solve_drift.py -m slow`.

@@ -269,6 +269,55 @@ _GCC_VERSION    = _env_default(
     _GCC_PIN_BY_SIESTA_REF.get(_SIESTA_REF, _GCC_WHEN_UNMEASURED))
 
 
+# ---- sysroot: which glibc the toolchain COMPILES AGAINST ----------------
+#
+# This is not the compiler version and it is not a nicety -- it is the
+# floor of C-library symbols the produced binaries will demand from the
+# HOST at runtime.  Conda ships no glibc runtime: `readelf -p .interp`
+# on any conda binary reads `/lib64/ld-linux-x86-64.so.2`, the host's
+# loader, which resolves against the host's libc.  glibc is backward
+# compatible and NOT forward compatible, so:
+#
+#     build against 2.17 -> runs on 2.17 through 2.43 and beyond
+#     build against 2.39 -> will not start on anything below 2.39
+#
+# 2.17 is conda-forge's portability floor and is what every prebuilt
+# package already sitting in this env targets (`objdump -T` on the
+# env's own python tops out at GLIBC_2.17).  Pinning here makes our
+# source-built binaries honour the same contract as their neighbours.
+#
+# WHY THIS IS PINNED AND NOT INHERITED.  `gcc_impl_linux-64` depends on
+# a bare, UNVERSIONED `sysroot_linux-64` -- verified with `conda search
+# --info`, every build back to _4.  There is no compatible-version
+# information anywhere in the dependency graph, so the solver does what
+# solvers do with an unconstrained dependency and takes the newest.  As
+# of 2026-09 that is 2.39, which does not run on the RHEL/Rocky-class
+# hosts this project targets.  Removing the spec does NOT help: solved
+# without it, the toolchain alone still resolves 2.39.  Nor could the
+# solver ever get this right on its own -- the correct value depends on
+# the glibc of every machine you will RUN on, which is not in the graph,
+# is not necessarily the build host, and is deliberately unconstrained
+# because cross-compiling to a newer target is legitimate.  Conda's
+# `__glibc` virtual package describes the build host only, and
+# `sysroot_linux-64` does not constrain against it.
+#
+# Nobody in the chain knows the answer.  That is why it is stated here.
+#
+# COST OF THE PIN: none measured.  A dry-run solve with 2.17 returns the
+# identical `gcc_impl_linux-64 14.3.0 h054831b_20`; kernel-headers
+# follows down to 3.10.0 on its own, which is why it stays unpinned
+# below.  SIESTA and ELPA use no glibc feature newer than 2.17.
+#
+# WHEN TO MOVE IT: raise it only when a dependency genuinely requires a
+# newer floor, and only to a version at or below the glibc of every node
+# the result will run on -- a deliberate bump, never an auto-detected
+# one.  A site whose cluster is uniformly newer can set MOLBUILDER_SYSROOT
+# without editing this file.  molbuilder.envs.abi checks the resulting
+# env against the host at preflight and refuses the build if this value
+# is too high for the machine.
+_SYSROOT_VERSION = _env_default("MOLBUILDER_SYSROOT", "2.17")
+
+
 # ---- CUDA version resolution: env override > host probe > project default ----
 #
 # Three-tier precedence so the recipe self-corrects across hardware
@@ -1422,17 +1471,30 @@ _SIESTA_GPU = Recipe(
         f"gxx_linux-64={_GCC_VERSION}",
         f"gfortran_linux-64={_GCC_VERSION}",
         # The rest of the toolchain, DECLARED rather than inherited.
-        # conda-forge's gcc_linux-64 pulls these transitively today, so
-        # naming them changes no solve -- but a build environment that
-        # is complete only by the solver's good manners is one dependency
-        # bump away from silently borrowing the host's.  These three are
-        # what make the compiler self-contained: the linker + archiver
-        # (binutils), the C library headers and startup files (sysroot),
-        # and the kernel headers the sysroot is built against.  Without
-        # them a conda gcc reaches into /usr/include and the host glibc,
-        # which is precisely the assumption this env exists to remove.
+        # These three are what make the compiler self-contained: the
+        # linker + archiver (binutils), the C library headers and
+        # startup files (sysroot), and the kernel headers the sysroot is
+        # built against.  Without them a conda gcc reaches into
+        # /usr/include and the host glibc, which is precisely the
+        # assumption this env exists to remove.
+        #
+        # NAMING A PACKAGE WITHOUT A VERSION DECIDES NOTHING.  An earlier
+        # revision of this comment claimed these lines "change no solve"
+        # and were declared only for completeness.  That was true and it
+        # was the bug: `sysroot_linux-64` unversioned let the solver take
+        # the newest sysroot (2.39 as of 2026-09), producing a toolchain
+        # that compiled and linked cleanly and then emitted binaries the
+        # host could not execute -- surfacing five steps later as ELPA's
+        # `configure: error: cannot run C++ compiled programs`.  See
+        # _SYSROOT_VERSION above for the full reasoning and for why
+        # deleting the line would not have helped either.
+        #
+        # kernel-headers stays unversioned ON PURPOSE: sysroot_linux-64
+        # pins it exactly (2.17 depends on kernel-headers 3.10.0), so a
+        # second pin here would be a redundant fact with its own way of
+        # going stale.  One decision, one place.
         "binutils_linux-64",
-        "sysroot_linux-64",
+        f"sysroot_linux-64={_SYSROOT_VERSION}",
         "kernel-headers_linux-64",
         # GNU readline -- a DECLARED build dependency of the flook /
         # Lua engine, not a nicety.  Two independent places demand it:

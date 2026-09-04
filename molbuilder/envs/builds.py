@@ -8,7 +8,10 @@ This module is the procedural counterpart to the declarative
 :class:`molbuilder.envs.recipes.BuildSpec`.  It knows how to:
 
 1. Pre-flight the host: CUDA toolkit reachable? CUDA<->gcc paired?
-   Auto-detect compute capability via ``nvidia-smi``.
+   Auto-detect compute capability via ``nvidia-smi``.  Check the
+   build-time/run-time ABI contract -- can this env's toolchain
+   produce a binary this host can execute?  See
+   :mod:`molbuilder.envs.abi`.
 2. Compute a toolchain fingerprint over ``(gcc, openmpi, cuda, refs)``
    so resumes can short-circuit phases whose fingerprint matches.
 3. For each component (in dependency order): clone -> configure ->
@@ -37,6 +40,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, TextIO, Tuple
 
+from .abi import (
+    AbiContract,
+    Finding,
+    Severity,
+    check_toolchain_executes,
+)
 from .recipes import BuildComponent, BuildSpec
 
 
@@ -822,10 +831,19 @@ class PreflightReport:
     info
         Purely informational lines for the report (detected GPU name,
         detected CUDA version, disk free, etc.).  Always shown.
+    findings
+        The same conditions as structured :class:`~molbuilder.envs.abi.Finding`
+        objects, each carrying a stable ``code``.  ``errors`` /
+        ``warnings`` / ``info`` remain the rendered prose the CLI
+        prints; this is what tests and future programmatic callers
+        should match on, so wording stays free to change.  Only checks
+        that have been migrated to the Finding shape appear here --
+        it is a superset-in-progress, not a mirror of the three lists.
     """
     errors: Tuple[str, ...]
     warnings: Tuple[str, ...]
     info: Tuple[str, ...]
+    findings: Tuple[Finding, ...] = ()
 
 
 def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
@@ -885,6 +903,22 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
     errors: List[str] = []
     warnings: List[str] = []
     info: List[str] = []
+    findings: List[Finding] = []
+
+    def emit(finding: Finding) -> None:
+        """Record a structured finding AND render it into the legacy list.
+
+        Keeping both means the report reads in check order (the prose
+        lists stay positional) while callers that want to branch on a
+        condition can match ``finding.code`` instead of grepping text.
+        """
+        findings.append(finding)
+        if finding.severity is Severity.ERROR:
+            errors.append(finding.render())
+        elif finding.severity is Severity.WARNING:
+            warnings.append(finding.render())
+        else:
+            info.append(finding.render())
 
     # NVIDIA driver (host).  Kernel-module-coupled; can't be a conda
     # package.  Used at build time for compute-cap detection and at
@@ -973,6 +1007,28 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
     if compat:
         errors.append(compat)
 
+    # Build-time / run-time ABI contract.  See molbuilder.envs.abi for
+    # why this is a scope comparison rather than a version lookup: the
+    # env chooses what to compile against, the host decides what will
+    # load, and only the pair of numbers together says whether the
+    # toolchain can produce a working binary.  Runs after conda create
+    # (preflight is called with a live env), so both sides are real
+    # readings rather than recipe intent.
+    if env_prefix and Path(env_prefix, "conda-meta").is_dir():
+        contract = AbiContract.probe(env_prefix)
+        info.extend(contract.describe())
+        for finding in contract.findings():
+            emit(finding)
+        # The rules above catch the mismatch we can name.  This catches
+        # the rest of the family by asking the only question that
+        # settles it -- does a binary built here actually run here?
+        # Same sanitized environment the build will use, so the probe
+        # sees what the build sees.
+        executes = check_toolchain_executes(
+            env_prefix, contract=contract, env=build_subprocess_env())
+        if executes is not None:
+            emit(executes)
+
     # Forbidden packages (MKL etc.)
     forbidden = check_no_forbidden_packages(spec, conda_packages)
     if forbidden:
@@ -1043,6 +1099,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         errors=tuple(errors),
         warnings=tuple(warnings),
         info=tuple(info),
+        findings=tuple(findings),
     )
 
 
