@@ -370,12 +370,29 @@
             return;
         }
         if (target === "APPLY") {
-            // Sole canonical fileState writer (contract § 2;
-            // mirrors trajectory PR 2.3).  Fields not in the
-            // payload are LEFT alone (path stays across watchTick
-            // updates; results replaces atomically).
-            if (payload.path    !== undefined) state.fileState.path    = payload.path;
-            if (payload.results !== undefined) state.fileState.results = payload.results;
+            /* THE ONE WRITE: a name and the data that belongs to it,
+             * together, or neither.  `results.md` § 4 has always said
+             * fileState is "replaced atomically"; until 2026-09-03 it was
+             * not.  Every caller passed `{results}` alone, so the answer
+             * landed under whatever path happened to be sitting there, and
+             * `fetchSeq` existed to survive that -- a counter each caller
+             * snapshotted before its fetch and re-checked after, in five
+             * places, to notice it had written into the wrong file.
+             *
+             * A payload MUST now say which file it is for.  A late answer
+             * for a file we have moved off is dropped HERE, once, because
+             * its own name no longer matches the one on screen.  That is
+             * the guard: not a counter, the data's own identity. */
+            if (payload.path === undefined) {
+                throw new Error(
+                    "APPLY without a path: results must be written with "
+                    + "the file they came from, never onto the current one");
+            }
+            if (payload.path !== state.fileState.path) {
+                return;          // an answer for a file we are not showing
+            }
+            state.fileState.path    = payload.path;
+            state.fileState.results = payload.results;
             return;
         }
         // Unknown target: silent no-op.
@@ -728,6 +745,27 @@
     // file directly.  This is the primary path for users running
     // molbuilder on the same machine as their spectra.py job --
     // no re-upload after every phase write.
+    /** THE one route to `/api/spectra/load` (`results.md` § 4).
+     *
+     *  There were two, and that was the defect underneath everything else:
+     *  `loadByPath` read the filename out of the DOM box
+     *  (`els.watchPath.value`) and `watchTick` read it out of the state
+     *  (`state.fileState.path`).  Two sources of truth for *which file is
+     *  this*, each with its own copy of the abort + sequence-guard dance.
+     *
+     *  One door, and the answer comes back WITH the name it was asked for,
+     *  so no caller is in a position to write it under another.
+     */
+    async function fetchResults(path, signal) {
+        const r = await fetch("/api/spectra/load", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ path: path }),
+            signal:  signal,
+        });
+        return { path: path, body: await r.json() };
+    }
+
     async function loadByPath() {
         const path = (els.watchPath.value || "").trim();
         if (!path) {
@@ -757,18 +795,13 @@
         const signal = state.lifecycle.loadAbort.signal;
         let body;
         try {
-            const r = await fetch("/api/spectra/load", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ path: path }),
-                signal:  signal,
-            });
-            // Phase 6e seventh-review LANDMINE-4: r.json() used to
-            // live OUTSIDE this try, so a malformed / truncated
-            // JSON body became an unhandled promise rejection.
-            // Inside the try the SyntaxError lands on the same
-            // status-banner path as the network error.
-            body = await r.json();
+            // Phase 6e seventh-review LANDMINE-4: the JSON parse used
+            // to live OUTSIDE this try, so a malformed / truncated body
+            // became an unhandled promise rejection.  It is inside
+            // `fetchResults`, which is called here, so the SyntaxError
+            // still lands on the same status-banner path as a network
+            // error.
+            body = (await fetchResults(path, signal)).body;
         } catch (exc) {
             // AbortError: a newer loadByPath() superseded us, or
             // dispose() ran.  Silent -- the newer action owns the
@@ -801,7 +834,7 @@
             transition("ERROR");
             return;
         }
-        renderResults(body.results);
+        renderResults(body.results, path);
         updatePhaseIndicator(body.results);
         setStatus(els.watchStatus, "Loaded.", "ok");
         // Load-once: no polling.  Transition to LOADED regardless
@@ -898,19 +931,18 @@
         state.lifecycle.watchAbort = new AbortController();
         const signal = state.lifecycle.watchAbort.signal;
         state.lifecycle.watchInFlight = true;
+        // THE FILE THIS TICK IS FOR, read once and carried.  Reading
+        // `state.fileState.path` again after the await would be reading
+        // the file the user has since moved to, which is how an answer
+        // ends up painted under the wrong name.
+        const myPath = state.fileState.path;
         // File-identity guard (contract § 4 Invariant 1): the
         // sequence number this tick is bound to.  If a Load / Start-
         // watching bumps fetchSeq while this fetch is on the wire,
         // the response is dropped.
         const mySeq = state.lifecycle.fetchSeq;
         try {
-            const r = await fetch("/api/spectra/load", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ path: state.fileState.path }),
-                signal:  signal,
-            });
-            body = await r.json();
+            body = (await fetchResults(myPath, signal)).body;
         } catch (exc) {
             if (exc.name === "AbortError") return;
             if (state.lifecycle.fetchSeq !== mySeq) return;
@@ -940,7 +972,7 @@
         }
         state.lifecycle.watchErrors = 0;
         // Render whatever phases are populated so far.
-        renderResults(body.results);
+        renderResults(body.results, myPath);
         updatePhaseIndicator(body.results);
         // _settlePostLoad(true): if allPhasesComplete -> LOADED
         // (stops timer); else -> WATCHING (keeps polling).  This
@@ -1027,14 +1059,21 @@
         });
     }
 
-    function renderResults(results) {
+    /** Render an answer, TOGETHER WITH THE FILE IT CAME FROM.
+     *
+     *  `path` is not decoration and is not optional: it is the difference
+     *  between "these are the results" and "these are the results FOR THIS
+     *  FILE".  Every write below carries it, so a late answer cannot be
+     *  painted under a name it does not belong to (`results.md` § 4).
+     */
+    function renderResults(results, path) {
         if (!results) {
             els.resultsSummary.hidden = true;
             // Contract § 2: route fileState writes through
             // transition('APPLY').  selectedMode is viewState
             // (event-mutable per matrix § 3) so direct write is
             // allowed there.
-            transition("APPLY", { results: null });
+            transition("APPLY", { path: path, results: null });
             state.selectedMode = null;
             return;
         }
@@ -1059,10 +1098,10 @@
             // Contract § 2: route fileState writes through
             // transition('APPLY') so this function is no longer a
             // fileState writer in disguise (mirrors trajectory PR 2.3).
-            transition("APPLY", { results: results });
+            transition("APPLY", { path: path, results: results });
             return;
         }
-        transition("APPLY", { results: results });
+        transition("APPLY", { path: path, results: results });
         els.resultsSummary.hidden = false;
 
         // Top-of-summary meta dictionary.  ``runtime_info`` (added in

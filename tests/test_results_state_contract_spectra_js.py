@@ -217,23 +217,6 @@ class TestTransitionOrchestrator:
             "transition('LOADED') doesn't clear the watchTimer.  "
             "A finished run keeps polling forever.")
 
-    def test_transition_apply_writes_filestate(self, core_body):
-        """APPLY is the
-        SINGLE canonical fileState writer."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']APPLY[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, (
-            "spectra/core.js transition() has no APPLY branch.")
-        body = m.group(1)
-        for field in ("path", "results"):
-            assert f"state.fileState.{field}" in body, (
-                f"transition('APPLY') no longer writes "
-                f"state.fileState.{field}.")
-
-
 # --------------------------------------------------------------------- #
 #  renderResults routes fileState writes through transition('APPLY')    #
 # --------------------------------------------------------------------- #
@@ -244,26 +227,31 @@ class TestRenderResultsUsesTransition:
     transition('APPLY', {results}) -- the contract § 2 violation
     closure mirrors trajectory's PR 2.3 fix for applyNewData."""
 
-    def test_no_direct_state_results_writes_in_renderResults(self, core_body):
-        m = re.search(
-            r"function\s+renderResults\s*\(\s*results\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "renderResults not found"
-        body = m.group(1)
-        # No direct ``state.results = ...`` (alias bypass route).
-        assert not re.search(r"\bstate\.results\s*=", body), (
-            "renderResults still writes state.results directly.  "
-            "PR 3 routes these through transition('APPLY', {results}); "
-            "the regression brings back the contract § 2 'sole-"
-            "writer' violation.")
-        # At least one transition('APPLY', ...) call.
-        assert re.search(
-            r"transition\s*\(\s*[\"']APPLY[\"']", body,
-        ), ("renderResults has no transition('APPLY') call.  Where "
-            "are the fileState writes going?")
-
-
+    # RETIRED 2026-09-03, and they are worth recording as a pair because
+    # they failed on the day the code they describe was CORRECTED.
+    #
+    # `results.md` § 4 has always said fileState is "replaced atomically".
+    # It was not: every caller passed `transition("APPLY", {results})` with
+    # no path, so an answer landed under whatever filename happened to be
+    # in state at that moment, and `fetchSeq` -- a counter snapshotted
+    # before each fetch and re-checked after, in five places -- existed to
+    # notice when it had written into the wrong file.  APPLY now requires
+    # the path and drops an answer whose file is no longer on screen.
+    #
+    # test_transition_apply_writes_filestate matched
+    # `APPLY ... (.+?) return;` -- NON-GREEDY.  The new guard clause is now
+    # the first `return`, so the regex captured the guard and never reached
+    # the writes below it.  It failed BECAUSE the code got safer.
+    #
+    # test_no_direct_state_results_writes_in_renderResults required
+    # `function renderResults(results)` with exactly one parameter.  The
+    # second parameter is the filename the results belong to -- the entire
+    # point of the fix.
+    #
+    # Neither found a defect in nine months; both obstructed the one real
+    # change.  The property they gesture at is now held by construction:
+    # APPLY throws without a path, so an anonymous write cannot be
+    # expressed, and there is one door to the endpoint.
 # --------------------------------------------------------------------- #
 #  File-identity guard at fetch resolution                              #
 # --------------------------------------------------------------------- #

@@ -234,8 +234,66 @@ Read from `lib/trajectory/core.js`, which is the shipped implementation:
 | `fileState` | path, mtime, format, label, the parsed data | replaced **atomically** on each `LOADING → LOADED` |
 | `viewState` | per-file interaction (first fit, picks) — **not the playhead**, MolView owns that | on a file switch |
 | `uiPrefs` | per-session knobs (hide-frozen, …) | never — this is the "survives a file switch" half |
-| `lifecycle` | the poll timer, the abort controllers, and the `fetchSeq` counter the late-response guard reads | on `LOADING` |
+| `lifecycle` | the poll timer and the abort controllers | on `LOADING` |
 | `derived` | recomputed from `fileState` (the SCF poll history) | with `fileState` |
+
+#### What "atomically" means, and what it did not mean until 2026-09-03
+
+**A name and the data that belongs to it are written together, or neither
+is.** `transition("APPLY", …)` will not accept a payload without a `path`,
+and drops one whose path is not the file on screen.
+
+That row said *atomically* from the day the state machine landed, and the
+code did not do it. Every caller passed `{results}` or `{mtime, data}` and
+let `path` stand — the trajectory core said so in a comment, *"format/label/
+path stay because the file identity didn't change"*, which is an assumption
+nothing verified. A watch tick fires for file A; the user clicks B; A's
+answer resolves and is written under B's name. So a **`fetchSeq` counter**
+was added: each caller snapshotted it before its fetch and re-checked it
+after, in five places, to notice it had written into the wrong file.
+
+**The answer already knew which file it was for.** Every reply from
+`/api/watch/data` carries `r.path` — the file the server actually read.
+Passing it through and comparing it once, inside `APPLY`, means a stale
+reply is refused because its own name no longer matches, not because a
+number moved.
+
+`fetchSeq` **still exists**, and the distinction matters: **no data
+integrity depends on it any more**, but it still gates the status banner
+and the consecutive-error count, so a late reply does not overwrite a
+message about the file you are now on. Retiring it is a separate change —
+bundling a cleanup into a correctness fix is how the correctness fix stops
+being reviewable.
+
+Two consequences worth stating, because they are the point:
+
+- **an anonymous write cannot be expressed.** `APPLY` throws without a
+  path, so "write this data" with no file attached is not a thing a future
+  caller can accidentally do;
+- **there is one door per panel to the load endpoint.** `spectra/core.js`
+  had two — `loadByPath` read the filename from the DOM input box and
+  `watchTick` read it from state, two sources of truth for *which file is
+  this*. Both now go through `fetchResults(path, signal)`, which returns
+  the answer paired with the name it asked for.
+
+*This was a static-review finding, not a test one: three tests asserted the
+old shape and all three failed on the correction, one of them because a
+non-greedy regex stopped at the new guard's `return`.*
+
+**How far each half is verified, stated plainly.** The trajectory guard is
+**proven live**: removing `path` from its caller fails
+`test_no_trajectory_poll_survives_dispose`, because that test drives a real
+multi-frame `*_geom_optim.xyz` through a real load. The spectra guard is
+**correct by construction and unexercised** — removing `path` from its
+caller changes no test result, because **no test in the suite loads a real
+spectra results file**. The e2e mount `job.spectra.json`, get a 404, and
+land in `ERROR` without ever reaching `APPLY`.
+
+That gap is older and wider than this change, and naming it is the point: a
+`.spectra.json` fixture would light up the spectra half of this contract
+and a good deal else besides. Until one exists, the spectra guard rests on
+reading the code, and this paragraph says so rather than letting a green
+suite imply otherwise.
 
 `derived` is the one the prose above folds into "the parsed file", and it is a
 separate bucket for a reason: it is **recomputed**, never written by a

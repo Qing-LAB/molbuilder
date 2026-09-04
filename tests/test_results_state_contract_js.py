@@ -383,28 +383,22 @@ class TestSettlePostLoad:
             "A Refresh during a finished+settling state would "
             "inherit the counter from the prior run.")
 
-    def test_apply_branch_exists(self, core_body):
-        """PR 2.3 closes deferred Gap #1.  transition('APPLY', payload)
-        is the SINGLE canonical fileState writer; applyNewData routes
-        through it instead of patching state.mtime / state.data
-        directly via the backward-compat aliases."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']APPLY[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, (
-            "trajectory/core.js transition() has no APPLY branch. "
-            "applyNewData would be back to writing fileState fields "
-            "directly via aliases -- contract § 2 'transition() is "
-            "the SOLE entry-point' is violated.")
-        body = m.group(1)
-        for field in ("mtime", "data", "format", "label", "path"):
-            assert f"state.fileState.{field}" in body, (
-                f"transition('APPLY') no longer writes "
-                f"state.fileState.{field}.  The atomic-replacement "
-                f"semantics is broken.")
-
+    # RETIRED 2026-09-03 — the third grep to fail on the day the code it
+    # describes was corrected, for the same reason as its two siblings in
+    # the spectra file.  Its regex was `APPLY ... (.+?) return;`,
+    # NON-GREEDY, so the guard clause added to drop an answer meant for a
+    # file the user has moved off became the first `return` and the capture
+    # never reached the writes below it.  The assertion message read
+    # "transition('APPLY') no longer writes state.fileState.mtime.  The
+    # atomic-replacement semantics is broken" -- while the change it was
+    # reporting on is the one that MADE the replacement atomic.
+    #
+    # `results.md` § 4 had said "replaced atomically" since the state
+    # machine landed.  It was not: the noNewContent branch passed
+    # {mtime, data} and left path standing "because the file identity
+    # didn't change", an assumption nothing checked.  APPLY now requires
+    # the path -- which every server reply already carries as `r.path` --
+    # and drops a reply whose file is not the one on screen.
     def test_applyNewData_routes_writes_through_transition(self, core_body):
         """applyNewData's two write blocks (noNewContent + full
         rebuild) MUST both go through transition('APPLY').  Direct

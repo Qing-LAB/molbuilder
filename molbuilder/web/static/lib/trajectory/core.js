@@ -521,6 +521,30 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // half-updated state.  Machine field is set by
             // _settlePostLoad after the APPLY (it inspects the new
             // data.run_state).
+            //
+            // 2026-09-03 -- "never half-updated" was the weaker of the two
+            // properties, and the comment above defended only that one.
+            // The one that matters is that the DATA AND THE NAME BELONG TO
+            // EACH OTHER.  The noNewContent branch passed {mtime, data}
+            // and let path stand "because the file identity didn't
+            // change", which is an assumption nobody checked: a tick fired
+            // for file A resolves after the user has moved to B, and A's
+            // frames are written under B's name.  `fetchSeq` existed to
+            // notice that afterwards.
+            //
+            // The server already answers the question -- every reply
+            // carries `r.path`, the file it actually read -- so the answer
+            // is matched against the file on screen HERE, once, and a
+            // reply for a file we have moved off is dropped.
+            if (payload.path === undefined) {
+                throw new Error(
+                    "APPLY without a path: data must be written with the "
+                    + "file it came from, never onto the current one");
+            }
+            if (state.fileState.path !== null
+                && payload.path !== state.fileState.path) {
+                return;          // an answer for a file we are not showing
+            }
             if (payload.mtime  !== undefined) state.fileState.mtime  = payload.mtime;
             if (payload.data   !== undefined) state.fileState.data   = payload.data;
             if (payload.format !== undefined) state.fileState.format = payload.format;
@@ -2555,7 +2579,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // transition() so this function is no longer a fileState
             // writer in disguise.  noNewContent only updates the two
             // fields that can change on a same-content tick.
-            transition("APPLY", { mtime: r.mtime, data: r.data });
+            transition("APPLY", { path: r.path, mtime: r.mtime,
+                                  data: r.data });
             _renderRuntimeInfo(state.data.runtime_info);
             _renderParseWarnings(state.data.parse_warnings);
             if (runStateChanged || scfChanged) makePlots();
@@ -2585,7 +2610,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             data:   r.data,
             format: resolvedFormat,
             label:  r.label || resolvedFormat,
-            path:   r.path,  // undefined → keep existing per APPLY shape
+            path:   r.path,
             // undefined on watch-data polls → keep existing (metadata is
             // per-file and doesn't change mid-run); set on a fresh load.
             atomMetadata: r.atomMetadata,
