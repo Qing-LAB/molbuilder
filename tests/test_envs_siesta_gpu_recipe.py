@@ -602,6 +602,56 @@ def _flook_building_component(recipe):
     )
 
 
+def test_sysroot_is_pinned_not_merely_declared(recipe):
+    """``sysroot_linux-64`` must carry a VERSION.
+
+    This is the regression test for the 2026-09 ELPA failure.  The
+    recipe declared the package unversioned, which reads as a decision
+    and is not one: ``gcc_impl_linux-64`` depends on a bare
+    ``sysroot_linux-64``, so the solver took the newest (2.39) and the
+    toolchain produced binaries the host's glibc could not load.
+
+    Note what this test can and cannot do.  It is a string assertion --
+    it never solves.  It is only sufficient BECAUSE the spec is pinned:
+    once the version is stated, the spec fully determines what gets
+    installed.  While the spec was bare, no static assertion could have
+    caught this, which is why the live-solve test below exists as well.
+    """
+    specs = [p for p in recipe.conda_packages
+             if p.split("=")[0] == "sysroot_linux-64"]
+    assert specs, "recipe no longer declares sysroot_linux-64 at all"
+    assert len(specs) == 1, f"sysroot declared more than once: {specs}"
+    assert "=" in specs[0], (
+        f"sysroot spec `{specs[0]}` carries no version.  An unversioned "
+        f"spec lets the solver pick the newest sysroot, which produces a "
+        f"toolchain whose binaries will not start on older hosts."
+    )
+
+
+def test_the_sysroot_pin_is_at_or_below_the_conda_forge_floor(recipe):
+    """2.17 is conda-forge's portability floor and what every prebuilt
+    package in the env already targets.  A higher default would trade
+    portability for nothing measurable -- SIESTA and ELPA use no glibc
+    feature past 2.17.  Sites that know their cluster is uniformly
+    newer raise it via MOLBUILDER_SYSROOT, not by editing this default.
+    """
+    from molbuilder.envs.abi import parse_version
+    spec = next(p for p in recipe.conda_packages
+                if p.split("=")[0] == "sysroot_linux-64")
+    assert parse_version(spec.split("=", 1)[1]) <= (2, 17)
+
+
+def test_kernel_headers_is_not_double_pinned(recipe):
+    """sysroot pins kernel-headers exactly (2.17 -> 3.10.0), so a second
+    pin here would be a redundant fact with its own way of going stale.
+    One decision, one place."""
+    specs = [p for p in recipe.conda_packages
+             if p.split("=")[0] == "kernel-headers_linux-64"]
+    assert specs == ["kernel-headers_linux-64"], (
+        f"kernel-headers should follow sysroot, not carry its own pin: {specs}"
+    )
+
+
 def test_readline_is_declared_not_inherited(recipe):
     """``readline`` must be named outright.
 

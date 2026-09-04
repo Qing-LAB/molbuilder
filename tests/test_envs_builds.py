@@ -550,6 +550,99 @@ def test_format_preflight_report_includes_all_sections(tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  Preflight <-> ABI contract seam                                       #
+# --------------------------------------------------------------------- #
+#
+# The unit-level rules live in tests/test_envs_abi.py.  What is tested
+# here is only the WIRING: does preflight read the contract, does it put
+# a violation in the right bucket, and does the structured `findings`
+# list survive the trip out.
+
+
+def _abi_probe(tmp_path):
+    return B.ToolchainProbe(
+        env_prefix=str(tmp_path), cuda_home=str(tmp_path),
+        cuda_version="13.3", cuda_compute_cap="8.0",
+        gcc_version="14.3.0", openmpi_version="5.0.10", jobs=8,
+    )
+
+
+def _write_sysroot(tmp_path, version):
+    meta = tmp_path / "conda-meta"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / f"sysroot_linux-64-{version}-h0_0.json").write_text(
+        json.dumps({"name": "sysroot_linux-64", "version": version}))
+
+
+def test_preflight_reports_both_sides_of_the_abi_contract(tmp_path,
+                                                          monkeypatch):
+    """The pair of numbers is what makes a later build failure legible,
+    so it is shown whether or not a rule fired."""
+    recipe = recipe_by_name("molbuilder-siesta-gpu")
+    _write_sysroot(tmp_path, "2.17")
+    report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
+                         recipe.conda_packages, str(tmp_path),
+                         check_network=False)
+    info = "\n".join(report.info)
+    assert "Host glibc" in info
+    assert "Env sysroot" in info and "2.17" in info
+
+
+def test_preflight_errors_when_the_sysroot_outranks_the_host_glibc(
+        tmp_path, monkeypatch):
+    """The regression.  A 2.39 sysroot on a 2.28 host must stop the
+    build HERE, with the numbers named -- not five steps later inside
+    ELPA's configure with a message that never mentions glibc."""
+    import molbuilder.envs.abi as A
+    monkeypatch.setattr(A, "_detect_host_glibc", lambda: (2, 28))
+    recipe = recipe_by_name("molbuilder-siesta-gpu")
+    _write_sysroot(tmp_path, "2.39")
+    report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
+                         recipe.conda_packages, str(tmp_path),
+                         check_network=False)
+    codes = {f.code for f in report.findings}
+    assert "abi.sysroot-exceeds-host-glibc" in codes
+    # ...and it must land in errors, not warnings: the build cannot
+    # succeed, so confirming past it would waste the user's time.
+    assert any("2.39" in e and "2.28" in e for e in report.errors), report.errors
+
+
+def test_preflight_is_silent_on_the_pinned_default(tmp_path, monkeypatch):
+    """The shipped pin must not trip its own check on a realistic host."""
+    import molbuilder.envs.abi as A
+    monkeypatch.setattr(A, "_detect_host_glibc", lambda: (2, 28))
+    recipe = recipe_by_name("molbuilder-siesta-gpu")
+    _write_sysroot(tmp_path, "2.17")
+    report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
+                         recipe.conda_packages, str(tmp_path),
+                         check_network=False)
+    assert [f for f in report.findings if f.code.startswith("abi.")] == []
+
+
+def test_findings_carry_codes_so_tests_need_not_match_prose(tmp_path,
+                                                            monkeypatch):
+    """Every structured finding must be identifiable without reading
+    its wording, so error text stays free to improve."""
+    import molbuilder.envs.abi as A
+    monkeypatch.setattr(A, "_detect_host_glibc", lambda: (2, 28))
+    recipe = recipe_by_name("molbuilder-siesta-gpu")
+    _write_sysroot(tmp_path, "2.39")
+    report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
+                         recipe.conda_packages, str(tmp_path),
+                         check_network=False)
+    assert report.findings
+    for finding in report.findings:
+        assert finding.code and finding.severity
+
+
+def test_preflight_report_findings_default_to_empty(tmp_path):
+    """Back-compat: the three prose lists remain the report's primary
+    shape, and callers constructing a report positionally still work."""
+    report = B.PreflightReport(errors=(), warnings=(), info=("x",))
+    assert report.findings == ()
+
+
+# --------------------------------------------------------------------- #
 #  run_build_spec: preflight short-circuit                               #
 # --------------------------------------------------------------------- #
 
