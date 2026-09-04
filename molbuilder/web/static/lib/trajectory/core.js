@@ -541,9 +541,46 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     "APPLY without a path: data must be written with the "
                     + "file it came from, never onto the current one");
             }
-            if (state.fileState.path !== null
+            /* THE ANSWER TO A LOAD NAMES THE FILE.  A POLL MUST NAME THE
+             * ONE WE ALREADY HAVE.  Those are different questions and the
+             * first version of this guard (2026-09-03) asked only the
+             * second -- which broke every load whose resolved name differs
+             * from the requested one.
+             *
+             * `/api/watch/load` answers with the file the SERVER read after
+             * `_resolve_within_roots`: `~` expanded, symlinks followed,
+             * `.`/`//`/trailing slash normalised, a DIRECTORY replaced by
+             * the newest log inside it, an upload replaced by its /tmp
+             * path.  `transition("LOADING")` had stored what we ASKED for,
+             * so comparing the two dropped the payload, and the caller then
+             * read `state.data.frames` off the null the LOADING reset left
+             * -- surfacing a complete 200 response as
+             * "Network error: Cannot read properties of null".
+             *
+             * Measured differing inputs: a directory, a trailing slash, a
+             * `./` segment, a relative path, `~`, any symlinked ancestor
+             * (a projects/ symlinked to a data volume misses on EVERY
+             * load), and every multipart upload.
+             *
+             * `state.machine` is the discriminator, and it is exact:
+             * `transition("LOADING")` set it and nothing else runs before
+             * the answer lands, while a poll only ever fires from WATCHING
+             * or LOADED.  So a load ADOPTS the server's name -- which is
+             * the authoritative one, and is what the `resolved_from`
+             * status message downstream exists to explain -- and a poll,
+             * comparing resolved against resolved, still cannot paint one
+             * file's frames under another's name. */
+            /* NO `path !== null` EXEMPTION.  The first version had one, and
+             * it exempted exactly the case the guard is most needed for:
+             * `transition("IDLE")` -- dispose -- sets the path to null, so
+             * `path !== null` was false and an answer arriving after the
+             * inspector was torn down sailed through into a dead panel.
+             * The contract claimed the opposite ("fails the new one, because
+             * fileState.path is null by then"); it was the call sites, not
+             * this guard, doing that work. */
+            if (state.machine !== "LOADING"
                 && payload.path !== state.fileState.path) {
-                return;          // an answer for a file we are not showing
+                return;          // a POLL answer for a file we are not showing
             }
             if (payload.mtime  !== undefined) state.fileState.mtime  = payload.mtime;
             if (payload.data   !== undefined) state.fileState.data   = payload.data;

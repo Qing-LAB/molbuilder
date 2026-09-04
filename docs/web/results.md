@@ -252,11 +252,28 @@ answer resolves and is written under B's name. So a **`fetchSeq` counter**
 was added: each caller snapshotted it before its fetch and re-checked it
 after, in five places, to notice it had written into the wrong file.
 
-**The answer already knew which file it was for.** Every reply from
-`/api/watch/data` carries `r.path` — the file the server actually read.
-Passing it through and comparing it once, inside `APPLY`, means a stale
-reply is refused because its own name no longer matches, not because a
-number moved.
+**Where the name comes from — and it is NOT the same on both sides.**
+Getting this backwards would break a viewer completely, so it is spelled
+out:
+
+| viewer | the name compared | where it comes from |
+|---|---|---|
+| trajectory | `r.path` | the SERVER's reply — `/api/watch/load` and `/api/watch/data` both carry it, the file the server actually read |
+| spectra | the requested path | the browser's own string, echoed by `fetchResults(path)` — **`/api/spectra/load` returns no `path` at all** |
+
+Either way `APPLY` compares against `state.fileState.path`, and either way
+a stale reply is refused because its own name no longer matches rather than
+because a number moved.
+
+> **Do not "tidy" the spectra side into using a server-echoed path.** There
+> is none to use, and adding one would not be equivalent:
+> `blueprints/spectra.py` resolves the request through
+> `_resolve_within_roots`, which expands `~`, expands `$VARS` and follows
+> symlinks. The echoed absolute path would then differ from the string the
+> user typed into the path box for every one of those cases, `APPLY` would
+> drop **every** payload, and the viewer would render nothing at all — in
+> silence, because a dropped payload is a `return`, not an error. The
+> spectra guard is correct precisely because one string feeds both sides.
 
 **`fetchSeq` is gone** (2026-09-04, a separate change from the correctness
 fix above, deliberately). The guards it served — the status banner, the

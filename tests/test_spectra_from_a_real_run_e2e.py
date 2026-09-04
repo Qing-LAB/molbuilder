@@ -51,6 +51,11 @@ pytest.importorskip("flask")
 
 ROOT = Path(__file__).resolve().parents[1]
 
+#: `_watchEsWidth` resizes a hidden Plotly node on load; Plotly refuses and
+#: logs.  Excluded BY NAME in both browser tests below rather than by a
+#: blanket, so any other console error still fails them.
+_PLOTLY_HIDDEN_RESIZE = "Resize must be passed a displayed plot div"
+
 #: Experiment, for the record: the bend is 667 cm-1 (doubly degenerate), the
 #: symmetric stretch 1333, the antisymmetric 2349.  RHF/STO-3G reproduces the
 #: SHAPE and not the numbers -- it has no correlation and a minimal basis, so
@@ -111,6 +116,11 @@ def _run_one(env, d, label, bond):
                           cwd=str(d), capture_output=True, text=True,
                           timeout=600)
     out = d / f"{label}.spectra.json"
+    assert proc.returncode == 0, (
+        f"the {label} deck exited {proc.returncode}.  A deck that writes a "
+        f"good JSON and then dies still leaves a file, so checking only for "
+        f"the file lets a broken run through.\n"
+        f"--- stderr ---\n{proc.stderr[-1500:]}")
     assert out.exists(), (
         f"the deck ran (exit {proc.returncode}) but wrote no {out.name}.\n"
         f"--- stdout ---\n{proc.stdout[-2000:]}\n"
@@ -254,88 +264,62 @@ def test_the_run_produces_the_spectrum_co2_actually_has(co2_run):
 
 def test_the_viewer_reads_a_run_this_suite_just_computed(
         page, flask_server, co2_run):
-    """The other end of the chain, in a browser.
+    """The other end of the chain, in a browser: pick the run, read the modes.
 
     The spectra viewer is not the `/spectra` page -- that one GENERATES a
     calculation.  The viewer is `_spectra_inspector.html`, mounted on
-    `/results` by the inspector registry, which dispatches on the filename:
-    `*.spectra.json` picks the spectra adapter, and mounting with a file
-    loads it.
+    `/results`, and the ONLY thing that mounts it is
+    `molbuilder:results:fileSelected`, which only the dropdown dispatches
+    (`results/viewer.js`, sidebar dispatch retired 2026-06-09, task #301).
 
-    So this is the real surface, reached the real way, on a file this suite
-    computed sixty lines above.  Until 2026-09-03 nothing reached it: every
-    spectra e2e mounted a `job.spectra.json` that did not exist, took the
-    404 and stopped in ERROR -- which is why the load path could be rebuilt
-    that day with only half of it provable.
+    **Corrected 2026-09-04.**  This test used to seed
+    `molbuilder.current_file` and then call `projects.setShared(...)`,
+    claiming that was "the real surface, reached the real way".  It was
+    neither: `setShared` publishes a selection change and NOTHING on
+    /results listens to it, so that call was inert, and what actually
+    mounted was `results/viewer.js`'s init-time bypass -- a direct
+    `_onSelectionChange(getCurrentFile())` that exists so a returning user
+    sees their file without clicking.  The test passed with the entire file
+    picker deleted.  It drives the dropdown now, so the claim and the
+    mechanism are the same thing.
     """
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: (errors.append(m.text)
                                   if m.type == "error" else None))
-    # SEED THE SELECTION BEFORE THE PAGE LOADS.
-    #
-    # `test_task_setup_cell_types_e2e.py` records why: the sidebar restores
-    # its selection at init, so setting one afterwards is a race the sidebar
-    # wins -- `restoreSelection` runs second and puts the tree back where it
-    # was.  The app's own hand-off writes the target page's slots and lets
-    # init pick them up, which is what this does.
+
+    # The DIRECTORY scopes the picker; the DROPDOWN chooses the file.
     page.add_init_script(
         "try {"
         f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(co2_run.parent))});"
-        f" sessionStorage.setItem('molbuilder.current_file', {json.dumps(str(co2_run))});"
         "} catch (_) {}")
     page.goto(f"{flask_server}/results")
-    page.wait_for_selector("#inspector-host", timeout=20000)
+    page.wait_for_selector("#results-file-picker-select", timeout=20000)
     page.wait_for_function(
-        "() => window.molbuilder && window.molbuilder.inspectors "
-        "&& window.molbuilder.inspectors.list().length >= 4", timeout=20000)
+        "(want) => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')].some(o => o.value === want)",
+        arg=str(co2_run), timeout=20000)
+    page.select_option("#results-file-picker-select", value=str(co2_run))
 
-    # ...and nudge the selection too, for the case where init got there
-    # first.  setShared is what a sidebar click does.
-    #
-    # Calling `inspectors.mount(host, path, ctx)` directly does put the
-    # viewer in the host -- and then the page's own dispatcher, which
-    # watches the sidebar selection and sees nothing picked, replaces it
-    # with the "Pick a file to inspect" fallback.  The host ends up holding
-    # `#results-fallback` and every selector below looks broken, while the
-    # server log cheerfully shows `POST /api/spectra/load 200`.
-    #
-    # `projects.setShared(dir, file)` is what a click in the sidebar does,
-    # so the dispatcher mounts the inspector itself and then leaves it
-    # alone.  It is also the honest walk: a person opens Results and picks
-    # the file.
-    page.evaluate(
-        "([d, f]) => window.molbuilder.projects.setShared(d, f)",
-        [str(co2_run.parent), str(co2_run)])
-
-    # Wait on THE ROWS -- what a person is looking at.
     page.wait_for_selector("#modes-tbody tr", state="attached", timeout=30000)
-
     shown = page.evaluate("""() => {
         const host = document.getElementById("inspector-host");
         const sum  = host.querySelector("#results-summary");
         return {
             rows: host.querySelectorAll("#modes-tbody tr").length,
-            first: (host.querySelector("#modes-tbody tr td:nth-child(2)")
-                    || {}).textContent,
             summaryShown: !!(sum && !sum.hidden),
         };
     }""")
 
     # ONE exclusion, named rather than blanket.  `_watchEsWidth` installs a
-    # ResizeObserver that calls `Plotly.Plots.resize(node)` whenever the
-    # node's box changes -- including while it is hidden, which Plotly
-    # refuses with "Resize must be passed a displayed plot div element."
-    # The call is already wrapped in try/catch, so the author knew it could
-    # fail and chose to swallow the throw; what the catch cannot swallow is
-    # Plotly's own console.error.  Nothing breaks, so this is left as a
-    # finding rather than fixed under a test: the fix is a visibility check
-    # before the call, and whether to add one is a UI call, not a defect
-    # against any written rule.
-    _PLOTLY_HIDDEN_RESIZE = "Resize must be passed a displayed plot div"
+    # ResizeObserver that calls `Plotly.Plots.resize(node)` while the node
+    # is hidden, which Plotly refuses and logs.  The call is already in a
+    # try/catch -- the author knew it could fail -- and what a catch cannot
+    # swallow is Plotly's own console.error.  Left as a finding, not fixed
+    # under a test: the fix is a visibility check, and whether to add one is
+    # a UI call rather than a defect against any written rule.
     unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
-
     assert shown["summaryShown"], (
         "the results summary stayed hidden, so the data arrived and nothing "
         "drew it")
@@ -440,4 +424,19 @@ def test_switching_files_replaces_the_view_it_does_not_merge(
         f"from the previous run.  `results.md` § 4 says the parsed file is "
         f"replaced WHOLE -- a row that survives a switch is the merge that "
         f"rule forbids, and a person is reading two calculations at once.")
-    assert errors == [], f"the page reported JS errors: {errors}"
+
+    # WHICH set belongs to WHICH file -- the assertions above are satisfied
+    # by a viewer that swapped them, or that mounts the previously-selected
+    # option, and neither would be "the dropdown dictates the display".
+    # Physics binds them: the 1.16 A bond is SHORTER, so stiffer, so its
+    # stretches sit higher than the 1.24 A run's.  The fixture had this
+    # discriminator all along and the first version did not use it.
+    hi_a, hi_b = max(float(x) for x in freqs_a), max(float(x) for x in freqs_b)
+    assert hi_a > hi_b, (
+        f"the run picked first tops out at {hi_a} cm-1 and the second at "
+        f"{hi_b}.  The 1.16 A geometry is the stiffer one, so it must be "
+        f"the higher -- these two sets are on the wrong files, which means "
+        f"the dropdown and the panel disagree about what is showing.")
+
+    unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
+    assert unexpected == [], f"the page reported JS errors: {unexpected}"

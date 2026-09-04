@@ -201,7 +201,7 @@
             watchErrors:   0,
             // File-identity guard (contract § 4 Invariant 1).
             // Every fetch resolution checks (response.path,
-            // the file it was issued for) before applying.  Late responses
+            // its own requested path) before applying.  Late responses
             // from a prior file can never write into the current
             // file's view.
         },
@@ -754,6 +754,12 @@
      *  One door, and the answer comes back WITH the name it was asked for,
      *  so no caller is in a position to write it under another.
      */
+    // NOTE: the returned `path` is the REQUESTED one, echoed straight back
+    // from the argument.  `/api/spectra/load` does not send a path, and it
+    // must not be made to: the route resolves through
+    // `_resolve_within_roots` (~ and $VARS expanded, symlinks followed), so
+    // a server-echoed path would not equal the string in the path box and
+    // APPLY would drop every payload.  One string feeds both sides.
     async function fetchResults(path, signal) {
         const r = await fetch("/api/spectra/load", {
             method:  "POST",
@@ -957,9 +963,30 @@
         } finally {
             state.lifecycle.watchInFlight = false;
         }
-        // File-identity guard at fetch resolution: this tick's file, not
-        // a counter.  `watchInFlight` above already makes two ticks for
-        // the same file impossible, so the path is the whole question.
+        // TWO guards at resolution, the same pair `loadByPath` uses, and
+        // the reasoning that once justified only one of them was wrong.
+        //
+        // `watchInFlight` guards CONCURRENCY -- it stops a second tick
+        // starting while one is out.  It cannot say anything about a tick
+        // that has already SETTLED, and the deletion of `fetchSeq`
+        // (2026-09-04) briefly rested on it doing both.  It does not:
+        //
+        //   watching A -> tick resolves, continuation queued
+        //   -> Refresh / "Load once" fires for A (neither button is
+        //      disabled during a watch, unlike Start)
+        //      -> transition('LOADING') aborts us, stops the timer,
+        //         empties results
+        //   -> our continuation runs.  myPath === fileState.path, both
+        //      "A", so a path check alone lets it through: it repaints
+        //      the pre-Refresh body and _settlePostLoad restarts the
+        //      poll timer the Refresh had just stopped.
+        //
+        // `signal.aborted` is what closes that, because the transition
+        // aborted this request; the counter used to catch it by being
+        // bumped.  The path answers the OTHER question -- a different
+        // file, or dispose, which sets it to null and never bumped the
+        // counter at all.  Both, or the pair is not equivalent.
+        if (signal.aborted) return;
         if (myPath !== state.fileState.path) return;
         if (!body.ok) {
             if (body.kind === "not_found") {

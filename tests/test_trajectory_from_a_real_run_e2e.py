@@ -126,6 +126,11 @@ def co2_optimization():
             ["conda", "run", "-n", env, "python", deck.name],
             cwd=str(d), capture_output=True, text=True, timeout=900)
         traj = d / "co2opt_geom_optim.xyz"
+        assert proc.returncode == 0, (
+            f"the deck exited {proc.returncode}.  A run that writes a good "
+            f"trajectory and then dies still leaves the file, so checking "
+            f"only for the file lets a broken run through.\n"
+            f"--- stderr ---\n{proc.stderr[-1500:]}")
         assert traj.exists(), (
             f"the optimisation ran (exit {proc.returncode}) but wrote no "
             f"co2opt_geom_optim.xyz.\n--- stdout ---\n{proc.stdout[-2000:]}\n"
@@ -177,9 +182,11 @@ def test_the_optimisation_actually_relaxes_the_molecule(co2_optimization):
         f"{_EXPECTED_MIN}.  Experiment is 1.162 -- a minimal basis with no "
         f"correlation lands a little long, and this band is wide enough for "
         f"that and narrow enough to catch a walk in the wrong direction.")
-    assert abs(bonds[-1] - _START_ANG) > 0.05, (
-        "the geometry barely moved, so this trajectory shows no relaxation "
-        "and every frame assertion below it would pass on a stationary run")
+    # (No "did it move" assertion here: `bonds[-1] == approx(1.19, abs=0.05)`
+    # above already forces a move of at least 0.06 A from the 1.30 A start,
+    # so a separate `abs(...) > 0.05` could never fire.  It read as an
+    # anti-vacuity guard and was arithmetic already implied -- the kind of
+    # assertion that makes a test look stronger than it is.)
 
     # Energy is the honest monotone: geometry can overshoot and come back
     # (this run does), a line search cannot go uphill.
@@ -240,12 +247,30 @@ def test_a_run_is_one_entry_in_the_picker_and_it_is_the_log(
         "  .map(o => o.value).filter(v => v)")
 
     on_disk = sorted(p.name for p in d.iterdir() if p.is_file())
+
+    # THE SATELLITES MUST ACTUALLY BE THERE, or "one entry" proves nothing:
+    # a run that wrote no absorbable file leaves one entry with `absorbs()`
+    # deleted.  These three are exactly the shapes `trajectory.js::absorbs`
+    # folds, one per rule, so the assertion below exercises all three
+    # rather than whichever the emitter happened to write.
+    absorbable = {
+        "co2opt_initial.xyz":    "rule 1 (<stem>_initial.xyz)",
+        "co2opt_optimized.xyz":  "rule 2 (<stem>_optimized.xyz)",
+        "co2opt_geom_optim.xyz": "rule 3 (<stem>_geom_*_optim.xyz)",
+    }
+    absent = sorted(n for n in absorbable if n not in on_disk)
+    assert not absent, (
+        f"the run wrote no {absent}, so this test would report 'one entry' "
+        f"with absorbs() deleted -- {', '.join(absorbable[n] for n in absent)} "
+        f"would go unexercised.  Folder: {on_disk}")
+
     assert offered == [str(log)], (
         f"the picker offers {[p.split('/')[-1] for p in offered]} for one "
-        f"relaxation.  The folder holds {on_disk}; `absorbs()` should fold "
-        f"the initial xyz, the optimised xyz and the geomeTRIC stream into "
-        f"the .molwatch.log master, leaving exactly one entry "
-        f"(`results.md` § 2.3).")
+        f"relaxation.  The folder holds {on_disk}, of which "
+        f"{sorted(absorbable)} are the master's satellites; `absorbs()` "
+        f"should fold all three into the .molwatch.log, leaving exactly one "
+        f"entry (`results.md` § 2.3).  Before absorption landed this was "
+        f"five (2026-08-04).")
 
 
 def test_the_viewer_draws_the_run_this_suite_just_optimised(
