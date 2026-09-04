@@ -81,6 +81,71 @@ def _pyscf_env():
         return None
 
 
+def _run_one(env, d, label, bond):
+    """Compute one CO2 frequency job at the given C=O distance.
+
+    Two runs at different bond lengths give two results whose numbers are
+    unmistakably different -- which is what a file-switch test needs, and
+    what makes "the view still shows the previous file" impossible to miss.
+    """
+    import numpy as np
+
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.pyscf.input import spec_for
+    from molbuilder.script_emit import prepare_deck
+    from molbuilder.structure import Structure
+
+    d.mkdir(parents=True, exist_ok=True)
+    struct = Structure(
+        elements=["C", "O", "O"],
+        positions=np.array([[0.0, 0.0, 0.0],
+                            [0.0, 0.0, bond],
+                            [0.0, 0.0, -bond]]))
+    cfg = PySCFConfig(job_name=label, method="RHF", basis="STO-3G",
+                      compute_ir=True, compute_raman=False,
+                      optimize=False, already_relaxed=True)
+    deck = d / f"{label}_vib.py"
+    prepare_deck(spec_for(struct, cfg, calculation="vibration"),
+                 struct, cfg, deck, verbose=False)
+    proc = subprocess.run(["conda", "run", "-n", env, "python", deck.name],
+                          cwd=str(d), capture_output=True, text=True,
+                          timeout=600)
+    out = d / f"{label}.spectra.json"
+    assert out.exists(), (
+        f"the deck ran (exit {proc.returncode}) but wrote no {out.name}.\n"
+        f"--- stdout ---\n{proc.stdout[-2000:]}\n"
+        f"--- stderr ---\n{proc.stderr[-2000:]}")
+    return out
+
+
+@pytest.fixture(scope="module")
+def co2_pair():
+    """TWO real runs, at 1.16 A and 1.24 A.
+
+    The second exists for the file-switch test: a stretched CO2 has
+    visibly softer stretches, so "the numbers on screen belong to the file
+    you picked" has an answer you can read rather than infer.
+    """
+    env = _pyscf_env()
+    if env is None:
+        pytest.skip("no conda env routes PySCF on this machine")
+    root = ROOT / "projects/_t_co2_pair_e2e"
+    if root.exists():
+        shutil.rmtree(root)
+    try:
+        # ONE folder, two results.  The picker lists the result files in
+        # the CURRENT folder (`results.md` § 2.1), so two runs in two
+        # folders cannot be switched between without also moving the
+        # sidebar -- and moving the sidebar re-scopes and auto-picks, which
+        # is a different gesture from "pick the other result".
+        d = root / "spectrum" / "co2pair"
+        a = _run_one(env, d, "co2a", 1.16)
+        b = _run_one(env, d, "co2b", 1.24)
+        yield a, b
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @pytest.fixture(scope="module")
 def co2_run():
     """Run CO2 and yield the `.spectra.json` it produced.
@@ -270,3 +335,101 @@ def test_the_viewer_reads_a_run_this_suite_just_computed(
         f"the run produced {_CO2_MODES} modes and the table shows "
         f"{shown['rows']}.  The numbers reached the viewer; the table "
         f"disagrees with them.")
+
+
+def test_switching_files_replaces_the_view_it_does_not_merge(
+        page, flask_server, co2_pair):
+    """**`results.md` § 4: the parsed file is replaced whole, never patched.**
+
+    This is the contract the 23 regex tests in
+    `test_results_state_contract_spectra_js.py` were reaching for — the four
+    state buckets and the one `transition()` exist so that picking a
+    different file cannot leave you looking at the previous one's numbers.
+    Every one of those searched `spectra/core.js` for the *shape* that
+    implements it; none could see whether it works.
+
+    Two real runs, 1.16 Å and 1.24 Å.  A stretched CO2 has visibly softer
+    stretches, so the numbers say which file is on screen.  Switch, and the
+    old ones must be gone — not merged, not appended, not stale.
+    """
+    a, b = co2_pair
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: (errors.append(m.text)
+                                  if m.type == "error" else None))
+
+    def _freqs(what):
+        # Bounded, and the failure is SWALLOWED so the assertion below is
+        # what a person reads.  Letting the wait raise reports "Timeout
+        # 30000ms exceeded" and nothing about which file failed to appear.
+        try:
+            page.wait_for_selector("#modes-tbody tr", state="attached",
+                                   timeout=30000)
+        except Exception:                  # noqa: BLE001 - see above
+            pass
+        rows = page.evaluate(
+            "() => [...document.querySelectorAll('#modes-tbody tr')]"
+            "        .map(r => r.cells[1].textContent.trim())")
+        assert rows, (
+            f"no modes are on screen after picking {what}.  The dropdown "
+            f"dictates the display (`results.md` § 2.1) -- if the selection "
+            f"changed and the panel did not, the dispatcher is not "
+            f"re-mounting on a new file and a person is looking at whichever "
+            f"result they opened first.")
+        return rows
+
+    def _pick(path):
+        """Choose a result the way the page says you choose one.
+
+        `results.md` § 2.1: "The dropdown dictates the display... There is
+        no second route to a mounted viewer."  Writing the selection slot
+        and reloading does NOT work and is worth recording: the sidebar
+        restores its own remembered selection during init and overwrites
+        it, so the page came back showing the previous file with its slot
+        rewritten to match -- which looks exactly like a stale view and is
+        not one.
+        """
+        page.select_option("#results-file-picker-select", value=str(path))
+        page.wait_for_function(
+            "(want) => { const s = document.querySelector("
+            "  '#results-file-picker-select'); return s && s.value === want; }",
+            arg=str(path), timeout=10000)
+
+    page.add_init_script(
+        "try {"
+        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(a.parent))});"
+        "} catch (_) {}")
+    page.goto(f"{flask_server}/results")
+    page.wait_for_selector("#results-file-picker-select", timeout=20000)
+    page.wait_for_function(
+        "() => document.querySelectorAll("
+        "  '#results-file-picker-select option').length >= 2", timeout=20000)
+
+    _pick(a)
+    freqs_a = _freqs("the 1.16 A run")
+    _pick(b)
+    try:
+        page.wait_for_function(
+            "(prev) => { const r = [...document.querySelectorAll('#modes-tbody tr')];"
+            "  return r.length && r[0].cells[1].textContent.trim() !== prev; }",
+            arg=freqs_a[0], timeout=30000)
+    except Exception:                      # noqa: BLE001
+        pass
+    freqs_b = _freqs("the 1.24 A run")
+
+    assert len(freqs_a) == _CO2_MODES and len(freqs_b) == _CO2_MODES, (
+        f"expected {_CO2_MODES} modes from each run; got {len(freqs_a)} and "
+        f"{len(freqs_b)}")
+    # The anti-vacuity guard: if the two runs happened to agree, "the view
+    # changed" could not be told from "the view is stale".
+    assert freqs_a != freqs_b, (
+        f"the two runs produced identical frequencies ({freqs_a}), so this "
+        f"test cannot tell a replaced view from a stale one.  Stretching the "
+        f"bond should soften the stretches -- check the fixture actually "
+        f"ran two different geometries.")
+    assert not (set(freqs_a) & set(freqs_b)), (
+        f"after switching files the table still shows {sorted(set(freqs_a) & set(freqs_b))} "
+        f"from the previous run.  `results.md` § 4 says the parsed file is "
+        f"replaced WHOLE -- a row that survives a switch is the merge that "
+        f"rule forbids, and a person is reading two calculations at once.")
+    assert errors == [], f"the page reported JS errors: {errors}"

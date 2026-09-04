@@ -214,15 +214,27 @@ header. The header's source-path line has the username redacted.
   optimisation and keeps the trajectory alone, because a finished run's log
   says finished and stops the poll the test exists to watch.
 
-  **What that turned up, and a fixture could not have.** The viewer does not
-  read the `.xyz` when a `.molwatch.log` sits beside it — the discovery
-  chain prefers the richer per-step log, whose first record is
-  `kind: initial_preview`: the geometry as handed in, before any SCF. So the
-  energy curve carries one more point than geomeTRIC wrote frames, and that
-  point has **no energy** and plots as a null. Both counts are right for
-  what they are. The hand-built fixture this replaced was a bare `.xyz` with
-  no log beside it, so the viewer's actual file-preference was invisible to
-  every test built on it.
+  **Which file the viewer is showing, and why it is the log.**
+  *(Corrected 2026-09-04: an earlier note here said "the discovery chain
+  prefers the richer per-step log". That is wrong and was written from
+  observation instead of from the contract. `/api/watch/load` returns
+  exactly the file you ask for -- measured: 5 frames for the `.xyz`, 6 for
+  the `.molwatch.log`.)*
+
+  The reason a PySCF relaxation shows the log is **absorption**, not
+  preference. `lib/inspectors/trajectory.js`'s `absorbs()` subsumes
+  `<stem>_initial.xyz`, `<stem>_optimized.xyz` and
+  `<stem>_geom_*_optim.xyz` into the `.molwatch.log` master, so the picker
+  offers ONE entry for the run (`results.md` § 2.3, "a run is one result,
+  not a pile of files") and that entry is the log. Absorption narrows the
+  MENU; it does not narrow what can be opened -- hand the viewer the
+  `.xyz` path and it renders the `.xyz`.
+
+  The two files differ by one frame on purpose. The log's first record is
+  `step_index: 0, kind: initial_preview` -- the geometry as handed in,
+  before any SCF -- so it has **no energy** and plots as a null. The
+  `.xyz` carries geomeTRIC's iterations only. Both counts are right for
+  what they are; which you see is decided by which file you opened.
 
 - `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
   reads the timestamp series and its "total" reads the duration series, and

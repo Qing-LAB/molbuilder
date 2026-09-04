@@ -32,6 +32,7 @@ would not have had them, because I would not have thought to put them there.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -195,15 +196,98 @@ def test_the_optimisation_actually_relaxes_the_molecule(co2_optimization):
         f"that accepts an uphill step is taking a gradient it should not.")
 
 
+def _log_steps(text):
+    """How many steps the molwatch log records, read independently.
+
+    The log's own marker, not a parse through the project's reader: this is
+    the test's separate look at the bytes, so a reader bug cannot hide
+    inside the thing being checked.
+    """
+    return len(re.findall(r"^==== molwatch step \d+ begin ====$",
+                          text, re.M))
+
+
+def test_a_run_is_one_entry_in_the_picker_and_it_is_the_log(
+        page, flask_server, co2_optimization):
+    """**A run is one result, not a pile of files** (`results.md` § 2.3).
+
+    THE CONTRACT, from `lib/inspectors/trajectory.js`:
+
+    * it CLAIMS four shapes -- `*.molwatch.log`, `*.out`, `*_optim.xyz`,
+      `*_geom_optim.xyz` -- and is registered before the structure
+      inspector so the `_optim.xyz` claim beats structure's generic `.xyz`;
+    * it ABSORBS, and only when the master is a `.molwatch.log`, in the
+      same folder: `<stem>_initial.xyz`, `<stem>_optimized.xyz` and
+      `<stem>_geom_*_optim.xyz`.  A SIESTA `.out` absorbs nothing, on
+      purpose, until that is checked against a real staged SIESTA run.
+
+    So this run -- which writes an initial xyz, an optimised xyz, a
+    geomeTRIC stream and the log -- must appear as ONE line in the picker,
+    and that line must be the log.  Before absorption landed it was five
+    (2026-08-04).
+
+    Absorption narrows the MENU, not what can be opened: `/api/watch/load`
+    returns whichever file you ask for, and the physics test above reads
+    the `.xyz` directly for exactly that reason.
+    """
+    d = co2_optimization.parent
+    log = d / "co2opt.molwatch.log"
+    assert log.exists(), (
+        f"the run wrote no molwatch log; the files present are "
+        f"{sorted(p.name for p in d.iterdir())}")
+
+    page.add_init_script(
+        "try {"
+        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(d))});"
+        "} catch (_) {}")
+    page.goto(f"{flask_server}/results")
+    page.wait_for_selector("#results-file-picker-select", timeout=20000)
+    page.wait_for_function(
+        "() => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')]"
+        "  .filter(o => o.value).length > 0", timeout=20000)
+
+    offered = page.evaluate(
+        "() => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')]"
+        "  .map(o => o.value).filter(v => v)")
+
+    on_disk = sorted(p.name for p in d.iterdir() if p.is_file())
+    assert offered == [str(log)], (
+        f"the picker offers {[p.split('/')[-1] for p in offered]} for one "
+        f"relaxation.  The folder holds {on_disk}; `absorbs()` should fold "
+        f"the initial xyz, the optimised xyz and the geomeTRIC stream into "
+        f"the .molwatch.log master, leaving exactly one entry "
+        f"(`results.md` § 2.3).")
+
+
 def test_the_viewer_draws_the_run_this_suite_just_optimised(
         page, flask_server, co2_optimization):
-    """The other end, in a browser: the energy curve has one point per step.
+    """The other end, in a browser: the energy curve is the run's own steps.
 
-    Seeded before `goto`, not selected after: the sidebar restores its
-    selection at init, so setting one afterwards is a race the sidebar wins.
-    That is written down in `test_task_setup_cell_types_e2e.py` and it cost
-    an hour to rediscover on the spectra sibling.
+    **The file shown is the `.molwatch.log`**, because that is the one entry
+    absorption leaves in the picker (see the test above).  So the curve is
+    compared against the LOG's step count, not the `.xyz`'s -- they differ
+    by one on purpose, and comparing against the wrong file is what made an
+    earlier version of this test fail on correct code twice.
+
+    The log records `step_index: 0, kind: initial_preview` -- the geometry
+    as handed in, before any SCF -- so its first point carries no energy and
+    plots as a null.  The energies are compared across the points that have
+    one.
+
+    **Picked through the dropdown**, because `results/viewer.js` retired
+    sidebar-driven dispatch on 2026-06-09 (task #301): the page listens for
+    `molbuilder:results:fileSelected`, which only
+    `#results-file-picker-select` dispatches.
     """
+    d = co2_optimization.parent
+    log = d / "co2opt.molwatch.log"
+    steps = _log_steps(log.read_text(encoding="utf-8", errors="replace"))
+    assert steps >= 3, (
+        f"the molwatch log records {steps} steps; a relaxation from 1.30 A "
+        f"takes several, so the fixture or the log emitter changed")
+
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: (errors.append(m.text)
@@ -211,27 +295,25 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
 
     page.add_init_script(
         "try {"
-        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(co2_optimization.parent))});"
-        f" sessionStorage.setItem('molbuilder.current_file', {json.dumps(str(co2_optimization))});"
+        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(d))});"
         "} catch (_) {}")
     page.goto(f"{flask_server}/results")
-    page.wait_for_selector("#inspector-host", timeout=20000)
-    page.wait_for_selector("#energy-plot", state="attached", timeout=30000)
-    # Plotly hangs the drawn traces off the div itself, so this waits for the
-    # DATA rather than for the container that will eventually hold it.
-    # READ AT THE MOMENT THE CONDITION HOLDS, in one step.  Waiting and
-    # then evaluating separately raced: the inspector re-renders on its poll
-    # and replaces the plot node, so `#energy-plot` was null in the read a
-    # tick after the wait had just seen it holding data.
+    page.wait_for_selector("#results-file-picker-select", timeout=20000)
+    page.wait_for_function(
+        "(want) => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')].some(o => o.value === want)",
+        arg=str(log), timeout=20000)
+    page.select_option("#results-file-picker-select", value=str(log))
+
+    # Read at the moment the condition holds: the inspector re-renders on
+    # its poll and replaces the plot node, so waiting and then evaluating
+    # separately raced -- `#energy-plot` came back null a tick after the
+    # wait had just seen it holding data.
     drawn = page.wait_for_function(
         """() => {
-            const d = document.querySelector("#energy-plot");
-            const y = d && d.data && d.data[0] && d.data[0].y;
+            const el = document.querySelector("#energy-plot");
+            const y = el && el.data && el.data[0] && el.data[0].y;
             if (!y || !y.length) return null;
-            // The molwatch log's step 0 is `kind: initial_preview` -- the
-            // geometry as handed in, BEFORE any SCF -- so it carries no
-            // energy and plots as a null.  Compare across the points that
-            // have one; a null is a real part of this series, not a glitch.
             const e = y.filter(v => typeof v === "number");
             if (e.length < 2) return null;
             return {points: y.length, energies: e.length,
@@ -239,38 +321,18 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
         }""",
         timeout=30000, polling=250).json_value()
 
-    steps = len(_frames(co2_optimization.read_text(encoding="utf-8")))
-
-    # WHY THIS IS NOT AN EQUALITY, and it is the thing this test taught me.
-    #
-    # The viewer does not read the `.xyz` when a run directory holds a
-    # `.molwatch.log` -- the discovery chain prefers the richer per-step log,
-    # and you can see it has: the runtime line on the page ("CPU · 20T
-    # BLAS=1 · 3.9 GB") exists only in that log's header.  The log opens with
-    # `step_index: 0, kind: initial_preview` -- the geometry as handed in,
-    # before the optimiser has taken a step -- so it carries ONE MORE point
-    # than geomeTRIC wrote frames.
-    #
-    # Both counts are right for what they are, and asserting the xyz's count
-    # here failed on correct code.  A hand-built fixture would never have
-    # shown this, because the one I wrote on 2026-09-03 was a bare xyz with
-    # no log beside it: the viewer's actual file-preference was invisible to
-    # it.  So the assertion is the RELATIONSHIP, which holds either way.
-    assert drawn["points"] >= steps, (
-        f"the optimiser took {steps} steps and the energy curve plots only "
-        f"{drawn['points']} points -- steps are being dropped on the way to "
-        f"the plot.")
-    assert drawn["points"] <= steps + 1, (
-        f"the curve plots {drawn['points']} points for {steps} steps.  One "
-        f"extra is the molwatch log's `initial_preview`; more than that "
-        f"means points are being invented or a series is being concatenated "
-        f"with itself.")
-    assert drawn["energies"] >= steps - 1, (
-        f"only {drawn['energies']} of {drawn['points']} plotted points carry "
-        f"an energy, for {steps} optimiser steps.  The preview point has "
-        f"none by nature; the rest must.")
+    assert drawn["points"] == steps, (
+        f"the log records {steps} steps and the energy curve plots "
+        f"{drawn['points']} points.  The viewer is showing this file "
+        f"(absorption leaves no other entry), so these must agree.")
+    assert drawn["energies"] == steps - 1, (
+        f"{drawn['energies']} of {drawn['points']} points carry an energy. "
+        f"Exactly one -- the `initial_preview` -- has none by nature; any "
+        f"other missing energy is a step whose result did not reach the "
+        f"plot.")
     assert drawn["last"] < drawn["first"], (
         f"the plotted curve rises ({drawn['first']} -> {drawn['last']}) "
         f"while the run falls.  The viewer is drawing the relaxation "
-        f"backwards, which would tell a person their optimisation diverged.")
+        f"backwards, which would tell a person their optimisation "
+        f"diverged.")
     assert errors == [], f"the page reported JS errors: {errors}"
