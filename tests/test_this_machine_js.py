@@ -97,21 +97,16 @@ def test_it_generates_no_shell_and_holds_no_secret_for_another_machine():
         assert gone not in src, f"the page still emits {gone}"
 
 
-def test_the_stated_config_dir_rule_is_the_WHOLE_rule():
-    """It is resolved on the far machine, so the page can only state it — and
-    it must state all three branches. `MOLBUILDER_CONFIG_DIR` is checked
-    first and used exactly as given; naming only the XDG pair sends a person
-    to a directory the monitor does not read, and silently, because an absent
-    notify file simply means "no notifier" (`configuration.md` § 2.1c).
-
-    The behaviour itself is pinned by `test_config_dir_has_one_home.py`; this
-    pins that the page tells the truth about it.
-    """
-    html = (ROOT / "molbuilder/web/templates/this_machine.html").read_text(
-        encoding="utf-8")
-    block = html[html.index("tm-expects"):html.index("tm-listener-card")]
-    for branch in ("$MOLBUILDER_CONFIG_DIR",
-                   "$XDG_CONFIG_HOME/molbuilder",
-                   "~/.config/molbuilder"):
-        assert branch in block, f"the stated rule omits {branch}"
-    assert "notify" in block, "it must name the file the script looks for"
+# RETIRED 2026-09-03 — test_the_stated_config_dir_rule_is_the_WHOLE_rule.
+# It read `this_machine.html` off disk and checked three substrings were in
+# it, while its docstring said "the behaviour itself is pinned by
+# `test_config_dir_has_one_home.py`".  No such file has ever existed, and no
+# browser test visited this page at all -- so the citation closed a question
+# that was never open (`process/testing.md` § 3a.1).
+#
+# Replaced by tests/test_this_machine_e2e.py, which OPENS the <details> the
+# rule lives in (a rule sealed inside a disclosure that never opens is stated
+# to nobody -- the half a file-read could not see) and, more to the point,
+# adds the check this page most needed and never had: a webhook typed into
+# the form must not come back onto the screen in full.  Mutation-verified
+# against `_mask()`.

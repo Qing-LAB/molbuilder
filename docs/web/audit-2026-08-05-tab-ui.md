@@ -302,12 +302,21 @@ and `:1062`, `spectra/viewer.js:336` and `:392`, `lib/transport/core.js:373`.
     non-JSON-5xx message that only one of the five copies had.
 
 Both adopting tabs dropped their sequence counter, their `AbortController` and
-their renderer. **Transport remains the recorded hold-out** — its UI is designed
-in its own round (user ruling), and its chip delegation is pinned meanwhile by
-`test_live_poll_invariants_audit.py::test_detection_chip_renderer_present`.
-Behaviour is proven in `test_auto_detect_module_js.py`, whose supersede cases
-drive `fetch` by hand because a race is not something an end-to-end test can
-schedule.
+their renderer. **Transport was the recorded hold-out** when this audit was
+written — its UI is designed in its own round (user ruling) — and it joined
+`lib/auto-detect.js` on 2026-08-29, so `renderPanel` owns its chip pass too.
+
+That delegation was pinned meanwhile by
+`test_live_poll_invariants_audit.py::test_detection_chip_renderer_present`,
+**retired 2026-09-03**. Its last assertion was
+`"autoDetect" in transport and "renderPanel" in transport` — two substrings,
+anywhere in the file, in any order, satisfied by the comment that explains
+them. It could not distinguish a tab that delegates from one that mentions
+delegating (`process/testing.md` § 3a). Transport's chip pass is unpinned
+until its own round builds a surface that can be driven; the shared
+`renderPanel` it rides is proven in `test_auto_detect_module_js.py`, whose
+supersede cases drive `fetch` by hand because a race is not something an
+end-to-end test can schedule.
 
 ### C3. The load-from-sidebar block is a copy that has since diverged — `open`
 

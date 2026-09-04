@@ -113,6 +113,51 @@ Deleting without reading loses coverage that was real; keeping without reading
 keeps a check that cannot fail. B3 in [`plans/plan.md`](?doc=plans/plan.md)
 tracks the backlog.
 
+### 3a.1 A test that admits it cannot see the behaviour has already failed
+
+*(User ruling, 2026-09-03: "If a test already acknowledged that only an e2e
+test is the only way to verify certain behaviours, then that test should be
+retired. And then an e2e test that actually pins those behaviours should be
+designed.")*
+
+Some pins say so in their own docstring:
+
+> *"These are static / string-pin checks; the runtime behaviour is exercised
+> by Playwright E2E."*
+> *"Source-text pins (this page has no node harness — the live browser walk
+> covers behavior)."*
+> *"…only a browser would show it."*
+
+**Read that as a verdict, not a caveat.** The author already worked out what
+would actually verify the thing and then wrote something else. There is
+nothing left to investigate: **retire the pin, and write the test it named.**
+Which of the two you owe depends on whether the named replacement is real, and
+that is a claim to check, never to believe:
+
+| the docstring names… | and it… | then |
+|---|---|---|
+| another test | **exists and drives the behaviour** | delete the pin — it is a duplicate |
+| another test | **does not exist** | the pin was the only coverage there ever was — write the e2e, *then* delete |
+| "a browser", no test named | — | write the e2e, then delete |
+
+On 2026-09-03 all three occurred. `test_this_machine_js.py` cited
+`test_config_dir_has_one_home`, which **had never been written**, and no
+browser test visited `/this-machine` at all — so a page nothing tested carried
+a docstring claiming it was tested elsewhere.
+
+**Why an admission is worse than an ordinary pin.** A pin that says nothing is
+merely weak. A pin that names its own replacement is *load-bearing
+misinformation*: the next reader sees coverage, stops looking, and the gap
+closes over. `spectra/test_blueprint.py`'s listener pin stayed green through a
+**total teardown leak** — it named the array, the array survived, the contract
+died — and its docstring said the behaviour was covered.
+
+**Distinguish the honest neighbour.** A docstring that says *"testing this on
+a never-launched stage would prove nothing, so the fixture launches one"* is
+the opposite thing: mutation reasoning, explaining why the test can fail for
+the right reason. That is the best kind of docstring in this repo. The phrase
+to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
+
 ## 4. Testing the front-end JS without a browser
 
 Most front-end logic is tested **in Node, no browser** — 48 `*_js.py` tests,
@@ -173,12 +218,20 @@ These are the durable patterns — follow them and the e2e tests stay stable:
 
 ## 6. A few named test patterns
 
-- **Source-text invariant tests** — assert a property over the *source*, not a
-  runtime. E.g. `test_no_inline_scripts.py` scans every served template for an inline
-  `<script>` (the CSP `script-src 'self'` rule would break at runtime otherwise), and
+- **Artifact lints** — assert a property that must hold across *every* file in a
+  class, checked on the artifact rather than on a runtime. E.g.
+  `test_no_inline_scripts.py` scans every served template for an inline `<script>`
+  (the CSP `script-src 'self'` rule would break at runtime otherwise), and
   `test_negative_body_assert_lint.py` AST-lints the *test suite* so a "body lacks X"
   assertion is always paired with a status check. Cheap, and they catch a class of
   bug no unit test would.
+
+  **The boundary — and it is the whole pattern.** A lint quantifies over a class
+  and names no line; the moment it names one file and one spelling it is a *source
+  pin*, which § 3a forbids. `assert "function _themeColors" in core_js` is not a
+  thin lint, it is a different thing wearing the name. Both examples above pass the
+  test: delete the code they guard and they fail; rename a local and they don't
+  care. Ask that of anything you add here.
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.
@@ -242,6 +295,6 @@ deliberately not installed there.
 - `test_layering.py` — the import-direction + full-classification invariant (§2).
 - `_node_esm.py` — the Node ESM load-sim harness the `*_js.py` tests use (§4).
 - `test_no_inline_scripts.py`, `test_negative_body_assert_lint.py` — the
-  source-text invariant lints (§6).
+  artifact lints (§ 6).
 - `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures;
   each e2e file carries its own `flask_server`.

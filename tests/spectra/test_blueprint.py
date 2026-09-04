@@ -672,33 +672,16 @@ class TestSpectraDisposeContract:
     and counts what is left.
     """
 
-    def test_the_listener_scope_and_on_helper_exist(self, web_client):
-        """The listener bookkeeping is the contract backbone.  If a future
-        refactor drops the scope or _on, the rest of this test class becomes
-        moot — pin the existence first so a regression here surfaces with a
-        clear failure.
-
-        **Migrated 2026-08-23, and the reason matters.**  This asserted
-        ``const _cleanups = []`` — an array BY NAME.  When the scope was
-        extracted to `lib/inspectors/lifecycle.js` the array stayed behind
-        empty and ``dispose()`` drained it while every listener sat in the
-        scope: a total teardown leak that this test, and the one below,
-        happily called green because the array they named still existed.
-        Naming the mechanism is what let the contract break underneath it.
-        The behaviour is pinned in `tests/test_inspector_lifecycle_teardown.py`.
-        """
-        js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        # The shared listener scope: registration and its undo, in one place.
-        assert "inspectorLifecycle.listeners()" in js, (
-            "lib/spectra/core.js no longer takes a listener scope; "
-            "dispose() can't tear down listeners without one"
-        )
-        # The _on() registration helper that routes into it.
-        assert "function _on(target, event, handler" in js, (
-            "lib/spectra/core.js no longer defines the _on() helper "
-            "that wraps addEventListener + registers its undo"
-        )
-
+    # RETIRED 2026-09-03 — test_the_listener_scope_and_on_helper_exist.
+    # It greped for "inspectorLifecycle.listeners()" and the _on() helper
+    # by name, and its own docstring ended "The behaviour is pinned in
+    # tests/test_inspector_lifecycle_teardown.py" — which is true: that
+    # file drives disposeAll() through the node harness.  The docstring
+    # also recorded this pin staying GREEN through a total teardown leak
+    # (the named array survived; every listener sat in the scope it no
+    # longer drained).  A pin that names its own replacement is the worst
+    # kind: the next reader sees coverage and stops looking.  testing.md
+    # § 3a.1.
     def test_dispose_tears_down_listeners_before_per_resource_cleanups(
             self, web_client):
         """dispose() must hand the listener scope back FIRST so timer/raf

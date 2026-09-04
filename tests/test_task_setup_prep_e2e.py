@@ -427,6 +427,22 @@ def test_what_you_typed_is_still_there_when_you_come_back(
         "the value did not survive a page reload")
 
 
+# NOT tested here: that a bool still renders as a chooser on the SECOND load
+# (the 2026-08-24 defect).  A test for it was written and then deleted, and
+# the reason is worth keeping.
+#
+# The defect was a vocabulary loader returning from its cache before it
+# published into `_meta`.  Both loaders now refill on BOTH paths, and because
+# `_fillSweepMeta` fills any name `_meta` is missing, EITHER ONE alone
+# restores what the other dropped.  Reverting the documented fix in
+# `loadColumnChoices` -- the literal original bug -- leaves every dropdown a
+# dropdown.  Only mutating both publishers at once reproduces it, and that is
+# two regressions, not one.
+#
+# So there is no single break for such a test to catch: the invariant is held
+# by the shape of the code, not by a check.  A test that cannot fail for the
+# reason it names is the thing this whole sweep is retiring, and writing a new
+# one would have been the same mistake in the other direction.
 def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
         page, flask_server, filled_dir, calc_dir):
     """**§ 2.1: the page holds no state of its own** -- *"no in-progress

@@ -189,6 +189,57 @@ class TestFormSchemasRender:
         assert "Loading from schema" not in container_text
         assert errors == [], f"JS errors during /build init: {errors}"
 
+    @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+    def test_no_field_renders_loose_outside_a_card(
+            self, page, flask_server, engine):
+        """Every field the catalogue asks for lands INSIDE a card.
+
+        `form-schema.js` draws one card per name in its own
+        ``WORKFLOW_GROUP_ORDER`` and renders a field whose group is not in
+        that list bare, appended straight to the container — the same
+        invisible outcome as no group at all.  So adding a group to the
+        catalogue without adding it to the renderer looks exactly like the
+        bug the grouping was introduced to fix.
+
+        *Replaces `test_catalogue_form_schema.py::
+        test_the_renderer_knows_every_card_the_form_actually_asks_for`,
+        retired 2026-09-03.*  That test regex-extracted `WORKFLOW_GROUP_ORDER`
+        from the renderer's source and compared it to the catalogue's groups
+        as SETS — and its own docstring conceded "only a browser would show
+        it" (`process/testing.md` § 3a.1).  It could not see the two ways the
+        comparison passes while the page is still wrong: a role listed in
+        ``WORKFLOW_GROUP_ORDER`` but missing from ``WORKFLOW_GROUP_META``
+        fails the `if` that admits a field to a card, and a card whose
+        section map comes out empty is skipped entirely.  Here the question
+        is asked of the rendered DOM, where the answer is the same one the
+        person gets.
+        """
+        _open_build(page, flask_server)
+        sel = f"#{engine}-form-container"
+        page.wait_for_selector(f"{sel} input, {sel} select",
+                               state="attached", timeout=_BOOT_TIMEOUT_MS)
+        loose = page.evaluate("""(sel) => {
+            const root = document.querySelector(sel);
+            if (!root) return {error: "no container"};
+            const all = [...root.querySelectorAll("fieldset.schema-section")];
+            const bare = all.filter(fs => !fs.closest("section.workflow-group"));
+            return {
+                total: all.length,
+                bare:  bare.map(fs => (fs.querySelector("legend") || {})
+                                        .textContent || "(no legend)"),
+            };
+        }""", sel)
+        assert not loose.get("error"), loose
+        assert loose["total"] > 0, (
+            f"{engine}: no field groups rendered at all, so 'none of them is "
+            f"loose' would be true of an empty page")
+        assert loose["bare"] == [], (
+            f"{engine}: section(s) {loose['bare']} rendered below the cards "
+            f"instead of inside one.  Their workflow_group is not among the "
+            f"roles form-schema.js draws, so the catalogue asks for a card "
+            f"the renderer does not know about -- add it to "
+            f"WORKFLOW_GROUP_ORDER *and* WORKFLOW_GROUP_META.")
+
     def test_pyscf_form_renders_fields_after_init(
             self, page, flask_server):
         _open_build(page, flask_server)

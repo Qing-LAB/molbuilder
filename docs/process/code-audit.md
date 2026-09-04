@@ -3,7 +3,7 @@
 **Role:** reference
 **Domain:** process
 **Companions:** [`testing.md`](?doc=process/testing.md) — several audit invariants
-below have graduated into enforced source-text tests; [`conventions.md`](?doc=process/conventions.md)
+below have graduated into enforced artifact lints (§ 5 rule 5); [`conventions.md`](?doc=process/conventions.md)
 — the conventions those tests gate; [`web/web-api.md`](?doc=web/web-api.md) — the
 response-envelope spec the API dimension checks against;
 [`science/validation.md`](?doc=science/validation.md) — the scientific-correctness
@@ -44,10 +44,27 @@ These hold regardless of which dimension you're auditing.
    2026-05-28; `trajectory-inspector.css` was written later and silently inherited the
    same bug because the audit hadn't been generalised (fixed 2026-06-14, `e7651cb`).
 5. **Graduate an invariant into a test once it stops finding new violations.** The end
-   state of a mature audit dimension is a **source-text invariant test** that fails the
-   build — see [`testing.md § 6`](?doc=process/testing.md). Several of the traps below
-   have already made that jump (noted inline). When an audit stops turning up fresh
+   state of a mature audit dimension is an **artifact lint** that fails the build —
+   see [`testing.md § 3a`](?doc=process/testing.md). Several of the traps below have
+   already made that jump (noted inline). When an audit stops turning up fresh
    violations, that's the signal to write the test and retire the manual pass.
+
+   **An artifact lint is not a source pin, and this step means only the first.**
+   The distinction is what the assertion *quantifies over*:
+
+   | | an artifact **lint** ✅ | a source **pin** ❌ |
+   |---|---|---|
+   | scope | **every** file in a class | **one** named file |
+   | asserts | a property the shipped artifact must not violate | that one line is spelled a certain way |
+   | a rename | is irrelevant to it | breaks it |
+   | deleting the code | **fails** it | passes it, if the name survives in a comment |
+   | examples | `test_no_inline_scripts.py`, `test_css_no_duplicate_selectors.py`, `test_page_ids_unique.py` | `assert "function _themeColors" in core_js` |
+
+   A lint is a *generalised* audit — the same reading you did by hand, done over
+   the whole class, forever. A pin is a transcript of one line you happened to be
+   looking at, and it rots the moment the line moves.
+   [`testing.md § 3a`](?doc=process/testing.md) forbids the second outright; this
+   step licenses only the first.
 
 ## 1a. Rules for a loose-interface language *(user, 2026-08-24)*
 
@@ -218,12 +235,21 @@ re-fire on change, then grep each body for the option's id (e.g. `"hide-frozen"`
 function in the should-fire list that doesn't reference it is a candidate.
 
 **Fix pattern.** Add the option read + the same skip/filter idiom the other dependent
-functions already use, and add a source-text invariant test asserting each function's
-body references the option (so a regression surfaces).
+functions already use, then pin the regression **through the option itself**: toggle it
+in a browser and assert the dependent surface changed.
+
+> **Corrected 2026-09-03.** This step used to say "add a source-text invariant test
+> asserting each function's body references the option", and
+> `test_trajectory_hide_frozen_invariants_js.py` was written to it. That is a source
+> pin, not a lint — it greps for `"hide-frozen"` inside a named function body, so it
+> passes on a function that reads the option and then ignores it, and fails on a
+> correct refactor that renames the local. The observable is a **visible checkbox with
+> a visible effect** (frozen atoms' force arrows appear or don't), which is an e2e.
+> See [`testing.md § 3a`](?doc=process/testing.md).
 
 **Precedents.**
 - 2026-06-14 — trajectory-inspector `refreshForcesStatus` ignored hide-frozen entirely
-  (fixed `65e8246`; source-text invariants added in `66dab9a`).
+  (fixed `65e8246`; the source pins added in `66dab9a` are retired 2026-09-03 -- see § 5 rule 5).
 - 2026-06-13 — a projection-toggle label inversion: a different bug, same
   audit-dimension gap (no per-feature traversal caught it).
 
@@ -441,8 +467,9 @@ When a new bug class turns up:
 3. Add the check to the relevant § 5 checklist.
 4. Reference this entry from any related memory note — don't duplicate the content
    there.
-5. Once the invariant stops finding fresh violations, graduate it into a source-text
-   test ([`testing.md § 6`](?doc=process/testing.md)) and mark it enforced here.
+5. Once the invariant stops finding fresh violations, graduate it into an **artifact
+   lint** (§ 5 rule 5 — a property of every file in a class, never a pin on one
+   line: [`testing.md § 3a`](?doc=process/testing.md)) and mark it enforced here.
 
 > **Migration note.** Corrected against code during the docs migration: the `[hidden]`
 > invariant § 3.1 only *wished for* a test in the legacy copy — it now exists

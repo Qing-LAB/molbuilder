@@ -425,201 +425,29 @@ class TestViewerJsRootScoping:
 # --------------------------------------------------------------------- #
 
 
-class TestTrajectoryCoreMountContract:
-    """The shared core's ``mount`` is the public API both /watch
-    and /results depend on -- a change here requires updating
-    BOTH consumers + the inspector registry's expectations.
-
-      * signature ``mountInspector(rootEl, opts={file?})``
-      * returns ``{dispose(), load(path)}``
-      * dispose() tears down every long-lived resource (poll +
-        playback timers, window resize listener, 3Dmol viewer
-        contents) so rapid mount->dispose->mount cycles in the
-        /results dispatcher don't leak setInterval handles, WebGL
-        contexts, or window listeners.
-      * ``window.molbuilder.trajectoryInspector.mount`` is THE
-        exported entry point; consumers call it directly (no
-        auto-bootstrap, see TestTrajectoryCoreRootScoping's
-        ``test_core_module_does_NOT_auto_bootstrap``).
-
-    These are static / string-pin checks; the runtime behaviour
-    is exercised by Playwright E2E tests in
-    ``tests/test_inspector_registry_e2e.py`` (mount/dispose
-    cycle through the registry).
-    """
-
-    @pytest.fixture(scope="class")
-    def viewer_js(self):
-        p = (Path(__file__).resolve().parent.parent
-             / "molbuilder" / "web" / "static" / "lib" / "trajectory" / "core.js")
-        return p.read_text()
-
-    def test_mountInspector_signature_takes_opts(self, viewer_js):
-        assert "function mountInspector(rootEl, opts)" in viewer_js, (
-            "mountInspector must take (rootEl, opts) so the "
-            "registry-side trajectory inspector can pass "
-            "{file: ...} to auto-load on mount"
-        )
-
-    def test_mountInspector_handles_opts_dot_file(self, viewer_js):
-        assert "if (opts.file)" in viewer_js, (
-            "mountInspector must auto-load opts.file when provided"
-        )
-
-    def test_mountInspector_returns_handle_with_dispose_and_load(
-            self, viewer_js):
-        # The handle is the API for /results' dispose-before-mount
-        # contract.  Pin both required methods.
-        assert "dispose()" in viewer_js
-        assert "load(path) { return loadByPath(path); }" in viewer_js, (
-            "the handle must expose load(path) so the registry-side "
-            "inspector can swap files without a full re-mount"
-        )
-
-    def _dispose_body(self, viewer_js):
-        """Return the full text of dispose()'s body, from ``dispose() {``
-        through its matching closing ``},``.  Used by the contract
-        tests below so the assertions are scoped to the dispose
-        block without being pinned to a fixed window size that
-        breaks when the body grows (today: the listener-scope teardown
-        comment adds ~6 lines)."""
-        ix = viewer_js.find("dispose() {")
-        assert ix > 0, "dispose() definition not found"
-        # Scan forward + count braces.  Acceptable because dispose
-        # body contains only balanced JS.  Stop at the closing },
-        # of the dispose method (it's the immediate-next "},\n" at
-        # depth 0 relative to dispose() {).
-        depth = 0
-        i = ix
-        while i < len(viewer_js):
-            ch = viewer_js[i]
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    # i points at the closing }; +1 to include it.
-                    return viewer_js[ix:i + 1]
-            i += 1
-        raise AssertionError("dispose() body has unbalanced braces")
-
-    def test_dispose_clears_poll_timer(self, viewer_js):
-        """``stopPolling()`` is the canonical timer-stop entry; dispose
-        must invoke it (directly or via ``transition('IDLE')``, which
-        delegates to stopPolling per PR 2.1) or the 15 s background
-        poll loop survives every file swap on /results."""
-        body = self._dispose_body(viewer_js)
-        # Accept either the direct call or transition('IDLE') -- the
-        # latter is the contract-blessed entry (results-state-contract
-        # § 3 matrix row 'dispose / unmount') and routes through
-        # stopPolling internally.
-        direct = "stopPolling()" in body
-        via_transition = re.search(
-            r"transition\s*\(\s*[\"']IDLE[\"']", body
-        ) is not None
-        assert direct or via_transition, (
-            "dispose() doesn't stop the poll timer -- neither "
-            "stopPolling() nor transition('IDLE') is called.  The "
-            "15 s poll loop would survive every file swap on /results."
-        )
-
-    def test_dispose_does_not_carry_a_play_timer(self, viewer_js):
-        # Phase 5e A1 (#246): the partial frame strip + parallel
-        # state.playTimer playback loop are gone — the embed owns
-        # playback now and handle.dispose() tears down the embed's
-        # animation loop.  Pin that the trajectory core no longer
-        # initialises or tears down its own playTimer (a re-
-        # introduction would race with the embed loop).
-        body = self._dispose_body(viewer_js)
-        assert "clearInterval(state.playTimer)" not in body, (
-            "dispose() still references state.playTimer — the "
-            "parallel playback loop was removed in #246 A1; if "
-            "you need playback control, drive it through the "
-            "embed's setAnimation API"
-        )
-        assert "playTimer: null" not in viewer_js, (
-            "state.playTimer field reintroduced — playback is "
-            "owned by the embed (handle.setAnimation) per § 3.9"
-        )
-
-    def test_dispose_hands_the_listener_scope_back(self, viewer_js):
-        """The trajectory core registers through an ``_on()`` helper that
-        captures the teardown at the same moment; dispose() hands the whole
-        scope back and it tears down in reverse.  This covers every
-        element-level listener attached during mount plus the deferred
-        ResizeObserver -- a stronger contract than the old single-line
-        ``window.removeEventListener("resize", _onResize)``.
-
-        **Migrated 2026-08-23.**  This named ``_cleanups`` -- an array BY
-        NAME -- and so it stayed green through the day the scope moved to
-        `lib/inspectors/lifecycle.js` and the array stayed behind empty:
-        registration went to the scope, the drain went to the array, and a
-        mount/dispose cycle removed nothing.  Now it asks for the drain of
-        the scope `_on` actually writes into.  Behaviour is pinned in
-        `tests/test_inspector_lifecycle_teardown.py`.
-        """
-        body = self._dispose_body(viewer_js)
-        assert "_listeners.disposeAll()" in body, (
-            "dispose() doesn't hand the listener scope back -- listeners "
-            "attached during mount won't be removed.  See the spectra "
-            "core's dispose for the reference pattern."
-        )
-        # Backbone exists at module scope.
-        assert "inspectorLifecycle.listeners()" in viewer_js, (
-            "the shared listener scope is missing from "
-            "lib/trajectory/core.js"
-        )
-        assert "function _on(target, event, handler" in viewer_js, (
-            "_on() helper missing from lib/trajectory/core.js"
-        )
-        # #236: the embed installs its own ResizeObserver on the
-        # canvas host so the window resize listener went away with
-        # the raw-viewer escape hatch.  Pin that the legacy wiring
-        # is gone (no _on(window, "resize"...) registration).
-        assert '_on(window, "resize"' not in viewer_js, (
-            "window resize listener resurfaced -- the embed already "
-            "owns canvas resize via ResizeObserver; remove the "
-            "duplicate wiring"
-        )
-
-    def test_dispose_tears_down_molview(self, viewer_js):
-        """dispose() must tear down the mounted MolView so one mount
-        doesn't leak into the next.  Post-task-#34 the trajectory
-        inspector mounts the whole MolView module (molview.mount) and
-        holds only the returned handle in ``_mv``; ``_mv.dispose()``
-        is the single call that tears down the embedded 3Dmol viewer
-        (models + shapes + labels + ResizeObserver + animation loop),
-        the selection panel, the view/frame controls, the overlay
-        controller, and every store subscription in one go."""
-        body = self._dispose_body(viewer_js)
-        assert "_mv.dispose()" in body, (
-            "dispose() doesn't call _mv.dispose() -- the whole MolView "
-            "assembly (embedded viewer + panel + controls + overlays + "
-            "subscriptions) leaks across mounts.  The structure inspector "
-            "(lib/inspectors/structure.js) uses the same handle.dispose() "
-            "pattern."
-        )
-
-    def test_module_exposes_trajectoryInspector_mount(self, viewer_js):
-        # The Stage-1C lift requires the registry-side trajectory
-        # inspector to delegate to /watch's mountInspector via the
-        # exposed global.  Without this export the lift can't
-        # happen without duplicating the code.
-        assert "root.molbuilder.trajectoryInspector = {" in viewer_js
-        assert "mount: mountInspector" in viewer_js, (
-            "trajectoryInspector.mount export missing; the registry-"
-            "side trajectory inspector module has no clean way to "
-            "call this implementation"
-        )
-
-    def test_iife_invocation_passes_window(self, viewer_js):
-        # The IIFE now takes ``root`` and is invoked with window
-        # (or this in non-browser contexts).  Without this the
-        # ``root.molbuilder = ...`` export would throw.
-        assert "(function (root) {" in viewer_js
-        assert 'typeof window !== "undefined" ? window : this' in viewer_js
-
-
+# --------------------------------------------------------------------- #
+#  RETIRED 2026-09-03 — TestTrajectoryCoreMountContract (9 tests)       #
+#                                                                       #
+#  Its own docstring said "These are static / string-pin checks; the    #
+#  runtime behaviour is exercised by Playwright E2E tests in            #
+#  tests/test_inspector_registry_e2e".  Per testing.md § 3a.1 that      #
+#  admission is the verdict: the author knew what would verify the      #
+#  contract and wrote something else.                                   #
+#                                                                       #
+#  Checked before deleting, because a cited replacement is a claim:     #
+#    * handle shape, dispose clearing the host, listener add/remove     #
+#      balance   -> already covered there, so those pins were pure      #
+#      duplicates;                                                      #
+#    * TIMER teardown -> NOT covered.  The listener spy watches         #
+#      EventTarget, which a setInterval never touches, so the one       #
+#      resource that leaks silently was the one nothing watched.        #
+#      test_no_trajectory_poll_survives_dispose now drives it: mount an #
+#      ongoing run, confirm the poll is live, dispose, assert cleared.  #
+#      Mutation-verified against stopPolling().                         #
+#                                                                       #
+#  Two pins had no behaviour to move at all: one asserted the IIFE's    #
+#  exact formatting, one asserted a deleted feature was still deleted.  #
+# --------------------------------------------------------------------- #
 # --------------------------------------------------------------------- #
 #  Inspector placeholder XSS safety                                     #
 # --------------------------------------------------------------------- #

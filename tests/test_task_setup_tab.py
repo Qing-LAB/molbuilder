@@ -1732,34 +1732,23 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
         "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
 
 
-def test_the_viewer_dispatches_widgets_on_the_shape_not_the_look():
-    """Source-text pins (this page has no node harness -- the live browser
-    walk covers behavior; these keep the structure from regressing):
-
-      * the ONE widget rule exists (`legalValues`) and BOTH surfaces ask
-        it -- the machine card's adder and the stage table's cell;
-      * a new row is born at its value in force, never the literal "1";
-      * a cell's VALUE is read by the declared type too, not by the look of
-        what was typed."""
-    src = (STATIC / "task-setup" / "viewer.js").read_text()
-    assert "function legalValues(" in src
-    assert src.count("legalValues(") >= 3, (
-        "both surfaces must ask the one widget rule")
-    assert 'addPoint(sel.value, "1")' not in src, (
-        "a row born as the literal 1 is the bug this closed")
-    assert "String(valueInForce(sel.value))" in src
-    # This asserted the ONE case the writer handled -- `ov[col] = text ===
-    # "true"` -- and passed for seven months over a `setCell` that guessed
-    # every other type from `Number(text)`.  The rule is the lookup, not the
-    # bool branch (2026-08-25).
-    body = src.split("function setCell", 1)[1].split("\n}", 1)[0]
-    assert "CELL_READERS[(_meta[col] || {}).type]" in body, (
-        "the cell reader is not chosen by the parameter's declared type")
-    assert "Number.isFinite(Number(text))" not in body, (
-        "a value's look picks its type again -- that is the `use_gpu` bug "
-        "and the `kgrid` one")
-
-
+# RETIRED 2026-09-03 — test_the_viewer_dispatches_widgets_on_the_shape_not
+# _the_look.  It opened "Source-text pins (this page has no node harness --
+# the live browser walk covers behavior)", which is the admission that decides
+# it (`process/testing.md` § 3a.1).  Its three claims, and where each went:
+#
+#   * the widget rule (`legalValues`) -- it counted call sites,
+#     `src.count("legalValues(") >= 3`.  A count cannot tell a call that runs
+#     from one moved into a branch nothing reaches.  Now driven:
+#     test_task_setup_cell_types_e2e.py::test_a_bool_column_is_a_chooser_not
+#     _a_box, mutation-verified against legalValues().
+#   * the cell READER chosen by declared type -- already driven under node in
+#     test_task_setup_cell_readers_js.py::test_a_cell_reads_as_its_declared
+#     _type, so the pin was a duplicate.
+#   * "a new row is born at its value in force, never the literal 1" -- an
+#     absence assertion (`'addPoint(sel.value, "1")' not in src`), which
+#     passes on any spelling of the same bug.  Not replaced: it states no
+#     rule any document carries, and a test may not invent one.
 # `test_every_declared_type_has_a_cell_reader` moved to
 # `tests/test_task_setup_cell_readers_js.py` on 2026-08-25, with the table
 # it pins: the readers left `viewer.js` for `task-setup/cell-readers.js` so

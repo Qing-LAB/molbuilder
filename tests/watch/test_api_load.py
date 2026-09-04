@@ -230,12 +230,43 @@ def test_load_by_multipart_persists_path_for_data_polls(client):
 #  runtime_info.convergence_targets contract                            #
 #                                                                       #
 #  Pin the END-TO-END API contract: parser → Trajectory.runtime_info →  #
-#  HTTP /api/watch/data response → frontend.  Each link individually    #
-#  has a test (parser → traj: test_live_poll_invariants_audit.py;       #
-#  traj → frontend partial: test_trajectory_inspector_partial.py).      #
-#  This test pins the HTTP-layer link, which was the missing piece     #
-#  caught by the 2026-06-13 contract audit.                            #
+#  HTTP /api/watch/data response → frontend.  The first two links now   #
+#  sit together here: the parser test moved in from                     #
+#  test_live_poll_invariants_audit.py when that file was retired        #
+#  2026-09-03 (testing.md § 3a — 18 of its 21 tests asserted on the     #
+#  spelling of lines in core.js rather than on anything the code did).  #
+#  It was the only genuinely behavioural test in the file with no home  #
+#  elsewhere, and it belongs beside the HTTP link it feeds.             #
 # --------------------------------------------------------------------- #
+
+
+def test_the_siesta_parser_reads_convergence_targets_from_the_input_echo():
+    """The first link of the chain: SIESTA's own input echo → runtime_info.
+
+    The hemeC stage-2 fixture tightened `MD.MaxForceTol` to 0.02 eV/Å from
+    the 0.04 default — a stage-2 run's whole point — so the parsed value
+    proves the echo was read rather than a default reproduced.
+    """
+    from pathlib import Path
+
+    from molbuilder.parse.engines.siesta import SiestaParser
+
+    path = (Path(__file__).resolve().parent
+            / "fixtures" / "siesta_frozen"
+            / "hemeC-stage2-run3-finished-42fr.out")
+    traj = SiestaParser.parse(str(path))
+    ct = traj.runtime_info.get("convergence_targets")
+    assert ct is not None, (
+        "SIESTA parser dropped its convergence_targets extraction.  The "
+        "Results-tab threshold line + summary block now have nothing to "
+        "render.  Check that _SIESTA_FORCE_TOL_RE et al. are still "
+        "matching 'redata: Force tolerance = ...'.")
+    assert ct.get("source") == "siesta_input_echo"
+    assert ct.get("max_force_tol_eV_per_A") == 0.02, (
+        "0.04 is the SIESTA default -- reading it back here means the echo "
+        "was not parsed and a default leaked through instead")
+    assert ct.get("dm_tolerance") == 1e-4
+    assert ct.get("max_scf_iter") == 500
 
 
 _SIESTA_WITH_REDATA = (

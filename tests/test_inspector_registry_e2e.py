@@ -18,6 +18,8 @@ driven /results architecture.
 """
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,57 @@ pytestmark = pytest.mark.e2e
 
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="module")
+def ongoing_trajectory() -> str:
+    """A multi-frame ``*_geom_optim.xyz`` that reads as a RUNNING job.
+
+    **Nothing here is invented.**  Every part of this file is the project's
+    own:
+
+    * the NAME follows ``projects.py::_GEOM_OUTPUT_PATTERNS`` —
+      ``*_geom_optim.xyz`` is the geomeTRIC trajectory convention the picker
+      and the inspector both key on;
+    * the DIRECTORY is under the real projects root, because
+      ``/api/watch/load`` resolves through ``_resolve_within_roots`` and
+      refuses anything outside ``Capabilities.file_picker_roots()``.  A
+      ``tmp_path`` file would be rejected — correctly — and the test would be
+      exercising the refusal instead of the timer;
+    * each FRAME is written by ``Structure.to_xyz()``, molbuilder's own
+      writer, rather than a hand-typed block.  A multi-frame trajectory is
+      those frames concatenated, which is what the convention above names
+      and what geomeTRIC emits.
+
+    The run reads as ONGOING because it carries no completion marker:
+    ``_settlePostLoad`` treats an absent ``run_state`` as "still going" and
+    transitions to WATCHING, which starts the poll.  That is the state whose
+    timer must not survive dispose.
+    """
+    import numpy as np
+
+    from molbuilder.structure import Structure
+
+    root = ROOT / "projects/_t_timer_e2e"
+    if root.exists():
+        shutil.rmtree(root)
+    d = root / "optimization"
+    d.mkdir(parents=True)
+    f = d / "probe_geom_optim.xyz"
+    frames = [
+        Structure(elements=["H", "H"],
+                  positions=np.array([[0.0, 0.0, 0.0],
+                                      [0.0, 0.0, z]])).to_xyz(
+            comment=f"Iteration {i} Energy -1.1{i}")
+        for i, z in enumerate((0.74, 0.72))
+    ]
+    f.write_text("".join(frames), encoding="utf-8")
+    try:
+        yield str(f.resolve())
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 @pytest.fixture(scope="module")
@@ -285,6 +338,165 @@ class TestInspectorListenerTeardown:
             f"test_all_element_listeners_route_through_on_helper)."
         )
 
+    def test_no_interval_survives_mount_dispose(self, page, flask_server):
+        """Every ``setInterval`` started during mount is cleared by dispose.
+
+        **Why this exists (2026-09-03).**  The trajectory core's timer
+        teardown was pinned only by two source greps —
+        ``"clearInterval(state.pollTimer)" in viewer_js`` and its
+        play-timer sibling — inside a class whose own docstring said the
+        runtime behaviour was covered by this file.  It was not: the
+        listener spy above watches ``EventTarget``, which a timer never
+        touches.  So the one resource that leaks *silently* — a poll
+        interval keeps firing into a disposed inspector, refetching
+        forever — was the one resource nothing actually watched.
+
+        A leaked interval is worse than a leaked listener: the listener
+        waits for an event that may never come, the interval bills you
+        every tick.  The /results dispatcher mounts and disposes on every
+        sidebar click, so the leak compounds across a browsing session.
+
+        **The watch must actually be RUNNING, or the test is vacuous.**
+        Mounting alone starts no timer — ``startWatch()`` is user-driven,
+        behind the partial's "Start watching" button.  The first draft of
+        this test disposed a freshly-mounted inspector and asserted zero
+        live intervals, which is ``0 == 0``: it passed with the
+        dispose-path ``clearInterval`` commented out.  So the test drives
+        the real control, and asserts a timer was live *before* dispose —
+        that guard is what keeps it honest if the watch path changes.
+
+        The watched path need not exist: `startWatch` starts the interval
+        even when the immediate tick 404s, precisely so polling continues
+        while a run is still producing its first output.
+        """
+        _open_results(page, flask_server)
+        result = page.evaluate("""async () => {
+            const live = new Set();
+            const origSet   = window.setInterval;
+            const origClear = window.clearInterval;
+            window.setInterval = function (...a) {
+                const id = origSet.apply(window, a);
+                live.add(id);
+                return id;
+            };
+            window.clearInterval = function (id) {
+                live.delete(id);
+                return origClear.call(window, id);
+            };
+            try {
+                const host = document.createElement("div");
+                host.id = "timer-host";
+                document.body.appendChild(host);
+                const reg    = window.molbuilder.inspectors;
+                const ctx    = reg.createDefaultContext(host);
+                const handle = reg.mount(
+                    host, "/projects/foo/job.spectra.json", ctx);
+                for (let i = 0; i < 30; i += 1) {
+                    if (host.querySelector("#watch-btn")) break;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                const mounted = !!host.querySelector("#watch-btn");
+                if (!mounted) return {mounted, watching: 0, afterDispose: 0};
+
+                // Drive the user's own control: type a path, press
+                // "Start watching".  The path 404s, which is the case
+                // the poll loop is built for.
+                host.querySelector("#watch-path").value =
+                    "/projects/foo/job.spectra.json";
+                host.querySelector("#watch-btn").click();
+                for (let i = 0; i < 30; i += 1) {
+                    if (live.size > 0) break;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                const watching = live.size;
+                handle.dispose();
+                const afterDispose = live.size;
+                document.body.removeChild(host);
+                return {mounted, watching, afterDispose};
+            } finally {
+                window.setInterval   = origSet;
+                window.clearInterval = origClear;
+            }
+        }""")
+        assert result["mounted"], (
+            "spectra inspector did not finish mounting within 3s -- fix the "
+            "mount path before reading the timer counts below")
+        # The anti-vacuity guard.  Without a live timer the assertion
+        # below is 0 == 0 and passes on a deleted clearInterval.
+        assert result["watching"] >= 1, (
+            "no interval was running when dispose() was called, so this "
+            "test proves nothing about teardown.  Either 'Start watching' "
+            "no longer starts a poll interval, or the control moved -- fix "
+            "the driving above rather than deleting this assertion")
+        assert result["afterDispose"] == 0, (
+            f"{result['afterDispose']} of {result['watching']} setInterval "
+            f"handle(s) outlived dispose().  A poll or playback timer is "
+            f"still firing into a torn-down inspector -- it will refetch "
+            f"forever, and the /results dispatcher mounts and disposes on "
+            f"every sidebar click, so the leak compounds.  Every interval "
+            f"must be held where dispose() can reach it (the lifecycle "
+            f"scope), not in a bare local.")
+
+    def test_no_trajectory_poll_survives_dispose(
+            self, page, flask_server, ongoing_trajectory):
+        """The same contract for the OTHER core.
+
+        `lib/trajectory/core.js` keeps its own poll timer
+        (``startPolling`` / ``stopPolling``), so the spectra test above says
+        nothing about it — and the trajectory timer is the more expensive
+        leak, because it re-fetches `/api/watch/data` for the whole
+        trajectory rather than one spectrum.
+
+        No user gesture starts it: `_settlePostLoad` transitions to
+        WATCHING on its own whenever the loaded run has no completion
+        marker.  Mounting an ongoing run IS the trigger.
+        """
+        _open_results(page, flask_server)
+        result = page.evaluate("""async (traj) => {
+            const live = new Set();
+            const origSet   = window.setInterval;
+            const origClear = window.clearInterval;
+            window.setInterval = function (...a) {
+                const id = origSet.apply(window, a);
+                live.add(id);
+                return id;
+            };
+            window.clearInterval = function (id) {
+                live.delete(id);
+                return origClear.call(window, id);
+            };
+            try {
+                const host = document.createElement("div");
+                host.id = "traj-timer-host";
+                document.body.appendChild(host);
+                const reg    = window.molbuilder.inspectors;
+                const ctx    = reg.createDefaultContext(host);
+                const handle = reg.mount(host, traj, ctx);
+                // Wait for the load to resolve and _settlePostLoad to
+                // put the machine in WATCHING (which starts the timer).
+                for (let i = 0; i < 50; i += 1) {
+                    if (live.size > 0) break;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                const watching = live.size;
+                handle.dispose();
+                const afterDispose = live.size;
+                document.body.removeChild(host);
+                return {watching, afterDispose};
+            } finally {
+                window.setInterval   = origSet;
+                window.clearInterval = origClear;
+            }
+        }""", ongoing_trajectory)
+        assert result["watching"] >= 1, (
+            "mounting an ongoing trajectory started no poll interval, so "
+            "this test proves nothing about teardown.  Either the fixture "
+            "no longer reads as a running job, or the poll moved -- fix "
+            "the setup rather than deleting this assertion")
+        assert result["afterDispose"] == 0, (
+            f"{result['afterDispose']} of {result['watching']} poll "
+            f"interval(s) outlived dispose().  A torn-down trajectory "
+            f"inspector is still polling /api/watch/data forever.")
 
 
 # --------------------------------------------------------------------- #

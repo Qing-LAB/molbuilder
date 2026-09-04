@@ -242,6 +242,21 @@ _RESULT_CATEGORY_CASES = [
      "spectra_json→pyscf_spectrum"),
     ("/projects/foo/q.xyz", "Structure", "xyz→structure"),
     ("/projects/foo/p.pdb", "Structure", "pdb→structure"),
+    # geomeTRIC's optimisation traces belong in the SAME dropdown group
+    # as the run's other artifacts (`.molwatch.log`), or the user hunts
+    # for them under a generic header.  Both spellings, because the
+    # `_geom_` infix appeared only in later PySCF wrappers and older
+    # runs on disk still carry the short form.
+    #
+    # Added 2026-09-03, replacing the source-grep that stood in for it
+    # (`"_optim.xyz" in body and "PySCF" in body`, over the regex-sliced
+    # resultCategory function body).  That pin could not tell WHICH
+    # label came back — the two strings merely had to co-occur somewhere
+    # in the function — so it passed on any bucket at all.
+    ("/projects/foo/BDT_geom_optim.xyz", "PySCF optimization",
+     "geom_optim_xyz→pyscf_opt"),
+    ("/projects/foo/BDT_optim.xyz", "PySCF optimization",
+     "plain_optim_xyz→pyscf_opt"),
 ]
 
 

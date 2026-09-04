@@ -201,7 +201,20 @@ header. The header's source-path line has the username redacted.
 - `test_trajectory_hide_frozen_invariants_js.py` — the force-filter (hide-frozen)
   behavior.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
-- `test_live_poll_invariants_audit.py` — the poll-loop invariants.
+- **The poll loop.** `test_live_poll_invariants_audit.py` was retired
+  2026-09-03: 18 of its 21 tests asserted on the spelling of lines in
+  `lib/trajectory/core.js` (`process/testing.md` § 3a). Its one *observable*
+  claim — that a poll timer does not outlive the inspector — is driven now by
+  `test_inspector_registry_e2e.py::TestInspectorListenerTeardown::test_no_
+  trajectory_poll_survives_dispose`, which mounts an ongoing run in a browser,
+  confirms the poll is live, disposes, and asserts it is gone.
+  The rest (`applyNewData`'s no-new-content guard, `resultsFingerprint`,
+  `scfFingerprint`, `priorStillValid`, `POLL_MS`) are **unpinned**: they are
+  closure-private in a core that exports only `mount`, so nothing can reach
+  them without either exporting them or lifting the shared state machine into
+  `lib/inspectors/lifecycle.js`. The greps did not cover them either — they
+  measured spelling — so this records a gap that was always there rather than
+  one the retirement made.
 - `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
   reads the timestamp series and its "total" reads the duration series, and
   that the per-iteration rung refuses a timestamp.

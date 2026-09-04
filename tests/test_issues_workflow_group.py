@@ -362,3 +362,39 @@ class TestEveryExposedFieldIsTagged:
             "Nothing can read that tag — the form never renders the field.  "
             "Either expose it with a `section` or drop the tag."
         )
+
+    @pytest.mark.parametrize("cfg_cls", [TransportConfig])
+    def test_the_tag_comes_from_the_vocabulary(self, cfg_cls):
+        """A tag must be one the vocabulary knows, not merely present.
+
+        The sibling above asks *is there a tag*; this asks *is it a real
+        one*.  A misspelled or stale tag passes the first and fails here:
+        it routes findings to a card that does not exist, which renders the
+        same as no tag at all — the residual panel — so the two checks
+        cannot be collapsed into one.
+
+        **The vocabulary is read, never copied.** `template.GROUPS` is the
+        owner; a hand-kept list here would be a second answer to a
+        one-owner question, and that is exactly what broke on 2026-08-15,
+        when `output` and `staging` were added and this test failed two
+        legitimate tags for no reason but its own staleness.
+
+        *Moved here 2026-09-03 from `test_live_poll_invariants_audit.py`,
+        which was retired: it was one of three tests in that file that
+        actually ran the code (testing.md § 3a).*
+        """
+        from molbuilder.template import GROUPS
+
+        valid = set(GROUPS)
+        bad = [(cfg_cls.__name__, f.name, tag)
+               for f in dataclasses.fields(cfg_cls)
+               if (tag := f.metadata.get("workflow_group")) is not None
+               and tag not in valid]
+        assert not bad, (
+            f"config field(s) tagged with a workflow_group the vocabulary "
+            f"does not define: {bad}.\nAllowed: {sorted(valid)}.  A tag "
+            f"outside this set routes the field's findings nowhere, which "
+            f"looks identical to an untagged field.  Either fix the "
+            f"spelling or add the group to `template.GROUPS` — the "
+            f"vocabulary is the one place that decides."
+        )

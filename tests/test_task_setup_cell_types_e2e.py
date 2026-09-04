@@ -88,7 +88,7 @@ def flask_server():
         yield base_url
 
 
-def _open(page, base, calc):
+def _open(page, base, calc, ready='input[aria-label="tight kgrid"]'):
     """Land the tab on the folder the way the app itself does.
 
     `projects.md` § 5's hand-off writes the TARGET page's own selection slot
@@ -104,7 +104,7 @@ def _open(page, base, calc):
         f" sessionStorage.setItem('molbuilder.current_dir', {slot});"
         "} catch (_) {}")
     page.goto(f"{base}/task-setup")
-    page.wait_for_selector('input[aria-label="tight kgrid"]', timeout=20000)
+    page.wait_for_selector(ready, timeout=20000)
     # The editor arrives LAST -- CodeMirror is fetched lazily, so the stage
     # table can be up while `.CodeMirror` is still null.  Everything below
     # reads the description through the editor, so this is part of "open".
@@ -181,3 +181,74 @@ def test_text_that_is_not_a_k_grid_is_kept_as_typed(page, flask_server,
     _open(page, flask_server, calc_dir)
     _type(page, "tight kgrid", "4,4")
     assert _described(page)["stages"][0]["overrides"]["kgrid"] == "4,4"
+
+
+# --------------------------------------------------------------------- #
+#  The other half of the same rule: the WIDGET, not just the reader      #
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="module")
+def bool_column_dir():
+    """The same calculation, but the column that varies is a **bool**.
+
+    Separate from `calc_dir` rather than added to it: that fixture is
+    module-scoped and shared by the four tests above, and widening its
+    `varies` would change what they open.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
+                                 write_task)
+    from molbuilder.template import template_with_values
+
+    d = ROOT / "projects/_t_cell_bool/optimization/probe"
+    if d.exists():
+        shutil.rmtree(d.parents[1])
+    d.mkdir(parents=True)
+    try:
+        (d / "probe.source.xyz").write_text(
+            "2\nprobe\nH 0 0 0\nH 0 0 0.74\n", encoding="utf-8")
+        (d / "probe.template.toml").write_text(
+            template_with_values(SiestaConfig(system_label="probe"),
+                                 engine="siesta",
+                                 calculation="optimization"),
+            encoding="utf-8")
+        write_task(d / "task.json", Task(
+            engine="siesta", shape="flat", run=derive_run("probe"),
+            structure=StructureRef(source="probe.source.xyz"),
+            varies=("write_forces",),
+            stages=(Stage(name="tight", overrides={}),)))
+        yield d
+    finally:
+        shutil.rmtree(d.parents[1], ignore_errors=True)
+
+
+def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
+                                              bool_column_dir):
+    """**A value's look must never pick the widget** *(user, 2026-08-20)*.
+
+    The tests above are the READING half of that rule — text typed into a
+    cell is parsed by the column's declared type, driven under node in
+    ``test_task_setup_cell_readers_js.py``.  This is the OFFERING half:
+    `write_forces` is declared `bool`, so the catalogue already knows its
+    only two answers and the cell must present them rather than invite a
+    person to spell one.
+
+    *Replaces the `legalValues` third of
+    ``test_task_setup_tab.py::test_the_viewer_dispatches_widgets_on_the_
+    shape_not_the_look``, retired 2026-09-03 (`process/testing.md`
+    § 3a.1).*  That pin counted call sites — ``src.count("legalValues(") >=
+    3`` — to conclude "both surfaces ask the one widget rule".  A count
+    cannot tell a call that runs from one moved into a branch nothing
+    reaches, and three of anything is not a behaviour.
+    """
+    _open(page, flask_server, bool_column_dir,
+          ready='[aria-label="tight write_forces"]')
+    tag = page.evaluate(
+        "() => { const n = document.querySelector("
+        "  '[aria-label=\"tight write_forces\"]'); return n && n.tagName; }")
+    assert tag == "SELECT", (
+        f"`write_forces` is declared bool, and its cell came up as a <{tag}>. "
+        f"The catalogue knows the only two answers, so the cell must offer "
+        f"them: a text box invites 'True', 'yes', '1' and each is a "
+        f"different kind of wrong, discovered at run time.")
