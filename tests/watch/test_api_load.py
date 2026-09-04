@@ -629,3 +629,65 @@ def test_multi_stage_merge_preserves_per_stage_step_indices(client, tmp_path):
     assert body["data"]["iterations"] == [0, 1, 2, 3]
     # step_indices per-stage: each stage starts at 0 and increments.
     assert body["data"]["step_indices"] == [0, 1, 0, 1]
+
+
+# --------------------------------------------------------------------- #
+#  `format` names the ENGINE, not the parser that read the file         #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_format_names_the_engine_not_the_parser_that_read_it(
+        client, tmp_path, engine):
+    """A `.molwatch.log` is read by the parser named `molwatch` whatever
+    wrote it — and the wire must still say which ENGINE ran.
+
+    Two different facts share one field's name if you are not careful:
+
+        `label`  — who read it   ("molwatch unified log (.molwatch.log)")
+        `format` — what ran it   ("siesta" / "pyscf")
+
+    The route sent `parser_cls.name` for both.  For an engine-native file
+    they coincide — a SIESTA `.out` is read by the parser called `siesta`,
+    which is why `test_load_by_json_path` above passed throughout — so nothing looked wrong.  They diverge for exactly the
+    file `job-contracts.md` § calls *"THE canonical trajectory, preferred
+    by every reader"*: every molbuilder-generated run arrived as
+    `"molwatch"`.
+
+    The cost was visible: `lib/trajectory/core.js` branches on
+    `state.format === "siesta"` / `"pyscf"` to title the SCF banner, and
+    its own comment calls the third branch *"the rare fallback"* for a log
+    with no engine header.  It was the only branch that ever ran, so every
+    run showed the neutral "SCF progress / Opt step" instead of "SIESTA
+    DFT SCF progress / CG/MD step".
+
+    The engine is not inferred here from a filename: the log DECLARES it
+    (`# engine: <name>`), `parse/engines/molwatch.py` reads that line into
+    `source_format`, and the route now reports what the parser found.
+    """
+    import numpy as np
+
+    from molbuilder.structure import Structure
+    from molbuilder.trajectory_log.format import write_initial_preview
+
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]))
+    log = tmp_path / "probe.molwatch.log"
+    # THE PRODUCTION WRITER, with the engine as its own parameter -- the
+    # same door SIESTA's parser-on-stdout path and the PySCF emitter use.
+    write_initial_preview(struct, log, job="probe", engine=engine)
+
+    r = client.post("/api/watch/load", json={"path": str(log)})
+    body = r.get_json()
+    assert body["ok"], body
+    assert body["format"] == engine, (
+        f"the wire says format={body['format']!r} for a log whose own "
+        f"header declares `# engine: {engine}`.  `format` names the engine "
+        f"that ran; `label` names the parser that read it -- and for a "
+        f".molwatch.log the parser is always `molwatch`, which is why "
+        f"reporting the parser's name here erased the distinction for "
+        f"every molbuilder-generated run.")
+    assert "molwatch" in body["label"].lower(), (
+        f"label={body['label']!r} -- it should still name the READER, so "
+        f"the two facts stay separable")

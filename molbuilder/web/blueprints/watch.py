@@ -415,6 +415,41 @@ def _run_periodicity_json(
     return out or None
 
 
+def _engine_of(payload, parser_cls) -> str:
+    """WHICH ENGINE PRODUCED THIS RUN -- not which parser read it.
+
+    Two different facts, and `format` on the wire is the first one.  The
+    trajectory viewer says so in its own words
+    (`lib/trajectory/core.js`): *"state.format is whatever the parser
+    wrote to source_format -- 'siesta', 'pyscf', or 'molwatch' when the
+    file was a unified molwatch.log WITHOUT an engine header ... so this
+    last case is the rare fallback"*.  `tests/watch/test_api_load.py`
+    asserts `body["format"] == "siesta"` for the same reason.
+
+    It was sending `parser_cls.name`.  For an engine-native file those
+    coincide -- a SIESTA `.out` is read by the parser named `siesta` --
+    so nothing looked wrong.  They diverge for exactly the file
+    `job-contracts.md` calls "THE canonical trajectory, preferred by
+    every reader": a `.molwatch.log` is read by the parser named
+    `molwatch` whatever wrote it, so every molbuilder-generated run
+    arrived as "molwatch" and the client's "rare fallback" was the only
+    branch that ever ran.  The visible cost was the SCF banner: "SCF
+    progress / Opt step" instead of "SIESTA DFT SCF progress / CG/MD
+    step".
+
+    NOTHING NEW IS COMPUTED HERE.  The engine parsers already answer
+    this -- `parse/engines/molwatch.py` reads the log's own
+    `# engine: <name>` header (`_ENGINE_RE`) into `source_format`, and
+    the engine-native parsers set it to their own name.  This reads the
+    answer they already produced and stops overwriting it with the
+    reader's name.  The merge path's `source_format = "molwatch"` for a
+    log with no engine header (`_merge_molwatch_trajectories`) is
+    preserved and is precisely the neutral case the client expects.
+    """
+    got = (payload or {}).get("source_format")
+    return got or parser_cls.name
+
+
 def _run_metadata(
     search_dir: Optional[str], data: Optional[Dict[str, Any]]
 ) -> Dict[str, Any]:
@@ -1043,7 +1078,7 @@ def api_load():
             "path":             path,
             "resolved_from":    resolved_from_dir,
             "mtime":            _state["mtime"],
-            "format":           parser_cls.name,
+            "format":           _engine_of(merged, parser_cls),
             "label":            parser_cls.label,
             "data":             merged,
             "stages":           stages_meta,
@@ -1082,7 +1117,7 @@ def api_load():
         "path":             state["path"],
         "resolved_from":    resolved_from_dir,
         "mtime":            state["mtime"],
-        "format":           parser_cls.name,
+        "format":           _engine_of(state["data"], parser_cls),
         "label":            parser_cls.label,
         "data":             state["data"],
         "uploaded":         False,
@@ -1160,7 +1195,7 @@ def _api_load_multipart(uploaded_file):
         "ok":               True,
         "path":             tmp_path,
         "mtime":            state["mtime"],
-        "format":           parser_cls.name,
+        "format":           _engine_of(state["data"], parser_cls),
         "label":            parser_cls.label,
         "data":             state["data"],
         "uploaded":         True,
@@ -1197,7 +1232,7 @@ def api_data():
         "changed":  True,
         "path":     state["path"],
         "mtime":    state["mtime"],
-        "format":   parser_cls.name,
+        "format":   _engine_of(state["data"], parser_cls),
         "label":    parser_cls.label,
         "data":     state["data"],
         "uploaded": state.get("uploaded", False),
