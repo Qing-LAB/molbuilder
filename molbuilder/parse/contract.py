@@ -84,49 +84,64 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
 #: engine is exactly the substitution `running-a-job.md` § 4.2 forbids.
 _ENGINES = ("siesta", "pyscf")
 
-#: PySCF-only result files (`job-contracts.md` § 2.2).  A bare ``.py`` is
-#: NOT on this list and must never be: ``mb_monitor.py`` and
-#: ``config_dir.py`` ship beside every flat run, which is the same
-#: foot-gun ``JobDirParser.can_parse`` documents for its own claim rule.
-_PYSCF_CLUSTER = ("*.pyscf.log", "*_geom_optim.xyz", "*.chk")
+#: The engine's stdout name, which only the wrapper knows
+#: (`runwrap.py`: ``".pyscf.log" if suffix == ".py" else ".out"``).  It is
+#: the one result-file fact NOT in an engine's warm-file vocabulary,
+#: because a log is never warm-started from.
+_STDOUT_SUFFIX = {"siesta": ".out", "pyscf": ".pyscf.log"}
 
 
 def engine_of(directory) -> str:
     """Which engine ran in *directory* — ``"siesta"``, ``"pyscf"``, or
     ``"unknown"``.
 
-    The resolution order is `running-a-job.md` § 4.2's, and that document
-    owns it; this is the one implementation.  In short: the engine is
-    **declared at script-generation time**, because that is the only
-    moment it is known for certain, and a run directory gets copied away
-    from everything that knew.
+    `running-a-job.md` § 4.2 owns the rule; this is the one
+    implementation.  The engine is **declared at script-generation
+    time**, because that is the only moment it is known for certain, and
+    a run directory gets copied away from everything that knew.
 
-    1. the **PROVENANCE ``engine`` key** in any deck or wrapper
-       (`job-contracts.md` § 3.2), read through the registered block
-       extractor -- not a second regex;
-    2. the **``.molwatch.log`` ``# engine:`` header**, through the same
-       pattern the molwatch parser uses;
-    3. the **file cluster**, for a directory molbuilder did not write;
-    4. ``"unknown"``.
+    **TWO TIERS, not a precedence list.**
 
-    **Disagreement answers ``"unknown"``, it does not vote.**  Same rule,
-    same reason as ``contract_of`` above (§ 5b): a directory that says two
-    things cannot be made to say one by picking, and an answer that might
-    be the other engine's is worth less than no answer.  Engines do not
-    share a run directory, so a disagreement is a real anomaly and the
-    caller should see it as one.
+    *Declarations* -- the PROVENANCE ``engine`` key of any deck or
+    wrapper (`job-contracts.md` § 3.2) and the ``.molwatch.log``
+    ``# engine:`` header -- are weighed **together**.  One distinct
+    answer among them is the answer.  Two is a run that contradicts
+    itself, and that is ``"unknown"``: the same rule and the same reason
+    as ``contract_of`` above (§ 5b) -- a directory that says two things
+    cannot be made to say one by picking, and an answer that might be the
+    other engine's is worth less than no answer.
+
+    *The sniff* -- what files are present -- is consulted **only when
+    nothing declared**, for a directory molbuilder did not write.  It
+    never contradicts a declaration, because it is evidence of a
+    different kind: files outlive the run that wrote them, so a stale
+    ``.fdf`` beside a freshly re-prepped PySCF deck is not a second
+    opinion, it is litter.
+
+    **Why this is not a first-hit-wins list, which is what shipped on
+    2026-09-04 and was wrong.**  Ordered rungs let ONE artifact decide
+    while corroborating evidence goes unread: a PySCF run whose molwatch
+    header AND whose whole file cluster said ``pyscf`` answered
+    ``"siesta"`` because somebody had copied a foreign ``.run.sh`` into
+    the directory.  That is worse than the constant it replaced *and*
+    worse than the code before it -- the route had been answering from
+    the loaded file's own ``source_format``, which was right.  A rung
+    that returns before reading its peers is not a resolution order; it
+    is a first-match search that happens to be spelled like one.
     """
     directory = Path(directory)
     if not directory.is_dir():
         return "unknown"
 
-    for step in (_declared_in_provenance, _declared_in_molwatch, _from_cluster):
-        found = step(directory)
-        if len(found) == 1:
-            return found.pop()
-        if len(found) > 1:
-            return "unknown"        # the directory contradicts itself
-    return "unknown"
+    # EVERY DECLARATION IS WEIGHED TOGETHER; the sniff is consulted only
+    # when there is none.  See the two tiers in the docstring above.
+    declared = _declared_in_provenance(directory) | _declared_in_molwatch(directory)
+    if len(declared) == 1:
+        return declared.pop()
+    if len(declared) > 1:
+        return "unknown"            # the run contradicts itself -- say so
+    sniffed = _from_cluster(directory)
+    return sniffed.pop() if len(sniffed) == 1 else "unknown"
 
 
 def _declared_in_provenance(directory: Path) -> set:
@@ -146,7 +161,17 @@ def _declared_in_provenance(directory: Path) -> set:
                     f.read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue
-            name = (block or {}).get("engine", "").strip().lower()
+            # Case-insensitive on the KEY as well as the value.  The
+            # emitter always writes `engine` lowercase, but the block
+            # sits in a file whose USER-CUSTOM banner says "Edit
+            # freely", and a hand-written `Engine` silently dropping
+            # the declaration is the quiet failure this whole
+            # mechanism exists to remove.
+            name = ""
+            for key, val in (block or {}).items():
+                if key.strip().lower() == "engine":
+                    name = str(val).strip().lower()
+                    break
             if name in _ENGINES:
                 out.add(name)
     return out
@@ -181,14 +206,46 @@ def _declared_in_molwatch(directory: Path) -> set:
 
 
 def _from_cluster(directory: Path) -> set:
-    """Step 3 — what files are here, for a directory molbuilder did not
-    write (a hand-made run, or one prepared before the declaration
-    shipped on 2026-09-04)."""
+    """The sniff — what files are here, for a directory molbuilder did
+    not write (a hand-made run, or one prepared before the declaration
+    shipped on 2026-09-04).
+
+    **The vocabulary is the engine's own, as data.**  `job-contracts.md`
+    § 4.2a settled that each engine ships ONE ``<engine>/warm-files.toml``
+    and *"every consumer derives from it"* -- a rule that exists because
+    three hand-written copies of this vocabulary had already drifted
+    apart, and whose history § 4.2a records.  This function held a
+    FOURTH from 2026-09-04 until it was caught in review the same day:
+    ``("*.pyscf.log", "*_geom_optim.xyz", "*.chk")``, two of whose three
+    entries were verbatim rows of ``pyscf/warm-files.toml``.
+
+    ``warmfiles.inventory`` is the door and says so in its own docstring
+    -- *"a HINT about a directory, safe to over-include, required to
+    under-include nothing"* -- which is exactly this question.  Measured
+    when it went in: the two engines' inventories are disjoint (no
+    shared suffix, no suffix-containment), and over the 113 real run
+    directories in the tree the derived answer matches the hand-written
+    one everywhere.
+
+    Two facts are NOT warm files and stay here: the deck suffix (the
+    seam's ``EngineSeam.suffix``, which `parse` may not import -- it
+    lives a layer up in ``jobset``) and the wrapper's stdout name.  A
+    bare ``.py`` is deliberately not a signal either: ``mb_monitor.py``
+    and ``config_dir.py`` ship beside every flat run, the same foot-gun
+    ``JobDirParser.can_parse`` documents for its own claim rule.
+    """
+    from molbuilder.warmfiles import WarmFilesError, inventory
+    names = [f.name for f in directory.iterdir() if f.is_file()]
     out = set()
-    if any(directory.glob("*.fdf")):
-        out.add("siesta")
-    for pattern in _PYSCF_CLUSTER:
-        if any(directory.glob(pattern)):
-            out.add("pyscf")
-            break
+    if any(n.endswith(".fdf") for n in names):
+        out.add("siesta")               # the deck: EngineSeam.suffix
+    for engine in _ENGINES:
+        if any(n.endswith(_STDOUT_SUFFIX[engine]) for n in names):
+            out.add(engine)
+        try:
+            suffixes = inventory(engine)
+        except (WarmFilesError, OSError):
+            continue                    # a broken rules file is not an engine vote
+        if any(n.endswith(s) for n in names for s in suffixes):
+            out.add(engine)
     return out

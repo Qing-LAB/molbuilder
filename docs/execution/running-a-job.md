@@ -606,21 +606,44 @@ conclusion. One consolidated result per directory, with these fields:
   **It is DECLARED at script-generation time, not inferred at read time** —
   because generation is the only moment the answer is known for certain
   (`script_emit` holds `DeckSpec.engine`), and a directory gets copied away
-  from everything that knew. Resolution order, first hit wins:
+  from everything that knew.
 
-  | | Source | Written by |
+  **Two tiers, not a precedence list.**
+
+  | tier | Source | Written by |
   |---|---|---|
-  | 1 | the deck's / wrapper's **PROVENANCE `engine`** key (`job-contracts.md` § 3.2) | `script_emit.emit_provenance`, from `DeckSpec.engine` |
-  | 2 | the **`.molwatch.log` `# engine:` header** | both generators, at file-emission time |
-  | 3 | the **file cluster** — a `.fdf` deck ⇒ `siesta`; a `.py` deck beside `*.pyscf.log` / `*_geom_optim.xyz` ⇒ `pyscf` | nobody: this is the fallback for a directory molbuilder did not write |
-  | 4 | `unknown` | — |
+  | **declared** | the deck's **PROVENANCE `engine`** key (`job-contracts.md` § 3.2) | `script_emit.emit_provenance`, from `DeckSpec.engine` |
+  | **declared** | the wrapper's **PROVENANCE `engine`** key | `runwrap.render_run_wrapper`, from the deck's suffix — the closed `{.fdf → siesta, .py → pyscf}` map the seam owns (`EngineSeam.suffix`); any other suffix is a `WrapperError` before this point |
+  | **declared** | the **`.molwatch.log` `# engine:` header** | both generators, at file-emission time |
+  | *sniffed* | what files are present — the deck suffix, the wrapper's stdout name, and each engine's own `warm-files.toml` vocabulary (§ 4.2a) | nobody: the fallback for a directory molbuilder did not write |
+
+  **Every declaration is weighed together; one distinct answer among them
+  is the answer, and two is `unknown`.** A run that says two things cannot
+  be made to say one by picking — the same rule and the same reason as
+  `contract_of` ([`parse.md` § 5b](?doc=model/parse.md)).
+
+  **The sniff is consulted only when nothing declared**, and it never
+  contradicts a declaration, because it is evidence of a different kind:
+  files outlive the run that wrote them, so a stale `.fdf` beside a
+  freshly re-prepped PySCF deck is not a second opinion, it is litter.
+
+  > **This shipped as an ordered first-hit-wins list on 2026-09-04 and
+  > that was wrong** *(corrected the same day, in adversarial review)*. An
+  > ordered rung returns before reading its peers, so ONE artifact decided
+  > while its corroboration went unread: a PySCF run whose molwatch header
+  > **and** whose whole file cluster said `pyscf` answered `siesta`
+  > because somebody had copied a foreign `.run.sh` into the directory.
+  > That was worse than the constant it replaced *and* worse than the code
+  > before it — `/api/watch/*` had been answering from the loaded file's
+  > own `source_format`, which was right. A rung that returns early is not
+  > a resolution order; it is a first-match search spelled like one.
 
   **One value, one chain, and only the last link can be orphaned.** The
   engine is chosen once, in the calculation's `task.json`
   (`engine: {name}`); `prep` reads it to pick the per-engine seam
   (`jobset/prep.py`); the seam's `spec_for` sets `DeckSpec.engine`; the
-  emitter writes that into PROVENANCE. So steps 1-3 above are not three
-  opinions -- they are one fact, recorded at successively lower levels so
+  emitter writes that into PROVENANCE. So the three declarations above are
+  not three opinions -- they are one fact, recorded in three places so
   that a run directory copied away from its description can still answer
   for itself. That is the *only* reason the readback exists: a run
   directory is the one artifact in the chain that travels alone.
@@ -636,8 +659,17 @@ conclusion. One consolidated result per directory, with these fields:
   > transport, spectrum — says which files it produced, and therefore which
   > parser reads them. **TranSIESTA is engine `siesta`**: same binary family,
   > same `.fdf` contract, different task, and it may well have its own parser
-  > because it has a different dataset to show. So the engine **narrows the
-  > parser pool; it never selects the parser.** That is why `engine` and
+  > because it has a different dataset to show.
+  >
+  > **The parser is chosen by the FILE, and the engine is not consulted.**
+  > `registry.detect(path)` takes a path and nothing else; it collects every
+  > `can_parse` match and raises `AmbiguousFormatError` on more than one, so
+  > registration order confers no precedence. The engine is a fact reported
+  > *alongside* the parse, never an input to it. *(This section said the
+  > engine "narrows the parser pool" when it was written on 2026-09-04.
+  > Nothing narrows anything — no caller passes an engine into detection —
+  > and describing a mechanism that does not exist is the defect this
+  > document spends its length removing from others.)* That is why `engine` and
   > `parser_name` are two fields and neither may stand in for the other —
   > substituting one for the other is what sent `format: "molwatch"` (a
   > format) to a client asking which engine ran.

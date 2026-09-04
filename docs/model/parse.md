@@ -355,6 +355,7 @@ molbuilder/parse/
 ├── contract.py    # what a DIRECTORY records about itself:
 │                  #   contract_of  — the electronic contract its deck states (§ 5b)
 │                  #   engine_of    — WHICH ENGINE RAN (`running-a-job.md` § 4.2)
+├── ion.py         # SIESTA .ion basis reach (read by transport/compose.py)
 ├── _log.py        # parse-side logging helper
 │
 ├── engines/       # engine .out / .log → TrajectoryResult (FileParsers)
@@ -377,12 +378,14 @@ molbuilder/parse/
 │   ├── header.py · provenance.py · bench_marks.py
 │   ├── atom_metadata.py · user_custom.py
 │   ├── source.py              # ScriptSourceTextParser — umbrella over the blocks
+│   ├── source_dict.py         # the same blocks as a plain dict (dirs/job.py)
 │   ├── markers.py             # MARKER_RE + block-name constants
 │   └── _helpers.py
 │
 └── dirs/          # directory composers (DirParsers)
     ├── job.py                 # JobDirParser + decode_run_dir → JobResult
     ├── run_info.py            # run_info_for_dir → the `info` block (composer)
+    ├── atom_metadata.py       # ATOM-METADATA for a run dir (read by web/watch)
     └── _assembler_helpers.py  # shared dir-walk + .fdf-coords helpers
 ```
 

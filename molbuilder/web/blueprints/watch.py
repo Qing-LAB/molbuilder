@@ -1244,8 +1244,16 @@ def api_data():
         "changed":  True,
         "path":     state["path"],
         "mtime":    state["mtime"],
+        # An UPLOAD has no run directory, and `os.path.dirname` of its
+        # temp path is the system temp dir -- shared, and full of other
+        # people's files.  Asking it produced an engine decided by
+        # unrelated litter (and read every `*.py`/`*.fdf`/`*.run.sh` in
+        # /tmp on every poll).  The load path passes None here for the
+        # same reason; the poll must agree with it or one file gets two
+        # answers.
         "format":   _engine_of(
-            state.get("run_dir") or os.path.dirname(state["path"]),
+            None if state.get("uploaded")
+            else (state.get("run_dir") or os.path.dirname(state["path"])),
             state["data"], parser_cls),
         "label":    parser_cls.label,
         "data":     state["data"],

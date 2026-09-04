@@ -862,9 +862,15 @@ generation time:
   `pyscf`, taken from `DeckSpec.engine`, which is the field that chose the
   catalogue rows and the layout that produced the body below it. It is the
   **sole source of truth for engine identity** in a run directory
-  (`running-a-job.md` § 4.2 states the resolution order and the two fallbacks
-  behind it). A **TranSIESTA** deck says `siesta`: same engine, same `.fdf`
-  contract, different task.
+  (`running-a-job.md` § 4.2 states how the declarations are weighed and what
+  is sniffed when there are none).
+
+  **A TranSIESTA run declares `siesta`** — same engine, same `.fdf`
+  contract, different task — but **not from its deck**: § 3.1's table above
+  is right that a TranSIESTA `.fdf` carries no PROVENANCE, because
+  `jobset/prep.py` writes those decks with a bare `write_text` instead of
+  through `prepare_deck`. Its `.run.sh` carries the declaration, and is the
+  only artifact of that run that does.
 
   This key is why the block exists at all. § 3 opens by saying generated
   input "gets **copied** out of the edit directory into project/run

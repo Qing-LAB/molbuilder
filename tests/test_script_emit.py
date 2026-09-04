@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
+
+import pytest
 
 from molbuilder import script_emit as sc
 
@@ -728,3 +731,52 @@ def test_a_label_already_in_the_current_place_is_not_overwritten():
     said = []
     sc.apply_inbody_atom_metadata(back, blk, notices=said)
     assert back.regions[FROZEN] == [0], "the old key overwrote the current one"
+
+
+# --------------------------------------------------------------------- #
+#  The PROVENANCE `engine` key — the DECLARATION side                   #
+# --------------------------------------------------------------------- #
+#
+# `running-a-job.md` § 4.2: the engine is declared when the script is
+# generated, and `parse.contract.engine_of` reads it back. Everything
+# that pinned that rule tested the READER, against hand-written
+# provenance text. So the emitters — the half that actually makes the
+# declaration exist — had NO coverage: an adversarial review measured
+# 853 tests still green with `engine=spec.engine` and the wrapper's
+# `engine=` argument both deleted. These are the missing half, and they
+# assert on a REAL generated artifact rather than a fixture string.
+
+def test_a_generated_deck_declares_its_engine():
+    """Both engines, through their own seams and the one deck writer."""
+    import numpy as np
+
+    from molbuilder import script_emit as sc
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+    from molbuilder.pyscf.input import spec_for as pyscf_spec
+    from molbuilder.siesta.input import spec_for as siesta_spec
+    from molbuilder.structure import Structure
+
+    st = Structure(elements=["O", "C", "O"],
+                   positions=np.array([[0.0, 0.0, -1.16],
+                                       [0.0, 0.0, 0.0],
+                                       [0.0, 0.0, 1.16]]),
+                   vacuum=(10.0, 10.0, 10.0))
+
+    for spec_for, cfg, name, engine in (
+        (siesta_spec, SiestaConfig(system_label="co2"), "co2.fdf", "siesta"),
+        (pyscf_spec,  PySCFConfig(job_name="co2"),      "co2.py",  "pyscf"),
+    ):
+        import tempfile
+        d = Path(tempfile.mkdtemp())
+        spec = spec_for(st, cfg)
+        assert spec.engine == engine, "the seam's own answer moved"
+        sc.prepare_deck(spec, st, cfg, d / name)
+        block = _extract_provenance_dict((d / name).read_text(encoding="utf-8"))
+        assert block is not None, f"{name} carries no PROVENANCE block at all"
+        assert block.get("engine") == engine, (
+            f"{name}'s PROVENANCE says engine={block.get('engine')!r}; the "
+            f"deck was generated for {engine!r}. This key IS the declaration "
+            f"`running-a-job.md` § 4.2 resolves against -- without it a run "
+            f"directory falls back to sniffing file shapes.")

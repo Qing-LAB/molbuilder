@@ -1533,3 +1533,35 @@ class TestOneDefaultForAnAbsentGpuCount:
             f"one device (gpu.md G5)")
         # ...and the rank count is untouched by the device default.
         assert " -n 3" in outer or "--ntasks=3" in outer
+
+
+# --------------------------------------------------------------------- #
+#  The wrapper's PROVENANCE `engine` key                                #
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("deck,engine", [("my-job.fdf", "siesta"),
+                                         ("my-job.py",  "pyscf")])
+def test_a_generated_wrapper_declares_its_engine(deck, engine):
+    """The wrapper is the one artifact EVERY prepared run carries.
+
+    `running-a-job.md` § 4.2: the engine is declared when the script is
+    generated, and `parse.contract.engine_of` reads it back.  A
+    transport stage has no deck PROVENANCE at all -- `jobset/prep.py`
+    writes its deck with a bare `write_text`, bypassing `prepare_deck`
+    -- so for those runs this `.run.sh` is the ONLY declaration on disk.
+
+    This existed with no coverage until an adversarial review measured
+    853 tests still green with the `engine=` argument deleted from both
+    emitters.  Everything that pinned the rule tested the READER against
+    hand-written provenance text; nothing asserted the declaration was
+    ever written.
+    """
+    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+
+    text = render_run_wrapper(Path("/somewhere") / deck,
+                              resources=Resources())
+    block = _extract_provenance_dict(text)
+    assert block is not None, "the wrapper carries no PROVENANCE block"
+    assert block.get("engine") == engine, (
+        f"a wrapper for {deck} declares engine={block.get('engine')!r}, "
+        f"expected {engine!r}")

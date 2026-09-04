@@ -107,26 +107,62 @@ def test_the_molwatch_header_outranks_the_file_cluster(tmp_path):
     assert engine_of(tmp_path) == "pyscf"
 
 
-def test_provenance_outranks_everything_below_it(tmp_path):
-    """The declaration is the SOLE source of truth when it is present."""
-    (tmp_path / "j.fdf").write_text("SystemLabel j\n")
-    (tmp_path / "j.molwatch.log").write_text("# engine: siesta\n")
+def test_a_declaration_outranks_stale_litter(tmp_path):
+    """A DECLARATION beats the file sniff -- files outlive the run.
+
+    The re-prepped directory: an old `.fdf` still on disk beside a new
+    PySCF wrapper. The `.fdf` is not a second opinion, it is litter, and
+    a sniff never contradicts a declaration.
+    """
+    (tmp_path / "old.fdf").write_text("SystemLabel old\n")
     (tmp_path / "j.run.sh").write_text(_PROV.format(e="pyscf"))
     assert engine_of(tmp_path) == "pyscf"
 
 
-def test_a_transiesta_run_is_engine_siesta(tmp_path):
+def test_two_declarations_that_disagree_answer_unknown(tmp_path):
+    """Declarations are weighed TOGETHER, never in precedence order.
+
+    This shipped as a first-hit-wins list on 2026-09-04 and was wrong:
+    a PySCF run whose molwatch header AND whose whole file cluster said
+    `pyscf` answered `siesta` because a foreign `.run.sh` had been
+    copied in. One artifact decided while its corroboration went unread
+    -- worse than the constant it replaced, and worse than the route
+    before it, which had been answering from the loaded file's own
+    `source_format` and getting it right.
+    """
+    (tmp_path / "j.py").write_text("# deck\n")
+    (tmp_path / "j.pyscf.log").write_text("x\n")
+    (tmp_path / "j.molwatch.log").write_text("# engine: pyscf\n")
+    (tmp_path / "foreign.run.sh").write_text(_PROV.format(e="siesta"))
+    assert engine_of(tmp_path) == "unknown"
+
+
+def test_the_wrapper_alone_carries_a_transiesta_run(tmp_path):
     """TranSIESTA is the same engine as SIESTA -- a different TASK.
 
-    It emits no deck PROVENANCE (`job-contracts.md` § 3.1's per-engine
-    table), which is exactly why the wrapper carries the declaration
-    too: `.run.sh` is the one artifact every prepared run has, whatever
-    the engine and whatever the task.
+    A transport deck gets no PROVENANCE at all (`jobset/prep.py` writes
+    it with a bare `write_text`, bypassing `prepare_deck`), so the
+    `.run.sh` is the ONLY artifact declaring the engine. Hence the
+    second assertion, and it is the point of this test: with the deck
+    removed the answer must still be `siesta`, which is what proves the
+    WRAPPER was read.
+
+    Without it this test was vacuous -- an earlier version asserted only
+    the first line, which passes against a `.fdf` cluster sniff, against
+    a provenance rung that ignores `*.run.sh`, and against the literal
+    constant `"siesta"` this whole mechanism replaced. It was caught in
+    an adversarial review the day it was written.
     """
-    (tmp_path / "j.fdf").write_text(
-        "%block TS.Elec.Left\n%endblock TS.Elec.Left\n")
+    deck = tmp_path / "j.fdf"
+    deck.write_text("%block TS.Elec.Left\n%endblock TS.Elec.Left\n")
     (tmp_path / "j.run.sh").write_text(_PROV.format(e="siesta"))
     assert engine_of(tmp_path) == "siesta"
+
+    deck.unlink()                       # nothing left to sniff
+    assert engine_of(tmp_path) == "siesta", (
+        "with no deck to sniff, only the wrapper's PROVENANCE can answer "
+        "-- if this fails, the provenance rung is not reading *.run.sh "
+        "and a transport run has no declaration at all")
 
 
 def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
