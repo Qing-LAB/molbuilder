@@ -691,3 +691,60 @@ def test_format_names_the_engine_not_the_parser_that_read_it(
     assert "molwatch" in body["label"].lower(), (
         f"label={body['label']!r} -- it should still name the READER, so "
         f"the two facts stay separable")
+
+
+def test_an_upload_never_asks_the_temp_directory_which_engine_ran(
+        client, tmp_path, monkeypatch):
+    """LOAD and POLL must agree about an uploaded file's engine.
+
+    An upload has no run directory. `web-api.md`'s `/api/watch/*` row:
+    *"`source_format` is the fallback and only an upload reaches it"* --
+    so the load path passes `None` to `_engine_of` deliberately.  The
+    POLL path passed `os.path.dirname(state["path"])`, which for an
+    upload is the SYSTEM TEMP DIRECTORY: shared, and full of files
+    belonging to other work.  One file then got two answers, the second
+    decided by litter -- and every `*.py` / `*.fdf` / `*.run.sh` in
+    `/tmp` was read on every poll to reach it.
+
+    The `.fdf` planted below is the whole point: it makes the temp
+    directory sniff as SIESTA, so a poll that asks the directory must
+    disagree with the load.  Without it this test passes against the bug
+    (found by adversarial review, 2026-09-04 -- the full 8360-test suite
+    was green while this defect sat in it, because no test built this
+    directory shape).
+    """
+    import tempfile as _tempfile
+
+    monkeypatch.setattr(_tempfile, "tempdir", str(tmp_path))
+    (tmp_path / "someone_elses_run.fdf").write_text("SystemLabel other\n")
+
+    # Built through the production writer, not hand-typed: a log the
+    # parser refuses proves nothing about which directory was asked.
+    import numpy as np
+
+    from molbuilder.structure import Structure
+    from molbuilder.trajectory_log.format import write_initial_preview
+
+    src = tmp_path / "src" / "co2.molwatch.log"
+    src.parent.mkdir()
+    write_initial_preview(
+        Structure(elements=["O", "C", "O"],
+                  positions=np.array([[0.0, 0.0, -1.16],
+                                      [0.0, 0.0, 0.0],
+                                      [0.0, 0.0, 1.16]]),
+                  vacuum=(10.0, 10.0, 10.0)),
+        src, job="co2", engine="pyscf")
+    r = client.post("/api/watch/load",
+                    data={"file": (io.BytesIO(src.read_bytes()),
+                                   "co2.molwatch.log")},
+                    content_type="multipart/form-data")
+    load = r.get_json()
+    assert load["ok"] is True, load
+    assert load["uploaded"] is True
+
+    poll = client.get("/api/watch/data").get_json()
+    assert poll["ok"] is True, poll
+    assert poll["format"] == load["format"], (
+        f"the load says the engine is {load['format']!r} and the poll says "
+        f"{poll['format']!r}. The poll is asking the shared temp directory, "
+        f"where an unrelated '.fdf' is sitting.")
