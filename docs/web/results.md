@@ -258,12 +258,18 @@ Passing it through and comparing it once, inside `APPLY`, means a stale
 reply is refused because its own name no longer matches, not because a
 number moved.
 
-`fetchSeq` **still exists**, and the distinction matters: **no data
-integrity depends on it any more**, but it still gates the status banner
-and the consecutive-error count, so a late reply does not overwrite a
-message about the file you are now on. Retiring it is a separate change —
-bundling a cleanup into a correctness fix is how the correctness fix stops
-being reviewable.
+**`fetchSeq` is gone** (2026-09-04, a separate change from the correctness
+fix above, deliberately). The guards it served — the status banner, the
+consecutive-error count, `stopWatch` — ask the same question of the same
+fact now: *is `path` still `state.fileState.path`?*
+
+The replacement is **strictly stronger**, which is why this was a deletion
+and not a trade. `transition("IDLE")` never bumped the counter, so a fetch
+still in flight when the inspector was disposed passed the old guard; it
+fails the new one, because `fileState.path` is null by then. The one thing
+a path cannot do is tell two loads of the *same* file apart — and
+`signal.aborted`, checked beside it, always could, so both halves are kept
+and neither is redundant.
 
 Two consequences worth stating, because they are the point:
 
@@ -493,7 +499,9 @@ file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
 
 *(The last two were missing from this list until 2026-09-02, which is how they
 came to be read as tests of a retired design: the vocabulary they use —
-`fileState`, `fetchSeq`, `uiPrefs` — appears in no live document, so a search
-for it lands in `archive/` and nowhere else. It is the shipped code's own
-structure, 3,212 lines of it, and these are the only tests that hold it. § 4
-now names the buckets so the search lands here.)*
+`fileState`, `uiPrefs` — appeared in no live document, so a search for it
+landed in `archive/` and nowhere else. § 4 names the buckets now, so the
+search lands here. One word of that vocabulary has since gone from the code
+too: `fetchSeq` was deleted 2026-09-04 and the seven tests pinning it went
+with it — a name with no live home is a question, and the answer is
+sometimes "because it should not be there".)*

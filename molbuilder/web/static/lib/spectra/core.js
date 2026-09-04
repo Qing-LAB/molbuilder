@@ -201,10 +201,9 @@
             watchErrors:   0,
             // File-identity guard (contract § 4 Invariant 1).
             // Every fetch resolution checks (response.path,
-            // current fetchSeq) before applying.  Late responses
+            // the file it was issued for) before applying.  Late responses
             // from a prior file can never write into the current
             // file's view.
-            fetchSeq:      0,
         },
 
         derived: {
@@ -270,7 +269,6 @@
     // Targets (per contract § 2):
     //   'LOADING'  -> { path }: empty fileState, reset viewState,
     //                 abort in-flight controllers, clear timer,
-    //                 bump fetchSeq.
     //   'LOADED'   -> {}:       stop watchTimer.  Used when
     //                 allPhasesComplete OR after a Load-once.
     //   'WATCHING' -> {}:       start watchTimer.  Used by
@@ -310,10 +308,6 @@
             state.viewState.selectedMode = null;
             // Clear transient lifecycle counters.
             state.lifecycle.watchErrors = 0;
-            // Bump fetchSeq AFTER aborts so the new fetch carries a
-            // fresh sequence number that no in-flight response can
-            // match.
-            state.lifecycle.fetchSeq++;
             state.machine = "LOADING";
             return;
         }
@@ -375,9 +369,13 @@
              * fileState is "replaced atomically"; until 2026-09-03 it was
              * not.  Every caller passed `{results}` alone, so the answer
              * landed under whatever path happened to be sitting there, and
-             * `fetchSeq` existed to survive that -- a counter each caller
-             * snapshotted before its fetch and re-checked after, in five
-             * places, to notice it had written into the wrong file.
+             * A `fetchSeq` counter existed to survive that -- snapshotted
+             * before each fetch and re-checked after, in five places, to
+             * notice it had written into the wrong file.  It is gone
+             * (2026-09-04): once the answer carries its own name, the
+             * question "is this still the file on screen?" is asked of the
+             * data, and dispose -- which never bumped the counter -- is
+             * caught too.
              *
              * A payload MUST now say which file it is for.  A late answer
              * for a file we have moved off is dropped HERE, once, because
@@ -776,8 +774,8 @@
         // Contract § 2: file-switch / Load -> transition('LOADING').
         // Aborts loadAbort + watchAbort, clears watchInFlight, stops
         // the watchTimer if running, empties fileState (sets path),
-        // resets viewState, bumps fetchSeq for the file-identity
-        // guard.  Pre-PR-3 the inline aborts + path write lived here;
+        // and resets viewState.  Pre-PR-3 the inline aborts + path write
+        // lived here;
         // PR 3 centralizes them in transition() for a single source
         // of truth.
         //
@@ -790,7 +788,6 @@
         // This also matches contract § 5 ("Refresh = file-switch")
         // which forbids partial resets.
         transition("LOADING", { path: path });
-        const mySeq = state.lifecycle.fetchSeq;
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
         let body;
@@ -812,11 +809,17 @@
             transition("ERROR");
             return;
         }
-        // Contract § 4 Invariant 1 (file-identity guard): if a
-        // newer transition('LOADING') ran while this fetch was on
-        // the wire, fetchSeq has been bumped and our response no
-        // longer corresponds to the current file.  Drop it.
-        if (state.lifecycle.fetchSeq !== mySeq) return;
+        // Contract § 4 Invariant 1, asked of the ANSWER'S OWN IDENTITY.
+        // Two questions, and the pair is what a sequence counter used to
+        // approximate:
+        //   * is this still the file on screen?  A newer LOADING moved
+        //     `fileState.path`, and dispose set it to null -- which the
+        //     counter never caught, because IDLE did not bump it;
+        //   * was this request superseded?  `signal.aborted` says so, and
+        //     it is the only thing that can tell two loads of the SAME
+        //     file apart, which a path comparison cannot.
+        if (signal.aborted) return;
+        if (path !== state.fileState.path) return;
         if (!body.ok) {
             let msg = body.error || "Load failed.";
             if (body.kind === "schema_mismatch") {
@@ -934,18 +937,14 @@
         // THE FILE THIS TICK IS FOR, read once and carried.  Reading
         // `state.fileState.path` again after the await would be reading
         // the file the user has since moved to, which is how an answer
-        // ends up painted under the wrong name.
+        // ends up painted under the wrong name -- and it is what every
+        // guard below compares against.
         const myPath = state.fileState.path;
-        // File-identity guard (contract § 4 Invariant 1): the
-        // sequence number this tick is bound to.  If a Load / Start-
-        // watching bumps fetchSeq while this fetch is on the wire,
-        // the response is dropped.
-        const mySeq = state.lifecycle.fetchSeq;
         try {
             body = (await fetchResults(myPath, signal)).body;
         } catch (exc) {
             if (exc.name === "AbortError") return;
-            if (state.lifecycle.fetchSeq !== mySeq) return;
+            if (myPath !== state.fileState.path) return;
             state.lifecycle.watchErrors++;
             setStatus(els.watchStatus,
                       "Network error (" + state.lifecycle.watchErrors + "/"
@@ -958,8 +957,10 @@
         } finally {
             state.lifecycle.watchInFlight = false;
         }
-        // File-identity guard at fetch resolution.
-        if (state.lifecycle.fetchSeq !== mySeq) return;
+        // File-identity guard at fetch resolution: this tick's file, not
+        // a counter.  `watchInFlight` above already makes two ticks for
+        // the same file impossible, so the path is the whole question.
+        if (myPath !== state.fileState.path) return;
         if (!body.ok) {
             if (body.kind === "not_found") {
                 setStatus(els.watchStatus,

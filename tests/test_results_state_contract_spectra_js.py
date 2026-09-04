@@ -157,18 +157,6 @@ class TestTransitionOrchestrator:
             f"branch.  Per contract § 2 all six targets MUST be "
             f"implemented.")
 
-    def test_transition_loading_bumps_fetchSeq(self, core_body):
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert re.search(r"fetchSeq\s*\+\+", body), (
-            "transition('LOADING') doesn't increment fetchSeq.  "
-            "File-identity guard is broken.")
-
     def test_transition_loading_aborts_controllers(self, core_body):
         m = re.search(
             r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
@@ -257,42 +245,36 @@ class TestRenderResultsUsesTransition:
 # --------------------------------------------------------------------- #
 
 
-class TestFileIdentityGuard:
-    """Every async fetch resolution MUST compare its captured
-    ``mySeq`` against the live ``state.lifecycle.fetchSeq``."""
-
-    def test_loadByPath_captures_fetchSeq(self, core_body):
-        m = re.search(
-            r"async\s+function\s+loadByPath\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert re.search(
-            r"transition\s*\(\s*[\"']LOADING[\"'].*?"
-            r"mySeq\s*=\s*state\.lifecycle\.fetchSeq",
-            body, re.DOTALL,
-        ), ("loadByPath no longer captures mySeq after "
-            "transition('LOADING').  File-identity guard broken.")
-        assert re.search(
-            r"state\.lifecycle\.fetchSeq\s*!==\s*mySeq",
-            body,
-        ), ("loadByPath fetch-resolution path doesn't check "
-            "fetchSeq.  Late responses can apply to wrong file.")
-
-    def test_watchTick_guards_fetch_resolution(self, core_body):
-        m = re.search(
-            r"async\s+function\s+watchTick\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "mySeq" in body and "fetchSeq" in body, (
-            "watchTick no longer carries a fetchSeq guard.  A tick "
-            "in-flight at file-switch can land on the new file's "
-            "view with stale data.")
-
-
+    # RETIRED 2026-09-04 with the counter they describe.
+    #
+    # `fetchSeq` was a sequence number: bumped on LOADING, snapshotted
+    # before each fetch, re-checked after, to notice that a response had
+    # arrived for a file the user had moved off.  It existed because the
+    # filename and the data were written in two separate steps, so an
+    # answer could land under the wrong name.
+    #
+    # Since 2026-09-03 `transition("APPLY", ...)` REQUIRES the path and
+    # drops a payload whose file is not the one on screen, so the answer
+    # carries its own identity.  The remaining guards -- the status banner,
+    # the consecutive-error count, `stopWatch` -- now ask the same question
+    # of the same fact: `path !== state.fileState.path`.
+    #
+    # The replacement is STRICTLY STRONGER, which is why this is a deletion
+    # and not a trade.  `transition("IDLE")` never bumped the counter, so a
+    # fetch in flight when the inspector was disposed passed the old guard
+    # and fails the new one (`fileState.path` is null by then).  And
+    # `signal.aborted`, already checked beside it, is the only thing that
+    # can tell two loads of the SAME file apart -- which a counter could and
+    # a path cannot, so both halves are kept.
+    #
+    # These seven pinned the MECHANISM by name: "LOADING increments
+    # fetchSeq", "loadByPath captures mySeq", "the guard compares them".
+    # None could survive the mechanism being replaced by a better one, and
+    # none was checking the property -- that a late answer cannot be
+    # painted under the wrong file -- which is pinned behaviourally by
+    # test_spectra_from_a_real_run_e2e.py and
+    # test_trajectory_from_a_real_run_e2e.py, both mutation-verified
+    # against APPLY's path requirement.
 # --------------------------------------------------------------------- #
 #  Refresh listener wired ONCE at mount                                 #
 # --------------------------------------------------------------------- #
@@ -352,8 +334,8 @@ class TestEntryPointsRouteThroughTransition:
         assert re.search(
             r"transition\s*\(\s*[\"']LOADING[\"']", body,
         ), ("loadByPath doesn't call transition('LOADING').  The "
-            "reset matrix isn't run; scfPollHistory-equivalent for "
-            "spectra (watchErrors, fetchSeq) leaks across loads.")
+            "reset matrix isn't run; the per-load counters "
+            "(watchErrors) leak across loads.")
 
     def test_startWatch_calls_transition_loading(self, core_body):
         m = re.search(

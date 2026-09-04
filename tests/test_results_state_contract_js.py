@@ -5,7 +5,9 @@ file switch, never patched), your per-file view, your per-session preferences,
 and the poll timer.  The code names those buckets `fileState`, `viewState`,
 `uiPrefs` and `lifecycle`, moves between them through one `transition()`, and
 backs the whole thing with the two guards § 4 names -- a late response from a
-previous file cannot write into the current view (via `lifecycle.fetchSeq`),
+previous file cannot write into the current view (via the path each answer
+carries -- `lifecycle.fetchSeq` did this until 2026-09-04, see the retirement
+note below),
 and in-progress frames stay out of the plots -- plus § 4.1's two-tick settle.
 
 **These tests are the only place any of that is checked.**
@@ -191,22 +193,6 @@ class TestTransitionOrchestrator:
             "clears state.derived.scfPollHistory.  The Refresh "
             "button half-refresh bug returns -- per-iter time "
             "estimates carry stale samples for ~32 polls.")
-
-    def test_transition_loading_bumps_fetchSeq(self, core_body):
-        """fetchSeq MUST be incremented on every LOADING transition.
-        Invariant 1 (file-identity guard) depends on it."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert re.search(r"fetchSeq\s*\+\+", body), (
-            "trajectory/core.js transition('LOADING') no longer "
-            "increments lifecycle.fetchSeq.  Invariant 1 file-"
-            "identity guard cannot distinguish in-flight responses "
-            "of the new vs prior file.")
 
     def test_transition_loading_aborts_controllers(self, core_body):
         """Both loadAbort and pollAbort MUST be aborted in the
@@ -548,61 +534,36 @@ class TestRefreshIsFileSwitch:
 # --------------------------------------------------------------------- #
 
 
-class TestFileIdentityGuard:
-    """Every async fetch resolution MUST compare its captured
-    ``mySeq`` against the live ``state.lifecycle.fetchSeq``.  If a
-    newer transition('LOADING') ran while the fetch was on the wire,
-    the response is dropped."""
-
-    def test_loadByPath_captures_fetchSeq(self, core_body):
-        """loadByPath snapshots fetchSeq AFTER transition() runs --
-        the bumped value is the one this fetch carries."""
-        m = re.search(
-            r"async\s+function\s+loadByPath\s*\([^)]*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "loadByPath function not found"
-        body = m.group(1)
-        # The seq capture follows transition('LOADING', ...).
-        assert re.search(
-            r"transition\s*\(\s*[\"']LOADING[\"'].*?mySeq\s*=\s*"
-            r"state\.lifecycle\.fetchSeq",
-            body, re.DOTALL,
-        ), ("loadByPath no longer captures mySeq AFTER "
-            "transition('LOADING') runs.  File-identity guard is "
-            "broken; late responses can apply to wrong file.")
-
-    def test_loadByPath_guards_fetch_resolution(self, core_body):
-        """The .then() / await resolution MUST check fetchSeq before
-        applying the response."""
-        m = re.search(
-            r"async\s+function\s+loadByPath\s*\([^)]*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert re.search(
-            r"state\.lifecycle\.fetchSeq\s*!==\s*mySeq",
-            body,
-        ), ("loadByPath fetch-resolution path no longer checks "
-            "fetchSeq.  A late response from a prior file can apply "
-            "to the current file's view.")
-
-    def test_pollOnce_guards_fetch_resolution(self, core_body):
-        """pollOnce MUST also carry a fetchSeq guard -- a poll that
-        spans a file-switch transition has the same race."""
-        m = re.search(
-            r"async\s+function\s+pollOnce\s*\(\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "pollOnce function not found"
-        body = m.group(1)
-        assert "mySeq" in body and "fetchSeq" in body, (
-            "pollOnce no longer carries a fetchSeq guard.  A poll "
-            "in-flight at file-switch time can land on the new "
-            "file's view with stale data.")
-
-
+    # RETIRED 2026-09-04 with the counter they describe.
+    #
+    # `fetchSeq` was a sequence number: bumped on LOADING, snapshotted
+    # before each fetch, re-checked after, to notice that a response had
+    # arrived for a file the user had moved off.  It existed because the
+    # filename and the data were written in two separate steps, so an
+    # answer could land under the wrong name.
+    #
+    # Since 2026-09-03 `transition("APPLY", ...)` REQUIRES the path and
+    # drops a payload whose file is not the one on screen, so the answer
+    # carries its own identity.  The remaining guards -- the status banner,
+    # the consecutive-error count, `stopWatch` -- now ask the same question
+    # of the same fact: `path !== state.fileState.path`.
+    #
+    # The replacement is STRICTLY STRONGER, which is why this is a deletion
+    # and not a trade.  `transition("IDLE")` never bumped the counter, so a
+    # fetch in flight when the inspector was disposed passed the old guard
+    # and fails the new one (`fileState.path` is null by then).  And
+    # `signal.aborted`, already checked beside it, is the only thing that
+    # can tell two loads of the SAME file apart -- which a counter could and
+    # a path cannot, so both halves are kept.
+    #
+    # These seven pinned the MECHANISM by name: "LOADING increments
+    # fetchSeq", "loadByPath captures mySeq", "the guard compares them".
+    # None could survive the mechanism being replaced by a better one, and
+    # none was checking the property -- that a late answer cannot be
+    # painted under the wrong file -- which is pinned behaviourally by
+    # test_spectra_from_a_real_run_e2e.py and
+    # test_trajectory_from_a_real_run_e2e.py, both mutation-verified
+    # against APPLY's path requirement.
 # --------------------------------------------------------------------- #
 #  Invariant 2: in-progress frame filter                                #
 # --------------------------------------------------------------------- #

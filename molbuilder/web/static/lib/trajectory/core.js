@@ -215,7 +215,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     //   viewState  -- per-file user interaction (firstFit, picks; NOT the playhead --
     //                 MolView owns that)
     //   uiPrefs    -- per-session knobs (hideFrozen etc.)
-    //   lifecycle  -- controllers + timers (poll timer, abort controllers, fetchSeq)
+    //   lifecycle  -- controllers + timers (poll timer, abort controllers)
     //   derived    -- recomputed from fileState (scfPollHistory)
     //
     // Backward-compat aliases at the end of this block keep the
@@ -303,10 +303,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             pollAbort:    null,
             // File-identity guard (contract § 4 Invariant 1).
             // Every fetch resolution checks (response.path,
-            // current fetchSeq) before applying.  Late responses
+            // the file it was issued for) before applying.  Late responses
             // from a prior file can never write into the current
             // file's view.
-            fetchSeq:     0,
             // 2-consecutive-ticks WATCHING -> LOADED buffer
             // (contract § 2, § 3 matrix row "poll says run
             // finished (2 consecutive ticks)").  A single tick
@@ -379,7 +378,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // Reset matrix (contract § 3) enforced here:
     //   -> LOADING: empty fileState, reset viewState (firstFit=true),
     //               keep uiPrefs, abort + clear all
-    //               in-flight controllers, clear derived, bump fetchSeq.
+    //               in-flight controllers, clear derived.
     //   -> IDLE:    clear fileState, viewState, derived; abort + clear
     //               all controllers; stop poll timer.
     function transition(target, payload) {
@@ -387,7 +386,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (target === "LOADING") {
             // Abort all in-flight requests.  Their .then() handlers
             // still fire, but the file-identity guard (Invariant 1)
-            // catches them via the bumped fetchSeq.
+            // catches them via the path guard at resolution.
             if (state.lifecycle.loadAbort) {
                 try { state.lifecycle.loadAbort.abort(); } catch (_) {}
                 state.lifecycle.loadAbort = null;
@@ -427,10 +426,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // transitioned LOADING -> WATCHING with a finished
             // run.  Now the reset is here, where it belongs.)
             state.lifecycle.finishedTicks = 0;
-            // Bump fetchSeq AFTER aborts so the new fetch carries a
-            // fresh sequence number that no in-flight response can
-            // match.
-            state.lifecycle.fetchSeq++;
+            // (No sequence counter: the answer carries its own path, and
+            // every guard compares against `fileState.path` below.)
             state.machine = "LOADING";
             return;
         }
@@ -529,8 +526,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // and let path stand "because the file identity didn't
             // change", which is an assumption nobody checked: a tick fired
             // for file A resolves after the user has moved to B, and A's
-            // frames are written under B's name.  `fetchSeq` existed to
-            // notice that afterwards.
+            // frames are written under B's name.  A `fetchSeq` counter
+            // existed to notice that afterwards; it is gone (2026-09-04),
+            // because an answer that carries its own name does not need a
+            // number to be recognised -- and the counter never caught the
+            // dispose case, since IDLE did not bump it.
             //
             // The server already answers the question -- every reply
             // carries `r.path`, the file it actually read -- so the answer
@@ -2181,11 +2181,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
         state.lifecycle.pollAbort = new AbortController();
         const signal = state.lifecycle.pollAbort.signal;
         state.lifecycle.pollInFlight = true;
-        // File-identity guard (contract § 4 Invariant 1): the
-        // sequence number this poll is bound to.  If a file-switch
-        // / Refresh bumps fetchSeq while this fetch is on the wire,
-        // the response is dropped.
-        const mySeq = state.lifecycle.fetchSeq;
+        // THE FILE THIS POLL IS FOR, read once and carried.
+        // `/api/watch/data` takes no path -- it answers for whatever the
+        // server currently holds -- so the question "is this answer still
+        // ours?" can only be asked of the file we were showing when the
+        // poll went out.
+        const myPath = state.fileState.path;
         try {
             const url = state.mtime !== null
                 ? "/api/watch/data?mtime=" + encodeURIComponent(state.mtime)
@@ -2193,7 +2194,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const r = await fetch(url, { signal: signal })
                 .then(x => x.json());
             if (signal.aborted) return;
-            if (state.lifecycle.fetchSeq !== mySeq) return;
+            if (myPath !== state.fileState.path) return;
             if (!r.ok) {
                 setStatus(r.error || "Server error.", "error");
                 return;
@@ -2843,7 +2844,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
         // Contract § 5: Refresh = file-switch with current path.
         // loadByPath -> transition('LOADING') runs the full reset
-        // matrix (scfPollHistory clear, fetchSeq bump, etc.).
+        // matrix (scfPollHistory clear, etc.).
         const _onRefresh = () => {
             const p = state.fileState.path;
             if (!p) return;     // not yet loaded; nothing to refresh
@@ -2940,11 +2941,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
         //   * empty fileState (sets path = new path)
         //   * reset viewState (firstFit=true)
         //   * clear derived (scfPollHistory)
-        //   * bump fetchSeq for the file-identity guard
         // Refresh button arrives here too -- same code path, same
         // resets.  Eliminates the half-refresh class.
         transition("LOADING", { path: path });
-        const mySeq = state.lifecycle.fetchSeq;
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
         try {
@@ -2956,12 +2955,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
             }).then(x => x.json());
 
             if (signal.aborted) return;
-            // Contract § 4 Invariant 1 (file-identity guard): if a
-            // newer transition('LOADING') ran while this fetch was
-            // on the wire, fetchSeq has been bumped and our
-            // response no longer corresponds to the current file.
-            // Drop it; the new fetch is already in flight.
-            if (state.lifecycle.fetchSeq !== mySeq) return;
+            // Contract § 4 Invariant 1, asked of the answer's own
+            // identity rather than a counter.  A newer LOADING moved
+            // `fileState.path`; dispose set it to null -- which the
+            // counter never caught, because IDLE did not bump it.  The
+            // `signal.aborted` check above is the other half: it is the
+            // only thing that can tell two loads of the SAME file apart.
+            if (path !== state.fileState.path) return;
             if (!r.ok) {
                 setStatus(r.error || "Load failed.", "error");
                 return;
