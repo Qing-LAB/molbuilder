@@ -280,20 +280,33 @@ Two consequences worth stating, because they are the point:
 old shape and all three failed on the correction, one of them because a
 non-greedy regex stopped at the new guard's `return`.*
 
-**How far each half is verified, stated plainly.** The trajectory guard is
-**proven live**: removing `path` from its caller fails
-`test_no_trajectory_poll_survives_dispose`, because that test drives a real
-multi-frame `*_geom_optim.xyz` through a real load. The spectra guard is
-**correct by construction and unexercised** — removing `path` from its
-caller changes no test result, because **no test in the suite loads a real
-spectra results file**. The e2e mount `job.spectra.json`, get a 404, and
-land in `ERROR` without ever reaching `APPLY`.
+**Both halves are proven.** Removing `path` from either caller fails a
+test:
 
-That gap is older and wider than this change, and naming it is the point: a
-`.spectra.json` fixture would light up the spectra half of this contract
-and a good deal else besides. Until one exists, the spectra guard rests on
-reading the code, and this paragraph says so rather than letting a green
-suite imply otherwise.
+| core | the test that catches it | what it drives |
+|---|---|---|
+| trajectory | `test_no_trajectory_poll_survives_dispose` | a real multi-frame `*_geom_optim.xyz` |
+| spectra | `test_the_viewer_reads_a_run_this_suite_just_computed` | a real `.spectra.json` |
+
+The spectra half was unprovable for a day, and the reason is worth keeping:
+**no test in this suite had ever loaded a real spectra result.** Every
+spectra e2e mounted a `job.spectra.json` that did not exist, took the 404
+and stopped in `ERROR` without reaching `APPLY` — so the viewer's entire
+load path was uncovered, and a defect in it could not have been caught by
+anything.
+
+What closed it was not a fixture. *(User ruling, 2026-09-03: "e2e means you
+can calculate a CO2 molecule within 5 min and use that output to do this.
+Why do you need anything copied? That would be true e2e.")*
+`tests/test_spectra_from_a_real_run_e2e.py` builds CO2, renders the
+vibration deck through the production door, runs it in the env the four-env
+model routes PySCF to, and opens the result in the browser — **2.3 seconds
+of compute**, and the answer is checked against the physics CO2 actually
+has: four modes for a linear triatomic, the two bends degenerate, bend <
+symmetric < antisymmetric stretch.
+
+A copied artifact would have proved the viewer can read one file from one
+day. Running the calculation proves the chain still works today.
 
 `derived` is the one the prose above folds into "the parsed file", and it is a
 separate bucket for a reason: it is **recomputed**, never written by a
