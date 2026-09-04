@@ -693,6 +693,23 @@ class PySCFOutFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
+        # `<job>_optimized.xyz` IS a valid XYZ, and it belongs to
+        # `pyscf-geom`, whose own `can_parse` says so: *"Plain .xyz files
+        # (without the suffix) are intentionally NOT claimed here; the
+        # PySCFOutFileParser registered under engines/ handles
+        # _geom_optim.xyz trajectories."*  That division of labour was
+        # written on one side only, so both parsers claimed the file and
+        # `detect()` -- which is exactly-one-or-raise -- refused it.
+        # Opening PySCF's final geometry on the Results tab was an
+        # unhandled `AmbiguousFormatError`, i.e. an HTTP 500 (measured).
+        #
+        # The split is right the way it is documented: `_optimized.xyz`
+        # is ONE converged geometry (`pyscf/warm-files.toml`: *"latest
+        # converged geometry"*), so a `StructureResult` is what it is;
+        # this parser answers `TrajectoryResult` and has nothing to say
+        # about a single frame that the sibling does not say better.
+        if path.name.endswith("_optimized.xyz"):
+            return False
         return _can_parse_xyz(str(path))
 
     @classmethod

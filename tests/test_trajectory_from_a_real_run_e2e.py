@@ -357,3 +357,53 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
         f"backwards, which would tell a person their optimisation "
         f"diverged.")
     assert errors == [], f"the page reported JS errors: {errors}"
+
+
+def test_the_run_this_suite_just_generated_declares_its_own_engine(
+        co2_optimization):
+    """The whole chain on a REAL run: writer -> disk -> reader -> field.
+
+    Everything else pinning the engine declaration builds its input.
+    This one does not: the deck above was rendered by the production
+    seam, a real PySCF process ran it, and the directory is whatever
+    that left behind. So it is the only test that can fail because the
+    WRITER stopped writing.
+
+    That gap was real. Until 2026-09-04 every test of this mechanism
+    handed the reader a hand-typed PROVENANCE block, so an adversarial
+    review deleted `engine=` from BOTH emitters and measured 853 tests
+    still green -- the feature entirely gone, the suite entirely happy.
+
+    The third assertion is the anti-vacuity guard and the point of the
+    test. Without it this passes on the file-cluster sniff alone
+    (`.chk` and `_geom_optim.xyz` are in `pyscf/warm-files.toml`), which
+    is exactly the fallback that exists for directories molbuilder did
+    NOT write -- so it would go green with the declaration missing,
+    which is the failure this test exists to catch.
+    """
+    from molbuilder.parse.contract import _declared_in_provenance, engine_of
+    from molbuilder.parse.dirs.job import decode_run_dir
+    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+
+    run_dir = co2_optimization.parent
+
+    deck = run_dir / "co2opt.py"
+    block = _extract_provenance_dict(deck.read_text(encoding="utf-8"))
+    assert (block or {}).get("engine") == "pyscf", (
+        f"the deck this suite generated carries engine="
+        f"{(block or {}).get('engine')!r} in its PROVENANCE block. That "
+        f"line IS the declaration; without it a run directory falls back "
+        f"to guessing from file shapes.")
+
+    assert engine_of(run_dir) == "pyscf"
+    assert decode_run_dir(run_dir).engine == "pyscf", (
+        "`JobResult.engine` is the field the Results tab and JobMonitor "
+        "read. It was the literal 'siesta' for every directory until "
+        "2026-09-04, so every PySCF run in the app reported itself as "
+        "SIESTA.")
+
+    assert _declared_in_provenance(run_dir) == {"pyscf"}, (
+        "the DECLARATION must be what answered, not the file sniff. If "
+        "this set is empty the run resolved from its .chk and "
+        "_geom_optim.xyz -- the fallback meant for directories molbuilder "
+        "did not write -- and the declaration is not being written at all")

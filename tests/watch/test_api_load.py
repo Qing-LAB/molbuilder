@@ -748,3 +748,52 @@ def test_an_upload_never_asks_the_temp_directory_which_engine_ran(
         f"the load says the engine is {load['format']!r} and the poll says "
         f"{poll['format']!r}. The poll is asking the shared temp directory, "
         f"where an unrelated '.fdf' is sitting.")
+
+
+def test_a_single_geometry_is_refused_by_name_not_by_crashing(
+        client, isolated_projects_root):
+    """`<job>_optimized.xyz` must answer 400 with a sentence, never 500.
+
+    PySCF writes this file for every optimization, and it was TWO bugs
+    stacked, both measured through this route:
+
+    1. Two parsers claimed it -- `pyscf` accepts any structurally valid
+       XYZ, `pyscf-geom` accepts any `*_optimized.xyz` -- so `detect()`,
+       which is exactly-one-or-raise, raised `AmbiguousFormatError`.
+       That is the SIBLING of `UnknownFormatError`, not its subclass,
+       and all five detection call sites caught only the latter: an
+       unhandled exception, HTTP 500, HTML body.  `pyscf-geom`'s own
+       `can_parse` already documented the division of labour; only one
+       side of it had been written.
+    2. Underneath that, `/api/watch/*` is the TRAJECTORY route and never
+       checked what the detected parser produces, so a `StructureResult`
+       reached code that reads `.frames`.
+
+    The file is normally ABSORBED into the run's `.molwatch.log` entry
+    (`results.md` § 2.3) so the picker does not offer it -- but
+    absorption narrows the MENU, not what can be opened.
+
+    The `_geom_optim.xyz` control is load-bearing: a fix that refused
+    every `.xyz` would pass the first assertion and break the viewer.
+    """
+    d = isolated_projects_root / "optim_refusal"
+    d.mkdir(parents=True)
+    xyz = "3\nCO2\nO 0 0 -1.16\nC 0 0 0\nO 0 0 1.16\n"
+
+    final = d / "bdt_optimized.xyz"
+    final.write_text(xyz)
+    r = client.post("/api/watch/load", json={"path": str(final)})
+    assert r.status_code == 400, (
+        f"a single-geometry file must be refused with a message; got "
+        f"{r.status_code} ({r.headers.get('Content-Type')})")
+    err = r.get_json()["error"]
+    assert "trajectory" in err and "molwatch" in err, (
+        f"the refusal must say what the file is and where the trajectory "
+        f"lives; got: {err}")
+
+    traj = d / "bdt_geom_optim.xyz"
+    traj.write_text(xyz)
+    assert client.post("/api/watch/load",
+                       json={"path": str(traj)}).status_code == 200, (
+        "the trajectory file must still load -- refusing every .xyz would "
+        "satisfy the assertion above and break the viewer")

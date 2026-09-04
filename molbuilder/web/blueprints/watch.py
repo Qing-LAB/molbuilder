@@ -47,7 +47,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 
 from molbuilder.parse import (
-    UnknownFormatError,
+    ParseError,
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
@@ -414,6 +414,44 @@ def _run_periodicity_json(
     except Exception:                        # noqa: BLE001
         pass
     return out or None
+
+
+def _refuse_if_not_a_trajectory(parser_cls):
+    """``None`` if this parser answers a trajectory, else a 400 body.
+
+    `/api/watch/*` is the TRAJECTORY route: everything after detection
+    reads ``.frames``.  It never checked what the detected parser
+    actually produces, so handing it a single-geometry file raised
+    ``AttributeError: 'StructureResult' object has no attribute
+    'frames'`` -- a 500 for a file the app itself writes and the parser
+    reads perfectly.
+
+    Measured on ``<job>_optimized.xyz``, PySCF's final geometry.  It is
+    normally ABSORBED into the run's ``.molwatch.log`` entry
+    (`results.md` § 2.3) so the picker never offers it -- but absorption
+    narrows the MENU, not what can be opened, and every other route to
+    this one (a pasted path, `molbuilder watch parse`, a restored
+    session) reaches it.
+
+    A parser declares its own answer in ``output``, so this asks rather
+    than guesses, and names the file's real kind in the refusal instead
+    of failing at the first attribute that is missing.
+    """
+    from molbuilder.parse.types import TrajectoryResult
+
+    out = getattr(parser_cls, "output", None)
+    if out is not None and issubclass(out, TrajectoryResult):
+        return None
+    kind = getattr(out, "__name__", "an unknown result")
+    return {
+        "ok": False,
+        "error": (
+            f"{parser_cls.label} is read by the {parser_cls.name!r} parser, "
+            f"which answers a {kind} -- not a trajectory. This viewer shows "
+            f"a run's frames over time. Open the run's .molwatch.log (or a "
+            f"*_geom_optim.xyz) to see the trajectory this geometry came "
+            f"from."),
+    }
 
 
 def _engine_of(search_dir, payload, parser_cls) -> str:
@@ -1050,8 +1088,22 @@ def api_load():
     # unsupported file doesn't blank out a working one.
     try:
         parser_cls = detect_parser(path)
-    except UnknownFormatError as exc:
+    except ParseError as exc:
+        # ParseError, NOT just UnknownFormatError.  `detect()` also
+        # raises AmbiguousFormatError when two parsers claim one
+        # file, and that is its SIBLING, not its subclass
+        # (`parse/errors.py`).  Catching only the one turned a
+        # registry overlap into an unhandled exception -- an HTTP
+        # 500 with an HTML body -- for a file both parsers could
+        # read.  Measured on `<job>_optimized.xyz`, which PySCF
+        # writes for every optimization.  The message names the
+        # clashing parsers, so a 400 carrying it is useful where a
+        # 500 was not.
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    refusal = _refuse_if_not_a_trajectory(parser_cls)
+    if refusal is not None:
+        return jsonify(refusal), 400
 
     # Multi-stage merge: parse every log, concatenate, attach stages
     # metadata.  ``_state["run_dir"]`` is set so subsequent
@@ -1179,10 +1231,17 @@ def _api_load_multipart(uploaded_file):
 
     try:
         parser_cls = detect_parser(tmp_path)
-    except UnknownFormatError as exc:
-        # Don't keep an unrecognised upload around.
+    except ParseError as exc:
+        # Don't keep an undetectable upload around.  ParseError covers
+        # AmbiguousFormatError as well -- see the note at the JSON-path
+        # branch above.
         _remove_temp_quietly(tmp_path)
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    refusal = _refuse_if_not_a_trajectory(parser_cls)
+    if refusal is not None:
+        _remove_temp_quietly(tmp_path)
+        return jsonify(refusal), 400
 
     with _lock:
         # Clean up any previous upload's temp file.

@@ -2991,3 +2991,64 @@ def test_an_explicit_direct_mode_survives_a_configured_domain(
                             "--dry-run", "--yes"])
     assert r.exit_code != 0
     assert "SLURM-submit concept" in r.output
+
+
+# --------------------------------------------------------------------- #
+#  G7 — the GPU answer travels; the deck is not re-read for it          #
+# --------------------------------------------------------------------- #
+
+def test_submit_asks_the_allocation_not_the_deck_which_engine_wants_a_gpu(
+        tmp_path):
+    """`gpu.md` G7: *"The value travels; the deck is not re-read for it."*
+
+    `submit._job_wants_gpu` decides the PARTITION and whether `--gres` is
+    emitted; `runwrap._wants_gpu` decides which conda env the wrapper
+    activates. They must answer the same question the same way, and
+    until 2026-09-04 they did not: submit grepped the deck for
+    `Diag.ELPA.GPU` -- a SIESTA keyword -- so it answered
+
+      * False for a PySCF run whose allocation said `use_gpu: true`
+        (queued on a device-less partition with no `--gres`, while the
+        wrapper activated the GPU env on it), and
+      * True for a SIESTA deck whose allocation said `use_gpu: false`,
+        overriding the stated answer with a file's opinion.
+
+    `model.py`'s `use_gpu` calls itself *"the ANSWER, carried rather than
+    re-derived"* and records four sites fixed 2026-08-23; this was a
+    fifth, a package away.
+
+    The deck scan survives for a caller that states NOTHING -- G7 is
+    explicit that this is not re-deriving, because such a caller has no
+    allocation to ask -- which is the third case below.
+    """
+    from molbuilder.jobset.model import Job, Resources
+    from molbuilder.jobset.submit import _job_wants_gpu
+    from molbuilder.runwrap import _wants_gpu
+
+    (tmp_path / "co2.py").write_text("# a PySCF deck\n")
+    (tmp_path / "s.fdf").write_text("SystemLabel s\nDiag.ELPA.GPU .true.\n")
+
+    pyscf_gpu = Job(name="co2", script="co2.py",
+                    resources=Resources(use_gpu=True))
+    siesta_no = Job(name="s", script="s.fdf",
+                    resources=Resources(use_gpu=False))
+    unstated  = Job(name="s", script="s.fdf", resources=Resources())
+
+    assert _job_wants_gpu(tmp_path, pyscf_gpu) is True, (
+        "a PySCF run whose allocation says use_gpu=true must route to a "
+        "GPU partition; the deck has no SIESTA keyword to find")
+    assert _job_wants_gpu(tmp_path, siesta_no) is False, (
+        "the allocation said use_gpu=false; a keyword in the deck does not "
+        "get to overrule it")
+    assert _job_wants_gpu(tmp_path, unstated) is True, (
+        "nothing was stated, so the deck is the only thing left to ask "
+        "-- G7 keeps this path deliberately")
+
+    # THE TWO DOORS AGREE.  This is the assertion that would have caught
+    # it: each door alone looked self-consistent.
+    for job in (pyscf_gpu, siesta_no, unstated):
+        deck = tmp_path / job.script
+        assert _job_wants_gpu(tmp_path, job) == _wants_gpu(deck, job.resources), (
+            f"submit and the wrapper disagree about {job.script}: submit "
+            f"picks the partition, the wrapper picks the env, and a job "
+            f"sent to a device-less queue then activates the GPU env")

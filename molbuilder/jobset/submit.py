@@ -536,9 +536,23 @@ def _job_wants_gpu(job_dir: Path, job) -> bool:
     """
     if job.resources.gres:
         return True
-    from ..runwrap import _fdf_requests_gpu          # heavy; jobset stays light
+    # THROUGH `runwrap._wants_gpu`, WHICH IS THE ONE DOOR (`gpu.md` G7):
+    # *"The value travels; the deck is not re-read for it ... The deck scan
+    # remains only for a caller that states nothing, which is not
+    # re-deriving: that path has no allocation to ask."*  This one HAS the
+    # allocation -- `job.resources` -- and until 2026-09-04 it asked the
+    # deck anyway, by grepping a SIESTA keyword.  So it answered False for
+    # every PySCF GPU run and True for a SIESTA deck whose allocation said
+    # `use_gpu: false`, disagreeing with the wrapper about the same job:
+    # submit picked a device-less partition and emitted no `--gres`, then
+    # the wrapper activated the GPU env on it.
+    #
+    # `model.py`'s `use_gpu` says it in as many words -- *"the ANSWER,
+    # carried rather than re-derived"* -- and records the four sites fixed
+    # 2026-08-23.  This was a fifth, missed because it lives a package away.
+    from ..runwrap import _wants_gpu                 # heavy; jobset stays light
     deck = Path(job_dir) / os.path.basename(job.script)
-    return deck.is_file() and _fdf_requests_gpu(deck)
+    return _wants_gpu(deck, job.resources)
 
 
 def _run_direct(jobset: JobSet, base_dir: Path, *,

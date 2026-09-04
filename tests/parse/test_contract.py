@@ -83,10 +83,27 @@ def test_the_contract_keys_are_the_contracted_vocabulary(tmp_path):
 
 from molbuilder.parse.contract import engine_of      # noqa: E402
 
-_PROV = ("# === molbuilder provenance BEGIN ===\n"
-         "#   engine               {e}\n"
-         "#   generator-version    git deadbee\n"
-         "# === molbuilder provenance END ===\n")
+def _prov(engine: str) -> str:
+    """A PROVENANCE block from the REAL EMITTER, never typed here.
+
+    These cases build directory shapes a real run cannot easily be made
+    to have (two decks disagreeing, litter beside a fresh deck), so they
+    have to construct the file. What they must NOT do is invent its
+    FORMAT: a hand-typed block is a literal, and a literal cannot
+    regress. Every test of this mechanism fed the reader a typed string
+    until 2026-09-04, which is how the emitters came to have no coverage
+    at all -- an adversarial review deleted the declaration from both
+    writers and watched 853 tests stay green.
+
+    Going through `emit_provenance` means the day the block's shape
+    changes, these fail too, instead of quietly testing a format nothing
+    writes any more.
+    """
+    from molbuilder.script_emit import emit_provenance
+
+    return emit_provenance(generator_version="git deadbee",
+                           generated_at="2026-09-04T00:00:00-07:00",
+                           engine=engine) + "\n"
 
 
 def test_a_pyscf_run_directory_says_pyscf(tmp_path):
@@ -115,7 +132,7 @@ def test_a_declaration_outranks_stale_litter(tmp_path):
     a sniff never contradicts a declaration.
     """
     (tmp_path / "old.fdf").write_text("SystemLabel old\n")
-    (tmp_path / "j.run.sh").write_text(_PROV.format(e="pyscf"))
+    (tmp_path / "j.run.sh").write_text(_prov("pyscf"))
     assert engine_of(tmp_path) == "pyscf"
 
 
@@ -133,7 +150,7 @@ def test_two_declarations_that_disagree_answer_unknown(tmp_path):
     (tmp_path / "j.py").write_text("# deck\n")
     (tmp_path / "j.pyscf.log").write_text("x\n")
     (tmp_path / "j.molwatch.log").write_text("# engine: pyscf\n")
-    (tmp_path / "foreign.run.sh").write_text(_PROV.format(e="siesta"))
+    (tmp_path / "foreign.run.sh").write_text(_prov("siesta"))
     assert engine_of(tmp_path) == "unknown"
 
 
@@ -155,7 +172,7 @@ def test_the_wrapper_alone_carries_a_transiesta_run(tmp_path):
     """
     deck = tmp_path / "j.fdf"
     deck.write_text("%block TS.Elec.Left\n%endblock TS.Elec.Left\n")
-    (tmp_path / "j.run.sh").write_text(_PROV.format(e="siesta"))
+    (tmp_path / "j.run.sh").write_text(_prov("siesta"))
     assert engine_of(tmp_path) == "siesta"
 
     deck.unlink()                       # nothing left to sniff
@@ -188,6 +205,6 @@ def test_a_directory_that_contradicts_itself_answers_unknown(tmp_path):
     """Same rule as `contract_of` above (§ 5b): a directory that says two
     things cannot be made to say one by picking.  Engines never share a
     run directory, so this is a real anomaly the caller should see."""
-    (tmp_path / "a.run.sh").write_text(_PROV.format(e="siesta"))
-    (tmp_path / "b.run.sh").write_text(_PROV.format(e="pyscf"))
+    (tmp_path / "a.run.sh").write_text(_prov("siesta"))
+    (tmp_path / "b.run.sh").write_text(_prov("pyscf"))
     assert engine_of(tmp_path) == "unknown"

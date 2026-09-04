@@ -11,14 +11,18 @@ Public surface:
   retired 2026-08-29 with calculation-to-calculation passing).
 * Registry / dispatch — :func:`detect`, :func:`parse`,
   :func:`parse_text`, :func:`parse_dir`, :func:`register`.
-* Exceptions — :exc:`UnknownFormatError`, :exc:`AmbiguousFormatError`.
+* Exceptions — :exc:`ParseError` and its two children
+  :exc:`UnknownFormatError` / :exc:`AmbiguousFormatError`.  Detection
+  raises BOTH, and they are SIBLINGS: a caller that catches only the
+  first turns a registry overlap into an unhandled exception.
 
 The 2026-06 migration (phases A-H) is complete: the engine, coords,
 sidecar, script and dir parsers all live here and register at import.
 """
 
 from .base import DirParser, FileParser, TextParser
-from .errors import AmbiguousFormatError, UnknownFormatError
+from .errors import (AmbiguousFormatError, ParseError,
+                     UnknownFormatError)
 from .registry import detect, parse, parse_dir, parse_text, register
 from .types import (
     JobResult,
@@ -52,7 +56,7 @@ __all__ = [
     # Registry / dispatch
     "detect", "parse", "parse_dir", "parse_text", "register",
     # Exceptions
-    "UnknownFormatError", "AmbiguousFormatError",
+    "ParseError", "UnknownFormatError", "AmbiguousFormatError",
     # Canonical entry-point classes (convenience re-exports)
     "ScriptSourceTextParser",     # umbrella TextParser (Phase F)
 ]

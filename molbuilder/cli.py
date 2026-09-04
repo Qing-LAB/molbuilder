@@ -1716,12 +1716,12 @@ def cmd_runtime_info(input_path, out_path, pretty):
         # -> compact single-line JSON to a specific path
     """
     import json
-    from .parse import detect as detect_parser, UnknownFormatError
+    from .parse import detect as detect_parser, ParseError
 
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
-        except UnknownFormatError as e:
+        except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
         traj = parser.parse(resolved)
@@ -2621,13 +2621,13 @@ def cmd_watch_parse(input_path, frames_only, pretty):
         molbuilder watch parse - < run.out --frames-only | grep error
     """
     import json
-    from .parse import detect as detect_parser, UnknownFormatError
+    from .parse import detect as detect_parser, ParseError
     from .parse.engines._helpers import trajectory_to_legacy_dict
 
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
-        except UnknownFormatError as e:
+        except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
         traj = parser.parse(resolved)
@@ -2679,7 +2679,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
     """
     import json
     import time
-    from .parse import detect as detect_parser, UnknownFormatError
+    from .parse import detect as detect_parser, ParseError
     from .parse.engines._helpers import trajectory_to_legacy_dict
     from .parse.engines._run_ending import CONCLUDED
 
@@ -2696,7 +2696,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
         while True:
             try:
                 parser = detect_parser(input_path)
-            except UnknownFormatError:
+            except ParseError:           # incl. AmbiguousFormatError
                 # Tolerate transient empty-file states at the very start
                 # of a run -- the writer may not have flushed enough
                 # bytes for the format to be detectable yet.
