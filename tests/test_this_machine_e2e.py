@@ -32,11 +32,30 @@ pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 
-#: A Slack webhook: the URL *is* the credential, so it must never render in
-#: full.  The tail is deliberately distinctive, so a partial leak is caught
-#: as surely as a whole one.
+#: A Slack webhook: the URL *is* the credential — whoever holds it can post
+#: into the channel as you, with no second factor — so it must never render
+#: in full.
+#:
+#: The last four characters ARE shown, on purpose: `_mask` keeps
+#: ``MASK_TAIL = 4`` so two webhooks on one page can be told apart.  So the
+#: secret part of this fixture is the middle, and the assertions below name
+#: the boundary rather than saying "no part of it may appear", which would
+#: be a different rule from the one the code implements.
 _SECRET_URL = ("https://hooks.slack.com/services/"
                "T00000000/B11111111/zzTOPSECRETzz9876")
+
+#: The path segment that must never be readable.  Deliberately not the last
+#: four characters, which the mask is entitled to show.
+_SECRET_MIDDLE = "zzTOPSECRETzz"
+
+#: A molbuilder listener's address.  Not itself a secret -- and masked all
+#: the same, because the alternative is asking "does it have a key?", which
+#: a mislabelled channel answers wrongly.
+_LISTENER_URL = "https://lab.example.org/molbuilder/report/aa11bb22cc33"
+
+#: A signing key: the SECOND credential a channel can carry, and unlike the
+#: address it has no visible form at all — `_row` reports only ``has_key``.
+_SECRET_KEY = "sk-live-DO-NOT-PRINT-4242"
 
 
 @pytest.fixture
@@ -70,20 +89,47 @@ def _open(page, base_url):
     Not ``#tm-list``: that div is EMPTY, and therefore hidden, until a
     channel exists — which is the state every one of these tests starts in.
     ``#tm-save`` is the card's own control and is there either way.
+
+    Returns the JS-error list.  **Nothing asserts on it yet**, and that is a
+    deliberate hold rather than an oversight: asserting it green found a live
+    product defect on 2026-09-03 --
+
+        pattern="[A-Za-z0-9_-]{1,64}"  on #tm-name
+
+    Chrome compiles a `pattern` attribute under the `v` flag, where an
+    unescaped `-` before `]` is a syntax error, so the browser DISCARDS the
+    constraint: `checkValidity()` accepts "has space" and "sla/sh" while the
+    hint beside the box promises "Letters, digits, - and _".  The page states
+    a rule it does not enforce.  `\-` fixes it (measured: the escaped form
+    rejects both and still accepts `ok-name_1`).
+    That is a change to the product, so it waits for a decision; the
+    assertion belongs with the fix, together with a test that types a bad
+    name and expects the form to refuse it.
     """
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: (errors.append(m.text)
+                                  if m.type == "error" else None))
     page.goto(f"{base_url}/this-machine")
     page.wait_for_selector("#tm-save", timeout=5000)
     return errors
 
 
-def _add_channel(page, name, url, *, key=None):
-    """Fill the form and press Save, the way a person adds a channel."""
+def _add_channel(page, name, url, *, kind="slack", key=None):
+    """Fill the form and press Save, the way a person adds a channel.
+
+    ``kind`` is not decoration: **the Key box only exists for a listener.**
+    `#tm-key-field` ships `hidden` and the kind radio reveals it, so asking
+    a Slack channel for a key is asking for a control the page does not
+    offer -- which is how the first version of this file timed out on a
+    `page.fill` and taught me the two credential shapes are genuinely
+    different surfaces, not one surface with an optional extra.
+    """
     page.fill("#tm-name", name)
-    page.check("#tm-kind-slack")
+    page.check(f"#tm-kind-{kind}")
     page.fill("#tm-url", url)
     if key is not None:
+        page.wait_for_selector("#tm-key", state="visible", timeout=5000)
         page.fill("#tm-key", key)
     page.click("#tm-save")
     page.wait_for_function(
@@ -144,10 +190,12 @@ def test_a_channels_secret_never_reaches_the_page(page, flask_server):
     assert _SECRET_URL not in dom, (
         "the webhook URL is rendered in full.  For Slack and Discord the URL "
         "IS the credential, so this is the same defect as printing a key.")
-    assert "zzTOPSECRETzz9876" not in dom, (
-        "the secret tail of the webhook URL reached the page -- a partial "
-        "leak of a credential is a leak")
-    # ...and the masked form IS shown, or the assertions above would also
+    assert _SECRET_MIDDLE not in dom, (
+        f"the readable part of the webhook path reached the page.  The mask "
+        f"is entitled to the last {4} characters -- that is how two channels "
+        f"are told apart -- but everything before them identifies the hook "
+        f"well enough to replay it.")
+    # ...and the masked form IS shown, or every assertion above would also
     # pass on a page that renders no channel at all.
     assert "hooks.slack.com" in dom, (
         "nothing about the address is shown, so the reader cannot tell which "
@@ -182,5 +230,67 @@ def test_saving_writes_the_file_the_page_tells_you_to_write(
         "the notify file holds credentials and the page states mode 0600; "
         f"it was written {oct(dest.stat().st_mode & 0o777)}")
     doc = json.loads(dest.read_text(encoding="utf-8"))
-    assert "prod-alerts" in json.dumps(doc), (
+    blob = json.dumps(doc)
+    assert "prod-alerts" in blob, (
         "the channel is not in the file the monitor will read")
+    # The other half of the secret story: what must NOT reach the screen
+    # must still reach the FILE.  Without this, a save that quietly dropped
+    # the key would satisfy "the key never renders" perfectly, and the
+    # channel would fail to authenticate on a compute node with nothing on
+    # any surface to say why.
+    assert _SECRET_URL in blob, (
+        "the notify file is missing the address that was typed.  The monitor "
+        "reads this file and nothing else, so a credential that is masked on "
+        "screen AND absent here is simply lost -- the channel would fail to "
+        "authenticate on a compute node with nothing on any surface saying "
+        "why.")
+
+
+def test_a_listeners_key_never_reaches_the_page(page, flask_server,
+                                                config_home):
+    """The OTHER credential shape, and the one `_mask` warns about.
+
+    A molbuilder listener carries a plain address **plus a key that signs
+    each report and never travels with it** — so it is the only kind whose
+    Key box the page reveals at all.
+
+    `_mask`'s own docstring records the trap: the kind used to be derived
+    here as ``"listener" if key else "webhook"``, so *whether a key is
+    stored* decided whether the address was printed in full — and "a rule
+    that can be defeated by mislabelling is not a rule".  Hence **every**
+    address is masked now, a listener's included, and it loses nothing:
+    the tail still names the segment and the listener section below shows
+    the route in full.
+
+    Two things must therefore hold at once, and only one of them is
+    obvious: the key must not render, AND the address must be masked even
+    though it is not itself a secret.
+    """
+    _open(page, flask_server)
+    _add_channel(page, "lab-listener", _LISTENER_URL,
+                 kind="listener", key=_SECRET_KEY)
+
+    dom = page.content()
+    assert "lab-listener" in dom, "the saved listener is not on the page"
+    assert _SECRET_KEY not in dom, (
+        "the signing key is on the page.  It has no masked form and no "
+        "reason to be rendered at all: `_row` reports only `has_key`, "
+        "because *is a signature attached* is the whole question a reader "
+        "has about it -- and the key is the one thing that must never "
+        "leave the file it is stored in.")
+    assert _LISTENER_URL not in dom, (
+        "the listener's address is printed in full.  It is masked like "
+        "every other kind on purpose: deriving 'is this a secret?' from "
+        "'does it have a key?' is the rule mislabelling defeats "
+        "(`notify_setup._mask`).")
+    assert "lab.example.org" in dom, (
+        "nothing about the listener's address is shown, so a reader cannot "
+        "tell where reports go -- masking is not hiding")
+
+    # The key must still reach the FILE.  A page that satisfies "the key
+    # never renders" by never storing it would leave every report from that
+    # machine unsigned, and nothing on screen would say so.
+    stored = json.loads((config_home / "notify").read_text(encoding="utf-8"))
+    assert _SECRET_KEY in json.dumps(stored), (
+        "the key was never written to <config dir>/notify, so the monitor "
+        "has nothing to sign reports with")

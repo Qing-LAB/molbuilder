@@ -386,10 +386,20 @@ class TestEveryExposedFieldIsTagged:
         from molbuilder.template import GROUPS
 
         valid = set(GROUPS)
-        bad = [(cfg_cls.__name__, f.name, tag)
-               for f in dataclasses.fields(cfg_cls)
-               if (tag := f.metadata.get("workflow_group")) is not None
-               and tag not in valid]
+        tagged = [(f.name, tag) for f in dataclasses.fields(cfg_cls)
+                  if (tag := f.metadata.get("workflow_group")) is not None]
+        # A class with no tags at all would make the check below vacuously
+        # true -- "none of zero tags is wrong".  The version this moved from
+        # had that hole; the mutation that proves the check works (retag one
+        # field to a misspelling) would also have passed on an empty list.
+        assert tagged, (
+            f"{cfg_cls.__name__} carries no workflow_group metadata at all, "
+            f"so this test examined nothing.  Either the tags were dropped "
+            f"-- which is the bug its sibling above catches -- or this class "
+            f"no longer builds its form from dataclass metadata and should "
+            f"leave the parametrize list, as SIESTA and PySCF did.")
+        bad = [(cfg_cls.__name__, name, tag)
+               for name, tag in tagged if tag not in valid]
         assert not bad, (
             f"config field(s) tagged with a workflow_group the vocabulary "
             f"does not define: {bad}.\nAllowed: {sorted(valid)}.  A tag "

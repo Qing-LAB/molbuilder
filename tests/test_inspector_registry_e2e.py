@@ -396,7 +396,16 @@ class TestInspectorListenerTeardown:
                     await new Promise(r => setTimeout(r, 100));
                 }
                 const mounted = !!host.querySelector("#watch-btn");
-                if (!mounted) return {mounted, watching: 0, afterDispose: 0};
+                if (!mounted) {
+                    return {mounted, background: 0, watching: 0,
+                            afterDispose: 0};
+                }
+                // Anything the PAGE started while we were mounting is not
+                // ours to clear.  lib/system-load-monitor.js re-arms its
+                // own interval on visibilitychange, and counting it would
+                // fail this test for a reason that has nothing to do with
+                // the inspector.  So take a baseline and reason in deltas.
+                const background = live.size;
 
                 // Drive the user's own control: type a path, press
                 // "Start watching".  The path 404s, which is the case
@@ -405,14 +414,14 @@ class TestInspectorListenerTeardown:
                     "/projects/foo/job.spectra.json";
                 host.querySelector("#watch-btn").click();
                 for (let i = 0; i < 30; i += 1) {
-                    if (live.size > 0) break;
+                    if (live.size > background) break;
                     await new Promise(r => setTimeout(r, 100));
                 }
                 const watching = live.size;
                 handle.dispose();
                 const afterDispose = live.size;
                 document.body.removeChild(host);
-                return {mounted, watching, afterDispose};
+                return {mounted, background, watching, afterDispose};
             } finally {
                 window.setInterval   = origSet;
                 window.clearInterval = origClear;
@@ -423,19 +432,20 @@ class TestInspectorListenerTeardown:
             "mount path before reading the timer counts below")
         # The anti-vacuity guard.  Without a live timer the assertion
         # below is 0 == 0 and passes on a deleted clearInterval.
-        assert result["watching"] >= 1, (
+        started = result["watching"] - result["background"]
+        assert started >= 1, (
             "no interval was running when dispose() was called, so this "
             "test proves nothing about teardown.  Either 'Start watching' "
             "no longer starts a poll interval, or the control moved -- fix "
             "the driving above rather than deleting this assertion")
-        assert result["afterDispose"] == 0, (
-            f"{result['afterDispose']} of {result['watching']} setInterval "
-            f"handle(s) outlived dispose().  A poll or playback timer is "
-            f"still firing into a torn-down inspector -- it will refetch "
-            f"forever, and the /results dispatcher mounts and disposes on "
-            f"every sidebar click, so the leak compounds.  Every interval "
-            f"must be held where dispose() can reach it (the lifecycle "
-            f"scope), not in a bare local.")
+        assert result["afterDispose"] <= result["background"], (
+            f"{result['afterDispose'] - result['background']} of {started} "
+            f"setInterval handle(s) started by the watch outlived dispose(). "
+            f"A poll or playback timer is still firing into a torn-down "
+            f"inspector -- it will refetch forever, and the /results "
+            f"dispatcher mounts and disposes on every sidebar click, so the "
+            f"leak compounds.  Every interval must be held where dispose() "
+            f"can reach it (the lifecycle scope), not in a bare local.")
 
     def test_no_trajectory_poll_survives_dispose(
             self, page, flask_server, ongoing_trajectory):
@@ -469,33 +479,51 @@ class TestInspectorListenerTeardown:
                 const host = document.createElement("div");
                 host.id = "traj-timer-host";
                 document.body.appendChild(host);
+                // Let anything the PAGE arms land before we start
+                // counting -- the trajectory poll begins inside mount, so
+                // unlike the spectra arm there is no later quiet moment to
+                // take this baseline in.
+                await new Promise(r => setTimeout(r, 400));
+                const background = live.size;
+
                 const reg    = window.molbuilder.inspectors;
                 const ctx    = reg.createDefaultContext(host);
                 const handle = reg.mount(host, traj, ctx);
+                if (!handle) {
+                    return {mounted: false, background,
+                            watching: background, afterDispose: background};
+                }
                 // Wait for the load to resolve and _settlePostLoad to
                 // put the machine in WATCHING (which starts the timer).
                 for (let i = 0; i < 50; i += 1) {
-                    if (live.size > 0) break;
+                    if (live.size > background) break;
                     await new Promise(r => setTimeout(r, 100));
                 }
                 const watching = live.size;
                 handle.dispose();
                 const afterDispose = live.size;
                 document.body.removeChild(host);
-                return {watching, afterDispose};
+                return {mounted: true, background, watching, afterDispose};
             } finally {
                 window.setInterval   = origSet;
                 window.clearInterval = origClear;
             }
         }""", ongoing_trajectory)
-        assert result["watching"] >= 1, (
+        assert result["mounted"], (
+            "the registry returned no handle for the trajectory fixture -- "
+            "the file is not being claimed by the trajectory inspector, so "
+            "nothing below is about its poll timer")
+        started = result["watching"] - result["background"]
+        assert started >= 1, (
             "mounting an ongoing trajectory started no poll interval, so "
             "this test proves nothing about teardown.  Either the fixture "
-            "no longer reads as a running job, or the poll moved -- fix "
-            "the setup rather than deleting this assertion")
-        assert result["afterDispose"] == 0, (
-            f"{result['afterDispose']} of {result['watching']} poll "
-            f"interval(s) outlived dispose().  A torn-down trajectory "
+            "no longer reads as a running job (a completion marker would "
+            "send `_settlePostLoad` to LOADED instead of WATCHING), or the "
+            "poll moved -- fix the setup rather than deleting this "
+            "assertion")
+        assert result["afterDispose"] <= result["background"], (
+            f"{result['afterDispose'] - result['background']} of {started} "
+            f"poll interval(s) outlived dispose().  A torn-down trajectory "
             f"inspector is still polling /api/watch/data forever.")
 
 

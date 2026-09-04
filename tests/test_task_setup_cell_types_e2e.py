@@ -244,11 +244,22 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
     """
     _open(page, flask_server, bool_column_dir,
           ready='[aria-label="tight write_forces"]')
-    tag = page.evaluate(
+    cell = page.evaluate(
         "() => { const n = document.querySelector("
-        "  '[aria-label=\"tight write_forces\"]'); return n && n.tagName; }")
-    assert tag == "SELECT", (
-        f"`write_forces` is declared bool, and its cell came up as a <{tag}>. "
-        f"The catalogue knows the only two answers, so the cell must offer "
-        f"them: a text box invites 'True', 'yes', '1' and each is a "
-        f"different kind of wrong, discovered at run time.")
+        "  '[aria-label=\"tight write_forces\"]');"
+        "  if (!n) return null;"
+        "  return {tag: n.tagName,"
+        "          options: [...(n.options || [])].map(o => o.value)}; }")
+    assert cell and cell["tag"] == "SELECT", (
+        f"`write_forces` is declared bool, and its cell came up as a "
+        f"<{(cell or {}).get('tag')}>.  The catalogue knows the only two "
+        f"answers, so the cell must offer them: a text box invites 'True', "
+        f"'yes', '1' and each is a different kind of wrong, discovered at "
+        f"run time.")
+    # ...and it must offer BOTH of them.  A <select> proves the widget rule
+    # ran; only the options prove it got an answer, and an empty chooser is
+    # a worse box than a box -- there is nothing a person can even pick.
+    assert {"true", "false"} <= {str(v).lower() for v in cell["options"]}, (
+        f"the chooser offers {cell['options']} -- a bool's two answers are "
+        f"not both there, so `legalValues()` returned something other than "
+        f"the pair, or the option list was built from the wrong source.")

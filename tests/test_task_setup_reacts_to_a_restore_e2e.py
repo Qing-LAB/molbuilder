@@ -100,6 +100,57 @@ def _editor_text(page):
         "        return cm ? cm.CodeMirror.getValue() : ''; }")
 
 
+def _dialogs(page, answers):
+    """Answer the panel's own prompts, the way a person at the keyboard does.
+
+    Every step of this walk is a real control and two of them ask a
+    question: Commit prompts for the note (`_onCommitClick`), Restore
+    confirms before rewriting the folder (`_onRestoreClick`).  Playwright
+    DISMISSES dialogs unless told otherwise, which silently cancels the
+    action and leaves the assertion failing for a reason that has nothing
+    to do with the contract.
+
+    ``page.on`` rather than ``page.once``: `_restore` asks a SECOND time
+    when the server refuses because of unsaved work, and a handler that has
+    already fired would let that one be dismissed -- turning a restore that
+    the code correctly guarded into a silent no-op the test blames on the
+    announcement.
+    """
+    queue = list(answers)
+
+    def _answer(d):
+        if d.type == "prompt":
+            d.accept(queue.pop(0) if queue else "")
+        else:
+            d.accept()
+
+    page.on("dialog", _answer)
+
+
+def _show_panel(page):
+    """Bring the checkpoint panel forward, and be idempotent about it.
+
+    The panel shares its slot with the file tree and the toggle REMEMBERS
+    which one is showing, so a second unconditional click after a reload
+    puts the tree back -- which is how this walk spent twenty seconds
+    waiting for a row that was on screen and then wasn't.
+    """
+    page.wait_for_selector("#ps-checkpoint-toggle", timeout=20000)
+    showing = page.evaluate(
+        "() => { const p = document.getElementById('ps-checkpoint');"
+        "        return !!(p && !p.hidden && p.offsetParent !== null); }")
+    if not showing:
+        page.click("#ps-checkpoint-toggle")
+    page.wait_for_selector("#ps-checkpoint", state="visible", timeout=20000)
+
+
+def _rows(page):
+    """Every checkpoint state on the panel, as {note-ish text: handle}."""
+    return page.evaluate(
+        "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
+        "        .map(li => li.textContent)")
+
+
 def test_a_restore_updates_the_tab_that_is_showing_the_folder(
         page, flask_server, calc_dir):
     """Restore from the sidebar; the open Task-setup tab shows the restored
@@ -107,7 +158,17 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
 
     The selection never changes and nothing is committed, so the only thing
     that can carry the news is `publishFolderChanged` -> `onFolderChanged`.
+
+    **Every step is a control on the page** -- Set up, Save a state, expand
+    a row, Restore -- because the defect was a gap BETWEEN two surfaces and
+    only a walk that uses both can stand in it.  The one thing done behind
+    the page's back is rewriting `task.json` on disk, and that is the
+    premise rather than a shortcut: `projects.md` § 4.1 is about a folder
+    "rearranged behind an open tab", which is by definition something the
+    tab did not do.
     """
+    _dialogs(page, ["after the edit"])
+
     slot = json.dumps(str(calc_dir))
     page.add_init_script(
         "try {"
@@ -122,70 +183,80 @@ def test_a_restore_updates_the_tab_that_is_showing_the_folder(
         "() => document.querySelector('.CodeMirror')"
         ".CodeMirror.getValue().includes('coarse')", timeout=20000)
 
-    # ── put the folder under checkpoint control and save state A ────────
-    started = page.evaluate("""async (dir) => {
-        const j = async (m, u, b) => (await fetch(u, {
-            method: m, headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(b)})).json();
-        await j("POST", "/api/checkpoint/init", {path: dir});
-        return j("POST", "/api/checkpoint/save",
-                 {path: dir, note: "before the edit"});
-    }""", str(calc_dir))
-    assert started.get("ok") is not False, f"could not checkpoint: {started}"
-    before = _editor_text(page)
-    assert "coarse" in before, before[:200]
+    # ── put the folder under checkpoint control, and save state A ───────
+    # The panel shares its slot with the file tree; the filter bar's toggle
+    # is how a person brings it forward.
+    _show_panel(page)
+    page.wait_for_selector("#ps-checkpoint-init", state="visible",
+                           timeout=20000)
+    page.click("#ps-checkpoint-init")
+    # Set-up SAVES the first state itself, noted "set up" -- so this is
+    # state A and there is nothing to commit yet.  Pressing Save-a-state
+    # here would answer "Nothing changed since the state this folder stands
+    # at" and record no row, which is how the first version of this walk
+    # waited twenty seconds for a row that was never coming.
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
+        "        .some(li => li.textContent.includes('set up'))",
+        timeout=20000)
+    assert "coarse" in _editor_text(page)
 
-    # ── rewrite the folder on disk, the way a second stage would ────────
+    # ── rewrite the folder behind the tab, then record that as state B ──
     task = json.loads((calc_dir / "task.json").read_text())
     task["stages"] = [{**task["stages"][0], "name": "afterwards"}]
     (calc_dir / "task.json").write_text(json.dumps(task, indent=2),
                                         encoding="utf-8")
-    page.evaluate("""async (dir) => {
-        await fetch("/api/checkpoint/save", {
-            method: "POST", headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({path: dir, note: "after the edit"})});
-    }""", str(calc_dir))
+    page.click("#ps-checkpoint-commit-btn")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.ps-checkpoint-list-item')]"
+        "        .some(li => li.textContent.includes('after the edit'))",
+        timeout=20000)
 
-    # The tab is still showing the OLD text at this point -- nothing has
-    # told it otherwise, and that is correct: no surface announced a change.
+    # The tab is still showing the OLD text -- nothing announced the write,
+    # and that is correct.  Reload so the tab is honestly showing B before
+    # the restore, or "it changed" could just be the tab catching up.
     page.reload()
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         " return !!(n && n.CodeMirror)"
         "   && n.CodeMirror.getValue().includes('afterwards'); }",
         timeout=20000)
-
-    # ── now RESTORE to state A, through the sidebar's own button ────────
-    page.wait_for_selector("#ps-checkpoint", state="attached", timeout=20000)
-    # The panel shares its slot with the file tree; the filter bar's toggle
-    # is how a person brings it forward.
-    page.click("#ps-checkpoint-toggle")
-    page.wait_for_selector(".ps-checkpoint-list-item", state="attached",
+    _show_panel(page)
+    page.wait_for_selector(".ps-checkpoint-list-item", state="visible",
                            timeout=20000)
-    rows = page.locator(".ps-checkpoint-list-item").count()
-    assert rows >= 2, (
-        f"expected two checkpoint states to restore between, saw {rows} -- "
-        f"the walk below cannot distinguish a restore from a no-op")
-    # "Put this folder back to X?" -- a real confirm, and a person says yes.
-    # Playwright DISMISSES dialogs unless told otherwise, which silently
-    # cancels the restore and makes the assertion below fail for the wrong
-    # reason.
-    page.once("dialog", lambda d: d.accept())
+
+    notes = _rows(page)
+    assert sum("set up" in t for t in notes) == 1, (
+        f"expected exactly one state named 'set up' to restore to; "
+        f"the panel shows {notes}")
+    assert any("after the edit" in t for t in notes), (
+        f"the second state was not recorded, so a 'restore' would land on "
+        f"the state the folder is already at and prove nothing: {notes}")
+
+    # ── RESTORE to state A, picked BY NAME ──────────────────────────────
+    # Not by position: the panel's order is its own decision, and a test
+    # that says "the last row" silently changes meaning the day that flips.
     page.evaluate("""() => {
-        const rows = [...document.querySelectorAll(".ps-checkpoint-list-item")];
-        const oldest = rows[rows.length - 1];
-        oldest.click();                       // expand to reveal the actions
-        const btn = oldest.querySelector('[data-action="restore"]');
-        btn.click();
+        const row = [...document.querySelectorAll(".ps-checkpoint-list-item")]
+            .find(li => li.textContent.includes("set up"));
+        row.click();                          // expand to reveal the actions
+        row.querySelector('[data-action="restore"]').click();
     }""")
 
     # ── the tab must catch up on its own ────────────────────────────────
-    page.wait_for_function(
-        "() => { const n = document.querySelector('.CodeMirror');"
-        " return n && n.CodeMirror.getValue().includes('coarse'); }",
-        timeout=20000)
+    # The wait is bounded and its failure is SWALLOWED, so the assertion
+    # below is what a person reads.  Letting `wait_for_function` raise
+    # reports "Timeout 20000ms exceeded" and nothing else -- which is the
+    # correct verdict delivered in a form that teaches nobody what broke.
+    try:
+        page.wait_for_function(
+            "() => { const n = document.querySelector('.CodeMirror');"
+            " return n && n.CodeMirror.getValue().includes('coarse'); }",
+            timeout=20000)
+    except Exception:                      # noqa: BLE001 - see above
+        pass
     after = _editor_text(page)
-    assert "afterwards" not in after, (
+    assert "coarse" in after and "afterwards" not in after, (
         "the Task-setup tab is still showing the description the folder had "
         "BEFORE the restore.  The selection never moved and nothing was "
         "committed, so the restore must announce with "
