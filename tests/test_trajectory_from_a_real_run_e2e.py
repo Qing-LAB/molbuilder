@@ -32,7 +32,6 @@ would not have had them, because I would not have thought to put them there.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -70,25 +69,23 @@ def _pyscf_env():
         return None
 
 
-def _frames(xyz_text):
-    """Parse a multi-frame XYZ into [(comment, positions)].
+def _trajectory(path):
+    """Read a run through **the project's own parser**, never a private one.
 
-    Hand-rolled rather than routed through the project's reader on purpose:
-    this is the test's own independent look at the bytes geomeTRIC wrote, so
-    a reader bug cannot hide inside the thing being checked.
+    `molbuilder.parse.registry.parse()` is the single door the app itself
+    goes through -- `/api/watch/load` lands in the same parsers -- so a test
+    that reads a run any other way is a second implementation that drifts
+    from the contract the moment a format grows a field.
+
+    This file used to carry two: a hand-rolled multi-frame XYZ splitter and
+    a regex counting `==== molwatch step N begin ====`.  Both worked, and
+    both were second answers to a question the project already answers.
+    `parse()` dispatches on content, returns a `TrajectoryResult`, and its
+    `Frame`s carry `.structure`, `.energy` and `.step_index` -- which is
+    also what the viewer is drawing, so the comparison is like for like.
     """
-    import numpy as np
-
-    lines = xyz_text.strip().splitlines()
-    out, i = [], 0
-    while i < len(lines):
-        n = int(lines[i].strip())
-        comment = lines[i + 1].strip()
-        pos = [list(map(float, ln.split()[1:4]))
-               for ln in lines[i + 2:i + 2 + n]]
-        out.append((comment, np.array(pos)))
-        i += 2 + n
-    return out
+    from molbuilder.parse.registry import parse
+    return parse(Path(path))
 
 
 @pytest.fixture(scope="module")
@@ -148,20 +145,29 @@ def flask_server():
 def test_the_optimisation_actually_relaxes_the_molecule(co2_optimization):
     """It moved, it went downhill, and it stopped somewhere sensible.
 
-    The failure this catches is a trajectory that *looks* fine — right file,
-    right frame count, parseable — and is not a relaxation: an optimiser
-    wired to the wrong gradient walks, and every frame after the first is
-    then confident nonsense.  Only the energy and the geometry say so.
+    Read through `parse()` -- the same door the app uses -- on the `.xyz`
+    directly.  Absorption hides that file from the PICKER; it does not stop
+    anything opening it, and here the question is what the optimiser did,
+    not what the menu offers.
+
+    The failure this catches is a trajectory that *looks* fine -- right
+    file, right frame count, parseable -- and is not a relaxation: an
+    optimiser wired to the wrong gradient walks, and every frame after the
+    first is then confident nonsense.  Only the energy and the geometry say
+    so.
     """
     import numpy as np
 
-    frames = _frames(co2_optimization.read_text(encoding="utf-8"))
+    traj = _trajectory(co2_optimization)
+    frames = traj.frames
     assert len(frames) >= 3, (
         f"a relaxation from {_START_ANG} A should take several steps; this "
         f"trajectory has {len(frames)} frame(s).  One frame means the "
         f"optimiser never ran, or the trajectory writer only kept the last.")
 
-    bonds = [float(np.linalg.norm(p[1] - p[0])) for _, p in frames]
+    bonds = [float(np.linalg.norm(np.asarray(f.structure.positions)[1]
+                                  - np.asarray(f.structure.positions)[0]))
+             for f in frames]
     assert bonds[0] == pytest.approx(_START_ANG, abs=1e-3), (
         f"the first frame should be the geometry we handed in "
         f"({_START_ANG} A); it is {bonds[0]:.4f}.  The trajectory does not "
@@ -176,35 +182,16 @@ def test_the_optimisation_actually_relaxes_the_molecule(co2_optimization):
         "and every frame assertion below it would pass on a stationary run")
 
     # Energy is the honest monotone: geometry can overshoot and come back
-    # (this run does -- 1.1775 then 1.1925), a line search cannot go uphill.
-    energies = []
-    for comment, _ in frames:
-        parts = comment.replace("=", " ").split()
-        for j, tok in enumerate(parts):
-            if tok.lower().startswith("energy") and j + 1 < len(parts):
-                energies.append(float(parts[j + 1]))
-                break
-    assert len(energies) == len(frames), (
-        f"parsed {len(energies)} energies from {len(frames)} frame comments; "
-        f"geomeTRIC writes 'Iteration N Energy E' on each.  First comment: "
-        f"{frames[0][0]!r}")
+    # (this run does), a line search cannot go uphill.
+    energies = [f.energy for f in frames]
+    assert all(e is not None for e in energies), (
+        f"the .xyz's frames should each carry an energy; got {energies}")
     assert energies[-1] < energies[0], (
         f"the optimisation ended higher than it started "
         f"({energies[0]} -> {energies[-1]}).  That is not a relaxation.")
     assert all(b <= a + 1e-6 for a, b in zip(energies, energies[1:])), (
         f"the energy went uphill between steps: {energies}.  A line search "
         f"that accepts an uphill step is taking a gradient it should not.")
-
-
-def _log_steps(text):
-    """How many steps the molwatch log records, read independently.
-
-    The log's own marker, not a parse through the project's reader: this is
-    the test's separate look at the bytes, so a reader bug cannot hide
-    inside the thing being checked.
-    """
-    return len(re.findall(r"^==== molwatch step \d+ begin ====$",
-                          text, re.M))
 
 
 def test_a_run_is_one_entry_in_the_picker_and_it_is_the_log(
@@ -283,10 +270,20 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
     """
     d = co2_optimization.parent
     log = d / "co2opt.molwatch.log"
-    steps = _log_steps(log.read_text(encoding="utf-8", errors="replace"))
+    # THROUGH THE PROJECT'S PARSER, which is the same one `/api/watch/load`
+    # runs -- so "what the plot shows" is compared against "what the app
+    # served", not against a second reading of the bytes.
+    served = _trajectory(log)
+    steps = len(served.frames)
+    with_energy = sum(1 for f in served.frames if f.energy is not None)
     assert steps >= 3, (
-        f"the molwatch log records {steps} steps; a relaxation from 1.30 A "
-        f"takes several, so the fixture or the log emitter changed")
+        f"the molwatch log parses to {steps} frames; a relaxation from "
+        f"1.30 A takes several, so the fixture or the log emitter changed")
+    assert with_energy == steps - 1, (
+        f"{with_energy} of {steps} parsed frames carry an energy.  Exactly "
+        f"one -- the `initial_preview` the log opens with -- has none by "
+        f"nature; if that changed, the plot's null point changed with it "
+        f"and the assertion below is measuring something else.")
 
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -325,11 +322,10 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
         f"the log records {steps} steps and the energy curve plots "
         f"{drawn['points']} points.  The viewer is showing this file "
         f"(absorption leaves no other entry), so these must agree.")
-    assert drawn["energies"] == steps - 1, (
-        f"{drawn['energies']} of {drawn['points']} points carry an energy. "
-        f"Exactly one -- the `initial_preview` -- has none by nature; any "
-        f"other missing energy is a step whose result did not reach the "
-        f"plot.")
+    assert drawn["energies"] == with_energy, (
+        f"{drawn['energies']} of {drawn['points']} plotted points carry an "
+        f"energy; the parser found {with_energy} of {steps}.  The plot and "
+        f"the parse disagree about which steps have a result.")
     assert drawn["last"] < drawn["first"], (
         f"the plotted curve rises ({drawn['first']} -> {drawn['last']}) "
         f"while the run falls.  The viewer is drawing the relaxation "

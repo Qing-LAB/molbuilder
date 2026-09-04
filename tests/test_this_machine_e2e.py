@@ -245,10 +245,21 @@ def test_saving_writes_the_file_the_page_tells_you_to_write(
     assert (dest.stat().st_mode & 0o077) == 0, (
         "the notify file holds credentials and the page states mode 0600; "
         f"it was written {oct(dest.stat().st_mode & 0o777)}")
-    doc = json.loads(dest.read_text(encoding="utf-8"))
-    blob = json.dumps(doc)
-    assert "prod-alerts" in blob, (
-        "the channel is not in the file the monitor will read")
+    # READ IT THE WAY THE MONITOR WILL.  `monitor.load_channels()` is the
+    # function that opens this file on the compute node -- so asserting
+    # through it answers "will the monitor find this channel", which is the
+    # only question the page's instruction is making a promise about.
+    # `json.loads` would answer the weaker "is there a channel-shaped thing
+    # in the file", and the two differ: the monitor refuses a file whose
+    # top level is the retired single-destination shape, and says so.
+    from molbuilder.monitor import load_channels
+
+    chans = load_channels(str(dest))
+    assert "prod-alerts" in chans, (
+        f"the monitor's own reader does not find the channel in {dest}; it "
+        f"sees {sorted(chans)}.  The page told the user to put a file here "
+        f"for the monitor to read, so this is the promise it made.")
+    blob = json.dumps(chans)
     # The other half of the secret story: what must NOT reach the screen
     # must still reach the FILE.  Without this, a save that quietly dropped
     # the key would satisfy "the key never renders" perfectly, and the
@@ -307,7 +318,9 @@ def test_a_listeners_key_never_reaches_the_page(page, flask_server,
     # The key must still reach the FILE.  A page that satisfies "the key
     # never renders" by never storing it would leave every report from that
     # machine unsigned, and nothing on screen would say so.
-    stored = json.loads((config_home / "notify").read_text(encoding="utf-8"))
+    from molbuilder.monitor import load_channels
+
+    stored = load_channels(str(config_home / "notify"))
     assert _SECRET_KEY in json.dumps(stored), (
         "the key was never written to <config dir>/notify, so the monitor "
         "has nothing to sign reports with")

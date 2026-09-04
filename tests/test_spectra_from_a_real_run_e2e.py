@@ -215,15 +215,23 @@ def test_the_run_produces_the_spectrum_co2_actually_has(co2_run):
     mode.  None of those raise; they just give you a wrong spectrum, and
     only the physics says so.
     """
-    doc = json.loads(co2_run.read_text(encoding="utf-8"))
-    modes = doc["modes"]
+    # THROUGH THE PROJECT'S OWN READER.  `sidecars/spectra.py` exposes
+    # `parse_spectra_json`, the read half of the pair whose write half
+    # produced this file -- so the test speaks the schema's vocabulary and
+    # cannot drift from it.  Hand-navigating `doc["modes"][i]["frequency
+    # _cm1"]` out of `json.loads` was a second reader, and a second reader
+    # is a second answer to "what is in a .spectra.json".
+    from molbuilder.sidecars.spectra import parse_spectra_json
+
+    results = parse_spectra_json(str(co2_run))
+    modes = results.modes
     assert len(modes) == _CO2_MODES, (
         f"a linear triatomic has 3N-5 = 4 vibrational modes; this run "
         f"reported {len(modes)}.  Too few means modes were dropped with the "
         f"translations/rotations; too many means some were kept.")
 
-    freqs = sorted(m["frequency_cm1"] for m in modes)
-    assert not any(m["has_imag"] for m in modes), (
+    freqs = sorted(m.frequency_cm1 for m in modes)
+    assert not any(m.has_imag for m in modes), (
         f"an imaginary frequency means the geometry is not a minimum; CO2 at "
         f"1.16 A is.  Frequencies: {freqs}")
 
