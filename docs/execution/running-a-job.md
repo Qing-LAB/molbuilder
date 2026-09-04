@@ -617,26 +617,11 @@ conclusion. One consolidated result per directory, with these fields:
   | **declared** | the **`.molwatch.log` `# engine:` header** | both generators, at file-emission time |
   | *sniffed* | what files are present — the deck suffix, the wrapper's stdout name, and each engine's own `warm-files.toml` vocabulary (§ 4.2a) | nobody: the fallback for a directory molbuilder did not write |
 
-  **Every declaration is weighed together; one distinct answer among them
-  is the answer, and two is `unknown`.** A run that says two things cannot
-  be made to say one by picking — the same rule and the same reason as
-  `contract_of` ([`parse.md` § 5b](?doc=model/parse.md)).
-
-  **The sniff is consulted only when nothing declared**, and it never
-  contradicts a declaration, because it is evidence of a different kind:
-  files outlive the run that wrote them, so a stale `.fdf` beside a
-  freshly re-prepped PySCF deck is not a second opinion, it is litter.
-
-  > **This shipped as an ordered first-hit-wins list on 2026-09-04 and
-  > that was wrong** *(corrected the same day, in adversarial review)*. An
-  > ordered rung returns before reading its peers, so ONE artifact decided
-  > while its corroboration went unread: a PySCF run whose molwatch header
-  > **and** whose whole file cluster said `pyscf` answered `siesta`
-  > because somebody had copied a foreign `.run.sh` into the directory.
-  > That was worse than the constant it replaced *and* worse than the code
-  > before it — `/api/watch/*` had been answering from the loaded file's
-  > own `source_format`, which was right. A rung that returns early is not
-  > a resolution order; it is a first-match search spelled like one.
+  **A declaration answers; the sniff is consulted only when there is
+  none.** Two engines never share a run directory, so the declarations
+  cannot disagree — if they somehow do, the answer is `unknown` rather
+  than a guess, which costs two lines and is the same posture
+  `contract_of` takes ([`parse.md` § 5b](?doc=model/parse.md)).
 
   **One value, one chain, and only the last link can be orphaned.** The
   engine is chosen once, in the calculation's `task.json`

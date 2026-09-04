@@ -100,6 +100,80 @@ def engine_of(directory) -> str:
     time**, because that is the only moment it is known for certain, and
     a run directory gets copied away from everything that knew.
 
+    **A declaration answers; the sniff is the fallback.**  The
+    PROVENANCE ``engine`` key of any deck or wrapper
+    (`job-contracts.md` § 3.2) and the ``.molwatch.log`` ``# engine:``
+    header are declarations.  What files are present is the fallback,
+    for a directory molbuilder did not write.
+
+    Two engines never share a run directory, so the declarations cannot
+    disagree.  If they somehow do, this answers ``"unknown"`` rather than
+    picking one -- two lines of insurance, not a scenario anybody has.
+    """
+    directory = Path(directory)
+    if not directory.is_dir():
+        return None
+    decks = sorted(directory.glob("*.fdf"))
+    if len(decks) == 1:
+        return _siesta_contract(decks[0])
+    return None
+
+
+def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
+    # Function-level import: parse_fdf_params lives with the transport
+    # preflight for history; this module only needs the pure text
+    # parser.
+    from molbuilder.transport.preflight import parse_fdf_params
+    try:
+        text = deck.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    p = parse_fdf_params(text)
+    contract = {k: v for k, v in {
+        "basis_size":               p.basis_size,
+        "energy_shift_ry":          p.energy_shift_ry,
+        "xc_functional":            p.xc_functional,
+        "xc_authors":               p.xc_authors,
+        "siesta_mesh_cutoff_ry":    p.mesh_cutoff_ry,
+        "k_mesh_transverse":        (list(p.kgrid) if p.kgrid else None),
+        "electronic_temperature_k": p.electronic_temperature_k,
+    }.items() if v is not None}
+    if not contract:
+        return None
+    return {
+        "engine": "siesta",
+        "contract": contract,
+        "source": deck.name,
+        "source_sha256": hashlib.sha256(deck.read_bytes()).hexdigest(),
+    }
+
+
+# --------------------------------------------------------------------- #
+#  engine_of — WHICH ENGINE RAN HERE                                    #
+# --------------------------------------------------------------------- #
+
+#: The engines a run directory can answer.  ``"molwatch"`` is deliberately
+#: NOT here: it is the ``source_format`` a ``.molwatch.log`` reports when
+#: its header did not name an engine -- a FORMAT, and reading it as an
+#: engine is exactly the substitution `running-a-job.md` § 4.2 forbids.
+_ENGINES = ("siesta", "pyscf")
+
+#: The engine's stdout name, which only the wrapper knows
+#: (`runwrap.py`: ``".pyscf.log" if suffix == ".py" else ".out"``).  It is
+#: the one result-file fact NOT in an engine's warm-file vocabulary,
+#: because a log is never warm-started from.
+_STDOUT_SUFFIX = {"siesta": ".out", "pyscf": ".pyscf.log"}
+
+
+def engine_of(directory) -> str:
+    """Which engine ran in *directory* — ``"siesta"``, ``"pyscf"``, or
+    ``"unknown"``.
+
+    `running-a-job.md` § 4.2 owns the rule; this is the one
+    implementation.  The engine is **declared at script-generation
+    time**, because that is the only moment it is known for certain, and
+    a run directory gets copied away from everything that knew.
+
     **TWO TIERS, not a precedence list.**
 
     *Declarations* -- the PROVENANCE ``engine`` key of any deck or

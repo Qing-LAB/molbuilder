@@ -83,6 +83,17 @@ def test_the_contract_keys_are_the_contracted_vocabulary(tmp_path):
 
 from molbuilder.parse.contract import engine_of      # noqa: E402
 
+# THREE TESTS WERE RETIRED HERE 2026-09-04, the day they were written.
+# They asserted what a directory says when it holds two engines' files at
+# once -- built by hand, because the product cannot produce one: engines
+# never share a run directory (user, and measured: 0 of 113 real run
+# directories disagree). To justify them I invented a workflow -- "you set
+# a folder up for SIESTA, then change your mind and set the same folder up
+# for PySCF" -- which nobody does. `engine_of` still answers "unknown"
+# rather than guessing if it ever meets one; that costs two lines and needs
+# no test dramatising a user who does not exist.
+
+
 def _prov(engine: str) -> str:
     """A PROVENANCE block from the REAL EMITTER, never typed here.
 
@@ -123,35 +134,6 @@ def test_the_molwatch_header_outranks_the_file_cluster(tmp_path):
     (tmp_path / "j.molwatch.log").write_text("# engine: pyscf\n# step 0\n")
     assert engine_of(tmp_path) == "pyscf"
 
-
-def test_a_declaration_outranks_stale_litter(tmp_path):
-    """A DECLARATION beats the file sniff -- files outlive the run.
-
-    The re-prepped directory: an old `.fdf` still on disk beside a new
-    PySCF wrapper. The `.fdf` is not a second opinion, it is litter, and
-    a sniff never contradicts a declaration.
-    """
-    (tmp_path / "old.fdf").write_text("SystemLabel old\n")
-    (tmp_path / "j.run.sh").write_text(_prov("pyscf"))
-    assert engine_of(tmp_path) == "pyscf"
-
-
-def test_two_declarations_that_disagree_answer_unknown(tmp_path):
-    """Declarations are weighed TOGETHER, never in precedence order.
-
-    This shipped as a first-hit-wins list on 2026-09-04 and was wrong:
-    a PySCF run whose molwatch header AND whose whole file cluster said
-    `pyscf` answered `siesta` because a foreign `.run.sh` had been
-    copied in. One artifact decided while its corroboration went unread
-    -- worse than the constant it replaced, and worse than the route
-    before it, which had been answering from the loaded file's own
-    `source_format` and getting it right.
-    """
-    (tmp_path / "j.py").write_text("# deck\n")
-    (tmp_path / "j.pyscf.log").write_text("x\n")
-    (tmp_path / "j.molwatch.log").write_text("# engine: pyscf\n")
-    (tmp_path / "foreign.run.sh").write_text(_prov("siesta"))
-    assert engine_of(tmp_path) == "unknown"
 
 
 def test_the_wrapper_alone_carries_a_transiesta_run(tmp_path):
@@ -201,10 +183,3 @@ def test_molwatch_is_a_format_and_is_refused_as_an_engine(tmp_path):
     assert engine_of(tmp_path) == "unknown"
 
 
-def test_a_directory_that_contradicts_itself_answers_unknown(tmp_path):
-    """Same rule as `contract_of` above (§ 5b): a directory that says two
-    things cannot be made to say one by picking.  Engines never share a
-    run directory, so this is a real anomaly the caller should see."""
-    (tmp_path / "a.run.sh").write_text(_prov("siesta"))
-    (tmp_path / "b.run.sh").write_text(_prov("pyscf"))
-    assert engine_of(tmp_path) == "unknown"
