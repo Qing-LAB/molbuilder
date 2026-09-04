@@ -3776,6 +3776,12 @@ def render_run_wrapper(script_path: Path, *,
         generator_version=_sc.molbuilder_git_sha(),
         generated_at=_sc.generated_at_now(),
         resolved_defaults=_resolved_defaults,
+        # The wrapper is the one artifact EVERY prepared run has, whatever
+        # the engine and whatever the task -- a TranSIESTA run has no deck
+        # PROVENANCE (§ 3.1's table) but always has this.  So the engine
+        # declaration rides here too, and `_is_pyscf` is the same suffix
+        # test that already decided this file's whole shape four lines up.
+        engine="pyscf" if _is_pyscf else "siesta",
     )
     _user_custom = _sc.emit_user_custom_placeholder()
 

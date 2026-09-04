@@ -269,9 +269,10 @@ in `registry.py`.
 ```mermaid
 flowchart TD
     P["parse(path)"] --> D["detect(path)"]
-    D -->|"path is a dir"| DP["first DirParser whose<br/>can_parse is True"]
-    D -->|"path is a file"| FP["first FileParser whose<br/>can_parse is True"]
+    D -->|"path is a dir"| DP["the ONE DirParser whose<br/>can_parse is True"]
+    D -->|"path is a file"| FP["the ONE FileParser whose<br/>can_parse is True"]
     D -->|"none match"| ERR["raise UnknownFormatError<br/>(lists every parser + hints)"]
+    D -->|"two or more match"| AMB["raise AmbiguousFormatError<br/>(registration order is NOT precedence)"]
     DP --> R["ParseResult"]
     FP --> R
     PT["parse_text(text, parser)"] -->|"no detection"| R
@@ -351,6 +352,9 @@ molbuilder/parse/
 ├── types.py       # ParseResult + 5 subclasses + ParseWarning
 ├── registry.py    # _REGISTRY, detect/parse/parse_text/parse_dir/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
+├── contract.py    # what a DIRECTORY records about itself:
+│                  #   contract_of  — the electronic contract its deck states (§ 5b)
+│                  #   engine_of    — WHICH ENGINE RAN (`running-a-job.md` § 4.2)
 ├── _log.py        # parse-side logging helper
 │
 ├── engines/       # engine .out / .log → TrajectoryResult (FileParsers)
@@ -378,6 +382,7 @@ molbuilder/parse/
 │
 └── dirs/          # directory composers (DirParsers)
     ├── job.py                 # JobDirParser + decode_run_dir → JobResult
+    ├── run_info.py            # run_info_for_dir → the `info` block (composer)
     └── _assembler_helpers.py  # shared dir-walk + .fdf-coords helpers
 ```
 

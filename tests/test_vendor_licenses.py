@@ -61,21 +61,34 @@ def test_vendor_assets_and_notices_are_packaged(tmp_path):
     ship 90 of 141 static files (2026-09-02).  This is the only test in
     the suite that opens the real thing.
 
-    **A finding that came out of writing this, and it is worth knowing
-    before trusting either test.**  On the setuptools in use here (82.0.1)
-    the `package-data` patterns DO NOT DECIDE what ships.  Measured: delete
-    every `web/static` and `web/templates` pattern from `pyproject.toml`
-    and the wheel still carries all 141 static files and 17 templates; drop
-    an UNTRACKED file into `web/static/` and it ships too.  Modern
-    setuptools defaults `include-package-data` on and takes the whole
-    package directory.
+    **A correction, because this docstring carried a false measurement
+    for part of 2026-09-04.**  It claimed that on setuptools 82.0.1 the
+    `package-data` patterns "DO NOT DECIDE what ships" -- that the wheel
+    carried all 141 static files with every pattern deleted, so the
+    pattern-matching tests next door were "guarding a lever that is not
+    connected".
 
-    So a mutation of the patterns is not a mutation of the outcome, and the
-    pattern-matching tests next door are guarding a lever that is not
-    connected on this toolchain.  They are still defensible as a floor for
-    an older setuptools -- which is what the `>=62.3` build requirement is
-    about -- but they cannot show that a file ships.  Only opening the
-    wheel can, which is what this does.
+    That was wrong, and the way it was wrong is worth more than the
+    claim.  The experiment ran in the WORKING TREE, which holds a stale
+    `molbuilder.egg-info/SOURCES.txt` listing every file from an earlier
+    build; setuptools reads it and ships what it names, so deleting the
+    patterns changed nothing.  Re-run on a clean tree
+    (`git archive HEAD | tar -x -C tmp`, no egg-info, no build/):
+
+    * with the patterns:     141 static files, 17 templates
+    * patterns deleted:      **0 static files, 0 templates**
+
+    So the patterns decide everything, and the sibling pattern tests in
+    `test_wheel_ships_the_front_end.py` guard a lever that is very much
+    connected.  This test still earns its ~7 s -- a simulation of
+    packaging is what let a wheel ship 90 of 141 static files
+    (2026-09-02), and this is the only test in the suite that opens the
+    real artifact -- but it is a SECOND line of defence, not a
+    replacement for them.
+
+    The general rule, which cost a day to relearn: a packaging
+    measurement taken in a dirty tree measures the tree's history, not
+    the build.
     """
     import subprocess
     import sys

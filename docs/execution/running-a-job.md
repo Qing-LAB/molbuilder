@@ -599,6 +599,49 @@ deferral it closed). The curated engine-body summary and the plots remain
 SIESTA's; a PySCF attempt contributes its trajectory and its molwatch
 conclusion. One consolidated result per directory, with these fields:
 
+- **`engine`** — **which engine ran**: `siesta` or `pyscf` (`unknown` when
+  nothing in the directory says). This is the field every consumer reads;
+  nobody downstream re-derives it from file shapes.
+
+  **It is DECLARED at script-generation time, not inferred at read time** —
+  because generation is the only moment the answer is known for certain
+  (`script_emit` holds `DeckSpec.engine`), and a directory gets copied away
+  from everything that knew. Resolution order, first hit wins:
+
+  | | Source | Written by |
+  |---|---|---|
+  | 1 | the deck's / wrapper's **PROVENANCE `engine`** key (`job-contracts.md` § 3.2) | `script_emit.emit_provenance`, from `DeckSpec.engine` |
+  | 2 | the **`.molwatch.log` `# engine:` header** | both generators, at file-emission time |
+  | 3 | the **file cluster** — a `.fdf` deck ⇒ `siesta`; a `.py` deck beside `*.pyscf.log` / `*_geom_optim.xyz` ⇒ `pyscf` | nobody: this is the fallback for a directory molbuilder did not write |
+  | 4 | `unknown` | — |
+
+  **One value, one chain, and only the last link can be orphaned.** The
+  engine is chosen once, in the calculation's `task.json`
+  (`engine: {name}`); `prep` reads it to pick the per-engine seam
+  (`jobset/prep.py`); the seam's `spec_for` sets `DeckSpec.engine`; the
+  emitter writes that into PROVENANCE. So steps 1-3 above are not three
+  opinions -- they are one fact, recorded at successively lower levels so
+  that a run directory copied away from its description can still answer
+  for itself. That is the *only* reason the readback exists: a run
+  directory is the one artifact in the chain that travels alone.
+
+  `unknown` is a real answer and must stay reportable. A default that reads
+  as a live engine is worse than no answer: this field said `siesta`
+  unconditionally until 2026-09-04, so **every PySCF run directory in the
+  app reported itself as SIESTA** — a decoder whose own label says
+  "(SIESTA / PySCF)" answering for one of them.
+
+  > **The engine is not the parser, and one does not pick the other.** The
+  > engine says which vocabulary the run speaks. The **task** — optimization,
+  > transport, spectrum — says which files it produced, and therefore which
+  > parser reads them. **TranSIESTA is engine `siesta`**: same binary family,
+  > same `.fdf` contract, different task, and it may well have its own parser
+  > because it has a different dataset to show. So the engine **narrows the
+  > parser pool; it never selects the parser.** That is why `engine` and
+  > `parser_name` are two fields and neither may stand in for the other —
+  > substituting one for the other is what sent `format: "molwatch"` (a
+  > format) to a client asking which engine ran.
+
 - **`job_type`** — `optimization` / `spectrum` / `transport`, inferred from the
   script-contract BENCH-MARKS block or by sniffing the engine body
   (`MD.Steps` → optimization; `%block ProjectedDensityOfStates` → spectrum;

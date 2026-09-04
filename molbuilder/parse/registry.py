@@ -58,11 +58,19 @@ def register(parser: Type[Union[FileParser, TextParser, DirParser]]) -> None:
 
 
 def detect(path: Path) -> Union[Type[FileParser], Type[DirParser]]:
-    """Return the first parser whose ``can_parse(path)`` is True.
+    """Return the ONE parser whose ``can_parse(path)`` is True.
+
+    **Exactly one, not the first.**  ``_detect_one`` collects every
+    match and raises :exc:`AmbiguousFormatError` when more than one
+    parser claims the path -- registration order confers no
+    precedence, and a parser added later cannot quietly shadow one
+    added earlier.  (This said "the first parser" until 2026-09-04,
+    which described a first-wins dispatch the code has never had;
+    `model/parse.md` § 3's table had it right.)
 
     If ``path`` is a directory, only DirParsers are tried; if
     ``path`` is a file, only FileParsers are tried.  ``TextParser``
-    has no detection by design (no path to inspect) — callers
+    has no detection by design (no path to inspect) -- callers
     pick TextParser implementations explicitly.
 
     Raises :exc:`UnknownFormatError` when no parser matches, with

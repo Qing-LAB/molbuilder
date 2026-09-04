@@ -66,3 +66,92 @@ def test_the_contract_keys_are_the_contracted_vocabulary(tmp_path):
     assert not stray, (
         f"contract_of emits {sorted(stray)} outside CONTRACT_FIELDS "
         f"{sorted(CONTRACT_FIELDS)} -- the vocabulary is the contract")
+
+
+# --------------------------------------------------------------------- #
+#  engine_of — WHICH ENGINE RAN                                         #
+# --------------------------------------------------------------------- #
+#
+# `running-a-job.md` § 4.2 owns the rule and the resolution order.  What
+# these pin is the ORDER, because the order is the whole design: the
+# engine is DECLARED when the deck is generated (the only moment it is
+# known for certain) and the file-cluster sniff is a fallback for
+# directories molbuilder did not write.  A test that only checked "a
+# .fdf means siesta" would pass just as well against the constant this
+# replaced -- `decode_run_dir` answered `engine="siesta"` for every
+# directory until 2026-09-04, including every PySCF run.
+
+from molbuilder.parse.contract import engine_of      # noqa: E402
+
+_PROV = ("# === molbuilder provenance BEGIN ===\n"
+         "#   engine               {e}\n"
+         "#   generator-version    git deadbee\n"
+         "# === molbuilder provenance END ===\n")
+
+
+def test_a_pyscf_run_directory_says_pyscf(tmp_path):
+    """The regression this whole mechanism exists for."""
+    (tmp_path / "co2.pyscf.log").write_text("...\n")
+    assert engine_of(tmp_path) == "pyscf"
+
+
+def test_the_molwatch_header_outranks_the_file_cluster(tmp_path):
+    """A `.fdf` present would sniff as SIESTA; the log's own header wins.
+
+    This is the rung that carries every run prepared before the
+    PROVENANCE key shipped -- both generators have written
+    `# engine: <name>` at file-emission time for far longer.
+    """
+    (tmp_path / "j.fdf").write_text("SystemLabel j\n")
+    (tmp_path / "j.molwatch.log").write_text("# engine: pyscf\n# step 0\n")
+    assert engine_of(tmp_path) == "pyscf"
+
+
+def test_provenance_outranks_everything_below_it(tmp_path):
+    """The declaration is the SOLE source of truth when it is present."""
+    (tmp_path / "j.fdf").write_text("SystemLabel j\n")
+    (tmp_path / "j.molwatch.log").write_text("# engine: siesta\n")
+    (tmp_path / "j.run.sh").write_text(_PROV.format(e="pyscf"))
+    assert engine_of(tmp_path) == "pyscf"
+
+
+def test_a_transiesta_run_is_engine_siesta(tmp_path):
+    """TranSIESTA is the same engine as SIESTA -- a different TASK.
+
+    It emits no deck PROVENANCE (`job-contracts.md` § 3.1's per-engine
+    table), which is exactly why the wrapper carries the declaration
+    too: `.run.sh` is the one artifact every prepared run has, whatever
+    the engine and whatever the task.
+    """
+    (tmp_path / "j.fdf").write_text(
+        "%block TS.Elec.Left\n%endblock TS.Elec.Left\n")
+    (tmp_path / "j.run.sh").write_text(_PROV.format(e="siesta"))
+    assert engine_of(tmp_path) == "siesta"
+
+
+def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
+    """`mb_monitor.py` and `config_dir.py` ship beside every flat run.
+
+    The same foot-gun `JobDirParser.can_parse` documents for its own
+    claim rule: any python file would match.
+    """
+    (tmp_path / "mb_monitor.py").write_text("print(1)\n")
+    assert engine_of(tmp_path) == "unknown"
+
+
+def test_molwatch_is_a_format_and_is_refused_as_an_engine(tmp_path):
+    """A log with no `# engine:` header parses to `source_format`
+    ``"molwatch"``.  That is the FORMAT, and reading it as the engine is
+    the substitution § 4.2 forbids -- it is how the wire reported
+    ``format: "molwatch"`` for every molbuilder run."""
+    (tmp_path / "j.molwatch.log").write_text("# engine: molwatch\n")
+    assert engine_of(tmp_path) == "unknown"
+
+
+def test_a_directory_that_contradicts_itself_answers_unknown(tmp_path):
+    """Same rule as `contract_of` above (§ 5b): a directory that says two
+    things cannot be made to say one by picking.  Engines never share a
+    run directory, so this is a real anomaly the caller should see."""
+    (tmp_path / "a.run.sh").write_text(_PROV.format(e="siesta"))
+    (tmp_path / "b.run.sh").write_text(_PROV.format(e="pyscf"))
+    assert engine_of(tmp_path) == "unknown"

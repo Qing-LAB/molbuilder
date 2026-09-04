@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from molbuilder.identity import parse_stage_token
 from molbuilder.parse.base import DirParser
+from molbuilder.parse.contract import engine_of
 from molbuilder.parse.types import JobResult, ParseWarning
 
 
@@ -866,7 +867,13 @@ def decode_run_dir(run_dir: Path) -> JobResult:
         parser_name=JobDirParser.name,
         source=str(run_dir.resolve()),
         job_type=job_type,
-        engine="siesta",
+        # WHICH ENGINE RAN -- declared at generation time, resolved by the
+        # one implementation of `running-a-job.md` § 4.2's order.  This
+        # said "siesta" unconditionally until 2026-09-04, so every PySCF
+        # run directory reported itself as SIESTA -- from a decoder whose
+        # own label says "(SIESTA / PySCF)" and whose claim rule exists
+        # precisely to admit PySCF attempts.
+        engine=engine_of(run_dir),
         system_label=system_label,
         run_dir=str(run_dir.resolve()),
         status=status,

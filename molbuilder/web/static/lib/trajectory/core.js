@@ -1488,7 +1488,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 nextText = "";   // not displayed when hidden; sentinel only
             } else {
                 nextHidden = false;
-                const fmt = data.source_format || "";
+                // WHICH ENGINE, so `state.format` -- the same field the
+                // SCF banner reads.  This asked `data.source_format`
+                // until 2026-09-04, which is a FORMAT: it happens to
+                // agree for a molwatch log carrying an engine header,
+                // and silently falls through to the generic message for
+                // one without ("molwatch") and for every `siesta-mdnc`
+                // file, so the run that most needed the "SIESTA is still
+                // initializing" explanation was the one least likely to
+                // get it.
+                const fmt = state.format || "";
                 if (fmt === "pyscf") {
                     nextText = (
                         "PySCF initializing — first geomeTRIC step "
@@ -1853,11 +1862,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
             residual = null;
         }
 
-        // Engine-aware labels.  state.format is whatever the parser
-        // wrote to source_format -- "siesta", "pyscf", or "molwatch"
-        // when the file was a unified molwatch.log without an engine
-        // header (the molwatch.log emitter normally fills in "siesta"
-        // or "pyscf" so this last case is the rare fallback).
+        // Engine-aware labels.  state.format is WHICH ENGINE RAN --
+        // "siesta", "pyscf", or "unknown" -- decided on the server by
+        // `parse.contract.engine_of` from what the run directory
+        // declares about itself (`running-a-job.md` 4.2).  It is NOT
+        // the parser's name and NOT source_format; this comment said it
+        // was until 2026-09-04, and believing it is how a wire field
+        // documented as naming the engine came to carry "molwatch" --
+        // a FORMAT -- for every molbuilder-generated run, sending the
+        // branch below to its neutral fallback every time.
         //
         // Banner-title precision rule: be specific where we have
         // certainty, generic where we don't.
@@ -2641,8 +2654,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // ``r.path`` is the server-resolved absolute path (the input
         // may have been a directory; r.path is the file actually
         // loaded — same value the live-poll URL uses).
-        const resolvedFormat = r.format
-            || (r.data && r.data.source_format) || "?";
+        // The server always answers `format`, and it is the only thing
+        // entitled to: the engine is a fact about the run DIRECTORY,
+        // which the browser cannot see.  Falling back to
+        // `data.source_format` here was a second, client-side answer to
+        // a question the server had already answered -- and a wrong one
+        // in kind, since source_format is a FORMAT ("siesta-mdnc",
+        // "pyscf-geom", "molwatch").  "unknown" is a real answer and
+        // renders as the neutral banner.
+        const resolvedFormat = r.format || "unknown";
         transition("APPLY", {
             mtime:  r.mtime,
             data:   r.data,

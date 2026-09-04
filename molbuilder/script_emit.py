@@ -289,15 +289,28 @@ def emit_header(lines: List[str]) -> str:
 def emit_provenance(generator_version: str,
                     generated_at: str,
                     resolved_defaults: Optional[Dict[str, str]] = None,
-                    form_config_hash: Optional[str] = None) -> str:
+                    form_config_hash: Optional[str] = None,
+                    engine: Optional[str] = None) -> str:
     """Emit the PROVENANCE block.
 
     ``resolved_defaults`` is a flat dict of "field -> description";
     e.g. {"BlockSize": "auto -> 256 (10 * 212 atoms / mpi_np)"}.
     Caller decides what to include.  The block has no version tag
     (per the contract — keys are additive and forward-compatible).
+
+    ``engine`` is WHICH ENGINE THIS DECK IS FOR, and it leads the block
+    because it is what a reader asks first.  Generation is the only
+    moment that answer is certain -- ``DeckSpec.engine`` chose the
+    catalogue rows and the layout that produced the body -- and § 3
+    exists precisely because the file then gets copied away from
+    everything that knew.  Consumers read it back through
+    ``running-a-job.md`` § 4.2's resolution order.  Optional so the
+    signature stays additive; a caller with nothing to declare emits
+    the block exactly as before.
     """
     out: List[str] = [begin_marker(BLOCK_PROVENANCE)]
+    if engine:
+        out.append(f"#   engine               {engine}")
     out.append(f"#   generator-version    {generator_version}")
     out.append(f"#   generated-at         {generated_at}")
     if form_config_hash:
@@ -1524,7 +1537,8 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     record: List[str] = [emit_provenance(
         generator_version=molbuilder_git_sha(),
         generated_at=generated_at_now(),
-        resolved_defaults=_defaults)]
+        resolved_defaults=_defaults,
+        engine=spec.engine)]
     # NAMED AS THEY GO IN, not counted afterwards.  Re-deriving which blocks
     # a list of three strings holds is the guess this file exists to replace,
     # and the first version of it got the answer wrong.

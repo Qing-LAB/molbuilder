@@ -847,6 +847,7 @@ generation time:
 
 ```
 # === molbuilder provenance BEGIN ===
+#   engine               siesta
 #   generator-version    git e8a4f81
 #   generated-at         2026-06-16T17:30:00-07:00
 #   form-config-hash     sha256:7c4d…            # optional
@@ -857,6 +858,20 @@ generation time:
 # === molbuilder provenance END ===
 ```
 
+- `engine` is **which engine this deck was generated for** — `siesta` or
+  `pyscf`, taken from `DeckSpec.engine`, which is the field that chose the
+  catalogue rows and the layout that produced the body below it. It is the
+  **sole source of truth for engine identity** in a run directory
+  (`running-a-job.md` § 4.2 states the resolution order and the two fallbacks
+  behind it). A **TranSIESTA** deck says `siesta`: same engine, same `.fdf`
+  contract, different task.
+
+  This key is why the block exists at all. § 3 opens by saying generated
+  input "gets **copied** out of the edit directory into project/run
+  directories and travels onward" — and until 2026-09-04 the one fact that
+  travel destroys, and that every reader needs first, was the one fact the
+  snapshot did not carry. Readers guessed it from file extensions instead,
+  and the directory decoder simply answered `siesta` for everything.
 - `generator-version` is the molbuilder git SHA (short); `git log <sha>` in the
   repo recovers the full generator state.
 - `generated-at` is ISO-8601 with timezone.
