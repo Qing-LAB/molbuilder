@@ -65,8 +65,14 @@ class TestPartialIntegrity:
     # style.background — formerly the ``rep``, ``radius``,
     # ``colorscheme``, ``bg`` IDs).  The embed's knob bar (see
     # docs/web/molview.md) now owns those, and
-    # they're tested separately via test_mol_viewer_embed_e2e.py's
-    # knob-bar contract.
+    # the appearance contract is pinned in tests/test_molview_mount.py
+    # (`test_the_handle_refuses_appearance` and its neighbours), which
+    # drives the real mount under node.
+    #
+    # Corrected 2026-09-03: this named `test_mol_viewer_embed_e2e.py`,
+    # which has never existed -- the same dead citation this file's own
+    # retired mount-contract class carried, found by grepping every test
+    # filename mentioned in a comment against the files on disk.
     #
     # The boundary is encoded below as two explicit sets so a future
     # accidental re-introduction of chrome IDs into the partial

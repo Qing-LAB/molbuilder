@@ -16,7 +16,8 @@ browser test at all, while being the one page that handles credentials.
 fields, choosing the kind, pressing Save, opening the disclosure.  Driving
 `/api/notify/channels` with `fetch` from inside the browser would be an API
 test wearing a browser costume, and the API already has one
-(`tests/test_notify_setup.py`); what only a browser can answer is whether the
+(`tests/test_notify_setup_api.py`, 40-odd tests); what only a browser can
+answer is whether the
 form a person fills in reaches that API and whether what comes back is safe to
 put on screen.
 """
@@ -57,6 +58,20 @@ _LISTENER_URL = "https://lab.example.org/molbuilder/report/aa11bb22cc33"
 #: address it has no visible form at all — `_row` reports only ``has_key``.
 _SECRET_KEY = "sk-live-DO-NOT-PRINT-4242"
 
+#: **Nothing here talks to Slack, and nothing is a real credential.**  The
+#: kinds are routing labels the page itself offers (`#tm-kind-slack`,
+#: `-discord`, `-listener`); what is under test is the MECHANISM behind them
+#: — `_mask`, the `_row` door, the file that gets written.  The one control
+#: that would send anything outward is Test, and no test here presses it.
+#: The values above are self-labelling fakes on a documentation domain, and
+#: the server is a throwaway on 127.0.0.1.
+
+#: Names the box's own hint forbids: "Letters, digits, `-` and `_`".
+_FORBIDDEN = {"has space", "semi;colon", "sla/sh", "back\\slash"}
+
+#: ...and two it must keep accepting, so a fix cannot overshoot.
+_ALLOWED = {"ok-name_1", "plain"}
+
 
 @pytest.fixture
 def config_home(tmp_path, monkeypatch):
@@ -90,21 +105,20 @@ def _open(page, base_url):
     channel exists — which is the state every one of these tests starts in.
     ``#tm-save`` is the card's own control and is there either way.
 
-    Returns the JS-error list.  **Nothing asserts on it yet**, and that is a
-    deliberate hold rather than an oversight: asserting it green found a live
-    product defect on 2026-09-03 --
+    Returns the JS-error list, which every caller **asserts is empty**.
+    That assertion is not ceremony: it is what found the defect below.
 
-        pattern="[A-Za-z0-9_-]{1,64}"  on #tm-name
+    ``pattern="[A-Za-z0-9_-]{1,64}"`` on ``#tm-name`` looks fine and was
+    dead.  Chrome compiles a `pattern` attribute under the `v` flag, where
+    an unescaped ``-`` before ``]`` is a syntax error -- so the browser
+    DISCARDED the constraint and `checkValidity()` accepted "has space" and
+    "sla/sh", while the hint beside the box promised "Letters, digits, -
+    and _".  The page stated a rule it did not enforce, in silence, for as
+    long as the attribute had been there.
 
-    Chrome compiles a `pattern` attribute under the `v` flag, where an
-    unescaped `-` before `]` is a syntax error, so the browser DISCARDS the
-    constraint: `checkValidity()` accepts "has space" and "sla/sh" while the
-    hint beside the box promises "Letters, digits, - and _".  The page states
-    a rule it does not enforce.  `\-` fixes it (measured: the escaped form
-    rejects both and still accepts `ok-name_1`).
-    That is a change to the product, so it waits for a decision; the
-    assertion belongs with the fix, together with a test that types a bad
-    name and expects the form to refuse it.
+    The failure was visible the whole time, as a console error on every
+    load, and nothing was listening.  Fixed 2026-09-03 by escaping the
+    dash; pinned by ``test_a_name_the_page_forbids_is_refused`` below.
     """
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -150,7 +164,7 @@ def test_the_page_states_every_branch_of_the_config_dir_rule(
     present in the file but sealed inside a disclosure that never opens is
     not stated to anybody.
     """
-    _open(page, flask_server)
+    errors = _open(page, flask_server)
     details = page.locator("details.tm-expects")
     assert details.count() == 1, "the 'what the target machine needs' block is gone"
     page.locator("details.tm-expects > summary").click()
@@ -169,6 +183,7 @@ def test_the_page_states_every_branch_of_the_config_dir_rule(
     assert "notify" in shown, (
         "the page names no file, so a reader learns the directory and not "
         "what to put in it")
+    assert errors == [], f"the page reported JS errors: {errors}"
 
 
 def test_a_channels_secret_never_reaches_the_page(page, flask_server):
@@ -182,7 +197,7 @@ def test_a_channels_secret_never_reaches_the_page(page, flask_server):
     a value can sit in a ``title``, a ``value``, or a ``data-`` attribute and
     still be one clipboard away from a person.
     """
-    _open(page, flask_server)
+    errors = _open(page, flask_server)
     _add_channel(page, "prod-alerts", _SECRET_URL)
 
     dom = page.content()
@@ -200,6 +215,7 @@ def test_a_channels_secret_never_reaches_the_page(page, flask_server):
     assert "hooks.slack.com" in dom, (
         "nothing about the address is shown, so the reader cannot tell which "
         "service the channel points at -- masking is not hiding")
+    assert errors == [], f"the page reported JS errors: {errors}"
 
 
 # NOT asserted here: that a successful save clears `#tm-url`.  It does not,
@@ -266,7 +282,7 @@ def test_a_listeners_key_never_reaches_the_page(page, flask_server,
     obvious: the key must not render, AND the address must be masked even
     though it is not itself a secret.
     """
-    _open(page, flask_server)
+    errors = _open(page, flask_server)
     _add_channel(page, "lab-listener", _LISTENER_URL,
                  kind="listener", key=_SECRET_KEY)
 
@@ -286,6 +302,7 @@ def test_a_listeners_key_never_reaches_the_page(page, flask_server,
     assert "lab.example.org" in dom, (
         "nothing about the listener's address is shown, so a reader cannot "
         "tell where reports go -- masking is not hiding")
+    assert errors == [], f"the page reported JS errors: {errors}"
 
     # The key must still reach the FILE.  A page that satisfies "the key
     # never renders" by never storing it would leave every report from that
@@ -294,3 +311,54 @@ def test_a_listeners_key_never_reaches_the_page(page, flask_server,
     assert _SECRET_KEY in json.dumps(stored), (
         "the key was never written to <config dir>/notify, so the monitor "
         "has nothing to sign reports with")
+
+
+def test_a_name_the_page_forbids_is_refused(page, flask_server):
+    """The box says "Letters, digits, ``-`` and ``_``", so it must mean it.
+
+    **This is not a test about regex syntax.**  A channel name is what you
+    tick on a calculation and what the monitor looks up in the file on the
+    compute node, so a name with a space or a slash in it is a channel that
+    is named one thing here and looked for as another there — and nothing
+    reports that, because "no channel by that name" is indistinguishable
+    from "no notifier" (`configuration.md` § 2.1c).
+
+    The constraint was dead from the day it was written: ``pattern`` is
+    compiled under the `v` flag, where an unescaped ``-`` before ``]`` is a
+    syntax error, and a `pattern` that does not compile is discarded rather
+    than enforced.  So the form accepted every name and the hint beside it
+    was decoration.
+
+    Driven through ``checkValidity()`` rather than by pressing Save,
+    because refusing on submit is the browser's job here and what is under
+    test is whether the rule reaches it at all.
+    """
+    _open(page, flask_server)
+    verdicts = page.evaluate("""(names) => {
+        const n = document.getElementById("tm-name");
+        const out = {};
+        for (const v of names) { n.value = v; out[v] = n.checkValidity(); }
+        n.value = "";
+        return out;
+    }""", sorted(_FORBIDDEN | _ALLOWED))
+    accepted = {k for k, ok in verdicts.items() if ok}
+
+    # Report only what actually went wrong, on each side.  The first draft
+    # printed EVERY accepted name under "the form accepts names its own hint
+    # forbids", so a real failure listed `ok-name_1` and `plain` among the
+    # offenders and sent the reader hunting for a defect in names that were
+    # behaving perfectly.
+    leaked = sorted(_FORBIDDEN & accepted)
+    assert not leaked, (
+        f"the form accepts {leaked}, which its own hint forbids.  A "
+        f"`pattern` that fails to compile is DISCARDED by the browser, not "
+        f"enforced -- so the field reads as validated and is not.  Check the "
+        f"attribute compiles: an unescaped `-` before `]` is a syntax error "
+        f"under the `v` flag that `pattern` uses, and the console says so on "
+        f"every page load.")
+    over_tight = sorted(_ALLOWED - accepted)
+    assert not over_tight, (
+        f"the form refuses {over_tight}, which the hint beside the box says "
+        f"are legal.  Over-tightening is the same defect pointing the other "
+        f"way: a person cannot name a channel the thing they already called "
+        f"it on the compute node.")
