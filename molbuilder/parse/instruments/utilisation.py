@@ -34,10 +34,20 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
     """Merge a `monitor-log` result's metrics over a `util-csv` result's.
 
     Keys are the csv's, plus ``util_basis`` naming where the MEANS came
-    from (``"monitor-summary"`` | ``"util-csv"``) so a reader can tell an
-    exact figure from a reconstruction.  Peak RSS, the sampled wall
-    window and peak VRAM come from the csv either way: the summary does
-    not carry them.
+    from (``"monitor-summary"`` | ``"util-csv"`` | ``"mixed"``) so a
+    reader can tell an exact figure from a reconstruction.  Peak RSS, the
+    sampled wall window and peak VRAM come from the csv either way: the
+    summary does not carry them.
+
+    **``"mixed"`` exists because ONE label cannot describe TWO means.**
+    The monitor's ``summary()`` emits a ``cpu mean=`` bit and a ``gpuN sm
+    mean=`` bit independently, so a ``[UTIL-SUMMARY]`` truncated
+    mid-write -- a partial flush when a trial is killed, and a killed
+    trial is the one a benchmark most needs to read -- states the CPU
+    and not the GPU.  This stamped ``"monitor-summary"`` over a GPU
+    figure it had taken from the change-gated csv, which is precisely
+    the mistake the field exists to prevent (`plan` § E2: "a
+    reconstruction is never mistaken for an exact figure").
     """
     out = dict(csv or {})
     mon = monitor or {}
@@ -47,9 +57,15 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
         if out:
             out["util_basis"] = "util-csv"
         return out
-    if cpu is not None:
-        out["cpu_mean_pct"] = cpu
-    if gpu is not None:
-        out["gpu_sm_mean_pct"] = gpu
-    out["util_basis"] = "monitor-summary"
+    # Which means are PRESENT, and which of those the monitor stated.
+    # A mean the csv never carried is not a disagreement -- a CPU-only
+    # node has no GPU figure from either source, and that is one basis.
+    exact, reconstructed = [], []
+    for key, stated in (("cpu_mean_pct", cpu), ("gpu_sm_mean_pct", gpu)):
+        if stated is not None:
+            out[key] = stated
+            exact.append(key)
+        elif key in out:
+            reconstructed.append(key)
+    out["util_basis"] = "mixed" if (exact and reconstructed) else "monitor-summary"
     return out

@@ -115,3 +115,62 @@ def test_the_reader_can_read_what_the_monitor_writes(monkeypatch, tmp_path):
     assert machine == {"node": "sol-g042", "cores": "48", "mem_gb": "503.5",
                        "gpu": "NVIDIA A100-SXM4-80GB, NVIDIA H200"}, (
         f"the reader could not reconstruct what the writer wrote: {machine}")
+
+
+# ---------------------------------------------------------------------------
+#  A number that was never measured
+# ---------------------------------------------------------------------------
+#  Both of these shipped on 2026-09-04 and both put a value where an
+#  absence belonged -- forbidden pattern #9, `model/parse.md` § 7.  The
+#  suite was green with both defects live, because every fixture in it
+#  carries a well-formed epoch column and a monitor summary that states
+#  BOTH means; nothing asked what happens when the measurement is
+#  partial, which is the shape a KILLED trial leaves and the one a
+#  benchmark most needs to read.
+
+def test_a_mean_with_no_time_base_is_absent_not_zero():
+    """A column the parser could not time has not been measured.
+
+    ``util.csv`` is change-gated, so every mean is time-weighted; a row
+    whose ``epoch`` will not parse cannot carry its value's weight.  The
+    old code returned 0.0 for the empty series and stored it, which
+    renders a trial that ran at 40-80% as an idle machine -- and the
+    reader cannot tell it from a genuine 0.
+    """
+    from molbuilder.parse.instruments.util_csv import util_csv_metrics
+    unusable = ("epoch,cpu_pct,mem_gb\n"
+                "NOT_A_TIME,40.0,3.4\n"
+                "ALSO_BAD,80.0,3.4\n")
+    got = util_csv_metrics(unusable)
+    assert "cpu_mean_pct" not in got, (
+        f"a CPU mean was reported for rows that carry no usable clock: {got}")
+    assert got.get("peak_rss_gb") == 3.4, (
+        "peak RSS needs no clock and must survive: " + repr(got))
+
+    # The same rows WITH a clock still measure, or the guard is just a mute.
+    usable = "epoch,cpu_pct,mem_gb\n1000,40.0,3.4\n1300,80.0,3.4\n"
+    assert util_csv_metrics(usable)["cpu_mean_pct"] == 40.0
+
+
+def test_a_half_stated_summary_is_not_called_the_monitors_own():
+    """One `util_basis` label cannot describe two means of different origin.
+
+    `monitor.summary()` writes its ``cpu mean=`` and ``gpuN sm mean=``
+    bits independently, so a line truncated mid-write states one and not
+    the other.  Stamping ``monitor-summary`` over the half that came
+    from the change-gated csv is exactly what `plan` § E2 says the field
+    exists to prevent.
+    """
+    mixed = utilisation({"stated_cpu_mean_pct": 40.0},
+                        {"cpu_mean_pct": 31.5, "gpu_sm_mean_pct": 77.0})
+    assert mixed["cpu_mean_pct"] == 40.0, "the exact CPU figure still wins"
+    assert mixed["gpu_sm_mean_pct"] == 77.0, "the csv still supplies the GPU"
+    assert mixed["util_basis"] == "mixed", (
+        "the GPU figure is a reconstruction and the label says otherwise: "
+        + repr(mixed))
+
+    # A CPU-only node is NOT mixed: neither source carries a GPU mean, so
+    # there is one basis and it is the monitor's.
+    cpu_only = utilisation({"stated_cpu_mean_pct": 40.0},
+                           {"cpu_mean_pct": 31.5, "wall_s": 9.0})
+    assert cpu_only["util_basis"] == "monitor-summary", repr(cpu_only)

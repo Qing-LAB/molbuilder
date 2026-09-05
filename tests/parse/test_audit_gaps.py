@@ -154,10 +154,51 @@ def test_forbidden_p2_textparsers_do_no_io():
                 f"text in memory only (model/parse.md § 7 #2)")
 
 
+def _modules_defining_a_fileparser():
+    """Every module under `parse/` that declares a FileParser subclass.
+
+    DISCOVERED, not listed.  This lint named three packages -- engines,
+    sidecars, coords -- until 2026-09-04, when `instruments/` added three
+    FileParsers and inherited no guard: a parser there could shell out
+    with the suite green.  A hardcoded list turns "every FileParser
+    obeys #3" into "the three packages someone remembered do", and the
+    day it goes stale is the day a package is added, which is the day
+    nobody is looking at this file.
+    """
+    import ast
+    found = []
+    for p in sorted(_PARSE_DIR.rglob("*.py")):
+        try:
+            tree = ast.parse(p.read_text())
+        except SyntaxError:                     # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
+            bases |= {b.attr for b in node.bases if isinstance(b, ast.Attribute)}
+            if "FileParser" in bases:
+                found.append(p)
+                break
+    return found
+
+
+def test_the_fileparser_lint_sees_every_package_that_has_one():
+    """Anti-vacuity: the discovery above must actually find the new ones.
+
+    Without this, an `rglob` that silently matched nothing would make
+    the #3 lint below pass by scanning zero files -- the failure mode it
+    was just rescued from, re-entered through a different door.
+    """
+    packages = {p.parent.name for p in _modules_defining_a_fileparser()}
+    assert {"engines", "sidecars", "coords", "instruments"} <= packages, (
+        f"discovery missed a FileParser package: found {sorted(packages)}")
+
+
 def test_forbidden_p3_fileparsers_no_subprocess_or_network():
     """model/parse.md § 7 forbidden #3: FileParsers do NO
-    subprocess / network / threads.  Lint parse/engines/* +
-    parse/sidecars/* + parse/coords/* for the forbidden tokens."""
+    subprocess / network / threads.  Lints every module that DEFINES a
+    FileParser, discovered rather than listed."""
     forbidden = (
         "import subprocess", "from subprocess",
         "import socket", "from socket",
@@ -166,11 +207,9 @@ def test_forbidden_p3_fileparsers_no_subprocess_or_network():
         "import threading", "from threading",
         "Thread(", "Popen(", ".system(",
     )
-    file_parser_dirs = ("engines", "sidecars", "coords")
-    for subdir in file_parser_dirs:
-        for p in _glob_py(subdir):
-            if p.name in ("__init__.py", "_helpers.py"):
-                continue
+    modules = _modules_defining_a_fileparser()
+    assert modules, "discovered no FileParser modules — the lint would be vacuous"
+    for p in modules:
             text = p.read_text()
             for token in forbidden:
                 assert token not in text, (

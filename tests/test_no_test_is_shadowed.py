@@ -41,7 +41,16 @@ def _shadowed(tree: ast.AST) -> list[tuple[str, list[int]]]:
         for node in body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
                                  ast.ClassDef)):
+                if _is_property_partner(node):
+                    continue
                 seen[node.name].append(node.lineno)
+            elif isinstance(node, ast.Assign):
+                # Module-level constants shadow exactly the same way, and
+                # silently: `_ENGINES` was defined twice in
+                # `parse/contract.py` on 2026-09-04 and the file shipped.
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        seen[target.id].append(node.lineno)
             if isinstance(node, ast.ClassDef):
                 scan(node.body, prefix + node.name + "::")
         for name, lines in seen.items():
@@ -50,6 +59,23 @@ def _shadowed(tree: ast.AST) -> list[tuple[str, list[int]]]:
 
     scan(tree.body, "")            # type: ignore[attr-defined]
     return out
+
+
+def _is_property_partner(node) -> bool:
+    """``@x.setter`` / ``@x.getter`` / ``@x.deleter`` beneath ``@property``.
+
+    These REBIND the name deliberately -- that is how the descriptor is
+    assembled -- so they are the one legitimate second definition.  Measured
+    before this exemption existed: exactly two in the tree
+    (``PySCFConfig.molwatch_log``, ``Structure._frozen_atoms``), both correct.
+    """
+    for dec in getattr(node, "decorator_list", []):
+        if (isinstance(dec, ast.Attribute)
+                and dec.attr in ("setter", "getter", "deleter")
+                and isinstance(dec.value, ast.Name)
+                and dec.value.id == node.name):
+            return True
+    return False
 
 
 def test_no_test_is_shadowed_by_a_later_one():
@@ -96,3 +122,68 @@ def test_the_scan_catches_a_shadowed_definition():
 
     clean = ast.parse("def test_a():\n    pass\n\n\ndef test_b():\n    pass\n")
     assert _shadowed(clean) == []
+
+
+# ---------------------------------------------------------------------------
+#  The same defect, in the product
+# ---------------------------------------------------------------------------
+
+PKG = Path(__file__).resolve().parents[1] / "molbuilder"
+
+
+def test_no_definition_in_the_package_is_shadowed():
+    """The rule above is about paste artefacts, not about tests.
+
+    This file was written on 2026-09-02 for a duplicated TEST and scanned
+    only `tests/`.  On 2026-09-04 the identical artefact landed in the
+    PRODUCT: a botched revert left `parse/contract.py` with two
+    `_siesta_contract`, two `_ENGINES`, two `_STDOUT_SUFFIX` and two
+    `engine_of` -- 74 dead lines, one of them an `engine_of` carrying
+    `contract_of`'s body under `engine_of`'s docstring.  Every test passed,
+    because Python's last definition wins and the last one was right.
+
+    A reader editing the dead copy sees no change; a reader deleting "the
+    duplicate" has even odds of deleting the live one and shipping an
+    `engine_of` that returns a dict.  pyflakes reports it, and pyflakes is
+    not in CI -- so the guard belongs here, where the suite runs.
+    """
+    findings: list[str] = []
+    scanned = 0
+    for path in sorted(PKG.rglob("*.py")):
+        if "vendor" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):    # pragma: no cover
+            continue
+        scanned += 1
+        for name, lines in _shadowed(tree):
+            findings.append(
+                f"  {path.relative_to(PKG)}::{name}  "
+                f"defined at lines {', '.join(map(str, lines))}")
+
+    # Same anti-vacuity guard as above: a scan that reaches nothing is
+    # indistinguishable from a clean package.
+    assert scanned >= 100, f"only {scanned} package modules parsed -- blind"
+
+    assert not findings, (
+        "these names are defined more than once in one scope, so only the "
+        "LAST definition exists.  Every earlier one is dead code that reads "
+        "as live:\n\n" + "\n".join(findings)
+        + "\n\nDelete the dead copy -- and check WHICH one is dead before "
+          "deleting, because the survivor is the last, not the first.")
+
+
+def test_the_package_scan_spares_a_property_setter_pair():
+    """Anti-false-positive: the one legitimate rebinding must not trip it."""
+    prop = ast.parse(
+        "class C:\n"
+        "    @property\n"
+        "    def x(self): return self._x\n"
+        "    @x.setter\n"
+        "    def x(self, v): self._x = v\n")
+    assert _shadowed(prop) == [], _shadowed(prop)
+
+    # ...but a plain duplicate in the same class body is still caught.
+    plain = ast.parse("class C:\n    def x(self): pass\n    def x(self): pass\n")
+    assert [n for n, _ in _shadowed(plain)] == ["C::x"], _shadowed(plain)

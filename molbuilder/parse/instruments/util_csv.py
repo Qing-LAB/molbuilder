@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import InstrumentResult
@@ -34,7 +34,7 @@ _CSV_GPU_SM = re.compile(r"^gpu\d+_sm$")
 
 _CSV_GPU_VRAM = re.compile(r"^gpu\d+_vram_gb$")
 
-def _time_weighted(series: List[Tuple[float, float]]) -> float:
+def _time_weighted(series: List[Tuple[float, float]]) -> Optional[float]:
     """The mean of a ``(epoch, value)`` series over TIME, not over samples.
 
     Takes PAIRS, not two parallel lists, and that is the point: a value and
@@ -60,10 +60,23 @@ def _time_weighted(series: List[Tuple[float, float]]) -> float:
     Each sample is held to weigh the interval until the NEXT sample; the
     last has no successor and so contributes nothing, which is correct --
     it marks the end of the window rather than a span within it.  Falls
-    back to the plain mean when there is no usable time base.
+    back to the plain mean when the samples share one instant (``span <=
+    0``), which is a real reading taken too fast to separate.
+
+    **An EMPTY series is ``None``, never ``0.0``.**  A column whose rows
+    all lack a usable ``epoch`` has not been measured, and 0.0 is a
+    reading -- one that says the machine sat idle.  Returning it put a
+    fabricated number where the absence of one belonged, which is
+    forbidden pattern #9 (`model/parse.md` § 7), and it was the same
+    mistake in the same file as the ``[N/A]`` shift above: a hole
+    borrowing a plausible value instead of admitting itself.  Callers
+    omit the metric rather than store the ``None`` -- an absent key
+    reads as "not measured", which is what happened.
     """
+    if not series:
+        return None
     if len(series) < 2:
-        return series[0][1] if series else 0.0
+        return series[0][1]
     span = series[-1][0] - series[0][0]
     if span <= 0:
         return sum(v for _, v in series) / len(series)
@@ -158,10 +171,11 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
         out["peak_rss_gb"] = max(cols["mem_gb"])
     if len(epochs) >= 2 and epochs[-1] > epochs[0]:
         out["wall_s"] = round(epochs[-1] - epochs[0], 1)
-    if cols.get("cpu_pct"):
-        out["cpu_mean_pct"] = round(_time_weighted(_series("cpu_pct")), 1)
-    sm_means = [_time_weighted(_series(h)) for h, v in cols.items()
-                if _CSV_GPU_SM.match(h) and v]
+    cpu_mean = _time_weighted(_series("cpu_pct"))
+    if cpu_mean is not None:
+        out["cpu_mean_pct"] = round(cpu_mean, 1)
+    sm_means = [m for m in (_time_weighted(_series(h)) for h, v in cols.items()
+                            if _CSV_GPU_SM.match(h) and v) if m is not None]
     if sm_means:
         out["gpu_sm_mean_pct"] = round(max(sm_means), 1)
     vram_peaks = [max(v) for h, v in cols.items()

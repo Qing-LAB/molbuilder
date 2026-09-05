@@ -37,7 +37,9 @@ from pathlib import Path
 import pytest
 
 
-pytestmark = pytest.mark.module
+# NOTE: the module marker is combined with the node skipif below --
+# two `pytestmark =` assignments do not add up, the second REPLACES
+# the first, and this file silently lost `-m module` selection.
 
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -49,10 +51,13 @@ def _have_node():
     return shutil.which("node") is not None
 
 
-pytestmark = pytest.mark.skipif(
-    not _have_node(),
-    reason="node not installed; L2 Node-driven test",
-)
+pytestmark = [
+    pytest.mark.module,
+    pytest.mark.skipif(
+        not _have_node(),
+        reason="node not installed; L2 Node-driven test",
+    ),
+]
 
 
 def _extract_format_fetch_error_src():
