@@ -473,6 +473,127 @@ the emit matrix it already documents.
 `_extract_*` name imported from another package is a failure, not a style note.
 
 
+---
+
+## 5e. Engine additions — a person's own engine text, as an INPUT
+
+*(Your ruling, 2026-09-05: option 2 — a distinct input to the writer, not a
+catalogue extension; **engine-specific**; and **the person is told the
+consequence**. Contract-first: this section is the design. **Not started.**
+No code has moved.)*
+
+### The need
+
+A person wants engine content molbuilder does not model: a Lua script driving
+a SIESTA relaxation, a `%block` for a feature with no form field yet, a PySCF
+call. Today that goes in the USER-CUSTOM zone, and a UI card is wanted for it.
+
+### Why the zone cannot carry it — measured, not argued
+
+`render_deck` assembles the deck like this (`script_emit.py:1319`):
+
+```python
+text = (science + "\n\n" + emit_user_custom_placeholder()
+        + "\n\n" + machine_record_banner()
+        + "\n\n" + "\n\n".join(record) + "\n")
+```
+
+**The zone is not in the layout.** `spec.layout` never sees it; the framework
+concatenates a placeholder after the walk. Everything else in a deck arrives
+through the model — `Section.items` are CATALOGUE NAMES, turned into a
+`Parameter` and handed to the engine's `line`, one line each, recorded in
+`emitted` so `check_deck` can close the loop against the written file.
+
+Three consequences follow from that one fact, and they are not three bugs:
+
+1. **A user's line can duplicate a declared item's**, because nothing compares
+   them — the writer never saw it.
+2. **Position is fixed below the science.** Measured on a real deck: engine
+   body at lines 12 / 520 / 980, zone at 1222. libfdf takes the FIRST
+   occurrence, so *anything the deck already writes cannot be overridden from
+   the zone*.
+3. **The engine's own rules refuse it.** SIESTA's `check_rules`
+   (`siesta/layout.py:354`) splits the whole file and knows nothing of the
+   fence, so a duplicate raises **error** severity and `prep` refuses.
+
+The Lua case is decided by (2) and (3) together: SIESTA engages Lua with
+`MD.TypeOfRun Lua`, which the catalogue already declares. Measured — that deck
+is refused, and the refusal is *correct*, because libfdf would have ignored the
+line anyway. **The zone can never carry the feature it is documented for.**
+
+### The shape
+
+An **engine addition** is a person-supplied contribution to one engine's deck.
+It is an INPUT, alongside the structure and the config — never text recovered
+from a previous output.
+
+| | |
+|---|---|
+| **engine-specific** | an addition is SIESTA text or PySCF text; there is no engine-neutral addition, because the content is engine syntax. It is declared for one engine and ignored by the other, the way `[item.*]`'s `engines` key already works |
+| **the writer places it** | additions reach `render_deck` in the spec and are emitted during the layout walk, in the layout's position — not appended after it |
+| **emitted once** | if an addition writes a keyword a declared item also writes, ONE line is written, not two |
+| **recorded** | its lines join `emitted`, so `check_deck` closes the same loop over them as over every other line |
+
+### The consequence a person is told
+
+Silent resolution is the thing to avoid. `Parameter.writes` already answers
+*"which engine keywords does this item put in the deck"* (from `expands`, else
+`anchor`), so a collision is **detectable, not guessable**:
+
+- an addition writing a keyword **no** declared item writes — accepted, placed,
+  no notice;
+- an addition writing a keyword a declared item **also** writes — the person is
+  told, at the point of entry, what is about to happen: *your value replaces
+  what `MD.TypeOfRun` would have written (`CG`)*. Their value wins, because
+  they said it last and more specifically — but never without being told;
+- an addition molbuilder cannot attribute to any keyword (a `%block`, free
+  prose) — accepted verbatim, and the engine judges it, which is the honest
+  half of today's § 3.5.
+
+**This is the rule the current design cannot state**: today a person is either
+refused (duplicate) or silently ignored (first-wins), and which one depends on
+whether SIESTA's rule happens to notice.
+
+### What this DELETES, which is the argument for it
+
+The read-back merge stops being needed. Additions are an input, so nothing is
+recovered from the file being overwritten. With it go:
+
+- `merge_user_custom_from_target` and `write_script`'s round trip — and with
+  them `check_deck`'s reason to read the file rather than the rendered string;
+- `template.md` § 9.2's three structural objections to `prep` (no previous
+  deck, one deck per stage, reproducibility) — all of which exist only because
+  the mechanism reads the previous output;
+- the transport gap: `_prep_transport` writes with a bare `write_text` and
+  `molbuilder/transport/` never emits the zone at all, so transport has no
+  territory today. Additions are an input, so transport gets them by having a
+  writer, not by growing a zone;
+- the stray-marker data loss: a marker pasted into the zone silently drops
+  everything above it (measured, HTTP 200, no warning) — impossible when there
+  is no zone to paste into;
+- `job-contracts.md` § 3.5's "byte-for-byte" claim, which is already false
+  (CRLF is normalised by `splitlines()`/`"\n".join`).
+
+### Open, and deliberately not decided here
+
+1. **Where an addition is stored.** It is per-stage-overridable like a template
+   item, but it is not a catalogue item. Does it live in the template file, in
+   `task.json`'s execution block, or in its own place?
+2. **Does the zone survive at all** for genuinely free-form text (a comment
+   with no variable in it), or does that become an addition with no attributed
+   keyword?
+3. **What the card shows** when an addition collides — refuse, warn-and-accept,
+   or show the resolved line before saving.
+4. **Ordering among additions**, when two of them write to the same section.
+
+### Before any code
+
+This section is the contract. The measurements it rests on
+(`script_emit.py:1319`'s concatenation, the 12/520/980-vs-1222 positions, the
+reproduced duplicate-keyword refusal, `Parameter.writes`) are re-checkable, and
+should be re-checked rather than trusted if this is picked up later.
+
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |
