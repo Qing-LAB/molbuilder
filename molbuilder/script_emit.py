@@ -1450,14 +1450,29 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
                       where="deck.missing")]
     text = p.read_text(encoding="utf-8")
 
+    # BOTH markers, not just BEGIN.  A block is delimited by a PAIR, and
+    # counting one end let a stray END through: the USER-CUSTOM round-trip
+    # carries a person's zone forward verbatim, so a marker line pasted into
+    # it lands in the written deck -- and until 2026-09-05 a stray BEGIN was
+    # caught here while a stray END was not.  This is the gate that refuses
+    # an ambiguous boundary (`job-contracts.md` § 3.5); the merge no longer
+    # guesses, it carries the outermost span forward and leaves the verdict
+    # here, where a refusal reaches the validation report before `report`
+    # raises.
     for block, label in ((BLOCK_USER_CUSTOM, "the section left for a reader"),
                          (BLOCK_PROVENANCE, "the provenance record")):
-        n = text.count(begin_marker(block))
-        if n != 1:
-            out.append(Issue(
-                "error",
-                f"{label} appears {n} times in {p.name}, expected once",
-                where=f"deck.{block}"))
+        for marker, which in ((begin_marker(block), "BEGIN"),
+                              (end_marker(block), "END")):
+            n = text.count(marker)
+            if n != 1:
+                out.append(Issue(
+                    "error",
+                    f"{label}'s {which} marker appears {n} times in "
+                    f"{p.name}, expected once"
+                    + (" — a marker line inside your own section makes the "
+                       "boundary ambiguous; remove it"
+                       if n > 1 and block == BLOCK_USER_CUSTOM else ""),
+                    where=f"deck.{block}"))
 
     # THE LOOP CLOSED: every LINE the parameters sub-step produced must be in
     # the file, verbatim.  Without this the two halves are related only by
@@ -1705,32 +1720,59 @@ def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
 
 
 # ---- from parse/scripts/user_custom.py ----
-def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
-    """Return the inner lines of the USER-CUSTOM block in ``text``, or
-    ``None`` if there is no well-formed USER-CUSTOM BEGIN/END pair.
+def _user_custom_span(text: str) -> Optional[Tuple[int, int]]:
+    """``(begin_idx, end_idx)`` of the USER-CUSTOM block, or ``None``.
 
-    Inner lines are everything STRICTLY between the BEGIN and END
-    markers (markers excluded).  Trailing/leading whitespace inside
-    the block is preserved.
+    **The OUTERMOST pair, and that is not a guess.**
+    :func:`emit_user_custom_placeholder` writes exactly ONE ``BEGIN`` and one
+    ``END`` on every generation, so the outermost pair in a generated file is
+    the framework's.  Everything between them is the person's content --
+    including a line that happens to look like a marker, because a person
+    pasting a snippet from another deck has pasted TEXT, not a boundary.
+
+    It took the INNERMOST span until 2026-09-05 -- resetting ``begin_idx`` on
+    each ``BEGIN`` and breaking on the first ``END`` after it -- so a stray
+    ``BEGIN`` silently discarded everything above it and a stray ``END``
+    discarded everything below.  No refusal, no warning: the file came back
+    well-formed and shorter.  Measured through the real save route, HTTP 200.
+
+    Lossless and idempotent: re-merging the result yields the same content,
+    because the outermost pair is stable under splicing.  The stray markers
+    then survive INTO the written deck, where `check_deck`'s marker count is
+    what refuses -- refusals belong to the check gate, which writes them to
+    the validation report before `report` raises (`prepare_deck`'s order).
     """
     lines = text.splitlines()
     begin_idx: Optional[int] = None
     end_idx: Optional[int] = None
     for i, line in enumerate(lines):
         m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != BLOCK_USER_CUSTOM:
+        if not m or m.group(1) != BLOCK_USER_CUSTOM:
             continue
         if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
+            if begin_idx is None:          # the FIRST begin, and only it
+                begin_idx = i
+        elif m.group(2) == "END":
+            end_idx = i                    # the LAST end
     if begin_idx is None or end_idx is None or end_idx <= begin_idx:
         return None
-    return lines[begin_idx + 1: end_idx]
+    return begin_idx, end_idx
+
+
+def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
+    """Return the inner lines of the USER-CUSTOM block in ``text``, or
+    ``None`` if there is no well-formed USER-CUSTOM BEGIN/END pair.
+
+    Inner lines are everything STRICTLY between the BEGIN and END
+    markers (markers excluded).  Trailing/leading whitespace inside
+    the block is preserved.  See :func:`_user_custom_span` for which
+    pair, and why.
+    """
+    span = _user_custom_span(text)
+    if span is None:
+        return None
+    begin_idx, end_idx = span
+    return text.splitlines()[begin_idx + 1: end_idx]
 
 
 # ---- from parse/scripts/atom_metadata.py ----
@@ -2285,23 +2327,15 @@ def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
     replaced by ``inner_lines``.  If ``text`` has no USER-CUSTOM
     block, return it unchanged.
     """
+    # THE SAME SPAN THE EXTRACTOR USES.  A second copy of the boundary rule
+    # stood here until 2026-09-05, and two readers of one boundary is how the
+    # zone came to mean different things to the half that reads it and the
+    # half that replaces it.
     lines = text.splitlines(keepends=False)
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != BLOCK_USER_CUSTOM:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
+    span = _user_custom_span(text)
+    if span is None:
         return text
+    begin_idx, end_idx = span
     new_lines = lines[: begin_idx + 1] + list(inner_lines) + lines[end_idx:]
     # Preserve trailing newline policy of the input.
     trailing = "\n" if text.endswith("\n") else ""

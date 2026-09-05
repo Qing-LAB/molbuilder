@@ -953,3 +953,83 @@ def test_the_brace_walk_still_accepts_both_json_layouts():
         got = sc._extract_atom_metadata_dict(wrap(text))
         assert got is not None, f"{name}-printed JSON no longer reads"
         assert got["regions"] == {"a}b": [0, 1]}
+
+
+def test_a_stray_marker_in_your_zone_loses_nothing_and_is_refused(tmp_path):
+    """A marker line pasted into your own section silently deleted your text.
+
+    `emit_user_custom_placeholder` writes exactly ONE BEGIN and one END on
+    every generation, so the OUTERMOST pair in a generated file is the
+    framework's and everything between is yours — including a line that looks
+    like a marker, because someone pasting a snippet from another deck has
+    pasted TEXT, not a boundary.
+
+    The span rule took the INNERMOST pair until 2026-09-05: a stray BEGIN
+    discarded everything above it, a stray END everything below. No refusal,
+    no warning — the file came back well-formed and shorter, HTTP 200 through
+    the real save route.
+
+    Two halves, and both are needed. The merge no longer guesses: it carries
+    the outermost span forward, so nothing is lost. The stray then reaches the
+    written deck, where `check_deck` refuses it — which is where refusals live
+    in this framework (`prepare_deck` writes them to the validation report
+    before `report` raises).
+    """
+    B = sc.begin_marker(sc.BLOCK_USER_CUSTOM)
+    E = sc.end_marker(sc.BLOCK_USER_CUSTOM)
+
+    for name, zone, must_survive in (
+            ("stray BEGIN", ["# keeper", B, "# after"], ("# keeper", "# after")),
+            ("stray END",   ["# above", E, "# below"],  ("# above", "# below")),
+    ):
+        old = "\n".join(["SystemLabel job", B] + zone + [E])
+        inner = sc._extract_user_custom_inner(old)
+        assert inner is not None, f"{name}: the zone was not found at all"
+        for line in must_survive:
+            assert line in inner, (
+                f"{name}: {line!r} was silently dropped — that is a person's "
+                f"own text disappearing from their file: {inner}")
+
+        # ...and re-merging is stable, so the damage cannot accumulate.
+        fresh = "\n".join(["SystemLabel job", B, "# placeholder", E])
+        once = sc.replace_user_custom_inner(fresh, inner)
+        twice = sc.replace_user_custom_inner(
+            fresh, sc._extract_user_custom_inner(once))
+        assert once == twice, f"{name}: the round trip is not stable"
+
+
+def test_the_check_gate_refuses_a_stray_marker_of_either_kind(tmp_path):
+    """Both ends are counted, because a block is delimited by a PAIR.
+
+    Only BEGIN was counted until 2026-09-05, so a stray END rode into the
+    deck unremarked while a stray BEGIN was caught — the same ambiguity,
+    refused or ignored depending on which half of the pair was duplicated.
+    """
+    import types
+    B = sc.begin_marker(sc.BLOCK_USER_CUSTOM)
+    E = sc.end_marker(sc.BLOCK_USER_CUSTOM)
+    PB = sc.begin_marker(sc.BLOCK_PROVENANCE)
+    PE = sc.end_marker(sc.BLOCK_PROVENANCE)
+    spec = types.SimpleNamespace(check_rules=None, engine="siesta")
+    rendered = types.SimpleNamespace(emitted=())
+
+    def issues_for(body):
+        f = tmp_path / "d.fdf"
+        f.write_text("\n".join(body) + "\n")
+        return sc.check_deck(f, spec, rendered)
+
+    clean = ["SystemLabel x", B, "# mine", E, PB, "#  k v", PE]
+    assert issues_for(clean) == [], "a well-formed deck was refused"
+
+    for name, body in (
+            ("stray BEGIN", ["SystemLabel x", B, "# mine", B, "# more", E,
+                             PB, "#  k v", PE]),
+            ("stray END",   ["SystemLabel x", B, "# mine", E, "# more", E,
+                             PB, "#  k v", PE]),
+    ):
+        found = issues_for(body)
+        assert found, f"{name} was not refused"
+        assert any(i.severity == "error" for i in found), name
+        assert any("ambiguous" in i.message for i in found), (
+            f"{name}: the refusal does not say what is wrong or how to fix "
+            f"it: {[i.message for i in found]}")
