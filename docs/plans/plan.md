@@ -618,6 +618,54 @@ and it is a capability the input model gives for free. Under a zone it is
 possible only by hand-stripping a section from a written file, which changes
 the deck in more ways than the one being tested.
 
+### The toggle is part of the block, and it is the whole mechanism
+
+*(Your ruling, 2026-09-05.)* An addition carries an **include** switch in the
+UI: *do you want this customised block in the final task?* That is not a
+convenience and not a `prep` flag — it is the instrument that makes the
+responsibility workable.
+
+- **Off** — the task is prepared and run exactly as molbuilder would have
+  written it. This is the reference.
+- **On** — the same task with the addition placed.
+
+A person compares the two and decides for themselves whether a failure belongs
+to their block. They can do it through whatever they are already doing —
+a benchmark trial, a debug run — because the two differ in one input and
+nothing else. **That is only true because the addition is an input**; stripping
+a zone out of a written deck changes more than the thing under test.
+
+The switch belongs to each addition, not to the calculation, so several can be
+carried and enabled one at a time.
+
+### What an addition IS, per engine
+
+Open-ended by design — a script, a variable, a setting molbuilder has not
+exposed. What it means is the engine's business, and the two engines differ in
+a way that matters for placement:
+
+| engine | an addition is | why placement differs |
+|---|---|---|
+| **PySCF** | Python that RUNS — a call, a hook, a few statements | the deck is a program, so an addition must land where the objects it uses already exist |
+| **SIESTA** | fdf settings molbuilder has not exposed, or a Lua setup (`MD.TypeOfRun Lua` + a script path) | the deck is a settings file, so what matters is libfdf's first-wins and the block structure |
+
+So **where an addition goes is engine knowledge**, which is already where the
+framework puts layout: the engine owns its `Section`/`Block` layout, and an
+addition is placed by the same authority rather than by a framework rule that
+would have to be right for both.
+
+### Whose responsibility, stated plainly
+
+**molbuilder does not validate the content and does not claim to understand
+it.** It places it, records it, states the consequence when it collides with a
+declared item, and gives the person the on/off pair to test with. Making the
+addition correct — that it parses, that the engine accepts it, that the run
+completes — is the person's.
+
+That is a fair deal only because of the switch. Without it, "not our
+responsibility" would leave someone with a failing run and no way to tell which
+half caused it.
+
 ### Open, and deliberately not decided here
 
 1. **Does the zone survive at all** for genuinely free-form text (a comment
@@ -627,8 +675,8 @@ the deck in more ways than the one being tested.
    or show the resolved line before saving. (The consequence must be stated;
    whether it can be overridden is separate.)
 3. **Ordering among additions**, when two of them write to the same section.
-4. **How the without/with pair is offered** — two files, a flag on `prep`, or a
-   diff shown in the tab.
+4. **Whether the include switch is per-stage**, like the addition itself, or one
+   state for the calculation.
 
 ### Before any code
 
