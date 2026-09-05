@@ -1,6 +1,6 @@
 """Abstract base classes for the parse module.
 
-Per ``docs/model/parse.md`` § 2.  Three ABCs, one
+Per ``docs/model/parse.md`` § 1.  Three ABCs, one
 discriminator per scope (file / text body / directory).  All
 concrete parsers subclass exactly one of these.
 

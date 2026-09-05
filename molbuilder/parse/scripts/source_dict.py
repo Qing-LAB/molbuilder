@@ -11,9 +11,19 @@ MOVED here 2026-08-29 from ``parse/dirs/bundle.py`` when the bundle
 parser retired (user ruling: calculation-to-calculation passing is
 gone — a calculation that builds on a finished result CITES it, and
 the transport composite's `compose_junction` does the fuse).  This
-extractor was never the bundle's: `parse/dirs/job.py` reads it for the
-live run decode, and `script_emit` re-exports it as the read half of
-the emit/extract pair.
+extractor was never the bundle's: `script_emit` re-exports it as the
+read half of the emit/extract pair.
+
+**NO PRODUCTION CALLER TODAY (2026-09-05).**  This said
+`parse/dirs/job.py` "reads it for the live run decode" until the run
+decoder was deleted on 2026-09-04; the re-export at
+`script_emit.py:809` is now reached only from `tests/test_script_emit.py`.
+The module still carries the ONLY copy of the schema-version gate
+(below), which is why it has not been folded into `scripts/source.py`'s
+typed parser -- that fold was deferred pending "its own careful pass
+over the run decoder", and the run decoder is gone, so the deferral has
+no remaining condition.  Flagged rather than deleted: which of the two
+overlapping readers survives is a design call.
 
 **Known overlap, noted rather than hidden**: `scripts/source.py`'s
 ``ScriptSourceTextParser`` walks the same blocks TYPED (ScriptResult,
@@ -141,8 +151,3 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
         "schema_version":    schema_version,
         "notes":             notes,
     }
-
-
-# --------------------------------------------------------------------- #
-#  SIESTA branch assembler                                               #
-# --------------------------------------------------------------------- #

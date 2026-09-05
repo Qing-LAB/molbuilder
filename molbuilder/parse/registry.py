@@ -1,6 +1,6 @@
 """Parser registry + dispatch.
 
-Per ``docs/model/parse.md`` § 4.  Three flat lists:
+Per ``docs/model/parse.md`` § 3.  Three flat lists:
 one for FileParsers, one for TextParsers (not auto-detected;
 callers pick explicitly), one for DirParsers.
 

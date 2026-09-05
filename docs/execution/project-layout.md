@@ -463,17 +463,19 @@ Neither is new machinery. Both already exist for stages; the sweep simply stops
 opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
 "a new test with new result is trivial".)*
 
-> **Every per-run artifact carries the index, not two of five.** In flat the
-> wrapper indexes the `.out` and the timing log — *"re-running NEVER
-> overwrites"* — but `<basename>.monitor.log` is **appended** (two runs
-> interleaved with no marker) and `<basename>.util.csv` is written with
-> `write_text`, so a re-run **truncates it**. `util.csv` is what a benchmark is
+> **Every per-run artifact carries the index — now all five, and it was two.**
+> The wrapper indexed the `.out` and the timing log — *"re-running NEVER
+> overwrites"* — while `<basename>.monitor.log` was **appended** (two runs
+> interleaved with no marker) and `<basename>.util.csv` was written with
+> `write_text`, so a re-run **truncated it**. `util.csv` is what a benchmark is
 > measured from, so a flat re-run destroyed the measurement it existed to
-> repeat. Found 2026-08-27 by reading the write mode.
+> repeat, and a flat ladder stage re-run lost its `util.csv` for the same
+> reason. Found 2026-08-27 by reading the write mode.
 >
-> This is **not new with sweeps**: a flat ladder stage re-run loses its
-> `util.csv` today, for the same reason. Letting a trial re-run is what makes
-> it bite.
+> **Fixed the same day**: the wrapper now writes `-run${_run_n}.monitor.log`
+> and `-run${_run_n}.util.csv` (`runwrap.py`), and `jobset/summarize.py` globs
+> `<basename>-run*.<suffix>` for all three. *This note stood in the present
+> tense until 2026-09-04 — it told a reader the destruction still happens.*
 
 **No conversion, and no reader for the old layout** (user: *"new dir becomes
 standard. No historical burden."*). A benchmark is a **measurement**, and

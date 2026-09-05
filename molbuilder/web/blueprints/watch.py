@@ -19,7 +19,7 @@ core POSTs to /api/watch/load with the absolute path, then polls
 /api/watch/data every ~15 s while the mtime advances.  The directory
 branch of /api/watch/load follows the discovery chain in
 ``docs/execution/job-contracts.md``: ``*.molwatch.log`` first, then
-``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for job_name,
+``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for ``JOB``,
 then a generic ``*.out`` / ``*_geom*_optim.xyz`` fallback.
 
 Format support is plugin-style: see ``molbuilder/parse/`` for the
@@ -173,7 +173,7 @@ _PY_JOB_NAME_RE = re.compile(
 def _read_text_safely(path: str, max_bytes: int = 65536) -> str:
     """Read up to ``max_bytes`` of ``path`` and return as text.  Used
     for the .fdf / .py header sniff -- we only need the first chunk
-    to find SystemLabel / job_name; reading the whole multi-MB FDF
+    to find SystemLabel / ``JOB``; reading the whole multi-MB FDF
     is wasteful.
     """
     try:
@@ -254,11 +254,11 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
       1. Any ``*.molwatch.log`` (newest wins for staged runs).
       2. ``*.fdf`` -> parse SystemLabel -> ``<label>.molwatch.log``,
          ``<label>.out``.
-      3. ``*.py``  -> parse job_name      -> ``<job>.molwatch.log``,
+      3. ``*.py``  -> parse ``JOB``       -> ``<job>.molwatch.log``,
          ``<job>.log``, ``<job>_geom_optim.xyz`` — and the deck
          FILENAME's stem tried the same way, because a staged deck is
          ``<job>_<token>.py`` and its stdout/molwatch siblings carry
-         that token (`job-contracts.md` § 6.3) while ``job_name`` stays
+         that token (`job-contracts.md` § 6.3) while ``JOB`` stays
          bare; then the rung-aware trajectory glob
          ``<job>_geom_*_optim.xyz``.
       4. Generic fallbacks: ``run.out``, ``siesta.log``, ``*.out``,
@@ -288,16 +288,16 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
             if os.path.isfile(cand):
                 return cand, attempts
 
-    # 3. PySCF: *.py -> job_name -> sibling outputs.
+    # 3. PySCF: *.py -> JOB -> sibling outputs.
     py_hits = glob.glob(os.path.join(directory, "*.py"))
     attempts.append(f"*.py -> {len(py_hits)} match(es)")
     for py in py_hits:
         name = _basename_from_py(py)
         if not name:
-            attempts.append(f"  {os.path.basename(py)}: job_name not found")
+            attempts.append(f"  {os.path.basename(py)}: JOB not found")
             continue
         # A staged deck is ``<job>_<token>.py`` and its stdout / molwatch
-        # siblings are stemmed on THAT (token included), while job_name
+        # siblings are stemmed on THAT (token included), while JOB
         # stays the bare ``<job>`` -- so the deck filename's stem is
         # tried alongside the parsed name (found 2026-08-19: every
         # staged spelling here was the unstaged one, and a staged run

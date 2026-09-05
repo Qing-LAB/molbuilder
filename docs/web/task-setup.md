@@ -326,7 +326,7 @@ each other.
 
 > **The line is decision vs finding, not portable vs not.** A description may
 > hold *"run it at eight"* — that is a person asking — and may never hold what
-> a **machine found**, which is why `summarize` writes its verdict to a report
+> a **machine found**, which is why `summarize` PRINTS its verdict as a report
 > no code reads. The argument is
 > [`generator.md § 4.3a`](?doc=execution/generator.md)'s;
 > [`architecture.md § 5.2`](?doc=execution/architecture.md) carries the
@@ -367,10 +367,19 @@ Three things are true of it at once, and no parameter tab can know any of them:
   often the faster answer — a small system pays more in GPU launch overhead than
   the eigensolve saves ([`siesta.md § 7.1`](?doc=engines/siesta.md)). Choosing
   CPU on a machine that has a GPU is ordinary and deliberate.
-- **It can be measured first and decided after.** Add a second point and it
-  becomes a bench axis; `summarize` writes `bench-result.json`, whose
-  `choice.mechanism` carries `use_gpu`, and `prep run` **offers** the verdict
-  and waits ([`project-layout.md § 2.3.3`](?doc=execution/project-layout.md)).
+- **It can be measured first and decided after — by you.** Add a second point
+  and it becomes a bench axis; `summarize` PRINTS a report whose `choice`
+  carries `use_gpu` (and writes `bench-result.json` for the Bench card). `prep
+  run` does **not** read either one: finding is not permission, and there is no
+  rung between the measurement and the run
+  ([`project-layout.md § 2.3.3`](?doc=execution/project-layout.md)). You read
+  the report and write the value into `execution` yourself.
+
+  > *This said `prep run` "**offers** the verdict and waits" until 2026-09-04 —
+  > citing the section that says the opposite. Nothing offered anything: the
+  > value fell silently to `auto_ranks` and the benchmark was never applied,
+  > which is the exact silent-value failure the 2026-09-02 ruling exists to
+  > prevent.*
 
 **What it is not is the eigensolver.** `diag_algorithm` is a `budget` item on the
 parameter tab, and it decides no environment and no resource — the packaged

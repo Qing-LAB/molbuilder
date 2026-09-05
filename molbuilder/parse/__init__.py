@@ -7,8 +7,9 @@ Public surface:
 
 * ABCs — :class:`FileParser`, :class:`TextParser`, :class:`DirParser`.
 * Result types — :class:`ParseResult` and its 5 frozen subclasses
-  (trajectory / structure / sidecar / script / job — ``BundleResult``
-  retired 2026-08-29 with calculation-to-calculation passing).
+  (trajectory / structure / sidecar / script / instrument —
+  ``BundleResult`` retired 2026-08-29 with calculation-to-calculation
+  passing, ``JobResult`` 2026-09-04 with the run decoder).
 * Registry / dispatch — :func:`detect`, :func:`parse`,
   :func:`parse_text`, :func:`parse_dir`, :func:`register`.
 * Exceptions — :exc:`ParseError` and its two children

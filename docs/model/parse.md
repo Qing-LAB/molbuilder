@@ -33,9 +33,9 @@ from here and queries the registry rather than knowing which parser to call.
 
 | ABC | Input → output | Detection |
 |---|---|---|
-| **`FileParser`** (`:26`) | one file path → one `ParseResult` | `can_parse(path)` — the registry auto-detects |
-| **`TextParser`** (`:79`) | one in-memory text body → one `ParseResult`; **pure, no I/O** | none — the caller passes the parser explicitly |
-| **`DirParser`** (`:98`) | one directory → one `ParseResult`, **composed** from per-file parsers plus directory-level invariants | `can_parse(run_dir)` |
+| **`FileParser`** | one file path → one `ParseResult` | `can_parse(path)` — the registry auto-detects |
+| **`TextParser`** | one in-memory text body → one `ParseResult`; **pure, no I/O** | none — the caller passes the parser explicitly |
+| **`DirParser`** | one directory → one `ParseResult`, **composed** from per-file parsers plus directory-level invariants | `can_parse(run_dir)` |
 
 Each declares `name` / `label` / `output` (the concrete `ParseResult` subclass
 it returns); **`FileParser`s** also declare a `hint` (what to point at when
@@ -290,14 +290,21 @@ flowchart TD
 
 | Function (`registry.py`) | Does |
 |---|---|
-| `detect(path)` (`:60`) | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
-| `parse(path)` (`:135`) | `detect` + `parse` in one call |
-| `parse_text(text, parser)` (`:158`) | parse a known text body — **no detection**, caller names the `TextParser` |
-| `parse_dir(path)` (`:144`) | detect among **DirParsers only** — for callers whose contract is "this is a run directory" (JobMonitor, Results) |
-| `register(parser)` (`:30`) | add a parser at module-init time (idempotent; not for runtime registration) |
+| `detect(path)` | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
+| `parse(path)` | `detect` + `parse` in one call |
+| `parse_text(text, parser)` | parse a known text body — **no detection**, caller names the `TextParser` |
+| `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory" (JobMonitor, Results) |
+| `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
-**Errors** (`errors.py`): `UnknownFormatError` (`:13`) and
-`AmbiguousFormatError` (`:23`), both on a `ParseError` base (`:9`).
+**Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
+base.
+
+*(These rows pinned a line number each until 2026-09-05. Three of the five
+were eight lines stale — the exact length of a docstring paragraph added
+the day before. A line number is a pin: it measures where a thing sits
+rather than what it does, and it rots on the next edit of a file this
+document does not own. The function name is the anchor and it is
+greppable.)*
 
 ### Using it — worked examples
 
@@ -392,7 +399,7 @@ molbuilder/parse/
 │   ├── header.py · provenance.py · bench_marks.py
 │   ├── atom_metadata.py · user_custom.py
 │   ├── source.py              # ScriptSourceTextParser — umbrella over the blocks
-│   ├── source_dict.py         # the same blocks as a plain dict (dirs/job.py)
+│   ├── source_dict.py         # the same blocks as a plain dict (no caller)
 │   ├── markers.py             # MARKER_RE + block-name constants
 │   └── _helpers.py
 │
@@ -411,11 +418,29 @@ molbuilder/parse/
 
 ---
 
-## 5. Composer pattern — the DirParser
+## 5. Composer pattern — the DirParser  ⚠ SPECIFICATION, NOT YET BUILT
 
 A DirParser turns a whole run directory into one result. **`JobDirParser` is
-the one door**, and everything that asks a question *about a directory* goes
-through it.
+to be the one door**, and everything that asks a question *about a directory*
+is to go through it.
+
+> ### ⚠ Nothing in this section ships today (2026-09-05)
+>
+> `JobDirParser` and `RunDirResult` **do not exist**; no DirParser is
+> registered, so `parse_dir(path)` and `detect(<a directory>)` can only raise
+> `UnknownFormatError`. Directory questions are still answered by
+> `web/blueprints/watch.py::_resolve_run_directory` and
+> `parse.dirs.job.run_status`, and § 5.2's chain is described here as the
+> spec to absorb — it has **not** been absorbed.
+>
+> The migration is [`plan.md § 5c`](?doc=plans/plan.md) ("Not started"), which
+> owns the caller map and the order of moves. Read this section as the target;
+> read `plan` for what is true.
+>
+> *This section was written in the present tense on 2026-09-04 and carried no
+> such marker, in a file whose role is `contract` — so a reader met a door
+> that raises, and a governance rule ("no field is added without naming its
+> reader") that has no subject.*
 
 > **Its predecessor was deleted on 2026-09-04 and this is not a reversal.**
 > That one answered eleven fields; ten had no reader anywhere in the tree, and
@@ -479,9 +504,9 @@ Four rungs, first hit wins, absorbed verbatim from
 
 1. any `*.molwatch.log` — newest wins, which is the staged run's latest;
 2. `*.fdf` → read `SystemLabel` → `<label>.molwatch.log`, then `<label>.out`;
-3. `*.py` → read `job_name` → `<job>.molwatch.log`, `<job>.log`,
+3. `*.py` → read `JOB` → `<job>.molwatch.log`, `<job>.log`,
    `<job>_geom_optim.xyz` — **and the deck filename's stem tried the same
-   way**, because a staged deck is `<job>_<token>.py` while `job_name` stays
+   way**, because a staged deck is `<job>_<token>.py` while `JOB` stays
    bare (found 2026-08-19: every staged spelling was the unstaged one, so a
    staged run without a molwatch seed resolved to nothing) — then the
    rung-aware `<job>_geom_*_optim.xyz`;
@@ -619,7 +644,8 @@ netCDF4.
 `parse/engines/` reads what the *engine* produced. The **wrapper** measures
 the run too, and writes three files of its own beside the deck
 (`running-a-job.md` § 4.1): `<base>-runN.scf-timing.log`,
-`<base>.monitor.log`, `<base>.util.csv`.
+`<base>-runN.monitor.log`, `<base>-runN.util.csv` — all three indexed by
+attempt, so a re-run neither appends to nor truncates the previous one.
 
 They were outside this module until 2026-09-04 — `bench/result.py` opened
 and regex'd their bytes itself, which is a second read stack for a class of
@@ -636,7 +662,7 @@ between an engine and a format.
 | file | parser | what it measures |
 |---|---|---|
 | `*.scf-timing.log` | `scf-timing` | steady-state seconds per SCF iteration |
-| `*.monitor.log` | `monitor` | the `[MACHINE]` line (§ R12), the `[UTIL-SUMMARY]` verdict, and the monitor's OWN stated means |
+| `*.monitor.log` | `monitor-log` | the `[MACHINE]` line (§ R12), the `[UTIL-SUMMARY]` verdict, and the monitor's OWN stated means |
 | `*.util.csv` | `util-csv` | the raw utilisation samples |
 
 **The monitor sharpens the CSV — § 5a, not a second reader.** Utilisation is

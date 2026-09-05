@@ -532,7 +532,8 @@ behaves exactly as before — `--continue` stays the manual path.
   (banner, launch line, engine output, hints) is always on disk even if you
   did not redirect it yourself.
 - **A backgrounded monitor** (`mb_monitor.py`, shipped next to **`.fdf`** jobs)
-  samples utilisation into `<basename>.util.csv` and `<basename>.monitor.log`
+  samples utilisation into `<basename>-runN.util.csv` and
+  `<basename>-runN.monitor.log`
   every 10 s at `nice -n 19`, and is killed on exit. (Disable with
   `MB_MONITOR=0`; override the interval with `MB_MONITOR_INTERVAL`.) A
   standalone `molbuilder monitor` CLI does the same for a job you point it at.
@@ -584,7 +585,7 @@ behaves exactly as before — `--continue` stays the manual path.
   2. too many **MPI ranks** for the system — retry with a lower `-np`;
   3. **zero net spin** on an open-shell metal.
 
-### 4.2 Reading a run directory back — `run_status`
+### 4.2 Reading a run directory back — `run_status` and `engine_of`
 
 Pointing the run viewer (the web Results tab, or `molbuilder watch`) at a
 run directory resolves the trajectory via the discovery chain in
@@ -633,8 +634,10 @@ per stage), which is what `jobset status` and the bench summary read.
 > progress counters, a source-file index, a per-stage engine-input envelope
 > and a diagnostics block. Measured across the tree, **ten of the eleven had
 > no reader anywhere**, and the eleventh — this one — was obtained by parsing
-> every `.out` to build the plot data and then discarding it. 1,414 lines
-> produced one field that was used.
+> every `.out` to build the plot data and then discarding it. **741 lines of product code**
+> produced one field that was used. *(An earlier draft of this note said
+> 1,414; that number counted `dirs/_assembler_helpers.py`, which was never
+> dead and is still read by both `coords/` parsers.)*
 >
 > Four code-quality defects went with them, none needing a fix: a second
 > `LatticeConstant` reader that disagreed with its sibling on units and
@@ -643,6 +646,44 @@ per stage), which is what `jobset status` and the bench summary read.
 > private call into the `.XV` reader that bypassed the registered parser,
 > and a cell read from the input file while the coordinates came from the
 > output.
+
+#### Which engine ran — `engine_of`
+
+`parse.contract.engine_of(run_dir)` answers `"siesta"` / `"pyscf"` /
+`"unknown"`. **This section owns that rule**, because nine places in the
+code and the docs cite it here; it stated no rule at all until 2026-09-04,
+and the one place that spelled out an order (`web-api.md`) spelled out an
+order that had already been measured wrong and replaced.
+
+**The engine is DECLARED when the script is generated**, because that is the
+only moment it is known for certain, and a run directory gets copied away
+from everything that knew. Two kinds of evidence exist, and they are not a
+precedence list:
+
+| tier | evidence | where it is written |
+|---|---|---|
+| **declaration** | the PROVENANCE `engine` key of any deck or wrapper | [`job-contracts § 3.2`](?doc=execution/job-contracts.md) |
+| **declaration** | the `.molwatch.log` `# engine:` header | [`§ 4.1`](#41-the-wrappers-own-instruments) |
+| *fallback* | which files are present | only when nothing declared |
+
+**The declarations are weighed TOGETHER.** One distinct answer among them is
+the answer. Two is a run that contradicts itself, and that is `"unknown"` —
+the same rule and the same reason as `contract_of`: a directory that says two
+things cannot be made to say one by picking, and an answer that might be the
+other engine's is worth less than no answer.
+
+**The sniff is consulted only when nothing declared**, for a directory
+molbuilder did not write. It never overrules a declaration, because it is
+evidence of a different kind: files outlive the run that wrote them, so a
+stale `.fdf` beside a freshly re-prepped PySCF deck is not a second opinion,
+it is litter.
+
+> **Why this is not a first-hit-wins list**, which is what shipped on the
+> morning of 2026-09-04 and was wrong by that afternoon: racing the rungs let
+> ONE stale `.run.sh` outrank two agreeing declarations, because it happened
+> to be read first. The bug is not in the order — it is in having an order at
+> all. Corroboration cannot be expressed as precedence.
+
 
 ## 5. Configuration — `molbuilder.json`
 

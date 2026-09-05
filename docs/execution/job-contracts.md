@@ -389,15 +389,16 @@ specific file, it resolves the trajectory with this chain — first hit wins
 1. `*.molwatch.log` — if several, the most recently modified.
 2. `*.fdf` — parse `SystemLabel`; try `<label>.molwatch.log`, then
    `<label>.out`.
-3. `*.py` — grep for a `job_name = "…"` assignment; try `<job>.molwatch.log`,
+3. `*.py` — grep for a `JOB = "…"` assignment; try `<job>.molwatch.log`,
    then `<job>.log`, then `<job>_geom_optim.xyz` — **each also tried on the
    deck filename's stem** when it differs, because a staged deck is
    `<job>_<token>.py` and its stdout / molwatch siblings carry that token
-   (§ 6.3) while `job_name` stays bare; then the rung-aware trajectory glob
-   `<job>_geom_*_optim.xyz`, newest first. *(Current generated PySCF
-   scripts emit the label as `JOB = "…"`, not `job_name = "…"`, so this step
-   matches none of them today — such a directory still resolves via step 1's
-   `*.molwatch.log` or step 4's content-sniff. The regex/emit mismatch is a
+   (§ 6.3) while `JOB` stays bare; then the rung-aware trajectory glob
+   `<job>_geom_*_optim.xyz`, newest first. *(This step said `job_name` and
+   warned that it "matches none of them today", calling the mismatch a code
+   follow-up. Both the emitter (`pyscf/input.py`) and the reader
+   (`watch.py::_PY_JOB_NAME_RE`) have agreed on `JOB` since 2026-07-28; the
+   note outlived the defect by five weeks and would have sent someone to fix a
    code follow-up.)*
 4. `run.out` / `siesta.log` / `*.out` / `*_geom*_optim.xyz` — content-sniff via
    the trajectory-parser registry.  The trajectory glob has the inner star

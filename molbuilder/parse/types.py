@@ -1,6 +1,6 @@
 """ParseResult hierarchy — frozen dataclasses returned by every parser.
 
-Per ``docs/model/parse.md`` § 3.  Every concrete
+Per ``docs/model/parse.md`` § 2.  Every concrete
 result subclass sets a fixed ``result_kind`` discriminator that
 consumers use to type-narrow.  Adding a new subclass requires a
 new discriminator value + a doc update.

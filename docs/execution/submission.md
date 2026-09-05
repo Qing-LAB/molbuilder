@@ -189,8 +189,8 @@ the hardware:
 * **memory per node and per core** — measured, so *"you asked 900 GB, the
   largest queue here holds 503"* arrives while changing the number is free,
   rather than as a scheduler rejection after a day in the queue;
-* **`node_types`** — so a measurement taken elsewhere is refused rather than
-  silently applied (S3). *Corrected 2026-08-27: this said `node_type`, the
+* **`node_types`** — so a measurement taken elsewhere is VISIBLE rather than
+  silently applied. It is a record, not a gate: nothing refuses on it (S3). *Corrected 2026-08-27: this said `node_type`, the
   scalar, and claimed below that the check was wired. It was wired to a field
   the probe never wrote, so it read `None` and returned in silence — see
   `scheduler.md` R11. The machine now comes from where the trial ran (R12),
