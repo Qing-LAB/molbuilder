@@ -1,14 +1,15 @@
-"""The envelope every instrument parser fills — one place, like the
-engines' and sidecars' helpers beside it."""
+"""The envelope every instrument parser fills.
+
+One line, because `ParseResult.envelope` is the one home for the four
+fields every result carries -- see its docstring for why this file used
+to build them by hand.
+"""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from molbuilder.parse.types import InstrumentResult, ParseWarning
-
-SCHEMA_VERSION = 1
+from molbuilder.parse.types import InstrumentResult, ParseResult, ParseWarning
 
 
 def build_instrument_result(*, metrics: Dict[str, Any], parser_name: str,
@@ -16,11 +17,7 @@ def build_instrument_result(*, metrics: Dict[str, Any], parser_name: str,
                             parse_warnings: Optional[List[ParseWarning]] = None
                             ) -> InstrumentResult:
     return InstrumentResult(
-        schema_version=SCHEMA_VERSION,
-        parsed_at=datetime.now(timezone.utc).isoformat(
-            timespec="milliseconds").replace("+00:00", "Z"),
-        parser_name=parser_name,
-        source=str(Path(source).resolve()),
+        **ParseResult.envelope(parser_name, source),
         metrics=metrics,
         parse_warnings=list(parse_warnings or []),
     )

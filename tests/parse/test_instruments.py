@@ -87,3 +87,31 @@ def test_the_monitors_own_mean_wins_when_it_stated_one(tmp_path):
     merged = utilisation(parse(mon).metrics, parse(csv).metrics)
     assert merged["cpu_mean_pct"] == 73.0
     assert merged["util_basis"] == "monitor-summary"
+
+
+def test_the_reader_can_read_what_the_monitor_writes(monkeypatch, tmp_path):
+    """The `[MACHINE]` line's WRITER and READER, joined.
+
+    `monitor.machine_line()` formats it; `instruments/monitor.py`'s regex
+    reads it back. Both are tested — separately. Nothing fed one to the
+    other, so renaming a key (`cores=` -> `ncores=`) leaves the writer's
+    test green (it only inspects the `gpu=` tail) while the reader
+    silently answers `{}` and every trial loses its machine.
+
+    The `gpu` field is last on purpose, because device models contain
+    spaces and the reader takes everything after `gpu=`. That is a
+    contract BETWEEN the two, so it is asserted between them.
+    """
+    from molbuilder import monitor
+
+    monkeypatch.setattr(monitor, "machine_identity", lambda: {
+        "node": "sol-g042", "cores": "48", "mem_gb": "503.5",
+        "gpu": "NVIDIA A100-SXM4-80GB, NVIDIA H200"})
+
+    log = tmp_path / "job.monitor.log"
+    log.write_text(f"[2026-08-27T14:02:11] [MACHINE] {monitor.machine_line()}\n")
+
+    machine = parse(log).metrics["machine"]
+    assert machine == {"node": "sol-g042", "cores": "48", "mem_gb": "503.5",
+                       "gpu": "NVIDIA A100-SXM4-80GB, NVIDIA H200"}, (
+        f"the reader could not reconstruct what the writer wrote: {machine}")

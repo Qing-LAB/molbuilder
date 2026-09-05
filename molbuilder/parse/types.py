@@ -47,6 +47,25 @@ class ParseWarning:
     category: str
 
 
+#: Every result carries this.  One number, not one per sub-package.
+SCHEMA_VERSION = 1
+
+
+def _source_str(source) -> str:
+    """An absolute path where one can be had, the raw string otherwise.
+
+    The four builders this replaced all guarded ``resolve()`` this way:
+    a broken symlink loop or an unreadable parent raises, and a parser
+    that already read the file must not then fail on describing where it
+    came from.
+    """
+    from pathlib import Path as _P
+    try:
+        return str(_P(source).resolve())
+    except OSError:
+        return str(source)
+
+
 @dataclass(frozen=True)
 class ParseResult:
     """Base envelope for every parse output.
@@ -59,6 +78,32 @@ class ParseResult:
     parser_name:    str               # name of the parser class that produced this
     source:         str               # path str OR "<text>" for TextParsers
     result_kind:    str = "abstract"  # discriminator; subclasses override
+
+    @staticmethod
+    def envelope(parser_name: str, source=None) -> Dict[str, Any]:
+        """The four fields every result carries, spread by each builder.
+
+        ``source`` is resolved to an absolute path; ``None`` means a
+        ``TextParser``, which has no file and says ``"<text>"``.
+
+        **One home, because there were five.**  Each sub-package's
+        ``_helpers.py`` filled these four by hand and carried its own
+        copy of the timestamp helper -- four identical ``_iso_z``
+        definitions, and `parse/instruments/` added a fifth on
+        2026-09-04 without noticing the other four.  They agreed, which
+        is the only reason nothing had broken: four copies of a format
+        string is four chances for one of them to drift, and the version
+        in `dirs/job.py` already takes a different argument.
+        """
+        from datetime import datetime, timezone
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "parsed_at": datetime.now(timezone.utc)
+                         .isoformat(timespec="milliseconds")
+                         .replace("+00:00", "Z"),
+            "parser_name": parser_name,
+            "source": "<text>" if source is None else _source_str(source),
+        }
 
 
 # --------------------------------------------------------------------- #

@@ -88,6 +88,15 @@ classDiagram
     ParseResult <|-- InstrumentResult
 ```
 
+**The four envelope fields are built in ONE place** —
+`ParseResult.envelope(parser_name, source)`. Each sub-package's
+`_helpers.py` filled them by hand until 2026-09-04, carrying four
+byte-identical copies of the timestamp helper; `instruments/` added a
+fifth without noticing, and `engines/siesta_mdnc.py` a sixth that bypassed
+even its own package's builder. They agreed, which is the only reason
+nothing had broken. The one exception is deliberate and says so in place:
+the legacy-dict shim stamps empty strings, because it never parsed a file.
+
 Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
 `line_no`, `snippet`, `error`, `category`) any parser can attach to its result
 instead of raising.
@@ -369,6 +378,11 @@ molbuilder/parse/
 │   ├── siesta_xv.py           # .XV / .STRUCT_OUT (+ cell)
 │   ├── pyscf_geom.py          # *_optimized.xyz
 │   └── _helpers.py            # StructureResult envelope
+│
+├── instruments/   # what the WRAPPER measured → InstrumentResult (FileParsers)
+│   ├── scf_timing.py · monitor.py · util_csv.py
+│   ├── utilisation.py         # the § 5a resolver: monitor's means over the csv's
+│   └── _helpers.py
 │
 ├── sidecars/      # molbuilder JSON sidecars → SidecarResult (FileParsers)
 │   ├── molstruct.py · spectra.py · transport.py
@@ -675,6 +689,12 @@ Per parser kind, the specifics:
   scans 300; molwatch keys off the first 5) — not a fixed byte window.
 - **Sidecar FileParser** (`parse/sidecars/`): `can_parse` matches the
   `.<kind>.json` suffix; the result's `schema` is `"<kind>/v<N>"`.
+- **Instrument FileParser** (`parse/instruments/`): `output =
+  InstrumentResult`; `can_parse` matches the wrapper's own suffix
+  (`.scf-timing.log`, `.monitor.log`, `.util.csv`); the result carries
+  `metrics`, a flat dict, and nothing else. Where two instruments describe
+  one figure, the choice is a **resolver** beside them (§ 5a) — never one
+  parser reading the other's file.
 - **Block TextParser** (`parse/scripts/`): returns `ScriptResult`; uses
   `MARKER_RE` from `scripts/markers.py`; the caller invokes it via
   `parse_text(text, parser=<Block>Parser)` (no auto-detection).

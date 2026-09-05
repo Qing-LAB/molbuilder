@@ -58,7 +58,7 @@ from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import ParseWarning, TrajectoryResult
 from molbuilder.structure import Structure
 
-from ._helpers import _iso_z
+from molbuilder.parse.types import ParseResult
 
 #: Unit conversions.  Keyed by the ``unit`` ATTRIBUTE the file carries on each
 #: variable, never by position — ``md_out.F90`` writes ``xa`` in Bohr while
@@ -154,15 +154,10 @@ class SiestaMdNcFileParser(FileParser):
             frames, warnings, lattice, series = _frames_from(ds, path)
         finally:
             ds.close()
-        try:
-            source = str(path.resolve())
-        except OSError:
-            source = str(path)
         return TrajectoryResult(
-            schema_version=1,
-            parsed_at=_iso_z(),
-            parser_name=cls.name,
-            source=source,
+            # The SIXTH hand-built envelope, found in the 2026-09-04
+            # review: this one bypassed even its own package's helper.
+            **ParseResult.envelope(cls.name, path),
             frames=frames,
             lattice=lattice,
             source_format="siesta-mdnc",

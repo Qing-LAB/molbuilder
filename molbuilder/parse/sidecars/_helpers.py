@@ -7,17 +7,10 @@ legacy loader's output.  This helper just standardises the
 
 from __future__ import annotations
 
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-from molbuilder.parse.types import SidecarResult
-
-
-def _iso_z() -> str:
-    return datetime.fromtimestamp(time.time(), tz=timezone.utc).isoformat(
-        timespec="milliseconds").replace("+00:00", "Z")
+from molbuilder.parse.types import ParseResult, SidecarResult
 
 
 def build_sidecar_result(payload: Dict[str, Any], schema: str,
@@ -30,15 +23,8 @@ def build_sidecar_result(payload: Dict[str, Any], schema: str,
     path for envelope consistency across phases B/C/D
     (post-2026-06-19 round-2 fix).
     """
-    try:
-        source_str = str(Path(source).resolve())
-    except OSError:
-        source_str = str(source)
     return SidecarResult(
-        schema_version=1,
-        parsed_at=_iso_z(),
-        parser_name=parser_name,
-        source=source_str,
+        **ParseResult.envelope(parser_name, source),
         payload=payload,
         schema=schema,
     )

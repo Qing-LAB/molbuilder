@@ -20,23 +20,16 @@ Public surface:
 
 from __future__ import annotations
 
-import time
-from datetime import datetime, timezone
 from numbers import Real as _Real
 from pathlib import Path
 from typing import Any, Dict, List
 
 from molbuilder.frame import Trajectory
-from molbuilder.parse.types import ParseWarning, TrajectoryResult
+from molbuilder.parse.types import ParseResult, ParseWarning, TrajectoryResult
 
 
 _POS_INF = float("inf")
 _NEG_INF = float("-inf")
-
-
-def _iso_z() -> str:
-    return datetime.fromtimestamp(time.time(), tz=timezone.utc).isoformat(
-        timespec="milliseconds").replace("+00:00", "Z")
 
 
 def wrap_trajectory(traj: Trajectory, parser_name: str,
@@ -51,10 +44,8 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
     Source path is resolved to an absolute path for envelope
     consistency across phases B/C/D (post-2026-06-19 round-2 fix).
     """
-    try:
-        source_str = str(Path(source).resolve())
-    except OSError:
-        source_str = str(source)
+    envelope = ParseResult.envelope(parser_name, source)
+    source_str = envelope["source"]      # the same string the result carries
     warnings = [
         ParseWarning(
             source=source_str,
@@ -72,10 +63,7 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
     frames_copy = list(traj.frames)
     lattice_copy = traj.lattice.copy() if traj.lattice is not None else None
     return TrajectoryResult(
-        schema_version=1,
-        parsed_at=_iso_z(),
-        parser_name=parser_name,
-        source=source_str,
+        **envelope,
         frames=frames_copy,
         lattice=lattice_copy,
         source_format=traj.source_format,
@@ -364,6 +352,9 @@ def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
     materialising a full :class:`TrajectoryResult`.
     """
     return trajectory_result_to_legacy_dict(TrajectoryResult(
+        # DELIBERATELY NOT `ParseResult.envelope`: this is a shim that
+        # never parsed a file, so it must not stamp a real timestamp or
+        # resolve a path.  The empty strings say "there was no parse".
         schema_version=1,
         parsed_at="",
         parser_name="legacy-adapter",

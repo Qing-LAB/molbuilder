@@ -27,7 +27,6 @@ note used to cite died in step 6 u5).
 from __future__ import annotations
 
 import json
-import math
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -469,7 +468,6 @@ def build_bench_result(points: List[BenchPoint], *,
 
 __all__ = [
     "SCHEMA", "BenchPoint", "BenchResult",
-    "parse_scf_timing", "parse_util_bound", "parse_util_csv",
     "parse_sacct_mem", "parse_mpi_ranks",
     "parse_effective_run", "compare_asked_to_ran",
     "mismatch_phrase", "choose_winner",

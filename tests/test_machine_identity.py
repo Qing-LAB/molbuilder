@@ -18,7 +18,6 @@ nothing:
   cgroup shows only granted GPUs — so only the MODEL may appear.
 """
 import os
-import re
 import subprocess
 
 import pytest
@@ -96,14 +95,23 @@ def test_no_tool_and_no_device_read_the_same(monkeypatch):
 
 def test_machine_line_puts_the_model_last(monkeypatch):
     """Device models contain spaces, so the reader takes everything after
-    ``gpu=`` as the model list — legal only while gpu stays the last field."""
+    ``gpu=`` as the model list — legal only while gpu stays the last field.
+
+    **Asked of the REAL reader.** This carried its own copy of the
+    reader's regex until 2026-09-04 — a third spelling of one pattern,
+    beside the writer and the parser — so a change to the READER left it
+    green while every trial silently lost its machine. The parser is
+    `parse/instruments/monitor.py`; feeding it the writer's own output is
+    the only form of this test that fails in both directions.
+    """
+    from molbuilder.parse.instruments.monitor import monitor_metrics
+
     monkeypatch.setattr(monitor, "_gpu_models",
                         lambda: ["NVIDIA A100-SXM4-80GB"])
     line = monitor.machine_line()
-    m = re.fullmatch(
-        r"node=(\S+) cores=(\d+) mem_gb=([\d.?]+) gpu=(.+)", line)
+    m = monitor_metrics(f"[2026-01-01T00:00:00] [MACHINE] {line}")["machine"]
     assert m, f"un-parseable [MACHINE] payload: {line!r}"
-    assert m.group(4) == "NVIDIA A100-SXM4-80GB"
+    assert m["gpu"] == "NVIDIA A100-SXM4-80GB"
 
 
 def test_the_machine_is_the_logs_first_line(tmp_path):

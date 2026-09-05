@@ -16,12 +16,10 @@ that is the trial a benchmark most needs to read.
 """
 from __future__ import annotations
 
-import csv as _csv
-import io
 import math
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import InstrumentResult
