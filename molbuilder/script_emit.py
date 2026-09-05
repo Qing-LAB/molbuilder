@@ -601,10 +601,9 @@ def apply_inbody_atom_metadata(struct: Any, text: str, *,
     science/validation.md § 4.1), which is the same mistake in a different
     place.
     """
-    # Local import -- avoids a circular import via parse.scripts.
-    from molbuilder.parse.scripts.atom_metadata import (
-        _extract_atom_metadata_dict,
-    )
+    # `_extract_atom_metadata_dict` is defined below in THIS module; the
+    # local import that stood here "to avoid a circular import via
+    # parse.scripts" is gone with the split (plan.md § 5d).
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION
     from molbuilder.structure import FROZEN_LABEL
 
@@ -717,10 +716,7 @@ def merge_user_custom_from_target(rendered: str,
       * Rendered has no USER-CUSTOM placeholder → return rendered.
       * Target is unreadable → return rendered.
     """
-    # Local import — avoids a circular import via parse.scripts.
-    from molbuilder.parse.scripts.user_custom import (
-        _extract_user_custom_inner,
-    )
+    # `_extract_user_custom_inner` is defined below in THIS module.
     try:
         if not target_path.exists():
             return rendered
@@ -769,61 +765,17 @@ def generated_at_now() -> str:
 
 
 # --------------------------------------------------------------------- #
-#  Public re-exports of the per-block extractors                        #
+#  (The lazy extractor table stood here until 2026-09-05.)              #
 # --------------------------------------------------------------------- #
 #
-# The block extractors live next to their TextParser definitions in
-# ``molbuilder/parse/scripts/`` (``model/parse.md`` § 4) --
-# the umbrella ``extract_script_source`` included, since the bundle
-# parser it once rode with retired (2026-08-29: calculation-to-
-# calculation passing is gone; the composite CITES).  Surface them
-# here under their legacy unprefixed names
-# so the emit/extract pair is reachable from a single module —
-# write- and read-side of the same on-disk format.
+#  It re-exported six `_extract_*` functions from `parse/scripts/` under
+#  unprefixed names, resolved through a module-level `__getattr__` because
+#  -- in its own words -- *"an eager top-level import would deadlock:
+#  markers.py re-exports BLOCK_* + MARKER_RE from this module."*
 #
-# Resolved via module-level ``__getattr__`` so the imports happen
-# AFTER ``parse/scripts/markers.py`` finishes initialising; an
-# eager top-level import would deadlock because markers.py
-# re-exports BLOCK_* + MARKER_RE from this module.
-_LAZY_EXTRACTORS = {
-    "extract_atom_metadata_dict": (
-        "molbuilder.parse.scripts.atom_metadata",
-        "_extract_atom_metadata_dict",
-    ),
-    "extract_bench_marks_dict": (
-        "molbuilder.parse.scripts.bench_marks",
-        "_extract_bench_marks_dict",
-    ),
-    "extract_header_text": (
-        "molbuilder.parse.scripts.header",
-        "_extract_header_text",
-    ),
-    "extract_provenance_dict": (
-        "molbuilder.parse.scripts.provenance",
-        "_extract_provenance_dict",
-    ),
-    "extract_user_custom_inner": (
-        "molbuilder.parse.scripts.user_custom",
-        "_extract_user_custom_inner",
-    ),
-    "extract_script_source": (
-        "molbuilder.parse.scripts.source_dict",
-        "_extract_script_source",
-    ),
-}
-
-
-def __getattr__(name):
-    target = _LAZY_EXTRACTORS.get(name)
-    if target is None:
-        raise AttributeError(
-            f"module 'molbuilder.script_emit' has no attribute {name!r}")
-    import importlib
-    mod_name, attr = target
-    value = getattr(importlib.import_module(mod_name), attr)
-    globals()[name] = value  # cache for next access
-    return value
-
+#  The deadlock was the split, not the imports.  The readers now live
+#  above, beside the emitters and the constants they both need, and are
+#  reached through `read_script`.
 
 __all__ = [
     # Block names + markers
@@ -844,9 +796,8 @@ __all__ = [
     # Git / time
     "molbuilder_git_sha", "generated_at_now",
     # Per-block extractors (read-side; re-export from parse/scripts/)
-    "extract_atom_metadata_dict", "extract_bench_marks_dict",
-    "extract_header_text", "extract_provenance_dict",
-    "extract_user_custom_inner", "extract_script_source",
+    # Reading the blocks back -- the ONE door (plan.md § 5d)
+    "read_script", "ScriptSource",
 ]
 
 
@@ -1818,3 +1769,462 @@ def _log_spec(spec: "DeckSpec", log) -> None:
                  "validate_subject"):
         log.produced(slot, "answered" if getattr(spec, slot) is not None
                      else "nothing (W5)")
+
+
+# --------------------------------------------------------------------- #
+#  READING THE BLOCKS BACK                                              #
+# --------------------------------------------------------------------- #
+#
+#  The inverse of the emitters above, and it lives HERE because a format
+#  has one owner.  These were `parse/scripts/` until 2026-09-05, six
+#  extractor functions each wrapped in a `TextParser` class that existed
+#  only to fit `parse/`'s registry -- a registry whose whole purpose is
+#  *"query it rather than knowing which parser to call"*, for blocks
+#  molbuilder writes itself and whose caller always knows which one it
+#  wants.  `ProvenanceTextParser.parse` built a ten-field `ScriptResult`
+#  so a caller could read back the one dict the function already returned.
+#
+#  THE SPLIT COST A CIRCULAR IMPORT.  `parse/scripts/markers.py` was forty
+#  lines re-exporting `BLOCK_*` + `MARKER_RE` from this module -- *"so the
+#  read-side parsers stay in lock-step with the write-side emitters"* --
+#  and this module imported the extractors back through a
+#  `_LAZY_EXTRACTORS` table, because *"an eager top-level import would
+#  deadlock."*  Both are gone: the constants were always here, and the
+#  readers now sit beside them.
+#
+#  These functions take a STRING and do no I/O.  Reading the file is the
+#  caller's job -- the rule that used to be `parse.md` § 7 forbidden #2,
+#  kept because it is about this code, not about the ABC that carried it.
+#
+#  Contract: `execution/job-contracts.md` § 3.1 (the block grammar and the
+#  emit matrix), `plans/plan.md` § 5d (why they moved).
+
+#: The atom-metadata schema this build WRITES, and the set it READS.
+#: Compared against rather than a literal: a version written down in two
+#: places is how the block came to claim v4 while carrying v7.
+from molbuilder.sidecars.molstruct import (        # noqa: E402
+    READABLE_VERSIONS as _READABLE,
+    SCHEMA_VERSION as _CURRENT_SCHEMA,
+)
+
+# ---- from parse/scripts/header.py ----
+def _extract_header_text(text: str) -> Optional[str]:
+    """Find the HEADER block and return its inner content as a single
+    string (free-form prose, comment prefixes stripped).
+
+    Returns ``None`` when no HEADER block is present.  The leading
+    ``# `` (or ``#``) on each line is removed so the result is the
+    raw prose the generator wrote; line ordering is preserved.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m or m.group(1) != BLOCK_HEADER:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out_lines: List[str] = []
+    for raw in lines[begin_idx + 1: end_idx]:
+        # Strip the comment prefix the generator emits ("# " or "#").
+        if raw.startswith("# "):
+            out_lines.append(raw[2:])
+        elif raw.startswith("#"):
+            out_lines.append(raw[1:])
+        else:
+            out_lines.append(raw)
+    return "\n".join(out_lines)
+
+
+# ---- from parse/scripts/provenance.py ----
+_PROVENANCE_KV_RE = re.compile(
+    r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
+
+_PROVENANCE_DEFAULTS_HDR = re.compile(
+    r"^#\s+resolved-defaults\s*:\s*$")
+
+_PROVENANCE_DEFAULTS_KV_RE = re.compile(
+    r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
+
+def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
+    """Find the PROVENANCE block and return its k/v payload as a flat
+    dict.  Returns ``None`` when no well-formed PROVENANCE block is
+    present.  Empty-but-present block returns ``{}`` (distinct from
+    None — `model/parse.md`'s absent-vs-empty rule)."""
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_PROVENANCE:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out: Dict[str, str] = {}
+    in_defaults = False
+    for raw in lines[begin_idx + 1: end_idx]:
+        if _PROVENANCE_DEFAULTS_HDR.match(raw):
+            in_defaults = True
+            continue
+        if in_defaults:
+            dm = _PROVENANCE_DEFAULTS_KV_RE.match(raw)
+            if dm:
+                out[f"resolved-defaults.{dm.group('key')}"] = dm.group("val")
+                continue
+            # A non-defaults-shaped line ends the sub-block; the
+            # top-level k/v matcher below may still pick it up.
+            in_defaults = False
+        m = _PROVENANCE_KV_RE.match(raw)
+        if m:
+            out[m.group("key")] = m.group("val")
+    # Block present, no parseable k/v -> {} (NOT None).  Distinguished
+    # from "block absent" -- `model/parse.md`'s None-vs-empty-dict
+    # semantics.
+    return out
+
+
+# ---- from parse/scripts/user_custom.py ----
+def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
+    """Return the inner lines of the USER-CUSTOM block in ``text``, or
+    ``None`` if there is no well-formed USER-CUSTOM BEGIN/END pair.
+
+    Inner lines are everything STRICTLY between the BEGIN and END
+    markers (markers excluded).  Trailing/leading whitespace inside
+    the block is preserved.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_USER_CUSTOM:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
+        return None
+    return lines[begin_idx + 1: end_idx]
+
+
+# ---- from parse/scripts/atom_metadata.py ----
+def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
+    """Find the ATOM-METADATA block in ``text`` and return its JSON
+    payload as a dict.
+
+    Returns ``None`` when:
+      * No ATOM-METADATA block is present.
+      * The block markers are unbalanced.
+      * The JSON between markers fails to parse.
+
+    Comment-prefix-per-line is stripped before JSON parsing.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_ATOM_METADATA:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    # Inner lines: strip leading "# " (or "#") to recover JSON.
+    inner: List[str] = []
+    for raw in lines[begin_idx + 1: end_idx]:
+        if raw.startswith("# "):
+            inner.append(raw[2:])
+        elif raw.startswith("#"):
+            inner.append(raw[1:])
+        else:
+            inner.append(raw)
+    # Brace-balance walk so the extractor accepts BOTH pretty-printed
+    # JSON (molbuilder's emit_atom_metadata via json.dumps indent=2)
+    # AND compact / single-line JSON.  The contract on the wire is
+    # "valid JSON inside the block"; how the writer formatted it isn't
+    # load-bearing.
+    json_lines: List[str] = []
+    saw_open = False
+    brace_depth = 0
+    for line in inner:
+        stripped = line.strip()
+        if not saw_open:
+            if not stripped or not stripped.startswith("{"):
+                continue
+            saw_open = True
+        json_lines.append(line)
+        brace_depth += stripped.count("{") - stripped.count("}")
+        if brace_depth <= 0:
+            break
+    if not json_lines:
+        return None
+    try:
+        return json.loads("\n".join(json_lines))
+    except json.JSONDecodeError:
+        return None
+
+
+# ---- from parse/scripts/bench_marks.py ----
+def _coerce_scalar(s: str) -> Any:
+    """Best-effort numeric coercion for BENCH-MARKS scalar values.
+    Returns the original string when neither int nor float parses."""
+    s = s.strip()
+    try:
+        if "." in s or "e" in s.lower():
+            return float(s)
+        return int(s)
+    except ValueError:
+        return s
+
+def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
+    """Find the BENCH-MARKS block and return its structured payload.
+
+    Returns ``None`` when no BENCH-MARKS block is present.  See the
+    module docstring for the payload shape.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m or m.group(1) != BLOCK_BENCH_MARKS:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out: Dict[str, Any] = {"fields": []}
+    for raw in lines[begin_idx + 1: end_idx]:
+        # Strip "#   " comment prefix.
+        s = raw.lstrip("#").strip()
+        if not s:
+            continue
+        # `field <name> anchor=<x> type=<y> ...` rows.
+        if s.startswith("field "):
+            tokens = s.split()
+            field: Dict[str, Any] = {"name": tokens[1]}
+            for tok in tokens[2:]:
+                if "=" not in tok:
+                    continue
+                k, _, v = tok.partition("=")
+                v = v.strip()
+                # Coerce numeric range / default values.
+                if k == "range" and v.startswith("[") and v.endswith("]"):
+                    try:
+                        a, b = v[1:-1].split(",")
+                        field["range"] = [_coerce_scalar(a), _coerce_scalar(b)]
+                    except ValueError:
+                        field["range"] = v
+                elif k == "default":
+                    field["default"] = _coerce_scalar(v)
+                else:
+                    field[k] = v
+            out["fields"].append(field)
+            continue
+        # Top-level `key value` scalars.
+        if " " in s and not s.startswith("field "):
+            k, _, v = s.partition(" ")
+            v = v.strip()
+            if k == "version":
+                out["version"] = v
+            elif v.lower() in ("true", ".true."):
+                out[k] = True
+            elif v.lower() in ("false", ".false."):
+                out[k] = False
+            else:
+                out[k] = _coerce_scalar(v)
+    return out
+
+
+# ---- from parse/scripts/source_dict.py ----
+def _extract_script_source(text: str) -> Dict[str, Any]:
+    """Single-pass extract over a generated-script body for the run
+    decoder.  Returns a dict with:
+
+      * ``regions``           dict[str, list[int]] | None
+      * ``frozen_atoms``      list[int] | None
+      * ``user_custom_lines`` list[str] | None
+      * ``provenance``        dict[str, str] | None
+      * ``schema_version``    int | None
+      * ``notes``             list[str]
+
+    ``None`` distinguishes "block absent" from "block present but
+    empty" (``{}`` / ``[]``) — `model/parse.md`'s absent-vs-empty rule.  A block whose
+    version is not the one this build writes is READ (a finished run must stay
+    readable) and surfaced as a diagnostic note naming what may be missing --
+    see the comment at the check itself.
+    """
+    notes: List[str] = []
+    atom_md = _extract_atom_metadata_dict(text)
+    regions: Optional[Dict[str, List[int]]] = None
+    frozen: Optional[List[int]] = None
+    schema_version: Optional[int] = None
+    if atom_md is not None:
+        sv = atom_md.get("schema_version")
+        if isinstance(sv, int):
+            schema_version = sv
+            if sv not in _READABLE:
+                # REFUSED, NOT READ (2026-08-01, by decision; amended
+                # 2026-08-20 to the READABLE SET -- v8 added only optional
+                # identity columns, so a v7 block reads whole and refusing
+                # it would have made every existing finished run's labels
+                # unreadable for a change that loses nothing).
+                #
+                # It used to READ an older block and attach a warning, on the
+                # reasoning that a finished run cannot be re-exported the way a
+                # sidecar can.  That reasoning is wrong for a product still
+                # being built: an older block stores the same facts in different
+                # places, so "read it and warn" hands back a payload that LOOKS
+                # complete and quietly is not -- which is how a junction's fifty
+                # frozen atoms came back as an empty list.  Supporting both
+                # shapes also doubles what every reader, test and debugging
+                # session has to hold in its head, for data that will be
+                # regenerated anyway.
+                #
+                # The scripts get regenerated.  That is cheaper than a format
+                # nobody can reason about.
+                notes.append(
+                    f"atom-metadata schema_version {sv}, but this molbuilder "
+                    f"writes v{_CURRENT_SCHEMA} and reads "
+                    f"{sorted(_READABLE)} only. The block was "
+                    f"NOT read -- an older one keeps the same facts in "
+                    f"different places (before v7 the frozen atoms sat in a "
+                    f"top-level key rather than in `regions`), so reading it "
+                    f"would silently drop what it cannot map. Re-generate the "
+                    f"script from the structure."
+                )
+            else:
+                # A BLOCK AT ANY OTHER VERSION IS READ, AND SAID SO ABOUT.
+                #
+                # This is a FINISHED RUN on disk, so refusing it outright would
+                # make a user's existing results unreadable -- unlike the
+                # sidecar, which is refused because it is still being worked on
+                # and can be re-exported. But the note has to be accurate, and
+                # this one was not: it said "molbuilder expects 4 — loading with
+                # current handler", which reads as a formality.
+                #
+                # It is not. Before the label store was unified, the reserved
+                # `frozen_atoms` list sat in a top-level key; this reader takes
+                # the whole store from `regions`, so on an older block the
+                # LABELS COME BACK AND THE FROZEN SET DOES NOT. That is how a
+                # junction's fifty pinned electrode atoms read back as an empty
+                # list. The note says which fact is at risk now, instead of
+                # reporting a number.
+                raw_regions = atom_md.get("regions")
+                if isinstance(raw_regions, dict):
+                    regions = {
+                        str(k): sorted({int(i) for i in v})
+                        for k, v in raw_regions.items()
+                    }
+                else:
+                    regions = {}
+                # ONE designated read: v5 keeps the reserved label in
+                # `regions`, v3/v4 kept it in a top-level key, and this
+                # knows which without the caller spelling the name.
+                from molbuilder.sidecars import molstruct as _ms
+                frozen = _ms.frozen_atoms(atom_md)
+        else:
+            notes.append(
+                "atom-metadata block has no schema_version; ignored.")
+    return {
+        "regions":           regions,
+        "frozen_atoms":      frozen,
+        "user_custom_lines": _extract_user_custom_inner(text),
+        "provenance":        _extract_provenance_dict(text),
+        "schema_version":    schema_version,
+        "notes":             notes,
+    }
+
+
+
+@dataclass(frozen=True)
+class ScriptSource:
+    """What a generated script says about itself -- every reserved block.
+
+    One pass, one object.  A per-block door was considered and rejected on
+    measurement: reading all six blocks off a real 442-line deck costs
+    **0.55 ms** against **0.22 ms** for one, so splitting the door to save
+    a third of a millisecond would buy nothing and cost six names.
+
+    Fields are ``None`` when the block is ABSENT and empty when the block
+    is PRESENT-but-empty -- the distinction the ATOM-METADATA emission rule
+    turns on (`job-contracts.md` § 3.1).
+    """
+
+    #: Raw blocks, exactly as their extractors return them.
+    header:        Optional[str]            = None
+    provenance:    Optional[Dict[str, str]] = None
+    bench_marks:   Optional[Dict[str, Any]] = None
+    atom_metadata: Optional[Dict[str, Any]] = None
+    user_custom:   Optional[List[str]]      = None
+
+    #: The ATOM-METADATA block SCHEMA-GATED and unpacked: a block at a
+    #: version this build does not read is refused, and `notes` says so.
+    #: `schema_version` is the version the block DECLARED -- kept because a
+    #: version written down in two places is how one came to claim v4 while
+    #: carrying v7.
+    regions:        Optional[Dict[str, List[int]]] = None
+    frozen_atoms:   Optional[List[int]]            = None
+    schema_version: Optional[int]                  = None
+
+    #: Non-fatal notes -- an unreadable schema version, say.
+    notes:          Tuple[str, ...]                = ()
+
+
+def read_script(text: str) -> ScriptSource:
+    """Read every reserved block out of a generated ``.fdf`` / ``.py`` body.
+
+    **The one door.**  Callers used to import a private ``_extract_*_dict``
+    across a package boundary -- `parse/contract.py`, `jobset/summarize.py`,
+    `jobset/agreement.py` and `transport/compose.py` all did -- because the
+    public surface was six `TextParser` classes that returned a whole-script
+    object to carry one dict.  Ask this instead.
+
+    Takes a STRING: reading the file is the caller's job.
+    """
+    src = _extract_script_source(text) or {}
+    return ScriptSource(
+        header=_extract_header_text(text),
+        provenance=_extract_provenance_dict(text),
+        bench_marks=_extract_bench_marks_dict(text),
+        # The RAW block.  `regions` / `frozen_atoms` below are the same
+        # block after the schema gate; a caller wanting the gate takes
+        # those, one wanting the payload takes this.
+        atom_metadata=_extract_atom_metadata_dict(text),
+        user_custom=_extract_user_custom_inner(text),
+        regions=src.get("regions"),
+        frozen_atoms=src.get("frozen_atoms"),
+        schema_version=src.get("schema_version"),
+        notes=tuple(src.get("notes") or ()),
+    )

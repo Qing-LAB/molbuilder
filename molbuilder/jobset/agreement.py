@@ -92,7 +92,7 @@ def launch_agreement(job_dir, job) -> LaunchAgreement:
     deck = Path(job_dir) / os.path.basename(job.script)
     if not deck.is_file():
         return LaunchAgreement("silent")
-    from ..parse.scripts.bench_marks import _extract_bench_marks_dict
+    from ..script_emit import _extract_bench_marks_dict
     marks = _extract_bench_marks_dict(deck.read_text(encoding="utf-8",
                                                      errors="replace"))
     if not marks or "mpi_np" not in marks:

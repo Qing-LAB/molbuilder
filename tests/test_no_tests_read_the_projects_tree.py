@@ -143,7 +143,7 @@ def test_a_built_run_directory_round_trips_its_labels(tmp_path):
     import sys
     sys.path.insert(0, str(TESTS))
     from support.junction import frozen, run_dir
-    from molbuilder.script_emit import extract_script_source
+    from molbuilder.script_emit import _extract_script_source as extract_script_source
 
     d = run_dir(tmp_path)
     deck = sorted(d.glob("*.fdf"))[0]

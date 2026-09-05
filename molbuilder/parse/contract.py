@@ -152,7 +152,7 @@ def _declared_in_provenance(directory: Path) -> set:
     per-engine table) but always has a ``.run.sh``, so the wrapper is the
     one artifact every prepared run carries whatever the task.
     """
-    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+    from molbuilder.script_emit import _extract_provenance_dict
     out = set()
     for pattern in ("*.run.sh", "*.fdf", "*.py"):
         for f in sorted(directory.glob(pattern)):

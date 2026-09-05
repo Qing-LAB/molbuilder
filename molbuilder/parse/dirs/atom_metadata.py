@@ -1,11 +1,14 @@
 """Run-directory ATOM-METADATA recovery — the results-side bridge.
 
 Module: ``parse/dirs`` (directory-level composers — the ONE parse
-layer allowed to touch the filesystem).  The text-level extraction
-stays in ``parse/scripts/atom_metadata`` (``AtomMetadataTextParser``),
-which is memory-only by contract (model/parse.md § 7 forbidden #2,
-enforced by ``test_text_parsers_do_no_io``) — that contract is WHY
-this glob/read helper lives here and not next to the TextParser.
+layer allowed to touch the filesystem).  The text-level extraction is
+``script_emit._extract_atom_metadata_dict``, which takes a STRING and
+does no I/O — so the glob-and-read half lives here, and the block
+grammar lives with the emitter that writes it (`plan.md` § 5d).
+
+*This read ``AtomMetadataTextParser.parse(text).atom_metadata`` until
+2026-09-05 — a class whose entire body built a ten-field ScriptResult so
+this line could take one field back out.*
 
 Callers:
   * ``web/blueprints/watch.py::_atom_metadata_json`` — the Results-tab
@@ -20,7 +23,7 @@ import json
 from pathlib import Path
 from typing import Optional, Union
 
-from molbuilder.parse.scripts.atom_metadata import AtomMetadataTextParser
+from molbuilder.script_emit import _extract_atom_metadata_dict
 
 
 def atom_metadata_json_for_run_dir(
@@ -77,7 +80,7 @@ def atom_metadata_json_for_run_dir(
             text = script.read_text(encoding="utf-8-sig", errors="replace")
         except OSError:                                    # pragma: no cover
             continue
-        md = AtomMetadataTextParser.parse(text).atom_metadata
+        md = _extract_atom_metadata_dict(text)
         if not md:
             continue
         if not (md.get("regions") or md.get("annotations")):

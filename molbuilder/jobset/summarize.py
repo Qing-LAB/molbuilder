@@ -391,7 +391,7 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     if not text:
         return {}
     mech: Dict = {}
-    from ..parse.scripts.bench_marks import _extract_bench_marks_dict
+    from ..script_emit import _extract_bench_marks_dict
     marks = _extract_bench_marks_dict(text) or {}
     if "gpu_mode" in marks:
         mech["use_gpu"] = str(marks["gpu_mode"]).lower() == "true"

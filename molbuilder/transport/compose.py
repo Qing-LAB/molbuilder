@@ -394,7 +394,7 @@ def swap_electrode_labels(cited: CitedDir) -> str:
         _write_atomically(source, json.dumps(data, indent=2) + "\n")
         return source.name
 
-    from ..parse.scripts.atom_metadata import _extract_atom_metadata_dict
+    from ..script_emit import _extract_atom_metadata_dict
     text = source.read_text(encoding="utf-8")
     payload = _extract_atom_metadata_dict(text)
     if payload is None:

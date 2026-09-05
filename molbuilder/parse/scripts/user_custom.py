@@ -16,41 +16,19 @@ until H2 rehomes them.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import List, Optional
 
 from molbuilder.parse.base import TextParser
 from molbuilder.parse.types import ScriptResult
 
 from ._helpers import empty_script_result
-from .markers import BLOCK_USER_CUSTOM, MARKER_RE
 
-
-def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
-    """Return the inner lines of the USER-CUSTOM block in ``text``, or
-    ``None`` if there is no well-formed USER-CUSTOM BEGIN/END pair.
-
-    Inner lines are everything STRICTLY between the BEGIN and END
-    markers (markers excluded).  Trailing/leading whitespace inside
-    the block is preserved.
-    """
-    lines = text.splitlines()
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != BLOCK_USER_CUSTOM:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
-        return None
-    return lines[begin_idx + 1: end_idx]
+# The extractors MOVED to their format's owner on 2026-09-05
+# (`script_emit`, `plan.md` § 5d).  Imported here, not copied:
+# two implementations of one grammar is the defect this move
+# exists to remove.
+from molbuilder.script_emit import (  # noqa: E402
+    _extract_user_custom_inner,
+)
 
 
 class UserCustomTextParser(TextParser):

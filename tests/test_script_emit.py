@@ -252,7 +252,7 @@ SomeUserDirective foo
 
 
 def test_extract_user_custom_inner_returns_inner_lines():
-    inner = sc.extract_user_custom_inner(_SAMPLE_WITH_USER_CUSTOM)
+    inner = sc._extract_user_custom_inner(_SAMPLE_WITH_USER_CUSTOM)
     assert inner == [
         "# user line one",
         "# user line two",
@@ -261,13 +261,13 @@ def test_extract_user_custom_inner_returns_inner_lines():
 
 
 def test_extract_user_custom_inner_returns_none_when_no_block():
-    assert sc.extract_user_custom_inner("BlockSize 64\nSystemName foo\n") is None
+    assert sc._extract_user_custom_inner("BlockSize 64\nSystemName foo\n") is None
 
 
 def test_extract_user_custom_inner_returns_none_on_unbalanced_markers():
     # BEGIN without END.
     text = "engine\n# === molbuilder user-custom BEGIN ===\nstuff\n"
-    assert sc.extract_user_custom_inner(text) is None
+    assert sc._extract_user_custom_inner(text) is None
 
 
 def test_replace_user_custom_inner_splices_new_inner():
@@ -276,7 +276,7 @@ def test_replace_user_custom_inner_splices_new_inner():
     spliced = sc.replace_user_custom_inner(
         full, ["# MY EDIT", "MY_KEYWORD value"]
     )
-    inner = sc.extract_user_custom_inner(spliced)
+    inner = sc._extract_user_custom_inner(spliced)
     assert inner == ["# MY EDIT", "MY_KEYWORD value"]
 
 
@@ -297,7 +297,7 @@ def test_merge_user_custom_from_target_preserves_existing(tmp_path):
         + sc.emit_user_custom_placeholder() + "\n"
     )
     merged = sc.merge_user_custom_from_target(fresh_render, target)
-    inner = sc.extract_user_custom_inner(merged)
+    inner = sc._extract_user_custom_inner(merged)
     assert inner == [
         "# user line one",
         "# user line two",
@@ -351,7 +351,7 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
     )
     # Wrap in a "host" file so it looks like real .fdf content.
     text = "SystemLabel siesta\n\n" + emitted + "\n\nBlockSize 64\n"
-    payload = sc.extract_atom_metadata_dict(text)
+    payload = sc._extract_atom_metadata_dict(text)
     assert payload is not None
     assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4],
                                   "frozen_atoms": [0, 4]}
@@ -360,7 +360,7 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
 
 
 def test_extract_atom_metadata_dict_returns_none_when_block_missing():
-    assert sc.extract_atom_metadata_dict("SystemLabel siesta\nBlockSize 64\n") is None
+    assert sc._extract_atom_metadata_dict("SystemLabel siesta\nBlockSize 64\n") is None
 
 
 def test_extract_atom_metadata_dict_returns_none_on_malformed_json():
@@ -370,7 +370,7 @@ def test_extract_atom_metadata_dict_returns_none_on_malformed_json():
         "# {this is not valid json\n"
         "# === molbuilder atom-metadata END ===\n"
     )
-    assert sc.extract_atom_metadata_dict(text) is None
+    assert sc._extract_atom_metadata_dict(text) is None
 
 
 def _blank_struct(n=20):
@@ -486,7 +486,7 @@ def test_extract_provenance_dict_round_trips_emit_output():
             "MeshCutoff":  "350.0 Ry (default)",
         },
     )
-    got = sc.extract_provenance_dict(block + "\nengine body line\n")
+    got = sc._extract_provenance_dict(block + "\nengine body line\n")
     assert got is not None
     assert got["generator-version"] == "molbuilder git abc123"
     assert got["generated-at"]      == "2026-06-17T12:00:00-07:00"
@@ -496,7 +496,7 @@ def test_extract_provenance_dict_round_trips_emit_output():
 
 
 def test_extract_provenance_dict_returns_none_when_block_missing():
-    assert sc.extract_provenance_dict("SystemLabel siesta\n") is None
+    assert sc._extract_provenance_dict("SystemLabel siesta\n") is None
 
 
 def test_extract_provenance_dict_returns_empty_dict_for_present_but_empty():
@@ -509,7 +509,7 @@ def test_extract_provenance_dict_returns_empty_dict_for_present_but_empty():
         "# === molbuilder provenance END ===\n"
         "SystemLabel anything\n"
     )
-    got = sc.extract_provenance_dict(text)
+    got = sc._extract_provenance_dict(text)
     assert got == {}, f"expected empty dict, got {got!r}"
     assert got is not None
 
@@ -519,7 +519,7 @@ def test_extract_provenance_dict_handles_no_defaults_section():
         generator_version="vX",
         generated_at="2026-06-17T00:00:00Z",
     )
-    got = sc.extract_provenance_dict(block + "\n")
+    got = sc._extract_provenance_dict(block + "\n")
     assert got == {
         "generator-version": "vX",
         "generated-at":      "2026-06-17T00:00:00Z",
@@ -556,7 +556,7 @@ def _composed_script(*, with_atom_md: bool = True,
 
 def test_extract_script_source_full_round_trip():
     text = _composed_script()
-    src = sc.extract_script_source(text)
+    src = sc._extract_script_source(text)
     assert src["regions"] == {"L-electrode": [1, 2], "R-electrode": [10, 11],
                               "frozen_atoms": [1, 11]}
     assert src["frozen_atoms"] == [1, 11]   # the designated read, off the store
@@ -572,7 +572,7 @@ def test_extract_script_source_full_round_trip():
 def test_extract_script_source_no_atom_metadata():
     """Block absent -> regions / frozen are ``None`` (NOT empty)."""
     text = _composed_script(with_atom_md=False)
-    src = sc.extract_script_source(text)
+    src = sc._extract_script_source(text)
     assert src["regions"] is None
     assert src["frozen_atoms"] is None
     assert src["schema_version"] is None
@@ -585,7 +585,7 @@ def test_extract_script_source_returns_a_dict_with_a_notes_list():
     """``notes`` is never None (the extractor's dict contract --
     parse/scripts/source_dict.py; the dataclass era ended with the
     2026-06 parse migration)."""
-    src = sc.extract_script_source("SystemLabel only\n")
+    src = sc._extract_script_source("SystemLabel only\n")
     assert isinstance(src["notes"], list)
     assert src["regions"] is None
     assert src["frozen_atoms"] is None
@@ -613,7 +613,7 @@ def test_a_block_at_any_other_schema_version_is_not_read():
             '#  "regions": {"r": [0]}}\n'
             "# === molbuilder atom-metadata END ===\n"
         )
-        src = sc.extract_script_source(text)
+        src = sc._extract_script_source(text)
         assert src["schema_version"] == version, "the version is still reported"
         assert src["regions"] is None, (
             f"v{version} was READ -- an older or newer block keeps the same "
@@ -637,7 +637,7 @@ def test_extract_script_source_empty_blocks_present_but_empty():
         '#  "regions": {}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
-    src = sc.extract_script_source(text)
+    src = sc._extract_script_source(text)
     assert src["regions"] == {}        # present, empty
     assert src["frozen_atoms"] == []   # nothing carries the label
     # The fixture is a v7 block, and v7 is in the READABLE SET (schema 8
