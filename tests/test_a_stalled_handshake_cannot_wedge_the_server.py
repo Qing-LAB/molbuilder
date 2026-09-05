@@ -174,25 +174,51 @@ def test_a_silent_client_does_not_stop_everyone_else(tmp_path):
 
 
 def test_the_handshake_deadline_is_not_left_on_the_request(tmp_path):
-    """The deadline guards the HANDSHAKE only.
+    """The deadline guards the HANDSHAKE only — proved by an IDLE client.
 
-    If it stayed on the connection, a slow route or a long poll would be cut
-    off mid-answer at `HANDSHAKE_TIMEOUT_S`, turning a denial-of-service fix
-    into a denial of service.
+    If it stayed on the connection, a client that finishes the handshake and
+    then waits before speaking would be dropped at `HANDSHAKE_TIMEOUT_S`,
+    turning a denial-of-service fix into one. A browser does exactly this:
+    it pre-connects, then sends the request line when the user acts.
+
+    **This test asserted the wrong thing until 2026-09-05.** It ran a WSGI
+    app that slept past the deadline and checked the body came back whole.
+    That cannot fail: the sleep happens in application code, performs no
+    socket operation, and the reply fits the send buffer, so a per-operation
+    timeout never fires. Measured — deleting `conn.settimeout(None)`, the one
+    line the test exists to guard, left it PASSING. The idle client below
+    fails within a second of that same deletion, because the idle happens on
+    the socket, which is where the deadline lives.
     """
     from molbuilder.cli import HANDSHAKE_TIMEOUT_S
 
-    slept = HANDSHAKE_TIMEOUT_S + 1.0
-
-    def _slow(environ, start_response):
-        time.sleep(slept)
-        start_response("200 OK", [("Content-Type", "text/plain")])
-        return [b"slow-but-whole"]
-
     port = _free_port()
-    _serve(_slow, port, _self_signed(tmp_path))
+    _serve(_app, port, _self_signed(tmp_path))
 
-    body = _get(port, timeout=slept + 10.0)
-    assert "slow-but-whole" in body, (
-        f"a response that took longer than the {HANDSHAKE_TIMEOUT_S}s handshake "
-        "deadline was cut off — the deadline leaked onto the request")
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    idle = HANDSHAKE_TIMEOUT_S + 2.0
+    with socket.create_connection(("127.0.0.1", port), timeout=idle + 15) as raw:
+        with ctx.wrap_socket(raw, server_hostname="127.0.0.1") as tls:
+            # Handshake is DONE here. Now behave like a pre-connected browser
+            # and say nothing at all for longer than the handshake deadline.
+            time.sleep(idle)
+            tls.settimeout(15.0)
+            tls.sendall(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+            chunks = []
+            while True:
+                try:
+                    b = tls.recv(4096)
+                except (TimeoutError, ssl.SSLError, OSError):
+                    break
+                if not b:
+                    break
+                chunks.append(b)
+            body = b"".join(chunks).decode("latin-1")
+
+    assert "alive" in body, (
+        f"a client that idled {idle}s after the handshake was dropped — the "
+        f"{HANDSHAKE_TIMEOUT_S}s handshake deadline leaked onto the request, "
+        "so every browser pre-connect dies: " + repr(body[:120]))
