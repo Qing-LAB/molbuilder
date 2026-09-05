@@ -151,3 +151,49 @@ def _wall_now_for_test() -> float:
     """The same clock `run_status` measures age against."""
     from molbuilder.parse.dirs.job import _wall_now
     return _wall_now()
+
+
+def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
+    """Stage first, mtime second — and only a re-run separates them.
+
+    A staged run's stages finish in order, so on almost every real
+    directory "highest stage" and "newest mtime" name the same file and
+    the sort key's first component is invisible.  Measured 2026-09-05
+    across all 115 run directories under `projects/`: deleting
+    `_detect_stage` from the key changes **nothing**, and 473 tests still
+    pass.  The rule was chosen deliberately (user: "use stage-then-mtime")
+    and nothing in the tree held it.
+
+    The case that separates them is a RE-RUN of an earlier stage — the
+    coarse stage re-run to check something after the final one finished.
+    mtime alone then makes the coarse `.out` the active file, so the
+    Results tab reports the run's state from a stage it has left behind.
+    """
+    import os
+
+    (tmp_path / "job.fdf").write_text("SystemLabel job\n")
+    done = "Siesta Version: 5.4.2\nsiesta: iscf\n>> End of run:  1-JAN-2026\n"
+    running = "Siesta Version: 5.4.2\nsiesta: iscf\nscf:  1  -100.0\n"
+
+    final  = tmp_path / "job_03_final-run0.out"
+    coarse = tmp_path / "job_01_coarse-run0.out"
+    final.write_text(done)          # stage 3 finished...
+    coarse.write_text(running)      # ...then stage 1 was re-run and is live
+
+    now = _wall_now_for_test()
+    os.utime(final,  (now - 600, now - 600))   # older write, higher stage
+    os.utime(coarse, (now,       now))         # newest write, lower stage
+
+    s = run_status(tmp_path)
+    assert s["active_source"] == final.name, (
+        "the newest write won over the highest stage — that is mtime-only "
+        f"ordering: {s}")
+
+    # Anti-vacuity: WITHIN one stage, mtime still decides. Otherwise the
+    # assertion above would also pass on a key that ignored mtime entirely.
+    later = tmp_path / "job_03_final-run1.out"
+    later.write_text(running)
+    os.utime(later, (now - 300, now - 300))    # newer than run0, same stage
+    s2 = run_status(tmp_path)
+    assert s2["active_source"] == later.name, (
+        f"within one stage the later attempt must win: {s2}")

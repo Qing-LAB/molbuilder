@@ -63,9 +63,16 @@ def _detect_stage(filename: str) -> Optional[int]:
     convention that could and did drift from it.
 
     **Still an int, and deliberately so.**  Decision 27 kept the ordinal in
-    the filename, so everything downstream that ORDERS by stage --
-    :func:`_anchor_sort_key`, the ``.out`` listing, the ``stage`` field of the
-    engine-input envelope -- keeps working unchanged.  Had the token carried
+    the filename, so ordering by stage stays possible: this function is the
+    first component of the active-file sort key in :func:`run_status`
+    (stage first, mtime second), which is what makes a re-run of an earlier
+    stage stop hijacking the run's reported state.
+
+    *This cited ``_anchor_sort_key`` and "the ``stage`` field of the
+    engine-input envelope" as the other downstream orderers until
+    2026-09-05.  Neither exists: the envelope went with the run decoder on
+    2026-09-04, and ``_anchor_sort_key`` has never been defined anywhere in
+    the tree -- it appeared only in this sentence.*  Had the token carried
     the name alone, the anchor rule would have lost its sort key and the
     Results tab its notion of "the active stage"; that is the trap
     ``staged-runs-implementation-plan.md`` § 8d walked into and § 8e closed.
