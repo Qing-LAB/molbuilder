@@ -159,13 +159,21 @@ def test_frozen_dataclass_invariant_on_each_result_kind():
     The existing test only checks JobResult; extend to every
     registered output type to catch a future override drift."""
     from dataclasses import FrozenInstanceError
-    from molbuilder.parse.types import (
-        SidecarResult as SR, InstrumentResult,
-        StructureResult, TrajectoryResult as TR,
-    )
-    # `JobResult` was the fifth here until 2026-09-04; it retired with
-    # the directory decoder, ten of whose eleven fields had no reader.
-    for cls in (TR, StructureResult, SR, InstrumentResult):
+    from molbuilder.parse.types import ParseResult
+
+    # DISCOVERED, not listed.  The docstring says "every registered output
+    # type", and a hardcoded tuple cannot keep that promise: it said
+    # `JobResult` until that retired 2026-09-04, and `ScriptResult` until
+    # 2026-09-05, and each time the list was edited to match rather than
+    # asked.  A sixth kind added tomorrow would simply not be checked, and
+    # nothing would say so -- which is the same hole the §7 #3 FileParser
+    # lint had.
+    kinds = ParseResult.__subclasses__()
+    assert len(kinds) >= 4, (
+        f"only {len(kinds)} ParseResult subclasses found -- the scan is "
+        "blind, so the assertion below would pass vacuously")
+
+    for cls in kinds:
         instance = cls(schema_version=1, parsed_at="", parser_name="x", source="x")
         with pytest.raises(FrozenInstanceError):
             instance.parser_name = "tampered"   # noqa
