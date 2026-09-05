@@ -574,17 +574,61 @@ recovered from the file being overwritten. With it go:
 - `job-contracts.md` § 3.5's "byte-for-byte" claim, which is already false
   (CRLF is normalised by `splitlines()`/`"\n".join`).
 
+### Where it is typed, and who is responsible
+
+*(Your proposal, 2026-09-05, taken with one correction from `tabs.md`.)*
+
+**An addition needs no new home: it follows the path a parameter already
+takes.** `tabs.md` § 1 has the ownership — Structure optimization *"collect[s]
+a SIESTA/PySCF relaxation's PARAMETERS and Send[s] them to Task setup (the
+deck itself is written by `prep`, on the machine that runs it)"*, and Task
+setup *"read[s] a calculation folder's description — its STAGES"*.
+
+Neither tab writes a deck. So an addition typed in either must travel as DATA
+to `prep`, which is exactly what makes it an input rather than a zone — and it
+lands on the relationship every parameter already has:
+
+| where | what it does |
+|---|---|
+| Structure optimization | collect the addition with the calculation's other parameters |
+| Task setup | override it per stage, like any item |
+| `prep` | the writer places it |
+
+So the answer to *"Task setup or Structure optimization?"* is **both, in the
+roles those tabs already hold** — not a choice between them.
+
+**The responsibility is the person's, and the format is what makes that fair.**
+molbuilder does not understand the content; it places it and records it. For
+"your responsibility" to be a fair deal rather than a disclaimer, three things
+have to be true, and only the first is about the text:
+
+1. **A stated format** — a clear start and end, so the addition is a bounded
+   thing rather than loose text. (Not the current marker fence, which is
+   file-level and is what a stray paste can break; the bound belongs to the
+   addition as data.)
+2. **It is separable at generation time.** `prep` can write the deck WITHOUT
+   the additions and WITH them, because they are an input rather than text
+   fused into the file. That gives a person the bisection directly: run it
+   clean, run it with, and the difference is theirs.
+3. **The consequence is stated before it is saved**, per `Parameter.writes` —
+   *your value replaces what `MD.TypeOfRun` would have written (`CG`)*.
+
+(2) is the one that turns responsibility into something a person can act on,
+and it is a capability the input model gives for free. Under a zone it is
+possible only by hand-stripping a section from a written file, which changes
+the deck in more ways than the one being tested.
+
 ### Open, and deliberately not decided here
 
-1. **Where an addition is stored.** It is per-stage-overridable like a template
-   item, but it is not a catalogue item. Does it live in the template file, in
-   `task.json`'s execution block, or in its own place?
-2. **Does the zone survive at all** for genuinely free-form text (a comment
+1. **Does the zone survive at all** for genuinely free-form text (a comment
    with no variable in it), or does that become an addition with no attributed
    keyword?
-3. **What the card shows** when an addition collides — refuse, warn-and-accept,
-   or show the resolved line before saving.
-4. **Ordering among additions**, when two of them write to the same section.
+2. **What the card shows** when an addition collides — refuse, warn-and-accept,
+   or show the resolved line before saving. (The consequence must be stated;
+   whether it can be overridden is separate.)
+3. **Ordering among additions**, when two of them write to the same section.
+4. **How the without/with pair is offered** — two files, a flag on `prep`, or a
+   diff shown in the tab.
 
 ### Before any code
 
