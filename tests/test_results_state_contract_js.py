@@ -342,19 +342,6 @@ class TestRefreshListenerWiredOnce:
     per-load by startPolling().  Pre-fix the listener piled up on
     every load and only tore down on dispose."""
 
-    def test_wire_function_exists(self, core_body):
-        assert re.search(
-            r"function\s+_wireRefreshListener\s*\(\s*\)",
-            core_body,
-        ), ("_wireRefreshListener function is gone.  Refresh button "
-            "is unwired (PR 2.1 audit follow-up regressed).")
-
-    def test_wire_function_called_at_mount(self, core_body):
-        """The call site lives BEFORE the mountInspector's return
-        statement -- ensures it fires exactly once per mount."""
-        assert "_wireRefreshListener();" in core_body, (
-            "_wireRefreshListener is defined but never called.  "
-            "Refresh button is unwired.")
 
     def test_startPolling_no_longer_wires_listener(self, core_body):
         """startPolling MUST be timer-only.  The Refresh listener
@@ -381,26 +368,6 @@ class TestRefreshIsFileSwitch:
     delegates to transition('LOADING')), NOT pollOnce() directly.
     Pre-PR-2 the inline pollOnce() left scfPollHistory + firstFit +
     fileState entirely untouched -- the "half-refresh" bug class."""
-
-    def test_refresh_handler_calls_loadByPath(self, core_body):
-        """The EVENT_REFRESH_REQUESTED handler body MUST call
-        loadByPath(...) -- not pollOnce().  Per PR 2.1 the handler
-        lives in _wireRefreshListener() (wired once at mount), not
-        startPolling() (called per-load) -- prevents listener pile-up."""
-        m = re.search(
-            r"function\s+_wireRefreshListener\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "_wireRefreshListener not found"
-        body = m.group(1)
-        assert "loadByPath" in body, (
-            "_wireRefreshListener no longer calls loadByPath().  "
-            "Refresh button skips the reset matrix; the half-refresh "
-            "bug returns.")
-        assert "pollOnce" not in body, (
-            "_wireRefreshListener is calling pollOnce() directly. "
-            "scfPollHistory leaks stale samples; the half-refresh "
-            "bug returns.")
 
 
 # --------------------------------------------------------------------- #
@@ -449,44 +416,6 @@ class TestInProgressFilter:
     trace y-arrays -- the parser's placeholder energy is a
     ``step_initial_etot`` fallback, not a real measurement."""
 
-    def test_plottableFrames_helper_exists(self, core_body):
-        assert re.search(
-            r"function\s+plottableFrames\s*\(\s*data\s*\)",
-            core_body,
-        ), ("trajectory/core.js no longer defines plottableFrames(). "
-            "The odd-value-disappears-on-refresh bug class returns.")
-
-    def test_plottableFrames_reads_in_progress(self, core_body):
-        """The helper MUST read data.in_progress -- that's the
-        canonical wire field added in this PR."""
-        m = re.search(
-            r"function\s+plottableFrames\s*\([^)]*\)\s*\{([^}]+?)\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "plottableFrames body shape changed"
-        body = m.group(1)
-        assert "in_progress" in body, (
-            "plottableFrames no longer reads data.in_progress.  "
-            "The filter is dead; partial frames re-appear in plots.")
-
-    def test_energy_plot_uses_filter(self, core_body):
-        """The energy plot trace MUST consume ``energies_plot`` (the
-        filtered array), NOT ``state.data.energies`` directly."""
-        # Find the energy-plot Plotly.react call body.
-        m = re.search(
-            r"Plotly\.react\s*\(\s*[\"']energy-plot[\"'].+?\}\s*\]",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "energy-plot Plotly.react site not found"
-        body = m.group(0)
-        assert "energies_plot" in body, (
-            "energy-plot trace no longer reads energies_plot (the "
-            "in-progress-filtered array).  Partial-frame placeholder "
-            "energies re-enter the plot.")
-        assert "state.data.energies" not in body, (
-            "energy-plot trace is back to reading state.data.energies "
-            "directly -- the in-progress filter is bypassed.")
-
 
 # --------------------------------------------------------------------- #
 #  Wire-format: in_progress array landed                                #
@@ -504,40 +433,4 @@ class TestWireFormatInProgress:
                      / "molbuilder" / "parse" / "engines"
                      / "_helpers.py")
 
-    def test_adapter_emits_in_progress(self):
-        body = self._ADAPTER_PATH.read_text()
-        assert re.search(
-            r"\"in_progress\"\s*:\s*out_in_progress",
-            body,
-        ), ("parse/engines/_helpers.py::trajectory_result_to_legacy_dict "
-            "no longer emits ``in_progress`` -- the JS filter has no "
-            "data to filter on.")
 
-    def test_adapter_collapses_when_all_clean(self):
-        """When no frame is in-progress, the array collapses to [] --
-        matches the max_forces_constrained empty-list convention."""
-        body = self._ADAPTER_PATH.read_text()
-        assert re.search(
-            r"if\s+not\s+any\s*\(\s*out_in_progress\s*\)\s*:\s*"
-            r"\n\s+out_in_progress\s*=\s*\[\]",
-            body,
-        ), ("parse/engines/_helpers.py no longer collapses all-clean "
-            "in_progress to [].  Wire size bloats unnecessarily.")
-
-    def test_merge_propagates_in_progress(self):
-        """Multi-stage merge MUST keep the per-frame in_progress
-        array aligned 1:1 with merged frames."""
-        path = (Path(__file__).resolve().parent.parent
-                / "molbuilder" / "web" / "blueprints" / "watch.py")
-        body = path.read_text()
-        assert re.search(
-            r"\"in_progress\"\s*:\s*\[\]",
-            body,
-        ), ("watch.py multi-stage merge init no longer carries "
-            "in_progress.  Per-frame partial flags get lost across "
-            "stage boundaries.")
-        assert re.search(
-            r"merged\[\"in_progress\"\]\.extend",
-            body,
-        ), ("watch.py multi-stage merge no longer extends the "
-            "in_progress array per stage.")

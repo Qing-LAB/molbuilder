@@ -173,3 +173,120 @@ def test_loading_resets_the_finished_counter():
     which is the whole defence against a parser caught mid-flush.
     """
     assert _transition("LOADING", machine="WATCHING")["finishedTicks"] == 0
+
+
+# --------------------------------------------------------------------- #
+#  plottableFrames — which frames the plots are allowed to use          #
+# --------------------------------------------------------------------- #
+
+def _plottable(frames, in_progress):
+    """Run the REAL `plottableFrames(data)` and return the indices it keeps."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    fn = _slice(MODULE.read_text(), "    function plottableFrames(data) {",
+                "\n    // Expose for tests")
+    harness = (fn + "\nconsole.log(JSON.stringify(plottableFrames("
+               + json.dumps({"frames": frames, "in_progress": in_progress})
+               + ")));")
+    proc = subprocess.run([shutil.which("node"), "--input-type=commonjs",
+                           "-e", harness],
+                          capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_a_mid_write_frame_is_kept_out_of_the_plots():
+    """`results.md` § 4: partial frames are LISTED but not PLOTTED.
+
+    The half-written geometry is still in the movie — you can scrub to it
+    — but its energy is a number the engine had not finished computing,
+    and plotting it puts a spike in the convergence curve that never
+    happened.
+    """
+    assert _plottable(["a", "b", "c"], [False, True, False]) == [0, 2]
+
+
+def test_an_empty_flag_array_means_every_frame_plots():
+    """`[]` is the adapter's *nothing is partial* (see
+    `test_in_progress_frames_stay_out_of_plots.py`), not *nothing plots*.
+
+    Reading it the other way would blank every plot on every healthy run,
+    which is the whole reason the collapse convention needs a reader that
+    agrees with it.
+    """
+    assert _plottable(["a", "b"], []) == [0, 1]
+
+
+def test_no_frames_is_not_an_error():
+    assert _plottable([], []) == []
+
+
+# --------------------------------------------------------------------- #
+#  Refresh — the button must reach the loader                           #
+# --------------------------------------------------------------------- #
+
+def _refresh(*, path):
+    """Wire the REAL `_wireRefreshListener`, fire the event, report what
+    it called.
+
+    Everything outside the function is faked at the edge: the constant
+    bundle it reads the event name from, the listener registrar, the
+    loader, and the observer it also installs.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    fn = _slice(MODULE.read_text(), "    function _wireRefreshListener() {",
+                "\n    function ")
+    harness = f"""
+        const _loaded = [];
+        const _handlers = {{}};
+        const window = {{ molbuilder: {{ constants:
+            {{ EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh" }} }} }};
+        const document = {{}};
+        function _on(t, ev, h) {{ _handlers[ev] = h; }}
+        function loadByPath(p) {{ _loaded.push(p); }}
+        function resizePlots() {{}}
+        class ResizeObserver {{ constructor(f) {{}} observe() {{}} }}
+        const $ = () => null;
+        // The same function also installs the plots' ResizeObserver, which
+        // reaches the card's root element.  Faked so the wiring under test
+        // runs; that observer has its own coverage.
+        const rootEl = {{ querySelector: () => null }};
+        const state = {{ fileState: {{ path: {json.dumps(path)} }} }};
+        {fn}
+        _wireRefreshListener();
+        const h = _handlers["molbuilder:results:refresh"];
+        if (h) h();
+        console.log(JSON.stringify({{ wired: !!h, loaded: _loaded }}));
+    """
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
+                          capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_refresh_reloads_the_file_on_screen():
+    """Pressing Refresh re-runs the load for the file being shown.
+
+    `results.md` § 5: Refresh is a clean reload, not a nudge — it goes
+    through `loadByPath`, so `transition('LOADING')` runs the whole reset
+    matrix. Until 2026-09-04 the only guard on this was a grep for the
+    string `_wireRefreshListener();`, so deleting the registration left
+    the button inert with the suite green.
+    """
+    out = _refresh(path="/p/run.molwatch.log")
+    assert out["wired"] is True, (
+        "nothing subscribed to the refresh event: the Refresh button is "
+        "wired to nothing and does nothing, silently")
+    assert out["loaded"] == ["/p/run.molwatch.log"], (
+        f"Refresh must reload the file on screen; it called loadByPath "
+        f"with {out['loaded']!r}")
+
+
+def test_refresh_before_anything_is_loaded_does_nothing():
+    """No file, no reload — and no crash on a null path."""
+    assert _refresh(path=None)["loaded"] == []
