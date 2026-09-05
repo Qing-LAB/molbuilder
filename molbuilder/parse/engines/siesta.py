@@ -1634,9 +1634,10 @@ class SiestaParser:
                 # Feature presence -- the line "ELPA support" by itself
                 # means ELPA was compiled in.  Lowercase the key for the
                 # dict; hyphen-to-underscore for "NetCDF-4" -> "netcdf4".
+                # "NetCDF-4" -> "netcdf4" is what the lower+replace above
+                # already produces; an `if name == "netcdf4": pass` sat here
+                # doing nothing until 2026-09-05.
                 name = m.group(1).lower().replace("-", "")
-                if name == "netcdf4":
-                    pass  # canonical key
                 runtime_info.setdefault("siesta_build", {})[name] = True
                 return True
             # ---- SIESTA diagonalizer probes ----------------------- #

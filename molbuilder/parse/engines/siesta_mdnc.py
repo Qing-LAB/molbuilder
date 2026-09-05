@@ -55,10 +55,9 @@ import numpy as np
 from molbuilder.chemistry import symbol_for_z
 from molbuilder.frame import Frame
 from molbuilder.parse.base import FileParser
-from molbuilder.parse.types import ParseWarning, TrajectoryResult
+from molbuilder.parse.types import (
+    ParseResult, ParseWarning, TrajectoryResult)
 from molbuilder.structure import Structure
-
-from molbuilder.parse.types import ParseResult
 
 #: Unit conversions.  Keyed by the ``unit`` ATTRIBUTE the file carries on each
 #: variable, never by position — ``md_out.F90`` writes ``xa`` in Bohr while

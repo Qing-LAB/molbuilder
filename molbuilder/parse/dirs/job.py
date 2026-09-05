@@ -31,42 +31,11 @@ a second ``SystemLabel`` regex that returned a different answer.)*
 
 from __future__ import annotations
 
-import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from molbuilder.identity import parse_stage_token
-from molbuilder.parse.base import DirParser
-from molbuilder.parse.contract import engine_of
-from molbuilder.parse.types import ParseWarning
-
-
-# Doc-pinned constants ------------------------------------------------- #
-
-SCHEMA_VERSION = 1
-
-# Curated SIESTA engine-body keys (§ 2.1.1 of the doc).  Adding a key
-# requires updating BOTH this list AND the doc.  Frozen ordering for
-# stable JSON.  Missing keys in a given .fdf emit `null`, not absent.
-ENGINE_BODY_KEYS: Tuple[str, ...] = (
-    # System
-    "SystemLabel", "SystemName", "NumberOfAtoms", "NumberOfSpecies",
-    # SCF
-    "MeshCutoff", "PAO.BasisSize", "PAO.EnergyShift",
-    "DM.Tolerance", "SCF.Mixer.Weight", "SCF.Mixer.History",
-    "MaxSCFIterations", "ElectronicTemperature",
-    # XC
-    "XC.functional", "XC.authors", "Spin",
-    # Solver
-    "SolutionMethod", "BlockSize", "Diag.Algorithm",
-    "Diag.ELPA.GPU", "Diag.ParallelOverK",
-    # MD / relax
-    "MD.TypeOfRun", "MD.Steps", "MD.MaxForceTol", "MD.MaxDispl",
-    # k-mesh (block-valued; reduced to "AxBxC" form)
-    "kgrid_Monkhorst_Pack",
-)
 
 
 # Run-state detection is fully delegated to the engine trajectory
@@ -76,25 +45,6 @@ ENGINE_BODY_KEYS: Tuple[str, ...] = (
 # test_no_direct_out_grep_in_decoder).
 
 # Default CG-step threshold for cg_step_milestone events.
-
-
-# Exceptions ----------------------------------------------------------- #
-
-
-class JobTypeAmbiguousError(ValueError):
-    """Raised when sniff finds markers for more than one engine type
-    in the same .fdf and no script-contract declaration breaks the
-    tie.  The sniff itself is ``model/parse.md`` § 6's rule for an engine
-    FileParser (content markers in the first few hundred lines);
-    ambiguity is refused rather than guessed."""
-
-
-# Internal patterns ---------------------------------------------------- #
-
-_KGRID_BLOCK_RE = re.compile(
-    r"%block\s+kgrid_Monkhorst_Pack\s*\n(.*?)%endblock\s+kgrid_Monkhorst_Pack",
-    re.S | re.IGNORECASE,
-)
 
 
 # ---- helpers --------------------------------------------------------- #
@@ -163,20 +113,6 @@ def _enumerate_files(run_dir: Path) -> Dict[str, List[Path]]:
 
 
 # ---- plots from .out files ------------------------------------------- #
-
-
-# ---- geometry -------------------------------------------------------- #
-
-
-_LATTICE_BLOCK_RE = re.compile(
-    r"%block\s+LatticeVectors\s*\n(.*?)%endblock\s+LatticeVectors",
-    re.S | re.IGNORECASE,
-)
-_LATTICE_CONSTANT_RE = re.compile(
-    r"^\s*LatticeConstant\b\s+([+\-0-9.eE]+)(?:\s+(\S+))?",
-    re.M | re.IGNORECASE,
-)
-_BOHR_PER_ANG = 1.8897259886    # SIESTA's au -> Ang conversion factor
 
 
 def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
@@ -311,13 +247,3 @@ def _wall_now() -> float:
     monkeypatch without touching time.time globally."""
     import time
     return time.time()
-
-
-# ---- top-level entry ------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-#  Class wrapper — the canonical DirParser entry point.                 #
-# --------------------------------------------------------------------- #
-
-

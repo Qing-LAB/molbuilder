@@ -15,7 +15,6 @@ short regex scans so the cost is dominated by I/O at the caller.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Optional
 
 from molbuilder.parse.base import TextParser
 from molbuilder.parse.types import ScriptResult

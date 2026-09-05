@@ -653,11 +653,26 @@ file the first one simply had never been extended to. Being the wrapper's
 output rather than the engine's is not a reason to read them a different
 way.
 
-**`InstrumentResult` carries `metrics`, a flat dict of measured numbers**,
-and nothing else. It is not a `SidecarResult`: that one is a JSON payload
-plus a schema discriminator, and stamping `result_kind: "sidecar"` on a
-`.log` would be the same conflation `running-a-job.md` § 4.2 forbids
-between an engine and a format.
+**`InstrumentResult` carries `metrics`, a one-level dict of what the
+instrument measured** (plus the `parse_warnings` every result has). One
+level, not one type: a value is a number where the instrument measured a
+number, a string where it read a word the wrapper wrote (`bound` is
+`"host"` / `"gpu"`, `util_basis` names a source), and the `[MACHINE]`
+line's `node` / `cores` / `mem_gb` / `gpu` arrive as one `machine` dict
+because they are one reading of one line and splitting them into four
+sibling keys would let three survive a partial parse.
+
+*This said "a flat dict of measured numbers, and nothing else" when it was
+written on 2026-09-04, before the three parsers were finished. They never
+matched it, and the § 2 class diagram on this page showed
+`parse_warnings` on the class while this sentence denied it.*
+
+It is not a `SidecarResult`: that one is a JSON payload plus a schema
+discriminator, and stamping `result_kind: "sidecar"` on a `.log` would be
+the same conflation `running-a-job.md` § 4.2 forbids between an engine and
+a format. What separates them is the SOURCE — an instrument reads what the
+wrapper measured, a sidecar reads what molbuilder serialised — not the
+shape of the payload.
 
 | file | parser | what it measures |
 |---|---|---|
@@ -718,7 +733,7 @@ Per parser kind, the specifics:
 - **Instrument FileParser** (`parse/instruments/`): `output =
   InstrumentResult`; `can_parse` matches the wrapper's own suffix
   (`.scf-timing.log`, `.monitor.log`, `.util.csv`); the result carries
-  `metrics`, a flat dict, and nothing else. Where two instruments describe
+  `metrics`, a one-level dict (§ 5c). Where two instruments describe
   one figure, the choice is a **resolver** beside them (§ 5a) — never one
   parser reading the other's file.
 - **Block TextParser** (`parse/scripts/`): returns `ScriptResult`; uses
