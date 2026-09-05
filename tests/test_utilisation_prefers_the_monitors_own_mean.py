@@ -98,7 +98,7 @@ def test_what_the_summary_does_not_carry_still_comes_from_the_csv():
     line, so preferring it must not lose them."""
     got = _utilisation(_MONITOR_FINISHED, _CSV)
     assert got["peak_rss_gb"] == 2.0
-    assert got["wall_s"] == pytest.approx(200.0)
+    assert got["monitored_elapsed_s"] == pytest.approx(200.0)
 
 
 def test_neither_source_says_nothing_rather_than_something_invented():

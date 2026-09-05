@@ -93,7 +93,7 @@ def test_a_hole_in_one_column_does_not_shift_the_others_onto_it():
 
 
 def test_the_window_is_not_truncated_by_a_short_column():
-    """The same defect seen through `wall_s`'s eyes.
+    """The same defect seen through `monitored_elapsed_s`'s eyes.
 
     The old pairing also shortened the SPAN: with one hole it divided by
     the interval up to the second-to-last epoch instead of the whole
@@ -102,5 +102,5 @@ def test_the_window_is_not_truncated_by_a_short_column():
     """
     txt = ("epoch,iso,cpu_pct,gpu0_sm\n"
            "0,x,50,80\n100,x,50,[N/A]\n200,x,50,80\n")
-    assert util_csv_metrics(txt)["wall_s"] == pytest.approx(200.0)
+    assert util_csv_metrics(txt)["monitored_elapsed_s"] == pytest.approx(200.0)
     assert util_csv_metrics(txt)["gpu_sm_mean_pct"] == pytest.approx(80.0, abs=0.1)

@@ -83,7 +83,7 @@ def test_parse_util_csv_reads_all_five_metrics():
            "141,c,40,180.0,90,10,11.0,94,10.0\n")
     r = util_csv_metrics(csv)
     assert r["peak_rss_gb"] == 260.9
-    assert r["wall_s"] == 41.0                    # last epoch - first
+    assert r["monitored_elapsed_s"] == 41.0                    # last epoch - first
     # MEANS ARE OVER TIME, NOT OVER ROWS (2026-08-25).  `util.csv` is
     # change-gated -- a row is written only when a metric moves past its
     # threshold or a 300 s keepalive fires -- so the rows are deliberately
@@ -92,7 +92,7 @@ def test_parse_util_csv_reads_all_five_metrics():
     # that read 31.5% where the truth was 40.3%: a healthy run made to look
     # idle.  Each row is held to weigh the interval until the NEXT row; the
     # last has no successor and so contributes nothing, which is right --
-    # `wall_s` ends AT it, so it spans none of the window.
+    # `monitored_elapsed_s` ends AT it, so it spans none of the window.
     #
     #   cpu: (30x5 + 50x36) / 41 = 1950/41 = 47.56
     assert r["cpu_mean_pct"] == 47.6
@@ -110,7 +110,7 @@ def test_parse_util_csv_reads_all_five_metrics():
     # the smallest case where the two definitions visibly disagree, which
     # is why it is pinned rather than left to the richer CSV above.
     slim = util_csv_metrics("epoch,cpu_pct\n7,3\n9,5\n")
-    assert slim == {"wall_s": 2.0, "cpu_mean_pct": 3.0}
+    assert slim == {"monitored_elapsed_s": 2.0, "cpu_mean_pct": 3.0}
 
 
 @pytest.mark.parametrize("text,expect", [

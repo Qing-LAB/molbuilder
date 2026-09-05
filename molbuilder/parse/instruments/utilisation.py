@@ -36,7 +36,8 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
     Keys are the csv's, plus ``util_basis`` naming where the MEANS came
     from (``"monitor-summary"`` | ``"util-csv"`` | ``"mixed"``) so a
     reader can tell an exact figure from a reconstruction.  Peak RSS, the
-    sampled wall window and peak VRAM come from the csv either way: the
+    sampled window (``monitored_elapsed_s``) and peak VRAM come from the
+    csv either way: the
     summary does not carry them.
 
     **``"mixed"`` exists because ONE label cannot describe TWO means.**

@@ -1,6 +1,7 @@
 """``<base>.util.csv`` — the monitor's raw utilisation samples.
 
-Peak RSS, the sampled wall window, mean CPU%, per-GPU mean SM% (max
+Peak RSS, the sampled window (``monitored_elapsed_s``), mean CPU%,
+per-GPU mean SM% (max
 across GPUs) and peak VRAM.
 
 **Change-gated, not every tick.** A row lands only when a metric moves
@@ -88,15 +89,27 @@ def _time_weighted(series: List[Tuple[float, float]]) -> Optional[float]:
 
 def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     """One reader for the monitor's raw samples (``util.csv``): peak
-    RSS, sampled wall window, mean CPU%, per-GPU mean SM% (max across
+    RSS, sampled window (``monitored_elapsed_s``), mean CPU%, per-GPU
+    mean SM% (max across
     GPUs) and peak VRAM.
 
     Returns only the keys it could derive — an empty dict for an empty
     or headerless file — so a caller can fold the result straight into a
-    point's metrics.  Keys: ``peak_rss_gb``, ``wall_s``, ``cpu_mean_pct``,
-    ``gpu_sm_mean_pct``, ``gpu_vram_peak_gb``.
+    point's metrics.  Keys: ``peak_rss_gb``, ``monitored_elapsed_s``,
+    ``cpu_mean_pct``, ``gpu_sm_mean_pct``, ``gpu_vram_peak_gb``.
 
-    **``wall_s`` is the MONITORED WINDOW, not the job's wall time**
+    **The name ends in ``elapsed_s`` because P-T1 says the suffix IS the
+    contract** (`model/parse.md` § 2a): a time field ends in
+    ``wall_clock_s`` and renders as a date, or ``elapsed_s`` and renders
+    as a duration.  This was ``wall_s`` until 2026-09-05 -- a duration
+    wearing a date's name, which is the exact ``wall_time`` trap the rule
+    was written for.  Plain ``elapsed_s`` would have been the other kind
+    of wrong: the rule reads it as *seconds since the run began*, and
+    this window starts after the job does and ends when the MONITOR
+    stops.  The prefix says which window, so the suffix can keep its
+    promise.
+
+    **It is the MONITORED WINDOW, not the job's wall time**
     (corrected 2026-09-03; this said "the monitor runs for the life of
     the job, so this is the job's wall time to sampling resolution").
     It is last written row − first, and both ends are anchored only when
@@ -106,7 +119,7 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     up to a keepalive (300 s) short, and further if the metrics had gone
     flat.  **The tell is free**: that same branch writes
     ``[UTIL-SUMMARY]``, so a monitor log without one is a log whose
-    ``wall_s`` is a lower bound.
+    ``monitored_elapsed_s`` is a lower bound.
 
     **Not the door for a point's metrics --
     :func:`molbuilder.parse.instruments.utilisation.utilisation` is.**
@@ -172,7 +185,7 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
         # because it needs somewhere in the record to put it.
         out["peak_rss_gb"] = max(cols["mem_gb"])
     if len(epochs) >= 2 and epochs[-1] > epochs[0]:
-        out["wall_s"] = round(epochs[-1] - epochs[0], 1)
+        out["monitored_elapsed_s"] = round(epochs[-1] - epochs[0], 1)
     cpu_mean = _time_weighted(_series("cpu_pct"))
     if cpu_mean is not None:
         out["cpu_mean_pct"] = round(cpu_mean, 1)

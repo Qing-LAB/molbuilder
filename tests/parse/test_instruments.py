@@ -172,7 +172,7 @@ def test_a_half_stated_summary_is_not_called_the_monitors_own():
     # A CPU-only node is NOT mixed: neither source carries a GPU mean, so
     # there is one basis and it is the monitor's.
     cpu_only = utilisation({"stated_cpu_mean_pct": 40.0},
-                           {"cpu_mean_pct": 31.5, "wall_s": 9.0})
+                           {"cpu_mean_pct": 31.5, "monitored_elapsed_s": 9.0})
     assert cpu_only["util_basis"] == "monitor-summary", repr(cpu_only)
 
 

@@ -2255,7 +2255,7 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     cpu = BenchPoint(
         label="K2C1", engine="cpu",
         knobs={"mpi_np": 2, "cpus_per_task": 1},
-        metrics={"s_per_iter": 1.0, "iters_measured": 3, "wall_s": 41,
+        metrics={"s_per_iter": 1.0, "iters_measured": 3, "monitored_elapsed_s": 41,
                  "peak_rss_gb": 24.73, "cpu_mean_pct": 96.2},
         bound="host", state="completed",
         effective={"diag_algorithm": "D&C"})

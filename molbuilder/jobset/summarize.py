@@ -647,8 +647,8 @@ def _point_table(points: List[BenchPoint]):
         ("s/iter", "r", lambda p: _num(p.s_per_iter())),
         ("iters", "r", lambda p: _num(p.metrics.get("iters_measured"))),
         ("wall", "r",
-         lambda p: (_fmt_wall(p.metrics["wall_s"])
-                    if isinstance(p.metrics.get("wall_s"), (int, float))
+         lambda p: (_fmt_wall(p.metrics["monitored_elapsed_s"])
+                    if isinstance(p.metrics.get("monitored_elapsed_s"), (int, float))
                     else "--")),
         ("peak-mem", "r",
          lambda p: _num(p.metrics.get("peak_rss_gb"), "{:.1f}G")),

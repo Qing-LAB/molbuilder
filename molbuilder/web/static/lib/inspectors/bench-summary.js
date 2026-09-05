@@ -79,7 +79,7 @@
         if (sm) bits.push("gpu " + sm);
         const vram = _num(m.gpu_vram_peak_gb, " GB");
         if (vram) bits.push("vram " + vram);
-        const wall = _num(m.wall_s, " s", 0);
+        const wall = _num(m.monitored_elapsed_s, " s", 0);
         if (wall) bits.push(wall);
         // WHAT HELD IT BACK -- the server's own word (BenchPoint.bound),
         // already shown in the knob line when present, repeated here only
