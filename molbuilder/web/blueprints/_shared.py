@@ -559,11 +559,7 @@ def ok_structure_response(
     without a word, which is the failure this whole helper exists to make
     impossible.
 
-    It went unused for its first year -- every op's answer was conditions only
-    -- and then earned itself on 2026-09-05, when ``/api/build/load`` became
-    able to load a structure whose label block this build cannot read.  That
-    load has something to say that no checker can compute after the fact (the
-    labels are simply GONE by then), which is what a receipts slot is for.
+    No caller passes it today -- every op's answer is conditions only.
     """
     said = list((extra or {}).get("notices") or [])
     # THE ONE LINE (cell-plan.md § 6a): resolve once, check once, report.

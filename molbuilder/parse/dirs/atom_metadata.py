@@ -38,13 +38,14 @@ def atom_metadata_json_for_run_dir(
     run's *output* geometry -- e.g. the Results-tab trajectory inspector,
     which loads coordinates from ``.molwatch.log`` / ``.out`` -- calls this
     to recover the metadata and re-apply it through
-    ``sidecars.molstruct.apply_to_structure`` (the lenient, atom-count-only
-    seam), so the loaded view carries the same regions/frozen/annotations.
+    ``script_emit.apply_atom_metadata`` -- THE one reader of this block,
+    shared with the transport composite -- so the loaded view carries the same
+    regions/frozen/annotations.
 
     This is a TRUSTED FRAGMENT, not a standalone ``.molstruct.json`` file:
     the block is molbuilder's OWN emit and, by design, omits the sidecar
     file envelope's integrity fields (``structure_hash``).  It must therefore
-    be applied via ``apply_to_structure``, NOT validated through
+    be applied via ``apply_atom_metadata``, NOT validated through
     ``molstruct.load_text`` (which demands the full untrusted-file envelope).
 
     The block carries ONLY atom-scoped keys (schema_version / n_atoms_total /
@@ -55,7 +56,7 @@ def atom_metadata_json_for_run_dir(
     ``n_atoms``, when given, guards the block against the consumer's
     structure: a mismatch means the block's 0-based indices no longer point
     at the same atoms, so ``None`` is returned rather than metadata that
-    would make ``apply_to_structure`` raise.
+    would make ``apply_atom_metadata`` raise.
 
     Returns ``None`` when ``run_dir`` is falsy / not a directory, no input
     script carries a non-empty block, or the atom count disagrees.  Never

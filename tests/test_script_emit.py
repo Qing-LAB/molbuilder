@@ -382,38 +382,41 @@ def _blank_struct(n=20):
                                                     for i in range(n)])
 
 
-def test_apply_inbody_atom_metadata_populates_the_label_store():
+def test_apply_atom_metadata_populates_the_label_store():
     struct = _blank_struct()
     emitted = sc.emit_atom_metadata(
         regions={"R-electrode": [10, 11, 12], "frozen_atoms": [10, 12]},
         n_atoms_total=20,
     )
     text = "engine body\n" + emitted + "\nmore engine\n"
-    assert sc.apply_inbody_atom_metadata(struct, text) is True
+    assert sc.apply_atom_metadata(struct, sc._extract_atom_metadata_dict(text)) is True
     assert struct.regions == {"R-electrode": [10, 11, 12],
                               "frozen_atoms": [10, 12]}
     assert struct.frozen_atoms == [10, 12]
 
 
 
-def test_apply_inbody_atom_metadata_returns_false_when_no_block():
+def test_apply_atom_metadata_returns_false_when_no_block():
     struct = _blank_struct()
-    assert sc.apply_inbody_atom_metadata(struct, "SystemLabel siesta\n") is False
+    assert sc._extract_atom_metadata_dict("SystemLabel siesta\n") is None
     assert struct.regions == {}
     assert struct.frozen_atoms == []
 
 
-def test_apply_inbody_atom_metadata_normalises_indices():
+def test_apply_atom_metadata_normalises_indices():
     """Dedup + sort per region; coerce to int."""
     struct = _blank_struct()
+    # The count is DERIVED from the structure: this test is about index
+    # normalisation, and a hand-typed count that happens to disagree would
+    # trip the pairing guard instead of exercising it.
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
         "# format: molstruct-json/v4\n"
-        '# {"schema_version": 7, "n_atoms_total": 5,\n'
+        '# {"schema_version": 7, "n_atoms_total": %d,\n' % len(struct.elements) +
         '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
-    assert sc.apply_inbody_atom_metadata(struct, text) is True
+    assert sc.apply_atom_metadata(struct, sc._extract_atom_metadata_dict(text)) is True
     assert struct.regions == {"r": [1, 2, 3], "frozen_atoms": [0, 2]}
     assert struct.frozen_atoms == [0, 2]
 
@@ -681,7 +684,7 @@ def _junction_parts():
     return s, list(s.regions[FROZEN_LABEL]), FROZEN_LABEL
 
 
-def test_the_current_version_applies_without_a_word():
+def test_a_current_block_applies():
     from molbuilder import script_emit as sc
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION
     from molbuilder.structure import Structure
@@ -690,47 +693,29 @@ def test_the_current_version_applies_without_a_word():
                   "regions": {k: list(v) for k, v in s.regions.items()},
                   "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    said = []
-    assert sc.apply_inbody_atom_metadata(back, blk, notices=said) is True
+    assert sc.apply_atom_metadata(back, sc._extract_atom_metadata_dict(blk)) is True
     assert len(back.regions[FROZEN]) == len(frozen)
-    assert said == [], f"a current block must not be complained about: {said}"
 
 
-def test_an_older_layout_recovers_the_frozen_atoms_and_says_so():
-    """The defect, inverted into a pin: the frozen set survives AND the user
-    is told where it came from."""
+def test_a_block_written_for_a_different_structure_is_refused():
+    """THE one guard in the reader, and the reason it is not lenient.
+
+    Labels are indexed by atom POSITION. A block written against a different
+    structure does not fail loudly when applied -- it labels the wrong atoms
+    and says nothing, which is how a run ends up holding the wrong atoms
+    fixed. So the reader refuses rather than applying part of it.
+    """
     from molbuilder import script_emit as sc
+    from molbuilder.sidecars.molstruct import MolstructPairingError
     from molbuilder.structure import Structure
     s, frozen, FROZEN = _junction_parts()
-    blk = _block({
-        "schema_version": 4, "n_atoms_total": s.n_atoms,
-        "regions": {k: list(v) for k, v in s.regions.items() if k != FROZEN},
-        "frozen_atoms": frozen,          # the retired two-store shape
-        "annotations": {},
-    })
+    blk = _block({"schema_version": 9, "n_atoms_total": s.n_atoms + 3,
+                  "regions": {k: list(v) for k, v in s.regions.items()},
+                  "annotations": {}})
     back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    said = []
-    assert sc.apply_inbody_atom_metadata(back, blk, notices=said) is True
-    assert len(back.regions.get(FROZEN, [])) == len(frozen), (
-        "the frozen set was dropped -- this is the loss the check exists for")
-    assert said and said[0]["level"] == "warn"
-    assert said[0]["where"] == "labels.atom_metadata_version"
-
-
-def test_a_label_already_in_the_current_place_is_not_overwritten():
-    """If both shapes are present the CURRENT one wins -- it is the newer
-    truth, and a translation must never clobber it."""
-    from molbuilder import script_emit as sc
-    from molbuilder.structure import Structure
-    s, frozen, FROZEN = _junction_parts()
-    regions = {k: list(v) for k, v in s.regions.items()}
-    regions[FROZEN] = [0]                                  # current, and short
-    blk = _block({"schema_version": 4, "n_atoms_total": s.n_atoms,
-                  "regions": regions, "frozen_atoms": frozen, "annotations": {}})
-    back = Structure(elements=list(s.elements), positions=s.positions.copy())
-    said = []
-    sc.apply_inbody_atom_metadata(back, blk, notices=said)
-    assert back.regions[FROZEN] == [0], "the old key overwrote the current one"
+    with pytest.raises(MolstructPairingError):
+        sc.apply_atom_metadata(back, sc._extract_atom_metadata_dict(blk))
+    assert not back.regions, "labels were applied before the guard fired"
 
 
 # --------------------------------------------------------------------- #

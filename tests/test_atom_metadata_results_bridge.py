@@ -6,9 +6,9 @@ from the run's OUTPUT logs.
 The Results-tab trajectory inspector loads *coordinates* from
 ``.molwatch.log`` / ``.out`` / ``*_geom_optim.xyz`` -- geometry only.
 The per-atom metadata lives in the input script.  This bridge recovers it
-and re-applies it through the same ``apply_to_structure`` seam a
-``.molstruct.json`` uses, so the loaded viewer shows the same regions /
-frozen the user set in Build.
+and re-applies it through ``script_emit.apply_atom_metadata`` -- THE one
+reader of this block, shared with the transport composite -- so the loaded
+viewer shows the same regions / frozen the user set in Build.
 
 Three seams, each tested for its END RESULT (not just API presence):
 
@@ -170,22 +170,14 @@ class TestBuildLoadDoor:
         assert r.status_code == 400
         assert "atom_metadata" in r.get_json()["error"]
 
-    def test_a_block_this_build_cannot_read_reports_instead_of_refusing(
-            self, client):
-        """A run older than v7 still OPENS -- with a note saying why it has
-        no labels.
+    def test_a_block_in_a_retired_layout_carries_no_labels(self, client):
+        """No translation, and no refusal either.
 
-        This door 400'd on every `MolstructJsonError` until 2026-09-05, so a
-        run prepared before the frozen-atom store moved into `regions` was
-        **unopenable**, and unopenable is unfixable: the one page that could
-        show the person what is wrong showed them nothing.  The field is
-        documented "lenient, atom-count-only" and `structure-molstruct.md`
-        § 2 gives this artifact the opposite answer to the sidecar file's --
-        the block "is NOT read: `regions` and `frozen_atoms` come back None,
-        with a note saying why".
-
-        The geometry is the point: it arrives whole, because the labels are
-        a separate fact and losing them must not cost the atoms.
+        The block is read as it is written today. One written before the
+        frozen-atom store moved into `regions` says nothing this build reads,
+        so the structure arrives with its geometry and no labels -- and the
+        run still OPENS, which is what a finished run on disk needs, since
+        nothing can go back and rewrite its script.
         """
         r = client.post("/api/build/load", json={
             "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
@@ -193,51 +185,45 @@ class TestBuildLoadDoor:
         body = r.get_json()
 
         assert r.status_code == 200, (
-            "a pre-v7 label block made the whole structure unloadable: "
+            f"a retired layout made the whole structure unloadable: "
             f"{body.get('error')!r}")
         assert len(body["elements"]) == 4, "the geometry did not survive"
 
-        said = [n for n in (body.get("notices") or []) if n["about"] == "labels"]
-        assert said, (
-            "the structure loaded with no labels and said nothing about it -- "
-            f"silence is the one answer § 2 rules out.  notices={body.get('notices')!r}")
-        assert said[0]["level"] == "warn"
-        assert "frozen_atoms" in said[0]["message"], (
-            "the note must name the specific difference so the person can act "
-            f"on it: {said[0]['message']!r}")
+        # What the retired layout spelled the CURRENT way still reads.
+        assert [a["regions"] for a in body["atoms"]][0] == ["electrode_L"]
+        # What it spelled the OLD way does not -- nothing translates it.
+        assert not any(a.get("is_frozen") for a in body["atoms"]), (
+            "the retired top-level `frozen_atoms` key was read after all")
 
-        # NEVER PARTIALLY APPLIED: no label from the unread block leaked
-        # through onto the atoms.
-        leaked = [a for a in body["atoms"] if a.get("regions")]
-        assert not leaked, f"labels from an unread block reached the atoms: {leaked[:2]}"
+    def test_the_door_and_the_composite_read_the_block_the_same_way(self, client):
+        """ONE reader, proved by driving both ends with one block.
 
-    def test_leniency_stops_at_the_count_guard(self, client):
-        """The block that is merely OLD is forgiven; the block for a
-        DIFFERENT structure is not.
-
-        `structure-molstruct.md` § 3 keeps these "two independent guards,
-        deliberately kept separate", and § 2 says a count mismatch "is
-        refused, never mis-applied" -- labels are indexed by atom position,
-        so forgiving one loads someone's constraints onto the wrong atoms.
-        When this door was first made lenient it caught the base error and
-        swallowed both; `MolstructPairingError` is what keeps them apart.
+        Until 2026-09-05 the transport composite translated a retired layout
+        while this door refused it, so the same finished run kept its frozen
+        set through one door and lost it through the other. The reader is
+        shared now, so the two cannot answer differently.
         """
-        from molbuilder.sidecars.molstruct import (MolstructJsonError,
-                                                   MolstructPairingError)
-        assert issubclass(MolstructPairingError, MolstructJsonError), (
-            "the narrow error must stay catchable as the base one, or every "
-            "existing `except MolstructJsonError` silently stops covering it")
+        from molbuilder.script_emit import (_extract_atom_metadata_dict,
+                                            apply_atom_metadata)
+        from molbuilder.structure import Structure
 
-        old = json.loads(_md_json_pre_v7())            # forgiven above...
-        old["n_atoms_total"] = 5                       # ...but not now.
+        block_json = _md_json_4c()
         r = client.post("/api/build/load", json={
             "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
-            "atom_metadata": json.dumps(old)})
-        assert r.status_code == 400, (
-            "a block written for a 5-atom structure was applied leniently to "
-            "a 4-atom one -- the count guard was swallowed by the version "
-            "leniency it is meant to sit beside")
-        assert "n_atoms_total" in r.get_json()["error"]
+            "atom_metadata": block_json})
+        assert r.status_code == 200
+        by_door = {a["regions"][0] if a.get("regions") else None
+                   for a in r.get_json()["atoms"]}
+
+        direct = Structure(elements=["C"] * 4,
+                           positions=[[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]])
+        apply_atom_metadata(direct, json.loads(block_json))
+        by_composite = set()
+        for i in range(4):
+            hit = [k for k, v in direct.regions.items() if i in v]
+            by_composite.add(hit[0] if hit else None)
+        assert by_door == by_composite, (
+            f"two readers again: door saw {by_door}, composite {by_composite}")
 
     def test_trusted_block_bypasses_sidecar_envelope(self, client):
         """The block has NO structure_hash (it's a trusted fragment, not a
@@ -315,7 +301,9 @@ class TestBuildLoadDoor:
             "a label block written for a different structure was applied; the "
             "count guard did not fire"
         )
-        assert "n_atoms_total" in r.get_json()["error"]
+        err = r.get_json()["error"]
+        assert "12" in err and "4" in err, (
+            f"the refusal must say which two counts disagree: {err!r}")
 
 
 # --------------------------------------------------------------------- #

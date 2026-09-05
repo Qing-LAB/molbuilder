@@ -142,12 +142,10 @@ gate**, because it converts a loud failure into a quiet one.
 | Surface | On a non-v7 payload |
 |---|---|
 | `molstruct.load` / `load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
-| `parse/dirs/atom_metadata.py` (the in-script `ATOM-METADATA` block) | the block is **not** read: `regions` and `frozen_atoms` come back `None`, with a note saying why |
-| `/api/build/load`'s `atom_metadata` (that same block, over HTTP) | same answer, for the same reason: the structure loads **without** its labels and a `warn` notice says why. Refusing would make a finished run unopenable, and unopenable is unfixable — the one page that could show the person what is wrong would show them nothing |
+| the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `script_emit.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
 
-Both messages name the specific difference (before v7 the frozen atoms sat in a
-top-level key rather than in `regions`) and say what to do: re-save the structure,
-or re-generate the script.
+The sidecar file's message names the specific difference and says what to do:
+re-save the structure, or re-generate the script.
 
 ### Unknown keys are refused, not ignored
 

@@ -32,7 +32,7 @@ Public surface
 * Block emitters — :func:`emit_header`, :func:`emit_provenance`,
   :func:`emit_bench_marks`, :func:`emit_atom_metadata`,
   :func:`emit_user_custom_placeholder`.
-* In-body application — :func:`apply_inbody_atom_metadata` (mutates
+* In-body application — :func:`apply_atom_metadata` (mutates
   a Structure from the embedded ATOM-METADATA JSON; mirrors the
   sidecar protocol minus the structure_hash check).
 * USER-CUSTOM round-trip — :func:`replace_user_custom_inner`,
@@ -622,7 +622,7 @@ __all__ = [
     "write_validation_report", "VALIDATION_SUFFIX",
     "emit_atom_metadata", "emit_user_custom_placeholder",
     # In-body application
-    "apply_inbody_atom_metadata",
+    "apply_atom_metadata",
     # USER-CUSTOM round-trip
     "replace_user_custom_inner", "merge_user_custom_from_target",
     # Git / time
@@ -2165,7 +2165,7 @@ def read_script(text: str) -> ScriptSource:
 #      your USER-CUSTOM zone forward across a regeneration
 #      (`job-contracts.md` § 3.5).  It is the reason a regenerated deck
 #      does not lose what you typed into it.
-#    * `apply_inbody_atom_metadata` reads a block and writes onto a
+#    * `apply_atom_metadata` reads a block and writes onto a
 #      Structure -- a post-process; it produces no script at all.
 #
 #  Measured before the move: these are the ONLY two call paths crossing
@@ -2213,79 +2213,49 @@ def write_script(path, text: str) -> "Path":
 # local apply that doesn't require the hash.
 
 
-def apply_inbody_atom_metadata(struct: Any, text: str, *,
-                               notices: Optional[list] = None) -> bool:
-    """If ``text`` carries an ATOM-METADATA block, apply its labels to
-    ``struct``.
+def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
+    """THE reader of an ATOM-METADATA payload.  One block, one reader.
 
     ``struct`` is duck-typed: any object with a mutable ``regions`` dict will
-    do.  Mirrors the protocol :func:`molbuilder.sidecars.molstruct.
-    apply_to_structure` uses for the sidecar, minus the structure_hash check
-    (metadata and coordinates are written by the same generator pass and cannot
-    drift apart by construction).
+    do.  Returns ``True`` when labels were applied, ``False`` when the payload
+    carries none.  A caller holding a whole script extracts first --
+    ``_extract_atom_metadata_dict(text)`` -- and hands the payload here.
 
-    Returns ``True`` when labels were applied, ``False`` otherwise (no block,
-    or a block carrying nothing).
+    THE RULE: the block is read as it is written today.  Nothing translates an
+    older layout, and a block that no longer says what this build reads simply
+    carries no labels.
 
-    THE VERSION LINE IS READ NOW (2026-08-03), and until then it was not.  The
-    block states the version that wrote it -- and this reader took the contents
-    at face value regardless, so a block in an older layout was applied, its
-    frozen atoms silently dropped, and a run came back with nothing frozen and
-    nothing said.  That is how the label store's move lost 50 and 216-atom
-    frozen sets out of real run directories.
+    ONE guard, and it is not about versions: a block whose ``n_atoms_total``
+    disagrees with the structure raises
+    :class:`~molbuilder.sidecars.molstruct.MolstructPairingError`.  Labels are
+    indexed by atom POSITION, so a block written for another structure does
+    not fail loudly when applied -- it labels the wrong atoms and says
+    nothing.  Same error type as the sidecar's identical guard: one name for
+    one condition.
 
-    On a version it does not recognise this WARNS and TRANSLATES rather than
-    refusing (user, 2026-08-03).  Refusing would make a finished run
-    unopenable, and the point of these notes is that a run directory explains
-    itself.  So: say what was found, convert what can be converted, and let the
-    user see both.
-
-    ``notices`` collects ``{level, message, where, about}`` dicts for the
-    caller to surface.  A finding never travels as ``warnings.warn`` -- that
-    reaches server stderr and no web user at all (delivery contract R5,
-    science/validation.md § 4.1), which is the same mistake in a different
-    place.
+    Until 2026-09-05 there were two readers of this one block and they
+    disagreed -- this one translated pre-v7 layouts, while ``/api/build/load``
+    applied the block through the sidecar's ``apply_to_structure`` and refused
+    it.  The same finished run kept its frozen set through one door and lost
+    it through the other.  One reader now, and no translation in it.
     """
-    # `_extract_atom_metadata_dict` is defined below in THIS module; the
-    # local import that stood here "to avoid a circular import via
-    # parse.scripts" is gone with the split (plan.md § 5d).
-    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
-    from molbuilder.structure import FROZEN_LABEL
+    from molbuilder.sidecars.molstruct import MolstructPairingError
 
-    payload = _extract_atom_metadata_dict(text)
-    if payload is None:
-        return False
+    # IS THIS BLOCK EVEN ABOUT THESE ATOMS?  Asked before anything is applied,
+    # because every label below is an index into the atom list and means
+    # nothing -- or means the wrong thing -- if the answer here is no.
+    stated = payload.get("n_atoms_total")
+    have = len(getattr(struct, "elements", ()) or ())
+    if stated is not None and have and stated != have:
+        raise MolstructPairingError(
+            f"these atom labels were written for a structure of {stated} "
+            f"atoms and this one has {have}.  Region and frozen-atom indices "
+            f"are positions in the atom list, so applying them here would "
+            f"label the wrong atoms; re-export the labels from the structure "
+            f"they belong to.")
 
-    regions = dict(payload.get("regions") or {})
+    regions = payload.get("regions") or {}
     annotations = payload.get("annotations") or {}
-
-    said = payload.get("schema_version")
-    if said != SCHEMA_VERSION:
-        # THE ONE TRANSLATION WORTH DOING: frozen atoms used to be a key of
-        # their own, beside `regions`.  They are an ordinary label inside it
-        # now, so an old block's `frozen_atoms` is moved in.  An existing
-        # in-regions entry wins -- it is the current shape and the newer truth.
-        moved = payload.get("frozen_atoms")
-        recovered = 0
-        if isinstance(moved, list) and FROZEN_LABEL not in regions:
-            regions[FROZEN_LABEL] = list(moved)
-            recovered = len(moved)
-        if notices is not None:
-            detail = (f"; recovered {recovered} frozen atom(s) from the old "
-                      f"layout" if recovered else
-                      "; nothing needed moving")
-            notices.append({
-                "level": "warn",
-                "message": (
-                    f"These atom labels were written by an older molbuilder "
-                    f"(the notes say version {said!r}; this build writes "
-                    f"{SCHEMA_VERSION}){detail}. Check the labels are what you "
-                    f"expect before running anything from them, and re-save "
-                    f"the structure to store them in the current form."),
-                "where": "labels.atom_metadata_version",
-                "about": "labels",
-            })
-
     if not regions and not annotations:
         return False
     if regions:
