@@ -562,180 +562,6 @@ def emit_user_custom_placeholder() -> str:
 
 
 # --------------------------------------------------------------------- #
-#  In-body atom-metadata: apply to Structure                            #
-# --------------------------------------------------------------------- #
-#
-# Step 3 (audit finding A1, 2026-06-16): molstruct_json.from_dict
-# validates ``structure_hash`` (>=16 chars).  The in-body
-# atom-metadata deliberately omits structure_hash per the contract
-# (metadata + coordinates are written by the same generator pass and
-# cannot drift apart by construction).  So molstruct_json's loader
-# is the wrong entry point for in-body payloads — we need a small
-# local apply that doesn't require the hash.
-
-
-def apply_inbody_atom_metadata(struct: Any, text: str, *,
-                               notices: Optional[list] = None) -> bool:
-    """If ``text`` carries an ATOM-METADATA block, apply its labels to
-    ``struct``.
-
-    ``struct`` is duck-typed: any object with a mutable ``regions`` dict will
-    do.  Mirrors the protocol :func:`molbuilder.sidecars.molstruct.
-    apply_to_structure` uses for the sidecar, minus the structure_hash check
-    (metadata and coordinates are written by the same generator pass and cannot
-    drift apart by construction).
-
-    Returns ``True`` when labels were applied, ``False`` otherwise (no block,
-    or a block carrying nothing).
-
-    THE VERSION LINE IS READ NOW (2026-08-03), and until then it was not.  The
-    block states the version that wrote it -- and this reader took the contents
-    at face value regardless, so a block in an older layout was applied, its
-    frozen atoms silently dropped, and a run came back with nothing frozen and
-    nothing said.  That is how the label store's move lost 50 and 216-atom
-    frozen sets out of real run directories.
-
-    On a version it does not recognise this WARNS and TRANSLATES rather than
-    refusing (user, 2026-08-03).  Refusing would make a finished run
-    unopenable, and the point of these notes is that a run directory explains
-    itself.  So: say what was found, convert what can be converted, and let the
-    user see both.
-
-    ``notices`` collects ``{level, message, where, about}`` dicts for the
-    caller to surface.  A finding never travels as ``warnings.warn`` -- that
-    reaches server stderr and no web user at all (delivery contract R5,
-    science/validation.md § 4.1), which is the same mistake in a different
-    place.
-    """
-    # `_extract_atom_metadata_dict` is defined below in THIS module; the
-    # local import that stood here "to avoid a circular import via
-    # parse.scripts" is gone with the split (plan.md § 5d).
-    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
-    from molbuilder.structure import FROZEN_LABEL
-
-    payload = _extract_atom_metadata_dict(text)
-    if payload is None:
-        return False
-
-    regions = dict(payload.get("regions") or {})
-    annotations = payload.get("annotations") or {}
-
-    said = payload.get("schema_version")
-    if said != SCHEMA_VERSION:
-        # THE ONE TRANSLATION WORTH DOING: frozen atoms used to be a key of
-        # their own, beside `regions`.  They are an ordinary label inside it
-        # now, so an old block's `frozen_atoms` is moved in.  An existing
-        # in-regions entry wins -- it is the current shape and the newer truth.
-        moved = payload.get("frozen_atoms")
-        recovered = 0
-        if isinstance(moved, list) and FROZEN_LABEL not in regions:
-            regions[FROZEN_LABEL] = list(moved)
-            recovered = len(moved)
-        if notices is not None:
-            detail = (f"; recovered {recovered} frozen atom(s) from the old "
-                      f"layout" if recovered else
-                      "; nothing needed moving")
-            notices.append({
-                "level": "warn",
-                "message": (
-                    f"These atom labels were written by an older molbuilder "
-                    f"(the notes say version {said!r}; this build writes "
-                    f"{SCHEMA_VERSION}){detail}. Check the labels are what you "
-                    f"expect before running anything from them, and re-save "
-                    f"the structure to store them in the current form."),
-                "where": "labels.atom_metadata_version",
-                "about": "labels",
-            })
-
-    if not regions and not annotations:
-        return False
-    if regions:
-        # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
-        # are in here with the rest -- there is no second key to read.
-        struct.regions = {
-            str(k): sorted({int(i) for i in v})
-            for k, v in regions.items()
-        }
-    if annotations:
-        # Extensible channels -> struct.annotations, same round-trip as the
-        # sidecar (§ 3 data-model persistence).
-        from molbuilder.structure import annotations_from_json
-        struct.annotations = annotations_from_json(annotations)
-    return True
-
-
-# --------------------------------------------------------------------- #
-#  USER-CUSTOM round-trip preservation                                  #
-# --------------------------------------------------------------------- #
-#
-# When the generator writes a fresh render over an existing target
-# file, preserve the user-custom block content byte-for-byte.  Callers
-# (typically the /api/files/write endpoint) chain
-#
-#     final_text = merge_user_custom_from_target(rendered, target_path)
-#
-# before actually writing.  ``rendered`` is what render_fdf /
-# render_script / render_run_wrapper produced (carries the empty
-# placeholder); ``target_path`` is where the file will live.  If the
-# existing target carries a user-custom block, its inner lines splice
-# into the new render's placeholder.  Edge cases (no existing file,
-# no markers on either side, corrupt markers) all degrade to "return
-# rendered unchanged" — the merge never throws.
-
-
-def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
-    """Return ``text`` with its USER-CUSTOM block's inner lines
-    replaced by ``inner_lines``.  If ``text`` has no USER-CUSTOM
-    block, return it unchanged.
-    """
-    lines = text.splitlines(keepends=False)
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != BLOCK_USER_CUSTOM:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
-        return text
-    new_lines = lines[: begin_idx + 1] + list(inner_lines) + lines[end_idx:]
-    # Preserve trailing newline policy of the input.
-    trailing = "\n" if text.endswith("\n") else ""
-    return "\n".join(new_lines) + trailing
-
-
-def merge_user_custom_from_target(rendered: str,
-                                  target_path: Path) -> str:
-    """High-level merge: splice the existing target file's USER-CUSTOM
-    block content into ``rendered`` before write.
-
-    Safe in every degenerate case:
-      * Target doesn't exist → return rendered.
-      * Target has no USER-CUSTOM block → return rendered.
-      * Rendered has no USER-CUSTOM placeholder → return rendered.
-      * Target is unreadable → return rendered.
-    """
-    # `_extract_user_custom_inner` is defined below in THIS module.
-    try:
-        if not target_path.exists():
-            return rendered
-        old_text = target_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return rendered
-    old_inner = _extract_user_custom_inner(old_text)
-    if old_inner is None:
-        return rendered
-    return replace_user_custom_inner(rendered, old_inner)
-
-
-# --------------------------------------------------------------------- #
 #  Git / time helpers                                                   #
 # --------------------------------------------------------------------- #
 
@@ -1072,32 +898,6 @@ def _deck_answer(decl, deck_text: str):
     return None
 
 
-def write_script(path, text: str) -> "Path":
-    """Write a generated script, KEEPING the reader's own USER-CUSTOM block.
-
-    **Every writer of a generated script goes through here.**  The deck says,
-    in its own words, *"Your own additions go here.  molbuilder will preserve
-    this section verbatim across regenerations."*  That promise had exactly one
-    keeper until 2026-08-18 — the web file-editor's save route — so a person
-    who added ``WriteMullikenPop`` or a ``%block BandLines`` (the very things
-    the deck's own post-processing section invites) lost them at the next
-    ``prep``, silently, to a file that had promised otherwise.
-
-    The merge itself is :func:`merge_user_custom_from_target` and is unchanged;
-    what was missing was a door the generators actually open.  It is safe in
-    every degenerate case — no target, no block on either side, unreadable
-    target — so a first write behaves exactly like ``write_text``.
-
-    This is the third mechanism in this module to have been present and
-    uncalled: :func:`deck_note` (the deck writer uses it, the wrapper and the
-    PySCF writer do not) and ``StructureCodec`` (``prep`` and the web route use
-    it, the single-shot converters did not) were the others.  A shared writer
-    only shares what its callers ask it for.
-    """
-    from pathlib import Path as _P
-    p = _P(path)
-    p.write_text(merge_user_custom_from_target(text, p), encoding="utf-8")
-    return p
 
 
 # --------------------------------------------------------------------- #
@@ -2234,3 +2034,230 @@ def read_script(text: str) -> ScriptSource:
         schema_version=src.get("schema_version"),
         notes=tuple(src.get("notes") or ()),
     )
+
+
+# ===================================================================== #
+#  ROUND-TRIP — the operations that need BOTH halves                    #
+# ===================================================================== #
+#
+#  These come last because they are the only things here that both read
+#  and write, so they sit above everything they depend on rather than
+#  in the middle of it.  The file now reads in dependency order:
+#
+#      vocabulary  ->  emit  ->  read  ->  round-trip
+#
+#  They lived among the EMITTERS until 2026-09-05, which is where a
+#  reader would least expect the one function in this module that opens
+#  a file on disk.  Neither emits a block:
+#
+#    * `merge_user_custom_from_target` reads the PREVIOUS OUTPUT to carry
+#      your USER-CUSTOM zone forward across a regeneration
+#      (`job-contracts.md` § 3.5).  It is the reason a regenerated deck
+#      does not lose what you typed into it.
+#    * `apply_inbody_atom_metadata` reads a block and writes onto a
+#      Structure -- a post-process; it produces no script at all.
+#
+#  Measured before the move: these are the ONLY two call paths crossing
+#  from the write half to the read half, and nothing crosses back.
+#  Nothing references them at import time, so the order is free.
+
+def write_script(path, text: str) -> "Path":
+    """Write a generated script, KEEPING the reader's own USER-CUSTOM block.
+
+    **Every writer of a generated script goes through here.**  The deck says,
+    in its own words, *"Your own additions go here.  molbuilder will preserve
+    this section verbatim across regenerations."*  That promise had exactly one
+    keeper until 2026-08-18 — the web file-editor's save route — so a person
+    who added ``WriteMullikenPop`` or a ``%block BandLines`` (the very things
+    the deck's own post-processing section invites) lost them at the next
+    ``prep``, silently, to a file that had promised otherwise.
+
+    The merge itself is :func:`merge_user_custom_from_target` and is unchanged;
+    what was missing was a door the generators actually open.  It is safe in
+    every degenerate case — no target, no block on either side, unreadable
+    target — so a first write behaves exactly like ``write_text``.
+
+    This is the third mechanism in this module to have been present and
+    uncalled: :func:`deck_note` (the deck writer uses it, the wrapper and the
+    PySCF writer do not) and ``StructureCodec`` (``prep`` and the web route use
+    it, the single-shot converters did not) were the others.  A shared writer
+    only shares what its callers ask it for.
+    """
+    from pathlib import Path as _P
+    p = _P(path)
+    p.write_text(merge_user_custom_from_target(text, p), encoding="utf-8")
+    return p
+
+
+# --------------------------------------------------------------------- #
+#  In-body atom-metadata: apply to Structure                            #
+# --------------------------------------------------------------------- #
+#
+# Step 3 (audit finding A1, 2026-06-16): molstruct_json.from_dict
+# validates ``structure_hash`` (>=16 chars).  The in-body
+# atom-metadata deliberately omits structure_hash per the contract
+# (metadata + coordinates are written by the same generator pass and
+# cannot drift apart by construction).  So molstruct_json's loader
+# is the wrong entry point for in-body payloads — we need a small
+# local apply that doesn't require the hash.
+
+
+def apply_inbody_atom_metadata(struct: Any, text: str, *,
+                               notices: Optional[list] = None) -> bool:
+    """If ``text`` carries an ATOM-METADATA block, apply its labels to
+    ``struct``.
+
+    ``struct`` is duck-typed: any object with a mutable ``regions`` dict will
+    do.  Mirrors the protocol :func:`molbuilder.sidecars.molstruct.
+    apply_to_structure` uses for the sidecar, minus the structure_hash check
+    (metadata and coordinates are written by the same generator pass and cannot
+    drift apart by construction).
+
+    Returns ``True`` when labels were applied, ``False`` otherwise (no block,
+    or a block carrying nothing).
+
+    THE VERSION LINE IS READ NOW (2026-08-03), and until then it was not.  The
+    block states the version that wrote it -- and this reader took the contents
+    at face value regardless, so a block in an older layout was applied, its
+    frozen atoms silently dropped, and a run came back with nothing frozen and
+    nothing said.  That is how the label store's move lost 50 and 216-atom
+    frozen sets out of real run directories.
+
+    On a version it does not recognise this WARNS and TRANSLATES rather than
+    refusing (user, 2026-08-03).  Refusing would make a finished run
+    unopenable, and the point of these notes is that a run directory explains
+    itself.  So: say what was found, convert what can be converted, and let the
+    user see both.
+
+    ``notices`` collects ``{level, message, where, about}`` dicts for the
+    caller to surface.  A finding never travels as ``warnings.warn`` -- that
+    reaches server stderr and no web user at all (delivery contract R5,
+    science/validation.md § 4.1), which is the same mistake in a different
+    place.
+    """
+    # `_extract_atom_metadata_dict` is defined below in THIS module; the
+    # local import that stood here "to avoid a circular import via
+    # parse.scripts" is gone with the split (plan.md § 5d).
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
+    from molbuilder.structure import FROZEN_LABEL
+
+    payload = _extract_atom_metadata_dict(text)
+    if payload is None:
+        return False
+
+    regions = dict(payload.get("regions") or {})
+    annotations = payload.get("annotations") or {}
+
+    said = payload.get("schema_version")
+    if said != SCHEMA_VERSION:
+        # THE ONE TRANSLATION WORTH DOING: frozen atoms used to be a key of
+        # their own, beside `regions`.  They are an ordinary label inside it
+        # now, so an old block's `frozen_atoms` is moved in.  An existing
+        # in-regions entry wins -- it is the current shape and the newer truth.
+        moved = payload.get("frozen_atoms")
+        recovered = 0
+        if isinstance(moved, list) and FROZEN_LABEL not in regions:
+            regions[FROZEN_LABEL] = list(moved)
+            recovered = len(moved)
+        if notices is not None:
+            detail = (f"; recovered {recovered} frozen atom(s) from the old "
+                      f"layout" if recovered else
+                      "; nothing needed moving")
+            notices.append({
+                "level": "warn",
+                "message": (
+                    f"These atom labels were written by an older molbuilder "
+                    f"(the notes say version {said!r}; this build writes "
+                    f"{SCHEMA_VERSION}){detail}. Check the labels are what you "
+                    f"expect before running anything from them, and re-save "
+                    f"the structure to store them in the current form."),
+                "where": "labels.atom_metadata_version",
+                "about": "labels",
+            })
+
+    if not regions and not annotations:
+        return False
+    if regions:
+        # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
+        # are in here with the rest -- there is no second key to read.
+        struct.regions = {
+            str(k): sorted({int(i) for i in v})
+            for k, v in regions.items()
+        }
+    if annotations:
+        # Extensible channels -> struct.annotations, same round-trip as the
+        # sidecar (§ 3 data-model persistence).
+        from molbuilder.structure import annotations_from_json
+        struct.annotations = annotations_from_json(annotations)
+    return True
+
+
+# --------------------------------------------------------------------- #
+#  USER-CUSTOM round-trip preservation                                  #
+# --------------------------------------------------------------------- #
+#
+# When the generator writes a fresh render over an existing target
+# file, preserve the user-custom block content byte-for-byte.  Callers
+# (typically the /api/files/write endpoint) chain
+#
+#     final_text = merge_user_custom_from_target(rendered, target_path)
+#
+# before actually writing.  ``rendered`` is what render_fdf /
+# render_script / render_run_wrapper produced (carries the empty
+# placeholder); ``target_path`` is where the file will live.  If the
+# existing target carries a user-custom block, its inner lines splice
+# into the new render's placeholder.  Edge cases (no existing file,
+# no markers on either side, corrupt markers) all degrade to "return
+# rendered unchanged" — the merge never throws.
+
+
+def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
+    """Return ``text`` with its USER-CUSTOM block's inner lines
+    replaced by ``inner_lines``.  If ``text`` has no USER-CUSTOM
+    block, return it unchanged.
+    """
+    lines = text.splitlines(keepends=False)
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_USER_CUSTOM:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
+        return text
+    new_lines = lines[: begin_idx + 1] + list(inner_lines) + lines[end_idx:]
+    # Preserve trailing newline policy of the input.
+    trailing = "\n" if text.endswith("\n") else ""
+    return "\n".join(new_lines) + trailing
+
+
+def merge_user_custom_from_target(rendered: str,
+                                  target_path: Path) -> str:
+    """High-level merge: splice the existing target file's USER-CUSTOM
+    block content into ``rendered`` before write.
+
+    Safe in every degenerate case:
+      * Target doesn't exist → return rendered.
+      * Target has no USER-CUSTOM block → return rendered.
+      * Rendered has no USER-CUSTOM placeholder → return rendered.
+      * Target is unreadable → return rendered.
+    """
+    # `_extract_user_custom_inner` is defined below in THIS module.
+    try:
+        if not target_path.exists():
+            return rendered
+        old_text = target_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return rendered
+    old_inner = _extract_user_custom_inner(old_text)
+    if old_inner is None:
+        return rendered
+    return replace_user_custom_inner(rendered, old_inner)

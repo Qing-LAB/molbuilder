@@ -877,11 +877,21 @@ def test_the_block_readers_do_no_io():
     real defect either way, because every caller already holds the text and
     some hold it from a request body rather than a path.
 
-    Scoped to the reader section, since the emitters' module legitimately
-    reads a target file when merging USER-CUSTOM.
+    **Scoped to the reader section at BOTH ends.**  It ran reader-header to
+    end-of-file until 2026-09-05, which was the same thing while the readers
+    were last in the file.  They are not: the ROUND-TRIP section now follows
+    them, and it legitimately opens a file -- `merge_user_custom_from_target`
+    reads the previous deck to carry your USER-CUSTOM zone forward, and
+    `write_script` writes.  A one-ended scan swept those in and failed the
+    moment the sections were reordered, which is the guard working: it is
+    meant to notice when I/O appears among the readers, and it could not tell
+    "appeared" from "the boundary moved" without the second bound.
     """
     src = Path(sc.__file__).read_text()
-    readers = src[src.index("#  READING THE BLOCKS BACK"):]
+    start = src.index("#  READING THE BLOCKS BACK")
+    end = src.index("#  ROUND-TRIP — the operations that need BOTH halves")
+    assert start < end, "the reader section must precede the round-trip one"
+    readers = src[start:end]
     for token in ("read_text", "read_bytes", "open(", ".read()", "Path("):
         assert token not in readers, (
             f"a block reader touches the filesystem ({token!r}) -- they take "
