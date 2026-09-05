@@ -298,12 +298,17 @@ again.** It has had no DirParser since 2026-09-04 and could only refuse.
 files `summarize` reads per trial are the WRAPPER's instrumentation
 (`scf-timing.log`, `monitor.log`, `util.csv`) and are in no bucket.
 
-So `summarize` joins this migration only if the door learns wrapper
-artifacts — which is the same question as giving those files registered
-parsers (§ 5's "never re-parse what a FileParser can produce", and
-`bench/result.py` currently reads their bytes itself). **Until that is
-decided, the migration is TWO consumers and eleven sites**, not three and
-fifteen:
+**DECIDED AND DONE 2026-09-04** (user: *"yes give them parsers"*). The
+three wrapper files are registered parsers now — `scf-timing`,
+`monitor-log`, `util-csv`, returning `InstrumentResult`
+([`parse.md` § 5c](?doc=model/parse.md)) — and `bench/result.py` no longer
+opens a file. So the door CAN learn them: `_enumerate_files` gains three
+buckets and `summarize` reads through `.files` like everyone else.
+
+That still leaves the migration at TWO consumers and eleven sites for the
+DIRECTORY door itself, because `summarize` finds its files by
+`_latest_run_file` (run index, for an already stage-scoped basename) and
+that is not `active`'s question — see the withdrawn row above:
 
 * `web/blueprints/watch.py` — 9 sites
 * `jobset/runstatus.py` — 1 site

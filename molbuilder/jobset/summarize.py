@@ -31,8 +31,7 @@ from typing import Dict, List, Optional
 from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
     machine_brief, machine_census, mismatch_phrase, parse_effective_run,
-    parse_machine, parse_mpi_ranks, parse_scf_timing, parse_util_bound,
-    parse_utilisation,
+    parse_mpi_ranks,
 )
 
 _RUN_IDX = re.compile(r"-run(\d+)\.")
@@ -136,32 +135,47 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # checked.  The asked side must never contain a measurement.
     asked = dict(knobs)
 
-    timing = _latest_run_file(d, basename, "scf-timing.log")
-    if timing is not None:
-        metrics.update(parse_scf_timing(_read(timing)))
+    # THROUGH THE REGISTRY, like every other file this project reads.
+    # The wrapper's three instruments -- the SCF-timing tee, the monitor
+    # log and the utilisation samples -- became registered parsers on
+    # 2026-09-04 (`parse.md` § 5c).  Until then this module opened them
+    # and regex'd their bytes itself: a second read stack for a class of
+    # file the first one had simply never been extended to.
+    #
+    # THE LATEST ATTEMPT'S, like the .out beside them.  These carried no
+    # run index until 2026-08-27, so a re-run appended to one and
+    # truncated the other; now every per-run artifact is indexed and
+    # every one is read the same way.
+    from molbuilder.parse import parse as _parse
+    from molbuilder.parse.instruments import utilisation as _utilisation
 
-    # THE LATEST ATTEMPT'S, like the .out and the timing log beside them.
-    # These two carried no index until 2026-08-27, so a re-run appended to
-    # one and truncated the other; now every per-run artifact is indexed
-    # and every one is read the same way.
-    bound = None
-    machine: Dict = {}
-    _mon_text = ""
-    mon = _latest_run_file(d, basename, "monitor.log")
-    if mon is not None:
-        _mon_text = _read(mon)
-        bound = parse_util_bound(_mon_text)
-        # The same file, read once: the [MACHINE] line is the monitor's
-        # first, the [UTIL-SUMMARY] verdict its last.
-        machine = parse_machine(_mon_text)
+    def _metrics(path):
+        """A registered parser's metrics, or ``{}``.
 
-    # Utilisation numbers: the monitor's OWN means when it wrote them, the
-    # samples otherwise -- one reader decides, so the two sources cannot
-    # disagree here (`parse_utilisation` owns the why; user ruling
-    # 2026-09-03).
+        Fail-soft like every other reader in this module: this is a
+        reporter, and a trial whose instrument file is truncated or
+        missing simply tells us less.
+        """
+        if path is None:
+            return {}
+        try:
+            return dict(_parse(Path(path)).metrics)
+        except Exception:                            # noqa: BLE001
+            return {}
+
+    metrics.update(_metrics(_latest_run_file(d, basename, "scf-timing.log")))
+
+    _mon = _metrics(_latest_run_file(d, basename, "monitor.log"))
+    bound = _mon.get("bound")
+    machine: Dict = _mon.get("machine") or {}
+
+    # Utilisation: the monitor's OWN means when it wrote them, the samples
+    # otherwise -- ONE resolver decides, so the two sources cannot
+    # disagree here (`parse/instruments/utilisation.py` owns the why;
+    # user ruling 2026-09-03).
     util = _latest_run_file(d, basename, "util.csv")
     if util is not None:
-        metrics.update(parse_utilisation(_mon_text, _read(util)))
+        metrics.update(_utilisation(_mon, _metrics(util)))
 
     # The .out is read TWICE, one window each, because its two answers
     # live at opposite ends: the end-of-run markers in the tail, and the

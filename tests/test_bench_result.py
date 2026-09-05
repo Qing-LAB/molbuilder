@@ -9,9 +9,17 @@ import pytest
 from molbuilder.bench.result import (
     BenchPoint, BenchResult, build_bench_result, choose_winner,
     compare_asked_to_ran, parse_effective_run, parse_mpi_ranks,
-    parse_sacct_mem, parse_scf_timing, parse_util_bound,
-    parse_util_csv,
+    parse_sacct_mem,
 )
+# The wrapper's own instruments are registered parsers since 2026-09-04
+# (`parse.md` § 5c); the logic is unchanged, only its address moved.
+from molbuilder.parse.instruments.monitor import monitor_metrics
+from molbuilder.parse.instruments.scf_timing import scf_timing_metrics
+from molbuilder.parse.instruments.util_csv import util_csv_metrics
+
+
+def _bound(text):
+    return monitor_metrics(text)["bound"]
 
 
 def test_parse_mpi_ranks():
@@ -36,16 +44,16 @@ _TIMING = """\
 
 
 def test_parse_scf_timing_steady_state():
-    r = parse_scf_timing(_TIMING)
+    r = scf_timing_metrics(_TIMING)
     # deltas: 1539.35, 1539.24, 1536.32, 1537.15 -> drop first -> mean of 3.
     assert r["iters_measured"] == 3
     assert r["s_per_iter"] == pytest.approx(1537.6, abs=0.5)
 
 
 def test_parse_scf_timing_too_few():
-    assert parse_scf_timing("100.0 1 scf: 1\n") == \
+    assert scf_timing_metrics("100.0 1 scf: 1\n") == \
         {"s_per_iter": None, "iters_measured": 0}
-    assert parse_scf_timing("")["s_per_iter"] is None
+    assert scf_timing_metrics("")["s_per_iter"] is None
 
 
 @pytest.mark.parametrize("log,bound", [
@@ -59,12 +67,12 @@ def test_parse_scf_timing_too_few():
 def test_parse_util_bound_reads_the_verdict_only(log, bound):
     """The monitor's summary line contributes exactly its VERDICT — the
     utilisation numbers on it are a digest of util.csv's raw samples and
-    are read from there (`parse_util_csv`), one home per fact."""
-    assert parse_util_bound(log) == bound
+    are read from there (`util_csv_metrics`), one home per fact."""
+    assert _bound(log) == bound
 
 
 def test_parse_util_bound_absent():
-    assert parse_util_bound("nothing here") is None
+    assert _bound("nothing here") is None
 
 
 def test_parse_util_csv_reads_all_five_metrics():
@@ -73,7 +81,7 @@ def test_parse_util_csv_reads_all_five_metrics():
            "100,a,30,137.2,80,10,10.0,90,11.5\n"
            "105,b,50,260.9,70,10,12.5,92,11.0\n"
            "141,c,40,180.0,90,10,11.0,94,10.0\n")
-    r = parse_util_csv(csv)
+    r = util_csv_metrics(csv)
     assert r["peak_rss_gb"] == 260.9
     assert r["wall_s"] == 41.0                    # last epoch - first
     # MEANS ARE OVER TIME, NOT OVER ROWS (2026-08-25).  `util.csv` is
@@ -94,14 +102,14 @@ def test_parse_util_csv_reads_all_five_metrics():
     assert r["gpu_sm_mean_pct"] == 91.8
     assert r["gpu_vram_peak_gb"] == 12.5          # peak anywhere
     # missing pieces are absent, not zero
-    assert parse_util_csv("epoch,mem_gb\n") == {}
-    assert parse_util_csv("") == {}
+    assert util_csv_metrics("epoch,mem_gb\n") == {}
+    assert util_csv_metrics("") == {}
     # Two rows, values 3 then 5, and the answer is 3.0 -- not the 4.0 a
     # row-average gives.  The 5 was the reading AT the closing instant of a
     # window it spans none of; 3 held for the whole two seconds.  This is
     # the smallest case where the two definitions visibly disagree, which
     # is why it is pinned rather than left to the richer CSV above.
-    slim = parse_util_csv("epoch,cpu_pct\n7,3\n9,5\n")
+    slim = util_csv_metrics("epoch,cpu_pct\n7,3\n9,5\n")
     assert slim == {"wall_s": 2.0, "cpu_mean_pct": 3.0}
 
 

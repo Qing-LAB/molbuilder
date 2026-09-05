@@ -15,7 +15,7 @@ be dropped.
 
 **The pair was collapsed into the csv alone on 2026-08-19** after two readers
 of one fact diverged.  That lesson holds, and it is why the choice lives in
-ONE function (`parse_utilisation`) rather than at each call site: there is
+ONE function (`_utilisation`) rather than at each call site: there is
 still exactly one thing to be wrong.
 
 **The gap between the two is real, not theoretical.**  The fixture below is
@@ -27,7 +27,15 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.bench.result import parse_utilisation, parse_util_csv
+from molbuilder.parse.instruments import utilisation as _resolve
+from molbuilder.parse.instruments.monitor import monitor_metrics
+from molbuilder.parse.instruments.util_csv import util_csv_metrics
+
+
+def _utilisation(monitor_log, csv_text):
+    """The pair, resolved -- what `parse_utilisation` did in one call
+    before the readers became registered parsers (`parse.md` § 5c)."""
+    return _resolve(monitor_metrics(monitor_log), util_csv_metrics(csv_text))
 
 
 #: A change-gated series: 50% for the first interval, 90% for the next two.
@@ -52,7 +60,7 @@ _MONITOR_KILLED = "[t] [MACHINE] node=n1 cores=8 mem_gb=32 gpu=none\n"
 
 
 def test_the_monitors_own_mean_wins_when_it_is_there():
-    got = parse_utilisation(_MONITOR_FINISHED, _CSV)
+    got = _utilisation(_MONITOR_FINISHED, _CSV)
     assert got["cpu_mean_pct"] == 73.0, (
         "the summary's mean is over every tick; the csv's is over a gated "
         "subset, and reading the subset when the exact figure is on disk is "
@@ -68,7 +76,7 @@ def test_a_killed_trial_still_answers_from_the_samples():
     scheduler kill takes it — and takes it from exactly the run somebody is
     trying to understand.
     """
-    got = parse_utilisation(_MONITOR_KILLED, _CSV)
+    got = _utilisation(_MONITOR_KILLED, _CSV)
     assert got["cpu_mean_pct"] == pytest.approx(70.0), (
         "with no summary the samples must still answer")
     assert got["util_basis"] == "util-csv", (
@@ -82,20 +90,20 @@ def test_the_two_sources_actually_disagree():
     pass no matter which branch ran.  They differ by three points, so the
     assertions above can only be satisfied by reading the intended source.
     """
-    assert parse_util_csv(_CSV)["cpu_mean_pct"] != 73.0
+    assert util_csv_metrics(_CSV)["cpu_mean_pct"] != 73.0
 
 
 def test_what_the_summary_does_not_carry_still_comes_from_the_csv():
     """Peak RSS, the sampled wall window and peak VRAM appear on no summary
     line, so preferring it must not lose them."""
-    got = parse_utilisation(_MONITOR_FINISHED, _CSV)
+    got = _utilisation(_MONITOR_FINISHED, _CSV)
     assert got["peak_rss_gb"] == 2.0
     assert got["wall_s"] == pytest.approx(200.0)
 
 
 def test_neither_source_says_nothing_rather_than_something_invented():
-    assert parse_utilisation("", "") == {}
-    assert parse_utilisation(_MONITOR_KILLED, "") == {}, (
+    assert _utilisation("", "") == {}
+    assert _utilisation(_MONITOR_KILLED, "") == {}, (
         "no samples and no summary is no answer, not a zero")
 
 
@@ -105,4 +113,4 @@ def test_a_multi_gpu_summary_reduces_the_way_the_csv_does():
     read — the divergence this one door exists to prevent."""
     mon = ("[t] [UTIL-SUMMARY] cpu mean=50% (10-90); gpu0 sm mean=20% (1-40); "
            "gpu1 sm mean=80% (60-95) -> mixed (GPU not saturated)\n")
-    assert parse_utilisation(mon, _CSV)["gpu_sm_mean_pct"] == 80.0
+    assert _utilisation(mon, _CSV)["gpu_sm_mean_pct"] == 80.0

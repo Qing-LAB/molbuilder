@@ -5,7 +5,7 @@ when a 300 s keepalive elapses (``monitor.py``: ``util_change_frac`` /
 ``util_keepalive_s``).  Rows are therefore deliberately not uniformly
 spaced -- that is the whole point, it keeps the file small on a long run.
 
-``parse_util_csv`` took ``sum/len`` over those rows until 2026-08-25, which
+``util_csv_metrics`` took ``sum/len`` over those rows until 2026-08-25, which
 weights a one-second startup sample exactly as heavily as five minutes of
 steady state.  Found on a real Au-BDT-Au trial: 316 s, five rows, one of
 them covering 300 s.  Reported 31.5%; true figure 40.3%.
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.bench.result import parse_util_csv
+from molbuilder.parse.instruments.util_csv import util_csv_metrics
 
 _HEADER = "epoch,iso,cpu_pct,mem_gb\n"
 
@@ -31,7 +31,7 @@ def test_a_long_steady_tail_outweighs_a_short_startup():
     """THE LIVE SHAPE.  Four startup samples five seconds apart, then one
     row covering the next 300 s -- exactly what change-gating produces."""
     rows = [(0, 7.5), (5, 27.1), (10, 41.1), (15, 41.0), (316, 40.8)]
-    got = parse_util_csv(_csv(rows))["cpu_mean_pct"]
+    got = util_csv_metrics(_csv(rows))["cpu_mean_pct"]
     unweighted = sum(c for _e, c in rows) / len(rows)
     assert got == pytest.approx(40.3, abs=0.2), (
         f"got {got}; the unweighted mean would be {unweighted:.1f}")
@@ -43,7 +43,7 @@ def test_uniform_samples_are_unaffected():
     """The control: when rows ARE evenly spaced the two agree, which is
     why dense trials never showed the bug."""
     rows = [(0, 10.0), (10, 20.0), (20, 30.0), (30, 40.0)]
-    got = parse_util_csv(_csv(rows))["cpu_mean_pct"]
+    got = util_csv_metrics(_csv(rows))["cpu_mean_pct"]
     # 10,20,30 each held for 10 s; the final sample ends the window.
     assert got == pytest.approx(20.0, abs=0.1)
 
@@ -51,7 +51,7 @@ def test_uniform_samples_are_unaffected():
 def test_a_single_row_still_answers():
     """One sample has no interval.  It is still the only thing measured,
     and reporting it beats reporting nothing."""
-    assert parse_util_csv(_csv([(5, 33.0)]) )["cpu_mean_pct"] == \
+    assert util_csv_metrics(_csv([(5, 33.0)]) )["cpu_mean_pct"] == \
         pytest.approx(33.0)
 
 
@@ -60,7 +60,7 @@ def test_gpu_sm_is_weighted_the_same_way():
     unweighted mean, and a GPU that idles at startup is the common case."""
     txt = ("epoch,iso,cpu_pct,gpu0_sm\n"
            "0,x,50,5\n5,x,50,90\n300,x,50,90\n")
-    assert parse_util_csv(txt)["gpu_sm_mean_pct"] == pytest.approx(88.6, abs=0.5)
+    assert util_csv_metrics(txt)["gpu_sm_mean_pct"] == pytest.approx(88.6, abs=0.5)
 
 
 def test_a_hole_in_one_column_does_not_shift_the_others_onto_it():
@@ -84,12 +84,12 @@ def test_a_hole_in_one_column_does_not_shift_the_others_onto_it():
            "10,x,50,[N/A]\n"      # the hole
            "20,x,50,90\n"
            "30,x,50,90\n")
-    got = parse_util_csv(txt)["gpu_sm_mean_pct"]
+    got = util_csv_metrics(txt)["gpu_sm_mean_pct"]
     # 10 held 0->20 (nothing observed at 10), 90 held 20->30.
     assert got == pytest.approx((10 * 20 + 90 * 10) / 30, abs=0.1), (
         f"got {got}; 50.0 means the 90s were paired with the wrong epochs")
     # The intact column in the same file must be untouched by its neighbour.
-    assert parse_util_csv(txt)["cpu_mean_pct"] == pytest.approx(50.0, abs=0.1)
+    assert util_csv_metrics(txt)["cpu_mean_pct"] == pytest.approx(50.0, abs=0.1)
 
 
 def test_the_window_is_not_truncated_by_a_short_column():
@@ -102,5 +102,5 @@ def test_the_window_is_not_truncated_by_a_short_column():
     """
     txt = ("epoch,iso,cpu_pct,gpu0_sm\n"
            "0,x,50,80\n100,x,50,[N/A]\n200,x,50,80\n")
-    assert parse_util_csv(txt)["wall_s"] == pytest.approx(200.0)
-    assert parse_util_csv(txt)["gpu_sm_mean_pct"] == pytest.approx(80.0, abs=0.1)
+    assert util_csv_metrics(txt)["wall_s"] == pytest.approx(200.0)
+    assert util_csv_metrics(txt)["gpu_sm_mean_pct"] == pytest.approx(80.0, abs=0.1)

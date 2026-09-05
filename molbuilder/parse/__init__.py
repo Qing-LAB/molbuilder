@@ -27,6 +27,7 @@ from .registry import detect, parse, parse_dir, parse_text, register
 from .types import (
     ParseResult,
     ParseWarning,
+    InstrumentResult,
     ScriptResult,
     SidecarResult,
     StructureResult,
@@ -37,6 +38,7 @@ from .types import (
 from . import engines as _engines   # noqa: F401  -- side-effect import
 from . import coords as _coords   # noqa: F401  -- side-effect import
 from . import sidecars as _sidecars   # noqa: F401  -- side-effect import
+from . import instruments as _instruments   # noqa: F401  -- side-effect import
 from . import dirs as _dirs   # noqa: F401  -- side-effect import
 
 # Convenience re-exports of the canonical entry-point classes
@@ -50,7 +52,7 @@ __all__ = [
     "FileParser", "TextParser", "DirParser",
     # Results
     "ParseResult", "TrajectoryResult", "StructureResult",
-    "SidecarResult", "ScriptResult",
+    "SidecarResult", "ScriptResult", "InstrumentResult",
     "ParseWarning",
     # Registry / dispatch
     "detect", "parse", "parse_dir", "parse_text", "register",

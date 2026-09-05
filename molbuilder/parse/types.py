@@ -143,6 +143,20 @@ class ScriptResult(ParseResult):
     result_kind:   str = "script"
 
 
+@dataclass(frozen=True)
+class InstrumentResult(ParseResult):
+    """What the WRAPPER measured about a run — `parse.md` § 5c.
+
+    ``metrics`` is a flat dict of measured numbers, one entry per figure
+    the file states.  Not a :class:`SidecarResult`: that carries a JSON
+    payload plus a schema discriminator, and these are plain-text logs
+    and a CSV the wrapper writes beside the deck.
+    """
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    parse_warnings: List["ParseWarning"] = field(default_factory=list)
+    result_kind: str = "instrument"
+
+
 # ``JobResult`` stood here until 2026-09-04 -- the directory decoder's
 # eleven-field summary.  Ten fields had no reader anywhere in the tree;
 # the eleventh, ``status``, is now ``parse.dirs.job.run_status`` and is

@@ -13,8 +13,12 @@ value production never wrote.
 """
 from pathlib import Path
 
-from molbuilder.bench.result import (BenchPoint, machine_brief, machine_kind,
-                                     parse_machine)
+from molbuilder.bench.result import BenchPoint, machine_brief, machine_kind
+from molbuilder.parse.instruments.monitor import monitor_metrics
+
+
+def _machine(text):
+    return monitor_metrics(text)["machine"]
 from molbuilder.jobset.summarize import parse_point, summary_text
 from molbuilder.bench.result import BenchResult
 
@@ -36,10 +40,10 @@ def _trial(d: Path, basename: str, machine_line: str) -> None:
 # ------------------------------------------------------------------ parse
 
 def test_parse_reads_the_line_and_a_legacy_log_reads_empty(tmp_path):
-    m = parse_machine(A100_LINE.format(host="sol-g042", mem="503.5"))
+    m = _machine(A100_LINE.format(host="sol-g042", mem="503.5"))
     assert m == {"node": "sol-g042", "cores": "48", "mem_gb": "503.5",
                  "gpu": "NVIDIA A100-SXM4-80GB"}
-    assert parse_machine("[ts] [MONITOR] start ...\n") == {}, (
+    assert _machine("[ts] [MONITOR] start ...\n") == {}, (
         "a log from before the [MACHINE] line must read as absent, "
         "not raise or invent")
 
@@ -57,14 +61,14 @@ def test_same_kind_on_two_hosts_is_one_machine():
     """The T1 guard.  Two boxes, same silicon, MemTotal jittered by BIOS
     reservations (the real figures from Sol's standard pool) — one kind.
     Compare hostnames or exact memory instead and every sweep warns."""
-    a = parse_machine(A100_LINE.format(host="sol-g042", mem="503.4"))
-    b = parse_machine(A100_LINE.format(host="sol-g117", mem="503.5"))
+    a = _machine(A100_LINE.format(host="sol-g042", mem="503.4"))
+    b = _machine(A100_LINE.format(host="sol-g117", mem="503.5"))
     assert machine_kind(a) == machine_kind(b)
 
 
 def test_different_hardware_is_a_different_kind():
-    a = parse_machine(A100_LINE.format(host="h1", mem="503.5"))
-    b = parse_machine(STD_LINE.format(host="h2"))
+    a = _machine(A100_LINE.format(host="h1", mem="503.5"))
+    b = _machine(STD_LINE.format(host="h2"))
     assert machine_kind(a) != machine_kind(b)
 
 

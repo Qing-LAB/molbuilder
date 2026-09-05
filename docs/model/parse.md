@@ -77,10 +77,15 @@ classDiagram
         atom_metadata · user_custom
         result_kind = "script"
     }
+    class InstrumentResult {
+        metrics · parse_warnings
+        result_kind = "instrument"
+    }
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- ScriptResult
+    ParseResult <|-- InstrumentResult
 ```
 
 Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
@@ -88,7 +93,8 @@ Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
 instead of raising.
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
-  string (`"trajectory"`, `"structure"`, `"sidecar"`, `"script"`, `"job"`).
+  string (`"trajectory"`, `"structure"`, `"sidecar"`, `"script"`,
+  `"instrument"`).
   Consumers holding a `ParseResult` (cached, or sent over the wire)
   `match` on it; JSON deserialisation reads it to pick a class. Adding a kind =
   a new subclass + a new discriminator value (rule below).
@@ -593,6 +599,37 @@ both are exercised by the tests, because `molbuilder-pySCF` has scipy and no
 netCDF4.
 
 ---
+
+## 5c. Instruments — what the WRAPPER measured, not what the engine wrote
+
+`parse/engines/` reads what the *engine* produced. The **wrapper** measures
+the run too, and writes three files of its own beside the deck
+(`running-a-job.md` § 4.1): `<base>-runN.scf-timing.log`,
+`<base>.monitor.log`, `<base>.util.csv`.
+
+They were outside this module until 2026-09-04 — `bench/result.py` opened
+and regex'd their bytes itself, which is a second read stack for a class of
+file the first one simply had never been extended to. Being the wrapper's
+output rather than the engine's is not a reason to read them a different
+way.
+
+**`InstrumentResult` carries `metrics`, a flat dict of measured numbers**,
+and nothing else. It is not a `SidecarResult`: that one is a JSON payload
+plus a schema discriminator, and stamping `result_kind: "sidecar"` on a
+`.log` would be the same conflation `running-a-job.md` § 4.2 forbids
+between an engine and a format.
+
+| file | parser | what it measures |
+|---|---|---|
+| `*.scf-timing.log` | `scf-timing` | steady-state seconds per SCF iteration |
+| `*.monitor.log` | `monitor` | the `[MACHINE]` line (§ R12), the `[UTIL-SUMMARY]` verdict, and the monitor's OWN stated means |
+| `*.util.csv` | `util-csv` | the raw utilisation samples |
+
+**The monitor sharpens the CSV — § 5a, not a second reader.** Utilisation is
+*"the monitor's own means where it stated them, the samples where it did
+not"* (user ruling, 2026-09-03). That is exactly the sibling upgrade: the
+CSV parser answers from its own bytes, and a caller holding both prefers
+the monitor's stated figure. Neither file re-reads the other.
 
 ## 6. Adding a parser
 
