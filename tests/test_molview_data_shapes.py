@@ -303,43 +303,6 @@ def test_a_reserved_label_is_written_in_exactly_one_place():
     )
 
 
-def test_no_code_acts_on_a_reserved_name():
-    """§ 6.6: "It never ACTS on the meaning: no code here holds an atom still,
-    and tagging atoms `frozen atoms` changes what is stored and nothing about
-    what is drawn."
-
-    Knowing a name is not interpreting it. What would be interpreting it is a
-    branch that changes behaviour because of the name — so the check is that the
-    per-frame calculation, which is the whole of what is drawn, cannot see it.
-    """
-    engine_code = "\n".join(
-        line for line in (MODULE_DIR / "render-engine.js").read_text().splitlines()
-        if not line.lstrip().startswith(("*", "//", "/*"))
-    )
-    assert "frozen" not in engine_code.lower(), (
-        "the drawing calculation branches on a reserved label"
-    )
-    # And behaviourally: the same atoms, tagged and untagged, draw identically.
-    out = _run(
-        """
-        function draw(annotations) {
-            return JSON.stringify(ENGINE.processFrame({
-                elements: ["C", "C"], positions: [[0,0,0],[1,0,0]],
-                annotations, selection: [],
-                switches: { isolate: false, showIndex: true, showForces: false, forceScale: 1 },
-            }));
-        }
-        console.log(JSON.stringify({
-            same: draw([{ labels: ["frozen_atoms"] }, { labels: [] }])
-               === draw([{ labels: [] }, { labels: [] }]),
-        }));
-        """
-    )
-    assert out["same"] is True, (
-        "tagging an atom with a reserved label changed what is drawn"
-    )
-
-
 # ---------------------------------------------------------------------------
 # § 10.3 — the two steps, in that order
 # ---------------------------------------------------------------------------

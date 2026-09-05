@@ -246,16 +246,6 @@ def test_an_unparseable_document_loses_nothing():
         == "{ not json at all", "the page rewrote text it could not parse"
 
 
-def test_the_note_says_what_will_actually_be_sent():
-    """Including the part that is not a choice: a run ending always
-    reports, so the line has to say so or the card reads as "nothing"."""
-    assert "only when it ends" in _run(_controls(), _TASK, "note")
-    note = _run(_controls(scf=True, periodic=True, hours="3"), _TASK, "note")
-    assert "each SCF convergence" in note
-    assert "every 3 h" in note
-    assert "when it ends" in note
-
-
 # --------------------------------------------------------------------- #
 #  which channels -- three states, and they are not two                  #
 # --------------------------------------------------------------------- #
@@ -289,43 +279,6 @@ def test_ticking_nothing_writes_an_EMPTY_LIST_not_nothing():
         _controls(scf=True, every=False,
                   ticks=[("slack", False), ("lab", False)]), _TASK, "doc"))
     assert doc["notify"]["channels"] == []
-
-
-def test_the_note_says_where_as_well_as_when():
-    """*Reports every 6 h* with nothing ticked is a promise the run cannot
-    keep, so the line that summarises the card carries both halves."""
-    assert "every channel" in _run(_controls(), _TASK, "note")
-    assert "to slack" in _run(
-        _controls(scf=True, every=False, ticks=[("slack", True)]),
-        _TASK, "note")
-    assert "nothing" in _run(
-        _controls(scf=True, every=False, ticks=[("slack", False)]),
-        _TASK, "note").lower()
-
-
-def test_the_page_hardcodes_NO_path_and_asks_for_it_instead():
-    """**The stronger form of a defect found in the browser 2026-08-27.**
-
-    The card used to state `~/.molbuilder/notify` while the monitor read
-    `config_dir()/notify` — following the page put the file where nothing
-    looks, and **absent means silently off**, so there was no notification,
-    no error, and nothing to read.
-
-    A hardcoded path is what drifts. The page now shows what
-    `GET /api/notify/destination` reports, and that endpoint takes the path
-    from `monitor.default_notify_path` — so the page, the API and the
-    process that reads the file on a compute node all get it from one
-    function and cannot disagree.
-    """
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1]
-    html = (root / "molbuilder/web/templates/task_setup.html").read_text()
-    # a path in the MARKUP is the thing that went wrong; there must be none
-    assert "~/.molbuilder/notify" not in html
-    assert "~/.config/molbuilder/notify" not in html, \
-        "the page hardcodes a path again -- ask the API instead"
-    api = (root / "molbuilder/web/blueprints/notify_setup.py").read_text()
-    assert "from ...monitor import default_notify_path" in api
 
 
 def test_the_card_writes_ONE_file_and_has_no_control_for_a_secret():

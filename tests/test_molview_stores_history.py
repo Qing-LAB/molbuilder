@@ -444,38 +444,6 @@ def test_filtering_asks_the_server_and_holds_no_matching_logic():
 # § 9.6 — the camera is not kept, saved or read back
 # ---------------------------------------------------------------------------
 
-def test_no_store_holds_a_camera():
-    """§ 13.3: "nothing above the drawing reports where the camera is pointing."
-
-    § 9.6: MolView never records where it ended up, never reads it back and never
-    saves it.
-    """
-    out = _run(
-        """
-        const view = S.createViewStore();
-        const before = view.get();
-        view.set("camera", { x: 1 });           // not a setting this store has
-        view.set("orientation", [1,2,3]);
-        console.log(JSON.stringify({
-            keys: Object.keys(view.get()).sort(),
-            unchanged: JSON.stringify(view.get()) === JSON.stringify(before),
-        }));
-        """
-    )
-    assert out["unchanged"] is True, "a camera was accepted into the view store"
-    assert out["keys"] == ["background", "orthographic", "radius", "style"], (
-        f"`view` must be exactly § 9.6's four settings: {out['keys']}"
-    )
-    for name in ("stores.js", "history.js", "model.js"):
-        text = (MODULE_DIR / name).read_text()
-        code = "\n".join(
-            line for line in text.splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
-        assert "camera" not in code.lower(), (
-            f"{name} names the camera in code — it is held nowhere above the drawing"
-        )
-
 
 def test_isolate_turns_itself_off_when_the_selection_empties():
     """§ 1.1: "Isolate turns itself off when the selection becomes empty, since

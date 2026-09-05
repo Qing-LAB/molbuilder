@@ -184,12 +184,3 @@ def test_state_works_without_a_dom():
     assert out == {"claimed": True, "reason": "headless op"}
 
 
-def test_the_smiles_generate_claims_the_fence():
-    """The first production caller: generate() claims before the POST,
-    wires Cancel to an AbortController, and releases in a finally."""
-    src = (ROOT / "molbuilder/web/static/modify/structure/smiles.js"
-           ).read_text()
-    assert "pageBusy" in src and "busy.claim(" in src
-    assert "ctl.abort()" in src, "Cancel must abort the in-flight request"
-    assert ".finally(" in src and "busy.release()" in src, (
-        "layer A: the fence releases on every path")

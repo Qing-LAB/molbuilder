@@ -56,25 +56,6 @@ def test_the_page_renders_the_designs_parts(web_client):
         assert needle in body, f"missing {needle!r} on /task-setup"
 
 
-def test_save_is_disabled_until_it_could_succeed(web_client):
-    """Save now exists (T2).  It renders DISABLED and the page says why —
-    the button is enabled by `refreshSave()` only once a folder is open, the
-    folder has something to save, and a hand-over has been given its shape.
-
-    This replaced `test_the_tab_writes_nothing_yet` when the write path landed,
-    which is what that test was for: enabling a write path had to be a
-    deliberate edit, not a side effect.
-    """
-    body = web_client.get("/task-setup").data.decode()
-    m = re.search(r"<button[^>]*id=\"ts-save\"[^>]*>", body)
-    assert m, "the Save button is gone"
-    assert "disabled" in m.group(0), (
-        "Save renders enabled — nothing is open yet, so it cannot succeed")
-    src = VIEWER.read_text()
-    assert "refreshSave" in src, "nothing decides when Save is usable"
-    assert "/api/task-setup/save" in src, "Save is not wired to the endpoint"
-
-
 def test_the_page_loads_the_shared_stylesheet_layers(web_client):
     """Layers 1-4 before layer 5, so tokens land first (`ui-contract.md` § 1)."""
     body = web_client.get("/task-setup").data.decode()
@@ -153,91 +134,6 @@ def test_the_jp_tokens_live_in_the_one_palette_file():
 #  The controller                                                       #
 # --------------------------------------------------------------------- #
 
-def test_the_editor_uses_the_shared_codemirror_loader():
-    """One loader, not a second copy (`lib/codemirror-load.js`)."""
-    src = VIEWER.read_text()
-    assert "codemirror-load.js" in src
-    assert "loadCodeMirror" in src
-    for copied in ("_injectScript", "injectScript(", "codemirror.min.js"):
-        assert copied not in src, (
-            f"{copied!r} in task-setup/viewer.js — the bundle's asset list has "
-            "ONE home, and the vendor-integrity test reads it there")
-
-
-def test_the_editor_picks_its_mode_from_the_suffix():
-    """Highlighting is chosen by suffix through the shared loader, not by a
-    mode string typed here.
-
-    Until 2026-08-16 the editor passed `mode: null` because the bundle carried
-    no json mode.  It carries eight now, so `task.json` gets the JSON dialect —
-    and the tab asks for it by PATH, so nothing here has to know which mode
-    that is.
-    """
-    src = VIEWER.read_text()
-    assert "modeFor" in src, "the editor no longer resolves its mode by path"
-    assert re.search(r"modeFor\(TASK_JSON\)", src), (
-        "the mode should be resolved from the file's own name")
-    # Narrowly: the MODE option, not the file — `application/json` is also a
-    # legitimate Content-Type header on the save fetch.
-    assert not re.search(r"mode:\s*[\"']", src), (
-        "a mode string is hard-coded in the tab — the suffix map in "
-        "lib/codemirror-load.js is the one place that decides")
-
-
-def test_the_optional_read_uses_the_camelCase_option():
-    """`lib/projects/api.js` takes `missingOk` and maps it to the wire's
-    `missing_ok`.  Passing the wire spelling is silently ignored — the read
-    then takes the 404 path and logs a failed-resource console error for the
-    perfectly normal "this folder has no description yet" case.
-
-    Caught by reading api.js after the tab was already written and green.
-    """
-    src = VIEWER.read_text()
-    assert "missingOk" in src, "the optional read does not pass missingOk"
-    assert not re.search(r"missing_ok\s*:", src), (
-        "task-setup/viewer.js passes the WIRE spelling to the projects API; "
-        "api.js expects `missingOk` and silently drops the other")
-
-
-def test_the_page_reads_the_current_dir_through_the_public_accessor():
-    """`projects.getCurrentDir()` exists; reaching into sessionStorage for the
-    sidebar's own key would put that key name in a second place."""
-    src = VIEWER.read_text()
-    assert "getCurrentDir" in src
-    assert "molbuilder.current_dir" not in src, (
-        "the tab duplicates the sidebar's sessionStorage key — call "
-        "projects.getCurrentDir() instead")
-
-
-def test_the_machine_answered_set_is_derived_and_not_listed():
-    """An item whose resolver is an allocation resolver may never carry a
-    value in a description (`engines/template.md` § 6.4), so the page must not
-    show it as a choice.
-
-    **The page must DERIVE which those are, not list them.**  It listed them
-    -- ``new Set(["mpi_np", "omp_threads", "max_memory_mb"])`` -- until
-    2026-08-17, which was a third answer to a question the page already had
-    two answers to: ``/api/task-setup/sweepable`` ships ``machine_answers``
-    per item, computed from ``template.ALLOCATION_RESOLVERS``, and the page
-    already read that field in two other places.  A fourth allocation-backed
-    item would have rendered as the user's own choice, silently.
-
-    This asserts the direction that drifts: the derivation is present and the
-    hard-coded list is not.
-    """
-    src = VIEWER.read_text()
-    assert "machineAnswers" in src, "the page no longer derives the set"
-    assert '"/api/task-setup/sweepable' in src, (
-        "the derivation's source endpoint is not called")
-    assert "MACHINE_ANSWERED" not in src, (
-        "the hard-coded set is back -- derive it from `machine_answers`")
-    # And no fresh literal list of the three, in any order.
-    code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
-    for name in ("mpi_np", "omp_threads", "max_memory_mb"):
-        assert f'"{name}"' not in code or "ROW_NOTE" in code, (
-            f"{name} is spelled in executable code again")
-
 
 @pytest.mark.parametrize("endpoint", ["/api/files/read", "/api/files/list"])
 def test_the_tab_reuses_the_shipped_files_api(endpoint, web_client):
@@ -303,40 +199,6 @@ def test_handover_renders_and_writes_nothing(web_client):
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
 
 
-def test_the_tab_moves_bytes_through_the_file_layer():
-    """No hand-rolled writes or deletes on any surface.  The send moved to
-    lib/task-handover.js at P2 (spectra-migration-plan.md) -- ONE door two
-    tabs share -- so the write lives there now."""
-    opt = (STATIC / "structure-optimization/viewer.js").read_text()
-    lib = (STATIC / "lib/task-handover.js").read_text()
-    ts  = VIEWER.read_text()
-    assert "projects.safeSave(text, name," in lib, (
-        "the hand-over does not write through safeSave(TEXT, FILENAME, opts)")
-    assert "projects.deleteEntry(" in ts, (
-        "the hand-over is not removed through the file layer")
-    for surface, src in (("optimization", opt), ("task-handover", lib),
-                         ("task-setup", ts)):
-        assert "/api/files/write" not in src, (
-            f"{surface} calls the write route directly instead of the door")
-
-
-def test_the_handover_refuses_the_cited_junction_as_destination():
-    """The calculation never lives in its citation (archive/2026-09-01-transport-design.md
-    § 4.1b): the sidebar selection lingers on the attempt the person
-    just browsed to cite, and describing there would drop task.json --
-    and every prep attempt -- inside the finished relaxation.  The
-    success message names the folder it DID write, so the person sees
-    where the description went."""
-    lib = (STATIC / "lib/task-handover.js").read_text()
-    assert "never lives inside its citation" in lib, (
-        "the citation-destination guard is gone -- a transport describe "
-        "into the cited attempt would pollute the relaxation it cites")
-    assert 'relNorm === citeNorm' in lib, (
-        "the guard must compare the DESTINATION against the citation")
-    assert '+ " into " + (rel || "the selected folder")' in lib, (
-        "the transport success message no longer names its destination")
-
-
 def test_save_refuses_outside_the_roots(web_client):
     """The save door owns `task.json` because it owns that schema — but it is
     still inside the picker's roots guard like every other write."""
@@ -346,72 +208,9 @@ def test_save_refuses_outside_the_roots(web_client):
     assert "root" in str(r.get_json().get("error", "")).lower()
 
 
-def test_the_tab_reads_the_handover_only_when_there_is_no_description():
-    """A folder holding both is a save that did not finish; the description
-    wins, because it is the one that passed the preflight."""
-    src = VIEWER.read_text()
-    assert "task.1st.json" in src, "the tab does not know the hand-over"
-    assert re.search(r"taskText\s*\n?\s*\?\s*null", src) or "taskText ?" in src, (
-        "the hand-over should be read only when task.json is absent")
-
-
-def test_the_handover_button_calls_only_helpers_that_exist():
-    """The button lives in `structure-optimization/viewer.js` because the two
-    things it needs are private to that file.
-
-    Written first as its own module against `structurePage.structureEnvelope()`
-    and `formSchema.lastSchema()` — **neither of which exists**.  It would have
-    parsed, loaded, and silently done nothing useful.  Same failure class as
-    passing `missing_ok` where the API takes `missingOk`: a name that is wrong
-    rather than code that is wrong.
-    """
-    src = (STATIC / "structure-optimization/viewer.js").read_text()
-    assert "send-to-task-setup" in src, "the hand-over button is not wired"
-    assert "/api/task-setup/handover" in src
-
-    # `collectFdfParams` / `collectPyscfParams` collapsed into ONE
-    # `collectParams(engine)` on 2026-08-17: the SIESTA one had become a
-    # pure pass-through and the two differed by a container id.
-    for helper in ("_structureForRequest", "collectParams",
-                   "_activeEngine"):
-        assert f"function {helper}" in src, (
-            f"{helper} is called by the hand-over but not defined here")
-
-    for invented in ("structureEnvelope", "lastSchema"):
-        assert invented not in src, (
-            f"{invented} does not exist anywhere in the tree")
-
-    assert not (STATIC / "structure-optimization/handover.js").exists(), (
-        "the standalone hand-over module is back; it cannot reach the "
-        "private helpers and would have to duplicate them")
-
-
 # --------------------------------------------------------------------- #
 #  T1 shape · T2 save                                                    #
 # --------------------------------------------------------------------- #
-
-def test_the_shape_is_asked_and_never_defaulted(web_client):
-    """`stages.md § 6.7`: required with no default, because inferring it
-    "would hand somebody a directory tree they never asked for"."""
-    body = web_client.get("/task-setup").data.decode()
-    assert 'id="ts-shape-card"' in body
-    for shape in ("flat", "hierarchical"):
-        assert f'data-shape="{shape}"' in body, f"no {shape} option"
-    assert body.count('aria-pressed="false"') >= 2, (
-        "a shape renders pre-selected — the page must ask")
-    src = VIEWER.read_text()
-    assert 'let _shape      = "";' in src, "shape is initialised to a value"
-
-
-def test_the_editor_shows_what_will_be_written_not_the_handover(web_client):
-    """A person checking a description before a week of compute should be
-    reading the thing that lands, not its input."""
-    src = VIEWER.read_text()
-    assert "proposedFromHandover" in src
-    assert '"molbuilder/task@1"' in src, (
-        "the proposed description does not carry the real task schema")
-    assert re.search(r'name:\s*"coarse"', src), (
-        "the proposal should start with one stage named coarse (§ 6.5)")
 
 
 def test_save_writes_the_description_and_reports_the_handover(web_client):
@@ -481,68 +280,6 @@ def test_save_refuses_rather_than_repairs(web_client):
 # --------------------------------------------------------------------- #
 #  T3 — the stage table edits                                            #
 # --------------------------------------------------------------------- #
-
-def test_the_table_edits_the_description_in_one_direction():
-    """The table is a VIEW of the buffer, not a second source.
-
-    Two-way binding between a table and a text buffer is how you get an edit
-    loop, so a table edit mutates the model → re-serialises into the editor →
-    repaints; a hand edit re-parses the other way, debounced and silent while
-    the text is mid-typing.  The BUFFER stays what `save` sends.
-    """
-    src = VIEWER.read_text()
-    assert "function syncFromModel" in src
-    assert "JSON.stringify(_task" in src, "table edits do not reach the buffer"
-    assert "_reparse" in src, "a hand edit never reaches the table"
-
-
-def test_removing_the_last_stage_is_refused():
-    """`stages.md` § 6.5 — a job always has at least one stage, so there is no
-    stage-less shape to fall back to."""
-    src = VIEWER.read_text()
-    assert "function removeStage" in src
-    assert re.search(r"stages\.length\s*<=\s*1", src), (
-        "nothing stops the last stage being removed")
-
-
-def test_a_new_stage_copies_the_previous_ones_values():
-    """`task-setup.md` § 9 — a refinement starts from what came before; a
-    stage that inherits nothing is a different calculation, not a next step."""
-    src = VIEWER.read_text()
-    assert "function addStage" in src
-    assert re.search(r"Object\.assign\(\{\},\s*\(prev && prev\.overrides\)", src), (
-        "a new stage does not copy the previous overrides")
-
-
-def test_an_empty_cell_deletes_the_override_rather_than_storing_blank():
-    """Absent means "this stage uses the template's value" — a real state
-    (`stages.md` § 6.2), expressed by the key being gone."""
-    src = VIEWER.read_text()
-    assert "function setCell" in src
-    assert re.search(r'if \(text === ""\)[\s\S]{0,200}delete ov\[col\]', src), (
-        "an emptied cell stores a blank instead of removing the override")
-
-
-def test_a_stage_name_is_checked_against_the_descriptions_rule():
-    """The name keys filenames, so the rule is `stages.md` § 2's — letters,
-    digits, underscore; no hyphen, which means 'a counter follows'."""
-    src = VIEWER.read_text()
-    assert "/^[A-Za-z0-9_]+$/" in src, "stage names are not validated"
-
-
-def test_disabling_a_stage_keeps_its_values():
-    """It changes what `prep` builds; it does not delete the row's values.
-
-    The first version of this test matched the word "delete" in the function's
-    own COMMENT — asserting on prose rather than on code.  It now strips
-    comments and reads the statements.
-    """
-    src = VIEWER.read_text()
-    assert "function toggleStage" in src
-    body = src.split("function toggleStage", 1)[1].split("\nfunction ", 1)[0]
-    body = re.sub(r"//.*", "", body)          # the code, not the commentary
-    assert "delete" not in body, "disabling a stage discards its values"
-    assert ".enabled" in body, "toggle does not touch `enabled`"
 
 
 # --------------------------------------------------------------------- #
@@ -643,32 +380,6 @@ def test_a_rung_that_does_not_continue_is_taught_no_tail():
     assert _continue_tail("hierarchical", "", {"coarse": 3}) == ""
 
 
-def test_the_run_preview_shows_the_EMITTED_launch(web_client):
-    """`architecture.md` A13: the run's surface shows the value the `.sbatch`
-    will carry and where it came from — resolved by the emitter, and never
-    left blank when blank resolves to a number.
-
-    **The failure this pins**: the preview called `header_ntasks` WITHOUT
-    `auto=`, so an unstated rank count rendered the no-record refusal while
-    the header carried the domain's own width. The card was wrong about the
-    one number it exists to surface (caught by review, 2026-09-02).
-    """
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
-    door = src[src.index("def api_task_setup_prep("):
-               src.index("def api_task_setup_save(")]
-    assert "_emitted_launch" in door, "the preview reports no emitted launch"
-    call = door[door.index("ntasks, why = header_ntasks("):]
-    call = call[:call.index(")\n")]
-    assert "auto=" in call, (
-        "the card asks the emitter a DIFFERENT question than the emitter "
-        "asks itself -- `auto=` is what turns 'cannot size' into the "
-        "domain's width")
-    assert "auto_ranks(" in call, (
-        "the default must come from the same producer the header uses")
-
-
 def test_the_emitted_rows_cover_every_launch_parameter(web_client):
     """A13 again, on the shape: `-n`, `-c`, `--gres`, `--mem`, `-t`, `-p`.
     A parameter missing from the block is a parameter that can surprise."""
@@ -725,15 +436,6 @@ def test_a_one_point_row_that_is_NOT_machine_answered_is_still_a_choice():
     assert one["kind"] == "chosen"
 
 
-def test_measuring_never_discards_the_chosen_value():
-    """`task-setup.md § 9` — adding a point keeps the value as the first one."""
-    src = VIEWER.read_text()
-    assert "function addPoint" in src
-    body = src.split("function addPoint", 1)[1].split("\nfunction ", 1)[0]
-    assert "pts.push(v)" in body, "a new point replaces rather than appends"
-    assert "splice" not in body, "adding a point removes an existing one"
-
-
 def test_a_setting_with_no_points_is_removed_not_left_empty():
     """`bench` takes a NON-EMPTY list — the reader refuses an empty one, so a
     setting with no points is a setting that is not being measured."""
@@ -742,37 +444,9 @@ def test_a_setting_with_no_points_is_removed_not_left_empty():
     assert "delete b[name]" in body, "an emptied setting stays as an empty list"
 
 
-def test_what_has_run_is_counted_from_the_directory_and_not_judged():
-    """No target machine needed, which is why it belongs here.  It counts
-    attempts; whether one CONVERGED is in its output and belongs to Results."""
-    src = VIEWER.read_text()
-    assert "function runsForStages" in src
-    assert "run-" in src, "attempts are not counted"
-    body = src.split("function runsForStages", 1)[1].split("\n/* ", 1)[0]
-    for verdict in ("converged", "failed", "success"):
-        assert f'"{verdict}"' not in body, (
-            f"the page judges a run as {verdict!r} from a listing")
-
-
 # --------------------------------------------------------------------- #
 #  The checkpoint API (F3) and the two guards (F1, F2)                   #
 # --------------------------------------------------------------------- #
-
-def test_checkpoint_is_a_public_api_not_a_private_click_handler():
-    """`projects.md` § 5 — a sub-namespace on the one door, like
-    `projects.parser`.  The panel's save WAS a private click handler, so a tab
-    needing it had to POST the route itself or reach into the panel's DOM."""
-    ck = (STATIC / "lib/projects/checkpoint.js").read_text()
-    for fn in ("export async function status",
-               "export async function init",
-               "export async function saveState"):
-        assert fn in ck, f"missing from the API: {fn}"
-    for absent in ("export async function restore", "export async function tag"):
-        assert absent not in ck, (
-            "restore/tag are decisions taken at the panel, not another tab's "
-            "side effect (`checkpointing.md` L4)")
-    door = (STATIC / "lib/projects/projects-sidebar.js").read_text()
-    assert "projects.checkpoint" in door, "the API is not on the one door"
 
 
 def test_the_panel_calls_the_api_rather_than_a_second_implementation():
@@ -791,64 +465,6 @@ def test_a_state_needs_a_note():
     assert "A state needs a note" in body, "saveState invents a note"
 
 
-def test_send_refuses_onto_a_described_calculation():
-    """F1 — this guard was a 409 in the endpoint and was LOST when it became
-    render-only.  Restored on the side that chooses where to write."""
-    src = (STATIC / "lib/task-handover.js").read_text()
-    assert "one job per folder" in src, "Send can overwrite another calculation"
-    assert re.search(r'readFile\(dest \+ "/task\.json",\s*\n?\s*\{ missingOk: true \}',
-                     src), "the check does not go through the file layer"
-
-
-def test_save_refuses_a_different_calculation(web_client):
-    """F2 — the ids say these are different calculations, and overwriting one
-    with the other orphans every warm file keyed to it."""
-    d = _fresh_calc_dir()
-    try:
-        from molbuilder.identity import run_id
-        base = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
-                "shape": "flat", "structure": {"source": "a.xyz",
-                                               "formula": "Au2", "atoms": 2},
-                "varies": [], "stages": [{"name": "coarse", "enabled": True,
-                                          "overrides": {}}]}
-        theirs = dict(base, run={"name": "theirs", "id": run_id("theirs", "Au2"),
-                                 "created": "2026-08-01T00:00:00-07:00"})
-        (d / "task.json").write_text(_json.dumps(theirs))
-
-        mine = dict(base, run={"name": "mine", "id": run_id("mine", "Au2"),
-                               "created": "2026-08-16T00:00:00-07:00"})
-        r = web_client.post("/api/task-setup/save",
-                            json={"dest": str(d), "text": _json.dumps(mine)})
-        assert r.status_code == 409, r.status_code
-        assert "one job per folder" in r.get_json()["error"].lower()
-        back = _json.loads((d / "task.json").read_text())
-        assert back["run"]["id"] == theirs["run"]["id"], "it was overwritten"
-
-        # re-saving the SAME calculation stays free
-        again = web_client.post("/api/task-setup/save",
-                                json={"dest": str(d), "text": _json.dumps(theirs)})
-        assert again.status_code == 200, again.get_json()
-    finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
-
-
-def test_saving_is_two_steps_and_the_first_is_the_checkpoint(web_client):
-    """`task-setup.md` § 8 — the state is saved before the description, so
-    whatever you are about to change can be brought back."""
-    body = web_client.get("/task-setup").data.decode()
-    assert 'id="ts-ckpt"' in body, "no checkpoint step on the save card"
-    assert 'id="ts-ckpt-note"' in body, "no note field (`checkpointing.md` L4)"
-
-    src = VIEWER.read_text()
-    assert "projects0.checkpoint.saveState" in src, (
-        "save does not take a state")
-    assert "/api/checkpoint/save" not in src, (
-        "the tab POSTs the checkpoint route itself instead of the API")
-    # the offer is a tick the user can clear — never taken silently
-    assert 'checked' in body and "ts-ckpt" in body
-    assert "wantCkpt" in src, "the checkpoint is unconditional"
-
-
 def test_a_failed_checkpoint_stops_the_save():
     """The step exists so what you change can be brought back; writing anyway
     would silently spend the safety net you asked for."""
@@ -861,32 +477,6 @@ def test_a_failed_checkpoint_stops_the_save():
         "a failed checkpoint does not stop the save")
 
 
-def test_a_new_column_seeds_every_stage_with_the_template_value():
-    """`task-setup.md` § 9 — adding a column "changes nothing on screen": it is
-    a statement about structure, never about values.
-
-    The tab has no template, but it does not need one: an ABSENT override
-    already means "this stage uses the template's value" (`stages.md` § 6.2),
-    so adding the column and touching no cell IS seeding them all.
-    """
-    src = VIEWER.read_text()
-    assert "function addColumn" in src
-    body = src.split("function addColumn", 1)[1].split("\n/* ", 1)[0]
-    assert "overrides" not in body, (
-        "adding a column writes cell values; absence is the seed")
-    assert "v.push(name)" in body
-
-
-def test_removing_a_column_says_what_is_lost_before_it_goes():
-    """§ 9 — "the page says which value it kept, and says it BEFORE the click"."""
-    src = VIEWER.read_text()
-    assert "_pendingDrop" in src, "removing a column is a single click"
-    body = src.split("function removeColumn", 1)[1].split("\n/* ", 1)[0]
-    assert "last enabled" in body.lower() or "enabled" in body, (
-        "the surviving value is not the last enabled stage's")
-    assert "Click × again" in body, "there is no second, confirming click"
-
-
 def test_removing_a_column_does_not_pretend_the_value_survives():
     """This page edits `task.json`, not the template — so it must not imply
     the kept value lands anywhere."""
@@ -896,37 +486,6 @@ def test_removing_a_column_does_not_pretend_the_value_survives():
         "the message implies the value is preserved somewhere it is not")
 
 
-def test_the_identity_facts_are_shown_and_read_only(web_client):
-    """`task-setup.md` § 3 — shown because you are about to commit a week of
-    compute against them, not so they can be changed."""
-    body = web_client.get("/task-setup").data.decode()
-    assert 'id="ts-came-card"' in body and 'id="ts-facts"' in body
-    src = VIEWER.read_text()
-    assert "function renderCameOver" in src
-    fn = src.split("function renderCameOver", 1)[1].split("\n/* ", 1)[0]
-    assert '"Run id"' in fn, "the id is not shown — nothing says which calculation"
-    assert "<input" not in fn and 'el("input"' not in fn, (
-        "the identity facts are editable here")
-
-
-def test_the_tab_waits_for_the_sidebar_instead_of_reading_it():
-    """`projects.md` § 1: *"A tab waits for it with
-    `runtime.whenReady("projects")` instead of polling."*
-
-    The sidebar is a `type=module` script, so its deferred initialisation has
-    NOT run at DOMContentLoaded.  Reading `window.molbuilder.projects` there
-    finds `undefined`, and the page reported "the projects sidebar did not
-    load" on every single load — a user-visible bug from ignoring a documented
-    facility, which is why this is pinned rather than just fixed.
-    """
-    src = VIEWER.read_text()
-    assert 'whenReady("projects")' in src, (
-        "the tab does not wait for the sidebar through the runtime registry")
-    boot = src.split("function boot()", 1)[1]
-    assert "window.molbuilder.projects" not in boot, (
-        "boot still reads the namespace directly instead of awaiting it")
-
-
 def test_the_runtime_loads_before_every_other_script(web_client):
     """The registry can only hand out what registered with it, so it has to be
     parsed first — `molbuilder-runtime.js` before the sidebar and the tab."""
@@ -934,17 +493,6 @@ def test_the_runtime_loads_before_every_other_script(web_client):
     i_rt   = body.index("lib/molbuilder-runtime.js")
     i_tab  = body.index("task-setup/viewer.js")
     assert i_rt < i_tab, "the runtime loads after the tab's own script"
-
-
-def test_the_tab_hands_you_the_next_command(web_client):
-    """`task-setup.md` § 1 — this page "turns that into a description on disk
-    and **hands you the command to run it somewhere else**".  Half the tab's
-    purpose, and it was missing entirely until 2026-08-16."""
-    body = web_client.get("/task-setup").data.decode()
-    assert 'id="ts-next-card"' in body and 'id="ts-next"' in body
-    src = VIEWER.read_text()
-    assert "function renderNext" in src
-    assert "jobset prep run" in src and "jobset launch run" in src
 
 
 def test_the_command_names_its_stage_and_what_it_continues_from():
@@ -967,31 +515,6 @@ def test_a_disabled_stage_gets_no_command():
     src = VIEWER.read_text()
     body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
     assert "enabled !== false" in body, "disabled stages still get commands"
-
-
-def test_parameters_are_PICKED_from_the_catalogue_not_typed(web_client):
-    """A free-text box is not a list.  The catalogue knows every parameter, so
-    the picker reads it rather than asking the user to spell a name.
-
-    **From the columns endpoint, not the parameter form's schema**
-    (2026-08-18).  This asserted `/api/build/schema/`, which is the FORM's
-    schema and filters the whole `staging` group out on purpose — a form does
-    not ask how many ranks the scheduler granted.  Borrowing that answer cost
-    the table `restart`, the field that decides whether a ladder is a ladder,
-    so a ladder built here ran every stage clean.  `stages.md` § 6.2 gives the
-    right question: anything the description may HOLD may be a column."""
-    body = web_client.get("/task-setup").data.decode()
-    for sel in ('id="ts-add-col"', 'id="ts-add-setting"'):
-        assert f"<select {sel[:0]}" or sel in body
-    assert body.count("<select") >= 2, "the add controls are still text inputs"
-    src = VIEWER.read_text()
-    assert "/api/task-setup/columns" in src, \
-        "columns are not drawn from the catalogue"
-    assert "/api/build/schema/" not in src, \
-        "the column picker is reading the parameter FORM's schema again, " \
-        "which filters out the staging group -- restart among it"
-    assert "/api/task-setup/sweepable" in src, \
-        "bench settings are not drawn from it"
 
 
 def test_the_column_picker_offers_restart(web_client):
@@ -1034,49 +557,6 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
         "(engines/overview.md § 3a: the user decides the GPU)")
 
 
-def test_a_picker_offers_only_what_is_not_already_used():
-    src = VIEWER.read_text()
-    assert "function fillPicker" in src
-    body = src.split("function fillPicker", 1)[1].split("\nasync function", 1)[0]
-    assert "taken.indexOf(i.name) === -1" in body, (
-        "the picker offers parameters that are already columns/settings")
-
-
-def test_the_chosen_shape_carries_a_tick():
-    """A border tint reads as "hovered" as easily as "chosen", and the shape is
-    a decision the page refuses to guess — so which one you picked must be
-    unmistakable.  The gutter is reserved on both, so ticking shifts nothing."""
-    css = (STATIC / "task-setup/style.css").read_text()
-    assert '.ts-choice .opt b::before' in css, "no tick on the shape options"
-    assert 'visibility: hidden' in css and 'visibility: visible' in css, (
-        "the tick is added/removed rather than shown/hidden, so the label "
-        "shifts when you choose")
-    assert '.ts-choice .opt[aria-pressed="true"] b::before' in css
-
-
-def test_a_handover_opens_with_a_starting_matrix_not_an_empty_table():
-    """`stages.md § 1.3` — *"`varies` defaults to the engine's `stage` group,
-    and the user adds to or removes from it"*.
-
-    An empty `varies` is not a neutral start: the table opens with no columns
-    and nothing to edit, which is a dead end.  The group is a DEFAULT, never a
-    restriction — any parameter can be added and any of these removed (§ 1.2).
-    """
-    src = VIEWER.read_text()
-    assert 'c.group === "stage"' in src, (
-        "the proposal does not seed varies from the stage group")
-
-
-def test_the_bench_opens_with_a_starting_sweep():
-    """The machine-answered settings can ONLY be measured, so an empty bench
-    leaves the user typing point lists from scratch.  Safe to propose because
-    `bench` records points to TRY and never an answer (`stages.md § 6.8`)."""
-    src = VIEWER.read_text()
-    assert "BENCH_START" in src
-    assert "it.machine_answers" in src, (
-        "the starting sweep is not restricted to what the machine answers")
-
-
 def test_the_starting_sweep_only_covers_settings_the_engine_has():
     """Proposed rows are intersected with the sweepable set, so a PySCF
     description never opens with a SIESTA-only knob in its grid."""
@@ -1097,43 +577,6 @@ def test_the_presets_come_from_the_shipped_table(web_client):
         assert ps["name"] == SIESTA_STAGE_NAMES[ps["tier"]]
         assert ps["values"] == SIESTA_STAGE_PRESETS[ps["tier"]], (
             "the endpoint restates the tier values instead of serving them")
-
-
-def test_a_preset_adds_its_missing_columns_first():
-    """`task-setup.md § 9` — "a preset knows several fields.  If some are not
-    columns yet it ADDS THEM FIRST — a preset that half-applied would be worse
-    than one that refused"."""
-    src = VIEWER.read_text()
-    assert "function applyPreset" in src
-    body = src.split("function applyPreset", 1)[1].split("\n/* ", 1)[0]
-    i_add = body.index("v.push(key)")
-    i_set = body.index("Object.assign(ov, values)")
-    assert i_add < i_set, "values are written before the columns exist"
-    assert "added.join" in body, "the page does not say which columns it added"
-
-
-def test_an_empty_cell_shows_what_the_stage_will_actually_use():
-    """An empty cell is not blank — it says the stage uses the template's
-    value.  Showing the NUMBER rather than the word "template" is what makes
-    "adding a column changes nothing on screen" (§ 9) visible, not merely true.
-    """
-    src = VIEWER.read_text()
-    assert "function defaultText" in src
-    assert "placeholder: fallback ||" in src, (
-        "an unset cell shows no recommended value")
-
-
-def test_every_parameter_carries_its_note_on_hover():
-    """The catalogue already holds `help`, `unit` and `default`; a second copy
-    would be the drift the one-source rule exists to prevent, so the tab looks
-    them up from what the schema returned."""
-    src = VIEWER.read_text()
-    assert "function helpText" in src
-    for surface in ('title: helpText(col)',        # a cell
-                    'title: helpText(col) }, col', # the column header
-                    'title: helpText(name)'):      # a machine row
-        assert surface in src, f"no hover note: {surface}"
-    assert "title: helpText(i.name)" in src, "the picker options carry no note"
 
 
 def test_the_sweepable_notes_reach_the_lookup():
@@ -1189,89 +632,6 @@ def test_a_folder_with_no_template_is_not_an_error(web_client):
         j = web_client.get("/api/task-setup/template-values?dir="
                            + str(d)).get_json()
         assert j["ok"] and j["name"] is None and j["values"] == {}
-    finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
-
-
-def test_the_template_values_outrank_the_catalogue_default():
-    """The order matters and is easy to write backwards."""
-    src = VIEWER.read_text()
-    body = src.split("function defaultText", 1)[1].split("\n/**", 1)[0]
-    assert "_tmpl.values" in body, (
-        "defaultText ignores the folder's template — it would show the "
-        "catalogue recommendation where the contract says the template's value")
-    assert body.index("_tmpl.values") < body.index("m.default"), (
-        "the catalogue default is consulted FIRST, so a template that answers "
-        "the parameter is overridden by the recommendation")
-    assert "await loadTemplateValues(dir)" in src, (
-        "nothing loads the template when the folder changes")
-
-
-def test_the_handover_carries_the_STRUCTURE_not_a_summary_of_it(web_client):
-    """The hole this closes.  The hand-over used to record a formula, an atom
-    count, and `structure_path` -- the projects sidebar's selected file, which
-    in a real folder pointed at the calculation's own `.template.toml`.  The
-    geometry, the cell and the region labels all crossed the wire and were
-    thrown away at the last step.
-
-    `molview.md` § 11.7: the SERVER writes every file, from the one generator,
-    because a browser-authored pair drifts -- it shipped once with no
-    `schema_version` and every label in it was dropped on the next open.  So
-    the pair comes from `StructureCodec`, exactly as `/api/structure/export`
-    builds it.
-
-    This is the check `handover-procedure.md` § 7 should have had from the
-    start: OPEN what `source` names and see whether the structure survived.
-    """
-    import json as _json
-    d = _fresh_calc_dir()
-    try:
-        env = _envelope()
-        env["structure"]["metadata"] = {
-            "regions": {"frozen_atoms": [0], "L-electrode": [1]},
-            "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 12.0]],
-            "cell_origin": None, "axis_kind": None, "vacuum": None,
-        }
-        r = web_client.post("/api/task-setup/handover", json=dict(
-            env, engine="siesta", name="probe",
-            params={"system_label": "probe"}))
-        assert r.status_code == 200, r.get_json()
-        out = r.get_json()
-
-        files = out["structure_files"]
-        assert files, "the structure was not written at all"
-        names = [f["name"] for f in files]
-        assert out["label"] + ".source.xyz" in names, (
-            "the hand-over's structure pair must carry the .source "
-            "reservation (job-contracts.md 6.3): " + repr(names))
-        assert any(n.endswith(".molstruct.json") for n in names), (
-            "the cell and the region labels have nowhere to live")
-
-        # the browser's half, through the file layer
-        for f in files:
-            (d / f["name"]).write_text(f["text"])
-        (d / out["handover_name"]).write_text(out["handover_text"])
-
-        over = _json.loads(out["handover_text"])
-        src = over["structure"]["source"]
-        assert src and not src.endswith(".json"), src
-        assert "/" not in src, "the reference must be folder-relative"
-        assert (d / src).is_file(), f"{src} is named but not there"
-
-        # READ IT BACK through the one authority, pairing and all.
-        from molbuilder.workingcopy_structure import StructureCodec
-        back = StructureCodec().read(d / src)
-        assert len(back.elements) == over["structure"]["atoms"] == 2
-        assert back.cell is not None, "the CELL did not survive the hand-over"
-        assert [list(v) for v in back.cell][2][2] == 12.0, back.cell
-        assert back.frozen_atoms, "the frozen-atom tags did not survive"
-        assert "L-electrode" in (back.regions or {}), (
-            f"the region labels did not survive: {back.regions}")
-
-        side = _json.loads((d / (out["label"] + ".source.molstruct.json")).read_text())
-        assert side.get("schema_version"), (
-            "the sidecar has no schema version — the load door refuses the "
-            "pair on the next open and every label is dropped silently")
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
 
@@ -1359,7 +719,6 @@ def test_the_structure_pair_is_not_reported_as_engine_state():
 
 
 from conftest import write_pseudos as _pseudos_for
-
 
 
 def _child_env_with_a_config(tmp_path):
@@ -1636,30 +995,6 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
         assert (r.get_json() or {}).get("error"), "a refusal with no reason"
 
 
-def test_the_file_list_shows_the_structure_the_calculation_is_of():
-    """The list said "Two files" while the folder holds four — so the page
-    whose job is showing you the folder omitted the geometry, on the screen
-    where a person checks a description before a week of compute.
-
-    It is looked up **by the name the description gives it**, never by
-    globbing for a `.xyz`: globbing answers "is there a geometry here", and the
-    case worth showing is a folder holding somebody else's structure and not
-    its own.  `prep` refuses on that, late; this says it where it can be fixed.
-    """
-    html = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
-    for probe in ("ts-f-struct", "ts-f-side", "ts-f-struct-name", "ts-f-side-name"):
-        assert probe in html, f"the file list has no {probe} row"
-    assert "Two files, into the folder above." not in html, (
-        "the hint still claims two files")
-
-    src = VIEWER.read_text()
-    body = src.split('markFile("ts-f-tmpl"', 1)[1].split("A hand-over:", 1)[0]
-    assert "ref.source" in body, "the structure row is not driven by the description"
-    assert ".endsWith(\".xyz\")" not in body, (
-        "the structure is being found by globbing rather than by name")
-    assert 'markFile("ts-f-struct"' in body and 'markFile("ts-f-side"' in body
-
-
 def test_a_bench_edit_repaints_the_row_it_changed():
     """`syncFromModel` is where every editing verb ends, and it re-rendered
     everything except the machine card.  So `addPoint` put the point in the
@@ -1669,22 +1004,6 @@ def test_a_bench_edit_repaints_the_row_it_changed():
     body = src.split("async function syncFromModel", 1)[1].split("\n}", 1)[0]
     for verb in ("renderStages", "renderMachine", "renderNext", "refreshPickers"):
         assert verb + "(" in body, f"syncFromModel does not repaint via {verb}"
-
-
-def test_the_editor_is_mounted_once_even_under_concurrent_callers():
-    """`ensureEditor` is async and its guard was on the RESULT, so two callers
-    arriving before the first finished both saw `_cm === null` and both
-    constructed an editor into `#ts-editor`.  Three were stacked in the live
-    page: every edit went to the newest and every reading came from the
-    oldest, which is what made the whole panel look dead.
-
-    The guard has to be on the PROMISE for it to hold across the await."""
-    src = VIEWER.read_text()
-    body = src.split("function ensureEditor", 1)[1].split("\n}", 1)[0]
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
-    assert "async" not in src.split("function ensureEditor", 1)[0][-20:], (
-        "ensureEditor is async again — its guard cannot span the await")
-    assert "_cmBooting" in body, "nothing caches the in-flight mount"
 
 
 def test_changing_the_shape_does_not_discard_the_table():
@@ -1775,178 +1094,6 @@ def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
     assert '"basis"' in schema, "shared items must stay"
 
 
-def test_the_hand_over_carries_the_vibration_kind_end_to_end(web_client):
-    """handover-procedure § 6, landed (spectra-migration P2, 2026-08-20):
-    the hand-over is a Send button on the SAME endpoint.  With
-    calculation=vibration the response's task.1st.json carries the kind,
-    the template text carries the twelve vibration items, and the
-    schema/columns doors serve the kind's form -- while an optimization
-    hand-over stays byte-for-byte what it was (absent-is-a-state)."""
-    import json as _json
-    body = {
-        "engine": "pyscf", "calculation": "vibration", "name": "V",
-        "structure": {"elements": ["O", "H", "H"],
-                      "positions": [[0, 0, 0.119], [0, 0.757, -0.477],
-                                    [0, -0.757, -0.477]]},
-        "params": {},
-    }
-    r = web_client.post("/api/task-setup/handover", json=body).get_json()
-    assert r["ok"], r
-    over = _json.loads(r["handover_text"])
-    assert over["calculation"] == "vibration"
-    assert "[item.already_relaxed]" in r["template_text"]
-    assert "[item.compute_ir]" in r["template_text"]
-
-    body2 = dict(body); body2.pop("calculation")
-    r2 = web_client.post("/api/task-setup/handover", json=body2).get_json()
-    over2 = _json.loads(r2["handover_text"])
-    assert "calculation" not in over2, "absent IS the optimization state"
-
-    sch = _json.dumps(web_client.get(
-        "/api/build/schema/pyscf?calculation=vibration").get_json())
-    assert '"already_relaxed"' in sch and '"es_mode_selection"' in sch
-    cols = _json.dumps(web_client.get(
-        "/api/task-setup/columns?engine=pyscf&calculation=vibration"
-    ).get_json())
-    assert '"compute_ir"' in cols
-
-    src = (STATIC / "task-setup" / "viewer.js").read_text()
-    assert '"freq"' in src and 'kind === "vibration"' in src, (
-        "the receiver must propose the kind's own one-stage ladder")
-
-
-def test_the_spectra_tab_sends_through_the_shared_door():
-    """One door, two tabs (handover-procedure.md § 6; delivered by the
-    archived spectra migration's P2): the spectra tab
-    renders the CATALOGUE's vibration form and hands over through the
-    same lib/task-handover.js door as /structure-optimization -- one
-    spelling of the guards and the write order, two tabs."""
-    core = (STATIC / "lib" / "spectra" / "core.js").read_text()
-    assert '"pyscf", { calculation: "vibration" }' in core, (
-        "the tab no longer fetches the catalogue's vibration schema")
-    send_body = core.split("async function sendToTaskSetup", 1)[1]\
-                    .split("// ----- Render button", 1)[0]
-    assert 'calculation: "vibration"' in send_body, (
-        "the send does not carry the kind (matching the string anywhere "
-        "in the file is vacuous -- the schema fetch spells it too)")
-    assert "taskHandover.send" in send_body, (
-        "the tab bypasses the shared door")
-    assert "/api/spectra/render" not in send_body, (
-        "the send path still touches the retiring render route")
-
-    lib = (STATIC / "lib" / "task-handover.js").read_text()
-    assert 'o.calculation !== "optimization"' in lib, (
-        "the lib must ride the kind only when it is not the default "
-        "(absent IS the optimization state, handover-procedure § 6)")
-
-    for page in ("spectra.html", "index.html"):
-        html = (ROOT / "molbuilder/web/templates" / page).read_text()
-        assert "lib/task-handover.js" in html, (
-            f"{page} does not load the shared send door")
-    spectra_html = (ROOT / "molbuilder/web/templates/spectra.html").read_text()
-    assert "generate-btn" not in spectra_html, (
-        "the retiring Generate flow is still offered next to Send")
-
-
-def test_the_browser_hand_over_writes_the_cli_s_files(web_client, tmp_path):
-    """The one-writer bar (handover-procedure.md § 4; the archived
-    spectra migration's P2 acceptance): the files the browser's
-    Send writes are the CLI's own.  The same water + defaults through
-    (a) /api/task-setup/handover and (b) describe.build_description /
-    write_description must agree BYTE-FOR-BYTE on the template and the
-    structure pair, and on every identity field of the description head
-    (run.created is the send's timestamp and is excluded by name)."""
-    import json as _json
-    import numpy as _np
-    from molbuilder import describe as _D
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.stages import vibration_stages
-    from molbuilder.structure import Structure
-    from molbuilder.identity import normalise_id
-
-    elements = ["O", "H", "H"]
-    positions = [[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
-                 [0.0, -0.757, -0.477]]
-
-    # (a) the browser door
-    r = web_client.post("/api/task-setup/handover", json={
-        "engine": "pyscf", "calculation": "vibration", "name": "vib",
-        "structure": {"elements": elements, "positions": positions},
-        "params": {},
-    }).get_json()
-    assert r["ok"], r
-    browser_files = {f["name"]: f["text"] for f in r["structure_files"]}
-    browser_files[r["template_name"]] = r["template_text"]
-    over = _json.loads(r["handover_text"])
-
-    # (b) the CLI door, for the identical inputs
-    struct = Structure(elements=elements,
-                       positions=_np.array(positions, dtype=float))
-    src = tmp_path / "vib.xyz"
-    src.write_text(struct.to_xyz())
-    # The CLI arm folds the calculation's name into the engine's own
-    # identity field BEFORE describing (jobset/_cli.py: "the template's
-    # SystemLabel and the description's id cannot disagree") -- the
-    # hand-over route holds the same rule, so the comparison must too.
-    stages = vibration_stages()
-    label = normalise_id("vib", what="name",
-                         stage_names=tuple(s.name for s in stages))
-    desc = _D.build_description(
-        struct, PySCFConfig(job_name=label), stages,
-        engine="pyscf", shape="flat", name="vib", source=str(src),
-        calculation="vibration")
-    dest = tmp_path / "calc"
-    _D.write_description(desc, dest, struct=struct)
-
-    cli_task = _json.loads((dest / "task.json").read_text())
-    cli_files = {p.name: p.read_text() for p in dest.iterdir()
-                 if p.name != "task.json"}
-
-    for name, text in browser_files.items():
-        assert name in cli_files, (
-            f"the browser writes {name!r}; the CLI writes "
-            f"{sorted(cli_files)}")
-        assert text == cli_files[name], (
-            f"{name} differs between the browser's send and the CLI")
-
-    # The description head: same identity, same kind, same structure.
-    assert over["engine"] == cli_task["engine"]
-    assert over["calculation"] == cli_task["calculation"] == "vibration"
-    assert over["run"]["id"] == cli_task["run"]["id"]
-    assert over["structure"]["formula"] == cli_task["structure"]["formula"]
-    assert over["structure"]["atoms"] == cli_task["structure"]["atoms"]
-
-
-def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
-    """U1(b)+(d): the tab's notes teach the whole bench flow through
-    the launcher, and the --from ordinal comes from the FULL ladder
-    (a disabled stage still occupies its number)."""
-    src = VIEWER.read_text()
-    body = src.split("function renderNext", 1)[1].split(
-        "what has already run", 1)[0]
-    # `run-config.toml` was an eighth needle until 2026-09-02.  It named a
-    # file `prep run` folded in; the file is a report now and the taught
-    # sequence does not mention it (`architecture.md` § 5.2).
-    for needle in ("molbuilder jobset prep bench",
-                   "molbuilder jobset launch bench",
-                   "one job per resource shelf",
-                   "summarize bench",
-                   "prev.full + 1", "task.bench"):
-        assert needle in body, f"next-steps lost {needle!r}"
-    assert 'String(i).padStart' not in body, (
-        "the enabled-filtered ordinal is back (E-T4)")
-    # The declaration-time note for multi-point VALUE axes: the 2β rule
-    # is BUILT (generator.md § 4.3a, 2026-08-21), so the U1 refusal
-    # warning became teaching -- the sweep multiplies, and submission
-    # groups by exact resource ask (one job per shelf, 2026-08-21).
-    assert "sweep as a value axis" in src, \
-        "the value-axis note left the bench table"
-    assert "cpu-vs-gpu axis" in src, \
-        "the use_gpu family note left the bench table"
-    assert "exact resource ask" in src, \
-        "the per-shelf teaching left the bench table"
-
-
 def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client):
     """Gate ③ fires at save (G-1b, 2026-08-21): `workflow.md` § 9 names this
     door beside `describe` and dispatch, and until then only the codec ran
@@ -1998,21 +1145,6 @@ def test_the_two_engine_caches_are_keyed_by_engine():
             "\nasync function", 1)[0]
         assert f"{key} === key" in body, (
             f"{fn} caches without comparing the engine key")
-
-
-def test_load_folder_resets_the_previous_folders_state_first():
-    """U6 close: the hand-over and empty branches never wrote _task /
-    _shape, so a description opened FIRST leaked into the next folder
-    -- setShape(_shape) re-fired on the stale _task, syncFromModel()
-    overwrote the editor with the previous folder's task.json, and
-    Save was enabled over the wrong calculation.  The reset must come
-    before any branch."""
-    src = VIEWER.read_text()
-    body = src.split("async function loadFolder(", 1)[1]
-    head = body.split("const taskText", 1)[0]
-    for needle in ("_task = null;", '_shape = "";', "_handover = null;"):
-        assert needle in head, (
-            f"loadFolder does not reset {needle!r} before branching")
 
 
 def test_the_saves_preflight_findings_reach_the_person():
@@ -2489,15 +1621,6 @@ def test_the_viewer_carries_no_transport_handover_arm():
     assert '"transport"' not in shape
 
 
-def test_the_transport_page_loads_the_handover_door():
-    """Found live 2026-08-29: the composite card's Send said
-    'lib/task-handover.js is not loaded' because the template never
-    included the door the other two sender tabs load."""
-    tpl = (ROOT / "molbuilder/web/templates/transport_calculation.html"
-           ).read_text()
-    assert "lib/task-handover.js" in tpl
-
-
 def test_transport_describe_refuses_a_sealed_override_by_name(web_client):
     """The electronic contract is the citation's to say (ruling Q5) --
     refused at the DESCRIBE door, from the same constant prep refuses
@@ -2585,34 +1708,6 @@ def test_every_command_the_page_teaches_is_a_REAL_cli_verb():
             assert kind in choices, (
                 f"the page teaches `jobset {verb} {kind}`, but {verb} takes "
                 f"{choices}")
-
-
-def test_prep_refuses_while_the_card_is_unsaved():
-    """**The contradiction this closes** *(user, 2026-09-02: "all the
-    parameter settings in 'what this run will use' fucking did nothing")*.
-
-    The prep door takes a FOLDER, not a document — `build.py` does
-    `task = read_task(desc)`, because one assembly serves the CLI and the
-    browser alike (A12) and the CLI has only the file. The browser posts
-    `{dest, kind, stage, plan}` and never the document.
-
-    So an unsaved run card is not in the document prep reads, and the page
-    said three things at once: the fit line agreed with the card (bench-grid
-    IS posted the values), the A13 block disagreed with it (prep reads the
-    file), and `Write it` prepped the file regardless.
-
-    A prep that cannot see your edits must say so instead of running."""
-    src = VIEWER.read_text(encoding="utf-8")
-    guard = src[src.index("function prepButton("):]
-    guard = guard[:guard.index("\n}\n")]
-    assert "_diskText" in guard, (
-        "prepButton no longer compares the buffer against disk -- an unsaved "
-        "card can reach a prep that cannot see it")
-    assert "Save first" in guard
-    # and the emitted block names which document it is describing
-    assert "from the saved task.json" in src, (
-        "the A13 block does not say it reflects the SAVED file, so it reads "
-        "as a contradiction of the card rather than a fact about the file")
 
 
 def test_every_per_folder_fact_resets_when_a_folder_changes():

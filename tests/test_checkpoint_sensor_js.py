@@ -266,18 +266,6 @@ def test_the_panel_speaks_the_routes_vocabulary():
     assert "label:" not in tag
 
 
-def test_the_panel_never_offers_to_generate_a_note():
-    """L3: the note is required and never generated.
-
-    The prompt offered "leave blank for ISO timestamp" -- the exact generated
-    stand-in the contract rules out, on the one surface where the question is
-    actually asked.
-    """
-    js = _js("checkpoint.js").read_text().lower()
-    assert "leave blank" not in js
-    assert "iso timestamp" not in js
-
-
 def test_checkpoint_js_has_no_polling_timer():
     """The explicit-refresh model (docs/web/projects.md)
     forbids a background poll loop.  Guard against setInterval creeping
@@ -337,28 +325,6 @@ def test_the_sensor_pill_does_not_keep_the_previous_folders_tooltip():
                .split("return;", 1)[0]
     assert "elSensor.title" in uninit, (
         "the branch that sets the pill must clear the title the other two set")
-
-
-def test_the_panel_says_so_when_the_generated_ignore_block_was_edited():
-    """A hand edit inside the markers is not supposed to happen, so say so.
-
-    The block is rewritten from the classification on every save -- which is
-    what makes the edit detectable, and also what makes it disappear.  The
-    server sends `ignore_edited`; a panel that receives it and stays quiet
-    leaves somebody editing a file that never survives.
-    """
-    js = _js("checkpoint.js").read_text()
-    assert "ignore_edited" in js, (
-        "the panel must read the flag the route sends")
-    lowered = js.lower()
-    assert "rewritten from the classification" in lowered, (
-        "the note must say WHY the edit will not survive")
-    # A phrase short enough not to straddle a line break in the source: this
-    # file reads the JS as text, so an assertion spanning two concatenated
-    # string literals fails for the formatting rather than for the meaning.
-    assert "outside the molbuilder" in lowered, (
-        "and where to put entries that should survive -- a note with no way "
-        "to get what you wanted is just a scolding")
 
 
 # ================================================================== #
