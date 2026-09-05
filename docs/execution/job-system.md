@@ -25,7 +25,7 @@ jobset init        write the portable description        (your laptop)
 jobset prep        derive decks + scripts FOR this machine   (the target)
 jobset plan        show what would run, warm files, resources
 jobset launch      ONE job per invocation -- run or submit
-jobset summarize   read a sweep -> bench-result.json + bench-recommendation.txt
+jobset summarize   read a sweep -> the record + the report, PRINTED
 jobset status      per-stage status + the resume point
 ```
 
@@ -1338,6 +1338,75 @@ what that rule removes.)*
 > own `run.json`.
 
 ---
+
+### 7.1 One analysis, two presentations, nothing in between
+
+**The measurement is composed once and shown twice.** There is no third
+implementation and no file between the composer and either reader.
+
+```mermaid
+flowchart LR
+    A["the trials' own artifacts<br/>(scf-timing.log · monitor.log · util.csv · the deck)"]
+    C["summarize.sweep_view<br/>= discover_points_from_jobset<br/>+ build_bench_result<br/>+ jobset_status"]
+    W["the Results panel<br/>GET /api/bench/summary"]
+    T["the terminal<br/>jobset summarize"]
+    A --> C --> W
+    C --> T
+```
+
+**Both readers ask the same composer, and it writes nothing.** `sweep_view`
+says so in its own docstring — *"the record a summarize would write, beside
+where every trial is right now… Read-only… so it is safe to call while the
+sweep is still running, which is exactly when a person watches it."* The
+browser therefore never opens a saved file: it recomputes on every request
+and can show a sweep mid-flight, which a snapshot cannot.
+
+| reader | how it gets the summary | reads a saved file? |
+|---|---|---|
+| the Results panel | `/api/bench/summary?path=<job-set.json>` → `sweep_view` | **no** |
+| the terminal | `jobset summarize <dir>` → the same `sweep_view` | **no** |
+
+**Why this is stated here rather than re-derived.** Answering *"where does
+the bench summary come from"* has cost two full re-derivations, each of
+which walked the same five modules to reach the same answer. The relation is
+three facts — one composer, two presentations, no intermediate file — and
+they are cheap to write down and expensive to rediscover.
+
+> **What the terminal used to do, and why it stopped** *(2026-09-04, user
+> ruling: "that can be simplified by integrating that into the CLI, which
+> basically prints out instead of writing to a text… I don't see the bench
+> summary dot text is a necessary function to keep")*. `jobset summarize`
+> wrote `bench-recommendation.txt` beside the sweep. Measured across the
+> whole project tree: **zero** of them had ever been written. The use it was
+> built for — submit a sweep to a cluster, come back to the directory and
+> read the answer — is served by asking, which is what a terminal is for.
+> A report nothing consumes is a print.
+
+#### The one thing still persisted, and its reader
+
+`bench-result.json` is the sweep's **archival record**: the trials, their
+measured numbers, the machine each ran on, and the verdict. It is what
+survives if the trials' artifacts are archived or deleted, and it is the
+only thing that does.
+
+**Nothing reads it.** It had one reader, `_cli.py::_measured_on`, whose one
+caller was `_cli.py::_refuse_if_measured_elsewhere`, whose only caller was a
+test — so a green suite proved a rule the product never applied.
+`submission.md` § S3 documented that refusal as active. Both functions and
+the test are deleted (2026-09-04) and § S3 now says so.
+
+The premise it guarded is gone, and the code says where: `_cli.py`'s
+step 2, *"THERE IS NO SECOND RUNG. A benchmark's verdict was folded in here
+until 2026-09-02… what the run uses is what that person then wrote in
+`execution`."* Nothing carries a verdict into a launch any more, so there is
+no boundary left to cross.
+
+So the record is kept for the archival reason and **for that reason alone**;
+the dead refusal that pretended to read it is deleted. If archiving a sweep
+is not a use anybody has, this file is the next thing to retire, and
+`build_bench_result` is untouched by that decision — the panel is its real
+caller.
+
 
 ## 8. Where it stands, and where it is going
 

@@ -472,7 +472,7 @@ carried to, is decided by the **kind of node** it actually ran on.
 > The tiers that actually differ (≈500 vs ≈1000 vs ≈1500 vs ≈2000 GB on Sol)
 > are hundreds of GB apart and survive any reasonable rounding.
 
-> **This retired a check that had never fired.** `submission.md` S3 refuses to
+> **This retired a check that had never fired.** `submission.md` S3 used to refuse
 > carry a benchmark across a node-type boundary, and it read the domain's
 > declared `node_type`. The probe never wrote that field: all nine Sol domains
 > record `node_type: null` and 1–14 `node_types`. So the refusal returned early,

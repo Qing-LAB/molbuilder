@@ -2133,20 +2133,20 @@ def test_the_summary_closes_with_the_verdict_and_the_commands():
     that named a winner and stopped left you to guess the next command."""
     from pathlib import Path
     from molbuilder.bench.result import build_bench_result
-    from molbuilder.jobset.summarize import RECOMMENDATION_NAME, summary_text
+    from molbuilder.jobset.summarize import recommendation_text, summary_text
     res = build_bench_result(
         [_mk_point("K1C1", spi=1.9, knobs={"mpi_np": 1}),
          _mk_point("K2C1", spi=1.1, knobs={"mpi_np": 2}),
          _mk_point("K5C1", state="unknown")])
     out = summary_text(
         res, Path("/x/bench-result.json"),
-        run_config=(Path("/x") / RECOMMENDATION_NAME, "written"),
-        stage="tight")
-    assert f"read {RECOMMENDATION_NAME}" in out
+        report=recommendation_text(res, stage="tight"), stage="tight")
+    # THE REPORT IS IN THE ANSWER, not named as a file to go and open.
+    assert "molbuilder bench recommendation -- tight" in out
+    assert "NOTHING APPLIES THIS" in out
     assert "execution" in out                     # what you WRITE
     assert "prep run tight" in out                # the stage, by name
     assert "coverage: 2 of 3" in out              # the honesty clause
-    assert "nothing reads it but you" in out
 
 
 def test_a_verdictless_summary_says_so_with_the_census():
@@ -2164,7 +2164,7 @@ def test_a_verdictless_summary_says_so_with_the_census():
 
 
 def test_summarize_writes_the_report_in_EXECUTIONS_vocabulary(calc):
-    """`summarize` materialises the winner as `bench-recommendation.txt`,
+    """`summarize` PRINTS the winner as a report,
     and the block it tells you to paste must be one `task.json` accepts.
 
     **The translation is the point.** The record speaks `cpus_per_task` and
@@ -2180,34 +2180,37 @@ def test_summarize_writes_the_report_in_EXECUTIONS_vocabulary(calc):
     import json as _json
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.summarize import RECOMMENDATION_NAME
     from molbuilder.task import REPORT_ITEMS  # noqa: F401  (import health)
 
     _finished_trial_and_verdict(calc)
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
-    text = (calc / "01_coarse" / "bench" / RECOMMENDATION_NAME).read_text()
-    assert "NOTHING READS THIS FILE" in text
+    # PRINTED, not written: `bench-recommendation.txt` is gone
+    # (`job-system.md` § 7.1) and zero were ever produced.
+    text = r.output
+    assert "NOTHING APPLIES THIS" in text
+    assert not list((calc / "01_coarse" / "bench").glob("*recommendation*")), (
+        "the report is printed now; nothing should be written beside the "
+        "record")
     assert '"execution"' in text
     # The record's own names must NOT appear in the block it hands over.
     assert "cpus_per_task" not in text, text
     assert '"gres"' not in text, text
 
 
-def test_a_verdictless_summarize_writes_no_report(calc):
+def test_a_verdictless_summarize_prints_no_report(calc):
     """No verdict, no report — a report would recommend a shape with nothing
     measured behind it, and a person reading one cannot tell that from a
     measurement."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.summarize import RECOMMENDATION_NAME
     _prep_bench(calc)
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
     assert "NO VERDICT" in r.output
-    assert not (calc / "01_coarse" / "bench" / RECOMMENDATION_NAME).exists()
+    assert "bench recommendation" not in r.output
 
 
 def test_prep_names_what_an_unstated_shape_will_do(calc, capsys):

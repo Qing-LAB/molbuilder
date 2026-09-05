@@ -1862,7 +1862,7 @@ function renderNext(task) {
     // The bench lane, when the description PLANS a measurement
     // (`task.bench` non-empty -- stages.md § 6.8): the whole sequence,
     // taught once with the first stage as the example.  summarize
-    // writes bench-result.json (the record) AND bench-recommendation.txt
+    // writes bench-result.json (the record); the report is PRINTED
     // (a REPORT nothing reads but you); `prep run` uses `execution` --
     // template < declaration < execution < flags.
     /* `--bundle <path from the projects root>` for every command this

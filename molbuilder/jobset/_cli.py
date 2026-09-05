@@ -830,98 +830,14 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
             "stopped at your request -- nothing was re-rendered.")
 
 
-
-def _measured_on(root: Path) -> Dict[Tuple, str]:
-    """The machine KINDS this benchmark's verdict was measured on.
-
-    ``{kind: brief}`` from ``bench-result.json``'s own points -- the record
-    `prep run` is about to apply, which carries each trial's ``machine``
-    since the monitor's ``[MACHINE]`` line landed (`scheduler.md` R12).
-    Reading the record rather than re-walking launch files is the one-door
-    rule; the previous reader globbed ``run.json`` for a ``node_type`` the
-    probe never wrote, so the S3 check it fed had never once fired.
-
-    ``{}`` means *no trial says* -- a record from before the line -- and a
-    reader must not turn that into a match.  Kinds, not hostnames: six
-    trials on six identical boxes are one entry (R11).
-    """
-    import json as _json
-    from ..bench.result import BenchResult, machine_brief, machine_kind
-    try:
-        res = BenchResult.from_dict(_json.loads(
-            (Path(root) / "bench-result.json").read_text(encoding="utf-8")))
-    except (OSError, ValueError):
-        return {}
-    kinds: Dict[Tuple, str] = {}
-    for p in res.points:
-        k = machine_kind(p.machine)
-        if k is not None:
-            kinds.setdefault(k, machine_brief(p.machine))
-    return kinds
-
-
-def _refuse_if_measured_elsewhere(base, root, stage) -> None:
-    """Refuse to apply a verdict its own measurement cannot support.
-
-    **A refusal, not a warning** (S3).  A warning about a number that is
-    already wrong asks the person to do the comparison the framework was
-    holding both halves of.  Two grounds, from the P4 table
-    (`archive/2026-09-01-machine-identity-plan.md`):
-
-    * **the trials ran on several kinds of node** -- the verdict ranked
-      measurements of different machines against each other, so there is
-      no single basis to carry anywhere (and this is a different fact
-      from *unknown*, which stays silent);
-    * **the target positively rules the measured kind out** -- its menu
-      lists machines and none has the measured core count.  CORES, and
-      only cores, because it is the one fact both sides state in one
-      vocabulary: the menu names devices in gres tokens, the measurement
-      in model names, and a bridge between those would be a guess.
-
-    Silent on the honest unknowns -- no machine recorded, or a target row
-    with no ``node_types`` -- because *cannot tell* is not a match (R3).
-    A no-``gres`` job may land on ANY node of a queue, GPU nodes
-    included, so a menu that contains the measured core count anywhere
-    rules nothing out.
-    """
-    from ..runtime_config import get_routing
-    from ..scheduler.place import candidates
-    measured = _measured_on(root)
-    if not measured:
-        return
-    ways_out = ("  Either re-run the benchmark where the run will go, or "
-                "state the shape yourself -- `execution` in task.json, or "
-                "flags on the prep -- since a benchmark reports and never "
-                "decides.")
-    if len(measured) > 1:
-        raise click.ClickException(
-            f"this benchmark's trials ran on {len(measured)} kinds of node "
-            f"({', '.join(sorted(measured.values()))}) -- a verdict that "
-            f"ranked different machines against each other has no single "
-            f"measurement to carry (execution/submission.md S3).\n"
-            + ways_out)
-    (kind, brief), = measured.items()
-    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=False)
-    row = rows[0] if rows else None
-    groups = list(getattr(row, "node_types", None) or [])
-    offered = {str(g.get("cores")) for g in groups
-               if isinstance(g, dict) and g.get("cores") is not None}
-    cores = kind[0]
-    if not offered or cores in offered:
-        return
-    raise click.ClickException(
-        f"this benchmark was measured on {brief} and every machine in "
-        f"{getattr(row, 'name', '?')!r}'s menu has "
-        f"{' or '.join(sorted(offered))} cores -- the numbers do not "
-        f"carry.\n"
-        f"  Seconds-per-cycle, peak memory and the walltime derived from "
-        f"them describe the hardware they were taken on; applying them to "
-        f"a different kind of node is not conservative, it is meaningless "
-        f"(execution/submission.md S3).\n"
-        + ways_out)
-
-
-
+# `_refuse_if_measured_elsewhere` and `_measured_on` stood here until
+# 2026-09-04.  They read `bench-result.json` to refuse applying a verdict
+# measured on a different machine kind (`submission.md` S3).  Nothing in
+# production ever called them -- the only caller was a test -- because the
+# premise died on 2026-09-02: see step 2 of `_run_shape_for`, THERE IS NO
+# SECOND RUNG.  No verdict reaches a launch on its own any more, so there
+# is no boundary left to cross, and a guard against a route that does not
+# exist is a guard nobody can trip.
 
 
 #: WHAT YOU MAY TYPE FOR THE TWO ASKS -- said ONCE, because `prep` and
@@ -1536,7 +1452,7 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
 
     # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict was folded in here
     #     until 2026-09-02, from an editable `run-config.toml`.  It is now a
-    #     REPORT a person reads (`bench-recommendation.txt`), and what the
+    #     REPORT a person reads (printed by `summarize`), and what the
     #     run uses is what that person then wrote in `execution`
     #     (`architecture.md` § 5.2, user ruling: "the run parameter needs to
     #     be explicitly decided/written").  A measurement that reaches the
@@ -1587,8 +1503,6 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
 
     # `chosen` is returned for the PREVIEW to name; it is already folded in.
     return allocation, pins, chosen
-
-
 
 
 def _bench_inputs(base, target, *, bench_override=None, report=None):
@@ -2646,17 +2560,16 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
         raise click.ClickException(
             f"this sweep carries no description, so it has no stage named "
             f"{stage!r} -- run `molbuilder jobset summarize bench` bare.")
-    res, out_path, run_config = run_summarize_jobset(
+    res, out_path, report = run_summarize_jobset(
         js, base,
         out=(container / "bench-result.json") if container is not None
             else None,
         now_iso=utc_now_iso(), stage=stage)
-    click.echo(summary_text(res, out_path, run_config=run_config,
-                            stage=stage))
+    click.echo(summary_text(res, out_path, report=report, stage=stage))
     _ledger(base, "summarize", "verdict-written", stage=stage,
             out=str(out_path), points=len(res.points),
             choice=(res.choice or None),
-            run_config=str(run_config[0]), run_config_status=run_config[1])
+            reported=report is not None)
 
 
 @jobset_group.command("launch", short_help="launch a prepped stage")

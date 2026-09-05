@@ -7,7 +7,7 @@ writes ``bench-result@1``.  Its ``choice`` block is the decision as DATA
 (U13, 2026-08-12): the winner's ``label``, its ``knobs`` in the job-set's
 own exchange vocabulary (mpi_np / cpus_per_task / gres), and its
 ``mechanism`` read from the winning trial's deck -- materialised by
-`summarize` into the report ``bench-recommendation.txt`` that a PERSON
+`summarize` into the report it PRINTS for a PERSON
 applies (§ 2.3.2; interactive ask until 2026-08-19).  The adapter re-resolution this paragraph used to describe
 died with `prep-run` (step 6 u5).
 

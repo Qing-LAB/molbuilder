@@ -543,7 +543,7 @@ flowchart TB
     subgraph MACH["floor 1 · machine — measured, never in the description"]
         ENV["<b>environment.json</b> · <b>molbuilder.json</b>"]
     end
-    VERD["<b>&lt;stage&gt;/bench/bench-recommendation.txt</b><br/>what the machine FOUND — a REPORT.<br/>read by a person, by no code"]
+    VERD["<b>what `summarize` PRINTS</b><br/>what the machine FOUND — a REPORT.<br/>read by a person, applied by no code"]
     ASM["<b>the assembly</b><br/>composes the declared sources in order<br/>→ (allocation, pins, chosen)"]
     RES["<b>floor 3 · resolve()</b> → ParameterSet"]
     OUT["<b>the deck</b> · <b>the wrapper</b> · <b>the .sbatch</b>"]
@@ -701,7 +701,7 @@ decided/written … benchmark recommendation should be named such that it is
 understood not as a user input but for result presentation.")*
 
 There is no verdict rung in any of the five ladders. `summarize` writes
-`bench-recommendation.txt` beside `bench-result.json`; both are **read by a
+the report `summarize` prints, beside the `bench-result.json` record; both are **read by a
 person and by no code**, and what the run uses is `execution` — which exists
 whether or not you ever benchmarked, and a run never requires one
 (`stages.md` § 6.8d).

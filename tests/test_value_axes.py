@@ -434,16 +434,16 @@ def test_the_winners_value_coordinates_reach_the_report(sol_calc):
     (d / f"{stem}-run0.scf-timing.log").write_text(
         "\n".join(f"{t0 + i * 2.0} iter" for i in range(6)) + "\n")
 
-    res, _out, (cfg_path, status) = run_summarize_jobset(
+    res, _out, report = run_summarize_jobset(
         js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse")
-    assert status == "written"
+    assert report is not None
     assert res.choice["label"] == winner
     assert res.choice["point"]["block_size"] == 128
     by_label = {p.label: p for p in res.points}
     assert by_label[winner].point["block_size"] == 128
     assert by_label[winner].point["use_gpu"] is False
 
-    text = cfg_path.read_text()
+    text = report          # PRINTED now, not written (`job-system.md` § 7.1)
     assert '"block_size": 128' in text, text
     assert '"diag_algorithm": "ELPA-1STAGE"' in text, text
     # and it hands over a block `task.json` accepts, not the record's names
@@ -576,7 +576,7 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
     res, out_path, rc = run_summarize_jobset(
         js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse",
         **_out_kw)
-    text = summary_text(res, out_path, run_config=rc, stage="coarse")
+    text = summary_text(res, out_path, report=rc, stage="coarse")
     states = {p.label: p.state for p in res.points}
     assert states["G0K4C1block_size64"] == "completed"
     assert sum(1 for s in states.values() if s != "completed") == 7
@@ -589,12 +589,13 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
         js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse",
         **_out_kw)
     assert res2.choice["label"] == "G0K4C1block_size128"
-    # THE REPORT IS ALWAYS REFRESHED.  It was "kept" once written, because
-    # it was the user's to edit and a rewrite would have discarded that edit.
-    # Nobody edits a report, so a stale one is only stale -- and summarize is
-    # re-run precisely when there is more evidence (2026-09-02).
-    assert rc2[1] == "written"
-    assert "read " in summary_text(res2, _o, run_config=rc2, stage="coarse")
+    # THE REPORT REFLECTS THE NEW EVIDENCE.  It was a file kept-once-written
+    # (the user's to edit), then always-refreshed (nobody edits a report),
+    # and since 2026-09-04 it is printed -- so "is it stale" cannot arise:
+    # you get the answer to the question you just asked.
+    assert rc2 is not None and "G0K4C1block_size128" in rc2
+    assert "bench recommendation" in summary_text(
+        res2, _o, report=rc2, stage="coarse")
 
 
 # --------------------------------------------------------------------- #
@@ -737,9 +738,8 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
         js, sol_calc, out=container / "bench-result.json",
         now_iso="2026-08-21T00:00:00Z", stage="coarse")
     assert res.choice["label"] == gpu_label
-    rc_path, rc_state = rc
-    assert rc_state == "written"
-    text = rc_path.read_text()
+    assert rc is not None
+    text = rc             # PRINTED now, not written (`job-system.md` § 7.1)
     assert '"use_gpu": true' in text, (
         f"the report does not carry the winner's family: {text}")
     # AND ITS DEVICE COUNT, in `execution`'s vocabulary -- the record holds a

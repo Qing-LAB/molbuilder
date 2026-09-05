@@ -48,8 +48,18 @@ decides, and the plan says so before anything submits. Hitting a limit is a
 result; inventing one is not.
 
 **S3 — A measurement is not portable.** Numbers taken on one kind of node do
-not describe another. Applying a benchmark across a **machine** boundary is
-refused, not warned about.
+not describe another.
+
+**Nothing enforces this, and nothing needs to** *(corrected 2026-09-04)*.
+This said the crossing was "refused, not warned about", and named a refusal
+(`_refuse_if_measured_elsewhere`) that **no production path ever called** —
+its only caller was a test, so a green suite proved a rule the product did
+not apply. The refusal is deleted rather than wired, because the route it
+guarded is gone: since 2026-09-02 no verdict reaches a launch by itself
+(`_cli.py`, *"THERE IS NO SECOND RUNG"*), so there is no boundary left to
+cross. What a run uses is what a person wrote in `execution` — and a person
+reading a report about another machine's node is making a judgement, which
+is theirs to make.
 
 > **The boundary is the machine, not the queue** (`scheduler.md` **R11**,
 > 2026-08-27). This rule read `node_type` — a scalar on the domain — until the

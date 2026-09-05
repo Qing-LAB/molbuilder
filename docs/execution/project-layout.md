@@ -41,7 +41,7 @@ unchanged; `prep` adds stage dirs; `launch` adds attempts.
     run-0/  run-1/                      <- attempts: one try each, warm files linked
       *-run0.out  *.concluded           the output + the conclusion marker (rc inside)
   bench-K2C1/run-0/                     <- a benchmark trial is its own attempt
-  bench-recommendation.txt              summarize's REPORT -- read by you, by no code
+  (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
 
 | key rule | one line | where |
@@ -50,7 +50,7 @@ unchanged; `prep` adds stage dirs; `launch` adds attempts.
 | **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at init, never inferred | § 1 |
 | **attempt = run-N** | every try is its own numbered dir; warm files LINK from the previous attempt | § 1.5 |
 | **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means killed — the launch gate ASKS, never decides | § 1.6 |
-| **a report, not an input** | `bench-recommendation.txt` says what was measured and what to write; **no code reads it**. What a run uses is `task.json`'s `execution` | § 2.3.2 |
+| **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `task.json`'s `execution` | § 2.3.2 |
 | **who writes where** | init → the portable floor; prep → stage dirs; launch/monitor → attempts; a person → anything, said aloud | § 2 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
 
@@ -1238,7 +1238,7 @@ silent eigensolver fallback shows in the table itself, not only in the
 excluded-row note. A value nothing measured prints `--`, and the GPU
 columns appear only when the sweep has GPU points.)*
 
-And beside the record it writes **the report** — `bench-recommendation.txt`:
+And it PRINTS **the report** (it wrote `bench-recommendation.txt` beside the record until 2026-09-04; zero were ever produced — `job-system.md` § 7.1):
 
 ```
 molbuilder bench recommendation -- 02_tight, measured 2026-08-06
@@ -1485,7 +1485,7 @@ sequenceDiagram
     C->>E: run the trials
     E-->>T: timings
     U->>C: jobset summarize bench tight
-    C->>T: bench-result.json + bench-recommendation.txt
+    C->>T: bench-result.json (written) + the report (printed)
 
     Note over U: you read the report, write `execution` in task.json
 

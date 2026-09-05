@@ -585,7 +585,7 @@ flowchart TD
     CPU --> TRIALS["× the value settings = the trials,<br/>each input file carrying its own values"]
     GPU --> TRIALS
     TRIALS --> SHELF["submit: trials with the SAME resource ask<br/>share one scheduler job sized to fit them<br/>exactly — independent jobs, biggest first,<br/>CPU jobs hold no GPU"]
-    SHELF --> SUMM["summarize — run it any time:<br/>finished trials ranked, unfinished named,<br/>winner's ranks/cores/devices/values<br/>→ bench-recommendation.txt (yours to READ)"]
+    SHELF --> SUMM["summarize — run it any time:<br/>finished trials ranked, unfinished named,<br/>winner's ranks/cores/devices/values<br/>→ PRINTED for you to READ"]
     SUMM --> RUN["prep run + submit run:<br/>the file fills in whatever your flags<br/>don't state; at launch the wrapper uses<br/>the devices actually granted"]
 ```
 
@@ -645,7 +645,7 @@ in § 2.11.
 **How the winner's G reaches the actual run.** The bench measures G; the
 run *inherits* it — there is no fixed CPU-to-GPU ratio anywhere:
 **(1)** the winner's whole shape, the device count included, is reported
-in `bench-recommendation.txt` for you to write into `execution` — where
+in what `summarize` prints, for you to write into `execution` — where
 a device count is stated as `gpu_count`, since no command-line flag
 states one, on purpose. **(2)** With no verdict on
 file, a GPU calculation's submission header asks for **one** device — a
@@ -805,7 +805,7 @@ flowchart TD
 ([`generator.md § 4.3a`](?doc=execution/generator.md)): CPU numbers carry
 across partitions built from the same silicon; GPU numbers belong to the
 build that produced them; and the verdict is a *report*
-(`bench-recommendation.txt`) — the trade between *fastest* and *soonest
+(what `summarize` prints) — the trade between *fastest* and *soonest
 scheduled* stays yours, and stays unmade until you write it down.
 
 ---

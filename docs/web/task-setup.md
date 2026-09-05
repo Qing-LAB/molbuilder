@@ -897,7 +897,7 @@ a decision only you can make** — unchanged from the card this replaces:
 
 | | what it does | when |
 |---|---|---|
-| **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what shape this stage wants. The verdict is written to `bench-recommendation.txt` for **you** to read; nothing applies it, so the run uses it only once you have written it into this card |
+| **benchmark this stage** | `prep bench` → `launch bench` → `summarize bench` | you do not yet know what shape this stage wants. The verdict is PRINTED by `summarize` for **you** to read; nothing applies it, so the run uses it only once you have written it into this card |
 | **prepare the run** | `prep run` → `launch run` | you know what it wants — from a benchmark you read, from § 6.2b's card, or from flags |
 
 **Any stage may be benchmarked, not only the first.** The bench axes are

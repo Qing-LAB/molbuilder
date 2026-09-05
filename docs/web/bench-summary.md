@@ -223,7 +223,7 @@ this be read"*), the HTTP refusals, and JSON.
 > the disk rather than guessed by climbing a fixed number of levels.
 
 **Read-only means the record and the proposal, not every byte.** `sweep_view`
-never writes `bench-result.json` or `bench-recommendation.txt` — the latter especially,
+never writes `bench-result.json`, and the report is `summarize`'s to print —
 because once it exists it is the *user's* file, possibly edited, and a page
 that polls every 15 s must not race it. It does not promise to touch nothing:
 `jobset_status` decodes each run directory, and every parser appends its own

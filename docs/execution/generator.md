@@ -441,7 +441,7 @@ chance to edit was a finding you had endorsed. In practice it inverted twice
 inside that day — folded before `execution`, then before `allocation`'s wall
 and memory — because a rung whose authority comes from *not having been
 deleted* has no natural place among rungs whose authority comes from having
-been typed. It is now a report: `bench-recommendation.txt`, read by a person,
+been typed. It is now a report `jobset summarize` prints, read by a person,
 by no code.
 
 > **Why not a one-point `bench` entry, which is where this went first.** On
@@ -639,7 +639,7 @@ framework rule, not a script patch)*:
 - **Comparability is stated, not assumed**: CPU trials compare across
   same-silicon partitions; GPU numbers are the GPU build's own; the
   verdict reports per-combination facts and choosing stays yours
-  (`bench-recommendation.txt` is a report; nothing reads it but you).
+  (`summarize` prints a report; nothing applies it but you).
 
 > **Designing the matrix — the background with references** (what the GPU
 > actually accelerates, ranks-per-device and MPS, and how to cut points
@@ -652,7 +652,7 @@ basis size mean a different grid and matrix, so a different best rank count
 ([`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)). `prep bench`
 therefore takes a stage name, writes into that stage's own `bench/` container,
 and `summarize` writes its report there for you to read
-(`bench-recommendation.txt` — `project-layout.md` § 2.3.2).  **The next run
+(printed by `summarize` — `job-system.md` § 7.1).  **The next run
 reads none of it**: what it uses is `execution` (§ 4.3a).
 
 ---

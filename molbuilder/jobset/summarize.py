@@ -411,39 +411,38 @@ def bench_record(jobset, bundle, *, now_iso: Optional[str] = None
 def run_summarize_jobset(jobset, bundle, *,
                          out=None, now_iso: Optional[str] = None,
                          stage: Optional[str] = None):
-    """Summarize a described sweep through the data-keyed reader: write
-    ``bench-result.json`` (the record) and, when there is a verdict,
-    ``bench-recommendation.txt`` beside it (the report — § 2.3.2).
+    """Summarize a described sweep: write ``bench-result.json`` (the
+    archival record) and RETURN the report for the caller to print.
 
-    Returns ``(BenchResult, out_path, (config_path, status))`` with
-    status ``"written"`` (fresh proposal), ``"kept"`` (a file already
-    exists — it is the USER's, possibly edited, so it is never
-    overwritten; delete it and summarize again for a fresh one), or
-    ``"none"`` (no verdict, nothing proposed).
+    Returns ``(BenchResult, out_path, report_text)``, where ``report_text``
+    is ``None`` when there is no verdict to report.
+
+    **The report is printed, not written** *(2026-09-04, user ruling)*.  It
+    was ``bench-recommendation.txt`` beside the record; measured across the
+    whole project tree, ZERO had ever been written.  The use it was built
+    for -- submit a sweep to a cluster, come back to the directory and read
+    the answer -- is served by asking, which is what a terminal is for, and
+    a report nothing consumes is a print.  `job-system.md` § 7.1.
+
+    The record stays because it is the sweep's ARCHIVAL trace: the trials,
+    their numbers, the machine each ran on, and the verdict, surviving the
+    trials' artifacts being archived.  Note that nothing reads it back --
+    the panel recomputes through ``sweep_view`` -- so if archiving a sweep
+    is not a use anybody has, this write is the next thing to retire.
     """
     res = bench_record(jobset, bundle, now_iso=now_iso)
     out_path = Path(out) if out else Path(bundle) / "bench-result.json"
     out_path.write_text(res.to_json() + "\n", encoding="utf-8")
-    cfg_path = out_path.parent / RECOMMENDATION_NAME
-    text = recommendation_text(res, stage=stage)
-    if text is None:
-        status = "none"
-    else:
-        # ALWAYS REFRESHED.  The old `run-config.toml` was kept when it
-        # already existed, because it was yours to edit and a rewrite would
-        # have discarded your edit.  A report is nobody's to edit, so a stale
-        # one is only a stale one -- and `summarize` is run again precisely
-        # when there is more evidence.
-        cfg_path.write_text(text, encoding="utf-8")
-        status = "written"
-    return res, out_path, (cfg_path, status)
+    return res, out_path, recommendation_text(res, stage=stage)
 
 
 
-#: The benchmark's REPORT, beside its record.  Read by a person and by no
-#: code (`project-layout.md` § 2.3.2).  It was `run-config.toml`, an editable
-#: TOML `prep run` folded into the launch, until 2026-09-02.
-RECOMMENDATION_NAME = "bench-recommendation.txt"
+# `RECOMMENDATION_NAME = "bench-recommendation.txt"` stood here until
+# 2026-09-04.  The report is printed by `jobset summarize` now, not
+# written: zero of those files had ever been produced across the whole
+# project tree (`job-system.md` § 7.1).  It had been `run-config.toml`,
+# an editable TOML `prep run` folded into the launch, until 2026-09-02 --
+# so this is the second half of the same retirement.
 
 #: Catalogue item type -> the python type its TOML value must carry.
 #: Non-scalar types (lists, text) are absent on purpose: nothing sweeps
@@ -474,7 +473,7 @@ def _pins_vocabulary(engine: str) -> Dict[str, type]:
 
 def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
                         ) -> Optional[str]:
-    """The benchmark's REPORT (``bench-recommendation.txt``), or ``None``
+    """The benchmark's REPORT, printed by ``jobset summarize``, or ``None``
     when the result concludes nothing.
 
     **Nothing reads this file.**  It is what the sweep found, said in
@@ -502,8 +501,12 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     mech = choice.get("mechanism") or {}
     stage_word = stage or "<stage>"
 
+    # "NOTHING READS THIS FILE" until 2026-09-04, when it stopped being a
+    # file.  The sentence still has a job: nothing APPLIES this, and the
+    # line exists so a reader does not assume the next run will use it.
     out = [f"molbuilder bench recommendation -- {stage_word}",
-           "NOTHING READS THIS FILE.  It is what the benchmark found.",
+           "NOTHING APPLIES THIS.  It is what the benchmark found; the "
+           "decision is yours to write.",
            ""]
     # The rationale already reads as a sentence ("G1K4C6 fastest (2.3
     # s/iter); vs ..."), so it is not labelled again.
@@ -649,10 +652,11 @@ def _point_table(points: List[BenchPoint]):
 
 
 def summary_text(res: BenchResult, out_path: Path, *,
-                 run_config=None, stage: Optional[str] = None) -> str:
-    """The verb's stdout: the measurement table, the verdict, and what to
-    do next.  ``run_config`` is ``run_summarize_jobset``'s third return
-    (``(path, status)``); ``stage`` names the stage in the next-commands.
+                 report: Optional[str] = None,
+                 stage: Optional[str] = None) -> str:
+    """The verb's stdout: the measurement table, the verdict, THE REPORT,
+    and what to do next.  ``report`` is ``run_summarize_jobset``'s third
+    return; ``stage`` names the stage in the next-commands.
     """
     lines = ["bench-summarize: measured points (fastest first)"]
     ranked = sorted(
@@ -726,21 +730,20 @@ def summary_text(res: BenchResult, out_path: Path, *,
     # the report says what, and nothing applies it for you (§ 2.3.2).
     if res.choice:
         stage_word = stage or "<stage>"
-        cfg_name = RECOMMENDATION_NAME
-        if run_config:
-            cfg_path, status = run_config
-            cfg_name = cfg_path.name
-            if status == "written":
-                lines.append(f"  wrote: {cfg_path}  "
-                             f"(a report -- nothing reads it but you)")
+        # THE REPORT ITSELF, here on stdout.  It used to be written beside
+        # the record and this block told you to go and read it; nobody ever
+        # did, because zero were ever written.  You asked the question, so
+        # the answer belongs in the answer.
+        if report:
+            lines.append("")
+            lines.append(report.rstrip())
+            lines.append("")
         lines.append("  next:")
-        lines.append(f"    1. read {cfg_name} -- it names the winner and "
-                     f"the `execution` block that would use it")
-        lines.append(f"    2. put that block in task.json  "
+        lines.append(f"    1. put the `execution` block above in task.json  "
                      f"# stages[{stage_word}].execution, or calculation-wide")
-        lines.append(f"    3. molbuilder jobset prep run {stage_word}"
+        lines.append(f"    2. molbuilder jobset prep run {stage_word}"
                      f"     # uses what you wrote, and nothing else")
-        lines.append(f"    4. molbuilder jobset launch run {stage_word}"
+        lines.append(f"    3. molbuilder jobset launch run {stage_word}"
                      f" --mode submit|direct")
     return "\n".join(lines)
 
@@ -922,5 +925,5 @@ __all__ = [
     "sweep_view", "swept_coordinates", "bundle_for_sweep_file",
     "bench_record",
     "summary_text", "utc_now_iso",
-    "RECOMMENDATION_NAME", "recommendation_text",
+    "recommendation_text",
 ]

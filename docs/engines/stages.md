@@ -1536,7 +1536,7 @@ destroy the plan to measure.
 > not portable vs not.** `allocation` has carried `domain` since 2026-08-24
 > and a queue name is no more portable than a rank count; what this file must
 > never hold is what a **machine found**, which is why `summarize` writes its
-> verdict to a report of its own (`bench-recommendation.txt`) that no code
+> verdict to a report of its own (printed by `summarize`) that no code
 > reads. A person who read a benchmark and chose eight ranks is *asking*, and
 > asks are what this file is for.
 >
