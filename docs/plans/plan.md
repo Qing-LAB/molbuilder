@@ -249,9 +249,21 @@ checkable rather than hopeful:
 | `_engine_of(...)` | `web/blueprints/watch.py` ×4 | `.engine` |
 | `engine_of(dir)` | `web/blueprints/watch.py` ×1 | folded in as `.engine` |
 | `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | `.files` + one parse |
-| `_latest_run_file(d, base, suffix)` | `jobset/summarize.py` ×4 | `.active` |
-| `_read_system(bundle)` | `jobset/summarize.py` ×1 | `.files["fdf"]` |
-| `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | `.files["fdf"]`, stays its own verb |
+| `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | unchanged — its own verb, over `.files["fdf"]` if the door is handy |
+
+**Two rows were in this table and are removed, both invented by me and
+both caught by re-reading the code** *(2026-09-04, second pass)*:
+
+* `_read_system(bundle)` takes the **bundle root** — the calculation
+  folder holding `task.json` — reads the DESCRIPTION first, and falls back
+  to root decks. It is not a run-directory question at all.
+* `_latest_run_file(d, base, suffix)` is called four times for four
+  artifact KINDS (`scf-timing.log`, `monitor.log`, `util.csv`, `out`), and
+  its `basename` is `Path(j.script).stem` — for a staged deck
+  `<label>_<NN>_<stage>`, so **the stage is already chosen** and the only
+  remaining choice is the RUN INDEX. That is not `active`'s question
+  (*which result file across stages carries the status*), and mapping them
+  together would have applied a stage rule where stage is not a variable.
 
 Internals absorbed rather than migrated: `_enumerate_files`, `_build_status`,
 and `contract.py`'s three declaration rungs.
@@ -270,11 +282,32 @@ Absorbing them inverts § 5's rule that a DirParser composes FileParsers.
 
 ### The behaviour changes, named in advance
 
-1. **`summarize`'s per-trial file pick changes** on a re-run trial:
-   highest-`-runN` → stage-then-mtime. This is the only behavioural change in
-   the migration and it is deliberate.
-2. **`detect()` on a directory starts resolving again.** It has had no
-   DirParser since 2026-09-04 and could only refuse.
+**There are none to the numbers.** An earlier draft of this section said
+`summarize`'s per-trial pick would change from highest-`-runN` to
+stage-then-mtime; that was the invented mapping above, and the claim is
+withdrawn. `active` is stage-then-mtime (user ruling) and it governs the
+STATUS only, which has always used that rule.
+
+The one visible change: **`detect()` on a directory starts resolving
+again.** It has had no DirParser since 2026-09-04 and could only refuse.
+
+### What `summarize` actually gets, which is less than first claimed
+
+`_enumerate_files` buckets ENGINE artifacts only — `.fdf`, `.out`, `.XV`,
+`.STRUCT_OUT`, `.molstruct.json`, `.ANI`, `.molwatch.log`. Three of the four
+files `summarize` reads per trial are the WRAPPER's instrumentation
+(`scf-timing.log`, `monitor.log`, `util.csv`) and are in no bucket.
+
+So `summarize` joins this migration only if the door learns wrapper
+artifacts — which is the same question as giving those files registered
+parsers (§ 5's "never re-parse what a FileParser can produce", and
+`bench/result.py` currently reads their bytes itself). **Until that is
+decided, the migration is TWO consumers and eleven sites**, not three and
+fifteen:
+
+* `web/blueprints/watch.py` — 9 sites
+* `jobset/runstatus.py` — 1 site
+* (`contract_of` unchanged)
 
 ### Order of work
 

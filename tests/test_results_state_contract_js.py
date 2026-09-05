@@ -27,6 +27,31 @@ and in-progress frames stay out of the plots -- plus § 4.1's two-tick settle.
 > across documents cannot tell a retired design from an undocumented one, and
 > the two want opposite actions.
 
+> **Nine of these were deleted on 2026-09-04, and what remains is itemised.**
+> The claim above — *"These tests are the only place any of that is
+> checked"* — was false for three behaviours and was tested rather than
+> believed:
+>
+> * **§ 4.1's two-tick settle was already covered**, by
+>   `test_trajectory_settle_post_load_js.py`, which drives
+>   `_settlePostLoad` in node. Breaking the buffer fails it.
+> * **`IDLE` clearing `fileState.path` was covered by NOTHING** — the
+>   mutation passed 84 tests. That null is what makes a late answer for a
+>   disposed file fail the path guard.
+> * **`LOADED` stopping the timer** was caught here and only here, by a
+>   grep for the string `stopPolling()`.
+>
+> The last two now have behavioural tests in
+> `test_trajectory_transition_js.py`, mutation-verified, and the nine pins
+> they duplicate are gone.
+>
+> **What is left in this file still has no behavioural cover**, and is kept
+> for that reason alone: the refresh-listener wiring, `plottableFrames`'
+> in-progress filter and its adapter chain, `_settlePostLoad` being called
+> from both loaders, and the `snap` retirement guard. Each is a candidate
+> for the same treatment — run the function, assert the outcome — not for
+> deletion.
+
 **Read as SOURCE-PINNING, and that is a real limitation.**  Most of what
 follows greps `core.js` for structure rather than running it.  That catches a
 refactor that removes a guard and cannot catch one that keeps the shape and
@@ -169,63 +194,6 @@ class TestTransitionOrchestrator:
     state-machine transitions.  Contract § 2 forbids direct mutation
     of fileState / lifecycle / derived outside this function."""
 
-    def test_transition_function_exists(self, core_body):
-        assert re.search(
-            r"function\s+transition\s*\(\s*target\s*,\s*payload\s*\)",
-            core_body,
-        ), ("trajectory/core.js no longer defines the transition() "
-            "orchestrator.  Direct bucket mutation re-introduces the "
-            "reset-matrix-drift bug class.")
-
-    def test_transition_loading_clears_derived(self, core_body):
-        """The LOADING branch MUST clear ``state.derived.scfPollHistory``.
-        Pre-PR-2 the Refresh button left this buffer with ~32 stale
-        samples carrying bogus per-iter time estimates."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "LOADING branch missing"
-        body = m.group(1)
-        assert "scfPollHistory" in body and "length = 0" in body, (
-            "trajectory/core.js transition('LOADING') no longer "
-            "clears state.derived.scfPollHistory.  The Refresh "
-            "button half-refresh bug returns -- per-iter time "
-            "estimates carry stale samples for ~32 polls.")
-
-    def test_transition_loading_aborts_controllers(self, core_body):
-        """Both loadAbort and pollAbort MUST be aborted in the
-        LOADING branch -- prevents stale-response races (audit § 1
-        late-response bug)."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "loadAbort" in body and "abort()" in body, (
-            "transition('LOADING') no longer aborts loadAbort.")
-        assert "pollAbort" in body, (
-            "transition('LOADING') no longer aborts pollAbort.")
-
-    def test_transition_idle_clears_filestate(self, core_body):
-        """IDLE branch MUST null out fileState fields -- prevents the
-        ``dispose leaks state.data`` bug (audit § 1)."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']IDLE[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "IDLE branch missing"
-        body = m.group(1)
-        assert "fileState.data" in body and "= null" in body, (
-            "trajectory/core.js transition('IDLE') no longer nulls "
-            "fileState.data.  Stale frames leak across remounts.")
-        assert "scfPollHistory" in body, (
-            "trajectory/core.js transition('IDLE') no longer clears "
-            "scfPollHistory.")
 
     @pytest.mark.parametrize("state_name", ["LOADED", "WATCHING", "ERROR"])
     def test_transition_has_state_branch(self, core_body, state_name):
@@ -266,36 +234,6 @@ class TestSettlePostLoad:
     loadByPath and pollOnce; reads run_state, decides which
     transition to invoke."""
 
-    def test_helper_exists(self, core_body):
-        assert re.search(
-            r"function\s+_settlePostLoad\s*\(\s*\)",
-            core_body,
-        ), ("trajectory/core.js no longer defines _settlePostLoad.  "
-            "The 2-tick WATCHING -> LOADED buffer is gone; a finished "
-            "run never auto-stops polling (audit BLOCKER 3).")
-
-    def test_helper_implements_2_tick_buffer(self, core_body):
-        """When run_state == 'finished', the helper increments
-        finishedTicks; only transitions to LOADED when >= 2.  Single
-        finished tick stays in WATCHING."""
-        m = re.search(
-            r"function\s+_settlePostLoad\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "_settlePostLoad body shape changed"
-        body = m.group(1)
-        assert "finishedTicks" in body, (
-            "_settlePostLoad doesn't read/write finishedTicks.  The "
-            "2-tick buffer is broken.")
-        assert ">= 2" in body or "> 1" in body, (
-            "_settlePostLoad's finished-tick threshold isn't 2.  The "
-            "`results.md` § 4.1: a run is finished when it has said so "
-            "TWICE -- one tick can lie while the parser flushes.")
-        # Both LOADED and WATCHING transitions referenced in the
-        # finished-branch body.
-        assert "LOADED" in body and "WATCHING" in body, (
-            "_settlePostLoad doesn't reference both LOADED and "
-            "WATCHING transitions.  The 2-tick branch can't flip.")
 
     def test_helper_called_from_loadByPath(self, core_body):
         """loadByPath's success path MUST call _settlePostLoad after
@@ -327,47 +265,6 @@ class TestSettlePostLoad:
             "loop never auto-stops on a finished run; runs forever "
             "until dispose.")
 
-    def test_finishedTicks_not_reset_in_watching_transition(self, core_body):
-        """REGRESSION pin (PR 2.2): the 2-tick buffer counter MUST NOT
-        be reset inside transition('WATCHING').  Pre-PR-2.2 it was --
-        and _settlePostLoad's LOADING -> WATCHING path on a freshly-
-        finished file would increment then immediately wipe the count,
-        turning the 2-tick buffer into a 3-tick one (extra 15 s of
-        wasted polling per fresh-finished-file load).
-
-        The buffer reset moved to two correct sites:
-          (a) transition('LOADING'): fresh-load ground-truth reset.
-          (b) _settlePostLoad's ongoing branch: an ongoing tick
-              breaks any 'finished' streak."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']WATCHING[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, "WATCHING branch missing"
-        body = m.group(1)
-        assert "finishedTicks = 0" not in body, (
-            "transition('WATCHING') is resetting finishedTicks.  "
-            "The 2-tick buffer regression from pre-PR-2.2 is back: "
-            "_settlePostLoad's LOADING -> WATCHING path on a "
-            "finished file will increment finishedTicks then wipe "
-            "it here.")
-
-    def test_finishedTicks_reset_in_loading_transition(self, core_body):
-        """The counter MUST be reset in transition('LOADING') -- a
-        fresh load is new ground truth; any stale count from a
-        prior file MUST NOT leak in."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
-            r"(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "finishedTicks" in body and "= 0" in body, (
-            "transition('LOADING') no longer resets finishedTicks.  "
-            "A Refresh during a finished+settling state would "
-            "inherit the counter from the prior run.")
 
     # RETIRED 2026-09-03 — the third grep to fail on the day the code it
     # describes was corrected, for the same reason as its two siblings in
@@ -437,29 +334,6 @@ class TestSettlePostLoad:
             "Either it's being USED now (good; remove this pin and "
             "add tests for Invariant 3 conversion) or it's a "
             "regression that brings back the contract-mismatch.")
-
-    def test_finishedTicks_reset_in_settle_ongoing_branch(self, core_body):
-        """The ongoing branch of _settlePostLoad MUST reset
-        finishedTicks -- an ongoing tick breaks any consecutive
-        finished streak (`results.md` § 4.1: the buffer counts CONSECUTIVE
-        ticks, not ticks in total)."""
-        m = re.search(
-            r"function\s+_settlePostLoad\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        # The reset MUST appear somewhere after the LOADED-branch
-        # block (i.e. in the fall-through ongoing path).  Easiest
-        # check: count the resets in the helper body -- should be
-        # at least one for the ongoing path.
-        assert "finishedTicks = 0" in body, (
-            "_settlePostLoad no longer resets finishedTicks in the "
-            "ongoing-branch fall-through.  A 'finished' streak that "
-            "spans across an 'ongoing' tick won't break correctly "
-            "-- the buffer could trip on non-consecutive finished "
-            "ticks (eventually-consistent runs that flap "
-            "ongoing/finished/ongoing).")
 
 
 class TestRefreshListenerWiredOnce:
