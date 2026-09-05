@@ -29,7 +29,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.parse.scripts.atom_metadata import AtomMetadataTextParser
+from molbuilder.script_emit import _extract_atom_metadata_dict
 from molbuilder.sidecars import molstruct
 from molbuilder.siesta.input import render_fdf
 
@@ -79,7 +79,7 @@ def test_the_frozen_atoms_are_constrained_in_the_engine_setup(fdf):
 def test_the_whole_label_store_survives_into_the_comments(fdf):
     """Every label, read back through the project's own parser rather than by
     hand -- a test that re-implements the reader tests the test."""
-    parsed = AtomMetadataTextParser.parse(fdf).atom_metadata
+    parsed = _extract_atom_metadata_dict(fdf)
     assert parsed is not None, "the ATOM-METADATA block is missing entirely"
     assert set(parsed["regions"]) == set(regions()), (
         f"labels lost on the way into the script: {sorted(parsed['regions'])}")
@@ -91,7 +91,7 @@ def test_the_frozen_atoms_come_back_through_the_designated_accessor(fdf):
     """The reserved label is an ORDINARY label in the store; what makes it
     reserved is this accessor and the interpretation applied in the setup
     block above. No caller spells the name itself."""
-    parsed = AtomMetadataTextParser.parse(fdf).atom_metadata
+    parsed = _extract_atom_metadata_dict(fdf)
     assert molstruct.frozen_atoms(parsed) == frozen()
     assert "frozen_atoms" not in parsed, (
         "a second top-level store came back -- the label lives in `regions`")
@@ -104,7 +104,7 @@ def test_the_comments_and_the_setup_agree(fdf):
     generator that emits the constraint and forgets the metadata, or updates one
     store and not the other, fails here rather than in somebody's run.
     """
-    parsed = AtomMetadataTextParser.parse(fdf).atom_metadata
+    parsed = _extract_atom_metadata_dict(fdf)
     assert _constrained(fdf) == molstruct.frozen_atoms(parsed), (
         f"the setup holds {_constrained(fdf)} still while the comments record "
         f"{molstruct.frozen_atoms(parsed)}")
@@ -131,11 +131,13 @@ def test_the_metadata_block_states_the_schema_it_is_actually_written_in(fdf):
     The fix is one constant rather than a literal: stamp what the sidecar
     stamps, so the two can never disagree about what version means what.
     """
-    result = AtomMetadataTextParser.parse(fdf)
-    assert result.block_schema_versions.get("atom-metadata") == \
+    # Was `AtomMetadataTextParser.parse(fdf).block_schema_versions` until
+    # 2026-09-05; the block's own claim, read from the block.
+    block = _extract_atom_metadata_dict(fdf) or {}
+    assert block.get("schema_version") == \
         molstruct.SCHEMA_VERSION, (
         "the ATOM-METADATA block claims schema_version "
-        f"{result.block_schema_versions.get('atom-metadata')} while carrying "
+        f"{block.get('schema_version')} while carrying "
         f"v{molstruct.SCHEMA_VERSION} content -- a version claim that cannot "
         "be trusted is worse than none, because a reader cannot refuse what it "
         "cannot recognise")

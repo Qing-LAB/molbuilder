@@ -382,7 +382,7 @@ def test_the_run_this_suite_just_generated_declares_its_own_engine(
     which is the failure this test exists to catch.
     """
     from molbuilder.parse.contract import _declared_in_provenance, engine_of
-    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+    from molbuilder.script_emit import _extract_provenance_dict
 
     run_dir = co2_optimization.parent
 

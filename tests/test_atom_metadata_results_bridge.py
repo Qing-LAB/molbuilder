@@ -30,7 +30,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
-from molbuilder.parse.scripts.atom_metadata import _extract_atom_metadata_dict
+from molbuilder.script_emit import _extract_atom_metadata_dict
 from molbuilder.script_emit import emit_atom_metadata
 
 import sys as _sys, pathlib as _pl

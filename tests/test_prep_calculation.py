@@ -121,7 +121,7 @@ def test_the_deck_records_the_rank_count_it_was_rendered_for(calc):
     deck rendered without one says ``mpi_np auto`` and then gets launched at 32.
     Both now come from one resolved element, so they cannot disagree.
     """
-    from molbuilder.parse.scripts.bench_marks import _extract_bench_marks_dict
+    from molbuilder.script_emit import _extract_bench_marks_dict
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
     marks = _extract_bench_marks_dict(
         (calc / "01_coarse" / "calc_01_coarse.fdf").read_text())

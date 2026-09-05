@@ -1556,7 +1556,7 @@ def test_a_generated_wrapper_declares_its_engine(deck, engine):
     hand-written provenance text; nothing asserted the declaration was
     ever written.
     """
-    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+    from molbuilder.script_emit import _extract_provenance_dict
 
     text = render_run_wrapper(Path("/somewhere") / deck,
                               resources=Resources())
