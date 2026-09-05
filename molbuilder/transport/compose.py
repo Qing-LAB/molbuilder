@@ -325,6 +325,18 @@ def labeled_citation_structure(cited: CitedDir):
     struct = Structure(elements=list(xv_elements), positions=xv_pos.copy())
     struct.cell = cell
     deck_text = cited.deck.read_text()
+    # NO ``notices=`` HERE, AND THAT IS A KNOWN GAP -- stated rather than
+    # papered over.  The reader collects findings when handed a list, and the
+    # one it cares most about is the version translation: an older block whose
+    # frozen set it converts rather than refuses (`script_emit`, user
+    # 2026-08-03).  That conversion is exactly what silently lost 50- and
+    # 216-atom frozen sets out of real run directories, so it is the finding a
+    # person most needs to see -- and this composite returns a Structure and a
+    # path, with nowhere to put one.  It cannot travel as ``warnings.warn``
+    # either: that reaches server stderr and no user (validation.md § 4.1).
+    # Giving transport a findings channel is the fix; that work is parked, and
+    # inventing a private one here would be the second channel to keep in
+    # step.  Until then the labels arrive translated and the note does not.
     if apply_inbody_atom_metadata(struct, deck_text):
         return struct, cited.deck
 
