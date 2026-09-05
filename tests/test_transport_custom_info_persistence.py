@@ -127,21 +127,30 @@ def test_header_echoes_num_threads_as_omp_threads_requested():
     assert "# runtime.omp_threads_requested: 8" in text
 
 
-def test_header_runtime_lines_match_siesta_parser_regex():
-    """End-to-end: feed the rendered .fdf through the SIESTA parser's
-    runtime probe and verify the keys round-trip."""
-    from molbuilder.parse.engines.siesta import _SIESTA_RUNTIME_RE
+def test_header_runtime_lines_are_read_back_by_the_runtime_reader():
+    """End-to-end: feed the rendered .fdf through the runtime-header READER
+    and verify the keys round-trip.
+
+    Was `test_header_runtime_lines_match_siesta_parser_regex`, driving
+    `siesta.py`'s private `_SIESTA_RUNTIME_RE`. That regex was one of two
+    copies of one grammar and was retired on 2026-09-05 in favour of
+    `molwatch.parse_runtime_line`, the format's one reader.
+
+    Driving the reader is strictly better than driving a regex: it covers
+    the COERCION too, so this now asserts the values a consumer actually
+    receives (ints) rather than the raw capture groups (strings) — which is
+    what "round-trip" was always meant to mean.
+    """
+    from molbuilder.parse.engines.molwatch import parse_runtime_line
     struct = _mk_device_struct()
     cfg = TransportConfig(job_name="dev", num_threads=4,
                           max_memory_mb=12000)
     text = TransiestaEngine.render_script(struct, cfg)
     captured = {}
     for line in text.splitlines():
-        m = _SIESTA_RUNTIME_RE.match(line)
-        if m:
-            captured[m.group(1)] = m.group(2).strip()
-    assert captured.get("omp_threads_requested") == "4"
-    assert captured.get("max_memory_mb")         == "12000"
+        parse_runtime_line(line, captured)
+    assert captured.get("omp_threads_requested") == 4
+    assert captured.get("max_memory_mb")         == 12000
 
 
 # ----------------------------------------------------------------- #
