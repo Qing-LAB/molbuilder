@@ -177,14 +177,25 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     if util is not None:
         metrics.update(_utilisation(_mon, _metrics(util)))
 
-    # The .out is read TWICE, one window each, because its two answers
-    # live at opposite ends: the end-of-run markers in the tail, and the
-    # "Running on N nodes" launch HEADER in the first KB.  Until U11
-    # (2026-08-12) the ranks were searched in the tail window, so any run
-    # whose .out outgrew 16 KB -- i.e. any real run -- silently lost its
-    # rank count, and the verdict's CPU half had no np.
+    # The .out answers two questions and is read for each.
+    #
+    #   * HOW IT ENDED -- the WHOLE file.  `scan_ending` looks at every
+    #     line, because the SCF-convergence markers appear once per cycle
+    #     rather than at the end, and `scf_not_conv_line` reports the
+    #     FIRST of them.  A tail window would silently answer for the
+    #     last cycles only.
+    #   * THE RANK COUNT -- the "Running on N nodes" launch banner, in
+    #     the first KB.  Until U11 (2026-08-12) this was searched in a
+    #     16 KB TAIL window, so any run whose .out outgrew 16 KB -- i.e.
+    #     any real run -- silently lost its rank count and the verdict's
+    #     CPU half had no np.
+    #
+    # A third read, `out_tail = _read(out, tail=16384)`, stood here until
+    # 2026-09-04: the leftover of the tail-window design, orphaned when
+    # the ending scan moved to the full file and never removed.  Nothing
+    # consumed it -- it read 16 KB per trial, per summary, to be
+    # discarded, on a view that polls every 15 s.
     out = _latest_run_file(d, basename, "out")
-    out_tail = _read(out, tail=16384) if out is not None else ""
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
     # ONE READER PER QUESTION (`model/parse.md` § 2b, P-S4).  This scanned
     # for its own `_DONE_MARKERS` tuple until 2026-08-25 -- a SECOND answer
