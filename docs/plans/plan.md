@@ -574,30 +574,45 @@ recovered from the file being overwritten. With it go:
 - `job-contracts.md` § 3.5's "byte-for-byte" claim, which is already false
   (CRLF is normalised by `splitlines()`/`"\n".join`).
 
-### Where it is typed, and who is responsible
+### THIS IS NOT A STAGED RUN, and must not be fitted into one
 
-*(Your proposal, 2026-09-05, taken with one correction from `tabs.md`.)*
+*(Your correction, 2026-09-05, replacing what this section said first.)*
 
-**An addition needs no new home: it follows the path a parameter already
-takes.** `tabs.md` § 1 has the ownership — Structure optimization *"collect[s]
-a SIESTA/PySCF relaxation's PARAMETERS and Send[s] them to Task setup (the
-deck itself is written by `prep`, on the machine that runs it)"*, and Task
-setup *"read[s] a calculation folder's description — its STAGES"*.
+**Stages exist for one reason: a calculation that needs several steps to fit
+the computational resources and constraints** — coarse before tight, a ladder
+that accommodates a machine. That is a different problem from this one.
 
-Neither tab writes a deck. So an addition typed in either must travel as DATA
-to `prep`, which is exactly what makes it an input rather than a zone — and it
-lands on the relationship every parameter already has:
+A customised block is for **a specific task, on a structure that is already
+optimised**. It is the mechanism molbuilder EXPOSES for a future kind of task
+that needs it — not an extension of the relaxation path.
 
-| where | what it does |
-|---|---|
-| Structure optimization | collect the addition with the calculation's other parameters |
-| Task setup | override it per stage, like any item |
-| `prep` | the writer places it |
+So the following, which this section asserted in its first draft, is **wrong
+and withdrawn**:
 
-So the answer to *"Task setup or Structure optimization?"* is **both, in the
-roles those tabs already hold** — not a choice between them.
+> ~~"An addition needs no new home: it follows the path a parameter already
+> takes — collected in Structure optimization, overridden per stage in Task
+> setup."~~
 
-**The responsibility is the person's, and the format is what makes that fair.**
+That reasoned from the tabs that exist to the need, which is backwards: it took
+a mechanism for a *future task kind* and forced it into the ladder built for
+multi-step resource accommodation. Per-stage override is a stage concept, and
+this has no stages to override across.
+
+**What survives that correction, because it does not depend on staging:**
+
+- an addition is an **INPUT** to whatever writes the task's script, never text
+  spliced into a written file (the whole of § 5e above);
+- it is **engine-specific**, and where it goes is engine knowledge;
+- it carries an **include switch**, which is what makes the responsibility
+  workable;
+- **molbuilder does not validate it.**
+
+**What is deliberately left open**: which task kind first needs this, and what
+its own description looks like. That question belongs to that task, not to this
+mechanism — and answering it early is how this would get forced into stages
+again.
+
+### Who is responsible
 molbuilder does not understand the content; it places it and records it. For
 "your responsibility" to be a fair deal rather than a disclaimer, three things
 have to be true, and only the first is about the text:
@@ -675,8 +690,8 @@ half caused it.
    or show the resolved line before saving. (The consequence must be stated;
    whether it can be overridden is separate.)
 3. **Ordering among additions**, when two of them write to the same section.
-4. **Whether the include switch is per-stage**, like the addition itself, or one
-   state for the calculation.
+4. ~~Whether the include switch is per-stage~~ — withdrawn. There are no
+   stages here; see the correction above.
 
 ### Before any code
 
