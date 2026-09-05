@@ -167,8 +167,8 @@ def test_the_wrapper_alone_carries_a_transiesta_run(tmp_path):
 def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
     """`mb_monitor.py` and `config_dir.py` ship beside every flat run.
 
-    The same foot-gun `JobDirParser.can_parse` documents for its own
-    claim rule: any python file would match.
+    Any python file would match, so "there is a `.py` here" says
+    nothing about which engine ran.
     """
     (tmp_path / "mb_monitor.py").write_text("print(1)\n")
     assert engine_of(tmp_path) == "unknown"

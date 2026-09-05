@@ -891,13 +891,18 @@ def test_cli_submit_surfaces_a_broken_config_as_its_own_error(
 #  runstatus (the inform layer)                                          #
 # --------------------------------------------------------------------- #
 
-def _fake_decoder(states):
-    """Return a decode_run_dir stand-in: dir-name -> state."""
-    class _R:
-        def __init__(self, state):
-            self.status = {"state": state, "detail": state}
+def _fake_status(states):
+    """A `run_status` stand-in: dir-name -> state.
+
+    These tests are about the LADDER -- first_incomplete, complete --
+    not about how a state is read off a directory, so the read is
+    stubbed.  It stubbed `decode_run_dir` until 2026-09-04, when the one
+    field anyone used was split out of that eleven-field summary and the
+    caller moved to `run_status`.
+    """
     def fake(run_dir):
-        return _R(states[run_dir.name])
+        s = states[Path(run_dir).name]
+        return {"state": s, "detail": s}
     return fake
 
 
@@ -919,8 +924,8 @@ def test_status_first_incomplete_advances(tmp_path, monkeypatch):
     import molbuilder.parse.dirs.job as jobmod
     for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
-    monkeypatch.setattr(jobmod, "decode_run_dir",
-                        _fake_decoder({"bench-s1": "finished",
+    monkeypatch.setattr(jobmod, "run_status",
+                        _fake_status({"bench-s1": "finished",
                                        "bench-s2": "running"}))
     st = jobset_status(_ladder(), tmp_path)
     assert st.stages[0].state == "finished"
@@ -931,8 +936,8 @@ def test_status_complete_when_all_finished(tmp_path, monkeypatch):
     import molbuilder.parse.dirs.job as jobmod
     for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
-    monkeypatch.setattr(jobmod, "decode_run_dir",
-                        _fake_decoder({"bench-s1": "finished",
+    monkeypatch.setattr(jobmod, "run_status",
+                        _fake_status({"bench-s1": "finished",
                                        "bench-s2": "finished"}))
     st = jobset_status(_ladder(), tmp_path)
     assert st.complete is True and st.first_incomplete is None

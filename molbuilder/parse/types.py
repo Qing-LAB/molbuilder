@@ -143,29 +143,11 @@ class ScriptResult(ParseResult):
     result_kind:   str = "script"
 
 
-@dataclass(frozen=True)
-class JobResult(ParseResult):
-    """Directory-level decoded job — what JobMonitor + Results
-    tab consume.
-
-    Schema pinned by ``docs/execution/running-a-job.md § 4``.  Field
-    semantics match the dict shape ``decode_run_dir`` returned
-    pre-migration so consumer code converts via ``asdict(result)``
-    when needed.
-    """
-    job_type:              str = "unknown"
-    engine:                str = "unknown"
-    system_label:          Optional[str] = None
-    run_dir:               str = ""
-    status:                Dict[str, Any] = field(default_factory=dict)
-    progress:              Dict[str, Any] = field(default_factory=dict)
-    geometry:              Dict[str, Any] = field(default_factory=dict)
-    plots:                 Dict[str, Dict[str, List[List[float]]]] = field(default_factory=dict)
-    source_files:          List[Dict[str, Any]] = field(default_factory=list)
-    engine_input_by_stage: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    parse_warnings:        List[ParseWarning] = field(default_factory=list)
-    diagnostics:           Dict[str, Any] = field(default_factory=dict)
-    result_kind:           str = "job"
+# ``JobResult`` stood here until 2026-09-04 -- the directory decoder's
+# eleven-field summary.  Ten fields had no reader anywhere in the tree;
+# the eleventh, ``status``, is now ``parse.dirs.job.run_status`` and is
+# built from the parsers' own ``run_state`` instead of from plot data
+# that was thrown away.  See ``parse/dirs/__init__.py``.
 
 
 # (BundleResult stood here until 2026-08-29 -- the run-dir -> next-stage

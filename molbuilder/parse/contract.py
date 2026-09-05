@@ -305,8 +305,8 @@ def _from_cluster(directory: Path) -> set:
     seam's ``EngineSeam.suffix``, which `parse` may not import -- it
     lives a layer up in ``jobset``) and the wrapper's stdout name.  A
     bare ``.py`` is deliberately not a signal either: ``mb_monitor.py``
-    and ``config_dir.py`` ship beside every flat run, the same foot-gun
-    ``JobDirParser.can_parse`` documents for its own claim rule.
+    and ``config_dir.py`` ship beside every flat run, so "there is a
+    python file here" says nothing about the engine.
     """
     from molbuilder.warmfiles import WarmFilesError, inventory
     names = [f.name for f in directory.iterdir() if f.is_file()]

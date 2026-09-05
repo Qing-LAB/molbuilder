@@ -584,125 +584,65 @@ behaves exactly as before — `--continue` stays the manual path.
   2. too many **MPI ranks** for the system — retry with a lower `-np`;
   3. **zero net spin** on an open-shell metal.
 
-### 4.2 The decoded-run view
+### 4.2 Reading a run directory back — `run_status`
 
-Pointing the run viewer (the web Results tab, or `molbuilder watch`) at a run
-directory resolves the trajectory via the discovery chain in
-[`job-contracts § 2.4`](?doc=execution/job-contracts.md) and then **decodes** the
-directory into a single structured view.
+Pointing the run viewer (the web Results tab, or `molbuilder watch`) at a
+run directory resolves the trajectory via the discovery chain in
+[`job-contracts § 2.4`](?doc=execution/job-contracts.md). Asking **how that run
+is doing** is a separate, much smaller question, and
+`parse.dirs.job.run_status(run_dir)` is its one answer:
 
-The decoder is `decode_run_dir(run_dir)` → an in-memory `JobResult`
-(`molbuilder/parse/dirs/job.py`). It claims any directory holding a `.fdf`
-**or a molwatch log** — which is how a PySCF attempt, whose deck is a `.py`,
-is decoded (shipped 2026-08-19; the claim rule's own note records the 2026-06
-deferral it closed). The curated engine-body summary and the plots remain
-SIESTA's; a PySCF attempt contributes its trajectory and its molwatch
-conclusion. One consolidated result per directory, with these fields:
+```
+{"state": running | stale | finished | failed,
+ "detail": "job_completed" | "no file growth in 92s" | ...,
+ "last_change_at": ISO-8601 | null,
+ "active_source": "<the file that answered>" | null}
+```
 
-- **`engine`** — **which engine ran**: `siesta` or `pyscf` (`unknown` when
-  nothing in the directory says). This is the field every consumer reads;
-  nobody downstream re-derives it from file shapes.
+**The status is the parsers' own answer.** Every engine parser already
+reports how its file ended — `run_state`, [`parse.md` § 2b](?doc=model/parse.md) —
+so `run_status` asks the registry for each result file: every `.out`, plus
+each `*.molwatch.log` whose footer concludes the run (the engine-neutral
+end-of-run marker, and the only one a PySCF attempt has). A molwatch log
+**without** a conclusion footer is a live view, not a result, and
+contributes nothing — which is what keeps a prep-time seed from ever
+steering the state.
 
-  **It is DECLARED at script-generation time, not inferred at read time** —
-  because generation is the only moment the answer is known for certain
-  (`script_emit` holds `DeckSpec.engine`), and a directory gets copied away
-  from everything that knew.
+Two things are settled here rather than in a parser, because they are not
+in the file:
 
-  **Two tiers, not a precedence list.**
+- **which file speaks for the directory** — a folder holds one `.out` per
+  run index and one molwatch log per stage, and a parser sees one file.
+  Highest stage, newest mtime.
+- **staleness** — a file with no ending marker is honestly *running*;
+  nothing in it separates a slow DFT step from a job the scheduler killed.
+  Only the filesystem can, so the age check (> 60 s without growth) lives
+  here.
 
-  | tier | Source | Written by |
-  |---|---|---|
-  | **declared** | the deck's **PROVENANCE `engine`** key (`job-contracts.md` § 3.2) | `script_emit.emit_provenance`, from `DeckSpec.engine` |
-  | **declared** | the wrapper's **PROVENANCE `engine`** key | `runwrap.render_run_wrapper`, from the deck's suffix — the closed `{.fdf → siesta, .py → pyscf}` map the seam owns (`EngineSeam.suffix`); any other suffix is a `WrapperError` before this point |
-  | **declared** | the **`.molwatch.log` `# engine:` header** | both generators, at file-emission time |
-  | *sniffed* | what files are present — the deck suffix, the wrapper's stdout name, and each engine's own `warm-files.toml` vocabulary (§ 4.2a) | nobody: the fallback for a directory molbuilder did not write |
+`failed` comes from a fatal marker in the `.out`, a torn run whose last SCF
+block did not converge, or an error footer in the molwatch log. Whether the
+SCF **converged** is deliberately not folded in: that is a fact the reader
+shows beside the state, never inside it.
 
-  **A declaration answers; the sniff is consulted only when there is
-  none.** Two engines never share a run directory, so the declarations
-  cannot disagree — if they somehow do, the answer is `unknown` rather
-  than a guess, which costs two lines and is the same posture
-  `contract_of` takes ([`parse.md` § 5b](?doc=model/parse.md)).
+Its consumer is the JobSet status layer (`molbuilder/jobset/runstatus.py`,
+per stage), which is what `jobset status` and the bench summary read.
 
-  **One value, one chain, and only the last link can be orphaned.** The
-  engine is chosen once, in the calculation's `task.json`
-  (`engine: {name}`); `prep` reads it to pick the per-engine seam
-  (`jobset/prep.py`); the seam's `spec_for` sets `DeckSpec.engine`; the
-  emitter writes that into PROVENANCE. So the three declarations above are
-  not three opinions -- they are one fact, recorded in three places so
-  that a run directory copied away from its description can still answer
-  for itself. That is the *only* reason the readback exists: a run
-  directory is the one artifact in the chain that travels alone.
-
-  `unknown` is a real answer and must stay reportable. A default that reads
-  as a live engine is worse than no answer: this field said `siesta`
-  unconditionally until 2026-09-04, so **every PySCF run directory in the
-  app reported itself as SIESTA** — a decoder whose own label says
-  "(SIESTA / PySCF)" answering for one of them.
-
-  > **The engine is not the parser, and one does not pick the other.** The
-  > engine says which vocabulary the run speaks. The **task** — optimization,
-  > transport, spectrum — says which files it produced, and therefore which
-  > parser reads them. **TranSIESTA is engine `siesta`**: same binary family,
-  > same `.fdf` contract, different task, and it may well have its own parser
-  > because it has a different dataset to show.
-  >
-  > **The parser is chosen by the FILE, and the engine is not consulted.**
-  > `registry.detect(path)` takes a path and nothing else; it collects every
-  > `can_parse` match and raises `AmbiguousFormatError` on more than one, so
-  > registration order confers no precedence. The engine is a fact reported
-  > *alongside* the parse, never an input to it. *(This section said the
-  > engine "narrows the parser pool" when it was written on 2026-09-04.
-  > Nothing narrows anything — no caller passes an engine into detection —
-  > and describing a mechanism that does not exist is the defect this
-  > document spends its length removing from others.)* That is why `engine` and
-  > `parser_name` are two fields and neither may stand in for the other —
-  > substituting one for the other is what sent `format: "molwatch"` (a
-  > format) to a client asking which engine ran.
-
-- **`job_type`** — `optimization` / `spectrum` / `transport`, inferred from the
-  script-contract BENCH-MARKS block or by sniffing the engine body
-  (`MD.Steps` → optimization; `%block ProjectedDensityOfStates` → spectrum;
-  `%block TS.Elec.*` → transport; conflicting matches raise
-  `JobTypeAmbiguousError`).
-- **`status`** — `running` / `stale` / `failed` / `finished`, derived from the
-  trajectory parsers' run-state over the directory's **result files**: every
-  `.out` (SIESTA's), plus every `*.molwatch.log` whose footer concludes the
-  run — the engine-neutral end-of-run marker, and the only one a PySCF
-  attempt has (its stdout is a `.log`, and SIESTA's `.out` convention never
-  applies).  A molwatch log **without** a conclusion footer is a live view,
-  not a result, and contributes nothing — which is what keeps a prep-time
-  seed from ever steering the state.  `finished` once the active result's
-  end-of-run marker appears, `failed` when a parser reports an errored run
-  (a fatal marker in the `.out`, a torn run whose last SCF block did not
-  converge, or an error footer in the molwatch log), `running` while the
-  active result keeps growing, `stale` when it stops growing for > 60 s
-  without finishing or failing.
-- **`engine_body_summary`** — a fixed set of 25 curated SIESTA directives
-  (System / SCF / XC / Solver / MD / k-mesh), emitted as **raw strings** with
-  `null` for absent keys — the decoder never interprets or converts values.
-- **`plots`** — per-stage buckets (etot/fmax per CG step, SCF residual/etot),
-  keyed by `.out` filename so stage boundaries stay visible.
-- **`progress`** — `current_cg_step`, `target_cg_steps`,
-  `current_scf_iter_global`, `stages_completed`, `stages_total_known`.
-
-The decoder is consumed today by the JobSet status layer
-(`molbuilder/jobset/runstatus.py`, which calls `decode_run_dir` per stage to
-report per-stage progress). It is exactly the decoder the planned web
-run-viewer will reuse (the status note below).
-
-> **Current status, stated honestly.** The directory decoder above is shipped
-> and live. The larger design it was drafted inside — a background `JobMonitor`
-> thread, `/api/jobs/{id}/decoded` + `decode-once` endpoints, a trigger/event
-> model, webhook delivery, a persisted `webhook_log.jsonl`, and per-iteration
-> **ETA** timing (`estimated_remaining_s` is a Phase-1 `None` stub) — is **not
-> built and has been superseded**: the forward plan reuses *this* shipped
-> decoder directly in the web front-end (see
-> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) workstream 1, "Batch execution reaches the
-> web"), rather than a separate monitor/webhook service. (The standalone
-> `molbuilder monitor` CLI poller in § 4.1 is a different, simpler subsystem —
-> don't conflate the two.)
-
----
+> **This was an eleven-field summary until 2026-09-04, and the other ten
+> fields are deleted rather than fixed.** `decode_run_dir` returned a
+> `JobResult` carrying job type, system label, geometry, plot buckets,
+> progress counters, a source-file index, a per-stage engine-input envelope
+> and a diagnostics block. Measured across the tree, **ten of the eleven had
+> no reader anywhere**, and the eleventh — this one — was obtained by parsing
+> every `.out` to build the plot data and then discarding it. 1,414 lines
+> produced one field that was used.
+>
+> Four code-quality defects went with them, none needing a fix: a second
+> `LatticeConstant` reader that disagreed with its sibling on units and
+> silently read an unknown unit as Bohr, a second `SystemLabel` regex that
+> returned a different answer on a directive with a trailing comment, a
+> private call into the `.XV` reader that bypassed the registered parser,
+> and a cell read from the input file while the coordinates came from the
+> output.
 
 ## 5. Configuration — `molbuilder.json`
 

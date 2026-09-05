@@ -25,7 +25,6 @@ from .errors import (AmbiguousFormatError, ParseError,
                      UnknownFormatError)
 from .registry import detect, parse, parse_dir, parse_text, register
 from .types import (
-    JobResult,
     ParseResult,
     ParseWarning,
     ScriptResult,
@@ -51,7 +50,7 @@ __all__ = [
     "FileParser", "TextParser", "DirParser",
     # Results
     "ParseResult", "TrajectoryResult", "StructureResult",
-    "SidecarResult", "ScriptResult", "JobResult",
+    "SidecarResult", "ScriptResult",
     "ParseWarning",
     # Registry / dispatch
     "detect", "parse", "parse_dir", "parse_text", "register",

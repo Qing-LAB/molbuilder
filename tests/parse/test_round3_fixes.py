@@ -19,7 +19,6 @@ import numpy as np
 import pytest
 
 from molbuilder.parse import parse
-from molbuilder.parse.dirs.job import _parse_engine_body_summary
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -85,35 +84,3 @@ def test_b1_round3_trajectoryresult_lattice_is_a_copy_not_a_share():
 # ---- I4: last-wins for duplicated fdf keys ----------------------- #
 
 
-def test_i4_last_wins_on_duplicated_fdf_keys():
-    """SIESTA's fdf parser uses last-wins on duplicated keys
-    (manual § 7.1).  A user pattern: a stub default at the top
-    of the file + an override later that the engine actually
-    reads.  engine_body_summary must reflect what SIESTA SAW,
-    not the first occurrence."""
-    fdf_text = (
-        "MeshCutoff 200.0 Ry\n"      # stub default
-        "PAO.BasisSize DZP\n"
-        "MeshCutoff 350.0 Ry\n"      # production override — wins
-    )
-    summary = _parse_engine_body_summary(fdf_text)
-    assert summary["MeshCutoff"] == "350.0 Ry"
-
-
-def test_i4_last_wins_three_overrides():
-    """Three overrides — last still wins."""
-    fdf_text = (
-        "SCF.Mixer.Weight 0.05\n"
-        "SCF.Mixer.Weight 0.02\n"
-        "SCF.Mixer.Weight 0.01\n"
-    )
-    summary = _parse_engine_body_summary(fdf_text)
-    assert summary["SCF.Mixer.Weight"] == "0.01"
-
-
-def test_i4_single_occurrence_still_works():
-    """Round-3 fix must not regress the common single-occurrence
-    case."""
-    fdf_text = "MeshCutoff 350.0 Ry\n"
-    summary = _parse_engine_body_summary(fdf_text)
-    assert summary["MeshCutoff"] == "350.0 Ry"

@@ -215,7 +215,7 @@ note records the deletion.)*
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **and the text of every file** | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` · `siesta/input` · `pyscf/input` · `runwrap` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `render_fdf` / `render_script` · `write_run_wrapper` · `render_sbatch` | `job-set.json` · the scripts · `.run.sh` · `.sbatch` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
 | **4** | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
-| **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `decode_run_dir` | — | write anything |
+| **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `run_status` | — | write anything |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
 **The rule that makes it a layering:** *a floor may call down and return up; it
@@ -1203,7 +1203,7 @@ vocabulary it speaks and who translates for it.
 | **V6** | **the job model** | `JobSet` · `Job` · `Resources` · `WarmFile` | § 3 of this document |
 | **V7** | **names on disk** | labels, stage tokens, filenames | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 |
 | **V8** | **structure labels** | regions, frozen atoms, annotations | `model/` |
-| **V9** | **observed state** | `JobResult` · `StageStatus` | floor 6 |
+| **V9** | **observed state** | the status envelope · `StageStatus` | floor 6 |
 
 ### 10.2 Every point where one becomes another
 
@@ -1233,7 +1233,7 @@ flowchart LR
 | **V2 → V5** | building the job's resources | floor 3, at `prep` | `resolve` — the allocation rides the element, a sweep axis enters only through its declared `MachineTranslation` | ❌ **a maintained table** — § 6.2 |
 | **V5 → SLURM** | building the command | **submit** | `render_sbatch` | ✅ from § 6.2 |
 | **label → V7** | naming any file | every route | **`identity` and nothing else** (A1) | ✅ |
-| **run dir → V9** | reading it back | observe | `decode_run_dir` | ✅ |
+| **run dir → V9** | reading it back | observe | `run_status` | ✅ |
 
 *(The V2 → V6 and V2 → V5 rows named "a producer" and `stages_to_jobset` as
 owners until 2026-08-12 — deleted with the fold (§ 2.1's row-3 note). The

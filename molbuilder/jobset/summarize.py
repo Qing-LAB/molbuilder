@@ -538,7 +538,16 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # omitting one of its measured coordinates sends a person to run at
     # something nobody benchmarked.  (Caught by `test_value_axes.py`, which
     # is the file that exists for exactly this axis, 2026-09-02.)
-    vocab = _pins_vocabulary(getattr(res, "engine", "") or "siesta")
+    # `res.system["engine"]` -- the description's own answer, put there by
+    # `_system_block` from `read_task`.  This read `getattr(res, "engine")`
+    # until 2026-09-04, and `BenchResult` has no such attribute: measured
+    # `hasattr(...) is False`, so the `or "siesta"` fired every time and a
+    # `getattr` was doing the work of a hardcoded literal while looking
+    # dynamic.  Harmless so far only because the bench lane refuses any
+    # non-SIESTA description by name (`_cli.py`) -- but this report is
+    # written for a person to read, so the day that lane admits PySCF it
+    # would offer SIESTA's pin vocabulary for a PySCF run.
+    vocab = _pins_vocabulary((res.system or {}).get("engine") or "siesta")
     for src in ((choice.get("point") or {}), (mech or {})):
         for name, val in sorted(src.items()):
             if name in vocab:

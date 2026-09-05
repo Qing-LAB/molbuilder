@@ -184,8 +184,8 @@ _L2_MODULES = {
     "spectra",           # spectra engines + script renderers
     "transport",         # transport engines + results (Phase B.2)
     "parse",             # unified parse module (Phase A+B+C+D shipped 2026-06-19;
-                         # composes engine/sidecar FileParsers + JobDirParser into
-                         # typed ParseResult outputs.  L2 because it composes
+                         # composes engine/sidecar FileParsers into typed
+                         # ParseResult outputs.  L2 because it composes
                          # per-engine parsers + ScriptSourceTextParser.)
     "projects",          # filesystem layout / naming rules
     "runtime_config",    # molbuilder.json reader

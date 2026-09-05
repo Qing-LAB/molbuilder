@@ -77,16 +77,10 @@ classDiagram
         atom_metadata · user_custom
         result_kind = "script"
     }
-    class JobResult {
-        job_type · status · progress · geometry ·
-        plots · source_files · parse_warnings
-        result_kind = "job"
-    }
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- ScriptResult
-    ParseResult <|-- JobResult
 ```
 
 Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
@@ -315,15 +309,15 @@ r = parse(Path("water.molstruct.json"))       # -> SidecarResult
 print(r.schema, r.payload)                     # e.g. "molstruct/v6", {...}
 ```
 
-**Decode a whole run directory** (what the Results tab consumes):
+**Ask how a run directory is doing** — not a parse, a small verb over
+several parses (`running-a-job.md` § 4.2):
 
 ```python
-from molbuilder.parse import parse_dir
+from molbuilder.parse.dirs.job import run_status
 
-job = parse_dir(Path("projects/BDT/optimization"))   # -> JobResult
-job.status       # how each source ENDED (§ 2b) + convergence beside it
-job.progress     # per-stage CG-step progress
-job.plots        # per-source plot buckets for the Results tab
+run_status(Path("projects/BDT/optimization/run-0"))
+# {"state": "finished", "detail": "job_completed",
+#  "last_change_at": "...", "active_source": "BDT-run0.out"}
 ```
 
 **Extract the reserved blocks from a `.fdf` / `.py` body** (a `TextParser` — no
@@ -339,8 +333,8 @@ s.provenance         # the PROVENANCE block, or None
 ```
 
 **Skip detection when you already know the type** — call the parser class's
-`parse()` directly. This is what most consumers do, e.g.
-`decode_run_dir(run_dir)` (`web/blueprints/results.py`).
+`parse()` directly, which is what `run_status` does for each result file it
+already knows the shape of.
 
 ---
 
@@ -383,7 +377,7 @@ molbuilder/parse/
 │   └── _helpers.py
 │
 └── dirs/          # directory composers (DirParsers)
-    ├── job.py                 # JobDirParser + decode_run_dir → JobResult
+    ├── job.py                 # run_status → how a run directory is doing
     ├── run_info.py            # run_info_for_dir → the `info` block (composer)
     ├── atom_metadata.py       # ATOM-METADATA for a run dir (read by web/watch)
     └── _assembler_helpers.py  # shared dir-walk + .fdf-coords helpers
@@ -399,11 +393,18 @@ molbuilder/parse/
 
 ## 5. Composer pattern — DirParsers
 
-A DirParser turns a whole run directory into one result. One ships:
+A DirParser turns a whole run directory into one result. **None ships
+today** — the ABC and `registry.parse_dir` remain as the shape a
+directory-level answer takes when one is needed, and `parse/dirs/` is where
+it would land.
 
-- **`JobDirParser`** (`dirs/job.py:892`; public entry `decode_run_dir` `:803`) →
-  `JobResult` — walks the `.out` files, consolidates per-source plots,
-  classifies the job type. This is what the Results tab + JobMonitor consume.
+*(`JobDirParser` → `JobResult` stood here until 2026-09-04: it walked the
+`.out` files, consolidated plot buckets and classified the job type into an
+eleven-field summary. Ten of those fields had no reader anywhere in the tree
+and the eleventh, `status`, was reached by building every plot and discarding
+it — so the status became its own verb, `dirs/job.run_status`, and the
+summary was deleted rather than repaired. `running-a-job.md` § 4.2 has the
+measurement.)*
 
 *(A second, `BundleDirParser` → `BundleResult` — the run-dir → next-calculation
 handoff fuse — stood beside it until 2026-08-29 and retired with

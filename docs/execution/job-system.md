@@ -1429,7 +1429,7 @@ Where each responsibility lives, for someone extending the framework:
 | The five steps (`prep_calculation`) — resolve, render decks + wrappers, carry-in, `STAGE-PLAN.md` — and the engine seam | `molbuilder/jobset/prep.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
 | Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |
-| Per-stage status roll-up (reuses `decode_run_dir`) | `molbuilder/jobset/runstatus.py` |
+| Per-stage status roll-up (reuses `run_status`) | `molbuilder/jobset/runstatus.py` |
 | The sweep's reader — trials' artifacts → `bench-result.json` (the pure timing parsers are `molbuilder/bench/result.py`) | `molbuilder/jobset/summarize.py` |
 | The decision ledger (`jobset-decisions.log`, one JSON object per decision) | `molbuilder/jobset/ledger.py` |
 | The CLI verbs (`molbuilder jobset …`) | `molbuilder/jobset/_cli.py` |

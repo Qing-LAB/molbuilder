@@ -382,7 +382,6 @@ def test_the_run_this_suite_just_generated_declares_its_own_engine(
     which is the failure this test exists to catch.
     """
     from molbuilder.parse.contract import _declared_in_provenance, engine_of
-    from molbuilder.parse.dirs.job import decode_run_dir
     from molbuilder.parse.scripts.provenance import _extract_provenance_dict
 
     run_dir = co2_optimization.parent
@@ -396,11 +395,6 @@ def test_the_run_this_suite_just_generated_declares_its_own_engine(
         f"to guessing from file shapes.")
 
     assert engine_of(run_dir) == "pyscf"
-    assert decode_run_dir(run_dir).engine == "pyscf", (
-        "`JobResult.engine` is the field the Results tab and JobMonitor "
-        "read. It was the literal 'siesta' for every directory until "
-        "2026-09-04, so every PySCF run in the app reported itself as "
-        "SIESTA.")
 
     assert _declared_in_provenance(run_dir) == {"pyscf"}, (
         "the DECLARATION must be what answered, not the file sniff. If "

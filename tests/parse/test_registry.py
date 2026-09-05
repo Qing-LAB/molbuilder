@@ -14,7 +14,6 @@ from molbuilder.parse import (
     AmbiguousFormatError,
     DirParser,
     FileParser,
-    JobResult,
     ParseResult,
     TextParser,
     TrajectoryResult,
@@ -71,10 +70,11 @@ def test_engine_parsers_registered():
     assert "molwatch" in names
 
 
-def test_job_dir_parser_registered():
-    """JobDirParser from Phase B lands in the DirParser registry."""
-    dir_parsers = _registered_dir_parsers()
-    assert any(p.name == "job-dir" for p in dir_parsers)
+# `test_job_dir_parser_registered` stood here until 2026-09-04.
+# `JobDirParser` was the only registered DirParser and it retired
+# with the eleven-field summary it produced; `parse_dir` and the
+# `DirParser` ABC remain for the next composer that needs them
+# (`parse/dirs/__init__.py`).
 
 
 # Detection + dispatch ------------------------------------------------- #
@@ -109,17 +109,6 @@ def test_parse_siesta_out_returns_trajectoryresult():
     assert result.parser_name == "siesta"
     # Frames carry over from the legacy parser.
     assert len(result.frames) > 0
-
-
-def test_parse_dir_dispatches_jobdirparser(tmp_path):
-    """parse_dir on a project dir routes to JobDirParser."""
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from support.junction import run_dir
-    result = parse_dir(run_dir(tmp_path))
-    assert isinstance(result, JobResult)
-    assert result.result_kind == "job"
-    assert result.parser_name == "job-dir"
 
 
 def test_parse_dir_on_non_directory_raises():

@@ -9,7 +9,7 @@ the warm-restart files there?* and *which is the first incomplete stage* (the
 one to resume from) — so the manual continue is a one-glance decision.
 
 REUSE, not reinvention: per-stage run state comes from
-``parse.dirs.job.decode_run_dir`` (the directory decoder behind the Results
+``parse.dirs.job.run_status`` (the directory-level status verb behind the Results
 tab + JobMonitor; its schema is pinned by ``execution/running-a-job.md``
 § 4, the composer pattern by ``model/parse.md`` § 5); this module only adds the cross-stage
 view (warm-file inventory + first-incomplete pointer).  It is **read-only**:
@@ -52,7 +52,7 @@ def _warm_files(engine: str):
     except Exception:
         return ()
 
-# decode_run_dir states we treat as "this stage is done".
+# run_status states we treat as "this stage is done".
 _DONE = "finished"
 
 
@@ -196,11 +196,10 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         return ("queued", (f"queued as job {jid}" if jid
                            else f"launched ({mode}), no output yet"))
     try:
-        from ..parse.dirs.job import decode_run_dir
-        res = decode_run_dir(observed)
-    except Exception as e:                    # decoder is fail-soft; stay informative
+        from ..parse.dirs.job import run_status
+        st = run_status(observed)
+    except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
-    st = res.status or {}
     return (st.get("state", "unknown"), st.get("detail", ""))
 
 

@@ -76,7 +76,7 @@ builds geometry, or runs a job.
 | `config/` | L1 | the engine-knob **dataclasses** (the lingua franca) + field metadata | `SiestaConfig`, `PySCFConfig` (the two base engine configs; `config/spectra.py` and `config/transport.py` are higher-level wrappers that resolve to them) |
 | `trajectory_log/` | L1 | the molwatch progress-log format + writer | `format`, `emitter` |
 | `persist.py` | L1 | versioned-doc schema check + atomic JSON IO | `schema_major`, `check_schema_major`, `read_json`, `write_json` |
-| `parse/` | L2 | the single **read-side** stack: File / Text / Dir → typed `ParseResult` | `parse.registry.{parse,parse_dir,parse_text}`; `parse.dirs.job.decode_run_dir` — see [`model/parse.md`](?doc=model/parse.md) |
+| `parse/` | L2 | the single **read-side** stack: File / Text / Dir → typed `ParseResult` | `parse.registry.{parse,parse_dir,parse_text}`; `parse.dirs.job.run_status` — see [`model/parse.md`](?doc=model/parse.md) |
 | `sidecars/` | L2 | write-side `.molstruct` / `.spectra` / `.transport` JSON | `molstruct.{to_dict,save,load,apply_to_structure}` |
 | `workingcopy_structure.py` | L2 | the paired `.xyz`+`.molstruct.json` file door — one generator, one adapter per destination | `StructureCodec.{pair,files,write,read}` — see [`model/structure.md`](?doc=model/structure.md) § 2.4 |
 | `script_emit.py` | L2 | write-side of the generated-script reserved blocks | `emit_header` / `emit_provenance` / `emit_bench_marks` / `emit_atom_metadata` |
@@ -249,7 +249,7 @@ flowchart LR
     RUN["jobset prep / submit<br/>runwrap · envs"]
   end
   subgraph D["DATA (read-back)"]
-    RB["parse.decode_run_dir<br/>→ Frame / Trajectory"]
+    RB["parse.dirs.job.run_status<br/>→ how the run is doing"]
   end
   B -->|Structure| VA -->|gated Structure+Config| EM -->|input text| RUN -->|runs the job| RB
 ```

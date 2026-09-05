@@ -1729,12 +1729,12 @@ working tree — there is no older data to preserve, and building a migration pa
 for data that does not exist is how a format acquires a legacy before it has
 users.
 
-> **The decoded run is not a file.** `decode_run_dir(run_dir)` returns an
-> in-memory `JobResult` dataclass served to the Results tab and consumed by
-> `jobset/runstatus.py`; nothing writes a `decoded.json`. Its bare-integer
-> `schema_version` predates the `@major` convention — do not copy that for
-> anything new. Its full field set and the run-monitoring story live in
-> `execution/running-a-job.md`.
+> **A run's status is not a file.** `run_status(run_dir)` answers it in
+> memory, from the parsers' own `run_state` plus the two facts only the
+> filesystem holds; nothing writes a `decoded.json`. It is consumed by
+> `jobset/runstatus.py` per stage. *(A `decode_run_dir` returning an
+> eleven-field `JobResult` stood here until 2026-09-04 — ten of its fields
+> had no reader; see `running-a-job.md` § 4.2.)*
 
 **Schema-string convention:** `molbuilder/<name>@<major>`. A reader checks the
 **name and the major** — tolerating same-major minor bumps, rejecting a
