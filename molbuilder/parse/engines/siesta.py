@@ -61,11 +61,11 @@ _SIESTA_NODES_RE   = re.compile(
     r"^\s*\*\s*Running on\s+(\d+)\s+nodes? in parallel", re.IGNORECASE)
 _SIESTA_HOST_RE    = re.compile(
     r"^\s*Running on host:\s*(\S+)", re.IGNORECASE)
-# Matches the same shape as the molwatch runtime header (so /spectra
-# script writers + Build SIESTA writers can use IDENTICAL line
-# format; cf. molbuilder.runtime_info docstring).
-_SIESTA_RUNTIME_RE = re.compile(
-    r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+# The runtime header is the SAME line format as the molwatch log's, so
+# /spectra script writers and Build SIESTA writers emit IDENTICAL lines
+# (cf. molbuilder.runtime_info, which owns the write side).  A private
+# `_SIESTA_RUNTIME_RE` copy stood here until 2026-09-05; the grammar is
+# read by `molwatch.parse_runtime_line`, which owns it.
 
 # Convergence-target echo lines from SIESTA's ``redata:`` preamble.
 # Captured into ``runtime_info["convergence_targets"]`` so the Results
@@ -1540,18 +1540,13 @@ class SiestaParser:
             if m:
                 runtime_info["hostname"] = m.group(1).strip()
                 return True
-            m = _SIESTA_RUNTIME_RE.match(line)
-            if m:
-                key, val = m.group(1), m.group(2).strip()
-                if val == "None":
-                    runtime_info[key] = None
-                elif val in ("True", "False"):
-                    runtime_info[key] = (val == "True")
-                else:
-                    try:
-                        runtime_info[key] = int(val)
-                    except ValueError:
-                        runtime_info[key] = val
+            # ONE reader of the runtime-header grammar, in the module that
+            # owns it.  A character-identical copy of the coercion stood
+            # here until 2026-09-05; the format is deliberately shared with
+            # the molwatch log, and a shared format read by two copies is
+            # how the convergence header drifted on 2026-08-19.
+            from .molwatch import parse_runtime_line
+            if parse_runtime_line(line, runtime_info):
                 return True
             # Convergence-target probes (SIESTA's ``redata:`` echo
             # block at run start).  Each line is matched at MOST

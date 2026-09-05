@@ -211,9 +211,12 @@ def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
 # all start with ``#`` and appear before the first ``==== molwatch
 # step N begin ====`` block; footer markers (``# concluded:`` /
 # ``# error:``) appear after the last ``==== ... end ====`` block.
-_MW_STEP_BEGIN_RE  = re.compile(r"====\s*molwatch\s+step\s+\d+\s+begin\s*====")
-_MW_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
-_MW_ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
+# The step-begin marker and the footer grammar belong to the molwatch
+# format, so they are imported from the module that owns it.  Private
+# copies of all three stood here until 2026-09-05 -- byte for byte the
+# same, padding included -- which is exactly how the convergence header
+# below came to drift.
+from .molwatch import _BEGIN_RE as _MW_STEP_BEGIN_RE   # noqa: E402
 # The convergence-header grammar has ONE reader --
 # ``molwatch.parse_convergence_line`` (imported in
 # ``_read_molwatch_metadata``).  The private regex + coercion that
@@ -283,17 +286,13 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
         tail = tail_bytes.decode("utf-8", errors="replace")
     except OSError:
         return out
+    # ONE reader of the footer grammar, and it owns the precedence too:
+    # error outranks concluded, last error wins.  That rule used to be
+    # spelled out here as well as in `molwatch`, in two copies free to
+    # disagree about which marker beats which.
+    from .molwatch import parse_conclusion_line
     for raw in tail.splitlines():
-        m_err = _MW_ERROR_RE.match(raw)
-        if m_err:
-            out["run_state"] = "stopped"
-            out["error_message"] = m_err.group(1).strip()
-            # Error takes priority — keep scanning so a later concluded
-            # doesn't downgrade us, but error_message wins.
-            continue
-        m_con = _MW_CONCLUDED_RE.match(raw)
-        if m_con and out.get("run_state") != "stopped":
-            out["run_state"] = "ended"
+        parse_conclusion_line(raw, out)
     return out
 
 

@@ -89,6 +89,7 @@ _CONVERGENCE_RE = re.compile(
     # same fragment, because the drift lived exactly in its inline copy.
     r"^#\s*convergence\.(" + _CONV_KEY + r"):\s*(.*)$")
 _ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
+_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
 
 
 def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
@@ -143,6 +144,80 @@ def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
         return True
     targets[full_key] = _coerce(val)
     return True
+
+
+def parse_runtime_line(line: str, runtime_info: Dict[str, Any]) -> bool:
+    """Apply one ``# runtime.<key>: <value>`` header line to
+    ``runtime_info`` and return whether the line matched.
+
+    **THE one reader of the runtime-header grammar**, and the sibling of
+    :func:`parse_convergence_line` above -- same shape, same reason.
+
+    The FORMAT is shared on purpose: `siesta.py` notes that the /spectra
+    script writers and the Build SIESTA writers *"use IDENTICAL line
+    format"*, and `molbuilder.runtime_info` owns the write side.  What was
+    not shared was the READER.  Until 2026-09-05 this module and
+    `engines/siesta.py` each carried their own regex and a
+    character-identical ten-line coercion -- so a `.molwatch.log` and a
+    `.out` carrying the same header were parsed by two copies of one
+    grammar, free to drift apart the way the convergence header already
+    did (a private copy read a staged header as EMPTY, 2026-08-19).
+
+    Coercion, in order: ``None`` -> ``None``; ``True`` / ``False`` ->
+    ``bool``; anything ``int()`` accepts -> ``int``; otherwise the raw
+    string.  Floats stay strings, which is the behaviour both copies had
+    and is not changed here -- a value like ``1.5`` was never coerced by
+    either reader, and widening it belongs with whoever needs it.
+    """
+    m = _RUNTIME_RE.match(line)
+    if not m:
+        return False
+    key, val = m.group(1), m.group(2).strip()
+    if val == "None":
+        runtime_info[key] = None
+    elif val in ("True", "False"):
+        runtime_info[key] = (val == "True")
+    else:
+        try:
+            runtime_info[key] = int(val)
+        except ValueError:
+            runtime_info[key] = val
+    return True
+
+
+def parse_conclusion_line(line: str, out: Dict[str, Any]) -> bool:
+    """Apply one ``# error:`` / ``# concluded:`` FOOTER line to ``out``
+    and return whether the line matched.
+
+    **THE one reader of the conclusion-footer grammar**, and the third
+    sibling of :func:`parse_convergence_line` and
+    :func:`parse_runtime_line`.
+
+    ``engines/pyscf.py`` kept private copies of both regexes -- byte for
+    byte the same right-hand side, padding included -- until 2026-09-05,
+    so a `.molwatch.log` read through the trajectory path and the same
+    file read through the molwatch path answered from two copies of one
+    grammar.  The convergence header in this same file already drifted
+    that way (2026-08-19), which is why the rule here is one reader, not
+    two that happen to agree.
+
+    **Error outranks concluded, and the LAST error wins.**  A log is
+    appended across attempts, so a later `# error:` describes a later
+    attempt; a `# concluded:` after an error does not un-fail the run,
+    because the error is the more specific claim.  Callers scan in file
+    order and let this decide.
+    """
+    m = _ERROR_RE.match(line)
+    if m:
+        out["run_state"] = "stopped"
+        out["error_message"] = m.group(1).strip()
+        return True
+    if _CONCLUDED_RE.match(line):
+        if out.get("run_state") != "stopped":
+            out["run_state"] = "ended"
+        return True
+    return False
+
 
 
 def _maybe_float(token: str) -> Optional[float]:
@@ -217,19 +292,7 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
             engine = m.group(1)
 
     def _on_runtime(line: str, line_no: int) -> None:
-        m = _RUNTIME_RE.match(line)
-        if not m:
-            return
-        key, val = m.group(1), m.group(2).strip()
-        if val == "None":
-            runtime_info[key] = None
-        elif val in ("True", "False"):
-            runtime_info[key] = (val == "True")
-        else:
-            try:
-                runtime_info[key] = int(val)
-            except ValueError:
-                runtime_info[key] = val
+        parse_runtime_line(line, runtime_info)
 
     def _on_convergence(line: str, line_no: int) -> None:
         """``# convergence.<key>: <value>`` populates
@@ -415,7 +478,7 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
         SectionRule(
             name="concluded",
             aliases=["# concluded: ..."],
-            start=matches_regex_ci(r"^#\s*concluded:\s*."),
+            start=matches_regex_ci(_CONCLUDED_RE.pattern),
             on_start=_on_concluded,
         ),
         SectionRule(

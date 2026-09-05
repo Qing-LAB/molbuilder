@@ -109,6 +109,21 @@ SCHEMA_VERSION = 9   # 9 (2026-08-29): + the OPTIONAL `info` block (the
 #: ``frozen_atoms``), and partial reads of those are the silent-loss case the
 #: strict gate exists for -- so the set widens only when an addition is
 #: provably additive.
+#:
+#: **AND ONLY WHEN A READER HAS BEEN RUN AGAINST A FILE AT EACH VERSION
+#: CLAIMED.**  That is the check, not the reasoning: this list ran
+#: ``(3, 4, 5, 6)`` on the argument that every bump was additive, and the
+#: argument stopped being true at 7 -- which moved ``frozen_atoms`` out of
+#: its own top-level key and into ``regions``.  A v3 file passed the gate,
+#: and then ``load_text`` -- which reads the keys it NAMES -- never named
+#: the old one.  The atoms did not fail to load; **they were never looked
+#: for.**  A junction came back with its 50 frozen electrode atoms gone,
+#: ``Geometry.Constraints`` vanished from the generated SIESTA input, and
+#: the run converged on a structure nobody asked for (2026-07-31).
+#:
+#: Each version in the set below is read by a test against a real file at
+#: that version (``tests/test_molstruct_json.py::TestSchemaVersioning``);
+#: adding a fourth without one is how the above happens again.
 READABLE_VERSIONS = frozenset({7, 8, 9})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a

@@ -34,24 +34,15 @@ from molbuilder.sidecars.molstruct import (
 from ._helpers import build_sidecar_result
 
 
-# READABLE SCHEMA VERSIONS: the current one, and nothing else.
+# The readable-version gate is `sidecars.molstruct.READABLE_VERSIONS`,
+# imported above and used by `load_text` below.
 #
-# This list used to run (3, 4, 5, 6), on the reasoning that each bump was
-# additive and an older file would simply come back with the newer fields
-# empty.  That reasoning stopped being true at 7, and the way it stopped is
-# worth keeping: 7 moved ``frozen_atoms`` out of its own top-level key and into
-# ``regions``.  A v3 file passed this gate, and then ``load_text`` -- which
-# reads the keys it NAMES -- never named the old one.  The atoms did not fail
-# to load; they were never looked for.  A junction came back with its 50 frozen
-# electrode atoms gone, ``Geometry.Constraints`` vanished from the generated
-# SIESTA input, and the run converged on a structure nobody asked for.
-#
-# So the gate is STRICT (2026-07-31, by decision): one version, and a file at
-# any other is refused with instructions rather than read into something it is
-# not.  An additive bump can widen this again -- but only when a reader has been
-# run against a file at each version it claims, which is the check that was
-# missing rather than the tuple.
-_READABLE_SCHEMA_VERSIONS = (SCHEMA_VERSION,)
+# A private `_READABLE_SCHEMA_VERSIONS = (SCHEMA_VERSION,)` stood here
+# until 2026-09-05 with eighteen lines arguing for a STRICT one-version
+# gate -- while the gate that runs accepts three.  It was read by
+# nothing, so the argument was decoration and the disagreement was
+# invisible.  The reasoning it carried was not wasted and now lives
+# with the live constant, where a person changing the set will meet it.
 
 
 def _normalised_dict(
