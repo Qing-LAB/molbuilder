@@ -324,6 +324,155 @@ that is not `active`'s question — see the withdrawn row above:
 3. Delete the absorbed functions and sweep their documents.
 4. Re-run the caller map above and require it to come back empty.
 
+---
+
+## 5d. The script blocks belong to their writer — retiring `parse/scripts/`
+
+*(Agreed 2026-09-05. Contract: [`model/parse.md` § 1 / § 6](?doc=model/parse.md)
+and [`execution/job-contracts.md` § 3.1](?doc=execution/job-contracts.md).
+**Not started.** This section is the plan; the caller map below is the
+completeness check.)*
+
+### The category error
+
+`parse/` exists to read **foreign** formats — a `.out` that might be SIESTA or
+PySCF, a `.XV`, a `.MD.nc`. That is why it has a registry, `can_parse`, and
+detection: *"every consumer imports from here and **queries the registry
+rather than knowing which parser to call**"* (§ overview).
+
+The script-contract reserved blocks are **not foreign**. molbuilder writes
+them, into a file molbuilder generated, and every caller already knows which
+block it wants. There is nothing to detect. Applying a detect-and-dispatch
+tier to a question with one possible answer is what made every class in it
+ceremony:
+
+```python
+# ProvenanceTextParser.parse — the entire body
+base = empty_script_result(cls.name)          # a 10-field object …
+return replace(base, provenance=_extract_provenance_dict(text))   # … to carry one dict
+```
+
+`parse.md` § 1 says as much without drawing the conclusion: **"`TextParser`
+has no detection — a text body has no path to inspect, so the caller names
+the parser."** An ABC in a detection package that does not detect.
+
+### The evidence that they are one module split in two
+
+Measured 2026-09-05, not inferred:
+
+1. **The readers import the format from the writer.** `parse/scripts/markers.py`
+   is 40 lines of pure re-export from `script_emit`, and says why: *"so the
+   read-side parsers stay in lock-step with the write-side emitters — one
+   spelling of every marker, not two."*
+2. **The writer imports the readers back.** `script_emit.py` is the single
+   biggest consumer of the extractors — lines 606, 611, 722, 730, 791, 795,
+   799, 803, 807, 811.
+3. **Which deadlocks, and the deadlock was papered over.** `script_emit.py`
+   carries a `_LAZY_EXTRACTORS` table whose comment reads: *"an eager
+   top-level import would **deadlock** because markers.py re-exports `BLOCK_*`
+   + `MARKER_RE` from this module."* The split created a circular import; the
+   workaround has been shipping since.
+4. **The one class with a production user justifies itself circularly.**
+   `parse/dirs/atom_metadata.py` says its glob/read helper lives apart
+   *because* the TextParser is memory-only under § 7 forbidden #2 — a rule
+   that exists only because TextParser exists.
+
+**The move therefore deletes a circular dependency and a lazy-import
+workaround.** That is the structural gain; the line count is a side effect.
+
+### The shape
+
+One module owns the block format **in both directions**: it emits the blocks
+and reads them back. `parse/` keeps `FileParser` and `DirParser` for foreign
+formats and loses `TextParser`, which has no other implementation.
+
+```python
+from molbuilder.script_emit import read_script
+read_script(text).provenance          # instead of reaching for a private fn
+```
+
+### The complete caller map, measured
+
+Every user of every symbol in `parse/scripts/`, counted by AST + grep over
+`molbuilder/` and `tests/` on 2026-09-05.
+
+| symbol | production users | verdict |
+|---|---|---|
+| `_extract_atom_metadata_dict` | `script_emit` ×3, `transport/compose` ×2 | **moves** — real work |
+| `_extract_bench_marks_dict` | `script_emit`, `jobset/agreement` ×2, `jobset/summarize` ×2 | **moves** |
+| `_extract_provenance_dict` | `script_emit`, `parse/contract` ×2 | **moves** |
+| `_extract_header_text` | `script_emit` | **moves** |
+| `_extract_user_custom_inner` | `script_emit` ×3 | **moves** |
+| `_extract_script_source` | `script_emit` (lazy re-export only) | **moves**, carrying the schema-version gate |
+| `markers.py` | re-export of `script_emit`'s own constants | **deleted** — the constants are already home |
+| `AtomMetadataTextParser` | `parse/dirs/atom_metadata.py` ×3 | **deleted**; that caller takes the function |
+| `BenchMarksTextParser` | none | **deleted** |
+| `HeaderTextParser` | none | **deleted** |
+| `ProvenanceTextParser` | none | **deleted** |
+| `UserCustomTextParser` | none | **deleted** |
+| `ScriptSourceTextParser` | `parse/__init__` re-export only | **deleted** |
+| `empty_script_result` | none anywhere | **deleted** |
+| `ScriptResult` | `parse/__init__` re-export, `types.py` definition | **deleted** — no reader, `result_kind "script"` never checked |
+
+**The two umbrellas fold into one.** `source.py` (71 lines, pure ceremony) and
+`source_dict.py` (153 lines, the extractor **plus the only copy of the
+schema-version gate**) become one `read_script`. `source_dict.py`'s docstring
+has flagged this overlap as deferred since it was written, pending *"its own
+careful pass over the run decoder"* — the run decoder was deleted 2026-09-04,
+so the deferral has no remaining condition.
+
+### What this costs the contract
+
+`parse.md` goes from **three ABCs to two**. The sections that follow:
+
+* § 1 — the ABC table loses its `TextParser` row.
+* § 2 — `ScriptResult` leaves the hierarchy; the class diagram and the
+  discriminator list follow.
+* § 3 — `parse_text(text, parser)` loses its last caller. **Decide: delete it,
+  or keep it as a public seam with no implementation?** *(Recommendation:
+  delete. A registry function that can dispatch to nothing is the same
+  scaffolding as `parse_dir` without a DirParser, which § 5 already carries a
+  warning about.)*
+* § 4 — the layout tree loses `scripts/`.
+* § 6 — the "Block TextParser" row goes.
+* § 7 — forbidden #2 is *"TextParsers do NO I/O"*, and the ABC it names is
+  going. **The RULE stays and moves with the code**: these extractors are pure
+  text functions, and one that started reading files would be a real defect,
+  ABC or not. Re-aim it at the extractors in their new home — *"the block
+  readers take a string; reading the file is the caller's job"* — and keep
+  BOTH guards pointed there (`test_scripts.py::test_text_parsers_do_no_io`
+  and `test_audit_gaps.py::test_forbidden_p2_textparsers_do_no_io`, which
+  lints `parse/scripts/*.py` for I/O tokens and needs its path changed).
+  Retiring an ABC is not a reason to retire the property it happened to
+  carry.
+
+`job-contracts.md` § 3.1 owns the block format and gains the read half beside
+the emit matrix it already documents.
+
+### Order of work, and what proves each step
+
+1. **Doc first** — this section, plus the § 1 / § 2 / § 6 / § 7 edits, agreed
+   before any code moves.
+2. **Move the six extractors** to the writer, unchanged. Proof: the extractors'
+   own tests pass against the new home with no edits to the assertions.
+3. **Give it one door.** `read_script(text)` — one pass, all blocks, the
+   schema-version gate included. Measured cost of reading all six on a real
+   442-line deck: **0.55 ms vs 0.22 ms** for one, so a per-block door buys
+   nothing.
+4. **Route the three real callers** — `parse/contract.py`, `jobset/summarize.py`
+   + `jobset/agreement.py`, `transport/compose.py` — off the private imports
+   and onto the door. Proof: no `_extract_` name is imported across a package
+   boundary anywhere (a lint, since this is the defect the move exists to fix).
+5. **Delete the ceremony** — six classes, `ScriptResult`, `empty_script_result`,
+   `markers.py`, and the `_LAZY_EXTRACTORS` workaround with the circularity
+   that forced it. Proof: `script_emit` imports the extractors **eagerly** and
+   the suite is green — the deadlock is gone, not hidden.
+6. **Retire the contract text** in the order above.
+
+**The completeness check is step 4's lint**: after the move, a private
+`_extract_*` name imported from another package is a failure, not a style note.
+
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |

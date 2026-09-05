@@ -394,12 +394,21 @@ def test_error_stops_the_poll_but_does_NOT_release_its_controller():
 
     This was `test_error_releases_the_request_that_failed`, asserting
     *"a failed load must not leave its controller behind"*.  It does
-    leave it behind: `core.js`'s ERROR branch clears `watchTimer` and
-    `watchInFlight` and never calls `.abort()`, unlike IDLE, LOADING and
-    LOADED, which all do.  The test's one assertion was
-    `timerRunning is False` — an exact duplicate of the `("ERROR",
-    False)` row of the parametrized test above — so it passed while its
-    name and docstring taught the opposite of the code.
+    leave it behind: `lib/trajectory/core.js`'s ERROR branch calls
+    `stopPolling()`, clears `pollInFlight` and never calls `.abort()` —
+    deliberately, per the branch's own comment: *"keeps last-good
+    fileState in place so the user still sees what they had."*  IDLE and
+    LOADING abort here; LOADED and ERROR do not.  The old test's one
+    assertion was `timerRunning is False` — an exact duplicate of the
+    `("ERROR", False)` row of the parametrized test above — so it passed
+    while its name and docstring taught the opposite of the code.
+
+    **Mind which `core.js`.**  There are two, and they differ here:
+    `lib/spectra/core.js` uses `watchAbort` / `watchTimer` and aborts on
+    IDLE, LOADING, LOADED **and** (since 2026-09-05) ERROR; this one uses
+    `loadAbort` / `pollAbort` / `pollTimer` and aborts on two.  The first
+    version of this docstring described the spectra file's branches while
+    testing this one.
 
     Asserted here as OBSERVED behaviour, not as a rule: no document
     states an abort contract for ERROR, and inventing one in a test is

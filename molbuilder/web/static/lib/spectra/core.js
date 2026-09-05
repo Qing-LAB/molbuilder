@@ -377,6 +377,27 @@
                 clearInterval(state.lifecycle.watchTimer);
                 state.lifecycle.watchTimer = null;
             }
+            // ABORT, as IDLE, LOADING and LOADED all do.  A no-op today:
+            // both callers of transition('ERROR') live in `loadByPath`,
+            // which passes through LOADING first, and LOADING aborts -- so
+            // nothing is ever in flight by the time we get here.
+            //
+            // It is here because ERROR was the ONE branch that did not shut
+            // the door, and the door is what `watchTick`'s resolution guard
+            // depends on: `signal.aborted` is the only thing that catches a
+            // tick which has already SETTLED but not yet continued, and a
+            // path check alone lets it through (see the note there).  ERROR
+            // does not clear `fileState.path` either, so both guards would
+            // pass -- the continuation would repaint the body and
+            // `_settlePostLoad` would restart the very poll timer this
+            // branch just stopped, wiping the error the user is reading.
+            //
+            // Unreachable today, one line from reachable the moment anyone
+            // calls transition('ERROR') from a path that has not aborted.
+            if (state.lifecycle.watchAbort) {
+                try { state.lifecycle.watchAbort.abort(); } catch (_) {}
+                state.lifecycle.watchAbort = null;
+            }
             state.lifecycle.watchInFlight = false;
             state.machine = "ERROR";
             return;
