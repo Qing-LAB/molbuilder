@@ -846,11 +846,19 @@ def api_build_load():
         except _molstruct.MolstructJsonError as exc:
             load_notices.append({
                 "level":   "warn",
+                # NO "re-save to fix it" HERE, deliberately.  The sibling
+                # notice in `apply_inbody_atom_metadata` ends that way and is
+                # right to: that reader RECOVERED the labels, so saving
+                # stores them in the current form.  This one did not recover
+                # them -- saving now would write the structure without them
+                # and make the loss permanent.  Advice that fits the other
+                # reader's outcome is worse than no advice.
                 "message": (
                     f"The run's own atom labels could not be read, so this "
-                    f"structure has none: {exc}  The geometry is unaffected. "
-                    f"Re-save the structure to store its labels in the "
-                    f"current form."),
+                    f"structure has none: {exc}  The geometry is unaffected "
+                    f"-- only the labels are missing, and they are still in "
+                    f"the run's own script. Saving this structure will not "
+                    f"bring them back."),
                 "where":   "labels.atom_metadata_unreadable",
                 "about":   "labels",
             })
