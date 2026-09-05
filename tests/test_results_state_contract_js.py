@@ -1,62 +1,38 @@
-"""**`results.md` § 4 — what a mounted viewer remembers — enforced.**
+"""What is LEFT of `results.md` § 4's source pins — two, and why.
 
-§ 4 states the shape in plain language: the parsed file (replaced whole on a
-file switch, never patched), your per-file view, your per-session preferences,
-and the poll timer.  The code names those buckets `fileState`, `viewState`,
-`uiPrefs` and `lifecycle`, moves between them through one `transition()`, and
-backs the whole thing with the two guards § 4 names -- a late response from a
-previous file cannot write into the current view (via the path each answer
-carries -- `lifecycle.fetchSeq` did this until 2026-09-04, see the retirement
-note below),
-and in-progress frames stay out of the plots -- plus § 4.1's two-tick settle.
+This file held 28 tests that read `lib/trajectory/core.js` as text. Over
+2026-09-04 twenty-six were replaced by tests that RUN the code
+(`test_trajectory_transition_js.py`,
+`test_in_progress_frames_stay_out_of_plots.py`), each one mutation-verified
+against the defect it claims to catch, and each deletion made only after
+its replacement was green.
 
-**These tests are the only place any of that is checked.**
+Two remain, for stated reasons rather than by omission:
 
-> **They were nearly deleted on 2026-09-02.**  A survey found their
-> vocabulary in *zero* live documents -- `fileState`, `fetchSeq`, `uiPrefs`
-> appear only in the design proposal this contract replaced -- and concluded
-> the file pinned a retired design.  It does not: `lib/trajectory/core.js` is
-> 3,212 lines built exactly this way, `fileState` alone appears 54 times in
-> it, and § 4 describes the same four buckets in prose.  What was true is
-> that the NAMES had no live home and the § 13 citations below pointed into
-> `archive/`, which the project's own rule says to open for history and never
-> to decide what is open now.  § 4 now names the buckets and § 4.1 states the
-> settle rule; the citations point there.
->
-> **The lesson is about the survey, not the tests.**  A vocabulary search
-> across documents cannot tell a retired design from an undocumented one, and
-> the two want opposite actions.
+* **`test_helper_called_from_loadByPath`** — a wiring assertion. The
+  behavioural version means driving `loadByPath`, which is 206 lines
+  touching ~35 collaborators including the DOM, Blob and the MolView
+  mount. The harness would be larger than the thing it tests and brittle
+  with it. The consequence if it broke is also small: a load of an
+  already-finished run would settle one poll later instead of at once.
+  The same wiring on the POLL side — where the consequence is a finished
+  run re-fetched every 15 s for ever — is covered behaviourally in
+  `test_trajectory_transition_js.py::test_a_poll_that_finds_the_run_
+  ended_settles_it`.
 
-> **Nine of these were deleted on 2026-09-04, and what remains is itemised.**
-> The claim above — *"These tests are the only place any of that is
-> checked"* — was false for three behaviours and was tested rather than
-> believed:
->
-> * **§ 4.1's two-tick settle was already covered**, by
->   `test_trajectory_settle_post_load_js.py`, which drives
->   `_settlePostLoad` in node. Breaking the buffer fails it.
-> * **`IDLE` clearing `fileState.path` was covered by NOTHING** — the
->   mutation passed 84 tests. That null is what makes a late answer for a
->   disposed file fail the path guard.
-> * **`LOADED` stopping the timer** was caught here and only here, by a
->   grep for the string `stopPolling()`.
->
-> The last two now have behavioural tests in
-> `test_trajectory_transition_js.py`, mutation-verified, and the nine pins
-> they duplicate are gone.
->
-> **What is left in this file still has no behavioural cover**, and is kept
-> for that reason alone: the refresh-listener wiring, `plottableFrames`'
-> in-progress filter and its adapter chain, `_settlePostLoad` being called
-> from both loaders, and the `snap` retirement guard. Each is a candidate
-> for the same treatment — run the function, assert the outcome — not for
-> deletion.
+* **`test_applyNewData_routes_writes_through_transition`** — not a
+  spelling pin but a NEGATIVE LINT (`process/testing.md` § 6): it
+  quantifies over a function body for a family of forbidden writes
+  (`state.mtime =`, `state.data =`, …) that would bypass § 4's single
+  entry point. It fails when an offender appears, which is the shape
+  § 6 sanctions.
 
-**Read as SOURCE-PINNING, and that is a real limitation.**  Most of what
-follows greps `core.js` for structure rather than running it.  That catches a
-refactor that removes a guard and cannot catch one that keeps the shape and
-breaks the behaviour; the behavioural half lives in the e2e tests § 10 lists.
-Converting these to the node harness is tracked as **B3** in `plans/plan.md`.
+**What the deleted twenty-six taught, measured rather than assumed.**
+Breaking the two-tick buffer while leaving `>= 2` alive in a comment
+passed all 28. Deleting the Refresh registration passed 155 tests. And
+`test_merge_propagates_in_progress` was guarding lines that cannot
+execute at all — see the note in
+`test_in_progress_frames_stay_out_of_plots.py`.
 """
 from __future__ import annotations
 
@@ -104,39 +80,6 @@ class TestBucketedStateShape:
     § 3 data-buckets section requires the partition; later tests
     assume the buckets exist."""
 
-    def test_state_has_machine_field(self, core_body):
-        assert re.search(
-            r"const\s+state\s*=\s*\{[^}]*machine\s*:\s*[\"']IDLE[\"']",
-            core_body, re.DOTALL,
-        ), ("trajectory/core.js state object no longer declares the "
-            "``machine`` field initialized to 'IDLE'.  The state "
-            "machine has no resting state; the contract § 2 transitions "
-            "table has no starting point.")
-
-    @pytest.mark.parametrize("bucket", [
-        "fileState", "viewState", "uiPrefs", "lifecycle", "derived",
-    ])
-    def test_state_carries_each_bucket(self, core_body, bucket):
-        """Each of the five buckets must appear as a top-level key
-        of the ``state`` literal.
-
-        THE WINDOW IS THE LITERAL, matched brace to brace.  It used to
-        be the first 4000 characters after ``const state = {`` -- a
-        guess at the literal's length ("~80 lines of ~50 chars"), and
-        the last bucket sat near the end of it.  Adding a field with a
-        comment on it pushed ``derived`` past the count and the test
-        failed for a bucket that was still right there, which is a pin
-        reporting on its own arithmetic rather than on the code."""
-        m = re.search(r"const\s+state\s*=\s*\{", core_body)
-        assert m is not None, "state literal not found"
-        window = _braced(core_body, m.end() - 1)
-        assert re.search(
-            r"^\s+" + bucket + r"\s*:\s*\{", window, re.MULTILINE,
-        ), (f"trajectory/core.js state object no longer carries the "
-            f"``{bucket}`` bucket.  Contract § 3 requires the five-"
-            f"bucket partition; collapsing the buckets re-introduces "
-            f"the field-drift bug class.")
-
 
 class TestBackcompatAliases:
     """Existing render code reads/writes flat ``state.X`` (mtime,
@@ -144,44 +87,6 @@ class TestBackcompatAliases:
     Object.defineProperty getter/setter aliases that route to the
     bucketed canonical home.  Pin the alias wiring so a refactor that
     drops it doesn't silently break ~3000 lines of legacy reads."""
-
-    def test_alias_helper_present(self, core_body):
-        assert re.search(
-            r"function\s+_wireBackcompatAliases",
-            core_body,
-        ), ("trajectory/core.js no longer defines the "
-            "_wireBackcompatAliases IIFE that bridges flat "
-            "``state.X`` reads to the bucketed canonical home.  "
-            "Legacy render code breaks.")
-
-    @pytest.mark.parametrize("flat,bucket", [
-        ("mtime",          "fileState"),
-        ("data",           "fileState"),
-        ("path",           "fileState"),
-        ("format",         "fileState"),
-        ("label",          "fileState"),
-        # No ("currentFrame", "viewState") row: the tab-side playhead copy was RETIRED.
-        # MolView owns the shown frame, and the one place that needs it asks
-        # molview.data.currentFrame() at read time -- a second record that was written on
-        # every load and never read could only ever be a stale rival answer.
-        ("firstFit",       "viewState"),
-        ("pollTimer",      "lifecycle"),
-        ("pollInFlight",   "lifecycle"),
-        ("loadAbort",      "lifecycle"),
-        ("pollAbort",      "lifecycle"),
-        ("scfPollHistory", "derived"),
-    ])
-    def test_each_legacy_field_aliased(self, core_body, flat, bucket):
-        """Each legacy flat field name MUST be aliased to a specific
-        bucket.  Pin the (flat -> bucket) mapping per contract § 7
-        trajectory mapping table."""
-        assert re.search(
-            r"alias\s*\(\s*[\"']" + flat + r"[\"']\s*,\s*[\"']"
-            + bucket + r"[\"']\s*\)",
-            core_body,
-        ), (f"trajectory/core.js no longer aliases ``state.{flat}`` to "
-            f"``state.{bucket}.{flat}``.  Field drift returns; "
-            f"contract § 7 mapping is broken.")
 
 
 # --------------------------------------------------------------------- #
@@ -193,39 +98,6 @@ class TestTransitionOrchestrator:
     """``transition(target, payload)`` is the SINGLE entry-point for
     state-machine transitions.  Contract § 2 forbids direct mutation
     of fileState / lifecycle / derived outside this function."""
-
-
-    @pytest.mark.parametrize("state_name", ["LOADED", "WATCHING", "ERROR"])
-    def test_transition_has_state_branch(self, core_body, state_name):
-        """PR 2.1 audit follow-up: LOADED / WATCHING / ERROR branches
-        in transition() are no longer stubs.  Each MUST set
-        state.machine = <state> and call stopPolling() or
-        startPolling() per the contract § 3 reset matrix."""
-        m = re.search(
-            r"if\s*\(\s*target\s*===\s*[\"']" + state_name
-            + r"[\"']\s*\)\s*\{(.+?)return\s*;",
-            core_body, re.DOTALL,
-        )
-        assert m is not None, (
-            f"trajectory/core.js transition() has no branch for "
-            f"target='{state_name}'.  The state machine is a stub "
-            f"(audit BLOCKER 1, 2026-06-17).")
-        body = m.group(1)
-        assert f'state.machine = "{state_name}"' in body, (
-            f"transition('{state_name}') branch doesn't set "
-            f"state.machine = '{state_name}'.  The machine field "
-            f"never reaches this state.")
-        # WATCHING starts the timer; LOADED/ERROR stop it.
-        if state_name == "WATCHING":
-            assert "startPolling" in body, (
-                "transition('WATCHING') no longer starts the poll "
-                "timer.  Contract § 3 matrix row 'fetch resolved, "
-                "run ongoing' violated.")
-        else:
-            assert "stopPolling" in body, (
-                f"transition('{state_name}') no longer stops the "
-                f"poll timer.  A finished file would keep getting "
-                f"polled forever (audit BLOCKER 4).")
 
 
 class TestSettlePostLoad:
@@ -249,21 +121,6 @@ class TestSettlePostLoad:
             "loadByPath no longer calls _settlePostLoad after "
             "applyNewData.  state.machine stays 'LOADING' forever; "
             "the poll timer never starts.")
-
-    def test_helper_called_from_pollOnce(self, core_body):
-        """pollOnce MUST call _settlePostLoad on success ticks -- the
-        2-tick WATCHING -> LOADED buffer only advances if the helper
-        runs."""
-        m = re.search(
-            r"async\s+function\s+pollOnce\s*\(\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "_settlePostLoad" in body, (
-            "pollOnce no longer calls _settlePostLoad.  The poll "
-            "loop never auto-stops on a finished run; runs forever "
-            "until dispose.")
 
 
     # RETIRED 2026-09-03 — the third grep to fail on the day the code it
@@ -319,43 +176,12 @@ class TestSettlePostLoad:
             f"rebuild path).  Either a write block was removed or a "
             f"direct write was reintroduced.")
 
-    def test_snap_helper_deleted(self, core_body):
-        """PR 2.3 deletes the dead ``snap()`` helper.  It was defined
-        for contract § 4 Invariant 3 but went unused -- render
-        functions still close over state directly.  Keeping the
-        dead code made the contract aspirational; deleting it makes
-        the implementation honest.  If Invariant 3 lands later,
-        re-introduce per the contract."""
-        assert not re.search(
-            r"function\s+snap\s*\(\s*\)\s*\{",
-            core_body,
-        ), ("trajectory/core.js still defines a snap() helper.  "
-            "PR 2.3 deleted it because it was unused dead code.  "
-            "Either it's being USED now (good; remove this pin and "
-            "add tests for Invariant 3 conversion) or it's a "
-            "regression that brings back the contract-mismatch.")
-
 
 class TestRefreshListenerWiredOnce:
     """PR 2.1 audit follow-up: the EVENT_REFRESH_REQUESTED listener
     is wired ONCE at mount via _wireRefreshListener(), not re-wired
     per-load by startPolling().  Pre-fix the listener piled up on
     every load and only tore down on dispose."""
-
-
-    def test_startPolling_no_longer_wires_listener(self, core_body):
-        """startPolling MUST be timer-only.  The Refresh listener
-        wiring must NOT live in its body."""
-        m = re.search(
-            r"function\s+startPolling\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "EVENT_REFRESH_REQUESTED" not in body, (
-            "startPolling still wires EVENT_REFRESH_REQUESTED -- "
-            "called per-load, the listener piles up.  PR 2.1 moved "
-            "this to _wireRefreshListener.")
 
 
 # --------------------------------------------------------------------- #

@@ -51,7 +51,8 @@ def _slice(src: str, start: str, end: str) -> str:
     return src[i:src.index(end, i)].rstrip()
 
 
-def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log"):
+def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
+                timer_running=True):
     """Run the REAL `transition(target)` and report the state it left.
 
     Everything `transition` reaches outside itself is faked at the edge:
@@ -66,7 +67,7 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log"):
                 "\n    function ")
 
     harness = f"""
-        let _timerRunning = true;
+        let _timerRunning = {json.dumps(timer_running)};
         function startPolling() {{ _timerRunning = true; }}
         function stopPolling()  {{ _timerRunning = false; }}
         const _aborted = [];
@@ -290,3 +291,222 @@ def test_refresh_reloads_the_file_on_screen():
 def test_refresh_before_anything_is_loaded_does_nothing():
     """No file, no reload — and no crash on a null path."""
     assert _refresh(path=None)["loaded"] == []
+
+
+# --------------------------------------------------------------------- #
+#  The state's shape, and the legacy names that read through to it      #
+# --------------------------------------------------------------------- #
+
+def _aliased_state():
+    """Build the REAL state object and run the REAL alias wiring.
+
+    `results.md` § 4 names four buckets — the parsed file, your per-file
+    view, your per-session preferences, and the poll timer. Older code
+    reached for flat names (`state.path`), and `_wireBackcompatAliases`
+    makes those read and write THROUGH the bucket rather than beside it.
+    A flat name that stopped being an alias would become a second copy of
+    the same fact, silently diverging.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = MODULE.read_text()
+    state_lit = _slice(src, "    const state = {", "\n    (function _wireBackcompatAliases")
+    wiring = _slice(src, "    (function _wireBackcompatAliases", "\n    // Transition orchestrator")
+    lifecycle = (Path(__file__).resolve().parents[1]
+                 / "molbuilder/web/static/lib/inspectors/lifecycle.js").read_text()
+    harness = f"""
+        const root = globalThis;
+        {lifecycle}
+        {state_lit}
+        {wiring}
+        // Write through the FLAT name, read back through the BUCKET.
+        state.path = "/p/x.out";
+        state.scfPollHistory.push(7);
+        console.log(JSON.stringify({{
+            buckets:      Object.keys(state).filter(k =>
+                              ["fileState","viewState","uiPrefs","lifecycle","derived"]
+                              .includes(k)),
+            machine:      state.machine,
+            throughFile:  state.fileState.path,
+            throughDeriv: state.derived.scfPollHistory,
+        }}));
+    """
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
+                          capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_the_state_starts_idle_and_carries_its_buckets():
+    out = _aliased_state()
+    assert out["machine"] == "IDLE", (
+        "a freshly built viewer must be IDLE; anything else means a mount "
+        "starts in a state whose transition side effects never ran")
+    for bucket in ("fileState", "viewState", "uiPrefs", "lifecycle"):
+        assert bucket in out["buckets"], (
+            f"§ 4's `{bucket}` bucket is missing from the state object")
+
+
+def test_a_legacy_flat_name_writes_THROUGH_to_its_bucket():
+    """`state.path = x` must land in `state.fileState.path`.
+
+    If the alias were replaced by a plain property, both would exist and
+    hold different values — and every guard that compares
+    `state.fileState.path` would be reading a copy nobody updates.
+    """
+    out = _aliased_state()
+    assert out["throughFile"] == "/p/x.out", (
+        "writing the flat `state.path` did not reach `fileState.path`: the "
+        "alias is gone and the two names are now separate storage")
+    assert out["throughDeriv"] == [7], (
+        "`state.scfPollHistory` no longer reads through to `derived`")
+
+
+@pytest.mark.parametrize("target,timer", [("LOADED", False),
+                                          ("WATCHING", True),
+                                          ("ERROR", False)])
+def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
+    """Each target reaches its own branch and leaves the poll timer right.
+
+    Checked by grepping for `state.machine = "<NAME>"` until 2026-09-04,
+    which says a branch exists and nothing about what it does. WATCHING
+    is the one that must leave the timer RUNNING — a run still going is
+    the whole reason the viewer polls at all.
+
+    **The harness starts the timer in the OPPOSITE state**, or the
+    assertion is free: with the timer already running, "WATCHING leaves
+    it running" passes whether or not the branch starts it. Measured —
+    the first version of this test survived deleting `startPolling()`
+    from the WATCHING branch, which is a live run that never updates.
+    """
+    out = _transition(target, timer_running=not timer)
+    assert out["machine"] == target
+    assert out["timerRunning"] is timer, (
+        f"transition('{target}') left the poll timer "
+        f"{'running' if out['timerRunning'] else 'stopped'}; it must be "
+        f"{'running' if timer else 'stopped'}")
+
+
+def test_error_releases_the_request_that_failed():
+    """A failed load must not leave its controller behind, or the next
+    file's abort has nothing to abort and a late answer survives."""
+    assert _transition("ERROR", timer_running=True)["timerRunning"] is False
+
+
+def test_starting_the_poll_wires_no_listener():
+    """`startPolling` is timer-only.
+
+    The Refresh listener is wired ONCE at mount. It used to be wired
+    here, so every load stacked another handler and one Refresh fired N
+    loads; only dispose tore them down. This runs the real function with
+    a spying registrar and asserts it registered nothing — the previous
+    guard was a regex over the function body, which a handler added
+    through any other spelling would slip past.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    fn = _slice(MODULE.read_text(), "    function startPolling() {",
+                "\n    function stopPolling")
+    harness = f"""
+        const _registered = [];
+        function _on(t, ev) {{ _registered.push(ev); }}
+        function pollOnce() {{}}
+        const POLL_MS = 15000;
+        const state = {{ pollTimer: null }};
+        const document = {{ addEventListener: (ev) => _registered.push(ev) }};
+        const window = {{ molbuilder: {{ constants:
+            {{ EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh" }} }} }};
+        globalThis.setInterval = () => 1;
+        globalThis.clearInterval = () => {{}};
+        {fn}
+        startPolling();
+        console.log(JSON.stringify({{ registered: _registered,
+                                      timer: state.pollTimer }}));
+    """
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
+                          capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out["registered"] == [], (
+        f"startPolling registered {out['registered']!r}. Every load would "
+        f"add another handler, so one Refresh fires N reloads.")
+    assert out["timer"] is not None, "startPolling must actually start a timer"
+
+
+# --------------------------------------------------------------------- #
+#  The loaders must actually CALL the settle                            #
+# --------------------------------------------------------------------- #
+
+def _poll_once(*, run_state, path="/p/run.molwatch.log"):
+    """Run the REAL `pollOnce` against a stubbed `/api/watch/data`.
+
+    Everything it reaches is faked at the edge — `fetch`, the applier,
+    the status line — except `_settlePostLoad`, which is lifted from the
+    module and run for real. That is the point: the previous guard was a
+    grep for the string `_settlePostLoad` inside `pollOnce`'s body, which
+    says the call is written and nothing about whether it happens.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = MODULE.read_text()
+    run_state_const = _slice(src, "const RUN_STATE = Object.freeze", "});") + "});"
+    settle = _slice(src, "    function _settlePostLoad", "\n    function plottableFrames")
+    poll = _slice(src, "    async function pollOnce()", "\n    function ")
+    harness = f"""
+        {run_state_const}
+        const _seen = [];
+        function transition(name) {{ _seen.push(name); state.machine = name; }}
+        function applyNewData(r) {{ state.fileState.data = r.data; }}
+        function setStatus() {{}}
+        function dispose() {{}}
+        const state = {{
+            machine: "WATCHING",
+            fileState: {{ path: {json.dumps(path)}, mtime: 1,
+                         data: {{ run_state: {json.dumps(run_state)} }} }},
+            lifecycle: {{ pollInFlight: false, pollAbort: null,
+                         finishedTicks: 1 }},
+            derived: {{}},
+        }};
+        globalThis.fetch = async () => ({{
+            ok: true,
+            json: async () => ({{ ok: true, changed: true, mtime: 2,
+                                  data: {{ run_state: {json.dumps(run_state)},
+                                          frames: [] }} }}),
+        }});
+        {settle}
+        {poll}
+        pollOnce().then(() => console.log(JSON.stringify({{
+            transitions: _seen, machine: state.machine,
+        }})));
+    """
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
+                          capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_a_poll_that_finds_the_run_ended_settles_it():
+    """The poll loop must ASK `_settlePostLoad`, not just contain a call
+    to it.
+
+    With `finishedTicks` already at 1, an `ended` answer is the second
+    consecutive one, so the run settles and polling stops. If `pollOnce`
+    stopped calling the settle, a finished run would be re-fetched every
+    15 s for as long as the tab is open — which is bug #12, and the grep
+    that guarded it could not tell a written call from a reached one.
+    """
+    out = _poll_once(run_state="ended")
+    assert "LOADED" in out["transitions"], (
+        f"a second 'ended' poll must settle the run; the poll transitioned "
+        f"{out['transitions']!r}")
+
+
+def test_a_poll_on_a_running_run_keeps_watching():
+    out = _poll_once(run_state="running")
+    assert out["transitions"] == ["WATCHING"], out["transitions"]
