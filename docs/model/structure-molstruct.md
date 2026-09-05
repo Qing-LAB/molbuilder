@@ -147,7 +147,29 @@ gate**, because it converts a loud failure into a quiet one.
 The sidecar file's message names the specific difference and says what to do:
 re-save the structure, or re-generate the script.
 
-### Unknown keys are refused, not ignored
+### Metadata is never required; only what is PRESENT can be wrong
+
+The line, stated by the user 2026-09-05, and the reason the reader has exactly
+one guard:
+
+- **Structure has requirements.** The atom count must match, and the
+  coordinates must be in a form we read. Break either and the labels land on
+  the wrong atoms, so those refuse.
+- **Metadata has none.** No file owes us any particular markings. A structure
+  with no regions, no frozen set, no annotations is an ordinary structure, not
+  a damaged one — so their absence is never a finding, and nothing warns about
+  it. There is nothing to compare against: *metadata is metadata.*
+
+What IS worth saying is the opposite case — a key that is present and that we
+did not read, reported as copied-through or unused, so the person knows we saw
+it and did nothing with it. That is a statement about something in the file,
+not about something missing from it.
+
+So: a run whose markings this build no longer reads opens quietly with
+whatever it does read. It is not a degraded run; it is a run with less
+metadata, which is a thing a run is allowed to be.
+
+### Unknown keys in a SIDECAR FILE are refused, not ignored
 
 A key that is neither a structure metadata field nor an envelope key is an
 **error**, at the point the payload is still whole. *A key nobody reads is
