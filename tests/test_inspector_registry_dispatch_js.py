@@ -236,8 +236,21 @@ def test_registry_pickResult_filters_by_isResult(
 # (group headers in the picker dropdown).
 _RESULT_CATEGORY_CASES = [
     ("/projects/foo/bar.out", "SIESTA optimization", "out→siesta_opt"),
-    ("/projects/foo/run.molwatch.log", "PySCF optimization",
-     "molwatch_log→pyscf_opt"),
+    # ENGINE-NEUTRAL, and this case asserted "PySCF optimization" until
+    # 2026-09-04.  SIESTA writes a `.molwatch.log` for every run
+    # (`config/siesta.py`: `write_molwatch_log = True`); measured, 34 of
+    # the first 40 real logs in `projects/` declare `# engine: siesta`.
+    # So the picker filed most SIESTA runs under PySCF while the plot
+    # title -- which gets the engine from the server -- said SIESTA.
+    # The browser cannot know: the engine is a fact about the run
+    # DIRECTORY and the picker has only a filename.
+    #
+    # This does NOT split the group the geomeTRIC cases below exist to
+    # keep together: `absorbs()` folds `*_geom_optim.xyz` into the
+    # `.molwatch.log` master whenever one is present (`results.md`
+    # § 2.3), so the two never appear in the dropdown at the same time.
+    ("/projects/foo/run.molwatch.log", "Optimization",
+     "molwatch_log→engine_neutral"),
     ("/projects/foo/r.spectra.json", "PySCF spectrum",
      "spectra_json→pyscf_spectrum"),
     ("/projects/foo/q.xyz", "Structure", "xyz→structure"),

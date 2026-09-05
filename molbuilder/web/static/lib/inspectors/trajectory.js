@@ -72,7 +72,17 @@
         //                            → PySCF / geomeTRIC multi-frame XYZ
         resultCategory: (file) => {
             const lower = file.toLowerCase();
-            if (lower.endsWith(".molwatch.log"))   return "PySCF optimization";
+            // A `.molwatch.log` IS ENGINE-NEUTRAL -- the comment three
+            // lines up has always said so, and SIESTA writes one for
+            // every run (`config/siesta.py`: `write_molwatch_log = True`).
+            // This line returned "PySCF optimization" for all of them
+            // until 2026-09-04, so the menu filed most SIESTA runs under
+            // the wrong engine while the plot title, which gets the
+            // engine from the server, said SIESTA.  The browser cannot
+            // know the engine: it is a fact about the run DIRECTORY, and
+            // the picker has only a filename.  So the heading names what
+            // the file IS and leaves the engine to the viewer.
+            if (lower.endsWith(".molwatch.log"))   return "Optimization";
             if (lower.endsWith(".out"))             return "SIESTA optimization";
             if (lower.endsWith("_optim.xyz")
                 || lower.endsWith("_geom_optim.xyz"))

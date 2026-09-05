@@ -339,6 +339,24 @@
                 clearInterval(state.lifecycle.watchTimer);
                 state.lifecycle.watchTimer = null;
             }
+            // ABORT THE TICK ALREADY ON THE WIRE, as LOADING and IDLE
+            // both do.  Without it "Stop" did not stop: `stopWatch`
+            // cleared the timer, but a tick mid-flight then resolved
+            // with `signal.aborted` false and -- because LOADED keeps
+            // `fileState.path` on purpose -- passed the path guard too,
+            // so it rendered and called `_settlePostLoad(true)`, which
+            // transitions back to WATCHING and starts a NEW interval.
+            // The buttons said stopped while the poll ran on, and the
+            // only way out was Start-then-Stop.
+            //
+            // Safe on the normal-completion path as well: `watchTick`
+            // builds a fresh AbortController every tick, and the tick
+            // that calls `_settlePostLoad` is already past its own
+            // `signal.aborted` guard when this runs.
+            if (state.lifecycle.watchAbort) {
+                try { state.lifecycle.watchAbort.abort(); } catch (_) {}
+                state.lifecycle.watchAbort = null;
+            }
             state.lifecycle.watchInFlight = false;
             state.machine = "LOADED";
             return;
