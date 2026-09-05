@@ -101,6 +101,18 @@ def _run(controls: dict, task: dict | None, want: str):
     return json.loads(proc.stdout.strip().splitlines()[-1])[want]
 
 
+def _tick(name, checked, extra=None):
+    """One channel checkbox, as the page builds it.
+
+    ``extra`` is what the server reported BESIDE the name --
+    `/api/task-setup/channels` answers a listener with its url and signing
+    key attached, so the element a person ticks is built from an object
+    that holds them.  Tests that do not care pass 2-tuples and get the
+    plain shape.
+    """
+    return dict({"value": name, "checked": checked}, **(extra or {}))
+
+
 def _controls(scf=False, periodic=False, hours="6", every=True, ticks=None):
     """The card's controls.
 
@@ -115,8 +127,13 @@ def _controls(scf=False, periodic=False, hours="6", every=True, ticks=None):
         "ts-notify-hours":    {"value": hours},
         "ts-notify-note":     {"textContent": ""},
         "ts-notify-all":      {"checked": every},
-        "__ticks__":          [{"value": n, "checked": c}
-                               for n, c in (ticks or [])],
+        # A tick may carry MORE than its name.  `/api/task-setup/channels`
+        # answers what this machine has, and a listener's entry there has a
+        # url and a signing key beside it -- so the checkbox a person sees
+        # is built from an object that holds them.  Tests pass 2-tuples and
+        # get the plain shape; a 3-tuple's dict is merged in, which is how
+        # `test_a_channels_secret_never_reaches_the_description` plants one.
+        "__ticks__":          [_tick(*t) for t in (ticks or [])],
     }
 
 
@@ -306,18 +323,46 @@ def test_the_card_writes_ONE_file_and_has_no_control_for_a_secret():
     assert "/api/notify/channels" in js
 
 
-def test_the_names_are_all_that_reaches_the_description():
-    """The tick list is painted from what the server reports, and what it
-    reports is names.  The writer must not be able to reach anything else --
-    the same rule `task.py`'s key allowlist enforces one layer down."""
-    from pathlib import Path
-    js = (Path(__file__).resolve().parents[1]
-          / "molbuilder/web/static/task-setup/viewer.js").read_text()
-    writer = js[js.index("function channelSelection()"):
-                js.index("function readNotifyFromTask")]
-    for leak in ("url", "key", "password", "has_key"):
-        assert leak not in writer, \
-            f"{leak} reached the function that writes task.json"
+def test_a_channels_secret_never_reaches_the_description():
+    """A channel's URL and signing key must not travel in `task.json`.
+
+    WHERE is yours and never travels with the description
+    (`web/task-setup.md`; `task.py`'s key allowlist enforces the same rule
+    one layer down).  So the checkbox is built from a server report that
+    HAS a url and a key beside the name, and the writer must take the name
+    and nothing else.
+
+    This plants them and reads the document the real writer produced.
+
+    *Replaces a source grep that could not fail, 2026-09-04.*  It sliced
+    `js[js.index("function channelSelection()") : js.index("function
+    readNotifyFromTask")]` -- and `readNotifyFromTask` is defined EARLIER
+    in the file, so the slice was `js[167161:135331]`, the empty string,
+    and all four `assert leak not in writer` were assertions about `""`.
+    Measured on the shipped file.  The rule held anyway, which is the
+    danger: nothing would have said so if it stopped holding.  A repaired
+    grep would have been worse than none -- `assert "key" not in writer`
+    fails the day someone writes `Object.keys(...)` inside that function,
+    which changes nothing.
+    """
+    doc = json.loads(_run(
+        _controls(scf=True, every=False,
+                  ticks=[("lab-slack", True,
+                          {"url": "https://hooks.example/T00/B00/XXXXXXXX",
+                           "key": "sk-live-DEADBEEF",
+                           "password": "hunter2",
+                           "has_key": True})]),
+        _TASK, "doc"))
+
+    assert doc["notify"]["channels"] == ["lab-slack"], (
+        f"the writer must carry the NAME and nothing else; it wrote "
+        f"{doc['notify']['channels']!r}")
+    blob = json.dumps(doc)
+    for secret in ("hooks.example", "sk-live-DEADBEEF", "hunter2"):
+        assert secret not in blob, (
+            f"{secret!r} reached task.json -- a description travels to a "
+            f"cluster and into a citation; the channel's credentials must "
+            f"not go with it")
 
 
 def test_the_card_says_KEY_not_token():
