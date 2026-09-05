@@ -42,7 +42,10 @@ from molbuilder.identity import parse_stage_token
 # parsers (detect().parse() -> traj.run_state); the end-of-run and
 # failure markers live in engines/siesta.py + engines/pyscf.py, NOT
 # here — the decoder never greps .out content itself (enforced by
-# test_no_direct_out_grep_in_decoder).
+# the engine parsers own it).  This cited
+# `test_no_direct_out_grep_in_decoder` as the enforcing test until
+# 2026-09-05; that lint was retired with the decoder on 2026-09-04 --
+# its whole body was `assert src.count("read_text") < 8`.
 
 # Default CG-step threshold for cg_step_milestone events.
 
@@ -127,12 +130,13 @@ def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
     ``.out``.  Fail-soft like the ``.out`` path: a log the registry
     cannot read simply contributes nothing.
     """
-    from molbuilder.parse import detect, UnknownFormatError
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
     states: Dict[str, str] = {}
     for path in mw_paths:
         try:
             traj = detect(path).parse(path)
-        except (UnknownFormatError, OSError, ValueError):
+        except (ParseError, OSError, ValueError):
             continue
         if (traj.run_state or "") in ("ended", "stopped",
                                       "out_of_memory"):
@@ -180,12 +184,13 @@ def _out_conclusions(out_paths: List[Path]) -> Dict[str, str]:
     Fail-soft, exactly as the molwatch sibling is: a file the registry
     cannot read contributes nothing rather than taking the walk down.
     """
-    from molbuilder.parse import UnknownFormatError, detect
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
     states: Dict[str, str] = {}
     for path in out_paths:
         try:
             states[path.name] = detect(path).parse(path).run_state or "unknown"
-        except (UnknownFormatError, OSError, ValueError):
+        except (ParseError, OSError, ValueError):
             continue
     return states
 

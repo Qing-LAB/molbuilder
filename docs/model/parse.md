@@ -293,7 +293,7 @@ flowchart TD
 | `detect(path)` | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
 | `parse(path)` | `detect` + `parse` in one call |
 | `parse_text(text, parser)` | parse a known text body — **no detection**, caller names the `TextParser` |
-| `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory" (JobMonitor, Results) |
+| `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory". **⚠ No DirParser is registered, so this raises `UnknownFormatError` for every input** (§ 5). It named "JobMonitor, Results" as its callers until 2026-09-05; neither has ever called it |
 | `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
 **Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`

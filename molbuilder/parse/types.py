@@ -54,15 +54,26 @@ SCHEMA_VERSION = 1
 def _source_str(source) -> str:
     """An absolute path where one can be had, the raw string otherwise.
 
-    The four builders this replaced all guarded ``resolve()`` this way:
-    a broken symlink loop or an unreadable parent raises, and a parser
-    that already read the file must not then fail on describing where it
-    came from.
+    A parser that already read the file must not then fail on describing
+    WHERE it came from -- the answer is in hand and the envelope is
+    decoration.
+
+    **Catches ``RuntimeError`` as well as ``OSError``, because the case
+    the guard is for raises the first.**  The four builders this replaced
+    all wrote ``except OSError``, and this docstring named "a broken
+    symlink loop or an unreadable parent" as the reason.  Measured
+    2026-09-05 on python 3.12: a symlink loop makes ``resolve()`` raise
+    ``RuntimeError`` ("Symlink loop"), which is not an ``OSError``, so
+    the guard never fired on its own example; and an unreadable parent
+    raises nothing at all, because ``resolve()`` defaults to
+    ``strict=False`` and does not stat.  The guard was written for a
+    failure it could not catch and justified by one that does not
+    happen.
     """
     from pathlib import Path as _P
     try:
         return str(_P(source).resolve())
-    except OSError:
+    except (OSError, RuntimeError):
         return str(source)
 
 

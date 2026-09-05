@@ -174,3 +174,26 @@ def test_a_half_stated_summary_is_not_called_the_monitors_own():
     cpu_only = utilisation({"stated_cpu_mean_pct": 40.0},
                            {"cpu_mean_pct": 31.5, "wall_s": 9.0})
     assert cpu_only["util_basis"] == "monitor-summary", repr(cpu_only)
+
+
+def test_a_symlink_loop_does_not_break_the_envelope(tmp_path):
+    """Describing where a result came from must not fail after reading it.
+
+    `_source_str` guarded `resolve()` with `except OSError` and named a
+    symlink loop as the reason.  A loop raises `RuntimeError`, which is
+    not an `OSError`, so the guard never fired on its own example --
+    every builder would have propagated it out of a parse that had
+    already succeeded.
+    """
+    import os
+    from molbuilder.parse.types import _source_str
+
+    a, b = tmp_path / "A", tmp_path / "B"
+    os.symlink(b, a)
+    os.symlink(a, b)
+    assert _source_str(a) == str(a), "a loop must fall back to the raw string"
+
+    # An ordinary path still resolves, or the guard is just a mute.
+    real = tmp_path / "real.log"
+    real.write_text("x")
+    assert _source_str(real) == str(real.resolve())

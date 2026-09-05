@@ -108,7 +108,8 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     ``[UTIL-SUMMARY]``, so a monitor log without one is a log whose
     ``wall_s`` is a lower bound.
 
-    **Not the door for a point's metrics — :func:`parse_utilisation` is.**
+    **Not the door for a point's metrics --
+    :func:`molbuilder.parse.instruments.utilisation.utilisation` is.**
     This reads the samples; that one decides between these numbers and the
     monitor's own, which are better where they exist (user ruling,
     2026-09-03).  Calling this directly for a metric is how the summary stops
@@ -121,7 +122,8 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     the same as a brief spike.  That also makes these means a
     RECONSTRUCTION: the monitor's own ``[UTIL-SUMMARY]`` averages every
     tick and is exact, but is absent whenever a trial did not reach the
-    monitor's terminal branch (see :func:`parse_util_bound`).
+    monitor's terminal branch, which is what
+    :func:`molbuilder.parse.instruments.monitor.monitor_metrics` reads.
     """
     lines = [ln for ln in csv_text.splitlines() if ln.strip()]
     if len(lines) < 2:

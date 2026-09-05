@@ -797,3 +797,69 @@ def test_a_single_geometry_is_refused_by_name_not_by_crashing(
                        json={"path": str(traj)}).status_code == 200, (
         "the trajectory file must still load -- refusing every .xyz would "
         "satisfy the assertion above and break the viewer")
+
+
+# --------------------------------------------------------------------- #
+#  A registry overlap must not become an HTTP 500                       #
+# --------------------------------------------------------------------- #
+
+
+def test_two_parsers_claiming_one_file_is_a_clean_refusal(client, tmp_path):
+    """`AmbiguousFormatError` is a SIBLING of `UnknownFormatError`.
+
+    On 2026-09-04 two parsers both claimed `<job>_optimized.xyz` and
+    this route caught only `UnknownFormatError`, so the overlap surfaced
+    as an unhandled exception -- HTTP 500 with an HTML body -- on a file
+    both parsers could read.  The fix widened five call sites to
+    `ParseError`; **only the other half of that fix (the `can_parse`
+    narrowing) was tested**, and once the overlap is gone nothing can
+    reach the widened catch.  Measured 2026-09-05: narrowing all five
+    catches back to `UnknownFormatError` left 421 tests passing.
+
+    Three suffix parsers were registered the same day, so the next
+    overlap is a live possibility.  This drives a REAL one -- a second
+    parser registered to claim `.out` -- rather than patching the raise,
+    so it also proves `detect` still raises on a genuine collision.
+    """
+    from molbuilder.parse import registry
+    from molbuilder.parse.base import FileParser
+    from molbuilder.parse.types import TrajectoryResult
+
+    class _GreedyOut(FileParser):
+        name = "greedy-out-for-test"
+        label = "Greedy"
+        hint = "claims every .out, to collide with the SIESTA parser"
+
+        @classmethod
+        def can_parse(cls, path):
+            return str(path).endswith(".out")
+
+        @classmethod
+        def parse(cls, path):                       # pragma: no cover
+            raise AssertionError("must never be reached — detect refuses first")
+
+    p = tmp_path / "run.out"
+    p.write_text(_SIESTA_HEAD)
+
+    saved = list(registry._FILE_PARSERS)
+    registry.register(_GreedyOut)
+    try:
+        r = client.post("/api/watch/load", json={"path": str(p)})
+        assert r.status_code == 400, (
+            f"a registry overlap returned HTTP {r.status_code}; the contract "
+            "is a 400 carrying the clash, not a 500 carrying a stack trace")
+        assert r.mimetype == "application/json", (
+            f"the refusal came back as {r.mimetype}, an HTML error page")
+        body = r.get_json()
+        assert body["ok"] is False, body
+        # The message NAMES the clashing parsers -- that is what makes a
+        # 400 useful where a 500 was not.
+        assert "greedy-out-for-test" in body.get("error", ""), (
+            f"the refusal does not say which parsers collided: {body}")
+    finally:
+        registry._FILE_PARSERS[:] = saved
+
+    # The overlap is gone again, so the same file loads normally — or the
+    # assertion above passed because the route was broken for every file.
+    ok = client.post("/api/watch/load", json={"path": str(p)}).get_json()
+    assert ok["ok"] is True and ok["format"] == "siesta", ok

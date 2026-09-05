@@ -389,10 +389,36 @@ def test_every_target_lands_the_machine_and_settles_the_timer(target, timer):
         f"{'running' if timer else 'stopped'}")
 
 
-def test_error_releases_the_request_that_failed():
-    """A failed load must not leave its controller behind, or the next
-    file's abort has nothing to abort and a late answer survives."""
-    assert _transition("ERROR", timer_running=True)["timerRunning"] is False
+def test_error_stops_the_poll_but_does_NOT_release_its_controller():
+    """What the ERROR branch actually does — which is not what I said.
+
+    This was `test_error_releases_the_request_that_failed`, asserting
+    *"a failed load must not leave its controller behind"*.  It does
+    leave it behind: `core.js`'s ERROR branch clears `watchTimer` and
+    `watchInFlight` and never calls `.abort()`, unlike IDLE, LOADING and
+    LOADED, which all do.  The test's one assertion was
+    `timerRunning is False` — an exact duplicate of the `("ERROR",
+    False)` row of the parametrized test above — so it passed while its
+    name and docstring taught the opposite of the code.
+
+    Asserted here as OBSERVED behaviour, not as a rule: no document
+    states an abort contract for ERROR, and inventing one in a test is
+    how a test starts pinning a requirement nobody wrote.  If ERROR
+    should release its controllers, that is a change to `core.js` and to
+    `results.md`, and this test then changes with them.
+    """
+    out = _transition("ERROR", timer_running=True)
+    assert out["machine"] == "ERROR"
+    assert out["timerRunning"] is False, "the poll must stop on error"
+    assert out["aborted"] == [], (
+        "ERROR now aborts its in-flight requests — real behaviour changed, "
+        f"and no document says which way is right: {out['aborted']}")
+
+    # The three that DO release, so the contrast is measured rather than
+    # asserted from memory.
+    for target in ("IDLE", "LOADING"):
+        assert _transition(target, timer_running=True)["aborted"], (
+            f"transition('{target}') stopped aborting its controllers")
 
 
 def test_starting_the_poll_wires_no_listener():

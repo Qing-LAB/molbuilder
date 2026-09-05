@@ -99,3 +99,55 @@ def test_a_seed_molwatch_log_is_a_live_view_not_a_result(tmp_path):
     s = run_status(tmp_path)
     assert s["state"] == "running"
     assert s["detail"] == "no result file yet"
+
+
+# ---------------------------------------------------------------------------
+#  The state nothing asserted
+# ---------------------------------------------------------------------------
+
+def test_a_dead_run_goes_stale_rather_than_running_for_ever(tmp_path):
+    """No ending marker and no growth is a dead job, not a live one.
+
+    `run_status`'s docstring names staleness as one of the two reasons
+    the module exists -- *"Only the filesystem can [tell], so the age
+    check lives here and nowhere else"* -- and NOTHING in the tree
+    asserted it.  The two places that mention the state both spell
+    `assert state in ("running", "stale", "finished", "failed")`, which
+    is membership in the set of every possible answer and is therefore
+    free: it passes whatever the code returns.
+
+    Measured 2026-09-05: deleting the whole `elif age_s > 60.0` branch
+    left **368 tests passing**.  The user-visible consequence is a job
+    the scheduler killed -- no marker written, no further writes --
+    reporting `running` on the Results tab and in `jobset status`
+    for ever, which is precisely the 2026-07-27 regression the
+    `failed` test above was written for, in the neighbouring branch.
+    """
+    import os
+
+    (tmp_path / "dead.fdf").write_text("SystemLabel dead\n")
+    out = tmp_path / "dead.out"
+    # Started, never finished: no ">> End of run", no fatal marker.
+    out.write_text("Siesta Version: 5.4.2\nsiesta: iscf   Eharris\nscf:  1  -100.0\n")
+
+    old = _wall_now_for_test() - 3600.0        # an hour with no write
+    os.utime(out, (old, old))
+
+    s = run_status(tmp_path)
+    assert s["state"] == "stale", (
+        f"an hour-dead run reports {s['state']!r}: {s}")
+    assert "no file growth" in s["detail"], s["detail"]
+
+    # ...and a run touched JUST NOW is still running, or the check above
+    # would pass on a clock bug that ages everything.
+    now = _wall_now_for_test()
+    os.utime(out, (now, now))
+    fresh = run_status(tmp_path)
+    assert fresh["state"] == "running", (
+        f"a run written this second reports {fresh['state']!r}: {fresh}")
+
+
+def _wall_now_for_test() -> float:
+    """The same clock `run_status` measures age against."""
+    from molbuilder.parse.dirs.job import _wall_now
+    return _wall_now()

@@ -508,7 +508,16 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
 
 
 def _job_wants_gpu(job_dir: Path, job) -> bool:
-    """Whether this job asks for a GPU — **from its deck**, not from `gres`.
+    """Whether this job asks for a GPU.
+
+    **Asks `runwrap._wants_gpu`, which reads `resources.use_gpu` first**
+    and falls back to the deck.  This opened *"from its deck, not from
+    `gres`"* and argued it over four paragraphs until 2026-09-05, while
+    the body below had already stopped doing that -- reading the deck
+    FIRST was the routing bug, because a job whose `execution` asks for a
+    GPU has said so plainly and the deck is the weaker evidence.
+    The paragraphs on where the two halves live are still true and
+    follow.
 
     `job-contracts.md § 6.2` derives the GPU request *"from `.fdf` + GPU type"*,
     and the two halves live in different places on purpose:
