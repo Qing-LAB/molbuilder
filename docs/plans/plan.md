@@ -484,9 +484,13 @@ No code has moved.)*
 
 ### The need
 
-A person wants engine content molbuilder does not model: a Lua script driving
-a SIESTA relaxation, a `%block` for a feature with no form field yet, a PySCF
-call. Today that goes in the USER-CUSTOM zone, and a UI card is wanted for it.
+A person wants to run a SPECIFIC task on a structure that is already
+optimised, using engine content molbuilder does not model: a Lua setup driving
+SIESTA, a `%block` for a feature with no form field, a PySCF call.
+
+Today the only place for that is the USER-CUSTOM zone of a relaxation deck,
+which is the wrong shape twice over — it is the wrong kind of task, and (below)
+the zone cannot carry the content anyway.
 
 ### Why the zone cannot carry it — measured, not argued
 
@@ -530,7 +534,7 @@ from a previous output.
 | | |
 |---|---|
 | **engine-specific** | an addition is SIESTA text or PySCF text; there is no engine-neutral addition, because the content is engine syntax. It is declared for one engine and ignored by the other, the way `[item.*]`'s `engines` key already works |
-| **the writer places it** | additions reach `render_deck` in the spec and are emitted during the layout walk, in the layout's position — not appended after it |
+| **the writer places it** | whatever writes that task's script takes additions as an input and places them, the way `render_deck` places a `Section`'s parameters today — by the engine's authority, in a position the engine chooses, never concatenated after the walk |
 | **emitted once** | if an addition writes a keyword a declared item also writes, ONE line is written, not two |
 | **recorded** | its lines join `emitted`, so `check_deck` closes the same loop over them as over every other line |
 
@@ -554,25 +558,29 @@ Silent resolution is the thing to avoid. `Parameter.writes` already answers
 refused (duplicate) or silently ignored (first-wins), and which one depends on
 whether SIESTA's rule happens to notice.
 
-### What this DELETES, which is the argument for it
+### What this does NOT disturb — which is the point
 
-The read-back merge stops being needed. Additions are an input, so nothing is
-recovered from the file being overwritten. With it go:
+**This is ADDITIVE. It removes nothing that ships.** The USER-CUSTOM zone, the
+read-back merge, `write_script`'s round trip and `check_deck`'s reason to read
+the written file all stay exactly as they are, serving the relaxation decks
+they serve today. A task kind that does not exist yet cannot be a reason to
+disturb one that does.
 
-- `merge_user_custom_from_target` and `write_script`'s round trip — and with
-  them `check_deck`'s reason to read the file rather than the rendered string;
-- `template.md` § 9.2's three structural objections to `prep` (no previous
-  deck, one deck per stage, reproducibility) — all of which exist only because
-  the mechanism reads the previous output;
-- the transport gap: `_prep_transport` writes with a bare `write_text` and
-  `molbuilder/transport/` never emits the zone at all, so transport has no
-  territory today. Additions are an input, so transport gets them by having a
-  writer, not by growing a zone;
-- the stray-marker data loss: a marker pasted into the zone silently drops
-  everything above it (measured, HTTP 200, no warning) — impossible when there
-  is no zone to paste into;
-- `job-contracts.md` § 3.5's "byte-for-byte" claim, which is already false
-  (CRLF is normalised by `splitlines()`/`"\n".join`).
+*(An earlier draft of this section claimed the design "deletes the read-back
+merge" and closes the transport gap. **Withdrawn.** That followed from the
+withdrawn assumption that additions would flow through the relaxation deck
+path. They do not, so those mechanisms are untouched and their known defects —
+the stray marker that silently drops text above it, transport having no zone at
+all, § 3.5's inaccurate "byte-for-byte" — remain open on their own terms,
+listed where they belong rather than as credit claimed here.)*
+
+**What it buys instead** is that the new need lands in its own layer:
+
+- nothing in the relaxation path changes to accommodate it;
+- the mechanism is defined by what it IS (an input, engine-placed, switchable,
+  unvalidated) rather than by which existing function it borrows;
+- when a task kind does need it, that task brings its own writer and this
+  mechanism plugs into it — no structural change to make room.
 
 ### THIS IS NOT A STAGED RUN, and must not be fitted into one
 
