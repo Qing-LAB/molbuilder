@@ -224,6 +224,68 @@ document rows, which were measured against the current tree.
 
 ---
 
+## 5c. The directory door — `JobDirParser`, and its migration
+
+*(Agreed 2026-09-04. Contract: [`model/parse.md` § 5](?doc=model/parse.md).
+**Not started.** This section is the plan, and the caller list below is the
+completeness check — the requirement is that nobody is left behind.)*
+
+**The shape.** One DirParser answers everything asked *about a run
+directory*; the four fields each have a named reader before a line is
+written (§ 5.0's table). `active` is picked **stage, then mtime** (user
+ruling) — `summarize`'s highest-`-runN` rule loses, because a run index says
+nothing about which stage a file belongs to.
+
+### The complete caller map, measured
+
+Only **three** modules consume any of this, which is what makes the migration
+checkable rather than hopeful:
+
+| what it does today | where | becomes |
+|---|---|---|
+| `run_status(dir)` | `jobset/runstatus.py` ×1 | `.status` |
+| `_resolve_run_directory(dir)` — the 4-rung chain | `web/blueprints/watch.py` ×1 | `.openable` + `.attempts` |
+| `_list_molwatch_logs(dir)` | `web/blueprints/watch.py` ×2 | `.files["molwatch"]` |
+| `_engine_of(...)` | `web/blueprints/watch.py` ×4 | `.engine` |
+| `engine_of(dir)` | `web/blueprints/watch.py` ×1 | folded in as `.engine` |
+| `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | `.files` + one parse |
+| `_latest_run_file(d, base, suffix)` | `jobset/summarize.py` ×4 | `.active` |
+| `_read_system(bundle)` | `jobset/summarize.py` ×1 | `.files["fdf"]` |
+| `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | `.files["fdf"]`, stays its own verb |
+
+Internals absorbed rather than migrated: `_enumerate_files`, `_build_status`,
+and `contract.py`'s three declaration rungs.
+
+### Two boundaries, decided
+
+**`attempt_concluded` stays out** — `jobset/prep.py`, `jobset/submit.py`,
+`transport/compose.py`. It answers *"may I launch here"*, its consumers are
+WRITERS, and folding it in would make the launch path depend on the parse
+layer for a decision that is not a reading.
+
+**Sibling lookups stay out** — `_sidecar._siesta_fdf_path_for`,
+`pyscf._resolve_job_token`, `siesta_mdnc.sibling_md_nc`. § 5a's sibling
+upgrade: a parser locating one file from another *of its own format*.
+Absorbing them inverts § 5's rule that a DirParser composes FileParsers.
+
+### The behaviour changes, named in advance
+
+1. **`summarize`'s per-trial file pick changes** on a re-run trial:
+   highest-`-runN` → stage-then-mtime. This is the only behavioural change in
+   the migration and it is deliberate.
+2. **`detect()` on a directory starts resolving again.** It has had no
+   DirParser since 2026-09-04 and could only refuse.
+
+### Order of work
+
+1. Write `RunDirResult` + `JobDirParser`, absorbing the chain verbatim.
+   Prove equivalence on the real tree BEFORE any caller moves — the
+   `run_status` split did this (113/113 identical) and it is the reason that
+   deletion was safe.
+2. Move `runstatus` (1 site), then `watch` (9), then `summarize` (5).
+3. Delete the absorbed functions and sweep their documents.
+4. Re-run the caller map above and require it to come back empty.
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |

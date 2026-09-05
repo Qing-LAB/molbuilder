@@ -391,34 +391,113 @@ molbuilder/parse/
 
 ---
 
-## 5. Composer pattern — DirParsers
+## 5. Composer pattern — the DirParser
 
-A DirParser turns a whole run directory into one result. **None ships
-today** — the ABC and `registry.parse_dir` remain as the shape a
-directory-level answer takes when one is needed, and `parse/dirs/` is where
-it would land.
+A DirParser turns a whole run directory into one result. **`JobDirParser` is
+the one door**, and everything that asks a question *about a directory* goes
+through it.
 
-*(`JobDirParser` → `JobResult` stood here until 2026-09-04: it walked the
-`.out` files, consolidated plot buckets and classified the job type into an
-eleven-field summary. Ten of those fields had no reader anywhere in the tree
-and the eleventh, `status`, was reached by building every plot and discarding
-it — so the status became its own verb, `dirs/job.run_status`, and the
-summary was deleted rather than repaired. `running-a-job.md` § 4.2 has the
-measurement.)*
+> **Its predecessor was deleted on 2026-09-04 and this is not a reversal.**
+> That one answered eleven fields; ten had no reader anywhere in the tree, and
+> the eleventh was reached by parsing every `.out` to build plot data and then
+> discarding the plots. What returns has the same name because the name was
+> always right — it *is* the directory composer — but every field below is
+> written against a caller that exists today. `running-a-job.md` § 4.2 has the
+> measurement that justified the deletion; this section is what the deletion
+> made room for.
 
-*(A second, `BundleDirParser` → `BundleResult` — the run-dir → next-calculation
-handoff fuse — stood beside it until 2026-08-29 and retired with
-calculation-to-calculation passing: a calculation that builds on a finished
-result CITES it, and prep composes — `transport/compose.py`.)*
+### 5.0 The result — four questions, four readers
 
-Every DirParser must: **walk** the directory, **dispatch each file through the
-registry** (`detect`+`parse`, or pick a specific FileParser when the choice
-isn't path-driven), **compose** the per-file results, and **apply cross-file
-invariants** no single FileParser can see (atom-count consistency, lattice
-handedness, stage ordering, status state machine). It must **never re-parse**
-what a registered FileParser can produce — add the missing FileParser instead.
+```python
+@dataclass(frozen=True)
+class RunDirResult(ParseResult):
+    run_dir:  str                       # resolved, absolute
+    engine:   str                       # "siesta" | "pyscf" | "unknown"
+    files:    Dict[str, List[Path]]     # kind -> paths, sorted
+    active:   Optional[Path]            # which file the STATUS speaks for
+    openable: Optional[Path]            # which file a VIEWER should load
+    attempts: List[str]                 # what was tried, for the refusal
+    status:   Dict[str, Any]            # state · detail · last_change_at · active_source
+```
 
----
+| field | the question | who reads it |
+|---|---|---|
+| `engine` | which engine ran | `/api/watch/*`'s `format` |
+| `status` | how is it doing | `jobset/runstatus.py` per stage |
+| `files` | what is here | `jobset/summarize.py` per trial; the discovery chain |
+| `active` | which file speaks for the run | the status combiner; `summarize`'s per-trial pick |
+| `openable` + `attempts` | what should the viewer load, and what was tried | `web/blueprints/watch.py` |
+
+**No field is added without naming its reader in this table.** That is the rule
+the deleted version broke.
+
+### 5.1 `active` and `openable` are different questions
+
+They look like one and are not, and conflating them is the trap this section
+exists to mark.
+
+- **`active`** is *whose run-state is this directory's status*. It considers
+  **result** files only: every `.out`, plus each `*.molwatch.log` **whose
+  footer concludes the run**. A log without a conclusion is a live view, and
+  letting it vote would let a prep-time seed outrank a real `.out`.
+- **`openable`** is *what should a person see*. It **prefers** an unconcluded
+  molwatch log — that is exactly the run in progress somebody wants to watch.
+
+So a directory mid-run has an `openable` and no `active`; that is correct in
+both directions.
+
+**`active` is picked by stage, then mtime** *(user ruling, 2026-09-04)*. Two
+rules existed: `_build_status`'s stage-then-mtime and
+`summarize._latest_run_file`'s highest `-runN` index. They disagree on a
+staged run, and stage-then-mtime is the one that survives because the run
+index says nothing about which *stage* a file belongs to.
+
+### 5.2 `openable` — the discovery chain, unchanged in behaviour
+
+Four rungs, first hit wins, absorbed verbatim from
+`web/blueprints/watch.py::_resolve_run_directory` (`job-contracts.md` § 2.4):
+
+1. any `*.molwatch.log` — newest wins, which is the staged run's latest;
+2. `*.fdf` → read `SystemLabel` → `<label>.molwatch.log`, then `<label>.out`;
+3. `*.py` → read `job_name` → `<job>.molwatch.log`, `<job>.log`,
+   `<job>_geom_optim.xyz` — **and the deck filename's stem tried the same
+   way**, because a staged deck is `<job>_<token>.py` while `job_name` stays
+   bare (found 2026-08-19: every staged spelling was the unstaged one, so a
+   staged run without a molwatch seed resolved to nothing) — then the
+   rung-aware `<job>_geom_*_optim.xyz`;
+4. generic: `run.out`, `siesta.log`, `*.out`, `*_geom*_optim.xyz`.
+
+`attempts` carries the "tried X → N matches" trail. It is not decoration: it
+is the body of the refusal a person reads when nothing matched, and it moves
+with the chain so the message cannot drift from the search.
+
+### 5.3 What this door does NOT own
+
+**A file parser finding its own companion stays where it is** — § 5a's sibling
+upgrade. `engines/_sidecar._siesta_fdf_path_for`,
+`engines/pyscf._resolve_job_token` and `engines/siesta_mdnc.sibling_md_nc`
+each locate one file from another *of their own format*. Folding those in
+would make every engine parser depend on the directory composer, inverting
+§ 5's own rule that a DirParser composes FileParsers and never the reverse.
+
+The test is: **does the question need to see the whole directory?** "Which
+file is the status" does. "Where is my `.out`'s `.fdf`" does not.
+
+### 5.4 Every DirParser must
+
+**walk** the directory, **dispatch each file through the registry**
+(`detect`+`parse`, or a named FileParser when the choice is not path-driven),
+**compose** the per-file results, and **apply cross-file invariants** no single
+FileParser can see — atom-count consistency, lattice handedness, stage
+ordering, the status state machine. It must **never re-parse** what a
+registered FileParser can produce: add the missing FileParser instead.
+
+*(A second parser, `BundleDirParser` → `BundleResult` — the run-dir →
+next-calculation handoff fuse — stood beside it until 2026-08-29 and retired
+with calculation-to-calculation passing: a calculation that builds on a
+finished result CITES it, and prep composes — `transport/compose.py`.)*
+
+
 
 ## 5b. The recorded contract — one deck defines the answer, or there is none
 
