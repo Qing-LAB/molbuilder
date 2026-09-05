@@ -116,6 +116,59 @@ Flags (shared by `foreground` and `start`; `molbuilder/cli.py`):
 | `--no-auth` | off | skip auth entirely — **loopback host only** |
 | `--log-max-mb` / `--log-keep` | 20 / 5 | (`start` only) the log cap and how many gzipped archives survive |
 
+### 1.0e The server is listening but answers nobody
+
+**Symptom.** The web UI is on screen and works — it is a single-page app, so it
+renders and shows banners entirely in the browser — but every save fails with
+*"Couldn't save state to disk (write-state · **Failed to fetch**)"*, counting
+up. `curl` gets nothing either. The process is alive and holds the port.
+
+**Read the parenthetical first — it names the cause and the two cases are
+different bugs:**
+
+| banner says | what happened |
+|---|---|
+| `· HTTP 500` / `· HTTP 4xx` | the server **answered**. A route or handler bug — debug molbuilder. |
+| `· Failed to fetch` | **no response at all**. The request never completed: the server is not accepting, or is unreachable. |
+
+**Confirm in two commands.**
+
+```bash
+ss -ltn | grep :8888        # Recv-Q > 0 and not falling = queued, never accepted
+kill -USR1 "$(pgrep -f 'serve foreground.*8888')"   # dump every thread's stack
+tail -40 ~/.local/state/molbuilder/logs/serve-8888.stacks.log
+```
+
+A `Recv-Q` in the dozens with near-zero CPU is a **wedged accept loop**, not a
+busy server. The request log is the other half: an hours-long gap that ends when
+you restart says the same thing.
+
+**The cause, fixed 2026-09-05.** `socketserver.TCPServer.get_request` is
+`return self.socket.accept()`, and under TLS that socket is an `ssl.SSLSocket`
+whose `accept()` also performs the **handshake** — inside the accept loop. A
+client that completes the TCP connection and then sends nothing holds
+`do_handshake()` open with no timeout, and nobody else is ever accepted.
+Measured that morning: up 8h50m on **7 seconds of CPU**, 52 connections queued,
+seven hours of silence in the log, `SIGUSR1` showing the main thread in
+`ssl.py:do_handshake`. The connections holding it were internet scanners.
+
+**Authentication cannot help**, which is why this matters more than it looks:
+the handshake precedes every byte of HTTP, so no request object exists, no route
+runs, and the § 4 rate limiter's IP blocklist — a `before_request` hook — never
+sees the connection. One TCP connection, no credentials, whole server.
+
+`cli._harden_tls_accept_loop` now splits the two: `get_request` accepts a raw
+socket with a `HANDSHAKE_TIMEOUT_S` deadline, and `finish_request` — which
+`ThreadingMixIn` runs in the **worker thread** — does the TLS wrap. Bounding the
+handshake *in place* is not enough and was the first attempt: it turns an
+unbounded hang into an N × timeout stall, since the loop still waits for each
+silent client in turn.
+
+> **This is a dev server on a public interface.** The fix removes the cheapest
+> way to stop it; it does not make Werkzeug a hardened front end. § 2's shape —
+> a reverse proxy terminating TLS, molbuilder bound to loopback — is what keeps
+> hostile input away from it in the first place.
+
 ### 1.1 Is the running server actually running your code?
 
 **Static files are read from disk on every request; Python is not.** A

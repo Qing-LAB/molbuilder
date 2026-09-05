@@ -139,6 +139,11 @@
 
     // Wire the persist-error DOM event (dispatched by the workspace dispatcher).
     if (root.addEventListener) {
+        // Saving recovered -- take the warning down.  Without this the row
+        // raised by the first failure outlived the failure itself.
+        root.addEventListener("molbuilder:persist-ok", function () {
+            clear("persist-error");
+        });
         root.addEventListener("molbuilder:persist-error", function (e) {
             _onPersistError(e && e.detail);
         });

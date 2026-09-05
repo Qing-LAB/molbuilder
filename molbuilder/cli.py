@@ -2002,6 +2002,91 @@ def _serve_flags(f):
     return f
 
 
+#: Seconds a TLS handshake may take before the connection is dropped.
+#: Generous for a real client on a slow link; fatal to one that never speaks.
+HANDSHAKE_TIMEOUT_S = 10.0
+
+
+def _harden_tls_accept_loop() -> None:
+    """Take the TLS handshake OFF the accept loop, for every TLS server here.
+
+    **The outage this exists for.** `socketserver.TCPServer.get_request` is
+    ``return self.socket.accept()``, and under TLS that socket is an
+    ``ssl.SSLSocket`` whose ``accept()`` also performs the HANDSHAKE -- inside
+    the accept loop.  A client that completes the TCP connection and then says
+    nothing holds that call open with no timeout, and nobody else is ever
+    accepted.
+
+    Measured on the 8888 dev server, 2026-09-05: up 8h50m on **7 seconds of
+    CPU**, 52 connections queued and never accepted, and its own request log
+    silent for seven hours.  ``SIGUSR1`` (`faulthandler`, registered in
+    ``cmd_serve``) put the main thread in ``ssl.py:do_handshake``.  The
+    connections holding it were internet scanners; the server binds ``0.0.0.0``.
+
+    **Authentication cannot reach this.**  The handshake precedes every byte of
+    HTTP, so no request exists, no route runs, and `web/rate_limit.py`'s IP
+    blocklist -- a ``before_request`` hook -- never sees the connection.  One
+    TCP connection, no credentials, whole server.
+
+    So ``get_request`` accepts a RAW socket with a deadline on it, and
+    ``finish_request`` -- which ``ThreadingMixIn`` runs in the WORKER thread --
+    does the TLS wrap.  A silent client now costs one thread for
+    ``HANDSHAKE_TIMEOUT_S`` and costs the accept loop nothing.
+
+    Bounding the handshake *in place* was the first attempt and is not enough:
+    it turns an unbounded hang into an N x timeout stall, because the loop still
+    waits for each silent client in turn.  Three were enough to time out an
+    ordinary request in the test.
+
+    Patched onto Werkzeug's server CLASS rather than replacing ``app.run``,
+    because ``app.run`` is the seam the TLS tests capture
+    (``capture_flask_run``) -- bypassing it silently un-tested the ssl_context
+    wiring and hung the suite.
+    """
+    import socket as _socket
+    import ssl as _ssl
+
+    from werkzeug.serving import ThreadedWSGIServer
+
+    if getattr(ThreadedWSGIServer, "_molbuilder_tls_hardened", False):
+        return
+
+    def get_request(self):
+        if not isinstance(self.socket, _ssl.SSLSocket):
+            return self.socket.accept()          # plain HTTP: unchanged
+        # The RAW accept.  SSLSocket.accept would wrap-and-handshake here.
+        raw, addr = _socket.socket.accept(self.socket)
+        raw.settimeout(HANDSHAKE_TIMEOUT_S)
+        return raw, addr
+
+    def finish_request(self, request, client_address):
+        listener = self.socket
+        if not isinstance(listener, _ssl.SSLSocket):
+            self.RequestHandlerClass(request, client_address, self)
+            return
+        try:
+            conn = listener.context.wrap_socket(
+                request, server_side=True, do_handshake_on_connect=True,
+                suppress_ragged_eofs=listener.suppress_ragged_eofs)
+        except OSError:
+            return          # timed out, or spoke something that is not TLS
+        try:
+            conn.settimeout(None)      # the REQUEST is blocking, as it was
+            self.RequestHandlerClass(conn, client_address, self)
+        finally:
+            # `wrap_socket` DETACHES the raw socket, so socketserver's own
+            # `shutdown_request(request)` no longer owns the fd.  Close ours.
+            try:
+                conn.shutdown(_socket.SHUT_WR)
+            except OSError:
+                pass
+            conn.close()
+
+    ThreadedWSGIServer.get_request = get_request
+    ThreadedWSGIServer.finish_request = finish_request
+    ThreadedWSGIServer._molbuilder_tls_hardened = True
+
+
 @serve_group.command("foreground",
                      short_help="the terminal-bound run (dev): supervisor "
                                 "+ child in this shell, Ctrl-C to stop")
@@ -2095,6 +2180,8 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     app = create_app()
     click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
     _print_oauth_redirect_hint_if_auth_on(scheme, host, port)
+    if ssl_ctx is not None:
+        _harden_tls_accept_loop()
     app.run(host=host, port=port, debug=debug, ssl_context=ssl_ctx)
 
 

@@ -154,6 +154,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // incomplete").  A failure is either a rejected fetch (network) OR a
     // non-2xx response (server refused, e.g. bad workspace_id / disk).
     var _persistErrorHandlers = [];
+    var _persistFailing = false;   // see Recovery, below
     // Subscribe to persist failures (the UI layer registers here to warn the
     // user).  Returns an unsubscribe fn.  Part of the non-blocking/error-explicit
     // contract: the write is fire-and-forget, but every failure reaches here.
@@ -166,6 +167,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         };
     }
     function _reportPersistError(detail) {
+        _persistFailing = true;
         try { root.console.error("[workspace] persist FAILED (non-blocking)", detail); }
         catch (_) { /* console may be absent */ }
         _persistErrorHandlers.slice().forEach(function (fn) {
@@ -175,6 +177,29 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             if (root.dispatchEvent && typeof root.CustomEvent === "function") {
                 root.dispatchEvent(new root.CustomEvent(
                     "molbuilder:persist-error", { detail: detail }));
+            }
+        } catch (_) { /* event dispatch is best-effort surfacing */ }
+    }
+
+    // ---- Recovery -------------------------------------------------------- //
+    // A failure is surfaced (above) and a persist-error banner is RAISED.
+    // Nothing used to lower it: there was no success signal at all, so once a
+    // write failed the warning stood for the life of the page -- through the
+    // backend coming back, through every later write succeeding -- and its
+    // "(xN)" only ever grew.  Measured 2026-09-05, after a server outage: the
+    // route was answering 200 again while the banner still said saving was
+    // broken, and the only way out was to dismiss it by hand.
+    //
+    // So a write that lands announces itself, and the UI layer clears the
+    // warning.  Emitted ONLY on a transition out of the failed state, because
+    // a per-write event on a healthy session is noise on every keystroke.
+    function _reportPersistOk(detail) {
+        if (!_persistFailing) return;      // nothing to take back
+        _persistFailing = false;
+        try {
+            if (root.dispatchEvent && typeof root.CustomEvent === "function") {
+                root.dispatchEvent(new root.CustomEvent(
+                    "molbuilder:persist-ok", { detail: detail }));
             }
         } catch (_) { /* event dispatch is best-effort surfacing */ }
     }
@@ -202,6 +227,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 if (!res || !res.ok) {
                     _reportPersistError({ op: "write-state", state_index: idx,
                                           status: res && res.status });
+                } else {
+                    _reportPersistOk({ op: "write-state", state_index: idx });
                 }
             }).catch(function (err) {
                 _trace("http:write-state:error", { idx: idx });

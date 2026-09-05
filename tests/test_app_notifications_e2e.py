@@ -98,3 +98,57 @@ def test_stack_of_two_and_individual_clearance(page, flask_server):
     page.evaluate("() => window.molbuilder.notify.clearAll()")
     page.wait_for_function("() => window.molbuilder.notify.list().length === 0")
     assert page.locator("#app-notifications").is_hidden()
+
+
+def test_persist_ok_clears_the_error_row(page, flask_server):
+    """Saving recovered — the warning must come down.
+
+    Until 2026-09-05 nothing lowered it: `dispatcher.js` emitted
+    ``molbuilder:persist-error`` on failure and had NO success signal at all,
+    so the row raised by the first failed write outlived the failure. After a
+    server outage that morning the route was answering 200 again while the
+    banner still said saving was broken, its ``(×N)`` frozen at the last
+    failure, and the only way out was to dismiss it by hand.
+    """
+    _boot(page, flask_server)
+    page.evaluate(
+        "() => window.dispatchEvent(new CustomEvent('molbuilder:persist-error',"
+        "  { detail: { op: 'write-state', error: 'Failed to fetch' } }))")
+    page.wait_for_selector(".app-notification--error")
+    assert page.locator(".app-notification").count() == 1
+
+    page.evaluate(
+        "() => window.dispatchEvent(new CustomEvent('molbuilder:persist-ok',"
+        "  { detail: { op: 'write-state' } }))")
+
+    page.wait_for_selector(".app-notification", state="detached")
+    assert page.locator(".app-notification").count() == 0, (
+        "the persist warning survived a successful write")
+    assert page.evaluate("() => window.molbuilder.notify.list()") == []
+
+
+def test_persist_ok_leaves_other_notifications_alone(page, flask_server):
+    """Recovery clears the SAVE warning, not the bar.
+
+    `clear(id)` is per-row, and this is the anti-vacuity half: if recovery
+    called `clearAll()` the test above would pass while a validation error or
+    any other row vanished with it.
+    """
+    _boot(page, flask_server)
+    page.evaluate(
+        "() => window.molbuilder.notify.show({ id: 'other', level: 'warn',"
+        "  message: 'something else entirely' })")
+    page.evaluate(
+        "() => window.dispatchEvent(new CustomEvent('molbuilder:persist-error',"
+        "  { detail: { op: 'write-state', error: 'Failed to fetch' } }))")
+    page.wait_for_selector(".app-notification--error")
+    assert page.locator(".app-notification").count() == 2
+
+    page.evaluate(
+        "() => window.dispatchEvent(new CustomEvent('molbuilder:persist-ok',"
+        "  { detail: { op: 'write-state' } }))")
+    page.wait_for_timeout(150)
+
+    lst = page.evaluate("() => window.molbuilder.notify.list()")
+    assert [r["id"] for r in lst] == ["other"], (
+        f"recovery took an unrelated notification with it: {lst}")
