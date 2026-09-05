@@ -27,20 +27,28 @@ from here and queries the registry rather than knowing which parser to call.
 
 ---
 
-## 1. The three ABCs
+## 1. The two ABCs
 
 `molbuilder/parse/base.py`:
 
 | ABC | Input → output | Detection |
 |---|---|---|
 | **`FileParser`** | one file path → one `ParseResult` | `can_parse(path)` — the registry auto-detects |
-| **`TextParser`** | one in-memory text body → one `ParseResult`; **pure, no I/O** | none — the caller passes the parser explicitly |
 | **`DirParser`** | one directory → one `ParseResult`, **composed** from per-file parsers plus directory-level invariants | `can_parse(run_dir)` |
 
 Each declares `name` / `label` / `output` (the concrete `ParseResult` subclass
 it returns); **`FileParser`s** also declare a `hint` (what to point at when
-`can_parse` is `False`). **`TextParser` has no detection** — a text body has no
-path to inspect, so the caller names the parser: `parse_text(text, parser=…)`.
+`can_parse` is `False`).
+
+> **There were THREE until 2026-09-05.** `TextParser` took a text body and had
+> **no detection** — the caller named the parser — which is the tell: an ABC in
+> a package whose reason to exist is *"query the registry rather than knowing
+> which parser to call."* All six of its implementations read molbuilder's OWN
+> generated blocks, where there is nothing to detect and the caller always knows
+> which block it wants, so each class wrapped a function in a ten-field result
+> it did not need. They moved to the module that WRITES those blocks
+> (`script_emit.read_script`), which also removed a circular import the split
+> had forced. [`plans/plan.md` § 5d](?doc=plans/plan.md).
 
 ---
 
@@ -72,11 +80,6 @@ classDiagram
         payload · schema
         result_kind = "sidecar"
     }
-    class ScriptResult {
-        header · provenance · bench_marks ·
-        atom_metadata · user_custom
-        result_kind = "script"
-    }
     class InstrumentResult {
         metrics · parse_warnings
         result_kind = "instrument"
@@ -84,7 +87,6 @@ classDiagram
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
-    ParseResult <|-- ScriptResult
     ParseResult <|-- InstrumentResult
 ```
 
@@ -284,7 +286,6 @@ flowchart TD
     D -->|"two or more match"| AMB["raise AmbiguousFormatError<br/>(registration order is NOT precedence)"]
     DP --> R["ParseResult"]
     FP --> R
-    PT["parse_text(text, parser)"] -->|"no detection"| R
     PD["parse_dir(path)"] -->|"DirParsers only"| R
 ```
 
@@ -292,7 +293,6 @@ flowchart TD
 |---|---|
 | `detect(path)` | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
 | `parse(path)` | `detect` + `parse` in one call |
-| `parse_text(text, parser)` | parse a known text body — **no detection**, caller names the `TextParser` |
 | `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory". **⚠ No DirParser is registered, so this raises `UnknownFormatError` for every input** (§ 5). It named "JobMonitor, Results" as its callers until 2026-09-05; neither has ever called it |
 | `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
@@ -342,16 +342,17 @@ run_status(Path("projects/BDT/optimization/run-0"))
 #  "last_change_at": "...", "active_source": "BDT-run0.out"}
 ```
 
-**Extract the reserved blocks from a `.fdf` / `.py` body** (a `TextParser` — no
-detection, you name it):
+**Extract the reserved blocks from a `.fdf` / `.py` body** — **not this
+package.** The blocks are molbuilder's own, so they are read by the module that
+writes them:
 
 ```python
-from molbuilder.parse import parse_text
-from molbuilder.parse.scripts.source import ScriptSourceTextParser
+from molbuilder.script_emit import read_script
 
-s = parse_text(fdf_text, parser=ScriptSourceTextParser)   # -> ScriptResult
+s = read_script(fdf_text)          # -> ScriptSource
 s.atom_metadata      # the ATOM-METADATA block dict, or None if absent
 s.provenance         # the PROVENANCE block, or None
+s.schema_version     # the version the block DECLARED, after the gate
 ```
 
 **Skip detection when you already know the type** — call the parser class's
@@ -364,9 +365,9 @@ already knows the shape of.
 
 ```
 molbuilder/parse/
-├── base.py        # the 3 ABCs                (FileParser / TextParser / DirParser)
+├── base.py        # the 2 ABCs                (FileParser / DirParser)
 ├── types.py       # ParseResult + 5 subclasses + ParseWarning
-├── registry.py    # _REGISTRY, detect/parse/parse_text/parse_dir/register
+├── registry.py    # _REGISTRY, detect/parse/parse_dir/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
 ├── contract.py    # what a DIRECTORY records about itself:
 │                  #   contract_of  — the electronic contract its deck states (§ 5b)
@@ -395,13 +396,6 @@ molbuilder/parse/
 │   ├── molstruct.py · spectra.py · transport.py
 │   └── _helpers.py
 │
-├── scripts/       # the reserved .fdf / .py comment blocks → ScriptResult (TextParsers)
-│   ├── header.py · provenance.py · bench_marks.py
-│   ├── atom_metadata.py · user_custom.py
-│   ├── source.py              # ScriptSourceTextParser — umbrella over the blocks
-│   ├── source_dict.py         # the same blocks as a plain dict (no caller)
-│   ├── markers.py             # MARKER_RE + block-name constants
-│   └── _helpers.py
 │
 └── dirs/          # directory composers (DirParsers)
     ├── job.py                 # run_status → how a run directory is doing
@@ -736,9 +730,8 @@ Per parser kind, the specifics:
   `metrics`, a one-level dict (§ 5c). Where two instruments describe
   one figure, the choice is a **resolver** beside them (§ 5a) — never one
   parser reading the other's file.
-- **Block TextParser** (`parse/scripts/`): returns `ScriptResult`; uses
-  `MARKER_RE` from `scripts/markers.py`; the caller invokes it via
-  `parse_text(text, parser=<Block>Parser)` (no auto-detection).
+- *(**Block TextParser** was a kind here until 2026-09-05. The reserved
+  `.fdf` / `.py` blocks are read by `script_emit.read_script` — see § 1.)*
 - **DirParser composer** (`parse/dirs/`): **must compose existing FileParsers +
   TextParsers** (forbidden pattern #1 below), never parse files inline.
 
@@ -751,8 +744,12 @@ These stop the next round of parallel parse paths:
 1. **DirParsers compose registered parsers — no inline file-level parsing.**
    Need a new file read? Add a FileParser first. (A convention today, not yet
    lint-enforced.)
-2. **TextParsers do NO I/O.** A path-taking caller reads the file and passes the
-   body.
+2. **The block readers do NO I/O.** They take a string; a path-taking caller
+   reads the file and passes the body. *(This said "TextParsers" until
+   2026-09-05. The ABC is gone and the rule is not: a block reader that started
+   opening files would be a real defect either way, because some callers hold
+   the text from a request body rather than a path. Guarded in its new home by
+   `test_script_emit.py::test_the_block_readers_do_no_io`.)*
 3. **FileParsers do not spawn subprocesses, network calls, or threads** —
    parsing is pure local-file I/O; background work belongs to the JobMonitor.
 4. **`ParseResult` subclasses are frozen.** Never mutate after construction; use

@@ -1,12 +1,11 @@
 """Parser registry + dispatch.
 
-Per ``docs/model/parse.md`` § 3.  Three flat lists:
-one for FileParsers, one for TextParsers (not auto-detected;
-callers pick explicitly), one for DirParsers.
+Per ``docs/model/parse.md`` § 3.  TWO flat lists: one for
+FileParsers, one for DirParsers.  *(A third held TextParsers until
+2026-09-05; see ``base.py`` for where its subject went.)*
 
-The dispatch functions :func:`detect`, :func:`parse`,
-:func:`parse_text`, :func:`parse_dir` are the only public entry
-points.  Callers MUST NOT import a parser class directly + call
+The dispatch functions :func:`detect`, :func:`parse` and
+:func:`parse_dir` are the only public entry points.  Callers MUST NOT import a parser class directly + call
 its methods — go through the registry so registration changes
 propagate.
 """
@@ -17,17 +16,16 @@ import os
 from pathlib import Path
 from typing import List, Type, Union
 
-from .base import DirParser, FileParser, TextParser
+from .base import DirParser, FileParser
 from .errors import AmbiguousFormatError, UnknownFormatError
 from .types import ParseResult
 
 
 _FILE_PARSERS:  List[Type[FileParser]] = []
-_TEXT_PARSERS:  List[Type[TextParser]] = []
 _DIR_PARSERS:   List[Type[DirParser]]  = []
 
 
-def register(parser: Type[Union[FileParser, TextParser, DirParser]]) -> None:
+def register(parser: Type[Union[FileParser, DirParser]]) -> None:
     """Add a parser to the registry.
 
     Module-init time only; not for runtime registration during
@@ -43,16 +41,12 @@ def register(parser: Type[Union[FileParser, TextParser, DirParser]]) -> None:
         if parser not in _FILE_PARSERS:
             _FILE_PARSERS.append(parser)
         return
-    if issubclass(parser, TextParser):
-        if parser not in _TEXT_PARSERS:
-            _TEXT_PARSERS.append(parser)
-        return
     if issubclass(parser, DirParser):
         if parser not in _DIR_PARSERS:
             _DIR_PARSERS.append(parser)
         return
     raise TypeError(
-        f"register: {parser!r} is not a FileParser / TextParser / "
+        f"register: {parser!r} is not a FileParser / "
         f"DirParser subclass"
     )
 
@@ -163,15 +157,9 @@ def parse_dir(path: Path) -> ParseResult:
     return _detect_one(path, _DIR_PARSERS, "directory").parse(path)
 
 
-def parse_text(text: str, parser: Type[TextParser]) -> ParseResult:
-    """Parse a known text body.  Caller specifies the TextParser
-    explicitly; no detection.
-
-    Equivalent to ``parser.parse(text)``; routed through this
-    function so tracking / instrumentation can be added at the
-    registry layer without touching call sites.
-    """
-    return parser.parse(text)
+# `parse_text(text, parser)` stood here until 2026-09-05, with the
+# `TextParser` ABC it dispatched to.  It had no production caller:
+# every use was a test or the docstring example.  See `base.py`.
 
 
 # Test helpers --------------------------------------------------------- #
@@ -182,8 +170,6 @@ def _registered_file_parsers() -> List[Type[FileParser]]:
     return list(_FILE_PARSERS)
 
 
-def _registered_text_parsers() -> List[Type[TextParser]]:
-    return list(_TEXT_PARSERS)
 
 
 def _registered_dir_parsers() -> List[Type[DirParser]]:

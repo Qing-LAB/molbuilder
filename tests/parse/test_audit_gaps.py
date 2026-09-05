@@ -5,17 +5,18 @@ Pins:
     molbuilder.parse.__init__ has at least one test reference.
   * ParseWarning is constructible + carries the documented fields
     (audit found 0 test refs to it despite being exposed publicly).
-  * parse_text() is exercised end-to-end via the umbrella
-    ScriptSourceTextParser (audit found parse_text in __all__
+  * (parse_text() and the ScriptSourceTextParser umbrella were
+    exercised here until 2026-09-05; the TextParser tier retired
     but no direct smoke test).
   * Forbidden patterns per model/parse.md § 7:
-      - P2 (TextParser no I/O) — formal lint test on parse/scripts/*
+      - P2 retired with the ABC; the RULE moved to
+        test_script_emit.py::test_the_block_readers_do_no_io
       - P3 (FileParser no subprocess) — lint test on every
         FileParser source file
       - P6 (engine-specific code only in engines/coords) — lint
         test that parse/types.py + parse/base.py + parse/registry.py
         contain NO engine name strings (siesta / pyscf / molwatch)
-  * Top-level re-exports: ScriptSourceTextParser
+  * Top-level re-exports
     are importable from molbuilder.parse for the canonical "I want
     the umbrella" / "I want the bundle assembler" usage pattern.
 """
@@ -29,9 +30,6 @@ import pytest
 import molbuilder.parse as parse_module
 from molbuilder.parse import (
     ParseWarning,
-    ScriptResult,
-    ScriptSourceTextParser,
-    parse_text,
 )
 
 
@@ -52,17 +50,6 @@ def test_every_public_export_is_importable():
             f"such attribute")
         assert getattr(parse_module, name) is not None, (
             f"parse.{name} resolved to None")
-
-
-def test_top_level_re_exports_match_subpackage_classes():
-    """ScriptSourceTextParser at parse.* is the same class as its
-    sub-package canonical home.  (BundleDirParser's row retired
-    2026-08-29 with the bundle parser -- calculation-to-calculation
-    passing is gone; the composite CITES.)"""
-    from molbuilder.parse.scripts.source import (
-        ScriptSourceTextParser as _SubScript,
-    )
-    assert ScriptSourceTextParser is _SubScript
 
 
 # ---- ParseWarning coverage -------------------------------------- #
@@ -103,21 +90,6 @@ def test_parsewarning_allows_none_for_line_no_and_snippet():
     assert w.snippet is None
 
 
-# ---- parse_text smoke test -------------------------------------- #
-
-
-def test_parse_text_dispatches_to_text_parser_class():
-    """parse_text(text, parser=ScriptSourceTextParser) routes to
-    the class's .parse() method.  Smoke-test for the public API."""
-    fdf_minimal = "SystemLabel test\nNumberOfAtoms 0\n"
-    result = parse_text(fdf_minimal, parser=ScriptSourceTextParser)
-    assert isinstance(result, ScriptResult)
-    assert result.parser_name == "fdf-script-source"
-    # No script-contract blocks → all per-block fields None.
-    assert result.header is None
-    assert result.atom_metadata is None
-
-
 # ---- Forbidden-pattern lint tests (model/parse.md § 7) -------- #
 
 
@@ -133,25 +105,6 @@ def _glob_py(rel_subdir: str) -> list[Path]:
             continue
         out.append(p)
     return out
-
-
-def test_forbidden_p2_textparsers_do_no_io():
-    """model/parse.md § 7 forbidden #2: TextParsers do NO I/O.
-    They take a string in memory; reading the file is the caller's
-    job.  Lint every parse/scripts/*.py for I/O tokens."""
-    forbidden = (
-        "read_text", "read_bytes", "open(", ".read()",
-        "Path(", "with open",
-    )
-    for p in _glob_py("scripts"):
-        if p.name in ("__init__.py", "_helpers.py", "markers.py"):
-            continue
-        text = p.read_text()
-        for token in forbidden:
-            assert token not in text, (
-                f"{p.relative_to(_PARSE_DIR)} contains forbidden "
-                f"I/O token {token!r} — TextParsers operate on "
-                f"text in memory only (model/parse.md § 7 #2)")
 
 
 def _modules_defining_a_fileparser():

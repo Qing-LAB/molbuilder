@@ -5,7 +5,7 @@ discriminator per scope (file / text body / directory).  All
 concrete parsers subclass exactly one of these.
 
 Forbidden by the doc:
-* TextParsers do NO I/O (caller reads the file body).
+* (TextParsers did NO I/O; the ABC retired 2026-09-05 -- see below.)
 * FileParsers do NO subprocess / network / threads.
 * DirParsers MUST compose registered FileParsers + TextParsers;
   no inline file-level parsing.
@@ -76,23 +76,20 @@ class FileParser(ABC):
         """
 
 
-class TextParser(ABC):
-    """One text body → one :class:`ParseResult`.  Pure: no I/O.
-
-    Callers must read the file (or otherwise obtain the body)
-    themselves and pass the string.  A path-shaped interface is
-    intentionally not provided — splitting "read" from "parse"
-    keeps the parse layer unit-testable and free of filesystem
-    coupling.
-    """
-    name:   str
-    label:  str
-    output: Type[ParseResult]
-
-    @classmethod
-    @abstractmethod
-    def parse(cls, text: str) -> ParseResult:
-        """Parse the body, return the typed result."""
+# `TextParser` stood here until 2026-09-05.
+#
+# Its six implementations all read molbuilder's OWN generated blocks --
+# HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM -- and
+# that is the one case in this package with nothing to detect: the caller
+# always knows which block it wants, so the registry's whole purpose
+# ("query it rather than knowing which parser to call") did not apply.
+# Every class was a function in a costume: `ProvenanceTextParser.parse`
+# built a ten-field `ScriptResult` to carry the one dict the extractor had
+# already returned.
+#
+# The readers moved to the module that WRITES the blocks (`script_emit`,
+# reached through `read_script`), which also removed a circular import the
+# split had forced.  `plans/plan.md` § 5d.
 
 
 class DirParser(ABC):

@@ -772,8 +772,14 @@ def test_the_two_clock_derivation_homes_are_real_functions():
     assert rows, "§ 2a's derivation table could not be parsed -- repoint this"
     missing = []
     for mod, sym in rows:
-        f = root / "molbuilder" / mod
-        if not f.is_file():
+        # A contract may legitimately cite the TEST that guards a rule, and
+        # since 2026-09-05 § 7 #2 does exactly that.  Resolve against both
+        # trees before calling a citation broken.
+        for base in ("molbuilder", "tests"):
+            f = root / base / mod
+            if f.is_file():
+                break
+        else:
             missing.append(f"{mod} (no such file)")
             continue
         if not re.search(rf"^\s*(?:async\s+)?(?:def|class)\s+{re.escape(sym)}\b",

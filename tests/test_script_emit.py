@@ -753,7 +753,7 @@ def test_a_generated_deck_declares_its_engine():
     from molbuilder import script_emit as sc
     from molbuilder.config.pyscf import PySCFConfig
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.parse.scripts.provenance import _extract_provenance_dict
+    from molbuilder.script_emit import _extract_provenance_dict
     from molbuilder.pyscf.input import spec_for as pyscf_spec
     from molbuilder.siesta.input import spec_for as siesta_spec
     from molbuilder.structure import Structure
@@ -780,3 +780,109 @@ def test_a_generated_deck_declares_its_engine():
             f"deck was generated for {engine!r}. This key IS the declaration "
             f"`running-a-job.md` § 4.2 resolves against -- without it a run "
             f"directory falls back to sniffing file shapes.")
+
+
+# ===================================================================== #
+#  Rehomed from tests/parse/test_scripts.py, 2026-09-05                 #
+# ===================================================================== #
+#
+#  That file tested the `TextParser` tier over the script blocks, which is
+#  gone (`plan.md` § 5d).  Most of it went with the tier -- it asserted
+#  `ScriptResult` fields, `result_kind == "script"` and parser names.
+#  These four did NOT: they cover the extractors, which moved here and are
+#  live.  Retiring an ABC is not a reason to retire the coverage it
+#  happened to carry.
+
+FULL_FDF = """\
+# === molbuilder header BEGIN ===
+# Run with mpirun -np 4 siesta < test.fdf > test.out
+# === molbuilder header END ===
+
+# === molbuilder provenance BEGIN ===
+#   generator-version    git abc1234
+#   generated-at         2026-06-19T12:00:00Z
+#   resolved-defaults:
+#     mpi_np            auto -> 4
+#     use_gpu        true
+# === molbuilder provenance END ===
+
+# === molbuilder bench-marks BEGIN ===
+#   version v1
+#   n_atoms             5
+#   gpu_mode            true
+#
+#   field MeshCutoff       anchor=MeshCutoff      type=float unit=Ry default=400.0
+# === molbuilder bench-marks END ===
+
+# === molbuilder atom-metadata BEGIN ===
+# format: molstruct-json/v3
+# {
+#   "schema_version": 3,
+#   "n_atoms_total":  5,
+#   "regions":        {"bridge": [0, 1, 2, 3, 4]},
+#   "frozen_atoms":   [],
+#   "created_by":     "test",
+#   "created_at":     "2026-06-19T12:00:00Z"
+# }
+# === molbuilder atom-metadata END ===
+
+SystemLabel test
+NumberOfAtoms 5
+
+# === molbuilder user-custom BEGIN ===
+# This is the user's territory
+# Any text goes here
+# === molbuilder user-custom END ===
+"""
+
+
+def test_header_extracts_when_present():
+    """Rehomed. The HEADER block is the run command a person reads first."""
+    header = sc._extract_header_text(FULL_FDF)
+    assert header is not None
+    assert "Run with mpirun" in header
+
+
+def test_header_returns_none_when_absent():
+    """Rehomed. Block-absent is None, NOT an empty string.
+
+    The present-vs-absent distinction is what the ATOM-METADATA emission
+    rule turns on (`job-contracts.md` § 3.1); collapsing them would make a
+    script that carries an empty block indistinguishable from one that
+    carries none.
+    """
+    assert sc._extract_header_text("SystemLabel test\n") is None
+
+
+def test_bench_marks_extracts_version_and_fields():
+    """Rehomed. The only coverage of bench-marks EXTRACTION.
+
+    `test_script_emit.py` had four tests for emitting this block and none
+    for reading it back, so deleting the tier without this would have left
+    the read half of BENCH-MARKS untested -- the block `jobset summarize`
+    and `jobset/agreement.py` both depend on.
+    """
+    marks = sc._extract_bench_marks_dict(FULL_FDF)
+    assert marks is not None
+    assert marks.get("version") == "v1"
+    assert any(f.get("name") == "MeshCutoff" for f in marks.get("fields", []))
+
+
+def test_the_block_readers_do_no_io():
+    """Rehomed, and re-aimed at the CODE rather than the ABC.
+
+    This was `parse.md` § 7 forbidden #2 -- *"TextParsers do NO I/O"* --
+    and the ABC it named is gone.  The rule is not about the class: a block
+    reader takes a STRING, and one that started opening files would be a
+    real defect either way, because every caller already holds the text and
+    some hold it from a request body rather than a path.
+
+    Scoped to the reader section, since the emitters' module legitimately
+    reads a target file when merging USER-CUSTOM.
+    """
+    src = Path(sc.__file__).read_text()
+    readers = src[src.index("#  READING THE BLOCKS BACK"):]
+    for token in ("read_text", "read_bytes", "open(", ".read()", "Path("):
+        assert token not in readers, (
+            f"a block reader touches the filesystem ({token!r}) -- they take "
+            "text in memory; reading the file is the caller's job")

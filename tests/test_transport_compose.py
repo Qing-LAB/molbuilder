@@ -550,9 +550,7 @@ class TestTheSwap:
         whole block, so anything not threaded through is DELETED.  The
         atom count, the creation time and the other labels must
         survive, and the write must say a swap happened."""
-        from molbuilder.parse.scripts.atom_metadata import (
-            _extract_atom_metadata_dict,
-        )
+        from molbuilder.script_emit import _extract_atom_metadata_dict
         from molbuilder.transport.compose import swap_electrode_labels
         root = tmp_path / "projects"
         _write_tree(root, _junction_struct(layers_l=_LAYERS_R,

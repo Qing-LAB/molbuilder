@@ -175,28 +175,13 @@ class SidecarResult(ParseResult):
     result_kind: str = "sidecar"
 
 
-@dataclass(frozen=True)
-class ScriptResult(ParseResult):
-    """The five reserved blocks a generated deck can carry (HEADER /
-    PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM --
-    ``execution/job-contracts.md`` § 3.1), extracted from a single
-    ``.fdf`` / ``.py`` text body.  The sixth marker pair in
-    ``script_emit`` (``effective-parameters``) is not one of these: the
-    wrapper prints it into the LOG at launch, not into the deck
-    (§ 2.6).
-
-    Each sub-block carries a presence semantics: ``None`` ==
-    "block absent"; empty collection / empty string == "block
-    present but empty" (which matters for the ATOM-METADATA
-    emission rule -- § 3.4).
-    """
-    header:        Optional[str] = None
-    provenance:    Optional[Dict[str, str]] = None
-    bench_marks:   Optional[Dict[str, Any]] = None
-    atom_metadata: Optional[Dict[str, Any]] = None
-    user_custom:   Optional[List[str]] = None
-    block_schema_versions: Dict[str, int] = field(default_factory=dict)
-    result_kind:   str = "script"
+# `ScriptResult` stood here until 2026-09-05.
+#
+# One field per reserved block, produced by six `TextParser` classes that
+# each filled ONE of them and left the rest None.  Nothing ever read the
+# type: `result_kind == "script"` was never checked anywhere, and the
+# blocks are now returned by `script_emit.read_script` as a `ScriptSource`
+# -- beside the emitters that write them.  `plans/plan.md` § 5d.
 
 
 @dataclass(frozen=True)

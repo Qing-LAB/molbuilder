@@ -1,18 +1,24 @@
-"""molbuilder.script_emit — write-side of the script-contract blocks.
+"""molbuilder.script_emit — the script-contract blocks, BOTH directions.
 
-The WRITE side.  Absorbed from the retired
-:mod:`molbuilder.script_contract` (deleted 2026-06-21); the read side --
-the per-block extractors -- is :mod:`molbuilder.parse.scripts`, which is
-where ``model/parse.md`` § 4 requires it to live (provenance: `docs/archive/old_docs/protocols/parse-module.md`
-§ 8).
+**One format, one owner.**  This module writes the reserved blocks
+(HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM) and
+reads them back: the emitters are in the first half, the extractors and
+:func:`read_script` in the second.
 
-This module is the canonical home for the shared building blocks of
-the script-contract reserved blocks (HEADER / PROVENANCE /
-BENCH-MARKS / ATOM-METADATA / USER-CUSTOM, plus the marker regex
-and the BenchField declarations).  The read-side
-:mod:`molbuilder.parse.scripts.markers` re-imports the
-:data:`BLOCK_*` constants and :data:`MARKER_RE` from here so the
-two sides stay in lock-step.
+The read half lived in :mod:`molbuilder.parse.scripts` until 2026-09-05,
+wrapped in `TextParser` classes so it could sit in `parse/`'s registry.
+That registry exists to answer *"which parser handles this file?"* for
+FOREIGN formats; these blocks are molbuilder's own, in a file molbuilder
+generated, and every caller already knows which block it wants -- so the
+classes were ceremony, and the split forced a circular import that a
+lazy-import table had to work around.  `plans/plan.md` § 5d has the
+measurement; `execution/job-contracts.md` § 3.1 owns the grammar.
+
+*(The write half was itself absorbed from a retired
+:mod:`molbuilder.script_contract` on 2026-06-21.  The name `script_emit`
+now understates the module: it emits AND reads.  Renaming it would touch
+54 files for no functional gain, so the docstring carries the truth
+instead.)*
 
 Public surface
 --------------

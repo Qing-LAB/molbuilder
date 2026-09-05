@@ -15,7 +15,6 @@ from molbuilder.parse import (
     DirParser,
     FileParser,
     ParseResult,
-    TextParser,
     TrajectoryResult,
     UnknownFormatError,
     detect,
@@ -31,7 +30,6 @@ from molbuilder.parse.engines import (
 from molbuilder.parse.registry import (
     _registered_dir_parsers,
     _registered_file_parsers,
-    _registered_text_parsers,
 )
 
 
