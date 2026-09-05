@@ -709,6 +709,58 @@ reproduced duplicate-keyword refusal, `Parameter.writes`) are re-checkable, and
 should be re-checked rather than trusted if this is picked up later.
 
 
+## 5f. One block, two readers, two answers — OPEN, measured 2026-09-05
+
+The `ATOM-METADATA` block has two readers, and on a pre-v7 block they
+disagree about whether the labels survive. This is the shape of the
+2026-08-19 convergence-header bug — one format, two readers, drifted — and
+it is recorded here rather than fixed because resolving it changes what a
+shipping path returns.
+
+### The measurement
+
+One block, aged to the pre-v7 layout (top-level `frozen_atoms`), fed to each
+reader with the same four-atom structure:
+
+| reader | delivered as | result |
+|---|---|---|
+| `script_emit.apply_inbody_atom_metadata` (transport composite) | script text | **applied**, `frozen_atoms = [0, 1]` recovered, one `labels.atom_metadata_version` notice |
+| `sidecars.molstruct.apply_to_structure` (Results tab → `/api/build/load`) | payload JSON | **refused** on the stray key; no labels |
+
+So the same finished run keeps its frozen set when opened through transport
+and loses it when opened through the Results tab. As of 2026-09-05 the door
+at least loads the structure and says so, instead of refusing the whole
+load — but it still discards labels the other reader recovers.
+
+### Why it is not obviously a defect
+
+The split is documented on both sides, and the two documents disagree:
+
+- `parse/dirs/atom_metadata.py` states the results path applies the block
+  "via `apply_to_structure`, NOT ... `molstruct.load_text`", and
+  `structure-molstruct.md` § 2's surfaces table gives the in-script block
+  "the block is **not** read ... with a note saying why".
+- `apply_inbody_atom_metadata` states the opposite for the same artifact,
+  citing a dated decision: *"On a version it does not recognise this WARNS
+  and TRANSLATES rather than refusing (user, 2026-08-03)"* — motivated by
+  50- and 216-atom frozen sets lost out of real run directories.
+
+Both are written rules. Which one governs is the open question.
+
+### The shape a fix would take, if the translating reader wins
+
+`apply_inbody_atom_metadata` is text-in only because it starts by calling
+`_extract_atom_metadata_dict`. Splitting the payload-application half out
+would give both delivery shapes — script text and payload JSON — one reader,
+with the version translation and the notices in the shared half. No new
+grammar, no second translation table.
+
+### Also noted while measuring
+
+`structure-molstruct.md` § 2's table names the reader `parse.dirs.bundle`.
+No such module exists; it is `parse/dirs/atom_metadata.py`.
+
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |

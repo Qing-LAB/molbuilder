@@ -142,7 +142,7 @@ gate**, because it converts a loud failure into a quiet one.
 | Surface | On a non-v7 payload |
 |---|---|
 | `molstruct.load` / `load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
-| `parse.dirs.bundle` (the in-script `ATOM-METADATA` block) | the block is **not** read: `regions` and `frozen_atoms` come back `None`, with a note saying why |
+| `parse/dirs/atom_metadata.py` (the in-script `ATOM-METADATA` block) | the block is **not** read: `regions` and `frozen_atoms` come back `None`, with a note saying why |
 | `/api/build/load`'s `atom_metadata` (that same block, over HTTP) | same answer, for the same reason: the structure loads **without** its labels and a `warn` notice says why. Refusing would make a finished run unopenable, and unopenable is unfixable — the one page that could show the person what is wrong would show them nothing |
 
 Both messages name the specific difference (before v7 the frozen atoms sat in a
