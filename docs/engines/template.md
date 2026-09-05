@@ -1756,7 +1756,9 @@ than a special case:**
   says is meant to be edited (G5).
 
 > **Where the read-back merge actually runs today, counted rather than
-> assumed (re-counted 2026-08-19).** The merge lives in `write_script`, and
+> assumed (re-counted 2026-08-19; re-confirmed 2026-09-05, and
+> `job-contracts.md` § 3.5 -- which said `prep` and the CLI LOSE the
+> text -- was corrected to match this).** The merge lives in `write_script`, and
 > since the seam migration **every generated file goes through it** —
 > `prepare_deck` writes each deck that way (so `jobset prep` and
 > `molbuilder pyscf` both preserve the zone) and the wrapper writer uses the

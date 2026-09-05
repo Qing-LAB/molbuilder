@@ -1150,41 +1150,88 @@ upgraded.)*
 
 ### 3.5 USER-CUSTOM — your territory
 
-A zone molbuilder reads during regeneration only to learn where it is, then
-copies **byte-for-byte** into the new output:
+**The one zone in a generated deck that is yours.** molbuilder writes every
+other block and will overwrite it on the next generation. This one it reads
+only to find where it is, then copies **byte-for-byte** into the new output.
 
 ```
 # === molbuilder user-custom BEGIN ===
-# Your own additions go here. molbuilder preserves this section verbatim.
+# Your own additions go here.  molbuilder will preserve
+# this section verbatim across regenerations.
 # === molbuilder user-custom END ===
 ```
 
-molbuilder does not validate its contents (engine-invalid text there will be
-rejected by the engine, not by molbuilder). The block may be missing; on
-regenerate an empty one is emitted.
+#### The format you follow
 
-> **Which paths actually preserve it, because "on regeneration" is not one
-> path.** `merge_user_custom_from_target` has a single caller — the web file
-> save, and only on a fresh regenerate (an edit-save skips it deliberately, so
-> that committing your own text is not undone by a merge).
->
-> | path | your text |
-> |---|---|
-> | the web Build tab, regenerating | **preserved**, read back from the target |
-> | `molbuilder pyscf` at the terminal | **lost** — the CLI writes and never reads the old file |
-> | `jobset prep` (the staged path) | **lost** — see below |
->
-> **`prep` cannot use this mechanism at all**, and that is structural rather
-> than unfinished: it renders on the target machine where there is usually no
-> previous deck, it renders one deck *per stage* so *"the target"* names
-> nothing, and it must be reproducible — harvesting whatever is on disk would
-> make the same description produce different decks.
->
-> The design that closes it is a template item carrying the text
-> ([`engines/template.md`](?doc=engines/template.md) § 9.2), which also makes
-> per-stage custom text free rather than a new mechanism. **It is not built** —
-> no engine config has a `user_custom` field — so today the staged path emits
-> an empty zone. Tracked as row 1 of that document's § 12.1.
+There is deliberately almost none, and that is the contract:
+
+| rule | why |
+|---|---|
+| **Anything between the markers is yours.** Comments, engine keywords, a `%block`, a path to a Lua script — molbuilder does not read it. | The engine judges it, not molbuilder. Engine-invalid text is rejected at run time with the engine's own message, which is more useful than one molbuilder could invent. |
+| **Do not write the marker lines yourself**, and do not nest a second pair. | They are how the zone is found. `MARKER_RE` matches `# === molbuilder <block> BEGIN/END ===`; a stray copy makes the boundary ambiguous and the merge refuses rather than guessing. |
+| **Comment syntax is the host file's**, not molbuilder's — `#` in a `.fdf` and in a `.py` alike, because both use `#`. | The zone is plain text in a file the engine parses. |
+| **The zone may be absent.** A deck written before it existed, or hand-edited to remove it, is still valid; a regeneration emits an empty one. | Absence is ordinary (§ 2.2's rule). |
+| **It is not versioned.** Every other structured block carries a version (§ 3.6); this one cannot, because its content is not molbuilder's to version. | A version tag on free text would be a promise nobody can keep. |
+
+#### Which paths preserve it — measured 2026-09-05
+
+`write_script` performs the merge, and **every deck-writing path goes through
+it**: `prepare_deck` (both engines' CLI entry points and `jobset prep`) and the
+wrapper writer. `web/blueprints/files.py` additionally chains
+`merge_user_custom_from_target` on a fresh regenerate.
+
+| path | your text |
+|---|---|
+| the web Build tab, regenerating | **preserved** — merged twice over, harmlessly |
+| the web Build tab, edit-save | **preserved** — the merge is skipped on purpose, because you are committing your own text and a merge would undo edits *inside* the zone |
+| `molbuilder siesta` / `molbuilder pyscf` | **preserved** — `prepare_deck` → `write_script` |
+| `jobset prep`, re-prepping over an existing deck | **preserved** — same path |
+| `jobset prep`, into a directory with no previous deck | **empty** — there is nothing to read back |
+
+> **This table said `jobset prep` and the CLI both LOSE the text, until
+> 2026-09-05.** It reached that by counting callers of
+> `merge_user_custom_from_target` and finding one — the web save — which misses
+> `write_script`, the internal caller every generated file passes through.
+> `engines/template.md` § 9.2 had it right and re-counted correctly on
+> 2026-08-19; the two documents disagreed for three weeks. Re-derived here from
+> the call chain: `jobset/prep.py:1020` → `prepare_deck` → `write_script` →
+> `merge_user_custom_from_target`.
+
+**The remaining gap is the last row, and it is structural.** A first prep on a
+target machine has no previous deck to read, `prep` renders one deck *per
+stage* so *"the target"* names nothing, and `prep` must be reproducible —
+harvesting whatever is on disk would make the same description produce
+different decks. The design that closes it is a template item carrying the
+text ([`engines/template.md`](?doc=engines/template.md) § 9.2, `kind="deck"`,
+`type="text"`), which also makes per-stage custom text free rather than a new
+mechanism. **It is not built** — no engine config has a `user_custom` field
+(checked 2026-09-05) — and it is row 1 of that document's § 12.1.
+
+#### What this zone is for, and where it is heading
+
+Today it is a hand-edit escape hatch, and it is unused: of 93 real decks under
+`projects/` carrying the zone, **none has anything but the placeholder**
+(counted 2026-09-05).
+
+It exists for the things an engine supports that molbuilder's forms do not yet
+model — a SIESTA `%block` for a feature with no UI, a PySCF call, **a Lua
+script driving a SIESTA run**. Those are the cases where a person needs to say
+something the generator has no field for, and the alternative to this zone is
+editing a generated file that the next regeneration overwrites.
+
+**The intended shape is an editor in the UI** — its own card, so the text is
+typed where the rest of the job is described rather than by opening the deck
+afterwards. Two things follow from the contract above and should not be
+re-litigated when it is built:
+
+- **The card writes the template item, not the deck.** Editing the deck
+  directly works today and stays working, but it is the path that loses the
+  text on a fresh prep. The item is what makes the text survive to a target
+  machine, and per-stage overrides come free with it.
+- **The card does not validate.** No linting, no keyword completion that
+  implies approval. A card that appears to check the text would be claiming
+  molbuilder understands it; the whole point of the zone is that it does not.
+  Show it as free text, say plainly that the engine is the judge.
 
 ### 3.6 Versioning and what a tool may assume
 
