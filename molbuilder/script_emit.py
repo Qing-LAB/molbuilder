@@ -1925,8 +1925,34 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
     readable) and surfaced as a diagnostic note naming what may be missing --
     see the comment at the check itself.
     """
-    notes: List[str] = []
     atom_md = _extract_atom_metadata_dict(text)
+    gated = _gate_atom_metadata(atom_md)
+    return {
+        "regions":           gated["regions"],
+        "frozen_atoms":      gated["frozen_atoms"],
+        "user_custom_lines": _extract_user_custom_inner(text),
+        "provenance":        _extract_provenance_dict(text),
+        "schema_version":    gated["schema_version"],
+        "notes":             gated["notes"],
+    }
+
+
+def _gate_atom_metadata(atom_md: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The ATOM-METADATA schema gate, over a block ALREADY read.
+
+    Split out of :func:`_extract_script_source` on 2026-09-05 so a caller
+    that already holds the block does not re-parse the whole script to gate
+    it.  :func:`read_script` did exactly that: it called
+    ``_extract_script_source(text)``, which re-ran the atom-metadata,
+    user-custom and provenance extractors the door had just run itself, so
+    three of five blocks were parsed TWICE.  Measured on a real 1272-line
+    deck: the door cost **4.8 ms** against **0.5 ms** for a single block --
+    and the ``0.55 ms`` this module's own docstring quoted was
+    ``_extract_script_source``, the inner call, not the door.
+
+    Returns ``regions`` / ``frozen_atoms`` / ``schema_version`` / ``notes``.
+    """
+    notes: List[str] = []
     regions: Optional[Dict[str, List[int]]] = None
     frozen: Optional[List[int]] = None
     schema_version: Optional[int] = None
@@ -1998,12 +2024,10 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
             notes.append(
                 "atom-metadata block has no schema_version; ignored.")
     return {
-        "regions":           regions,
-        "frozen_atoms":      frozen,
-        "user_custom_lines": _extract_user_custom_inner(text),
-        "provenance":        _extract_provenance_dict(text),
-        "schema_version":    schema_version,
-        "notes":             notes,
+        "regions":        regions,
+        "frozen_atoms":   frozen,
+        "schema_version": schema_version,
+        "notes":          notes,
     }
 
 
@@ -2012,10 +2036,17 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
 class ScriptSource:
     """What a generated script says about itself -- every reserved block.
 
-    One pass, one object.  A per-block door was considered and rejected on
-    measurement: reading all six blocks off a real 442-line deck costs
-    **0.55 ms** against **0.22 ms** for one, so splitting the door to save
-    a third of a millisecond would buy nothing and cost six names.
+    One object, and one parse per block.  A per-block door was considered
+    and rejected on measurement -- but the numbers first written here were
+    wrong twice over, so they are restated honestly: reading every block
+    off a real 1272-line deck costs **3.0 ms** against **0.5 ms** for one.
+
+    *The original claim was "0.55 ms against 0.22 ms".  The 0.55 was
+    `_extract_script_source` -- the INNER call -- not this door, which
+    then cost 4.8 ms because it asked that function for the gated view
+    and re-ran three of the same extractors for the raw one.  Three of
+    five blocks were parsed twice.  Split out `_gate_atom_metadata`
+    (2026-09-05) so the gate takes a block already read.*
 
     Fields are ``None`` when the block is ABSENT and empty when the block
     is PRESENT-but-empty -- the distinction the ATOM-METADATA emission rule
@@ -2053,7 +2084,11 @@ def read_script(text: str) -> ScriptSource:
 
     Takes a STRING: reading the file is the caller's job.
     """
-    src = _extract_script_source(text) or {}
+    # ONE parse per block.  This called `_extract_script_source(text)` for
+    # the gated view AND every extractor again for the raw one, so
+    # atom-metadata, user-custom and provenance were each read twice.
+    atom_md = _extract_atom_metadata_dict(text)
+    gated = _gate_atom_metadata(atom_md)
     return ScriptSource(
         header=_extract_header_text(text),
         provenance=_extract_provenance_dict(text),
@@ -2061,12 +2096,12 @@ def read_script(text: str) -> ScriptSource:
         # The RAW block.  `regions` / `frozen_atoms` below are the same
         # block after the schema gate; a caller wanting the gate takes
         # those, one wanting the payload takes this.
-        atom_metadata=_extract_atom_metadata_dict(text),
+        atom_metadata=atom_md,
         user_custom=_extract_user_custom_inner(text),
-        regions=src.get("regions"),
-        frozen_atoms=src.get("frozen_atoms"),
-        schema_version=src.get("schema_version"),
-        notes=tuple(src.get("notes") or ()),
+        regions=gated["regions"],
+        frozen_atoms=gated["frozen_atoms"],
+        schema_version=gated["schema_version"],
+        notes=tuple(gated["notes"] or ()),
     )
 
 
