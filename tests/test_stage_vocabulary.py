@@ -165,9 +165,13 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/identity.py",
         "reads it back.  The decoder used to keep its own `-stage(N)` regex, "
         "a second spelling of the emitter's convention that could drift"),
-    "_detect_stage_name": (
-        None, "molbuilder/parse/dirs/job.py",
-        "the observing side -- the half of the token a person reads"),
+    # `_detect_stage_name` was the eleventh row here until 2026-09-04
+    # ("the observing side -- the half of the token a person reads",
+    # `parse/dirs/job.py`).  It retired with the directory decoder: it
+    # existed only to label plot buckets and the per-stage engine-input
+    # envelope, two of the ten `JobResult` fields that had no reader
+    # anywhere.  `run_status` needs the stage ORDINAL to pick the active
+    # file (`_detect_stage`, still declared above) and never its name.
     # -- decision 28's one RESOLVER (§ 8f, 2026-08-10) -----------------
     #  Not an eleventh way to express a stage either: these are the one way
     #  to REFER to one.  The token above says what a stage's files are
