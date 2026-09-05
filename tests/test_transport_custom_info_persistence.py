@@ -119,8 +119,13 @@ def test_header_echoes_max_memory_mb_when_set():
 
 def test_header_echoes_num_threads_as_omp_threads_requested():
     """Key name MUST match SIESTA's convention (omp_threads_requested)
-    so the shared SIESTA-side parser regex at
-    parse/engines/siesta.py:1407 reads both engines uniformly."""
+    so ONE reader serves both engines.
+
+    That reader is `molwatch.parse_runtime_line`, which owns the
+    `# runtime.<key>:` grammar. This named a private `siesta.py` regex at a
+    line number until 2026-09-05 -- the regex was retired as one of two
+    copies of that grammar, and the line number had drifted onto an
+    unrelated rule long before that."""
     struct = _mk_device_struct()
     cfg = TransportConfig(job_name="dev", num_threads=8)
     text = TransiestaEngine.render_script(struct, cfg)

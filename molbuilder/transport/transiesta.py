@@ -163,7 +163,7 @@ def _emit_header(cfg: TransportConfig, struct: Structure) -> List[str]:
     custom electrode names see their own file names in the banner.
 
     Runtime-hint echo (``# runtime.<key>: <val>``) mirrors the
-    SIESTA emitter at ``siesta/input.py:522-525`` — the .out parser
+    SIESTA emitter in ``siesta/input.py`` — the .out parser
     reads these via ``molwatch.parse_runtime_line`` (the format's one
     reader since 2026-09-05; it was `siesta.py`'s private
     ``_SIESTA_RUNTIME_RE``, one of two copies) so the Results tab can

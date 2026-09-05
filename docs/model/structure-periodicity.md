@@ -235,7 +235,7 @@ convention. The box would sit at the origin with half the atoms outside it (the
    state, different mechanism.) **The viewer ≡ render_fdf invariant:** the viewer's box (cell at
    `cell_origin`, atoms where they are) and SIESTA's cell (at `(0,0,0)`, atoms
    translated by `−cell_origin`) are the SAME relative geometry.
-4. **`calibrate_to_cell` — the optional unified last step** (`modify.py:1164`,
+4. **`calibrate_to_cell` — the optional unified last step** (`modify.py`,
    `/api/modify/calibrate`). It *bakes* the generation-time shift into the
    stored coordinates: translate all atoms by `−resolve_cell_origin()`, then set
    `cell_origin → (0,0,0)`. Generation is correct with or without it; calibration
