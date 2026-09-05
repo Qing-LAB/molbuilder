@@ -143,6 +143,7 @@ gate**, because it converts a loud failure into a quiet one.
 |---|---|
 | `molstruct.load` / `load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
 | `parse.dirs.bundle` (the in-script `ATOM-METADATA` block) | the block is **not** read: `regions` and `frozen_atoms` come back `None`, with a note saying why |
+| `/api/build/load`'s `atom_metadata` (that same block, over HTTP) | same answer, for the same reason: the structure loads **without** its labels and a `warn` notice says why. Refusing would make a finished run unopenable, and unopenable is unfixable — the one page that could show the person what is wrong would show them nothing |
 
 Both messages name the specific difference (before v7 the frozen atoms sat in a
 top-level key rather than in `regions`) and say what to do: re-save the structure,
@@ -171,7 +172,8 @@ at any of them is refused, not upgraded.
 | v5 | drops `kgrid` — a `SiestaConfig` sampling knob, not geometry |
 | v6 | `cell_origin` persisted |
 | v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something. **Still readable** — v8 changed nothing it states |
-| **v8** | **current** *(2026-08-20)* — the optional **identity columns** (`title`, `atom_names`, `residue_ids`, `residue_names`, `chain_ids`), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte |
+| v8 | the optional **identity columns** (`title`, `atom_names`, `residue_ids`, `residue_names`, `chain_ids`), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
+| **v9** | **current** *(2026-08-29)* — the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one |
 
 ### Changing the schema
 
@@ -241,11 +243,12 @@ flowchart LR
 
 | Function | Role |
 |---|---|
-| `sidecar_path_for(xyz)` (`:89`) | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
-| `to_dict(fields, n_atoms_total, structure_hash, …)` (`:195`) | build the envelope + spread the validated metadata fields |
-| `save(path, …)` (`:315`) | atomic write (temp sibling + `os.replace`) |
-| `load(path)` (`:406`) / `load_text(text)` (`:418`) | read + validate the version → a normalised metadata dict |
-| `apply_to_structure(struct, dict)` (`:370`) | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` |
+| `sidecar_path_for(xyz)` | derive `<stem>.molstruct.json` from a geometry path — the one pairing rule |
+| `to_dict(fields, n_atoms_total, structure_hash, …)` | build the envelope + spread the validated metadata fields |
+| `save(path, …)` | atomic write (temp sibling + `os.replace`) |
+| `load(path)` / `load_text(text)` | read + validate the version → a normalised metadata dict |
+| `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` |
+| `MolstructJsonError` / `MolstructPairingError` | the payload is unreadable / the payload is for a **different structure**. Separate types because § 3's two guards get different answers: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing* |
 
 Callers do not touch the field list — `Structure`'s two metadata methods are the
 sole namers (`structure.md § 2.2`). The higher-level paired-file door

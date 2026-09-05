@@ -143,6 +143,33 @@ class MolstructJsonError(ValueError):
     differentiate "user-error sidecar" from "I/O failure"."""
 
 
+class MolstructPairingError(MolstructJsonError):
+    """THIS METADATA IS NOT FOR THIS STRUCTURE -- the one condition above
+    that no surface may answer leniently.
+
+    `structure-molstruct.md` § 3 states the guards as **"two independent
+    guards, deliberately kept separate"**: the atom count, checked here on
+    apply, and `structure_hash`, checked by the caller against the geometry
+    it loaded.  Both answer the same question -- does this metadata describe
+    *these* atoms? -- and the answer is binary, because the metadata is
+    indexed by atom position and a near-miss mis-assigns every label after
+    the first inserted atom.  So § 2 says a mismatch "is refused, never
+    mis-applied", and `apply_to_structure` is documented as never partially
+    applying one.
+
+    Separate TYPE, not a separate message, because the surfaces above differ
+    on everything else.  A block whose *form* this build cannot read (a
+    pre-v7 run's top-level `frozen_atoms`) is a version fact: the in-script
+    block's surface answers it by loading without the labels and saying why,
+    since refusing there would leave a finished run unopenable and so
+    unfixable.  A block for a *different structure* is not a version fact and
+    gets no such leniency anywhere.  Until 2026-09-05 the two shared one
+    exception type, so a caller that wanted to be lenient about the first had
+    no way to stay strict about the second -- and one that tried swallowed
+    the count guard whole.
+    """
+
+
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #
@@ -529,7 +556,10 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
 
     Validates that the sidecar's ``n_atoms_total`` matches the structure's atom
     count -- a mismatch usually means the XYZ was edited separately and the
-    sidecar's indices no longer point at the right atoms.  The sidecar's
+    sidecar's indices no longer point at the right atoms.  That one raises
+    :class:`MolstructPairingError` rather than the base error, so a lenient
+    surface can keep this guard while forgiving the version failures below
+    (see that class for why the two must not share an answer).  The sidecar's
     ``structure_hash`` is NOT verified here (the caller compares it against the
     on-disk XYZ's hash with a path it knows about).  A key that is neither a
     structure metadata field nor an envelope key is REFUSED here rather than
@@ -538,7 +568,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     sidecar_n = sidecar_data.get("n_atoms_total")
     struct_n = len(struct.elements)
     if sidecar_n != struct_n:
-        raise MolstructJsonError(
+        raise MolstructPairingError(
             f"sidecar n_atoms_total={sidecar_n} but structure has "
             f"{struct_n} atoms.  The sidecar's region / frozen-atom "
             f"indices no longer point at the right atoms; re-export "
@@ -612,6 +642,7 @@ __all__ = [
     "frozen_atoms",
     "dumps",
     "MolstructJsonError",
+    "MolstructPairingError",
     "apply_to_structure",
     "load",
     "load_text",

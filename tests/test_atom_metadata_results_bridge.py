@@ -72,6 +72,23 @@ def _md_json_4c() -> str:
         _block({"electrode_L": [0, 1], "device": [2, 3]}, [0, 1], 4)))
 
 
+def _md_json_pre_v7() -> str:
+    """The SAME block as a run older than v7 would carry it.
+
+    DERIVED from the current one, not typed: it then keeps describing the
+    same four atoms if the writer changes, and the only difference is the
+    one the version history names -- before v7 the reserved `frozen_atoms`
+    label sat in a top-level key instead of inside `regions`.  No current
+    code can emit this, which is the whole point: it is what an ALREADY
+    FINISHED run has on disk, and nothing can go back and rewrite it.
+    """
+    from molbuilder.structure import FROZEN_LABEL
+    block = json.loads(_md_json_4c())
+    block["frozen_atoms"] = block["regions"].pop(FROZEN_LABEL)
+    block["schema_version"] = 4
+    return json.dumps(block)
+
+
 # --------------------------------------------------------------------- #
 #  1. Parse layer: atom_metadata_json_for_run_dir                       #
 # --------------------------------------------------------------------- #
@@ -152,6 +169,75 @@ class TestBuildLoadDoor:
             "atom_metadata": "{not valid"})
         assert r.status_code == 400
         assert "atom_metadata" in r.get_json()["error"]
+
+    def test_a_block_this_build_cannot_read_reports_instead_of_refusing(
+            self, client):
+        """A run older than v7 still OPENS -- with a note saying why it has
+        no labels.
+
+        This door 400'd on every `MolstructJsonError` until 2026-09-05, so a
+        run prepared before the frozen-atom store moved into `regions` was
+        **unopenable**, and unopenable is unfixable: the one page that could
+        show the person what is wrong showed them nothing.  The field is
+        documented "lenient, atom-count-only" and `structure-molstruct.md`
+        § 2 gives this artifact the opposite answer to the sidecar file's --
+        the block "is NOT read: `regions` and `frozen_atoms` come back None,
+        with a note saying why".
+
+        The geometry is the point: it arrives whole, because the labels are
+        a separate fact and losing them must not cost the atoms.
+        """
+        r = client.post("/api/build/load", json={
+            "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
+            "atom_metadata": _md_json_pre_v7()})
+        body = r.get_json()
+
+        assert r.status_code == 200, (
+            "a pre-v7 label block made the whole structure unloadable: "
+            f"{body.get('error')!r}")
+        assert len(body["elements"]) == 4, "the geometry did not survive"
+
+        said = [n for n in (body.get("notices") or []) if n["about"] == "labels"]
+        assert said, (
+            "the structure loaded with no labels and said nothing about it -- "
+            f"silence is the one answer § 2 rules out.  notices={body.get('notices')!r}")
+        assert said[0]["level"] == "warn"
+        assert "frozen_atoms" in said[0]["message"], (
+            "the note must name the specific difference so the person can act "
+            f"on it: {said[0]['message']!r}")
+
+        # NEVER PARTIALLY APPLIED: no label from the unread block leaked
+        # through onto the atoms.
+        leaked = [a for a in body["atoms"] if a.get("regions")]
+        assert not leaked, f"labels from an unread block reached the atoms: {leaked[:2]}"
+
+    def test_leniency_stops_at_the_count_guard(self, client):
+        """The block that is merely OLD is forgiven; the block for a
+        DIFFERENT structure is not.
+
+        `structure-molstruct.md` § 3 keeps these "two independent guards,
+        deliberately kept separate", and § 2 says a count mismatch "is
+        refused, never mis-applied" -- labels are indexed by atom position,
+        so forgiving one loads someone's constraints onto the wrong atoms.
+        When this door was first made lenient it caught the base error and
+        swallowed both; `MolstructPairingError` is what keeps them apart.
+        """
+        from molbuilder.sidecars.molstruct import (MolstructJsonError,
+                                                   MolstructPairingError)
+        assert issubclass(MolstructPairingError, MolstructJsonError), (
+            "the narrow error must stay catchable as the base one, or every "
+            "existing `except MolstructJsonError` silently stops covering it")
+
+        old = json.loads(_md_json_pre_v7())            # forgiven above...
+        old["n_atoms_total"] = 5                       # ...but not now.
+        r = client.post("/api/build/load", json={
+            "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
+            "atom_metadata": json.dumps(old)})
+        assert r.status_code == 400, (
+            "a block written for a 5-atom structure was applied leniently to "
+            "a 4-atom one -- the count guard was swallowed by the version "
+            "leniency it is meant to sit beside")
+        assert "n_atoms_total" in r.get_json()["error"]
 
     def test_trusted_block_bypasses_sidecar_envelope(self, client):
         """The block has NO structure_hash (it's a trusted fragment, not a

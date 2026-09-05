@@ -802,6 +802,35 @@ def api_build_load():
     # mismatch (surfaced as a 400, same as the sidecar path).  The block is
     # trusted JSON, so it is parsed directly -- NOT through ``load_text``,
     # which would reject it for lacking the untrusted-file envelope.
+    # "LENIENT, ATOM-COUNT-ONLY" (the field's own note above) -- and until
+    # 2026-09-05 it was neither: EVERY `MolstructJsonError` returned 400.
+    #
+    # An ATOM-METADATA block this build cannot read -- a run prepared before
+    # the frozen-atom store moved into `regions` at v7, whose top-level
+    # `frozen_atoms` now trips the stray-key guard -- failed the WHOLE
+    # structure load, so a finished run became unopenable.  Unopenable is
+    # unfixable: the one page that could show the person what is wrong
+    # refuses to show them anything.  `structure-molstruct.md` § 2 gives this
+    # artifact the opposite answer -- for the in-script block "the block is
+    # NOT read: `regions` and `frozen_atoms` come back None, with a note
+    # saying why".  (The `.molstruct.json` sidecar above is the OTHER row of
+    # that table and keeps its refusal: a file the caller named is a file
+    # they expect read.)
+    #
+    # So: load the structure WITHOUT the block and hand the reason over as a
+    # notice.  `ok_structure_response`'s `extra["notices"]` is the receipts
+    # slot built for exactly this.
+    #
+    # TWO failures still refuse, because neither is a version fact:
+    #   * malformed JSON -- the REQUEST is broken, not the artifact old;
+    #   * `MolstructPairingError` -- the block describes a DIFFERENT
+    #     structure.  § 3 keeps that guard "deliberately separate" and § 2
+    #     says a count mismatch "is refused, never mis-applied": labels are
+    #     indexed by atom position, so forgiving it would quietly load
+    #     someone's constraints onto the wrong atoms.  Reported leniently it
+    #     would read as "this run is old" when the truth is "you paired the
+    #     wrong two files".
+    load_notices: list = []
     if atom_metadata_text.strip():
         import json as _json
         from molbuilder.sidecars import molstruct as _molstruct
@@ -811,9 +840,20 @@ def api_build_load():
         except _json.JSONDecodeError as exc:
             return jsonify({"ok": False,
                             "error": f"atom_metadata: not valid JSON: {exc}"}), 400
-        except _molstruct.MolstructJsonError as exc:
+        except _molstruct.MolstructPairingError as exc:
             return jsonify({"ok": False,
                             "error": f"atom_metadata: {exc}"}), 400
+        except _molstruct.MolstructJsonError as exc:
+            load_notices.append({
+                "level":   "warn",
+                "message": (
+                    f"The run's own atom labels could not be read, so this "
+                    f"structure has none: {exc}  The geometry is unaffected. "
+                    f"Re-save the structure to store its labels in the "
+                    f"current form."),
+                "where":   "labels.atom_metadata_unreadable",
+                "about":   "labels",
+            })
 
     # THE PERIODICITY THE CALLER STATED: ``body["periodicity"]`` =
     # {cell, cell_origin, axis_kind, vacuum}, applied verbatim.
@@ -866,6 +906,10 @@ def api_build_load():
     # canonical defaults at both the top level and the canonical
     # ``extra`` sub-dict — same threading rule for every key.
     return ok_structure_response(struct, extra={
+        # The receipts this load collected, ahead of the conditions
+        # `ok_structure_response` computes -- what happened first, what is
+        # true now (the order the cell door already uses).
+        **({"notices": load_notices} if load_notices else {}),
         # /api/build/load's legacy contract: title defaults to the
         # filename (or format name) when the input carries none.
         # Override via extra so downstream code that reuses the

@@ -554,11 +554,16 @@ def ok_structure_response(
 
     ``extra["notices"]`` is the RECEIPTS slot, and it is kept ahead of what is
     computed here for the order the cell door already uses: what the edit did
-    first, what is now true after it (molview.md § 6.8).  No caller passes it
-    today -- every op's answer is conditions only -- but the merge is not
+    first, what is now true after it (molview.md § 6.8).  The merge is not
     decoration: without it, the assignment below would drop a caller's receipts
     without a word, which is the failure this whole helper exists to make
     impossible.
+
+    It went unused for its first year -- every op's answer was conditions only
+    -- and then earned itself on 2026-09-05, when ``/api/build/load`` became
+    able to load a structure whose label block this build cannot read.  That
+    load has something to say that no checker can compute after the fact (the
+    labels are simply GONE by then), which is what a receipts slot is for.
     """
     said = list((extra or {}).get("notices") or [])
     # THE ONE LINE (cell-plan.md § 6a): resolve once, check once, report.
