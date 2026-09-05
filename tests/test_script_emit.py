@@ -896,3 +896,60 @@ def test_the_block_readers_do_no_io():
         assert token not in readers, (
             f"a block reader touches the filesystem ({token!r}) -- they take "
             "text in memory; reading the file is the caller's job")
+
+
+def test_a_brace_in_a_region_name_does_not_destroy_the_block():
+    """A `}` in a label made the WHOLE ATOM-METADATA block unreadable.
+
+    The emitter writes valid JSON — `json.dumps` escapes what needs it — and
+    the reader's brace-balance walk (which exists so both pretty-printed and
+    compact JSON are accepted) counted `{` and `}` per line with no idea what
+    a string was. A `}` inside a label closed the walk early, the truncated
+    text failed to parse, and `_extract_atom_metadata_dict` returned `None` —
+    the same value it returns for a block that is not there.
+
+    So a user who named a region `chain}2` lost every label AND the frozen
+    set, silently, in every reader of that deck: the Results tab, the
+    transport composer, and the structure the run is built from. `{`, `"` and
+    `\\` were all fine — only `}` was fatal, which is why it survived.
+
+    `Structure.regions` accepts any non-empty string, so nothing upstream
+    refuses the name.
+    """
+    hostile = ["a}b", "chain}2", "}}}", "a{b", 'quote"name', "back\\slash",
+               "{unbalanced", "}"]
+    for label in hostile:
+        block = sc.emit_atom_metadata({label: [0, 1]}, 2,
+                                      created_at="2026-01-01T00:00:00Z")
+        assert block, f"nothing emitted for {label!r}"
+        got = sc._extract_atom_metadata_dict(block)
+        assert got is not None, (
+            f"a region named {label!r} made the block unreadable — every "
+            "reader gets None, which is indistinguishable from 'no block'")
+        assert label in got["regions"], (
+            f"{label!r} survived the walk but not the parse: {got['regions']}")
+        assert got["regions"][label] == [0, 1]
+
+
+def test_the_brace_walk_still_accepts_both_json_layouts():
+    """Anti-regression on the walk's REASON for existing.
+
+    It is not a JSON parser — it finds where the object ends so the block may
+    be pretty-printed (what `emit_atom_metadata` writes) or compact (what a
+    hand-written or third-party deck might carry). Making it string-aware
+    must not cost that.
+    """
+    payload = {"schema_version": 9, "n_atoms_total": 2,
+               "regions": {"a}b": [0, 1]}}
+
+    def wrap(body):
+        return "\n".join(
+            [sc.begin_marker(sc.BLOCK_ATOM_METADATA), "# format: molstruct-json/v9"]
+            + ["# " + ln for ln in body.splitlines()]
+            + [sc.end_marker(sc.BLOCK_ATOM_METADATA)])
+
+    for name, text in (("pretty", json.dumps(payload, indent=2)),
+                       ("compact", json.dumps(payload))):
+        got = sc._extract_atom_metadata_dict(wrap(text))
+        assert got is not None, f"{name}-printed JSON no longer reads"
+        assert got["regions"] == {"a}b": [0, 1]}

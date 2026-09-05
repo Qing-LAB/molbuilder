@@ -1734,6 +1734,40 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
 
 
 # ---- from parse/scripts/atom_metadata.py ----
+
+def _brace_delta(line: str) -> int:
+    """``{`` minus ``}`` on one line, counting only braces OUTSIDE strings.
+
+    A plain ``line.count("{") - line.count("}")`` stood here until
+    2026-09-05, and a brace inside a JSON *string* closed the walk early.
+    Measured: a region named ``a}b`` -- valid JSON on the wire, written
+    correctly by :func:`emit_atom_metadata` -- made the whole
+    ATOM-METADATA block unreadable, so every reader of that deck got
+    ``None`` and the labels AND the frozen set vanished with no message.
+    ``{``, ``"`` and ``\\`` in a label were all fine; only ``}`` was fatal,
+    which is exactly the shape of bug that survives casual testing.
+
+    JSON strings cannot contain a literal newline, so the in-string state
+    never has to carry across lines.
+    """
+    depth = 0
+    in_str = False
+    escaped = False
+    for ch in line:
+        if escaped:
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == '"':
+            in_str = not in_str
+        elif not in_str:
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+    return depth
+
+
 def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
     """Find the ATOM-METADATA block in ``text`` and return its JSON
     payload as a dict.
@@ -1786,7 +1820,7 @@ def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
                 continue
             saw_open = True
         json_lines.append(line)
-        brace_depth += stripped.count("{") - stripped.count("}")
+        brace_depth += _brace_delta(stripped)
         if brace_depth <= 0:
             break
     if not json_lines:
