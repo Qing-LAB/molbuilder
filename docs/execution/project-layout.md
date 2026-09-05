@@ -1241,29 +1241,36 @@ excluded-row note. A value nothing measured prints `--`, and the GPU
 columns appear only when the sweep has GPU points.)*
 
 And it PRINTS **the report** (it wrote `bench-recommendation.txt` beside the record until 2026-09-04; zero were ever produced — `job-system.md` § 7.1):
-
 ```
-molbuilder bench recommendation -- 02_tight, measured 2026-08-06
-NOTHING READS THIS FILE.  It is what the benchmark found.
+molbuilder bench recommendation -- 02_tight
+NOTHING APPLIES THIS.  It is what the benchmark found; the decision is yours to write.
 
-  fastest        G1K4C6   2.3 s/iter   (gpu-bound)
-  runner-up      G1K8C2   3.1 s/iter
-  it computed with           use_gpu = true, diag_algorithm = ELPA-1STAGE
+  G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter
+
+  it computed with
+      diag_algorithm = 'ELPA-1STAGE'
+      use_gpu = True
 
 To run at it, put this in task.json and save:
 
     "execution": {
+      "diag_algorithm": "ELPA-1STAGE",
       "mpi_np": 4,
       "omp_threads": 6,
-      "gpu_count": 1,
-      "use_gpu": true,
-      "diag_algorithm": "ELPA-1STAGE"
+      "use_gpu": true
     }
 
-Until you do, `prep run` sizes the launch from the target's own width
-(architecture.md 5.2) -- a benchmark does not steer a run.
+Until you do, `prep run` sizes the launch from the target's own
+width (architecture.md 5.2) -- a benchmark does not steer a run.
 ```
 
+> *Re-rendered 2026-09-05 by running `recommendation_text` on this page's
+> own dataset. The block above claimed to be machine-generated and was not:
+> it carried `, measured <date>` (never emitted), a `fastest`/`runner-up`
+> pair (the code prints one rationale line), `it computed with` as a single
+> inline row, and the sentence **`NOTHING READS THIS FILE`** — replaced on
+> 2026-09-04 when it stopped being a file. The prose one line above was
+> swept that day; the sample below it was not.*
 **You read the report. You write the decision.** `bench-result.json` stays
 what it is — the measurement record, schema-checked and never edited by hand
 — and this is that record said in sentences. A verdict-less sweep (no
@@ -1451,7 +1458,7 @@ right name.
 | the template | the browser | everything about the system that does not depend on the machine |
 | **which stage** | you, on the command line | which overrides apply |
 | **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
-| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | rank count, eigensolver and memory → the deck; whether a GPU was worth it → the deck **and** the wrapper's env |
+| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep run` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it into `execution`. *This row sent the verdict straight to the deck until 2026-09-05, contradicting §§ 2.3.3 and 1.1 and this file's own opening.* |
 | a finished run *(optional)* | you name it | which coordinates and density matrix the run starts from |
 
 | Output | What it is |

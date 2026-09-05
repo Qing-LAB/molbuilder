@@ -2042,7 +2042,9 @@ naming things in yourself. A history where most tags are machine-made is one
 where your own are hard to find, which is the opposite of what a tag is for.
 
 **What a stage boundary still buys you.** The decoded run reports `finished` /
-`failed` and its step counts (`running-a-job.md § 4.2`), so whatever offers the
+`failed` (`running-a-job.md § 4.2` — four keys: `state`, `detail`,
+`last_change_at`, `active_source`; the step counts this sentence promised were
+among the ten fields deleted with the run decoder on 2026-09-04), so whatever offers the
 save at that moment knows enough to **draft** the note — *"tight converged, 41
 steps"* rather than *"stage 2 done"*. You confirm or edit it; nothing is written
 without you (`checkpointing.md` § 9, L3).

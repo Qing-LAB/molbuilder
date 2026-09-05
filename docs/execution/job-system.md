@@ -1347,24 +1347,39 @@ implementation and no file between the composer and either reader.
 ```mermaid
 flowchart LR
     A["the trials' own artifacts<br/>(scf-timing.log · monitor.log · util.csv · the deck)"]
-    C["summarize.sweep_view<br/>= discover_points_from_jobset<br/>+ build_bench_result<br/>+ jobset_status"]
+    C["summarize.bench_record<br/>= the points, then the verdict,<br/>then how the winner computed"]
+    V["sweep_view<br/>+ jobset_status, read-only"]
+    R["run_summarize_jobset<br/>+ writes bench-result.json"]
     W["the Results panel<br/>GET /api/bench/summary"]
     T["the terminal<br/>jobset summarize"]
-    A --> C --> W
-    C --> T
+    A --> C
+    C --> V --> W
+    C --> R --> T
 ```
 
-**Both readers ask the same composer, and it writes nothing.** `sweep_view`
-says so in its own docstring — *"the record a summarize would write, beside
-where every trial is right now… Read-only… so it is safe to call while the
-sweep is still running, which is exactly when a person watches it."* The
-browser therefore never opens a saved file: it recomputes on every request
-and can show a sweep mid-flight, which a snapshot cannot.
+**Both readers ask the same composer**, and the composer is `bench_record`.
+Its own docstring is the authority: *"Both readers of a sweep come through
+here, and that is the whole point"* — the two paths each used to compose the
+record themselves and then differed, only the writing one enriching `choice`
+with `_winner_mechanism`, so one sweep gave two verdicts depending on which
+door you came through.
 
-| reader | how it gets the summary | reads a saved file? |
+**They differ AFTER it, and only in what they do with the record.**
+`sweep_view` adds live per-trial status and returns; it opens no saved file,
+so the panel recomputes on every request and can show a sweep mid-flight,
+which a snapshot cannot. `run_summarize_jobset` writes `bench-result.json`
+(for the Bench card) and hands back a report the CLI PRINTS.
+
+| reader | how it gets the summary | writes a file? |
 |---|---|---|
-| the Results panel | `/api/bench/summary?path=<job-set.json>` → `sweep_view` | **no** |
-| the terminal | `jobset summarize <dir>` → the same `sweep_view` | **no** |
+| the Results panel | `/api/bench/summary?path=<job-set.json>` → `sweep_view` → `bench_record` | **no** |
+| the terminal | `jobset summarize <dir>` → `run_summarize_jobset` → `bench_record` | **`bench-result.json`**, then prints the report |
+
+> *This section named `sweep_view` as the composer for BOTH readers and said
+> "it writes nothing", until 2026-09-05. `jobset summarize` has never called
+> `sweep_view` — that function's only caller is `web/blueprints/bench.py` —
+> and the terminal path does write. Stated wrong in the one section written
+> to stop this being re-derived.*
 
 **Why this is stated here rather than re-derived.** Answering *"where does
 the bench summary come from"* has cost two full re-derivations, each of
