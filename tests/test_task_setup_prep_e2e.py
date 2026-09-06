@@ -621,9 +621,21 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def two_stage_dir():
+@pytest.fixture()
+def two_stage_dir(isolated_projects_root):
     """A described calculation with TWO stages and a declared bench axis.
+
+    **Built under a TMP projects root, not the developer's real tree**
+    (2026-09-06). `isolated_projects_root` points `$MOLBUILDER_PROJECTS` at
+    `tmp_path/projects`, and `file_picker_roots()` calls `projects_root()` at
+    CALL time -- nothing caches it -- so the live server serves the tmp tree
+    and the page opens a folder inside it. Measured, not assumed.
+
+    The sibling fixtures here still build `ROOT / "projects/_t_..."` inside
+    the real tree; `plans/plan.md` § 5i carries that, and the reason it looked
+    impossible: a *blanket* autouse override breaks those tests because the
+    tree they hand-build sits outside the guard afterwards. Opting in and
+    building under the fixture's root -- as this one does -- works today.
 
     Two, because the claim under test is *per stage, not only the first* --
     the card once offered `prep bench` for `enabled[0]` alone, which a
@@ -642,16 +654,9 @@ def two_stage_dir():
     from molbuilder.structure import Structure
     from molbuilder.task import Stage
 
-    # UNDER THE PROJECTS ROOT, like `filled_dir` and for the same reason: the
-    # page opens a folder through the picker, so a tmpdir outside the root is
-    # never reached and the tab silently shows the root instead -- which is
-    # what the first version of this fixture did, and it read as "the stage
-    # blocks do not render".
-    root = ROOT / "projects/_t_two_stage"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root
     src_dir = root / "structure"
-    src_dir.mkdir(parents=True)
+    src_dir.mkdir(parents=True, exist_ok=True)
     d = root / "optimization" / "ladder"
     try:
         struct = Structure(elements=["H", "H"],
@@ -686,7 +691,7 @@ def two_stage_dir():
                         ).to_json() + "\n", encoding="utf-8")
         yield d
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        pass          # tmp_path is removed by pytest
 
 
 def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):

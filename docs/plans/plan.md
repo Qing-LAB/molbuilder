@@ -726,14 +726,26 @@ is where the route's guard resolves. They clean up in a `finally` and no
 residue is present today, but a crashed run leaves a folder in a directory
 that is the user's own data.
 
+**And the blocker is smaller than the fixture's own docstring implies —
+measured 2026-09-06, after asking whether a test may build its tree in
+`tmp`.** It may. `file_picker_roots()` calls `projects_root()` at **call
+time** and nothing caches the answer, so a live server serves whatever
+`$MOLBUILDER_PROJECTS` points at. Verified end to end: the Task-setup page,
+driven against a two-stage calculation built under `isolated_projects_root`,
+opens the folder and renders both stages' commands. No change to the app's
+config surface is needed.
+
+What actually breaks under a *blanket* autouse is each test's **hard-coded
+path**: they build `ROOT / "projects/_t_…"`, so an override leaves that tree
+outside the guard. Requesting the fixture **and building under the root it
+returns** works today.
+
 | | |
 |---|---|
-| **What is fine** | production resolution, on both sides of the wire |
-| **What is open** | a browser-driven test cannot build its tree anywhere but the real root, so isolation and route-serving are mutually exclusive today |
-| **What would close it** | the live server taking a projects root — `serve()` already accepts a `config` dict and passes it to `create_app` — so a test can point the whole app at `tmp_path` instead of pointing one env var at it and leaving the route guard behind |
-
-**Not scheduled here** — it is a testability change to the app's config
-surface, and that is a decision rather than a defect.
+| **Fine** | production resolution, on both sides of the wire |
+| **Done** | `two_stage_dir` (`test_task_setup_prep_e2e.py`) builds in `tmp` and is served — the worked example |
+| **Open** | the other 12 sites in 7 files, each a two-line change: take `isolated_projects_root`, build under it, drop the `rmtree` |
+| **Why it is worth doing** | a crashed run currently leaves a `_t_…` folder in the user's own data, and the suite's isolation rule (`test_no_tests_read_the_projects_tree.py`) has an exception it should not need |
 
 ---
 

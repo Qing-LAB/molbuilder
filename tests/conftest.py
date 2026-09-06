@@ -123,6 +123,19 @@ def isolated_projects_root(tmp_path, monkeypatch):
     then ask a route to serve it, and the route's root guard was pointed
     somewhere else entirely.  So isolation is requested by the tests that
     build their own tmp tree, and everything else keeps the real default.
+
+    **WHAT BREAKS IS THE HAND-BUILT PATH, NOT THE PLUMBING** (measured
+    2026-09-06).  This reads as though a served tree cannot live in ``tmp``;
+    it can.  ``file_picker_roots()`` calls ``projects_root()`` at CALL time
+    and nothing caches the answer, so a live server serves whatever this
+    fixture points at -- verified by driving the Task-setup page against a
+    two-stage calculation built here and watching it open the folder.  The 13
+    are broken by a blanket override because each hard-codes
+    ``ROOT / "projects/_t_..."``: the tree they build then sits OUTSIDE the
+    guard.  Requesting this fixture *and building under the root it returns*
+    works today, which is what ``two_stage_dir`` in
+    ``test_task_setup_prep_e2e.py`` does.  Converting the rest is
+    ``plans/plan.md`` § 5i.
     """
     from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
     root = tmp_path / PROJECTS_ROOT_NAME
