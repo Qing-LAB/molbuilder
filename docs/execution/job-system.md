@@ -1417,10 +1417,17 @@ until 2026-09-02… what the run uses is what that person then wrote in
 no boundary left to cross.
 
 So the record is kept for the archival reason and **for that reason alone**;
-the dead refusal that pretended to read it is deleted. If archiving a sweep
-is not a use anybody has, this file is the next thing to retire, and
-`build_bench_result` is untouched by that decision — the panel is its real
-caller.
+the dead refusal that pretended to read it is deleted.
+
+**Settled 2026-09-06 (user): keep it — archiving a sweep IS a use.** The
+condition this paragraph left open — *"if archiving a sweep is not a use
+anybody has, this file is the next thing to retire"* — is answered, and the
+answer is no retirement. `bench-result.json` stays for the reason stated
+above, and **"nothing reads it" is not a reason to revisit that**: the record
+exists to outlive the artifacts it was computed from, so having no live
+reader is its normal condition rather than evidence against it. The question
+was re-derived once more on 2026-09-06 and brought back as if open, which is
+what this whole section exists to prevent.
 
 
 ## 8. Where it stands, and where it is going
