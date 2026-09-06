@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._node_esm import run_node
+
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "static" / "lib"
 
 _DECK = """SystemLabel Relax
@@ -233,53 +235,168 @@ class TestWatchLoadAnswersTheBlock:
 # --------------------------------------------------------------------- #
 
 def _src(rel: str) -> str:
-    """The module's CODE, comments removed.  A pin that reads comments
-    passes on the strength of a note describing the bug it is guarding
-    against -- which is how the first two pins here were written, and
-    they both survived the mutation that put the bug back."""
+    """The module's CODE, comments removed.  A pin that reads comments passes
+    on the strength of a note describing the bug it guards against -- which is
+    how two pins here were once written, and both survived the mutation that
+    put the bug back."""
     src = (_LIB / rel).read_text()
     src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
     return re.sub(r"^\s*//.*$", "", src, flags=re.M)
 
 
+REPO = Path(__file__).resolve().parents[1]
+JOBS = _LIB / "molview" / "model-jobs.js"
+
+#: `installMolecule` POSTs through `postJson`, so a stubbed `fetch` is what
+#: makes the REQUEST BODY inspectable -- the thing link 4 is actually about.
+#: It records every call and answers with a minimal valid structure.
+_FETCH_STUB = """
+globalThis.__sent = [];
+globalThis.fetch = async (route, opts) => {
+    globalThis.__sent.push({ route, body: JSON.parse(opts.body) });
+    return { ok: true, status: 200,
+             json: async () => ({ atoms: [{ element: "O", xyz: [0,0,0] }],
+                                  structure: { info: { calculation: "relax" } } }) };
+};
+"""
+
+_PRELUDE = f"""
+const JOBS = await import({json.dumps(JOBS.resolve().as_uri())});
+"""
+
+
+def _run(snippet: str):
+    return run_node([], _PRELUDE + snippet, globals_js=_FETCH_STUB)
+
+
 class TestTheBrowserSide:
+    """Link 4, RUN.
 
-    def test_the_store_is_read_from_the_canonical_envelope(self):
-        """``payload.structure`` IS the structure's own dict, and ``info``
-        is a field of a Structure, so it arrives there and nowhere else --
-        the same rule this reader already applies to ``title``."""
-        src = _src("molview/model-jobs.js")
-        assert "payload.structure.info" in src, (
-            "structureFromServer must read the store from the canonical "
-            "envelope; a flat payload.info is a key no route sends")
-        assert not re.search(r"payload\.info\b", src), (
-            "the flat read is the bug: it satisfied a presence pin while "
-            "every structure arrived with an empty store")
+    CONVERTED 2026-09-06 (`plans/plan.md` § 5h, cluster 3).  These read the
+    module as TEXT until today, and this file's own header records why that
+    was never enough: the read on the way in asked for a flat `payload.info`,
+    which no route has ever sent, so every structure arrived with an empty
+    store at HTTP 200 -- *and the pin that was supposed to catch it asserted
+    the string `payload.info` appeared in the file, which the broken line
+    satisfied perfectly.*
 
-    def test_the_load_door_sends_a_stated_store(self):
-        src = _src("molview/model-jobs.js")
-        assert "body.info = input.info" in src, (
-            "installMolecule must forward the store the host stated -- "
-            "§ 8.4a's 'it rides installMolecule in'")
+    The answer to a pin that missed a bug is not a narrower pin.  One of them
+    had reached `src.count('state.fileState.info         = null;') == 2` --
+    an exact line, nine embedded spaces included, counted twice.  A reformat
+    breaks it; the defect it guards walks past it.  These call the functions.
+    """
 
-    def test_an_export_still_carries_the_store_out(self):
-        assert "out.info = structure.info" in _src("molview/model-jobs.js"), (
-            "an exported pair would lose what the Metadata pane shows")
+    def test_the_store_arrives_from_the_envelope_and_only_from_there(self):
+        """``payload.structure`` IS the structure's own dict, and ``info`` is
+        a field of a Structure, so it arrives there and nowhere else.
+
+        MUTATION THIS MUST FAIL AGAINST: read `payload.info` instead -- which
+        is the ORIGINAL BUG, and which the retired pin passed through.
+        """
+        out = _run("""
+        console.log(JSON.stringify({
+            envelope: JOBS.structureFromServer(
+                { atoms: [{ element: "O", xyz: [0,0,0] }],
+                  structure: { info: { calculation: "relax" } } }).structure.info,
+            flat: JOBS.structureFromServer(
+                { atoms: [{ element: "O", xyz: [0,0,0] }],
+                  info: { calculation: "SHOULD-BE-IGNORED" } }).structure.info,
+        }));""")
+        assert out["envelope"] == {"calculation": "relax"}, (
+            "the store must be read from the canonical envelope")
+        assert out["flat"] == {}, (
+            "a FLAT payload.info is a key no route sends -- reading it is the "
+            "bug that shipped, and it must stay unread")
+
+    def test_a_stated_store_rides_the_request_out(self):
+        """§ 8.4a's *'it rides installMolecule in'* -- asked of the request
+        the door actually posts, not of the line that builds it.
+
+        The TEXT shape, because that is the one this field exists for: a
+        `path` load reads the store out of the pair's `.molstruct.json` and a
+        structure put back carries it in its envelope, so text is the only
+        shape with no document behind it and the host must state it.
+        """
+        out = _run("""
+        // `handed` is the viewer the door installs INTO -- stubbed to the
+        // three calls the load path makes, so the REQUEST is what is tested.
+        const handed = { put() {}, recordFirstState() {}, announce() {} };
+        const install = JOBS.createLoad(handed);
+        await install({ text: "1\\nx\\nO 0 0 0\\n", filename: "a.xyz",
+                        info: { calculation: "vibration" } });
+        await install({ text: "1\\nx\\nO 0 0 0\\n", filename: "b.xyz",
+                        info: {} });
+        console.log(JSON.stringify({
+            route: globalThis.__sent[0].route,
+            info:  globalThis.__sent[0].body.info,
+            emptyIsAbsent: "info" in globalThis.__sent[1].body,
+        }));""")
+        assert out["route"] == "/api/build/load"
+        assert out["info"] == {"calculation": "vibration"}, (
+            "installMolecule dropped the store the host stated, so the server "
+            "never learns what describes the structure it is being handed")
+        assert out["emptyIsAbsent"] is False, (
+            "an empty store must not be sent -- absent and 'described with "
+            "nothing' are different answers")
+
+    # ---------------------------------------------------------------- #
+    #  NOT CONVERTED, and why -- `plans/plan.md` § 5h                    #
+    # ---------------------------------------------------------------- #
 
     def test_the_trajectory_holds_the_store_across_rebuilds(self):
-        """The page rebuilds its viewer on every poll, so the store lives
-        in ``fileState`` beside its two neighbours and is handed back on
-        every rebuild -- not attached to the viewer once after a load."""
+        """The page rebuilds its viewer on every poll, so the store lives in
+        ``fileState`` beside its two neighbours and is handed back on every
+        rebuild -- not attached to the viewer once after a load.
+
+        **STILL A SOURCE PIN, deliberately, and it is BROWSER work not node
+        work** (2026-09-06).  The other three claims in this class became node
+        tests because their functions are exported and pure.  These four are
+        not: the aliasing runs inside `mountInspector` through
+        `inspectorLifecycle.alias`, and the resets and the APPLY branch are in
+        `transition()`, a reducer that only exists once a viewer is mounted.
+        No harness mounts one headless, and inventing one to reach four lines
+        would cost more than the Playwright test that is the real answer.
+        Reclassified from *node* to *browser* in
+        `tools/classify_source_reads.py`, so the work list says so.
+
+        What DID change: the two assertions that measured whitespace now
+        match on structure.  `src.count('state.fileState.info         = null;')`
+        counted an exact line, nine embedded spaces included -- it fired on a
+        reformat and stayed green through the defect.  Same coverage, one less
+        way to be wrong for no reason.
+        """
         src = _src("trajectory/core.js")
-        assert 'alias("info",         "fileState");' in src, (
+        assert re.search(r'alias\(\s*"info"\s*,\s*"fileState"\s*\)', src), (
             "the store is per-file state, like atomMetadata/periodicity")
-        assert src.count("state.fileState.info         = null;") == 2, (
+        assert len(re.findall(r'state\.fileState\.info\s*=\s*null', src)) == 2, (
             "both resets (LOADING and IDLE) must clear it, beside the two "
             "fields they already clear")
-        assert "if (payload.info !== undefined)" in src, (
-            "APPLY must KEEP on undefined -- the 200 ms poll omits the "
-            "block, and an always-present one would clear it every tick")
+        assert re.search(r'if\s*\(\s*payload\.info\s*!==\s*undefined\s*\)', src), (
+            "APPLY must KEEP on undefined -- the 200 ms poll omits the block, "
+            "and an always-present one would clear it every tick")
         install = src.split("_mvdata().installMolecule({")[1].split("});")[0]
         assert "info:" in install, (
-            "the store must ride the ONE entrance, so the history anchor "
-            "is recorded with it and a rebuild cannot drop it")
+            "the store must ride the ONE entrance, so the history anchor is "
+            "recorded with it and a rebuild cannot drop it")
+
+
+    def test_an_export_carries_the_store_out(self):
+        """The inverse: what the Metadata pane shows is what the pair carries.
+
+        Also pins the absence rule -- an EMPTY store is not written at all,
+        rather than written as `{}`, which is what keeps a structure that was
+        never described from claiming it was described with nothing.
+        """
+        out = _run("""
+        const withInfo = { elements: ["O"], annotations: [{labels: []}],
+                           periodicity: null, info: { calculation: "relax" } };
+        const without  = { elements: ["O"], annotations: [{labels: []}],
+                           periodicity: null, info: {} };
+        console.log(JSON.stringify({
+            carried: JOBS.structureForServer(withInfo, [[0,0,0]]).info,
+            emptyIsAbsent: "info" in JOBS.structureForServer(without, [[0,0,0]]),
+        }));""")
+        assert out["carried"] == {"calculation": "relax"}, (
+            "an exported pair would lose what the Metadata pane shows")
+        assert out["emptyIsAbsent"] is False, (
+            "an empty store must be ABSENT, not written as {}")

@@ -100,6 +100,16 @@ _OVERRIDE_FILES: dict[str, tuple[str, str]] = {
 }
 
 _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
+    "tests/test_structure_info_bridge.py": {
+        ln: (B_BROWSER,
+             "the aliasing runs inside `mountInspector` via "
+             "`inspectorLifecycle.alias`, and the resets and the APPLY branch "
+             "sit in `transition()` -- a reducer that exists only once a "
+             "viewer is MOUNTED.  Nothing mounts one headless, so this is "
+             "Playwright work, not node work.  Routed by file extension "
+             "(.js -> node) until it was read, 2026-09-06")
+        for ln in (369, 371, 374, 376)
+    },
     "tests/test_contact_distance_reference.py": {
         ln: (KEEP_VEND,
              "reads the contact-distance REFERENCE TABLE (a data file) and "

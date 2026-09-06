@@ -637,7 +637,7 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-06: 44 to convert, 56 to keep.** Of 1,253 assertions over a
+**Measured 2026-09-06: 38 to convert, 55 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
 file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
 text. 100 read a file a person wrote. Three earlier counts said 233, 256 and
@@ -668,8 +668,17 @@ green run had hidden all of them.
    clock choice was extracted into `badgeClocks(state)` (user-approved), beside
    `cumulativeElapsed`, which exists for the same reason; six node tests run it.
    The swap that passed **233 tests** now fails five of them.
-3. **`test_structure_info_bridge.py`** (5, node) — includes a line pinned with
-   nine embedded spaces and a `.count(…) == 2` over it.
+3. ~~**`test_structure_info_bridge.py`**~~ — **DONE 2026-09-06.** Three of the
+   five now run `model-jobs.js` under node with a stubbed `fetch`, so the
+   REQUEST the door posts is what is asserted. Mutation-tested by **putting the
+   original bug back** — reading a flat `payload.info`, the key no route sends
+   — which is the mutation the retired pin passed through. **Four assertions
+   are deliberately NOT converted and are reclassified browser, not node**: the
+   aliasing runs inside `mountInspector` and the resets sit in `transition()`,
+   a reducer that exists only once a viewer is mounted, and nothing mounts one
+   headless. Their two whitespace-measuring assertions (nine embedded spaces,
+   counted twice) now match on structure instead — same coverage, one less way
+   to be wrong for no reason.
 4. **`test_task_setup_tab.py`** (12; 3 browser, 9 node) — largest, and last:
    `test_task_setup_prep_e2e.py` already drives this card in a real browser
    (**M2**), so most have a home to move into rather than a harness to build.
