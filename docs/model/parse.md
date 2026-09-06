@@ -52,6 +52,29 @@ it returns); **`FileParser`s** also declare a `hint` (what to point at when
 
 ---
 
+### 1a. `parse/` is for FOREIGN formats — a block we wrote is its writer's
+
+**The boundary, and why the module has a registry at all.** `parse/` reads
+what something else produced: a `.out` that might be SIESTA or PySCF, a
+`.XV`, a `.MD.nc`. Detection is the reason it exists — *every consumer
+queries the registry rather than knowing which parser to call.*
+
+**A reserved block in a molbuilder-generated script is not foreign.**
+molbuilder writes it, into a file molbuilder generated, and every caller
+already knows which block it wants. There is nothing to detect, so applying
+detect-and-dispatch to a question with one possible answer buys ceremony and
+no safety: the retired `ProvenanceTextParser.parse` was one line building a
+ten-field result object to carry one dict. **A block belongs to its writer**
+— `script_emit` owns the emitting and the reading of what it emitted, and
+`execution/job-contracts.md` § 3.1 owns the format.
+
+*Established 2026-09-05 by retiring `parse/scripts/` — six `TextParser`
+classes and `ScriptResult` — and confirmed 2026-09-05 when the door built to
+replace it (`read_script`) was found carrying a version gate the live readers
+did not have: two answers for one block, and the door had zero callers for
+three weeks. It was deleted rather than adopted. The extractors are the way
+in.*
+
 ## 2. The `ParseResult` hierarchy
 
 Every parser returns a **frozen dataclass** on a shared base

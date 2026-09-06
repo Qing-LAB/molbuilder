@@ -233,6 +233,18 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   test: delete the code they guard and they fail; rename a local and they don't
   care. Ask that of anything you add here.
 
+  **A vocabulary survey cannot tell a retired design from an undocumented
+  one — and the two want opposite actions** *(2026-09-02)*. 58 tests were
+  proposed for retirement because their vocabulary (`fileState`, `fetchSeq`,
+  `uiPrefs`) appeared in no live document. It was the shipped code's own
+  structure: `lib/trajectory/core.js` is built exactly that way, `fileState`
+  alone appears 54 times in it, and retiring them would have deleted the ONLY
+  enforcement of `results.md` § 4. What was true is that the names had no live
+  home — so the fix was to WRITE the section, not to delete the tests. Before
+  retiring a test for naming something undocumented, open the code: an
+  undocumented rule that the code holds is a documentation gap, and the test
+  is the thing keeping it honest.
+
   **The instrument — `tools/classify_source_reads.py`** *(2026-09-06)*. The
   boundary above is easy to state and easy to get wrong by eye: this population
   had been counted three times with three answers (233, 256, 173) because each
