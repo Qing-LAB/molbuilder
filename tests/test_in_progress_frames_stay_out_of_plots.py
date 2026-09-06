@@ -10,9 +10,10 @@ file that does it until 2026-09-04:
    the `max_forces_constrained` convention — a browser reading a long
    array of `false` would filter every frame through a branch that can
    never fire;
-3. the multi-stage merge must keep the array aligned 1:1 with the merged
-   frames, or a partial flag lands on the wrong frame after a stage
-   boundary.
+3. the array must stay aligned 1:1 with the frames, or a partial flag
+   lands on the wrong frame.  (This named the multi-stage merge until
+   2026-09-05; that merge is deleted -- stages are separate runs and
+   nothing joins them.)
 
 These call the real adapter and the real merge and assert on what comes
 back, so a rename changes nothing and a broken alignment fails.
@@ -83,8 +84,12 @@ def test_a_run_that_is_entirely_mid_write_still_says_so():
 #   * `in_progress` is set in ONE place, `parse/engines/siesta.py`, on the
 #     EOF flush of a partially written `.out`.  The word does not appear in
 #     `parse/engines/molwatch.py` at all (grep: 0).
-#   * `_merge_molwatch_trajectories` takes `*.molwatch.log` and nothing
-#     else, from `_list_molwatch_logs`.
+#   * the merge took `*.molwatch.log` and nothing else.
+#
+# (2026-09-05 postscript: the merge itself is now deleted -- stages are
+# separate runs and nothing joins them -- so the branch this record is
+# about does not exist at all any more.  Kept as the reasoning for why no
+# replacement test is owed.)
 #
 # So every stage it merges reports no flags, the padding branch is the only
 # one that runs, `any_in_progress` stays False, and the result collapses to

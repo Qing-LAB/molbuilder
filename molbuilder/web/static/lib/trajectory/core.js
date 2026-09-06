@@ -1202,7 +1202,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             scfGnorm:      "#fb923c",   // orange — moved off green to keep
                                         //          the threshold-line green
                                         //          unambiguous
-            stageMarker:   "#888",      // gray — stage-boundary dashed line
         };
     }
 
@@ -1394,53 +1393,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
     }
 
-    // Build Plotly ``shapes`` + ``annotations`` for stage boundaries
-    // when state.data is a multi-stage merged trajectory.  Each
-    // stage transition (where a new source .molwatch.log begins)
-    // gets a dashed vertical line + a small label at the top of the
-    // plot showing the stage name.  Returns {shapes, annotations}
-    // (both empty arrays for single-stage runs).
-    function stageMarkers(themeArg) {
-        const stages = state.data && state.data.stages;
-        if (!Array.isArray(stages) || stages.length < 2) {
-            return { shapes: [], annotations: [] };
-        }
-        // ``themeArg`` is the theme palette from _themeColors() —
-        // makePlots reads it once and passes here so we don't
-        // re-walk getComputedStyle for every plot.  Fallback to a
-        // neutral hex if a caller forgot, so this function stays
-        // safe to call in isolation.
-        const stageColor = (themeArg && themeArg.stageMarker) || "#888";
-        const shapes = [];
-        const annotations = [];
-        for (const s of stages) {
-            // Skip the line at frame 0 (start of the first stage --
-            // would just be the y-axis).  Always add the label.
-            if (s.start_frame > 0) {
-                shapes.push({
-                    type: "line",
-                    xref: "x", yref: "paper",
-                    x0: s.start_frame, x1: s.start_frame,
-                    y0: 0, y1: 1,
-                    line: { color: stageColor, width: 1, dash: "dash" },
-                });
-            }
-            const labelX = s.start_frame
-                + Math.max(1, Math.floor((s.n_frames - 1) / 2));
-            const stageLabel = s.name.replace(/\.molwatch\.log$/, "");
-            annotations.push({
-                x: labelX,
-                y: 1.02,
-                xref: "x", yref: "paper",
-                text: stageLabel,
-                showarrow: false,
-                font: { size: 10, color: stageColor },
-                xanchor: "center",
-                yanchor: "bottom",
-            });
-        }
-        return { shapes, annotations };
-    }
 
     /**
      * Render the pre-data status banner that explains a blank
@@ -1571,7 +1523,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             : [];
         const theme = _themeColors();
         const ct = _convergenceTargets();
-        const stageMx = stageMarkers(theme);
 
         // Render the empty-state banner BEFORE the plots so it
         // either takes the screen during the brief pre-data window
@@ -1610,8 +1561,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
                      tickformat: ".6~r", zeroline: false,
                      automargin: true, nticks: 5 },
             font: { family: "system-ui, sans-serif", size: 10 },
-            shapes:      stageMx.shapes,
-            annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
 
         // 2026-06-12: two traces when the engine reports both.
@@ -1672,8 +1621,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // Auto-switch the y-axis to log scale when the trajectory
         // is more than 50× above the target so the target line
         // isn't crushed against the x-axis.
-        const forceShapes = stageMx.shapes.slice();
-        const forceAnnotations = stageMx.annotations.slice();
+        const forceShapes = [];
+        const forceAnnotations = [];
         var forceYType = undefined;
         if (ct && typeof ct.max_force_tol_eV_per_A === "number") {
             const tol = ct.max_force_tol_eV_per_A;
@@ -3047,22 +2996,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 const baseDir = r.resolved_from.replace(/\/+$/, "");
                 const fileNm  = (r.path || "").split("/").pop() || r.path;
                 const ts = new Date(r.mtime * 1000).toLocaleTimeString();
-                let msg;
-                if (Array.isArray(r.stages) && r.stages.length > 1) {
-                    // Multi-stage run -- summarise the merge so the
-                    // user knows their staged trajectory was joined.
-                    const parts = r.stages.map(
-                        s => s.name + " (" + s.n_frames + " frame"
-                             + (s.n_frames === 1 ? "" : "s") + ")"
-                    );
-                    msg = "Loaded " + r.stages.length
-                        + " stages from " + baseDir + "/  \u2014 "
-                        + parts.join(" \u2192 ")
-                        + ".  Live polling: " + fileNm + " (mtime " + ts + ").";
-                } else {
-                    msg = "Loaded \u201c" + fileNm + "\u201d from " + baseDir
-                        + "/  \u2014 mtime " + ts + ".";
-                }
+                // A directory resolves to ONE file (watch.py's discovery
+                // chain).  A "loaded N stages" arm stood here until
+                // 2026-09-05, for a merge that is deleted: stages are
+                // separate runs, and the person picks one.
+                const msg = "Loaded \u201c" + fileNm + "\u201d from " + baseDir
+                    + "/  \u2014 mtime " + ts + ".";
                 setStatus(msg, "ok");
             }
             // Contract § 2: transition to LOADED or WATCHING based

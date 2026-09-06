@@ -816,9 +816,10 @@ def test_cg_relax_does_not_emit_md_temperature_block():
 #
 # When ``cfg.stage`` is 1/2/3 the FDF's "Run with:" hint advertises a
 # ``<label>_<NN>_<name>.fdf`` filename and the convert() preview-write
-# uses ``<label>_<NN>_<name>.molwatch.log`` so multiple stages
-# accumulate in one directory and the Watch tab's multi-stage merge
-# picks them up automatically.
+# uses ``<label>_<NN>_<name>.molwatch.log``.  The stages accumulate in one
+# directory and the person picks the one to inspect: the filename IS the
+# separation (job-contracts.md 2.4).  The Watch tab merged them until
+# 2026-09-05; it does not any more.
 
 
 def test_fdf_stage_suffix_appears_in_run_with_block():

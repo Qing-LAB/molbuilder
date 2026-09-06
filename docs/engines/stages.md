@@ -1645,11 +1645,14 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 - **a run wrapper per deck**, built by the shipped builder
   (`job-contracts.md § 2.6`). A folder of decks with no wrappers is not something
   a user can run.
-- **a distinct trajectory-log basename per deck.** `job-contracts.md § 2.3` merges
-  a directory's `.molwatch.log` files in mtime order into one trajectory with a
-  boundary per stage — which is exactly the reading a folder of stages wants — but
-  it only works if each deck writes its *own* log. Two decks resolving to one
-  basename would interleave into a single file and the boundary would be lost.
+- **a distinct trajectory-log basename per deck.** Two decks resolving to one
+  basename would interleave their frames into a single file, and no reader
+  could separate them again. The filename IS how a ladder's stages are kept
+  apart in a flat directory (`job-contracts.md § 2.3`), so the person can pick
+  one and inspect it. *(This bullet justified itself by a viewer-side merge of
+  the directory's logs until 2026-09-05. That merge is deleted — stages are
+  separate runs and nothing joins them — but the naming rule stands on its own
+  and stands harder: separation is now the only thing keeping them readable.)*
   **The rule: a run's log is named for the deck that produced it** —
   `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`. One
   naming, derived rather than declared, so there is nothing to keep in step.

@@ -631,8 +631,6 @@ __all__ = [
     "replace_user_custom_inner", "merge_user_custom_from_target",
     # Git / time
     "molbuilder_git_sha", "generated_at_now",
-    # Per-block extractors (read-side; re-export from parse/scripts/)
-    # Reading the blocks back -- the ONE door (plan.md § 5d)
 ]
 
 

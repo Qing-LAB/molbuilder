@@ -590,8 +590,8 @@ format itself is engine-agnostic and specified in `pyscf.md`.
 **A stage's log is named for the deck that produced it** —
 `<label>_<NN>_<stage>.molwatch.log` beside `<label>_<NN>_<stage>.fdf`, the same
 name whether the stages share a directory or each has its own. One rule, derived
-from the deck rather than declared separately, which is what lets a directory's
-logs be merged in order with a boundary per stage
+from the deck rather than declared separately, which is what keeps a directory's
+stages separable — the filename is the separation, and the person picks one
 ([`job-contracts.md § 2.3`](?doc=execution/job-contracts.md)); the table for every
 name in the system is [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)
 and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).

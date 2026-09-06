@@ -371,14 +371,34 @@ and **there is one convention for it**:
 
 **One multi-stage execution shape, both engines** *(since 2026-08-18 —
 `stages.md § 1.1a`)*: each stage is a separate process invocation writing its
-own `<label>_<token>.molwatch.log`. A directory with **more than one**
-`.molwatch.log` is merged by the viewer: all logs are parsed in mtime order
-(oldest first) into one trajectory with a dashed boundary line per stage;
-live polling pins to the newest log. *(A second shape existed until then —
+own `<label>_<token>.molwatch.log`. *(A second shape existed until then —
 PySCF's in-script ladder, `cfg.stages`, one process writing a single
 unsuffixed log. The field, the loop, and the `cfg.stage` marker are all
-retired; the viewer's merge behaviour above is unchanged and still handles
-the old runs' files.)*
+retired.)*
+
+**STAGES ARE SEPARATE RUNS, AND NOTHING JOINS THEM** *(user ruling,
+2026-09-05)*. A ladder is separated **by filename** in a flat directory
+(`<label>_<NN>_<name>.molwatch.log`) or **by directory name** in a
+hierarchical one. The person picks one stage, inspects it, and judges what it
+means — which stage to look at, and what to do next, is theirs to decide.
+There is no combined view, and the viewer offers none: a directory resolves
+to exactly ONE file through § 2.4's discovery chain.
+
+Comparison across runs is a different question with a different answer — the
+bench summary, where comparing IS the point (`web/bench-summary.md`).
+
+*(A merge stood here from 2026-05-10 until 2026-09-05: a directory with more
+than one `.molwatch.log` was stitched into one trajectory in mtime order,
+with a dashed divider per stage. It was written before the Results tab had a
+file picker, and it was never reachable from that tab — only by typing a
+directory into the Watch loader bar. Deleted with its cache, its `stages`
+wire key, its `step_indices` key that nothing read, and its plot dividers.
+Three defects went with it: mtime is not ladder order, because prep seeds
+every stage's log up front, so unrun stages sorted FIRST and a part-run
+ladder opened with its real curve last and its dividers labelled `02 | 03 |
+01`; the chained elapsed double-counted the queue wait, reading 61 minutes
+for a job that spanned 41 and computed 12; and a failed middle stage's error
+was erased by the next stage's silence.)*
 
 ### 2.4 Resolving a directory — the discovery chain
 

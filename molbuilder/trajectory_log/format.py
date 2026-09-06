@@ -97,7 +97,10 @@ def write_initial_preview(
         absent header line means "single-stage run".
     convergence_targets : Mapping[str, float], optional
         Per-target thresholds for the stage's convergence (e.g.
-        ``{"max_force_ev_per_ang": 0.05, "max_steps": 600}``).  Each
+        ``{"max_force_tol_eV_per_A": 0.05, "max_geom_iter": 600}`` -- the
+        names the READER asks for (`trajectory/core.js`); this said
+        ``max_force_ev_per_ang`` / ``max_steps`` until 2026-09-05 and nothing
+        read either).  Each
         entry is emitted as ``# convergence.<key>: <value>``.  When
         absent, no convergence-target header lines are emitted (the
         molwatch inspector renders only the engine's defaults).

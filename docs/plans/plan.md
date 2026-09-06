@@ -245,7 +245,6 @@ checkable rather than hopeful:
 |---|---|---|
 | `run_status(dir)` | `jobset/runstatus.py` ×1 | `.status` |
 | `_resolve_run_directory(dir)` — the 4-rung chain | `web/blueprints/watch.py` ×1 | `.openable` + `.attempts` |
-| `_list_molwatch_logs(dir)` | `web/blueprints/watch.py` ×2 | `.files["molwatch"]` |
 | `_engine_of(...)` | `web/blueprints/watch.py` ×4 | `.engine` |
 | `engine_of(dir)` | `web/blueprints/watch.py` ×1 | folded in as `.engine` |
 | `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | `.files` + one parse |

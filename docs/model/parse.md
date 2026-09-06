@@ -47,7 +47,7 @@ it returns); **`FileParser`s** also declare a `hint` (what to point at when
 > generated blocks, where there is nothing to detect and the caller always knows
 > which block it wants, so each class wrapped a function in a ten-field result
 > it did not need. They moved to the module that WRITES those blocks
-> (`script_emit.read_script`), which also removed a circular import the split
+> (`script_emit`'s extractors), which also removed a circular import the split
 > had forced. [`plans/plan.md` § 5d](?doc=plans/plan.md).
 
 ---
@@ -152,9 +152,18 @@ home:
 | derivation | the one place it happens |
 |---|---|
 | `elapsed_s` from a frame's epoch series | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` |
-| `elapsed_s` across chained stages | `web/blueprints/watch.py::_merge_molwatch_trajectories` |
 
 No other layer computes either field.
+
+There is **no** cross-stage derivation, and there is no place for one: stages
+are separate runs and nothing joins them (`job-contracts.md` § 2.4). A row
+here named the Watch blueprint's multi-stage merge as the one home for
+`elapsed_s` "across chained stages" until 2026-09-05. That merge is
+deleted — and the arithmetic that row blessed was wrong anyway: each stage's
+log opens with a frame written at PREP time, so each stage's own elapsed
+already contained the whole queue wait, and summing them counted it once per
+stage. Measured: 61 minutes reported for a job that spanned 41 and computed
+12.
 
 **P-T4 — a consumer asks for the quantity it means, and takes `None` for an
 answer.** Epoch is formatted as a date, elapsed as a duration, and neither as
@@ -347,13 +356,19 @@ package.** The blocks are molbuilder's own, so they are read by the module that
 writes them:
 
 ```python
-from molbuilder.script_emit import read_script
+from molbuilder.script_emit import (_extract_atom_metadata_dict,
+                                    _extract_provenance_dict)
 
-s = read_script(fdf_text)          # -> ScriptSource
-s.atom_metadata      # the ATOM-METADATA block dict, or None if absent
-s.provenance         # the PROVENANCE block, or None
-s.schema_version     # the version the block DECLARED, after the gate
+_extract_atom_metadata_dict(fdf_text)   # the block dict, or None if absent
+_extract_provenance_dict(fdf_text)      # the PROVENANCE block, or None
 ```
+
+*(A `read_script(text) -> ScriptSource` door stood here until 2026-09-05. It
+had zero callers for three weeks while carrying a schema-version gate the
+live readers do not apply, so the tree held two answers for one block; it was
+deleted rather than wired up. The extractors are the way in — they are
+underscore-named and not in `__all__`, which is an inconsistency worth
+resolving, not a signal to build a second door.)*
 
 **Skip detection when you already know the type** — call the parser class's
 `parse()` directly, which is what `run_status` does for each result file it
@@ -731,7 +746,7 @@ Per parser kind, the specifics:
   one figure, the choice is a **resolver** beside them (§ 5a) — never one
   parser reading the other's file.
 - *(**Block TextParser** was a kind here until 2026-09-05. The reserved
-  `.fdf` / `.py` blocks are read by `script_emit.read_script` — see § 1.)*
+  `.fdf` / `.py` blocks are read by `script_emit`'s extractors — see § 1.)*
 - **DirParser composer** (`parse/dirs/`): **must compose existing FileParsers +
   TextParsers** (forbidden pattern #1 below), never parse files inline.
 

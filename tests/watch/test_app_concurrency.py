@@ -57,7 +57,6 @@ def _reset_state():
         app_module._state["mtime"]   = None
         app_module._state["data"]    = None
         app_module._state["parser"]  = None
-        app_module._state["run_dir"] = None
     yield
     SlowParser.release.set()
 

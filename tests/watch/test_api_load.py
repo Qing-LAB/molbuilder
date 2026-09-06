@@ -437,11 +437,11 @@ def test_load_file_path_unchanged(client, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  Multi-stage merge (job-layout v1, Cut 3)                             #
+#  A directory resolves to ONE log (job-contracts.md 2.3/2.4)           #
 #                                                                       #
-#  When a directory contains > 1 *.molwatch.log files (the staged       #
-#  relaxation case), the loader concatenates their trajectories into    #
-#  one merged dict and tags each source as a stage.                     #
+#  Stages are separate runs. A ladder is separated by filename in a     #
+#  flat directory, and the person picks the stage to inspect. A merge   #
+#  stood behind this door from 2026-05-10 until 2026-09-05.             #
 # --------------------------------------------------------------------- #
 
 
@@ -469,166 +469,61 @@ _MOLWATCH_TWO_STEPS = (
 )
 
 
-def test_load_directory_multi_stage_merges_trajectories(client, tmp_path):
-    """Two *.molwatch.log files in a directory -> one merged
-    trajectory; ``stages`` metadata attributes each frame range to a
-    source file."""
-    import os, time
-    s1 = tmp_path / "my-job-stage1.molwatch.log"
-    s2 = tmp_path / "my-job-stage2.molwatch.log"
-    s1.write_text(_MOLWATCH_TWO_STEPS)
-    s2.write_text(_MOLWATCH_TWO_STEPS)
-    past = time.time() - 60
-    os.utime(s1, (past, past))
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body = r.get_json()
-    assert body["ok"] is True, body
-    # 2 stages * 2 frames each = 4 merged frames.
-    assert len(body["data"]["frames"]) == 4
-    # Iterations are renumbered globally for the plot x-axis.
-    assert body["data"]["iterations"] == [0, 1, 2, 3]
-    # Stages metadata names each source file in mtime order (oldest
-    # first) and tags frame ranges.
-    stages = body["stages"]
-    assert [s["name"] for s in stages] == [
-        "my-job-stage1.molwatch.log",
-        "my-job-stage2.molwatch.log",
-    ]
-    assert stages[0]["start_frame"] == 0 and stages[0]["n_frames"] == 2
-    assert stages[1]["start_frame"] == 2 and stages[1]["n_frames"] == 2
-    # Active polling target = the newest log (stage 2).
-    assert body["path"].endswith("my-job-stage2.molwatch.log")
 
 
-def test_load_directory_single_log_no_stages_field(client, tmp_path):
-    """A directory with exactly one *.molwatch.log goes the single-
-    log path; the response should NOT carry a ``stages`` field
-    (so the frontend's stage-marker logic stays inert)."""
-    p = tmp_path / "my-job.molwatch.log"
-    p.write_text(_MOLWATCH_HEAD)
+def test_a_directory_resolves_to_one_log_and_never_merges(client, tmp_path):
+    """A DIRECTORY RESOLVES TO ONE FILE — including a staged run.
+
+    Stages are separate runs (user ruling, 2026-09-05). A ladder is
+    separated by filename in a flat directory or by directory name in a
+    hierarchical one, and the person picks one stage and judges it. There
+    is no combined view: comparison is what the bench summary is for.
+
+    A merge stood behind this door from 2026-05-10 until 2026-09-05,
+    firing whenever a directory held more than one `*.molwatch.log`. It
+    stitched them into a single trajectory ordered by file mtime — which
+    is not ladder order, because prep seeds every stage's log up front, so
+    the stages that had not run yet sorted FIRST. A three-stage run with
+    stage 1 finished opened with two empty frames and its dividers
+    labelled `02 | 03 | 01`.
+
+    The generated deck tells the user to point Watch at the run directory
+    and states the contract this test pins: "the loader resolves it to
+    <job>.molwatch.log".
+    """
+    # Three stage logs, each carrying TWO frames, written OLDEST FIRST with
+    # distinct mtimes -- so "which one" is answerable, not a coin flip.
+    import os
+    for i, name in enumerate(("h2o_01_coarse", "h2o_02_medium", "h2o_03_tight")):
+        p = tmp_path / f"{name}.molwatch.log"
+        p.write_text(_MOLWATCH_TWO_STEPS)
+        os.utime(p, (1_700_000_000 + i * 100, 1_700_000_000 + i * 100))
+
     r = client.post("/api/watch/load", json={"path": str(tmp_path)})
     body = r.get_json()
-    assert body["ok"] is True
+    assert body["ok"] is True, body.get("error")
+
+    # ONE log's worth of frames, not three stitched together.
+    assert len(body["data"]["frames"]) == 2, (
+        f"three 2-frame logs produced {len(body['data']['frames'])} frames; "
+        "one log's worth is 2 -- anything more means they were merged")
+
+    # ...and a NAMED one: newest wins (job-contracts.md 2.4, rung 1).  Without
+    # this the test passes for any of the three, so a resolver that picked the
+    # oldest -- or picked at random -- would look correct.
+    assert os.path.basename(body["path"]) == "h2o_03_tight.molwatch.log", (
+        f"resolved to {body['path']!r}; the chain says newest wins")
+
+    # And no merge vocabulary survives on the wire.
     assert "stages" not in body or not body["stages"]
 
 
-def test_multi_stage_merge_survives_subsequent_poll(client, tmp_path):
-    """Regression for H1: after a multi-stage load, the next
-    /api/watch/data poll must NOT collapse the merged view back to
-    the newest stage's frames alone.  ``_refresh_if_changed`` re-runs
-    the merge over the full set of *.molwatch.log files."""
-    import os, time
-    s1 = tmp_path / "my-job-stage1.molwatch.log"
-    s2 = tmp_path / "my-job-stage2.molwatch.log"
-    s1.write_text(_MOLWATCH_TWO_STEPS)
-    s2.write_text(_MOLWATCH_TWO_STEPS)
-    past = time.time() - 60
-    os.utime(s1, (past, past))
-    # First load merges 4 frames.
-    r1 = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body1 = r1.get_json()
-    assert body1["ok"] is True
-    assert len(body1["data"]["frames"]) == 4
-    # Now bump the newest stage's mtime so the poll sees a change,
-    # without modifying the file contents -- the parser will return
-    # the same 2 frames for stage 2.  After the poll, the merged
-    # trajectory must STILL contain all 4 frames (not collapse to 2).
-    future = time.time() + 60
-    os.utime(s2, (future, future))
-    r2 = client.get("/api/watch/data")
-    body2 = r2.get_json()
-    assert body2["ok"] is True
-    assert body2["changed"] is not False
-    assert len(body2["data"]["frames"]) == 4, (
-        "multi-stage merge collapsed on poll; expected 4 merged "
-        f"frames, got {len(body2['data']['frames'])}"
-    )
-    assert body2["data"]["stages"][0]["name"] == "my-job-stage1.molwatch.log"
 
 
-def test_multi_stage_merge_survives_empty_stage(client, tmp_path):
-    """A *.molwatch.log that the parser accepts but extracts zero
-    frames from (e.g. header-only, no step blocks yet -- common
-    for a stage that hasn't started writing) must NOT take down
-    the merge.  Stages with n_frames == 0 are recorded but
-    contribute no frames."""
-    import os, time
-    s1 = tmp_path / "my-job-stage1.molwatch.log"
-    s2 = tmp_path / "my-job-stage2.molwatch.log"     # header only
-    s3 = tmp_path / "my-job-stage3.molwatch.log"
-    s1.write_text(_MOLWATCH_TWO_STEPS)
-    s2.write_text("# molwatch trajectory log v1\n# engine: pyscf\n")
-    s3.write_text(_MOLWATCH_TWO_STEPS)
-    base = time.time() - 60
-    os.utime(s1, (base,      base))
-    os.utime(s2, (base + 10, base + 10))
-    os.utime(s3, (base + 20, base + 20))
-    body = client.post("/api/watch/load",
-                       json={"path": str(tmp_path)}).get_json()
-    assert body["ok"] is True, body
-    assert len(body["data"]["frames"]) == 4         # 2 from s1 + 2 from s3
-    by_name = {s["name"]: s for s in body["stages"]}
-    assert by_name["my-job-stage2.molwatch.log"]["n_frames"] == 0
-    assert by_name["my-job-stage1.molwatch.log"]["n_frames"] == 2
-    assert by_name["my-job-stage3.molwatch.log"]["n_frames"] == 2
 
 
-def test_multi_stage_merge_survives_parse_exception(
-        client, tmp_path, monkeypatch):
-    """If MolwatchLogParser.parse raises mid-merge (mid-write tear,
-    binary garbage, etc.), the merge must continue across the
-    surviving stages and tag the failed stage with an ``error``
-    field in its stages-metadata entry."""
-    import os, time
-    from molbuilder.parse.engines.molwatch import MolwatchLogFileParser
-    s1 = tmp_path / "my-job-stage1.molwatch.log"
-    s2 = tmp_path / "my-job-stage2.molwatch.log"
-    s3 = tmp_path / "my-job-stage3.molwatch.log"
-    s1.write_text(_MOLWATCH_TWO_STEPS)
-    s2.write_text(_MOLWATCH_TWO_STEPS)
-    s3.write_text(_MOLWATCH_TWO_STEPS)
-    base = time.time() - 60
-    os.utime(s1, (base,      base))
-    os.utime(s2, (base + 10, base + 10))
-    os.utime(s3, (base + 20, base + 20))
-    real_parse = MolwatchLogFileParser.parse
-
-    def fake_parse(cls, path):
-        if str(path).endswith("stage2.molwatch.log"):
-            raise RuntimeError("simulated mid-write tear")
-        return real_parse(path)
-
-    monkeypatch.setattr(MolwatchLogFileParser, "parse",
-                        classmethod(fake_parse))
-    body = client.post("/api/watch/load",
-                       json={"path": str(tmp_path)}).get_json()
-    assert body["ok"] is True, body
-    assert len(body["data"]["frames"]) == 4         # 2 from s1 + 2 from s3
-    by_name = {s["name"]: s for s in body["stages"]}
-    assert "error" in by_name["my-job-stage2.molwatch.log"]
-    assert "simulated mid-write tear" \
-        in by_name["my-job-stage2.molwatch.log"]["error"]
-    assert by_name["my-job-stage2.molwatch.log"]["n_frames"] == 0
 
 
-def test_multi_stage_merge_preserves_per_stage_step_indices(client, tmp_path):
-    """The merged dict carries both ``iterations`` (renumbered
-    globally for the plot x-axis) and ``step_indices`` (the per-
-    stage step numbers from each source log).  Save-frame-as-XYZ
-    and tooltip use cases need the latter."""
-    import os, time
-    s1 = tmp_path / "my-job-stage1.molwatch.log"
-    s2 = tmp_path / "my-job-stage2.molwatch.log"
-    s1.write_text(_MOLWATCH_TWO_STEPS)
-    s2.write_text(_MOLWATCH_TWO_STEPS)
-    past = time.time() - 60
-    os.utime(s1, (past, past))
-    body = client.post("/api/watch/load",
-                       json={"path": str(tmp_path)}).get_json()
-    # 4 global frames; iterations renumbered globally.
-    assert body["data"]["iterations"] == [0, 1, 2, 3]
-    # step_indices per-stage: each stage starts at 0 and increments.
-    assert body["data"]["step_indices"] == [0, 1, 0, 1]
 
 
 # --------------------------------------------------------------------- #
