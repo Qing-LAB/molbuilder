@@ -28,7 +28,12 @@ MODULE = ROOT / "molbuilder/web/static/lib/trajectory/core.js"
 
 
 def _run_cycle_clock(expr: str):
-    """Extract ``cumulativeElapsed`` from the module and evaluate ``expr``."""
+    """Evaluate ``expr`` against the module's pure clock helpers under node.
+
+    The extraction window runs from ``cumulativeElapsed`` to ``fmtElapsed``
+    and so covers ``badgeClocks`` too -- both are module-level pure
+    functions, extracted for the same reason and living side by side.
+    """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -88,18 +93,85 @@ class TestCumulativeElapsed:
 
 
 class TestBadgeReadsTheRightClock:
-    """Source-level guard on the run-state badge's clock selection."""
+    """The badge's clock selection, RUN -- `badgeClocks(state)`.
 
-    def test_timestamp_comes_from_the_epoch_series(self):
-        src = MODULE.read_text()
-        assert "const clockSeries   = state.data.wall_clock_s || [];" in src, (
-            "the badge's 'last result at' must read the EPOCH series; if "
-            "this moved, check it did not move onto elapsed_s")
-        assert "const lastWall = lastFinite(clockSeries);" in src
+    These four assertions read `core.js` as TEXT until 2026-09-06 and checked
+    for the spelling of the four lines that made the choice::
 
-    def test_duration_comes_from_the_elapsed_series(self):
-        src = MODULE.read_text()
-        assert "const elapsedSeries = state.data.elapsed_s || [];" in src
-        assert "const elapsed  = lastFinite(elapsedSeries);" in src
+        assert "const clockSeries   = state.data.wall_clock_s || [];" in src
 
-    
+    Behaviour-blind in both directions.  Rename `clockSeries` consistently and
+    it fails while the badge is perfect.  Swap the two clocks at their point
+    of USE -- leaving those four declarations byte-identical -- and it passes
+    while the badge formats a duration as a date and an epoch as a duration.
+    That second one was measured: **233 tests green** with the clocks swapped.
+
+    The decision now lives in a pure function beside `cumulativeElapsed`,
+    which was extracted for exactly this reason, so these run it instead.
+    """
+
+    def test_each_clock_lands_in_its_own_slot(self):
+        """The whole rule in one payload: two values that cannot be mistaken
+        for each other, and each must come out of the right field.
+
+        MUTATION THIS MUST FAIL AGAINST: swap `elapsed` and
+        `lastResultEpoch` in the returned object, or read either from the
+        other's series.
+        """
+        got = _run_cycle_clock(
+            "badgeClocks({data: {elapsed_s: [10, 245],"
+            "                    wall_clock_s: [1761396029, 1761396030]}})")
+        assert got["elapsed"] == 245, (
+            "the DURATION must be the last elapsed_s -- a 4m05s run")
+        assert got["lastResultEpoch"] == 1761396030, (
+            "the TIMESTAMP must be the last wall_clock_s -- an absolute epoch")
+
+    def test_an_epoch_is_never_offered_as_the_duration(self):
+        """The failure this file exists for, from the other side: a run with
+        only an epoch has NO duration to show, and 1.76e9 is not one."""
+        got = _run_cycle_clock(
+            "badgeClocks({data: {wall_clock_s: [1761396030]}})")
+        assert got["elapsed"] is None, (
+            "an epoch leaked into the duration slot -- the badge would read "
+            "'55 years' where it should read nothing")
+        assert got["lastResultEpoch"] == 1761396030
+
+    def test_a_duration_is_never_offered_as_the_timestamp(self):
+        """P-T3: `wall_clock_s` may never be derived from `elapsed_s`,
+        because the file does not contain the missing addend.  With no epoch
+        and no mtime the answer is *nothing*, not the elapsed value -- which
+        formatted as a date is the "Dec 31, 5:06 PM" badge."""
+        got = _run_cycle_clock("badgeClocks({data: {elapsed_s: [360]}})")
+        assert got["lastResultEpoch"] is None, (
+            "an elapsed duration was offered as an absolute time")
+        assert got["elapsed"] == 360
+
+    def test_mtime_is_the_fallback_and_only_for_the_epoch(self):
+        """A raw SIESTA `.out` with no molwatch hooks carries no clock of its
+        own, so the file's own mtime stands in -- deliberately, which is what
+        P-T2 means by `None` being a correct answer a consumer can act on."""
+        got = _run_cycle_clock(
+            "badgeClocks({mtime: 1761396030, data: {elapsed_s: [360]}})")
+        assert got["lastResultEpoch"] == 1761396030
+        assert got["elapsed"] == 360, "mtime must not touch the duration"
+
+        # and the run's own clock beats it when there is one
+        got = _run_cycle_clock(
+            "badgeClocks({mtime: 1, data: {wall_clock_s: [1761396030]}})")
+        assert got["lastResultEpoch"] == 1761396030, (
+            "mtime is a FALLBACK -- it must not override a run's own clock")
+
+    def test_the_last_FINITE_sample_wins_not_the_last(self):
+        """A trailing null or NaN is a frame that reported no time, not a
+        run that ended at zero.  Both series are read the same way."""
+        got = _run_cycle_clock(
+            "badgeClocks({data: {elapsed_s: [10, 245, null],"
+            "                    wall_clock_s: [1761396030, NaN]}})")
+        assert got["elapsed"] == 245
+        assert got["lastResultEpoch"] == 1761396030
+
+    def test_a_run_with_no_clocks_at_all_says_nothing(self):
+        """Empty is not zero: a badge showing `0s` on a run that reported no
+        time is a measurement it never made."""
+        got = _run_cycle_clock("badgeClocks({data: {}})")
+        assert got == {"elapsed": None, "lastResultEpoch": None}

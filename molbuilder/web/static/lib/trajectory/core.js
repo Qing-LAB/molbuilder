@@ -2263,6 +2263,51 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // Hours-and-minutes for long runs; minutes-and-seconds for medium;
     // bare seconds for short.  Negative inputs (clock skew between
     // server and the file's clock) are clamped to 0.
+    /* Which clock the run-state badge shows, and from which series.
+     *
+     * TWO CLOCKS, NEITHER SUBSTITUTING FOR THE OTHER (parse.md § 2a):
+     * `wall_clock_s` is an absolute epoch and becomes the "last result at"
+     * TIMESTAMP; `elapsed_s` counts from the run's start and becomes the
+     * DURATION.  Feeding one to the other's formatter is what made a
+     * six-minute SIESTA run display "last result Dec 31, 5:06 PM".
+     *
+     * The epoch falls back to the file's `mtime` when the run carries no
+     * clock of its own -- a raw SIESTA `.out` without molwatch hooks, whose
+     * parser reports null rather than handing over its elapsed seconds.
+     * When it did the latter, that Dec-31 badge is what appeared.  There is
+     * NO fallback in the other direction: an elapsed duration cannot be
+     * turned into a date, because the file does not contain the missing
+     * addend (P-T3).
+     *
+     * EXTRACTED 2026-09-06, for the reason `cumulativeElapsed` above was:
+     * this decision lived inside a 340-line DOM render function, so the only
+     * thing a test could reach was the SPELLING of its four lines.  A pin on
+     * `const clockSeries   = state.data.wall_clock_s || [];` fires on a
+     * rename and passes while the two clocks are swapped at their point of
+     * use -- measured: 233 tests green with the badge formatting a duration
+     * as a date.  A pure function is testable in milliseconds.
+     */
+    function badgeClocks(state) {
+        const lastFinite = (arr) => {
+            for (let i = arr.length - 1; i >= 0; i--) {
+                if (Number.isFinite(arr[i])) return arr[i];
+            }
+            return null;
+        };
+        const data = (state && state.data) || {};
+        // The server already offsets `elapsed_s` to the run's start, so the
+        // last value IS the total -- no subtraction here, which is what used
+        // to hide a wrong origin behind a correct-looking difference.
+        const elapsed  = lastFinite(data.elapsed_s || []);
+        const lastWall = lastFinite(data.wall_clock_s || []);
+        return {
+            elapsed: elapsed,
+            lastResultEpoch: Number.isFinite(lastWall)
+                ? lastWall
+                : (Number.isFinite(state && state.mtime) ? state.mtime : null),
+        };
+    }
+
     function fmtElapsed(secs) {
         if (!Number.isFinite(secs) || secs < 0) secs = 0;
         secs = Math.floor(secs);
@@ -2724,21 +2769,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // series when the engine cannot report it -- a SIESTA .out has
         // no time of day in it at all -- so each is read on its own and
         // neither substitutes for the other.
-        const lastFinite = (arr) => {
-            for (let i = arr.length - 1; i >= 0; i--) {
-                if (Number.isFinite(arr[i])) return arr[i];
-            }
-            return null;
-        };
-        const elapsedSeries = state.data.elapsed_s || [];
-        const clockSeries   = state.data.wall_clock_s || [];
-        // The server already offsets `elapsed_s` to the run's start
-        // (single-file) or to the first stage's start (merged), so the
-        // last value IS the total -- no subtraction here, which is
-        // what used to hide a wrong origin behind a correct-looking
-        // difference.
-        const elapsed  = lastFinite(elapsedSeries);
-        const lastWall = lastFinite(clockSeries);
+        const { elapsed, lastResultEpoch } = badgeClocks(state);
 
         // Run-state badge: authoritative when the writer emitted
         // explicit end-of-run markers (PySCF .molwatch.log:
@@ -2769,9 +2800,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // a run six minutes in displayed "Dec 31, 5:06 PM".  This
             // is DIFFERENT from "Watch tab last polled at X" -- a
             // client-side concern not shown on the badge.
-            const lastResultEpoch = Number.isFinite(lastWall)
-                ? lastWall
-                : (Number.isFinite(state.mtime) ? state.mtime : null);
             const lastResultTs = (lastResultEpoch != null)
                 ? fmtTimestamp(lastResultEpoch)
                 : "";

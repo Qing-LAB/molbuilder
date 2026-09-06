@@ -664,9 +664,10 @@ green run had hidden all of them.
    (`runwrap.py:490` substitutes one stem and does not expand, so `--cold`
    would have stopped protecting indexed artifacts silently), and a row-count
    assertion that **flaked 50%** because the sampler is change-gated.
-2. **`test_trajectory_clocks_js.py`** (4, node) — the acceptance test already
-   exists: swap the two clocks at their point of use and 233 tests pass while
-   the badge formats a duration as a date.
+2. ~~**`test_trajectory_clocks_js.py`**~~ — **DONE 2026-09-06.** The badge's
+   clock choice was extracted into `badgeClocks(state)` (user-approved), beside
+   `cumulativeElapsed`, which exists for the same reason; six node tests run it.
+   The swap that passed **233 tests** now fails five of them.
 3. **`test_structure_info_bridge.py`** (5, node) — includes a line pinned with
    nine embedded spaces and a `.count(…) == 2` over it.
 4. **`test_task_setup_tab.py`** (12; 3 browser, 9 node) — largest, and last:

@@ -160,6 +160,27 @@ time-valued field on a parse result ends in one of two suffixes, and the suffix
 Only a parser that read a real clock reading out of the file may fill
 `wall_clock_s`.
 
+**The suffix says WHAT; a prefix says WHICH WINDOW.** `elapsed_s` bare means
+*since the run began* — that is the suffix's whole promise, and a duration
+measuring some other span may not wear it unqualified. A narrower window
+takes a prefix naming itself: `monitored_elapsed_s` starts when the monitor
+starts and ends when the monitor stops, which is neither the run's start nor
+its end, so the prefix is what lets the suffix keep its promise. The prefix
+is not decoration and not a namespace — **if you cannot name the window, the
+field is not ready to be added.** *(Written down 2026-09-06. It was practised
+first: `wall_s` became `monitored_elapsed_s` on 2026-09-05 — a duration
+wearing a date's name — and plain `elapsed_s` would have been wrong the other
+way. The reasoning lived only in `util_csv.py`'s docstring, so a second
+windowed duration had no rule to follow.)*
+
+**What is NOT pinned: the rendered format.** P-T4 fixes the KIND — an epoch
+renders as a date, a duration as a duration — and deliberately stops there,
+because a terminal column and a browser badge have different room. The two
+duration formatters differ today and neither is wrong under this contract:
+`jobset/summarize.py::_fmt_duration` writes `4m05s`, `core.js::fmtElapsed`
+writes `4m 5s`. Pin a format only if a reader is ever asked to compare the
+two surfaces' output directly.
+
 **P-T2 — `None` means "this engine cannot say", and is a correct final answer.**
 A parser never converts one kind to fill the other's hole, and never substitutes
 a value it did not read. SIESTA's `wall_clock_s` is `None` forever. That is
