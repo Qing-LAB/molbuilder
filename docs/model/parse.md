@@ -706,25 +706,25 @@ disagree in exactly the case a person most needs to trust it.
 ```mermaid
 flowchart LR
   subgraph W["the WRAPPER measured it — parse/instruments/"]
-    T["&lt;base&gt;-runN.scf-timing.log"] --> TP["scf-timing<br/>scf_timing_metrics"]
-    M["&lt;base&gt;-runN.monitor.log"]   --> MP["monitor-log<br/>monitor_metrics"]
-    U["&lt;base&gt;-runN.util.csv"]      --> UP["util-csv<br/>util_csv_metrics"]
+    T["<code>&lt;base&gt;-runN.scf-timing.log</code>"] --> TP["<code>scf-timing</code><br/><code>scf_timing_metrics</code>"]
+    M["<code>&lt;base&gt;-runN.monitor.log</code>"]   --> MP["<code>monitor-log</code><br/><code>monitor_metrics</code>"]
+    U["<code>&lt;base&gt;-runN.util.csv</code>"]      --> UP["<code>util-csv</code><br/><code>util_csv_metrics</code>"]
   end
   subgraph E["the ENGINE wrote it — parse/engines/"]
-    O["&lt;base&gt;-runN.out"]                --> OP["siesta / pyscf"]
-    ML["&lt;label&gt;_&lt;NN&gt;_&lt;stage&gt;.molwatch.log"] --> MLP["molwatch<br/>MolwatchLogFileParser"]
+    O["<code>&lt;base&gt;-runN.out</code>"]                        --> OP["<code>siesta</code> / <code>pyscf</code>"]
+    ML["<code>&lt;label&gt;_&lt;NN&gt;_&lt;stage&gt;.molwatch.log</code>"] --> MLP["<code>molwatch</code><br/><code>MolwatchLogFileParser</code>"]
   end
   subgraph L["nobody wrote it — it is live"]
-    PROC["the running process"] --> RM["run_monitor<br/>JobStatus.elapsed_s"]
+    PROC["the running process"] --> RM["<code>run_monitor</code><br/><code>JobStatus.elapsed_s</code>"]
   end
 
-  MP --> RES["utilisation(monitor, csv)<br/><b>the one door</b><br/>+ util_basis"]
+  MP --> RES["<code>utilisation(monitor, csv)</code><br/><b>the one door</b><br/>+ <code>util_basis</code>"]
   UP --> RES
-  RES --> SUM["summarize.parse_point<br/>BenchPoint.metrics"]
+  RES --> SUM["<code>summarize.parse_point</code><br/><code>BenchPoint.metrics</code>"]
   TP  --> SUM
   OP  --> SUM
-  SUM --> TBL["the bench table + bench-result@1"]
-  MLP --> WATCH["/api/watch → the browser<br/>plot x-axis + Finished badge"]
+  SUM --> TBL["the bench table + <code>bench-result@1</code>"]
+  MLP --> WATCH["<code>/api/watch</code> → the browser<br/>plot x-axis + Finished badge"]
   RM  --> NOTE["the notification card"]
 ```
 
