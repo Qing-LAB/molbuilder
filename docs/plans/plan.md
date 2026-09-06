@@ -330,8 +330,18 @@ that is not `active`'s question — see the withdrawn row above:
 
 *(Agreed 2026-09-05. Contract: [`model/parse.md` § 1 / § 6](?doc=model/parse.md)
 and [`execution/job-contracts.md` § 3.1](?doc=execution/job-contracts.md).
-**Not started.** This section is the plan; the caller map below is the
-completeness check.)*
+**Done, except step 4, which is now abandoned rather than pending.** Steps
+1–3 and 5 shipped (`5f742911`, `69de4f3b`, `e05d3c65`): `parse/scripts/` is
+gone, the six `TextParser` classes and `ScriptResult` with it.
+
+Step 4 — routing the private `_extract_*` importers onto a `read_script`
+door — was never done, and the door built for it sat with **zero callers**
+for three weeks while carrying a version gate the live readers do not have,
+so the tree held two answers for one block. On 2026-09-05 that door
+(`read_script`, `ScriptSource`, `_gate_atom_metadata`) was **deleted**
+instead: one rule, and the extractors are the way in. The step-4 lint it
+proposed — "no `_extract_` name imported across a package boundary" — is
+therefore not owed and is not going to be written.)*
 
 ### The category error
 

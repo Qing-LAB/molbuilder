@@ -33,8 +33,11 @@ versioned with the tests, reviewed when it changes.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
+
+import numpy as np
 
 
 TESTS = Path(__file__).resolve().parent
@@ -135,20 +138,32 @@ def test_the_shared_junction_fixture_builds():
 
 def test_a_built_run_directory_round_trips_its_labels(tmp_path):
     """End to end on constructed data: the application's own writer produces a
-    deck whose labels the LIVE reader recovers intact.  (This went through
-    BundleDirParser until 2026-08-29; the bundle parser retired with
-    calculation-to-calculation passing, and the reader that survives it --
-    the run decoder's own extractor -- is what a finished run's labels are
-    actually read by.)"""
+    deck whose labels the LIVE reader recovers intact.
+
+    It said "the LIVE reader" while driving `_extract_script_source` until
+    2026-09-05 -- a door with no production caller, deleted that day. So the
+    one test claiming to cover how a finished run's labels are read was the
+    only thing keeping that path alive, and covered nothing that ships. It
+    now walks the real one: the run directory is scanned by
+    `parse/dirs/atom_metadata.py` and applied by `apply_atom_metadata`, which
+    is what `/api/build/load` and the transport composite both use.
+    """
     import sys
     sys.path.insert(0, str(TESTS))
     from support.junction import frozen, run_dir
-    from molbuilder.script_emit import _extract_script_source as extract_script_source
+    from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
+    from molbuilder.script_emit import apply_atom_metadata
+    from molbuilder.structure import FROZEN_LABEL, Structure
 
     d = run_dir(tmp_path)
-    deck = sorted(d.glob("*.fdf"))[0]
-    out = extract_script_source(deck.read_text())
-    assert sorted(out["frozen_atoms"]) == frozen()
+    recovered = atom_metadata_json_for_run_dir(d)
+    assert recovered is not None, "the run dir's own deck yielded no label block"
+
+    payload = json.loads(recovered)
+    struct = Structure(elements=["C"] * payload["n_atoms_total"],
+                       positions=np.zeros((payload["n_atoms_total"], 3)))
+    assert apply_atom_metadata(struct, payload) is True
+    assert sorted(struct.regions[FROZEN_LABEL]) == frozen()
 
 
 def test_the_built_xv_round_trips_through_the_real_parser(tmp_path):

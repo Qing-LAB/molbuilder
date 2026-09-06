@@ -2,8 +2,8 @@
 
 **One format, one owner.**  This module writes the reserved blocks
 (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM) and
-reads them back: the emitters are in the first half, the extractors and
-:func:`read_script` in the second.
+reads them back: the emitters are in the first half, the extractors in the
+second.
 
 The read half lived in :mod:`molbuilder.parse.scripts` until 2026-09-05,
 wrapped in `TextParser` classes so it could sit in `parse/`'s registry.
@@ -606,8 +606,12 @@ def generated_at_now() -> str:
 #  markers.py re-exports BLOCK_* + MARKER_RE from this module."*
 #
 #  The deadlock was the split, not the imports.  The readers now live
-#  above, beside the emitters and the constants they both need, and are
-#  reached through `read_script`.
+#  above, beside the emitters and the constants they both need.
+#
+#  A `read_script` door was built over them and never wired up: it had zero
+#  callers for three weeks while carrying a version gate the live readers do
+#  not have, so the tree held two answers for one block. Deleted 2026-09-05
+#  with `ScriptSource` and `_gate_atom_metadata`; callers use the extractors.
 
 __all__ = [
     # Block names + markers
@@ -629,7 +633,6 @@ __all__ = [
     "molbuilder_git_sha", "generated_at_now",
     # Per-block extractors (read-side; re-export from parse/scripts/)
     # Reading the blocks back -- the ONE door (plan.md § 5d)
-    "read_script", "ScriptSource",
 ]
 
 
@@ -1621,12 +1624,6 @@ def _log_spec(spec: "DeckSpec", log) -> None:
 #  emit matrix), `plans/plan.md` § 5d (why they moved).
 
 #: The atom-metadata schema this build WRITES, and the set it READS.
-#: Compared against rather than a literal: a version written down in two
-#: places is how the block came to claim v4 while carrying v7.
-from molbuilder.sidecars.molstruct import (        # noqa: E402
-    READABLE_VERSIONS as _READABLE,
-    SCHEMA_VERSION as _CURRENT_SCHEMA,
-)
 
 # ---- from parse/scripts/header.py ----
 def _extract_header_text(text: str) -> Optional[str]:
@@ -1950,201 +1947,13 @@ def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
 
 
 # ---- from parse/scripts/source_dict.py ----
-def _extract_script_source(text: str) -> Dict[str, Any]:
-    """Single-pass extract over a generated-script body for the run
-    decoder.  Returns a dict with:
-
-      * ``regions``           dict[str, list[int]] | None
-      * ``frozen_atoms``      list[int] | None
-      * ``user_custom_lines`` list[str] | None
-      * ``provenance``        dict[str, str] | None
-      * ``schema_version``    int | None
-      * ``notes``             list[str]
-
-    ``None`` distinguishes "block absent" from "block present but
-    empty" (``{}`` / ``[]``) — `model/parse.md`'s absent-vs-empty rule.  A block whose
-    version is not the one this build writes is READ (a finished run must stay
-    readable) and surfaced as a diagnostic note naming what may be missing --
-    see the comment at the check itself.
-    """
-    atom_md = _extract_atom_metadata_dict(text)
-    gated = _gate_atom_metadata(atom_md)
-    return {
-        "regions":           gated["regions"],
-        "frozen_atoms":      gated["frozen_atoms"],
-        "user_custom_lines": _extract_user_custom_inner(text),
-        "provenance":        _extract_provenance_dict(text),
-        "schema_version":    gated["schema_version"],
-        "notes":             gated["notes"],
-    }
-
-
-def _gate_atom_metadata(atom_md: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """The ATOM-METADATA schema gate, over a block ALREADY read.
-
-    Split out of :func:`_extract_script_source` on 2026-09-05 so a caller
-    that already holds the block does not re-parse the whole script to gate
-    it.  :func:`read_script` did exactly that: it called
-    ``_extract_script_source(text)``, which re-ran the atom-metadata,
-    user-custom and provenance extractors the door had just run itself, so
-    three of five blocks were parsed TWICE.  Measured on a real 1272-line
-    deck: the door cost **4.8 ms** against **0.5 ms** for a single block --
-    and the ``0.55 ms`` this module's own docstring quoted was
-    ``_extract_script_source``, the inner call, not the door.
-
-    Returns ``regions`` / ``frozen_atoms`` / ``schema_version`` / ``notes``.
-    """
-    notes: List[str] = []
-    regions: Optional[Dict[str, List[int]]] = None
-    frozen: Optional[List[int]] = None
-    schema_version: Optional[int] = None
-    if atom_md is not None:
-        sv = atom_md.get("schema_version")
-        if isinstance(sv, int):
-            schema_version = sv
-            if sv not in _READABLE:
-                # REFUSED, NOT READ (2026-08-01, by decision; amended
-                # 2026-08-20 to the READABLE SET -- v8 added only optional
-                # identity columns, so a v7 block reads whole and refusing
-                # it would have made every existing finished run's labels
-                # unreadable for a change that loses nothing).
-                #
-                # It used to READ an older block and attach a warning, on the
-                # reasoning that a finished run cannot be re-exported the way a
-                # sidecar can.  That reasoning is wrong for a product still
-                # being built: an older block stores the same facts in different
-                # places, so "read it and warn" hands back a payload that LOOKS
-                # complete and quietly is not -- which is how a junction's fifty
-                # frozen atoms came back as an empty list.  Supporting both
-                # shapes also doubles what every reader, test and debugging
-                # session has to hold in its head, for data that will be
-                # regenerated anyway.
-                #
-                # The scripts get regenerated.  That is cheaper than a format
-                # nobody can reason about.
-                notes.append(
-                    f"atom-metadata schema_version {sv}, but this molbuilder "
-                    f"writes v{_CURRENT_SCHEMA} and reads "
-                    f"{sorted(_READABLE)} only. The block was "
-                    f"NOT read -- an older one keeps the same facts in "
-                    f"different places (before v7 the frozen atoms sat in a "
-                    f"top-level key rather than in `regions`), so reading it "
-                    f"would silently drop what it cannot map. Re-generate the "
-                    f"script from the structure."
-                )
-            else:
-                # A BLOCK AT ANY OTHER VERSION IS READ, AND SAID SO ABOUT.
-                #
-                # This is a FINISHED RUN on disk, so refusing it outright would
-                # make a user's existing results unreadable -- unlike the
-                # sidecar, which is refused because it is still being worked on
-                # and can be re-exported. But the note has to be accurate, and
-                # this one was not: it said "molbuilder expects 4 — loading with
-                # current handler", which reads as a formality.
-                #
-                # It is not. Before the label store was unified, the reserved
-                # `frozen_atoms` list sat in a top-level key; this reader takes
-                # the whole store from `regions`, so on an older block the
-                # LABELS COME BACK AND THE FROZEN SET DOES NOT. That is how a
-                # junction's fifty pinned electrode atoms read back as an empty
-                # list. The note says which fact is at risk now, instead of
-                # reporting a number.
-                raw_regions = atom_md.get("regions")
-                if isinstance(raw_regions, dict):
-                    regions = {
-                        str(k): sorted({int(i) for i in v})
-                        for k, v in raw_regions.items()
-                    }
-                else:
-                    regions = {}
-                # ONE designated read: v5 keeps the reserved label in
-                # `regions`, v3/v4 kept it in a top-level key, and this
-                # knows which without the caller spelling the name.
-                from molbuilder.sidecars import molstruct as _ms
-                frozen = _ms.frozen_atoms(atom_md)
-        else:
-            notes.append(
-                "atom-metadata block has no schema_version; ignored.")
-    return {
-        "regions":        regions,
-        "frozen_atoms":   frozen,
-        "schema_version": schema_version,
-        "notes":          notes,
-    }
 
 
 
-@dataclass(frozen=True)
-class ScriptSource:
-    """What a generated script says about itself -- every reserved block.
-
-    One object, and one parse per block.  A per-block door was considered
-    and rejected on measurement -- but the numbers first written here were
-    wrong twice over, so they are restated honestly: reading every block
-    off a real 1272-line deck costs **3.0 ms** against **0.5 ms** for one.
-
-    *The original claim was "0.55 ms against 0.22 ms".  The 0.55 was
-    `_extract_script_source` -- the INNER call -- not this door, which
-    then cost 4.8 ms because it asked that function for the gated view
-    and re-ran three of the same extractors for the raw one.  Three of
-    five blocks were parsed twice.  Split out `_gate_atom_metadata`
-    (2026-09-05) so the gate takes a block already read.*
-
-    Fields are ``None`` when the block is ABSENT and empty when the block
-    is PRESENT-but-empty -- the distinction the ATOM-METADATA emission rule
-    turns on (`job-contracts.md` § 3.1).
-    """
-
-    #: Raw blocks, exactly as their extractors return them.
-    header:        Optional[str]            = None
-    provenance:    Optional[Dict[str, str]] = None
-    bench_marks:   Optional[Dict[str, Any]] = None
-    atom_metadata: Optional[Dict[str, Any]] = None
-    user_custom:   Optional[List[str]]      = None
-
-    #: The ATOM-METADATA block SCHEMA-GATED and unpacked: a block at a
-    #: version this build does not read is refused, and `notes` says so.
-    #: `schema_version` is the version the block DECLARED -- kept because a
-    #: version written down in two places is how one came to claim v4 while
-    #: carrying v7.
-    regions:        Optional[Dict[str, List[int]]] = None
-    frozen_atoms:   Optional[List[int]]            = None
-    schema_version: Optional[int]                  = None
-
-    #: Non-fatal notes -- an unreadable schema version, say.
-    notes:          Tuple[str, ...]                = ()
 
 
-def read_script(text: str) -> ScriptSource:
-    """Read every reserved block out of a generated ``.fdf`` / ``.py`` body.
 
-    **The one door.**  Callers used to import a private ``_extract_*_dict``
-    across a package boundary -- `parse/contract.py`, `jobset/summarize.py`,
-    `jobset/agreement.py` and `transport/compose.py` all did -- because the
-    public surface was six `TextParser` classes that returned a whole-script
-    object to carry one dict.  Ask this instead.
 
-    Takes a STRING: reading the file is the caller's job.
-    """
-    # ONE parse per block.  This called `_extract_script_source(text)` for
-    # the gated view AND every extractor again for the raw one, so
-    # atom-metadata, user-custom and provenance were each read twice.
-    atom_md = _extract_atom_metadata_dict(text)
-    gated = _gate_atom_metadata(atom_md)
-    return ScriptSource(
-        header=_extract_header_text(text),
-        provenance=_extract_provenance_dict(text),
-        bench_marks=_extract_bench_marks_dict(text),
-        # The RAW block.  `regions` / `frozen_atoms` below are the same
-        # block after the schema gate; a caller wanting the gate takes
-        # those, one wanting the payload takes this.
-        atom_metadata=atom_md,
-        user_custom=_extract_user_custom_inner(text),
-        regions=gated["regions"],
-        frozen_atoms=gated["frozen_atoms"],
-        schema_version=gated["schema_version"],
-        notes=tuple(gated["notes"] or ()),
-    )
 
 
 # ===================================================================== #

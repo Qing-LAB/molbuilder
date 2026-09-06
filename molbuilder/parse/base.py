@@ -87,9 +87,8 @@ class FileParser(ABC):
 # built a ten-field `ScriptResult` to carry the one dict the extractor had
 # already returned.
 #
-# The readers moved to the module that WRITES the blocks (`script_emit`,
-# reached through `read_script`), which also removed a circular import the
-# split had forced.  `plans/plan.md` § 5d.
+# The readers moved to the module that WRITES the blocks (`script_emit`),
+# which also removed a circular import the split had forced.  `plans/plan.md` § 5d.
 
 
 class DirParser(ABC):

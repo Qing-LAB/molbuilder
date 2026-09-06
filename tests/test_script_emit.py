@@ -530,7 +530,7 @@ def test_extract_provenance_dict_handles_no_defaults_section():
 
 
 # --------------------------------------------------------------------- #
-#  ScriptSource umbrella (execution/job-contracts.md § 3.2)                     #
+#  Composed-script round trips                                          #
 # --------------------------------------------------------------------- #
 
 
@@ -557,96 +557,13 @@ def _composed_script(*, with_atom_md: bool = True,
     return "\n".join(parts) + "\n"
 
 
-def test_extract_script_source_full_round_trip():
-    text = _composed_script()
-    src = sc._extract_script_source(text)
-    assert src["regions"] == {"L-electrode": [1, 2], "R-electrode": [10, 11],
-                              "frozen_atoms": [1, 11]}
-    assert src["frozen_atoms"] == [1, 11]   # the designated read, off the store
-    assert src["user_custom_lines"] is not None
-    assert any("preserve" in line for line in src["user_custom_lines"])
-    assert src["provenance"] is not None
-    assert src["provenance"]["generator-version"] == "molbuilder git test"
-    from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SV
-    assert src["schema_version"] == _SV
-    assert src["notes"] == []
 
 
-def test_extract_script_source_no_atom_metadata():
-    """Block absent -> regions / frozen are ``None`` (NOT empty)."""
-    text = _composed_script(with_atom_md=False)
-    src = sc._extract_script_source(text)
-    assert src["regions"] is None
-    assert src["frozen_atoms"] is None
-    assert src["schema_version"] is None
-    # Other fields still extracted.
-    assert src["user_custom_lines"] is not None
-    assert src["provenance"] is not None
 
 
-def test_extract_script_source_returns_a_dict_with_a_notes_list():
-    """``notes`` is never None (the extractor's dict contract --
-    parse/scripts/source_dict.py; the dataclass era ended with the
-    2026-06 parse migration)."""
-    src = sc._extract_script_source("SystemLabel only\n")
-    assert isinstance(src["notes"], list)
-    assert src["regions"] is None
-    assert src["frozen_atoms"] is None
-    assert src["user_custom_lines"] is None
-    assert src["provenance"] is None
-    assert src["schema_version"] is None
 
 
-def test_a_block_at_any_other_schema_version_is_not_read():
-    """One version, strictly (structure-molstruct.md § 2).
 
-    RETIRED the pair this replaces -- `..._notes_on_future_schema_version` and
-    `..._rejects_old_schema_version` -- which described a reader that LOADED an
-    older or newer block and attached a note. That tolerance is gone, and it is
-    what let a real junction's fifty frozen atoms come back as an empty list: a
-    payload that looks complete and quietly is not.
-
-    Older and newer are one case now, so they are one test. The block is not
-    read; `regions` and `frozen_atoms` come back None with a note saying why.
-    """
-    for version in (2, 3, 4, 6, 99):
-        text = (
-            "# === molbuilder atom-metadata BEGIN ===\n"
-            f'# {{"schema_version": {version}, "n_atoms_total": 3,\n'
-            '#  "regions": {"r": [0]}}\n'
-            "# === molbuilder atom-metadata END ===\n"
-        )
-        src = sc._extract_script_source(text)
-        assert src["schema_version"] == version, "the version is still reported"
-        assert src["regions"] is None, (
-            f"v{version} was READ -- an older or newer block keeps the same "
-            f"facts in different places, so reading it drops what it cannot map")
-        assert src["frozen_atoms"] is None
-        assert any("schema_version" in n for n in src["notes"]), (
-            f"v{version} was refused without saying so")
-
-def test_extract_script_source_empty_blocks_present_but_empty():
-    """Present-but-empty regions distinct from missing.
-
-    The emitter NEVER writes an empty atom-metadata block (per
-    execution/job-contracts.md § 3.1 emission rule), so we hand-craft one
-    here to pin the extractor's behavior if a future schema /
-    third-party writer does emit empty arrays.  Distinct from the
-    no-block case above where regions is ``None``."""
-    text = (
-        "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v7\n"
-        '# {"schema_version": 7, "n_atoms_total": 0,\n'
-        '#  "regions": {}}\n'
-        "# === molbuilder atom-metadata END ===\n"
-    )
-    src = sc._extract_script_source(text)
-    assert src["regions"] == {}        # present, empty
-    assert src["frozen_atoms"] == []   # nothing carries the label
-    # The fixture is a v7 block, and v7 is in the READABLE SET (schema 8
-    # added only optional identity columns): read whole, version reported
-    # as what the block SAYS.
-    assert src["schema_version"] == 7
 
 
 # --------------------------------------------------------------------- #

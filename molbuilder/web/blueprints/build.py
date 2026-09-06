@@ -707,7 +707,7 @@ def api_build_load():
     sidecar_text: str = ""
     # The TRUSTED per-atom metadata block (regions / frozen / annotations)
     # a results-side caller recovered from a run's input script's
-    # ATOM-METADATA block (script_emit.read_script) -- NOT a standalone
+    # ATOM-METADATA block (parse/dirs/atom_metadata.py) -- NOT a standalone
     # .molstruct.json file.  Distinct from ``sidecar`` because it is
     # molbuilder's own emit and by design omits the sidecar-file envelope
     # (structure_hash), so it is applied via ``apply_to_structure`` (lenient,

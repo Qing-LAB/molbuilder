@@ -180,7 +180,7 @@ class SidecarResult(ParseResult):
 # One field per reserved block, produced by six `TextParser` classes that
 # each filled ONE of them and left the rest None.  Nothing ever read the
 # type: `result_kind == "script"` was never checked anywhere, and the
-# blocks are now returned by `script_emit.read_script` as a `ScriptSource`
+# blocks are now read by `script_emit`'s `_extract_*_dict` extractors
 # -- beside the emitters that write them.  `plans/plan.md` § 5d.
 
 
