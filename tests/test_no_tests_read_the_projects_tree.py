@@ -33,11 +33,13 @@ versioned with the tests, reviewed when it changes.
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 TESTS = Path(__file__).resolve().parent
@@ -49,74 +51,113 @@ REPO = TESTS.parent
 #: itself and is exactly right; so is a string literal that merely MENTIONS such
 #: a path (the CSV-redaction tests feed one in as sample text and never open
 #: it).  What is forbidden is rooting at the repo and reaching for real data.
-#: WHITESPACE INCLUDES NEWLINES, and that is the point.  This was applied one
-#: LINE at a time until 2026-09-06, so an expression broken across two lines
-#: was invisible to it -- and one was::
-#:
-#:     _H_PSML_SOURCE = (
-#:         Path(__file__).resolve().parent.parent
-#:         / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111" / "H.psml"
-#:     )
-#:
-#: which is a real project's real pseudopotential, exactly the thing this file
-#: forbids, sitting in the suite the whole time the guard read green.  The
-#: scan is over the file's TEXT now, and `\s*` between the parts is what makes
-#: a line break stop hiding anything.
-_REPO_ROOTED = re.compile(
-    r"""(?:REPO|REPO_ROOT|ROOT)\s*/\s*["']projects["']
-      | Path\(__file__\)(?:\s*\.\s*\w+\s*\(\s*\))*[^\n]{0,80}?\s*/\s*["']projects["']
-      | ["'][^"'\n]*/molbuilder/projects/[^"'\n]+["']
-    """,
-    re.VERBOSE,
-)
+#: A name that means "the repository checkout".
+_ROOT_NAMES = {"ROOT", "REPO", "REPO_ROOT"}
 
 #: ``projects/pseudopotential`` is a shared INPUT LIBRARY (the PSML files an
-#: engine needs), not a record of anybody's results, and the tests naming it
-#: assert on a message string rather than reading it.  Listed so the exception
-#: is a decision on the page rather than a hole in a regex.
-_ALLOWED = ('projects/pseudopotential', '"projects" / "pseudopotential"')
+#: engine needs), not a record of anybody's results.  Listed so the exception
+#: is a decision on the page rather than a hole in a pattern.
+_ALLOWED_FIRST_SEGMENTS = {"pseudopotential"}
 
-#: A line may opt out by saying so.  For a path that is sample TEXT under test
-#: rather than a file to open.
+#: A line may opt out by saying so -- for a path that is sample TEXT under
+#: test rather than a file to open.
 _OPT_OUT = "# not-a-fixture"
 
 _EXEMPT = {Path(__file__).name}
 
 
-def _offending_lines(path: Path):
-    """Every real-tree path in ``path``, as ``(line number, source)``.
+def _is_repo_root(node) -> bool:
+    """Does *node* evaluate to the repository checkout?
 
-    Scans the file's TEXT, not its lines: a path expression may be split
-    across a line break, and reading one line at a time is how one hid here
-    for months (see :data:`_REPO_ROOTED`).  Comments are blanked rather than
-    removed so every offset still maps to its own line.
+    Two spellings: a module constant named ``ROOT``/``REPO``/``REPO_ROOT``,
+    and a ``Path(__file__)`` walk -- ``.resolve().parent.parent``,
+    ``.parents[1]``, any depth.
+    """
+    while isinstance(node, (ast.Attribute, ast.Subscript)):
+        node = node.value
+    if isinstance(node, ast.Name):
+        return node.id in _ROOT_NAMES
+    while isinstance(node, ast.Call):
+        f = node.func
+        if isinstance(f, ast.Name) and f.id == "Path":
+            return any(isinstance(a, ast.Name) and a.id == "__file__"
+                       for a in node.args)
+        node = f.value if isinstance(f, ast.Attribute) else None
+        while isinstance(node, (ast.Attribute, ast.Subscript)):
+            node = node.value
+    return False
+
+
+def _div_chain(node):
+    """``a / b / c`` as ``[a, b, c]`` -- the shape a path is built in."""
+    parts = []
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        parts.append(node.right)
+        node = node.left
+    parts.append(node)
+    return list(reversed(parts))
+
+
+def _offending_lines(path: Path):
+    """Every expression in *path* that builds a path into the repo's tree.
+
+    **AST, not text** (2026-09-06).  This was a regex over the file, and it
+    was wrong three separate ways at once -- it read one LINE at a time so a
+    path split across two was invisible; it required the literal
+    ``"projects"`` so the ``"projects/_t_..."`` spelling that thirteen sites
+    actually used never matched; and once those were fixed it flagged
+    DOCSTRINGS that quote the rule, which made the rule unwriteable in its own
+    words.  Each fix was a patch on a symptom.  A path is a syntax tree, so
+    the check reads one: a division chain whose base is the checkout and whose
+    first string segment is ``projects``.  All three problems stop existing --
+    line breaks are not a concept here, a segment's value is its value, and a
+    docstring is an ``Expr``, not a ``BinOp``.
     """
     raw = path.read_text(encoding="utf-8", errors="replace")
     lines = raw.splitlines()
+    opted_out = {n for n, line in enumerate(lines, 1) if _OPT_OUT in line}
+    try:
+        tree = ast.parse(raw)
+    except SyntaxError:
+        return []
 
-    # Blank out comments and opted-out lines, PRESERVING LENGTH, so a match
-    # offset still names the line it came from.
-    kept = []
-    for line in lines:
-        if _OPT_OUT in line:
-            kept.append(" " * len(line))
-            continue
-        code = line.split("#", 1)[0]
-        kept.append(code + " " * (len(line) - len(code)))
-    code_text = "\n".join(kept)
+    # A DOCSTRING IS PROSE.  It is the one place a forbidden path may appear
+    # as TEXT -- showing what a redaction turns into, or telling you not to
+    # write one -- and flagging it makes the rule unwriteable in its own
+    # words.  Only the whole-path branch below needs this: a division chain
+    # cannot be a docstring.
+    docstrings = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) \
+                and isinstance(body[0].value, ast.Constant) \
+                and isinstance(body[0].value.value, str):
+            docstrings.add(id(body[0].value))
 
     out = []
-    for m in _REPO_ROOTED.finditer(code_text):
-        start, end = m.start(), m.end()
-        n = code_text.count("\n", 0, start) + 1
-        # The allow-list is checked against the MATCH and the lines it spans,
-        # so a multi-line exception is recognised the same way a single-line
-        # one is.
-        span = "\n".join(lines[n - 1:code_text.count("\n", 0, end) + 1])
-        if any(a in span or a in m.group(0) for a in _ALLOWED):
+    for node in ast.walk(tree):
+        segs = None
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            parts = _div_chain(node)
+            if _is_repo_root(parts[0]):
+                segs = [p.value for p in parts[1:]
+                        if isinstance(p, ast.Constant) and isinstance(p.value, str)]
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and id(node) not in docstrings:
+            # A whole path written out: ".../molbuilder/projects/<something>"
+            if "/molbuilder/projects/" in node.value:
+                segs = node.value.split("/molbuilder/", 1)[1].split("/")
+        if not segs:
             continue
-        out.append((n, lines[n - 1].strip()[:100]))
-    return out
+        flat = [s for seg in segs for s in seg.split("/") if s]
+        if not flat or flat[0] != "projects" or len(flat) < 2:
+            continue
+        if flat[1] in _ALLOWED_FIRST_SEGMENTS:
+            continue
+        if node.lineno in opted_out:
+            continue
+        out.append((node.lineno, lines[node.lineno - 1].strip()[:100]))
+    return sorted(set(out))
 
 
 def test_no_test_file_reads_the_projects_tree():
@@ -226,3 +267,52 @@ def test_the_built_spectra_sidecar_round_trips(tmp_path):
     result = parse(spectra_sidecar(tmp_path / "built.spectra.json"))
     assert result.schema.startswith("spectra/v")
     assert "schema_version" in result.payload
+
+
+# ---------------------------------------------------------------------------
+#  The detector's own truth table
+# ---------------------------------------------------------------------------
+#
+#  Not "a test for a test": this file IS a static check, and a checker with no
+#  known-good and known-bad inputs is how this one came to be wrong three ways
+#  at once while reading green -- blind to a line break, blind to the
+#  `"projects/_t_..."` spelling that thirteen sites actually used, and (once
+#  those were fixed) flagging the docstrings that explain the rule.  Every row
+#  below is a shape that really occurred in this repository.
+
+_MUST_FIRE = [
+    ("split across two lines",
+     'from pathlib import Path\nP = (\n    Path(__file__).resolve().parent.parent\n'
+     '    / "projects" / "BDT" / "H.psml"\n)\n'),
+    ("the spelling thirteen sites used",
+     'ROOT = 1\nd = ROOT / "projects/_t_handover/optimization/probe"\n'),
+    ("separate segments",  'ROOT = 1\nd = ROOT / "projects" / "_t_x"\n'),
+    ("a parents[N] walk",
+     'from pathlib import Path\nd = Path(__file__).resolve().parents[1] / "projects/_t_y"\n'),
+    ("a whole path as one literal", 'p = "/home/u/molbuilder/projects/BDT/run.out"\n'),
+]
+
+_MUST_NOT_FIRE = [
+    ("the pseudopotential library", 'ROOT = 1\nd = ROOT / "projects" / "pseudopotential"\n'),
+    ("the same, joined",  'ROOT = 1\nd = ROOT / "projects/pseudopotential/H.psml"\n'),
+    ("a docstring quoting the rule",
+     '"""Do not write /home/u/molbuilder/projects/BDT/x here."""\n'),
+    ("an opted-out sample path",
+     'p = "/home/u/molbuilder/projects/BDT/run.out"   # not-a-fixture\n'),
+    ("an isolated root",
+     'def f(isolated_projects_root):\n    return isolated_projects_root / "p/t/c"\n'),
+]
+
+
+@pytest.mark.parametrize("label,src", _MUST_FIRE, ids=[c[0] for c in _MUST_FIRE])
+def test_the_detector_catches(tmp_path, label, src):
+    f = tmp_path / "probe.py"
+    f.write_text(src, encoding="utf-8")
+    assert _offending_lines(f), f"the detector is blind to: {label}"
+
+
+@pytest.mark.parametrize("label,src", _MUST_NOT_FIRE, ids=[c[0] for c in _MUST_NOT_FIRE])
+def test_the_detector_leaves_alone(tmp_path, label, src):
+    f = tmp_path / "probe.py"
+    f.write_text(src, encoding="utf-8")
+    assert not _offending_lines(f), f"the detector wrongly flags: {label}"

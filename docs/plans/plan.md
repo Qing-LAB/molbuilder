@@ -697,55 +697,58 @@ green run had hidden all of them.
    **Three CSS assertions remain, and are browser work** (`.ts-state[hidden]`,
    `.ts-facts[hidden]`): cascade questions jsdom cannot answer.
 
-## 5i. The projects root — audited 2026-09-06, and where it is NOT one door
+## 5i. The projects root — one door in production, and now in tests too
 
-*(Asked because a fixture I wrote assumed the tree's location and silently
-opened the wrong folder. The suspicion was right in shape and wrong about
-where.)*
+**CLOSED 2026-09-06.** Audited after a fixture assumed the tree's location and
+silently opened the wrong folder.
 
-**Production is one door, verified hop by hop.** `projects.projects_root()`
-is the single definition and the only place `$MOLBUILDER_PROJECTS` is read;
-it feeds `Capabilities.file_picker_roots()`, which the browser gets from
-`GET /api/files/roots`, which reaches `setProjectsRoot()` — one caller — and
-every consumer then asks `projects.getProjectsRoot()` / `getCurrentDir()`.
-**Zero hand-rolled joins**: no `/ "projects"` anywhere in `molbuilder/`, and
-no second reader of the environment variable. `find_projects_root(start)` is
-not a second answer — it answers a **different question** (*which tree does
-this calculation live in*, walked up from the folder) and its docstring
-argues why, naming the 2026-08-21 defect where anchoring on the process's
-working directory made a template resolve to a folder that does not exist on
-the cluster.
+**Production was already one door**, verified hop by hop:
+`projects.projects_root()` is the single definition and the only reader of
+`$MOLBUILDER_PROJECTS`; it feeds `Capabilities.file_picker_roots()` →
+`GET /api/files/roots` → `setProjectsRoot()` (one caller) →
+`projects.getProjectsRoot()`. No hand-rolled `/ "projects"` join anywhere in
+`molbuilder/`. `find_projects_root(start)` is not a second answer — it answers
+which tree a *calculation* lives in.
 
-**The tests are where it is not one door — and this is recorded, not
-discovered.** `isolated_projects_root` is **opt-in, not autouse**, and its own
-docstring says why: *"A blanket autouse override broke 13 of those: they
-construct a tree and then ask a route to serve it, and the route's root guard
-was pointed somewhere else entirely."* So **13 sites across 7 files build
-`ROOT / "projects/_t_…"` — inside the developer's REAL tree** — because that
-is where the route's guard resolves. They clean up in a `finally` and no
-residue is present today, but a crashed run leaves a folder in a directory
-that is the user's own data.
+**The tests were where it was not.** Thirteen sites in seven files built
+`ROOT / "projects/_t_…"` **inside the developer's real tree**. All are
+converted: each takes `isolated_projects_root`, or
+`isolated_projects_root_module` — its module-scoped sibling, added because
+`monkeypatch` and `tmp_path` are function-scoped and an e2e builds one tree
+per file. **Both go through one implementation**, so there is one policy and
+two scopes rather than two policies.
 
-**And the blocker is smaller than the fixture's own docstring implies —
-measured 2026-09-06, after asking whether a test may build its tree in
-`tmp`.** It may. `file_picker_roots()` calls `projects_root()` at **call
-time** and nothing caches the answer, so a live server serves whatever
-`$MOLBUILDER_PROJECTS` points at. Verified end to end: the Task-setup page,
-driven against a two-stage calculation built under `isolated_projects_root`,
-opens the folder and renders both stages' commands. No change to the app's
-config surface is needed.
+**The guard had never caught any of them, and now cannot miss them.** It was a
+regex, and it was wrong three ways at once while reading green: it scanned one
+LINE at a time, so a path split across two was invisible — which is how
+`test_siesta_keyword_smoke.py` came to read a real calculation's `H.psml`
+(`projects/BDT/optimization/TJ-BDT-Au111/`) for months; it required the literal
+`"projects"`, so the `"projects/_t_…"` spelling every one of the thirteen used
+never matched at all; and once those were patched it flagged the docstrings
+that explain the rule.
 
-What actually breaks under a *blanket* autouse is each test's **hard-coded
-path**: they build `ROOT / "projects/_t_…"`, so an override leaves that tree
-outside the guard. Requesting the fixture **and building under the root it
-returns** works today.
+Each patch fixed a symptom, so the detector is **an AST walk** now *(user:
+"why are we still using string to guard python code?")*: a division chain
+whose base is the checkout and whose first string segment is `projects`. Line
+breaks are not a concept in a syntax tree, a segment's value is its value, and
+a docstring is an `Expr` rather than a `BinOp` — all three problems stop
+existing rather than being caught. It matches the house practice
+(`test_architecture_rules.py`, `test_layering.py` are AST-based too), and it
+carries **a ten-row truth table**, every row a shape that really occurred
+here, because a checker with no known-good and known-bad inputs is how this
+one stayed blind.
 
-| | |
-|---|---|
-| **Fine** | production resolution, on both sides of the wire |
-| **Done** | `two_stage_dir` (`test_task_setup_prep_e2e.py`) builds in `tmp` and is served — the worked example |
-| **Open** | the other 12 sites in 7 files, each a two-line change: take `isolated_projects_root`, build under it, drop the `rmtree` |
-| **Why it is worth doing** | a crashed run currently leaves a `_t_…` folder in the user's own data, and the suite's isolation rule (`test_no_tests_read_the_projects_tree.py`) has an exception it should not need |
+The `H.psml` it was missing is checked in at `tests/fixtures/psml/`. Swapping
+it for `conftest.write_pseudos` was tried first and **measured to fail** —
+that PSML satisfies prep's screening but SIESTA does not start on it.
+
+**Still open, and deliberately not urgent:** seven sites hand-roll
+`monkeypatch.setenv(PROJECTS_ROOT_ENV, …)` instead of requesting the fixture
+(`test_target_machine_choice.py`, `test_structure_authority_roundtrip.py`,
+`test_periodicity_gate.py` ×2, `test_transport_record.py` ×2,
+`test_transport_prep.py`). All already point at `tmp_path`, so nothing is at
+risk — it is one practice written two ways. `test_projects.py`'s own setenv
+calls are **not** in that list: they are the unit tests *of* the variable.
 
 ---
 

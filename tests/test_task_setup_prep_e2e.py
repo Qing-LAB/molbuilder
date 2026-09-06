@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
-def calc_dir():
+def calc_dir(isolated_projects_root_module):
     """A described calculation, with a probed machine record beside it.
 
     The record is not scenery: since 2026-09-02 a rank count is read from one
@@ -52,9 +52,7 @@ def calc_dir():
     from molbuilder.structure import Structure
     from molbuilder.task import Stage
 
-    root = ROOT / "projects/_t_prep_e2e"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root_module / "prep_e2e"
     src_dir = root / "structure"
     src_dir.mkdir(parents=True)
     d = root / "optimization" / "probe"
@@ -109,7 +107,10 @@ def calc_dir():
         }), encoding="utf-8")
         yield d
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 @pytest.fixture(scope="module")
@@ -245,7 +246,7 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
 
 
 @pytest.fixture(scope="module")
-def filled_dir():
+def filled_dir(isolated_projects_root_module):
     """A calculation that ALREADY states a run condition, at both levels.
 
     The point of the fixture is that nothing here is typed by the test: the
@@ -261,9 +262,7 @@ def filled_dir():
     from molbuilder.structure import Structure
     from molbuilder.task import Allocation, Stage, read_task, write_task
 
-    root = ROOT / "projects/_t_prep_filled"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root_module / "prep_filled"
     src_dir = root / "structure"
     src_dir.mkdir(parents=True)
     d = root / "optimization" / "filled"
@@ -310,7 +309,10 @@ def filled_dir():
                                            "time": "2-00:00:00"}),)}))
         yield d
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 def _rows(page):

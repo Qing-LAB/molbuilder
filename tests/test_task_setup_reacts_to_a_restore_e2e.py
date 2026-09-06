@@ -44,7 +44,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def calc_dir():
+def calc_dir(isolated_projects_root):
     """A described calculation under checkpoint control.
 
     Built through the production doors — `describe.build_description` and
@@ -60,9 +60,7 @@ def calc_dir():
     from molbuilder.structure import Structure
     from molbuilder.task import Stage
 
-    root = ROOT / "projects/_t_restore_e2e"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root / "restore_e2e"
     src_dir = root / "structure"
     src_dir.mkdir(parents=True)
     d = root / "optimization" / "probe"
@@ -84,7 +82,7 @@ def calc_dir():
         write_pseudos(d, ["H"])
         yield d
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 @pytest.fixture

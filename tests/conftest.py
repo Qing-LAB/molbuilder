@@ -109,6 +109,39 @@ def checkpoint_config(tmp_path, monkeypatch):
     return _set
 
 
+def _point_the_one_door_at(root, setenv) -> "Path":
+    """Point ``projects_root()`` at *root*. THE implementation, both scopes.
+
+    ``file_picker_roots()`` calls ``projects_root()`` at CALL time and nothing
+    caches the answer, so setting the variable is all it takes -- a live
+    server started before this still serves the new tree.  Verified by driving
+    the Task-setup page against a calculation built under it.
+    """
+    from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
+    root = root / PROJECTS_ROOT_NAME
+    root.mkdir(parents=True, exist_ok=True)
+    setenv(PROJECTS_ROOT_ENV, str(root))
+    return root
+
+
+@pytest.fixture(scope="module")
+def isolated_projects_root_module(tmp_path_factory):
+    """:func:`isolated_projects_root` for a MODULE-scoped fixture.
+
+    Same door, same rule, one implementation -- it exists only because
+    ``monkeypatch`` and ``tmp_path`` are function-scoped, so a module-scoped
+    fixture (an e2e that builds one tree for a file's worth of tests) cannot
+    request the sibling below.  Use the function-scoped one wherever the
+    choice exists; this is not a second policy.
+    """
+    from _pytest.monkeypatch import MonkeyPatch
+    mp = MonkeyPatch()
+    try:
+        yield _point_the_one_door_at(tmp_path_factory.mktemp("tree"), mp.setenv)
+    finally:
+        mp.undo()
+
+
 @pytest.fixture
 def isolated_projects_root(tmp_path, monkeypatch):
     """Point the ONE door at a per-test tree — **opt in, not autouse**.
@@ -132,16 +165,14 @@ def isolated_projects_root(tmp_path, monkeypatch):
     two-stage calculation built here and watching it open the folder.  The 13
     are broken by a blanket override because each hard-codes
     ``ROOT / "projects/_t_..."``: the tree they build then sits OUTSIDE the
-    guard.  Requesting this fixture *and building under the root it returns*
-    works today, which is what ``two_stage_dir`` in
-    ``test_task_setup_prep_e2e.py`` does.  Converting the rest is
-    ``plans/plan.md`` § 5i.
+    guard.  **All thirteen were converted on 2026-09-06** -- each requests
+    this fixture (or :func:`isolated_projects_root_module`, its module-scoped
+    sibling) and builds under the root it returns, so nothing in the suite
+    writes into the developer's tree any more.  The guard enforces it now: its
+    pattern required the literal ``"projects"`` and so had never matched
+    ``"projects/_t_..."`` at all.
     """
-    from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
-    root = tmp_path / PROJECTS_ROOT_NAME
-    root.mkdir(exist_ok=True)
-    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
-    return root
+    return _point_the_one_door_at(tmp_path, monkeypatch.setenv)
 
 
 # --------------------------------------------------------------------- #

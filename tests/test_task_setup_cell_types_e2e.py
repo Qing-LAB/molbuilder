@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
-def calc_dir():
+def calc_dir(isolated_projects_root_module):
     """A calculation the tab can open: a template, a structure, and a
     description whose one column is the one that broke.
 
@@ -59,9 +59,7 @@ def calc_dir():
                                  write_task)
     from molbuilder.template import template_with_values
 
-    d = ROOT / "projects/_t_cell_types/optimization/probe"
-    if d.exists():
-        shutil.rmtree(d.parents[1])
+    d = isolated_projects_root_module / "cell_types/optimization/probe"
     d.mkdir(parents=True)
     try:
         (d / "probe.source.xyz").write_text(
@@ -78,7 +76,10 @@ def calc_dir():
             stages=(Stage(name="tight", overrides={}),)))
         yield d
     finally:
-        shutil.rmtree(d.parents[1], ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 @pytest.fixture(scope="module")
@@ -189,7 +190,7 @@ def test_text_that_is_not_a_k_grid_is_kept_as_typed(page, flask_server,
 
 
 @pytest.fixture(scope="module")
-def bool_column_dir():
+def bool_column_dir(isolated_projects_root_module):
     """The same calculation, but the column that varies is a **bool**.
 
     Separate from `calc_dir` rather than added to it: that fixture is
@@ -201,9 +202,7 @@ def bool_column_dir():
                                  write_task)
     from molbuilder.template import template_with_values
 
-    d = ROOT / "projects/_t_cell_bool/optimization/probe"
-    if d.exists():
-        shutil.rmtree(d.parents[1])
+    d = isolated_projects_root_module / "cell_bool/optimization/probe"
     d.mkdir(parents=True)
     try:
         (d / "probe.source.xyz").write_text(
@@ -220,7 +219,10 @@ def bool_column_dir():
             stages=(Stage(name="tight", overrides={}),)))
         yield d
     finally:
-        shutil.rmtree(d.parents[1], ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,

@@ -89,7 +89,7 @@ def _trajectory(path):
 
 
 @pytest.fixture(scope="module")
-def co2_optimization():
+def co2_optimization(isolated_projects_root_module):
     """Run a real geometry optimisation; yield the trajectory it wrote.
 
     Under the projects root, because `/api/watch/load` resolves through
@@ -107,9 +107,7 @@ def co2_optimization():
     from molbuilder.script_emit import prepare_deck
     from molbuilder.structure import Structure
 
-    root = ROOT / "projects/_t_co2opt_e2e"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root_module / "co2opt_e2e"
     d = root / "optimization" / "co2opt"
     d.mkdir(parents=True)
     try:
@@ -137,7 +135,10 @@ def co2_optimization():
             f"--- stderr ---\n{proc.stderr[-2000:]}")
         yield traj
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 @pytest.fixture(scope="module")

@@ -150,10 +150,16 @@ import json as _json
 import shutil as _shutil
 
 
-def _fresh_calc_dir():
+def _fresh_calc_dir(root):
     """A directory inside the configured root — the picker refuses anything
-    outside it, which is the guard working, not a test problem."""
-    d = ROOT / "projects/_t_handover/optimization/probe_calc"
+    outside it, which is the guard working, not a test problem.
+
+    Takes the root, like `tests/support/junction.py::run_dir(tmp_path)`, so
+    the tree is wherever the caller's `isolated_projects_root` put it.  It was
+    `ROOT / "projects/_t_handover/..."` until 2026-09-06 -- inside the
+    developer's own data, which a crashed run left behind.
+    """
+    d = root / "handover/optimization/probe_calc"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -167,7 +173,7 @@ def _envelope():
                                   [[0, 0, 0], [0, 0, 0.74]])}
 
 
-def test_handover_renders_and_writes_nothing(web_client):
+def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root):
     """The endpoint returns TEXTS; the browser writes them.
 
     `web/projects.md` § 1 puts raw bytes in the content-blind file layer that
@@ -176,7 +182,7 @@ def test_handover_renders_and_writes_nothing(web_client):
     genuinely server-side is the RENDER: only Python can turn a config into
     `<label>.template.toml`.
     """
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         r = web_client.post("/api/task-setup/handover", json=dict(
             _envelope(), engine="siesta", name="probe calc",
@@ -196,7 +202,7 @@ def test_handover_renders_and_writes_nothing(web_client):
         assert h["awaiting"] == ["shape", "stages"]
         assert h["_what"], "the file does not say what it is"
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 def test_save_refuses_outside_the_roots(web_client):
@@ -213,7 +219,7 @@ def test_save_refuses_outside_the_roots(web_client):
 # --------------------------------------------------------------------- #
 
 
-def test_save_writes_the_description_and_reports_the_handover(web_client):
+def test_save_writes_the_description_and_reports_the_handover(web_client, isolated_projects_root):
     """The save door owns `task.json` — the same reason `/api/structure/save`
     owns the sidecar: a browser-authored, schema-stamped file that the loader
     would reject is the save-then-reload trap `projects.md` § 3 describes.
@@ -221,7 +227,7 @@ def test_save_writes_the_description_and_reports_the_handover(web_client):
     It does NOT delete the hand-over; it reports that one is there, and the
     browser removes it through `projects.deleteEntry`.
     """
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         rendered = web_client.post("/api/task-setup/handover", json=dict(
             _envelope(), engine="siesta", name="probe",
@@ -246,13 +252,13 @@ def test_save_writes_the_description_and_reports_the_handover(web_client):
         assert (d / "task.1st.json").is_file(), (
             "the save door deleted it; moving bytes is the file layer's job")
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
-def test_save_refuses_rather_than_repairs(web_client):
+def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
     """The text goes through `task.read_task` — the same door `prep` uses — so
     a browser cannot become a second, drifting writer of descriptions."""
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         r = web_client.post("/api/task-setup/save",
                             json={"dest": str(d), "text": "{ not json"})
@@ -274,7 +280,7 @@ def test_save_refuses_rather_than_repairs(web_client):
         assert "stage" in r2.get_json()["error"].lower(), (
             "the refusal should be the reader's own words")
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 # --------------------------------------------------------------------- #
@@ -596,7 +602,7 @@ def test_the_sweepable_notes_reach_the_lookup():
         "the fill no longer writes into the lookup the hovers read")
 
 
-def test_the_folder_template_is_what_an_empty_cell_names(web_client):
+def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_projects_root):
     """`stages.md` § 6.2: a stage that sets nothing uses THE TEMPLATE'S value.
 
     So the whole point of the hand-over — the k-grid a person chose in the
@@ -604,7 +610,7 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client):
     endpoint the tab read the catalogue's default and named a number the job
     would not run whenever the sender had changed that parameter.
     """
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         rendered = web_client.post("/api/task-setup/handover", json=dict(
             _envelope(), engine="siesta", name="probe",
@@ -621,19 +627,19 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client):
             "the catalogue default (300.0) would be shown instead")
         assert j["values"]["kgrid"] == [4, 4, 1], j["values"].get("kgrid")
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
-def test_a_folder_with_no_template_is_not_an_error(web_client):
+def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects_root):
     """An empty folder is an ordinary state, not a failure — the cells fall
     back to the catalogue, which is exactly right when nothing was sent."""
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         j = web_client.get("/api/task-setup/template-values?dir="
                            + str(d)).get_json()
         assert j["ok"] and j["name"] is None and j["values"] == {}
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 def test_the_sidebar_cursor_is_not_in_the_payload():
@@ -753,7 +759,7 @@ def _child_env_with_a_config(tmp_path):
     return env
 
 
-def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
+def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, isolated_projects_root):
     """§ 7's bar, automated: structure -> hand-over -> description -> deck.
 
     **Every link can hold while the thing being carried is lost between them.**
@@ -767,7 +773,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
     the section above it retracts.
     """
     import json as _json, subprocess, sys
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         # a periodic slab: a cell, a region label, a frozen atom
         cell = [[5.77, 0.0, 0.0], [2.885, 4.997, 0.0], [0.0, 0.0, 20.0]]
@@ -842,10 +848,10 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
             assert max(abs(float(x) - float(y))
                        for x, y in zip(a[:3], b[1:4])) < 1e-4, (a, b)
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
-def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path):
+def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_projects_root):
     """The machine half of § 7's bar, which the chain test above does not reach.
 
     **Where the grid comes from is settled and it is not the description.**
@@ -876,7 +882,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path):
       exists to produce.
     """
     import json as _json, subprocess, sys
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         env = _envelope()
         r = web_client.post("/api/task-setup/handover", json=dict(
@@ -945,7 +951,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path):
             assert not (j.get("gres") or res.get("gres")), (
                 f"a CPU trial asks for {j.get('gres') or res.get('gres')!r}")
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 def test_the_cell_gate_s_notices_reach_the_person():
@@ -1094,14 +1100,14 @@ def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
     assert '"basis"' in schema, "shared items must stay"
 
 
-def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client):
+def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolated_projects_root):
     """Gate ③ fires at save (G-1b, 2026-08-21): `workflow.md` § 9 names this
     door beside `describe` and dispatch, and until then only the codec ran
     here -- a stage override outside its field's bounds saved cleanly and
     failed at prep, on the cluster, hours later.  The refusal is the SAME
     function the CLI runs (`validation.task.preflight`), so the two
     surfaces answer alike."""
-    d = _fresh_calc_dir()
+    d = _fresh_calc_dir(isolated_projects_root)
     try:
         from molbuilder.identity import run_id
         bad_bounds = {
@@ -1128,7 +1134,7 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client):
         assert any("mesh_cutoff" in f.get("message", "")
                    for f in body.get("findings", []))
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 def test_the_two_engine_caches_are_keyed_by_engine():
@@ -1453,15 +1459,15 @@ def test_every_page_class_in_the_markup_is_styled_somewhere():
 #  the slot picker's describe seam                                      #
 # --------------------------------------------------------------------- #
 
-_T_CITE = "_t_transport/optimization/Relax/01_only/run-0"
+_T_CITE = "transport/optimization/Relax/01_only/run-0"
 
 
-def _cited_junction(*, concluded=True):
+def _cited_junction(root, *, concluded=True):
     """A minimal citable directory (4.1b form A: one .fdf + one .XV
     together).  ``concluded=False`` writes a run RECORD that does not
     conclude (mid-run / force-stopped); the classification itself
     never needs molbuilder's layout."""
-    calc = ROOT / "projects/_t_transport/optimization/Relax"
+    calc = root / "transport/optimization/Relax"
     attempt = calc / "01_only" / "run-0"
     attempt.mkdir(parents=True, exist_ok=True)
     (attempt / "Relax_01_only.fdf").write_text(
@@ -1482,14 +1488,14 @@ def _cited_junction(*, concluded=True):
     return calc
 
 
-def test_transport_describe_answers_the_finished_description(web_client):
+def test_transport_describe_answers_the_finished_description(web_client, isolated_projects_root):
     """No hand-over for the composite (user ruling 2026-08-29): nothing
     is awaiting, so /api/transport/describe answers with the COMPLETE
     task.json -- one file, readable by the shipped reader, knobs on the
     device stage's overrides promoted through varies."""
     import pathlib as _pl
     import tempfile as _tf
-    _cited_junction()
+    _cited_junction(isolated_projects_root)
     try:
         r = web_client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T",
@@ -1518,8 +1524,7 @@ def test_transport_describe_answers_the_finished_description(web_client):
         assert dev.overrides == {"transmission_n_points": 101}
         assert task.varies == ("transmission_n_points",)
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_transport",
-                       ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 def test_the_handover_door_refuses_transport_by_name(web_client):
@@ -1538,8 +1543,8 @@ def test_transport_describe_refuses_a_citation_the_tree_lacks(web_client):
     assert "not a directory" in r.get_json()["error"]
 
 
-def test_transport_describe_refuses_a_bias_off_equilibrium(web_client):
-    _cited_junction()
+def test_transport_describe_refuses_a_bias_off_equilibrium(web_client, isolated_projects_root):
+    _cited_junction(isolated_projects_root)
     try:
         r = web_client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T",
@@ -1547,39 +1552,36 @@ def test_transport_describe_refuses_a_bias_off_equilibrium(web_client):
         assert r.status_code == 400
         assert "0.0" in r.get_json()["error"]
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_transport",
-                       ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
-def test_describe_attempt_reads_the_attempts_own_deck(web_client):
+def test_describe_attempt_reads_the_attempts_own_deck(web_client, isolated_projects_root):
     """The describe seam: fdf-is-truth, plus the honest concluded
     line."""
-    _cited_junction()
+    _cited_junction(isolated_projects_root)
     try:
         r = web_client.get("/api/transport/describe_attempt?path="
-                           "_t_transport/optimization/Relax/01_only/run-0")
+                           "transport/optimization/Relax/01_only/run-0")
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         assert out["ok"] and out["concluded"] is True
         assert "SZ" in out["summary"] and "250" in out["summary"]
         assert "CONCLUDED (rc=0)" in out["summary"]
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_transport",
-                       ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
-def test_describe_attempt_names_both_unconcluded_states(web_client):
-    _cited_junction(concluded=False)
+def test_describe_attempt_names_both_unconcluded_states(web_client, isolated_projects_root):
+    _cited_junction(isolated_projects_root, concluded=False)
     try:
         r = web_client.get("/api/transport/describe_attempt?path="
-                           "_t_transport/optimization/Relax/01_only/run-0")
+                           "transport/optimization/Relax/01_only/run-0")
         out = r.get_json()
         assert out["concluded"] is False
         assert "still running" in out["summary"]
         assert "force-stopped" in out["summary"]
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_transport",
-                       ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
 def test_describe_attempt_stays_inside_the_tree(web_client):
@@ -1608,11 +1610,11 @@ def test_the_viewer_carries_no_transport_handover_arm():
     assert '"transport"' not in shape
 
 
-def test_transport_describe_refuses_a_sealed_override_by_name(web_client):
+def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolated_projects_root):
     """The electronic contract is the citation's to say (ruling Q5) --
     refused at the DESCRIBE door, from the same constant prep refuses
     from, while changing it is still free."""
-    _cited_junction()
+    _cited_junction(isolated_projects_root)
     try:
         r = web_client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T",
@@ -1621,17 +1623,16 @@ def test_transport_describe_refuses_a_sealed_override_by_name(web_client):
         assert r.status_code == 400
         assert "citation's to say" in r.get_json()["error"]
     finally:
-        _shutil.rmtree(ROOT / "projects/_t_transport",
-                       ignore_errors=True)
+        pass    # tmp_path removes the tree
 
 
-def test_describe_attempt_names_a_recorded_contract(web_client):
+def test_describe_attempt_names_a_recorded_contract(web_client, isolated_projects_root):
     """4.1b's third shade at the seam: a pair whose sidecar carries
     info.calculation answers contract="cited" and says RECORDED."""
     import numpy as _np
     from molbuilder.structure import Structure as _S
     from molbuilder.workingcopy_structure import StructureCodec as _C
-    d = ROOT / "projects/_t_transport/exported"
+    d = isolated_projects_root / "transport/exported"
     d.mkdir(parents=True, exist_ok=True)
     s2 = _S(elements=["Au"] * 12 + ["S", "C", "C", "S"] + ["Au"] * 12,
             positions=_np.array([[1.0, 1.0, float(i)] for i in range(28)]),
@@ -1645,15 +1646,13 @@ def test_describe_attempt_names_a_recorded_contract(web_client):
     _C().write(s2, d / "junction.xyz")
     try:
         r = web_client.get("/api/transport/describe_attempt"
-                           "?path=_t_transport/exported")
+                           "?path=transport/exported")
         out = r.get_json()
         assert out["ok"] and out["form"] == "structure"
         assert out["contract"] == "cited"
         assert "RECORDED" in out["summary"]
     finally:
         import shutil as _shutil
-        _shutil.rmtree(ROOT / "projects/_t_transport",
-                       ignore_errors=True)
 
 
 def test_every_command_the_page_teaches_is_a_REAL_cli_verb():

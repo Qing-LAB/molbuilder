@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
-def ongoing_trajectory() -> str:
+def ongoing_trajectory(isolated_projects_root_module) -> str:
     """A multi-frame `*_geom_optim.xyz` from a REAL optimisation, mid-run.
 
     **This was hand-written until 2026-09-04**, and replacing it is the point.
@@ -66,9 +66,7 @@ def ongoing_trajectory() -> str:
     from molbuilder.script_emit import prepare_deck
     from molbuilder.structure import Structure
 
-    root = ROOT / "projects/_t_timer_e2e"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root_module / "timer_e2e"
     work = root / "_run"
     live = root / "optimization"
     work.mkdir(parents=True)
@@ -94,7 +92,10 @@ def ongoing_trajectory() -> str:
         shutil.copy2(src, dest)          # the trajectory ALONE -- see above
         yield str(dest.resolve())
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 def _pyscf_env():

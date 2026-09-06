@@ -129,7 +129,7 @@ def _run_one(env, d, label, bond):
 
 
 @pytest.fixture(scope="module")
-def co2_pair():
+def co2_pair(isolated_projects_root_module):
     """TWO real runs, at 1.16 A and 1.24 A.
 
     The second exists for the file-switch test: a stretched CO2 has
@@ -139,9 +139,7 @@ def co2_pair():
     env = _pyscf_env()
     if env is None:
         pytest.skip("no conda env routes PySCF on this machine")
-    root = ROOT / "projects/_t_co2_pair_e2e"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root_module / "co2_pair_e2e"
     try:
         # ONE folder, two results.  The picker lists the result files in
         # the CURRENT folder (`results.md` § 2.1), so two runs in two
@@ -153,11 +151,14 @@ def co2_pair():
         b = _run_one(env, d, "co2b", 1.24)
         yield a, b
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 @pytest.fixture(scope="module")
-def co2_run():
+def co2_run(isolated_projects_root_module):
     """Run CO2 and yield the `.spectra.json` it produced.
 
     Under the projects root, because `/api/spectra/load` resolves through
@@ -175,9 +176,7 @@ def co2_run():
     from molbuilder.script_emit import prepare_deck
     from molbuilder.structure import Structure
 
-    root = ROOT / "projects/_t_co2_e2e"
-    if root.exists():
-        shutil.rmtree(root)
+    root = isolated_projects_root_module / "co2_e2e"
     d = root / "spectrum" / "co2"
     d.mkdir(parents=True)
     try:
@@ -207,7 +206,10 @@ def co2_run():
             f"--- stderr ---\n{proc.stderr[-2000:]}")
         yield results
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
+        # removes.  It used to sit in the developer's real `projects/`, so a
+        # crashed run left a folder behind in their own data.
+        pass
 
 
 @pytest.fixture(scope="module")
