@@ -691,5 +691,5 @@ owns it.*
   [`engines/stages.md`](?doc=engines/stages.md).
 - **Phasing and what is built when** —
   [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
-  [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — `conventions.md`'s R3. *(Open questions about the **id** are
+  [`plans/plan.md`](?doc=plans/plan.md) — `conventions.md`'s R3. *(Open questions about the **id** are
   § 6a above, because they are this contract's to answer.)*

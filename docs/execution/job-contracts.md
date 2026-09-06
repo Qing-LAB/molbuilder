@@ -1489,7 +1489,7 @@ if _os.path.exists(_chk) and _os.path.getsize(_chk) > 0:
 > (`_PYSCF_WARM_RESTART_INVENTORY` in `tests/test_runwrap.py`) fails if a hook
 > gains a read-side but forgets the glob.
 
-### 4.2a The warm-file rules file — the inventory as data *(contract 2026-08-13; user decision — implementation tracked in `archive/2026-09-01-roadmap.md`)*
+### 4.2a The warm-file rules file — the inventory as data *(contract 2026-08-13; user decision — **built**: `molbuilder/warmfiles.py` is the one reader and both engines ship `warm-files.toml`)*
 
 **The concrete problem this solves.** When SIESTA's next version adds a
 restart file, or a stage gains a new optimizer, or PySCF changes what its

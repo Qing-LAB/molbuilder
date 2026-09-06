@@ -154,7 +154,7 @@ executed, and the whole `execution/` domain is shaped by it:
 So the honest one-line status of the whole domain: **describe in the browser,
 act on the terminal, observe on either — shipped and proven for structure
 optimization on a workstation; the cluster proof and a web plan/status view
-remain (`archive/2026-09-01-roadmap.md` workstream 1); spectra (2026-08-21) and transport
+remain (`plans/plan.md` **E7**, **W14**); spectra (2026-08-21) and transport
 (2026-08-29, the composite) both migrated onto the framework.**
 
 ```mermaid
@@ -188,7 +188,7 @@ flowchart TB
 | SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
 | Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ⏳ | `checkpointing.md § 7.1` |
 
-`✅` shipped · `⏳` planned (see [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) workstream 1) ·
+`✅` shipped · `⏳` planned (see [`plans/plan.md`](?doc=plans/plan.md) **E7**, **W14**) ·
 `—` not applicable / not planned for that surface.
 
 Two facts keep the picture honest:
@@ -198,7 +198,7 @@ Two facts keep the picture honest:
   routes were deleted (2026-08-18) — they hand over to Task setup, which
   writes the description; `prep`/`launch` run where the machine is. What the
   web still lacks is the observe half beyond the Results tab: a plan view
-  and a per-stage status roll-up (`archive/2026-09-01-roadmap.md` workstream 1).
+  and a per-stage status roll-up (`plans/plan.md` **W14**).
 - **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
   in `task.json` and executes one rung per job, exactly as SIESTA's does
   ([`stages.md § 1.1a`](?doc=engines/stages.md), decided 2026-08-18 — the

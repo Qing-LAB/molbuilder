@@ -178,7 +178,7 @@ stack and some shared plumbing**:
   registry itself, and the loose primitives (`markdown-render`, `detection-chip`,
   `constants`, `path-utils`).
 
-Finishing the conversion is tracked in two workstreams (`archive/2026-09-01-roadmap.md § 3`):
+Finishing the conversion is tracked in two workstreams (`plans/plan.md` **W15**):
 
 - **#102** — convert the file-viewer registry to ESM **and rename `inspectors` →
   `presenters`** in one pass. The same pass also converts the two **heavy engine

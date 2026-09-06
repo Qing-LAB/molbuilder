@@ -340,8 +340,7 @@ pair, because its reader (`siesta/input.py:1455`, `pyscf/input.py:1286`) never
 looks for the sidecar. The web surface has gone through the codec since the save
 door was built, so the two surfaces disagree about what saving a structure means.
 
-Routing CLI load/save through `StructureCodec` is open work (`archive/2026-09-01-roadmap.md` →
-front-end/model finalization; task #73), not shipped.
+Routing CLI load/save through `StructureCodec` is open work (`plans/plan.md` **W15**), not shipped.
 
 ---
 
@@ -554,7 +553,7 @@ derives a filename or re-serialises a sidecar; `scratch_blob` / `from_scratch`
 were retired with the `{xyz, sidecar}` blob shape that was their only reason to
 exist (§ 2.4).
 
-**Open work** (tracked in `archive/2026-09-01-roadmap.md`): route the **CLI** load/save through
+**Open work** (`plans/plan.md` **W15**): route the **CLI** load/save through
 `StructureCodec` so a CLI save emits the `.xyz` + `.molstruct.json` pair like
 the web save does (task #73) — today the CLI writes geometry only, which is the
 last surface not obeying the rule in § 2.4.

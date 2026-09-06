@@ -1026,7 +1026,7 @@ tree is the same tree.
 
 ## 7. What the code does not yet do
 
-**Status lives in [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) § 6, never in a contract**
+**Status lives in [`plans/plan.md`](?doc=plans/plan.md) § 5f, **S7** (P1, P3, P5), never in a contract**
 (`process/conventions.md`'s R3 — not `stages.md` § 4's, which is a different
 rule with the same shorthand). The preparation-layer deltas are one named debt there — P1 to P6 — so
 scheduling them is a roadmap edit rather than a hunt through this page.

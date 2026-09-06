@@ -3,7 +3,7 @@
 **Role:** audit report
 
 > **Scheduled 2026-08-22.** The findings below are evidence; the open ones
-> are scheduled as **roadmap 7.4** (`?doc=archive/2026-09-01-roadmap.md`). §§ A2, C1, C2 are
+> are scheduled as `plans/plan.md` **W1–W4** and **W13**. §§ A2, C1, C2 are
 > closed; § C5 (`setStatus` ×6) is now ×12 and § C8 (three dialog
 > scaffolds) turned out to include two modals with no CSS at all.
 

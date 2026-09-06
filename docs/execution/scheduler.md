@@ -87,7 +87,7 @@ nothing admits against it.
 (`running-a-job.md` § 5.3), the on-disk shape of `environment.json`
 (`configuration.md` § 5), which machine a bundle is prepared for
 (`preparing-for-another-machine.md`), or the schedule of the work
-(`archive/2026-09-01-roadmap.md`, rule R3).
+(`plans/plan.md`, rule R3).
 
 ---
 
@@ -690,7 +690,7 @@ permission to skip the check.
 ## 8. Migration
 
 Smallest risk first; each step separately testable and separately revertable.
-The schedule is `archive/2026-09-01-roadmap.md` § 7.6, not here (R3).
+The schedule is `plans/plan.md` § 5f, **S6**, not here (R3).
 
 1. **Move the record and the probe.** Pure relocation. *(Done 2026-08-23.)*
 2. **Move admission.** `domain_admits` already exists and has one caller.

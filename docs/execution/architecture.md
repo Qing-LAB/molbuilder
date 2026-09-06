@@ -11,13 +11,13 @@ project directory *is*, and the five steps `prep` runs;
 formats and the shared parameter vocabulary;
 [`architecture.md`](?doc=architecture.md) — the whole package by **import
 depth** (`L1`/`L2`/`L3`), a different and coarser grouping than this one;
-[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — how much of this the code holds today.
+[`plans/plan.md`](?doc=plans/plan.md) — how much of this the code holds today.
 
 > **This document says who is allowed to decide what.** It is the authority for
 > the execution domain's internal shape: the floors, the objects that travel
 > between them, the routes that cross them, and the rules that must never break.
 > It says nothing about *when* any of it gets built — that is
-> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md), and per the doc rules a contract does not
+> [`plans/plan.md`](?doc=plans/plan.md), and per the doc rules a contract does not
 > hold a plan.
 
 ---

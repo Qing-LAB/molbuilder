@@ -9,9 +9,12 @@ documents that preceded it lives here; those nine are archived under
 > *(user, 2026-09-01: "We don't need ten plan files scattered. We want one
 > plan folder or one plan file and stay with that file.")*
 
-**Nothing here has been executed.** This file is the merge, fact-checked
-against code on 2026-09-01; the next step is agreeing what it should contain
-and in what order.
+**Status, 2026-09-06.** This file began as the merge, fact-checked against
+code on 2026-09-01. Much of it has since been executed — struck rows carry the
+date and the evidence. Two later rounds are recorded in place: **§ 5b** (the
+2026-09-02 run-decision round) and **§§ 5f–5g** (2026-09-06 — the architecture
+seams the merge dropped, and what re-deriving nine of this file's own rows
+found: four held, five did not).
 
 ---
 
@@ -86,16 +89,16 @@ NOT read here any more."** It is open.
 | **W3** | **Per-page token/namespace passes (step E)**, one page per commit: `spectra`, `structure-optimization`, `transport`, `results`, `documents` | `css-system` § 4E | partly |
 | **W4** | **Guards 1 and 2 (step F)** — one home including elements; a page sheet contains only its own tier. Guard 3 landed; a fourth (no long block copied between sheets) landed 2026-09-01 | `css-system` § 4F | partly |
 | **W5** | **The inspectors module's appearance still lives in `results/style.css`** — 70 mentions. Mount an inspector on another page and it renders unstyled. Three of its sheets have been repatriated; the rest is a module change, deliberately | `css-system` § 7.0 | partly |
-| **W6** | **The editor module.** CodeMirror on three surfaces, owned by nothing: **three** loaders, **three** sheets theming `.CodeMirror` (40 rules — up from the 30 the plan measured), and the hard-won caps (1500-line selection, 1 MB view-only) on **one** surface. Not started, deliberately sequenced after the Task-setup workflow | `editor-module` | not started |
+| **W6** | **The editor module.** **Re-measured 2026-09-06 and the row was overstated in one half and stale in the other.** The loader half is *half done*: `lib/codemirror-load.js` is the ONE loader as of 2026-08-16 and two of the three surfaces import it — `lib/inspectors/markdown.js` still hand-rolls its own `loadCSS`/`loadScript` pair (`markdown.js:45–50`), so it is **two loaders, not three**. **Three** sheets theme `.CodeMirror` (`markdown.css`, `task-setup/style.css`, `projects-sidebar.css`) carrying **30** rules — not the 40 this row claimed; 30 is what the original plan measured, and the increase never happened. The caps (1500-line selection, 1 MB view-only) on **one** surface stand | `editor-module` | partly |
 | **W7** | **I7 close-out** — the browser walk of Results export → cite → describe → prep. I1–I6 done | `structure-info` I7 | open |
 | **W8** | **Caller-less endpoints — decide the ROLE, do not just delete.** `/api/docs/list` (a second answer to "what docs exist" beside the `/api/docs/toc` the tab calls); `/api/checkpoint/config` (the read half of a route whose write half was removed); `/api/selection/atoms` (pinned by five test files) | `structure-info` § 3 | open |
 | **W9** | **Transport viewer default orientation** — a MolView camera-door contract question | `structure-info` § 3 | open |
 | **W10** | **Results transmission inspector** — the record exists, the reader does not | `structure-info` § 3 · roadmap § 2 | open |
 | **W12** | **The live browser walk-throughs** — checkpoint swap at narrow and wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1. Carried since the archived molview-and-checkpoint plan | roadmap § 0.3 | open |
-| **W13** | **384 raw px/rem literals** in the page sheets. The 2026-08-28 count was 777, so this halved without being finished; it is the tail of 7.4c | roadmap § 7.4c | partly |
+| **W13** | **Raw px/rem literals — re-measured 2026-09-06, and the row's number does not survive its own definition.** In *the page sheets* (the eight per-page directories) there are **160**, not 384. The bulk is somewhere this row never said: **`lib/` carries 740**, which is where the shared components live and where a token would pay for itself most. Definition first next time — 777 → 384 → 160 are three scopes, not three measurements of one thing | roadmap § 7.4c | partly |
 | **W14** | **A web plan view and a per-stage status roll-up.** The web *describes* a staged calculation (Task setup) and *observes* runs (Results); neither shows the plan as a whole | roadmap § 6 | open |
 | **W15** | **Sealing the MolView module's internals and finishing the ES-module conversion** — both **browser-verified** before they count. Plus routing the CLI through the shared codec and exercising the last annotation-channel kind | roadmap § 3 | partly |
-| **W11** | **The trajectory inspector's export records no contract.** Its load rides `/api/watch`, not the structure door, so an export from the trajectory view carries no `info.calculation` | `structure-info` § 3 | open |
+| ~~**W11**~~ | **DONE — verified 2026-09-06 across both halves.** The server composes it (`watch.py:501`, `"info": run_info_for_dir(search_dir)`), the browser stores it (`core.js:597–598`, `state.fileState.info = payload.info`) and it reaches every export path (`core.js:1155/2625/2990`). The store slot carries the ruling that settled it — *"THE TAB PROVIDES IT (user, 2026-08-30): MolView has no idea what describes a run"* | `structure-info` § 3 | done |
 
 ## 4a. Open — needs a decision from you
 
@@ -718,6 +721,80 @@ reproduced duplicate-keyword refusal, `Parameter.writes`) are re-checkable, and
 should be re-checked rather than trusted if this is picked up later.
 
 
+## 5f. Architecture seams — dropped by the consolidation, recovered 2026-09-06
+
+**How this section came to be missing.** The 2026-09-01 merge fact-checked the
+roadmap's §§ 3, 4, 7.4c, 7.5, 7.8, 7.10 and 7.11 and the two audits — and
+**never reached § 6, *Architecture seams***. So § 6's bullets were neither
+verified nor carried, and § 5a's *"of roughly forty items… the ones that
+survive are the twenty-odd rows above"* was written without them in view.
+Nothing pointed this out for five days because **R3's own sentence still sent
+readers to the archive**: when `roadmap.md` was archived, the line in
+`docs/README.md` was re-pointed at its new path rather than at the file that
+replaced it, and **53 pointers across 31 documents followed it in**. Fixed
+2026-09-06; the pointers now name this file.
+
+**Read the state column literally.** *measured* means re-derived against the
+tree on 2026-09-06 and the evidence is in the row. *inherited* means carried
+verbatim from roadmap § 6 and **not checked** — § 5a's lesson was that ~85% of
+what a roadmap carried as open had already shipped, so assume the same here
+until each is re-derived. Numbering is `S`, not `W`, because
+`backend-architecture.md § 5` already has a **W1–W5** of its own and this file
+already has a different **W1**; the two collided in every conversation about
+them.
+
+| # | seam | owner | state |
+|---|---|---|---|
+| **S1** | **`runwrap` reaches into the engines.** The wrapper writer branches on which engine it is writing for — what a cold restart clears, how the label is read back out of a deck, how the launch line is formed. Until it moves, *adding an engine edits `runwrap.py`*, which is exactly what `generator.md` § 7's *"adding an engine adds files and edits none"* exists to catch | `backend-architecture.md` § 5 (its **W1**) | **measured open** — four branches, `runwrap.py:420 / 446 / 645 / 728`, the same four counted 2026-08-19; 128 engine-name literals in the file |
+| **S2** | **`jobset/runstatus.py`'s warm-file table → producer-supplied inventory** | `backend-architecture.md` § 5 (**W2**) | inherited — **and likely closable**: § 4.2a's data file shipped since (S-note below), so this table may already have one source to derive from |
+| **S3** | **`runtime_config`'s untyped scheduler dicts + mixed concerns** | `backend-architecture.md` § 5 (**W3**) | inherited — overlaps **S6** |
+| **S4** | **Transport bypasses the framework.** Gated on a branching workflow, which has no representation today and would arrive as something a person asks for at launch, never as a field a description stores | `backend-architecture.md` § 5 (**W4**) | inherited — pairs with the parked transport-wizard `.fdf` item |
+| **S5** | **`script_emit` re-filing** (its former sibling `bundle_writer` retired 2026-08-29) | `backend-architecture.md` § 5 (**W5**) | inherited |
+| **S6** | **The scheduler menu is handed out as plain dictionaries**, so the typed record and the code using it never meet — how `gpu_partition` came to redirect GPU work from inside an unexamined bag | roadmap § 7.6 phase 3 | **measured partly** — the *record* is typed (`Domain`, `Device`, `Topology`, `Site` in `scheduler/record.py`); the *menu* is not (`known_machines() -> List[Dict[str, object]]`, `Domain.to_row() -> Dict[str, Any]`). Phases 1, 2, 4, 5 are done — phase 2 landed as `scheduler/admit.py`, split out so the check cannot drift from the record it checks |
+| **S7** | **The preparation layer against its contract** — **P1** the enforced floor map puts `runwrap` and `jobset/prep` on floor 5; **P3** nothing names the shared package (`jobset/prep._shared_for` globs); **P5** PySCF's seam entry. P2, P4, P6 closed 2026-08-18 | `execution/script-preparation.md` | inherited |
+| **S8** | **Boundary-condition contract rollout per engine** — four obligations (declare consumed labels, schema pre-fill, Stage-3A divergence warn + 3B unrecognized-label notice, verbatim emission), with **spectra the only fully-wired instance**. Each engine adoption is one item with its own pins | `engines/overview.md` § 5 | inherited |
+| **S9** | **`structure_to_dict` disposition — two documents disagree.** `model/structure.md` calls it the retained web composer; `backend-architecture.md` § 2 calls it a vestigial wrapper to delete. **One decision, then align both** — this is a ruling, not a code change | both docs | **needs a decision from you** |
+| **S10** | **Capability and allocation reach `prep`.** **M2a** — capability is assembled twice and never reconciled: topology and the detected partition go to `environment.json`, the `molbuilder.json` `scheduler` block goes straight to the `.sbatch` emitter, and nothing compares them, so *the record can name one partition while the header submits to another*. **M3** — a declared `qos` or `account` appears in no run-directory record. M1, M4, M5, M6 hold | `execution/project-layout.md` § 2.3.1b | inherited — **and it carries an open question that is yours**: how a person states an allocation, and whether a per-project default belongs beside the `scheduler` block |
+| **S11** | **The run wrapper's string assembly** — `render_run_wrapper` is ~1780 lines emitting bash through ~295 f-strings. Recorded rather than scheduled *because neither 2026-08-17 defect entered there*: one entry point, one caller, both arriving above it. Worth doing on its own terms; **not** worth folding into a boundary fix | roadmap § 6 | inherited |
+| **S12** | **GPU detection is implemented twice** — Python at prep (`.sbatch` header) and awk at launch (after a person may have edited the deck). **Two implementations are required** — one runs on a login node, the other on a compute node hours later — and the truthy set is already one constant. **The fix is a test rendering both against one deck set, never a merge** | roadmap § 6 | inherited — the shape of the answer is already decided |
+| **S13** | **Transport convergence sweep** — auto-vary transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops moving. `transport.md` § 2 already tells a reader not to trust a single point blindly, so the document promises what the code does not offer | `engines/transport.md` § 8 | **measured: not built** — the only occurrence in the tree is `transport/wizard.py:65`, a comment naming it |
+| **S14** | **Floor 6, flat layout: one stage's verdict is still read from the whole folder.** Now sharper than when it was written — the 2026-09-05 ruling made *stages separate runs*, so reading a verdict folder-wide is reading several runs as one | `execution/architecture.md` | inherited — re-scope against the 2026-09-05 ruling before acting |
+
+**Closed on the way in, 2026-09-06.** Roadmap § 6's *warm-file rules file*
+bullet is **built** and its pointer is retired: `molbuilder/warmfiles.py` is the
+one reader (`rules_for` type-scoped, `inventory` type-blind), and both engines
+ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
+*"implementation tracked in [the roadmap]"* until today.
+
+---
+
+## 5g. What re-deriving the rows found, 2026-09-06
+
+**Nine claims about this file's own rows were checked against the tree. Four
+held; five did not.** Recorded because the ratio is the point, not the rows:
+§ 5a already said *"the plan's rows are read, not re-measured"* after the
+fourth such case in one day, and this is the fifth through ninth.
+
+| claim | verdict |
+|---|---|
+| **W11** export carries no contract — *done* | **held.** Both halves verified |
+| **W6** editor module — *overstated* | **held.** Two loaders, not three; 30 `.CodeMirror` rules, not 40 |
+| **W13** 384 px/rem literals — *overstated* | **held**, but the row and the claim were both wrong: 160 in page sheets, 740 in `lib/` |
+| roadmap § 6 seams — *dropped by the merge* | **held.** § 5f above |
+| **R4** three writers / 400 ms window — *done* | **wrong.** `applyBlockToDoc` still goes through `patchDoc` and never touches `_task` (`viewer.js:2905–2915`). Open |
+| **W2** `.card` padding — *overstated* | **wrong.** Exact, still there: `lib/page-shell.css:289`, `padding: var(--space-md) 18px 18px` |
+| **W5** inspectors' sheet — *overstated* | **wrong.** Exactly **70** mentions in `results/style.css`, the number the row states |
+| **W8** caller-less endpoints — *overstated* | **wrong.** All three have zero live callers; `/api/selection/atoms`'s one apparent hit is a comment in `inspectors/structure.js:139` *saying it is not used*. `/api/checkpoint/config` additionally has **zero tests**, so retiring it costs nothing |
+| a deck assertion that never executes | **withdrawn — not reproducible.** Two mechanical searches over every test (an assert inside a `try` whose handler skips; an assert below an unconditional `return`/`skip`) return zero. The likely origin is **B2**, which found and fixed three docstring-only `Test*` classes and is already closed |
+| `max_memory_mb` loses its unit in the browser | **withdrawn — both halves are done.** The server sends it (`build.py:1839`, `"unit": it.unit or None`, with the comment naming this exact defect) and the browser reads `m.unit` (`viewer.js:1589/1606/1608`), where a second copy is refused by name as drift |
+
+**The rule this earns.** A row in this file is evidence of what was true when it
+was written, exactly like the code it describes. **Re-derive before acting, and
+write the measurement into the row** — every row corrected above now carries its
+own file:line, so the next re-derivation is a check rather than a survey.
+
+---
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |
@@ -731,6 +808,6 @@ should be re-checked rather than trusted if this is picked up later.
 | `css-system-plan` | steps A and B done; C–F are **W1–W5** |
 | `editor-module-plan` | not started, and its design is worth keeping whole — **W6** points at it |
 | `consolidated-cleanup-plan` | 10 of 12 items done; the rest are **D1–D3** |
-| `roadmap.md` | R3's old home. 1770 lines, ~85% closed work never struck; its live items are **E7–E11, C2, C3, W12–W15, N1–N4** |
+| `roadmap.md` | R3's old home. 1770 lines, ~85% closed work never struck; its live items are **E7–E11, C2, C3, W12–W15, N1–N4** — **plus § 6's architecture seams, which the 2026-09-01 fact-check never reached and this merge dropped**; recovered 2026-09-06 as **§ 5f**, **S1–S14** |
 | `archive/2026-09-01-audit-2026-08-21-fullstack-review.md` | its open list became roadmap § 7.5, and § 7.5 is now empty — verified |
 | `archive/2026-09-01-audit-2026-08-28-full-review.md` | O1–O3 closed in the document; O4's general case is **N1**, O5 is **N3**, its uncovered lane is **E11** |

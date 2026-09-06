@@ -2927,7 +2927,7 @@ depending on a different mechanism having fired — is exactly the shape of the
 drift bug described in § 10.6.
 
 The highlight already works this way. The rest is planned, not built
-([`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md)), and it changes none of § 10.5's four costs —
+([`plans/plan.md`](?doc=plans/plan.md) **W15**), and it changes none of § 10.5's four costs —
 it makes the overlay-refresh one do less.
 
 ---
@@ -4653,7 +4653,7 @@ neither does this document (§ 4).
 
 > **Planned, not built.** Saving more than one frame of a trajectory, and finer
 > control over exactly which parts of a drawing need refreshing, live in
-> [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md).
+> [`plans/plan.md`](?doc=plans/plan.md) **W15**.
 
 > **What is described here is what ships.** Being owned (§ 5.6) and its
 > consequences — one model per viewer, the handle as the way in rather than a

@@ -565,7 +565,7 @@ single-point, or a relaxation if those layers are not frozen.
   description as the run surface (machine, queue, prep).  The render
   endpoint (`/api/transport/render`) remains as the engine's validation
   surface.
-- **Follow-up** (see `archive/2026-09-01-roadmap.md`): a **convergence sweep** mode (auto-vary
+- **Follow-up** (`plans/plan.md` § 5f, **S13**): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **Results-tab transmission inspector** (T(E) + I–V charts read
   from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —

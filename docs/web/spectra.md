@@ -501,7 +501,7 @@ together with the **`inspectors` → `presenters` rename** — one pass (task #1
 that does the file-viewer registry *and* the heavy engine cores it mounts (this
 `lib/spectra/core.js` among them), since converting them rewrites those files
 anyway. See [`presenters.md`](?doc=web/presenters.md) and
-[`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md).
+[`plans/plan.md`](?doc=plans/plan.md) **W15**.
 
 ## 9a. Which modes get the expensive treatment, and what the paper says
 

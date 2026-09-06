@@ -7,7 +7,7 @@
 [`engines/siesta.md`](?doc=engines/siesta.md) +
 [`engines/pyscf.md`](?doc=engines/pyscf.md) — the `SiestaConfig` / `PySCFConfig`
 dataclasses these forms are generated from; `web-api.md` — the
-`/api/build/schema/*` routes (web wave); [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) § 3 —
+`/api/build/schema/*` routes (web wave); [`plans/plan.md`](?doc=plans/plan.md) **W15** —
 the pending ES-module conversion.
 
 The long option forms on the Build, Spectra, and Transport tabs — mesh cutoff,
@@ -394,5 +394,5 @@ warning), so an un-mapped field never silently disappears.
 ## 7. Current → target: ES modules
 
 `form-schema.js` is a classic `window.molbuilder.*` script today. Converting it
-to an ES module is a planned pass ([`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md)); this
+to an ES module is a planned pass ([`plans/plan.md`](?doc=plans/plan.md) **W15**); this
 note is dropped when that lands.

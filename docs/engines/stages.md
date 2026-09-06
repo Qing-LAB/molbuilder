@@ -2147,5 +2147,5 @@ were written for a flat directory and would silently have lost data in a tree.
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
   [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
-  [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) — the *status-lives-in-the-roadmap* rule,
+  [`plans/plan.md`](?doc=plans/plan.md) — the *status-lives-in-the-plan* rule,
   not § 4's R3.

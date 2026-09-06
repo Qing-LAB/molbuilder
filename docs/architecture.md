@@ -6,7 +6,7 @@
 same backend by *functional concern*, the paired lens to this layer index);
 [`design.md`](?doc=design.md) (mission · principles · decisions — the narrative
 sibling); [`README.md`](?doc=README.md) (the doc index + the rules);
-[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) (open work);
+[`plans/plan.md`](?doc=plans/plan.md) (open work);
 [`process/package-layout.md`](?doc=process/package-layout.md) (where each file
 lives); [`process/conventions.md`](?doc=process/conventions.md) (the L1/L2/L3
 layering rule + the provenance header this map rests on).
@@ -241,7 +241,7 @@ This index is deliberately thin — it routes you to the authoritative doc.
   package layout).
 - **The forward plan** — every open feature/backend workstream, including the
   execution↔engine decoupling items and the front-end ESM conversions — is
-  [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md). Closed decisions live in [`design.md`](?doc=design.md).
+  [`plans/plan.md`](?doc=plans/plan.md). Closed decisions live in [`design.md`](?doc=design.md).
 
 Keep this map in sync when a **major** subsystem or public entry point is
 added; per-detail changes belong in the linked docs, not here.

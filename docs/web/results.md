@@ -499,7 +499,7 @@ The Results shell is still **classic**: `results/viewer.js` plus
 (`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
 load in order. Converting them is task #103 (the "remaining classic modules" pass,
 alongside the runtime registry and the shared primitives —
-[`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md)). The heavy viewers this shell *mounts* are on
+[`plans/plan.md`](?doc=plans/plan.md) **W15**). The heavy viewers this shell *mounts* are on
 a different track — the trajectory and spectra engines convert in the #102
 file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
 

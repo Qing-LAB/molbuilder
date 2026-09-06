@@ -452,7 +452,7 @@ ones (`selection-bootstrap` and the three viewers) have one foot in ESM — they
 `import` the viewer — while their own bodies are still legacy IIFEs that publish
 globals; the structure-generation set plus the Documents controller are fully
 classic. Finishing these off is part of the "remaining classic modules" ESM
-workstream (`archive/2026-09-01-roadmap.md § 3`).
+workstream (`plans/plan.md` **W15**).
 
 ## 9. Test map
 

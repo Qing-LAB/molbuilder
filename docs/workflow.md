@@ -443,7 +443,7 @@ reader can check, not an arm nobody thought about.
 back out of a deck, how the launch line is formed. Those facts belong beside
 the engine's other seam answers, and moving them is the recorded seam item
 **W1** ([`backend-architecture.md § 5`](?doc=backend-architecture.md),
-scheduled in [`archive/2026-09-01-roadmap.md § 6`](?doc=archive/2026-09-01-roadmap.md)). Until then, adding an
+scheduled in [`plans/plan.md`](?doc=plans/plan.md) § 5f, **S1**). Until then, adding an
 engine edits `runwrap.py` — which is exactly what
 [`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
 files and edits none"* test exists to catch.
@@ -457,7 +457,7 @@ citation of a finished junction attempt, five derived stages — but prepped,
 launched and summarized through the ordinary jobset verbs
 ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)).
 
-**Where this is tracked:** [`archive/2026-09-01-roadmap.md § 6`](?doc=archive/2026-09-01-roadmap.md).
+**Where this is tracked:** [`plans/plan.md`](?doc=plans/plan.md) § 5f.
 
 ---
 
@@ -477,7 +477,7 @@ internals.** When you need a part's own rules rather than how it fits:
 | why all of a calculation's files share one name | [`execution/run-identity.md`](?doc=execution/run-identity.md) |
 | running one job, day to day | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 | the whole thing done once, with a real molecule | [`execution/worked-example.md`](?doc=execution/worked-example.md) |
-| what is left to build | [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) |
+| what is left to build | [`plans/plan.md`](?doc=plans/plan.md) |
 
 ---
 

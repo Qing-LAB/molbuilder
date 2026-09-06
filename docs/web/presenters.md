@@ -7,7 +7,7 @@ presenter mounts; [`projects.md`](?doc=web/projects.md) — the file layer every
 presenter reads through. `results.md` — the Results tab that *uses* this
 registry (its file picker, state, and bundle handoff live there, web wave); the
 trajectory-engine and spectra docs — the heavy rendering engines two presenters
-wrap. [`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md) § 3 — the pending ESM + rename of this
+wrap. [`plans/plan.md`](?doc=plans/plan.md) **W15** — the pending ESM + rename of this
 module.
 
 When you open a file on the **Results** tab, something has to pick the right way
@@ -24,7 +24,7 @@ rule that picks the matching one and mounts it.
 > register through the global, so they are **hybrids**, not clean ES modules yet.
 > The module is being **renamed to `presenters`** and fully converted in one pass
 > (task #102,
-> [`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md)) — the old term "inspector" collided with
+> [`plans/plan.md`](?doc=plans/plan.md) **W15**) — the old term "inspector" collided with
 > `mountInspector` inside the engines and with the viewers' own inspect panels.
 > This doc uses the target name **presenter**; where it points at code it uses
 > today's `inspectors` names.
@@ -163,7 +163,7 @@ This module is the file-viewer registry that is being renamed and modernized
 So two of the module's nine files already import as modules (still global-registered
 = hybrid), and the rest are classic; converting them all — plus the
 `molbuilder.inspectors` → `presenters` rename — is the pending pass. See
-[`archive/2026-09-01-roadmap.md § 3`](?doc=archive/2026-09-01-roadmap.md).
+[`plans/plan.md`](?doc=plans/plan.md) **W15**.
 
 ## 8. Test map
 

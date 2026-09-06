@@ -275,7 +275,7 @@ remains is **completing** the separation at the execution edges (§ 5 W1–W4) a
 little hygiene (§ 3 nits, § 2 residuals, W5) — deferred boundary debt, not
 load-bearing bugs. None of it changes the concern *homes*; it makes them
 uniform. If any of these are scheduled, they become entries in
-[`archive/2026-09-01-roadmap.md`](?doc=archive/2026-09-01-roadmap.md).
+[`plans/plan.md`](?doc=plans/plan.md).
 
 ---
 
