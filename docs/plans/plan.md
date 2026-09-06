@@ -825,7 +825,7 @@ person wrote**, across 31 files.
 | **2 · CONVERT — node** | **27** | The code must **run**, but nothing needs painting: which requests fire, what DOM is written, what survives a second click. Milliseconds against a stub DOM; 35 files already do this through `tests/_node_esm.py` |
 | **5 · CONVERT — python** | **13** | A pin on `.py` source — almost always cheaper to call the function. `test_run_index_covers_every_artifact.py` is the clearest case: it pins the f-string *spellings* of shell fragments in the wrapper template, while 58 assertions elsewhere already read the **rendered wrapper** through `write_run_wrapper`. The door exists; these five just do not use it |
 
-**49 convert · 59 keep.**
+**49 convert · 59 keep** when measured. **44 · 56** after cluster 1 landed the same day — re-run the tool rather than trusting either figure.
 
 ### The proof that a pin is behaviour-blind, run rather than argued
 
@@ -857,9 +857,36 @@ it.
 
 Cheapest first, because each stands alone:
 
-1. **`test_run_index_covers_every_artifact.py`** (5, python) — read the
-   rendered wrapper instead of the template's source. The door already exists
-   and is already used 58 times.
+1. ~~**`test_run_index_covers_every_artifact.py`** (5, python)~~ — **DONE
+   2026-09-06.** All five gone; the population is **44 to convert · 56 to
+   keep**. The directory is built by the **real `prep_jobset`** *(user: "you
+   should construct run dir with actual backend if you are testing it")* —
+   the run index is a property of a directory that already holds attempts, so
+   a hand-assembled one would prove the wrapper indexes files in a layout
+   nobody ever creates; prep is also what ships the real `mb_monitor.py`
+   (`prep.py:181`), so the monitor is real too. Only `siesta` and `conda` are
+   stubbed, neither under test.
+
+   **Four mutations, each caught, and two of them prove the retired pins were
+   blind.** `_run_n=0` so the index never advances → the re-run test fails
+   while *both* retired pin strings survive byte-for-byte in `runwrap.py`.
+   `util.csv` made to append while `Path(util_path).write_text(` — the exact
+   retired substring — is left intact → the pairing test fails. Plus
+   `max`→`min` in `_latest_run_file`, and dropping the `-run*` rows.
+
+   **The mutation round found two defects in my own replacements**, which is
+   the whole reason the rule exists. **(a)** Dropping `-run*` from
+   `OUR_FILE_PATTERNS` changed nothing for `is_ours` — it tries every pattern
+   against *two* stems, so `J-run0.util.csv` still matches through the plain
+   row under `{label}-*`. But the wrapper's cold-restart list substitutes ONE
+   anchor and does not expand (`runwrap.py:490`), so the rows are load-bearing
+   in that **second consumer**, which my replacement did not reach: `--cold`
+   would have silently stopped protecting every indexed monitor artifact with
+   the suite green. A test on the rendered script now covers it. **(b)** My
+   pairing test compared row counts and **flaked 50% of the time** — the
+   sampler is change-gated with a keepalive, so two runs of equal length
+   legitimately differ by a row. Replaced with a sentinel, which is what the
+   claim actually is: does what was in the file survive.
 2. **`test_trajectory_clocks_js.py`** (4, node) — the mutation above is the
    acceptance test: the replacement must fail against the swap.
 3. **`test_structure_info_bridge.py`** (5, node) — includes
