@@ -100,6 +100,17 @@ _OVERRIDE_FILES: dict[str, tuple[str, str]] = {
 }
 
 _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
+    "tests/test_task_setup_tab.py": {
+        ln: (B_BROWSER,
+             "BLOCKED, not merely pending: `_targetArg()` returns \"\" unless a "
+             "NAMED machine is chosen, and the page can only be driven to "
+             "\"(this machine)\" without a named record in the live server's "
+             "config root -- so an e2e check for --target passes whatever the "
+             "code does.  MEASURED 2026-09-06: adding `_targetArg()` to the "
+             "launch line left the e2e green.  Needs a fixture that supplies a "
+             "named target; until then the pin beats a vacuous assertion")
+        for ln in (1286, 1287)
+    },
     "tests/test_structure_info_bridge.py": {
         ln: (B_BROWSER,
              "the aliasing runs inside `mountInspector` via "

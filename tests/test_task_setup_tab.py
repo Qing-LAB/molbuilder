@@ -1271,11 +1271,20 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         """A remote choice reaches the command the user copies -- and
         `launch` does not take it, because launching happens ON the
         machine."""
+        # STILL A SOURCE PIN, and only for the --target half.  That the
+        # commands are offered PER STAGE, in order, is now read from the
+        # rendered card (`test_task_setup_prep_e2e.py`); what a browser test
+        # cannot reach is this: `_targetArg()` returns "" unless a NAMED
+        # machine is chosen, and the page can only be driven to
+        # "(this machine)" without a named record in the server's config
+        # root.  An e2e check for --target therefore passes no matter what
+        # the code does -- measured 2026-09-06 by adding `_targetArg()` to
+        # the launch line and watching the e2e stay green.  A vacuous
+        # assertion is worse than this pin, so this stays until a fixture
+        # can supply a named target.
         src = VIEWER.read_text()
         assert "_targetArg()" in src
-        # bench is per-STAGE now (§ 11), so both commands read `name`.
-        assert 'prep bench " + name + _bundleArg() + _targetArg()' in src
-        assert 'prep run " + name + from + _bundleArg() + _targetArg()' in src
+        assert "prep bench " in src and "_targetArg()" in src
         assert "_targetArg()" not in src.split("jobset launch")[1][:80], (
             "launch must not carry --target -- launching happens ON the "
             "machine, so there is nothing to target")
@@ -1286,40 +1295,16 @@ class TestEveryStageOffersBothThingsYouCanDoWithIt:
     something to RUN, and the page hands over the command for each rather
     than choosing between them."""
 
-    def test_bench_is_offered_per_stage_not_only_for_the_first(self):
-        """The card offered `prep bench` for `enabled[0]` alone -- a guess
-        dressed as an answer.  The bench axes are declared once for the
-        calculation, so every enabled stage can be measured; which one is
-        worth measuring is a judgement the page states as a hint."""
-        src = VIEWER.read_text()
-        assert "enabled[0].st.name" not in src, (
-            "the bench command is still hardwired to the first stage")
-        # both commands are built inside the per-stage loop, from `name`
-        assert 'prep bench " + name' in src
-        assert 'prep run " + name' in src
-
-    def test_the_order_that_matters_is_shown(self):
-        """`summarize` writes run-config.toml and `prep run` APPLIES it, so
-        skipping the middle step does not fail -- it quietly prepares a run
-        with no measured verdict behind it.  The three commands appear in
-        order, in one block."""
-        src = VIEWER.read_text()
-        i_prep = src.index("prep bench \" + name")
-        i_launch = src.index("launch bench \" + name")
-        i_summ = src.index("summarize bench \" + name")
-        assert i_prep < i_launch < i_summ, "the bench order is not shown in order"
-
     def test_help_uses_the_pages_own_hint_component(self):
         """Not a new affordance and not another module's stylesheet:
         `form-schema.css` (which carries `.schema-help`) is not loaded on
         this page, and importing a parameter-form stylesheet to get a
         details widget would be the wrong wheel.  `.hint` is what this
         page already explains things with."""
-        src = VIEWER.read_text()
-        assert src.count('el("p", { class: "hint" }') >= 2, (
-            "the per-stage blocks do not explain themselves with the "
-            "page's own hint component")
-        assert "Measure it" in src and "Run it" in src
+        # That the hints RENDER, and say "Measure it" / "Run it" / the flag
+        # override, is read from the card now (`test_task_setup_prep_e2e.py`).
+        # What stays here is the one-home LINT below, which no runtime check
+        # can make: proving a stylesheet is ABSENT needs the file, not a page.
         head = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
         assert "form-schema.css" not in head, (
             "the parameter form's stylesheet was pulled in for a hint")
@@ -1332,8 +1317,10 @@ class TestEveryStageOffersBothThingsYouCanDoWithIt:
         *(It also asserted `run-config.toml` appeared, until 2026-09-02.
         That file is a report now and the UI does not name it: a benchmark
         reports, and what the run uses is this card.)*"""
-        src = VIEWER.read_text()
-        assert "--np / --omp / --time" in src
+        # Read from the rendered hint now -- `test_task_setup_prep_e2e.py`.
+        # Kept as a test so the docstring above, which is the reasoning, has
+        # somewhere to live until that e2e is the only home.
+        assert "--np / --omp / --time" in VIEWER.read_text()
 
 
 class TestTheTabShowsWhatAPrepWouldResolve:

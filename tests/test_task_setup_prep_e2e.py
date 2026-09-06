@@ -614,3 +614,142 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
     assert "no machine record" in said, (
         "the panel said it could not answer but not why: " + said)
+
+
+# ---------------------------------------------------------------------------
+#  What the card TELLS YOU TO RUN  (plans/plan.md § 5h, cluster 4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def two_stage_dir():
+    """A described calculation with TWO stages and a declared bench axis.
+
+    Two, because the claim under test is *per stage, not only the first* --
+    the card once offered `prep bench` for `enabled[0]` alone, which a
+    one-stage fixture cannot tell apart from correct.  The bench block,
+    because the Measure half renders only when the description declares axes
+    to measure (`viewer.js`: `if (benchKeys.length)`).
+    """
+    import json as _json
+
+    import numpy as np
+
+    from conftest import write_pseudos
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.scheduler import Environment, Topology
+    from molbuilder.structure import Structure
+    from molbuilder.task import Stage
+
+    # UNDER THE PROJECTS ROOT, like `filled_dir` and for the same reason: the
+    # page opens a folder through the picker, so a tmpdir outside the root is
+    # never reached and the tab silently shows the root instead -- which is
+    # what the first version of this fixture did, and it read as "the stage
+    # blocks do not render".
+    root = ROOT / "projects/_t_two_stage"
+    if root.exists():
+        shutil.rmtree(root)
+    src_dir = root / "structure"
+    src_dir.mkdir(parents=True)
+    d = root / "optimization" / "ladder"
+    try:
+        struct = Structure(elements=["H", "H"],
+                           positions=np.array([[0.0, 0.0, 0.0],
+                                               [0.0, 0.0, 0.74]]),
+                           vacuum=(10.0, 10.0, 10.0))
+        src = src_dir / "ladder.xyz"
+        src.write_text(struct.to_xyz(), encoding="utf-8")
+        D.write_description(
+            D.build_description(struct, SiestaConfig(system_label="ladder"),
+                                [Stage(name="coarse",
+                                       overrides={"mesh_cutoff": 200}),
+                                 Stage(name="tight",
+                                       overrides={"mesh_cutoff": 400})],
+                                engine="siesta", shape="hierarchical",
+                                name="ladder", source=str(src)),
+            d, struct=struct)
+        write_pseudos(d, ["H"])
+
+        # The axes to measure, declared once for the calculation -- which is
+        # exactly why every enabled stage can be measured.
+        task = _json.loads((d / "task.json").read_text())
+        task["bench"] = {"mpi_np": [1, 2]}
+        (d / "task.json").write_text(_json.dumps(task, indent=2),
+                                     encoding="utf-8")
+
+        (d / "environment.json").write_text(
+            Environment(scheduler="",
+                        topology=Topology(sockets=2, cores_per_socket=32),
+                        script_generation={"preamble": "true",
+                                           "activation": "conda activate"},
+                        ).to_json() + "\n", encoding="utf-8")
+        yield d
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
+    """The commands a person copies, READ FROM THE PAGE.
+
+    CONVERTED 2026-09-06 (`plans/plan.md` § 5h, cluster 4).  Nine assertions
+    in `test_task_setup_tab.py` read `viewer.js` as text and checked for
+    concatenation expressions -- `'prep bench " + name + _bundleArg() +
+    _targetArg()' in src`.  That pins one spelling of one line: reorder the
+    operands harmlessly and it fails; render the block for the wrong stage,
+    or in the wrong order, and it passes.  This reads what the card renders.
+
+    The claims, all of them about what a person is TOLD:
+      * every enabled stage offers both things you can do with it -- the card
+        once hardwired `prep bench` to `enabled[0]`, a guess dressed as an
+        answer;
+      * each command names ITS OWN stage;
+      * the bench order is shown in order, because skipping `summarize` does
+        not fail -- it quietly preps a run with no measured verdict behind it;
+      * `launch` never carries `--target`, because launching happens ON the
+        machine and there is nothing to target.
+    """
+    _open(page, flask_server, two_stage_dir)
+    # `state="attached"`: the stage blocks are TABS -- every stage renders
+    # its own and all but the selected one carry `hidden`, so waiting for a
+    # VISIBLE one would wait for the tab a person has not clicked.
+    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
+
+    blocks = page.eval_on_selector_all(
+        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    joined = "\n".join(blocks)
+
+    # ── every stage, not only the first ────────────────────────────────
+    for stage in ("coarse", "tight"):
+        assert f"prep bench {stage}" in joined, (
+            f"the card offers no bench command for {stage!r} -- the axes are "
+            "declared once for the calculation, so every enabled stage can "
+            "be measured")
+        assert f"prep run {stage}" in joined, (
+            f"the card offers no run command for {stage!r}")
+
+    # ── the order is load-bearing, and is shown ────────────────────────
+    bench = next(b for b in blocks if "prep bench coarse" in b)
+    assert (bench.index("prep bench") < bench.index("launch bench")
+            < bench.index("summarize bench")), (
+        "the bench order is not shown in order -- skipping summarize does "
+        "not fail, it preps a run with no measured verdict behind it")
+
+    # NOT ASSERTED HERE, and the reason is measured: *launch never carries
+    # --target*.  `_targetArg()` returns "" unless a NAMED machine is chosen,
+    # and this page can only be driven to "(this machine)" without a named
+    # record in the server's config root -- so a check for the absence of
+    # `--target` passes no matter what the code does.  Adding `_targetArg()`
+    # to the launch line leaves this test GREEN (verified 2026-09-06).  A
+    # vacuous assertion is the thing this conversion exists to remove, so the
+    # claim stays a source pin in `test_task_setup_tab.py` until a fixture
+    # can supply a named target.
+
+    # ── and each half says what it is for, in the page's own component ──
+    hints = page.eval_on_selector_all(
+        "p.hint", "els => els.map(e => e.textContent).join('\\n')")
+    assert "Measure it" in hints and "Run it" in hints, (
+        "the per-stage blocks do not explain themselves")
+    assert "--np / --omp / --time" in hints, (
+        "a person who filled the card is not told a flag still overrides it")
+

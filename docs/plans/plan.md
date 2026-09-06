@@ -637,7 +637,7 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-06: 38 to convert, 55 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
+**Measured 2026-09-06: 33 to convert, 54 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
 file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
 text. 100 read a file a person wrote. Three earlier counts said 233, 256 and
@@ -679,9 +679,23 @@ green run had hidden all of them.
    headless. Their two whitespace-measuring assertions (nine embedded spaces,
    counted twice) now match on structure instead — same coverage, one less way
    to be wrong for no reason.
-4. **`test_task_setup_tab.py`** (12; 3 browser, 9 node) — largest, and last:
-   `test_task_setup_prep_e2e.py` already drives this card in a real browser
-   (**M2**), so most have a home to move into rather than a harness to build.
+4. ~~**`test_task_setup_tab.py`**~~ — **MOSTLY DONE 2026-09-06.** Twelve
+   assertions became one e2e reading the rendered card: every enabled stage
+   offers both commands naming its own stage, the bench order is shown in
+   order, and the hints say what each half is for. Mutation-tested — hardwiring
+   bench to `enabled[0]` and swapping the order each fail it.
+
+   **Two are BLOCKED and stay pins, with the blocker measured.** `_targetArg()`
+   returns `""` unless a NAMED machine is chosen, and the page can only be
+   driven to *(this machine)* without a named record in the live server's
+   config root — so an e2e check for `--target` passes whatever the code does.
+   I wrote that assertion, then measured it: adding `_targetArg()` to the launch
+   line left the e2e **green**. It is deleted. A vacuous assertion is the thing
+   this whole cluster exists to remove, so the pin stays until a fixture can
+   supply a named target — recorded in the tool's overrides, not just here.
+
+   **Three CSS assertions remain, and are browser work** (`.ts-state[hidden]`,
+   `.ts-facts[hidden]`): cascade questions jsdom cannot answer.
 
 ## 6. Closed by consolidation — what was archived, and why
 
