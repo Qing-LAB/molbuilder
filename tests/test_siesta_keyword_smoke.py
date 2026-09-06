@@ -43,13 +43,24 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# Test data: a real H pseudo from the BDT project (smallest available
-# psml; SIESTA refuses to start without one per-species).  Reuse instead
-# of synthesising one so the fixture stays load-bearing-light.
-_H_PSML_SOURCE = (
-    Path(__file__).resolve().parent.parent
-    / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111" / "H.psml"
-)
+# THE PSEUDOPOTENTIAL COMES FROM THE SUITE'S OWN HELPER, not from a real
+# project (2026-09-06).  This borrowed
+# `projects/BDT/optimization/TJ-BDT-Au111/H.psml` -- a specific real
+# calculation's file, chosen because it was "the smallest available" -- which
+# is precisely what `test_no_tests_read_the_projects_tree.py` forbids: the
+# file's relevance was never confirmed, it changes meaning with no diff, and
+# on a machine without that project the test would skip while reading green.
+# It survived because that guard scanned one LINE at a time and this
+# expression was split across two.
+#
+# `conftest.write_pseudos` is NOT the answer here, and that was measured
+# rather than assumed: its PSML is real enough for prep's screening but
+# SIESTA does not start on it -- the swap failed five of this file's tests
+# with "SIESTA printed no k-grid read-back; it may have died".  So the file
+# is checked in beside the tests, which is what
+# `tests/watch/fixtures/siesta_frozen/` already does for what cannot be
+# honestly constructed.  See tests/fixtures/psml/README.md.
+_H_PSML_SOURCE = Path(__file__).resolve().parent / "fixtures" / "psml" / "H.psml"
 
 
 def _siesta_binary():

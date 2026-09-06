@@ -49,9 +49,22 @@ REPO = TESTS.parent
 #: itself and is exactly right; so is a string literal that merely MENTIONS such
 #: a path (the CSV-redaction tests feed one in as sample text and never open
 #: it).  What is forbidden is rooting at the repo and reaching for real data.
+#: WHITESPACE INCLUDES NEWLINES, and that is the point.  This was applied one
+#: LINE at a time until 2026-09-06, so an expression broken across two lines
+#: was invisible to it -- and one was::
+#:
+#:     _H_PSML_SOURCE = (
+#:         Path(__file__).resolve().parent.parent
+#:         / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111" / "H.psml"
+#:     )
+#:
+#: which is a real project's real pseudopotential, exactly the thing this file
+#: forbids, sitting in the suite the whole time the guard read green.  The
+#: scan is over the file's TEXT now, and `\s*` between the parts is what makes
+#: a line break stop hiding anything.
 _REPO_ROOTED = re.compile(
     r"""(?:REPO|REPO_ROOT|ROOT)\s*/\s*["']projects["']
-      | Path\(__file__\)[^\n]*?/\s*["']projects["']
+      | Path\(__file__\)(?:\s*\.\s*\w+\s*\(\s*\))*[^\n]{0,80}?\s*/\s*["']projects["']
       | ["'][^"'\n]*/molbuilder/projects/[^"'\n]+["']
     """,
     re.VERBOSE,
@@ -71,16 +84,38 @@ _EXEMPT = {Path(__file__).name}
 
 
 def _offending_lines(path: Path):
+    """Every real-tree path in ``path``, as ``(line number, source)``.
+
+    Scans the file's TEXT, not its lines: a path expression may be split
+    across a line break, and reading one line at a time is how one hid here
+    for months (see :data:`_REPO_ROOTED`).  Comments are blanked rather than
+    removed so every offset still maps to its own line.
+    """
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    lines = raw.splitlines()
+
+    # Blank out comments and opted-out lines, PRESERVING LENGTH, so a match
+    # offset still names the line it came from.
+    kept = []
+    for line in lines:
+        if _OPT_OUT in line:
+            kept.append(" " * len(line))
+            continue
+        code = line.split("#", 1)[0]
+        kept.append(code + " " * (len(line) - len(code)))
+    code_text = "\n".join(kept)
+
     out = []
-    for n, raw in enumerate(path.read_text(encoding="utf-8",
-                                           errors="replace").splitlines(), 1):
-        if _OPT_OUT in raw:
+    for m in _REPO_ROOTED.finditer(code_text):
+        start, end = m.start(), m.end()
+        n = code_text.count("\n", 0, start) + 1
+        # The allow-list is checked against the MATCH and the lines it spans,
+        # so a multi-line exception is recognised the same way a single-line
+        # one is.
+        span = "\n".join(lines[n - 1:code_text.count("\n", 0, end) + 1])
+        if any(a in span or a in m.group(0) for a in _ALLOWED):
             continue
-        code = raw.split("#", 1)[0]           # a comment may DISCUSS the path
-        if any(a in code for a in _ALLOWED):
-            continue
-        if _REPO_ROOTED.search(code):
-            out.append((n, raw.strip()[:100]))
+        out.append((n, lines[n - 1].strip()[:100]))
     return out
 
 
