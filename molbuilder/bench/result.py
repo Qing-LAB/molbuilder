@@ -40,7 +40,8 @@ SCHEMA = "molbuilder/bench-result@1"
 
 
 # The five readers that were here -- `parse_scf_timing`,
-# `parse_util_csv`, `parse_utilisation`, `parse_machine`,
+# `parse_util_csv`, `parse_utilisation` (now
+# `instruments/utilisation.py::utilisation`), `parse_machine`,
 # `parse_util_bound` -- and their regexes moved to
 # `molbuilder/parse/instruments/` on 2026-09-04.  They opened the
 # wrapper's own files and read their bytes here, which was a second

@@ -695,6 +695,78 @@ not"* (user ruling, 2026-09-03). That is exactly the sibling upgrade: the
 CSV parser answers from its own bytes, and a caller holding both prefers
 the monitor's stated figure. Neither file re-reads the other.
 
+### 5c.1 The measurement map — one quantity, one source, one API
+
+**Read this before adding a measured field.** Every number a run produces is
+below, with the file it comes from and the API that extracts it. The map
+exists because the failure mode here is not a wrong number, it is a *second*
+number: a quantity measured twice from two artifacts, given two names, that
+disagree in exactly the case a person most needs to trust it.
+
+```mermaid
+flowchart LR
+  subgraph W["the WRAPPER measured it — parse/instruments/"]
+    T["&lt;base&gt;-runN.scf-timing.log"] --> TP["scf-timing<br/>scf_timing_metrics"]
+    M["&lt;base&gt;-runN.monitor.log"]   --> MP["monitor-log<br/>monitor_metrics"]
+    U["&lt;base&gt;-runN.util.csv"]      --> UP["util-csv<br/>util_csv_metrics"]
+  end
+  subgraph E["the ENGINE wrote it — parse/engines/"]
+    O["&lt;base&gt;-runN.out"]                --> OP["siesta / pyscf"]
+    ML["&lt;label&gt;_&lt;NN&gt;_&lt;stage&gt;.molwatch.log"] --> MLP["molwatch<br/>MolwatchLogFileParser"]
+  end
+  subgraph L["nobody wrote it — it is live"]
+    PROC["the running process"] --> RM["run_monitor<br/>JobStatus.elapsed_s"]
+  end
+
+  MP --> RES["utilisation(monitor, csv)<br/><b>the one door</b><br/>+ util_basis"]
+  UP --> RES
+  RES --> SUM["summarize.parse_point<br/>BenchPoint.metrics"]
+  TP  --> SUM
+  OP  --> SUM
+  SUM --> TBL["the bench table + bench-result@1"]
+  MLP --> WATCH["/api/watch → the browser<br/>plot x-axis + Finished badge"]
+  RM  --> NOTE["the notification card"]
+```
+
+**The four time quantities, and why none is redundant.** They read four inputs
+that **do not coexist**, which is what makes them four measurements rather than
+one measured four times: the process clock is gone once the run ends, `util.csv`
+does not exist with monitoring off, and the frames do not exist for a job that
+wrote no trajectory.
+
+| field | window it measures | its ONE source | the API | who reads it |
+|---|---|---|---|---|
+| `wall_clock_s` | an absolute instant | the molwatch emitter's epoch | `MolwatchLogFileParser` | the Finished badge's timestamp |
+| `elapsed_s` | since the **run** began | the frame epoch series, `t[i] − t[0]` | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` — the one home P-T3 allows | the plot's x-axis, the badge's duration |
+| `monitored_elapsed_s` | since the **monitor** started | `util.csv` rows, `epochs[-1] − epochs[0]` | `util_csv_metrics` | the bench table's `monitored` column |
+| `JobStatus.elapsed_s` | since the run began, **so far** | the live process clock, `now − start` | `monitor.py::run_monitor` | the notification card, `[MONITOR]` log lines |
+
+**Checked, so nobody re-checks it: `[UTIL-SUMMARY]` carries no duration.** It
+emits CPU and per-GPU means and a bound verdict, and nothing else
+(`monitor.py::UtilAccumulator.summary`). So a trial has exactly one post-hoc
+duration, not two, and there is no second source to reconcile.
+
+**Where two sources genuinely do exist, one door already reconciles them.** The
+*means* — `cpu_mean_pct`, `gpu_sm_mean_pct` — are in both the monitor's summary
+and the CSV. `utilisation(monitor, csv)` is the only place that chooses, and it
+stamps **`util_basis`** (`monitor-summary` | `util-csv` | `mixed`) so a
+reconstruction is never mistaken for an exact figure. Peak RSS, peak VRAM and
+`monitored_elapsed_s` come from the CSV either way — the summary does not carry
+them. Do not add a second chooser; call the door.
+
+**The rule this map is here to enforce.**
+
+> A measured quantity has ONE source, ONE extractor and ONE name, and the name
+> ends in the suffix P-T1 requires. Before adding a field, find the quantity in
+> the table above. If it is there, call its API. If it is not, add a row.
+
+**And the name has to reach the reader.** `wall_s` was renamed
+`monitored_elapsed_s` on 2026-09-05 because a duration must not wear a date's
+name — and the bench table's column header still said `wall` until 2026-09-06,
+which is the exact claim the 2026-09-03 correction retracted. A rename that
+stops at the field has fixed the half nobody reads. The column is now named
+after the field it prints, and `_fmt_wall` is `_fmt_duration`.
+
 ## 6. Adding a parser
 
 The shape every parser follows — a real minimal `FileParser` (mirrors

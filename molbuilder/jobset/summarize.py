@@ -600,8 +600,14 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     return "\n".join(out)
 
 
-def _fmt_wall(seconds: float) -> str:
-    """``41`` -> ``41s``, ``245`` -> ``4m05s``, ``7523`` -> ``2h05m``."""
+def _fmt_duration(seconds: float) -> str:
+    """``41`` -> ``41s``, ``245`` -> ``4m05s``, ``7523`` -> ``2h05m``.
+
+    Was ``_fmt_wall`` until 2026-09-06.  It formats a DURATION -- the same
+    P-T1 slip the field it prints was renamed out of (`model/parse.md`
+    § 2a): a wall clock is an epoch and renders as a date.  Nothing here
+    ever formatted one.
+    """
     s = int(round(seconds))
     if s < 60:
         return f"{s}s"
@@ -646,8 +652,14 @@ def _point_table(points: List[BenchPoint]):
          lambda p: str(p.effective.get("diag_algorithm") or "--")),
         ("s/iter", "r", lambda p: _num(p.s_per_iter())),
         ("iters", "r", lambda p: _num(p.metrics.get("iters_measured"))),
-        ("wall", "r",
-         lambda p: (_fmt_wall(p.metrics["monitored_elapsed_s"])
+        # NAMED AFTER THE FIELD IT PRINTS.  This column said `wall` until
+        # 2026-09-06, which is the exact claim the 2026-09-03 correction
+        # retracted: it is the MONITORED WINDOW, not the job's wall time,
+        # and on a trial the scheduler killed it is a lower bound.  The
+        # field was renamed `wall_s` -> `monitored_elapsed_s` for that
+        # reason and the sweep stopped short of the rendering layer.
+        ("monitored", "r",
+         lambda p: (_fmt_duration(p.metrics["monitored_elapsed_s"])
                     if isinstance(p.metrics.get("monitored_elapsed_s"), (int, float))
                     else "--")),
         ("peak-mem", "r",

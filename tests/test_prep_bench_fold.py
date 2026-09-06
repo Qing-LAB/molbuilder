@@ -2251,7 +2251,7 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     columns of 0 on a CPU sweep are noise."""
     from pathlib import Path
     from molbuilder.bench.result import BenchPoint, build_bench_result
-    from molbuilder.jobset.summarize import _fmt_wall, summary_text
+    from molbuilder.jobset.summarize import _fmt_duration, summary_text
     cpu = BenchPoint(
         label="K2C1", engine="cpu",
         knobs={"mpi_np": 2, "cpus_per_task": 1},
@@ -2273,9 +2273,9 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     assert "gpu-sm%" in out and "vram" in out
     row = next(l for l in out.splitlines() if "G1K4C6" in l)
     assert row.split().count("--") >= 4      # unmeasured cells say so
-    assert _fmt_wall(41) == "41s"
-    assert _fmt_wall(245) == "4m05s"
-    assert _fmt_wall(7523) == "2h05m"
+    assert _fmt_duration(41) == "41s"
+    assert _fmt_duration(245) == "4m05s"
+    assert _fmt_duration(7523) == "2h05m"
 
 
 def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
