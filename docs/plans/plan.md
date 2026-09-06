@@ -697,6 +697,46 @@ green run had hidden all of them.
    **Three CSS assertions remain, and are browser work** (`.ts-state[hidden]`,
    `.ts-facts[hidden]`): cascade questions jsdom cannot answer.
 
+## 5i. The projects root — audited 2026-09-06, and where it is NOT one door
+
+*(Asked because a fixture I wrote assumed the tree's location and silently
+opened the wrong folder. The suspicion was right in shape and wrong about
+where.)*
+
+**Production is one door, verified hop by hop.** `projects.projects_root()`
+is the single definition and the only place `$MOLBUILDER_PROJECTS` is read;
+it feeds `Capabilities.file_picker_roots()`, which the browser gets from
+`GET /api/files/roots`, which reaches `setProjectsRoot()` — one caller — and
+every consumer then asks `projects.getProjectsRoot()` / `getCurrentDir()`.
+**Zero hand-rolled joins**: no `/ "projects"` anywhere in `molbuilder/`, and
+no second reader of the environment variable. `find_projects_root(start)` is
+not a second answer — it answers a **different question** (*which tree does
+this calculation live in*, walked up from the folder) and its docstring
+argues why, naming the 2026-08-21 defect where anchoring on the process's
+working directory made a template resolve to a folder that does not exist on
+the cluster.
+
+**The tests are where it is not one door — and this is recorded, not
+discovered.** `isolated_projects_root` is **opt-in, not autouse**, and its own
+docstring says why: *"A blanket autouse override broke 13 of those: they
+construct a tree and then ask a route to serve it, and the route's root guard
+was pointed somewhere else entirely."* So **13 sites across 7 files build
+`ROOT / "projects/_t_…"` — inside the developer's REAL tree** — because that
+is where the route's guard resolves. They clean up in a `finally` and no
+residue is present today, but a crashed run leaves a folder in a directory
+that is the user's own data.
+
+| | |
+|---|---|
+| **What is fine** | production resolution, on both sides of the wire |
+| **What is open** | a browser-driven test cannot build its tree anywhere but the real root, so isolation and route-serving are mutually exclusive today |
+| **What would close it** | the live server taking a projects root — `serve()` already accepts a `config` dict and passes it to `create_app` — so a test can point the whole app at `tmp_path` instead of pointing one env var at it and leaving the route guard behind |
+
+**Not scheduled here** — it is a testability change to the app's config
+surface, and that is a decision rather than a defect.
+
+---
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |
