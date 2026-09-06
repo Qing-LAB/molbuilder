@@ -1057,11 +1057,21 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # PROVENANCE claimed an omission the deck contradicts.  The
             # validator refuses 0 outright now (`_validate_block_size`),
             # so the state has no way in and no arm here.
-            "BlockSize": (
-                f"auto -> {_derived.get('block_size')}"
-                if c.block_size is None
-                else f"user-set -> {_derived.get('block_size')}"
-            ),
+            # ...and the SAME LIE survived in the other arm until 2026-09-05,
+            # one line below the paragraph warning about it.  Unset renders
+            # `auto -> None`: a record claiming the auto-policy chose the
+            # value `None` for a keyword the deck does not contain.  There is
+            # no such choice to report -- `_parallel_facts` sets
+            # `block_size = None` whenever the user did, because deriving one
+            # was deleted ("not a value molbuilder derives and hands you"),
+            # so `auto -> <number>` is not merely wrong here, it is a state
+            # that cannot occur.
+            #
+            # Unset says `auto`, the spelling `mpi_np` and `omp_threads` use
+            # two lines down for the same meaning: molbuilder chose nothing
+            # and the engine decides.
+            "BlockSize": ("auto" if c.block_size is None
+                          else f"user-set -> {_derived.get('block_size')}"),
             "mpi_np": ("auto" if c.mpi_np is None else str(c.mpi_np)),
             "omp_threads": ("auto" if c.omp_threads is None
                             else str(c.omp_threads)),

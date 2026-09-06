@@ -1584,9 +1584,19 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # tab's threshold line is THIS stage's and not the ladder's first.  They
     # come from the RESOLVED config, which is the whole point of resolving
     # before rendering: `coarse` and `tight` disagree about both of these.
+    # THE KEY NAMES ARE THE READER'S, not this writer's invention.
+    # `max_force_ev_per_ang` / `max_steps` stood here until 2026-09-05 and
+    # nothing read either: the trajectory card asks for
+    # `max_force_tol_eV_per_A` and `max_geom_iter` (trajectory/core.js), which
+    # are what the OTHER two producers of this same header emit --
+    # `trajectory_log/emitter.py`'s `_LEAF_KEYS` and the `.out` parser's
+    # `_set_conv_target`.  So a staged SIESTA run drew a convergence card with
+    # zero rows and no threshold line, while the `.out` sitting beside it
+    # parsed the same two numbers correctly: the same directory answering the
+    # same question two ways depending on which file was opened.
     targets = {}
-    for key, attr in (("max_force_ev_per_ang", "relax_force_tol"),
-                      ("max_steps", "relax_steps")):
+    for key, attr in (("max_force_tol_eV_per_A", "relax_force_tol"),
+                      ("max_geom_iter", "relax_steps")):
         value = getattr(cfg, attr, None)
         if value is not None:
             targets[key] = value
