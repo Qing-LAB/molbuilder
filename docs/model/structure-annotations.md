@@ -149,18 +149,21 @@ flowchart TB
 The channels persist **identically wherever a structure is saved**:
 
 - **`.molstruct.json` sidecar.** `annotations` rides alongside `regions`/`cell`/…
-  The annotations field was **added at schema v4**; the **current schema is v7**
-  (`sidecars/molstruct.py:72`), which moved the reserved `frozen_atoms` label
-  into `regions` and stopped writing a top-level key for it — one store means one
-  key. Schema 3–6 files still load: `apply_metadata_dict` folds an old top-level
-  `frozen_atoms` into the label store, and `molstruct.frozen_atoms(payload)` is
-  the one read that knows which schema put it where. Envelope + version details
+  The annotations field was **added at schema v4**; the **current schema is v9**
+  (`sidecars/molstruct.SCHEMA_VERSION` — cite the constant, never re-spell it).
+  v7 moved the reserved `frozen_atoms` label into `regions` and stopped writing
+  a top-level key for it — one store means one key. **Schema 3–6 do not load**:
+  the reader accepts `{7, 8, 9}` and nothing else, and `apply_metadata_dict`
+  raises on a top-level `frozen_atoms` because it is not a metadata field.
+  (This said the opposite — that v3–v6 still load and are folded in — until
+  2026-09-05. Nothing folded them: `METADATA_FIELDS` has never contained the
+  key, and the translation that did exist elsewhere was deleted the same day.) Envelope + version details
   are in `structure-molstruct.md`.
 - **The `.fdf` / `.py` ATOM-METADATA reserved comment block.** The *same* data
   embedded in the generated script's comment area — the script's
   engine-agnostic copy of the data model (a PySCF script carries the identical
   block). `script_emit.emit_atom_metadata` (`:212`) writes it;
-  `apply_inbody_atom_metadata` (`:305`) reads it back.
+  `apply_atom_metadata` reads it back.
 
 This is **data**, not engine setup — it records what the user labelled, nothing
 about how a simulation runs.

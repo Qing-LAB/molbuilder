@@ -657,9 +657,11 @@ to the real allocation whatever the paperwork said.
 
 #### Spending the benchmark budget — how to cut points without losing the answer
 
-A trial costs its setup time plus 3 capped SCF iterations, and is killed
-if it exceeds the per-trial time bound (`--trial-timeout`, default
-15 minutes). The rules below are each an economy: how to get the answer —
+A trial costs its setup time plus 3 capped SCF iterations, and is killed if
+it exceeds the per-trial time bound — but **only when you state one**
+(`--trial-timeout`). Unstated, no per-trial bound exists: `submission.md` S2,
+amended 2026-08-24, because an unstated total once became fifteen invented
+minutes a trial and sent five 38-minute jobs to Sol. The rules below are each an economy: how to get the answer —
 which configuration to run at — for the least machine time.
 
 - **Warm-up is already excluded *inside* one run — never pay for a second

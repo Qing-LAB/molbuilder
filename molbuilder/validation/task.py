@@ -484,6 +484,16 @@ def _values_in_bounds(task, fields) -> List[Issue]:
                     f"stage {st.name!r} sets {key} = {value!r}, which is not "
                     f"one of {', '.join(repr(c) for c in choices)}",
                     where=f"config.{key}", stage=st.name))
+            # `not isinstance(value, bool)`: bool subclasses int, so a naive
+            # numeric check reads True as 1 and range-checks it.  UNREACHABLE
+            # FROM ANY DECLARED FIELD -- measured 2026-09-05: all 29 bool
+            # fields across both config classes carry no `range`, so `rng` is
+            # falsy and this clause never evaluates.  Kept as the guard for
+            # the first bool that does get one; deliberately NOT test-covered,
+            # because a test would have to invent a field to reach it.  One
+            # that claimed to cover it stood in `test_task_preflight.py` until
+            # 2026-09-05 and could not fail -- its body was a duplicate of
+            # `test_a_legal_boolean_is_accepted`.
             elif rng and isinstance(value, (int, float)) \
                     and not isinstance(value, bool):
                 lo, hi = rng

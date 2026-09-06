@@ -54,7 +54,16 @@ def _write_project(project_dir: Path, cfg: dict) -> None:
     (project_dir / PROJECT_CONFIG_FILENAME).write_text(json.dumps(cfg))
 
 
-_ASU_SOL = {
+# NOT the ASU Sol preset -- see `test_committed_asu_sol_example_parses` for
+# that.  This is a hand-written SLURM config used to exercise the READER, and
+# it is named for the reader now because it was named `_ASU_SOL` until
+# 2026-09-05 and had drifted from the shipped file it claimed to mirror:
+# `gpu.exclusive` True here against `false` there, `cpus_per_task` 12 against
+# 8, and the whole `mem_model` block missing.  Nothing was broken by the
+# drift -- the assertions matched this dict, so the test passed -- but anyone
+# reading it learned the wrong numbers for the real cluster, where the
+# shipped preset prices `exclusive` at ~276 CHE/h against ~69.
+_A_SLURM_CONFIG = {
     "scheduler": {
         "kind": "slurm",
         "directives": {
@@ -82,8 +91,8 @@ def test_absent_scheduler_with_other_config_returns_none(sandbox):
     assert get_scheduler() is None
 
 
-def test_asu_sol_preset_resolves(sandbox):
-    _write_server(sandbox, _ASU_SOL)
+def test_a_full_slurm_block_resolves(sandbox):
+    _write_server(sandbox, _A_SLURM_CONFIG)
     sched = get_scheduler()
     assert sched is not None
     assert sched["kind"] == "slurm"
@@ -108,7 +117,7 @@ def test_kind_defaults_to_slurm(sandbox):
 
 
 def test_project_overrides_server(sandbox):
-    _write_server(sandbox, _ASU_SOL)
+    _write_server(sandbox, _A_SLURM_CONFIG)
     proj = sandbox / "proj"
     _write_project(proj, {"scheduler": {
         "directives": {"partition": "htc"},
@@ -224,6 +233,12 @@ def test_committed_asu_sol_example_parses(sandbox):
     assert sched is not None
     assert sched["directives"]["partition"] == "public"
     assert sched["gpu"]["default_type"] == "a100"
+    # The two the hand-copy above drifted on, pinned against the real file so
+    # the drift cannot recur silently.  Both carry money: the preset's own
+    # `_comment_gpu` prices `exclusive: true` at ~276 CHE/h against ~69 for a
+    # right-sized job that backfills.
+    assert sched["gpu"]["exclusive"] is False
+    assert sched["defaults"]["cpus_per_task"] == 8
 
 
 # --------------------------------------------------------------------- #

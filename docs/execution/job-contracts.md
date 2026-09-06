@@ -1080,9 +1080,9 @@ block cites that schema rather than duplicating it.
 
 ```
 # === molbuilder atom-metadata BEGIN ===
-# format: molstruct-json/v7
+# format: molstruct-json/v9
 # {
-#   "schema_version": 7,
+#   "schema_version": 9,
 #   "n_atoms_total":  212,
 #   "regions":     { "L-electrode": [11,12,…], "R-electrode": [200,…],
 #                    "bridge": [60,…], "frozen_atoms": [88, 89, …, 211] },
@@ -1096,21 +1096,28 @@ block cites that schema rather than duplicating it.
 *(Amended 2026-08-12, R11: the example taught v4 with ``frozen_atoms`` as a
 key of its own beside ``regions`` — the retired shape.  Frozen atoms are an
 ordinary label INSIDE ``regions`` now; the version number rides the
-sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`, 7 today) so
-this block and the ``.molstruct.json`` cannot disagree, and the read side
-accepts the CURRENT version only — an old block, its ``frozen_atoms`` key
-included, is REFUSED with the regenerate message, never silently
-upgraded.)*
+sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`) so this block
+and the ``.molstruct.json`` cannot disagree.)*
+
+*(Amended 2026-09-05: this said "7 today", the read side "accepts the CURRENT
+version only", and an old block "is REFUSED".  All three are wrong — see the
+rules below, and `structure-molstruct.md` § 2, which owns the schema.)*
 
 **Rules (reconciled to code):**
 
 - **Format is `molstruct-json/v<SCHEMA_VERSION>`** — the version number is
-  READ from the sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`,
-  **7** today), never typed here or in the emitter, so this block, the
-  `.molstruct.json` and this bullet cannot drift apart.  The read side
-  accepts the CURRENT version only (`_READABLE_SCHEMA_VERSIONS`); an old
-  block — its `frozen_atoms` key included — is **refused** with the
-  regenerate message.  Every reader refuses the retired key
+  READ from the sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`),
+  never typed here or in the emitter, so this block, the `.molstruct.json` and
+  this bullet cannot drift apart.  *(This bullet typed **7** four times while
+  saying not to, and the constant was 9.)*  There is **ONE reader**,
+  `script_emit.apply_atom_metadata`, and it applies **no version gate at
+  all**: the block is read as written today, a retired layout is not
+  translated, and the run still opens with whatever it does still spell the
+  current way.  Its one refusal is a block whose `n_atoms_total` disagrees
+  with the structure — `MolstructPairingError`.  The `.molstruct.json` FILE is
+  the other surface and keeps its version gate (`READABLE_VERSIONS`); the two
+  answers differ because a file the caller named is a file they expect read.
+  The retired key is simply not a field
   (the molstruct sidecar loader, `apply_metadata_dict`; a third,
   `transport/bundle.py`, was deleted with the pre-composite driver): *no translation exists*, and the sentence that
   stood here promised one the tree never performed (final review F-5,
@@ -1261,12 +1268,15 @@ how this sentence went stale at "v4" until 2026-08-12), PROVENANCE is
 additive-keys-only (no tag), HEADER is free-form prose. There is **no
 autodetection and no silent upgrade** — a parser reads the version tag and
 either handles it or refuses, pointing the user at "regenerate with the
-current molbuilder" — there is NO translation anywhere: § 3.4's readers
-refuse the retired `frozen_atoms` key with the same regenerate message
-(F-5, 2026-08-13). Given a conforming file, a tool may assume: PROVENANCE
+current molbuilder" — there is NO translation anywhere.  For the
+`.molstruct.json` FILE that means refusal; for the in-script ATOM-METADATA
+block it means the retired key is simply not read, and the run opens without
+it (`structure-molstruct.md` § 2; the translation that briefly existed on one
+of the two readers was deleted 2026-09-05 along with the second reader).
+Given a conforming file, a tool may assume: PROVENANCE
 answers who/when/what-defaults; BENCH-MARKS lists the overridable fields and
 their bounds; ATOM-METADATA round-trips (its dict feeds the same
-`apply_to_structure` path the sidecar uses); USER-CUSTOM survives
+`apply_atom_metadata` reader the transport composite uses); USER-CUSTOM survives
 regeneration **on the paths § 3.5's table marks preserved** — a tool must not
 assume it on the staged path, where nothing carries it yet.
 

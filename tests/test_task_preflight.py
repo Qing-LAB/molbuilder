@@ -198,12 +198,6 @@ def test_a_field_with_no_declared_bound_is_not_checked():
     assert preflight(_staged({"system_label": "anything_at_all"})) == []
 
 
-def test_a_boolean_is_not_range_checked_as_a_number():
-    """``bool`` is a subclass of ``int``, so a naive numeric check reads
-    ``True`` as 1 and refuses it against whatever range the field carries."""
-    assert preflight(_staged({"copy_psml": True})) == []
-
-
 def test_a_bad_value_is_not_reported_twice_for_a_bad_name():
     """A key that is not a field cannot also be out of bounds — reporting both
     would give one mistake two findings and two repairs."""
