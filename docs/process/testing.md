@@ -232,6 +232,23 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   thin lint, it is a different thing wearing the name. Both examples above pass the
   test: delete the code they guard and they fail; rename a local and they don't
   care. Ask that of anything you add here.
+
+  **The instrument — `tools/classify_source_reads.py`** *(2026-09-06)*. The
+  boundary above is easy to state and easy to get wrong by eye: this population
+  had been counted three times with three answers (233, 256, 173) because each
+  count used a different definition and none wrote it down. The tool states the
+  definition in code and can be re-run, so **quote its output, never a number
+  from a document**. It separates the two things that look identical to a grep
+  — an assertion on GENERATED output (a deck, a wrapper, an `.sbatch`: a real
+  property of a real product, and 1,147 of the 1,255 are this) from one on a
+  file a person wrote — then splits the second by the rule above, and routes
+  each pin by *what would have to be true for the check to be honest*:
+  **browser** where the answer depends on the cascade, layout or real
+  visibility, which jsdom cannot give; **node** where the code must run but
+  nothing needs painting; **python** where calling the function is cheaper than
+  reading its source. Corrections made by READING a site live in the tool's own
+  `_OVERRIDES`, with the reason — *"the regex said so"* is the reasoning it
+  exists to replace. The standing backlog it measures is `plans/plan.md` § 5h.
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.

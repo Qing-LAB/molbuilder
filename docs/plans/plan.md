@@ -190,7 +190,7 @@ is 47 of 77 findings in one partition.**
 |---|---|---|---|
 | ~~P3~~ | ~~**B1**~~ | **WRONG, and corrected 2026-09-02 — the tests stay.** This said 58 tests pinned an archived design proposal, because the vocabulary (`fileState`, `fetchSeq`, `uiPrefs`) appears in no live document. It is the **shipped code's own structure**: `lib/trajectory/core.js` is 3,212 lines built exactly this way, `fileState` alone appears 54 times in it, and `results.md` § 4 describes the same four buckets in prose. Retiring them would have deleted the ONLY enforcement of § 4. What was true: the names had no live home and the `§ 13` citations pointed into `archive/`. Fixed by writing § 4.1 (the two-tick settle, a real behaviour with no live home), naming the buckets in § 4, adding both files to § 10's test map, and re-anchoring the citations. **The lesson is about the survey**: a vocabulary search across documents cannot tell a retired design from an undocumented one, and the two want opposite actions | investigated in code + contract, not grepped |
 | **P3** | **B2** | **PARTLY DONE 2026-09-03 — and the number was the wrong instrument.** Of the four shapes named here, only one is mechanically decidable: a `Test*` class whose body is a docstring collects nothing. Five existed. **Three were empty promises** — `TestBuildSiestaHonorsSidecarFrozenAtoms`, `TestWorkspacePayloadRegionsAndFrozen`, `TestGenerateWritesToWorkspace`, each stating in the present tense that it pins something (*"Tests pin both layers"*) while holding no test, so a reader scanning for coverage reads yes. Each is replaced by a pointer at the file that DOES cover it. **Two are deliberate retirement markers** that say so and name their successor — the same call D2 already made for two zero-test files. The other three shapes do not survive measurement: `assert len(X) == 5` where the test BUILT X is a real check, and `m = re.search(...); assert m` is a precondition with the real assertions after it. **A list of ~45 that cannot be re-derived is not a finding anyone can act on** — what is left needs the file-by-file read, not a regex | 5 measured |
-| **P3** | **B3** | **233 front-end tests assert substrings of `.js`/`.css`**, one pinning six spaces of column alignment. The cure exists at the deck layer (`tests/_deck.py`, written after padding broke 45 tests across eight files) and the front end never got it. **Build the equivalent first, then convert** — deleting these loses real coverage. **First pass done 2026-09-03** (see B3.1); ~200 remain | 233 |
+| **P3** | **B3** | **CLASSIFIED 2026-09-06 — and the population is a fifth of what three earlier counts claimed.** 233, then 256, then 173 were three definitions, none written down. Measured now by `tools/classify_source_reads.py`, which states its definition and can be re-run: of **1,255** assertions over a file's text, **1,147 read GENERATED output** and are correct as text — a property of a real product, never a defect. **108 read hand-written source**, in 31 files. Of those, **59 stay** (51 lints, where text is the only instrument that can prove absence, and 8 vendored/data files) and **49 convert**. Full method, per-bucket file list and the mutation proof are **§ 5h** | 49, not 233 |
 | ↳ | **B3.1** | **DONE 2026-09-03 — the self-confessing subset.** A test whose own docstring says the real check lives elsewhere is retired, and the test it names gets written (`process/testing.md` § 3a.1, and `code-audit.md` § 5 rule 5 which was still *instructing* auditors to write these). Eleven confessed; **three were contrastive, not confessional** (`test_page_ids_unique.py`, `test_pages_no_js_errors.py`, `test_pdb_workflow_integration.py` all drive the artifact and cite string-pins only as what failed before) and one more survived reading (`TestSpectraIssuesPanelSeverityCoverage` is a CSS one-home lint whose confession describes the greps it replaced). **40 test functions removed** (38 deleted, 2 rehomed) **and 12 written** — 10 new plus the 2 rehomed. Every replacement mutation-verified. Every replacement mutation-verified. Two were *not* written and the reason is on record where each belongs: the second-load widget defect is unreachable by a single break (two publishers each rescue the other), and "a row is born at its value in force" states no rule any document carries | 40 |
 | ↳ | **B3.2** | **DONE 2026-09-03 — reviewing the replacements found eight defects in them**, three substantive: a Slack channel was tested carrying a signing key (there is no such control — only a listener has one), an assertion demanded that NO part of a webhook appear when `MASK_TAIL = 4` shows the last four on purpose, and an `ok` check passed on an absent key. Two were vacuous (a vocabulary check that passes on a class with no tags; a chooser asserted to exist but not to offer anything) and three fragile (both timer tests counted the page's own intervals; a checkpoint picked by position not name; one dialog accepted where `_restore` asks twice). A green run plus one mutation had hidden all of it. Asserting the page reports no JS errors also found a **live product bug** — `pattern="[A-Za-z0-9_-]{1,64}"` never compiled under the `v` flag, so the channel-name rule was stated and never enforced (`d243e852`) | 8 |
 | **P3** | **B4** | **MEASURED 2026-09-03; the envelope half is done, the fixture half is proposed and NOT applied.** The `_envelope()` count was seven, and only **three** were re-implementations: `test_pseudos.py` and `test_task_setup_tab.py` hand-listed the envelope's fields (so a field the envelope grows would never reach them) and both now go through the one builder — which immediately surfaced a real defect: a test built a 2-atom envelope and overwrote `elements` to three, leaving `atom_names` describing the old atoms, and the route's own guard caught it the moment the canonical dict was used. The third was `test_structure_envelope_protocol.py`, carrying TWO docstrings back to back (the second was dead). The remaining four are a delegating alias and one-line `struct.to_dict()` calls — not the hand-rolled XYZ parsers the helper was written against. **`flask_server`: DONE 2026-09-03, without touching a single scope.** 18 of the 20 now call one context manager, `tests/support/live_server.py::serve()`; each module keeps its own `@pytest.fixture(...)` line, because a scope is a decision about how much state a file's tests share and a de-duplication does not get to change it for them. ~230 lines and 18 now-unused `import threading` go with it. The two left alone pass a non-default app config, which is a real difference. **`_node_esm`: 24 of 47 `*_js.py` files drive it** (the row said 7 of 48), and 13 more shell out to `node` themselves | 3 done · 16 proposed |
@@ -792,6 +792,83 @@ fourth such case in one day, and this is the fifth through ninth.
 was written, exactly like the code it describes. **Re-derive before acting, and
 write the measurement into the row** — every row corrected above now carries its
 own file:line, so the next re-derivation is a check rather than a survey.
+
+---
+
+## 5h. The source-reading assertions, classified — 2026-09-06
+
+*(Supersedes **B3**'s estimate. The instrument is
+`tools/classify_source_reads.py`; run it rather than quoting a number from
+here — that is the whole point of the section.)*
+
+**Why a tool and not a number.** This population had been counted three times
+with three answers — 233, 256, 173 — because each count used a different
+definition and none of them wrote it down. The px/rem literals had already
+done the same thing (777 → 384 → 160: three scopes, not three measurements,
+**W13**). A count is a hypothesis; a count nobody can re-derive is not even
+that. So the definition now lives in code that runs.
+
+**The population, and the part of it that is fine.** 1,255 assertions test the
+text of a file. **1,147 of them read GENERATED output** — a deck, a wrapper, an
+`.sbatch`, a log. Asserting that produced output contains a keyword is a real
+property of a real product and is *correct as text*; earlier framings swept
+these in, which is most of the gap between 233 and 49. **108 read a file a
+person wrote**, across 31 files.
+
+**The split, and the rule behind it** — `process/testing.md` § 6, not a new one.
+
+| | | |
+|---|---|---|
+| **3 · KEEP — lint** | **51** | Quantifies over a class: *no file under `lib/` contains `setInterval`*, *no token is defined outside `tokens.css`*, *`3Dmol` appears nowhere in MolView*, *this JS constant and its Python twin hold the same value*. **Text is the correct instrument** — no runtime test can prove absence without exercising every path, where reading the file settles it in a millisecond. Converting these would lose coverage, not gain it |
+| **4 · KEEP — not our source** | **8** | A vendored bundle declaring its own dependency; a licence that must literally contain its text; the contact-distance reference table carrying a citation per entry |
+| **1 · CONVERT — browser** | **9** | The answer depends on the **CSS cascade, layout or real visibility**, which jsdom does not implement. `.ts-facts[hidden]`, `.ts-state[hidden]`, `[data-severity=…]`. Deliberately the smallest bucket: a browser test costs seconds and is where flakiness lives. 29 test files already drive Playwright |
+| **2 · CONVERT — node** | **27** | The code must **run**, but nothing needs painting: which requests fire, what DOM is written, what survives a second click. Milliseconds against a stub DOM; 35 files already do this through `tests/_node_esm.py` |
+| **5 · CONVERT — python** | **13** | A pin on `.py` source — almost always cheaper to call the function. `test_run_index_covers_every_artifact.py` is the clearest case: it pins the f-string *spellings* of shell fragments in the wrapper template, while 58 assertions elsewhere already read the **rendered wrapper** through `write_run_wrapper`. The door exists; these five just do not use it |
+
+**49 convert · 59 keep.**
+
+### The proof that a pin is behaviour-blind, run rather than argued
+
+`tests/test_trajectory_clocks_js.py` pins four whole lines of `core.js`
+verbatim, internal alignment included (`const clockSeries   =`,
+`const elapsed  =`). The two clocks it guards are P-T1/P-T3's rule:
+`wall_clock_s` is an absolute epoch, `elapsed_s` is time since the run began.
+
+**The mutation:** swap the two at their point of *use* (`core.js:2772–2779`) —
+the badge then formats an elapsed duration as a wall-clock timestamp and an
+epoch as a duration. The four pinned declaration lines are left byte-identical.
+
+**The result: 233 tests pass**, the six in the file that exists to check the
+clocks among them. Nothing in `tests/watch/`, the trajectory suites or the
+clock file itself notices. Restored and verified clean afterwards.
+
+That is the missed-bug direction. The false-alarm direction needs no
+experiment: rename `clockSeries` consistently everywhere and the feature is
+untouched while the test fails.
+
+### Order of work — and the one rule that makes it worth doing
+
+**Convert one cluster at a time, and mutation-test every replacement**: break
+the code, watch the new test fail. A sweep that skips this trades 49 blind
+assertions for 49 different ones — which is exactly what **B3.2** found when it
+reviewed the *previous* round's replacements and turned up eight defects in
+them, three substantive, after a green run and one mutation had hidden all of
+it.
+
+Cheapest first, because each stands alone:
+
+1. **`test_run_index_covers_every_artifact.py`** (5, python) — read the
+   rendered wrapper instead of the template's source. The door already exists
+   and is already used 58 times.
+2. **`test_trajectory_clocks_js.py`** (4, node) — the mutation above is the
+   acceptance test: the replacement must fail against the swap.
+3. **`test_structure_info_bridge.py`** (5, node) — includes
+   `'alias("info",         "fileState");'` and a `.count(…) == 2` over a line
+   with nine embedded spaces; the file is `test_*_js.py` and drives node already.
+4. **`test_task_setup_tab.py`** (12, split 3 browser / 9 node) — the largest,
+   and the one to do last: `test_task_setup_prep_e2e.py` already drives this
+   card in a real browser (**M2**), so most of the nine have a home to move into
+   rather than a harness to build.
 
 ---
 
