@@ -58,9 +58,21 @@ def test_nobody_spells_the_trial_prefix_by_hand():
 
 def test_prep_asks_rather_than_composes():
     """The specific regression: `prep_calculation` joining a container to a
-    hand-built `bench-<point>`."""
+    hand-built `bench-<point>`.
+
+    ONE HALF STAYS TEXT AND ONE HALF DOES NOT, and the split is the point.
+    The absence line quantifies -- prep must not compose the path by any
+    spelling -- and reading the file settles that.  The presence line used
+    to be `assert "trial_dir(_shape, token, _pt(element.point))" in src`: an
+    exact argument list, three names deep, that fails on a harmless rename
+    and passes on a call whose answer is then thrown away.  What it stood
+    for is measured by `test_prep_writes_where_job_dir_names_will_look`
+    below, which preps a real bench and looks on disk.
+    """
     src = PREP.read_text()
-    assert "trial_dir(_shape, token, _pt(element.point))" in src
+    assert "trial_dir(" in src, (
+        "prep no longer asks the naming authority at all; if the bench "
+        "path moved somewhere else, this file's premise changed")
     assert 'bench_container(_shape, token) \\' not in src, \
         "prep composes the trial path again"
 
@@ -101,3 +113,82 @@ def test_the_two_agree_on_a_real_bundle(tmp_path):
         assert names[j.name] == trial_dir(sh, tok, j.name), (
             f"{j.name}: prep would write {trial_dir(sh, tok, j.name)} "
             f"and launch would look in {names[j.name]}")
+
+
+def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
+    """Prep a REAL bench, then ask launch where it will look.
+
+    THE PROPERTY THE COMMENT ASSERTED AND NOTHING CHECKED, one layer up from
+    `test_the_two_agree_on_a_real_bundle`: that test builds a JobSet by hand
+    and compares `job_dir_names` against `trial_dir` -- both sides of
+    materialize, neither of them prep.  This runs `prep_calculation` and
+    looks at the directories that actually appeared.
+
+    That is the 2026-08-27 failure: one side learned about the attempt layer
+    (`project-layout.md` § 1.5a) and the other did not, so the deck landed
+    in the container while the shared package landed in `run-0`, and the
+    launch found nothing.  Two computations kept in step by hand agree until
+    something moves.
+    """
+    import json as _json
+
+    import numpy as np
+
+    from conftest import write_machine_record, write_pseudos
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset._cli import _bench_inputs
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
+                                               trial_work_dir)
+    from molbuilder.jobset.model import JobSet, Resources
+    from molbuilder.jobset.prep import prep_calculation
+    from molbuilder.siesta.stages import default_siesta_stages
+    from molbuilder.structure import Structure
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.chdir(tmp_path)
+    write_machine_record()
+
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    src = tmp_path / "h2.xyz"
+    src.write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    stages = default_siesta_stages("publishable")
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
+                            engine="siesta", shape="hierarchical", name="JOB",
+                            source=str(src)),
+        dest)
+    write_pseudos(dest, ["H"])
+    (dest / ".molbuilder.json").write_text(_json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+
+    stage = stages[0].name
+    sweep, pins, translation = _bench_inputs(dest, None)
+    prep_calculation(dest, stage, allocation=Resources(mpi_np=8),
+                     sweep=sweep, pins=pins, translation=translation,
+                     emit_sbatch=False)
+
+    decks = sorted(dest.rglob("job-set.json"))
+    assert len(decks) == 1, [str(d.relative_to(dest)) for d in decks]
+    js = JobSet.load(decks[0])          # the deck reader that exists
+    assert js.jobs, "the bench prepped no trials, so nothing below is tested"
+
+    shape = shape_of(js, dest)
+    where = job_dir_names(js, shape)
+    for job in js.jobs:
+        answered = dest / where[job.name]
+        assert answered.is_dir(), (
+            f"launch will look in {where[job.name]} for {job.name!r} and "
+            f"prep created no such directory.  What prep DID create: "
+            f"{sorted(str(p.relative_to(dest)) for p in dest.rglob('bench-*'))}")
+        work = trial_work_dir(answered, shape)
+        assert any(work.iterdir()), (
+            f"{work.relative_to(dest)} is empty -- prep answered the right "
+            f"directory and then wrote the trial's files somewhere else, "
+            f"which is the attempt-layer split of 2026-08-27")
