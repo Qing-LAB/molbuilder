@@ -275,6 +275,25 @@ and a reader later opens carries the same **basename**:
 - **SIESTA** — the basename **is** the `.fdf`'s `SystemLabel`.
 - **PySCF** — the basename **is** the script's `JOB = "…"` literal.
 
+**Same kind, one validator, two mechanisms — and the difference decides how
+each is READ BACK.** `config/siesta.py::_validate_basename` serves both
+`SiestaConfig.system_label` and `PySCFConfig.job_name`, so *what a basename may
+be* is one rule. *How it is written* is not: a `SystemLabel` is an fdf
+directive holding a bare token, a `JOB` is a **Python string literal where the
+quotes are syntax, not value**. A SIESTA reader therefore never strips quotes
+— the alphabet below admits none, so one in a deck is a hand-edit this
+validator would have refused — while a PySCF reader always does, because there
+they are how Python spells a string. That asymmetry is the two formats', not a
+disagreement between two readers, and it is stated here because it has been
+re-derived from the regexes more than once.
+
+**Prefer verifying to extracting.** `pyscf/layout.py` does not parse the name
+out of a deck; it takes the identity the deck was written FOR and checks the
+deck states it. That tolerates both emitted spellings by construction (the
+optimization deck writes `JOB = "name"`, the vibration deck an aligned
+`JOB   = 'name'`) and answers the question that matters — *did we get the right
+result* — rather than *what token is in there*.
+
 The basename must be a single token matching `[A-Za-z0-9_-]+` — no spaces,
 dots, or slashes. Generators reject anything else at the form / CLI boundary
 (`molbuilder/projects.py`, `_NAME_PATTERN`). Across the stages of one staged

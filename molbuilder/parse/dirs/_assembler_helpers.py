@@ -143,7 +143,29 @@ def _parse_species_block(text: str) -> List[str]:
 
 def extract_system_label(text: str) -> Optional[str]:
     """Return the ``SystemLabel`` directive value from a ``.fdf`` body,
-    or ``None`` when no recognisable line is present."""
+    or ``None`` when no recognisable line is present.
+
+    **The value is guaranteed quote-free, so this does not strip quotes.**
+    `config/siesta.py::_validate_basename` refuses anything outside
+    ``[A-Za-z0-9_-]+`` for `system_label` -- no quotes, no dots, no spaces --
+    before it can reach a deck (`job-contracts.md` § 2.5b).  A quoted or
+    commented ``SystemLabel`` is a hand-edit the generator would not produce
+    and the validator would have refused, which is why the pattern requires
+    the value to end its line.
+
+    **Its counterpart is awk, inside the wrapper**, and is deliberately
+    laxer -- it lower-cases and strips quotes because it runs on the deck AS
+    IT IS AT LAUNCH, after a person may have edited it, and a cold-restart
+    sweep that misses the label deletes the wrong files.  The two are not
+    inconsistent: this one recovers what WE wrote, that one survives what a
+    person did.  Compared on 2026-09-06 and they differ only on inputs the
+    validator forbids.
+
+    **NOT THE SAME FACT AS PySCF's ``JOB``** (:func:`extract_pyscf_job`).
+    They share a validator and nothing else -- see that function.
+
+    NO PRODUCTION CALLER as of 2026-09-06; only this module's tests reach it.
+    """
     m = _SYSTEM_LABEL_RE.search(text)
     return m.group(1) if m else None
 
@@ -381,7 +403,23 @@ def extract_pyscf_job(text: str) -> Optional[str]:
     """Return the ``JOB`` literal from a molbuilder-generated PySCF
     script, or ``None`` when no recognisable ``JOB = "..."`` line is
     present.  Used to derive ``<JOB>_optimized.xyz`` as the preferred
-    final-coords source."""
+    final-coords source.
+    **The quotes here are SYNTAX, not value.**  This is a Python string
+    literal, so stripping them recovers the name -- the opposite of
+    :func:`extract_system_label`, where a quote would be a character IN the
+    name and the validator forbids it.  Same kind of fact (a run's basename),
+    same validator (`config/siesta.py::_validate_basename` serves both
+    `system_label` and `job_name`), different mechanism.  Reading them as one
+    rule is a mistake this note exists to stop.
+
+    **Two spellings are emitted on purpose**: the optimization deck writes
+    ``JOB = "name"`` and the vibration deck an aligned ``JOB   = 'name'``.
+    `pyscf/layout.py` handles that by VERIFYING rather than extracting -- it
+    checks the deck states the identity it was written for -- which is the
+    better-posed question and the shape to copy.
+
+    NO PRODUCTION CALLER as of 2026-09-06; only this module's tests reach it.
+    """
     m = _JOB_RE.search(text)
     return m.group("label") if m else None
 

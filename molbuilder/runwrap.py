@@ -417,6 +417,27 @@ def _cold_restart_block(basename: str, *, engine: str) -> str:
     Nothing is moved, copied or deleted here.  The engine overwrites what it
     overwrites, once the user has said to.
     """
+    # WHY THIS IS READ AT LAUNCH AND NOT PASSED IN.
+    #
+    # The generator knows the label -- `_validate_basename` refused anything
+    # outside `[A-Za-z0-9_-]+` before it reached the deck -- so baking it in
+    # would be correct for the deck WE wrote.  This runs on the deck as it is
+    # at LAUNCH, after a person may have edited it, and a cold-restart sweep
+    # keyed to the wrong label moves aside files the engine will then not
+    # find.  So it is re-read, deliberately, for the same reason the GPU flag
+    # is (`_fdf_requests_gpu`'s awk counterpart below).
+    #
+    # It is LAXER than the Python reader on purpose -- lower-cases, strips
+    # quotes, ignores trailing columns -- because it must survive a hand-edit
+    # rather than recover what the generator wrote.  Its Python counterpart is
+    # `parse/dirs/_assembler_helpers.py::extract_system_label`, which is
+    # strict for the opposite and equally deliberate reason; both docstrings
+    # say so.  Compared on 2026-09-06: they differ only on inputs the
+    # validator forbids.
+    #
+    # PySCF's arm below reads a different mechanism, not a different spelling
+    # of this one: `JOB = "..."` is a Python string literal, so there the
+    # quotes are syntax rather than characters in the name.
     if engine == "siesta":
         label_extract = (
             f'# Read SystemLabel from the .fdf so the sweep matches what\n'

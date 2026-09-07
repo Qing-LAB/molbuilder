@@ -184,6 +184,30 @@ def _validate_basename(label: str):
     PySCFConfig.job_name.  Used as ``metadata["validate"]`` -- the
     validation pass surfaces a clean error-severity ``Issue`` instead
     of letting a malformed basename reach the filesystem.
+
+    **ONE VALIDATOR, TWO ENGINES, AND THAT IS THE WHOLE OF WHAT THEY SHARE.**
+    A SIESTA ``SystemLabel`` and a PySCF ``JOB`` are the same KIND of thing --
+    the basename every output file of a run is prefixed with -- so what a name
+    may be is one rule, stated here and in `execution/job-contracts.md` § 2.5b.
+    They are not the same MECHANISM and must not be read as if they were: a
+    ``SystemLabel`` is an fdf directive holding a bare token, a ``JOB`` is a
+    Python string literal where the **quotes are syntax, not value**.
+
+    **What this rule guarantees a reader.** ``[A-Za-z0-9_-]+`` admits no quote,
+    no dot, no space, so a name that reaches disk cannot carry one.  A reader
+    recovering one therefore never needs to strip quotes from a SIESTA deck --
+    a quoted ``SystemLabel`` is a hand-edit this validator would have refused
+    -- while a PySCF reader must always strip them, because there they are how
+    Python spells a string.  That asymmetry is the format's, not an
+    inconsistency between the two readers, and it is written down here because
+    it has been re-derived from the two regexes more than once.
+
+    **Verifying beats extracting.**  `pyscf/layout.py` does not parse the name
+    out of a deck; it takes the identity the deck was written FOR and checks
+    the deck states it (``^JOB\s*=\s*(['\"])<label>\1``), which tolerates
+    both emitted spellings by construction and answers the question that
+    matters -- *did we get the right result* -- rather than *what token is in
+    there*.  Prefer that shape.
     """
     def _check(value, _cfg=None):
         # Local import to avoid an L1->L1 cycle (issues sits next door).
