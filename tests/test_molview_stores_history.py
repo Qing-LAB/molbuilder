@@ -1279,3 +1279,56 @@ def test_a_filter_that_empties_the_selection_says_isolate_is_not_in_effect():
         f"the outcome must record that isolate is on but hiding nothing, so "
         f"the panel can say the whole structure is still shown: "
         f"{out['outcome']}")
+
+
+def test_a_filter_verdict_does_not_outlive_the_selection_it_described():
+    """Apply a filter that matches nothing, then press All.
+
+    The panel read two contradictory lines at once: "No atoms matched this
+    filter, so nothing is selected" beside "12 of 12 selected".  The verdict
+    was cleared whenever the QUESTION changed -- a row added, edited, removed,
+    the combinator switched -- and never when the ANSWER did, so any door that
+    replaced the selection left the old verdict standing over it.
+
+    The store's own rule, stated where the verdict is recorded: "a stale
+    answer to a question nobody asked is worse than none."
+    """
+    out = _run(
+        """
+        const store = S.createSelectionStore({
+            resolveFilter: async () => [],       // matches nothing
+            writeLabel:    async () => null,
+        });
+        store.addFilter({ kind: "by_element", value: "Xx" });
+        await store.applyFilter();
+        const afterFilter = store.getState().filterOutcome;
+
+        store.all(12);                            // the answer changes
+        const afterAll = store.getState().filterOutcome;
+
+        // ...and every other door that replaces the selection, too.
+        await store.applyFilter();
+        store.clear();
+        const afterClear = store.getState().filterOutcome;
+        await store.applyFilter();
+        store.add([3]);
+        const afterAdd = store.getState().filterOutcome;
+        await store.applyFilter();
+        store.invert(5);
+        const afterInvert = store.getState().filterOutcome;
+
+        console.log(JSON.stringify({
+            afterFilter, afterAll, afterClear, afterAdd, afterInvert,
+        }));
+        """
+    )
+    assert out["afterFilter"] == {"matched": 0, "isolateNotInEffect": False}, (
+        "the door that produced the verdict must keep it -- it is the answer "
+        "to the question just asked"
+    )
+    for door in ("afterAll", "afterClear", "afterAdd", "afterInvert"):
+        assert out[door] is None, (
+            f"the filter's verdict survived {door[5:].lower()}, so the panel "
+            f"can say 'no atoms matched this filter' beside a selection that "
+            f"has atoms in it: {out[door]}"
+        )

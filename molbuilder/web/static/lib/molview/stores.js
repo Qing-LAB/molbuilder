@@ -133,8 +133,20 @@ export function createSelectionStore(handed) {
     let switches = Object.assign({}, SWITCH_DEFAULTS);
 
     const changed = subscribable();
-    const set = (next) => {
+    const set = (next, keepsVerdict) => {
         selected = next;
+        /* A VERDICT BELONGS TO THE SELECTION IT PRODUCED (2026-09-07).
+         * `lastApply` was cleared whenever the QUESTION changed -- a row
+         * added, edited, removed, the combinator switched -- and never when
+         * the ANSWER did.  So: apply a filter that matches nothing, then
+         * press All, and the panel read "No atoms matched this filter, so
+         * nothing is selected" beside "N of N selected".
+         *
+         * Every door here replaces the selection the verdict was about, so
+         * every one of them invalidates it.  `applyFilter` is the single
+         * exception and says so at its call: it is the door that PRODUCED
+         * this verdict, and it sets it immediately before this line. */
+        if (!keepsVerdict) lastApply = null;
         /* ISOLATE IS A PREFERENCE, AND IT STAYS WHERE YOU PUT IT (user,
          * 2026-09-07).  A line here turned it OFF whenever the selection
          * emptied -- "since there would be nothing left to show" -- which
@@ -319,7 +331,7 @@ export function createSelectionStore(handed) {
                 // says so rather than reporting a switch that moved.
                 isolateNotInEffect: !!switches.isolate && atoms.length === 0,
             };
-            set(atoms.slice());
+            set(atoms.slice(), true);   // this door owns the verdict above
             return atoms.slice();
         },
 
