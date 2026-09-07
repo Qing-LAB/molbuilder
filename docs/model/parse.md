@@ -463,11 +463,25 @@ molbuilder/parse/
     └── _assembler_helpers.py  # shared dir-walk + .fdf-coords helpers
 ```
 
-> **Two geometry formats have no leaf FileParser (by design).** Plain `.xyz`
-> reading uses `Structure.from_xyz` directly (see [`structure.md`](?doc=model/structure.md)), and `.fdf`
-> initial-coordinates reading lives in `dirs/_assembler_helpers.py` (used by the
-> DirParsers), rather than as registered `coords/` parsers. Adding them as
-> FileParsers was scoped but not needed.
+> **Plain `.xyz` has no leaf FileParser (by design)** — reading it uses
+> `Structure.from_xyz` directly (see [`structure.md`](?doc=model/structure.md)).
+>
+> **And a deck's initial coordinates are not read at all** *(2026-09-06)*.
+> `dirs/_assembler_helpers.py` held that — `.fdf` and `.py` coordinate-block
+> readers, the label extractors, the handedness checks — described here as
+> "used by the DirParsers". **Nothing used them.** Their real consumer,
+> `script_bundle.assemble_from_run_dir`, was deleted 2026-06-21; the module was
+> kept on the claim above, and § 5.0 then specified `RunDirResult` as seven
+> fields — `run_dir`, `engine`, `files`, `active`, `openable`, `attempts`,
+> `status` — none of which is a geometry, a label, or a diagnostic, under the
+> rule *"no field is added without naming its reader in this table."*
+>
+> **The app never needs a deck's geometry**, which is why nobody noticed: the
+> starting structure reaches a viewer as the trajectory's **frame 0** — *"the
+> `.out`'s own frame 0, the structure the user submitted"* (§ 5c) — from the
+> same file every later frame comes from. Deleted with its six helpers, both
+> re-export blocks in `coords/`, and seventeen tests. `read_xv` and
+> `read_optimized_xyz` are unaffected; they are the live readers.
 
 ---
 

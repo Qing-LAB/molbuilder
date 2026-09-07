@@ -636,8 +636,12 @@ per stage), which is what `jobset status` and the bench summary read.
 > no reader anywhere**, and the eleventh — this one — was obtained by parsing
 > every `.out` to build the plot data and then discarding it. **741 lines of product code**
 > produced one field that was used. *(An earlier draft of this note said
-> 1,414; that number counted `dirs/_assembler_helpers.py`, which was never
-> dead and is still read by both `coords/` parsers.)*
+> 1,414; that number counted `dirs/_assembler_helpers.py` — excluded on the
+> grounds that it "was never dead and is still read by both `coords/`
+> parsers". **It was dead, and that sentence is why it survived**: both
+> `coords/` parsers IMPORT it and re-export its names, and neither calls one.
+> A re-export reads as a caller to a grep and to a reviewer. The module went
+> on 2026-09-06, so the honest figure is the larger one.)*
 >
 > Four code-quality defects went with them, none needing a fix: a second
 > `LatticeConstant` reader that disagreed with its sibling on units and

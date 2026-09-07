@@ -18,8 +18,12 @@ It is current by construction, it is readable in source -- twelve lines and you
 can count the atoms -- and a test written on it exercises the real
 write-then-read path instead of trusting a snapshot of one.
 
-Used by ``tests/test_junction_sidecar_roundtrip.py`` (the sidecar pair) and
-``tests/parse/dirs/test_bundle.py`` (the generated-script round trip).
+Used by ``tests/test_junction_sidecar_roundtrip.py`` (the sidecar pair).
+
+*(It also named ``tests/parse/dirs/test_bundle.py`` until 2026-09-06.  That
+file does not exist and neither does a bundle DirParser -- the pointer
+outlived both, which is how ``parse/dirs/_assembler_helpers`` came to look
+like it served something.)*
 """
 from __future__ import annotations
 

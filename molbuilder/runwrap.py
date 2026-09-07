@@ -427,13 +427,14 @@ def _cold_restart_block(basename: str, *, engine: str) -> str:
     # find.  So it is re-read, deliberately, for the same reason the GPU flag
     # is (`_fdf_requests_gpu`'s awk counterpart below).
     #
-    # It is LAXER than the Python reader on purpose -- lower-cases, strips
-    # quotes, ignores trailing columns -- because it must survive a hand-edit
-    # rather than recover what the generator wrote.  Its Python counterpart is
-    # `parse/dirs/_assembler_helpers.py::extract_system_label`, which is
-    # strict for the opposite and equally deliberate reason; both docstrings
-    # say so.  Compared on 2026-09-06: they differ only on inputs the
-    # validator forbids.
+    # It lower-cases, strips quotes and ignores trailing columns because it
+    # must survive a hand-edit rather than recover what the generator wrote.
+    # A Python counterpart, `_assembler_helpers.py::extract_system_label`,
+    # was stricter for the opposite and equally deliberate reason -- it
+    # recovered what WE wrote -- and was DELETED 2026-09-06 with its module:
+    # zero callers, and the app never needs it, because the initial geometry
+    # reaches a viewer through the trajectory's frame 0 (`parse.md` § 5c),
+    # not by re-reading the deck.  This is the only reader of the label now.
     #
     # PySCF's arm below reads a different mechanism, not a different spelling
     # of this one: `JOB = "..."` is a Python string literal, so there the

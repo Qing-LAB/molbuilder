@@ -213,11 +213,11 @@ class SiestaXVFileParser(FileParser):
 #  Public-API re-exports                                                #
 # --------------------------------------------------------------------- #
 #
-# H4a (test-cleanup): consumers reach for the publicly-named helpers
-# from the coords module by file-type association.  The richer .fdf
-# parsers live in ``parse/dirs/_assembler_helpers`` (the assembler
-# composes them); re-export here so tests + future callers have one
-# import path per file type.
+# The `.fdf` helpers this file re-exported were DELETED 2026-09-06 with
+# `parse/dirs/_assembler_helpers`.  They were published under two import
+# paths "so tests + future callers have one import path per file type";
+# the future callers never arrived, and a tidy front door is what let six
+# uncalled functions read as a maintained API through two cleanups.
 read_xv = _read_xv
 read_xv_cell = _read_xv_cell
 
@@ -251,22 +251,8 @@ def xv_to_xyz(xv_path: Union[str, Path],
                          comment=comment)
 
 
-from molbuilder.parse.dirs._assembler_helpers import (   # noqa: E402
-    SiestaFdfStructureError,
-    check_fdf_handedness,
-    check_xv_handedness,
-    extract_system_label,
-    read_fdf_initial_coords,
-)
-
-
 __all__ = [
     "SiestaXVError",
     "SiestaXVFileParser",
-    "SiestaFdfStructureError",
     "read_xv",
-    "read_fdf_initial_coords",
-    "extract_system_label",
-    "check_xv_handedness",
-    "check_fdf_handedness",
 ]

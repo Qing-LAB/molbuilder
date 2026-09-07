@@ -760,6 +760,46 @@ calls are **not** in that list: they are the unit tests *of* the variable.
 
 ---
 
+## 5j. `parse/dirs/_assembler_helpers` deleted — six helpers, no callers
+
+**Found by asking the right question** *(user: "there must be duplicated code…
+do you need to cross check if there are already other passes that does a
+similar job")*. The cross-check settled it, and not the way it looked.
+
+**All six had zero callers**, not two: `read_fdf_initial_coords`,
+`extract_system_label`, `check_xv_handedness`, `check_fdf_handedness`,
+`read_py_initial_coords`, `extract_pyscf_job`.
+
+**Why they survived two cleanups: a re-export reads as a caller.**
+`coords/siesta_xv.py` and `coords/pyscf_geom.py` both imported the names and
+listed them in `__all__` — *"so tests + future callers have one import path per
+file type"* — which made six dead functions look like a maintained API with a
+tidy front door. It fooled a prior audit in writing: `running-a-job.md` § 4.2
+excluded this module from a dead-code count on the grounds that it *"was never
+dead and is still read by both `coords/` parsers."* It was read by neither.
+
+**Why nothing needed them.** Their real consumer,
+`script_bundle.assemble_from_run_dir`, went on 2026-06-21; the module was kept
+on a claim about serving *"the bundle + job DirParsers"*. No bundle DirParser
+exists or is specified, and § 5.0 later specified `RunDirResult` as seven
+fields — none a geometry, a label or a diagnostic — under *"no field is added
+without naming its reader in this table."*
+
+**And the app never wanted a deck's geometry.** The starting structure reaches
+a viewer as the trajectory's **frame 0** — *"the `.out`'s own frame 0, the
+structure the user submitted"* — out of the same file every later frame comes
+from. A deck is never re-read for coordinates, which is why a unique parser of
+`AtomicCoordinatesAndAtomicSpecies` could sit unused: unique **parser of a
+format** is not the same as unique **source of a fact**, and mistaking the two
+is what made this look load-bearing at first pass.
+
+Gone with it: both re-export blocks, 26 tests, the dangling
+`tests/parse/dirs/test_bundle.py` pointer in `tests/support/junction.py`, and
+the corrected line in `running-a-job.md`. `read_xv` and `read_optimized_xyz`
+are untouched — they are the live readers.
+
+---
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |
