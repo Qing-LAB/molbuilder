@@ -926,3 +926,110 @@ rule for step 4: **nothing moves until the thing it says is written where it
 is going**, which is the archive's substance-first rule, and it is the reason
 § 5i could not be archived until `process/testing.md` § 2a existed.
 
+---
+
+## 8. One nature, fourteen instances — the reading doors have no guard
+
+*(Consolidated 2026-09-07, after the selection/MolView review. Written because
+every defect that review found is the SAME defect, and fixing them one at a
+time is what produced fourteen of them.)*
+
+### 8.1 The pattern
+
+**A door exists. Someone needs it to behave slightly differently for a local
+reason. They write a second implementation instead of widening the first. The
+two then drift, and the copy is the one that is wrong.**
+
+Every instance below was found by accident, chasing something else. None was
+found by a guard, because no guard covers this class.
+
+| # | the door | the second implementation | how it drifted | state |
+|---|---|---|---|---|
+| 1 | reading the `.xyz`+`.molstruct.json` pair (`StructureCodec`) | `molbuilder.load()` | dropped the whole sidecar; `jobset init` therefore wrote descriptions with no regions, frozen atoms or cell | **FIXED 2026-09-07** — deleted |
+| 2 | ” | `selection.py::_load_structure` | applies `regions` only — drops identity columns, cell, annotations, `info`; three rule kinds then return nothing | dead code, deletion pending |
+| 3 | ” | `transport/_cli.py::_load_device` | applies the whole sidecar — correct, but a third copy of the walk | open |
+| 4 | ” | `compose.py::labeled_citation_structure` | globs `*.molstruct.json` instead of asking the pairing rule | open |
+| 5 | the pairing rule (`sidecar_path_for`) | `parse/engines/_sidecar.py` | own suffix-strip table; **disagrees** on `x_optim.xyz` and `z.molwatch.log` — deliberate, but a third derivation | open |
+| 6 | ” | `files.py::_paired_sidecar_path` | agrees today; a fourth copy is a coin-flip on the day one changes | open |
+| 7 | per-atom rows (`_shared.atoms_list`) | `/api/selection/atoms` | skips the cell resolver, so it answers with a box that was never resolved | dead, deletion pending |
+| 8 | "is isolate in effect" (`isolate && selection.length > 0`) | `mount.js:228` reads the raw switch | **live UI defect** — with nothing selected, the 3-D window stops accepting clicks, silently | open, fix agreed |
+| 9 | ” | `stores.js:145` auto-off | a second mechanism for the same rule; it is also what makes the button un-press itself | open, fix agreed |
+| 10 | the `forceScale` switch | the trajectory template's slider | DOM value overwrites the restored one on every load | open |
+| 11 | the filter row kinds | hard-coded in `stores.js:243`, `stores.js:379`, `ui.js:2161` | three literal lists, no shared constant | open |
+| 12 | what an edit invalidates | one `structure_modified` flag for geometry, cell AND labels | unusable by its only reader | **FIXED 2026-09-07** — split in two |
+| 13 | `molview.md` § 1.1 vs §§ 6.6 / 9.5 / 11.6 | the same facts stated twice | five stale claims; one is a defect fixed four days earlier **in the same file**, in one copy only | open |
+| 14 | `structure-annotations.md` § 6 | names four JS modules that were never built | describes a layer that does not exist | open |
+
+### 8.2 Why nothing caught them, and what the codebase already does about it
+
+**This project already knows the answer.** Nine guards exist, each written
+after one of these was found the hard way:
+
+`test_layering.py` · `test_one_home_for_a_constant.py` (the Bohr radius, once
+written out eight times) · `test_one_naming_authority.py` · `test_config_dir_has_one_home.py`
+· `test_css_no_duplicate_selectors.py` · `test_css_module_boundary.py` ·
+`test_vibrationview_module_boundary.py` · `test_no_duplicated_ui_components.py`
+· `test_no_test_is_shadowed.py`
+
+They cover imports, constants, a naming rule, a config path, CSS, two module
+seals, UI components and test names. **Not one covers a reading or writing
+door** — which is where rows 1-7 live.
+
+So this is not a new mechanism to invent. It is **the missing member of an
+existing family.**
+
+### 8.3 The framework fix
+
+**A guard that enumerates who may read the pair, and fails when a second
+implementation appears.**
+
+Shape, following `test_one_home_for_a_constant.py` exactly — an owner, an
+allowlist with a REASON per entry, and a check that each allowance still
+describes the code:
+
+* **owner** — `StructureCodec`.
+* **the lint** — AST-walk `molbuilder/**`; any function that both reads a
+  geometry path AND looks for a sidecar beside it, and is not the codec, is a
+  finding.
+* **allowlist** — entries carry the reason they are exempt, and the guard
+  fails if an allowed site stops doing the thing it was allowed for (the
+  existing constant guard does exactly this, so an allowance cannot outlive
+  its reason).
+* **the same for the pairing rule** — `sidecar_path_for` is the owner; rows
+  5 and 6 are its findings.
+
+**Why a hand-written list is not enough, and this is the load() lesson:** a
+list of doors written by a person would have carried `molbuilder.load()` on it
+looking entirely reasonable — right name, in `__all__`, docstring accurate for
+what it did. Only *deriving* the readers from the code and comparing against
+one declared owner surfaces a rival. **The index must be generated** (§ 7.2),
+and the guard must read the code, not a list of names.
+
+### 8.4 What is NOT an instance, and must be fixed on its own
+
+Two findings are ordinary defects, not door duplication, and a guard will
+never catch them:
+
+* **Row 8, the isolate click gate** — a live UI defect. Nothing selected,
+  press "Show selected only", and the 3-D window silently stops accepting
+  clicks while the drawing does not change. Fix agreed with the user: one
+  accessor in the store, read by all three, and the auto-off deleted (a
+  preference stays where you put it; "nothing selected" means nothing to
+  hide).
+* **`lastApply` never cleared by a selection change** (`stores.js:136-147`) —
+  the panel can read *"No atoms matched this filter"* beside *"N of N
+  selected"*.
+
+### 8.5 Order
+
+1. The guard for the pair readers **first**, with rows 2-6 as its initial
+   findings — so the deletions that follow are checked by something rather
+   than by me.
+2. Delete row 2 and row 7 (dead), rehome the ~10 rule tests onto the live
+   door, and re-home the atom-row wire-shape claim, which today is pinned
+   only through the dead route.
+3. Rows 3-6 by the guard's allowlist: each either goes through the door or
+   earns a written reason.
+4. Rows 8 and 9 as their own fix.
+5. Rows 13-14 fold into § 7's survey.
+
