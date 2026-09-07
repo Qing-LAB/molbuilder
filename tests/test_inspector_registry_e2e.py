@@ -880,3 +880,39 @@ def test_the_exported_csv_does_not_carry_the_users_name(
     assert "<tmp>/" in line or "~/" in line, (
         f"nothing was redacted at all -- {line!r} -- so this test would pass "
         f"on a build that stopped redacting and simply moved its runs")
+
+
+# --------------------------------------------------------------------- #
+#  NOT WRITTEN, and what was learned trying                             #
+#                                                                       #
+#  `tests/test_structure_info_bridge.py` reads three lines of            #
+#  trajectory/core.js as text -- the `alias("info", "fileState")` call,  #
+#  the two resets, and APPLY's `payload.info !== undefined` guard.  Its  #
+#  own note says a Playwright test is the real answer and that no        #
+#  harness mounts a viewer headless.  One does now (this file), so I     #
+#  tried, on 2026-09-07.  It does not work yet, and these are the facts  #
+#  the next attempt should start from rather than rediscover:            #
+#                                                                       #
+#   * A run directory needs no SIESTA to state a contract: `contract_of` #
+#     answers from the single `*.fdf` in the directory, and the          #
+#     trajectory can be the generic `*_geom_optim.xyz` fallback.  Two    #
+#     files, and `info.calculation` comes back on the load response.     #
+#   * The observable is the Metadata page: `.molviewer-info-key` rows,   #
+#     drawn from MolView's store, which `installMolecule` fills only     #
+#     when `input.info` is a non-empty object (model-jobs.js).           #
+#   * A poll whose frames are a strict TAIL EXTENSION takes the cheap    #
+#     `addFrames` path and never rebuilds, so nothing is re-installed.   #
+#     Appending a frame therefore tests nothing.                         #
+#   * Rewriting the file SHORTER should take the full-rebuild branch --  #
+#     but measured, the movie's frame count does not change: the shrink  #
+#     is not picked up within a poll cycle at all.  That is the open     #
+#     question, and it has to be answered before any assertion here      #
+#     means anything.                                                    #
+#   * THE TRAP THAT MADE THIS LOOK DONE.  `rebuildModel` also runs at    #
+#     LOAD.  A mutation that makes it install no `info` therefore fails  #
+#     a test on its BEFORE assertion while proving nothing about any     #
+#     poll -- which is how a version of this test sat green through the  #
+#     APPLY guard being deleted three different ways.  Any future        #
+#     version must assert that the movie actually changed between load   #
+#     and poll before it asserts anything about the store.               #
+# --------------------------------------------------------------------- #

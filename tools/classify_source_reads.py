@@ -131,6 +131,15 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
              "paired with the raw family list being absent: --font-mono has "
              "one home and the sheet must reach for it, not re-declare it"),
     },
+    "tests/test_one_naming_authority.py": {
+        73: (KEEP_LINT,
+             "the rule is the ABSENCE line beside it -- prep must not compose "
+             "the trial path by ANY spelling -- and this presence line stops "
+             "that going vacuous on a prep that stopped asking the naming "
+             "authority at all.  It was an exact three-deep argument list "
+             "until 2026-09-06; what it stood for is measured on disk by "
+             "test_prep_writes_where_job_dir_names_will_look"),
+    },
     "tests/test_validation_delivery_contract.py": {
         208: (KEEP_LINT,
               "the rule is the two ABSENCE lines beside it -- no `xyz: null,` "
