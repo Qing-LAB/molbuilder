@@ -430,7 +430,8 @@ def test_loaded_structure_to_pyscf_script(h2o, tmp_path):
     """Mirror the FDF flow: build -> load -> render PySCF."""
     xyz_p = tmp_path / "h2o.xyz"
     h2o.to_xyz(str(xyz_p))
-    s2 = molbuilder.load(str(xyz_p))
+    from molbuilder.workingcopy_structure import StructureCodec
+    s2 = StructureCodec().load(str(xyz_p))
     text = render_script(s2, PySCFConfig(job_name="reloaded"))
     assert 'JOB = "reloaded"' in text
     compile(text, "<reloaded>", "exec")

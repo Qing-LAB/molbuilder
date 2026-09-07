@@ -454,7 +454,7 @@ def init_cmd(structure, bundle: str, shape: str,
     import dataclasses as _dc
     from pathlib import Path as _P
 
-    from .. import load as _load_structure
+    from ..workingcopy_structure import StructureCodec
     from ..config.siesta import SIESTA_STAGE_NAMES, SiestaConfig
     from ..describe import DescribeError, build_description, write_description
     from ..identity import normalise_id
@@ -484,7 +484,12 @@ def init_cmd(structure, bundle: str, shape: str,
             "structure IS the junction citation).")
 
     try:
-        struct = _load_structure(structure)
+        # THE PAIR, through the one door.  This called the top-level
+        # `load()` until 2026-09-07 -- a reader that predated the
+        # sidecar and returned the geometry alone, so a description
+        # was born without the regions, the frozen atoms or the cell
+        # the author had set in the viewer.
+        struct = StructureCodec().load(structure)
         if vacuum is not None:
             # The same channel the Modify -> Cell tab uses: the vacuum lives on
             # the STRUCTURE, not on the engine config, so every surface that

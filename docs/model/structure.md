@@ -204,9 +204,21 @@ one spanning multiple segments is disambiguated by appending the segment index
 `> 99999` (must write `*****`), coercing a multi-char `chain_id` to `?` (must
 truncate to first char), or crashing on a TER between ATOM blocks.
 
-**Top-level dispatcher.** `molbuilder.load(path, *, format="auto")`
-(`molbuilder/__init__.py:56`) reads `.xyz` or `.pdb` by extension; unknown
-extension → `ValueError` with explicit instruction.
+**The one reading door.** `StructureCodec().load(path)` —
+`molbuilder/workingcopy_structure.py`. Dispatches on the extension (`.xyz` /
+`.pdb`, anything else refused by name) and applies the `.molstruct.json`
+beside it through `apply_to_structure`. **The pair is the file**: a reader
+that takes the geometry alone hands back a structure smaller than what is on
+disk.
+
+> **`molbuilder.load()` stood here and is deleted** *(2026-09-07)*. It read
+> the geometry and not the sidecar — it predated the sidecar by two months and
+> was never swept when the codec landed. Its one production caller was
+> `jobset init`, which therefore wrote descriptions with the author's regions,
+> frozen atoms and cell missing: the same failure `siesta/input.py` records
+> having fixed at its own door, *"the script relaxed every atom of a structure
+> whose author had frozen two."* A second name for the door is what let the
+> two drift.
 
 > **ASE owns the XYZ parse (2026-07-31).** `Structure.from_xyz` calls
 > `ase.io.read(..., format="extxyz")` rather than splitting lines itself. ASE is

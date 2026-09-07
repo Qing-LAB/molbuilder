@@ -205,13 +205,13 @@ def _staged(xyz, tmp_path, strategy):
     import json
 
     from molbuilder import describe as D
-    from molbuilder import load as _load
+    from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.jobset.model import Resources
     from molbuilder.jobset.prep import prep_calculation
     from molbuilder.siesta.stages import default_siesta_stages
 
-    struct = _load(xyz)
+    struct = StructureCodec().load(xyz)
     # No strategy -> the ordinary ONE-stage ladder.  `engines/stages.md` § 6.5
     # (2026-08-16): a job always has at least one stage, so "no ladder" is not
     # a shape a description can have -- the single parameter set IS one stage,

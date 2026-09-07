@@ -11,8 +11,8 @@ Public API:
     >>> s = molbuilder.build_from_name("benzene")           # PubChem lookup
 
     # Load existing geometry from disk (auto-detects format):
-    >>> s = molbuilder.load("structure.xyz")
-    >>> s = molbuilder.load("structure.pdb")
+    >>> from molbuilder.workingcopy_structure import StructureCodec
+    >>> s = StructureCodec().load("structure.xyz")   # the pair
 
     >>> s.to_xyz("out.xyz")
     >>> s.to_pdb("out.pdb")
@@ -43,7 +43,6 @@ __all__ = [
     "build_rna",
     "build_from_smiles",
     "build_from_name",
-    "load",
     "__version__",
 ]
 
@@ -92,50 +91,20 @@ def repo_root() -> Path:
 # --------------------------------------------------------------------- #
 
 
-def load(path: Union[str, Path], *, format: str = "auto",
-         title: str = None) -> Structure:
-    """Load a 3-D structure from a file on disk.
-
-    Parameters
-    ----------
-    path
-        Path to the file.  ``.xyz`` and ``.pdb`` extensions are
-        recognised; pass ``format`` explicitly to override.
-    format
-        ``"auto"`` (default) -- inferred from the path extension.
-        ``"xyz"`` or ``"pdb"`` to force.
-    title
-        Optional override for the structure's title.
-
-    Returns
-    -------
-    :class:`molbuilder.structure.Structure`
-
-    Examples
-    --------
-    >>> s = molbuilder.load("polymer.pdb")
-    >>> s.n_atoms
-    87
-    >>> from molbuilder.siesta import SiestaConfig, render_fdf
-    >>> print(render_fdf(s, SiestaConfig(system_label="loaded", kgrid=(1, 1, 1))))
-    """
-    p = Path(path)
-    fmt = format.lower()
-    if fmt == "auto":
-        ext = p.suffix.lower().lstrip(".")
-        if ext in ("xyz", "pdb"):
-            fmt = ext
-        else:
-            raise ValueError(
-                f"can't infer format from extension {p.suffix!r}; "
-                f"pass format='xyz' or format='pdb' explicitly"
-            )
-    if fmt == "xyz":
-        return Structure.from_xyz(p, title=title)
-    if fmt == "pdb":
-        return Structure.from_pdb(p, title=title)
-    raise ValueError(f"unknown format {format!r}; expected 'xyz' or 'pdb'")
-
+# `load()` STOOD HERE AND IS GONE (2026-09-07).  It read a geometry file and
+# not the `.molstruct.json` beside it, so every caller got a structure quietly
+# smaller than what was on disk -- no regions, no frozen atoms, no cell.  It
+# predated the sidecar by two months and was never swept when `StructureCodec`
+# became the way a structure is read.
+#
+# THE DOOR IS `StructureCodec`:
+#
+#     from molbuilder.workingcopy_structure import StructureCodec
+#     s = StructureCodec().load("structure.xyz")
+#
+# which reads the pair, applies the sidecar through the one applier, and
+# refuses an extension it does not know.  A second name for it is what let the
+# two drift apart in the first place.
 
 # --------------------------------------------------------------------- #
 #  Optional builders -- imported lazily so users without RDKit /        #

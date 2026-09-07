@@ -1,10 +1,10 @@
-"""Structure.from_xyz / from_pdb and the top-level molbuilder.load().
+"""Structure.from_xyz / from_pdb and the one reading door, StructureCodec.
 
 Verifies that:
   * Structure round-trips through XYZ (lossless for elements + positions)
   * Structure round-trips through PDB (lossless for atom names,
     residue ids, residue names, chain ids, plus positions)
-  * the top-level molbuilder.load() detects format from extension
+  * StructureCodec dispatches by extension AND reads the sidecar pair
   * loaded structures feed render_fdf without further preparation
   * malformed inputs raise informative errors
 """
@@ -114,31 +114,51 @@ def test_from_pdb_first_model_only():
 # --------------------------------------------------------------------- #
 
 
-def test_load_dispatches_by_extension(tmp_path):
-    s = molbuilder.build_peptide("AC")
-    xyz_p = tmp_path / "x.xyz"
-    pdb_p = tmp_path / "y.pdb"
-    s.to_xyz(str(xyz_p))
-    s.to_pdb(str(pdb_p))
-    sx = molbuilder.load(str(xyz_p))
-    sp = molbuilder.load(str(pdb_p))
-    assert sx.n_atoms == s.n_atoms
-    assert sp.n_atoms == s.n_atoms
-    # PDB carries residue info; XYZ does not.
-    assert sp.atom_names == list(s.atom_names)
-    assert sx.atom_names == list(sx.elements)   # default-filled to elements
+def test_the_door_dispatches_by_extension_and_reads_the_pair(tmp_path):
+    """`StructureCodec` is the one reader, and it reads BOTH files.
+
+    This tested `molbuilder.load()` until 2026-09-07.  That function read the
+    geometry and not the `.molstruct.json` beside it, so everything it handed
+    back was quietly smaller than what was on disk -- which is how `jobset
+    init` came to write descriptions with the author's regions and frozen
+    atoms missing.  It is deleted; the codec is the door.
+
+    The pair half is asserted here rather than only the dispatch, because
+    dispatch is what the old function got right.
+    """
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    water = Structure.from_xyz(
+        "3\nwater-like\n"
+        "O   0.000  0.000  0.000\n"
+        "H   0.957  0.000  0.000\n"
+        "H  -0.239  0.927  0.000\n")
+    xyz_p = tmp_path / "s.xyz"
+    water.to_xyz(str(xyz_p))
+    pdb_p = tmp_path / "s.pdb"
+    pdb_p.write_text(water.to_pdb())
+
+    sx = StructureCodec().load(xyz_p)
+    sp = StructureCodec().load(pdb_p)
+    assert sx.n_atoms == 3 and sp.n_atoms == 3
+
+    # ...and a sidecar beside the geometry comes back WITH it.
+    marked = water
+    marked.regions = {"frozen_atoms": [0], "L-electrode": [1, 2]}
+    StructureCodec().write(marked, tmp_path / "pair.xyz")
+    back = StructureCodec().load(tmp_path / "pair.xyz")
+    assert back.regions == {"frozen_atoms": [0], "L-electrode": [1, 2]}, (
+        "the sidecar beside the geometry was not applied -- this is the "
+        "defect that deleting molbuilder.load() closed")
+    assert back.frozen_atoms == [0]
 
 
-def test_load_unknown_extension_raises(tmp_path):
-    p = tmp_path / "thing.txt"
-    p.write_text("hello\n")
-    with pytest.raises(ValueError):
-        molbuilder.load(str(p))
-
-
-# --------------------------------------------------------------------- #
-#  Loaded structure -> SIESTA FDF                                       #
-# --------------------------------------------------------------------- #
+def test_the_door_refuses_an_extension_it_does_not_know(tmp_path):
+    from molbuilder.workingcopy_structure import StructureCodec
+    p = tmp_path / "s.mol2"
+    p.write_text("whatever")
+    with pytest.raises(ValueError, match="unsupported structure format"):
+        StructureCodec().load(p)
 
 
 def test_loaded_structure_renders_fdf(tmp_path):
