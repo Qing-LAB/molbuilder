@@ -100,6 +100,72 @@ _OVERRIDE_FILES: dict[str, tuple[str, str]] = {
 }
 
 _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
+    # ---- ONE-HOME OWNERSHIP, which the ".css -> browser" rule gets wrong.
+    # "WHICH SHEET DEFINES THIS" IS NOT A QUESTION A BROWSER CAN ANSWER: the
+    # cascade yields a computed value, never the file it came from.  Each of
+    # these names the one module that owns a vocabulary and asserts the tab
+    # sheets do not redefine it -- absence over a set of files, which is
+    # exactly what testing.md section 6 calls a LINT.
+    "tests/test_results_blueprint.py": {
+        ln: (KEEP_LINT,
+             "form-components.css is the ONE home for the finding-row "
+             "vocabulary (ui-contract.md 5.1), and the sibling line "
+             "quantifies over EVERY severity the contract defines, so none "
+             "renders bare")
+        for ln in (951, 957)
+    },
+    "tests/test_molview_info_js.py": {
+        62: (KEEP_LINT,
+             "the info pane's four classes must be styled in the MODULE "
+             "sheet, molview.css -- a page sheet that grew its own copy is "
+             "the drift this catches, and only reading the files can see it"),
+    },
+    "tests/test_form_schema_diff_js.py": {
+        279: (KEEP_LINT,
+              "paired with `.rec-diff-list` NOT in the tab sheet: the widget "
+              "is generic, so the forms module owns it and no tab may "
+              "redefine it (ui-contract.md 1)"),
+    },
+    "tests/test_modify_css_residue.py": {
+        33: (KEEP_LINT,
+             "paired with the raw family list being absent: --font-mono has "
+             "one home and the sheet must reach for it, not re-declare it"),
+    },
+    "tests/test_inspector_lifecycle_teardown.py": {
+        ln: (KEEP_LINT,
+             "counts `.addEventListener(` across a whole core and pins the "
+             "shared scope to EXACTLY ONE registration site -- absence over "
+             "a file, which no runtime test can prove without walking every "
+             "path.  The behaviour half is driven: "
+             "test_inspector_registry_e2e.py's two teardown tests")
+        for ln in (172, 175)
+    },
+    "tests/test_projects_api_envelope_js.py": {
+        701: (KEEP_LINT,
+              "the ABSENCE half beside it -- no `fetch(\"/api/files` anywhere "
+              "in preview.js -- is the rule (web/projects.md Principle 6: "
+              "api.js is the sole caller).  This presence line is what stops "
+              "that going vacuous on a preview.js that does no file IO at "
+              "all.  The behaviour is driven by "
+              "test_preview_modal_edit_save_e2e.py"),
+    },
+    "tests/test_validation_findings_js.py": {
+        291: (KEEP_LINT,
+              "quantifies over a DECLARED consumer list and is dominated by "
+              "absence -- no consumer builds `className = \"issue-item\"` or "
+              "maps `data-severity` itself.  validation.md 4.1 R2 says one "
+              "channel into the UI, and a fourth renderer appearing beside "
+              "the third is exactly what no behaviour test can catch.  This "
+              "presence line keeps the two absence checks from passing "
+              "trivially on a file that stopped rendering findings"),
+    },
+    "tests/test_task_setup_tab.py": {
+        1214: (KEEP_LINT,
+               "every class the machine card uses must ALREADY exist in the "
+               "module sheet, and the paired line forbids any `.ts-target-*` "
+               "-- i.e. no bespoke class invented for one card.  A browser "
+               "sees the paint, not which sheet paid for it"),
+    },
     "tests/test_structure_info_bridge.py": {
         ln: (B_BROWSER,
              "the aliasing runs inside `mountInspector` via "

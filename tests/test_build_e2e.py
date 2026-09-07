@@ -989,8 +989,13 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
                                  + "the " + engine + " form"};
         const was = num.value;
         num.value = String((parseFloat(was || "0") || 0) + 137);
-        num.dispatchEvent(new Event("input",  {bubbles: true}));
-        num.dispatchEvent(new Event("change", {bubbles: true}));
+        // `input` ALONE on the way up, `change` alone on the way back down
+        // (see the reset below).  Each listener is proved separately because
+        // they answer different writers: a person types (input), while the
+        // compatibility engine and the session restore write the form
+        // without a keystroke and fire change.  A panel wired to only one of
+        // them shows a stale count exactly when it matters.
+        num.dispatchEvent(new Event("input", {bubbles: true}));
         // The panel tags each row's checkbox with the SCHEMA field name,
         // which is the input's id minus the engine prefix, dashes to
         // underscores -- `p-mesh-cutoff` -> `mesh_cutoff`, `py-spin` ->
@@ -1018,7 +1023,6 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
     page.evaluate("""(m) => {
         const n = document.getElementById(m.id);
         n.value = m.was;
-        n.dispatchEvent(new Event("input",  {bubbles: true}));
-        n.dispatchEvent(new Event("change", {bubbles: true}));
+        n.dispatchEvent(new Event("change", {bubbles: true}));   // change alone
     }""", moved)
     panel.wait_for(state="hidden", timeout=10_000)

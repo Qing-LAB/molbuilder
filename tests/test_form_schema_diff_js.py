@@ -261,14 +261,15 @@ def test_the_panel_is_mounted_AFTER_the_session_restore():
         "the defaults and the restored values never reach it")
 
 
-def test_the_panel_follows_the_form_rather_than_only_typing():
-    """The compatibility engine and session restore both write the form
-    without a keystroke; a panel that only listened to typing would show
-    a stale count exactly when it matters."""
-    src = VIEWER.read_text()
-    body = src.split("function mountRecommended", 1)[1].split("\n    async ", 1)[0]
-    assert 'container.addEventListener("change", refresh)' in body
-    assert 'container.addEventListener("input", refresh)' in body
+# `test_the_panel_follows_the_form_rather_than_only_typing` stood here.  It
+# sliced `mountRecommended`'s body out of viewer.js and looked for two
+# `container.addEventListener(...)` spellings -- which say nothing about
+# whether either listener reaches a panel that is mounted at all.  The claim
+# is the same and it is driven now: tests/test_build_e2e.py::
+# test_a_field_off_its_recommended_value_raises_the_panel dispatches `input`
+# ALONE to raise the panel and `change` ALONE to put it away, so each writer
+# the claim is about -- a person typing, and the compatibility engine or the
+# session restore writing without a keystroke -- is proved separately.
 
 
 def test_the_panel_sheet_has_one_owner_and_no_literals():
