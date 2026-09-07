@@ -364,6 +364,13 @@ deliberately not installed there.
   artifact lints (§ 6).
 - `test_no_tests_read_the_projects_tree.py` — no test builds a folder inside
   the developer's real `projects/` tree (§ 2a); carries its own truth table.
+- `test_one_door_reads_a_structure.py` — turning a PATH into a `Structure`
+  goes through `StructureCodec`, because the `.xyz` and its `.molstruct.json`
+  are one file. Written 2026-09-07 after four readers of that pair were found,
+  one of which (`molbuilder.load()`) dropped the sidecar entirely and cost
+  `jobset init` the author's regions and frozen atoms. It derives the callers
+  from the code rather than checking a list of names — a list would have had
+  `load()` on it, looking reasonable.
 - `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures
   (`isolated_projects_root` and its module-scoped sibling, `write_machine_record`);
   each e2e file carries its own `flask_server`.
