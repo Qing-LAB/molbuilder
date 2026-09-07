@@ -488,7 +488,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 95 routes
+## 3. Endpoint index — all 92 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,

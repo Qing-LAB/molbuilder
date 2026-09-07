@@ -288,11 +288,13 @@ def test_nothing_tags_a_state_on_your_behalf(client, started, calc):
 # ------------------------------------------------------------------ #
 
 
-def test_config_reports_the_limit_and_where_it_lives(client, started):
-    body = _get(client, "config", started).get_json()
-    assert body["size_limit_bytes"] == 1024
-    assert body["edit_in"] == "molbuilder.json"
-    assert body["calculation"] == "BDT_Au_relax"
+# `test_config_reports_the_limit_and_where_it_lives` stood here, driving
+# GET /api/checkpoint/config -- a route with no browser caller, retired
+# 2026-09-07.  It was missed in the sweep that retired the route because it
+# builds the URL through `_get(client, "config", ...)`, so a grep for
+# "checkpoint/config" does not see it.  The same blind spot the retirement
+# analysis had to correct for on three OTHER routes, hit here by the person
+# who wrote the correction.
 
 
 # ------------------------------------------------------------------ #
