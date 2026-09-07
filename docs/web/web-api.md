@@ -639,12 +639,20 @@ installed, and the reason as a string when NVML was installed and refused to
 start. The strip hides its GPU cells either way; only the second case prints
 anything, because only the second case is something being wrong.
 
-**Docs** — `GET /api/docs/list` (the flat docs listing), `GET /api/docs/read`
-(one markdown doc; also serves the whitelisted root `../README.md` /
-`../LICENSE`), `GET /api/docs/toc` (the sidebar tree from `docs/toc.json`;
-auto-discovers new domain docs and best-effort persists the repaired tree —
-read-only installs are served from memory), and `GET /api/docs/img/<path>`
-(images only, contained to `docs/img/`) — what the Documents tab reads.
+**Docs** — `GET /api/docs/read` (one markdown doc; also serves the
+whitelisted root `../README.md` / `../LICENSE`), `GET /api/docs/toc` (the
+sidebar tree from `docs/toc.json`; auto-discovers new domain docs and
+best-effort persists the repaired tree — read-only installs are served from
+memory), and `GET /api/docs/img/<path>` (images only, contained to
+`docs/img/`) — what the Documents tab reads.
+
+`GET /api/docs/list` (a flat listing, grouped by top-level directory) is
+**also served and is read by nothing**. It was the tab's original listing;
+the very next commit replaced it with the `toc.json` tree and the browser has
+not called it since. This sentence named it among "what the Documents tab
+reads" until 2026-09-07, which is the drift a caller-less route causes: the
+contract said the tab depended on it, so nobody looked. Its role is
+`plans/plan.md` **W8**.
 
 **Admin** (admin-gated) — `GET /api/admin/rate_limit/status` (the blocked-IP
 list) and `POST /api/admin/rate_limit/clear` (unblock an IP, or
