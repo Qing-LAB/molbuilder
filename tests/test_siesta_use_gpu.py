@@ -781,3 +781,99 @@ def test_a_named_env_always_wins_over_the_route(tmp_path, caps_with_gpu_env):
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources(), env="molbuilder-siesta").read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
+
+
+# ---------------------------------------------------------------------------
+#  The two detectors must agree  (plans/plan.md § 5f, S12)
+# ---------------------------------------------------------------------------
+#
+#  Whether a run needs a GPU is worked out TWICE, and both are required:
+#  `_fdf_requests_gpu` in Python when the wrapper is generated, on a login
+#  node, to pick the environment and the `.sbatch` header -- and an awk pass
+#  inside the wrapper at launch, on the compute node, hours later, because a
+#  person may have edited the deck in between.  One cannot call the other:
+#  they run on different machines at different times.
+#
+#  So they are not merged, they are COMPARED.  The wrapper's own comment
+#  states the rule they share -- "BOTH keyword spellings, SIESTA fdf_get's
+#  truthy set, LAST occurrence wins" -- and until now nothing checked that the
+#  two obey it the same way.  A drift here is silent and expensive: the header
+#  asks for a GPU node and the job then runs on CPU, or the reverse.
+#
+#  The shell is EXTRACTED FROM A RENDERED WRAPPER rather than copied here, so
+#  this tests what ships.
+
+_DECKS = [
+    # (name, deck body, expected)
+    ("absent",                 "SystemLabel J\n",                              False),
+    ("modern spelling",        "Diag.ELPA.GPU .true.\n",                       True),
+    ("older spelling",         "Diag.ELPA.UseGPU .true.\n",                    True),
+    ("truthy: true",           "Diag.ELPA.GPU true\n",                         True),
+    ("truthy: yes",            "Diag.ELPA.GPU yes\n",                          True),
+    ("truthy: t",              "Diag.ELPA.GPU T\n",                            True),
+    ("truthy: y",              "Diag.ELPA.GPU y\n",                            True),
+    ("truthy: 1",              "Diag.ELPA.GPU 1\n",                            True),
+    ("falsy: .false.",         "Diag.ELPA.GPU .false.\n",                      False),
+    ("falsy: no",              "Diag.ELPA.GPU no\n",                           False),
+    ("falsy: 0",               "Diag.ELPA.GPU 0\n",                            False),
+    ("last wins: on then off", "Diag.ELPA.GPU .true.\nDiag.ELPA.GPU .false.\n", False),
+    ("last wins: off then on", "Diag.ELPA.GPU .false.\nDiag.ELPA.GPU .true.\n", True),
+    ("last wins across spellings",
+     "Diag.ELPA.UseGPU .true.\nDiag.ELPA.GPU .false.\n",                       False),
+    ("case-insensitive label", "DIAG.elpa.GpU .TRUE.\n",                       True),
+    ("leading whitespace",     "    Diag.ELPA.GPU .true.\n",                   True),
+    ("longer token is not it", "Diag.ELPA.GPUX .true.\n",                      False),
+    ("commented out",          "# Diag.ELPA.GPU .true.\n",                     False),
+    ("no value",               "Diag.ELPA.GPU\n",                              False),
+    ("trailing comment",       "Diag.ELPA.GPU .true.   # on purpose\n",        True),
+]
+
+
+def _launch_side(wrapper_text, deck):
+    """Run the wrapper's OWN awk + case block against *deck*, under bash."""
+    import re
+    import subprocess
+
+    m = re.search(r"^(_mb_gpu_val=\$\(awk .*?)$", wrapper_text, re.M)
+    assert m, "the wrapper no longer computes _mb_gpu_val -- has the awk moved?"
+    awk_line = m.group(1).replace('"' + deck.name + '"', '"$1"')
+    if '"$1"' not in awk_line:                     # the deck name is baked in
+        awk_line = re.sub(r'"[^"]*\.fdf"', '"$1"', awk_line)
+    case_block = re.search(r"^case \"\$_mb_gpu_val\" in$.*?^esac$",
+                           wrapper_text, re.M | re.S)
+    assert case_block, "the wrapper no longer branches on _mb_gpu_val"
+    script = (awk_line + "\n" + case_block.group(0)
+              + '\necho "$_mb_gpu_active"\n')
+    out = subprocess.run(["bash", "-c", script, "bash", str(deck)],
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip().splitlines()[-1] == "1"
+
+
+@pytest.mark.parametrize("label,body,expected", _DECKS,
+                         ids=[d[0] for d in _DECKS])
+def test_both_gpu_detectors_read_one_deck_the_same_way(tmp_path, label, body,
+                                                       expected):
+    """Generation-time Python and launch-time awk, on the same deck.
+
+    MUTATION THIS MUST FAIL AGAINST: change either side's rule alone --
+    drop a truthy value from `_GPU_TRUTHY`, drop the older
+    `Diag.ELPA.UseGPU` spelling from the awk, or make either take the FIRST
+    occurrence instead of the last.
+    """
+    deck = tmp_path / "job.fdf"
+    deck.write_text(body, encoding="utf-8")
+
+    generation = _runwrap._fdf_requests_gpu(deck)
+    wrapper = _runwrap.write_run_wrapper(
+        deck, resources=Resources(), env="molbuilder-siesta"
+    ).read_text(encoding="utf-8")
+    launch = _launch_side(wrapper, deck)
+
+    assert generation == launch, (
+        f"the two GPU detectors disagree on {label!r}: generation says "
+        f"{generation}, launch says {launch}.  They run on different machines "
+        f"at different times and cannot call each other, so the only thing "
+        f"keeping them honest is this test")
+    assert generation == expected, (
+        f"both agree on {label!r}, and both are wrong: expected {expected}")
