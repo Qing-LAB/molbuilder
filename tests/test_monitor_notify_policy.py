@@ -302,7 +302,18 @@ def test_a_misspelled_kind_falls_back_to_the_host_and_says_so(tmp_path, capsys):
     got = M.load_channels(str(f))["chat"]
     assert got["kind"] is None
     assert M.channel_kind(got) == "discord"          # the host still answers
-    assert "discrod" in capsys.readouterr().out or True
+    # `... or True` STOOD HERE, which made this assertion unfailable and left
+    # the claim in this test's own NAME -- "and says so" -- unchecked.  The
+    # original assertion looked for the typo itself in the output; the message does
+    # not echo it, so rather than fix the assertion or the message somebody
+    # appended `or True`.  This asserts what the warning actually says.
+    said = capsys.readouterr().out
+    assert "channel 'chat'" in said, (
+        "a misspelled kind must be reported against the channel it was found "
+        f"on; got {said!r}")
+    assert "reading it off the URL instead" in said, (
+        "the report must say what it did INSTEAD, or a reader cannot tell a "
+        "warning from a refusal")
 
 
 def test_a_molbuilder_channel_carries_a_signing_key(tmp_path):

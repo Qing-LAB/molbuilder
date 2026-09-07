@@ -90,7 +90,8 @@ def test_the_local_machine_can_be_NAMED(web_client, described):
     """The regression this closes: with a named record on file there was no
     spelling for "the box I am on" at all."""
     from molbuilder.scheduler.record import machine_for
-    assert machine_for(target=LOCAL_TARGET, probe=False) is None or True
+    # (`assert ... is None or True` stood here, unfailable and therefore
+    #  saying nothing.  The important half is below and always was.)
     # the important half -- it does not raise the ambiguity refusal
     from molbuilder.scheduler.record import AmbiguousTarget
     try:

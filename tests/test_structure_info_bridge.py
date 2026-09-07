@@ -308,76 +308,54 @@ class TestTheBrowserSide:
             "a FLAT payload.info is a key no route sends -- reading it is the "
             "bug that shipped, and it must stay unread")
 
-    def test_a_stated_store_rides_the_request_out(self):
-        """§ 8.4a's *'it rides installMolecule in'* -- asked of the request
-        the door actually posts, not of the line that builds it.
+    def test_the_store_arrives_on_the_structure(self):
+        """§ 8.4a's *"it rides installMolecule in"* -- asked of what the viewer
+        is HANDED, not of the key that used to carry it.
 
-        The TEXT shape, because that is the one this field exists for: a
-        `path` load reads the store out of the pair's `.molstruct.json` and a
-        structure put back carries it in its envelope, so text is the only
-        shape with no document behind it and the host must state it.
+        The store travels INSIDE the envelope (`payload.structure.info`), which
+        is where the read has always looked -- this file's header records the
+        bug from asking for a flat `payload.info` that no route ever sent. As
+        of 2026-09-07 that is the only way in: the `info` request key existed
+        for the TEXT branch, whose last real caller (the Results trajectory
+        tab) now hands over an envelope the server assembled, so there is no
+        longer a shape with a structure and no room for its store.
+
+        The assertion is the one that survives a mechanism change: the viewer
+        ends up holding what the server said, and the request carried nothing
+        beside the structure.
         """
         out = _run("""
-        // `handed` is the viewer the door installs INTO -- stubbed to the
-        // three calls the load path makes, so the REQUEST is what is tested.
-        const handed = { put() {}, recordFirstState() {}, announce() {} };
+        let installed = null;
+        const handed = { put(structure) { installed = structure; },
+                         recordFirstState() {}, announce() {} };
         const install = JOBS.createLoad(handed);
-        await install({ text: "1\\nx\\nO 0 0 0\\n", filename: "a.xyz",
-                        info: { calculation: "vibration" } });
-        await install({ text: "1\\nx\\nO 0 0 0\\n", filename: "b.xyz",
-                        info: {} });
+        await install({ structure: { elements: ["O"], positions: [[0, 0, 0]],
+                                     info: { calculation: "vibration" } } });
         console.log(JSON.stringify({
-            route: globalThis.__sent[0].route,
-            info:  globalThis.__sent[0].body.info,
-            emptyIsAbsent: "info" in globalThis.__sent[1].body,
+            route:     globalThis.__sent[0].route,
+            sentKeys:  Object.keys(globalThis.__sent[0].body).sort(),
+            heldInfo:  installed && installed.info,
         }));""")
         assert out["route"] == "/api/build/load"
-        assert out["info"] == {"calculation": "vibration"}, (
-            "installMolecule dropped the store the host stated, so the server "
-            "never learns what describes the structure it is being handed")
-        assert out["emptyIsAbsent"] is False, (
-            "an empty store must not be sent -- absent and 'described with "
-            "nothing' are different answers")
+        assert out["sentKeys"] == ["structure"], (
+            "the envelope goes over alone; a side-block beside it is the shape "
+            "that let a structure and its store disagree")
+        assert out["heldInfo"] == {"calculation": "relax"}, (
+            "the viewer must end up holding the store the SERVER answered "
+            "with -- read off `payload.structure.info`, the one place it lives")
 
-    # ---------------------------------------------------------------- #
-    #  NOT CONVERTED, and why -- `plans/plan.md` § 5h                    #
-    # ---------------------------------------------------------------- #
-
-    def test_the_trajectory_holds_the_store_across_rebuilds(self):
-        """The page rebuilds its viewer on every poll, so the store lives in
-        ``fileState`` beside its two neighbours and is handed back on every
-        rebuild -- not attached to the viewer once after a load.
-
-        **STILL A SOURCE PIN, deliberately, and it is BROWSER work not node
-        work** (2026-09-06).  The other three claims in this class became node
-        tests because their functions are exported and pure.  These four are
-        not: the aliasing runs inside `mountInspector` through
-        `inspectorLifecycle.alias`, and the resets and the APPLY branch are in
-        `transition()`, a reducer that only exists once a viewer is mounted.
-        No harness mounts one headless, and inventing one to reach four lines
-        would cost more than the Playwright test that is the real answer.
-        Reclassified from *node* to *browser* in
-        `tools/classify_source_reads.py`, so the work list says so.
-
-        What DID change: the two assertions that measured whitespace now
-        match on structure.  `src.count('state.fileState.info         = null;')`
-        counted an exact line, nine embedded spaces included -- it fired on a
-        reformat and stayed green through the defect.  Same coverage, one less
-        way to be wrong for no reason.
-        """
-        src = _src("trajectory/core.js")
-        assert re.search(r'alias\(\s*"info"\s*,\s*"fileState"\s*\)', src), (
-            "the store is per-file state, like atomMetadata/periodicity")
-        assert len(re.findall(r'state\.fileState\.info\s*=\s*null', src)) == 2, (
-            "both resets (LOADING and IDLE) must clear it, beside the two "
-            "fields they already clear")
-        assert re.search(r'if\s*\(\s*payload\.info\s*!==\s*undefined\s*\)', src), (
-            "APPLY must KEEP on undefined -- the 200 ms poll omits the block, "
-            "and an always-present one would clear it every tick")
-        install = src.split("_mvdata().installMolecule({")[1].split("});")[0]
-        assert "info:" in install, (
-            "the store must ride the ONE entrance, so the history anchor is "
-            "recorded with it and a rebuild cannot drop it")
+    # `test_the_trajectory_holds_the_store_across_rebuilds` STOOD HERE and is
+    # retired (2026-09-07).  It was the last source pin in the repo: it grepped
+    # `trajectory/core.js` for an `alias("info", ...)` call, counted
+    # `state.fileState.info = null` twice, and asserted the literal `info:`
+    # appeared inside the `installMolecule({...})` call.
+    #
+    # Its subject is gone.  The tab no longer passes `info` to
+    # `installMolecule` at all -- the server assembles frame 0 as an envelope
+    # with the store already on it -- so the pin now fails on a change that
+    # made the code MORE correct, which is exactly the failure mode a pin has.
+    # The behaviour it reached for is covered above, against what the viewer
+    # actually ends up holding.
 
 
     def test_an_export_carries_the_store_out(self):
