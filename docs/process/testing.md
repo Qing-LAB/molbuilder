@@ -56,6 +56,39 @@ past the boundary silently. This is what lets `cli` and `web` share one API
 without circular imports — see the thin-shell note in
 [`conventions.md § 3`](?doc=process/conventions.md).
 
+### 2a. A test never touches the real projects tree
+
+**A test that builds a folder under the developer's own `projects/` is
+reading and writing their data.** It also lies: it passes because that tree
+happens to hold something, and it fails on a machine where it does not.
+
+The rule is one door, the same one production uses. `projects_root()` is the
+single definition and the only reader of `$MOLBUILDER_PROJECTS`; it feeds
+`Capabilities.file_picker_roots()` → `GET /api/files/roots` →
+`setProjectsRoot()` → `projects.getProjectsRoot()`. A test points that door
+somewhere temporary and builds inside it:
+
+- **`isolated_projects_root`** (function-scoped) — `$MOLBUILDER_PROJECTS` →
+  `tmp_path/projects`. Use this by default.
+- **`isolated_projects_root_module`** — the module-scoped sibling, for a
+  fixture a whole file shares. It exists because a module-scoped fixture
+  cannot ask for `tmp_path`; it uses `MonkeyPatch()` and `tmp_path_factory`
+  directly.
+
+Nothing is cached: `file_picker_roots()` calls `projects_root()` at CALL
+time, so pointing the door is enough and the live server serves the tmp tree.
+
+**Enforced, not just written here.** `test_no_tests_read_the_projects_tree.py`
+AST-walks every test file for a path built from the repository root joined to
+`projects`, and carries a ten-row truth table of what must and must not fire —
+because a guard nobody has watched fail is a guard nobody has tested. It found
+thirteen sites in seven files, all converted 2026-09-06.
+
+**A fixture of your own that re-isolates `HOME` or `XDG_CONFIG_HOME` moves the
+machine scope out from under `conftest`'s.** If the test then preps, call
+`conftest.write_machine_record()` at the end of that fixture — prep refuses
+without a probed record (`running-a-job.md` § 3.1).
+
 ## 3. Design tests *around* the envs, never the reverse
 
 molbuilder dispatches into per-backend conda envs
@@ -325,5 +358,8 @@ deliberately not installed there.
 - `_node_esm.py` — the Node ESM load-sim harness the `*_js.py` tests use (§4).
 - `test_no_inline_scripts.py`, `test_negative_body_assert_lint.py` — the
   artifact lints (§ 6).
-- `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures;
+- `test_no_tests_read_the_projects_tree.py` — no test builds a folder inside
+  the developer's real `projects/` tree (§ 2a); carries its own truth table.
+- `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures
+  (`isolated_projects_root` and its module-scoped sibling, `write_machine_record`);
   each e2e file carries its own `flask_server`.
