@@ -425,10 +425,15 @@ verify:
   **δ-factor** benchmarks — a scalar scoring how closely the pseudo's
   equation-of-state matches all-electron); molbuilder trusts a vetted source and
   checks only consistency + integrity.
-- **Mesh-cutoff adequacy from the pseudo** — `PsmlInfo.suggested_mesh_ry` is
-  parsed (a PseudoDojo extension) but not yet compared to `cfg.mesh_cutoff`.
-  *(SIESTA's mesh-cutoff floor is checked separately in `validation/siesta.py`,
-  independent of the pseudo's suggestion.)*
+> **One item left this list on 2026-09-07: mesh-cutoff adequacy.** It read
+> *"`PsmlInfo.suggested_mesh_ry` is parsed but not yet compared to
+> `cfg.mesh_cutoff`"* — which § 2a.1 of this same document had already
+> contradicted. It IS compared: `validation/siesta.py:157` reads the
+> suggestion out of the PSML header and `_check_siesta_mesh_cutoff` raises
+> *"mesh_cutoff = X Ry is below Y Ry"* against it. A "what is not checked"
+> list that names a check the file itself documents elsewhere is worse than
+> no list.
+
 - **Basis ↔ pseudo consistency** — that the **PAO** (pseudo-atomic-orbital, SIESTA's
   numerical basis set) l-channels match the pseudo's. Deferred.
 

@@ -71,7 +71,7 @@ of these images changes.
 - Default 3Dmol camera (no user rotation) where the structure shape
   matters — Au-BDT-Au reads cleanly with the junction axis vertical.
 
-## The 10 manifest entries
+## The 9 manifest entries
 
 | # | Filename | Used in README § | URL | What to load / set | Zoom region | Communicates |
 |---|---|---|---|---|---|---|
@@ -88,7 +88,7 @@ of these images changes.
 ## Naming + path convention
 
 - All PNGs land at `docs/img/<exact-filename>.png` as listed above.
-- The manifest is the whole of `docs/img/`: exactly these 10 files,
+- The manifest is the whole of `docs/img/`: exactly these 9 files,
   each referenced by the README.  A PNG nobody references doesn't
   belong there.
 
@@ -111,3 +111,12 @@ of these images changes.
 - Smaller corrections (palette tweak, font change) don't need a
   re-capture unless the change is the headline of the README
   paragraph.
+
+## Drift found 2026-09-07
+
+`docs/img/` holds **10** PNGs; this manifest lists **9**.
+`results-bundle-card.png` has no row here and is referenced by no document —
+which this file's own rule forbids: *a PNG nobody references doesn't belong
+there.* Either give it a row and a reference, or delete it. Left in place
+rather than deleted unasked, because a screenshot is cheap to re-take only if
+someone remembers what it showed.

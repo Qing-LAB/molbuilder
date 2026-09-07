@@ -60,17 +60,20 @@ NOT read here any more."** It is open.
 
 | # | item | from | state |
 |---|---|---|---|
-| **E1** | **Benchmark iteration count, settable per calculation.** No field exists on `task.json` or `Resources` | `bench-and-junction` § 2.1 | not started |
+| **E1** | **Benchmark iteration count, settable per calculation.** No field exists on `task.json` or `Resources` — confirmed 2026-09-07. **Bigger than the row says:** the archived design was a one-point `bench` entry overriding the pin, and that path is now explicitly closed — `_cli.py:1961` `pins = {**declared_pins, **_MEASUREMENT_PINS}`, with the comment that measurement pins *"must win over any declaration — one-point declarations and value-axis coordinates alike."* So this needs a written precedence rule reversed, not a field added | `bench-and-junction` § 2.1 | not started |
 | ~~**E2**~~ | **DONE 2026-09-03 by your ruling — *use the exact one when it's there, fall back to the csv*.** `parse_utilisation` is the one door: the monitor's `[UTIL-SUMMARY]` means (averaged over EVERY tick) where it wrote them, `util.csv`'s time-weighted reconstruction (a ≥10%-change-gated subset) where it did not — which is what a KILLED trial leaves, the one a benchmark most needs to read. | `bench-and-junction` § 2.2 | done |
 | ~~**E3**~~ | **DONE 2026-09-03 — named, with the tell that detects it.** | `bench-and-junction` § 3B | done |
-| ~~**E4**~~ | **DONE 2026-09-03.** The *node name and CPU model* half was already there — the monitor's `[MACHINE]` line is written first, unconditionally, on every path. | `bench-and-junction` § 3D | done |
-| **E5** | **Two facts need a Sol run**, not code: a real `[MACHINE]` line from a live job, and a re-probe to settle `lightwork`'s cap | `machine-identity` § 6 | blocked on a machine |
+| ~~**E4**~~ | **DONE 2026-09-03 — but this row overstated what shipped, corrected 2026-09-07.** The `[MACHINE]` line is written first, unconditionally, on every path. It carries `node`, `cores`, `mem_gb` and `gpu` (`monitor.py:555`) — **there is no CPU model field**, and `gpu` is a device model, not one. If the CPU model is wanted, it is a new item, not a done one. | `bench-and-junction` § 3D | done (narrowed) |
+| ~~**E5**~~ | **DONE — the run already happened, 2026-08-28/30; the row outlived its own evidence.** 57 files under `projects/` carry `[MACHINE]` lines from live Sol jobs across 8 distinct nodes, in the exact format `machine_line()` emits today (`monitor.py:555`). And `lightwork`'s cap is answered: four probed `environment.json` files record `max_cpus_per_job: null` **with the key present**, which is the contract's *asked and unstated* — the suspected 8-core cap does not exist. **Why it survived:** the evidence is in the gitignored `projects/` tree, so no document could see it. A row whose proof cannot be checked by reading the repo needs its outcome written into a document at the time, or it stays "blocked" forever | `machine-identity` § 6 | done |
 | ~~**E6**~~ | **DONE 2026-09-03 by your ruling — a reference, not a default.** | found 2026-09-01 | done |
-| **E7** | **D7's cluster half** — the same prep→submit→watch loop through SLURM on Sol. Everything else about D7 shipped; this needs the machine, and pairs with **E5** in one session | roadmap § 1 | blocked on a machine |
+| **E7** | **D7's cluster half** — the prep→submit→watch loop for a **run** through SLURM on Sol. **Not blocked on access, re-derived 2026-09-07:** the machine was used on 2026-08-30 and every Sol ledger entry is the *bench* lane (real `sbatch` ids, real nodes). No `kind: "run"` submission exists on any Sol tree — the only ones are workstation `direct` mode, which is the half D7 already passed. So this is a session someone has to sit down for, not a door that is shut | roadmap § 1 | open |
 | ~~**E8**~~ | **ALREADY DONE — verified 2026-09-03, not changed.** | roadmap § 1 | done |
 | ~~**E9**~~ | **BOTH HALVES CLOSED 2026-09-03.** | roadmap § 6 | done |
-| **E10** | **Detecting from the `.out` that a run STOPPED**, and whether it stopped converged (`SCF_NOT_CONV` / `ABNORMAL_TERMINATION`) — **on a zero exit too**, since an MPI stack may not propagate an abort. Ruled to belong to `mb_monitor.py`, not the execution branch | roadmap § 4 | open |
+| **E10** | **NEEDS A RE-SCOPE, not implementation — re-derived 2026-09-07.** The detection is **built**: `parse/engines/_run_ending.py` is the one marker table (`abnormal_termination` → `stopped`, OOM markers, `SCF_NOT_CONV`), `scan_ending()` returns `(run_state, scf_converged, error_message)`, and `summarize.py:217` + `cli.py:2771` consume it — the zero-exit case being the whole point. What is NOT built is the monitor half, and **deliberately**: `monitor.py:138` says *"NO COMPLETION MARKERS HERE"* and `job-contracts.md:214` now rules the monitor follows the launcher's PID *"rather than guessing from output markers"* — which contradicts this row's own "belongs in `mb_monitor.py`". The real gap is narrower: **the monitor's finish report carries no convergence fact.** Decide whether it should before writing anything | roadmap § 4 | open (re-scope) |
 | **T1** | **A LIVE POLL THAT MUST REBUILD DOES NOT UPDATE THE MOVIE — found 2026-09-07.** The append path is fine; the full-rebuild path is not. Reproduced: move the frame at `oldLen - 1` (the one `_frameEqualAt` reads) and grow the feed 4 → 6, so `canAppend` refuses and `applyNewData` takes the `else` branch. The status line then says *"Loaded 6 … frames"* and the frame bar still holds **4** — the feed's count and the movie's disagreeing, which `core.js` itself names as bug **#35**. The trigger is ordinary: a frame that was still being written when the last poll caught it, and has since settled. **Two things hide it, each worth its own look:** `setStatus` is a no-op on `/results` (`if (!document.getElementById("status")) return;`), so `rebuildModel`'s *"Viewer failed to load the run"* reports into nothing on the page the inspector lives on; and *"Loaded N frames"* is written by `applyNewData` from the FEED's count while `rebuildModel` runs unawaited beside it, so the tab can claim frames it is not showing. Recipe at the foot of `tests/test_inspector_registry_e2e.py`; it blocks the last three source pins in `test_structure_info_bridge.py`, which is how it surfaced | found 2026-09-07 | open |
+| **E12** | **The Methods paragraph is still a placeholder — DROPPED BY THE CONSOLIDATION, recovered 2026-09-07.** Roadmap § 2 listed four TranSIESTA items; plan.md carried three (one became **W10**) and lost this one. `transport/transiesta.py:1015` still emits *"(Full Methods paragraph deferred to the follow-up release…"* and `transport/engine_base.py:135` calls the fragment *"composed by the future Methods generator"* — pointing at the archived roadmap, which is where it went to die. The work: interpolate the record's real run parameters instead of the placeholder | roadmap § 2 · `transport-design` § 6 | open |
+| **E13** | **The first real junction walk — BDT–Au, workstation then Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5/E7) and the browser and deck walks (W12/E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | open |
+| **E14** | **Two bibliography keys — Reed 2006 and Stokbro 2003 — are cited nowhere in `science/references.bib`.** Verified absent 2026-09-07. Mechanical, small, and dropped by the consolidation | roadmap § 4 | open |
 | **E11** | **A fresh live walk of the PySCF / spectra decks.** The 2026-08-28 review exercised them only through the guard suites and says so | audit 08-28 § 5 | open |
 
 ## 3. Open — configuration and ops
@@ -88,17 +91,20 @@ NOT read here any more."** It is open.
 | **W1** | **The document tier (step C).** `html, body`, `header`, `button`, `footer`, `textarea` genuinely differ per page; the `*` reset is already deleted. Blocked on a browser pass over all pages | `css-system` § 4C | partly |
 | **W2** | **One home per component (step D).** `.card`, `.status`, `header .tagline`. **One value to settle first:** `.card`'s padding is `var(--space-md) 18px 18px` and 18 is off the 4px grid the contract declares — moving it shifts every page by 2px | `css-system` § 4D | not started |
 | **W3** | **Per-page token/namespace passes (step E)**, one page per commit: `spectra`, `structure-optimization`, `transport`, `results`, `documents` | `css-system` § 4E | partly |
-| **W4** | **Guards 1 and 2 (step F)** — one home including elements; a page sheet contains only its own tier. Guard 3 landed; a fourth (no long block copied between sheets) landed 2026-09-01 | `css-system` § 4F | partly |
-| **W5** | **The inspectors module's appearance still lives in `results/style.css`** — 70 mentions. Mount an inspector on another page and it renders unstyled. Three of its sheets have been repatriated; the rest is a module change, deliberately | `css-system` § 7.0 | partly |
-| **W6** | **The editor module.** **Re-measured 2026-09-06 and the row was overstated in one half and stale in the other.** The loader half is *half done*: `lib/codemirror-load.js` is the ONE loader as of 2026-08-16 and two of the three surfaces import it — `lib/inspectors/markdown.js` still hand-rolls its own `loadCSS`/`loadScript` pair (`markdown.js:45–50`), so it is **two loaders, not three**. **Three** sheets theme `.CodeMirror` (`markdown.css`, `task-setup/style.css`, `projects-sidebar.css`) carrying **30** rules — not the 40 this row claimed; 30 is what the original plan measured, and the increase never happened. The caps (1500-line selection, 1 MB view-only) on **one** surface stand | `editor-module` | partly |
+| **W4** | **Guards 1 and 2 (step F)** — one home including elements; a page sheet contains only its own tier. Guards 3 and 4 landed. **Both remaining gaps are now provable, 2026-09-07:** guard 1 is absent *by an explicit skip* — `test_css_no_duplicate_selectors.py:150` reads `if "." not in norm: continue`, so element-only selectors are exempt by construction; guard 2 has no test at all | `css-system` § 4F | partly |
+| **W5** | **The inspectors module's appearance still lives in `results/style.css`.** **Re-derived 2026-09-07 and the number was prose:** 70 was `grep -c inspector`, which counts the file's 200-line comment header and a hierarchy diagram. Comments stripped and classified by who EMITS each class: **22 module-owned rule blocks**, and **6 of those are dead** — `.inspector-section`, `-section-header`, `-section-body`, `-section-hint`, `.source-body-error`, `.structure-error` have **zero emitters anywhere** in the repo and are deletable outright, which this row never said. Three sheets are already repatriated. *"Renders unstyled elsewhere"* is **latent, not reachable**: `registry.js` is script-tagged by `results.html` only, so the css-system doc's premise (it also loads on /molbuilder and /spectra) is stale. Also: `inspectors/bench-summary.css` is missing from the boundary guard's `MODULE_SHEETS`, so that guard treats a module sheet as a page sheet | `css-system` § 7.0 | partly |
+| **W6** | **The editor module.** The loader half is confirmed and accurate: `lib/codemirror-load.js` is the one loader, two of three surfaces import it, and `lib/inspectors/markdown.js` still hand-rolls its own pair — *definitions* at `markdown.js:31` and `:38` (this row cited only the call site). **The sheet number was wrong twice over, re-derived 2026-09-07: 21 rule blocks / 60 declarations, not 30 and not 40.** The original 25+4+1 was never reproducible as a block count either — `projects-sidebar.css` has held 16 CodeMirror blocks at every commit back to 2026-08-28. The caps (1500-line selection, 1 MB view-only) are on `preview.js` alone, confirmed | `editor-module` | partly |
 | **W7** | **I7 close-out** — the browser walk of Results export → cite → describe → prep. I1–I6 done | `structure-info` I7 | open |
-| **W8** | **Caller-less endpoints — decide the ROLE, do not just delete.** `/api/docs/list` (a second answer to "what docs exist" beside the `/api/docs/toc` the tab calls); `/api/checkpoint/config` (the read half of a route whose write half was removed); `/api/selection/atoms` (pinned by five test files) | `structure-info` § 3 | open |
+| **W8** | **Caller-less endpoints — decide the ROLE, do not just delete.** All three confirmed still present with no JS and no non-test caller, 2026-09-07. `/api/docs/list` (`docs.py:415`) — the "second answer" framing is exact: the tab calls `/api/docs/toc` and `/api/docs/read`, never this. `/api/checkpoint/config` (`checkpoint.py:239`) — the write half is genuinely gone, and it has **zero** test references; the 45 `checkpoint_config` hits in `tests/` are a pytest fixture of the same name, a collision that will mislead the next reader. `/api/selection/atoms` (`selection.py:238`) — **3 test files call it, 2 only name it in prose**, not the "five" this row claimed | `structure-info` § 3 | open |
 | **W9** | **Transport viewer default orientation** — a MolView camera-door contract question | `structure-info` § 3 | open |
 | **W10** | **Results transmission inspector** — the record exists, the reader does not | `structure-info` § 3 · roadmap § 2 | open |
 | **W12** | **The live browser walk-throughs** — checkpoint swap at narrow and wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1. Carried since the archived molview-and-checkpoint plan | roadmap § 0.3 | open |
-| **W13** | **Raw px/rem literals — re-measured 2026-09-06, and the row's number does not survive its own definition.** In *the page sheets* (the eight per-page directories) there are **160**, not 384. The bulk is somewhere this row never said: **`lib/` carries 740**, which is where the shared components live and where a token would pay for itself most. Definition first next time — 777 → 384 → 160 are three scopes, not three measurements of one thing | roadmap § 7.4c | partly |
+| **W13** | **Raw px/rem literals — re-derived a THIRD time, 2026-09-07, and the definition finally holds still.** 160 / 740 reproduce exactly, but only because the regex reads raw file text *including comments*. Counting literals **in declarations**: **133** across the eight page sheets, **650** in `lib/`. Two things the row hides: `lib/tokens.css`'s 44 literals ARE the scale definitions — the token layer, not violations — and `lib/molview/molview.css` alone is **252**, 39% of the whole `lib/` figure. So "lib/ carries 740" is really "MolView carries 252, and the rest of lib carries ~400". 777 → 384 → 160/740 → 133/650 are four scopes, not four measurements | roadmap § 7.4c | partly |
 | **W14** | **A web plan view and a per-stage status roll-up.** The web *describes* a staged calculation (Task setup) and *observes* runs (Results); neither shows the plan as a whole | roadmap § 6 | open |
-| **W15** | **Sealing the MolView module's internals and finishing the ES-module conversion** — both **browser-verified** before they count. Plus routing the CLI through the shared codec and exercising the last annotation-channel kind | roadmap § 3 | partly |
+| **W15** | **Sealing the MolView module's internals and finishing the ES-module conversion** — both **browser-verified** before they count. Plus routing the CLI through the shared codec and exercising the last annotation-channel kind. Confirmed 2026-09-07: `lib/molview/` has **no `_seal.js`** where `spectrumchart/` and `vibrationview/` both do, and seven inspector scripts on `results.html` are still classic `<script defer>` against two on `type="module"` | roadmap § 3 | partly |
+| **W16** | **Spectrum-tab display settings do not survive a reload — DROPPED BY THE CONSOLIDATION.** The `uiPrefs` bucket holds six real knobs (mode filter, sort column and direction, broadening, animation amplitude and speed) and the save/restore is never wired: `lib/spectra/core.js` has **zero** actual `sessionStorage` calls, only comments proposing the key `molbuilder.results.spectra.uiPrefs.v1`. The contract's stated promise — survive a *file switch* — IS met, so this is the enhancement the code marks "PR 3.1?", not a violation. Trajectory leaves the same bucket empty on purpose and is not affected | roadmap § 3 | open |
+| **W17** | **Flat-shape citation ergonomics — DROPPED BY THE CONSOLIDATION.** `structure-info-plan` § 5.6's backlog had five entries; three became W8/W9/W10 and this was not carried. A flat calculation folder holds several stage decks and one shared `.XV`, so citing it refuses as ambiguous; the recorded refinement was to disambiguate by the concluded marker's stage. No such logic exists | `structure-info` § 5.6 | open |
+| **W18** | **"Modify functions (Molbuilder tab)" — item ZERO of `structure-info-plan` § 5.6's own priority order, annotated *"user calls it higher priority; not yet described."*** It never reached plan.md in any form, and is still described nowhere. Blocks nothing technically; it needs a description before it can be planned | `structure-info` § 5.6 | needs describing |
 | ~~**W11**~~ | **DONE — verified 2026-09-06 across both halves.** | `structure-info` § 3 | done |
 
 ## 4a. Open — needs a decision from you
@@ -108,14 +114,15 @@ NOT read here any more."** It is open.
 | ~~**N1**~~ | **CLOSED 2026-09-03 — the rule is written and there is nothing to fix.** | audit 08-28 O4 | done |
 | ~~**N2**~~ | **ALL NINE RETIRED 2026-09-03** | roadmap § 4 | done |
 | ~~**N3**~~ | **ALL THREE WERE ALREADY FIXED — the row was stale, verified 2026-09-03.** | audit 08-28 O5 | done |
-| **N4** | **The science-validation tail** — checks deferred with recorded rationale in `science/pseudopotentials.md`. The roadmap carried them under a heading that said *"needs a home"* for five weeks | roadmap § 5 | needs a home |
+| **N5** | **`structure_modified` is written and nobody reads it — DROPPED BY THE CONSOLIDATION, and it is a decision, not a task.** `structure-info-plan` § 5.5a was headed *"NOT decided, not built"* and never reached plan.md. An edited structure carries `info.calculation.structure_modified: true` into its saved pair (`lib/molview/model.js:419-420` — the ONLY two occurrences in the whole tree, both writes). So a transport citation of an edited pair seals the deck's contract onto atoms the deck never saw, and says nothing. **Your call:** does that warrant a warning, and at which door — the citation, or the prep gate? | `structure-info` § 5.5a | needs a decision |
+| **N4** | **The science-validation tail** — checks deferred with recorded rationale in `science/pseudopotentials.md` § 3. **Now four, not five, and each has a different answer**, re-derived 2026-09-07: *valence-charge correctness* (is Au run with the right 11- vs 19-electron valence — the count is parsed for sanity, never judged), *ghost states* (needs generation-level analysis, not header inspection), *transferability* (deliberately delegated to PseudoDojo's δ-factor — arguably not ours to check at all), and *basis ↔ pseudo consistency* (marked "Deferred." with no rationale at all — the only one with nothing behind it). The fifth, **mesh-cutoff adequacy, was already implemented** and the doc contradicted its own § 2a.1 saying otherwise; corrected 2026-09-07 | roadmap § 5 | needs a home |
 
 ## 5. Open — documentation drift
 
 | # | item | from | state |
 |---|---|---|---|
 | ~~**D1**~~ | **DONE 2026-09-03 — closed, and now guarded.** | `consolidated-cleanup` § 7 | done |
-| **D2** | **Tests with no target, remainder.** 12 removed; ~14 flagged. The two files with zero test functions were **checked and left** — each is a signpost recording where retired coverage moved, which is a service, not residue | `consolidated-cleanup` § 9 | partly |
+| **D2** | **Tests with no target, remainder.** The two files with zero test functions were **checked and left** — each is a signpost recording where retired coverage moved, which is a service, not residue. **Re-derived 2026-09-07 with the definition stated:** 417 test files, 6,529 test functions; 2 files with no test function, **0** empty test bodies, and **10** `Test*` classes that collect nothing — not the 5 recorded. Eight of the ten are in `test_results_state_contract_js.py` and its spectra sibling, stating pins in the present tense while holding nothing. Three named remainders still cannot fail: `test_doc_claims.py:92` (loop filters on a string that appears 0 times in its target), `test_monitor.py:342` (`assert callable(fn)` on a `def`), `test_vibration_form_honesty.py:34` (`STILL_OPEN = {}`, iterated empty) | `consolidated-cleanup` § 9 | partly |
 | ~~**D3**~~ | **DONE — and guarded.** | `consolidated-cleanup` § 9 | done |
 | **D4** | **The README screenshots are three tabs stale** — five captured, eight ship. Nothing can enforce this (no test can count tabs in a PNG); the *owner* of the count is pinned as of 2026-09-01 | `screenshots.md` | open |
 
@@ -262,9 +269,9 @@ checkable rather than hopeful:
 
 | what it does today | where | becomes |
 |---|---|---|
-| `run_status(dir)` | `jobset/runstatus.py` ×1 | `.status` |
+| `run_status(dir)` | defined `parse/dirs/job.py:157`; called from `jobset/runstatus.py:200` ×1 | `.status` |
 | `_resolve_run_directory(dir)` — the 4-rung chain | `web/blueprints/watch.py` ×1 | `.openable` + `.attempts` |
-| `_engine_of(...)` | `web/blueprints/watch.py` ×4 | `.engine` |
+| `_engine_of(...)` | `web/blueprints/watch.py` ×3 *(`:797`, `:886`, `:930` — the table said ×4; re-derived 2026-09-07)* | `.engine` |
 | `engine_of(dir)` | `web/blueprints/watch.py` ×1 | folded in as `.engine` |
 | `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | `.files` + one parse |
 | `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | unchanged — its own verb, over `.files["fdf"]` if the door is handy |
@@ -338,7 +345,12 @@ that is not `active`'s question — see the withdrawn row above:
    Prove equivalence on the real tree BEFORE any caller moves — the
    `run_status` split did this (113/113 identical) and it is the reason that
    deletion was safe.
-2. Move `runstatus` (1 site), then `watch` (9), then `summarize` (5).
+2. Move `runstatus` (1 site), then `watch` (**6**, not 9 — the table above
+   sums to 6 and always did), then `summarize` (5).
+
+   **`run_status` is already through the door**, which the prose above got
+   wrong until 2026-09-07: it is defined in `parse/dirs/job.py` and merely
+   CALLED from `jobset/runstatus.py`. Step 2 moves a caller, not a reader.
 3. Delete the absorbed functions and sweep their documents.
 4. Re-run the caller map above and require it to come back empty.
 
@@ -610,10 +622,26 @@ replaced it, and **53 pointers across 31 documents followed it in**. Fixed
 2026-09-06; the pointers now name this file.
 
 **ALL FOURTEEN RE-DERIVED 2026-09-06** *(user: "verify the 14 seams in
-5f")*, and the ratio is the finding again: **five were already closed**
-(S2, S5, S7's P3, S10's M3, S14), **one is mostly wrong** (S4), **five are
-confirmed open** (S3, S8, S9, S11, S12), and **S11 is worse than it was
-recorded as** — `render_run_wrapper` grew to 2,134 lines and 499 f-strings
+5f")*, and the ratio is the finding again.
+
+> **⚠ THIS PARAGRAPH CONTRADICTED ITS OWN TABLE UNTIL 2026-09-07**, on four
+> rows of fourteen. It counted **S8** and **S11** among "confirmed open" —
+> the table marks both **WITHDRAWN**, and I wrote those cells. It counted
+> **S14** among "already closed"; the table marks it **OPEN** and says the
+> 2026-09-05 ruling made it sharper. And it listed **S12** as open where the
+> cell reasons it closed. A summary that disagrees with the evidence
+> directly beneath it is worse than no summary: this is the shape of the row
+> that survived a whole day in § 4 because nobody re-derived it. Corrected
+> below from the cells, not from memory.
+
+**Three are CLOSED** (S2, S5, S12), **two are WITHDRAWN** as not-work-items
+(S8, S11), **one is mostly wrong** (S4), **six are confirmed OPEN** (S1, S3,
+S6, S13, S14, and S10's own subject), **S9 is now DONE** — the two documents
+stopped disagreeing on 2026-09-06 and `backend-architecture.md` § 2
+retracts the claim in writing — and **two state cells describe the wrong
+seam**: S10's answers S9's question, and S14's describes S12's GPU guard and
+asserts it "does not exist" when S12's own cell shows it does. **S10's and
+S14's real states are unrecorded.** The line counts S11 quoted — `render_run_wrapper` grew to 2,134 lines and 499 f-strings
 while carried as a stable ~1,780 / ~295. Three were measured when the section
 was written (S1, S6, S13) and stand. Two halves are still unchecked and say so
 (S7's P1/P5, S10's M2a).
@@ -658,7 +686,8 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-07: 3 to convert, 64 to keep.** Of 1,220 assertions over
+**Measured 2026-09-07: 3 to convert, 64 to keep** — and all three are blocked
+behind **T1**, not behind effort. Of 1,220 assertions over
 a file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
 text. 67 read a file a person wrote, and 64 of those are lints. Three earlier
