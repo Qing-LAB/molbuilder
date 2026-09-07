@@ -1544,6 +1544,66 @@ def test_describe_attempt_reads_the_attempts_own_deck(web_client, isolated_proje
         pass    # tmp_path removes the tree
 
 
+def _recorded_pair(root, *, edited=None):
+    """A labeled structure pair carrying a finished run's own settings."""
+    import numpy as np
+
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    d = root / "exported"
+    d.mkdir(parents=True, exist_ok=True)
+    s = Structure(elements=["Au", "Au"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.9]]),
+                  vacuum=(10.0, 10.0, 10.0))
+    s.info = {"calculation": {
+        "engine": "siesta",
+        "contract": {"basis_size": "TZP", "siesta_mesh_cutoff_ry": 275},
+        "source": "Relax.fdf", "source_sha256": "c" * 64}}
+    if edited:
+        s.info["calculation"][f"{edited}_modified"] = True
+    StructureCodec().write(s, d / "junction.xyz")
+    return "exported"
+
+
+def test_the_citation_line_says_when_the_pair_was_edited_since(
+        web_client, isolated_projects_root):
+    """What a person reads at the moment of choosing.
+
+    The line already says the contract is RECORDED from a named deck. If the
+    pair was edited after that, the mesh cutoff and k-mesh about to be
+    inherited were converged for atoms that are no longer there -- so the
+    same line has to say so, or the recorded settings read as deliberate.
+    """
+    cite = _recorded_pair(isolated_projects_root, edited="structure")
+    out = web_client.get(f"/api/transport/describe_attempt?path={cite}").get_json()
+    assert out["ok"], out
+    assert "RECORDED" in out["summary"], out["summary"]
+    assert "geometry/cell EDITED SINCE" in out["summary"], (
+        f"the pair's geometry was edited after its contract was recorded and "
+        f"the line a person reads does not say so: {out['summary']!r}")
+
+
+def test_an_unedited_pair_reads_exactly_as_before(web_client,
+                                                  isolated_projects_root):
+    """The addition must not appear on the ordinary case."""
+    cite = _recorded_pair(isolated_projects_root)
+    out = web_client.get(f"/api/transport/describe_attempt?path={cite}").get_json()
+    assert out["ok"] and "RECORDED" in out["summary"]
+    assert "EDITED" not in out["summary"], out["summary"]
+
+
+def test_a_label_edit_is_named_as_such_on_the_citation_line(
+        web_client, isolated_projects_root):
+    """The line must say which kind of edit, not just that there was one."""
+    cite = _recorded_pair(isolated_projects_root, edited="labels")
+    out = web_client.get(f"/api/transport/describe_attempt?path={cite}").get_json()
+    assert "labels EDITED SINCE" in out["summary"], out["summary"]
+    assert "electrode and device regions" in out["summary"]
+    assert "mesh cutoff" not in out["summary"], (
+        f"a rename told the person their convergence was suspect: "
+        f"{out['summary']!r}")
+
+
 def test_describe_attempt_names_both_unconcluded_states(web_client, isolated_projects_root):
     _cited_junction(isolated_projects_root, concluded=False)
     try:

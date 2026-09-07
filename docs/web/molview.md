@@ -1590,14 +1590,31 @@ the same way a load does), and with the store gone the
 `structure_modified` flag below had nothing left to mark.
 
 **An edit outdates a recorded contract** (user, 2026-08-29).  When the
-store carries `info.calculation` and any structure-changing edit lands
-— a geometry op, a cell op, a label write — the viewer sets
-`calculation.structure_modified: true` beside it, at the same gated
-points the unsaved badge is raised, so a read-only viewer or a failed
-edit never flags.  The flag is never cleared by the viewer (Retract is
-how an edit is un-done) and rides the pair like everything in the
-store: a later reader knows these atoms are no longer the structure
-the contract described.
+store carries `info.calculation` and an edit lands, the viewer records
+it beside the contract, at the same gated points the unsaved badge is
+raised — so a read-only viewer or a failed edit never flags.  Neither
+flag is ever cleared by the viewer (Retract is how an edit is un-done)
+and both ride the pair like everything in the store.
+
+**TWO FLAGS, because they invalidate different things** *(user,
+2026-09-07)*.  One flag was set by geometry ops, cell ops **and label
+writes** alike, which made it unusable by the only reader that wanted
+it: the settings a later calculation inherits are `mesh_cutoff`,
+`k_mesh_transverse`, `xc_functional`, `electronic_temperature_k`, and
+**a label write cannot invalidate any of them** — labels are names for
+atoms, and no setting is a function of a name.  A reader acting on the
+single flag would have cried wolf on renaming a region, which is a
+routine thing to do to a junction.  So:
+
+| flag | set by | what it invalidates |
+|---|---|---|
+| `calculation.structure_modified` | a geometry op, a cell op | **the inherited settings.** Mesh cutoff is a grid density over the CELL and the transverse k-mesh samples the reciprocal cell, so both were converged for a geometry that is no longer there |
+| `calculation.labels_modified` | a label write | **the region assignment.** Not the settings — but on a junction the electrode/device partition IS labels, so which atoms were the left electrode, the device, the frozen set may now differ from what was relaxed |
+
+Neither flag says the pair is wrong; both say a later reader must not
+assume.  A reader that wants "was this touched at all" asks for both —
+it must not ask for `structure_modified` alone and call that its
+answer, which is the mistake the one-flag shape invited.
 
 ### 8.5 The controls, and what each one reads
 

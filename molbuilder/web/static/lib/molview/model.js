@@ -399,27 +399,43 @@ export function createModel(opts) {
             });
         }, { redraw: "none" });
         history.edited();
-        markContractOutdated();
+        markContractOutdated("labels");   // a name, not the atoms
         return true;
     }, false);
 
-    /* AN EDIT OUTDATES A RECORDED CONTRACT (user, 2026-08-29).  The
-     * `info.calculation` block describes the structure the run was made
-     * FROM; once an edit lands -- geometry, cell, labels -- these atoms
-     * are no longer that structure, and a later reader must be told.
-     * One flag, set beside the record at the exact places an edit is
-     * marked (`history.edited()` -- inside the gate, so a read-only
-     * viewer or a failed edit never reaches it), never cleared by the
-     * viewer: un-editing is what Retract is for, and the flag rides the
-     * pair like everything in the store. */
-    function markContractOutdated() {
-        if (structure && structure.info
-                && structure.info.calculation
-                && typeof structure.info.calculation === "object"
-                && !structure.info.calculation.structure_modified) {
-            structure.info.calculation.structure_modified = true;
-            announceStructure();
-        }
+    /* AN EDIT OUTDATES A RECORDED CONTRACT (user, 2026-08-29), and TWO
+     * FLAGS say what it outdated (user, 2026-09-07 -- molview.md § 8.4a).
+     * The `info.calculation` block describes the structure the run was
+     * made FROM; once an edit lands these atoms are no longer that
+     * structure, and a later reader must be told WHICH kind of edit:
+     *
+     *   structure_modified  a geometry or cell op -- the settings a later
+     *                       calculation inherits (mesh cutoff, transverse
+     *                       k-mesh) were converged over a CELL that is no
+     *                       longer there;
+     *   labels_modified     a label write -- no setting is a function of a
+     *                       name, so the settings stand; but on a junction
+     *                       the electrode/device partition IS labels, so
+     *                       the region assignment may now differ from what
+     *                       was relaxed.
+     *
+     * ONE flag covered both until 2026-09-07 and was therefore unusable by
+     * the only reader that wanted it: acting on it meant warning that a
+     * mesh cutoff might not apply because someone renamed a region.
+     *
+     * Set beside the record at the exact places an edit is marked
+     * (`history.edited()` -- inside the gate, so a read-only viewer or a
+     * failed edit never reaches it), never cleared by the viewer:
+     * un-editing is what Retract is for, and both flags ride the pair like
+     * everything in the store. */
+    function markContractOutdated(what) {
+        const c = structure && structure.info && structure.info.calculation;
+        if (!c || typeof c !== "object") return;
+        const key = (what === "labels") ? "labels_modified"
+                                        : "structure_modified";
+        if (c[key]) return;
+        c[key] = true;
+        announceStructure();
     }
 
     /* ── The same-atoms rule, at the doors that could break it (§ 10.8) ────

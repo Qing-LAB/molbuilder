@@ -278,6 +278,73 @@ def recorded_contract_of(cited: CitedDir) -> Optional[Dict[str, object]]:
     return None
 
 
+def _warn_about_edits_since_the_contract_was_recorded(
+        recorded: Optional[Dict[str, object]], citation: str) -> None:
+    """Say what an edit since the recording invalidated — one line each.
+
+    **The settings are inherited; what they were chosen for may not be.**
+    A form-B citation fills the new calculation's mesh cutoff, transverse
+    k-mesh, functional and temperature from `info.calculation` — the
+    finished run's own deck, copied into the pair by the Results tab. Two
+    flags say what an edit since then touched (`molview.md` § 8.4a), and
+    they invalidate different things, which is why they are two:
+
+    * ``structure_modified`` — a geometry or cell op. Mesh cutoff is a grid
+      density over the CELL and the transverse k-mesh samples the reciprocal
+      cell, so both were converged for a geometry that is no longer there.
+    * ``labels_modified`` — a label write. No setting is a function of a
+      name, so the settings stand. But on a junction the electrode/device
+      partition IS labels, so which atoms were the left electrode, the
+      device and the frozen set may now differ from what was relaxed — and
+      the categorical sort downstream reads exactly those labels.
+
+    Warn, not refuse, for both: trimming a stray solvent molecule and
+    renaming a region are each legitimate things to do to a relaxed
+    structure, and refusing would block them. The person is told and
+    decides.
+
+    **Neither can fire where nothing is inherited.** A flag is written only
+    onto a structure that already carries an `info.calculation` block, and
+    `recorded_contract_of` answers ``None`` unless that block holds a
+    non-empty ``contract`` — so a structure that never came from a run
+    (SMILES, a plain `.xyz`, anything built in Modify) reaches neither end
+    of this. Nothing to inherit, nothing to be stale about.
+
+    *(Written 2026-09-07. The flag had been set since 2026-08-29 and read by
+    NOTHING -- its only consumer in the tree was a test grepping the JS
+    source for its own name. Splitting it in two was the precondition: one
+    flag covered label writes as well, so acting on it meant warning that a
+    mesh cutoff might not apply because someone renamed a region.)*
+    """
+    if not recorded:
+        return
+    from ..issues import Issue
+    from ..validation import report
+    engine = recorded.get("engine", "?")
+    source = recorded.get("source", "?")
+    found = []
+    if recorded.get("structure_modified"):
+        found.append(Issue(
+            "warn",
+            f"the geometry or cell of {citation} was edited after its "
+            f"settings were recorded, so the mesh cutoff and transverse "
+            f"k-mesh below come from the {engine} deck {source} and were "
+            f"converged for a cell that is no longer there -- re-check them "
+            f"against the structure you are citing",
+            where="citation.structure_modified"))
+    if recorded.get("labels_modified"):
+        found.append(Issue(
+            "warn",
+            f"the labels of {citation} were edited after its settings were "
+            f"recorded -- the settings still stand, but the electrode and "
+            f"device regions this calculation sorts on are labels, so check "
+            f"they are still the partition the {engine} deck {source} "
+            f"relaxed",
+            where="citation.labels_modified"))
+    if found:
+        report(found)
+
+
 def resolve_citation(citation: str, tree_root: Path
                      ) -> Tuple[Path, CitedDir]:
     """The citation's directory, fenced to the tree and classified
@@ -604,6 +671,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # file the citation consists of.
         label_source = None
         recorded = recorded_contract_of(cited)
+        _warn_about_edits_since_the_contract_was_recorded(recorded, citation)
     else:
         # ---- form A: deck + .XV, everything from the same directory --
         deck, xv_path, concluded = cited.deck, cited.xv, cited.concluded

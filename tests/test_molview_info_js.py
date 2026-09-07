@@ -63,17 +63,28 @@ def test_the_pane_vocabulary_is_defined_in_the_module_sheet():
 
 
 def test_every_edit_landed_site_outdates_the_record():
-    """The structure_modified flag (user, 2026-08-29): each of the
-    three edit-landed sites (the history.edited() marks -- geometry op,
-    cell op, label write) also marks a recorded contract outdated, so a
-    later reader of the pair knows these atoms are no longer the
-    structure the contract described."""
+    """Every place an edit is MARKED also records it against the contract.
+
+    The three `history.edited()` sites are the gated points where an edit has
+    landed -- a read-only viewer and a failed edit never reach them -- so a
+    contract-outdating call must sit beside each, or a pair exported after
+    that edit carries a contract that silently no longer describes it.
+
+    **This is a lint and stays one**: it quantifies over the edit-landed
+    sites as a CLASS, and a fourth appearing without its mark is exactly what
+    no behaviour test can catch. What it must NOT do is measure the call's
+    spelling -- it asserted `count("markContractOutdated();") == 3` until
+    2026-09-07, which went false the moment the label door started naming
+    which flag it sets, on a change that made the mechanism more correct.
+    WHICH flag each door raises is behaviour, and is driven in
+    tests/test_molview_model.py: a label write raises `labels_modified` and
+    not the other, a cell edit the reverse.
+    """
     src = _stripped(MOLVIEW / "model.js")
     assert src.count("history.edited();") == 3, (
         "the edit-landed sites moved; re-anchor this pin AND the "
         "markContractOutdated hooks together")
-    assert src.count("markContractOutdated();") == 3, (
-        "an edit-landed site no longer outdates the record -- a pair "
-        "exported after that edit would carry a contract that silently "
-        "no longer describes its atoms")
-    assert "structure_modified" in src
+    assert src.count("markContractOutdated(") == 4, (
+        "an edit-landed site no longer outdates the record (3 calls + 1 "
+        "definition) -- a pair exported after that edit would carry a "
+        "contract that silently no longer describes its atoms")

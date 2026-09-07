@@ -141,6 +141,25 @@ def api_transport_describe_attempt() -> Any:
             status = ("labeled structure · contract RECORDED from the "
                       f"{recorded.get('engine', '?')} deck "
                       f"({recorded.get('source', '?')})")
+            # AND WHAT WAS EDITED SINCE.  Two flags, because they
+            # invalidate different things (`molview.md` § 8.4a): a geometry
+            # or cell op leaves the inherited mesh cutoff and k-mesh
+            # converged for a cell that is gone, while a label write leaves
+            # the settings standing and moves the electrode/device partition
+            # this calculation sorts on.  Said HERE because this line is what
+            # a person reads at the moment of choosing; `compose` warns again
+            # on the prep path, for a citation nobody picked in a browser.
+            edited = []
+            if recorded.get("structure_modified"):
+                edited.append("geometry/cell EDITED SINCE — the mesh cutoff "
+                              "and k-mesh below were converged for a cell "
+                              "that is no longer there")
+            if recorded.get("labels_modified"):
+                edited.append("labels EDITED SINCE — the settings stand, but "
+                              "check the electrode and device regions are "
+                              "still the partition that was relaxed")
+            if edited:
+                status += " · " + " · ".join(edited)
         else:
             contract = "open"
             status = "labeled structure (taken as given)"

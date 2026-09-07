@@ -2149,3 +2149,89 @@ def test_reopening_a_cleared_page_still_shows_the_triad():
     assert out["showAxis"] is True, (
         "a reopened empty page drew nothing at all -- the triad rule did not "
         "reach the restore path")
+
+
+# ---------------------------------------------------------------------------
+# § 8.4a — two flags, because they invalidate different things
+# ---------------------------------------------------------------------------
+
+def _with_a_recorded_contract(extra=""):
+    """Load a structure that carries a finished run's own settings."""
+    return """
+        const m = await loaded();
+        // The store arrives the way it really does: the load door posts the
+        // structure and the SERVER echoes it back inside `structure.info`
+        // (model-jobs.js reads `payload.structure.info`, never the input),
+        // so the stand-in has to speak that shape or this tests nothing.
+        globalThis.__nextPayload = globalThis.__payload(
+            [__atomRow(0, "C", 0), __atomRow(1, "O", 1)],
+            {structure: {info: {calculation: {
+                engine: "siesta", source: "Relax.fdf",
+                contract: {siesta_mesh_cutoff_ry: 275}}}}});
+        await m.installMolecule({
+            text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n", filename: "x.xyz"});
+    """ + extra + """
+        const c = (m.info.get() || {}).calculation || {};
+        console.log(JSON.stringify({structure: !!c.structure_modified,
+                                    labels: !!c.labels_modified}));
+    """
+
+
+def test_a_label_write_flags_labels_and_not_the_structure():
+    """A rename moves the regions, not the convergence.
+
+    `molview.md` § 8.4a. The settings a later calculation inherits are the
+    mesh cutoff and the transverse k-mesh, and **no setting is a function of
+    a name** -- so a label write must not raise the flag that says they were
+    converged for a cell that is gone. One flag covered both until
+    2026-09-07, which is why nothing could act on it: warning here would mean
+    telling a person their mesh cutoff is suspect because they renamed an
+    electrode, and on a junction renaming an electrode is routine.
+    """
+    out = _run(_with_a_recorded_contract(
+        'm.selection.writeLabel("device", "replace", [0]);'))
+    assert out["labels"] is True, "a label write set no flag at all"
+    assert out["structure"] is False, (
+        "a label write claimed the geometry changed -- a reader acting on "
+        "that tells people their convergence is suspect because they renamed "
+        "a region")
+
+
+def test_a_cell_edit_flags_the_structure_and_not_the_labels():
+    """The other half, and it has to be checked separately.
+
+    Mesh cutoff is a grid density over the CELL and the transverse k-mesh
+    samples the reciprocal cell, so a cell edit is exactly what invalidates
+    the inherited settings.
+    """
+    out = _run(_with_a_recorded_contract("""
+        // The cell op round-trips too, so the stand-in must answer WITH a
+        // cell -- in the server's own names (`cell`, `cell_origin`,
+        // `axis_kind`), not the module's.
+        globalThis.__nextPayload = {ok: true, periodicity: {
+            cell: [[9,0,0],[0,9,0],[0,0,9]], cell_origin: [0,0,0],
+            axis_kind: ["periodic","periodic","periodic"]}};
+        await m.commitPeriodicityOp("cell", [[9,0,0],[0,9,0],[0,0,9]]);
+    """))
+    assert out["structure"] is True, "a cell edit did not outdate the settings"
+    assert out["labels"] is False, "a cell edit claimed the labels moved"
+
+
+def test_a_structure_with_no_recorded_contract_is_flagged_at_all():
+    """Nothing to outdate, so nothing is written.
+
+    The flags live INSIDE `info.calculation`. A structure that never came
+    from a run has no such block, and the viewer must not invent one -- a
+    bare `{structure_modified: true}` would reach `recorded_contract_of`,
+    which answers None without a contract, and would be dead weight in every
+    pair the Modify tab ever saves.
+    """
+    out = _run("""
+        const m = await loaded();
+        m.selection.writeLabel("device", "replace", [0]);
+        const info = m.info.get() || {};
+        console.log(JSON.stringify({none: !info.calculation}));
+    """)
+    assert out["none"] is True, (
+        "the viewer invented a calculation block on a structure that never "
+        "came from a run")

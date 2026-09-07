@@ -802,7 +802,7 @@ class TestTheRecordedContract:
     """`transport.md` § 3.1's form B, third shade: a pair whose
     sidecar carries `info.calculation` seals like a cited deck."""
 
-    def _recorded_pair(self, tmp_path):
+    def _recorded_pair(self, tmp_path, edited=None):
         from molbuilder.workingcopy_structure import StructureCodec
         root = tmp_path / "projects"
         d = root / "exported"
@@ -816,6 +816,9 @@ class TestTheRecordedContract:
                          "k_mesh_transverse": [3, 3, 2],
                          "electronic_temperature_k": 150.0},
             "source": "Relax.fdf", "source_sha256": "c" * 64}}
+        if edited:
+            # what `markContractOutdated(kind)` writes, at the same keys
+            s2.info["calculation"][f"{edited}_modified"] = True
         StructureCodec().write(s2, d / "junction.xyz")
         return root, "exported"
 
@@ -826,6 +829,81 @@ class TestTheRecordedContract:
         assert out.recorded_contract is not None
         assert out.recorded_contract["contract"]["basis_size"] == "TZP"
         assert out.provenance["recorded_contract"]["source"] == "Relax.fdf"
+
+    def test_an_edit_since_the_record_is_said_out_loud(self, tmp_path, capsys):
+        """The settings are inherited; the atoms they were chosen for are not.
+
+        A pair edited after its contract was recorded still fills the new
+        calculation's mesh cutoff, k-mesh and functional from the finished
+        run's deck -- values converged for a geometry that no longer exists,
+        and a k-mesh is a statement about a CELL.  The composition proceeds
+        (trimming a solvent molecule is legitimate) and the person is told.
+
+        The flag was written by the viewer from 2026-08-29 and read by
+        NOTHING until 2026-09-07: its only consumer in the tree was a test
+        grepping the JS source for the flag's own name.
+        """
+        root, cite = self._recorded_pair(tmp_path, edited="structure")
+        out = compose_junction(cite, tree_root=root)
+
+        # It still composes, and still seals -- warn, not refuse.
+        assert out.recorded_contract["contract"]["basis_size"] == "TZP"
+
+        said = capsys.readouterr().err
+        assert "citation.structure_modified" in said, (
+            f"nothing warned that the cited pair was edited after its "
+            f"settings were recorded; stderr held {said!r}")
+        assert "edited after its settings were recorded" in said
+        # The message has to name what was inherited, or it is a shrug.
+        assert "k-mesh" in said and "Relax.fdf" in said, said
+
+    def test_a_label_edit_does_not_impugn_the_settings(self, tmp_path,
+                                                       capsys):
+        """A rename moves the regions, not the convergence.
+
+        This is the case that made one flag unusable: acting on a single
+        `structure_modified` meant telling a person their mesh cutoff might
+        not apply because they renamed an electrode.  The label warning is
+        real -- the electrode/device partition IS labels and the categorical
+        sort reads them -- but it must not claim the settings are suspect.
+        """
+        root, cite = self._recorded_pair(tmp_path, edited="labels")
+        compose_junction(cite, tree_root=root)
+        said = capsys.readouterr().err
+        assert "citation.labels_modified" in said, said
+        assert "electrode and device regions" in said
+        assert "the settings still stand" in said
+        assert "citation.structure_modified" not in said, (
+            f"a label write claimed the inherited settings were converged "
+            f"for a cell that is gone: {said!r}")
+        assert "mesh cutoff" not in said, said
+
+    def test_an_unedited_pair_says_nothing(self, tmp_path, capsys):
+        """The guard must be silent on the ordinary case, or it is noise."""
+        root, cite = self._recorded_pair(tmp_path)
+        compose_junction(cite, tree_root=root)
+        assert "structure_modified" not in capsys.readouterr().err
+
+    def test_a_pair_with_no_recorded_contract_cannot_warn(self, tmp_path,
+                                                          capsys):
+        """Nothing inherited, nothing to be stale about.
+
+        The flag is only ever written onto a structure that already carries
+        an `info.calculation` block, and the reader answers None without a
+        non-empty `contract` -- so a structure that never came from a run
+        reaches neither end of this.  Asserted because a guard that fires on
+        the open lane would warn about settings nobody is inheriting.
+        """
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "plain"
+        d.mkdir(parents=True)
+        s = _junction_struct()
+        s.info = {"calculation": {"structure_modified": True}}   # no contract
+        StructureCodec().write(s, d / "junction.xyz")
+        out = compose_junction("plain", tree_root=root)
+        assert out.recorded_contract is None
+        assert "structure_modified" not in capsys.readouterr().err
 
     def test_the_record_fills_the_config_and_forces_kz(self, tmp_path):
         from molbuilder.transport.stages import config_for
