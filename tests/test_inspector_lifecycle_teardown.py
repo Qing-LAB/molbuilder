@@ -133,24 +133,48 @@ def test_a_second_dispose_is_a_no_op():
 #  Structure: each core drains the scope it registers into              #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("core", CORES)
-def test_the_core_drains_the_scope_it_registers_into(core):
-    """**The assertion that was missing on 2026-08-23.**
+# `test_the_core_drains_the_scope_it_registers_into` stood here and asserted
+# two spellings: that `inspectorLifecycle.listeners()` appeared in each core,
+# and that `_listeners.disposeAll()` appeared inside a regex-sliced
+# `dispose()` body.  Both can be present while the scope is never emptied --
+# which is exactly what happened on 2026-08-23, the day the file exists for.
+# Both cores now have the claim driven instead:
+#   spectra     tests/test_inspector_registry_e2e.py::
+#               TestInspectorListenerTeardown::
+#               test_addremove_pair_balance_after_mount_dispose
+#   trajectory  ...::test_no_trajectory_listener_survives_dispose
+# What stays here is the half that quantifies over a whole file.
 
-    A core registers through the scope and must hand that same scope back in
-    `dispose()`.  When the extraction left the old array behind, every
-    registration went to the scope and the drain went to the array -- both
-    halves individually defensible, and together a total leak.
+
+@pytest.mark.parametrize("core", CORES)
+def test_no_core_registers_a_listener_outside_the_scope(core):
+    """Not one bare `addEventListener` in either core.
+
+    A direct `els.foo.addEventListener("click", h)` escapes the scope, so
+    `dispose()` cannot reach it however correctly it drains -- and no
+    teardown test can see it, because from the scope's side it never
+    existed.  Reading the file settles it; running the card cannot.
+
+    This was `tests/spectra/test_blueprint.py::
+    test_all_element_listeners_route_through_on_helper`, which has held
+    SPECTRA to this since 2026-05-18 and named the trajectory core in its
+    own docstring -- "the helper is now shared with the trajectory core...
+    so this file should contain none at all" -- without ever checking it.
+    Generalised here, in the file that owns the rule for both, 2026-09-06.
     """
     js = (STATIC / core).read_text()
-    assert "inspectorLifecycle.listeners()" in js, (
-        f"{core} does not take a listener scope; if it stopped using the "
-        f"shared lifecycle, this file's premise changed")
-    m = re.search(r"\n        dispose\(\)\s*\{(.+?)\n        \},", js, re.DOTALL)
-    assert m, f"{core}: could not find the dispose() body to check"
-    assert "_listeners.disposeAll()" in m.group(1), (
-        f"{core}: dispose() never drains the listener scope, so every "
-        f"listener _on() registered outlives the mount")
+    adds = re.findall(r"\.addEventListener\(", js)
+    assert len(adds) == 0, (
+        f"{core} registers {len(adds)} listener(s) directly -- every one is "
+        f"outside the lifecycle scope, so dispose() cannot remove it and no "
+        f"teardown test can notice.  Route it through _on().")
+    shared = (STATIC / "lib/inspectors/lifecycle.js").read_text()
+    assert len(re.findall(r"\.addEventListener\(", shared)) == 1, (
+        "the shared listener scope must hold exactly ONE registration site "
+        "-- that single door is what makes the drain provably complete")
+    assert len(re.findall(r"\b_on\(", js)) >= 5, (
+        f"{core} has almost no _on() call sites left; if the wiring moved, "
+        f"the absence check above has stopped meaning anything")
 
 
 @pytest.mark.parametrize("core", CORES)

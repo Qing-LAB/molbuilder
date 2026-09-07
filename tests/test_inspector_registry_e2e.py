@@ -482,6 +482,130 @@ class TestInspectorListenerTeardown:
             f"leak compounds.  Every interval must be held where dispose() "
             f"can reach it (the lifecycle scope), not in a bare local.")
 
+    def test_no_trajectory_listener_survives_dispose(
+            self, page, flask_server, ongoing_trajectory):
+        """Every listener the trajectory core registers is undone on dispose.
+
+        The spectra arm of this claim is
+        `test_addremove_pair_balance_after_mount_dispose` above; the two cores
+        keep SEPARATE listener scopes, so it says nothing about this one.  The
+        sibling below counts timers, which is a different leak: a timer fires
+        and refetches, a listener holds the whole torn-down card alive and
+        answers clicks meant for its replacement.
+
+        WHY THIS SPIES ON THE SCOPE AND NOT ON EventTarget, unlike the spectra
+        arm.  A global add/remove count is the wrong instrument HERE, measured
+        rather than assumed: a trajectory mount shows 134 net adds against 12
+        removes, and a breakdown by target says why -- 72 of them are Plotly's
+        (`rect touchstart` x44, `rect wheel` x28), most of the rest are
+        MolView's 3Dmol canvas and rail, and a further twenty-odd belong to
+        the projects sidebar, which boots inside the same window and is not
+        the inspector at all.  None of those are the core's to drain.  So this
+        wraps `inspectorLifecycle.listeners()` -- the scope the core registers
+        THROUGH -- and asks whether the drain empties exactly what the
+        registration filled.  That is the 2026-08-23 bug in one number: the
+        registrations went to the scope and the drain went to an array left
+        behind by the extraction, so the scope was never emptied.
+
+        The OTHER half of the same rule -- that no listener escapes `_on()`
+        into a bare `addEventListener` -- cannot be seen from here (an escaped
+        listener is invisible to a scope spy, by definition) and is a claim
+        about a whole file, which `tests/test_inspector_lifecycle_teardown.py
+        ::test_no_core_registers_a_listener_outside_the_scope` settles by
+        reading it, for both cores.
+
+        WHAT THIS REPLACES.  `test_inspector_lifecycle_teardown.py` asserted
+        the string `inspectorLifecycle.listeners()` appeared in each core and
+        that `_listeners.disposeAll()` appeared inside a regex-sliced
+        `dispose()` body.  Two spellings, in a file where both could be
+        present and the scope still never drained -- which is precisely what
+        happened on 2026-08-23.
+        """
+        _open_results(page, flask_server)
+        result = page.evaluate("""async (traj) => {
+            // Wrap the scope factory: every scope handed out from here on
+            // reports how many listeners it took and how many it gave back.
+            const lc   = window.molbuilder.inspectorLifecycle;
+            const orig = lc.listeners;
+            const scopes = [];
+            lc.listeners = function (...a) {
+                const s = orig.apply(this, a);
+                const rec = {listeners: 0, deferred: 0, undone: 0,
+                             ran: 0, disposed: false};
+                scopes.push(rec);
+                const on = s.on, defer = s.defer, disposeAll = s.disposeAll;
+                s.on = function (...b) {
+                    if (b[0]) rec.listeners += 1;   // the scope ignores a
+                    return on.apply(s, b);          // null target, so we do
+                };
+                s.defer = function (fn) {
+                    rec.deferred += 1;
+                    // Wrapped so the teardown REPORTS having run: a deferred
+                    // undo removes no listener, so nothing else can see it.
+                    return defer.call(s, function () { rec.ran += 1; return fn(); });
+                };
+                s.disposeAll = function () {
+                    // Every listener undo the scope pops calls
+                    // removeEventListener exactly once, and disposeAll is
+                    // synchronous, so counting removals across this call
+                    // counts THIS scope's listener undos and nothing else.
+                    const origRemove = EventTarget.prototype.removeEventListener;
+                    EventTarget.prototype.removeEventListener = function (...c) {
+                        rec.undone += 1; return origRemove.apply(this, c);
+                    };
+                    try { return disposeAll.apply(s); }
+                    finally {
+                        EventTarget.prototype.removeEventListener = origRemove;
+                        rec.disposed = true;
+                    }
+                };
+                return s;
+            };
+            try {
+                const host = document.createElement("div");
+                document.body.appendChild(host);
+                const reg    = window.molbuilder.inspectors;
+                const ctx    = reg.createDefaultContext(host);
+                const handle = reg.mount(host, traj, ctx);
+                if (!handle) return {mounted: false, scopes: []};
+                const deadline = Date.now() + 30000;
+                while (Date.now() < deadline) {
+                    if (host.querySelector("#trajectory-export-csv-btn")
+                        && host.querySelectorAll(".js-plotly-plot").length) break;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                const mounted = !!host.querySelector("#trajectory-export-csv-btn");
+                handle.dispose();
+                document.body.removeChild(host);
+                return {mounted: mounted, scopes: scopes};
+            } finally { lc.listeners = orig; }
+        }""", ongoing_trajectory)
+
+        assert result["mounted"], (
+            "the trajectory inspector never finished mounting, so nothing "
+            "below measures teardown -- fix the mount path first")
+        used = [s for s in result["scopes"]
+                if s["listeners"] or s["deferred"]]
+        assert used, (
+            "the mount took a listener scope and registered NOTHING through "
+            "it -- either the card stopped wiring its controls, or it went "
+            "back to registering outside the scope, which is the leak this "
+            "test exists for")
+        for s in used:
+            assert s["disposed"], (
+                f"a scope holding {s['listeners']} listeners and "
+                f"{s['deferred']} deferred teardowns was never drained: "
+                f"dispose() does not reach it")
+            assert s["undone"] >= s["listeners"], (
+                f"the scope took {s['listeners']} listeners and its drain "
+                f"removed {s['undone']} -- the rest outlive the mount, on a "
+                f"card the /results dispatcher replaces on every sidebar "
+                f"click")
+            assert s["ran"] == s["deferred"], (
+                f"{s['deferred'] - s['ran']} of {s['deferred']} deferred "
+                f"teardowns never ran -- an observer or a timer the scope "
+                f"was handed is still live")
+
     def test_no_trajectory_poll_survives_dispose(
             self, page, flask_server, ongoing_trajectory):
         """The same contract for the OTHER core.
