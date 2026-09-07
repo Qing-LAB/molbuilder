@@ -236,12 +236,14 @@
         confirm: confirmDiscardUnsaved,
         isOpen:                isOpen,
         _reset:                _reset,
-        // String constants exposed so tests can pin the documented
-        // copy without re-typing the strings.
-        TITLE:   TITLE,
-        BODY:    BODY,
-        CANCEL:  CANCEL,
-        DISCARD: DISCARD,
+        // TITLE / BODY / CANCEL / DISCARD were exported here until
+        // 2026-09-06, "so tests can pin the documented copy without
+        // re-typing the strings".  Nothing in production ever read them:
+        // four public names existed because a test wanted them, which is
+        // the "just for tests" hatch `molview/3dmol-embed.js` warns about
+        // in as many words -- every one that ever existed there "became a
+        // production read".  The copy is asserted where a person sees it,
+        // on the RENDERED dialog, by the test that was already doing so.
     };
 
     if (typeof module !== "undefined" && module.exports) {

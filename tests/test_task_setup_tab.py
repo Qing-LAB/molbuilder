@@ -1217,14 +1217,12 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         assert ".ts-target-" not in css, (
             "a bespoke class was added for the machine card; the shared "
             "components already cover it")
-        # The one stylesheet change this card required is a CORRECTNESS fix
-        # to a shared component, not a new one: `.ts-state` sets
-        # `display: flex`, which ties with the browser's `[hidden]` rule and
-        # wins on source order, so anything hidden by JS stayed on screen.
-        # The folder state is never hidden, so the gap had never shown.
-        assert ".ts-state[hidden]" in css, (
-            "`.ts-state` can be hidden by JS now, so it needs the "
-            "[hidden]-precedence guard the other shared components carry")
+        # The `[hidden]`-precedence guard this used to pin by name is covered
+        # by `test_css_hidden_attribute_audit.py`, which DERIVES the ids JS
+        # toggles (58 of them, `#ts-target-state` among them) and requires a
+        # guard for each.  A lint that quantifies beats two remembered names:
+        # verified 2026-09-06 by deleting `.ts-state[hidden]` and watching the
+        # audit name it.
 
     def test_the_route_lists_the_records_and_says_when_a_choice_is_required(
             self, web_client, tmp_path, monkeypatch):
@@ -1372,10 +1370,8 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         css = (ROOT / "molbuilder/web/static/task-setup/style.css").read_text()
         head = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
         assert 'class="ts-facts" id="ts-resolved"' in head
-        # hidden by JS, so it needs the [hidden]-precedence guard
-        assert ".ts-facts[hidden]" in css, (
-            "`.ts-facts` sets display:grid and is now hidden by JS -- "
-            "without the guard it stays in the layout")
+        # The `[hidden]` guard is `test_css_hidden_attribute_audit.py`'s --
+        # `#ts-resolved` is in the set it derives.
 
 
 def test_the_sheet_names_no_token_that_does_not_exist():

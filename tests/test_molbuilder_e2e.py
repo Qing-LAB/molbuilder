@@ -896,3 +896,65 @@ def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
         f"a generated structure is claiming to be the file that was loaded "
         f"before it: {readout!r}"
     )
+
+
+# --------------------------------------------------------------------- #
+#  A checkbox row is laid out inline                                    #
+#                                                                       #
+#  Contract: docs/web/ui-contract.md § 1 (a page sheet arranges, it does #
+#  not re-decide form-control layout).                                  #
+#                                                                       #
+#  THE DEFECT THIS EXISTS FOR.  The op-block's label rule was a blanket  #
+#  `label` descendant selector.  It is there for m/n/layers -- label     #
+#  ABOVE a number input -- and it also caught the checkbox row, where    #
+#  `flex-direction: column` put the box above its own text and           #
+#  `align-items: stretch` widened the <input> to the full row (measured  #
+#  384.5px), painting a tick centred in empty space.                     #
+#                                                                       #
+#  WHAT USED TO STAND HERE, in tests/test_modify_css_residue.py.  Two    #
+#  text checks: one read `.modify-edit-panel .modify-check-row {` out of #
+#  the stylesheet and looked for the strings `flex-direction: row` and   #
+#  `align-items: center`; the other did `html.rfind("<label", 0, i)`     #
+#  from the checkbox's id and asked whether "modify-check-row" appeared  #
+#  in the slice.  The second was GREEN BY COINCIDENCE: `#slab-orthogonal`#
+#  has no wrapping <label> at all -- its label is a SIBLING -- so the    #
+#  rfind landed on `<label for="slab-m">`, an unrelated field 15 lines   #
+#  up, and the class matched only because the <div> happens to sit       #
+#  between the two.  It would have passed with the checkbox anywhere     #
+#  after any `.modify-check-row` opening tag, and its own failure        #
+#  message described a DOM that does not exist.  Neither check could     #
+#  see the cascade, which is where the bug was.  This one measures the   #
+#  painted result.                                                       #
+# --------------------------------------------------------------------- #
+
+def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
+    """The box is before the words and on the same line, at box width.
+
+    Three questions, because the stacked treatment got all three wrong: is
+    the label BESIDE the box (not under it), do the two share a row, and is
+    the box still a box (not stretched across the panel)?
+    """
+    _open(page, flask_server)
+    page.locator("#optab-btn-slab").click()
+    page.wait_for_selector("#optab-panel-slab.is-active", timeout=_ACT_MS)
+
+    box = page.locator("#slab-orthogonal").bounding_box()
+    txt = page.locator('label[for="slab-orthogonal"]').bounding_box()
+    row = page.locator("#slab-orthogonal").locator("xpath=..").bounding_box()
+    assert box and txt and row, "the slab panel's checkbox row did not render"
+
+    assert txt["x"] >= box["x"] + box["width"] - 1, (
+        f"the label starts at x={txt['x']:.1f}, not clear of the box's right "
+        f"edge at {box['x'] + box['width']:.1f} -- the box is above its own "
+        f"text, not before it")
+
+    box_mid = box["y"] + box["height"] / 2
+    txt_mid = txt["y"] + txt["height"] / 2
+    assert abs(box_mid - txt_mid) <= 4, (
+        f"box centre y={box_mid:.1f} and text centre y={txt_mid:.1f} are "
+        f"{abs(box_mid - txt_mid):.1f}px apart -- they are not on one row")
+
+    assert box["width"] <= row["width"] / 2, (
+        f"the checkbox is {box['width']:.1f}px wide inside a "
+        f"{row['width']:.1f}px row -- it has been stretched by the row's "
+        f"align-items, which paints the tick centred in empty space")

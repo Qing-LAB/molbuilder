@@ -178,37 +178,11 @@ class TestSurfacePresence:
                 confirmDiscardUnsaved: typeof modal.confirmDiscardUnsaved,
                 isOpen:                typeof modal.isOpen,
                 _reset:                typeof modal._reset,
-                TITLE:                 typeof modal.TITLE,
-                BODY:                  typeof modal.BODY,
-                CANCEL:                typeof modal.CANCEL,
-                DISCARD:               typeof modal.DISCARD,
             }));
         ''')
         assert out["confirmDiscardUnsaved"] == "function"
         assert out["isOpen"]                == "function"
         assert out["_reset"]                == "function"
-        for k in ("TITLE", "BODY", "CANCEL", "DISCARD"):
-            assert out[k] == "string"
-
-    def test_documented_copy_matches_architecture_doc(self):
-        """The strings come from docs/web/tabs.md
-        Pin them so a future translation / wording change has to
-        update the test alongside the spec."""
-        out = _run_node('''
-            console.log(JSON.stringify({
-                TITLE:   modal.TITLE,
-                BODY:    modal.BODY,
-                CANCEL:  modal.CANCEL,
-                DISCARD: modal.DISCARD,
-            }));
-        ''')
-        assert out["TITLE"] == "Unsaved modifications"
-        assert out["BODY"] == (
-            "You have unsaved changes to the current canvas. "
-            "Continuing will discard them."
-        )
-        assert out["CANCEL"] == "Cancel"
-        assert out["DISCARD"] == "Discard and continue"
 
 
 # ----- Promise resolution ---------------------------------------- #

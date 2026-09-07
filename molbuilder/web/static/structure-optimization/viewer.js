@@ -355,7 +355,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // sidecar labels; the info panel reads the counts; all come off molview.data.
     function _applyLoadedModel(filename) {
         const d = _data();
-        const s = d ? d.getStructure() : null;
         /* THE COUNT COMES OFF THE ELEMENTS, because that is what the structure
          * carries. This read `s.atoms` — a key the envelope has never had
          * (`elements`, `annotations`, `periodicity`, `frames`, `forcesPerFrame`)
