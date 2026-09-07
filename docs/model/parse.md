@@ -459,8 +459,7 @@ molbuilder/parse/
 └── dirs/          # directory composers (DirParsers)
     ├── job.py                 # run_status → how a run directory is doing
     ├── run_info.py            # run_info_for_dir → the `info` block (composer)
-    ├── atom_metadata.py       # ATOM-METADATA for a run dir (read by web/watch)
-    └── _assembler_helpers.py  # shared dir-walk + .fdf-coords helpers
+    └── atom_metadata.py       # ATOM-METADATA for a run dir (read by web/watch)
 ```
 
 > **Plain `.xyz` has no leaf FileParser (by design)** — reading it uses
