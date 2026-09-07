@@ -943,3 +943,82 @@ class TestSendToTaskSetup:
             "the refusal still overwrote the existing description")
         assert not (calc / "task.1st.json").exists(), (
             "the refusal still wrote the hand-over")
+
+
+# --------------------------------------------------------------------- #
+#  The recommended-value panel, on both engines' forms                  #
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_a_field_off_its_recommended_value_raises_the_panel(
+        page, flask_server, engine):
+    """Move one field; the panel appears and names it.  Reset; it goes.
+
+    WHAT THIS REPLACES.  `test_form_schema_diff_js.py::
+    test_both_engine_forms_carry_the_panel` read index.html for the string
+    `id="siesta-recommend"` and then sliced viewer.js to check two host ids
+    appeared before `mountRecommended(engine, host`.  Every one of those is
+    true of a page where `mountRecommended` returns at its first line -- it
+    does exactly that when `formSchema.diffFromDefaults` is missing, and it
+    is a `return`, not a throw, so nothing anywhere says so.  The other tests
+    in that file mount `form-schema.js` against a synthetic one-div page and
+    never load index.html or viewer.js at all.
+
+    Driven per engine because "both forms carry it" is the claim, and the
+    pyscf panel is behind a tab a person has to click.  The field is
+    discovered from the rendered form rather than named here: which field is
+    first is the schema's business, and hard-coding one would make this fail
+    the day the schema is reordered.
+    """
+    _open_build(page, flask_server)
+    page.click(f'.tab-btn[data-tab="{engine}"]')
+    page.wait_for_function(
+        "(e) => document.querySelectorAll("
+        "  '#' + e + '-form-container input, #' + e + '-form-container select'"
+        ").length > 0", arg=engine, timeout=_BOOT_TIMEOUT_MS)
+
+    moved = page.evaluate("""(engine) => {
+        const box = document.getElementById(engine + "-form-container");
+        // A field whose box is EMPTY has no recommended value to be off:
+        // diffFromDefaults skips `f.default === null | undefined`, which is
+        // right (nothing to be off) and is how the first pass of this test
+        // picked pyscf's `net_charge` and concluded the panel was broken.
+        const num = [...box.querySelectorAll('input[type="number"]')]
+            .find((n) => n.value !== "");
+        if (!num) return {error: "no number field with a rendered default in "
+                                 + "the " + engine + " form"};
+        const was = num.value;
+        num.value = String((parseFloat(was || "0") || 0) + 137);
+        num.dispatchEvent(new Event("input",  {bubbles: true}));
+        num.dispatchEvent(new Event("change", {bubbles: true}));
+        // The panel tags each row's checkbox with the SCHEMA field name,
+        // which is the input's id minus the engine prefix, dashes to
+        // underscores -- `p-mesh-cutoff` -> `mesh_cutoff`, `py-spin` ->
+        // `spin`.  Matching on that ties the row to the field that moved
+        // without depending on how the label happens to be marked up.
+        return {was: was, id: num.id,
+                name: num.id.replace(/^p(y)?-/, "").replace(/-/g, "_")};
+    }""", engine)
+    assert "error" not in moved, moved.get("error")
+
+    panel = page.locator(f"#{engine}-recommend")
+    panel.wait_for(state="visible", timeout=10_000)
+    rows = page.eval_on_selector_all(
+        f"#{engine}-recommend .rec-diff-list li input[type=checkbox]",
+        "els => els.map(e => e.value)")
+    assert rows == [moved["name"]], (
+        f"the panel is up but lists {rows!r}; the one field that moved was "
+        f"{moved['name']!r}, and a panel that names the wrong parameter -- "
+        f"or names extras nobody touched -- sends the reset to the wrong box")
+
+    count = page.locator(f"#{engine}-recommend .rec-diff-count").inner_text()
+    assert "recommended value" in count, count
+
+    # And it goes away again -- a panel that only ever appears is a banner.
+    page.evaluate("""(m) => {
+        const n = document.getElementById(m.id);
+        n.value = m.was;
+        n.dispatchEvent(new Event("input",  {bubbles: true}));
+        n.dispatchEvent(new Event("change", {bubbles: true}));
+    }""", moved)
+    panel.wait_for(state="hidden", timeout=10_000)

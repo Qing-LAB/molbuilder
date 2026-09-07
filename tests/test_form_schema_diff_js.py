@@ -232,17 +232,18 @@ def test_the_panel_resets_through_setvalues(page=None):
         "setValues, which handles every field kind")
 
 
-def test_both_engine_forms_carry_the_panel():
-    html = INDEX.read_text()
-    for engine in ("siesta", "pyscf"):
-        assert f'id="{engine}-recommend"' in html, (
-            f"{engine}'s form has no recommended-value panel")
-    src = VIEWER.read_text()
-    mount = src.split("mountRecommended(engine, host", 1)
-    assert len(mount) == 2, "nothing mounts the panels"
-    for host in ("siesta-form-container", "pyscf-form-container"):
-        assert host in mount[0].rsplit("for (const [engine, hostId]", 1)[-1], (
-            f"{host} is not in the mount loop")
+# `test_both_engine_forms_carry_the_panel` stood here.  It read index.html
+# for `id="siesta-recommend"` and sliced viewer.js to check two host ids
+# appeared before `mountRecommended(engine, host`.  All of that is true of a
+# page where `mountRecommended` returns at its first line -- which it does,
+# by `return` rather than by throwing, whenever the schema is missing.  The
+# rest of this file mounts form-schema.js against a synthetic one-div page
+# and never loads index.html or viewer.js at all, so nothing here could have
+# noticed.  Driven per engine now, on the real page:
+# tests/test_build_e2e.py::test_a_field_off_its_recommended_value_raises_the
+# _panel.  Mutation-checked by dropping pyscf from the mount loop -- which
+# fails the pyscf arm and leaves siesta green, the distinction the text
+# check could not make.
 
 
 def test_the_panel_is_mounted_AFTER_the_session_restore():
