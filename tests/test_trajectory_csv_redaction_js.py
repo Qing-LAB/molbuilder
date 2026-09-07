@@ -122,6 +122,36 @@ _CASES = [
 ]
 
 
+_STATIC = _CORE.parents[2]
+
+#: A DOM thin enough to import the module under Node.  `core.js` mounts
+#: nothing at import time -- loading it is a no-op by design ("safe to include
+#: on any page that might need the inspector later") -- so the stub only has
+#: to survive the module's top level.
+_DOM_STUB = """
+globalThis.window = globalThis;
+globalThis.document = {
+    createElement: () => ({ style: {}, classList: { add() {}, remove() {} },
+                            appendChild() {}, setAttribute() {},
+                            addEventListener() {} }),
+    querySelector: () => null, querySelectorAll: () => [],
+    addEventListener() {},
+};
+globalThis.molbuilder = {};
+"""
+
+
+def _load_and_call(raw):
+    """Load `core.js` and call the exported redactor on *raw*."""
+    from _node_esm import run_node
+    out = run_node(
+        [_CORE], "console.log(JSON.stringify({v: "
+                 "globalThis.molbuilder.trajectoryInspector._redactSourcePath("
+                 + json.dumps(raw) + ")}));",
+        globals_js=_DOM_STUB, static_root=_STATIC)
+    return out["v"]
+
+
 def _run_node(script: str) -> str:
     """Run a Node one-liner and return stdout."""
     proc = subprocess.run(
@@ -134,72 +164,33 @@ def _run_node(script: str) -> str:
     return proc.stdout
 
 
-def test_redact_source_path_module_export_present():
-    """The redaction helper must be exported on the
-    ``trajectoryInspector`` namespace; ``_buildPlotCsv`` uses it
-    directly inside the inspector and the test exercise needs it
-    on the module surface."""
-    src = _CORE.read_text(encoding="utf-8")
-    assert "_redactSourcePath: _redactSourcePath" in src, (
-        "trajectory/core.js no longer exports _redactSourcePath on "
-        "the inspector namespace; restore the export so this test "
-        "can drive the function or move the helper into a separate "
-        "module."
-    )
-
-
 @pytest.mark.parametrize(
-    "raw, expected, description",
-    _CASES,
-    ids=[c[2] for c in _CASES],
+    "raw,expected,description", _CASES,
+    ids=[c[2].replace(" ", "_") for c in _CASES],
 )
 def test_redaction_pattern(raw, expected, description):
-    """Drive ``_redactSourcePath`` via Node + assert exact output.
+    """Drive ``_redactSourcePath`` through the module's own export.
 
-    Each case pins one redaction shape.  A failure means the regex
-    no longer matches the documented pattern OR the replacement
-    string drifted.
+    CONVERTED 2026-09-06 (`plans/plan.md` § 5h).  This used to EXTRACT the
+    function's source by anchored slicing -- ``marker_end_token = "
+    return p;\\n    }"``, eight spaces and a newline -- run that text under
+    Node, and separately assert the export string appeared in the file.  Two
+    problems, and they compounded: re-indent the function and the slice breaks
+    with "the function may have been renamed"; and because the slice never
+    touched the export, the export existed *"so this test can drive the
+    function"* while no test drove it that way.  Removing it failed only the
+    string pin, never a real check.
+
+    Now the module is LOADED (`tests/_node_esm.run_node`, with `static_root`
+    so its browser-absolute `/static/...` import resolves) and the function is
+    called on the namespace production reaches it through.  The separate
+    export pin is deleted: it is genuinely redundant now, because these cases
+    cannot run without the export.
     """
-    # Strip the IIFE wrapper for Node execution: just inline the
-    # function body via JSON-encoded arg so we don't have to source
-    # the whole module.  The module's IIFE captures ``window`` /
-    # ``this`` which Node doesn't have; sandboxing into a snippet is
-    # cleaner than loading the whole 2700-line file.
-    src = _CORE.read_text(encoding="utf-8")
-
-    # Extract the function source by anchored slicing.
-    marker_begin = "function _redactSourcePath(p) {"
-    marker_end_token = "        return p;\n    }"
-    if marker_begin not in src or marker_end_token not in src:
-        pytest.fail(
-            "Could not locate _redactSourcePath in trajectory/core.js "
-            "via anchored markers; the function may have been "
-            "renamed or moved.  Update this test's markers."
-        )
-    fn_start = src.index(marker_begin)
-    fn_end = src.index(marker_end_token, fn_start) + len(marker_end_token)
-    fn_src = src[fn_start:fn_end]
-
-    raw_json = json.dumps(raw)
-    expected_json = json.dumps(expected)
-    script = (
-        fn_src
-        + f"\nconst got = _redactSourcePath({raw_json});"
-        + f"\nconst want = {expected_json};"
-        + "\nif (got !== want) {"
-        + "\n  console.error(JSON.stringify({got, want}));"
-        + "\n  process.exit(1);"
-        + "\n}"
-    )
-    try:
-        _run_node(script)
-    except subprocess.CalledProcessError as exc:
-        pytest.fail(
-            f"_redactSourcePath({raw!r}) did not yield {expected!r}.\n"
-            f"Case: {description}\n"
-            f"Node stderr: {exc.stderr.strip()}"
-        )
-
+    out = _load_and_call(raw)
+    assert out == expected, (
+        f"_redactSourcePath({raw!r}) -> {out!r}, expected {expected!r}\n"
+        f"Case: {description}")
 
 def test_csv_builder_calls_redaction():
     """Source-text guard: ``_buildPlotCsv`` must call

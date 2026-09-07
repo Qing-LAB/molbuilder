@@ -645,7 +645,7 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-06: 29 to convert, 54 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
+**Measured 2026-09-06: 27 to convert, 54 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
 file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
 text. 100 read a file a person wrote. Three earlier counts said 233, 256 and
@@ -687,6 +687,24 @@ green run had hidden all of them.
    headless. Their two whitespace-measuring assertions (nine embedded spaces,
    counted twice) now match on structure instead — same coverage, one less way
    to be wrong for no reason.
+6. ~~**`test_trajectory_csv_redaction_js.py`**~~ (2, node) — **DONE
+   2026-09-06, and it turned up a circular one.** The ten redaction cases
+   EXTRACTED the function's source by anchored slicing (`marker_end_token`
+   was `"        return p;\n    }"` — eight spaces and a newline) and ran that
+   text; a separate assertion pinned that `core.js` exports
+   `_redactSourcePath` *"so this test can drive the function"*. **No test drove
+   it that way** — removing the export failed only the string pin. Now the
+   module is loaded through `tests/_node_esm.run_node` with `static_root`, so
+   its browser-absolute `/static/…` import resolves, and the function is
+   called on the namespace production uses. The export pin is deleted as
+   genuinely redundant: **verified** — removing the export now fails the real
+   cases. Gutting the redaction fails six of ten.
+
+   *`core.js` loads under the shared harness*, which the file had assumed
+   impossible (*"the module's IIFE captures `window`/`this` which Node doesn't
+   have"*). That is what `globals_js` is for, and it opens the same route for
+   the remaining `core.js` pins.
+
 5. ~~**`test_launch_ask_mode.py`**~~ (4, python) — **DONE 2026-09-06.** The
    query cap now ASKS about 30 trials against a cap of 24 and reads the answer;
    the `--test-only` check compares what `ask` reports against what `submit`
