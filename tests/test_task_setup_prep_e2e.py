@@ -887,3 +887,63 @@ def test_choosing_a_machine_shows_what_a_prep_would_resolve(
     assert pre[2].startswith("from ") and pre[2] != "from ?", (
         f"the value is shown with no file behind it: {pre[2]!r} -- WHICH "
         f"file each setting came from is the whole point of showing it")
+
+
+# --------------------------------------------------------------------- #
+#  The card that offers this machine's channels                         #
+#                                                                       #
+#  It lives in this file because the fixtures it needs are this file's:  #
+#  a folder with a real description, opened in a real browser against a  #
+#  real server.  A second copy of `two_stage_dir` in a notify-only file  #
+#  would be the duplication worth more than the tidier filename.         #
+# --------------------------------------------------------------------- #
+
+def test_the_notify_card_offers_this_machines_channels(
+        page, flask_server, two_stage_dir):
+    """A channel configured on this machine appears as a tick you can see.
+
+    Three steps that only run together in a browser: the card unhides once a
+    description loads, `loadChannelNames()` asks the server, and the answer
+    is painted as one label per channel.  Any of the three failing leaves a
+    person unable to ask for a report that the machine is perfectly capable
+    of sending -- and nothing else notices, because `task.json` is valid
+    either way.
+
+    WHAT THIS REPLACES.  Two assertions in `test_task_setup_notify_js.py`
+    read `id="ts-notify-card"` out of the template and `/api/notify/channels`
+    out of viewer.js.  Both stay true of a card that never unhides and a
+    fetch that never fires.
+
+    WHY THE SECRET IS NOT CHECKED HERE, though the rule is the reason the
+    card was rebuilt.  It cannot reach this page: `_row` in
+    `notify_setup.py` is the one door out and emits no `url` and no `key` at
+    all -- `where` is already masked when it leaves the process.  A DOM scan
+    for the key would pass on any painter whatsoever, which is a vacuous
+    assertion wearing a security check's clothes; MEASURED, by adding
+    `label.setAttribute("title", known.url)` to the painter and watching the
+    scan stay green.  The claim is owned where it can fail:
+    `test_notify_setup_api.py::test_a_webhook_address_is_masked_because_it_IS
+    _the_credential` and `::test_every_address_is_masked_even_a_listeners`.
+    The absence lints in `test_task_setup_notify_js.py` -- no
+    `type="password"` in the template, no `saveDestination` in any source --
+    also stay: those quantify over a class, which is what text is for.
+    """
+    from molbuilder.config_dir import config_dir
+    (config_dir() / "notify").write_text(json.dumps({"channels": {
+        "lab": {"kind": "slack",
+                "url": "https://hooks.example.invalid/services/T0/B0/XyZzY"}}}),
+        encoding="utf-8")
+
+    _open(page, flask_server, two_stage_dir)
+    page.wait_for_function(
+        "() => { const c = document.getElementById('ts-notify-card');"
+        " return c && !c.hidden; }", timeout=20000)
+    page.wait_for_selector("#ts-notify-channels input[type=checkbox]",
+                           timeout=20000)
+
+    ticks = page.eval_on_selector_all(
+        "#ts-notify-channels label", "els => els.map(e => e.textContent)")
+    assert any("lab" in t for t in ticks), (
+        f"the machine has a channel called 'lab' and the card offers "
+        f"{ticks!r} -- a tick a person cannot see is a report they cannot "
+        f"ask for")

@@ -312,15 +312,20 @@ def test_the_card_writes_ONE_file_and_has_no_control_for_a_secret():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     html = (root / "molbuilder/web/templates/task_setup.html").read_text()
-    assert 'id="ts-notify-card"' in html
+    # `assert 'id="ts-notify-card"' in html` and `assert
+    # "/api/notify/channels" in js` stood among these and are gone: both are
+    # true of a card that never unhides and a fetch that never fires.  That
+    # the card appears and paints this machine's channels is driven in
+    # test_task_setup_prep_e2e.py::
+    # test_the_notify_card_offers_this_machines_channels.  What is left here
+    # is the half text is the right instrument for -- ABSENCE, over a whole
+    # class, which no runtime test can prove without walking every path.
     for gone in ('id="ts-reports-key"', 'id="ts-reports-url"',
                  'id="ts-reports-save"', 'type="password"'):
         assert gone not in html, f"{gone} came back to the page that travels"
     js = (root / "molbuilder/web/static/task-setup/viewer.js").read_text()
     for gone in ("/api/notify/destination", "saveDestination"):
         assert gone not in js, f"{gone} still writes a second file from here"
-    # it may ASK for the names, and that route hands out nothing else
-    assert "/api/notify/channels" in js
 
 
 def test_a_channels_secret_never_reaches_the_description():
