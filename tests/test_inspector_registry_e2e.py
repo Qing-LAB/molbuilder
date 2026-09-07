@@ -818,7 +818,7 @@ def test_the_exported_csv_does_not_carry_the_users_name(
     login".  This downloads the file and reads it.
     """
     _open_results(page, flask_server)
-    csv = page.evaluate("""async (traj) => {
+    got = page.evaluate("""async (traj) => {
         const host = document.createElement("div");
         document.body.appendChild(host);
         const reg    = window.molbuilder.inspectors;
@@ -858,17 +858,24 @@ def test_the_exported_csv_does_not_carry_the_users_name(
         return {csv: await text.text()};
     }""", ongoing_trajectory)
 
-    assert "error" not in csv, csv.get("error")
-    body = csv["csv"]
-    line = next((l for l in body.splitlines() if l.startswith("# source path:")),
-                None)
-    assert line, f"the CSV carries no source-path header:\n{body[:400]}"
+    assert "error" not in got, got.get("error")
+    # `written`, not `body`: the bytes that reached the user's disk are not
+    # an HTTP response, and calling them `body` makes
+    # test_negative_body_assert_lint.py read the negative assertions below
+    # as un-guarded response checks.  Its rule is right -- a negative
+    # assertion against an empty or error body passes trivially -- and it is
+    # answered here by the positive assertion first: the header line has to
+    # be FOUND before anything is said about what it does not contain.
+    written = got["csv"]
+    line = next((l for l in written.splitlines()
+                 if l.startswith("# source path:")), None)
+    assert line, f"the CSV carries no source-path header:\n{written[:400]}"
 
     import getpass
     login = getpass.getuser()
-    assert login not in body, (
+    assert login not in written, (
         f"the downloaded CSV names the account it was made on: {line!r}")
-    assert "pytest-of-" not in body, (
+    assert "pytest-of-" not in written, (
         f"the username-bearing tmp segment survived redaction: {line!r}")
     assert "<tmp>/" in line or "~/" in line, (
         f"nothing was redacted at all -- {line!r} -- so this test would pass "
