@@ -70,7 +70,7 @@ NOT read here any more."** It is open.
 | ~~**E8**~~ | **ALREADY DONE — verified 2026-09-03, not changed.** | roadmap § 1 | done |
 | ~~**E9**~~ | **BOTH HALVES CLOSED 2026-09-03.** | roadmap § 6 | done |
 | **E10** | **Detecting from the `.out` that a run STOPPED**, and whether it stopped converged (`SCF_NOT_CONV` / `ABNORMAL_TERMINATION`) — **on a zero exit too**, since an MPI stack may not propagate an abort. Ruled to belong to `mb_monitor.py`, not the execution branch | roadmap § 4 | open |
-| **T1** | **A RESTARTED RUN MAY KEEP SHOWING THE OLD MOVIE — found 2026-09-07, not yet a verdict.** Rewrite a watched trajectory SHORTER (a run restarted in place) and the viewer's frame count does not change. The server is not at fault: its poll answers `{changed: true, frames: 2}`, measured off the response itself. And every browser link was READ: `pollOnce` calls `applyNewData` on `changed`; `oldData` is captured before the transition so `oldLen` is still the old count; `canAppend` needs `newLen > oldLen` and the no-new-content short-circuit needs `newLen === oldLen`, so both are false and the `else` branch calls `rebuildModel`; `rebuildModel` reads `state.data.frames` live; `slider.max` is a live view of `model.frameCount()`. The chain says it should shrink and it does not. **Either a defect a person would meet the first time a run restarts, or a link in that chain I did not find** — and it blocks the last three source pins in `test_structure_info_bridge.py`, which is how it was found | found 2026-09-07 | open |
+| **T1** | **A LIVE POLL THAT MUST REBUILD DOES NOT UPDATE THE MOVIE — found 2026-09-07.** The append path is fine; the full-rebuild path is not. Reproduced: move the frame at `oldLen - 1` (the one `_frameEqualAt` reads) and grow the feed 4 → 6, so `canAppend` refuses and `applyNewData` takes the `else` branch. The status line then says *"Loaded 6 … frames"* and the frame bar still holds **4** — the feed's count and the movie's disagreeing, which `core.js` itself names as bug **#35**. The trigger is ordinary: a frame that was still being written when the last poll caught it, and has since settled. **Two things hide it, each worth its own look:** `setStatus` is a no-op on `/results` (`if (!document.getElementById("status")) return;`), so `rebuildModel`'s *"Viewer failed to load the run"* reports into nothing on the page the inspector lives on; and *"Loaded N frames"* is written by `applyNewData` from the FEED's count while `rebuildModel` runs unawaited beside it, so the tab can claim frames it is not showing. Recipe at the foot of `tests/test_inspector_registry_e2e.py`; it blocks the last three source pins in `test_structure_info_bridge.py`, which is how it surfaced | found 2026-09-07 | open |
 | **E11** | **A fresh live walk of the PySCF / spectra decks.** The 2026-08-28 review exercised them only through the guard suites and says so | audit 08-28 § 5 | open |
 
 ## 3. Open — configuration and ops
@@ -234,8 +234,20 @@ document rows, which were measured against the current tree.
 ## 5c. The directory door — `JobDirParser`, and its migration
 
 *(Agreed 2026-09-04. Contract: [`model/parse.md` § 5](?doc=model/parse.md).
-**Not started.** This section is the plan, and the caller list below is the
-completeness check — the requirement is that nobody is left behind.)*
+This section is the plan, and the caller list below is the completeness check
+— the requirement is that nobody is left behind.)*
+
+**TWO DIFFERENT THINGS SHARE THIS NAME, so read the state carefully.** The
+`JobDirParser` that *existed* — an eleven-field `JobResult`, ten of whose
+fields had no reader anywhere and whose eleventh was reached by parsing every
+result file to build plots and then discarding them — **was DELETED
+2026-09-04**, replaced by `job.run_status`. `parse/dirs/__init__.py` says so:
+*"No DirParser ships today."* That work is done and is not what follows.
+
+**What follows is a NEW consolidation, and it is not started** — verified
+2026-09-07, not taken from this row: `_resolve_run_directory` and `_engine_of`
+are still their own readers in `web/blueprints/watch.py`, and `run_status` is
+still its own in `jobset/runstatus.py`.
 
 **The shape.** One DirParser answers everything asked *about a run
 directory*; the four fields each have a named reader before a line is

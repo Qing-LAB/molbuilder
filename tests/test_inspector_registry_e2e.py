@@ -883,50 +883,52 @@ def test_the_exported_csv_does_not_carry_the_users_name(
 
 
 # --------------------------------------------------------------------- #
-#  NOT WRITTEN, and what was learned trying                             #
+#  NOT WRITTEN — it found a defect instead (plan row T1)                #
 #                                                                       #
 #  `tests/test_structure_info_bridge.py` reads three lines of            #
-#  trajectory/core.js as text -- the `alias("info", "fileState")` call,  #
-#  the two resets, and APPLY's `payload.info !== undefined` guard.  Its  #
-#  own note says a Playwright test is the real answer and that no        #
-#  harness mounts a viewer headless.  One does now (this file), so I     #
-#  tried, on 2026-09-07.  It does not work yet, and these are the facts  #
-#  the next attempt should start from rather than rediscover:            #
+#  trajectory/core.js as text, and its own note says a Playwright test   #
+#  is the real answer.  Written on 2026-09-07, it could not be made      #
+#  honest, because the path it needs is broken.  The recipe and the      #
+#  findings, so the next attempt starts here:                           #
 #                                                                       #
-#   * A run directory needs no SIESTA to state a contract: `contract_of` #
-#     answers from the single `*.fdf` in the directory, and the          #
-#     trajectory can be the generic `*_geom_optim.xyz` fallback.  Two    #
-#     files, and `info.calculation` comes back on the load response.     #
-#   * The observable is the Metadata page: `.molviewer-info-key` rows,   #
-#     drawn from MolView's store, which `installMolecule` fills only     #
-#     when `input.info` is a non-empty object (model-jobs.js).           #
-#   * A poll whose frames are a strict TAIL EXTENSION takes the cheap    #
-#     `addFrames` path and never rebuilds, so nothing is re-installed.   #
-#     Appending a frame therefore tests nothing.                         #
-#   * Rewriting the file SHORTER *should* take the full-rebuild branch,  #
-#     and does not.  THE CHAIN WAS READ END TO END and every link says   #
-#     it should: the server answers `{changed: true, frames: 2}` after   #
-#     the rewrite (measured, off the poll's own response); `pollOnce`    #
-#     calls `applyNewData` on `changed`; `oldData` is captured BEFORE    #
-#     the transition so `oldLen` is still 4; `canAppend` needs           #
-#     `newLen > oldLen` and `noNewContent` needs `newLen === oldLen`, so #
-#     both are false and the `else` branch calls `rebuildModel`;         #
-#     `rebuildModel` reads `state.data.frames` live; and `slider.max` is #
-#     a live view of `model.frameCount()` (`molview/ui.js::reflect`,     #
-#     "nothing here is cached").  The movie stays at four frames anyway. #
-#     Either a restarted run keeps showing the old movie -- a defect in  #
-#     its own right, and the more likely reading -- or there is a link   #
-#     in that chain I have not found.  Do not write an assertion here    #
-#     until that is settled; settle it first, and then this test is      #
-#     three lines away.                                                  #
-#     (A poll baseline is also required: polling starts at MOUNT, so     #
-#     "wait until a poll has happened" is already true before the file   #
-#     is touched.  That one cost an afternoon.)                          #
-#   * THE TRAP THAT MADE THIS LOOK DONE.  `rebuildModel` also runs at    #
-#     LOAD.  A mutation that makes it install no `info` therefore fails  #
-#     a test on its BEFORE assertion while proving nothing about any     #
-#     poll -- which is how a version of this test sat green through the  #
-#     APPLY guard being deleted three different ways.  Any future        #
-#     version must assert that the movie actually changed between load   #
-#     and poll before it asserts anything about the store.               #
+#  THE FIXTURE.  A run directory needs no SIESTA to state a contract:    #
+#  `contract_of` answers from the single `*.fdf` in the directory, and   #
+#  the trajectory can be the generic `*_geom_optim.xyz` fallback.  Two   #
+#  files, and `info.calculation` comes back on the load response.  The   #
+#  observable is the Metadata page -- `.molviewer-info-key` rows, which  #
+#  `installMolecule` fills only for a non-empty `input.info`.            #
+#                                                                       #
+#  DRIVING A POLL, three ways to get it wrong, all measured:            #
+#   * Appending a frame tests nothing -- a strict tail extension takes   #
+#     the cheap `addFrames` path and re-installs nothing.                #
+#   * "Wait until a poll has happened" is already true before the file   #
+#     is touched: polling starts at MOUNT.  Take a baseline at the       #
+#     moment of the change and wait to EXCEED it.                        #
+#   * To force the rebuild branch, move the frame at `oldLen - 1` -- the #
+#     one `_frameEqualAt` reads.  Moving the new tail leaves the         #
+#     boundary check satisfied and it appends instead.                   #
+#                                                                       #
+#  AND THEN THE REBUILD BRANCH DOES NOT UPDATE THE MOVIE.  With frame    #
+#  `oldLen - 1` moved and the feed grown 4 -> 6, the status line says    #
+#  "Loaded 6 ... frames" and the frame bar still holds 4.  The append    #
+#  path updates it correctly; only the rebuild path does not.  That is   #
+#  the feed's count and the movie's count disagreeing, which the file    #
+#  itself names as bug #35.  Plan row T1.                                #
+#                                                                       #
+#  TWO THINGS THAT MAKE IT HARD TO SEE, both worth their own look:      #
+#   * `setStatus` is a NO-OP on /results (`if (!document                 #
+#     .getElementById("status")) return;`), so `rebuildModel`'s catch    #
+#     -- "Viewer failed to load the run" -- reports into nothing on the  #
+#     page where the inspector actually lives.                           #
+#   * "Loaded N frames" is written by `applyNewData` from the FEED's     #
+#     count, while `rebuildModel` runs unawaited beside it.  The tab can #
+#     therefore claim frames it is not showing, which is what it did     #
+#     here.                                                              #
+#                                                                       #
+#  A test can be finished in minutes once the rebuild path updates the   #
+#  movie: mount, assert the Metadata rows, move frame `oldLen - 1` and   #
+#  grow the feed, wait past a poll baseline, assert the frame bar moved  #
+#  AND the rows survived.  Do not assert before the frame bar moves --   #
+#  `rebuildModel` also runs at LOAD, so without that the assertions      #
+#  describe the load and stay green through the guard being deleted.     #
 # --------------------------------------------------------------------- #
