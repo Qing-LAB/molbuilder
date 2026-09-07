@@ -628,9 +628,17 @@ auth routes.
 **Checkpoint** — the run-history panel (its behavior is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6`, its
 invariants [`execution/checkpointing.md`](?doc=execution/checkpointing.md);
-the routes are `GET /api/checkpoint/{state,list,config}` and
-`POST /api/checkpoint/{init,save,tag,restore}`. `config` is **read-only** — the
-classification has one home, `molbuilder.json`).
+the routes are `GET /api/checkpoint/{state,list}` and
+`POST /api/checkpoint/{init,save,tag,restore}`.
+
+~~`GET /api/checkpoint/config`~~ — **retired 2026-09-07**, zero browser
+callers and zero tests. It answered what a folder's classification is (the
+size limit, the always-large list). Read-only was deliberate — the
+classification has one home, `molbuilder.json`, and a per-folder editor *"let
+two folders behave differently for no recorded reason, and let somebody change
+the rules between a save and a restore"* — but nothing ever displayed the
+answer. If the panel should one day say why a file was left out of a
+checkpoint, that is a feature to design, not a route to keep warm).
 
 **System** — `GET /api/system/load` → `{ ok, data: { cpu, ram, gpu, … } }`, the
 1 Hz load strip's source. An empty `gpus` list has two causes, so the snapshot
@@ -646,13 +654,12 @@ best-effort persists the repaired tree — read-only installs are served from
 memory), and `GET /api/docs/img/<path>` (images only, contained to
 `docs/img/`) — what the Documents tab reads.
 
-`GET /api/docs/list` (a flat listing, grouped by top-level directory) is
-**also served and is read by nothing**. It was the tab's original listing;
-the very next commit replaced it with the `toc.json` tree and the browser has
-not called it since. This sentence named it among "what the Documents tab
-reads" until 2026-09-07, which is the drift a caller-less route causes: the
-contract said the tab depended on it, so nobody looked. Its role is
-`plans/plan.md` **W8**.
+~~`GET /api/docs/list`~~ — **retired 2026-09-07**, zero browser callers. It
+was the Documents tab's original flat listing; the commit after the one that
+added it replaced the listing with the `toc.json` tree, and nothing has called
+it since. `/api/docs/toc` auto-discovers new documents, so it was not a
+fallback either. This entry named it among "what the Documents tab reads"
+until the day it was deleted, which is why three audits walked past it.
 
 **Admin** (admin-gated) — `GET /api/admin/rate_limit/status` (the blocked-IP
 list) and `POST /api/admin/rate_limit/clear` (unblock an IP, or

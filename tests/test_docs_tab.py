@@ -1,6 +1,6 @@
 """Documents tab — the read-only docs/*.md reader (blueprints/docs.py).
 
-Pins: the tab page renders + is in the nav; /api/docs/list groups every
+Pins: the tab page renders + is in the nav; /api/docs/toc groups every
 docs/*.md; /api/docs/read returns one doc's text + H1 title; and the
 path-safety gate rejects traversal / non-.md / outside-docs paths (the same
 defence-in-depth class as the files blueprint, on a different, read-only root).
@@ -161,46 +161,13 @@ def test_img_missing_file_is_404(client):
     assert client.get("/api/docs/img/nope.png").status_code == 404
 
 
-# --------------------------------------------------------------------- #
-#  /api/docs/list                                                       #
-# --------------------------------------------------------------------- #
+# `/api/docs/list` and its two tests stood here.  The route was the tab's
+# original flat listing; the commit AFTER the one that added it replaced the
+# listing with the `toc.json` tree, and no browser has called it since.
+# `/api/docs/toc` also auto-discovers new documents, so it was not even a
+# fallback.  Deleted 2026-09-07.
 
 
-def test_list_groups_every_md(client):
-    d = client.get("/api/docs/list").get_json()
-    assert d["ok"] is True
-    groups = d["groups"]
-    assert groups, "expected at least one doc group"
-    # the root group (docs sitting directly in docs/) is first
-    assert groups[0]["name"] == "(root)"
-    # every entry carries a path + a title
-    for g in groups:
-        for doc in g["docs"]:
-            assert doc["path"].endswith(".md")
-            assert doc["title"]
-
-
-def test_list_finds_the_index_and_migration_audit(client):
-    """The documentation index and dated migration audit are discoverable.
-
-    The audit moved to ``archive/`` on 2026-08-22 -- it has nothing open, and
-    the spine is for documents that still decide something.  What this test
-    is for is unchanged: the listing reaches BOTH the index at the root and a
-    dated document nested in a subdirectory, which is the part a flat walk
-    silently gets wrong.  So the path is matched where it now lives rather
-    than where it was.
-    """
-    d = client.get("/api/docs/list").get_json()
-    all_paths = {doc["path"] for g in d["groups"] for doc in g["docs"]}
-    assert "README.md" in all_paths
-    assert any(
-        path.startswith("archive/") and path.endswith("-document-migration.md")
-        for path in all_paths
-    )
-
-
-# --------------------------------------------------------------------- #
-#  /api/docs/read                                                       #
 # --------------------------------------------------------------------- #
 
 

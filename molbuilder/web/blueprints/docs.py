@@ -412,48 +412,6 @@ def api_docs_toc():
     return jsonify({"ok": True, "tree": tree, "readme": readme})
 
 
-@bp.route("/api/docs/list", methods=["GET"])
-def api_docs_list():
-    """Every ``docs/*.md`` (recursive), grouped by its top-level directory.
-
-    Response::
-
-        {ok, groups: [{name, docs: [{path, title}]}]}
-
-    ``path`` is relative to ``docs/`` (what ``/api/docs/read`` takes);
-    ``name`` is the directory group ("(root)" for docs sitting directly
-    in ``docs/``).  Groups + docs are sorted; the root group is first.
-    """
-    root = _docs_root()
-    if root is None:
-        return jsonify({"ok": True, "groups": [],
-                        "note": "docs/ directory not found in this install"})
-
-    by_group: Dict[str, List[Dict[str, str]]] = {}
-    for dirpath, _dirs, files in os.walk(root):
-        for fn in files:
-            if not fn.lower().endswith(".md"):
-                continue
-            full = Path(dirpath) / fn
-            rel = full.relative_to(root)
-            group = str(rel.parent) if str(rel.parent) != "." else "(root)"
-            by_group.setdefault(group, []).append({
-                "path":  str(rel).replace(os.sep, "/"),
-                "title": _title_of(full),
-            })
-
-    # Root group first, then the rest alphabetically; docs sorted by title.
-    def _group_key(name: str):
-        return (name != "(root)", name.lower())
-
-    groups = []
-    for name in sorted(by_group, key=_group_key):
-        docs = sorted(by_group[name], key=lambda d: d["title"].lower())
-        groups.append({"name": name, "docs": docs})
-
-    return jsonify({"ok": True, "groups": groups})
-
-
 @bp.route("/api/docs/img/<path:img_path>", methods=["GET"])
 def api_docs_img(img_path: str):
     """Serve an image from ``docs/img/<img_path>``.

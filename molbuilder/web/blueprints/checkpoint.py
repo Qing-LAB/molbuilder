@@ -236,44 +236,6 @@ def api_checkpoint_list():
         return _server_fault(f"{type(exc).__name__}: {exc}")
 
 
-@bp.get("/api/checkpoint/config")
-def api_checkpoint_config():
-    """The classification this folder is saved under -- read only.
-
-    There is no write route.  The classification lives in molbuilder.json and
-    has ONE home (S1c); a per-folder editor is what let two folders behave
-    differently for no recorded reason, and let somebody change the rules
-    between a save and a restore.
-    """
-    try:
-        path = _resolve_path(request.args.get("path"))
-    except ValueError as exc:
-        return _protocol_error(str(exc))
-    repo = Repo(str(path))
-    try:
-        cls = repo.classification()
-        return jsonify({
-            "ok":               True,
-            "path":             str(path),
-            "calculation":      repo.calculation() if repo.initialized else None,
-            "size_limit_bytes": int(cls["size_limit_bytes"]),
-            "always_large":     list(cls["always_large"]),
-            # NAMED BY THE ONE MODULE THAT OWNS THE SPELLING -- a UI
-            # string is still a place the filename can drift.
-            "edit_in":          _CONFIG_FILENAME,
-        })
-    except CheckpointError as exc:
-        return _server_fault(str(exc))
-    except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint config failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
-
-
-# --------------------------------------------------------------------- #
-#  Write routes -- each one is an explicit act by the user (§ 9)        #
-# --------------------------------------------------------------------- #
-
-
 @bp.post("/api/checkpoint/init")
 def api_checkpoint_init():
     """Make a folder a checkpoint folder and save its first state."""
