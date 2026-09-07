@@ -1315,20 +1315,6 @@ class TestEveryStageOffersBothThingsYouCanDoWithIt:
         assert "form-schema.css" not in head, (
             "the parameter form's stylesheet was pulled in for a hint")
 
-    def test_the_hint_says_a_flag_still_overrides_the_card(self):
-        """A person who filled the card and then wants something else for one
-        prep needs to know a flag wins -- otherwise the only visible path is
-        editing `task.json` again.
-
-        *(It also asserted `run-config.toml` appeared, until 2026-09-02.
-        That file is a report now and the UI does not name it: a benchmark
-        reports, and what the run uses is this card.)*"""
-        # Read from the rendered hint now -- `test_task_setup_prep_e2e.py`.
-        # Kept as a test so the docstring above, which is the reasoning, has
-        # somewhere to live until that e2e is the only home.
-        assert "--np / --omp / --time" in VIEWER.read_text()
-
-
 class TestTheTabShowsWhatAPrepWouldResolve:
     """`preparing-for-another-machine.md` § 5: the tab shows what `prep`
     resolved using the provenance `prep` already computes -- not a

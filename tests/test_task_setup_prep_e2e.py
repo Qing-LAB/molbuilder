@@ -757,6 +757,10 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
         "p.hint", "els => els.map(e => e.textContent).join('\\n')")
     assert "Measure it" in hints and "Run it" in hints, (
         "the per-stage blocks do not explain themselves")
+    # A person who filled the card and then wants something else for ONE prep
+    # needs to know a flag wins -- otherwise the only visible path is editing
+    # `task.json` again.  *(The hint also named `run-config.toml` until
+    # 2026-09-02.  That file is a report now and the UI does not name it: a
+    # benchmark reports, and what the run uses is this card.)*
     assert "--np / --omp / --time" in hints, (
         "a person who filled the card is not told a flag still overrides it")
-
