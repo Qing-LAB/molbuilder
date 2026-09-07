@@ -839,3 +839,90 @@ green run had hidden all of them.
 | `roadmap.md` | R3's old home. 1770 lines, ~85% closed work never struck; its live items are **E7–E11, C2, C3, W12–W15, N1–N4** — **plus § 6's architecture seams, which the 2026-09-01 fact-check never reached and this merge dropped**; recovered 2026-09-06 as **§ 5f**, **S1–S14** |
 | `archive/2026-09-01-audit-2026-08-21-fullstack-review.md` | its open list became roadmap § 7.5, and § 7.5 is now empty — verified |
 | `archive/2026-09-01-audit-2026-08-28-full-review.md` | O1–O3 closed in the document; O4's general case is **N1**, O5 is **N3**, its uncovered lane is **E11** |
+
+---
+
+## 7. The document survey and the four indexes — PLANNED, not started
+
+*(User, 2026-09-07: "the documents are very fragmented and a lot of key
+information cannot be easily found. we also should have an index that
+summarizes key design aspects, such as api, module, data structure etc. we
+also should have a reference list that gives the foundation of all the
+constants, scientific validation foundation and paper citations summarized in
+one place.")*
+
+### 7.1 What is actually wrong — measured 2026-09-07, before proposing
+
+**Not coverage.** The first guess was that documentation had fallen behind the
+code, and it has not. Every one of the **77** `/api/*` routes the blueprints
+serve is named in `web-api.md` — re-derived by expanding the doc's own braced
+forms (`/api/checkpoint/{state,list,config}`), which a naive matcher scores as
+26 missing. Do not plan a coverage sweep; there is nothing to catch up on.
+
+**Findability.** 75 live documents, **50,609 lines**, nine directories. The
+information is there and a person cannot reach it.
+
+**The existing index has the problem it is meant to solve.** `README.md`
+§ Index is one row per DOCUMENT, and several rows run past 400 words. To find
+out which document owns a fact you read essays about documents. It is a good
+map of the tree and a poor answer to "where is X".
+
+**Two documents contradicted themselves in one day**, both found by accident
+while doing something else — `science/pseudopotentials.md` § 3 listed a check
+as not-done that its own § 2a.1 documents as done, and `process/testing.md`
+§ 6 quoted a number three sentences after telling the reader never to quote a
+number from a document. Neither is exotic. Nothing systematic would have
+found them, which is the survey's real justification.
+
+### 7.2 The four indexes — organized by THING, not by document
+
+Each is a lookup table, each row pointing at the document that owns the
+detail. **None of them may become a second home**: a row says where a fact
+lives, never what the fact is. (`README.md` R-W1, and the reason `docs/`
+survived its 2026-06-02 over-compression.)
+
+| index | one row per | the row answers | generated or written |
+|---|---|---|---|
+| **API** | route | what it answers · who calls it · which doc owns it | **generated** — the route list is derivable from the blueprints, and a generated index cannot drift. The 2026-09-07 W8 finding is the argument: `web-api.md` claimed the Documents tab read `/api/docs/list`, which it has not since the commit after the one that added it |
+| **Module** | module | its role · its layer (L1/L2/L3) · its doc | **generated** from the layering the suite already classifies (`test_layering.py` walks every `molbuilder/*.py` and asserts every name is classified — the data exists) |
+| **Data structure** | persisted file / schema | its shape · its version · its one reader and one writer | **written** — the doors are a design fact, not derivable |
+| **Reference** | constant · citation | its value · its source · **why this value** | **written** — see 7.3 |
+
+### 7.3 The reference index, which is the one with real content in it
+
+Constants have one home already (`molbuilder/constants.py`, with a lint and a
+documented allowlist). What has no home is the **reasoning**, and it is
+genuinely scientific. The worked example, found while measuring this:
+`trajectory_log/emitter.py` retypes `HARTREE_BOHR_TO_EV_ANG = 51.42208619`
+rather than deriving it from CODATA-2018 (which gives 51.422067476, ~4 ppm
+apart) — deliberately, so emitted forces line up with what a person reads in
+ASE, VASP and QE logs. That is a real convention choice with a real
+justification, and it lives in a code comment nobody will find.
+
+Citations are split the same way: `science/references.bib` holds **21**
+entries, **5** live documents reference it, and at least **12** cite
+literature in prose instead. Two keys the roadmap called for — Reed 2006 and
+Stokbro 2003 — are in neither (row **E14**).
+
+So the reference index carries three things per row: the value, where it is
+defined, and the sentence saying why that value and not the neighbouring one.
+
+### 7.4 Order, and the one risk
+
+1. **Survey first, and record findings without fixing them.** Every live doc
+   read against the code, one pass, findings in a list. Fixing while reading
+   is how a survey becomes a month.
+2. **The two generated indexes**, which are cheap and cannot go stale.
+3. **The two written indexes**, from the survey's findings.
+4. **Only then** decide what merges. Fragmentation may be the symptom; the
+   fix might be four indexes and no merges at all.
+
+**THE RISK IS THIS PLAN'S OWN HISTORY.** The 2026-09-01 consolidation merged
+nine documents and dropped § 5f entirely; a re-check on 2026-09-07 found
+**seven more** items lost (E12–E14, N5, W16–W18), from source documents
+credited with "nothing open" that were never checked row by row. A survey
+that reorganizes without a per-item carry-over check will do it again. The
+rule for step 4: **nothing moves until the thing it says is written where it
+is going**, which is the archive's substance-first rule, and it is the reason
+§ 5i could not be archived until `process/testing.md` § 2a existed.
+
