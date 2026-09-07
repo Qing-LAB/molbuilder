@@ -691,15 +691,48 @@ def test_a_user_id_that_could_not_be_a_log_filename_is_refused(client):
     assert r.status_code in (400, 404, 405)
 
 
-def test_the_web_and_the_cli_issue_through_one_door(client):
-    """Two implementations would be free to generate two route segments from
-    one file — the failure `run-reports.md` § 4.3 records from when the route
-    lived in two places."""
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/notify_setup.py").read_text()
-    cli = (Path(__file__).resolve().parents[1]
-           / "molbuilder/cli.py").read_text()
-    assert "issue_notify_key" in src and "issue_notify_key" in cli
+def test_the_web_and_the_cli_issue_through_one_door(client, tmp_path):
+    """Issue on the tab, then on the command line: the SECOND one joins.
+
+    `run-reports.md` § 4.3 records what two implementations did: each was
+    free to generate its own route segment from the same file, so issuing a
+    second key moved the route and silenced everyone already set up.  The
+    rule is that the segment is a property of the FILE, and whoever issues
+    next adopts it.
+
+    *Replaces `assert "issue_notify_key" in src and ... in cli`, 2026-09-06.*
+    That was true of two modules that each merely MENTIONED the name -- in a
+    comment, in an import they never called, in a docstring explaining the
+    rule they had stopped following.  It is also true today of a CLI that
+    calls the shared door and then overrides the segment afterwards.  This
+    runs both issuers against one file and compares the answers.
+    """
+    from click.testing import CliRunner
+
+    from molbuilder.cli import cmd_notify_token
+    from molbuilder.monitor import notify_keys_path
+
+    c, _dest = client
+    web = c.post("/api/notify/listener/keys/alice").get_json()
+    assert web["ok"], web
+    keys = notify_keys_path()
+    assert keys.exists(), "the web issuer wrote no key file to join"
+
+    out = CliRunner().invoke(cmd_notify_token,
+                             ["bob", "--keys-file", str(keys)])
+    assert out.exit_code == 0, out.output
+
+    assert f"/api/{web['route']}" in out.output, (
+        f"the CLI handed out a different route than the tab did: the tab "
+        f"said {web['route']!r} and the CLI printed\n{out.output}\n"
+        f"Two segments from one file is the § 4.3 failure -- every key "
+        f"issued under the first one stops working, and silently.")
+    assert "joined the route already in that file" in out.output, (
+        f"the CLI did not recognise an existing route, so it believes it "
+        f"is the first issuer here:\n{out.output}")
+    # And the tab agrees in the other direction: a second web issue joins too.
+    again = c.post("/api/notify/listener/keys/carol").get_json()
+    assert again["route"] == web["route"] and again["joined"] is True, again
 
 
 def test_configured_but_not_live_is_a_state_the_page_can_report(client):

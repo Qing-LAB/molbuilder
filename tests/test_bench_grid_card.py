@@ -227,11 +227,16 @@ class TestTheBrowserDoesNotEnumerate:
             "function paintFit", 1)[0]
         assert '_mode !== "description"' in body
 
-    def test_a_stale_answer_is_dropped(self):
-        """Typing outruns the network; an earlier reply landing after a
-        later one would paint a grid for axes that no longer exist."""
-        src = self._src()
-        assert "_fitSeq" in src and "seq !== _fitSeq" in src
+    # `test_a_stale_answer_is_dropped` stood here and asserted `"_fitSeq" in
+    # src and "seq !== _fitSeq" in src` -- two substrings of a private
+    # variable's name.  A rename fails it on working code; a guard written
+    # where it can never be true, or compared against the wrong thing,
+    # passes it.  The claim is about ORDER, so the test that replaced it
+    # controls the order: tests/test_task_setup_prep_e2e.py::
+    # test_a_bench_grid_answer_that_arrives_late_is_dropped stubs fetch,
+    # parks the first reply, lets the second paint, then releases the first
+    # and checks the card kept the later answer.  Mutation-checked by
+    # deleting the `seq !== _fitSeq` line.
 
     def test_the_request_is_debounced(self):
         """Every keystroke repaints the rows; the server answer is worth

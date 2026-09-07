@@ -18,6 +18,16 @@ steps** and each step looked fine from the one either side of it:
 Unit tests saw none of it.  Each piece was correct on its own; the chain was
 not.  So this test does what a person does — type, Save, Preview, Prep — and
 then reads the `.sbatch` that came out.
+
+WHAT ELSE THIS FILE DRIVES, and why it is here rather than in a file of its
+own: the fixtures.  `two_stage_dir` + `_open` give a real folder with a real
+description, open in a real browser against a real server, and every claim
+below needs exactly that.  A second copy of them elsewhere would be the
+duplication worth more than a tidier filename.  Added 2026-09-06 while
+converting source-text pins (`plans/plan.md` § 5h): the machine choice
+reaching the copied command and the resolved-facts block, the notify card
+offering this machine's channels, and the bench grid dropping a reply that
+arrives after the axes have moved on.
 """
 from __future__ import annotations
 
@@ -947,3 +957,83 @@ def test_the_notify_card_offers_this_machines_channels(
         f"the machine has a channel called 'lab' and the card offers "
         f"{ticks!r} -- a tick a person cannot see is a report they cannot "
         f"ask for")
+
+
+def test_a_bench_grid_answer_that_arrives_late_is_dropped(
+        page, flask_server, two_stage_dir):
+    """Two edits, replies out of order; the card keeps the LATER answer.
+
+    Typing outruns the network.  An earlier reply landing after a later one
+    would leave the card showing a grid for axes that no longer exist -- and
+    it would look authoritative, because the panel says how many
+    combinations fit.
+
+    WHAT THIS REPLACES.  `test_bench_grid_card.py::test_a_stale_answer_is_
+    dropped` asserted `"_fitSeq" in src and "seq !== _fitSeq" in src` -- two
+    substrings of a private variable's name.  Rename the variable and it
+    fails on working code; write the guard where it can never be true, or
+    compare against the wrong thing, and it passes.  The claim is about
+    ORDER, so this test controls the order.
+
+    `window.fetch` is stubbed rather than the responses routed, because the
+    ordering has to be exact: the first call is parked on a promise this
+    test resolves by hand, after the second has already painted.
+    """
+    _open(page, flask_server, two_stage_dir)
+    page.wait_for_selector(".ts-pt-add", timeout=20000)
+
+    page.evaluate("""() => {
+        const orig = window.fetch;
+        window.__grid = {calls: 0, release: null};
+        window.fetch = function (url, opts) {
+            if (String(url).includes("/api/task-setup/bench-grid")) {
+                const idx = ++window.__grid.calls;
+                // Each answer is self-identifying, and the LATER one is
+                // deliberately the SMALLER grid: an off-by-one guard that
+                // merely kept the longer list would pass otherwise.
+                const cells = [];
+                for (let i = 0; i < (idx === 1 ? 3 : 1); i += 1) {
+                    cells.push({label: "CALL" + idx + "-" + i,
+                                shape: "1x1", where: "", why: []});
+                }
+                const resp = {json: async () => ({ok: true, cells: cells})};
+                if (idx === 1) {
+                    return new Promise((r) => {
+                        window.__grid.release = () => r(resp);
+                    });
+                }
+                return Promise.resolve(resp);
+            }
+            return orig.apply(this, arguments);
+        };
+    }""")
+
+    def add_a_point(value):
+        page.evaluate("""(v) => {
+            const a = document.querySelector(".ts-pt-add");
+            if (a.tagName === "SELECT") { a.selectedIndex = 1; }
+            else { a.value = v; }
+            a.dispatchEvent(new Event("change", {bubbles: true}));
+        }""", value)
+
+    add_a_point("111")
+    page.wait_for_function("() => window.__grid.calls === 1", timeout=10_000)
+    # The refresh is debounced at 300 ms, so the second edit has to be a
+    # separate pause or it replaces the first request instead of racing it.
+    page.wait_for_timeout(500)
+    add_a_point("222")
+    page.wait_for_function(
+        "() => document.querySelector('#ts-machine-fit .ts-fit-label')"
+        "        ?.textContent.startsWith('CALL2')", timeout=10_000)
+
+    # Now the FIRST answer finally arrives.
+    page.evaluate("() => window.__grid.release()")
+    page.wait_for_timeout(400)
+
+    labels = page.eval_on_selector_all(
+        "#ts-machine-fit .ts-fit-label",
+        "els => els.map(e => e.textContent)")
+    assert labels and all(t.startswith("CALL2") for t in labels), (
+        f"a reply for the axes the user has already moved past repainted "
+        f"the card: it shows {labels!r}.  The grid now describes a bench "
+        f"nobody asked for, and says how many combinations fit it")
