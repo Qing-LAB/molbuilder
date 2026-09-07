@@ -231,6 +231,29 @@ saw and this reader does not interpret, and `Domain`'s own rule governs it —
 honest; **silently failing to compare a declared one is the defect.** The
 difference is whether the field has a name in the type.
 
+**And what was kept uninterpreted is SAID** *(user, 2026-09-06)*. Keeping the
+column is right and refusing it is not available — a retired key an operator
+still writes, or a column of their own, must survive (R10; pinned by
+`test_declared_rows_keep_the_operators_own_columns`). But that leaves a
+**misspelling indistinguishable from a deliberate extra**: `gpu_parition`
+lands in `extra` exactly as `node_type` does, `gpu_partition` then reads as
+unstated, and a GPU job goes to `domain.gpu_partition or domain.partition` —
+the ordinary queue, silently. This section predicts it below: *"a value that
+changes where a job lands is a field, or it is a bug waiting for someone to
+misspell it."*
+
+So `known_machines()` names them — `?? not understood: <columns>` in the
+machine's summary line:
+
+```
+sol   slurm · 48 cores · 1 domain(s) · ?? not understood: gpu_parition
+```
+
+Nothing is refused and nothing is dropped; a typo simply stops being
+invisible. Built there rather than in either surface because that list has
+**two readers**, `jobset machines` and `GET /api/task-setup/machines`, and
+they must not be able to disagree about a machine.
+
 > **Memory needed one unit before R2 could hold for it,** and got one in
 > phase 3. The record states gigabytes as a number; a job states memory as
 > SLURM text (`"390G"`), and nothing converted between them — which is the
