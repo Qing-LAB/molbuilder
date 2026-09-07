@@ -173,14 +173,17 @@ def test_values_are_declared_once_and_read_by_name():
                 pytest.fail(f"loose length: {line}")
 
 
-def test_the_frame_states_a_height_and_the_surface_carries_no_padding():
-    """§ 11 — the box traps, all three from real breakage."""
-    css = STYLE.read_text()
-    frame = css.split(".spectrumchart-surface")[0]
-    assert re.search(r"height:\s*var\(--spectrumchart-height\)", frame)
-    assert not re.search(r"height:\s*auto", css)
-    assert re.search(r"\.spectrumchart-surface\s*\{[^}]*padding:\s*0", css, flags=re.S)
-    assert re.search(r"overflow:\s*hidden", frame)
+# `test_the_frame_states_a_height_and_the_surface_carries_no_padding` stood
+# here and matched four regexes against `_style.css`.  A stylesheet is not a
+# file, it is a CASCADE: a page sheet, a reset, or a later rule in this very
+# file can put the padding back, and the regex goes on finding the
+# declaration it was told to look for.  Measured 2026-09-07 -- appending
+# `.spectrumchart .spectrumchart-surface { padding: 6px; }` to the bottom of
+# this same stylesheet left every one of those four green.
+#
+# All three § 11 box traps are read off the painted chart now, in
+# test_spectrumchart_box_e2e.py, each mutation-checked: `height: auto`,
+# `overflow: visible`, and padding moved from the frame to the surface.
 
 
 # --- § 8.4  commands down, one number up ------------------------------------

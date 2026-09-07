@@ -131,6 +131,20 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
              "paired with the raw family list being absent: --font-mono has "
              "one home and the sheet must reach for it, not re-declare it"),
     },
+    "tests/test_validation_delivery_contract.py": {
+        208: (KEEP_LINT,
+              "the rule is the two ABSENCE lines beside it -- no `xyz: null,` "
+              "state mirror, no `factsForRequest` second assembler (comments "
+              "stripped first, so prose about the retired door does not fire "
+              "the guard).  This presence line stops both going vacuous on a "
+              "tab that stopped reading the structure at all.  AND THE "
+              "BEHAVIOUR IS NOT REACHABLE, verified by reading rather than "
+              "assumed: Build mounts MolView `mode: \"readonly\"` -- \"this "
+              "tab READS the structure ... it does not edit geometry\" -- so "
+              "no control on the page can move an atom without a reload, and "
+              "a reload refreshes a mirror too.  A browser test for staleness "
+              "would pass whatever the code did"),
+    },
     "tests/test_inspector_lifecycle_teardown.py": {
         ln: (KEEP_LINT,
              "counts `.addEventListener(` across a whole core and pins the "
