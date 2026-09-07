@@ -38,14 +38,45 @@ def test_from_xyz_text():
     np.testing.assert_allclose(s.positions[1], [0.957, 0.0, 0.0])
 
 
-def test_from_xyz_path(tmp_path):
+def test_a_path_is_refused_and_the_door_is_named(tmp_path):
+    """These two tests read `Structure.from_xyz(path)` until 2026-09-07.
+
+    That reader took a path OR a document and told them apart with
+    `os.path.isfile`, which cost two things: a mistyped path came back as a
+    malformed document, and the project had a second way to read a structure
+    file -- one that skipped the `.molstruct.json`. The capability is gone, so
+    the test that covered it now covers what replaced it.
+
+    Both spellings of the mistake are refused, `Path` and `str`, because
+    `str(tmp_path / "pep.xyz")` is the one that used to slip through and
+    produce *"Expected xyz header but got: invalid literal for int()"*.
+    """
     s = molbuilder.build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
     s.to_xyz(str(p))
-    s2 = Structure.from_xyz(str(p))
+
+    for spelling in (p, str(p)):
+        with pytest.raises(TypeError, match="StructureCodec"):
+            Structure.from_xyz(spelling)
+        with pytest.raises(TypeError, match="StructureCodec"):
+            Structure.from_pdb(spelling)
+
+    # And the door it names does the job.
+    from molbuilder.workingcopy_structure import StructureCodec
+    s2 = StructureCodec().load(p)
     assert s2.n_atoms == s.n_atoms
     np.testing.assert_allclose(s2.positions, s.positions, atol=1e-4)
     assert s2.elements == list(s.elements)
+
+
+def test_the_text_the_file_holds_still_parses(tmp_path):
+    """The reader did not get narrower about DOCUMENTS, only about paths."""
+    s = molbuilder.build_peptide("ARNDC")
+    p = tmp_path / "pep.xyz"
+    s.to_xyz(str(p))
+    s2 = Structure.from_xyz(p.read_text())
+    assert s2.n_atoms == s.n_atoms
+    np.testing.assert_allclose(s2.positions, s.positions, atol=1e-4)
 
 
 def test_from_xyz_empty_raises():
@@ -81,12 +112,14 @@ def test_from_pdb_text():
     assert s2.residue_names == list(s.residue_names)
 
 
-def test_from_pdb_path(tmp_path):
+def test_a_pdb_file_is_read_through_the_door(tmp_path):
     s = molbuilder.build_peptide("ARNDC")
     p = tmp_path / "pep.pdb"
     s.to_pdb(str(p))
-    s2 = Structure.from_pdb(str(p))
-    assert s2.n_atoms == s.n_atoms
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert StructureCodec().load(p).n_atoms == s.n_atoms
+    # The document itself still parses.
+    assert Structure.from_pdb(p.read_text()).n_atoms == s.n_atoms
 
 
 def test_from_pdb_no_atoms_raises():

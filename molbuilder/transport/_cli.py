@@ -10,25 +10,36 @@ from .preflight import format_report, parse_fdf_params, preflight_files
 from .wizard import DEFAULT_ELECTRODE_KZ, electrode_wizard, format_models
 
 
-def _load_device(device_xyz, sidecar_path, cell_fdf):
-    """Load a region-labeled device Structure from xyz + sidecar, and
-    resolve its lattice (sidecar 'cell' if present, else a reference
-    fdf's LatticeVectors via --cell-fdf).  Shared by electrode/bundle."""
+def _load_device(device_xyz, cell_fdf):
+    """Load a region-labeled device Structure through the ONE reading door,
+    and resolve its lattice (the pair's own cell, else a reference fdf's
+    LatticeVectors via --cell-fdf).
+
+    THE PAIR IS THE FILE (`model/structure.md` § 2.4).  This used to walk the
+    sidecar by hand -- `sidecar_path_for` + `apply_to_structure` beside a bare
+    `from_xyz` -- which is `StructureCodec.load` rewritten line for line, and
+    it carried a `--sidecar` override so the two halves could be pointed at
+    files that were never a pair.  Both went 2026-09-07.
+
+    The refusal changed with them, and the new one is the question the command
+    actually has.  "No sidecar file exists" is a fact about a directory; what
+    this needs to know is whether the DEVICE carries a lead, which it can ask
+    the structure directly -- and which is still the right answer when the
+    labels arrived some other way.
+    """
     import numpy as np
     from pathlib import Path as _P
-    from ..sidecars.molstruct import (apply_to_structure,
-                                       load as load_sidecar, sidecar_path_for)
-    from ..structure import Structure
+    from ..config.transport import is_electrode_label
+    from ..workingcopy_structure import StructureCodec
 
-    struct = Structure.from_xyz(device_xyz)
-    sc = _P(sidecar_path) if sidecar_path else sidecar_path_for(device_xyz)
-    if not _P(sc).exists():
+    struct = StructureCodec().load(device_xyz)
+    if not any(is_electrode_label(label) for label in (struct.regions or {})):
         raise click.ClickException(
-            f"no region sidecar found at {sc}; the device must carry "
-            f"region labels (*-electrode). Pass --sidecar explicitly.")
-    apply_to_structure(struct, load_sidecar(sc))
+            f"{_P(device_xyz).name} carries no electrode region; the device "
+            f"must have a lead labelled (e.g. 'L-electrode' / 'R-electrode'), "
+            f"and those labels travel in the .molstruct.json beside it.")
 
-    # A --cell-fdf reference lattice overrides whatever the sidecar held
+    # A --cell-fdf reference lattice overrides whatever the pair held
     # (lets the user point at an existing relaxed .fdf's hex cell).
     if cell_fdf:
         cell = parse_fdf_params(_P(cell_fdf).read_text()).cell_ang
@@ -37,7 +48,7 @@ def _load_device(device_xyz, sidecar_path, cell_fdf):
                 f"no LatticeVectors block found in {cell_fdf}")
         struct.cell = np.asarray(cell, dtype=float)
     if struct.cell is None:
-        click.echo("WARNING: device has no lattice (no sidecar 'cell', no "
+        click.echo("WARNING: device has no lattice (none in the pair, no "
                    "--cell-fdf); the emitter will fabricate an orthorhombic "
                    "vacuum box (isolated-cluster model, NOT a periodic "
                    "surface). Supply --cell-fdf for a real Au(111) lead.",
@@ -148,9 +159,6 @@ def cmd_preflight(device: str, electrode: str, min_electrode_thickness: float,
               type=click.Path(exists=True, dir_okay=False, resolve_path=True),
               help="device structure (.xyz); its .molstruct.json sidecar "
                    "(region labels) is auto-discovered alongside it.")
-@click.option("--sidecar", "sidecar_path", default=None,
-              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
-              help="explicit .molstruct.json (overrides auto-discovery).")
 @click.option("--which", default="both", show_default=True,
               help="'both', or an electrode label/name (e.g. 'L-electrode' "
                    "or 'L').")
@@ -176,7 +184,7 @@ def cmd_preflight(device: str, electrode: str, min_electrode_thickness: float,
                    "from; preserves a hexagonal Au(111) cell.")
 @click.option("--out-dir", type=click.Path(file_okay=False), default=".",
               show_default=True, help="where to write the electrode .fdf(s).")
-def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
+def cmd_electrode(device_xyz, which, job_name, mesh_cutoff,
                   kx, ky, electrode_kz, z_period, cell_fdf, out_dir):
     """Derive the bulk-electrode `.fdf`(s) from a region-labeled device
     (docs/engines/transport.md).
@@ -188,7 +196,7 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
     """
     from ..config.transport import TransportConfig
 
-    struct = _load_device(device_xyz, sidecar_path, cell_fdf)
+    struct = _load_device(device_xyz, cell_fdf)
 
     cfg_kw = {"job_name": job_name}
     if mesh_cutoff is not None:

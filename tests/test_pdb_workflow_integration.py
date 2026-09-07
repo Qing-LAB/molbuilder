@@ -173,7 +173,7 @@ class TestPdbWorkflowEndToEnd:
         clearing a prefill) are unaffected; only the delivery moved.
         """
         from molbuilder.structure import Structure
-        struct = Structure.from_pdb(str(pdb_path))
+        struct = Structure.from_pdb(pdb_path.read_text())
         if regions:
             # INSIDE the structure.  A top-level `regions` beside the envelope
             # was the second source, applied by a second applier; both are gone

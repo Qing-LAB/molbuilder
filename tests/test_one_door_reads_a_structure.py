@@ -22,11 +22,19 @@ entirely reasonable.
 THE RULE, and the two things it is not:
 
   * Reading a PATH and getting a `Structure` goes through `StructureCodec`.
-  * Parsing TEXT is not this. The browser posts bytes, OpenBabel returns a
-    PDB string; there is no file, so there is no sidecar to miss.
+  * Parsing TEXT is not this. OpenBabel returns a PDB string; there is no
+    file, so there is no sidecar to miss.
   * A `FileParser` in the parse registry reading an ENGINE's output is not
     this either. `siesta.XV`, `*_optimized.xyz` and friends are somebody
     else's format, not a molbuilder pair.
+
+WHAT CHANGED 2026-09-07, and why this guard still earns its keep. The readers
+no longer accept a path at all -- `Structure.from_xyz`/`from_pdb` take text
+and raise `TypeError` on a `Path` -- so the original failure cannot be spelled
+any more. What can still be spelled is `read_text()` on one line and a reader
+on the next, which is the same bypass with two steps instead of one. This
+guard sees the second step, and the count is what makes the first one visible
+when somebody adds it.
 
 Shaped after `test_one_home_for_a_constant.py`, including its best idea: an
 allowance carries the reason it was granted, and the guard fails when an
@@ -57,19 +65,17 @@ ALLOWED: dict[str, tuple[int, str]] = {
         3, "TEXT from OpenBabel/RDKit, produced in this process. No file "
            "exists, so there is no sidecar to miss"),
     "molbuilder/web/blueprints/build.py": (
-        5, "four are TEXT the browser posted (the load door's xyz/pdb "
-           "branches and `_xyz_to_structure`). The fifth is "
-           "`/api/structure/analyze`, which DOES read a path and skip the "
-           "sidecar -- harmless today because the analyzer reads only "
-           "element names, and listed here so it is a known exception "
-           "rather than an undiscovered one"),
+        4, "TWO are TEXT the browser posted -- the load door's xyz and pdb "
+           "branches. The other TWO are `/api/structure/analyze`, which "
+           "reads its own file and so skips the sidecar: harmless today "
+           "because the analyzer reads only element names, and listed here "
+           "so it is a known exception rather than an undiscovered one. "
+           "(This said `five` and `four are TEXT` until 2026-09-07, when "
+           "`_xyz_to_structure` -- a wrapper with no caller -- was deleted "
+           "and the split was recounted: it was never 4+1, it was 3+2)"),
     "molbuilder/parse/coords/pyscf_geom.py": (
         1, "a FileParser reading an ENGINE's output (`*_optimized.xyz`). "
            "Not a molbuilder pair; the parse registry is its own contract"),
-    "molbuilder/transport/_cli.py": (
-        1, "`_load_device` reads a path and DOES apply the whole sidecar, "
-           "through `apply_to_structure` -- correct, but its own copy of "
-           "the walk. A candidate for the door; not a defect"),
 }
 
 

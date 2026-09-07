@@ -58,12 +58,19 @@ class StructurePair(NamedTuple):
     ONE shape for every consumer -- disk, bytes, wire -- so "what does this
     structure look like when it leaves" has one answer instead of one per caller.
 
-    ``suffix`` is always ``.xyz``: extended XYZ is a strict superset of plain
-    XYZ, so the format can follow the frame count while the NAME does not have
-    to.  It is carried here rather than assumed by each caller because the
-    pairing rule is the codec's -- a caller that appends its own extension is
-    keeping a second copy of a rule it does not own, which is how the sidecar's
-    name came to be derived in two places.
+    ``suffix`` is ``.xyz`` unless the destination named ``.pdb``.  Within XYZ
+    it never varies, because extended XYZ is a strict superset of plain XYZ:
+    the format follows the frame count while the NAME does not have to, and
+    that choice is never asked as a question.  The CONTAINER is a different
+    axis and the caller does name it -- ``write`` reads it off the target's
+    suffix, which is the same suffix ``read`` dispatches on.  (Until
+    2026-09-07 this really was always ``.xyz``, and ``write(struct, "x.pdb")``
+    therefore put XYZ bytes under a ``.pdb`` name that ``load`` then refused.)
+
+    Either way it is carried here rather than assumed by each caller, because
+    the pairing rule is the codec's -- a caller that appends its own extension
+    is keeping a second copy of a rule it does not own, which is how the
+    sidecar's name came to be derived in two places.
     """
     document: str
     sidecar: dict
@@ -131,14 +138,25 @@ class StructureCodec:
         # extension is an EXPLICIT error, not a silent from_xyz attempt.  (The
         # working copy is then maintained as .xyz + sidecar via files().)
         suffix = src.suffix.lower()
-        if suffix == ".pdb":
-            struct = Structure.from_pdb(src)
-        elif suffix == ".xyz":
-            struct = Structure.from_xyz(src, frames_out=frames_out)
-        else:
+        if suffix not in (".xyz", ".pdb"):
             raise ValueError(
                 f"StructureCodec.load: unsupported structure format "
                 f"{src.suffix!r} for {src.name!r}; expected .xyz or .pdb")
+        # THE FILE IS READ HERE, because this is the door that takes a path.
+        # The readers below take text and nothing else (`structure.py`
+        # ``_require_text``), so there is one place a structure file is opened
+        # and it is the same place the sidecar is picked up.
+        #
+        # ``utf-8-sig`` accepts an optional UTF-8 BOM (some Windows editors
+        # emit one) -- without an explicit encoding Python falls back to the
+        # platform locale (cp1252 / latin-1 on some installs), which mojibakes
+        # any non-ASCII in the XYZ comment line or PDB residue names.  Same
+        # hardening molstruct_json / spectra_json / transport_json carry.
+        text = src.read_text(encoding="utf-8-sig")
+        if suffix == ".pdb":
+            struct = Structure.from_pdb(text)
+        else:
+            struct = Structure.from_xyz(text, frames_out=frames_out)
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
@@ -165,7 +183,8 @@ class StructureCodec:
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
     def pair(self, struct: Structure, *,
-             frames: "Sequence | None" = None) -> "StructurePair":
+             frames: "Sequence | None" = None,
+             fmt: str = "xyz") -> "StructurePair":
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
 
@@ -206,8 +225,27 @@ class StructureCodec:
         # default), and it is the only extension :meth:`load` accepts: a range
         # named ``.extxyz`` was a file THIS CODEC COULD NOT REOPEN, so a
         # trajectory saved into a project could never be loaded again.
-        document = (struct.to_extxyz(frames=frames) if frames
-                    else struct.to_xyz())
+        # WHICH CONTAINER.  `fmt` is the format the DESTINATION names, not a
+        # preference: `write` reads it off the target's suffix and `read`
+        # already dispatches the same way.  Until 2026-09-07 this always
+        # produced XYZ, so `write(struct, "x.pdb")` put XYZ bytes under a .pdb
+        # name and `load("x.pdb")` then answered *"no ATOM/HETATM records found
+        # in PDB input"* -- the door could not read back what it had just
+        # written.  (This is a different axis from plain-vs-extended XYZ, which
+        # follows the frame count and is still never asked as a question.)
+        if fmt not in ("xyz", "pdb"):
+            raise ValueError(
+                f"StructureCodec.pair: unsupported format {fmt!r}; "
+                f"expected 'xyz' or 'pdb'")
+        if fmt == "pdb":
+            if frames:
+                raise ValueError(
+                    "StructureCodec.pair: a frame range needs extended XYZ; "
+                    "PDB holds one geometry. Write the range to a .xyz.")
+            document = struct.to_pdb()
+        else:
+            document = (struct.to_extxyz(frames=frames) if frames
+                        else struct.to_xyz())
         meta = struct.metadata_to_dict()
         # The REAL identity columns ride the sidecar (schema 8, 2026-08-20):
         # additive "extra" -- an xyz-born structure's synthesized placeholders
@@ -227,7 +265,8 @@ class StructureCodec:
                              keep_sidecar=(not _metadata_is_default(meta)
                                            or bool(identity)
                                            or bool(struct.info)),
-                             suffix=self.GEOMETRY_SUFFIX)
+                             suffix=(".pdb" if fmt == "pdb"
+                                     else self.GEOMETRY_SUFFIX))
 
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
     def files(self, struct: Structure, target, *,
@@ -263,7 +302,8 @@ class StructureCodec:
 
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *, atomic: bool = True,
-              frames: "Sequence | None" = None) -> Path:
+              frames: "Sequence | None" = None,
+              fmt: "str | None" = None) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
         pair on disk and return the geometry path.  THE paired-file door
         (``model/structure.md`` § 2.4): owns the pairing rule + the
@@ -286,7 +326,17 @@ class StructureCodec:
         disagree (``no .json == empty metadata``, matching :meth:`load`)."""
         target = Path(target)
         target.parent.mkdir(parents=True, exist_ok=True)
-        made = self.pair(struct, frames=frames)  # the ONE generator
+        # The caller named the file, so the caller named the format.  `read`
+        # dispatches on this same suffix, which is what makes write->read a
+        # round trip rather than a coincidence.
+        # `fmt` names the container.  Default: read it off the name the caller
+        # chose, because `read` dispatches on that same suffix -- which is what
+        # makes write->read a round trip rather than a coincidence.  A caller
+        # with its own answer (the CLI's `--output-format`, which may name a
+        # format the extension does not) passes it and is obeyed.
+        made = self.pair(struct, frames=frames,
+                         fmt=(fmt or ("pdb" if target.suffix.lower() == ".pdb"
+                                      else "xyz")))   # the ONE generator
         xyz_text = made.document
         sidecar_path = molstruct.sidecar_path_for(target)
 

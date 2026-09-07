@@ -209,27 +209,6 @@ def test_s6_web_app_caps_upload_size(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  T5 -- web app's _xyz_to_structure uses canonical parser              #
-# --------------------------------------------------------------------- #
-
-
-def test_t5_web_uses_canonical_xyz_parser():
-    pytest.importorskip("flask")
-    from molbuilder.web.blueprints.build import _xyz_to_structure
-    text = (
-        "2\n"
-        "h2\n"
-        "H 0 0 0\n"
-        "H 0.74 0 0\n"
-    )
-    s = _xyz_to_structure(text)
-    assert s.n_atoms == 2
-    s_canonical = Structure.from_xyz(text)
-    np.testing.assert_array_equal(s.positions, s_canonical.positions)
-    assert s.elements == s_canonical.elements
-
-
-# --------------------------------------------------------------------- #
 #  D1 -- RETIRED 2026-09-02: `Config` was a backward-compat alias        #
 #                                                                       #
 #  `Config = SiestaConfig` existed so that code importing the old name   #

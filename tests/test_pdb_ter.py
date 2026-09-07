@@ -18,7 +18,8 @@ from molbuilder.structure import Structure
 def test_well_formed_two_chains_unchanged(data_dir):
     """Back-compat: a well-formed PDB with explicit chain ids A and B
     must still produce chain ids exactly A and B (no segment suffixes)."""
-    s = Structure.from_pdb(data_dir / "multi_chain_well_formed.pdb")
+    s = Structure.from_pdb(
+        (data_dir / "multi_chain_well_formed.pdb").read_text())
     assert s.n_atoms == 8
     assert sorted(set(s.chain_ids)) == ["A", "B"]
     # Per-chain atom counts should be 4+4
@@ -31,7 +32,8 @@ def test_well_formed_two_chains_unchanged(data_dir):
 def test_ter_only_separates_reused_chain_id(data_dir):
     """The bug case: chain-id 'A' is reused on both polymers, separated
     only by TER.  Previously parsed as one chain; now must be two."""
-    s = Structure.from_pdb(data_dir / "multi_chain_ter_only.pdb")
+    s = Structure.from_pdb(
+        (data_dir / "multi_chain_ter_only.pdb").read_text())
     assert s.n_atoms == 8
     chains = sorted(set(s.chain_ids))
     assert len(chains) == 2, f"expected 2 logical chains, got {chains}"
@@ -45,7 +47,8 @@ def test_blank_chain_id_column_disambiguated(data_dir):
 
     The internal '_' placeholder makes the synthesis visible: '_0', '_1'.
     """
-    s = Structure.from_pdb(data_dir / "multi_chain_blank_chain_id.pdb")
+    s = Structure.from_pdb(
+        (data_dir / "multi_chain_blank_chain_id.pdb").read_text())
     assert s.n_atoms == 8
     chains = sorted(set(s.chain_ids))
     assert len(chains) == 2
@@ -101,7 +104,8 @@ def test_multiple_consecutive_ters_dont_break():
 def test_residue_disambiguation_via_chain_ids(data_dir):
     """Cross-check: with TER separation, residue (chain_id, residue_id)
     tuples are now unique even when residue_id collides."""
-    s = Structure.from_pdb(data_dir / "multi_chain_ter_only.pdb")
+    s = Structure.from_pdb(
+        (data_dir / "multi_chain_ter_only.pdb").read_text())
     keys = set(zip(s.chain_ids, s.residue_ids))
     # Before the fix, every atom had key ('A', 1) -- 8 atoms collapsed
     # into one logical residue.  Now we expect at least two unique keys.

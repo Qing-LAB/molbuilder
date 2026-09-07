@@ -40,7 +40,6 @@ them through (see the methods + their tests).
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
@@ -54,38 +53,44 @@ import numpy as np
 # --------------------------------------------------------------------- #
 
 
-def _resolve_source(source: Union[str, Path]) -> str:
-    """Return the textual content for a file path or for raw text.
+def _require_text(source: object, fmt: str) -> str:
+    """The readers take a DOCUMENT, never a path.
 
-    Accepts:
-      * a :class:`pathlib.Path` -> always read from disk.
-      * a string that names an existing file -> read from disk.
-      * any other string (multi-line content, or a non-existent name)
-        -> treated as the file content directly.
+    A guesser stood here.  It tried ``os.path.isfile`` first and fell through
+    to "treat it as text", so a mistyped path was diagnosed as a malformed
+    document -- ``from_xyz("/no/such.xyz")`` reported *"Expected xyz header but
+    got: invalid literal for int()"*.  Worse, it gave the project two ways to
+    read a structure file, and the one that skipped the ``.molstruct.json``
+    was the one most callers reached for.
 
-    The "treat as text" fallback is what lets callers pass a string
-    they pulled out of an HTTP request body or a blob storage object.
+    `model/parse.md` § 7 states the rule these readers now follow: a reader
+    takes a path or it takes text, never both, and a caller holding a path
+    reads the file itself.  The one door for a STORED structure is
+    ``StructureCodec().load(path)`` -- which reads the pair.
     """
+    not_a_path = (
+        f"Structure.from_{fmt}() takes {fmt.upper()} text, not a path. "
+        f"To read a file use StructureCodec().load(path), which reads the "
+        f".molstruct.json sidecar beside it too.")
     if isinstance(source, Path):
-        # ``utf-8-sig`` accepts an optional UTF-8 BOM (some Windows
-        # editors emit one) — without an explicit encoding Python
-        # falls back to the platform locale (cp1252 / latin-1 on
-        # some Windows / older Linux installs), which mojibakes any
-        # non-ASCII in the XYZ comment line or PDB residue names.
-        # Same hardening molstruct_json / spectra_json / transport_json
-        # carry.
-        return source.read_text(encoding="utf-8-sig")
-    if isinstance(source, str):
-        # A real file path won't contain newlines and will exist on disk.
-        # Anything else is text.  We deliberately don't accept paths
-        # with newlines -- ambiguous and not a real filesystem path.
-        if "\n" not in source and os.path.isfile(source):
-            with open(source, "r", encoding="utf-8-sig") as fh:
-                return fh.read()
-        return source
-    raise TypeError(
-        f"source must be str or Path, got {type(source).__name__}"
-    )
+        raise TypeError(not_a_path)
+    if not isinstance(source, str):
+        raise TypeError(
+            f"Structure.from_{fmt}() takes {fmt.upper()} text as str, got "
+            f"{type(source).__name__}")
+    # A `str` PATH is the same mistake in a different type, and it is the one
+    # that produced the nonsense error -- `str(tmp_path / "pep.xyz")` reached
+    # the parser and came back "Expected xyz header but got: invalid literal
+    # for int()".  A document has line breaks; a one-liner ending in a
+    # structure suffix is a filename.
+    #
+    # Judged by the SHAPE OF THE ARGUMENT, never by touching the disk.  Asking
+    # the filesystem is precisely what the guesser did, and it is what made "a
+    # path" and "a document" the same parameter -- so the same string means the
+    # same thing here whether or not the file happens to exist.
+    if "\n" not in source and source.strip().lower().endswith((".xyz", ".pdb")):
+        raise TypeError(not_a_path)
+    return source
 
 
 # ---------------------------------------------------------------------- #
@@ -1211,10 +1216,11 @@ class Structure:
     # ------------------------------------------------------------------ #
 
     @classmethod
-    def from_xyz(cls, source: Union[str, Path], *,
+    def from_xyz(cls, text: str, *,
                  title: Optional[str] = None,
                  frames_out: Optional[List] = None) -> "Structure":
-        """Load a Structure from an XYZ file path or XYZ text content.
+        """Parse a Structure from XYZ TEXT.  Not a path -- see
+        :func:`_require_text`; ``StructureCodec().load(path)`` reads files.
 
         THE PARSE IS ASE'S, NOT OURS (``ase.io.read(..., format="extxyz")``).
         ASE's extended-XYZ reader is a superset reader: it handles the plain
@@ -1245,7 +1251,7 @@ class Structure:
             that needs them), so a multi-frame file is otherwise read as its
             first frame and this is how the rest is recovered.
         """
-        text = _resolve_source(source)
+        text = _require_text(text, "xyz")
         # THE TITLE IS OURS, and it is the one thing read here rather than
         # parsed by ASE.  ASE's extended-XYZ reader treats the comment line as
         # `key=value` pairs, so a human comment -- "water molecule" -- comes
@@ -1298,9 +1304,10 @@ class Structure:
     # ------------------------------------------------------------------ #
 
     @classmethod
-    def from_pdb(cls, source: Union[str, Path], *,
+    def from_pdb(cls, text: str, *,
                  title: Optional[str] = None) -> "Structure":
-        """Load a Structure from a PDB file path or PDB text content.
+        """Parse a Structure from PDB TEXT.  Not a path -- see
+        :func:`_require_text`; ``StructureCodec().load(path)`` reads files.
 
         Reads ATOM and HETATM records.  Other record types (HEADER,
         REMARK, CONECT, etc.) are ignored.  Multi-MODEL files: only
@@ -1326,7 +1333,7 @@ class Structure:
           - a blank chain-id column ('_' internally) becomes 'A' when
             unambiguous, '_<n>' when it spans multiple TER segments.
         """
-        text = _resolve_source(source)
+        text = _require_text(text, "pdb")
 
         elements: List[str] = []
         positions: List[List[float]] = []
@@ -1511,7 +1518,7 @@ class Structure:
             # back to the platform locale, which silently corrupts non-
             # ASCII residue names / title comments on cp1252 / latin-1
             # systems (and disagrees with the encoding-utf-8-sig read
-            # path in ``_resolve_source``).
+            # StructureCodec.load performs).
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(text)
         return text
@@ -1641,7 +1648,7 @@ class Structure:
         text = buf.getvalue()
         if path:
             # ``encoding="utf-8"`` parity with ``to_xyz`` + the
-            # encoding-utf-8-sig read path in ``_resolve_source``.
+            # encoding-utf-8-sig read StructureCodec.load performs.
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(text)
         return text

@@ -261,13 +261,21 @@ def _emit(struct: Structure, *,
           pyscf_atom_block: bool) -> None:
     """Write the built Structure to whatever destinations the user asked
     for.  No destination at all -> dump XYZ to stdout (Unix-pipeable)."""
+    # THE PAIR IS THE FILE here too (`model/structure.md` § 2.4).  A freshly
+    # built molecule usually has nothing to put in a sidecar, and then the
+    # codec writes none -- "no .json == empty metadata" holds either way.  But
+    # a builder that DOES produce metadata (the DNA/RNA duplex builders set
+    # residue identity; `--electrode` work starts from these files) had it
+    # dropped at the moment it was first written to disk.
+    from .workingcopy_structure import StructureCodec
+    codec = StructureCodec()
     wrote_anything = False
     if out:
-        struct.to_xyz(out)
+        codec.write(struct, out, fmt="xyz")
         click.echo(f"wrote {struct.n_atoms} atoms to {out}", err=True)
         wrote_anything = True
     if pdb:
-        struct.to_pdb(pdb)
+        codec.write(struct, pdb, fmt="pdb")
         click.echo(f"wrote {struct.n_atoms} atoms to {pdb}", err=True)
         wrote_anything = True
     if pyscf_atom_block:
@@ -1104,10 +1112,16 @@ def cmd_modify(input_path, output_path,
     if str(output_path) == "-":
         click.echo(_struct_to_text(struct, fmt), nl=False)
     else:
-        if fmt == "pdb":
-            struct.to_pdb(output_path)
-        else:
-            struct.to_xyz(output_path)
+        # THE PAIR IS THE FILE (`model/structure.md` § 2.4).  This wrote the
+        # geometry alone with `to_xyz`/`to_pdb`, so `modify` READ a pair
+        # through the codec and wrote back half of it: a device carrying
+        # `L-electrode`, `frozen_atoms` and an explicit cell came out of a
+        # zero-degree rotation with none of them, at exit 0 and without a word.
+        # The codec owns the pairing rule and the both-or-neither write; the
+        # format is the one the user asked for, which may not be the one the
+        # extension implies.
+        from .workingcopy_structure import StructureCodec
+        StructureCodec().write(struct, output_path, fmt=fmt)
         click.echo(
             f"Wrote {output_path}: {struct.n_atoms} atoms (input had {n_in})",
             err=True,

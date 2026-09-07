@@ -1161,12 +1161,12 @@ def test_electrode_gap_is_refused_by_name_not_as_a_typo():
 
 def _run_electrode(tmp_path, st, spec):
     """Build `st`, run one `--electrode` flag over it, return the result."""
-    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
     inp = tmp_path / "in.xyz"
     st.to_xyz(inp)
     out = tmp_path / "out.xyz"
     assert cli.main(["modify", str(inp), str(out), "--electrode", spec]) == 0
-    return Structure.from_xyz(out)
+    return StructureCodec().load(out)
 
 
 def _closest_metal_z(struct, above):
