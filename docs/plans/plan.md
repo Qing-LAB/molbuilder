@@ -645,7 +645,7 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-06: 33 to convert, 54 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
+**Measured 2026-09-06: 29 to convert, 54 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
 file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
 text. 100 read a file a person wrote. Three earlier counts said 233, 256 and
@@ -687,6 +687,16 @@ green run had hidden all of them.
    headless. Their two whitespace-measuring assertions (nine embedded spaces,
    counted twice) now match on structure instead — same coverage, one less way
    to be wrong for no reason.
+5. ~~**`test_launch_ask_mode.py`**~~ (4, python) — **DONE 2026-09-06.** The
+   query cap now ASKS about 30 trials against a cap of 24 and reads the answer;
+   the `--test-only` check compares what `ask` reports against what `submit`
+   plans, using `JobResult.command` — no spying, and that is the surface a
+   person sees. Mutation-verified: dropping the `"not asked"` result instead of
+   naming it, and appending the flag instead of inserting it, each fail.
+   **The first draft SKIPPED** — the deck lacked the restart group the
+   submission door verifies — which is the read-green-never-ran shape; fixed
+   with a real deck rather than left as a skip.
+
 4. ~~**`test_task_setup_tab.py`**~~ — **MOSTLY DONE 2026-09-06.** Twelve
    assertions became one e2e reading the rendered card: every enabled stage
    offers both commands naming its own stage, the bench order is shown in

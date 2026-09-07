@@ -242,18 +242,53 @@ def test_ask_is_NOT_gated_by_the_one_at_a_time_rule():
         "ask must not appear in the refusal condition"
 
 
-def test_the_number_of_QUERIES_is_bounded_and_says_what_it_skipped():
+def test_the_number_of_QUERIES_is_bounded_and_says_what_it_skipped(tmp_path):
     """Politeness, not a rule about queues. And **no silent cap**: a partial
-    answer that does not say it is partial reads as a complete one."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/submit.py").read_text()
-    assert "ASK_MAX_QUERIES" in src
-    assert 'JobResult(job.name, [], "not asked")' in src, \
-        "trials past the cap must be named, not dropped"
-    cli = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/_cli.py").read_text()
-    assert "NOT asked (past" in cli, "the skipped trials are not reported"
+    answer that does not say it is partial reads as a complete one.
+
+    CONVERTED 2026-09-06 (`plans/plan.md` § 5h).  This read `submit.py` for
+    the strings `ASK_MAX_QUERIES` and `JobResult(job.name, [], "not asked")`.
+    Both can be present while the cap counts the wrong thing, or while the
+    skipped entries never reach a caller -- and neither would fail.  It now
+    ASKS about more trials than the cap and reads the answer.
+
+    MUTATION THIS MUST FAIL AGAINST: `continue` instead of appending the
+    `"not asked"` result -- the cap still works, the strings are still there,
+    and the answer silently covers 24 of 30.
+    """
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.jobset.submit import ASK_MAX_QUERIES, submit_jobset
+
+    n = ASK_MAX_QUERIES + 6
+    js = JobSet(name="J", engine="siesta", kind="sweep", shared=[],
+                jobs=[Job(name=f"p{i:02d}", script="J.fdf",
+                          resources=Resources(mpi_np=1)) for i in range(n)])
+    # A REAL deck, with the clean restart group written out: the submission
+    # door verifies a trial's cold start against it since 2026-08-21, and a
+    # deck without one is refused.  The first version of this fixture wrote
+    # `SystemLabel J` alone and the test SKIPPED on that refusal -- which is
+    # the shape `test_no_tests_read_the_projects_tree` calls out, a test that
+    # reads green while never running.
+    deck = ("SystemName test\nSystemLabel J\nNumberOfAtoms 2\n"
+            "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
+    (tmp_path / "J.fdf").write_text(deck)
+    for i in range(n):
+        d = tmp_path / "bench" / f"bench-p{i:02d}"
+        d.mkdir(parents=True)
+        (d / "J.fdf").write_text(deck)
+
+    results = submit_jobset(js, tmp_path, mode="ask", dry_run=True)
+
+    skipped = [r.name for r in results if r.status == "not asked"]
+    assert skipped, (
+        f"{n} trials, a cap of {ASK_MAX_QUERIES}, and nothing was reported as "
+        "skipped -- a partial answer that does not say it is partial reads as "
+        "a complete one")
+    assert len(results) == n, (
+        "trials past the cap were DROPPED rather than named: "
+        f"{len(results)} results for {n} trials")
+    assert skipped == [f"p{i:02d}" for i in range(ASK_MAX_QUERIES, n)], (
+        "the skipped trials are not the ones past the cap, in order")
 
 
 def test_ask_walks_the_SAME_path_as_submit():
@@ -271,13 +306,57 @@ def test_ask_walks_the_SAME_path_as_submit():
     assert disp.count("return") == 1, "ask branched away from submit"
 
 
-def test_ask_adds_test_only_and_changes_nothing_else():
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/submit.py").read_text()
-    assert 'cmd = [cmd[0], "--test-only"] + cmd[1:]' in src, \
-        "the flag must be inserted into the real command, not a rebuilt one"
+def test_ask_adds_test_only_and_changes_nothing_else(tmp_path):
+    """The flag goes into the REAL command, so what is asked about is the
+    line that would be sent.
 
+    CONVERTED 2026-09-06 (`plans/plan.md` § 5h).  This read `submit.py` for
+    the exact expression `cmd = [cmd[0], "--test-only"] + cmd[1:]`.  Reformat
+    it -- `cmd.insert(1, …)`, a different variable name -- and it fails while
+    the behaviour is right; build a SECOND command for the question and it
+    passes while the line asked about is not the line sent.
+
+    No spying needed: a `JobResult` carries the command, so `ask` and a
+    planned `submit` can simply be compared.  That is also the surface a
+    person sees, which is the thing worth pinning.
+
+    MUTATION THIS MUST FAIL AGAINST: append the flag instead of inserting it.
+    `sbatch` takes the script last, so an appended flag lands after it and the
+    question becomes a different command from the one that would be sent.
+    """
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.jobset.submit import submit_jobset
+
+    deck = ("SystemName test\nSystemLabel J\nNumberOfAtoms 2\n"
+            "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
+    js = JobSet(name="J", engine="siesta", kind="ladder", shared=[],
+                jobs=[Job(name="coarse", script="J_01_coarse.fdf",
+                          resources=Resources(mpi_np=1))])
+
+    def _cmd(mode):
+        # One tree per mode: sharing one lets the first call's attempt decide
+        # what the second is allowed to do.
+        base = tmp_path / mode
+        base.mkdir()
+        (base / "J_01_coarse.fdf").write_text(deck)
+        d = base / "01_coarse"
+        d.mkdir(parents=True)
+        (d / "J_01_coarse.fdf").write_text(deck)
+        (d / "J_01_coarse.sbatch").write_text("#!/bin/bash\n#SBATCH -J J\n")
+        results = submit_jobset(js, base, mode=mode, dry_run=(mode != "ask"))
+        assert len(results) == 1, results
+        return list(results[0].command)
+
+    asked, sent = _cmd("ask"), _cmd("submit")
+
+    assert "--test-only" in asked, "ask did not add the flag"
+    assert "--test-only" not in sent, "submit carried the question's flag"
+    assert [a for a in asked if a != "--test-only"] == sent, (
+        f"ask changed more than the flag:\n  asked {asked}\n  sent  {sent}")
+    assert asked.index("--test-only") == 1, (
+        "the flag must be inserted right after the program -- sbatch takes "
+        "the script last, so appending it makes the question a different "
+        "command from the one that would be sent")
 
 def test_ask_records_no_launch():
     """A launch record says a job exists. After this one does not, so
