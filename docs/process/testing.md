@@ -285,8 +285,8 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   definition in code and can be re-run, so **quote its output, never a number
   from a document**. It separates the two things that look identical to a grep
   — an assertion on GENERATED output (a deck, a wrapper, an `.sbatch`: a real
-  property of a real product, and 1,147 of the 1,255 are this) from one on a
-  file a person wrote — then splits the second by the rule above, and routes
+  property of a real product, and the great majority of them are this) from one
+  on a file a person wrote — then splits the second by the rule above, and routes
   each pin by *what would have to be true for the check to be honest*:
   **browser** where the answer depends on the cascade, layout or real
   visibility, which jsdom cannot give; **node** where the code must run but
@@ -294,6 +294,10 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   reading its source. Corrections made by READING a site live in the tool's own
   `_OVERRIDES`, with the reason — *"the regex said so"* is the reasoning it
   exists to replace. The standing backlog it measures is `plans/plan.md` § 5h.
+
+  *(This paragraph carried "1,147 of the 1,255" until 2026-09-07, three
+  sentences after telling you not to quote a number from a document. Both
+  figures had moved. The tool is the answer; there is no number here now.)*
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.
