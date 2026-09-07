@@ -645,19 +645,26 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-06: 28 to convert, 54 to keep** — after clusters 1-3. Re-run the tool; the browser bucket GREW (9 → 12) when reading a file showed the extension had routed it wrong. Of 1,253 assertions over a
-file's text, 1,153 read **generated output** — a deck, a wrapper, an
+**Measured 2026-09-07: 3 to convert, 64 to keep.** Of 1,220 assertions over
+a file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
-text. 100 read a file a person wrote. Three earlier counts said 233, 256 and
-173 because each used a different definition and none wrote it down.
+text. 67 read a file a person wrote, and 64 of those are lints. Three earlier
+counts said 233, 256 and 173 because each used a different definition and none
+wrote it down.
+
+**The verdicts moved as much as the code did, and both directions matter.**
+The browser bucket GREW twice when reading a site showed the extension had
+routed it wrong; it then SHRANK by six when reading showed the opposite —
+*which sheet defines a vocabulary* is not a question a browser can answer,
+because the cascade yields a computed value and never the file it came from.
+Every reclassification carries its reason in the tool's override table, so a
+verdict can be argued with instead of taken on trust.
 
 | | | |
 |---|---|---|
-| **KEEP — lint** | 48 | quantifies over a class; text is the only instrument that proves absence |
+| **KEEP — lint** | 56 | quantifies over a class; text is the only instrument that proves absence |
 | **KEEP — not ours** | 8 | vendored bundles, licences, the contact-distance data file |
-| **convert — browser** | 9 | needs the CSS cascade, layout or real visibility |
-| **convert — node** | 27 | the code must run; nothing needs painting |
-| **convert — python** | 8 | calling the function beats reading its source |
+| **convert — browser** | 3 | all three in `test_structure_info_bridge.py` — see the entry below |
 
 **Order, cheapest first — each cluster mutation-tested on its own**, because
 **B3.2** found eight defects in the *previous* round's replacements after a
@@ -732,6 +739,45 @@ green run had hidden all of them.
 
    **Three CSS assertions remain, and are browser work** (`.ts-state[hidden]`,
    `.ts-facts[hidden]`): cascade questions jsdom cannot answer.
+
+7. **2026-09-06/07 — the rest, and one that did not land.** Twelve more
+   converted, each mutation-tested. Two were more than test work:
+
+   * **A DEFECT THE PIN WAS HIDING.** `setMachine()` never re-ran
+     `renderNext()`, so choosing a remote machine left the copied command
+     without `--target` — it preps for THIS machine while the card names
+     another, invariant **C1** in `preparing-for-another-machine.md`. The pin
+     asserted `"_targetArg()" in src`, true throughout. Fixed.
+   * **A CHECK GREEN BY COINCIDENCE.** `#slab-orthogonal` has no wrapping
+     `<label>`; `html.rfind("<label", 0, i)` landed on an unrelated field's
+     label fifteen lines up, and the failure message described a DOM that does
+     not exist.
+
+   **The "BLOCKED" verdict on `--target` in entry 4 above was wrong**, and the
+   reason it was wrong is worth more than the fix: `support.live_server` runs
+   the app on a THREAD in the test process, so `$MOLBUILDER_CONFIG_DIR` is
+   shared and a record written by a test is a record the route serves. The
+   fixture is six lines. **A blocker is a measurement, not a memory** — this
+   one was recorded confidently and held for a day.
+
+   **`test_structure_info_bridge.py`'s three stay pins**, and this is the
+   second time that entry has been re-examined. A Playwright test for APPLY's
+   keep-on-`undefined` was written, passed, and was **vacuous**: `rebuildModel`
+   runs at LOAD as well as after a poll, so a mutation that empties the store
+   fails on the *before* assertion while proving nothing about any poll. On
+   that reading it sat green through the guard being deleted three ways. The
+   facts the next attempt needs — how to build a run that states a contract
+   without SIESTA, why an appended frame tests nothing, and the one open
+   question (a shrunk feed is not picked up within a poll cycle) — are
+   recorded at the foot of `tests/test_inspector_registry_e2e.py`.
+
+   **Also converted:** the CSV export's redaction (downloaded and read, not
+   grepped for an indentation), both inspector cores' listener teardown
+   (measured at the lifecycle scope, because a global add/remove spy counts
+   Plotly, 3Dmol and the projects sidebar), the recommended-value panel on
+   both engines, the bench grid's out-of-order reply, the notify one-door
+   (issued on the tab, then on the CLI, against one file), prep's trial path
+   (checked on disk), and all three spectrumchart box traps.
 
 ## 5i. The projects root — one door in production, and now in tests too
 
