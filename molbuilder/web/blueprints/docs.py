@@ -150,14 +150,17 @@ def _build_toc_tree(root: Path) -> List[Dict]:
     root_resolved = root.resolve()
 
     def _is_document_path(path: object) -> bool:
+        # Containment is `projects.contain`, the same fence `_resolve_doc`
+        # uses -- see its docstring for why one implementation and not two.
+        # This hand-rolled `os.path.commonpath` survived the 2026-08-22 sweep
+        # that moved `_resolve_doc` onto the fence, in the same file, so the
+        # rule was fixed in one function and left standing in its neighbour.
+        from molbuilder.projects import OutsideRoot, contain
         if not isinstance(path, str) or not path.endswith(".md"):
             return False
         try:
-            resolved = (root_resolved / path).resolve()
-            return resolved.is_file() and os.path.commonpath(
-                [resolved, root_resolved]
-            ) == str(root_resolved)
-        except OSError:
+            return contain(root_resolved / path, root_resolved).is_file()
+        except (OutsideRoot, OSError, ValueError):
             return False
 
     def _dedupe(nodes: list[dict]) -> list[dict]:
@@ -428,14 +431,17 @@ def api_docs_img(img_path: str):
     # ``../<any-doc>`` fetch arbitrary docs files with a guessed MIME
     # (an .svg/.html ever added under docs/ would render same-origin
     # as a live document).  Extension allowlist as the second belt.
+    # Containment is `projects.contain` -- one fence, a different root.  The
+    # `..` reject the fence performs on the RAW spelling matters here: this
+    # route used to rely on `resolve()` normalising `..` away, which reaches
+    # the same verdict but leaves the question "did the writer think `..` was
+    # harmless?" unanswered, and that is the ambiguity the shared primitive
+    # exists to remove.
+    from molbuilder.projects import OutsideRoot, contain
     img_root = root / "img"
-    resolved = img_root / img_path
     try:
-        resolved = resolved.resolve()
-        anchor = img_root.resolve()
-        if os.path.commonpath([resolved, anchor]) != str(anchor):
-            raise ValueError
-    except (ValueError, OSError):
+        resolved = contain(img_root / img_path, img_root)
+    except (OutsideRoot, ValueError, OSError):
         return jsonify({"ok": False, "error": "invalid path"}), 400
     if resolved.suffix.lower() not in _IMG_EXTS:
         return jsonify({"ok": False, "error": "not an image"}), 400

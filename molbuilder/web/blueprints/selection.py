@@ -139,21 +139,37 @@ def _struct_from_atoms(atoms: list) -> Structure:
     elements: list = []
     regions: Dict[str, list] = {}
     residue_names: list = []
+    atom_names: list = []
+    chain_ids: list = []
     for i, a in enumerate(atoms):
         if not isinstance(a, dict):
             raise ValueError(f"atoms[{i}] must be an object")
-        elements.append(str(a.get("element") or "X"))
+        element = str(a.get("element") or "X")
+        elements.append(element)
         for label in (a.get("labels") or a.get("regions") or []):
             if isinstance(label, str) and label:
                 regions.setdefault(label, []).append(i)
         residue_names.append(
             str(a.get("residueName") or a.get("residue_name") or "MOL"))
+        # WHAT THE CALLER ACTUALLY HOLDS, when it holds it.  `by_atom_name`
+        # and `by_chain_id` are rule kinds (`selection.py` ByAtomName /
+        # ByChainId); before 2026-09-07 this list carried neither, so
+        # `Structure` filled its defaults -- atom name = element symbol, chain
+        # = "A" -- and both rules answered 200 with a wrong answer rather than
+        # refusing.  Falling back to the same defaults keeps a caller that
+        # sends the older shape working; what changed is that a caller WITH
+        # the columns is now believed.
+        atom_names.append(str(a.get("atomName") or a.get("atom_name")
+                              or element))
+        chain_ids.append(str(a.get("chainId") or a.get("chain_id") or "A"))
     n = len(elements)
     return Structure(
         elements=elements,
         positions=[[0.0, 0.0, 0.0] for _ in range(n)],
         regions={k: sorted(set(v)) for k, v in regions.items()},
         residue_names=residue_names,
+        atom_names=atom_names,
+        chain_ids=chain_ids,
     )
 
 

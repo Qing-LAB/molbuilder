@@ -141,6 +141,14 @@ class TestInputValidation:
 class TestHappyPath:
 
     def test_successful_generate_routes_through_canvas(self):
+        """The peptide is handed over WHOLE.
+
+        This is the panel where the loss was measured: installing the
+        ``xyz`` string beside the envelope put every residue through a
+        format with no residue column, so ``build_peptide("AG")`` --
+        ALA x5, GLY x4 -- arrived as nineteen residues all named MOL,
+        with CA/CB collapsed to C.  ``by_residue_name "ALA"`` then
+        matched nothing on a peptide the user had just generated."""
         out = _run_node('''
             let capturedBody = null;
             let canvasArgs = null;
@@ -151,6 +159,15 @@ class TestHappyPath:
                         ok: true,
                         json: async () => ({
                             ok: true,
+                            structure: {
+                                title: "ACD peptide",
+                                elements: ["N", "C", "C"],
+                                positions: [[0,0,0], [1,0,0], [2,0,0]],
+                                residue_names: ["ALA", "CYS", "ASP"],
+                                atom_names: ["N", "CA", "CB"],
+                            },
+                            // The flattened rendering rides along and is
+                            // deliberately NOT what gets installed.
                             xyz: "23\\nACD peptide\\nN 0 0 0\\n...\\n",
                             n_atoms: 23,
                         }),
@@ -172,6 +189,12 @@ class TestHappyPath:
         ''')
         assert out["envelope"] == {"ok": True, "n_atoms": 23}
         assert out["body"] == {"kind": "peptide", "input": "ACD"}
+        # The residues survive, because an envelope has a slot for them
+        # and a coordinate document does not.
+        env = out["canvas"]["struct"]["structure"]
+        assert env["residue_names"] == ["ALA", "CYS", "ASP"]
+        assert env["atom_names"] == ["N", "CA", "CB"]
+        assert "text" not in out["canvas"]["struct"]
         assert out["canvas"]["src"]["kind"] == "peptide"
         assert out["canvas"]["src"]["generator_input"]["sequence"] == "ACD"
 

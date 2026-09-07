@@ -361,6 +361,37 @@ def api_build_molecule():
         # before reaching here; whatever went wrong is on us.
         return jsonify({"ok": False, "error": str(exc)}), 500
 
+    # THE GENERATOR SIGNS ITS WORK, AND THE SIGNATURE IS SELECTABLE.
+    #
+    # A structure built from a SMILES string, a PubChem name or a sequence
+    # comes back carrying one region over every atom, named for the text that
+    # produced it.  So "select the thing I just built" is one click on a label
+    # the user already recognises, and the provenance rides in the sidecar with
+    # everything else instead of living only in a status line that the next
+    # load erases.
+    #
+    # THE TRAILING `#` RESERVES THE NAME, and it is doing real work.  Region
+    # labels are ONE namespace, shared by the user's own labels and by the
+    # transport vocabulary -- where any label ending `-electrode` IS a lead
+    # (`config.transport.is_electrode_label`, and TranSIESTA itself imposes no
+    # naming rule; the suffix is ours and is stripped before the deck is
+    # written).  The name generator takes whatever a person types, so a PubChem
+    # search for "gold-electrode" would otherwise have labelled the whole
+    # molecule a TranSIESTA electrode, silently, and the next transport run
+    # would have believed it.
+    #
+    # The marker settles that WITHOUT touching the electrode matcher in either
+    # direction: `gold-electrode#` does not end in `-electrode`, so the
+    # question never arises.  It also keeps a machine-written label telling
+    # apart from a hand-written one, which is the thing a shared namespace
+    # otherwise loses.  Measured to survive both persistence paths -- the
+    # `.molstruct.json` pair and the deck's ATOM-METADATA block, whose lines
+    # are already `#`-prefixed comments and whose readers strip a prefix rather
+    # than splitting on the character.
+    if text:
+        struct.regions = dict(struct.regions or {},
+                              **{f"{text}#": list(range(struct.n_atoms))})
+
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Endpoint-
     # specific keys (pdb, summary, backend_used, add_hydrogens_mode)
@@ -699,12 +730,6 @@ def api_build_load():
     text: str = ""
     fmt: str = "auto"
     filename: str = ""
-    # The paired .molstruct.json CONTENT (raw JSON string), read by the browser
-    # through the concealed projects file package (``projects.readFile``) and
-    # handed in so this ONE parse seam applies the sidecar -- regions / frozen /
-    # cell / axis_kind / vacuum / annotations -- onto the parsed Structure.
-    # None (or the multipart upload path) -> a plain geometry load, no sidecar.
-    sidecar_text: str = ""
     # The TRUSTED per-atom metadata block (regions / frozen / annotations)
     # a results-side caller recovered from a run's input script's
     # ATOM-METADATA block (parse/dirs/atom_metadata.py) -- NOT a standalone
@@ -733,21 +758,19 @@ def api_build_load():
     # ``structure`` restore branch out of the envelope through
     # ``from_dict``.  The text branch was the one door that dropped it.
     info_block: Any = None
-    # Bound on BOTH branches: a multipart upload carries no JSON, and the
-    # periodicity seam below reads this for every path through the route.
-    body: Dict[str, Any] = {}
-    if "file" in request.files:
-        f = request.files["file"]
-        filename = f.filename or ""
-        text = f.read().decode("utf-8", errors="replace")
-    else:
-        body = request.get_json(silent=True) or {}
-        text = body.get("text") or ""
-        fmt = (body.get("format") or "auto").lower()
-        filename = body.get("filename") or ""
-        sidecar_text = body.get("sidecar") or ""
-        atom_metadata_text = body.get("atom_metadata") or ""
-        info_block = body.get("info")
+    # The periodicity seam below reads this for every path through the route.
+    body: Dict[str, Any] = request.get_json(silent=True) or {}
+    text = body.get("text") or ""
+    filename = body.get("filename") or ""
+    atom_metadata_text = body.get("atom_metadata") or ""
+    info_block = body.get("info")
+    # A MULTIPART BRANCH STOOD HERE, and `format` and `sidecar` were read
+    # beside these -- all three gone 2026-09-07 with no caller, ever.  The only
+    # `FormData` in the whole front end targets `/api/files/upload`; `format`
+    # and `sidecar` appear in no production code and in no test, while both
+    # were documented as live parameters of this door.  `fmt` stays "auto":
+    # every real caller was already sniffed, by filename extension then by
+    # content.
 
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
@@ -777,23 +800,12 @@ def api_build_load():
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
 
-    # Apply the paired .molstruct.json (if the caller handed its content):
-    # regions / frozen / cell / axis_kind / vacuum / annotations land on the
-    # parsed Structure so ``ok_structure_response`` emits the ENRICHED atoms +
-    # periodicity + annotations in ONE response.  This is the parse seam
-    # ``molview.data.openMolecule`` calls after reading BOTH files through the
-    # projects file package -- the sidecar schema lives in one place
-    # (sidecars/molstruct), never in the file layer or the browser.
-    if sidecar_text.strip():
-        from molbuilder.sidecars import molstruct as _molstruct
-        try:
-            _molstruct.apply_to_structure(
-                struct, _molstruct.load_text(sidecar_text))
-        except _molstruct.MolstructJsonError as exc:
-            # A malformed / atom-count-mismatched sidecar is a client error, not
-            # a 500 -- surface the schema module's precise message.
-            return jsonify({"ok": False,
-                            "error": f"sidecar: {exc}"}), 400
+    # THE SIDECAR BLOCK STOOD HERE and is gone (2026-09-07).  It applied a
+    # `.molstruct.json` whose CONTENT the browser had read and handed in --
+    # a real capability with, it turned out, no caller: no production JS and
+    # no test ever sent `sidecar`, in the whole life of the parameter.  The
+    # browser reads a pair by handing the SERVER the path (`{path}`), which
+    # goes through `StructureCodec` and picks the sidecar up on the way.
 
     # Trusted per-atom metadata block (see ``atom_metadata_text`` above):
     # apply the SAME regions / frozen / annotations fields onto the parsed
@@ -1048,12 +1060,6 @@ def api_build_preflight():
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #
-
-
-def _xyz_to_structure(xyz_text: str) -> Structure:
-    """Thin wrapper that delegates to Structure.from_xyz so the web
-    layer doesn't carry its own parser."""
-    return Structure.from_xyz(xyz_text, title="from-browser")
 
 
 _SIESTA_HINTS = typing.get_type_hints(SiestaConfig)

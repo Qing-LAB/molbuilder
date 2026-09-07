@@ -168,7 +168,7 @@
 
 {# Script order matters: the registry must be present BEFORE any
    inspector module loads (each inspector self-registers at script
-   load time).  xyz-io is a dependency of the structure inspector; trajectory/core.js exposes
+   load time).  trajectory/core.js exposes
    window.molbuilder.trajectoryInspector; no auto-bootstrap, so it
    sits idle until lib/inspectors/trajectory.js asks to mount.
 
@@ -180,7 +180,6 @@
    "Ordering".  Pinned by
    tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js. -#}
-<script type="module" src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 {# The FULL MolView module (web/molview.md § 4 + § 9.1: mount is the only import) -- the structure inspector mounts it
    READ-ONLY via molview.mount's empty-host build path (same script set + dependency order

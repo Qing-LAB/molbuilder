@@ -105,7 +105,7 @@
                 };
             }
             return _deps.structurePage.loadIntoCanvas(
-                { source_format: "xyz", text: body.xyz },
+                { structure: body.structure },
                 { kind: "rna",
                   generator_input: {
                       sequence: trimmed, form: form,

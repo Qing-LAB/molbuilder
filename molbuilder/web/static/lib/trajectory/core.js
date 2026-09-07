@@ -356,6 +356,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         alias("atomMetadata", "fileState");
         alias("periodicity",  "fileState");
         alias("info",         "fileState");
+        alias("structure",    "fileState");
         alias("firstFit",     "viewState");
         alias("pollTimer",    "lifecycle");
         alias("pollInFlight", "lifecycle");
@@ -411,6 +412,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.atomMetadata = null;
             state.fileState.periodicity  = null;
             state.fileState.info         = null;
+            state.fileState.structure    = null;
             // Reset viewState per matrix: refit the camera on the next render.  The
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
@@ -450,6 +452,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.atomMetadata = null;
             state.fileState.periodicity  = null;
             state.fileState.info         = null;
+            state.fileState.structure    = null;
             state.viewState.firstFit     = true;
             state.derived.scfPollHistory.length = 0;
             state.machine = "IDLE";
@@ -596,6 +599,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 state.fileState.periodicity = payload.periodicity;
             if (payload.info !== undefined)
                 state.fileState.info = payload.info;
+            // Frame 0 as an ENVELOPE -- what the viewer installs.  Same
+            // keep-on-undefined rule as the three above, so a watch tick that
+            // re-sends frames does not drop it.
+            if (payload.structure !== undefined)
+                state.fileState.structure = payload.structure;
             return;
         }
         // Unknown target: silent no-op.  Future targets (the
@@ -915,23 +923,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
         return lines.join("\n") + "\n";
     }
 
-    function framesToMultiXyz(frames) {
-        const out = [];
-        for (const frame of frames) {
-            out.push(String(frame.length));
-            out.push("");
-            for (const atom of frame) {
-                const [sym, x, y, z] = atom;
-                out.push(
-                    sym + " " +
-                    x.toFixed(6) + " " +
-                    y.toFixed(6) + " " +
-                    z.toFixed(6)
-                );
-            }
-        }
-        return out.join("\n");
-    }
+    /* `framesToMultiXyz` STOOD HERE and is gone (2026-09-07).
+     *
+     * It was a second XYZ writer, in the browser, at six decimals -- and its
+     * only use was manufacturing frame 0 to get through the load door's TEXT
+     * branch, which then lost the labels, the cell and the `info` store that
+     * had to be handed back beside it. `molview.md` § 11.7 already claimed
+     * "the writer is gone (2026-07-31), not merely constrained" and that
+     * `Structure.to_xyz` is the only place in the system that writes an
+     * `.xyz`; both were false while this existed. The server assembles frame 0
+     * now (`watch.py::_frame0_structure`) and the tab installs the envelope. */
 
     /* In 3Dmol.js a sphere `scale` value is multiplied by the element's
      * van-der-Waals radius, so per-element size differences only become
@@ -1099,10 +1100,27 @@ import { molviewFiles } from "../projects/molview-doors.js";
             return;
         }
         const allFrames = state.data.frames;
-        // Frame 0 as a single-frame XYZ establishes the atom identity (elements)
-        // + coordinates.  The server parses ONE geometry, because that is what a
-        // file has; the rest of the run is handed over beside it.
-        const firstFrameXyz = framesToMultiXyz([allFrames[0]]);
+        /* FRAME 0 ARRIVES AS AN ENVELOPE, assembled by the server
+         * (`watch.py::_frame0_structure`) out of the pieces it already had:
+         * the frames from the parsed logs, the labels from the run's input
+         * script, the box from its output logs.
+         *
+         * This used to serialise frame 0 back into an XYZ document HERE, post
+         * it to be parsed, and hand the labels / cell / `info` store back
+         * alongside because a coordinate document has no room for them -- a
+         * structure the server had already parsed, flattened and re-parsed and
+         * then repaired from three parcels. `web-api.md` § 1: the browser
+         * sends what it holds, and never a document it wrote. */
+        const frame0 = state.structure || null;
+        if (!frame0) {
+            /* The server assembles this from the frames it parsed, so a run
+             * with frames and no envelope means the assembly itself failed.
+             * Say so rather than falling back to writing a document here --
+             * the fallback IS the thing that was removed. */
+            setStatus("This run's geometry could not be assembled by the "
+                + "server; nothing to show in the viewer.", "error");
+            return;
+        }
         const coordFrames = allFrames.map(function (frame) {
             return frame.map(function (atom) {
                 return [atom[1], atom[2], atom[3]];
@@ -1140,19 +1158,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * null when the run had no ATOM-METADATA block. */
         try {
             await _mvdata().installMolecule({
-                text:         firstFrameXyz,
+                structure:    frame0,
                 filename:     (state.label || "trajectory") + ".xyz",
                 frames:       coordFrames,
                 forces:       buildForcesPerFrame(),
-                // Handed on exactly as it arrived: a document the server wrote,
-                // carrying its own atom-count guard.  This tab does not open it.
-                atomMetadata: state.atomMetadata || null,
-                periodicity:  _runPeriodicity(),
-                // The store rides IN, on every rebuild, because a rebuild
-                // replaces the structure -- so a run's recorded contract is
-                // on the atoms before anything can read them, and an export
-                // from this view carries it.
-                info:         state.info || null,
             });
         } catch (e) {
             setStatus("Viewer failed to load the run: "

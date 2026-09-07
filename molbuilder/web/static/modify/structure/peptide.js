@@ -102,7 +102,7 @@
                 };
             }
             return _deps.structurePage.loadIntoCanvas(
-                { source_format: "xyz", text: body.xyz },
+                { structure: body.structure },
                 { kind: "peptide",
                   generator_input: { sequence: trimmed } }
             ).then(function (gate) {

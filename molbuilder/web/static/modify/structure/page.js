@@ -1,9 +1,9 @@
 /* Molbuilder-tab page orchestrator.
  *
  * Owns the "load a structure into the canvas" gate: every Sources
- * panel (Load from project, Generate from SMILES, future 3DNA /
- * peptide / name / file generators) calls in here instead of
- * touching ``canvas-state.setStructure`` directly.  The gate's
+ * panel (Load from project, SMILES, name, DNA, RNA, peptide) calls
+ * in here instead of touching ``canvas-state.setStructure``
+ * directly.  The gate's
  * job is the unsaved-modifications check —
  *
  *   if canvas is empty → set immediately
@@ -16,7 +16,10 @@
  *   loadIntoCanvas(structure, source)
  *     -> Promise<{ok: bool, cancelled?: bool}>
  *
- *     ``structure``: ``{source_format: "xyz"|"pdb", text: string}``
+ *     ``structure``: ``{structure: <envelope>}`` -- the loss-free
+ *                    ``Structure`` dict that every structure-returning
+ *                    endpoint already answers with. Never a document:
+ *                    the browser does not write coordinates.
  *     ``source``:    ``{kind, file?, generator_input?}``
  *       (see canvas-state.js for the source schema)
  *
@@ -109,32 +112,34 @@
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
         }
-        // The ONE atomic whole-model load door (web/molview.md
-        // § 9.3): it parses the text, replaces the whole model
-        // (canvas + atoms + render) and anchors the undo timeline at
-        // index 0.  Provenance + sidecar ride ON the door (no
-        // side-channel): the generator ``source`` (kind /
-        // generator_input) and any sidecar ``periodicity`` /
-        // ``annotations`` the caller resolved (that /api/build/load
-        // can't re-derive) are forwarded so the model keeps them.
+        /* The ONE atomic whole-model load door (web/molview.md § 9.3): it
+         * replaces the whole model (canvas + atoms + render) and anchors the
+         * undo timeline at index 0.
+         *
+         * IT IS HANDED THE ENVELOPE, not a document a browser wrote. A
+         * generator has already built a Structure server-side, and
+         * `/api/build/molecule` returns it whole under `structure`. Posting the
+         * `xyz` string that sits beside it asked the server to parse back a
+         * flattened copy of what it had just built, and XYZ has no slots for
+         * the identity columns: a peptide came back with every residue named
+         * MOL and CA/CB collapsed to C, so `by_residue_name "ALA"` matched
+         * nothing on a structure the user had just generated. The envelope is
+         * loss-free and was in the same response all along -- web-api.md § 1,
+         * "the browser sends what it holds; it never sends a document it
+         * wrote".
+         *
+         * `periodicity`, `annotations` and `atoms` rode beside the text here to
+         * carry what the flattening destroyed. With the envelope there is
+         * nothing left for them to carry, so they are gone. */
         var filename = (source && source.file) || null;
         function _apply() {
             return _model().installMolecule({
-                text:        structure.text,
-                filename:    filename,
-                source:      source || null,
-                periodicity: structure.periodicity || null,
-                annotations: structure.annotations || null,
-                // Sidecar-enriched atoms (a project-file open resolved these via
-                // the parser door) ride IN so the load installs the FINAL per-atom
-                // state in ONE write -- the caller must NOT follow up with a second
-                // store write (see installMolecule's load contract).  Omitted by
-                // generators / raw-text loads.
-                atoms:       structure.atoms || null,
+                structure: structure.structure,
+                filename:  filename,
             }).then(function () {
                 /* AND THE PAGE RECORDS WHAT IT JUST DID. This is the one gate
-                 * every generator and the file upload come through, and it
-                 * already knows whether a file is behind the structure: a
+                 * every generator comes through, and it already knows whether
+                 * a file is behind the structure: a
                  * SMILES/DNA/RNA/peptide/name build passes no `file`, so the
                  * note becomes null and the loader readout stops claiming a file
                  * that never existed.
@@ -283,8 +288,8 @@
          * The overwrite confirmation inside `_saveDataset` means this
          * misleads rather than silently destroys -- but a confirmation you
          * answer while reading the wrong filename is not much of a guard.
-         * Cleared here because this is the one gate every generator, every
-         * upload and the sidebar's own load come through. */
+         * Cleared here because this is the one gate every generator and
+         * the sidebar's own load come through. */
         _lastSavedTo = null;
         _rememberPanel();
     }

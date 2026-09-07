@@ -37,7 +37,6 @@
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
  *   "structure.page"            -- modify/structure/page.js
  *   "structure.save"            -- modify/structure/save.js
- *   "modify.loadStructureText"  -- modify/viewer.js (per-tab; accepts XYZ + PDB)
  *   "inspectors"                -- lib/inspectors/registry.js
  *
  * Adding a new module-with-a-global: pick a name in this scheme,

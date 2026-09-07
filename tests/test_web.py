@@ -651,16 +651,12 @@ def test_load_xyz_format_sniff(web_client, peptide_xyz):
     assert body["source_format"] == "xyz"
 
 
-def test_load_multipart(web_client, peptide_xyz):
-    from werkzeug.datastructures import FileStorage
-    fs = FileStorage(stream=io.BytesIO(peptide_xyz.encode()),
-                     filename="upload.xyz",
-                     content_type="chemical/x-xyz")
-    r = web_client.post("/api/build/load",
-                       data={"file": fs}, content_type="multipart/form-data")
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["source_format"] == "xyz"
+# `test_load_multipart` STOOD HERE and is retired (2026-09-07).  Its whole
+# subject was `/api/build/load`'s multipart branch, which is deleted: nothing
+# ever posted a `FormData` to that route -- the only one in the entire front
+# end targets `/api/files/upload` -- so the branch was reachable from this
+# test and from nowhere else.  A test is the last thing that should keep a
+# door open.
 
 
 def test_load_empty_returns_error(web_client):
@@ -809,8 +805,11 @@ def test_build_load_response_includes_atom_metadata(web_client):
     xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
     r = web_client.post(
         "/api/build/load",
-        data={"file": (io.BytesIO(xyz.encode()), "h2o.xyz")},
-        content_type="multipart/form-data",
+        # JSON, not multipart: the multipart branch of this route was deleted
+        # 2026-09-07 with no caller, ever -- the only FormData in the front end
+        # targets /api/files/upload.  These three tests are about the RESPONSE
+        # SHAPE, so they moved to the transport a caller actually uses.
+        json={"text": xyz, "filename": "h2o.xyz"},
     )
     body = r.get_json()
     assert body["ok"] is True
@@ -838,8 +837,11 @@ def test_build_load_response_includes_atoms_list(web_client):
     xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
     r = web_client.post(
         "/api/build/load",
-        data={"file": (io.BytesIO(xyz.encode()), "h2o.xyz")},
-        content_type="multipart/form-data",
+        # JSON, not multipart: the multipart branch of this route was deleted
+        # 2026-09-07 with no caller, ever -- the only FormData in the front end
+        # targets /api/files/upload.  These three tests are about the RESPONSE
+        # SHAPE, so they moved to the transport a caller actually uses.
+        json={"text": xyz, "filename": "h2o.xyz"},
     )
     body = r.get_json()
     assert body["ok"] is True
@@ -926,8 +928,11 @@ def test_build_load_returns_workspace_payload(web_client):
     xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
     r = web_client.post(
         "/api/build/load",
-        data={"file": (io.BytesIO(xyz.encode()), "h2o.xyz")},
-        content_type="multipart/form-data",
+        # JSON, not multipart: the multipart branch of this route was deleted
+        # 2026-09-07 with no caller, ever -- the only FormData in the front end
+        # targets /api/files/upload.  These three tests are about the RESPONSE
+        # SHAPE, so they moved to the transport a caller actually uses.
+        json={"text": xyz, "filename": "h2o.xyz"},
     )
     body = r.get_json()
     assert body["ok"] is True

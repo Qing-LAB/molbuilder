@@ -269,12 +269,11 @@ export function init(viewer) {
         window.molbuilder.status.set("status", msg, kind);
     }
 
-    // (loadFile() removed 2026-05-18: was the multipart upload path
-    // for the now-deleted #file-picker.  The sidebar-mediated
-    // loader at window.molbuilder.loadStructureText below is the
-    // only structure-loading path; it operates on already-fetched
-    // text, not a File object.  Accepts XYZ and PDB content alike --
-    // the server's /api/build/load sniffs the format.)
+    // (loadFile() removed 2026-05-18: was the multipart upload path for the
+    // now-deleted #file-picker.  Structures reach this tab through the
+    // Projects sidebar, which hands MolView a PATH -- the server reads the
+    // `.xyz` and its `.molstruct.json` together.  The text-blob loader that
+    // stood in between went 2026-09-07, unused.)
 
     // Update the section header's #title-readout from the LIVE structure (unified API).
     // The Hill formula() belongs to MolView and comes through its one door -- we
@@ -1020,20 +1019,14 @@ export function init(viewer) {
     window.__molbuilder_modify_test = {
         getSelected: () => selectedIndices(),
         getNAtoms:   () => _nAtoms(),
-        // Transform-subtab tests probe coordinates after a translate / center op.  Read LIVE
-        // from molview.data (the single source) -- there is no state.* mirror to expose.
-        getState:    () => {
-            const d = _data();
-            const s = (d && d.getStructure && d.getStructure()) || null;
-            const atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
-            return {
-                n_atoms:   _nAtoms(),
-                positions: _coords(),
-                // Metadata read LIVE from molview.data's atoms (the single source).
-                chain_ids: atoms.map((a) => (a.chainId != null ? a.chainId : null)),
-                residue_ids: atoms.map((a) => (a.residueId != null ? a.residueId : null)),
-            };
-        },
+        /* `getState` STOOD HERE and is gone (2026-09-07).  It read `s.atoms`
+         * off `getStructure()`, which has never had an `atoms` key, so its
+         * `chain_ids` and `residue_ids` were `[]` for every structure ever
+         * loaded -- a hook that answered a question about identity columns
+         * with a fabricated empty list.  Nothing read it: the only consumer of
+         * this object is `conftest.py`, which takes `getNAtoms` and
+         * `getSelected`.  A test seam that cannot fail is worse than no seam,
+         * because it looks like coverage. */
     };
 
     // Public loader for the Projects sidebar's onLoad callback (and
@@ -1046,41 +1039,13 @@ export function init(viewer) {
     // rip-out) no ``modify.currentStateBody`` / ``modify.applyStructure`` either: the op-request
     // body is built INSIDE the module (data-model.applyOp._structureBody from molview.data) and
     // op results flow store -> UI via the molview.data subscription, not a consumer hand-off hook.
-    // Load a structure text blob (XYZ or PDB) through the UNIFIED
-    // open door (``molview.data.installMolecule({text, filename})``), which
-    // sniffs the format from the filename + content and installs the
-    // whole model atomically.  The function is named
-    // ``loadStructureText`` because it genuinely accepts both formats.
-    // NOTE (ESM finalization): the Sources-card generators NO LONGER read this global -- they
-    // import { data } and inject their own ``(text,filename)=>data.installMolecule(...)`` adapter
-    // (web/molview.md § 9.1 -- mount and formula are the only imports).  This alias is
-    // RETAINED only as (a) the page-mount E2E
-    // hook (test_molbuilder_e2e.py) and (b) the loader that emits the Modify #status feedback.
-    // FOLLOW-UP: remove it once the E2E hook is repointed to data.installMolecule and the "Loaded
-    // N-atom" status is rewired (it is the last window.molbuilder.* alias this file publishes).
-    window.molbuilder.loadStructureText = async function (text, filename) {
-        setStatus(`Loading ${filename}…`);
-        const d = _data();
-        if (!d || typeof d.installMolecule !== "function") {
-            const msg = "Data model unavailable; cannot load structure.";
-            setStatus(msg, "error");
-            throw new Error(msg);
-        }
-        let r;
-        try {
-            r = await d.installMolecule({ text: text, filename: filename });
-        } catch (e) {
-            const msg = (e && e.message) ? e.message : String(e);
-            setStatus(msg, "error");
-            throw e;
-        }
-        const fmt = (r.source_format || "structure").toUpperCase();
-        setStatus(
-            `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,
-            "ok",
-        );
-        return r;
-    };
+    /* `window.molbuilder.loadStructureText` STOOD HERE and is gone
+     * (2026-09-07).  Its own comment called it the last `window.molbuilder.*`
+     * alias this file publishes and marked it for removal once the E2E hook
+     * was repointed.  The hook had already moved: `conftest.py` reads
+     * `getNAtoms` and `getSelected` and nothing else, and no JS imports or
+     * calls this.  It was the last caller of the load door's TEXT branch
+     * outside the component demo, and it was calling it for nobody. */
     // (No ``modify.handle`` runtime registration: the module owns the viewer + attaches
     // the selection adapter to it, so selection-bootstrap no longer waits on it.)
 

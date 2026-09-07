@@ -699,10 +699,22 @@ export function createModel(opts) {
          */
         getStructure() {
             if (!structure) return null;
+            /* THE MASTER COPY ENTIRE (§ 9.3) -- which it was not.  § 6.2 lists
+             * what the module holds: elements, annotations, periodicity,
+             * title, channelDefs, info.  This returned the first three and
+             * dropped the last three, while the contract's own sentence a few
+             * lines above called it the whole thing.  Callers believed the
+             * sentence: the Modify tab's `#title-readout` read `.title` off
+             * this and got `undefined`, so it showed the formula and NEVER the
+             * structure's name, and the restore banner said "(unnamed)" every
+             * time (2026-09-07). */
             return copy({
                 elements:       structure.elements,
                 annotations:    structure.annotations,
                 periodicity:    structure.periodicity,
+                title:          structure.title,
+                channelDefs:    structure.channelDefs,
+                info:           structure.info,
                 frames:         frames,
                 forcesPerFrame: forcesPerFrame,
             });

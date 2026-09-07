@@ -453,6 +453,56 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
     return (payload or {}).get("source_format") or parser_cls.name
 
 
+def _frame0_structure(
+    search_dir: "Optional[str]", data: "Optional[Dict[str, Any]]"
+) -> "Optional[Dict[str, Any]]":
+    """Frame 0 as a STRUCTURE ENVELOPE, with the run's metadata already on it.
+
+    The Results trajectory tab used to build this itself: it took the frames,
+    serialised frame 0 back into an XYZ document **in the browser**
+    (``framesToMultiXyz``), posted that to ``/api/build/load`` to be parsed,
+    and handed the labels, the cell and the ``info`` store back alongside as
+    three separate blocks -- because a coordinate document has no room for
+    them. So a structure the server had already parsed was flattened, shipped,
+    re-parsed, and then repaired from parcels.
+
+    `web-api.md` § 1 is the rule that forbids it: *"the browser sends what it
+    holds; it never sends a document it wrote"*. The pieces were all here --
+    the frames from the parsed logs, the labels from the run's input script,
+    the box from its output logs -- so the assembly belongs here too.
+
+    Returns ``None`` when there are no frames; never raises, because a run
+    whose metadata cannot be recovered must still open.
+    """
+    frames = (data or {}).get("frames")
+    if not frames:
+        return None
+    try:
+        from molbuilder.structure import Structure
+        first = frames[0]
+        struct = Structure(
+            elements=[str(a[0]) for a in first],
+            positions=[[float(a[1]), float(a[2]), float(a[3])] for a in first],
+        )
+        meta_json = _atom_metadata_json(search_dir, data)
+        if meta_json:
+            import json as _json
+            from molbuilder.script_emit import apply_atom_metadata
+            apply_atom_metadata(struct, _json.loads(meta_json))
+        per = _run_periodicity_json(search_dir, data)
+        if per:
+            from ._shared import apply_periodicity_only
+            struct = apply_periodicity_only(struct, {"periodicity": per})
+        info = run_info_for_dir(search_dir) if search_dir else None
+        if isinstance(info, dict) and info:
+            struct.info = dict(info)
+        return struct.to_dict()
+    except Exception:                                   # noqa: BLE001
+        # A run that cannot be assembled still OPENS -- the frames are the
+        # point, and the tab falls back to what it always had.
+        return None
+
+
 def _run_metadata(
     search_dir: Optional[str], data: Optional[Dict[str, Any]]
 ) -> Dict[str, Any]:
@@ -800,6 +850,11 @@ def api_load():
         "label":            parser_cls.label,
         "data":             state["data"],
         "uploaded":         False,
+        # FRAME 0 AS AN ENVELOPE -- what the viewer installs.  The parcels below
+        # stay because the Cell page reads them directly; what changed is that
+        # the browser no longer rebuilds a structure out of them.
+        "structure":        _frame0_structure(
+            resolved_from_dir or os.path.dirname(path), state["data"]),
         **_run_metadata(resolved_from_dir or os.path.dirname(path),
                         state["data"]),
     })
@@ -888,6 +943,9 @@ def _api_load_multipart(uploaded_file):
         "data":             state["data"],
         "uploaded":         True,
         "uploaded_filename": uploaded_file.filename,
+        # Frame 0 as an envelope, same as the path branch -- an upload has no
+        # run directory, so it carries the geometry and nothing more.
+        "structure":        _frame0_structure(None, state["data"]),
         # An upload is one file with no run directory behind it, so it
         # has nothing to say about itself -- and it SAYS so, in the same
         # fields the other two builders answer.  One route, one response

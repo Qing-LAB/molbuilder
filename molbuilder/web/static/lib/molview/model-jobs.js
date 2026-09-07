@@ -77,7 +77,17 @@ export const FROZEN_LABEL = "frozen_atoms";
  *
  * `frozen_atoms` appears here as the CONSTANT, never as a second literal: the
  * reserved meaning costs one name and one accessor, and that name is spelled
- * once, above. */
+ * once, above.
+ *
+ * NOTHING HERE ENDS IN `#`, AND THAT IS THE POINT. A trailing `#` marks a label
+ * MOLBUILDER wrote rather than a person -- today, the signature a generated
+ * structure carries, naming the SMILES / sequence / lookup text that built it
+ * (`CCO#`, `AG#`). These six are the opposite: names offered TO a person to
+ * assign by hand. The marker exists because region labels are one namespace
+ * with meaning in part of it -- any label ending `-electrode` IS a lead -- and
+ * the name generator takes whatever gets typed into it, so a search for
+ * `gold-electrode` would otherwise have labelled a whole molecule a TranSIESTA
+ * electrode. See `model/structure-annotations.md` § 5.1. */
 /* THE RESERVED TRANSPORT LABELS.  Descriptions say what each is FOR and
  * when to use it, because a transport calculation reads them as physics
  * (archive/2026-09-01-transport-design.md § 4.1a): the electrode blocks are extracted
@@ -571,67 +581,22 @@ function requestBodyFor(input) {
     }
     if (typeof input.text !== "string") return null;
     const body = { text: input.text, filename: input.filename };
-    // An explicit format is for when the caller knows the text's format
-    // regardless of the filename — canonical XYZ carried under a .pdb name would
-    // otherwise be auto-detected as PDB and refused.
-    if (input.format) body.format = input.format;
-    if (typeof input.sidecar === "string") body.sidecar = input.sidecar;
-
-    /* WHAT THE CALLER ALREADY KNEW ABOUT THESE ATOMS, when it did not come out
-     * of a file. A `sidecar` is the CONTENT OF A `.molstruct.json` — an
-     * untrusted document, so the server checks its envelope before applying it.
-     * A run has no such document: the Results tab recovers its region labels
-     * and frozen tags from the ATOM-METADATA block the Build tab wrote into the
-     * input script. That is molbuilder's own emit, and the server has taken it
-     * as `atom_metadata` all along, applying it through the one authority with
-     * no envelope to satisfy. The browser simply never sent it, so a trajectory
-     * opened with no labels — at HTTP 200, because nothing refused them; they
-     * were dropped one layer above the request.
+    /* SEVEN SIDE-BLOCKS STOOD HERE and are gone (2026-09-07): `format`,
+     * `sidecar`, `atomMetadata`, `periodicity`, `info`, and (on the caller's
+     * side) `source` and `atoms`.
      *
-     * IT TRAVELS AS BYTES AND IS NEVER OPENED HERE. It is a document the server
-     * wrote, in a format the server owns, and it carries its own guard —
-     * `n_atoms_total`, which is what stops a label set written for one
-     * structure landing on another. Anything in the browser that parsed it and
-     * put a key back would be writing that format, and re-stating the count is
-     * how the guard stops being able to fire. */
-    if (typeof input.atomMetadata === "string" && input.atomMetadata) {
-        body.atom_metadata = input.atomMetadata;
-    }
-
-    /* THE CELL THE CALLER STATED — the same `{cell, cell_origin, axis_kind,
-     * vacuum}` block every other structure door takes, so the server applies it
-     * through the one seam that also CHECKS it (a refusable cell comes back as
-     * a refusal, § 6.9, not a silently-accepted box).
+     * Every one of them existed to carry what a coordinate document cannot --
+     * the labels, the cell, the free `info` store -- back to a server that had
+     * just been handed a flattened copy of a structure it already had. They
+     * were compensation for the text branch, and the text branch has one
+     * caller left: the component demo, which loads hard-coded sample XYZ and
+     * has nothing to compensate for.
      *
-     * The caller for this is a trajectory: its lattice comes from the run's
-     * output logs, which is a different source from the labels above and so a
-     * different field. It went nowhere for as long as this builder ignored it,
-     * which is why no trajectory has ever drawn its unit cell. */
-    if (input.periodicity && typeof input.periodicity === "object") {
-        body.periodicity = input.periodicity;
-    }
-
-    /* WHAT THE CALLER KNOWS ABOUT THESE ATOMS THAT IS NOT THE ATOMS — the
-     * free `info` store (§ 8.4a). The other two ways in already carry it: a
-     * `path` load reads it out of the pair's `.molstruct.json`, and a
-     * structure put back carries it in its envelope. TEXT is the one shape
-     * with no document behind it, so a host that knows the store states it.
-     *
-     * THE HOST IS ALWAYS THE ONE THAT KNOWS (user, 2026-08-30): the viewer
-     * has no idea what describes the run it is showing, and never looks —
-     * the tab it sits in found it and hands it over, here, at the one
-     * entrance, so the whole structure lands in one go (§ 9.3) and the
-     * history anchor is recorded WITH it.
-     *
-     * That last part is why this is a load field rather than a `data.info`
-     * call after the load. The Results trajectory rebuilds its viewer on
-     * every poll and every filter change; a store attached afterwards is
-     * gone by the next rebuild, and the structure is observable without it
-     * in between (§ 6.4). It is the same argument the frames won on. */
-    if (input.info && typeof input.info === "object"
-            && Object.keys(input.info).length) {
-        body.info = input.info;
-    }
+     * `format` and `sidecar` never had a caller at all -- not in production,
+     * not in a test -- while both were documented as live parameters. The
+     * other three were the trajectory tab's, which now hands over frame 0 as
+     * an envelope assembled by the server (`watch.py::_frame0_structure`), so
+     * there is nothing left for them to repair. */
     return body;
 }
 
@@ -950,6 +915,16 @@ export async function resolveFilter(structure, rule) {
             element:     element,
             labels:      (facts.labels || []).slice(),
             residueName: facts.residue || null,
+            // `by_atom_name` and `by_chain_id` are rule kinds the vocabulary
+            // offers, and until 2026-09-07 this list had no slot for either --
+            // so the server rebuilt the structure with atom names DEFAULTED to
+            // element symbols and every chain defaulted to "A".  Both rules
+            // then answered HTTP 200 with a confident wrong answer: `CA` never
+            // matched a real alpha carbon, chain `B` never matched anything.
+            // The viewer holds both (`facts.name` / `facts.chain`, set from the
+            // identity columns on load); it simply was not sending them.
+            atomName:    facts.name || null,
+            chainId:     facts.chain || null,
         };
     });
     /* THIS ONE STILL SWALLOWS, on purpose and not by oversight. § 6.9 governs

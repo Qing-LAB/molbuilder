@@ -181,11 +181,18 @@ class TestInputValidation:
 
 class TestHappyPath:
 
-    def test_successful_generate_calls_loadIntoCanvas_with_xyz(self):
-        """Pins the load contract: a successful build POST routes the
-        XYZ + source provenance through ``structurePage.loadIntoCanvas``
-        — the single load door.  There is NO second viewer load; the
-        load door parses + renders the structure itself."""
+    def test_successful_generate_hands_over_the_envelope(self):
+        """The build's answer reaches the load door WHOLE.
+
+        ``/api/build/molecule`` already built a Structure; it returns it
+        under ``structure`` and, beside it, an ``xyz`` rendering of the
+        same atoms.  This panel used to install the ``xyz`` string, so
+        the server parsed back a flattened copy of what it had just
+        built -- and XYZ has no slots for ``residue_names`` or
+        ``atom_names``, so a generated peptide arrived with every
+        residue named MOL and CA/CB collapsed to C.  Asserting the
+        identity columns survive is the guard on that: they cannot
+        survive a document, only an envelope."""
         out = _run_node('''
             let capturedUrl = null;
             let capturedBody = null;
@@ -199,6 +206,15 @@ class TestHappyPath:
                         ok: true,
                         json: async () => ({
                             ok: true,
+                            structure: {
+                                title: "ethanol",
+                                elements: ["C", "C", "O"],
+                                positions: [[0,0,0], [1,0,0], [2,0,0]],
+                                residue_names: ["ETH", "ETH", "ETH"],
+                                atom_names: ["C1", "C2", "O1"],
+                            },
+                            // The flattened rendering rides along and is
+                            // deliberately NOT what gets installed.
                             xyz: "3\\nethanol\\nC 0 0 0\\nC 1 0 0\\nO 2 0 0\\n",
                             n_atoms: 3,
                             title: "ethanol",
@@ -225,9 +241,13 @@ class TestHappyPath:
         assert out["envelope"] == {"ok": True, "n_atoms": 3}
         assert out["url"] == "/api/build/molecule"
         assert out["body"] == {"kind": "smiles", "input": "CCO"}
-        # Load door receives the XYZ + source provenance...
-        assert out["canvas"]["struct"]["source_format"] == "xyz"
-        assert out["canvas"]["struct"]["text"].startswith("3\n")
+        # The load door receives the ENVELOPE, and the columns XYZ
+        # cannot carry are still on it.
+        env = out["canvas"]["struct"]["structure"]
+        assert env["residue_names"] == ["ETH", "ETH", "ETH"]
+        assert env["atom_names"] == ["C1", "C2", "O1"]
+        # ...and NOT the document sitting beside it in the same response.
+        assert "text" not in out["canvas"]["struct"]
         assert out["canvas"]["src"]["kind"] == "smiles"
         assert out["canvas"]["src"]["generator_input"]["smiles"] == "CCO"
         # ...exactly once — no redundant second load.

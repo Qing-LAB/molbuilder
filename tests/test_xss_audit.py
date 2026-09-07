@@ -362,7 +362,6 @@ class TestRecentAdditionsArePure:
         # the most likely place for an XSS regression to land.
         "lib/trajectory/core.js",
         "lib/path-utils.js",
-        "lib/xyz-io.js",
         "results/viewer.js",
     ]
 

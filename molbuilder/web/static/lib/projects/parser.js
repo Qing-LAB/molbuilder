@@ -82,7 +82,6 @@ export async function openMolecule(viewer, path, opts) {
   try {
     payload = await model.installMolecule({
       path:   path,
-      source: { kind: "file", file: path, generator_input: null },
       /* THIS IS THE USER SAYING "LOAD THIS FILE", so it replaces whatever is
        * there.  Without it a read-only viewer that already holds a structure
        * answers null and does nothing -- so on structure-optimization, spectra,

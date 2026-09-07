@@ -102,7 +102,7 @@
             // Hand off to the canvas-state gate.  This fires the
             // warning modal if the canvas is dirty.
             return _deps.structurePage.loadIntoCanvas(
-                { source_format: "xyz", text: body.xyz },
+                { structure: body.structure },
                 { kind: "smiles",
                   generator_input: { smiles: trimmed } }
             ).then(function (gate) {

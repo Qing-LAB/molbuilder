@@ -86,7 +86,7 @@
                 };
             }
             return _deps.structurePage.loadIntoCanvas(
-                { source_format: "xyz", text: body.xyz },
+                { structure: body.structure },
                 { kind: "name",
                   generator_input: { name: trimmed } }
             ).then(function (gate) {

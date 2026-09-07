@@ -309,8 +309,6 @@ const WORKSPACE_TAG = "transport";
             }
             return viewer.data.installMolecule({
                 structure: wire,
-                source: { kind: "citation", file: _junction || null,
-                          generator_input: null },
                 enforce: true,
             });
         }).catch(function (e) {

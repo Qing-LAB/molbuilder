@@ -65,10 +65,6 @@
               role="tab" type="button" aria-selected="true">
         Load from project
       </button>
-      <button class="modify-init-tab" data-init-tab="upload"
-              role="tab" type="button" aria-selected="false">
-        Upload file
-      </button>
       <button class="modify-init-tab" data-init-tab="smiles"
               role="tab" type="button" aria-selected="false">
         SMILES
@@ -105,21 +101,6 @@
             Load picked file
           </button>
           <span id="load-candidate-readout" class="muted"></span>
-        </div>
-      </div>
-    </div>
-
-    <div class="modify-init-panel" data-init-panel="upload" role="tabpanel" hidden>
-      <div class="modify-source-body">
-        <p class="modify-source-hint">
-          Drop a local <code>.xyz</code> / <code>.pdb</code> file
-          into the workspace (no project sidebar pick needed —
-          useful for one-off geometries from another tool).
-        </p>
-        <div class="modify-source-actions">
-          <input id="file-upload-input" type="file"
-                 accept=".xyz,.pdb,.XYZ,.PDB">
-          <span id="file-upload-status" class="status" role="status"></span>
         </div>
       </div>
     </div>
@@ -947,7 +928,6 @@
 <script src="{{ url_for('static', filename='modify/structure/dna.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/rna.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/peptide.js') }}"></script>
-<script src="{{ url_for('static', filename='modify/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/save.js') }}"></script>
 </body>
 </html>

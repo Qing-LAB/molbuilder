@@ -54,7 +54,7 @@ function _mkFakeCanvas(initial) {
     initial = initial || {};
     let state = {
         structure:   initial.empty === false
-            ? (initial.structure || { text: "seeded" })
+            ? (initial.structure || { title: "seeded", elements: ["C"] })
             : (initial.structure || null),
         uncommitted: !!initial.dirty,
     };
@@ -63,11 +63,10 @@ function _mkFakeCanvas(initial) {
         getStructure: () => state.structure,
         get uncommitted() { return state.uncommitted; },
         installMolecule: (arg) => {
-            state.structure   = { text: arg.text };
+            state.structure   = arg.structure;
             state.uncommitted = false;
             calls.push({fn: "installMolecule", arg: arg,
-                        structure: { text: arg.text },
-                        source: arg.source});
+                        structure: arg.structure});
             return Promise.resolve();
         },
         subscribe: (cb) => {
@@ -201,7 +200,8 @@ class TestLoadGateEmptyCanvas:
             const modal  = _mkFakeModal(false);  // would say Cancel
             page._bind(canvas, modal);
             const r = await page.loadIntoCanvas(
-                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n" },
+                { structure: { title: "eth", elements: ["C"],
+                               positions: [[0, 0, 0]] } },
                 { kind: "smiles", generator_input: { smiles: "CCO" } }
             );
             console.log(JSON.stringify({
@@ -211,12 +211,14 @@ class TestLoadGateEmptyCanvas:
             }));
         ''')
         assert out["envelope"] == {"ok": True}
-        # Routed through the ONE atomic load door with the text +
-        # generator source riding on the load payload.
+        # Routed through the ONE atomic load door, carrying the envelope
+        # itself.  The gate forwards what it was handed and adds nothing:
+        # a document written in the browser is what web-api.md § 1 forbids.
         loads = [c for c in out["canvasCalls"] if c["fn"] == "installMolecule"]
         assert len(loads) == 1
-        assert loads[0]["arg"]["text"] == "1\nC\nC 0 0 0\n"
-        assert loads[0]["arg"]["source"]["kind"] == "smiles"
+        assert loads[0]["arg"]["structure"] == {
+            "title": "eth", "elements": ["C"], "positions": [[0, 0, 0]]}
+        assert "text" not in loads[0]["arg"]
         # Modal NOT consulted — the empty canvas gate didn't ask.
         assert out["modalCalls"] == []
 
@@ -230,13 +232,13 @@ class TestLoadGateCleanCanvas:
         out = _run_node('''
             const canvas = _mkFakeCanvas({
                 empty: false, dirty: false,
-                structure: { source_format: "xyz", text: "old" },
+                structure: { title: "old", elements: ["C"] },
                 source: { kind: "file", file: "/p/a.xyz" },
             });
             const modal = _mkFakeModal(false);
             page._bind(canvas, modal);
             const r = await page.loadIntoCanvas(
-                { source_format: "xyz", text: "new" },
+                { structure: { title: "new", elements: ["C"] } },
                 { kind: "smiles" }
             );
             console.log(JSON.stringify({
@@ -249,7 +251,7 @@ class TestLoadGateCleanCanvas:
         ''')
         assert out["envelope"] == {"ok": True}
         assert out["modalCalls"] == []  # not consulted
-        assert out["lastSet"]["structure"]["text"] == "new"
+        assert out["lastSet"]["structure"]["title"] == "new"
 
 
 class TestLoadGateDirtyCanvas:
@@ -259,13 +261,13 @@ class TestLoadGateDirtyCanvas:
         out = _run_node('''
             const canvas = _mkFakeCanvas({
                 empty: false, dirty: true,
-                structure: { source_format: "xyz", text: "edited" },
+                structure: { title: "edited", elements: ["C"] },
                 source: { kind: "smiles" },
             });
             const modal = _mkFakeModal(true);  // user clicks Discard
             page._bind(canvas, modal);
             const r = await page.loadIntoCanvas(
-                { source_format: "xyz", text: "new" },
+                { structure: { title: "new", elements: ["C"] } },
                 { kind: "file", file: "/p/b.xyz" }
             );
             console.log(JSON.stringify({
@@ -279,8 +281,7 @@ class TestLoadGateDirtyCanvas:
         assert out["envelope"] == {"ok": True}
         assert out["modalCalls"] == ["confirmDiscardUnsaved"]
         # The overwrite landed.
-        assert out["lastSet"]["structure"]["text"] == "new"
-        assert out["lastSet"]["source"]["file"] == "/p/b.xyz"
+        assert out["lastSet"]["structure"]["title"] == "new"
 
     def test_dirty_canvas_cancel_does_not_overwrite(self):
         """Dirty canvas + user picks Cancel → canvas untouched +
@@ -288,13 +289,13 @@ class TestLoadGateDirtyCanvas:
         out = _run_node('''
             const canvas = _mkFakeCanvas({
                 empty: false, dirty: true,
-                structure: { source_format: "xyz", text: "edited" },
+                structure: { title: "edited", elements: ["C"] },
                 source: { kind: "smiles" },
             });
             const modal = _mkFakeModal(false);  // user clicks Cancel
             page._bind(canvas, modal);
             const r = await page.loadIntoCanvas(
-                { source_format: "xyz", text: "new" },
+                { structure: { title: "new", elements: ["C"] } },
                 { kind: "file", file: "/p/b.xyz" }
             );
             const setCalls = canvas._calls().filter(
@@ -304,7 +305,7 @@ class TestLoadGateDirtyCanvas:
                 modalCalls: modal._calls(),
                 setCount:   setCalls.length,
                 stillDirty: canvas._state().dirty,
-                stillText:  canvas.getStructure().text,
+                stillTitle: canvas.getStructure().title,
             }));
         ''')
         assert out["envelope"] == {"ok": False, "cancelled": True}
@@ -312,7 +313,7 @@ class TestLoadGateDirtyCanvas:
         # No load call landed — canvas is intact.
         assert out["setCount"] == 0
         assert out["stillDirty"] is True
-        assert out["stillText"] == "edited"
+        assert out["stillTitle"] == "edited"
 
 
 # ----- modifier helpers ------------------------------------------ #
@@ -423,7 +424,7 @@ class TestSnapshot:
         out = _run_node('''
             const canvas = _mkFakeCanvas({
                 empty: false, dirty: true,
-                structure: { source_format: "pdb", text: "HETATM" },
+                structure: { title: "lig", elements: ["C", "O"] },
                 source: { kind: "smiles",
                           generator_input: { smiles: "CCO" } },
                 lastSaveTo: null,
@@ -434,7 +435,7 @@ class TestSnapshot:
         assert out["isEmpty"] is False
         assert out["isDirty"] is True
         assert out["structure"] == {
-            "source_format": "pdb", "text": "HETATM"}
+            "title": "lig", "elements": ["C", "O"]}
         # No `source`: the viewer tracks contents, not where they came from
         # (molview.md § 6.7), so the snapshot cannot carry one.
         assert "source" not in out
@@ -467,7 +468,7 @@ class TestUnboundErrors:
         out = _run_node('''
             // Don't call _bind.
             const p = page.loadIntoCanvas(
-                { source_format: "xyz", text: "x" },
+                { structure: { elements: ["C"] } },
                 { kind: "file" }
             );
             let rejected = false;

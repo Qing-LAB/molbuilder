@@ -225,16 +225,18 @@ class TestBuildLoadDoor:
         assert by_door == by_composite, (
             f"two readers again: door saw {by_door}, composite {by_composite}")
 
-    def test_trusted_block_bypasses_sidecar_envelope(self, client):
-        """The block has NO structure_hash (it's a trusted fragment, not a
-        .molstruct.json file).  Passed as ``sidecar`` it would 400 on the
-        missing envelope; passed as ``atom_metadata`` it applies cleanly."""
+    def test_a_trusted_block_needs_no_sidecar_envelope(self, client):
+        """The block has NO structure_hash -- it is a trusted fragment, not a
+        `.molstruct.json` file -- and `atom_metadata` applies it anyway.
+
+        This used to assert the CONTRAST: the same bytes sent as `sidecar`
+        400'd on the missing envelope. The `sidecar` parameter was deleted
+        2026-09-07 (no caller in production or in any test but that one line),
+        so the contrast has nothing to compare against. What it was really
+        pinning survives: a block without an envelope is accepted through the
+        door that does not ask for one."""
         block_json = _md_json_4c()
         assert "structure_hash" not in json.loads(block_json)
-        as_sidecar = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "t.xyz", "sidecar": block_json})
-        assert as_sidecar.status_code == 400
-        assert "structure_hash" in as_sidecar.get_json()["error"]
         as_meta = client.post("/api/build/load", json={
             "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
             "atom_metadata": block_json})
