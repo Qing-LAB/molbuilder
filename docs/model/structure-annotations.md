@@ -293,8 +293,12 @@ tags → transport blocks); the region-label vocabulary + `is_electrode_label`
 (Python + JS); the JS L1/L2/L3 channel model + the generalized filter.
 
 **Open work** (`plans/plan.md` **W15**): **`value`-channel filtering
-end-to-end** — the server must include `value` channels in
-`/api/selection/atoms` and resolve a `by_value` rule, and there is no
+end-to-end** — the server must resolve a `by_value` rule, and the channels
+must reach the browser on the load door (`/api/build/load`), which is where
+every other per-atom fact arrives. *(This named `/api/selection/atoms` until
+2026-09-07. That route is deleted — it read a file the browser had already
+loaded, which is the opposite of where this feature belongs: MolView holds the
+atoms, so a value channel travels with them.)* There is no
 `value`-channel *producer* yet (no feature writes per-atom charge/spin), so the
 `value` kind is modelled but not yet exercised. The **generic `fdf`-strategy
 registry** for translating *new* channels into engine blocks is the additive

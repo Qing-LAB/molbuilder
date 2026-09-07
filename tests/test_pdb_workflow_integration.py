@@ -185,19 +185,21 @@ class TestPdbWorkflowEndToEnd:
     def _path(self, pdb_path):
         return str(pdb_path.resolve())
 
-    # ----- Step 1: load the PDB via the selection API ---------- #
+    # ----- Step 1: load the PDB through the one load door ---------- #
 
-    def test_step_1_selection_atoms_reads_pdb(
+    def test_step_1_the_load_door_reads_pdb(
         self, web, pdb_under_root,
     ):
+        """Asked `/api/selection/atoms` until 2026-09-07, which read the file
+        with its own reader and had drifted to applying only the sidecar's
+        `regions`.  That route is deleted; `/api/build/load` is the door, and
+        the ROWS are the same object either way (`_shared.atoms_list`)."""
         pdb_path, n_atoms, n_residues = pdb_under_root
-        r = web.post("/api/selection/atoms", json={
-            "structure_path": self._path(pdb_path),
-        })
+        r = web.post("/api/build/load", json={"path": self._path(pdb_path)})
         assert r.status_code == 200, r.data
         body = r.get_json()
-        assert body["n_atoms"] == n_atoms, (
-            f"selection blueprint sees {body['n_atoms']} atoms; "
+        assert len(body["atoms"]) == n_atoms, (
+            f"the load door sees {len(body['atoms'])} atoms; "
             f"Structure.from_pdb sees {n_atoms}.  Wire format mismatch."
         )
         # Per-atom metadata should be present for a PDB load (vs the
@@ -243,7 +245,7 @@ class TestPdbWorkflowEndToEnd:
 
     # ----- Step 3: re-fetch atoms; the labels are on the atoms - #
 
-    def test_step_3_atoms_reread_picks_up_sidecar(
+    def test_step_3_a_reread_picks_up_the_sidecar(
         self, web, pdb_under_root,
     ):
         pdb_path, n_atoms, _ = pdb_under_root
@@ -251,10 +253,8 @@ class TestPdbWorkflowEndToEnd:
         _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
                           regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
 
-        r = web.post("/api/selection/atoms", json={
-            "structure_path": self._path(pdb_path),
-        })
-        body = r.get_json()
+        body = web.post("/api/build/load",
+                        json={"path": self._path(pdb_path)}).get_json()
         # ONE representation: every label an atom carries is in `regions`,
         # the reserved `frozen_atoms` among them.  There is no second member.
         atom0 = body["atoms"][0]

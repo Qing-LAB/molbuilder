@@ -71,23 +71,22 @@ that doesn't reference a region.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
 
-from molbuilder.sidecars import molstruct as molstruct_json
 from molbuilder.selection import (
     Rule, SelectionError, evaluate,
     from_json as rule_from_json,
 )
-from molbuilder.structure import FROZEN_LABEL, Structure
+from molbuilder.structure import Structure
 
-# Reuse the files-blueprint path validator -- same allow-list semantics,
-# same error type.  Internal helper but selection has identical needs
-# (read a file inside the configured roots, fail loudly on traversal
-# attempts), so importing beats forking the rules.
-from .files import _PickerError, _resolve_within_roots
+# NO PATH VALIDATOR, AND NOTHING THAT READS A FILE.  This blueprint took a
+# `structure_path`, resolved it inside the picker roots and read the pair
+# itself until 2026-09-07 -- a second reader that had drifted to applying
+# only the sidecar's `regions`.  The browser sends the atoms it is looking
+# at; there is no path to fence any more.
+from .files import _PickerError
 
 bp = Blueprint("selection", __name__)
 
@@ -98,112 +97,6 @@ bp = Blueprint("selection", __name__)
 
 
 _SUPPORTED_STRUCTURE_SUFFIXES = (".xyz", ".pdb")
-
-
-def _parse_structure_text(resolved, text: str) -> Structure:
-    """Dispatch by extension to the right Structure parser.
-
-    Centralised so :func:`_load_structure` and the save endpoint
-    apply the same XYZ-vs-PDB choice (the save endpoint reads the
-    file twice -- once for the hash, once for n_atoms).
-    """
-    ext = resolved.suffix.lower()
-    if ext == ".xyz":
-        return Structure.from_xyz(text)
-    if ext == ".pdb":
-        return Structure.from_pdb(text)
-    raise _PickerError(
-        400,
-        f"unsupported structure extension {ext!r}; "
-        f"selection endpoints accept {list(_SUPPORTED_STRUCTURE_SUFFIXES)}",
-    )
-
-
-def _load_structure(structure_path: str) -> Structure:
-    """Resolve ``structure_path`` inside the allowed roots, load it,
-    and apply any sidecar regions so :class:`ByRegion` works.
-
-    Accepts ``.xyz`` and ``.pdb``; the parser is picked by file
-    extension via :func:`_parse_structure_text`.  The sidecar
-    (``<stem>.molstruct.json``) sits next to whichever file is
-    loaded -- the sidecar key is stem-based so an XYZ and a PDB
-    with the same stem CAN share a sidecar, but in practice each
-    file gets its own.
-
-    Raises :class:`_PickerError` on path-validation failure, or
-    ValueError if the file is unreadable / malformed.
-    """
-    resolved = _resolve_within_roots(structure_path)
-    if not resolved.exists():
-        raise _PickerError(404, f"file not found: {resolved}")
-    if resolved.suffix.lower() not in _SUPPORTED_STRUCTURE_SUFFIXES:
-        raise _PickerError(
-            400,
-            f"unsupported structure extension {resolved.suffix!r}; "
-            f"selection endpoints accept "
-            f"{list(_SUPPORTED_STRUCTURE_SUFFIXES)}",
-        )
-    text = resolved.read_text()
-    struct = _parse_structure_text(resolved, text)
-
-    # Apply sidecar regions if one is next to the XYZ.  Sidecar
-    # failures here are non-fatal: a missing or malformed sidecar
-    # just means ByRegion won't resolve, which the selection
-    # evaluator will surface as a clean error if the user's rule
-    # actually references a region.
-    sidecar = molstruct_json.sidecar_path_for(resolved)
-    if sidecar.exists():
-        try:
-            data = molstruct_json.load(sidecar)
-        except molstruct_json.MolstructJsonError:
-            # A corrupt sidecar shouldn't block the user from using
-            # element-/index-based selection rules against the
-            # underlying XYZ.  The save-side validates and rewrites
-            # the sidecar.
-            pass
-        else:
-            # 2026-06-12 (sidecar/XYZ desync fix): tolerantly filter
-            # out-of-range indices instead of calling
-            # ``apply_to_structure`` (which raises on
-            # ``sidecar.n_atoms_total != len(struct.elements)``).
-            #
-            # The desync happens when ``writeLabel`` (Assign click)
-            # commits the sidecar with the workspace's IN-MEMORY
-            # atom count BEFORE the user clicks Save — and then the
-            # Save fails (disk full, permissions, network drop) or
-            # the user closes the browser without ever saving.  The
-            # sidecar then references atoms that never made it to
-            # disk.
-            #
-            # Old behaviour: ``apply_to_structure`` raised on the
-            # mismatch, the ``except`` block above silently swallowed
-            # it, and ALL labels disappeared from the UI — including
-            # the ones whose indices were still in range for the
-            # XYZ on disk.  The user had no signal anything was
-            # wrong.
-            #
-            # New behaviour: drop indices ≥ ``len(struct.elements)``
-            # (the orphaned ones that reference atoms that never
-            # persisted), keep the rest.  Empty regions after the
-            # filter are dropped.  Engines that need a strict-
-            # validity check (transport script generator, etc.)
-            # call ``apply_to_structure`` directly and keep the
-            # fail-fast semantics; only the interactive web load
-            # is forgiving.
-            struct_n = len(struct.elements)
-            filtered_regions = {}
-            for name, idxs in (data.get("regions") or {}).items():
-                kept = [i for i in (idxs or [])
-                        if isinstance(i, int) and 0 <= i < struct_n]
-                if kept:
-                    filtered_regions[name] = sorted(set(kept))
-            struct.regions = filtered_regions
-    return struct
-
-
-# --------------------------------------------------------------------- #
-#  HTTP endpoints                                                       #
-# --------------------------------------------------------------------- #
 
 
 def _bad_request(msg: str, status: int = 400):
@@ -233,81 +126,6 @@ def _load_rule_from_payload(payload: Dict[str, Any]) -> Rule:
         return rule_from_json(raw)
     except SelectionError as exc:
         raise _PickerError(400, f"invalid rule: {exc}")
-
-
-@bp.route("/api/selection/atoms", methods=["POST"])
-def selection_atoms():
-    """Return the atom list for ``structure_path`` with per-atom
-    labels (element, optional PDB metadata, region tags, fixed flag).
-
-    The selection panel fetches this once whenever the active
-    structure changes, then renders one row per atom in the card's
-    scrollable list.  Selection state (which atoms are currently
-    selected) is layered on top by the panel client-side, using
-    indices from ``/api/selection/eval`` -- the two endpoints are
-    separable so a structure load doesn't re-evaluate every rule
-    just to populate the list.
-
-    Body:  ``{"structure_path": "/abs/path/to.xyz"}`` (or ``.pdb``)
-    Response::
-
-        {
-          "n_atoms": 11,
-          "atoms": [
-            {
-              "index":         0,
-              "element":       "Au",
-              "atom_name":     "AuL",       # optional
-              "residue_name":  "LEL",       # optional
-              "chain_id":      "L",         # optional
-              "regions":       ["L-electrode"],  # may be empty
-            },
-            ...
-          ]
-        }
-    """
-    try:
-        payload = _parse_request_payload(request)
-        path = payload.get("structure_path")
-        if not isinstance(path, str) or not path:
-            return _bad_request("missing 'structure_path'")
-        struct = _load_structure(path)
-        # Atoms-list construction lives in ``_shared.atoms_list`` so
-        # the disk-read path here AND the in-memory modifier-op path
-        # (every /api/modify/* response via structure_to_dict) emit
-        # the SAME wire shape.  Pre-2026-06-07 the two paths drifted:
-        # this route returned the canonical shape, modify responses
-        # returned a structure-minus-atoms shape, and the front-end's
-        # selection store could only sync from the disk-read path —
-        # so modifier ops left it stale.
-        from ._shared import atoms_list as _atoms_list
-        rows = _atoms_list(struct)
-        # structure-periodicity.md: surface the sidecar's periodicity so a
-        # reopened structure restores it (the .json sits next to the .xyz on the
-        # server; the viewer never parses -- the host reads it here).  `cell` is
-        # kept for the Phase 1 Results-viewer consumer; `periodicity` is the full
-        # {cell, axis_kind, vacuum} the Modify path-based load reads.  (k-grid is
-        # NOT geometry -- it's a sampling knob on SiestaConfig; a legacy sidecar's
-        # `kgrid` key is ignored.)  Absent / malformed sidecar -> both null.
-        cell = None
-        periodicity = None
-        try:
-            _sc = molstruct_json.sidecar_path_for(_resolve_within_roots(path))
-            if _sc.exists():
-                _sd = molstruct_json.load(_sc)
-                cell = _sd.get("cell")
-                periodicity = {
-                    "cell":      cell,
-                    "axis_kind": _sd.get("axis_kind"),
-                    "vacuum":    _sd.get("vacuum"),
-                }
-        except Exception:
-            cell = None
-            periodicity = None
-        return jsonify({"ok": True, "n_atoms": len(rows), "atoms": rows,
-                        "cell": cell, "periodicity": periodicity})
-    except _PickerError as exc:
-        return _bad_request(exc.message, exc.status)
 
 
 def _struct_from_atoms(atoms: list) -> Structure:
@@ -349,17 +167,20 @@ def selection_eval():
     loads the file on disk (a saved result legitimately lives there)."""
     try:
         payload = _parse_request_payload(request)
+        # THE BROWSER SENDS THE ATOMS IT IS LOOKING AT.  MolView holds the
+        # structure; a filter is answered against that, never against a file
+        # -- the file on disk may not be what is on screen, which is the bug
+        # `71729ff9` fixed ("assign a label in the panel, filter by it, and
+        # the filter read the stale saved file").  That commit added this
+        # branch and left the disk one beside it, for a case Results never
+        # used; the disk branch and its private reader are gone 2026-09-07.
         atoms = payload.get("atoms")
-        if isinstance(atoms, list):
-            try:
-                struct = _struct_from_atoms(atoms)
-            except ValueError as exc:
-                return _bad_request(f"invalid 'atoms': {exc}")
-        else:
-            path = payload.get("structure_path")
-            if not isinstance(path, str) or not path:
-                return _bad_request("missing 'atoms' or 'structure_path'")
-            struct = _load_structure(path)
+        if not isinstance(atoms, list):
+            return _bad_request("missing 'atoms'")
+        try:
+            struct = _struct_from_atoms(atoms)
+        except ValueError as exc:
+            return _bad_request(f"invalid 'atoms': {exc}")
         rule = _load_rule_from_payload(payload)
         try:
             indices = evaluate(rule, struct)

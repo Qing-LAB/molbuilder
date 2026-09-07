@@ -289,8 +289,11 @@ def test_an_atom_carries_the_reserved_label_once_and_only_as_a_label(served):
     One representation: the label, in the list of labels.
     """
     client, path = served
-    answer = client.post("/api/selection/atoms",
-                         json={"structure_path": path}).get_json()
+    # Through /api/build/load -- the door the browser actually uses.  This
+    # asked /api/selection/atoms until 2026-09-07; that route was deleted for
+    # having no caller, and the ROWS are the same object either way
+    # (`_shared.atoms_list`, used by every response that carries a structure).
+    answer = client.post("/api/build/load", json={"path": path}).get_json()
     assert answer.get("atoms"), answer
     rows = answer["atoms"]
 
@@ -306,10 +309,15 @@ def test_filtering_by_the_reserved_label_needs_no_case_of_its_own(served):
     by-label rule that finds `L-electrode` finds this with the same rule and the
     same name -- nothing synthetic injected onto the structure first."""
     client, path = served
+    # The atoms come from the load door, as they do in the browser: MolView
+    # holds the structure and hands the filter the atoms it is showing.
+    rows = client.post("/api/build/load", json={"path": path}).get_json()["atoms"]
+    atoms = [{"index": r["index"], "element": r["element"],
+              "labels": r["regions"]} for r in rows]
 
     def by_label(name):
         answer = client.post("/api/selection/eval", json={
-            "structure_path": path,
+            "atoms": atoms,
             "rule": {"op": "by_region", "name": name},
         }).get_json()
         assert answer.get("ok"), answer
@@ -319,18 +327,27 @@ def test_filtering_by_the_reserved_label_needs_no_case_of_its_own(served):
     assert by_label("L-electrode") == [0]
 
 
-def test_the_two_routes_cannot_disagree(served):
-    """The property the conditional broke, asserted directly: what the atom list
-    says an atom carries, and what filtering by that name selects, are the same
-    set. No route sees a structure another route does not."""
+def test_the_list_and_the_filter_cannot_disagree(served):
+    """What the atom list says an atom carries, and what filtering by that
+    name selects, are the same set.
+
+    This asked two routes until 2026-09-07 -- the atom list came from
+    `/api/selection/atoms`, which read the file itself and had drifted to
+    applying only the sidecar's `regions`. That route is deleted, and with it
+    the possibility it existed to guard against: there is one reader of the
+    pair now, and the filter is answered against the atoms the caller holds.
+    The property is still worth asserting, because the two halves are still
+    computed by different code.
+    """
     client, path = served
 
-    rows = client.post("/api/selection/atoms",
-                       json={"structure_path": path}).get_json()["atoms"]
+    rows = client.post("/api/build/load",
+                       json={"path": path}).get_json()["atoms"]
     from_rows = [r["index"] for r in rows if FROZEN_LABEL in r["regions"]]
 
     from_rule = client.post("/api/selection/eval", json={
-        "structure_path": path,
+        "atoms": [{"index": r["index"], "element": r["element"],
+                   "labels": r["regions"]} for r in rows],
         "rule": {"op": "by_region", "name": FROZEN_LABEL},
     }).get_json()["selected_indices"]
 
@@ -422,8 +439,8 @@ def test_an_atom_on_the_wire_has_exactly_these_members(served):
     """The shape the browser receives, pinned by membership. `regions` carries
     every label the atom holds; there is no second member for any one of them."""
     client, path = served
-    rows = client.post("/api/selection/atoms",
-                       json={"structure_path": path}).get_json()["atoms"]
+    rows = client.post("/api/build/load",
+                       json={"path": path}).get_json()["atoms"]
 
     assert set(rows[1]) == {"index", "element", "x", "y", "z", "regions",
                             "atom_name", "residue_name", "chain_id"}, (
