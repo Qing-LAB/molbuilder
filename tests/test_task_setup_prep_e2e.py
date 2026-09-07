@@ -838,3 +838,52 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
                 assert "--target" not in line, (
                     f"launch carries a target: {line.strip()!r} -- launching "
                     f"happens ON the machine, so there is nothing to target")
+
+
+def test_choosing_a_machine_shows_what_a_prep_would_resolve(
+        page, flask_server, two_stage_dir, a_named_machine):
+    """The provenance block fills in, with the same facts `prep` prints.
+
+    `preparing-for-another-machine.md` § 5: the tab shows what `prep`
+    resolved using the provenance `prep` already computes -- a hand-written
+    notice would be a second account of the same facts, free to drift from
+    the one the terminal shows.
+
+    WHAT THIS REPLACES.  `test_task_setup_tab.py` asserted the string
+    `'class="ts-facts" id="ts-resolved"'` appeared in the template.  That is
+    a check that someone typed two attributes in one order; it says nothing
+    about whether `loadResolved()` ever runs, reaches the route, or writes a
+    single row.  The HTTP half -- that the route serves the shape
+    `config_provenance` produces -- is still checked at
+    `test_task_setup_tab.py::test_it_serves_the_same_facts_prep_prints`.
+    This is the other half: the answer arrives on the page a person reads.
+    """
+    # A setting to resolve, in the file the cascade actually opens.  Without
+    # one there is nothing for provenance to be ABOUT, and the block would
+    # render only its "read from" footer -- which would make this test green
+    # on a page that answers no question.
+    from molbuilder.config_dir import config_dir
+    (config_dir() / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"preamble": "source /opt/conda/etc/conda.sh",
+                               "activation": "conda activate"}}),
+        encoding="utf-8")
+
+    _open(page, flask_server, two_stage_dir)
+    opt = page.locator(f'#ts-target-choice .opt[data-machine="{a_named_machine}"]')
+    opt.wait_for(state="visible", timeout=20000)
+    opt.click()
+
+    page.wait_for_function(
+        "() => { const f = document.getElementById('ts-resolved');"
+        " return f && !f.hidden && f.children.length; }", timeout=20000)
+    rows = page.eval_on_selector_all(
+        "#ts-resolved div",
+        "els => els.map(e => [...e.children].map(c => c.textContent.trim()))")
+    pre = next((r for r in rows if r and r[0] == "preamble"), None)
+    assert pre, f"the resolved block names no preamble -- it showed {rows!r}"
+    assert "/opt/conda/etc/conda.sh" in pre[1], (
+        f"the block shows {pre[1]!r} as the preamble; the config says "
+        f"'source /opt/conda/etc/conda.sh'")
+    assert pre[2].startswith("from ") and pre[2] != "from ?", (
+        f"the value is shown with no file behind it: {pre[2]!r} -- WHICH "
+        f"file each setting came from is the whole point of showing it")

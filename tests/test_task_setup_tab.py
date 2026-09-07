@@ -1352,12 +1352,17 @@ class TestTheTabShowsWhatAPrepWouldResolve:
     # that keeps a retracted rule alive is worse than no test: it makes
     # deleting the dead code look like a regression.
 
-    def test_the_provenance_list_uses_the_pages_facts_component(self):
-        css = (ROOT / "molbuilder/web/static/task-setup/style.css").read_text()
-        head = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
-        assert 'class="ts-facts" id="ts-resolved"' in head
-        # The `[hidden]` guard is `test_css_hidden_attribute_audit.py`'s --
-        # `#ts-resolved` is in the set it derives.
+    # `test_the_provenance_list_uses_the_pages_facts_component` stood here
+    # and asserted the string `'class="ts-facts" id="ts-resolved"'` appeared
+    # in the template -- that someone typed two attributes in one order.  It
+    # said nothing about whether `loadResolved()` runs, reaches the route, or
+    # writes a row.  The other half is now driven:
+    # test_task_setup_prep_e2e.py::
+    # test_choosing_a_machine_shows_what_a_prep_would_resolve reads the
+    # rendered block and checks the preamble's value AND the file it came
+    # from.  The `[hidden]` guard belongs to
+    # test_css_hidden_attribute_audit.py, which derives `#ts-resolved` with
+    # the other 57.
 
 
 def test_the_sheet_names_no_token_that_does_not_exist():
