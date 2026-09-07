@@ -903,11 +903,25 @@ def test_the_exported_csv_does_not_carry_the_users_name(
 #   * A poll whose frames are a strict TAIL EXTENSION takes the cheap    #
 #     `addFrames` path and never rebuilds, so nothing is re-installed.   #
 #     Appending a frame therefore tests nothing.                         #
-#   * Rewriting the file SHORTER should take the full-rebuild branch --  #
-#     but measured, the movie's frame count does not change: the shrink  #
-#     is not picked up within a poll cycle at all.  That is the open     #
-#     question, and it has to be answered before any assertion here      #
-#     means anything.                                                    #
+#   * Rewriting the file SHORTER *should* take the full-rebuild branch,  #
+#     and does not.  THE CHAIN WAS READ END TO END and every link says   #
+#     it should: the server answers `{changed: true, frames: 2}` after   #
+#     the rewrite (measured, off the poll's own response); `pollOnce`    #
+#     calls `applyNewData` on `changed`; `oldData` is captured BEFORE    #
+#     the transition so `oldLen` is still 4; `canAppend` needs           #
+#     `newLen > oldLen` and `noNewContent` needs `newLen === oldLen`, so #
+#     both are false and the `else` branch calls `rebuildModel`;         #
+#     `rebuildModel` reads `state.data.frames` live; and `slider.max` is #
+#     a live view of `model.frameCount()` (`molview/ui.js::reflect`,     #
+#     "nothing here is cached").  The movie stays at four frames anyway. #
+#     Either a restarted run keeps showing the old movie -- a defect in  #
+#     its own right, and the more likely reading -- or there is a link   #
+#     in that chain I have not found.  Do not write an assertion here    #
+#     until that is settled; settle it first, and then this test is      #
+#     three lines away.                                                  #
+#     (A poll baseline is also required: polling starts at MOUNT, so     #
+#     "wait until a poll has happened" is already true before the file   #
+#     is touched.  That one cost an afternoon.)                          #
 #   * THE TRAP THAT MADE THIS LOOK DONE.  `rebuildModel` also runs at    #
 #     LOAD.  A mutation that makes it install no `info` therefore fails  #
 #     a test on its BEFORE assertion while proving nothing about any     #

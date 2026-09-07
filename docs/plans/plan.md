@@ -70,6 +70,7 @@ NOT read here any more."** It is open.
 | ~~**E8**~~ | **ALREADY DONE — verified 2026-09-03, not changed.** | roadmap § 1 | done |
 | ~~**E9**~~ | **BOTH HALVES CLOSED 2026-09-03.** | roadmap § 6 | done |
 | **E10** | **Detecting from the `.out` that a run STOPPED**, and whether it stopped converged (`SCF_NOT_CONV` / `ABNORMAL_TERMINATION`) — **on a zero exit too**, since an MPI stack may not propagate an abort. Ruled to belong to `mb_monitor.py`, not the execution branch | roadmap § 4 | open |
+| **T1** | **A RESTARTED RUN MAY KEEP SHOWING THE OLD MOVIE — found 2026-09-07, not yet a verdict.** Rewrite a watched trajectory SHORTER (a run restarted in place) and the viewer's frame count does not change. The server is not at fault: its poll answers `{changed: true, frames: 2}`, measured off the response itself. And every browser link was READ: `pollOnce` calls `applyNewData` on `changed`; `oldData` is captured before the transition so `oldLen` is still the old count; `canAppend` needs `newLen > oldLen` and the no-new-content short-circuit needs `newLen === oldLen`, so both are false and the `else` branch calls `rebuildModel`; `rebuildModel` reads `state.data.frames` live; `slider.max` is a live view of `model.frameCount()`. The chain says it should shrink and it does not. **Either a defect a person would meet the first time a run restarts, or a link in that chain I did not find** — and it blocks the last three source pins in `test_structure_info_bridge.py`, which is how it was found | found 2026-09-07 | open |
 | **E11** | **A fresh live walk of the PySCF / spectra decks.** The 2026-08-28 review exercised them only through the guard suites and says so | audit 08-28 § 5 | open |
 
 ## 3. Open — configuration and ops
@@ -765,11 +766,15 @@ green run had hidden all of them.
    keep-on-`undefined` was written, passed, and was **vacuous**: `rebuildModel`
    runs at LOAD as well as after a poll, so a mutation that empties the store
    fails on the *before* assertion while proving nothing about any poll. On
-   that reading it sat green through the guard being deleted three ways. The
-   facts the next attempt needs — how to build a run that states a contract
-   without SIESTA, why an appended frame tests nothing, and the one open
-   question (a shrunk feed is not picked up within a poll cycle) — are
-   recorded at the foot of `tests/test_inspector_registry_e2e.py`.
+   that reading it sat green through the guard being deleted three ways.
+
+   **It stalled on something that is probably not a test problem — see T1
+   below.** The facts the next attempt needs are recorded at the foot of
+   `tests/test_inspector_registry_e2e.py`: how to build a run that states a
+   contract without SIESTA (one `.fdf` beside a generic `*_geom_optim.xyz`),
+   why an appended frame tests nothing (a strict tail extension takes
+   `addFrames` and never rebuilds), and why "wait until a poll has happened"
+   is already true before the file is touched (polling starts at mount).
 
    **Also converted:** the CSV export's redaction (downloaded and read, not
    grepped for an indentation), both inspector cores' listener teardown
