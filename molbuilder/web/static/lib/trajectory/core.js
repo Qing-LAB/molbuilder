@@ -3097,8 +3097,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
        CSV.  Header carries source attribution + parser + timestamp
        so the file is self-describing — the user can re-trace what
        it came from months later without external bookkeeping.
-       Format pinned in lib/trajectory/csv-export.js; this handler
-       just gathers state + triggers the browser download. */
+       This handler gathers state, builds the file through
+       _buildPlotCsv above, and triggers the browser download.
+       (A comment here named `lib/trajectory/csv-export.js` as the
+       home of the format until 2026-09-06.  There is no such file
+       and there never was; the builder is in this module.) */
     _on($("trajectory-export-csv-btn"), "click", function () {
         if (!state.data || !state.data.frames
                 || state.data.frames.length === 0) {

@@ -192,19 +192,12 @@ def test_redaction_pattern(raw, expected, description):
         f"_redactSourcePath({raw!r}) -> {out!r}, expected {expected!r}\n"
         f"Case: {description}")
 
-def test_csv_builder_calls_redaction():
-    """Source-text guard: ``_buildPlotCsv`` must call
-    ``_redactSourcePath`` on ``ctx.sourcePath`` before writing the
-    CSV header.  Pre-fix the function inlined ``ctx.sourcePath ||
-    "(unknown)"`` straight into the header, leaking the home dir.
-    """
-    src = _CORE.read_text(encoding="utf-8")
-    # Sniff a tight pattern: the assignment immediately after the
-    # function header must invoke _redactSourcePath on ctx.sourcePath.
-    needle = "_redactSourcePath(\n            ctx.sourcePath"
-    assert needle in src, (
-        "_buildPlotCsv no longer applies _redactSourcePath to "
-        "ctx.sourcePath before writing to the CSV header.  The bare-"
-        "path version leaked the OS username via the CSV download; "
-        "restore the redaction call."
-    )
+# `test_csv_builder_calls_redaction` stood here and searched core.js for the
+# literal `_redactSourcePath(\n            ctx.sourcePath` -- twelve spaces of
+# indentation included.  Re-wrapping that one call broke it while the CSV
+# stayed clean, and no arrangement of text can answer the question that
+# matters: did the file that reached the user's disk carry their login.  It
+# does now, in tests/test_inspector_registry_e2e.py::
+# test_the_exported_csv_does_not_carry_the_users_name, which mounts a real
+# run, clicks Export, and reads the downloaded bytes.  What stays HERE is the
+# pattern table above: one path in, one path out, no browser needed.

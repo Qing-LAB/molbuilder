@@ -663,3 +663,89 @@ class TestInspectorErrorCardRuntime:
         )
 
 
+
+
+# --------------------------------------------------------------------- #
+#  The CSV a person downloads must not name them                        #
+#                                                                       #
+#  Here, not in tests/test_trajectory_csv_redaction_js.py, because the   #
+#  claim needs a MOUNTED inspector holding a loaded run -- which is what #
+#  `ongoing_trajectory` + the registry give and a node harness does not. #
+#  That file keeps the pattern table (`_redactSourcePath` called         #
+#  directly, one path in, one path out); this is the other half: that    #
+#  the builder actually applies it on the way to the file.               #
+# --------------------------------------------------------------------- #
+
+def test_the_exported_csv_does_not_carry_the_users_name(
+        page, flask_server, ongoing_trajectory):
+    """Click Export CSV; the header names the run, not the account.
+
+    `state.path` is what `/api/watch/load` resolved -- an ABSOLUTE path,
+    since `_resolve_within_roots` returns one -- so under pytest it reads
+    `/tmp/pytest-of-<login>/...` and the OS username is in it.  The header
+    line must show the redacted form.
+
+    WHAT THIS REPLACES, and why that could not fail on the thing that
+    matters.  `test_csv_builder_calls_redaction` searched core.js for the
+    literal string ``_redactSourcePath(\\n            ctx.sourcePath`` --
+    twelve spaces of indentation included.  Re-wrapping that one call breaks
+    it while the CSV stays clean; and it can only ever answer "is this text
+    present", never "did the file that reached the user's disk carry their
+    login".  This downloads the file and reads it.
+    """
+    _open_results(page, flask_server)
+    csv = page.evaluate("""async (traj) => {
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const reg    = window.molbuilder.inspectors;
+        const ctx    = reg.createDefaultContext(host);
+        const handle = reg.mount(host, traj, ctx);
+        if (!handle) return {error: "nothing mounted for " + traj};
+
+        // The registry injects the partial and loads the run, both async,
+        // so the button and the frames arrive after mount returns.  Waiting
+        // for BOTH: Export refuses with a status message while
+        // `state.data.frames` is empty, and a refusal would give an empty
+        // capture that no assertion below could tell from a pass.
+        const deadline = Date.now() + 30000;
+        let btn = null;
+        while (Date.now() < deadline) {
+            btn = host.querySelector("#trajectory-export-csv-btn");
+            if (btn && host.querySelectorAll(".js-plotly-plot").length) break;
+            await new Promise(r => setTimeout(r, 100));
+        }
+        if (!btn) return {error: "the mounted card grew no export button"};
+        if (!host.querySelectorAll(".js-plotly-plot").length)
+            return {error: "no plot rendered, so the run never loaded"};
+
+        let text = null;
+        const origCreate = URL.createObjectURL;
+        const origClick  = HTMLAnchorElement.prototype.click;
+        URL.createObjectURL = (blob) => { text = blob; return "about:blank"; };
+        HTMLAnchorElement.prototype.click = function () {};   // no navigation
+        try { btn.click(); }
+        finally {
+            URL.createObjectURL = origCreate;
+            HTMLAnchorElement.prototype.click = origClick;
+        }
+        if (!text) return {error: "Export built no file: "
+                           + (document.getElementById("trajectory-status")
+                              || {}).textContent};
+        return {csv: await text.text()};
+    }""", ongoing_trajectory)
+
+    assert "error" not in csv, csv.get("error")
+    body = csv["csv"]
+    line = next((l for l in body.splitlines() if l.startswith("# source path:")),
+                None)
+    assert line, f"the CSV carries no source-path header:\n{body[:400]}"
+
+    import getpass
+    login = getpass.getuser()
+    assert login not in body, (
+        f"the downloaded CSV names the account it was made on: {line!r}")
+    assert "pytest-of-" not in body, (
+        f"the username-bearing tmp segment survived redaction: {line!r}")
+    assert "<tmp>/" in line or "~/" in line, (
+        f"nothing was redacted at all -- {line!r} -- so this test would pass "
+        f"on a build that stopped redacting and simply moved its runs")
