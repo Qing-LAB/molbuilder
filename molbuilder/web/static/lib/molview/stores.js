@@ -135,14 +135,19 @@ export function createSelectionStore(handed) {
     const changed = subscribable();
     const set = (next) => {
         selected = next;
-        /* ISOLATE TURNS ITSELF OFF WHEN THE SELECTION EMPTIES (§ 1.1) — "since
-         * there would be nothing left to show". It is a SELECTION-STATE RULE,
-         * so it lives here beside the fact it depends on rather than in the
-         * control that happened to empty the selection; Clear, Remove, a filter
-         * that matches nothing and a restored empty session all go through this
-         * one line. It is settled BEFORE the snapshot fires, so no reader ever
-         * sees isolate on with nothing selected. */
-        if (switches.isolate && !selected.length) switches.isolate = false;
+        /* ISOLATE IS A PREFERENCE, AND IT STAYS WHERE YOU PUT IT (user,
+         * 2026-09-07).  A line here turned it OFF whenever the selection
+         * emptied -- "since there would be nothing left to show" -- which
+         * made the button un-press itself: isolate on, press Clear, and the
+         * switch you set was silently gone.
+         *
+         * Nothing left to show is not a reason to forget the setting; it is
+         * a reason to draw everything, which `isolateInEffect` already says
+         * (`render-engine.js`).  Two mechanisms answered one question and
+         * neither covered the other's path -- this one fired only when the
+         * SELECTION changed, the renderer's affects only DRAWING -- so the
+         * 3-D window's click gate, which is neither, read the raw switch and
+         * was wrong.  One answer now, and this is not it. */
         changed.fire(snapshot());
     };
 
@@ -306,7 +311,13 @@ export function createSelectionStore(handed) {
              * count second would send it out attached to the OLD selection. */
             lastApply = {
                 matched: atoms.length,
-                isolateTurnedOff: !!switches.isolate && atoms.length === 0,
+                // ISOLATE IS ON BUT NOT IN EFFECT.  This was
+                // `isolateTurnedOff` until 2026-09-07, when the switch
+                // stopped turning itself off: the same test now means "you
+                // asked to hide the unselected and there is nothing
+                // selected", so the whole structure is drawn and the panel
+                // says so rather than reporting a switch that moved.
+                isolateNotInEffect: !!switches.isolate && atoms.length === 0,
             };
             set(atoms.slice());
             return atoms.slice();

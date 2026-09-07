@@ -122,8 +122,24 @@ outside the canvas, never on top of the molecule:
 | `▦` Show unit cell | draw the periodic cell box |
 | `◉` Show selected only | **isolate** — hide every unselected atom |
 
-Isolate turns itself off when the selection becomes empty, since there would be
-nothing left to show.
+**Isolate is a preference, and it stays where you put it.** With nothing
+selected there is nothing to hide, so the whole structure is drawn — the
+switch stays set and starts hiding the rest the moment you pick something.
+
+> **It used to turn itself off** *(changed 2026-09-07, user: "if no selection
+> then display the whole structure")*. Two mechanisms answered one question —
+> the store un-set the switch when the selection emptied, and the renderer
+> separately drew everything when `isolate && selection.length > 0` was false
+> — and neither covered the other's path: the store's fired only on a
+> SELECTION change, the renderer's affected only DRAWING. So the third reader,
+> the 3-D window's click gate, read the raw switch and was wrong: press "Show
+> selected only" with nothing selected and every click in the window was
+> dropped while the drawing did not change. The view stopped selecting, and
+> nothing said why.
+>
+> One answer now: `render-engine.js::isolateInEffect(switches, selection)`,
+> read by the drawn-index map, by `processFrame`, and by the click gate. The
+> auto-off is deleted — it was also what made the button un-press itself.
 
 **Selecting.** Click an atom and a soft amber sphere appears over it. The atom
 keeps its own element colour and the geometry is not rebuilt, so selecting is

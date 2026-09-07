@@ -29,7 +29,7 @@
 "use strict";
 
 import { createModel } from "./model.js";
-import { createRenderEngine } from "./render-engine.js";
+import { createRenderEngine, isolateInEffect } from "./render-engine.js";
 import { create as createEmbed } from "./3dmol-embed.js";
 import { attachUiContext } from "./ui-context.js";
 import { mountControls, SPEED_MIN_MS, SPEED_MAX_MS, SPEED_DEFAULT_MS }
@@ -225,8 +225,14 @@ export async function mount(hostEl, workspace, opts) {
      * is already exempt from isolate on the way OUT, so this makes the two
      * directions agree (user, 2026-08-31). */
     embed.onPick((drawnIndex) => {
-        const isolating = model.selection.getState().isolate;
-        if (isolating && !model.measurement.getState().active) return;
+        /* THE SAME ANSWER THE DRAWING USES.  This read the raw `isolate`
+         * switch until 2026-09-07, so with nothing selected -- isolate on,
+         * nothing to hide, the whole structure drawn -- every click here was
+         * dropped and the 3-D view silently stopped selecting.  `isolate` on
+         * is not `isolate` in effect; the renderer has always known that. */
+        const sel = model.selection.getState();
+        if (isolateInEffect(sel, sel.selection)
+                && !model.measurement.getState().active) return;
         const original = model.drawnToOriginal(drawnIndex);
         if (typeof original !== "number") return;
         model.pickAtom(original);

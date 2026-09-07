@@ -202,15 +202,14 @@ class TestPdbWorkflowEndToEnd:
             f"the load door sees {len(body['atoms'])} atoms; "
             f"Structure.from_pdb sees {n_atoms}.  Wire format mismatch."
         )
-        # Per-atom metadata should be present for a PDB load (vs the
-        # plain-XYZ case where atom_name etc. are absent).
-        first = body["atoms"][0]
-        assert "element" in first
-        # PDB-derived: atom_name + residue_name + chain_id are filled
-        # by Structure.from_pdb.
-        assert first.get("atom_name") or first.get("residue_name"), (
-            f"PDB-loaded atom 0 missing PDB metadata: {first}"
-        )
+        assert "element" in body["atoms"][0]
+        # THE PDB's IDENTITY COLUMNS SURVIVE THE LOAD, at the top level --
+        # `structure.py::IDENTITY_FIELDS` carries them "beside `metadata`",
+        # not on the atom row.  They were asserted on the row until
+        # 2026-09-07, a second copy the browser never read.
+        assert body.get("residue_names"), f"PDB residue names lost: {sorted(body)}"
+        assert body["residue_names"][0], body["residue_names"][:3]
+        assert len(body["residue_names"]) == n_atoms
 
     # ----- Step 2: assign frozen_atoms + a region via the codec ----- #
 

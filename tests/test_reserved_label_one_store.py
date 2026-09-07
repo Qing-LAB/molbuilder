@@ -442,8 +442,14 @@ def test_an_atom_on_the_wire_has_exactly_these_members(served):
     rows = client.post("/api/build/load",
                        json={"path": path}).get_json()["atoms"]
 
-    assert set(rows[1]) == {"index", "element", "x", "y", "z", "regions",
-                            "atom_name", "residue_name", "chain_id"}, (
+    assert set(rows[1]) == {"index", "element", "x", "y", "z", "regions"}, (
         f"the atom row's members drifted: {sorted(rows[1])}"
     )
+    # AND THE IDENTITY COLUMNS ARE AT THE TOP LEVEL, which is where the design
+    # puts them (`structure.py::IDENTITY_FIELDS`: carried "beside `metadata`")
+    # and where the browser reads them.  They rode on the row as well until
+    # 2026-09-07 -- a second copy nothing read, left by the deleted
+    # `/api/selection/atoms`.
+    body = client.post("/api/build/load", json={"path": path}).get_json()
+    assert "atom_names" in body and "residue_names" in body, sorted(body)
     assert rows[1]["regions"] == [FROZEN_LABEL]

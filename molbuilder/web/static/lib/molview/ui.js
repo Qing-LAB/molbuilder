@@ -1930,10 +1930,10 @@ function mountPanel(doc, card, model) {
         const matchedNothing = !!outcome && outcome.matched === 0;
         filterNote.hidden = !matchedNothing;
         if (matchedNothing) {
-            filterNote.textContent = outcome.isolateTurnedOff
+            filterNote.textContent = outcome.isolateNotInEffect
                 ? "No atoms matched this filter, so nothing is selected. "
-                  + "“Show selected only” switched itself off, since there "
-                  + "would be nothing left to show."
+                  + "“Show selected only” is still on, and the whole "
+                  + "structure is shown while nothing is selected."
                 : "No atoms matched this filter, so nothing is selected.";
         }
 

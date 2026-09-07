@@ -248,8 +248,7 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
 
 
 def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
-    """Build the per-atom payload list — the same shape
-    ``/api/selection/atoms`` returns.
+    """Build the per-atom payload list.
 
     Used by every response that carries a Structure so the front-end's
     selection store stays in sync with the in-memory geometry without
@@ -270,9 +269,10 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
                                              # reserved ones (`frozen`) included --
                                              # one representation, so the panel
                                              # cannot render the same fact twice
-            "atom_name":     "CA" | ...,     # optional, PDB-derived
-            "residue_name":  "ALA" | ...,    # optional
-            "chain_id":      "A"   | ...,    # optional
+            # NO IDENTITY COLUMNS.  atom_names / residue_names / chain_ids
+            # travel at the TOP level of the payload, beside `metadata` --
+            # `structure.py::IDENTITY_FIELDS`.  They rode on the row as well
+            # until 2026-09-07; nothing read that copy.
         }
     """
     n = len(struct.elements)
@@ -282,10 +282,7 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
         for idx in idxs:
             atom_to_regions.setdefault(idx, []).append(label)
 
-    atom_names    = struct.atom_names    or []
-    residue_names = struct.residue_names or []
-    chain_ids     = struct.chain_ids     or []
-    positions     = struct.positions
+    positions = struct.positions
 
     rows: List[Dict[str, Any]] = []
     for i in range(n):
@@ -302,12 +299,18 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
             "z":         float(pos[2]),
             "regions":   atom_to_regions.get(i, []),
         }
-        if i < len(atom_names)    and atom_names[i]:
-            row["atom_name"]    = atom_names[i]
-        if i < len(residue_names) and residue_names[i]:
-            row["residue_name"] = residue_names[i]
-        if i < len(chain_ids)     and chain_ids[i]:
-            row["chain_id"]     = chain_ids[i]
+        # NO IDENTITY COLUMNS ON THE ROW.  `atom_name`, `residue_name` and
+        # `chain_id` rode here until 2026-09-07, a second copy of facts the
+        # design carries at the TOP level: `structure.py::IDENTITY_FIELDS`
+        # says they travel "beside `metadata`", and that is what the browser
+        # reads (`model-jobs.js:139-141` -> `atomNames[i]`, `chainIds[i]`).
+        #
+        # They existed because `/api/selection/atoms` returned them -- this
+        # function's own docstring called itself "the same shape
+        # /api/selection/atoms returns" -- and that route is deleted.
+        # Measured before removing: `atom_name` and `chain_id` had ZERO
+        # readers anywhere, and `residue_name` had one, already written with
+        # a fallback to the parallel array beside it.
         rows.append(row)
     return rows
 

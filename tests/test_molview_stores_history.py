@@ -173,11 +173,12 @@ def test_invert_takes_the_complement_and_reports_no_pick_trail():
         "overlap (molview.md § 9.5)")
 
 
-def test_isolate_turns_itself_off_when_invert_empties_the_selection():
-    """§ 1.1: isolate turns itself off when the selection empties, "since there
-    would be nothing left to show". It is a SELECTION-STATE rule, so it holds
-    whichever operation did the emptying -- including this one, which no test
-    reached before."""
+def test_isolate_survives_an_invert_that_empties_the_selection():
+    """The switch is the user's, whichever operation emptied the selection.
+
+    Invert used to be the path nothing tested; it now checks the same rule as
+    Clear -- the setting stays, and `isolateInEffect` decides whether anything
+    is actually hidden."""
     out = _run(
         """
         const sel = S.createSelectionStore({});
@@ -193,8 +194,9 @@ def test_isolate_turns_itself_off_when_invert_empties_the_selection():
     )
     assert out["on"] is True
     assert out["selection"] == []
-    assert out["after"] is False, (
-        "isolate stayed on with nothing selected -- the window would be empty")
+    assert out["after"] is True, (
+        "invert un-set the switch the user had pressed; with nothing selected "
+        "the whole structure is drawn, which is `isolateInEffect`'s job")
 
 
 def test_a_half_typed_row_constrains_nothing():
@@ -445,18 +447,20 @@ def test_filtering_asks_the_server_and_holds_no_matching_logic():
 # ---------------------------------------------------------------------------
 
 
-def test_isolate_turns_itself_off_when_the_selection_empties():
-    """§ 1.1: "Isolate turns itself off when the selection becomes empty, since
-    there would be nothing left to show."
+def test_isolate_stays_on_when_the_selection_empties():
+    """Isolate is a preference, and it stays where you put it (user,
+    2026-09-07).
 
-    It belongs to the STORE and not to the control that emptied the selection:
-    Clear, Remove, an inverted selection that lands on nothing, a filter that
-    matches nothing and a restored empty session all reach the same line. Put in
-    a button's handler instead, it would be right for that button and wrong for
-    the other four.
+    It turned ITSELF OFF whenever the selection emptied -- "since there would
+    be nothing left to show" -- which made the button un-press itself: set it,
+    press Clear, and the switch was silently gone.  Nothing left to show is a
+    reason to draw everything, not to forget the setting, and the renderer
+    already says exactly that (`isolateInEffect`).
 
-    It settles before the snapshot goes out, so no reader ever sees isolate on
-    with nothing selected (§ 8.4 — one settled state).
+    Two mechanisms answered one question and neither covered the other's path:
+    this one fired only on a SELECTION change, the renderer's affects only
+    DRAWING -- so the 3-D window's click gate, which is neither, read the raw
+    switch and dropped every click with nothing selected.  One answer now.
     """
     out = _run(
         """
@@ -482,14 +486,18 @@ def test_isolate_turns_itself_off_when_the_selection_empties():
         """
     )
     assert out["isolating"] is True
-    assert out["afterClear"] is False, (
-        "isolate stayed on with nothing selected — the viewer is hiding every "
-        "atom it has to show"
+    assert out["afterClear"] is True, (
+        "isolate un-set itself when the selection emptied -- the user pressed "
+        "the button and the store took it back"
     )
-    assert out["snapshotSaw"] == {"isolate": False, "selection": []}, (
-        f"a reader saw isolate on beside an empty selection: {out['snapshotSaw']}"
+    assert out["snapshotSaw"] == {"isolate": True, "selection": []}, (
+        f"the snapshot rewrote the switch: {out['snapshotSaw']}.  A reader "
+        f"seeing isolate ON with nothing selected is correct and expected -- "
+        f"`isolateInEffect` is what decides whether anything is hidden"
     )
-    assert out["afterPicking"] is False, "isolate switched itself back on"
+    assert out["afterPicking"] is True, (
+        "isolate was still set, so picking an atom again must simply start "
+        "hiding the rest -- which is what the button was pressed for")
 
 
 def test_a_drawing_setting_is_not_a_switch():
@@ -1228,14 +1236,14 @@ def test_an_applied_filter_says_how_many_it_matched():
         """
     )
     assert out["before"] is None, "nothing applied yet is not an outcome"
-    assert out["after"] == {"matched": 0, "isolateTurnedOff": False}, out["after"]
+    assert out["after"] == {"matched": 0, "isolateNotInEffect": False}, out["after"]
     assert out["selected"] == [], "a filter matching nothing selects nothing"
     assert out["edited"] is None, (
         "editing a row must clear the recorded outcome — a stale answer to a "
         "question the user has since changed is worse than none")
 
 
-def test_a_filter_that_empties_the_selection_reports_isolate_switching_off():
+def test_a_filter_that_empties_the_selection_says_isolate_is_not_in_effect():
     """The store already turns isolate off when the selection empties ("there
     would be nothing left to show", § 1.1) — so after a filter matches nothing,
     `isolate` is ALREADY false and "it was on and switched off" cannot be told
@@ -1265,7 +1273,9 @@ def test_a_filter_that_empties_the_selection_reports_isolate_switching_off():
         """
     )
     assert out["litBefore"] is True
-    assert out["isolateAfter"] is False, (
-        "isolate must switch off when the selection empties")
-    assert out["outcome"] == {"matched": 0, "isolateTurnedOff": True}, (
-        f"the outcome must record that the switch moved: {out['outcome']}")
+    assert out["isolateAfter"] is True, (
+        "the filter matched nothing and the store took the user's switch away")
+    assert out["outcome"] == {"matched": 0, "isolateNotInEffect": True}, (
+        f"the outcome must record that isolate is on but hiding nothing, so "
+        f"the panel can say the whole structure is still shown: "
+        f"{out['outcome']}")

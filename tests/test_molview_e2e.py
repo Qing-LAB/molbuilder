@@ -206,8 +206,14 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
     structure comes back the moment isolate is turned off" — because the master
     copy was never cut down.
 
-    § 1.1: isolate turns itself off when the selection empties.
+    § 1.1: isolate STAYS SET when the selection empties, and the whole
+    structure is drawn because there is nothing to hide.
     """
+    # The untouched view: every atom, nothing highlighted.  Captured BEFORE
+    # anything is selected, because it is what the window must look like again
+    # at the end -- isolate on, selection empty, nothing to hide.
+    untouched = _canvas_pixels(demo)
+
     demo.locator(".molviewer-atoms-table tr").first.click()
     _settle(demo)
     whole = _canvas_pixels(demo)
@@ -222,13 +228,30 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
     _settle(demo)
     assert _canvas_pixels(demo) != isolated, "the structure did not come back"
 
-    # Clearing the selection with isolate on turns it off rather than leaving a
-    # viewer that hides everything it has.
+    # CLEARING WITH ISOLATE ON: the switch stays set, and every atom comes
+    # back -- there is nothing to hide, not nothing to show (changed
+    # 2026-09-07).  Asserted as a person sees it: the picture, and the button.
     isolate.click()
+    _settle(demo)
     demo.locator(".molviewer-selection-clear-btn").click()
     _settle(demo)
-    assert isolate.get_attribute("aria-pressed") == "false", (
-        "isolate stayed on with nothing selected"
+    assert isolate.get_attribute("aria-pressed") == "true", (
+        "the store un-set the switch the user pressed"
+    )
+    assert _canvas_pixels(demo) == untouched, (
+        "isolate is on with nothing selected and the window does not look "
+        "like the untouched structure -- with nothing to hide it must draw "
+        "everything"
+    )
+
+    # ...and the window still selects.  This is the defect the fix closed: the
+    # click gate read the raw switch, so with isolate on and nothing selected
+    # every click here was dropped while the drawing looked normal.
+    demo.locator(".molviewer-atoms-table tr").nth(1).click()
+    _settle(demo)
+    assert demo.locator(".molviewer-selection-count").inner_text().startswith("1 of"), (
+        "selecting stopped working while isolate was on with an empty "
+        "selection"
     )
 
 

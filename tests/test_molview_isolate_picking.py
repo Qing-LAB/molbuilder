@@ -140,3 +140,39 @@ class TestTheEngineTranslatesAClick:
         out = self._engine(
             "console.log(JSON.stringify(engine.drawnToOriginal(7)));")
         assert out is None, "null, so the caller drops it rather than guessing"
+
+
+def test_isolate_with_nothing_selected_does_not_deaden_the_window():
+    """The bug: a switch that hid nothing still swallowed every click.
+
+    Press "Show selected only" with nothing selected and three things had to
+    agree, and one did not.  The renderer drew the whole structure (correct --
+    nothing to hide).  The drawn-index map returned every atom (correct).  And
+    `mount.js`'s click gate read the RAW switch, so it dropped every click in
+    the 3-D window.  The view stopped selecting, nothing looked different, and
+    the atom list still worked -- so it read as a viewer bug.
+
+    `isolateInEffect` is the one answer all three now ask.  This drives it
+    directly: the predicate the gate consults must say NO when the switch is
+    on and nothing is selected, or the window goes deaf again.
+    """
+    out = _js(
+        """
+        console.log(JSON.stringify({
+            onButEmpty:   E.isolateInEffect({ isolate: true },  []),
+            onWithPicks:  E.isolateInEffect({ isolate: true },  [2]),
+            offWithPicks: E.isolateInEffect({ isolate: false }, [2]),
+            noSwitches:   E.isolateInEffect(null, [2]),
+            noSelection:  E.isolateInEffect({ isolate: true }, null),
+        }));
+        """
+    )
+    assert out["onButEmpty"] is False, (
+        "isolate reads as in-effect with nothing selected -- the click gate "
+        "consults this, so every click in the 3-D window would be dropped "
+        "while the drawing showed every atom"
+    )
+    assert out["onWithPicks"] is True
+    assert out["offWithPicks"] is False
+    assert out["noSwitches"] is False, "a missing switch bag must not isolate"
+    assert out["noSelection"] is False, "a missing selection must not isolate"

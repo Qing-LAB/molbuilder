@@ -85,6 +85,29 @@ import { effectiveCell } from "./model-jobs.js";
  *   `switches`   `{isolate, showIndex, showForces, forceScale}` (§ 6.2)
  * @returns {object} § 6.5's processed frame
  */
+/**
+ * IS ISOLATE ACTUALLY IN EFFECT? -- the one definition (§ 6.3).
+ *
+ * The switch being on is not the same as isolate DOING anything: with nothing
+ * selected there is nothing to hide, so the whole structure is drawn.  Three
+ * readers need this answer -- the drawn-index map below, `processFrame`, and
+ * the 3-D window's click gate in `mount.js` -- and until 2026-09-07 the third
+ * read the raw switch instead.
+ *
+ * What that cost: press "Show selected only" with nothing selected, and the
+ * drawing did not change (the two readers here were right) while every click
+ * in the window was dropped (the third was not).  The 3-D view stopped
+ * selecting, nothing looked different, and nothing said why -- the atom list
+ * still worked, so it read as a viewer bug.
+ *
+ * Exported because `mount.js` is handed the same two facts and must reach the
+ * same answer.  A fourth copy is what this replaces.
+ */
+export function isolateInEffect(switches, selection) {
+    return !!(switches || {}).isolate && (selection || []).length > 0;
+}
+
+
 export function sourceIndexFor(selection, switches, atomCount) {
     /* WHICH ATOMS ARE DRAWN, and where each came from -- `sourceIndex[m]` is
      * the ORIGINAL number of drawn atom `m` (§ 6.5).
@@ -98,8 +121,7 @@ export function sourceIndexFor(selection, switches, atomCount) {
      * drew correctly.
      */
     const picked = selection || [];
-    const isolating = !!(switches || {}).isolate && picked.length > 0;
-    if (!isolating) {
+    if (!isolateInEffect(switches, picked)) {
         return Array.from({ length: atomCount }, (_, i) => i);
     }
     // Ascending original order, each atom once -- the drawn list is a
@@ -129,7 +151,7 @@ export function processFrame(input) {
      * came from. Everything downstream depends on that map existing: it is what
      * lets a label still show #47 for an atom that is now third in the list.
      */
-    const isolating = !!sw.isolate && selection.length > 0;
+    const isolating = isolateInEffect(sw, selection);
     const sourceIndex = sourceIndexFor(selection, sw, positions.length);
 
     const drawnPositions = sourceIndex.map((i) => positions[i]);
