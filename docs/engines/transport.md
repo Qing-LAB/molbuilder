@@ -215,6 +215,14 @@ device. The convention (the *vocabulary* is owned by
 - **`<name>-electrode`** — any label ending `-electrode`/`_electrode`/bare
   `electrode` (case-insensitive) is a lead — so `tip-electrode`, `gate-electrode`
   work without code changes (`config.transport.is_electrode_label`).
+  **Except a label ending `#`**, which molbuilder wrote itself and this engine
+  never reads as a lead: a generated structure is signed with the text that
+  built it (`gold-electrode#` from a PubChem search), and without the marker
+  that signature would have partitioned the device
+  ([`model/structure-annotations.md`](?doc=model/structure-annotations.md)
+  § 5.1). The suffix convention is molbuilder's own, not TranSIESTA's —
+  electrode names are free strings in `%block TS.Elecs`, and the emitter strips
+  the suffix before writing the deck, so SIESTA never sees the word.
 
 **A label this engine does not consume is WARNED about, never dropped in
 silence.** TranSIESTA reads the canonical 2-terminal set plus `buffer`; a

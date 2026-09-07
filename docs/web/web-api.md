@@ -91,8 +91,28 @@ caller holds.
 | `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
 | ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
 | `/api/transport/render` | `{structure: <envelope>, params, structure_path?}` — the region-labeled device. Took the path as its GEOMETRY with the labels beside it until 2026-08-03; it was the last door on that shape |
-| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?, atom_metadata?, periodicity?, info?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied. The optional blocks beside the text are **what the caller already knew about these atoms** and the text has no room for — the labels, the cell, and the free `info` store (`?doc=web/molview.md` § 8.4a). A `path` load reads all three off disk and a `{structure}` restore carries them in its envelope; the text branch is the one shape with no document behind it, so a host that knows them states them. `info` must be an object of key → value: a non-object is a 400, never a silent drop. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
-| `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs |
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, atom_metadata?, periodicity?, info?}`. **Not the envelope** — nothing is being sent back, something is being *parsed*. The optional blocks beside the text are **what the caller already knew about these atoms** and the text has no room for — the labels, the cell, and the free `info` store (`?doc=web/molview.md` § 8.4a). A `path` load reads all three off disk and a `{structure}` restore carries them in its envelope; the text branch is the one shape with no document behind it, so a host that knows them states them. `info` must be an object of key → value: a non-object is a 400, never a silent drop. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
+| `/api/selection/eval` | `{atoms: [{element, labels, residueName, atomName, chainId}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs. `atomName` / `chainId` joined it 2026-09-07: they are what `by_atom_name` and `by_chain_id` match on, and without them the server rebuilt the structure with `Structure`'s defaults — atom name = element symbol, chain = `"A"` — so both rules answered **200 with a wrong answer** rather than refusing (`by_atom_name "CA"` never matched an alpha carbon; `by_chain_id "B"` never matched anything). Both keys are optional and fall back to those same defaults, so an older caller is unaffected |
+
+> **The text branch of `/api/build/load` is down to callers that should not be
+> using it** *(2026-09-07)*. This table justified it as *"a file or a paste is
+> being parsed, and raw text is what a user supplied"*, and neither half is
+> true. There has never been a paste UI. The local-file panel that read a
+> user's disk with `FileReader` was removed the same day — nothing in any
+> contract asked for it, and it silently ignored the `.molstruct.json` sitting
+> beside the file it opened, which is the one loss the pair rule exists to
+> prevent. The five Sources generators were the other users, and they now send
+> `{structure}`: the envelope was already in the same response, and posting the
+> `xyz` string beside it had been costing every generated peptide its residue
+> names.
+>
+> What still posts text is the **trajectory tab**, which manufactures a
+> single-frame XYZ *in the browser* to establish atom identity, then hands back
+> as `atom_metadata` / `periodicity` / `info` the very things that flattening
+> destroyed. That is a browser writing a coordinate document — what § 1 forbids
+> in the same breath as this table permits it. Moving it to `{structure}`
+> removes the branch, the three side-blocks, and the browser's XYZ writer
+> together (`plans/plan.md`).
 
 > **The old shapes are gone, not deprecated.** `/api/structure/periodicity` used
 > to take `{data: {xyz, sidecar}}`; it now answers 400 to that, which is how the
@@ -712,7 +732,7 @@ and returns the canonical envelope:
 Failures come back in the envelope: a path escaping the roots → 403/404, a
 missing file → 404 `no such file: <path>`, a parse/sidecar fault → 400. (The
 same route also accepts a multipart `file=` upload or a raw
-`{ text, format, filename?, sidecar? }` body.)
+`{ text, filename? }` body.)
 
 ## 7. Removed routes
 

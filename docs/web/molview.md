@@ -1865,7 +1865,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 
 | Call | Parameters | Answers |
 |---|---|---|
-| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, frames, forcesPerFrame}` |
+| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, title, channelDefs, info, frames, forcesPerFrame}` |
 | `getAtoms()` | — | `[{index, element, labels, residue}]` |
 | `getElements()` · `getCoordinates()` | — | the elements; `{frames, forcesPerFrame}` |
 | `getRegions()` | — | `{label: [atom…]}` |
@@ -1879,7 +1879,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` for one frame; `{name, structure, frames}` when the range covers more — `frames` is **additive**, so a caller that knows nothing about ranges keeps working. `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
-| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?, atomMetadata?, periodicity?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `installMolecule(input)` | `{path}` **or** `{structure}` **or** `{text, filename}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
@@ -1890,6 +1890,27 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `undo()` | — | exactly `load(-1)` |
 | `beginChange()` · `endChange()` | — | the bracket (§ 11.2) |
 | `selection.writeLabel(name, verb, atoms?)` | `verb` — `replace` · `add` · `remove`. `atoms` defaults to the selection | did it apply |
+
+> **`getStructure` did not return what this table said, until 2026-09-07.** It
+> listed five keys while § 6.2 lists six fields on the master copy, so `title`,
+> `channelDefs` and `info` were dropped by the reader — and the sentence above
+> the table called it *"the master copy entire"*. Callers believed the
+> sentence: the Modify tab's `#title-readout` read `.title` off this and got
+> `undefined`, so it showed the Hill formula and **never** the structure's
+> name, and the restore banner said `(unnamed)` after every restore. A cut
+> documented as the whole is worse than a cut, because the caller does not know
+> to go elsewhere.
+
+> **`getStructure` did not return what this table said, until 2026-09-07.**
+> It listed five keys and § 6.2 lists six fields on the master copy, so
+> `title`, `channelDefs` and `info` were dropped by the reader while the
+> sentence two rows up called it *"the master copy entire"*. Callers believed
+> the sentence: the Modify tab's `#title-readout` read `.title` off this and
+> got `undefined`, so it showed the Hill formula and **never** the structure's
+> name, and the restore banner said `(unnamed)` after every restore. A cut
+> that is documented as the whole is worse than a cut, because the caller does
+> not know to go elsewhere.
+
 
 #### The cell, the axes and the vacuum — what is given and what is derived
 
@@ -1966,7 +1987,7 @@ structure**, so one read holds them all.
 
 | You want… | Ask | You get |
 |---|---|---|
-| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, frames, forcesPerFrame}` — *every* frame |
+| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, title, channelDefs, info, frames, forcesPerFrame}` — *every* frame |
 | to **send** the structure to the server | `exportFile(range)` | the same facts **in the server's words**, for **one frame** (the one on screen, unless a range says otherwise), plus the name it came in under |
 
 **A tab never converts between them.** The renaming is a translation, and this
@@ -3049,7 +3070,7 @@ MolView calls are listed there with their bodies and answers:
 
 | MolView's call | Route | Sends | Answers |
 |---|---|---|---|
-| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?, atom_metadata?, periodicity?}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
+| `installMolecule` | `/api/build/load` | `{path}`, `{structure}`, or `{text, filename}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
 | `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure, with the same notices beside it — both routes leave through the one helper that validates what it sends |
 | `commitPeriodicityOp(op, payload)` | `/api/structure/periodicity` | the envelope + `op`, `payload` | `{ok, periodicity, notices}` — the cell block in the same shape a load sends it |
 | the filter (§ 9.5) | `/api/selection/eval` | `{atoms, rule}` — no coordinates, because no rule matches on position | `{selected_indices}` |
@@ -4209,7 +4230,7 @@ should go.
 
 | | what crosses | who makes the file |
 |---|---|---|
-| **in** | a path, or raw text a user pasted | the server reads or parses it, and answers with a structure |
+| **in** | a path, or a structure envelope a tab is putting back | the server reads or rebuilds it, and answers with a structure |
 | **out** | what the viewer holds — the atoms, their positions, and the facts about them | the server, from that |
 
 **Why this is a rule and not a preference.** A second writer in the browser is a

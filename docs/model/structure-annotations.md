@@ -217,9 +217,15 @@ non-empty string — `Structure._validate_regions`).
 > **The convention, in one line:** any region whose label ends with
 > `-electrode`, `_electrode`, or bare `electrode` (case-insensitive) is a
 > transport **lead**. The Python helper is
-> `config.transport.is_electrode_label(label)` (`:94`); its JS mirror is
-> `region-label-definitions.js::isElectrodeLabel` (pinned to agree by
-> `test_region_label_definitions_js.py`).
+> `config.transport.is_electrode_label(label)` (`:100`), and it is the **only**
+> implementation — the browser does not decide electrode-ness at all, it carries
+> the labels and the server reads them.
+>
+> *(This cited a JS mirror, `region-label-definitions.js::isElectrodeLabel`,
+> "pinned to agree by `test_region_label_definitions_js.py`". Both files went in
+> `6bf22242`, when the UI stopped hand-listing labels and began choosing from
+> what a structure actually carries. Nothing replaced them, because nothing
+> needed to: one implementation cannot disagree with itself.)*
 
 The canonical labels the Modify tab ships and the emitter interprets:
 
@@ -240,6 +246,51 @@ the transport engine and lives in
 [`engines/transport.md`](?doc=engines/transport.md) (the engines wave closed
 this split; the legacy source is archived at
 `archive/old_docs/protocols/region-labels.md`).
+
+### 5.1 The `#` suffix — a label molbuilder wrote itself
+
+**The rule:** a region label ending in `#` was written by molbuilder, not by a
+person. It is a convention, deliberately not enforced: a hand-typed `mylabel#`
+is legal and harmless, because the one thing the marker protects against is a
+label being read as an electrode, and a `#` label never is. Enforcing it would
+buy nothing and cost either a silent refusal at the assign box or a
+client-side message channel MolView does not have — its notices surface is
+what the SERVER said about the structure (§ 6.8), not a place for the browser
+to answer itself back.
+
+One thing writes them today: `/api/build/molecule` signs a generated structure
+with the text that produced it — `CCO#`, `AG#`, `ATCG#` — as one region over
+every atom. So *select the thing I just built* is a click on a name the user
+already recognises, and the provenance persists in the `.molstruct.json` beside
+the geometry instead of in a status line the next load erases.
+
+**Why a marker is needed, and needed only here.** Region labels are one
+namespace and part of it carries meaning: any label ending `-electrode` **is** a
+semi-infinite lead (§ 5). The name generator takes whatever a person types, so a
+PubChem search for `gold-electrode` would have labelled the whole molecule a
+TranSIESTA electrode — silently, at HTTP 200, and the next transport run would
+have believed it. `gold-electrode#` does not end in `-electrode`, so the
+question never arises.
+
+**It marks provenance, not reservation.** `frozen_atoms` is reserved — something
+downstream acts on it — and deliberately does **not** take the suffix. Nothing
+reads its name as a pattern: it is spelled once (`FROZEN_LABEL`), matched
+whole, and a person assigns it on purpose in the Modify tab. The suffix is for
+the one place a free-text input meets a suffix convention, and it stays there.
+*(User decision, 2026-09-07: "just for the electrodes … frozen_atoms is so
+clear we don't want to touch that.")*
+
+**Why a marker rather than a narrower matcher.** The obvious alternative was to
+tighten `is_electrode_label`. TranSIESTA itself imposes no naming rule at all —
+electrode names are free strings declared in `%block TS.Elecs`, and molbuilder
+strips its own suffix before the deck is written, so SIESTA never sees the word
+— which means the suffix convention is ours to set and ours to get wrong.
+Marking the machine-written label leaves the matcher untouched in **both**
+directions, so no existing labelled device changes meaning.
+
+Measured to survive both persistence paths: the `.molstruct.json` pair, and the
+deck's ATOM-METADATA block — whose lines are already `#`-prefixed comments and
+whose readers strip a prefix rather than splitting on the character.
 
 ---
 

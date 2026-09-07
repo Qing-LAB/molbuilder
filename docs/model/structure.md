@@ -177,15 +177,30 @@ contract exists to prevent.
 
 | Method | Format | Guarantees |
 |---|---|---|
-| `to_xyz(path=None, *, comment="")` (`:1074`) | xmol XYZ | line 1 = `N`; line 2 = comment-or-title; then `El x y z` per atom |
-| `to_pdb(path=None)` (`:1101`) | PDB ATOM records | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
-| `to_pyscf(*, as_string=False)` (`:1140`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
-| `to_ase()` (`:1167`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
-| `from_xyz(source, *, title=None)` (`:820`) | XYZ path **or** raw text | see requirements below |
-| `from_pdb(source, *, title=None)` (`:879`) | PDB path **or** raw text | reads `ATOM`/`HETATM`; first MODEL only; TER handling below |
+| `to_xyz(path=None, *, comment="")` (`:1490`) | xmol XYZ | line 1 = `N`; line 2 = comment-or-title; then `El x y z` per atom |
+| `to_pdb(path=None)` (`:1608`) | PDB ATOM records | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
+| `to_pyscf(*, as_string=False)` (`:1647`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
+| `to_ase()` (`:1674`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
+| `from_xyz(text, *, title=None, frames_out=None)` (`:1206`) | XYZ **text** | see requirements below |
+| `from_pdb(text, *, title=None)` (`:1294`) | PDB **text** | reads `ATOM`/`HETATM`; first MODEL only; TER handling below |
 
-`from_*` accept a filesystem path or raw text (`_resolve_source` tries
-`os.path.isfile` first, falls back to text).
+**The readers take a document, never a path** (`_require_text`, `:56`
+— a `Path` raises `TypeError` naming the door instead). To read a *file*, call
+`StructureCodec().load(path)`: it reads the `.molstruct.json` beside the
+geometry, which a bare reader cannot.
+
+> **A guesser stood here until 2026-09-07.** `_resolve_source` tried
+> `os.path.isfile` first and fell back to "treat it as text", so `from_xyz`
+> and `from_pdb` each took a path *or* a document. Two costs. A mistyped path
+> was diagnosed as a malformed document — `from_xyz("/no/such.xyz")` answered
+> *"Expected xyz header but got: invalid literal for int()"*. And it gave the
+> project a second way to read a structure file, one that skipped the sidecar;
+> `molbuilder.load()`, deleted the same day, was built on it.
+>
+> The rule it now follows is the one `model/parse.md` § 7 already states for
+> the block readers: **a reader takes a path or it takes text, never both**,
+> and a caller holding a path reads the file itself. `os` is no longer imported
+> by this module at all — reading stopped being a filesystem concern here.
 
 **Round-trip guarantees.** XYZ: elements + positions exact; metadata drops to
 defaults (XYZ has no slots). PDB: elements + positions + atom_names +
@@ -343,16 +358,45 @@ molbuilder dna ATGC | molbuilder pyscf - out.py     # Structure over stdin/stdou
 molbuilder peptide ASEQ                            # → XYZ on stdout
 ```
 
-**The CLI does not yet obey the rule above.** It reads and writes geometry
-directly (`struct.to_xyz()` / `from_xyz`, at `cli.py:263, 267, 274, 1321, 1563,
-1565`), so a CLI save emits the `.xyz` and nothing beside it. The consequence is
-not cosmetic: `molbuilder modify` silently drops regions and frozen atoms, and
-the CLI's `fdf` path cannot emit `Geometry.Constraints` from an `.xyz` + sidecar
-pair, because its reader (`siesta/input.py:1455`, `pyscf/input.py:1286`) never
-looks for the sidecar. The web surface has gone through the codec since the save
-door was built, so the two surfaces disagree about what saving a structure means.
+**Both sides of the CLI now go through the door.** Reads:
+`siesta/input.py:1805, 1829` and `pyscf/input.py:1529` call
+`StructureCodec().load`, so `molbuilder pyscf` and the `fdf` path see regions
+and frozen atoms and emit `Geometry.Constraints`. Writes: `_emit` and
+`molbuilder modify` call `StructureCodec().write`, so a CLI save emits the
+**pair** — and the two surfaces now agree about what saving a structure means.
 
-Routing CLI load/save through `StructureCodec` is open work (`plans/plan.md` **W15**), not shipped.
+> **Closed 2026-09-07 (was `plans/plan.md` W15).** The write side called bare
+> `struct.to_xyz()` / `to_pdb()`. Measured before the fix, on a device
+> carrying `L-electrode`, `frozen_atoms` and an explicit cell:
+>
+> ```
+> $ molbuilder modify in.xyz out.xyz --rotate z:0     # a ZERO-degree rotation
+> Wrote out.xyz: 4 atoms (input had 4)
+> $ ls
+> in.molstruct.json  in.xyz  out.xyz                  # no out.molstruct.json
+> ```
+>
+> The output `.xyz` carried no `Lattice=` either, so the box was not merely
+> unadopted on read — it was not in the file. `modify` READ the pair through
+> the codec and wrote back half of it, at exit 0, without a word. The same
+> applied to every builder via `_emit`.
+>
+> Two earlier statements here were also wrong and are gone: that the readers
+> "never look for the sidecar" (they had moved to the codec weeks before, each
+> with a comment recording it), and the `cli.py` line citations, which had
+> drifted.
+
+> **`StructureCodec.write` could not write what `read` could read** — found the
+> same day. `pair` always produced XYZ, and `write` writes the target
+> verbatim, so `write(struct, "x.pdb")` put XYZ bytes under a `.pdb` name and
+> `load("x.pdb")` then answered *"no ATOM/HETATM records found in PDB input"*:
+> the door could not read back what it had just written. `pair` now takes the
+> container the destination names (`fmt`), `write` reads it off the target's
+> suffix — the same suffix `read` dispatches on, which is what makes the round
+> trip a guarantee rather than a coincidence — and a caller with its own answer
+> (the CLI's `--output-format`, which may name a format the extension does not)
+> passes it and is obeyed. This is a different axis from plain-vs-extended XYZ,
+> which still follows the frame count and is still never asked as a question.
 
 ---
 
