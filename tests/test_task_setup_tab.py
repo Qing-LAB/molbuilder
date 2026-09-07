@@ -1271,27 +1271,13 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         assert sol["readable"] is False
         assert "probe --write --name sol" in sol["summary"]
 
-    def test_the_taught_command_carries_the_chosen_target(self):
-        """A remote choice reaches the command the user copies -- and
-        `launch` does not take it, because launching happens ON the
-        machine."""
-        # STILL A SOURCE PIN, and only for the --target half.  That the
-        # commands are offered PER STAGE, in order, is now read from the
-        # rendered card (`test_task_setup_prep_e2e.py`); what a browser test
-        # cannot reach is this: `_targetArg()` returns "" unless a NAMED
-        # machine is chosen, and the page can only be driven to
-        # "(this machine)" without a named record in the server's config
-        # root.  An e2e check for --target therefore passes no matter what
-        # the code does -- measured 2026-09-06 by adding `_targetArg()` to
-        # the launch line and watching the e2e stay green.  A vacuous
-        # assertion is worse than this pin, so this stays until a fixture
-        # can supply a named target.
-        src = VIEWER.read_text()
-        assert "_targetArg()" in src
-        assert "prep bench " in src and "_targetArg()" in src
-        assert "_targetArg()" not in src.split("jobset launch")[1][:80], (
-            "launch must not carry --target -- launching happens ON the "
-            "machine, so there is nothing to target")
+    # `test_the_taught_command_carries_the_chosen_target` stood here and read
+    # `viewer.js` as text: `"_targetArg()" in src`, and absent from the 80
+    # characters after "jobset launch".  Both were true of the source while
+    # the page was broken -- choosing a machine never re-rendered the block,
+    # so the line a person copied carried no `--target` at all.  Driven now,
+    # against a real named record, by test_task_setup_prep_e2e.py::
+    # test_choosing_a_machine_puts_it_in_the_command_you_copy.
 
 
 class TestEveryStageOffersBothThingsYouCanDoWithIt:

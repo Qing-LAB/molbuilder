@@ -2425,6 +2425,17 @@ function setMachine(name) {
     renderQueues();
     _syncPrepButtons();      // the prep buttons wait on this answer
     loadResolved();          // the warning depends on WHICH machine
+    /* AND THE COMMANDS THEMSELVES.  `_targetArg()` is read at RENDER time,
+     * and `renderNext` runs from `loadFolder` -- which finishes before
+     * anyone can click a machine.  Without this line the card said "sol"
+     * while the line a person copied said `prep bench coarse --bundle ...`
+     * with no `--target`, and prepping it would have baked THIS machine's
+     * width into a bundle bound for a cluster: invariant C1 in
+     * `preparing-for-another-machine.md`, the exact failure the flag
+     * exists to prevent.  `_stepTab` is module state, so the open tab
+     * survives the rebuild.  Measured 2026-09-06 by
+     * test_choosing_a_machine_puts_it_in_the_command_you_copy. */
+    if (_task) renderNext(_task);
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-target-state");
     if (!st) return;

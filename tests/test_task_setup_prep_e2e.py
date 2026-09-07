@@ -742,15 +742,9 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
         "the bench order is not shown in order -- skipping summarize does "
         "not fail, it preps a run with no measured verdict behind it")
 
-    # NOT ASSERTED HERE, and the reason is measured: *launch never carries
-    # --target*.  `_targetArg()` returns "" unless a NAMED machine is chosen,
-    # and this page can only be driven to "(this machine)" without a named
-    # record in the server's config root -- so a check for the absence of
-    # `--target` passes no matter what the code does.  Adding `_targetArg()`
-    # to the launch line leaves this test GREEN (verified 2026-09-06).  A
-    # vacuous assertion is the thing this conversion exists to remove, so the
-    # claim stays a source pin in `test_task_setup_tab.py` until a fixture
-    # can supply a named target.
+    # `launch` never carrying --target is asserted in
+    # test_choosing_a_machine_puts_it_in_the_command_you_copy below,
+    # which supplies the named record this test has no machine for.
 
     # ── and each half says what it is for, in the page's own component ──
     hints = page.eval_on_selector_all(
@@ -764,3 +758,83 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     # benchmark reports, and what the run uses is this card.)*
     assert "--np / --omp / --time" in hints, (
         "a person who filled the card is not told a flag still overrides it")
+
+
+@pytest.fixture
+def a_named_machine(two_stage_dir):
+    """A second, NAMED machine beside "(this machine)", written where the
+    server looks.
+
+    This is the fixture the `--target` claim was waiting for.  The chain, all
+    of it in this process because `support.live_server.serve()` runs the app
+    on a THREAD -- so the env the test sets is the env the route reads:
+
+        environments_dir()  ->  machine_scope_path().parent / "environments"
+        machine_scope_path()->  $MOLBUILDER_CONFIG_DIR/environment.json
+        known_machines()    ->  every *.json there, plus "(this machine)"
+
+    `choice_required()` then answers True the moment ANY named record exists,
+    so the page will not auto-select: a person has to click, which is exactly
+    the interaction the claim is about.
+    """
+    from molbuilder.scheduler import (Environment, Topology, environments_dir,
+                                      write_environment)
+    d = environments_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    write_environment(
+        Environment(scheduler="slurm",
+                    topology=Topology(sockets=2, cores_per_socket=64),
+                    script_generation={"preamble": "true",
+                                       "activation": "conda activate"}),
+        d / "sol.json")
+    return "sol"
+
+
+def test_choosing_a_machine_puts_it_in_the_command_you_copy(
+        page, flask_server, two_stage_dir, a_named_machine):
+    """Pick a remote machine; the prep commands gain `--target`, launch does not.
+
+    WHAT THIS REPLACES, AND WHY THE OLD ONE COULD NOT SEE THE BUG.
+    `test_task_setup_tab.py` asserted `"_targetArg()" in src` and
+    `"_targetArg()" not in src.split("jobset launch")[1][:80]` -- reading
+    `viewer.js` as text.  That is true of the source whatever the page does,
+    and it stayed true through the defect this test found: `setMachine()`
+    updates `_machine` and re-syncs the prep BUTTONS, but never re-runs
+    `renderNext()`, so the `pre.ts-cmd` blocks a person actually copies were
+    built before the machine existed and kept a command with no `--target` in
+    it.  The pin read the concatenation; nobody read the card.
+
+    The comment that stood in the test above -- "this page can only be driven
+    to '(this machine)' without a named record in the server's config root"
+    -- was wrong about the mechanism, not just pessimistic: the server runs
+    on a thread in this process, so `$MOLBUILDER_CONFIG_DIR` is shared and a
+    record written here is a record the route serves.  See `a_named_machine`.
+    """
+    _open(page, flask_server, two_stage_dir)
+    opt = page.locator(f'#ts-target-choice .opt[data-machine="{a_named_machine}"]')
+    opt.wait_for(state="visible", timeout=20000)
+    opt.click()
+    page.wait_for_function(
+        "() => document.querySelector('#ts-target-choice "
+        ".opt[aria-pressed=\"true\"]')", timeout=5000)
+
+    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
+    blocks = page.eval_on_selector_all(
+        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+
+    for stage in ("coarse", "tight"):
+        for verb in ("bench", "run"):
+            line = next((l for b in blocks for l in b.splitlines()
+                         if f"prep {verb} {stage}" in l), None)
+            assert line, f"the card offers no `prep {verb} {stage}` command"
+            assert f"--target {a_named_machine}" in line, (
+                f"a machine is chosen and the command a person copies is "
+                f"{line.strip()!r} -- it preps for THIS machine while the "
+                f"card says {a_named_machine!r}")
+
+    for b in blocks:
+        for line in b.splitlines():
+            if "jobset launch" in line:
+                assert "--target" not in line, (
+                    f"launch carries a target: {line.strip()!r} -- launching "
+                    f"happens ON the machine, so there is nothing to target")
