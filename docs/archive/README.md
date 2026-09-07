@@ -36,6 +36,7 @@ date-prefixed file, you are reading history, not policy.
 
 | Archived doc | Reason | Substance lives in |
 |---|---|---|
+| `2026-09-07-plan-closed-sections.md` | Closed — three `plans/plan.md` sections whose work shipped (5d `parse/scripts/` retired, 5i the projects root, 5j `_assembler_helpers` deleted) | model/parse.md § 1a · process/testing.md § 2a · execution/running-a-job.md § 4.2 |
 | `2026-06-02-REVIEW_FINDINGS.md` | Closed — one-shot code-review log; work landed | n/a (historical) |
 | `2026-06-02-watch-api.md` | Superseded — `/api/watch/*` HTTP reference | web-api.md § 8 (endpoint table, Mode A/B, `/api/watch/data` shape, `MOLBUILDER_WATCH_ROOT`, concurrency, security) |
 | `2026-06-02-tabs-watch.md` | Superseded — legacy `/watch` UI spec; trajectory inspector lives on `/results` since 2026-05-19 | inspector-registry.md § 6; cross-cutting front-end conventions → web-api.md § 14.4 |

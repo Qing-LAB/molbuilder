@@ -536,6 +536,11 @@
           "subtitle": "Transport — the composite calculation, designed top-down"
         },
         {
+          "path": "archive/2026-09-07-plan-closed-sections.md",
+          "label": "Plan sections closed and archived — 2026-09-07",
+          "subtitle": "Plan sections closed and archived — 2026-09-07"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"
