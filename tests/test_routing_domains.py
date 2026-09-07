@@ -392,3 +392,67 @@ def test_the_users_own_spelling_survives_the_round_trip():
                            "qos": "public", "gpu": written})
     assert row.devices[0].type == "a100"
     assert row.to_row()["gpu"] == written
+
+
+def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
+    """A misspelling must stop being invisible -- without being refused.
+
+    An unrecognised column in a routing row is KEPT (R10, and
+    `test_declared_rows_keep_the_operators_own_columns` above pins why: a
+    retired key an operator still writes, or a column of their own, must
+    survive).  That makes a TYPO indistinguishable from a deliberate extra:
+    `gpu_parition` lands in `extra` exactly as `node_type` does, `gpu_partition`
+    then reads as unstated, and `_bind` sends every GPU job to
+    `domain.gpu_partition or domain.partition` -- the ordinary queue.
+    `scheduler.md` § 4 called it *"a bug waiting for someone to misspell it"*.
+
+    Neither refusing nor dropping is available, so the machine list SAYS SO.
+    Both readers get it from one place -- `jobset machines` prints this
+    summary and `GET /api/task-setup/machines` serves it -- because the
+    terminal and the browser must not be able to disagree about a machine.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the `uninterpreted` bits from the
+    summary.  The record still parses, every other fact still prints, and the
+    typo is silent again.
+    """
+    from molbuilder.scheduler.record import (Domain, Environment, Topology,
+                                             known_machines)
+
+    cfg = tmp_path / "molbuilder"
+    (cfg / "environments").mkdir(parents=True)
+    env = Environment(
+        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=24),
+        domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
+                                  "qos": "public",
+                                  "gpu_parition": "gpu-a100"})])
+    (cfg / "environments" / "sol.json").write_text(env.to_json())
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+
+    sol = next(m for m in known_machines() if m["name"] == "sol")
+    assert "gpu_parition" in sol["summary"], (
+        "a column the reader could not interpret is not reported at all -- "
+        "a typo in gpu_partition silently reroutes every GPU job")
+    assert "??" in sol["summary"], (
+        "the marker is what makes it catch the eye in a line of ordinary "
+        "facts (user, 2026-09-06)")
+
+
+def test_a_record_the_reader_fully_understands_says_nothing_extra(tmp_path,
+                                                                  monkeypatch):
+    """The other half: the notice must not cry wolf on a clean record."""
+    from molbuilder.scheduler.record import (Domain, Environment, Topology,
+                                             known_machines)
+
+    cfg = tmp_path / "molbuilder"
+    (cfg / "environments").mkdir(parents=True)
+    env = Environment(
+        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=24),
+        domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
+                                  "qos": "public",
+                                  "gpu_partition": "gpu-a100"})])
+    (cfg / "environments" / "sol.json").write_text(env.to_json())
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+
+    sol = next(m for m in known_machines() if m["name"] == "sol")
+    assert "??" not in sol["summary"], (
+        f"a correctly spelled record was flagged: {sol['summary']!r}")

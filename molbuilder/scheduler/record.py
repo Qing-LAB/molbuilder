@@ -883,6 +883,30 @@ def known_machines() -> List[Dict[str, object]]:
                         f"{env.topology.gpu_type or 'GPU'}")
         if env.domains:
             bits.append(f"{len(env.domains)} domain(s)")
+
+        # WHAT WAS KEPT BUT NOT UNDERSTOOD (2026-09-06, user).  An
+        # unrecognised column in a routing row is KEPT -- R10, "silently
+        # dropping a column is the bug" -- and a retired key an operator
+        # still writes, or a column of their own, must survive.  But that
+        # makes a MISSPELLING indistinguishable from a deliberate extra:
+        # `gpu_parition` lands in `extra` exactly like `node_type` does,
+        # and `gpu_partition` then reads as unstated, so every GPU job goes
+        # to the ordinary partition (`_bind` takes `gpu_partition or
+        # partition`).  `scheduler.md` § 4 predicted it -- "a value that
+        # changes where a job lands is a field, or it is a bug waiting for
+        # someone to misspell it".
+        #
+        # Neither refusing nor dropping is available, so the answer is to
+        # SAY SO.  Nothing is rejected and nothing is lost; a typo simply
+        # stops being invisible.  Here rather than in either surface, because
+        # this list has two readers and they must not be able to disagree.
+        uninterpreted = sorted({k for d in env.domains for k in d.extra})
+        if uninterpreted:
+            # `??` LEADS IT (user, 2026-09-06): this sits mid-way through a
+            # dot-separated line of ordinary facts, and a reader scanning for
+            # trouble needs something that is not a word.  The marker is the
+            # question being asked -- did you mean to write this?
+            bits.append("?? not understood: " + ", ".join(uninterpreted))
         # THE QUEUES, with the ceilings a surface can default from
         # (2026-08-24, user): the browser's Task-setup tab lets a person
         # pick a machine, then one of ITS queues, and fills the time and
