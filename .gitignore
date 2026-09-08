@@ -116,7 +116,14 @@ test-artifacts/
 # Third-party source that gets unpacked in the working tree -- never ours,
 # and never small (2026-09-08: an 82 MB qe-7.5 pack reached origin via
 # `git add -A`).  Both the archive AND what it unpacks to.
-qe-*
+#
+# ANCHORED AT THE ROOT ON PURPOSE.  Quantum ESPRESSO is an engine molbuilder
+# is about to support, so `qe-*` unanchored -- which matches at EVERY depth --
+# would silently swallow `molbuilder/qe-*.py`, `docs/engines/qe-*.md` and any
+# test named for it.  The leading slash keeps it to the top level, where the
+# tarball actually unpacks, and leaves the engine's own source free to be
+# committed.
+/qe-*
 *.tar.gz
 *.tar.bz2
 *.tar.xz
