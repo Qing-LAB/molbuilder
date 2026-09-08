@@ -49,6 +49,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
+from .runfiles import patterns as _runfile_patterns
+
 
 @dataclass(frozen=True)
 class RestartGroup:
@@ -175,103 +177,23 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 #: Ordered as § 2.2 lists them — inputs, wrapper, the canonical trajectory,
 #: then the run-indexed logs, which are **history and not state**: they are
 #: what a user goes back to read, and nothing here may treat them as leftovers.
-OUR_FILE_PATTERNS: Sequence[str] = (
-    # inputs we generated
-    "{label}.fdf", "{label}_*.fdf",
-    # SPELLED, not imported, and that is the LAYERING rule rather than a
-    # shortcut: this module is L1 and `template` is L2, so importing the
-    # suffix here is the violation `tests/test_layering.py` catches (tried
-    # 2026-08-17 and reverted).  The cost is real -- this list answers *"did
-    # the engine leave this, or did we write it"* by subtraction, so a
-    # pattern that silently stops matching hands a person's own input back to
-    # them as engine state, the exact failure the `{label}.xyz` note below
-    # records.  What guards it instead is `test_doc_claims.py`'s
-    # template-path test, which exempts this one line BY NAME.
-    "{label}.template.toml",
-    # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
-    # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same day
-    # molbuilder started writing them: before that the pair did not exist in a
-    # bundle, so the subtraction never saw it -- and the moment it did, `prep`
-    # announced a fresh calculation as *"already under way -- warm files at the
-    # root"* and offered a person's own input back to them as engine state.
-    #
-    # `.source` is the reservation (`job-contracts.md` § 6.3): identities are
-    # validated dot-free, so this is a name no engine output can take -- in
-    # ANY shape.  Until 2026-08-19 the row here was a bare `{label}.xyz`,
-    # defended with *"the two never collide HERE: this question is asked at
-    # the BUNDLE ROOT, and an engine runs in `<stage>/run-<n>/`"* -- true only
-    # for the hierarchical shape.  A FLAT engine runs at the bundle root, and
-    # the first flat relaxation whose label matched the structure's stem had
-    # `WriteCoorXmol` overwrite the description's own input.  A bare
-    # `{label}.xyz` at the root is therefore the ENGINE's now, and the
-    # subtraction reports it as run state -- which, post-reservation, it is.
-    #
-    # ⚠ THIS LIST HAS A SECOND READER.  `runwrap._cold_restart_block` derives
-    # `--cold`'s *"except what molbuilder wrote"* exception from these same
-    # patterns, and it runs where an engine's output IS present.  It used to
-    # read `{label}` as `*`, so the 2026-08-16 line silently became `*.xyz`
-    # and made PySCF's `<JOB>_optimized.xyz` -- warm state -- look like ours;
-    # `--cold` then walked past the file it exists to move.  Fixed 2026-08-17
-    # by anchoring that exception on the run's id instead of a star, and
-    # pinned by `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
-    "{label}.source.xyz", "{label}.source.molstruct.json",
-    "{label}.py", "{label}_*.py",
-    # the wrapper and its scheduler header
-    "{label}.run.sh", "{label}_*.run.sh",
-    "{label}.sbatch", "{label}_*.sbatch",
-    # THE DECK'S COMPANION VALIDATION REPORT (`script_emit.VALIDATION_SUFFIX`),
-    # added 2026-08-23 with the file itself.  It has to be here for the reason
-    # the `.source` pair above records: this list's second reader derives
-    # `--cold`'s *"except what molbuilder wrote"* exception from it, so a file
-    # molbuilder writes and does not declare reads as ENGINE OUTPUT -- and
-    # `prep` then greets a fresh calculation with *"already under way -- warm
-    # files at the root"*, offering the user their own report back as run
-    # state.
-    "{label}.validation.txt", "{label}_*.validation.txt",
-    # the canonical trajectory -- written before the engine even starts
-    "{label}.molwatch.log", "{label}_*.molwatch.log",
-    # engine stdout -- the run's history.  Three shapes, because three things
-    # create one: the wrapper's run-indexed redirect, the flat ladder runner's
-    # ``> ${BASENAME}_${stage}.out``, and a single unstaged run's ``.out``.
-    #
-    # The last two were MISSING until 2026-08-10 -- a pre-existing gap, not
-    # fallout from the stage rename (``<label>-stage1.out`` did not match
-    # either).  It matters because ``warm_files_present`` answers *has anything
-    # run here* by SUBTRACTION: anything named after the label that is not on
-    # this list is reported as the engine's restart state.  So a run's own
-    # stdout was being offered back to the user as a warm file, and counted
-    # among what a rename would orphan.
-    "{label}.out", "{label}_*.out",
-    "{label}-run*.out", "{label}_*-run*.out",
-    "{label}-run*.pyscf.log", "{label}_*-run*.pyscf.log",
-    # geomeTRIC's own optimizer log
-    "{label}.log", "{label}_geom_*.log",
-    # the wrapper's own session log, the monitor's rolling status and its
-    # utilisation samples, and the per-run SCF timing instrument -- all
-    # molbuilder-written HISTORY, same as the stdout above.  Missing until
-    # 2026-08-13 (final review E-2): warm_files_present answers by
-    # SUBTRACTION, so the wrapper's own logs were reported back as the
-    # ENGINE's restart state at the underway-ask and rename decision
-    # points -- and the --cold name sweep (whose bash exception list is
-    # DERIVED from these rows since the same fix, E-1) moved a prior
-    # flat-staged stage's stdout and timing logs into the aside dir.
-    "{label}.runwrap-*.log", "{label}_*.runwrap-*.log",
-    # The monitor's two files gained the wrapper's run index on
-    # 2026-08-27, so they are listed the way the timing log already was --
-    # with and without it.  Both spellings, because a directory can hold
-    # artifacts from before the change and a cold sweep that misses one
-    # leaves it to be appended to or truncated by the next run.
-    "{label}.monitor.log", "{label}_*.monitor.log",
-    "{label}-run*.monitor.log", "{label}_*-run*.monitor.log",
-    "{label}.util.csv", "{label}_*.util.csv",
-    "{label}-run*.util.csv", "{label}_*-run*.util.csv",
-    "{label}-run*.scf-timing.log", "{label}_*-run*.scf-timing.log",
-    # The conclusion marker -- the wrapper's last act on its main path
-    # (`project-layout.md` 1.6, "the other file", 2026-08-28).  Indexed
-    # like the .out because a warm-retry chain execs fresh wrappers and
-    # only the FINAL process concludes.
-    "{label}-run*.concluded", "{label}_*-run*.concluded",
-)
+#:
+#: **DERIVED, since 2026-09-07, from `runfiles.WRITTEN`** — the catalogue
+#: that says what each of these files IS, which is what the Task-setup card
+#: shows a person and what this list has no room for. The globs are the same
+#: strings they always were; what changed is that the family and the names
+#: now come out of one table instead of two, and `runfiles` holds the notes
+#: on why each row is there.
+#:
+#: ⚠ **THIS LIST HAS A SECOND READER.** `runwrap._cold_restart_block`
+#: derives `--cold`'s *"except what molbuilder wrote"* exception from these
+#: same patterns, and it runs where an engine's output IS present. It used
+#: to read `{label}` as `*`, so a `{label}.xyz` row silently became `*.xyz`
+#: and made PySCF's `<JOB>_optimized.xyz` — warm state — look like ours;
+#: `--cold` then walked past the file it exists to move. Fixed 2026-08-17 by
+#: anchoring that exception on the run's id instead of a star, and pinned by
+#: `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
+OUR_FILE_PATTERNS: Sequence[str] = _runfile_patterns()
 
 
 # --------------------------------------------------------------------- #

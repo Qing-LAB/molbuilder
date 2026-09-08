@@ -700,12 +700,14 @@ def test_the_template_path_is_formed_in_exactly_one_place():
     for p in sorted(root.rglob("*.py")):
         if p.name == "template.py":
             continue                       # the door's own home
-        if p.name == "identity.py":
+        if p.name == "runfiles.py":
             # THE ONE EXEMPTION, and it is a layering fact, not a lapse.
-            # `identity.py` is L1 and `template` is L2, so it may not import
+            # `runfiles.py` is L1 and `template` is L2, so it may not import
             # the suffix -- `tests/test_layering.py` fails if it does.  Its
-            # pattern list therefore spells the name, and that single line is
-            # the only place outside the door allowed to.
+            # `WRITTEN` catalogue therefore spells the name, and that single
+            # row is the only place outside the door allowed to.  (It was
+            # `identity.py` until 2026-09-07, when the catalogue moved and
+            # the glob list became a view of it.)
             continue
         tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
         docstrings = set()

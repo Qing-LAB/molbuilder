@@ -32,7 +32,29 @@ from ..config.pyscf import PySCFConfig
 # § 4 rule 2's reading of `restart`, shared with SIESTA -- one
 # field, one rule, one place that reads it.
 from ..identity import continues
+from ..runfiles import compose as _rf, tail as _rf_tail
 from ..structure import Structure
+
+#: THE ROLES THIS SCRIPT WRITES, spelled once (`job-contracts.md` § 2.2a).
+#:
+#: These appear inside EMITTED CODE -- the generated script composes them at
+#: run time from its own ``JOB`` literal -- so `compose` cannot build them
+#: here: the label does not exist yet at emit time.  What the constants buy is
+#: the other half of the rule.  The role vocabulary still has ONE home, so a
+#: role cannot be respelled in the emitted lines while the header, the
+#: warm-file declaration and the reader all say something else.  That is
+#: exactly how `_geom_optim.xyz` came to have six spellings.
+ROLE_CHK         = ".chk"
+ROLE_INITIAL     = "_initial.xyz"
+ROLE_OPTIMIZED   = "_optimized.xyz"
+ROLE_CONSTRAINTS = ".constraints.txt"
+ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # what warm-files.toml declares
+
+#: geomeTRIC does not take a filename -- it takes a PREFIX and appends this.
+#: Naming the tail is what lets the prefix be DERIVED from the role rather than
+#: assembled next to it, and assembling it next to it is precisely what put the
+#: stage token inside the role.
+GEOMETRIC_APPENDS = "_optim.xyz"
 # ONE name for each of the two doors this writer opens, imported once at
 # module scope -- as `siesta/input.py` already does.  Seven aliases for
 # ``script_emit`` and three for ``layout`` stood here, one pair
@@ -174,7 +196,7 @@ def spec_for(struct: Structure,
     are two processes writing into the same calculation -- and anything they both
     name would collide.  So the token goes into every name the script itself
     chooses: PySCF's own log (``<JOB>_<NN>_<stage>.log``), geomeTRIC's trajectory
-    and opt log (``<JOB>_geom_<NN>_<stage>_optim.xyz``, ``..._geom_<NN>_<stage>.log``)
+    and opt log (``<JOB>_<NN>_<stage>_geom_optim.xyz``, ``..._<NN>_<stage>_geom.log``)
     and the molwatch trajectory log (``<JOB>_<NN>_<stage>.molwatch.log``) -- the
     same three names SIESTA suffixes (§ 1.1a, consequence 1).
 
@@ -262,14 +284,10 @@ def spec_for(struct: Structure,
             out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
                        f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
         out.append("")
-        # ONE SUFFIX, DERIVED ONCE.  The stage token qualifies the deck, the
-        # wrapper and three of the outputs; it was re-derived at each of them,
-        # which is four chances for one of them to drift from the rest.
-        _ss = f"_{stage_token}" if stage_token else ""
         out.append("Run with -- the managed way, and the usual one:")
         out.append(f"    molbuilder jobset launch run {stage_token or '<stage>'} "
                    f"--mode direct|submit")
-        out.append(f"    bash {label}{_ss}.run.sh          "
+        out.append(f"    bash {_rf(label, '.run.sh', stage_token)}          "
                    f"# the same wrapper, by hand")
         out.append("")
         out.append("    The wrapper beside this file is self-contained: it runs")
@@ -279,7 +297,8 @@ def spec_for(struct: Structure,
         out.append("    where and when it ran (`running-a-job.md` section 2).")
         out.append("")
         out.append("Or drive PySCF yourself:")
-        out.append(f"    python {label}{_ss}.py > {label}{_ss}.out 2>&1")
+        out.append(f"    python {_rf(label, '.py', stage_token)} > "
+                   f"{_rf(label, '.out', stage_token)} 2>&1")
         out.append("")
         out.append("    Perfectly good, and the reason the plain invocation is")
         out.append("    still written here -- but then the environment, the")
@@ -290,23 +309,25 @@ def spec_for(struct: Structure,
         out.append("")
         out.append("Outputs:")
         if cfg.log_file:
-            out.append(f"    {label}{_ss}.log              -- pyscf verbose log")
+            out.append(f"    {_rf(label, '.log', stage_token)}              -- pyscf verbose log")
         if cfg.chkfile:
-            out.append(f"    {label}.chk              -- checkpoint (DM, mol)")
+            out.append(f"    {_rf(label, '.chk')}              -- checkpoint (DM, mol)")
         if cfg.save_initial_xyz:
-            out.append(f"    {label}_initial.xyz      -- input coordinates")
+            out.append(f"    {_rf(label, '_initial.xyz')}      -- input coordinates")
         if cfg.save_optimized_xyz and cfg.optimize:
-            out.append(f"    {label}_optimized.xyz    -- final relaxed coords")
+            out.append(f"    {_rf(label, '_optimized.xyz')}    -- final relaxed coords")
         if cfg.optimize and cfg.write_trajectory and cfg.optimizer == "geometric":
-            out.append(f"    {label}_geom{_ss}_optim.xyz   -- this rung's streaming")
+            out.append(f"    {_rf(label, '_geom_optim.xyz', stage_token)}"
+                       f"   -- this rung's streaming")
             out.append("                                          trajectory (multi-frame")
             out.append("                                          XYZ).  A ladder is one")
             out.append("                                          job per rung, so each")
             out.append("                                          writes its own.")
-            out.append(f"    {label}_geom{_ss}.log         -- geomeTRIC's opt log")
+            out.append(f"    {_rf(label, '_geom.log', stage_token)}"
+                       f"         -- geomeTRIC's opt log")
             out.append("                                          for this rung.")
         if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
-            out.append(f"    {label}{_ss}.molwatch.log     -- unified per-step log: marker-")
+            out.append(f"    {_rf(label, '.molwatch.log', stage_token)}     -- unified per-step log: marker-")
             out.append("                                  delimited blocks containing")
             out.append("                                  coords, energy (eV), forces")
             out.append("                                  (eV/Ang), and SCF cycle history.")
@@ -500,7 +521,7 @@ def spec_for(struct: Structure,
         # write flags doubled as the read gate, which made *"write a checkpoint but
         # do not resume from one"* unsayable: § 4's "present but not honoured".
         if continues(cfg):
-            out.append('_opt_path = _mb_outfile(JOB + "_optimized.xyz")')
+            out.append(f'_opt_path = _mb_outfile(JOB + "{ROLE_OPTIMIZED}")')
             out.append("if _os.path.exists(_opt_path) "
                        "and _os.path.getsize(_opt_path) > 0:")
             out.append("    try:")
@@ -550,7 +571,11 @@ def spec_for(struct: Structure,
             # folder, and an unsuffixed name would have the second overwrite the
             # first.  ``JOB`` itself stays unsuffixed (consequence 2) -- what the
             # engine finds the previous rung's state by must not move.
-            _logname = f"_{stage_token}.log" if stage_token else ".log"
+            # THE TAIL, CUT FROM THE GRAMMAR (`runfiles.tail`): the script
+            # supplies its own `JOB` at run time, so only what follows the
+            # label can be emitted here -- and it is the end of the name
+            # `compose` would build, not a second assembly of it.
+            _logname = _rf_tail(".log", stage_token)
             out.append(f'    output     = _mb_outfile(JOB + {_logname!r}),')
         # UNSET means no cap (`template-unification-plan.md` § 5.1): the line is
         # OMITTED rather than emitted as None, so PySCF uses its own default --
@@ -567,8 +592,8 @@ def spec_for(struct: Structure,
         if cfg.save_initial_xyz:
             if v:
                 out.append("# Snapshot the input geometry before any optimization runs.")
-            out.append('_save_xyz(mol, _mb_outfile(JOB + "_initial.xyz"), '
-                       '"Initial geometry (input)")')
+            out.append(f'_save_xyz(mol, _mb_outfile(JOB + "{ROLE_INITIAL}"), '
+                       f'"Initial geometry (input)")')
         out.append("")
 
         # ---------------- Unified molwatch log emitter (early, additive) ------
@@ -662,7 +687,7 @@ def spec_for(struct: Structure,
         # bumped from PySCF defaults so tutorial scripts stay clean
         # for the easy-converge path.
         if cfg.chkfile:
-            out.append('mf.chkfile = _mb_outfile(JOB + ".chk")')
+            out.append(f'mf.chkfile = _mb_outfile(JOB + "{ROLE_CHK}")')
             # Continuation: a rung that says ``continue`` starts its SCF from the
             # density the rung before it converged, instead of MINAO / atom.  That
             # turns "full SCF from scratch" into "small refine on top of a
@@ -837,7 +862,7 @@ def spec_for(struct: Structure,
                 from ..engine_atom_index import geometric_atom_index
                 ids_1based = ",".join(str(geometric_atom_index(i)) for i in frozen)
                 out.append(f'# Source: Structure.frozen_atoms = {frozen!r}  (0-based)')
-                out.append(f'_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + ".constraints.txt")')
+                out.append(f'_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + "{ROLE_CONSTRAINTS}")')
                 out.append('with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:')
                 out.append('    _fh.write("$freeze\\n")')
                 out.append(f'    _fh.write("xyz {ids_1based}\\n")')
@@ -894,8 +919,8 @@ def spec_for(struct: Structure,
         # we only write the FINAL geometry.
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append("")
-            out.append('_save_xyz(mol_eq, _mb_outfile(JOB + "_optimized.xyz"), '
-                       '"Optimized geometry (PySCF)")')
+            out.append(f'_save_xyz(mol_eq, _mb_outfile(JOB + "{ROLE_OPTIMIZED}"), '
+                       f'"Optimized geometry (PySCF)")')
         out.append("")
         out.append('print(f"\\nJob complete in {time.time() - t0:.1f} s")')
 
@@ -1244,8 +1269,19 @@ def _emit_optimization(cfg: PySCFConfig,
         # The rung's own trajectory name.  Two rungs are two processes writing
         # into one calculation, so the one name this script chooses for itself
         # has to say which rung it is (`stages.md` § 1.1a, consequence 1).
-        _traj = (f"JOB + '_geom_{stage_token}'" if stage_token
-                 else "JOB + '_geom'")
+        # THE PREFIX IS DERIVED FROM THE ROLE, not assembled beside it
+        # (`job-contracts.md` § 2.2a).  Compose the name the file will HAVE,
+        # then take off the tail geomeTRIC is going to add: what is left is the
+        # prefix, and it cannot disagree with the role by construction.
+        #
+        # It used to be built the other way -- the token concatenated in the
+        # middle, giving `<JOB>_geom_<stage>_optim.xyz`, a name the declared
+        # role `_geom_optim.xyz` could not match.  So the trajectory never
+        # carried between rungs and four readers were told to open a file
+        # nothing wrote.  `_rf` is given a placeholder label because only the
+        # part AFTER the label is emitted; the script supplies its own `JOB`.
+        _tail = _rf_tail(ROLE_GEOM_TRAJ, stage_token)[:-len(GEOMETRIC_APPENDS)]
+        _traj = f"JOB + {_tail!r}"
         out.append(f"        prefix                = _mb_outfile({_traj}),")
     if cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out.append("        callback              = _molwatch.opt_step_hook,")

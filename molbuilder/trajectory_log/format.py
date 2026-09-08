@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 from typing import Mapping, Optional, TYPE_CHECKING
 
+from ..runfiles import compose as _rf
+
 if TYPE_CHECKING:
     from ..structure import Structure
 
@@ -49,10 +51,15 @@ def molwatch_log_basename(system_label: str,
 
     Returns just the filename, not a full path; callers join with the
     target directory.
+
+    IT COMPOSES THROUGH THE GRAMMAR (`job-contracts.md` § 2.2a) rather than
+    formatting the pieces itself.  This function was ALREADY the one place the
+    molwatch name was built -- the pattern the rest of the run files did not
+    have -- so what it gains is the shared refusal: a label or a token that
+    could not be read back out of the name is now rejected here too, in the
+    same words, instead of being formatted into a filename nothing can parse.
     """
-    if stage is None:
-        return f"{system_label}.molwatch.log"
-    return f"{system_label}_{stage}.molwatch.log"
+    return _rf(system_label, ".molwatch.log", stage)
 
 
 def write_initial_preview(

@@ -11,6 +11,13 @@ superseded — a sweep's plan IS a STAGE-PLAN.md in its bench/ container.)*
 
 from __future__ import annotations
 
+
+#: The plan's filename.  A constant because it was written out twice in
+#: `prep.py` -- the same "spelled at the call site" shape the run-file grammar
+#: exists to end, one level up: these bundle files are not per-label, so they
+#: are not `runfiles` names, but they still deserve ONE home.
+FILENAME = "STAGE-PLAN.md"
+
 from typing import List
 
 from .materialize import stage_refs

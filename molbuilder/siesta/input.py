@@ -37,6 +37,7 @@ except ImportError as exc:  # pragma: no cover
 # install into this message instead of an AttributeError several hundred lines
 # into a render.
 
+from ..runfiles import compose as _rf
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -1120,9 +1121,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # follows* (``job-contracts.md`` § 6.3) and a stage is not a counter, and a
         # bare position silently reassigns outputs when the ladder grows (R5).
         from ..trajectory_log.format import molwatch_log_basename
-        _stage_suffix = f"_{stage_token}" if stage_token else ""
-        _fdf_name  = f"{cfg.system_label}{_stage_suffix}.fdf"
-        _out_name  = f"{cfg.system_label}{_stage_suffix}.out"
+        _fdf_name  = _rf(cfg.system_label, ".fdf", stage_token or None)
+        _out_name  = _rf(cfg.system_label, ".out", stage_token or None)
         _mw_name   = molwatch_log_basename(cfg.system_label, stage_token)
         if cfg.verbose_comments:
             out.append("# === Run with (job-layout v1) ===")
@@ -1130,7 +1130,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append("#     molbuilder jobset launch run "
                        + (stage_token or "<stage>")
                        + " --mode direct|submit")
-            out.append(f"#     bash {cfg.system_label}{_stage_suffix}.run.sh"
+            out.append(f"#     bash "
+                       f"{_rf(cfg.system_label, '.run.sh', stage_token or None)}"
                        "          # the same wrapper, by hand")
             out.append(
                 "# The wrapper beside this deck is self-contained: it runs "
@@ -1205,7 +1206,14 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# Note: SIESTA's 'BASIS_ENTHALPY ... deprecated' WARNING "
                 "in the output is harmless")
             out.append(
-                f"# — read {cfg.system_label}{_stage_suffix}.BASIS_ENTHALPY "
+                # NO STAGE TOKEN.  SIESTA names this one itself, from
+                # `SystemLabel` -- which § 2.3 keeps UNSUFFIXED so the restart
+                # files transfer between rungs.  The token was appended here
+                # anyway, so the deck told the reader to open a file SIESTA
+                # will never write: the same mistake as the geomeTRIC
+                # trajectory, on the other engine (found by the § 2.2a audit,
+                # 2026-09-07).
+                f"# — read {_rf(cfg.system_label, '.BASIS_ENTHALPY')} "
                 "in any post-processing.")
             out.append("")
 

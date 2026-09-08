@@ -574,9 +574,9 @@ Four rungs, first hit wins, absorbed verbatim from
    `<job>_geom_optim.xyz` — **and the deck filename's stem tried the same
    way**, because a staged deck is `<job>_<token>.py` while `JOB` stays
    bare (found 2026-08-19: every staged spelling was the unstaged one, so a
-   staged run without a molwatch seed resolved to nothing) — then the
-   rung-aware `<job>_geom_*_optim.xyz`;
-4. generic: `run.out`, `siesta.log`, `*.out`, `*_geom*_optim.xyz`.
+   staged run without a molwatch seed resolved to nothing) — and that stem
+   pass is what finds a staged trajectory;
+4. generic: `run.out`, `siesta.log`, `*.out`, `*_geom_optim.xyz`.
 
 `attempts` carries the "tried X → N matches" trail. It is not decoration: it
 is the body of the refusal a person reads when nothing matched, and it moves

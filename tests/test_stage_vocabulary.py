@@ -569,13 +569,24 @@ _POSITIONAL = re.compile(r"-stage\d")
 def measure_positional_names() -> list[str]:
     offences = []
 
+    # A POSITION CANNOT BECOME A NAME AT ALL, which is stronger than the name
+    # it produced not LOOKING positional.  This used to call
+    # `molwatch_log_basename('JOB', 1)` and inspect the result; since the name
+    # grammar landed (`job-contracts.md` § 2.2a) the int is refused at compose
+    # time, so the check is that it refuses rather than that its output passes
+    # a pattern.
+    from molbuilder.runfiles import RunFileError
     from molbuilder.trajectory_log.format import molwatch_log_basename
-    name = molwatch_log_basename("JOB", 1)
-    if _POSITIONAL.search(name):
+    try:
+        name = molwatch_log_basename("JOB", 1)
+    except RunFileError:
+        pass                      # refused: a position is not a token
+    else:
         offences.append(
-            f"molwatch_log_basename('JOB', 1) -> {name!r} "
-            "(project-layout.md § 4.1: '<id>_<name>.molwatch.log' flat, "
-            "'<id>.molwatch.log' inside the stage directory)")
+            f"molwatch_log_basename('JOB', 1) -> {name!r} instead of "
+            "refusing; a stage POSITION must not be able to name a file "
+            "(job-contracts.md § 6.3 -- it reassigns outputs when the ladder "
+            "grows)")
 
     # § 8c asks for more than "no offender I already know about": it asks that
     # deck, output and log AGREE.  So the decks and the runner get read too --

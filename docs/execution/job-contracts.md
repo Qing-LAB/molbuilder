@@ -305,7 +305,36 @@ dot.)
 
 ### 2.2 The file catalogue
 
-For a job with basename `my-job` (`N` is the auto-advancing run index, § 2.6):
+**The manifesto is `molbuilder/runfiles.py::WRITTEN`**, and this section is its
+reading. That module declares, one row per kind of file, what molbuilder itself
+writes: the role, one line saying what the file holds, whether it carries a
+stage token, whether it carries the wrapper's attempt counter, which engine and
+which calculation write it, and at which moment it appears (setup · prep · run).
+Two views come off that one table and nothing else may hold a copy:
+
+* `runfiles.patterns()` — the glob family, which **is**
+  `identity.OUR_FILE_PATTERNS` and from which `runwrap`'s `--cold` sweep derives
+  its *"except what molbuilder wrote"* exception;
+* `runfiles.manifest(label, stage, engine, when, calculation)` — the concrete
+  names, which is what the Task-setup tab shows a person before they spend a
+  queue slot.
+
+**Only our half can be complete, and that is the point.** An engine's output set
+depends on its version and on which options are on, so enumerating *that* is a
+snapshot pretending to be a rule. What we write is knowable, because we write
+it — so *"did the engine leave something here"* is answered by **subtraction**
+(§ 4.2): anything named after the label that is not ours came from the run.
+
+That makes an *omission* a real defect, not untidiness. Measured 2026-09-07 by
+rendering both PySCF decks and asking `identity.is_ours` of every name they
+choose: `_initial.xyz`, `.constraints.txt` and `.spectra.json` were on neither
+list, so a run's own spectrum was classified as the engine's restart state and
+`--cold` offered to clobber it. The same sweep found geomeTRIC's opt log listed
+under `{label}_geom_*.log` — the spelling from before § 2.2a fixed the token's
+position, matching nothing that is written.
+
+For a job with basename `my-job` (`N` is the auto-advancing run index, § 2.6),
+the ones worth naming here:
 
 | File | Written by | Read by | Purpose |
 |---|---|---|---|
@@ -316,13 +345,21 @@ For a job with basename `my-job` (`N` is the auto-advancing run index, § 2.6):
 | `my-job.molwatch.log` | both generators (initial preview) + live frames (PySCF's inlined emitter; SIESTA via the parser-on-stdout path) | the run viewer, `molbuilder watch parse` / `tail` | **canonical trajectory source** — preferred by every reader |
 | `my-job-runN.out` | the SIESTA wrapper's stdout redirect | the run viewer (fallback) | SIESTA engine stdout, one file per run index |
 | `my-job-runN.pyscf.log` | the PySCF wrapper's stdout redirect | the run viewer (fallback) | PySCF process stdout, one file per run index |
-| `my-job.log` / `my-job_geom_<stage>.log` | the generated PySCF script | geomeTRIC parser fallback | geomeTRIC's own optimizer log |
-| `my-job_geom_optim.xyz` | the generated PySCF script | trajectory parser fallback | PySCF trajectory frames |
+| `my-job.log` / `my-job_<stage>_geom.log` | the generated PySCF script | geomeTRIC parser fallback | geomeTRIC's own optimizer log |
+| `my-job_<stage>_geom_optim.xyz` | the generated PySCF script | trajectory parser fallback | PySCF trajectory frames (§ 2.2a: the token sits after the label) |
+| `my-job_initial.xyz` | the generated PySCF script | a person, before the run has done anything | the input geometry, echoed back |
+| `my-job.spectra.json` | the generated PySCF **vibration** script | the Results tab | frequencies, intensities, thermochemistry |
 | `my-job.STRUCT_OUT` | SIESTA | next stage / end user | final relaxed coordinates |
 | `my-job.ANI` | SIESTA | external trajectory tools | per-step trajectory (SIESTA's own `.ANI` format) |
 | `my-job.XV` / `.DM` / `.CG` | SIESTA | next stage (warm restart) | coords+velocities / density matrix / CG state |
 | `my-job_optimized.xyz` | the PySCF script | next stage (warm restart) | latest converged geometry |
 | `my-job.chk` | the PySCF script | next stage (warm restart) | SCF checkpoint |
+
+The rows above `my-job.STRUCT_OUT` are ours and are declared in `WRITTEN`; the
+rest are the engines'. The warm ones — `.XV` / `.DM` / `.CG` / `_optimized.xyz`
+/ `.chk` — are declared in each engine's `warm-files.toml` instead, and the two
+declarations are **disjoint by construction** (a file is the engine's restart
+state *or* one we wrote, never both; the suite checks it).
 
 The single `.molwatch.log` is **the** canonical trajectory. It is written at
 file-emission time — the initial-geometry preview at "step 0" — *before* the
@@ -344,6 +381,108 @@ stdout + stderr, not a calculation output), the `.pyscf.` infix pins which engin
 produced it for anyone scanning a directory, and the distinct suffix lets the
 viewer dispatch correctly. Worth knowing before anyone "tidies" the extension
 back.
+
+### 2.2a The name grammar — one form, composed and parsed in one place
+
+§ 2.1's rule 2 says every file shares one basename, and § 2.3 says only
+per-stage derived files carry the stage token. Both were true and neither was
+**sayable**: the catalogue above listed the names as literals, and every writer
+and reader built its own by concatenating strings. So the same file had several
+spellings, each correct at the site that wrote it.
+
+**Measured, 2026-09-07 — one file, six beliefs, one of them right:**
+
+| where | thought geomeTRIC's trajectory was |
+|---|---|
+| `pyscf/input.py` (the writer) | `<label>_geom_<stage>_optim.xyz` |
+| `pyscf/warm-files.toml` | `<label>_geom_optim.xyz` |
+| `parse/engines/pyscf.py`, the message shown to the user | `<stem>_geom_optim.xyz` |
+| `parse/engines/pyscf.py`, module docstring | `<JOB>_geom_optim.xyz` |
+| `parse/engines/pyscf.py`, the reader's format hint | `<job>_geom_optim.xyz` |
+| § 2.2's own catalogue, one row above | `my-job_geom_optim.xyz` |
+
+Only the writer was right, so on a staged run the parser told a person to open
+a file that does not exist, and the warm-file carry looked for one too. Nothing
+failed: a missing warm file is a legitimate state, so the ladder simply started
+cold and said nothing.
+
+**The grammar.** Four segments, and every run file is some of them:
+
+```
+<label>[_<stage>][-run<N>]<role>
+
+my-job.chk                        carried: no stage, no attempt
+my-job_optimized.xyz              carried, role-style separator
+my-job_01_coarse.molwatch.log     this rung's
+my-job-run2.out                   this attempt's
+my-job_01_coarse-run2.out         this rung's second attempt
+```
+
+**The two separators are the grammar.** § 6.3 already said it — *"a hyphen
+announces a counter follows... a stage is not a counter, it is a name"* — so
+`_` introduces the stage and `-run` the attempt, and neither can be read as the
+other. That rule is what makes the name reversible; without it `parse` would be
+guessing, which is what the call sites doing their own splitting were.
+
+- **`<label>`** is § 2.1's basename — the `SystemLabel` / `JOB` literal.
+- **`<stage>`** is the artifact token (`01_coarse`), and it sits **immediately
+  after the label**, never inside the role. That position is not a preference:
+  every other per-stage file already used it (`.py`, `.run.sh`, `.out`,
+  `.molwatch.log`, `.validation.txt`), so the geomeTRIC pair was the single
+  exception, and moving one file is cheaper than moving five (user ruling,
+  2026-09-07).
+- **`<role>`** is what the file IS, and it begins with `.` or `_`. A role is
+  declared once per engine in that engine's `warm-files.toml` vocabulary; it is
+  never spelled at a call site.
+
+**A carried file has no stage token, and that is what carrying means.** SIESTA's
+`.XV` / `.DM` / `.CG` and PySCF's `.chk` / `_optimized.xyz` are how one rung
+hands the next its geometry and density, so a token in them would make every
+rung look for a file only its own stage ever wrote.
+
+**One module owns the grammar and the catalogue** — `molbuilder/runfiles.py`:
+
+```python
+compose(label, role, stage=None, run=None)  -> str        # the name
+parse(filename, label)                      -> RunFile | None
+stem(label, stage=None)                     -> str        # what a role attaches to
+tail(role, stage=None, run=None)            -> str        # for a script that
+                                                          # knows its label only
+                                                          # at run time
+is_carried(name_or_runfile, label="")       -> bool
+WRITTEN                                     # the catalogue (§ 2.2)
+patterns()                                  -> tuple[str] # the glob family
+manifest(label, stage, engine, when, calculation) -> list # the names, with
+                                                          # a line each
+```
+
+`tail` exists because a generated deck names its own outputs from its own `JOB`
+/ `SystemLabel` variable, so the emitter can only supply what follows the label.
+Cutting that off a real `compose` result is what keeps it honest — assembling it
+beside one is how geomeTRIC's prefix ended up with the token in the wrong place,
+in *two* decks (the optimization deck, fixed 2026-09-02; the vibration deck,
+which nothing checked, fixed 2026-09-07).
+
+`parse` **takes the label**, and that is what makes it exact rather than
+heuristic: a role may contain underscores (`_geom_optim.xyz`) and so may a
+label, so nothing can find the boundary between them by looking at the string.
+Sites that split on `_` disagreed — one read `my-job_01_coarse_geom_optim.xyz`
+as stage `01`, another as `01_coarse_geom`.
+
+**The generator is the guarantee, and it is tested as one.**
+`tests/test_runfile_names.py` drives `compose`/`parse` across the product of
+their segments and asserts the round trip, plus what each segment refuses — a
+label that could not be read back, a malformed stage, a stage *position* (the
+old `-stage<N>` habit, refused as a wrong type), a run that is not an attempt
+count. A name is then correct because it came out of a checked generator, not
+because someone searched the output for a pattern and found nothing.
+
+**And the resolved names are shown before anything runs.** The Task-setup tab
+asks `manifest` for each rung and lists what will appear, with a line saying what
+each file holds (`task-setup.md` § 7.1). It is a *reading* of the catalogue, not
+a copy of it: nothing is written to disk that a reader would then have to keep in
+step. A reader that wants the names calls `manifest` with the label, the token
+and the engine, which is cheaper than a stored list and cannot go stale.
 
 ### 2.3 Multi-stage runs
 
@@ -432,18 +571,25 @@ specific file, it resolves the trajectory with this chain — first hit wins
    then `<job>.log`, then `<job>_geom_optim.xyz` — **each also tried on the
    deck filename's stem** when it differs, because a staged deck is
    `<job>_<token>.py` and its stdout / molwatch siblings carry that token
-   (§ 6.3) while `JOB` stays bare; then the rung-aware trajectory glob
-   `<job>_geom_*_optim.xyz`, newest first. *(This step said `job_name` and
+   (§ 6.3) while `JOB` stays bare — which is what covers a staged
+   trajectory, under the name that is written. *(This step also carried a
+   rung-aware glob `<job>_geom_*_optim.xyz` until 2026-09-07: a spelling from
+   before § 2.2a fixed the token's position, matching nothing, and redundant
+   besides — the deck-stem pass above already finds
+   `<job>_<token>_geom_optim.xyz`. A resolver step that finds nothing is
+   silent, so it sat there working for five weeks by not being needed.)*
+   *(This step said `job_name` and
    warned that it "matches none of them today", calling the mismatch a code
    follow-up. Both the emitter (`pyscf/input.py`) and the reader
    (`watch.py::_PY_JOB_NAME_RE`) have agreed on `JOB` since 2026-07-28; the
    note outlived the defect by five weeks and would have sent someone to fix a
    code follow-up.)*
-4. `run.out` / `siesta.log` / `*.out` / `*_geom*_optim.xyz` — content-sniff via
-   the trajectory-parser registry.  The trajectory glob has the inner star
-   because a staged trajectory carries the rung token between `_geom` and
-   `_optim` (`<job>_geom_<token>_optim.xyz`); the tokenless spelling that
-   stood here matched only unstaged runs (found 2026-08-19).
+4. `run.out` / `siesta.log` / `*.out` / `*_geom_optim.xyz` — content-sniff via
+   the trajectory-parser registry.  ONE star, and it stands for label **and**
+   token together: `_geom_optim.xyz` is the whole role (§ 2.2a), so everything
+   in front of it is what the star covers. The `*_geom*_optim.xyz` that stood
+   here allowed a second star for a token that has not sat inside the role
+   since the grammar was written down.
 
 > **Note on the `.out` / `.log` fallbacks (steps 2–3):** they look for the
 > **non-indexed** `<label>.out` / `<job>.log`, not the run-indexed

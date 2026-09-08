@@ -224,7 +224,7 @@ header. The header's source-path line has the username redacted.
   The reason a PySCF relaxation shows the log is **absorption**, not
   preference. `lib/inspectors/trajectory.js`'s `absorbs()` subsumes
   `<stem>_initial.xyz`, `<stem>_optimized.xyz` and
-  `<stem>_geom_*_optim.xyz` into the `.molwatch.log` master, so the picker
+  `<stem>_geom_optim.xyz` into the `.molwatch.log` master, so the picker
   offers ONE entry for the run (`results.md` § 2.3, "a run is one result,
   not a pile of files") and that entry is the log. Absorption narrows the
   MENU; it does not narrow what can be opened -- hand the viewer the

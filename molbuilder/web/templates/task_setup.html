@@ -374,6 +374,33 @@
         </div>
       </section>
 
+      {#- WHAT A PREP WILL BE NAMED (user, 2026-09-07: *"we should add a card
+         that list all the generated data file from the setup (not
+         necessarily the engine generated ones, but more the ones we
+         designed to be generated)"*).
+
+         MOLBUILDER'S OWN FILES, and the distinction is the whole card: an
+         engine's output set depends on its version and on which options are
+         on, so enumerating THAT is a snapshot pretending to be a rule.  What
+         WE write is knowable, because we write it -- `runfiles.WRITTEN` is
+         the catalogue and `job-contracts.md` § 4.2 the rule.
+
+         THE NAMES COME FROM THE GRAMMAR, not from this page: every one is
+         composed by `runfiles.compose` with this rung's own token, so the
+         card cannot show a spelling the writers do not use.  That is not a
+         hypothetical -- geomeTRIC's opt log had six spellings across the
+         emitter, the parser and the contract until 2026-09-07, and the card
+         would have been a seventh. -#}
+      <section class="card" id="ts-written-card" hidden>
+        <h2>What this calculation writes</h2>
+        <p class="hint">The files <strong>molbuilder</strong> names &mdash;
+          not the engine's own outputs, which belong to the run and depend on
+          its version. The deck and its wrapper appear at <em>prep</em>; the
+          logs when it <em>runs</em>. A name with <code>*</code> in it is a
+          family: one file per launch.</p>
+        <div id="ts-written"></div>
+      </section>
+
 
       {# LAST in the flow, deliberately (user, 2026-08-27: it "breaks the
          flow of the setup").  Everything above is what the calculation IS;

@@ -2135,6 +2135,7 @@ def api_task_setup_prep_plan():
     from molbuilder.jobset._cli import run_condition
     from molbuilder.jobset.prep import token_for
     from molbuilder.jobset.shape import Shape
+    from molbuilder.runfiles import manifest
     from molbuilder.task import Task
     try:
         task = Task.from_dict(raw)
@@ -2165,15 +2166,55 @@ def api_task_setup_prep_plan():
                      "allocation": alloc,
                      # PER STAGE, because the condition is (§ 6.8d): the
                      # calculation's block with this rung's laid over it.
-                     "chosen": run_condition(task, st.name)})
+                     "chosen": run_condition(task, st.name),
+                     # AND WHAT THIS RUNG WILL BE NAMED (user, 2026-09-07).
+                     # Every name comes out of the grammar (`runfiles`
+                     # § 2.2a) with THIS rung's token, so the card cannot
+                     # show a spelling the writers do not use -- which is
+                     # the failure that module exists for.  The engine
+                     # filters it: a SIESTA run is not told about `.py`.
+                     "files": manifest(task.label, token, task.engine,
+                                       calculation=task.calculation)})
     bench = None
     if task.bench:
         # Every axis, with its points.  A row of length one is a DECISION and
         # measures one cell; the card says which is which (§ 6.2b).
         bench = {"axes": {k: list(v) for k, v in task.bench.items()},
                  "allocation": alloc}
+    # WHAT PREP WRITES FOR THE WHOLE RUN, beside the per-stage rows above
+    # (user, 2026-09-07: *"we should add a card that list all the generated
+    # data file from the setup ... more the ones we designed to be
+    # generated"*).  These are MOLBUILDER's own records -- not the engine's
+    # outputs, which belong to the run and are listed by the Results tab.
+    #
+    # EACH NAME COMES FROM THE MODULE THAT WRITES IT, for the reason the stage
+    # rows do: a list composed here would be a second answer, free to disagree
+    # with the thing it describes.  `STAGE-PLAN.md` was a literal written twice
+    # inside `prep` until this needed a name to ask for.
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    from molbuilder.jobset.model import FILENAME as JOBSET_FILE
+    from molbuilder.jobset.plan import FILENAME as PLAN_FILE
+    from molbuilder.scheduler.record import FILENAME as ENV_FILE
+    bundle = [
+        {"name": JOBSET_FILE,
+         "what": "the jobs this run is, with each one's resources"},
+        {"name": PLAN_FILE,
+         "what": "the plan in reading order — what runs, in what order, "
+                 "with which warm files"},
+        {"name": ENV_FILE,
+         "what": "the machine as probed: queues, cores, memory"},
+        {"name": LEDGER_FILE,
+         "what": "every decision prep made, one line each"},
+    ]
+    # AND WHAT THE CALCULATION WRITES ONCE, beside the per-rung lists: the
+    # deck's own files that carry no stage token.  The SETUP's three
+    # (`.template.toml` and the source pair) are asked for by moment rather
+    # than subtracted here -- the card above already lists them, with the one
+    # thing this cannot say: whether they are there yet.
+    once = manifest(task.label, None, task.engine, ("prep", "run"),
+                    task.calculation)
     return jsonify({"ok": True, "shape": shape.name, "stages": rows,
-                    "bench": bench})
+                    "bench": bench, "bundle": bundle, "once": once})
 
 
 @bp.route("/api/task-setup/machines", methods=["GET"])

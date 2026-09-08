@@ -19,6 +19,8 @@ import re
 import numpy as np
 import pytest
 
+from molbuilder.runfiles import parse
+
 from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.structure import Structure
 
@@ -167,6 +169,13 @@ def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
     that used to come from ``STAGE['name']`` inside an in-script loop now comes
     from the stage token the deck was rendered with -- the same token that
     suffixes the deck's own filename.
+
+    ASSERTED THROUGH THE GRAMMAR, not against a literal.  This pinned the exact
+    string ``JOB + '_geom_02_tight'`` until 2026-09-07, and that spelling put
+    the token INSIDE the role -- so the file geomeTRIC wrote could not be
+    matched by the role `warm-files.toml` declares, and four readers were told
+    to open a name nobody produced.  A test that spells the answer out cannot
+    notice that; one that asks what the name MEANS can.
     """
     cfg = PySCFConfig()
     bodies = list(_optimize_calls(render_script(small_struct, cfg,
@@ -175,10 +184,19 @@ def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
         f"Expected exactly 1 optimize() call, found {len(bodies)}")
     body = bodies[0]
     assert "prefix" in body
-    assert "_mb_outfile(JOB + '_geom_02_tight')" in body, (
+    m = re.search(r"_mb_outfile\(JOB \+ '([^']+)'\)", body)
+    assert m, f"optimize() has no composed prefix.  Body was:\n{body}"
+    # geomeTRIC appends `_optim.xyz` to the prefix, so THAT is the filename.
+    produced = "my-job" + m.group(1) + "_optim.xyz"
+    got = parse(produced, "my-job")
+    assert got is not None, f"the name geomeTRIC will write does not parse: {produced}"
+    assert got.stage == "02_tight", (
         f"optimize() prefix must carry this rung's token so two rungs get "
-        f"separate trajectory files.  Body was:\n{body}"
-    )
+        f"separate trajectory files; parsed stage was {got.stage!r}")
+    assert got.role == "_geom_optim.xyz", (
+        f"the name geomeTRIC will write ({produced}) has role {got.role!r}, "
+        f"which is not the role pyscf/warm-files.toml declares "
+        f"(`_geom_optim.xyz`) -- so it will not be carried between rungs")
 
 
 def test_no_prefix_when_trajectory_off(small_struct):

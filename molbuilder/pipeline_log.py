@@ -46,6 +46,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from .runfiles import stem as _stem
+
 #: How a log file is named.  The STEM is the deck's own -- ``<label>_<token>``
 #: -- because that is what tells two rungs apart **in a flat calculation**,
 #: where every stage preps into one directory and a per-calculation name would
@@ -66,11 +68,15 @@ def log_name(label: str, token: str, engine: str, shape: str) -> str:
     """This prep's log file name.
 
     ``token`` is the stage's ``<NN>_<name>`` and may be empty for a
-    calculation with no ladder -- the same ``stem`` rule the deck's own
-    filename follows, spelled here once rather than re-derived.
+    calculation with no ladder.
+
+    THE STEM COMES FROM THE GRAMMAR (`runfiles.stem`, job-contracts.md
+    § 2.2a), not from a local rule: the tail here is not a role -- it is
+    three facts about the prep -- but the head is the same
+    ``<label>[_<token>]`` every run file is named from, and it was written
+    out here until 2026-09-07.
     """
-    stem = f"{label}_{token}" if token else label
-    return f"{stem}.{engine}.{shape}.{LOG_SUFFIX}"
+    return f"{_stem(label, token or None)}.{engine}.{shape}.{LOG_SUFFIX}"
 
 
 class PipelineLog:

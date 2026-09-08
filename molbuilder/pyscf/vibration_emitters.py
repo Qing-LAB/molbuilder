@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotation only -- importing
     # vibration_deck at run time would cycle (it imports this).
     from .vibration_deck import VibrationConfigView
+from ..runfiles import tail as _rf_tail
 from ..structure import Structure
 
 #: The engine display string for deck headers -- was
@@ -470,7 +471,11 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
         # RE-APPLIED 2026-08-21: the first landing of this branch was
         # wiped by a baseline restore the same day; the honesty gate
         # (render-probe, config echo stripped) is what caught the loss.
-        _logsuf = f"_{stage_token}.log" if stage_token else ".log"
+        # `or None` is the caller saying WHICH CASE it is: this signature
+        # spells "no ladder" as "" and the grammar spells it as None, and
+        # the grammar refuses the empty string rather than reading it as
+        # None -- the two produce different filenames.
+        _logsuf = _rf_tail(".log", stage_token or None)
         out.append(f"    output     = str(_mb_outfile(JOB + {_logsuf!r})),")
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")

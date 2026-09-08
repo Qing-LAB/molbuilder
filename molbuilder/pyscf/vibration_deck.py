@@ -48,7 +48,10 @@ from __future__ import annotations
 from typing import List, Optional
 
 from .. import script_emit as _sc
+from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
+from .input import (GEOMETRIC_APPENDS, ROLE_CONSTRAINTS,
+                    ROLE_GEOM_TRAJ)
 
 # The lifted emitters — the old generator's proven blocks, composed anew.
 from .vibration_emitters import (
@@ -211,7 +214,6 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     is geomeTRIC by REFUSAL upstream (the kind validator: pyberny is
     absent from the run environment, probed 2026-08-21, and its solver
     has no step callback for the tracked phase)."""
-    _rung = f"_{stage_token}" if stage_token else ""
     out: List[str] = [
         "",
         "# ============================================================",
@@ -289,7 +291,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
             "    # computed at is one where the fixed atoms never moved.",
             f"    # Source: frozen set (0-based) = {_frozen!r}",
             "    _FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB "
-            "+ '.constraints.txt')",
+            f"+ {ROLE_CONSTRAINTS!r})",
             "    with open(_FROZEN_CONSTRAINTS_PATH, 'w') as _fh:",
             "        _fh.write('$freeze\\n')",
             f"        _fh.write('xyz {_ids_1based}\\n')",
@@ -301,7 +303,18 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
             "    # prefix (<prefix>_optim.xyz) -- the same file the",
             "    # optimization deck's rungs write.",
         ]
-        _opt_kw += f", prefix=str(_mb_outfile(JOB + '_geom{_rung}'))"
+        # THE PREFIX IS DERIVED FROM THE ROLE, exactly as the optimization
+        # deck's is (`pyscf/input.py`; `job-contracts.md` § 2.2a): compose the
+        # name the file will HAVE, then take off the tail geomeTRIC appends.
+        #
+        # It was `JOB + '_geom_<stage>'` until 2026-09-07 -- the token INSIDE
+        # the role, giving `<JOB>_geom_<stage>_optim.xyz`, which the declared
+        # role `_geom_optim.xyz` cannot match.  The optimization deck was
+        # fixed the same week and this one, the vibration deck, was missed:
+        # the same defect, in the second place that writes the same file.
+        _pfx = _rf_tail(ROLE_GEOM_TRAJ,
+                        stage_token or None)[:-len(GEOMETRIC_APPENDS)]
+        _opt_kw += f", prefix=str(_mb_outfile(JOB + {_pfx!r}))"
     # The on_nonconvergence policy is the RELAXATION's (its catalogue
     # help says so: what to do when geomeTRIC's criteria are not met).
     # proceed = accept the last geometry UNASSERTED; continue = retry

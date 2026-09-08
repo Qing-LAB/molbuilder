@@ -27,7 +27,9 @@ import numpy as np
 import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.pyscf.input import render_script
+from molbuilder.pyscf.input import (GEOMETRIC_APPENDS, ROLE_GEOM_TRAJ,
+                                    render_script)
+from molbuilder.runfiles import tail as _rf_tail
 from molbuilder.structure import Structure
 
 
@@ -45,41 +47,98 @@ def _deck(*, token=None, **overrides) -> str:
     return render_script(_water(), cfg, stage_token=token)
 
 
+def _vib_deck(*, token=None, **overrides) -> str:
+    """The VIBRATION deck's text, rendered the same way.
+
+    It names the same three artifacts under the same rules, and nothing
+    checked it -- which is how it kept the retired geomeTRIC prefix for the
+    five weeks after the optimization deck's was fixed.
+    """
+    from molbuilder import script_emit as _sc
+    from molbuilder.pyscf.input import spec_for
+    cfg = dataclasses.replace(
+        PySCFConfig(job_name="wat", optimize=True, write_trajectory=True),
+        **overrides)
+    spec = spec_for(_water(), cfg, stage_token=token,
+                    calculation="vibration")
+    return _sc.render_deck(spec, _water(), cfg,
+                           verbose=cfg.verbose_comments)
+
+
 # --------------------------------------------------------------------- #
 #  Consequence 1 — every name the SCRIPT chooses carries the rung        #
 # --------------------------------------------------------------------- #
 
-#: ``(what it names, the regex that finds it in the deck)``.  One row per name
-#: the script picks for itself -- which is the closed set consequence 1 is
-#: about.  A new artifact belongs here on the day it is added.
+#: ``what it names -> (the regex that finds it, the ROLE it is named from)``.
+#: One row per name the script picks for itself -- the closed set consequence 1
+#: is about.  A new artifact belongs here on the day it is added.
+#:
+#: THE ROLE, not a spelling.  These rows asserted only that the token appeared
+#: SOMEWHERE in the name, which a wrong position passes: geomeTRIC's prefix was
+#: `JOB + '_geom_01_coarse'` for five weeks, giving
+#: `<JOB>_geom_01_coarse_optim.xyz` where the declared role is
+#: `_geom_optim.xyz`, and this test was green throughout.  Each row now says
+#: which role the name is built from, and the expected tail comes out of
+#: `runfiles.tail` -- the generator the naming suite tests over its whole
+#: parameter space.
 _SELF_CHOSEN_NAMES = {
-    "the engine's own log":     r"output\s*=\s*_mb_outfile\(JOB \+ '([^']+)'\)",
-    "the molwatch trajectory":  r"MolwatchEmitter\(_mb_outfile\(JOB \+ '([^']+)'",
-    "geomeTRIC's trajectory":   r"prefix\s*=\s*_mb_outfile\(JOB \+ '([^']+)'\)",
+    "the engine's own log":
+        (r"output\s*=\s*(?:str\()?_mb_outfile\(JOB \+ '([^']+)'\)", ".log"),
+    "the molwatch trajectory":
+        (r"MolwatchEmitter\(_mb_outfile\(JOB \+ '([^']+)'", ".molwatch.log"),
+    "geomeTRIC's trajectory":
+        (r"prefix\s*=\s*(?:str\()?_mb_outfile\(JOB \+ '([^']+)'\)",
+         ROLE_GEOM_TRAJ),
 }
 
 
+def _expected(role: str, token) -> str:
+    """What the name after ``JOB`` must be, from the grammar.
+
+    geomeTRIC is handed a PREFIX and appends its own suffix, so what the deck
+    emits for it is the trajectory's tail minus what geomeTRIC will add.
+    """
+    t = _rf_tail(role, token)
+    return t[:-len(GEOMETRIC_APPENDS)] if role == ROLE_GEOM_TRAJ else t
+
+
+#: The two decks that name their own artifacts.  Both write the same three
+#: files under the same rules, and only the optimization deck was checked --
+#: which is why the vibration deck still carried the retired geomeTRIC prefix
+#: after the optimization deck was fixed (2026-09-07).
+_DECKS = {"optimization": _deck, "vibration": _vib_deck}
+
+
+@pytest.mark.parametrize("deck", sorted(_DECKS))
 @pytest.mark.parametrize("what", sorted(_SELF_CHOSEN_NAMES))
-def test_every_name_the_script_chooses_carries_the_rung(what):
+def test_every_name_the_script_chooses_is_the_one_the_grammar_builds(
+        what, deck):
     """Two rungs are two PROCESSES in one folder.  Anything they both name is
-    a file the second overwrites -- silently, and after the first has run."""
-    rx = _SELF_CHOSEN_NAMES[what]
-    a = re.search(rx, _deck(token="01_coarse"))
-    b = re.search(rx, _deck(token="02_medium"))
-    assert a and b, f"{what}: no match for /{rx}/"
-    assert "01_coarse" in a.group(1), (what, a.group(1))
-    assert "02_medium" in b.group(1), (what, b.group(1))
-    assert a.group(1) != b.group(1)
+    a file the second overwrites -- silently, and after the first has run.
+
+    Asserted as EQUALITY against `runfiles.tail`, not as "the token appears":
+    a token in the wrong place is still a token, and it still collides with
+    nothing while making the file unfindable by everything that looks for it.
+    """
+    rx, role = _SELF_CHOSEN_NAMES[what]
+    render = _DECKS[deck]
+    for token in ("01_coarse", "02_medium"):
+        text = render(token=token)
+        m = re.search(rx, text)
+        assert m, f"{deck}/{what}: no match for /{rx}/"
+        assert m.group(1) == _expected(role, token), (deck, what)
 
 
+@pytest.mark.parametrize("deck", sorted(_DECKS))
 @pytest.mark.parametrize("what", sorted(_SELF_CHOSEN_NAMES))
-def test_a_deck_with_no_rung_takes_the_unsuffixed_name(what):
+def test_a_deck_with_no_rung_takes_the_unsuffixed_name(what, deck):
     """A single-run workflow has one rung and no name for it, and the file
     names must not grow a placeholder for the absence."""
-    text = _deck(token=None)
-    m = re.search(_SELF_CHOSEN_NAMES[what], text)
-    assert m, what
-    assert not re.search(r"_\d\d_", m.group(1)), (what, m.group(1))
+    rx, role = _SELF_CHOSEN_NAMES[what]
+    text = _DECKS[deck](token=None)
+    m = re.search(rx, text)
+    assert m, f"{deck}/{what}"
+    assert m.group(1) == _expected(role, None), (deck, what, m.group(1))
 
 
 # --------------------------------------------------------------------- #

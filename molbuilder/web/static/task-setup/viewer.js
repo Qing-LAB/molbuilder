@@ -1770,6 +1770,7 @@ async function refreshPlan(task) {
     if (!box || !host) return;
     if (_mode !== "description" || !task || !(task.stages || []).length) {
         box.hidden = true;
+        hideWritten();
         return;
     }
     const seq = ++_planSeq;
@@ -1788,8 +1789,70 @@ async function refreshPlan(task) {
     /* A DESCRIPTION MID-EDIT IS OFTEN UNREADABLE, and that is ordinary --
      * the list hides rather than showing a stale plan for a document that
      * no longer says what it did.  The cards above are the substance. */
-    if (!body || !body.ok) { box.hidden = true; return; }
+    if (!body || !body.ok) { box.hidden = true; hideWritten(); return; }
     paintPlan(box, host, body);
+    paintWritten(body);
+}
+
+
+/* ---------------------------------------------------------------- *
+ *  WHAT A PREP WILL WRITE -- molbuilder's own files, by name.
+ *
+ *  The names arrive composed (`runfiles.compose`, one per catalogued
+ *  role with this rung's token) and this only lays them out.  Nothing
+ *  here builds a filename: the six-spellings failure the grammar was
+ *  written for came from exactly this kind of second opinion.
+ * ---------------------------------------------------------------- */
+
+function hideWritten() {
+    const card = $("ts-written-card");
+    if (card) card.hidden = true;
+}
+
+function fileRow(f) {
+    return el("li", {},
+        el("span", { class: "ts-file-name" }, f.name),
+        el("span", { class: "ts-file-what" }, f.what));
+}
+
+function writtenGroup(head, sub, files) {
+    return el("div", { class: "ts-written-group" },
+        el("h3", { class: "ts-reports-head" }, head),
+        sub ? el("p", { class: "ts-written-where" }, sub) : null,
+        el("ul", { class: "ts-files" }, ...files.map(fileRow)));
+}
+
+function paintWritten(body) {
+    const card = $("ts-written-card");
+    const host = $("ts-written");
+    if (!card || !host) return;
+    host.textContent = "";
+    const stages = body.stages || [];
+    const bundle = body.bundle || [];
+    if (!stages.length && !bundle.length) { card.hidden = true; return; }
+    card.hidden = false;
+    /* THE RUN'S OWN RECORDS FIRST: they are written once, and reading them
+     * is how a person checks the ladder before spending a queue slot. */
+    if (bundle.length) {
+        host.appendChild(writtenGroup("For the whole run",
+            "in the folder itself", bundle));
+    }
+    /* THEN WHAT THE CALCULATION WRITES ONCE.  These carry no stage token
+     * and that is what the group says: one file for the run, not one per
+     * rung (`job-contracts.md` § 2.3). */
+    if ((body.once || []).length) {
+        host.appendChild(writtenGroup("Once, for the calculation",
+            "in the folder itself", body.once));
+    }
+    /* Then each rung, with the directory it lands in -- flat and
+     * hierarchical put them in different places (task-setup.md 4), and the
+     * answer comes from `Shape.stage_dir` rather than from here. */
+    for (const row of stages) {
+        host.appendChild(writtenGroup(
+            row.stage,
+            row.dir === "." ? "in the folder itself" : row.dir + "/",
+            row.files || []));
+    }
 }
 
 function askLine(a, chosen) {

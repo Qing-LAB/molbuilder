@@ -100,7 +100,7 @@
          *   <base>_initial.xyz          the INPUT, echoed back
          *   <base>_optimized.xyz        final coords; also the seed the NEXT
          *                               run warm-starts from
-         *   <base>_geom_<stage>_optim.xyz   geomeTRIC's per-stage stream,
+         *   <base>_geom_optim.xyz       geomeTRIC's per-stage stream,
          *                               the same steps the master log reports
          *
          * Listing them as peers turned one PySCF relaxation into five menu
@@ -109,11 +109,17 @@
          * NAMING: a staged run's master is `<job>_<token>.molwatch.log`
          * where the token is the stage's artifact token -- digit-first,
          * `01_coarse` (job-contracts.md § 6.3) -- while `_initial` /
-         * `_optimized` satellites stem on the bare `<job>` and the
-         * geomeTRIC stream carries the token INSIDE
-         * (`<job>_geom_<token>_optim.xyz`).  So satellites are matched
+         * `_optimized` satellites stem on the bare `<job>` (they CARRY
+         * between rungs) while the geomeTRIC stream is this rung's, so it
+         * stems on the full `<job>_<token>` -- the token sits where every
+         * token sits, right after the label, and `_geom_optim.xyz` is the
+         * whole role (job-contracts.md § 2.2a).  So satellites are matched
          * against BOTH stems: the master's full stem and the
-         * token-stripped job.  (The `-stage<N>` strip that stood here
+         * token-stripped job.  This comment said the token sat INSIDE the
+         * role (`<job>_geom_<token>_optim.xyz`) until 2026-09-07, and the
+         * test below was a prefix/suffix pair loose enough to pass either
+         * way -- so the wrong belief cost nothing and was invisible.  All
+         * three are exact names now.  (The `-stage<N>` strip that stood here
          * was the pre-rename spelling; after the token rename it
          * matched nothing, and every staged relaxation went back to
          * being five menu entries -- 2026-08-19.)  Only `.molwatch.log`
@@ -143,7 +149,7 @@
             return stems.some((b) =>
                 n === b + "_initial.xyz"
                 || n === b + "_optimized.xyz"
-                || (n.startsWith(b + "_geom_") && n.endsWith("_optim.xyz")));
+                || n === b + "_geom_optim.xyz");
         },
     });
 

@@ -48,6 +48,15 @@ import pytest
 
 _L1_MODULES = {
     "structure", "frame", "issues",
+    "runfiles",          # the run-file NAME GRAMMAR (job-contracts.md § 2.2a).
+                         # L1 for `constants`' exact reason: it imports nothing
+                         # from molbuilder at all, and it has to be reachable
+                         # from every layer -- the emitters compose with it, the
+                         # parsers read with it, prep and the wrapper name files
+                         # through it.  A grammar that could reach upward would
+                         # drag a dependency into every layer that needs a
+                         # filename, which is most of them.
+
     "constants",         # the physical constants (Bohr, Hartree, Rydberg).
                          # Lower than everything, because it imports NOTHING at
                          # all -- which is the point: the Bohr radius was

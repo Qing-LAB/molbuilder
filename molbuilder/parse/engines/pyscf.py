@@ -5,9 +5,18 @@ package was deleted 2026-06-21 and this is the only PySCF trajectory
 parser (provenance: `docs/archive/old_docs/protocols/parse-module.md` §
 8).
 
-When molbuilder generates a PySCF script with `prefix=JOB+'_geom'`
-on the optimize() call (the default), geomeTRIC streams a multi-frame
-XYZ to ``<JOB>_geom_optim.xyz`` -- one frame per accepted geom step.
+When molbuilder generates a PySCF script it hands optimize() a prefix
+of ``JOB`` plus the stage token plus ``_geom`` (`job-contracts.md`
+§ 2.2a: the token sits after the label, never inside the role), so
+geomeTRIC streams a multi-frame XYZ to ``<JOB>_<NN>_<stage>_geom_optim.xyz``
+-- or ``<JOB>_geom_optim.xyz`` for a run with no stage -- one frame per
+accepted geom step.  Either way the ROLE is ``_geom_optim.xyz``, which is
+what `runfiles.parse` reports and what `warm-files.toml` declares.
+
+That agreement is new.  The prefix used to put the stage token
+inside the role,
+putting the token inside the role, so the name no one could match was the
+name every reader was told to look for.
 
 Frame format::
 
@@ -29,6 +38,9 @@ from __future__ import annotations
 
 import math
 import os
+
+from ...runfiles import (compose as _rf_compose, parse as _rf_parse,
+                         stem as _rf_stem)
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -162,17 +174,21 @@ def _resolve_job_token(base: str, fname: str) -> Tuple[str, Optional[str]]:
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
             break
-    if os.path.isfile(os.path.join(base, stem + ".molwatch.log")):
+    # ASKED THROUGH THE GRAMMAR (`job-contracts.md` § 2.2a), not by slicing.
+    # This split the name itself -- `entry[len(stem) + 1 : -len(".molwatch.log")]`
+    # -- which works only while the role has no underscores and the token sits
+    # exactly one separator in.  Both were true HERE and neither is true of
+    # every run file, which is how sites that did the same arithmetic on
+    # `_geom_optim.xyz` disagreed about where the label ended.
+    if os.path.isfile(os.path.join(base, _rf_compose(stem, ".molwatch.log"))):
         return stem, None
     tokens = []
     try:
         for entry in os.listdir(base):
-            if (entry.startswith(stem + "_")
-                    and entry.endswith(".molwatch.log")):
-                tok = entry[len(stem) + 1: -len(".molwatch.log")]
-                if _STAGE_TOKEN_RE.fullmatch(tok):
-                    tokens.append((os.path.getmtime(
-                        os.path.join(base, entry)), tok))
+            got = _rf_parse(entry, stem)
+            if got and got.stage and got.role == ".molwatch.log":
+                tokens.append((os.path.getmtime(
+                    os.path.join(base, entry)), got.stage))
     except OSError:
         pass
     if tokens:
@@ -182,8 +198,12 @@ def _resolve_job_token(base: str, fname: str) -> Tuple[str, Optional[str]]:
 
 def _stemmed(job: str, token: Optional[str]) -> str:
     """``<job>[_<token>]`` -- the stem every token-carrying sibling
-    (stdout log, molwatch log, wrapper stdout) is named under."""
-    return f"{job}_{token}" if token else job
+    (stdout log, molwatch log, wrapper stdout) is named under.
+
+    One line, because the grammar owns the rule (`runfiles.stem`): this
+    reader spelled it itself until 2026-09-07, which is how a reader ends up
+    looking for a name no writer produces."""
+    return _rf_stem(job, token or None)
 
 
 def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
@@ -328,7 +348,7 @@ def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
         m = re.search(r"-run(\d+)\.pyscf\.log$", os.path.basename(path))
         return int(m.group(1)) if m else -1
     candidates.sort(key=_run_n)
-    bare = os.path.join(base, stem + ".pyscf.log")
+    bare = os.path.join(base, _rf_compose(stem, ".pyscf.log"))
     if os.path.isfile(bare):
         candidates.insert(0, bare)
 
@@ -679,12 +699,16 @@ class PySCFOutFileParser(FileParser):
         stem = filename[:-len(".log")]
         return (
             f"PySCF runs write the run-time log to {filename} but "
-            f"the trajectory lives in {stem}_geom_optim.xyz. "
-            f"Point molbuilder at the _geom_optim.xyz file instead."
+            f"the trajectory lives in the file whose role is "
+            f"`_geom_optim.xyz` -- {_rf_compose(stem, '_geom_optim.xyz')} for "
+            f"a single run, or the same with this rung's token after the "
+            f"label for a ladder (job-contracts.md § 2.2a). Point molbuilder "
+            f"at that instead."
         )
     label  = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
     hint   = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
-              "<job>_geom_optim.xyz (NOT the PySCF .log).  Generic XYZ "
+              "<job>[_<NN>_<stage>]_geom_optim.xyz (NOT the PySCF .log).  "
+              "Generic XYZ "
               "with any comment-line format is also accepted; energies "
               "are extracted only when the comment matches the geomeTRIC "
               "`Iteration K Energy E` pattern.")

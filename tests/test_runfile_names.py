@@ -1,0 +1,349 @@
+"""The run-file name generator — `job-contracts.md` § 2.2a.
+
+WHAT THIS REPLACED.  The rule ("one basename"; "only per-stage files carry the
+token") was written twice in the contract and enforced nowhere, so every writer
+and reader built its own name out of strings.  Measured 2026-09-07: geomeTRIC's
+trajectory had six spellings — the emitter's, the warm-file declaration's,
+three in the parser, and the contract's own catalogue — and only the emitter's
+was right.  On a staged run the parser's error message named a file that does
+not exist, and the warm-file carry looked for one too, which fails silently
+because a missing warm file is a legal state.
+
+THESE TESTS ARE ABOUT THE GENERATOR AND NOTHING ELSE (user, 2026-09-07:
+*"focus on api, and use api that is tested to generate confirmed structured
+names"*).  Nothing here greps a rendered deck or scans the tree for call sites.
+A name is correct because it came out of a generator whose whole parameter
+space is checked — not because a regex failed to find something in some text.
+That is also why this is one file rather than a check beside each writer
+(*"stop scatter tests around all instances"*).
+"""
+from __future__ import annotations
+
+import fnmatch
+import itertools
+
+import pytest
+
+from molbuilder.runfiles import (WRITTEN, RunFile, RunFileError, compose,
+                                 is_carried, manifest, parse, patterns)
+
+LABEL = "my-job"
+
+#: The four segments, each with the values that matter.  `compose` is total
+#: over their product, so the product is what gets tested.
+LABELS = ["my-job", "job_2", "A"]
+#: A transport ladder's rungs carry `_` in the NAME
+#: (`02_electrode_L`) and the ordinal is two-or-more digits --
+#: `identity.STAGE_NAME_RE`.  A token pattern narrower than that
+#: refused every transport deck (found 2026-09-07 by the suite).
+STAGES = [None, "01_coarse", "02_medium", "02_electrode_L",
+          "100_final"]
+RUNS = [None, 0, 2, 17]
+ROLES = [".chk", ".out", ".py", ".run.sh", ".molwatch.log", ".pyscf.log",
+         "_optimized.xyz", "_initial.xyz", "_geom_optim.xyz", "_geom.log",
+         ".XV", ".DM", ".BASIS_ENTHALPY"]
+
+
+# --------------------------------------------------------------------- #
+#  The generator over its whole parameter space                         #
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("label,stage,run,role", list(itertools.product(
+    LABELS, STAGES, RUNS, ROLES)))
+def test_every_name_the_generator_makes_reads_back_to_its_segments(
+        label, stage, run, role):
+    """THE PROPERTY, over the whole product: what `compose` builds, `parse`
+    takes apart into the same four segments.
+
+    Round-tripping is exactly what the six hand-built spellings did not do, and
+    it is the only claim that makes a name trustworthy without looking at it —
+    a reader that can recover the segments never needs to know how the writer
+    spelled them.
+    """
+    name = compose(label, role, stage, run)
+    got = parse(name, label)
+    assert got is not None, f"{name!r} did not parse"
+    assert got == RunFile(label, stage, role, run)
+    assert got.name == name
+
+
+@pytest.mark.parametrize("stage,run,expected", [
+    (None,        None, "my-job.chk"),
+    (None,        2,    "my-job-run2.chk"),
+    ("01_coarse", None, "my-job_01_coarse.chk"),
+    ("01_coarse", 2,    "my-job_01_coarse-run2.chk"),
+])
+def test_the_two_separators_say_which_segment_is_which(stage, run, expected):
+    """`job-contracts.md` § 6.3: *"a hyphen announces a counter follows... a
+    stage is not a counter — it is a name"*.
+
+    So `_` introduces the stage and `-run` the attempt, which is what lets
+    `parse` tell them apart without being told which it is looking at.
+    """
+    assert compose(LABEL, ".chk", stage, run) == expected
+
+
+def test_a_role_with_underscores_is_not_mistaken_for_a_stage():
+    """`_geom_optim.xyz` is a ROLE; `01_coarse` is a stage.  Splitting on `_`
+    cannot tell them apart, and the call sites that tried disagreed: one read
+    `my-job_01_coarse_geom_optim.xyz` as stage `01`, another as
+    `01_coarse_geom`.  A stage begins with two digits, and that is what ends it.
+    """
+    assert parse("my-job_01_coarse_geom_optim.xyz", LABEL) == \
+        RunFile(LABEL, "01_coarse", "_geom_optim.xyz")
+    # AND WITH A STAGE NAME THAT ITSELF CARRIES `_`, which is the case the
+    # separator cannot decide and the role vocabulary can.
+    assert parse("my-job_02_electrode_L_geom_optim.xyz", LABEL) == \
+        RunFile(LABEL, "02_electrode_L", "_geom_optim.xyz")
+    assert parse("my-job_02_electrode_L.fdf", LABEL) == \
+        RunFile(LABEL, "02_electrode_L", ".fdf")
+    # The same trailing role with no stage in front stays a role.
+    assert parse("my-job_geom_optim.xyz", LABEL) == \
+        RunFile(LABEL, None, "_geom_optim.xyz")
+
+
+def test_carried_is_the_absence_of_a_stage():
+    """SIESTA's .XV/.DM and PySCF's .chk/_optimized.xyz cross rungs.  A stage
+    in them would make each rung hunt for a file only its own stage wrote."""
+    assert is_carried(compose(LABEL, ".chk"), LABEL) is True
+    assert is_carried(compose(LABEL, "_optimized.xyz"), LABEL) is True
+    assert is_carried(compose(LABEL, ".molwatch.log", "01_coarse"), LABEL) is False
+    # An ATTEMPT is not a stage: `-run2` still names a carried file.
+    assert is_carried(compose(LABEL, ".chk", None, 2), LABEL) is True
+
+
+def test_another_labels_file_is_not_claimed():
+    assert parse("other-job.chk", LABEL) is None
+    assert parse("my-jobbish.chk", LABEL) is None
+
+
+# --------------------------------------------------------------------- #
+#  What the generator refuses                                           #
+# --------------------------------------------------------------------- #
+
+def test_a_role_without_its_separator_is_refused():
+    with pytest.raises(RunFileError, match="must begin with"):
+        compose(LABEL, "chk")
+
+
+@pytest.mark.parametrize("bad", ["my job", "my.job", "", "a/b"])
+def test_a_label_that_cannot_be_read_back_is_refused(bad):
+    """A dot, a space or a slash makes `parse` ambiguous, so it is refused at
+    COMPOSE time — where the caller still knows what it meant."""
+    with pytest.raises(RunFileError, match="single"):
+        compose(bad, ".chk")
+
+
+@pytest.mark.parametrize("bad", ["coarse", "1_coarse", "01coarse", "01_", "",
+                                 "01_a-b", "01_a.b"])
+def test_a_malformed_stage_is_refused_rather_than_embedded(bad):
+    with pytest.raises(RunFileError, match="NN_name"):
+        compose(LABEL, ".chk", bad)
+
+
+@pytest.mark.parametrize("bad", [1, 2, 0])
+def test_a_stage_POSITION_cannot_become_a_name(bad):
+    """The old `-stage<N>` convention keyed names on a stage's POSITION, and a
+    positional name silently reassigns outputs the moment the ladder grows a
+    rung (§ 6.3).  Refused as a wrong TYPE, at the call."""
+    with pytest.raises(RunFileError, match="POSITION is not a token"):
+        compose(LABEL, ".molwatch.log", bad)
+
+
+@pytest.mark.parametrize("bad", [-1, "2", 1.5, True])
+def test_a_run_that_is_not_an_attempt_count_is_refused(bad):
+    with pytest.raises(RunFileError, match="attempt counter"):
+        compose(LABEL, ".out", None, bad)
+
+
+# --------------------------------------------------------------------- #
+#  The catalogue, and the two views of it                               #
+# --------------------------------------------------------------------- #
+#
+#  `WRITTEN` says what molbuilder writes; `patterns()` is the glob family
+#  (`identity.OUR_FILE_PATTERNS`) and `manifest()` the concrete names (the
+#  Task-setup card).  The two were one hand-written glob list with no name
+#  view, and it had drifted: geomeTRIC's opt log was listed as
+#  `{label}_geom_*.log` -- the stage token INSIDE the role, the spelling
+#  § 2.2a retired -- so the file that IS written matched no row and our own
+#  log was reported back to the user as the engine's warm state.
+
+def _legal_runs(a):
+    """The attempt values this artifact's name can legally carry."""
+    return {"never": [None], "maybe": [None, 0, 3], "always": [0, 3]}[a.attempt]
+
+
+@pytest.mark.parametrize("art", WRITTEN, ids=lambda a: a.role)
+@pytest.mark.parametrize("label", LABELS)
+@pytest.mark.parametrize("stage", STAGES)
+def test_every_name_the_catalogue_can_produce_is_matched_by_its_globs(
+        art, label, stage):
+    """THE PROPERTY THAT TIES THE TWO VIEWS, over the segment product.
+
+    `patterns()` cannot go through `compose` -- `{label}_*` stands for every
+    stage token at once and no single call produces it -- so what keeps the
+    glob family honest is this: every name the grammar can build for a
+    catalogued role is matched by one of the globs.
+
+    This is the check the drifted `_geom.log` row would have failed, and it
+    fails for any future row whose glob and whose name are spelled apart.
+    """
+    for run in _legal_runs(art):
+        name = compose(label, art.role, stage if art.staged else None, run)
+        assert any(fnmatch.fnmatchcase(name, p.format(label=label))
+                   for p in patterns()), (
+            f"{name!r} is a name molbuilder writes and no glob matches it")
+
+
+@pytest.mark.parametrize("art", WRITTEN, ids=lambda a: a.role)
+def test_a_file_that_carries_no_stage_never_grows_one(art):
+    """The three that belong to the CALCULATION -- the template and the
+    source pair -- are written once at the bundle root, so a stage token in
+    one would claim a rung wrote it."""
+    got = compose("my-job", art.role, "01_coarse" if art.staged else None)
+    assert ("_01_coarse" in got) is art.staged
+
+
+@pytest.mark.parametrize("engine,absent,present", [
+    ("siesta", ".py", ".fdf"),
+    ("pyscf", ".fdf", ".py"),
+])
+def test_the_manifest_tells_a_run_about_its_own_engine_only(
+        engine, absent, present):
+    rows = manifest(LABEL, "01_coarse", engine)
+    names = [r["name"] for r in rows]
+    assert any(n.endswith(present) for n in names)
+    assert not any(n.endswith(absent) for n in names)
+    # No engine named is a question, not a claim: answer for both.
+    both = [r["name"] for r in manifest(LABEL, "01_coarse")]
+    assert any(n.endswith(".py") for n in both)
+    assert any(n.endswith(".fdf") for n in both)
+
+
+def test_every_manifest_name_reads_back_to_the_stage_it_was_asked_for():
+    """The card shows these to a person, so they have to be names the
+    writers use -- which is the same round-trip the grammar promises."""
+    for row in manifest(LABEL, "02_medium"):
+        got = parse(row["name"], LABEL)
+        assert got is not None, f"{row['name']!r} did not parse"
+        assert got.stage in (None, "02_medium")
+        assert row["what"], f"{row['name']} has no line saying what it is"
+
+
+def test_the_first_attempt_is_a_real_name_and_not_a_placeholder():
+    """`runwrap` opens at ``_run_n=0``, so the indexed rows show `-run0` --
+    the name the first launch actually writes."""
+    rows = {r["name"]: r for r in manifest(LABEL, "01_coarse", "pyscf")}
+    assert f"{LABEL}_01_coarse-run0.concluded" in rows
+    assert rows[f"{LABEL}_01_coarse-run0.concluded"]["carries_attempt"] is True
+    assert rows[f"{LABEL}_01_coarse.run.sh"]["carries_attempt"] is False
+
+
+def test_the_catalogue_and_the_warm_vocabulary_do_not_overlap():
+    """WHAT MAKES THE SUBTRACTION WORK (`job-contracts.md` § 4.2): a file is
+    the engine's restart state OR one molbuilder wrote, never both.  A role on
+    both lists would make `--cold` walk past the file it exists to move, which
+    is exactly what a widened `*.xyz` row once did.
+    """
+    from molbuilder.warmfiles import inventory
+    ours = {a.role for a in WRITTEN}
+    for engine in ("siesta", "pyscf"):
+        warm = set(inventory(engine))
+        assert not (ours & warm), (
+            f"{engine}: {sorted(ours & warm)} is claimed by both the warm "
+            f"vocabulary and the catalogue of what molbuilder writes")
+
+
+def test_the_role_is_what_says_which_engine_wrote_a_file():
+    """WHY THE NAME CARRIES NO ENGINE SEGMENT (user asked, 2026-09-07:
+    *"engine name should be part of the name?"*).
+
+    It already does, wherever a file is an engine's at all: the two engines'
+    roles are DISJOINT, both for what they leave behind (`.XV`/`.DM` against
+    `.chk`/`_optimized.xyz`) and for what molbuilder writes for them (`.fdf`
+    against `.py` / `.pyscf.log` / `_geom.log`).  A fifth segment would restate
+    what the suffix already says, and a name with two sources of truth for one
+    fact is what § 2.2a exists to stop.
+
+    The rest -- the wrapper, its logs, the trajectory -- is genuinely shared:
+    ONE wrapper runs both engines, so an engine token on `.run.sh` would be a
+    claim about the file that is not true of it.
+    """
+    from molbuilder.warmfiles import inventory
+    assert not set(inventory("siesta")) & set(inventory("pyscf"))
+    per_engine = {e: {a.role for a in WRITTEN if a.engine == e}
+                  for e in ("siesta", "pyscf")}
+    assert not per_engine["siesta"] & per_engine["pyscf"]
+    assert per_engine["siesta"] and per_engine["pyscf"]
+
+
+def test_a_carried_file_is_named_the_same_whichever_engine_reads_it_next():
+    """AND WHY AN ENGINE SEGMENT WOULD BREAK SOMETHING REAL.  A carried file
+    is how one rung hands the next its geometry, and the next rung may be the
+    other engine (a SIESTA relaxation into a PySCF spectrum).  It is found BY
+    NAME, so a name that said which engine wrote it would be invisible to the
+    rung that wants it -- the same failure the stage token has, one exception
+    further on.
+    """
+    from molbuilder.warmfiles import inventory
+    for engine in ("siesta", "pyscf"):
+        for suffix in inventory(engine):
+            name = compose(LABEL, suffix)
+            assert is_carried(name, LABEL), name
+            assert LABEL + suffix == name, (
+                f"{name!r} carries something between the label and the role; "
+                f"the next rung looks for {LABEL + suffix!r}")
+
+
+def test_a_rung_is_told_its_own_files_and_the_calculation_its_own():
+    """A rung's list and the calculation's list PARTITION the catalogue.
+
+    The template and the source pair are written once at the bundle root, so a
+    per-rung card that repeated them would say each of them N times and imply
+    N copies of a person's own input.
+    """
+    rung = {r["name"] for r in manifest(LABEL, "01_coarse")}
+    calc = {r["name"] for r in manifest(LABEL)}
+    assert rung and calc
+    assert not rung & calc
+    assert len(rung) + len(calc) == len(WRITTEN)
+    # And the calculation's are exactly the ones with no rung in the name.
+    assert all(parse(n, LABEL).stage is None for n in calc)
+    assert all(parse(n, LABEL).stage == "01_coarse" for n in rung)
+
+
+def test_a_relaxation_is_not_promised_a_spectrum():
+    """A list that named a file the run will never write is the same fault as
+    one that omits a file it does -- an answer a person cannot check against
+    the folder.  `.spectra.json` is the vibration calculation's."""
+    relax = {r["name"] for r in manifest(LABEL, None, "pyscf",
+                                         calculation="optimization")}
+    vib = {r["name"] for r in manifest(LABEL, None, "pyscf",
+                                       calculation="vibration")}
+    assert compose(LABEL, ".spectra.json") not in relax
+    assert compose(LABEL, ".spectra.json") in vib
+    # Everything a relaxation writes, a vibration writes too: the kind ADDS.
+    assert relax < vib
+    # And a caller that has not asked which kind is told about both, because
+    # None here is "no question asked", not "the default kind".
+    assert compose(LABEL, ".spectra.json") in {
+        r["name"] for r in manifest(LABEL, None, "pyscf")}
+
+
+def test_each_file_says_which_moment_it_appears_in():
+    """A card listing a run's files has to say which of them exist yet, and
+    the three moments are what it says: the description hand-over, the prep,
+    and the launch.  Declared per file, so no page subtracts one list from
+    another to find out."""
+    moments = {a.when for a in WRITTEN}
+    assert moments == {"setup", "prep", "run"}
+    setup = {r["name"] for r in manifest(LABEL, None, when=("setup",))}
+    assert setup == {compose(LABEL, r) for r in (".template.toml",
+                                                 ".source.xyz",
+                                                 ".source.molstruct.json")}
+    # The deck and its wrapper are PREP's, and they are this rung's.
+    prep = {r["name"] for r in manifest(LABEL, "01_coarse", "siesta",
+                                        when=("prep",))}
+    assert compose(LABEL, ".fdf", "01_coarse") in prep
+    assert compose(LABEL, ".run.sh", "01_coarse") in prep
+    assert compose(LABEL, ".molwatch.log", "01_coarse") not in prep

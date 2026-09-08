@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.runfiles import compose as _rf
+
 
 ROOT   = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/results/file-picker.js"
@@ -447,22 +449,26 @@ class TestAbsorbSatellites:
     carried the same 10:31:08 mtime.
     """
 
-    #: The real filenames from that run, master first.
-    # REAL staged names: the master carries the stage's artifact token
-    # (digit-first ``03_tight`` -- job-contracts.md 6.3); ``_initial`` /
-    # ``_optimized`` stem on the bare job; the geomeTRIC streams carry
-    # their own rung's token inside.  Until 2026-08-19 these fixtures
-    # spelled the retired ``-stageN`` overlay, so the absorb rule and
-    # its tests agreed on a grammar no generated file has used since
-    # the token rename -- and every real staged relaxation was five
-    # menu entries again.
-    _MASTER = "/p/pyscf_relax_03_tight.molwatch.log"
+    #: THE FIXTURE IS COMPOSED, NOT SPELLED (`runfiles.compose`), and that is
+    #: the whole history of this block.  It spelled the retired ``-stageN``
+    #: overlay until 2026-08-19; the fix replaced it with
+    #: ``<job>_geom_<token>_optim.xyz`` -- also a name nothing writes, because
+    #: the token does not sit inside the role (§ 2.2a) -- and the presenter's
+    #: matcher was loose enough (a prefix and a suffix) to accept either, so
+    #: both the rule and its test agreed on a grammar no generated file has
+    #: ever used.  Twice.  Names that come out of the generator cannot do that.
+    _JOB = "pyscf_relax"
+    _MASTER = "/p/" + _rf(_JOB, ".molwatch.log", "03_tight")
+    #: What THIS rung's master absorbs: the two carried files, which stem on
+    #: the bare job, and its own trajectory, which carries its token.
     _SATS = [
-        "/p/pyscf_relax_initial.xyz",
-        "/p/pyscf_relax_optimized.xyz",
-        "/p/pyscf_relax_geom_01_coarse_optim.xyz",
-        "/p/pyscf_relax_geom_02_tight_optim.xyz",
+        "/p/" + _rf(_JOB, "_initial.xyz"),
+        "/p/" + _rf(_JOB, "_optimized.xyz"),
+        "/p/" + _rf(_JOB, "_geom_optim.xyz", "03_tight"),
     ]
+    #: ANOTHER rung's trajectory, which this master must NOT absorb: it is
+    #: that rung's result and that rung has a master of its own.
+    _OTHER_RUNG = "/p/" + _rf(_JOB, "_geom_optim.xyz", "01_coarse")
 
     @staticmethod
     def _absorb(paths):
@@ -504,9 +510,27 @@ class TestAbsorbSatellites:
 
     def test_the_master_log_absorbs_its_working_files(self):
         out = self._absorb(([self._MASTER] + self._SATS))
-        assert out == ["pyscf_relax_03_tight.molwatch.log"], (
-            "one PySCF relaxation must be ONE menu entry; got: " + repr(out)
+        assert out == [self._MASTER.rsplit("/", 1)[-1]], (
+            "one PySCF rung must be ONE menu entry; got: " + repr(out)
         )
+
+    def test_a_rung_does_not_absorb_another_rungs_trajectory(self):
+        """A LADDER IS N RESULTS, one per rung -- each writes its own master
+        and its own trajectory (`stages.md` § 1.1a).  So 03_tight's master
+        absorbs 03_tight's stream and leaves 01_coarse's alone; the rung that
+        wrote it has a master of its own to absorb it.
+
+        THIS IS WHAT THE OLD FIXTURE HID.  It named the streams
+        `<job>_geom_<token>_optim.xyz` -- the token inside the role, a spelling
+        no generated file has used -- and under THAT spelling every rung's
+        stream did stem on the bare `<job>`, so one master swallowed them all
+        and the file asserted a three-rung run was one menu entry.  With the
+        names the grammar builds, the count is one entry per rung, which is
+        the number of results there are.
+        """
+        out = self._absorb(([self._MASTER, self._OTHER_RUNG]))
+        assert sorted(out) == sorted([self._MASTER.rsplit("/", 1)[-1],
+                                      self._OTHER_RUNG.rsplit("/", 1)[-1]])
 
     def test_the_stage_token_is_stripped_before_matching(self):
         """The master is ``<job>_<token>.molwatch.log`` while ``_initial`` /

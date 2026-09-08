@@ -20,7 +20,7 @@ core POSTs to /api/watch/load with the absolute path, then polls
 branch of /api/watch/load follows the discovery chain in
 ``docs/execution/job-contracts.md``: ``*.molwatch.log`` first, then
 ``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for ``JOB``,
-then a generic ``*.out`` / ``*_geom*_optim.xyz`` fallback.
+then a generic ``*.out`` / ``*_geom_optim.xyz`` fallback.
 
 Format support is plugin-style: see ``molbuilder/parse/`` for the
 registered parsers and the auto-detection registry
@@ -49,6 +49,8 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
+from molbuilder.pyscf.input import ROLE_GEOM_TRAJ
+from molbuilder.runfiles import compose as _rf
 from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
@@ -219,11 +221,17 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
          FILENAME's stem tried the same way, because a staged deck is
          ``<job>_<token>.py`` and its stdout/molwatch siblings carry
          that token (`job-contracts.md` § 6.3) while ``JOB`` stays
-         bare; then the rung-aware trajectory glob
-         ``<job>_geom_*_optim.xyz``.
+         bare.
       4. Generic fallbacks: ``run.out``, ``siesta.log``, ``*.out``,
-         ``*_geom*_optim.xyz`` (staged trajectories carry the rung
-         token between ``_geom`` and ``_optim``).
+         ``*_geom_optim.xyz``.
+
+    **Every name in steps 2-4 is composed by `runfiles.compose`.** They were
+    hand-built until 2026-09-07 and one of them was built on a spelling that
+    had been retired: a rung-aware glob ``<job>_geom_*_optim.xyz``, from when
+    the stage token sat INSIDE the role.  Since § 2.2a fixed the token's
+    position the file is ``<job>_<token>_geom_optim.xyz``, that glob matched
+    nothing, and the step it was the whole point of did nothing -- silently,
+    because a resolver that finds nothing just moves to the next step.
     """
     attempts: List[str] = []
 
@@ -241,9 +249,10 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
         if not label:
             attempts.append(f"  {os.path.basename(fdf)}: SystemLabel not found")
             continue
-        for suffix in (".molwatch.log", ".out"):
-            cand = os.path.join(directory, f"{label}{suffix}")
-            attempts.append(f"  -> {label}{suffix}: "
+        for role in (".molwatch.log", ".out"):
+            base = _rf(label, role)
+            cand = os.path.join(directory, base)
+            attempts.append(f"  -> {base}: "
                             f"{'found' if os.path.isfile(cand) else 'missing'}")
             if os.path.isfile(cand):
                 return cand, attempts
@@ -265,18 +274,18 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
         py_stem = os.path.splitext(os.path.basename(py))[0]
         stems = [name] if py_stem == name else [name, py_stem]
         for stem in stems:
-            for suffix in (".molwatch.log", ".log", "_geom_optim.xyz"):
-                cand = os.path.join(directory, f"{stem}{suffix}")
-                attempts.append(f"  -> {stem}{suffix}: "
+            for role in (".molwatch.log", ".log", ROLE_GEOM_TRAJ):
+                # THE STEM CARRIES THE TOKEN, so the name is composed with no
+                # stage of its own -- `py_stem` IS `<job>_<token>` already.
+                # That is what made the rung-aware glob that stood here
+                # redundant as well as wrong: the loop above covers the
+                # staged trajectory, under the name that is written.
+                base = _rf(stem, role)
+                cand = os.path.join(directory, base)
+                attempts.append(f"  -> {base}: "
                                 f"{'found' if os.path.isfile(cand) else 'missing'}")
                 if os.path.isfile(cand):
                     return cand, attempts
-        rung_hits = glob.glob(
-            os.path.join(directory, f"{name}_geom_*_optim.xyz"))
-        attempts.append(f"  -> {name}_geom_*_optim.xyz: "
-                        f"{len(rung_hits)} match(es)")
-        if rung_hits:
-            return _newest(rung_hits), attempts
 
     # 4. Generic fallbacks.
     for fname in ("run.out", "siesta.log"):
@@ -289,12 +298,14 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     if out_hits:
         attempts.append(f"*.out -> picked {os.path.basename(out_hits[0])}")
         return _newest(out_hits), attempts
-    # ``*_geom*_optim.xyz``: the staged spelling carries the rung token
-    # between ``_geom`` and ``_optim`` (``<job>_geom_<token>_optim.xyz``);
-    # the tokenless glob that stood here matched only unstaged runs.
-    optim_hits = glob.glob(os.path.join(directory, "*_geom*_optim.xyz"))
+    # ONE glob, because there is one spelling: the role is `_geom_optim.xyz`
+    # and everything in front of it -- label, and the token when there is one
+    # -- is what the star covers.  The `*_geom*_optim.xyz` that stood here
+    # allowed a second star for a token that has not sat there since § 2.2a.
+    optim_glob = "*" + ROLE_GEOM_TRAJ
+    optim_hits = glob.glob(os.path.join(directory, optim_glob))
     if optim_hits:
-        attempts.append(f"*_geom*_optim.xyz -> "
+        attempts.append(f"{optim_glob} -> "
                         f"picked {os.path.basename(optim_hits[0])}")
         return _newest(optim_hits), attempts
 

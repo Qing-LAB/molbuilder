@@ -590,6 +590,41 @@ differently (§ 4), and a page that composed them would be free to disagree with
 the thing it is describing. What it adds is that you see all of it at once,
 before you copy a command, rather than one stage at a time in § 11's tabs.
 
+### 7.2 What this calculation writes *(user, 2026-09-07)*
+
+*("we should add a card that list all the generated data file from the setup —
+not necessarily the engine generated ones, but more the ones we designed to be
+generated".)*
+
+A second card in the aside, listing every file **molbuilder** names, each with
+one line saying what it holds. Three groups, and the grouping is the same
+distinction the names themselves draw (`job-contracts.md` § 2.3):
+
+| group | what is in it |
+|---|---|
+| **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger |
+| **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them |
+| **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in |
+
+**Not the engine's outputs, and that asymmetry is the point.** An engine's
+output set depends on its version and on which options are on, so listing *that*
+would be a snapshot pretending to be a rule. What molbuilder writes is knowable
+because molbuilder writes it — the catalogue is `runfiles.WRITTEN`
+(`job-contracts.md` § 2.2), and the card is a reading of it.
+
+**Every name is composed, not spelled.** `/api/task-setup/prep-plan` calls
+`runfiles.manifest(label, token, engine, when, calculation)` and the browser only
+lays the answer out. That matters here more than anywhere: the card's whole use
+is that you can look for these files afterwards, so a name it invented would send
+you looking for something nothing wrote — which is exactly what four readers were
+doing about geomeTRIC's trajectory until the grammar was written down.
+
+The description says which calculation and which engine, and both narrow the
+list: a SIESTA run is not told about `.py`, and a relaxation is not promised a
+`.spectra.json`. A name containing `*` is a family (the wrapper's session log,
+one per launch), and it is shown with the star rather than with an invented
+timestamp.
+
 ---
 
 ## 7a. The path a value takes, end to end *(2026-09-02)*

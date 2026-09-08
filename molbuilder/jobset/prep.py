@@ -48,6 +48,8 @@ from .. import script_emit as _sc
 from .materialize import job_dir_names, shape_of, materialize
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
+from .plan import FILENAME as _PLAN_FILE
+from ..runfiles import compose as _rf, stem as _rf_stem
 
 
 class PrepError(Exception):
@@ -344,12 +346,12 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         _vocab = f"warm-files: {load_warm_files(jobset.engine, base).path}\n"
     except Exception:
         _vocab = ""    # an engine without a rules file has no line to print
-    (plan_dir / "STAGE-PLAN.md").write_text(
+    (plan_dir / _PLAN_FILE).write_text(
         render_plan(jobset) + "\n\n" + _vocab
         + format_provenance(config_provenance(project_dir=base)) + "\n",
         encoding="utf-8")
     if log is not None:
-        log.produced("STAGE-PLAN.md", str(plan_dir / "STAGE-PLAN.md"))
+        log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
 
     return dirs
 
@@ -937,8 +939,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     _real_stderr, _sys.stderr = _sys.stderr, _once
     try:
         for element in pset:
-            stem = f"{element.label}_{token}" if token else element.label
-            script = f"{stem}{seam.suffix}"
+            stem = _rf_stem(element.label, token or None)
+            script = _rf(element.label, seam.suffix, token or None)
             # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
             # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
             # said it: "only rendered files and copies go down to where the
@@ -1301,8 +1303,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     _sd = _shape.stage_dir(token) if token else "."
     _jdir = base if _sd == "." else base / _sd
     _jdir.mkdir(parents=True, exist_ok=True)
-    stem = f"{task.label}_{token}" if token else task.label
-    script = f"{stem}.fdf"
+    stem = _rf_stem(task.label, token or None)
+    script = _rf(task.label, ".fdf", token or None)
     # A BIAS SCAN maps the device and transmission stages over the
     # points (§ 4.3; layout ruled 2026-08-29: plain v-dirs).  The
     # stage-dir deck is then the EQUILIBRIUM point's -- the same deck
@@ -1406,8 +1408,8 @@ def gather_transport_inputs(base_dir, task, stage: str,
             # transmission at v reads the device at v, never another
             # point's converged state (transport-design.md 4.3).
             up_dir = up_dir / bias_token(bias)
-        stem = f"{task.label}_{token}"
-        current_deck = up_dir / f"{stem}.fdf"
+        stem = _rf_stem(task.label, token)
+        current_deck = up_dir / _rf(task.label, ".fdf", token)
         run_first = (f"run it first --\n"
                      f"    molbuilder jobset prep run {upstream} && "
                      f"molbuilder jobset launch run {upstream}\n"

@@ -965,3 +965,30 @@
 .ts-fit-row--out .ts-fit-label,
 .ts-fit-row--out .ts-fit-shape { text-decoration: line-through; }
 .ts-fit-why { color: var(--error); font-size: var(--text-xs); }
+
+/* ---------- what a prep will write, by name (job-contracts.md 4.2) --- */
+/* The rows themselves are `.ts-files`, unchanged: a row is (filename, what
+   it holds) and this card asks exactly that question of a longer list.  What
+   is new is only the grouping -- one group per rung, plus the run's own
+   records -- so nothing here restates a row's typography. */
+.ts-written-group + .ts-written-group { margin-top: var(--space-md); }
+/* WHERE THE GROUP LANDS, under its own name.  Flat and hierarchical put a
+   rung's files in different directories, so the heading alone would leave a
+   reader guessing which folder they are looking for. */
+.ts-written-where {
+    margin: 0 0 var(--space-xs);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+/* A RUN FILE NAME IS WIDER THAN THE COLUMN, and it may not be clipped: the
+   whole use of this card is reading a name you are about to look for.
+   `<label>_<stage>-run0.scf-timing.log` measures 362px in the 353px column
+   at this card's mono size, and `.ts-file-name` deliberately does not shrink
+   (a filename is ONE token; squeezing it would break it where no separator
+   is).  So here the name takes its own line and the description sits under
+   it -- and a name longer still wraps rather than disappearing off the edge. */
+.ts-written-group .ts-file-name {
+    flex: 1 1 100%;
+    overflow-wrap: anywhere;
+}
