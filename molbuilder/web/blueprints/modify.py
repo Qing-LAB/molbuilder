@@ -7,7 +7,9 @@ Routes (no url_prefix; each carries its own full path):
      `_struct_from_body` path so both tabs share one validator.)
 
     POST /api/modify/delete                delete_atoms(indices)
-    POST /api/modify/add_atom              add_atom(element, anchor,
+    POST /api/modify/append                append_structure -- add one
+                                                    structure into another
+    POST /api/modify/add_atom              add_atom(element, anchor?,
                                                     offset)
     POST /api/modify/orient                orient_along_axis(anchors,
                                                     axis, angle, center)
@@ -103,6 +105,7 @@ from molbuilder.modify import (
     SUPPORTED_FCC_PLANES,
     FCC_ORTHOGONAL_CHOICES,
     add_atom as _add_atom,
+    append_structure as _append_structure,
     calibrate_to_cell as _calibrate_to_cell,
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
@@ -212,9 +215,11 @@ def api_modify_delete():
 def api_modify_add_atom():
     """Append one atom relative to an anchor.
 
-    Body: ``{xyz, [...metadata...], element, anchor_index,
-             offset: [dx, dy, dz], atom_name?, residue_name?,
-             residue_id?}``.
+    Body: ``{structure, element, anchor_index?, offset: [dx, dy, dz],
+             atom_name?, residue_name?, residue_id?}``.
+
+    ``anchor_index`` is optional: omitted (or null) the offset is measured
+    from the world origin instead of from an atom.
 
     Defaults match :func:`molbuilder.modify.add_atom`: ``atom_name``
     falls back to ``element``, ``residue_name`` to ``"MOD"``,
@@ -231,17 +236,24 @@ def api_modify_add_atom():
     element = body.get("element")
     if not isinstance(element, str) or not element.strip():
         return _err("missing or empty 'element'", 400)
+    # AN ABSENT ANCHOR IS AN ANSWER, not a missing argument.  The client omits
+    # the group key when nothing is selected (molview.md § 11.1), and for this
+    # op that means "measure the offset from the world origin" -- which is also
+    # the only way the first atom can be placed on an empty canvas, where no
+    # index exists to send (user, 2026-09-07).  A key that IS present still has
+    # to be a real index.
     anchor_index = body.get("anchor_index")
-    try:
-        anchor_index = int(anchor_index)
-    except (TypeError, ValueError):
-        return _err("'anchor_index' must be an integer", 400)
-    if not (0 <= anchor_index < struct.n_atoms):
-        return _err(
-            f"anchor_index {anchor_index} out of range for "
-            f"{struct.n_atoms}-atom structure",
-            400,
-        )
+    if anchor_index is not None:
+        try:
+            anchor_index = int(anchor_index)
+        except (TypeError, ValueError):
+            return _err("'anchor_index' must be an integer", 400)
+        if not (0 <= anchor_index < struct.n_atoms):
+            return _err(
+                f"anchor_index {anchor_index} out of range for "
+                f"{struct.n_atoms}-atom structure",
+                400,
+            )
     offset = body.get("offset")
     if (not isinstance(offset, (list, tuple))) or len(offset) != 3:
         return _err("'offset' must be a 3-element [dx, dy, dz] list", 400)
@@ -270,6 +282,49 @@ def api_modify_add_atom():
     # No selection_remap: the client CLEARS the selection on any atom-count
     # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/append                                                   #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/append", methods=["POST"])
+def api_modify_append():
+    """Add one structure's atoms into another, centred on the world origin.
+
+    Body: ``{structure, addition}`` -- TWO envelopes, the one being built in
+    and the one being added to it (`web-api.md` § 1; `_shared.struct_from_body`
+    reads both with the same reader).
+
+    This is what a load and a generate do now: they add to what is open rather
+    than replacing it, so a session can be assembled piece by piece (user,
+    2026-09-07).  Replacing is a separate gesture -- start empty, then load.
+
+    IT IS A SERVER OP LIKE EVERY OTHER EDIT, and for the same reason: merging
+    two structures moves atoms, and the browser changes no coordinates
+    (`molview.md` § 11.1).  Which means it also arrives back through the one
+    return path, gets the periodicity gate run over it, and lands atomically.
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        struct = _struct_from_body(body)
+        addition = _struct_from_body(body, "addition")
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    try:
+        new_struct, notes = _append_structure(struct, addition)
+    except (ValueError, IndexError) as exc:
+        return _err(f"append failed: {exc}", 400)
+    # The merge's own decisions, as receipts.  `info` rather than `warn`: the
+    # rules are stated up front and nothing here went wrong -- but a renamed
+    # label or a dropped cell is invisible in the result, which is exactly what
+    # a receipt is for.
+    return _ok_response(new_struct, extra={"notices": [
+        {"level": "info", "message": m,
+         "where": "append.merge", "about": "append"}
+        for m in notes
+    ]})
 
 
 # --------------------------------------------------------------------- #
@@ -505,7 +560,7 @@ def api_modify_slab():
     """Append ONE fcc slab, placed absolutely (redesign plan § 3).
 
     Body: ``{structure, element, plane, m, n, layers, start_registry,
-    start_z, grow, stacking, orthogonal, dx, dy, lattice_constant?}``.
+    start_z, grow, sequence, orthogonal, dx, dy, lattice_constant?}``.
 
     IT READS NO SELECTION, and that is the design rather than an omission:
     ``dx``, ``dy`` and ``start_z`` are measured from the world origin, so the
@@ -568,7 +623,7 @@ def api_modify_slab():
             start_registry=start_registry,
             start_z=start_z,
             grow=body.get("grow", "+z"),
-            stacking=body.get("stacking", "continue"),
+            sequence=body.get("sequence", "ABC"),
             orthogonal=bool(body.get("orthogonal", False)),
             offset=(dx, dy),
             lattice_constant=lat_a,

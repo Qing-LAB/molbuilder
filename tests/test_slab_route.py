@@ -131,9 +131,9 @@ class TestWhatItRefuses:
         r = _post(client, grow="sideways")
         assert r.status_code == 400 and "grow must be" in r.get_json()["error"]
 
-    def test_a_stacking_it_does_not_know(self, client):
-        r = _post(client, stacking="flip")
-        assert r.status_code == 400 and "stacking must be" in r.get_json()["error"]
+    def test_a_sequence_it_does_not_know(self, client):
+        r = _post(client, sequence="ABCA")
+        assert r.status_code == 400 and "sequence must be" in r.get_json()["error"]
 
     def test_a_lattice_constant_that_is_not_a_length(self, client):
         assert _post(client, lattice_constant=0).status_code == 400

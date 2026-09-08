@@ -95,7 +95,12 @@ _EPS = 1e-6
 
 #: The four ops the unified door accepts (§ 6.2 v3).  ``cell_origin`` with a
 #: ``null`` payload is the "reset origin to default" button.
-OPS = ("vacuum", "axis_kind", "cell", "cell_origin")
+OPS = ("vacuum", "axis_kind", "cell", "cell_origin", "block")
+
+#: The keys ``block`` accepts, which are exactly § 6.2's cell -- the vectors,
+#: the anchor, how each axis is treated, how much vacuum an isolated axis gets.
+#: Named once so the door and its refusal cannot disagree about the set.
+BLOCK_KEYS = ("cell", "cell_origin", "axis_kind", "vacuum")
 
 
 def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str]:
@@ -274,6 +279,128 @@ def _reset_to_derived(s: Structure, what: str,
             "(molecule centred on isolated axes)."))
 
 
+def _apply_block(s: Structure, payload: Any,
+                 notices: List[dict]) -> Structure:
+    """Set § 6.2's whole cell at once -- the ``block`` op.
+
+    THE CELL IS ONE FACT THAT TRAVELS TOGETHER (molview.md § 6.2), and the four
+    single-field ops could only be spent one request at a time.  A panel that
+    wanted to change two of them had to send two, which is not atomic: the
+    second can be refused after the first has landed, leaving a box the user
+    never asked for and a form that no longer describes it.  Worse, some pairs
+    are unreachable in EITHER order -- turning an axis periodic needs the
+    explicit cell already stored, and clearing that cell needs the axis already
+    non-periodic -- so "become a periodic crystal" and "go back to a derived
+    box" were two-step journeys through a state the gate refuses.
+
+    So this one sets all four and checks ONCE, at the end.  The intermediate
+    states never exist, which is why the interlocks that make the step-at-a-time
+    ops refuse are simply not in the way here -- the same rules are still
+    enforced, on the result, below.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"op 'block' takes the whole cell as an object with "
+            f"{list(BLOCK_KEYS)} -- a partial block is what this op exists to "
+            f"replace")
+    unknown = sorted(set(payload) - set(BLOCK_KEYS))
+    if unknown:
+        raise ValueError(
+            f"op 'block' got unknown key(s) {unknown}; expected "
+            f"{list(BLOCK_KEYS)}")
+
+    kinds = tuple(str(k) for k in (payload.get("axis_kind") or []))
+    if len(kinds) != 3 or any(
+            k not in ("isolated", "transport", "periodic") for k in kinds):
+        raise ValueError("axis_kind must be 3 of isolated|transport|periodic")
+
+    raw_cell = payload.get("cell")
+    if raw_cell is None:
+        cell = None
+    else:
+        try:
+            cell = np.asarray(raw_cell, dtype=float).reshape(3, 3)
+        except (TypeError, ValueError):
+            raise ValueError("cell must be a 3×3 matrix of numbers (Å)") from None
+
+    # THE ONE PAIRING RULE, stated on the whole block rather than on the order
+    # the fields arrived in: a periodic direction is a lattice, and there is
+    # nothing to derive one from.
+    if "periodic" in kinds and cell is None:
+        raise ValueError(
+            "a periodic axis needs an explicit cell — a derived bounding box "
+            "is not a lattice (§ 4)")
+
+    raw_origin = payload.get("cell_origin")
+    if raw_origin is None:
+        origin = None
+    else:
+        try:
+            origin = [float(x) for x in raw_origin]
+        except (TypeError, ValueError):
+            raise ValueError("cell_origin must be 3 numbers (Å), or null "
+                             "to derive it") from None
+        if len(origin) != 3:
+            raise ValueError("cell_origin must be 3 numbers (Å), or null "
+                             "to derive it")
+        if cell is None:
+            raise ValueError(
+                "cell_origin is only meaningful with an explicit cell — the "
+                "derived box computes its own corner (§ 3c)")
+
+    raw_vac = payload.get("vacuum")
+    if raw_vac is None:
+        vac = None
+    else:
+        try:
+            vac = [float(x) for x in raw_vac]
+        except (TypeError, ValueError):
+            raise ValueError("vacuum must be 3 non-negative floats (Å), or "
+                             "null to clear it") from None
+        if len(vac) != 3 or any(x < 0 for x in vac):
+            raise ValueError("vacuum must be 3 non-negative floats (Å), or "
+                             "null to clear it")
+
+    s.cell = cell
+    s.cell_origin = None if cell is None else (
+        None if origin is None else tuple(origin))
+    s.axis_kind = kinds
+    s.vacuum = None if vac is None else tuple(vac)
+    s.__post_init__()
+    # ONE CHECK, ON THE RESULT.  Every refusal the field-at-a-time ops raise
+    # about a bad box is this same checker; asking it here asks it of the box
+    # the user actually described.
+    _refuse_on_error(s)
+
+    # A RECEIPT: which regime the box is now in, because that is the fact the
+    # panel's own switch is about and the one thing a user cannot read off the
+    # numbers.
+    if cell is None:
+        notices.append(_notice(
+            "info",
+            "the box is derived: the structure's extent plus the vacuum on "
+            "each side, centred on the structure. Vacuum is authoritative."))
+    else:
+        # THE DERIVED CORNER IS NOT ALWAYS A NUMBER.  `resolve_cell_origin`
+        # answers None to mean THE WORLD ORIGIN, no shift -- the box already
+        # sits where the atoms are (structure.py § 3c) -- and
+        # `np.asarray(None, dtype=float)` is `nan`, so a sentence built without
+        # this branch reads "a derived corner at nan".
+        corner = None if origin is not None else s.resolve_cell_origin()
+        if origin is not None:
+            where = "the origin you set"
+        elif corner is None:
+            where = "the world origin"
+        else:
+            where = ("a derived corner at "
+                     + str(np.round(np.asarray(corner, dtype=float), 4).tolist()))
+        notices.append(_notice(
+            "info",
+            f"the box is the explicit cell, anchored at {where}. Vacuum "
+            f"values are reference-only from now on (§ 6.1)."))
+    return s
+
+
 def apply_edit(struct: Structure, op: str,
                payload: Any) -> Tuple[Structure, List[dict]]:
     """The § 6.2 v3 unified door: one entry point for the Cell-page edits.
@@ -288,6 +415,9 @@ def apply_edit(struct: Structure, op: str,
     s = struct.copy()
     notices: List[dict] = []
     kinds = s.axis_kind or ("isolated",) * 3
+
+    if op == "block":
+        return _apply_block(s, payload, notices), notices
 
     if op == "vacuum":
         # ``null`` CLEARS -- the third state the model gained on 2026-08-03.

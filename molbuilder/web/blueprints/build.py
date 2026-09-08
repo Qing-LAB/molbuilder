@@ -454,6 +454,11 @@ def api_periodicity():
     "the gate changed this" marker and there should not be: clause 1 forbids the
     gate writing a resolved value back, so nothing is ever changed to mark.
 
+    ``op`` is one of ``vacuum`` / ``axis_kind`` / ``cell`` / ``cell_origin`` /
+    ``block``.  The first four set one field; ``block`` takes the WHOLE cell --
+    ``{cell, cell_origin, axis_kind, vacuum}`` -- and checks it once, which is
+    the only way to describe a change to two of them atomically (§ 6.2).
+
     400 on: an unknown op, a missing payload for ``cell`` / ``cell_origin``, a
     malformed envelope, and every contract violation the gate raises (a
     left-handed cell, a cell no origin could make fit, a degenerate derived

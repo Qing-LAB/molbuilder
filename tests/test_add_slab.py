@@ -192,42 +192,74 @@ class TestPlacementIsAbsolute:
         assert np.allclose(moved[:, :2] - a[:, :2], [2.0, -2.5], atol=1e-9)
 
 
-class TestTheStackingSwitch:
+class TestTheSequenceWalk:
+    """`sequence` replaced `stacking` (user, 2026-09-07).
 
-    def test_growing_up_the_switch_changes_nothing(self):
-        """The choice only bites downward, and saying so is half of what
-        makes it understandable."""
-        kw = dict(start_z=2.0, grow="+z", start_registry=1)
-        cont = _metal(_slab(stacking="continue", **kw))
-        mirr = _metal(_slab(stacking="mirror", **kw))
-        assert np.allclose(np.sort(cont, axis=0), np.sort(mirr, axis=0),
-                           atol=1e-9)
+    The old control said what the registry did *when growing downward*, so its
+    meaning depended on `grow`: growing up it did nothing and the panel hid the
+    row.  `sequence` says which way the registry cycle is walked, read along
+    the growth direction, which means the same thing in both directions and
+    makes the fourth combination -- a backward walk growing `+z` -- reachable
+    for the first time.
+    """
 
-    def test_growing_down_they_differ(self):
-        kw = dict(start_z=0.0, grow="-z", start_registry=0)
-        cont = _offsets(_metal(_slab(stacking="continue", **kw)))
-        mirr = _offsets(_metal(_slab(stacking="mirror", **kw)))
-        assert not all(np.allclose(c, m, atol=1e-6)
-                       for c, m in zip(cont, mirr)), (
-            "the stacking switch changed nothing growing down, which is the "
-            "only direction it is for")
+    def test_the_walk_reads_the_same_outward_whichever_way_it_grows(self):
+        """THE PROPERTY THE REDESIGN BUYS, and the one the old control could
+        not have: read outward from the starting surface, a given `sequence`
+        lays down the same registries whether the slab grows up or down.
 
-    def test_continue_is_a_translation_and_mirror_is_a_reflection(self):
-        """The two readings are two RIGID motions, and this is what tells
-        them apart: read from the starting surface outward, `mirror` gives
-        the same layer sequence an upward slab does, and `continue` gives
-        the reverse — because it never reflected anything."""
-        up = _offsets(_metal(_slab(start_z=0.0, grow="+z")))
-        mirr = _offsets(_metal(_slab(start_z=0.0, grow="-z",
-                                     stacking="mirror")))
-        cont = _offsets(_metal(_slab(start_z=0.0, grow="-z",
-                                     stacking="continue")))
-        # `_offsets` is low-z-first, so reverse for "outward from start_z".
-        assert all(np.allclose(a, b, atol=1e-6)
-                   for a, b in zip(up, mirr[::-1])), "mirror is not a reflection"
+        Under `stacking` this was false by construction -- `"continue"` and
+        `"mirror"` named downward behaviour and had no upward meaning -- which
+        is why the panel had to hide the row half the time.
+        """
+        for sequence in ("ABC", "ACB"):
+            up = _offsets(_metal(_slab(start_z=0.0, grow="+z",
+                                       sequence=sequence)))
+            down = _offsets(_metal(_slab(start_z=0.0, grow="-z",
+                                         sequence=sequence)))
+            # `_offsets` is low-z-first.  Growing up, outward-from-start is
+            # that order; growing down it is the reverse.
+            assert all(np.allclose(a, b, atol=1e-6)
+                       for a, b in zip(up, down[::-1])), (
+                f"sequence {sequence!r} laid down different registries "
+                f"growing up and growing down")
+
+    def test_the_two_walks_differ_growing_up(self):
+        """The combination that did not exist before: on a 3-period surface a
+        backward walk growing `+z` is a different slab from a forward one.
+
+        Under `stacking` both `"continue"` and `"mirror"` gave the forward
+        walk here, so this slab could not be built at all.
+        """
+        kw = dict(start_z=0.0, grow="+z", start_registry=0)
+        fwd = _offsets(_metal(_slab(sequence="ABC", **kw)))
+        bwd = _offsets(_metal(_slab(sequence="ACB", **kw)))
         assert not all(np.allclose(a, b, atol=1e-6)
-                       for a, b in zip(up, cont[::-1])), (
-            "continue behaved like a reflection")
+                       for a, b in zip(fwd, bwd)), (
+            "the two walks built the same upward slab, so the combination the "
+            "redesign exists to reach is still unreachable")
+
+    def test_the_two_walks_differ_growing_down(self):
+        kw = dict(start_z=0.0, grow="-z", start_registry=0)
+        fwd = _offsets(_metal(_slab(sequence="ABC", **kw)))
+        bwd = _offsets(_metal(_slab(sequence="ACB", **kw)))
+        assert not all(np.allclose(a, b, atol=1e-6)
+                       for a, b in zip(fwd, bwd))
+
+    @pytest.mark.parametrize("plane,orthogonal", [("100", True), ("110", True)])
+    def test_a_two_period_surface_has_only_one_walk(self, plane, orthogonal):
+        """Backwards and forwards agree modulo 2, so on (100) and (110) the
+        two values name the SAME slab -- which is why the panel does not offer
+        the choice there.  Asserted rather than assumed: the panel hides the
+        row on this arithmetic, and a surface where it were false would be
+        offering a silently ignored control.
+        """
+        assert STACKING_PERIOD[plane] == 2
+        kw = dict(plane=plane, orthogonal=orthogonal, start_z=0.0, grow="-z")
+        fwd = _metal(_slab(sequence="ABC", **kw))
+        bwd = _metal(_slab(sequence="ACB", **kw))
+        assert np.allclose(np.sort(fwd, axis=0), np.sort(bwd, axis=0),
+                           atol=1e-9)
 
 
 class TestTheBoxItCaptures:
@@ -290,9 +322,9 @@ class TestWhatItRefuses:
         with pytest.raises(ValueError, match="grow must be"):
             _slab(size=(2, 2, 2), grow=bad)
 
-    def test_a_stacking_it_does_not_know(self):
-        with pytest.raises(ValueError, match="stacking must be"):
-            _slab(size=(2, 2, 2), stacking="flip")
+    def test_a_sequence_it_does_not_know(self):
+        with pytest.raises(ValueError, match="sequence must be 'ABC' or 'ACB'"):
+            _slab(size=(2, 2, 2), sequence="ABCA")
 
     def test_zero_layers_is_a_no_op_not_an_error(self):
         assert _slab(size=(2, 2, 0)).n_atoms == 1

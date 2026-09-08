@@ -750,6 +750,14 @@ def _parse_size3(size_str, flag):
         )
 
 
+#: WHICH WALK CONTINUES THE CRYSTAL, per side.  `add_slab`'s `sequence` is
+#: read along the growth direction, so "the crystal carries on outward from
+#: the contact" is the forward walk going up and the backward walk going down.
+#: Written once here because both electrodes of a junction want it and a
+#: mapping retyped per call site is a mapping that eventually disagrees.
+_CONTINUES_THE_CRYSTAL = {"+z": "ABC", "-z": "ACB"}
+
+
 def _parse_electrode_spec(spec):
     """Parse one ``--electrode`` value into a kwargs dict.
 
@@ -1070,9 +1078,13 @@ def cmd_modify(input_path, output_path,
             # So the arithmetic happens HERE, where the convenience lives,
             # and the placement goes to the one builder: centroid -> an
             # absolute `start_z`, side -> `grow`, and the anchor's xy folded
-            # into the absolute `offset`.  `stacking="continue"` is the
-            # redesign's answer -- the crystal carries on downward instead of
-            # reflecting -- so `-z` no longer flips the layer order.
+            # into the absolute `offset`.  The crystal CARRIES ON outward
+            # from the contact instead of reflecting, so `-z` no longer flips
+            # the layer order.  In the walk vocabulary (`sequence`, 2026-09-07)
+            # that is a different value per side -- read along the growth
+            # direction, going up from a layer is the forward walk and going
+            # down from one is the backward walk -- which is the mapping
+            # `_CONTINUES_THE_CRYSTAL` below writes down once.
             offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
             for spec_str in electrode:
                 spec = _parse_electrode_spec(spec_str)
@@ -1097,7 +1109,7 @@ def cmd_modify(input_path, output_path,
                     start_z=float(anchor[2]
                                   + sign * spec["contact_distance"]),
                     grow=spec["side"],
-                    stacking="continue",
+                    sequence=_CONTINUES_THE_CRYSTAL[spec["side"]],
                     orthogonal=orthogonal,
                     offset=(float(anchor[0]) + offset_xy[0],
                             float(anchor[1]) + offset_xy[1]),

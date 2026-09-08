@@ -103,7 +103,7 @@
 
     /**
      * Replace the canvas with ``structure``, gated on the dirty
-     * flag.  If the canvas is dirty, the user must confirm.
+     * ADD `structure` INTO THE CANVAS, or install it when the canvas is empty.
      *
      * @returns {Promise<{ok: bool, cancelled?: bool}>}
      */
@@ -132,6 +132,43 @@
          * carry what the flattening destroyed. With the envelope there is
          * nothing left for them to carry, so they are gone. */
         var filename = (source && source.file) || null;
+
+        /* ── ADDING, NOT REPLACING (user, 2026-09-07) ─────────────────────
+         *
+         * "the load from project or other generators should by default ADD
+         * their results into the molview structure instead of clear the
+         * existing one ... such that we can keep adding content into the same
+         * editing session".
+         *
+         * So this door has two behaviours and ONE question decides which:
+         * is there a structure open?  With none, the incoming one IS the
+         * canvas -- `installMolecule`, which anchors the timeline at point 0,
+         * because there is nothing behind it to come back to.  With one open,
+         * the incoming one is an EDIT of it -- `applyOp("append")`, which
+         * places it on the world origin, merges the labels and lays down a
+         * timeline point like any other edit.
+         *
+         * REPLACING IS STILL REACHABLE and it is now a separate gesture:
+         * "Start empty", then load.  Which is why the dirty-canvas warning
+         * that used to stand here is gone -- nothing is discarded any more, so
+         * there was nothing left for it to ask about.  The one place that
+         * question still belongs is Start empty, which asks it.
+         */
+        function _append() {
+            return _model().applyOp("append", {
+                addition: structure.structure,
+            }).then(function (applied) {
+                if (!applied) return { ok: false };
+                /* THE PAGE'S NOTE IS CLEARED, not kept.  It answers "which
+                 * file is on the canvas" (§ 6.7), and after an append the
+                 * canvas is no longer any one file -- so Save to project asks
+                 * where to write instead of silently offering to overwrite the
+                 * first thing that was loaded. */
+                markLoadedFrom(null);
+                return { ok: true };
+            });
+        }
+
         function _apply() {
             return _model().installMolecule({
                 structure: structure.structure,
@@ -151,24 +188,15 @@
                 return { ok: true };
             });
         }
-        // Nothing loaded — load directly; no warning. A read answers nothing
-        // when there is nothing, which is a different answer from a structure
-        // with no atoms (molview.md § 9.3).
+        /* NOTHING OPEN IS A DIFFERENT ANSWER FROM AN EMPTY STRUCTURE, and the
+         * model says which (molview.md § 9.3): a read answers nothing when
+         * there is nothing.  Appending into a viewer that holds no structure
+         * has nothing to append TO -- and it would leave the timeline with no
+         * point 0 to retract to -- so the first thing in is installed. */
         if (_model().getStructure() === null) {
             return _apply();
         }
-        // No unsaved work — load directly; no warning.  The user has saved (or
-        // just loaded) what is there, so overwriting it loses nothing.
-        if (!_model().uncommitted) {
-            return _apply();
-        }
-        // Dirty canvas — ask before overwriting.
-        return _mod().confirmDiscardUnsaved().then(function (proceed) {
-            if (!proceed) {
-                return { ok: false, cancelled: true };
-            }
-            return _apply();
-        });
+        return _append();
     }
 
     /* NEITHER OF THESE MARKS THE VIEWER ANY MORE, and both are kept only so the

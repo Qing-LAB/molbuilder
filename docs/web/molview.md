@@ -194,14 +194,26 @@ speed box in milliseconds per frame (20–3000, default 150), and a slider with 
 with the frames — the largest force is drawn gold, the rest shade dim-red to
 orange-red by relative size, so converging forces visibly shrink.
 
-**Keeping a point to come back to.** In an editable view you can save the current
-state — the structure as it stands, with the atoms you have picked out — and step
-back to it later, even after a reload. It is undo that survives closing the page.
-Saving is something you do: nothing is recorded on its own, and a small badge in
-the corner says when there is work that is not on the sequence yet. The button
-itself belongs to the page rather than to the viewer — in the Modify tab it sits
-with the editing (§ 11.2). This is not a file and nothing appears in your project
-(§ 11.3).
+**Keeping a point to come back to.** In an editable view the current state — the
+structure as it stands, with the atoms you have picked out — can be stepped back
+to later, even after a reload. It is undo that survives closing the page.
+
+**Every edit lays down a point of its own.** An operation that changes the
+structure records one when it lands, so Retract always steps back exactly one
+edit and there is never work that only *some* of is recoverable (user,
+2026-09-07: *"all operation should automatically call state save timeline api,
+such that the user always can retract back"*). Saving by hand is still there for
+a point you want to mark that no edit produced — a selection you want to come
+back to — and the badge still says when there is work not on the sequence yet.
+The button belongs to the page rather than to the viewer — in the Modify tab it
+sits with the editing (§ 11.2). This is not a file and nothing appears in your
+project (§ 11.3).
+
+> Until 2026-09-07 the rule here was the opposite — *"saving is something you do:
+> nothing is recorded on its own"* — and an edit only rewrote the draft. Retract
+> could then reach no further back than the last time somebody had thought to
+> press the button, which made the guarantee it appears to offer untrue exactly
+> when it was wanted.
 
 **Getting things out.** The Export menu offers two things, each with a *Save*
 (into the project) and a *Download* row:
@@ -1233,8 +1245,9 @@ nothing can go wrong, and a result object that can be used as though it worked.
 All of the above is about the doors that ask **the server** a question and wait
 for the answer. **`save(step)` does not wait**, and cannot be made to.
 
-**It is also not one write.** § 11.3 names the two: the **draft**, rewritten by
-every edit, and the **saved point**, added when you press Save state. Both are
+**It is also not one write.** § 11.3 names the two: the **draft**, rewritten
+whenever an edit does not lay down a point of its own, and the **saved point**,
+added by every edit and by Save state. Both are
 files on the server and neither is waited for — a slow disk must never freeze an
 edit — so `save` has already returned by the time either one's fate is known.
 Making it throw would mean awaiting a write that exists precisely so nothing
@@ -3000,10 +3013,11 @@ shape, rather than each one being hand-coded:
 | `translate` | the thing being moved | `indices` | act on all atoms | — | unchanged |
 | `rotate` | the thing being rotated | `indices` | act on all atoms | — | unchanged |
 | `orient` | a reference the move is defined against | `anchors` | refuse | 2 | unchanged |
-| `add_atom` | a reference the new atom attaches to | `anchor_index` (one number) | refuse | 1 | grows |
+| `add_atom` | a reference the new atom attaches to | `anchor_index` (one number) | measure from the world origin | 1 | grows |
 | `delete` | the atoms to remove | `indices` | refuse | — | shrinks |
 | `calibrate` | the thing being mapped | — | act on all atoms | — | unchanged, whole-structure only |
 | `slab` | **not read at all** | — | *(nothing to fall back from)* | — | grows |
+| `append` | **not read at all** | — | *(nothing to fall back from)* | — | grows |
 
 Those columns drive one generic piece of code. **"Where it lands" is the body key
 the resolved selection is written to** — without it the table says how many atoms
@@ -3011,24 +3025,36 @@ an operation needs and not where to put them, which is not enough to build a
 request. It is **omitted entirely when nothing is selected**, so the server
 applies its own centring rather than being handed an empty list.
 
+**An absent key is an answer, not a missing argument.** For `add_atom` the
+absence *is* "measure from the world origin": with no atoms on the canvas there
+is no index that could be sent, so an operation whose whole job is to grow a
+structure could not start one. The origin is the reference `slab` already places
+against, so the two agree about where the world begins.
+
 **The body is flat.** The structure travels under `structure`; the selection
 travels under the key above; the operation's own arguments — `dx`, `element`,
 `angle` — sit beside them at the top level, because that is where the route reads
 them. Nesting them under a `params` object sends them where nothing looks.
 
-The count requirement is checked **before** the request goes out — `orient` with
-**Two operations send no selection, for two different reasons, and the table
-says which.** `calibrate` rigidly maps every atom into the cell, so a partial
-selection would be a half-mapped structure. `slab` places its slab from
+**"Needs exactly" is about a selection that exists.** The count is checked
+**before** the request goes out — `orient` with one atom selected never reaches
+the network. It says nothing about **zero**: that case belongs to "With nothing
+selected" alone. Letting the count answer it too made every operation with a
+count refuse at zero whatever its own column said, which is how `add_atom` came
+to be unable to place the first atom on an empty canvas. `calibrate` always
+takes the whole-structure path even with a partial selection, because it rigidly
+maps every atom into the cell and clears the cell origin.
+
+**Three operations send no selection, and the table says which.** `calibrate`
+rigidly maps every atom into the cell, so a partial selection would be a
+half-mapped structure. `append` places the incoming fragment on the world
+origin — a load is an edit (2026-09-07), and there is nothing a picked atom
+could mean to it. `slab` places its slab from
 **absolute coordinates** — a starting z, a growth direction and an (x, y)
 measured from the world origin — so there is nothing for a selection to mean;
 it is the one edit whose panel a user can drive with atoms picked and get the
 same answer either way (`archive/2026-09-01-modify-redesign-plan.md` § 3). The shared
 mechanism is one flag: *the selection is not sent*.
-
-one atom selected never reaches the network. `calibrate` always takes the
-whole-structure path even with a partial selection, because it rigidly maps every
-atom into the cell and clears the cell origin.
 
 **One mutation in flight.** A second edit started while one is still running is
 **not started** rather than interleaved. Two responses applying over each other
@@ -3491,8 +3517,9 @@ guess at (§ 11.2's version stamp).
 is nothing to come back to, and `load` stays a no-op in every form.
 
 **MolView owns the whole mechanism and the policy** — what a save records, what
-to prune **above** the current point, how far a step moves, and the rule that
-nothing is recorded on its own. The **workspace** module owns what sits
+to prune **above** the current point, how far a step moves, and the rule that an
+edit records a point while nothing else does. The **workspace** module owns what
+sits
 underneath: where the bytes actually go, reached through an accessor handed in at
 mount, and **how many of them there are**.
 

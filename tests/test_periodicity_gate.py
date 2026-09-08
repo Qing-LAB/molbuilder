@@ -349,6 +349,110 @@ def test_calibrated_then_emit_equals_emit():
 # ------------------------------------------------------------------ #
 
 
+class TestTheBlockOp:
+    """`block` sets § 6.2's whole cell and checks ONCE.
+
+    IT EXISTS BECAUSE THE FIELD-AT-A-TIME OPS CANNOT EXPRESS A CHANGE TO TWO
+    OF THEM.  Two requests are not atomic -- the second can be refused after
+    the first has landed -- and two of the transitions are unreachable in
+    EITHER order, which is what these tests are mostly about:
+
+      * an axis cannot become `periodic` until an explicit `cell` is stored;
+      * that cell cannot be cleared while an axis IS `periodic`.
+
+    So "become a periodic crystal" and "go back to a derived box" were both
+    journeys through a state the gate refuses.  `block` builds the result and
+    validates that, so the intermediate states never exist.
+    """
+
+    def test_becoming_a_periodic_crystal_takes_one_request(self):
+        """Unreachable before: `axis_kind` refuses periodic with no cell, and
+        `cell` alone leaves the axes isolated."""
+        s = _mol()
+        assert s.cell is None
+        out, notes = apply_edit(s, "block", {
+            "cell": [[10, 0, 0], [0, 10, 0], [0, 0, 20]],
+            "cell_origin": None,
+            "axis_kind": ["periodic", "periodic", "transport"],
+            "vacuum": [5.0, 5.0, 0.0],
+        })
+        assert out.axis_kind == ("periodic", "periodic", "transport")
+        assert np.allclose(out.cell, np.diag([10.0, 10.0, 20.0]))
+        assert any("explicit cell" in n["message"] for n in notes), notes
+
+    def test_going_back_to_a_derived_box_takes_one_request(self):
+        """The other direction, and the one the panel's "Use default" button
+        could not offer: it had to disable itself on exactly the structures a
+        user most wants it for."""
+        s = _mol()
+        s.cell = np.diag([10.0, 10.0, 20.0])
+        s.axis_kind = ("periodic", "periodic", "transport")
+        s.__post_init__()
+        out, notes = apply_edit(s, "block", {
+            "cell": None, "cell_origin": None,
+            "axis_kind": ["isolated"] * 3, "vacuum": [4.0, 4.0, 4.0],
+        })
+        assert out.cell is None and out.cell_origin is None
+        assert out.axis_kind == ("isolated",) * 3
+        assert out.vacuum == (4.0, 4.0, 4.0)
+        assert any("derived" in n["message"] for n in notes), notes
+
+    def test_a_periodic_axis_with_no_cell_is_refused_on_the_whole_block(self):
+        """The one pairing rule, stated on the RESULT rather than on the order
+        the fields arrived in."""
+        with pytest.raises(ValueError, match="periodic axis needs an explicit cell"):
+            apply_edit(_mol(), "block", {
+                "cell": None, "cell_origin": None,
+                "axis_kind": ["periodic", "isolated", "isolated"],
+                "vacuum": None,
+            })
+
+    def test_an_origin_without_a_cell_is_refused(self):
+        with pytest.raises(ValueError, match="only meaningful with an explicit cell"):
+            apply_edit(_mol(), "block", {
+                "cell": None, "cell_origin": [0.0, 0.0, 0.0],
+                "axis_kind": ["isolated"] * 3, "vacuum": None,
+            })
+
+    def test_a_partial_block_is_refused_rather_than_half_applied(self):
+        """A key this op does not know is a caller sending a shape it invented,
+        and quietly ignoring it is how half a cell lands."""
+        with pytest.raises(ValueError, match="unknown key"):
+            apply_edit(_mol(), "block", {
+                "cell": None, "cell_origin": None,
+                "axis_kind": ["isolated"] * 3, "vacuum": None,
+                "kgrid": [4, 4, 1],
+            })
+        with pytest.raises(ValueError, match="whole cell"):
+            apply_edit(_mol(), "block", [[10, 0, 0], [0, 10, 0], [0, 0, 10]])
+
+    def test_a_left_handed_cell_is_refused_by_the_one_checker(self):
+        """`block` runs the same check the field-at-a-time ops run -- once, on
+        the result -- so nothing is enforced less because it arrived together.
+        """
+        with pytest.raises(ValueError):
+            apply_edit(_mol(), "block", {
+                "cell": [[-4, 0, 0], [0, 4, 0], [0, 0, 4]],
+                "cell_origin": None,
+                "axis_kind": ["isolated"] * 3, "vacuum": None,
+            })
+
+    def test_a_null_vacuum_stays_never_chosen(self):
+        """Vacuum has three states (§ 6.1) and `block` must carry all three:
+        the panel sends null for "nobody decided", which is what the 3 Å
+        default exists FOR.  Sending a number instead would stamp a value the
+        user never chose and lose the (default) mark."""
+        s = _mol()
+        s.vacuum = (7.0, 7.0, 7.0)
+        s.__post_init__()
+        out, _notes = apply_edit(s, "block", {
+            "cell": None, "cell_origin": None,
+            "axis_kind": ["isolated"] * 3, "vacuum": None,
+        })
+        assert out.vacuum is None
+        assert out.effective_vacuum() == (3.0, 3.0, 3.0)
+
+
 class TestPeriodicityDoor:
     """PINS: docs/model/structure-periodicity.md § 6.2 — the unified door
     ``POST /api/structure/periodicity``.
@@ -1419,6 +1523,12 @@ class TestEveryOpIsChecked:
         # row here with it.
         "/api/modify/slab":        {"element": "Au", "plane": "111",
                                     "m": 1, "n": 1, "layers": 2},
+        # Adding one structure into another (user, 2026-09-07).  It takes a
+        # SECOND envelope beside the one every op takes, and reads no selection
+        # -- the incoming fragment is placed on the world origin.
+        "/api/modify/append":      {"addition": {
+            "elements": ["N"], "positions": [[0.0, 0.0, 0.0]], "metadata": {},
+        }},
     }
 
     @pytest.fixture

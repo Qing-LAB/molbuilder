@@ -65,7 +65,7 @@ def test_the_pane_vocabulary_is_defined_in_the_module_sheet():
 def test_every_edit_landed_site_outdates_the_record():
     """Every place an edit is MARKED also records it against the contract.
 
-    The three `history.edited()` sites are the gated points where an edit has
+    The three `recordEdit(...)` sites are the gated points where an edit has
     landed -- a read-only viewer and a failed edit never reach them -- so a
     contract-outdating call must sit beside each, or a pair exported after
     that edit carries a contract that silently no longer describes it.
@@ -79,11 +79,17 @@ def test_every_edit_landed_site_outdates_the_record():
     WHICH flag each door raises is behaviour, and is driven in
     tests/test_molview_model.py: a label write raises `labels_modified` and
     not the other, a cell edit the reverse.
+
+    Counted the same way for the same reason: the sites now say whether the
+    edit lays down a timeline point (`recordEdit(true)` / the operation row's
+    `checkpoint`), so the ARGUMENT varies by door and only the call itself is
+    the class.  Whether each door checkpoints is behaviour, driven in
+    tests/test_molview_stores_history.py.
     """
     src = _stripped(MOLVIEW / "model.js")
-    assert src.count("history.edited();") == 3, (
-        "the edit-landed sites moved; re-anchor this pin AND the "
-        "markContractOutdated hooks together")
+    assert src.count("recordEdit(") == 4, (
+        "the edit-landed sites moved (3 calls + 1 definition); re-anchor this "
+        "lint AND the markContractOutdated hooks together")
     assert src.count("markContractOutdated(") == 4, (
         "an edit-landed site no longer outdates the record (3 calls + 1 "
         "definition) -- a pair exported after that edit would carry a "

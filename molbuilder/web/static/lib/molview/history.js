@@ -105,10 +105,14 @@ export function createHistory(handed) {
              * straight away so a reload finds it; the numbered point is sent to
              * the server without waiting, so a slow disk never stalls an edit.
              *
-             * A ROUTINE WRITE SENDS NO POINT. `snapshotBlob` is null unless this is
-             * a save, which is what keeps § 11.2's two rules from collapsing into
-             * one: every change refreshes what would be lost, and only the user's
-             * own Save state lays down somewhere to come back to. */
+             * A ROUTINE WRITE SENDS NO POINT, and that is still two rules
+             * rather than one: every change refreshes what would be lost, and
+             * a change that DECLARED itself worth coming back to also lays a
+             * point down.  Which changes those are is the caller's to say --
+             * `checkpoint` on the operation's row, or the gate's own answer --
+             * and since 2026-09-07 every edit says yes.  The machinery keeps
+             * both paths because the declaration is a per-operation fact, not
+             * a global setting. */
             /* A MILESTONE AND A DRAFT GO TO DIFFERENT FILES.
              *
              * `save` writes a numbered point you can come back to. An edit writes
@@ -357,6 +361,18 @@ export function createHistory(handed) {
         // waits. The machine still holds it if asked, because dropping it would
         // lose the user's work exactly when they asked to keep it.
         save(step) {
+            /* THE BADGE GOES UP FIRST, and `send` takes it down when the write
+             * lands.  Between those two moments the work genuinely IS off the
+             * sequence, and that is not a hypothetical: `request` answers
+             * `false` and HOLDS the write whenever a change is still in flight,
+             * so a save can sit un-landed for as long as that takes.
+             *
+             * It mattered little while saving was a button somebody pressed
+             * once in a while.  Now that every edit asks for a point (§ 11.2,
+             * 2026-09-07) the held case is ordinary, and a badge that stayed
+             * down through it would be saying "all your work is recorded" at
+             * precisely the moment some of it is not. */
+            setBadge(true);
             const target = position + (step === 0 ? 0 : 1);
             return request(target, true);
         },

@@ -212,7 +212,7 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     return Structure.from_dict(env)
 
 
-def struct_from_body(body: Dict[str, Any]) -> Structure:
+def struct_from_body(body: Dict[str, Any], key: str = "structure") -> Structure:
     """Reconstruct a Structure from THE ENVELOPE, which is the only shape
     (`web-api.md` § 1, "The request envelope")::
 
@@ -233,16 +233,23 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     **A body carries ``structure``, or it is refused** -- by name, naming the
     shape it wanted.
 
+    ``key`` names WHICH envelope in the body to read, and exists for the one
+    route that takes two: ``/api/modify/append`` is handed the structure being
+    built in AND the one being added to it.  It is the same envelope shape read
+    by the same reader either way -- a second parameter, not a second door --
+    because two envelopes in a body must not become two ideas of what an
+    envelope is.
+
     It read the flattened `{xyz, atom_names, ...}` columns as a second shape
     during the migration, and a body carrying BOTH took the envelope and
     ignored the rest (never merged, because merging lets a stale field
     silently override a fresh one).  That window is closed: there is no second
     shape left for the both-keys rule to arbitrate, and the rule went with it.
     """
-    envelope = body.get("structure")
+    envelope = body.get(key)
     if not isinstance(envelope, dict):
         raise ValueError(
-            "no 'structure' provided: a structure crosses in the envelope "
+            f"no {key!r} provided: a structure crosses in the envelope "
             "(web-api.md § 1) -- {elements, positions, metadata}")
     return _struct_from_envelope(envelope)
 

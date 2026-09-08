@@ -1198,6 +1198,40 @@ def test_modify_add_atom_appends_at_offset(web_client):
     assert body["residue_names"][-1] == "MOD"
 
 
+def test_modify_add_atom_without_anchor_measures_from_the_origin(web_client):
+    """An OMITTED ``anchor_index`` is the wire form of "nothing is selected",
+    and the route reads it as the world origin (molview.md § 11.1).
+
+    The client omits the group key at empty selection for every op; for this
+    one that absence has to mean something, and (0, 0, 0) is it.
+    """
+    r = web_client.post("/api/modify/add_atom", json={
+        "structure": _env(_H2O_XYZ),
+        "element": "S",
+        "offset": [1.25, -0.5, 2.0],
+    })
+    body = r.get_json()
+    assert body["ok"] is True, body
+    assert body["n_atoms"] == 4
+    assert body["elements"][-1] == "S"
+    # The offset IS the position -- read it back off the xyz the route returns.
+    x, y, z = [float(v) for v in body["xyz"].splitlines()[-1].split()[1:4]]
+    assert (round(x, 6), round(y, 6), round(z, 6)) == (1.25, -0.5, 2.0)
+
+
+def test_modify_add_atom_still_refuses_an_out_of_range_anchor(web_client):
+    """Optional is not unchecked: a key that IS present must name a real atom,
+    so the origin fallback cannot become a way to smuggle a bad index past."""
+    r = web_client.post("/api/modify/add_atom", json={
+        "structure": _env(_H2O_XYZ),
+        "element": "S",
+        "anchor_index": 99,
+        "offset": [0.0, 0.0, 1.5],
+    })
+    assert r.status_code == 400
+    assert r.get_json()["ok"] is False
+
+
 def test_modify_add_atom_explicit_residue_id_groups_atoms(web_client):
     """The web layer surfaces SP-E (add_atom's optional residue_id) so a
     UI builder can land multiple appended atoms in one residue."""

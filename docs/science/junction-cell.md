@@ -195,13 +195,20 @@ on (111).**
 This is the condition that is easy to miss, because every obvious symmetry
 operation fails it, and fails it identically.
 
-`add_slab(grow="-z", stacking="mirror")` places a slab by **mirroring**
+`add_slab(grow="-z", sequence="ABC")` places a slab by **mirroring**
 (`z → −z`). A mirror maps the slab's outermost layer to the *other* slab's
 outermost layer — the same layer index — so both faces meeting at the cell
 boundary carry the **same in-plane registry** and are eclipsed. The deleted
 `add_electrode_slab` did this *unconditionally* for `side="-z"`, with no way
-to ask for anything else; `stacking="continue"` is the alternative the
-redesign added, and it is what `--electrode` now uses.
+to ask for anything else; `sequence="ACB"` is the alternative, and it is what
+`--electrode` now uses on that side.
+
+**`sequence` is read along the growth direction**, so "the crystal carries on"
+is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
+is why `--electrode` maps the side to the walk rather than passing a constant
+(`_CONTINUES_THE_CRYSTAL` in `cli.py`). It replaced `stacking` on 2026-09-07:
+that argument named downward behaviour only and had no effect at all growing
+up, which left the mirrored *upward* slab unbuildable.
 
 Choosing a different symmetry does not help, and the reason is structural rather
 than incidental: **each close-packed layer is itself a centrosymmetric 2-D

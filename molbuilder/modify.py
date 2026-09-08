@@ -12,7 +12,7 @@ Public surface (all pure functions; each returns a new ``Structure``):
     rotate_around_axis(struct, axis="z", angle=0.0, *, center="origin")
                                                 -> Structure
     add_slab(struct, element, plane, size, *, start_registry=0,
-             start_z=0.0, grow="+z", stacking="continue",
+             start_z=0.0, grow="+z", sequence="ABC",
              orthogonal=False, offset=(0.0, 0.0),
                              lattice_constant=None)
                                                 -> Structure
@@ -61,7 +61,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from . import cell as _cell
-from .structure import Structure, copy_annotations, remap_annotations
+from .structure import (FROZEN_LABEL, Structure, copy_annotations,
+                        remap_annotations)
 
 
 # --------------------------------------------------------------------- #
@@ -128,7 +129,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
 def add_atom(
     struct: Structure,
     element: str,
-    anchor_index: int,
+    anchor_index: Optional[int],
     offset: Sequence[float],
     *,
     atom_name: Optional[str] = None,
@@ -137,7 +138,10 @@ def add_atom(
 ) -> Structure:
     """Return a new ``Structure`` with one atom appended.
 
-    The new atom's position is ``struct.positions[anchor_index] + offset``.
+    The new atom's position is ``struct.positions[anchor_index] + offset``,
+    or ``offset`` itself when ``anchor_index`` is ``None`` -- the offset is
+    then measured from the world origin, the same origin ``add_slab`` and
+    ``translate`` already place against.
 
     By default a fresh residue id is allocated (``max(residue_ids) + 1``)
     so the added atom isn't lumped into the anchor's residue -- handy
@@ -163,7 +167,14 @@ def add_atom(
     element
         Chemical symbol of the new atom ("H", "Au", ...).
     anchor_index
-        Atom whose position the offset is measured from.
+        Atom whose position the offset is measured from, or ``None`` to
+        measure from the WORLD ORIGIN.  ``None`` is what "nothing is
+        selected" means, and it is the only way to put the first atom on an
+        empty canvas: with no atoms there is no index that could be passed,
+        so requiring one made a structure of one atom unbuildable from here
+        (user, 2026-09-07).  The origin is the same reference ``add_slab``
+        measures its placement from, so the two agree about where (0, 0, 0)
+        is.
     offset
         ``(dx, dy, dz)`` in Angstroms.
     atom_name
@@ -174,7 +185,7 @@ def add_atom(
         If provided, place the new atom in this existing residue.
         Default ``None`` -> allocate a fresh residue id.
     """
-    if not (0 <= anchor_index < struct.n_atoms):
+    if anchor_index is not None and not (0 <= anchor_index < struct.n_atoms):
         raise IndexError(
             f"anchor_index {anchor_index} out of range for "
             f"{struct.n_atoms}-atom structure"
@@ -199,7 +210,17 @@ def add_atom(
     # (``report(validate(...))`` in the SIESTA/PySCF emitters) enforces at emit
     # time.  So the user can build an intermediate structure and fix it later.
     # Only genuinely-invalid input (a non-element symbol, above) is rejected here.
-    new_pos = struct.positions[anchor_index] + offset_arr
+    # NO ANCHOR MEANS THE ORIGIN, and the origin is a point, not a stand-in
+    # for an atom -- so the two facts an anchor would have supplied are taken
+    # from the Structure's own defaults rather than from atom 0.  Chain "A" is
+    # what `Structure` fills an unspecified chain column with (structure.py),
+    # so an origin-anchored atom is indistinguishable from one the constructor
+    # made, which is the point: nothing downstream learns it had no anchor.
+    base = (struct.positions[anchor_index] if anchor_index is not None
+            else np.zeros(3, dtype=float))
+    new_chain = (struct.chain_ids[anchor_index] if anchor_index is not None
+                 else "A")
+    new_pos = base + offset_arr
     if residue_id is None:
         new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
     else:
@@ -214,7 +235,7 @@ def add_atom(
         atom_names=struct.atom_names + [atom_name or element],
         residue_ids=struct.residue_ids + [new_residue_id],
         residue_names=struct.residue_names + [residue_name],
-        chain_ids=struct.chain_ids + [struct.chain_ids[anchor_index]],
+        chain_ids=struct.chain_ids + [new_chain],
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         annotations=copy_annotations(struct.annotations),
@@ -851,7 +872,7 @@ def add_slab(
     start_registry: int = 0,
     start_z: float = 0.0,
     grow: str = "+z",
-    stacking: str = "continue",
+    sequence: str = "ABC",
     orthogonal: bool = False,
     offset: Tuple[float, float] = (0.0, 0.0),
     lattice_constant: Optional[float] = None,
@@ -876,21 +897,36 @@ def add_slab(
     grow
         ``"+z"`` or ``"-z"`` -- which way the remaining layers go from the
         starting one.
-    stacking
-        What the registry does when growing DOWNWARD.  ``"continue"`` walks
-        it backwards with the growth direction, so the layers below A are
-        C then B -- what a real fcc crystal has below an A layer.
-        ``"mirror"`` walks it forwards regardless, which is the same slab
-        flipped in z.
+    sequence
+        THE ORDER THE REGISTRIES ARE VISITED, READ ALONG ``grow``.  ``"ABC"``
+        walks the cycle forwards from ``start_registry`` -- starting at A the
+        layers laid down are A, B, C, A...; starting at B they are B, C, A.
+        ``"ACB"`` walks it backwards: A, C, B, A.
 
-        **Both are real fcc**: the lattice is centrosymmetric, so a mirrored
-        slab is a perfectly good crystal.  They differ only where two slabs
-        MEET -- grown apart from A, ``continue`` gives ``...B C A | A B C...``
-        and ``mirror`` gives ``...C B A | A B C...``.  Growing ``+z`` the two
-        are identical, and this argument is why the parameter exists at all:
-        the redesign plan first claimed that stating the registry made the
-        choice unreachable, when it had only made it unstated
-        (§ 3.2, corrected 2026-08-30 at the user's prompt).
+        Named for the cycle, not for the letters that come out: the start
+        registry says where the walk begins and this says which way it turns,
+        so the two together read as one sentence and neither has to know what
+        the other picked.
+
+        **Both are real fcc**: the lattice is centrosymmetric, so either walk
+        is a perfectly good crystal.  They differ only where two slabs MEET
+        -- grown apart from A, the pair ``ACB``/``ABC`` gives
+        ``...B C A | A B C...`` and ``ABC``/``ABC`` gives ``...C B A | A B C...``.
+
+        On a surface whose stacking period is 2 -- (100) and (110) -- the two
+        walks are the SAME sequence (backwards and forwards agree modulo 2),
+        so the choice has no effect there and the panel does not offer it.
+
+        THIS REPLACED ``stacking`` (user, 2026-09-07), which said what the
+        registry did *when growing DOWNWARD* and was therefore a control whose
+        meaning depended on another control's value: growing up it did nothing
+        at all, and the panel had to hide it to avoid offering a choice with
+        no effect.  Said as a walk direction it is one fact that always means
+        the same thing, and the combination that had been unreachable -- the
+        backwards walk growing ``+z`` -- is now simply another row.  The three
+        combinations that existed before are bit-identical:
+        ``(+z, anything)`` and ``(-z, "mirror")`` are ``"ABC"``;
+        ``(-z, "continue")`` is ``"ACB"``.
 
     What it deliberately does NOT take
     ----------------------------------
@@ -904,9 +940,9 @@ def add_slab(
         return struct.copy()
     if grow not in ("+z", "-z"):
         raise ValueError(f"grow must be '+z' or '-z'; got {grow!r}")
-    if stacking not in ("continue", "mirror"):
+    if sequence not in ("ABC", "ACB"):
         raise ValueError(
-            f"stacking must be 'continue' or 'mirror'; got {stacking!r}")
+            f"sequence must be 'ABC' or 'ACB'; got {sequence!r}")
     _check_fcc_element(element)
     # THE PLANE IS CHECKED BEFORE THE REGISTRY, and the order is the whole
     # point.  The registry lookup below also rejects an unknown plane, but it
@@ -952,10 +988,15 @@ def add_slab(
     all_pos = np.asarray(full.positions, dtype=float)
     zs = sorted({round(float(z), 6) for z in all_pos[:, 2]})
 
-    # WHICH LAYER LANDS ON `start_z`, and therefore which window carries the
-    # registry the caller asked for.  Growing up, or mirrored, it is the
-    # window's BOTTOM layer; growing down by continuing, its TOP.
-    if grow == "-z" and stacking == "continue":
+    # WHICH LAYER LANDS ON `start_z`, and therefore which window of the
+    # superset carries the registry the caller asked for.
+    #
+    # ASE stacks the superset with the registry increasing upward, so a
+    # FORWARD walk reads the window bottom-up and its first layer is the
+    # window's BOTTOM; a BACKWARD walk reads it top-down and starts at its
+    # TOP.  `grow` does not appear here at all -- which way the slab extends
+    # in the world is a rigid placement, applied below.
+    if sequence == "ACB":
         first = (k0 - n_layers + 1) % period
     else:
         first = k0
@@ -971,17 +1012,16 @@ def add_slab(
     # layer.  A rigid motion of a crystal is a crystal, so the class of bug
     # that per-layer editing invites is unreachable rather than guarded.
     z_rel = metal_pos[:, 2] - metal_pos[:, 2].min()
-    if grow == "+z":
-        metal_pos[:, 2] = start_z + z_rel
-    elif stacking == "mirror":
-        # Reflected about the starting surface: the sequence reads the same
-        # way outward from it as an upward slab does.
-        metal_pos[:, 2] = start_z - z_rel
-    else:
-        # Translated only.  The layers below `start_z` are the ones ASE
-        # already put below -- the crystal carries on downward because it was
-        # never taken apart.
-        metal_pos[:, 2] = start_z - (z_rel.max() - z_rel)
+    # HOW FAR EACH ATOM SITS FROM THE STARTING LAYER, measured along the walk.
+    # The starting layer is the window's bottom for a forward walk and its top
+    # for a backward one -- the same choice `first` made above, read the same
+    # way -- so this is one subtraction rather than a branch per direction.
+    from_start = z_rel if sequence == "ABC" else (z_rel.max() - z_rel)
+    # AND WHICH SIDE OF `start_z` THAT DISTANCE FALLS ON.  This is the whole
+    # of what `grow` does: a rigid reflection of an already-correct stack, so
+    # the layer order cannot be disturbed by the placement.
+    metal_pos[:, 2] = (start_z + from_start if grow == "+z"
+                       else start_z - from_start)
 
     # PLACEMENT IS ABSOLUTE, and the reference is THE SUPERSET'S centroid --
     # not the slice's.
@@ -1063,7 +1103,116 @@ def calibrate_to_cell(struct: Structure) -> Structure:
     )
 
 
+# --------------------------------------------------------------------- #
+#  Appending one structure into another                                 #
+# --------------------------------------------------------------------- #
+
+
+def _unique_label(label: str, taken: "set") -> str:
+    """``"benzene#"`` beside an existing one becomes ``"benzene#2"``.
+
+    The number goes at the END, after molbuilder's own ``#`` provenance mark,
+    so the mark stays where `is_electrode_label` and the rest of the label
+    vocabulary look for it.
+    """
+    if label not in taken:
+        return label
+    n = 2
+    while f"{label}{n}" in taken:
+        n += 1
+    return f"{label}{n}"
+
+
+def append_structure(
+    struct: Structure,
+    addition: Structure,
+    *,
+    center: bool = True,
+) -> "tuple[Structure, List[str]]":
+    """Return ``struct`` with ``addition``'s atoms added, and what to say about it.
+
+    THE OPEN STRUCTURE IS THE ONE BEING BUILT IN.  Loading a file or running a
+    generator adds to what is on the canvas instead of replacing it, so a
+    session can be assembled piece by piece (user, 2026-09-07).  Replacing is
+    still reachable, and it is a separate gesture: start empty, then load.
+
+    ``center``
+        Put ``addition``'s centroid on the world origin before adding it.  The
+        origin is where every other absolute placement in this module measures
+        from -- ``add_slab``'s ``start_z`` and ``offset``, ``add_atom``'s
+        anchorless offset -- so a fragment arrives somewhere stated rather than
+        wherever its file happened to put it.
+
+    Returns ``(structure, notes)``.  The notes are sentences for the user about
+    what the merge decided, not diagnostics: an empty list means there was
+    nothing to decide.
+
+    What it does about the three collisions
+    ---------------------------------------
+    **Atom indices** -- ``Structure.concat`` already re-indexes regions and the
+    annotation channels and renumbers residues, so none of that is redone here.
+
+    **Label names** -- there is nothing to reconcile in a label's CONTENTS: a
+    label names a set of atoms, the two structures' atoms are disjoint, and
+    `concat` already offsets the incoming indices, so a shared name simply ends
+    up naming both sets.  The question is only whether a shared name SHOULD.
+    For a name a person or a generator chose it should not -- two fragments both
+    called ``benzene#`` stop being separately selectable, which is the whole
+    use of the label -- so the incoming one is numbered (``benzene#2``).
+
+    :data:`FROZEN_LABEL` is the exception, and the reason is the NAME rather
+    than the atoms: it is reserved, meaning something downstream acts on that
+    exact spelling (the SIESTA ``%block Geometry.Constraints`` emitter, the
+    PySCF freeze list, and :attr:`Structure.frozen_atoms`, which is the one
+    designated read).  Numbering it to ``frozen_atoms2`` would leave the
+    incoming atoms carrying a label nothing recognises -- silently unfrozen.
+
+    **The cell** -- the open structure's is kept.  The canvas being built in
+    owns its box; an incoming fragment contributes atoms.  When the addition
+    carried a cell of its own, that is said rather than passed over, because a
+    dropped lattice is otherwise invisible.
+    """
+    notes: List[str] = []
+    if addition.n_atoms == 0:
+        return struct.copy(), notes
+
+    incoming = addition
+    if center and incoming.n_atoms:
+        incoming = incoming.translated(
+            -np.asarray(incoming.positions, dtype=float).mean(axis=0))
+
+    # RENAMED BEFORE THE CONCAT, not after: `concat` unions by name, so a name
+    # that is going to be distinct has to be distinct by the time it gets
+    # there.  Reserved names are skipped because their SPELLING is what
+    # downstream acts on -- see the docstring.
+    taken = set(struct.regions)
+    renamed: Dict[str, str] = {}
+    for label in incoming.regions:
+        if label == FROZEN_LABEL:
+            continue          # reserved spelling -- renaming it unfreezes them
+        fresh = _unique_label(label, taken)
+        if fresh != label:
+            renamed[label] = fresh
+            notes.append(
+                f"the incoming {label!r} was added as {fresh!r} -- this "
+                f"structure already had one")
+        taken.add(fresh)
+    if renamed:
+        incoming = incoming.copy()
+        incoming.regions = {renamed.get(k, k): list(v)
+                            for k, v in incoming.regions.items()}
+
+    if addition.cell is not None and struct.cell is not None:
+        notes.append(
+            "the added structure's own cell was not adopted -- this "
+            "structure's cell is unchanged")
+
+    out = Structure.concat([struct, incoming], title=struct.title or "")
+    return out, notes
+
+
 __all__ = [
+    "append_structure",
     "delete_atoms",
     "add_atom",
     "orient_along_axis",

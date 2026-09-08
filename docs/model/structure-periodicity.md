@@ -159,16 +159,35 @@ the box render and the fdf work on a blank molecule.
 | `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `commitPeriodicityOp("cell", 3×3)` / import / capture → `struct.cell` wins verbatim |
 | `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `commitPeriodicityOp("vacuum", [x,y,z])` — used verbatim, however small. `null` clears it back to the default |
 | `axis_kind` (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` | `commitPeriodicityOp("axis_kind", [...])` |
+| `block` | — (not a field: it sets all four) | — | `commitPeriodicityOp("block", {cell, cell_origin, axis_kind, vacuum})` — the whole cell, checked once |
 
-**One door, four ops.** This column named `setUnitCell` / `setVacuum` /
-`setAxisKind` — four separate writers that were deleted in the MolView rework
+**One door, five ops.** This column named `setUnitCell` / `setVacuum` /
+`setAxisKind` — three separate writers that were deleted in the MolView rework
 and replaced by a single `commitPeriodicityOp(op, payload)`, with `op` one of
-`vacuum · axis_kind · cell · cell_origin` (`periodicity_gate.OPS`, and the
-route validates against that same tuple). Four doors meant four things for the
-gate to stand in front of; one door means the check cannot be bypassed by
+`vacuum · axis_kind · cell · cell_origin · block` (`periodicity_gate.OPS`, and
+the route validates against that same tuple). Four doors meant four things for
+the gate to stand in front of; one door means the check cannot be bypassed by
 picking a different setter. **For `cell` and `cell_origin` the payload is
 required even when it is `null`** — a dropped key must not be
 indistinguishable from an explicit "clear this".
+
+**`block` sets the whole cell and checks once,** and it exists because the
+field-at-a-time ops could not express a change to two of them. The cell is one
+fact that travels together (`?doc=web/molview.md` § 6.2); sending two requests
+is not atomic, and the second can be refused after the first has landed —
+leaving a box nobody asked for. Worse, two of the transitions are unreachable
+in *either* order: an axis cannot become `periodic` until an explicit `cell` is
+stored, and that cell cannot be cleared while an axis is `periodic`. So
+"become a periodic crystal" and "go back to a derived box" were journeys
+through a state the gate refuses.
+
+`block` takes all four keys, builds the result, and runs the one checker on
+*that* — so the intermediate states never exist and the same rules are enforced
+on what the user actually described. It rejects an unknown key rather than
+ignoring it: a partial block is exactly what it replaced. It is what the Modify
+tab's Cell panel sends, from its **Derived / Explicit** switch (2026-09-07) —
+`cell: null` **is** the derived regime, so the switch is a reading of the
+structure and not a fifth field to keep in step with it.
 
 **Load-bearing rule:** the cell the renderer uses is the **resolved** cell,
 obtained only through the accessor `molview.data.getUnitCellInfo().value` —

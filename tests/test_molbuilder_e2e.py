@@ -207,6 +207,133 @@ def _clear_ruler(page):
     page.locator(f"{_CARD} .molviewer-measure-clear").click()
 
 
+@pytest.fixture
+def two_files(tmp_path, monkeypatch):
+    """Two DIFFERENT structures, each a real pair, SHARING one label name.
+
+    The shared name is the point: `Structure.concat` unions labels by name, so
+    two fragments both called ``FRAG`` would end up one region and stop being
+    separately selectable.  The incoming one is numbered instead, and that is
+    visible on the rows.
+    """
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    made = []
+    for name, elements, xs in (
+        ("water", ["O", "H", "H"], [0.0, 0.957, -0.239]),
+        ("pair",  ["N", "N"],      [10.0, 11.1]),
+    ):
+        struct = Structure(
+            elements=elements,
+            positions=np.array([[x, 0.0, 0.0] for x in xs]),
+        )
+        struct.regions = {"FRAG": list(range(len(elements)))}
+        path = tmp_path / f"{name}.xyz"
+        StructureCodec().write(struct, path)
+        made.append(path)
+    return made
+
+
+# --------------------------------------------------------------------- #
+#  Loading ADDS to what is open (user, 2026-09-07)                      #
+# --------------------------------------------------------------------- #
+
+def test_a_second_load_adds_to_the_first_instead_of_replacing_it(
+        page, flask_server, two_files):
+    """*"the load from project or other generators should by default ADD their
+    results into the molview structure instead of clear the existing one ...
+    such that we can keep adding content into the same editing session"*
+    (user, 2026-09-07).
+
+    Driven the way a person drives it: pick, Load, pick, Load.  Two things are
+    checked from the screen, because both had to be true for it to be an APPEND
+    rather than a replace: the count is the SUM, and the incoming label arrived
+    under a name of its own instead of merging into the one already there.
+    """
+    water, pair = two_files
+    errors = _open(page, flask_server)
+    _load(page, water)
+    assert _atom_count(page) == 3
+
+    _load(page, pair)
+    assert _atom_count(page) == 5, (
+        "the second load replaced the first instead of adding to it")
+
+    rows = page.locator(_CARD).inner_text()
+    assert "FRAG" in rows, "the first structure's label did not survive"
+    assert "FRAG2" in rows, (
+        "the incoming label was merged into the one already there, so the two "
+        f"fragments cannot be picked apart: {rows[:400]}")
+    assert not errors, errors
+
+
+def test_the_status_line_says_a_load_was_added(
+        page, flask_server, two_files):
+    """The line distinguishes the two things a Load can do, because they are
+    different: the first put a structure on an empty canvas, the second added
+    to one that was not.
+    """
+    water, pair = two_files
+    _open(page, flask_server)
+    _load(page, water)
+    assert "Loaded" in page.locator("#status").inner_text()
+
+    _load(page, pair)
+    status = page.locator("#status").inner_text()
+    assert "Added" in status and "5 in total" in status, status
+
+
+def test_start_empty_then_load_is_how_you_replace(
+        page, flask_server, two_files):
+    """Replacing did not disappear -- it became a separate gesture, and this is
+    it.  "Start empty" now stands beside "Save to project" precisely because it
+    is the whole-model action that append made load-bearing.
+    """
+    water, pair = two_files
+    _open(page, flask_server)
+    _load(page, water)
+    assert _atom_count(page) == 3
+
+    # The confirm is the app's own modal, not window.confirm (viewer.js).
+    page.locator("#clear-apply").click()
+    page.locator("button:has-text('Start empty')").last.click()
+    page.wait_for_function(
+        "() => (document.getElementById('edit-status')?.textContent || '')"
+        ".includes('Cleared')", timeout=_ACT_MS)
+
+    _load(page, pair)
+    assert _atom_count(page) == 2, (
+        "loading after Start empty did not replace -- it added to a canvas "
+        "that should have been empty")
+
+
+def test_each_append_is_a_point_the_timeline_can_come_back_to(
+        page, flask_server, two_files):
+    """*"all operation should automatically call state save timeline api, such
+    that the user always can retract back"* (user, 2026-09-07).
+
+    An append is an edit, so it records a point (§ 11.2).  Retract therefore
+    steps back exactly ONE load -- with Save state never pressed, which is the
+    whole difference from the rule this replaced.
+    """
+    water, pair = two_files
+    _open(page, flask_server)
+    _load(page, water)
+    _load(page, pair)
+    assert _atom_count(page) == 5
+
+    page.locator("#undo-op").click()
+    page.wait_for_function(
+        "() => /\\d+ of 3 selected/.test("
+        "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
+        timeout=_ACT_MS)
+    assert _atom_count(page) == 3, (
+        "Retract did not step back exactly one load")
+
+
 # --------------------------------------------------------------------- #
 #  § 6.5 step 1 — the page mounts                                       #
 # --------------------------------------------------------------------- #
@@ -342,7 +469,9 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
 
     for box in ("#pv-vac-a", "#pv-vac-b", "#pv-vac-c"):
         page.fill(box, "5")
-    page.locator("#pv-vac-update").click()
+    # ONE COMMIT for the whole cell (§ 6.2).  "Update vacuum" was one of four
+    # buttons that each wrote one field of a fact that travels together.
+    page.locator("#pv-apply").click()
 
     page.wait_for_function(
         "(prev) => (document.querySelector("
@@ -355,6 +484,19 @@ def test_committing_a_vacuum_changes_the_box_and_drops_the_default_mark(
 # --------------------------------------------------------------------- #
 #  structure-periodicity.md § 7 — a cell value taken off the structure  #
 # --------------------------------------------------------------------- #
+
+def _cell_explicit(page):
+    """Choose the EXPLICIT regime, which is what shows the 3x3 and the origin.
+
+    The panel asks WHICH BOX first and then shows that regime's fields (user,
+    2026-09-07).  It used to show all of them at once and dim the inert ones,
+    so these tests could reach the matrix straight away; now the regime is the
+    first thing a person picks, and so it is the first thing they do here.
+    """
+    page.locator('input[name="pv-regime"][value="explicit"]').check()
+    page.wait_for_selector("#pv-cell-grid input", state="visible",
+                           timeout=_ACT_MS)
+
 
 def _cell_boxes(page):
     return [page.locator("#pv-cell-grid input").nth(i).input_value()
@@ -378,8 +520,7 @@ def test_two_picked_atoms_become_a_lattice_vector_and_commit_nothing(
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-cell-from-selection", state="visible",
-                           timeout=_ACT_MS)
+    _cell_explicit(page)
     mirror_before = page.locator(f"{_CARD} .molviewer-cell-readout").inner_text()
 
     # The button says what it needs while it cannot run.
@@ -424,7 +565,7 @@ def test_the_click_order_is_the_axis_direction(page, flask_server, labelled_xyz)
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-cell-from-selection", timeout=_ACT_MS)
+    _cell_explicit(page)
 
     _pick_atom(page, 1)
     _pick_atom(page, 2)
@@ -457,7 +598,7 @@ def test_setting_a_length_keeps_the_direction(page, flask_server, labelled_xyz):
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-cell-from-selection", timeout=_ACT_MS)
+    _cell_explicit(page)
 
     _pick_atom(page, 1)
     _pick_atom(page, 3)                       # O -> H at (-0.239, 0.927, 0)
@@ -493,7 +634,7 @@ def test_one_picked_atom_becomes_the_cell_origin(page, flask_server,
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-org-from-selection", timeout=_ACT_MS)
+    _cell_explicit(page)
 
     assert page.locator("#pv-org-from-selection").is_disabled()
     _pick_atom(page, 3)                       # H at (-0.239, 0.927, 0.000)
@@ -519,7 +660,7 @@ def test_the_panel_says_left_handed_before_the_server_refuses_it(
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
-    page.wait_for_selector("#pv-cell-grid input", timeout=_ACT_MS)
+    _cell_explicit(page)
 
     # A deliberately mirrored frame: x, y, and MINUS z.
     for i, v in enumerate([1, 0, 0, 0, 1, 0, 0, 0, -1]):
@@ -596,7 +737,13 @@ def test_the_edit_survives_a_page_reload(
         f"() => /of {before - 1} selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
         timeout=_ACT_MS)
-    page.wait_for_selector(_BADGE, state="visible", timeout=_ACT_MS)
+    # The edit is ON the sequence now, so this is where it put us -- and it is
+    # the fact the reopened page below has to bring back.  It waited for the
+    # unsaved badge until 2026-09-07, when an edit recorded nothing.
+    page.wait_for_function(
+        "() => /saved #1/.test("
+        "  document.getElementById('timeline-status').textContent)",
+        timeout=_ACT_MS)
 
     page.reload()
     page.wait_for_selector(_CARD, timeout=_BOOT_MS)
@@ -610,23 +757,33 @@ def test_the_edit_survives_a_page_reload(
         f"the reopened page shows {_atom_count(page)} atoms, not the {before - 1} "
         f"the edit left -- the draft was not adopted, or the FILE was re-read "
         f"and the edit thrown away")
-    assert page.locator(_BADGE).is_visible(), (
-        "the unsaved badge did not come back: `dirty` is one of the three "
-        "fields that must travel WITH the draft, because a reopened page has "
-        "no way to work it out")
+    assert "#1" in page.locator("#timeline-status").inner_text(), (
+        "the reopened page does not know where on the sequence it is: the "
+        "position is one of the three fields that must travel WITH the draft, "
+        "because a fresh viewer starts at 0 and cannot work it out")
 
 
-def test_an_edit_changes_the_structure_and_raises_the_unsaved_badge(
+def test_an_edit_changes_the_structure_and_records_itself(
         page, flask_server, labelled_xyz):
-    """Delete removes the atom, the count follows, and the badge appears.
+    """Delete removes the atom, the count follows, and the edit puts ITSELF on
+    the timeline.
 
-    The badge is raised INSIDE the viewer's gate when the change lands
-    (§ 11.2) — not set by the page afterwards — so its appearing proves the edit
-    reached the model rather than only the screen.
+    The point is laid down INSIDE the viewer's gate when the change lands
+    (§ 11.2) — not by the page afterwards — so the sequence advancing proves the
+    edit reached the model rather than only the screen.
+
+    THIS ASKED THE BADGE until 2026-09-07, when an edit only rewrote the draft
+    and the badge going up was the only record it had.  Now the edit records
+    itself and the badge goes back DOWN when that lands — so the badge answers
+    the same for a recorded edit and a refused one, and the position is what
+    tells them apart.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
-    assert page.locator(_BADGE).is_hidden()
+    page.wait_for_function(
+        "() => /saved #0/.test("
+        "  document.getElementById('timeline-status').textContent)",
+        timeout=_ACT_MS)
 
     _pick_atom(page, 1)
     page.wait_for_function(
@@ -638,7 +795,10 @@ def test_an_edit_changes_the_structure_and_raises_the_unsaved_badge(
         "() => /of 2 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
         timeout=_ACT_MS)
-    page.wait_for_selector(_BADGE, state="visible", timeout=_ACT_MS)
+    page.wait_for_function(
+        "() => /saved #1/.test("
+        "  document.getElementById('timeline-status').textContent)",
+        timeout=_ACT_MS)
     assert "2 atoms" in page.locator("#edit-status").inner_text(), \
         "the op line reports the count off the structure the door handed back"
 
@@ -647,13 +807,19 @@ def test_an_edit_changes_the_structure_and_raises_the_unsaved_badge(
 #  § 6.5 step 5 — the state timeline                                    #
 # --------------------------------------------------------------------- #
 
-def test_save_state_then_retract_puts_the_atom_back(
+def test_retract_puts_the_atom_back_with_no_save_state_pressed(
         page, flask_server, labelled_xyz):
-    """A saved point is a place to come back to, and Retract comes back to it.
+    """Retract steps back exactly one EDIT, and nobody had to press anything to
+    make that true.
 
-    Retract spends unsaved work first (§ 11.2): from a saved point with edits on
-    top, the first press discards the edits and leaves you ON that point.  Here
-    the edit sits on point 0, so one Retract restores the deleted atom.
+    *"all operation should automatically call state save timeline api, such
+    that the user always can retract back"* (user, 2026-09-07).  The delete lays
+    down its own point, so one Retract restores the atom.
+
+    IT PRESSED "Save state" FIRST until then, because it had to: an edit
+    recorded nothing, so a point to come back to only existed if the user had
+    made one.  That press is gone from this test on purpose — it is the whole
+    difference, and leaving it in would let the old behaviour pass.
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -672,8 +838,7 @@ def test_save_state_then_retract_puts_the_atom_back(
         "() => /of 2 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
         timeout=_ACT_MS)
-
-    page.locator("#save-state").click()
+    # THE EDIT ITSELF PUT THIS HERE.  No Save state was pressed.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
@@ -713,7 +878,8 @@ def test_retract_says_so_when_the_point_it_wanted_is_gone(
         "() => !document.getElementById('delete-apply').disabled",
         timeout=_ACT_MS)
     page.locator("#delete-apply").click()
-    page.locator("#save-state").click()
+    # The EDIT lays down #1 (§ 11.2, 2026-09-07); this pressed "Save state" to
+    # get there until then.  Either way we stand at #1 and Retract wants #0.
     page.wait_for_function(
         "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
@@ -764,8 +930,11 @@ def test_the_timeline_indicator_says_where_you_are(
         "() => !document.getElementById('delete-apply').disabled",
         timeout=_ACT_MS)
     page.locator("#delete-apply").click()
+    # THE EDIT IS ON THE SEQUENCE, so the indicator says where that put you and
+    # which point Retract goes back to.  It waited for "unsaved" until
+    # 2026-09-07, when an edit left work off the sequence by design.
     page.wait_for_function(
-        "() => /unsaved/.test("
+        "() => /saved #1/.test("
         "  document.getElementById('timeline-status').textContent)",
         timeout=_ACT_MS)
     assert "#0" in page.locator("#timeline-status").inner_text(), \
@@ -878,7 +1047,8 @@ def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
         "  document.getElementById('load-candidate-readout').textContent)",
         timeout=_ACT_MS)
 
-    # Now generate, which replaces it with something that came from no file.
+    # Now generate.  It ADDS to what is open (user, 2026-09-07) -- 3 + 9 = 12 --
+    # and the note goes to null either way: the canvas is no longer that file.
     page.evaluate(
         "() => { [...document.querySelectorAll('.modify-init-tab')]"
         "  .find(b => /SMILES/i.test(b.textContent)).click();"
@@ -887,7 +1057,7 @@ def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
         "  i.dispatchEvent(new Event('input', {bubbles:true})); }")
     page.locator("#smiles-generate-btn").click()
     page.wait_for_function(
-        "() => /of 9 selected/.test("
+        "() => /of 12 selected/.test("
         "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
         timeout=30_000)
 

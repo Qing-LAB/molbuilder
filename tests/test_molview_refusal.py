@@ -281,8 +281,15 @@ def test_nothing_to_do_answers_null_and_says_nothing():
             // one that needs a selection to have anything to act on, and the
             // one that needs an exact count.
             noSelection: await outcome(() => m.applyOp("delete", {})),
-            wrongCount:  await outcome(() => m.applyOp("add_atom",
-                                                       { element: "H" })),
+            // WRONG COUNT IS TWO, not zero.  `add_atom` takes one atom, and
+            // with NONE picked it measures from the world origin instead
+            // (§ 11.1, 2026-09-07) -- so zero is a legal request that goes to
+            // the server, and the only count with no answer is "which of
+            // these two would the offset be measured from?".
+            wrongCount:  await outcome(() => {
+                m.selection.add([0, 1]);
+                return m.applyOp("add_atom", { element: "H" });
+            }),
         }));
         """
     )
@@ -306,6 +313,33 @@ def test_nothing_to_do_never_reaches_the_server():
         """
     )
     assert out["routes"] == [], "a read-only viewer sent an edit to the server"
+
+
+def test_an_anchorless_add_reaches_the_server_with_no_anchor_key():
+    """The other side of the same rule (§ 11.1): with nothing selected
+    `add_atom` is NOT a no-op -- it is a request whose anchor is the world
+    origin, and the way it says so on the wire is by OMITTING the key.
+
+    Sending `anchor_index: null` would be a different claim (a value that is
+    not an index) and sending `0` would silently mean atom 0, so what is
+    checked here is the absence itself.
+    """
+    out = _run(
+        """
+        const m = await loaded();
+        await m.applyOp("add_atom", { element: "H", offset: [0, 0, 1.5] });
+        /* The install itself calls /api/build/load, so the edit is picked out
+         * by route rather than by position. */
+        const add = __requests.filter((r) => r.route === "/api/modify/add_atom");
+        console.log(JSON.stringify({
+            sent: add.length,
+            keys: add.map((r) => Object.keys(r.body).sort()),
+        }));
+        """
+    )
+    assert out["sent"] == 1, "an anchorless add never left the browser"
+    assert "anchor_index" not in out["keys"][0], (
+        f"the anchor key was sent anyway: {out['keys'][0]}")
 
 
 # ---------------------------------------------------------------------------

@@ -376,6 +376,33 @@ export function createModel(opts) {
      *
      * Applying a label REPLACES that label's previous set of atoms.
      */
+    /* WHAT AN EDIT DOES TO THE SEQUENCE (§ 11.2, user 2026-09-07).
+     *
+     * Both gates called `history.edited()` -- which raised the badge and
+     * rewrote the DRAFT, but put nothing on the sequence.  Retract could then
+     * reach no further back than the last time somebody had thought to press
+     * Save state, so the promise the button appears to make -- step back to
+     * how it was -- was true only by luck.
+     *
+     * WHICH OF THE TWO HAPPENS IS DECLARED, NOT DECIDED HERE.  An operation
+     * says whether it deserves a point (`checkpoint` in `OPERATIONS`), and the
+     * gates that are not operations -- a label write, a cell commit -- say so
+     * at their own call.  This function is only the place the two answers are
+     * spent, so the rule about when the sequence advances lives in one place
+     * and reads the same for every caller.
+     *
+     * `save(1)` rather than `save(0)`: a new point one step on, dropping any
+     * abandoned future, which is exactly what an edit does to the sequence.
+     * It is fire-and-forget by design (§ 11.2: it never throws and a slow disk
+     * must not freeze an edit), and a write asked for mid-change is HELD by
+     * the machine rather than lost -- so calling it from inside the gate is
+     * safe in the two ways that matter.
+     */
+    function recordEdit(checkpoint) {
+        if (checkpoint === false) return history.edited();
+        return history.save(1);
+    }
+
     const writeLabel = gated(function (name, atoms, verb) {
         if (!structure || !name) return false;
         const wanted = new Set(atoms);
@@ -398,7 +425,11 @@ export function createModel(opts) {
                 facts.labels = labels;
             });
         }, { redraw: "none" });
-        history.edited();
+        // A LABEL IS WORTH COMING BACK FROM.  It changes what an atom IS
+        // (§ 6.6), and a region written onto the wrong atoms is exactly the
+        // kind of mistake Retract exists for -- so this gate checkpoints like
+        // any geometry edit, even though it moves nothing.
+        recordEdit(true);
         markContractOutdated("labels");   // a name, not the atoms
         return true;
     }, false);
@@ -424,7 +455,7 @@ export function createModel(opts) {
      * mesh cutoff might not apply because someone renamed a region.
      *
      * Set beside the record at the exact places an edit is marked
-     * (`history.edited()` -- inside the gate, so a read-only viewer or a
+     * (`recordEdit()` -- inside the gate, so a read-only viewer or a
      * failed edit never reaches it), never cleared by the viewer:
      * un-editing is what Retract is for, and both flags ride the pair like
      * everything in the store. */
@@ -613,7 +644,7 @@ export function createModel(opts) {
          * Handed the same way the selection is, so the table stays the only
          * place that knows which op wants which. */
         readPicks:     () => measurement.get(),
-        apply: (s, c, countChanged, said) => {
+        apply: (s, c, countChanged, said, checkpoint) => {
             settle(() => put(s, c), {
                 resetFrame: true,
                 // The structure and what is true of it land in ONE settle, the
@@ -624,12 +655,13 @@ export function createModel(opts) {
                 notices: (said && said.length)
                     ? said : null,
             });
-            // The badge is raised HERE, inside the gate and after the change has
-            // landed — which makes two of the contract's rules fall out rather
-            // than needing cases of their own: a read-only viewer never reaches
-            // this line, so its badge never appears (§ 9.4), and a failed edit
-            // never reaches it either, so nothing is recorded (§ 11.1).
-            history.edited();
+            // The point is laid down HERE, inside the gate and after the
+            // change has landed — which makes two of the contract's rules fall
+            // out rather than needing cases of their own: a read-only viewer
+            // never reaches this line, so it never records (§ 9.4), and a
+            // failed edit never reaches it either, so nothing is recorded
+            // (§ 11.1).
+            recordEdit(checkpoint);
             markContractOutdated();
             // An operation that grows or shrinks the structure clears the
             // selection: a kept one could point at an atom that is no longer the
@@ -668,7 +700,10 @@ export function createModel(opts) {
                 notices: (said && said.length)
                     ? said : null,
             });
-            history.edited();
+            // THE CELL IS WORTH COMING BACK FROM.  It is one fact committed
+            // through one door (§ 6.2), and a box set wrong is as recoverable
+            // as any atom that moved.
+            recordEdit(true);
             markContractOutdated();
         },
     });

@@ -328,11 +328,18 @@ def test_what_molview_saves_can_be_read_back():
 
 
 def test_an_edit_and_a_saved_point_go_to_different_files():
-    """Press Save state, then edit again without saving.
+    """Press Save state, then edit again.
 
-    The edit is kept so a reload does not lose it — but it must not land on the
-    point you saved, or Retract would take you back to something that had been
-    quietly rewritten. Two file names, one directory.
+    THE INVARIANT: the edit must not land ON the point you saved, or Retract
+    would take you back to something that had been quietly rewritten. Two file
+    names, one directory.
+
+    What the edit does BESIDES that changed on 2026-09-07 (§ 11.2): it also
+    lays down a point of its own, at the next index, so Retract steps back one
+    edit rather than as far back as the last time somebody pressed the button.
+    The badge therefore goes back DOWN — the work is on the sequence — where
+    this used to assert it stayed up, which was the only record an edit had
+    while edits recorded nothing.
     """
     out = run_node(
         [],
@@ -356,6 +363,9 @@ def test_an_edit_and_a_saved_point_go_to_different_files():
                 {{ workspace_id: ws.workspaceId("modify"), state_index: 1 }})) === point,
             files: Object.keys(globalThis.files).sort(),
             badge: m.uncommitted,
+            // AND THE EDIT'S OWN POINT, one index on from the saved one.
+            newPoint: (await ws.readState(
+                {{ workspace_id: ws.workspaceId("modify"), state_index: 2 }})) !== null,
         }}));
         """,
         globals_js=WITH_A_SERVER,
@@ -367,7 +377,11 @@ def test_an_edit_and_a_saved_point_go_to_different_files():
     assert any("draft" in f for f in out["files"]), (
         f"the edit was not kept anywhere, so a reload loses it: {out['files']}"
     )
-    assert out["badge"] is True, (
-        "the edit is kept against an accident, but it is not on the sequence, "
-        "and the badge has to say so"
+    assert out["badge"] is False, (
+        "the badge still says there is work off the sequence, after the edit "
+        "put itself on it (§ 11.2)"
+    )
+    assert out["newPoint"] is True, (
+        "the edit laid down no point of its own, so Retract cannot step back "
+        "one edit"
     )

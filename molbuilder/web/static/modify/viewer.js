@@ -199,7 +199,10 @@ export function init(viewer) {
         const deleteBtn = $("delete-apply");
         if (deleteBtn) deleteBtn.disabled = locked || sel.length === 0;
 
-        // Add atom: exactly one anchor + no op in flight.
+        // Add atom: one anchor, or none -- and none means the world origin
+        // (molview.md § 11.1, `emptySelection: "origin"`).  Only an ambiguous
+        // selection of two or more disables it, because that is the one case
+        // with no answer: which of them would the offset be measured from?
         const addBtn = $("add-apply");
         const anchorReadout = $("add-anchor-readout");
         if (addBtn && anchorReadout) {
@@ -208,12 +211,16 @@ export function init(viewer) {
                 addBtn.disabled = locked;
                 anchorReadout.textContent =
                     `Anchor: #${displayNumber(a)} ${els[a]}`;
+            } else if (sel.length === 0) {
+                // NAMED, not blank.  "(none)" read as "this cannot run yet";
+                // the offset does have a reference here, and saying which one
+                // is what makes the enabled button make sense.
+                addBtn.disabled = locked;
+                anchorReadout.textContent = "Anchor: origin (0, 0, 0)";
             } else {
                 addBtn.disabled = true;
                 anchorReadout.textContent =
-                    sel.length === 0
-                        ? "Anchor: (none)"
-                        : "Anchor: pick exactly one atom";
+                    "Anchor: pick one atom, or none for the origin";
             }
         }
 
@@ -827,6 +834,10 @@ export function init(viewer) {
         // M3: delete + add-atom op buttons.
         const delBtn = $("delete-apply");
         if (delBtn) delBtn.addEventListener("click", applyDelete);
+        // Whole-model, and so NOT an Atom-tab op: the button lives in the card
+        // header beside Save (user, 2026-09-07).  Wired here anyway because
+        // `applyClear` is this file's, and the wiring is by id -- where the
+        // button sits in the template is the template's business.
         const clearBtn = $("clear-apply");
         if (clearBtn) clearBtn.addEventListener("click", applyClear);
         const addBtn = $("add-apply");

@@ -330,6 +330,21 @@
       </button>
       <span id="save-readout" class="muted"></span>
       <span id="save-status" class="status" role="status"></span>
+      {#- "Start empty" STANDS BESIDE SAVE, not among the Atom ops (user,
+          2026-09-07: "it clears the molbuilder modify content").  Delete acts
+          on a selection and belongs to the Atom tab; this acts on the WHOLE
+          model -- it takes the structure, its metadata, its cell and the
+          timeline -- which is the same scope Save has.  Sitting inside the
+          Atom tab it was both invisible from the other three tabs and read as
+          a per-atom edit, which is the one thing it is not.
+          Pushed to the row's far end (.modify-actions__reset) so the write
+          action keeps the reading position and the discarding one is not
+          adjacent to it. -#}
+      <button id="clear-apply" class="modify-ghost modify-actions__reset"
+              type="button"
+              title="Start empty: removes the structure, its metadata and its cell, and leaves the axes showing so you can see the viewer is live.">
+        Start empty
+      </button>
     </div>
 
     {#- WHAT THE LAST OP DID -- one line, and only that.  What the SERVER says
@@ -397,21 +412,14 @@
         </button>
       </fieldset>
 
-      <!-- Clear: start from nothing.  NOT "delete every atom" -- that is
-           Delete with everything selected, and it keeps the cell (molview.md
-           § 6.7a).  This asks the module for an EMPTY viewer, cell and all,
-           through the one door that decides what empty means: the tab never
-           builds a structure of its own (§ 5.4). -->
-      <fieldset class="modify-op-block">
-        <legend>Clear</legend>
-        <button id="clear-apply" class="full-btn" type="button">
-          Start empty
-        </button>
-        <p class="hint">Removes the structure, its metadata and its cell, and
-          leaves the axes showing so you can see the viewer is live.</p>
-      </fieldset>
+      <!-- Clear is NOT here.  It is a whole-model action -- it takes the
+           structure, its metadata, its cell and the timeline -- so it stands
+           beside "Save to project" in the card header, which is the row for
+           actions of that scope (user, 2026-09-07).  What remains on this tab
+           is the per-atom pair: Delete acts on a selection, Add extends. -->
 
-      <!-- Add atom: anchor = single-selected atom; element + offset
+      <!-- Add atom: anchor = the single selected atom, or the world
+           origin when nothing is selected; element + offset
            sliders set the new atom's species and (dx, dy, dz) from
            the anchor.  Live |offset| readout helps the user pick a
            sensible bond length client-side; the actual atom is only
@@ -617,17 +625,27 @@
             <label>Plane</label>
             <span id="slab-plane-radios" class="modify-axis-radios"></span>
           </div>
+          {#- WHICH PUBLISHED VALUE `a` STARTS FROM.  This row was in the
+              template with nothing building it -- no code anywhere populated
+              the span, so the label named a control that never appeared
+              (found 2026-09-07).  It is built now from /api/modify/meta's
+              `lattice_table`, and picking one FILLS the box below, so the
+              number that will be used is on screen from the first paint
+              instead of the box sitting blank while the server quietly used
+              the experimental value anyway. -#}
           <div class="modify-op-row">
             <label>Lattice ref</label>
             <span id="slab-lattice-ref-radios" class="modify-axis-radios"></span>
           </div>
-          {#- § 3.3: the value the "Your bulk run" reference uses, measured off
-              a relaxed result by POST /api/modify/lattice-from-run and
-              overridable by hand.  The derived line beside it is the
-              cross-check that catches a second-shell pick. -#}
+          {#- § 3.3: the value the reference uses, measured off a relaxed
+              result by POST /api/modify/lattice-from-run and overridable by
+              hand.  Typing here, or measuring from a run, moves the row above
+              to "Custom" -- the box and the reference can never disagree
+              about what is going to be sent.  The derived line beside it is
+              the cross-check that catches a second-shell pick. -#}
           <div class="modify-op-row modify-cell-pick">
             <label for="slab-a">a (Å)</label>
-            <input type="number" id="slab-a" class="modify-cell-num"
+            <input type="number" id="slab-a" class="modify-cell-num modify-cell-num--lattice"
                    step="0.0001" min="0" />
             <button id="slab-pick-run" class="modify-ghost" type="button">
               From a bulk run…
@@ -666,14 +684,39 @@
           <p id="slab-period-note" class="modify-op-hint" hidden></p>
         </fieldset>
 
+        {#- ============================================================ -#}
+        {#-  WHERE IT STARTS, AND HOW IT GROWS -- read top to bottom as   -#}
+        {#-  one sentence (user, 2026-09-07):                             -#}
+        {#-    start on registry A, laying down A -> B -> C -> A,         -#}
+        {#-    growing toward -z, with that first layer at z = 0,         -#}
+        {#-    the whole thing offset (dx, dy) from the origin.           -#}
+        {#-                                                               -#}
+        {#-  The row this replaced -- "Stacking below it" -- said what the -#}
+        {#-  registry did WHEN GROWING DOWNWARD, so its meaning depended   -#}
+        {#-  on another control's value and it had to hide itself half the -#}
+        {#-  time.  Said as a walk direction it always means the same      -#}
+        {#-  thing, and it hides only where the arithmetic makes the two   -#}
+        {#-  walks the same slab (a 2-layer stacking period).              -#}
+        {#- ============================================================ -#}
         <fieldset class="modify-op-block">
           <legend>Where it starts, and how it grows</legend>
           {#- § 3: dx, dy and the starting z are ALL from the origin of the 3-D
               window's own coordinate system.  This panel reads no selection --
               the same numbers place the same slab whatever is picked. -#}
           <div class="modify-op-row">
-            <label>Start registry</label>
-            <span id="slab-registry-radios" class="modify-axis-radios"></span>
+            <label for="slab-registry">Start registry</label>
+            <select id="slab-registry" class="modify-cell-select"></select>
+          </div>
+          {#- Hidden where the two walks are the same slab -- (100) and (110),
+              whose stacking period is 2.  Which surfaces those are is the
+              server's `stacking_period`, never a list here. -#}
+          <div class="modify-op-row" id="slab-sequence-row">
+            <label for="slab-sequence">Sequence</label>
+            <select id="slab-sequence" class="modify-cell-select"></select>
+          </div>
+          <div class="modify-op-row">
+            <label>Grows toward</label>
+            <span id="slab-grow-radios" class="modify-axis-radios"></span>
           </div>
           <div class="modify-op-row">
             <label for="slab-start-z">Starting surface z (Å)</label>
@@ -681,18 +724,8 @@
                    step="0.1" value="0" />
           </div>
           <div class="modify-op-row">
-            <label>Grows toward</label>
-            <span id="slab-grow-radios" class="modify-axis-radios"></span>
-          </div>
-          {#- § 3.2: growing DOWN, the registry either continues the crystal or
-              mirrors it.  Growing up the two are identical, so the row hides. -#}
-          <div class="modify-op-row" id="slab-stacking-row" hidden>
-            <label>Stacking below it</label>
-            <span id="slab-stacking-radios" class="modify-axis-radios"></span>
-          </div>
-          <div class="modify-op-row">
             <label>Offset from origin (Å)</label>
-            <span>
+            <span class="modify-count-group">
               <input type="number" id="slab-dx" class="modify-cell-num"
                      step="0.1" value="0" aria-label="dx from origin" />
               <input type="number" id="slab-dy" class="modify-cell-num"
@@ -742,23 +775,25 @@
           </p>
         </details>
 
+        {#- ============================================================ -#}
+        {#-  WHICH REGIME THE BOX IS IN -- said outright, and said FIRST  -#}
+        {#-  (user, 2026-09-07: "the cell setup is very unintuitive ...   -#}
+        {#-  too many buttons interacting with each other").              -#}
+        {#-                                                               -#}
+        {#-  It was always the fact that decided what every other control -#}
+        {#-  did, and it was the one thing the panel never showed: you    -#}
+        {#-  entered "explicit" by typing a cell and left it by pressing  -#}
+        {#-  a button called "Update vacuum", each with a modal to        -#}
+        {#-  explain the side effect afterwards.  Stated as a choice, the -#}
+        {#-  side effects stop existing: the panel shows the fields the   -#}
+        {#-  chosen regime actually uses, and Apply sends that regime.    -#}
+        {#- ============================================================ -#}
         <fieldset class="modify-op-block">
-          <legend>Vacuum (Å) <span id="pv-vac-tag" class="modify-cell-tag"></span></legend>
-          <div class="modify-op-row modify-cell-triple">
-            <input type="number" id="pv-vac-a" class="modify-cell-num" step="0.5" min="0"
-                   aria-label="vacuum a">
-            <input type="number" id="pv-vac-b" class="modify-cell-num" step="0.5" min="0"
-                   aria-label="vacuum b">
-            <input type="number" id="pv-vac-c" class="modify-cell-num" step="0.5" min="0"
-                   aria-label="vacuum c">
+          <legend>The box is</legend>
+          <div class="modify-op-row">
+            <span id="pv-regime-radios" class="modify-axis-radios"></span>
           </div>
-          <button id="pv-vac-update" class="full-btn" type="button">Update vacuum</button>
-          {#- § 6.2 v3: shown when an explicit cell is set — updating vacuum is
-              ALLOWED but resets the box to the derived regime (confirm-gated). -#}
-          <p id="pv-vac-na"  hidden>
-            An explicit unit cell is set — updating vacuum will <b>reset</b> it
-            (the box returns to the derived regime and the boundary moves).
-          </p>
+          <p id="pv-regime-note" class="modify-op-hint"></p>
         </fieldset>
 
         <fieldset class="modify-op-block">
@@ -768,10 +803,28 @@
             <select id="pv-axis-b" class="modify-cell-select" aria-label="axis b"></select>
             <select id="pv-axis-c" class="modify-cell-select" aria-label="axis c"></select>
           </div>
-          <button id="pv-axis-update" class="full-btn" type="button">Update periodicity</button>
         </fieldset>
 
-        <fieldset class="modify-op-block">
+        {#- DERIVED ONLY.  With an explicit cell these numbers grow nothing --
+            the cell IS the box -- so rather than dimming them and explaining
+            that in a note, the regime they belong to is the one that shows
+            them. -#}
+        <fieldset class="modify-op-block" id="pv-derived-only">
+          <legend>Vacuum (Å) <span id="pv-vac-tag" class="modify-cell-tag"></span></legend>
+          <div class="modify-op-row modify-cell-triple">
+            <input type="number" id="pv-vac-a" class="modify-cell-num" step="0.5" min="0"
+                   aria-label="vacuum a">
+            <input type="number" id="pv-vac-b" class="modify-cell-num" step="0.5" min="0"
+                   aria-label="vacuum b">
+            <input type="number" id="pv-vac-c" class="modify-cell-num" step="0.5" min="0"
+                   aria-label="vacuum c">
+          </div>
+          <p class="modify-op-hint">Added on each side of the structure, per
+            direction.</p>
+        </fieldset>
+
+        {#- EXPLICIT ONLY -- see #pv-regime-radios above. -#}
+        <fieldset class="modify-op-block pv-explicit-only">
           <legend>Unit cell (Å) <span id="pv-cell-tag" class="modify-cell-tag"></span></legend>
           {#- 3x3 lattice-vector matrix; nine inputs built by periodicity.js. -#}
           <div id="pv-cell-grid" class="modify-cell-matrix" aria-label="unit cell 3x3"></div>
@@ -819,13 +872,10 @@
               gate still decides; this only says it before the request, with the
               way out the gate cannot know about. -#}
           <p id="pv-cell-hand" class="modify-op-hint" hidden></p>
-          <div class="modify-op-row modify-cell-actions">
-            <button id="pv-cell-update" class="full-btn" type="button">Update cell</button>
-            <button id="pv-cell-reset" class="modify-ghost" type="button"
-                    title="Clear the explicit cell -- fall back to the default bounding-box + vacuum.">
-              Use default
-            </button>
-          </div>
+          {#- NO "Update cell" AND NO "Use default" HERE.  Both were commits
+              onto one field of a fact § 6.2 says travels together, and "Use
+              default" was the way back to the derived regime -- which is now
+              the switch at the top of the panel.  One Apply, at the bottom. -#}
           {#- § 6.2 v3: there is NO calibrate button.  Emission translates to the
               engine frame implicitly (cell at (0,0,0), atoms shifted); nothing on
               this page moves atoms.  The note below says so. -#}
@@ -835,7 +885,8 @@
           </p>
         </fieldset>
 
-        <fieldset class="modify-op-block">
+        {#- EXPLICIT ONLY -- the derived box computes its own corner (§ 3c). -#}
+        <fieldset class="modify-op-block pv-explicit-only">
           <legend>Cell origin (Å) <span id="pv-org-tag" class="modify-cell-tag"></span></legend>
           {#- § 3c: the low corner the EXPLICIT cell box is drawn from (an electrode
               junction whose cell wraps off-origin atoms).  Editing moves the BOX, not
@@ -854,24 +905,46 @@
                    aria-label="cell origin z" />
           </div>
           {#- § 7: one selected atom becomes the corner.  Stages into the three
-              boxes above; "Update origin" stays the commit. -#}
+              boxes above; Apply at the foot of the panel is the commit. -#}
           <div class="modify-op-row modify-cell-pick">
             <button id="pv-org-from-selection" class="modify-ghost" type="button">
               Use selection
             </button>
-          </div>
-          <div class="modify-op-row modify-cell-actions">
-            <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>
-            <button id="pv-org-reset" class="modify-ghost" type="button" disabled
-                    title="Clear the manual origin -- the other parameters (vacuum, periodicity) regain their freedom; the next vacuum/periodicity update re-derives the box.">
-              Reset origin to default
+            <button id="pv-org-derive" class="modify-ghost" type="button"
+                    title="Leave the corner to be derived from the structure, rather than stating one.">
+              Derive it
             </button>
           </div>
-          <p id="pv-org-na"  hidden>
-            The cell origin applies to an explicit cell only. Set a unit cell above
-            first; otherwise the box corner is the molecule's bounding box (auto).
-          </p>
+          <p class="modify-op-hint">Blank means <b>derive the corner</b> — the box
+            wraps the structure rather than jumping to (0,&nbsp;0,&nbsp;0).</p>
         </fieldset>
+
+        {#- ============================================================ -#}
+        {#-  ONE COMMIT, for a fact that travels together (§ 6.2).        -#}
+        {#-                                                               -#}
+        {#-  Four "Update ..." buttons stood here, one per field, and the -#}
+        {#-  cell is not four facts: changing two of them meant two       -#}
+        {#-  requests, the second of which could be refused after the     -#}
+        {#-  first had landed.  Some pairs were unreachable in EITHER     -#}
+        {#-  order -- an axis cannot become periodic until the explicit   -#}
+        {#-  cell is stored, and that cell cannot be cleared until the    -#}
+        {#-  axis is not periodic -- so the panel had modals apologising  -#}
+        {#-  for side effects the ordering forced.  `op: "block"` takes   -#}
+        {#-  the whole thing and checks once.                             -#}
+        {#-                                                               -#}
+        {#-  Revert is not a server call: it redraws the fields from the  -#}
+        {#-  structure, throwing away what has been typed but not sent.   -#}
+        {#-  Undoing an APPLIED cell is Retract's job, which since        -#}
+        {#-  2026-09-07 works here too (a cell edit records a timeline    -#}
+        {#-  point like every other edit).                                -#}
+        {#- ============================================================ -#}
+        <div class="modify-op-row modify-cell-actions">
+          <button id="pv-apply" class="full-btn" type="button">Apply cell</button>
+          <button id="pv-revert" class="modify-ghost" type="button"
+                  title="Discard what you have typed here and show the cell as it is.">
+            Revert
+          </button>
+        </div>
 
       </div><!-- /.optab-panel data-op-panel="cell" -->
     </div>

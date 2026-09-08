@@ -30,6 +30,26 @@ export function init(viewer) {
     var root = window;
     var AXIS = ["isolated", "periodic", "transport"];
 
+    /* WHICH REGIME THE BOX IS IN -- the fact that decides what every other
+     * control on this panel does, made into a control of its own (user,
+     * 2026-09-07).  It was always there and never shown: you entered
+     * "explicit" by typing a cell and left it by pressing a button called
+     * "Update vacuum", with a modal afterwards to explain what that had done.
+     *
+     * On the wire it is not a field -- `cell: null` IS the derived regime
+     * (structure-periodicity.md § 6.1) -- so this is a reading of the
+     * structure, never a fifth thing to keep in step with it. */
+    var REGIMES = [
+        ["derived", "Derived from the atoms"],
+        ["explicit", "An explicit cell I set"],
+    ];
+    var REGIME_NOTES = {
+        derived: "The structure's extent plus the vacuum below, on each side. "
+               + "It follows the atoms as you edit them.",
+        explicit: "The cell you set below is the box, exactly. Vacuum becomes "
+               + "reference-only, and a periodic axis needs this regime.",
+    };
+
     function $(id) { return document.getElementById(id); }
     // THE VIEWER THIS PAGE MOUNTED, handed in above. Not looked up: a viewer
     // belongs to whoever mounted it (molview.md § 5.6).
@@ -44,6 +64,47 @@ export function init(viewer) {
     function setIdle(el, val) {
         if (el && document.activeElement !== el) el.value = val;
     }
+    /* One radio group, built rather than written into the template, so the
+     * option list and the note that explains each option cannot drift apart. */
+    function buildRegimeRadios() {
+        var box = $("pv-regime-radios");
+        if (!box || box.childNodes.length) return;
+        REGIMES.forEach(function (pair) {
+            var lbl = document.createElement("label");
+            var inp = document.createElement("input");
+            inp.type = "radio";
+            inp.name = "pv-regime";
+            inp.value = pair[0];
+            inp.checked = (pair[0] === "derived");
+            inp.addEventListener("change", renderRegime);
+            lbl.appendChild(inp);
+            lbl.appendChild(document.createTextNode(" " + pair[1]));
+            box.appendChild(lbl);
+        });
+    }
+    function regime() {
+        var el = document.querySelector('input[name="pv-regime"]:checked');
+        return el ? el.value : "derived";
+    }
+    function setRegime(value) {
+        var el = document.querySelector(
+            'input[name="pv-regime"][value="' + value + '"]');
+        if (el) el.checked = true;
+    }
+    /* THE PANEL SHOWS THE FIELDS THE CHOSEN REGIME USES, and nothing else.
+     * The alternative -- which this replaced -- was showing all of them and
+     * dimming the inert ones with a note saying why, which is the same
+     * information arranged so the reader has to assemble it. */
+    function renderRegime() {
+        var explicit = regime() === "explicit";
+        var derived = $("pv-derived-only");
+        if (derived) derived.hidden = explicit;
+        document.querySelectorAll("#optab-panel-cell .pv-explicit-only")
+            .forEach(function (fs) { fs.hidden = !explicit; });
+        var note = $("pv-regime-note");
+        if (note) note.textContent = REGIME_NOTES[regime()] || "";
+    }
+
     function tag(id, isDefault) {
         var el = $(id);
         if (el) el.textContent = isDefault ? "(default)" : "";
@@ -376,6 +437,17 @@ export function init(viewer) {
         var hint = $("pv-empty-hint");
         if (hint) hint.hidden = has;
         panel.querySelectorAll("fieldset").forEach(function (fs) { fs.disabled = !has; });
+        /* THE TWO ACTIONS ARE NOT IN A FIELDSET, so the sweep above does not
+         * reach them.  The four "Update ..." buttons they replaced each sat
+         * inside the group they committed and went dead with it; one commit
+         * for the whole panel has nowhere to sit but outside, and would
+         * otherwise stay live over an empty canvas -- offering to apply a box
+         * to no atoms, which the gate refuses in a sentence nobody should have
+         * had to read. */
+        ["pv-apply", "pv-revert"].forEach(function (id) {
+            var b = $(id);
+            if (b) b.disabled = !has;
+        });
         if (!has || !w) return;
 
         /* TWO READS: what will be USED, and what the structure itself SAYS.
@@ -395,14 +467,22 @@ export function init(viewer) {
         // it would make the box DISAPPEAR).  Read first so the groups below react.
         var explicitCell = rawCell !== null;
         var axes = used.axis_kind || [];
-        var hasPeriodicAxis = axes.some(function (k) {
-            return k === "periodic" || k === "transport";
-        });
 
+        /* BLANK MEANS THE DEFAULT, and the default is shown as the
+         * PLACEHOLDER -- the same idiom the origin uses below, for the same
+         * reason.  Vacuum has THREE states (§ 6.1): a number, zero, and never
+         * chosen.  Filling the boxes with the EFFECTIVE value collapsed the
+         * third into the first, so pressing Apply after changing something
+         * else stamped "3" into the structure as a value the user had chosen
+         * -- the box does not move, but the "(default)" mark goes, and with it
+         * the record that nobody had decided. */
         var vac = used.vacuum || [0, 0, 0];
-        setIdle($("pv-vac-a"), round(vac[0] || 0));
-        setIdle($("pv-vac-b"), round(vac[1] || 0));
-        setIdle($("pv-vac-c"), round(vac[2] || 0));
+        ["pv-vac-a", "pv-vac-b", "pv-vac-c"].forEach(function (id, i) {
+            var f = $(id);
+            if (!f) return;
+            f.placeholder = String(round(vac[i] || 0));
+            setIdle(f, rawVacuum ? round(rawVacuum[i] || 0) : "");
+        });
         // WHAT MARKS IT A DEFAULT: the structure states no vacuum of its own, so
         // `getVacuum()` answers null while `getUnitCellInfo()` still has a number
         // -- the raw-vs-effective pair this file's header describes.
@@ -427,12 +507,20 @@ export function init(viewer) {
         // (structure-periodicity.md § 6.1a, matrix A).  They stay ENABLED on
         // purpose: typing here is how you go back to the derived regime, which
         // is a real thing to want and is confirm-gated in wire().
-        var vacNa = $("pv-vac-na");
-        if (vacNa) vacNa.hidden = !explicitCell;
-        ["pv-vac-a", "pv-vac-b", "pv-vac-c"].forEach(function (id) {
-            var f = $(id);
-            if (f) f.classList.toggle("pv-field--inert", explicitCell);
-        });
+        /* THE SWITCH IS SET FROM THE STRUCTURE, never the other way round.
+         * `cell === null` IS the derived regime -- there is no stored flag to
+         * read and none to keep in step (structure-periodicity.md § 6.1).
+         *
+         * Only while the panel is not being edited: `refresh` runs on every
+         * store change, and moving the radio under someone who has just
+         * chosen the other regime would undo the choice they are in the middle
+         * of describing. */
+        if (!document.activeElement
+                || !document.activeElement.closest
+                || !document.activeElement.closest("#optab-panel-cell")) {
+            setRegime(explicitCell ? "explicit" : "derived");
+        }
+        renderRegime();
 
         ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id, i) {
             var sel = $(id);
@@ -457,17 +545,13 @@ export function init(viewer) {
         }
         refreshPickButtons();
         renderSpan();
-        // "Use default" clears the explicit cell -> resolve_cell(); on a periodic /
-        // transport axis that RAISES (no bbox-derived lattice), so disable it there --
-        // offering it is what made the box vanish (§ 3c symptom c).
-        var resetBtn = $("pv-cell-reset");
-        if (resetBtn) {
-            resetBtn.disabled = hasPeriodicAxis;
-            resetBtn.title = hasPeriodicAxis
-                ? "Not available: a periodic/transport axis needs an explicit cell "
-                  + "(a bounding box can't define a commensurate lattice)."
-                : "Clear the explicit cell and fall back to the bbox+vacuum box.";
-        }
+        /* "Use default" IS THE REGIME SWITCH NOW.  The button that stood here
+         * cleared the explicit cell, which a periodic axis cannot survive -- a
+         * bounding box is not a commensurate lattice -- so it had to disable
+         * itself on exactly the structures where a user is most likely to
+         * reach for it, with a tooltip as the only explanation.  Choosing
+         * "derived" beside an axis that needs a lattice is refused by the one
+         * gate, in a sentence, on Apply. */
         // § 6.2 v3: no calibrate button — emission translates implicitly.
 
         // § 3c: the cell origin -- the low corner the box is drawn from.  Shows the
@@ -476,17 +560,21 @@ export function init(viewer) {
         // dataclass drops it otherwise), so the group is enabled only there -- with a
         // bbox+vacuum cell the corner is auto and there is nothing to override.
         {
+            /* BLANK MEANS DERIVE, and the derived value is shown as the
+             * PLACEHOLDER rather than as content.  Filling the boxes with it
+             * -- which is what happened before -- made "no origin stated" and
+             * "this exact origin stated" look identical, so pressing Apply
+             * turned a derived corner into a fixed one nobody had asked for.
+             * The corner the box is actually drawn from is still on screen;
+             * it is just not pretending to be your input. */
             var ov = used.cell_origin || [0, 0, 0];
-            setIdle($("pv-org-a"), round(ov[0] || 0));
-            setIdle($("pv-org-b"), round(ov[1] || 0));
-            setIdle($("pv-org-c"), round(ov[2] || 0));
+            ["pv-org-a", "pv-org-b", "pv-org-c"].forEach(function (id, i) {
+                var f = $(id);
+                if (!f) return;
+                f.placeholder = String(round(ov[i] || 0));
+                setIdle(f, rawOrigin === null ? "" : round(rawOrigin[i] || 0));
+            });
             tag("pv-org-tag", rawOrigin === null);
-            var orgNa = $("pv-org-na");
-            if (orgNa) orgNa.hidden = explicitCell;
-            var orgBtn = $("pv-org-update");
-            if (orgBtn) orgBtn.disabled = !explicitCell;
-            var orgReset = $("pv-org-reset");
-            if (orgReset) orgReset.disabled = !explicitCell;
         }
     }
 
@@ -528,80 +616,95 @@ export function init(viewer) {
                 refresh();
             });
     }
-    // Confirm-before for the reset-to-derived edits (vacuum / axis kinds
-    // under an explicit cell): the box boundary is about to move — the
-    // user must know BEFORE committing (§ 6.2 v3).
-    function _fmtCell(m) {
-        /* The cell about to be discarded, in the user's own numbers.  A
-         * confirm that does not name what it destroys asks you to trust it. */
-        try {
-            return m.map(function (row) {
-                return row.map(function (n) { return Number(n).toFixed(3); })
-                          .join(", ");
-            }).join(" | ");
-        } catch (_) { return "the cell you typed"; }
-    }
-
-    function _confirmReset(body) {
-        var w = data();
-        // Already derived -> nothing to reset, so nothing to confirm. "Derived"
-        // is the structure stating no cell of its own; asking `getUnitCellInfo`
-        // would answer with the box that was worked out FOR it, which is never
-        // absent and so never told us anything here.
-        if (!w || w.getUnitCell() === null) return Promise.resolve(true);
-        var wm = (window.molbuilder || {}).warningModal;
-        if (!wm || !wm.confirm) return Promise.resolve(true);
-        /* NAMES THE CELL, and says the edit is final (2026-08-03).  A
-         * periodicity op never enters MolView's history -- commitPeriodicityOp
-         * calls applyCell directly -- so Ctrl-Z cannot bring the cell back,
-         * and the dialog has to say so before you agree rather than after. */
-        return wm.confirm({
-            title: "Replace the cell you typed?",
-            body: "This clears the cell you typed (" + _fmtCell(w.getUnitCell())
-                  + ") and works a new box out from the molecule. "
-                  + body + " It cannot be undone.",
-            confirmLabel: "Update and reset",
-            cancelLabel:  "Cancel",
+    /* ── APPLY: the whole cell, once (§ 6.2) ─────────────────────────────
+     *
+     * "The cell is one fact that travels together -- the vectors, the anchor,
+     * how each axis is treated, how much vacuum an isolated axis gets -- which
+     * is why there is one door and nothing writes a part of it on its own."
+     * The panel had FOUR commits onto that one fact, which is what made it
+     * unreadable: which button you pressed decided which of your typed values
+     * were sent and which were quietly dropped, and two of them reset the
+     * others as a side effect the user learned about from a modal.
+     *
+     * THE REGIME DECIDES WHAT IS SENT, and it is the thing the user chose:
+     *   derived  -- no cell, no origin; the vacuum is authoritative.
+     *   explicit -- the nine numbers, and the corner if one was typed.
+     * Vacuum travels either way because it is part of the block; under an
+     * explicit cell the server keeps it as the reference-only value it is.
+     *
+     * THE TWO CONFIRM DIALOGS THAT STOOD HERE ARE GONE.  One asked before an
+     * edit that would "reset the explicit cell", which was a side effect of
+     * committing one field at a time and does not exist now -- choosing
+     * "derived" IS asking for the derived box.  The other said the change
+     * "cannot be undone", which stopped being true on 2026-09-07: a cell edit
+     * records a timeline point like every other edit (§ 11.2), so Retract
+     * brings the old box back.
+     */
+    function applyCell() {
+        var explicit = regime() === "explicit";
+        var kinds = ["pv-axis-a", "pv-axis-b", "pv-axis-c"].map(function (id) {
+            return $(id) ? $(id).value : "isolated";
         });
+        /* ALL THREE BLANK IS "no vacuum chosen", which the block sends as
+         * null -- the state § 6.1 gives a default FOR.  A partly-typed one is
+         * read as numbers with the untyped sides at 0, because a person who
+         * typed one number did choose something. */
+        var vacBoxes = ["pv-vac-a", "pv-vac-b", "pv-vac-c"].map(function (id) {
+            var el = $(id);
+            return el ? String(el.value).trim() : "";
+        });
+        var payload = {
+            axis_kind: kinds,
+            vacuum: vacBoxes.every(function (v) { return v === ""; })
+                ? null
+                : [num("pv-vac-a", 0), num("pv-vac-b", 0), num("pv-vac-c", 0)],
+            cell: explicit ? stagedCell() : null,
+            cell_origin: null,
+        };
+        if (explicit) {
+            /* AN EMPTY BOX IS "DERIVE THE CORNER", not zero.  All three have
+             * to be typed for the origin to be a statement -- a half-typed
+             * corner is not a corner, and reading the blanks as 0 would move
+             * the box to a place nobody chose. */
+            var typed = ["pv-org-a", "pv-org-b", "pv-org-c"].map(function (id) {
+                var el = $(id);
+                return el && String(el.value).trim() !== "" ? Number(el.value) : null;
+            });
+            if (typed.every(function (v) { return v !== null && isFinite(v); })) {
+                payload.cell_origin = typed;
+            }
+        }
+        return commitOp("block", payload);
     }
 
     function wire() {
-        var vac = $("pv-vac-update");
-        if (vac) vac.addEventListener("click", function () {
-            var payload = [num("pv-vac-a", 0), num("pv-vac-b", 0),
-                           num("pv-vac-c", 0)];
-            _confirmReset(
-                "Updating vacuum resets the explicit unit cell and origin: "
-              + "the box is re-derived around the structure with the vacuum "
-              + "placed symmetrically per direction — the cell boundary "
-              + "will move."
-            ).then(function (ok) { if (ok) commitOp("vacuum", payload); });
+        /* ONE COMMIT AND ONE DISCARD, where four commits and two resets used
+         * to be.  `applyCell` sends the whole block; Revert makes no request
+         * at all -- it redraws every field from the structure, which throws
+         * away what has been typed and not sent.  Undoing an APPLIED cell is
+         * Retract's, and works here since a cell edit began recording a
+         * timeline point (§ 11.2, 2026-09-07). */
+        var apply = $("pv-apply");
+        if (apply) apply.addEventListener("click", applyCell);
+        var revert = $("pv-revert");
+        if (revert) revert.addEventListener("click", function () {
+            // Take the focus off the panel first: `refresh` deliberately
+            // leaves the field being typed in alone, and Revert's whole job is
+            // to overwrite exactly that one.
+            if (document.activeElement && document.activeElement.blur) {
+                document.activeElement.blur();
+            }
+            refresh();
         });
-        var axis = $("pv-axis-update");
-        if (axis) axis.addEventListener("click", function () {
-            var kinds = ["pv-axis-a", "pv-axis-b", "pv-axis-c"].map(
-                function (id) { return $(id) ? $(id).value : "isolated"; });
-            // Switching TO periodic keeps the explicit cell (no reset) —
-            // the confirm applies only to the reset-to-derived path.
-            var go = kinds.indexOf("periodic") !== -1
-                ? Promise.resolve(true)
-                : _confirmReset(
-                    "Changing the periodicity resets the explicit unit "
-                  + "cell and origin: the box is re-derived from the "
-                  + "structure size and vacuum — the cell boundary will "
-                  + "move.");
-            go.then(function (ok) { if (ok) commitOp("axis_kind", kinds); });
-        });
-        // § 6.2 v3: a manual origin is respected verbatim; the server warns
-        // that vacuum is no longer respected (only the cell parameters are).
-        var org = $("pv-org-update");
-        if (org) org.addEventListener("click", function () {
-            commitOp("cell_origin", [num("pv-org-a", 0), num("pv-org-b", 0),
-                                     num("pv-org-c", 0)]);
-        });
-        var orgReset = $("pv-org-reset");
-        if (orgReset) orgReset.addEventListener("click", function () {
-            commitOp("cell_origin", null);
+        // Blank the three origin boxes -- "derive the corner" said as a
+        // gesture, since the way to say it is to type nothing and there is
+        // otherwise no way to get BACK to nothing once something is typed.
+        var orgDerive = $("pv-org-derive");
+        if (orgDerive) orgDerive.addEventListener("click", function () {
+            ["pv-org-a", "pv-org-b", "pv-org-c"].forEach(function (id) {
+                var el = $(id);
+                if (el) el.value = "";
+            });
         });
         // Editing any of the nine restates the lengths and re-checks the sign,
         // so the note tracks what is staged rather than what was last committed.
@@ -699,23 +802,10 @@ export function init(viewer) {
             });
         });
 
-        var cell = $("pv-cell-update");
-        if (cell) cell.addEventListener("click", function () {
-            var m = [];
-            for (var r = 0; r < 3; r++) {
-                var row = [];
-                for (var col = 0; col < 3; col++) {
-                    var raw = Number(cellInputs[r * 3 + col].value);
-                    row.push(isFinite(raw) ? raw : 0);
-                }
-                m.push(row);
-            }
-            commitOp("cell", m);   // origin-first, then vacuum (§ 6.2 v3)
-        });
-        var reset = $("pv-cell-reset");
-        if (reset) reset.addEventListener("click", function () {
-            commitOp("cell", null);   // back to the derived regime
-        });
+        /* The nine inputs have NO commit of their own any more.  They are
+         * read by `applyCell` through `stagedCell()` -- the same reader the
+         * length box and the handedness note already use -- so what the note
+         * describes and what Apply sends cannot differ. */
         // § 6.2 v3: no calibrate handler — coordinate rewrites are not a
         // periodicity edit (emission translates implicitly; the explicit
         // rewrite lives with the Modify ops as /api/modify/calibrate).
@@ -724,6 +814,7 @@ export function init(viewer) {
     function start() {
         if (!$("optab-panel-cell")) return;
         buildCellGrid();
+        buildRegimeRadios();
         fillAxisOptions();
         fillCellAxisOptions();
         wire();

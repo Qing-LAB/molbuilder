@@ -669,16 +669,37 @@ export function createWriteOut(handed) {
  * hand-coded (§ 11.1). These columns drive one generic piece of code.
  *
  *   `emptySelection` — what an empty selection means for THIS operation, and
- *                      the answers are genuinely different: act on all, or
- *                      refuse.  There was a third, `"origin"` -- fall back to
- *                      centring on the world origin -- and only `electrode`
- *                      ever used it; it went with that op on 2026-09-01.
- *                      Note it was never a branch HERE: `applyOp` acts on
- *                      `"refuse"` and lets everything else through, and the
- *                      server did the centring.  A value with no code behind
- *                      it and no row using it is worth deleting twice over.
- *   `needsExactly`   — checked BEFORE the request goes out, so `orient` with one
- *                      atom selected never reaches the network.
+ *                      the three answers are genuinely different: act on all,
+ *                      refuse, or fall back to the world origin.
+ *                      `"origin"` was here once for `electrode` and went with
+ *                      that op on 2026-09-01, deleted as a value no row used.
+ *                      `add_atom` brought it back on 2026-09-07 for the same
+ *                      reason it existed the first time: some operations have
+ *                      a sensible answer at zero atoms, and (0, 0, 0) is it.
+ *                      Only `"refuse"` is a branch HERE -- the others let the
+ *                      request through with the group key omitted, and the
+ *                      SERVER decides what the absence means, because it is
+ *                      the server that owns coordinates (§ 11.1).
+ *   `needsExactly`   — how many atoms the op needs WHEN SOME ARE PICKED,
+ *                      checked before the request goes out, so `orient` with
+ *                      one atom selected never reaches the network.  It says
+ *                      nothing about zero: that case belongs to
+ *                      `emptySelection` alone, and letting this column answer
+ *                      it too made every row with a count refuse at zero
+ *                      regardless of its own policy.
+ *   `checkpoint`     — WHETHER THIS OPERATION LAYS DOWN A TIMELINE POINT
+ *                      (user, 2026-09-07).  A row that declares `true` records
+ *                      a state when it lands, so Retract steps back exactly
+ *                      one of them; a row that declares `false` only refreshes
+ *                      the draft -- what would be lost if the tab closed --
+ *                      and leaves the sequence where it is.
+ *                      IT IS A COLUMN RATHER THAN A BLANKET RULE because
+ *                      "does this deserve a point to come back to?" is a
+ *                      property OF AN OPERATION, and the table is where this
+ *                      module keeps those.  Written as a rule in the gate
+ *                      instead, the first operation that wanted the other
+ *                      answer would have to be special-cased there, which is
+ *                      how the gate stops being one piece of code.
  *   `ordered`        — WHICH TRACK THE GROUP COMES FROM, and it is the whole
  *                      of § 11.6's split expressed as data.  `selection` is a
  *                      SET -- `add()` sorts, and *All* / *Invert* / a filter
@@ -704,27 +725,47 @@ export function createWriteOut(handed) {
  */
 export const OPERATIONS = {
     translate:             { emptySelection: "all",    needsExactly: null,
-                             group: "indices" },
+                             group: "indices", checkpoint: true },
     rotate:                { emptySelection: "all",    needsExactly: null,
-                             group: "indices" },
+                             group: "indices", checkpoint: true },
     // ORDERED: the tilt direction is first -> second, so which was first is
     // the answer, not a detail of how the two were picked.
     orient:                { emptySelection: "refuse", needsExactly: 2,
-                             group: "anchors", ordered: true },
+                             group: "anchors", ordered: true, checkpoint: true },
     // NOT ordered, and the arity is the reason: a set of ONE has no ambiguous
     // first.  It also shares the Atom tab with Delete, which is a set gesture
     // -- turning the ruler on there to serve an op with no order problem would
     // take Delete's clicks away for nothing.
-    add_atom:              { emptySelection: "refuse", needsExactly: 1,
-                             group: "anchor_index", scalar: true },
+    //
+    // WITH NOTHING PICKED THE ANCHOR IS THE WORLD ORIGIN (user, 2026-09-07).
+    // The group key is simply omitted, which every op already does at empty
+    // selection, and the route reads that absence as "measure from (0, 0, 0)".
+    // Refusing was the one policy that made the FIRST atom unplaceable: on an
+    // empty canvas there is no index to pick, so the op that exists to grow a
+    // structure could not start one.  The origin is where `slab` already
+    // places from, so the two agree about where the world begins.
+    add_atom:              { emptySelection: "origin", needsExactly: 1,
+                             group: "anchor_index", scalar: true,
+                             checkpoint: true },
     delete:                { emptySelection: "refuse", needsExactly: null,
-                             group: "indices" },
+                             group: "indices", checkpoint: true },
     calibrate:             { emptySelection: "all",    needsExactly: null,
-                             wholeStructure: true, group: null },
+                             wholeStructure: true, group: null,
+                             checkpoint: true },
     // Placed absolutely, so it reads no selection -- the one edit whose panel
     // gives the same answer with atoms picked or none (redesign plan § 3).
     slab:                  { emptySelection: "all",    needsExactly: null,
-                             wholeStructure: true, group: null },
+                             wholeStructure: true, group: null,
+                             checkpoint: true },
+    /* A LOAD IS AN EDIT (user, 2026-09-07).  Loading a file or running a
+     * generator ADDS to what is open rather than replacing it, so it comes
+     * through the same door every other edit does -- which is what gives it
+     * the atomic apply, the notices, the cleared selection and the timeline
+     * point for free.  It reads no selection: the incoming fragment is placed
+     * on the world origin, so there is nothing a picked atom could mean. */
+    append:                { emptySelection: "all",    needsExactly: null,
+                             wholeStructure: true, group: null,
+                             checkpoint: true },
 };
 
 /**
@@ -773,8 +814,19 @@ export function createEdits(handed) {
             : handed.readSelection();
         if (spec.wholeStructure) selection = [];
 
-        // The count requirement is checked BEFORE the request goes out.
-        if (spec.needsExactly != null && selection.length !== spec.needsExactly) {
+        /* THE COUNT REQUIREMENT IS ABOUT A SELECTION THAT EXISTS, and it is
+         * checked BEFORE the request goes out.  An EMPTY selection is not a
+         * wrong count -- it is the case the `emptySelection` column answers,
+         * and that column is the only one entitled to answer it.  Checking
+         * arity first made "refuse" the effective policy for every row with a
+         * `needsExactly`, no matter what its own column said, which is how
+         * `add_atom` could not place the first atom on an empty canvas.
+         *
+         * The two rows that ask for a count still refuse at zero, because that
+         * is what THEIR column says: `orient` needs two atoms to have a
+         * direction at all. */
+        if (spec.needsExactly != null && selection.length
+                && selection.length !== spec.needsExactly) {
             return null;
         }
         if (!selection.length && spec.emptySelection === "refuse") return null;
@@ -823,7 +875,11 @@ export function createEdits(handed) {
          * nothing to say, which is a different thing from not being checked. */
         handed.apply(applied.structure, applied.coordinates,
                      countChanged(structure, applied.structure),
-                     applied.notices);
+                     applied.notices,
+                     /* WHETHER THIS ONE IS WORTH COMING BACK TO -- the row's
+                        own declaration, carried to the gate rather than
+                        decided there. */
+                     spec.checkpoint !== false);
         return applied.structure;
     };
 }

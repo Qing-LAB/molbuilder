@@ -69,6 +69,22 @@ function _mkFakeCanvas(initial) {
                         structure: arg.structure});
             return Promise.resolve();
         },
+        /* The edit door (§ 11.1).  The gate reaches it for `append`, which is
+         * what a load into a NON-EMPTY canvas is since 2026-09-07.  The
+         * stand-in answers with a structure, because `applyOp` answers with
+         * the structure the server sent and the gate reads that to tell an
+         * applied edit from a refused one. */
+        applyOp: (name, params) => {
+            calls.push({fn: "applyOp", op: name, arg: params,
+                        addition: params && params.addition});
+            const merged = { title: state.structure && state.structure.title,
+                             elements: (state.structure
+                                        ? state.structure.elements : []).concat(
+                                 (params && params.addition
+                                  ? params.addition.elements : []) || []) };
+            state.structure = merged;
+            return Promise.resolve(merged);
+        },
         subscribe: (cb) => {
             calls.push({fn: "onChange"});
             return () => {};
@@ -221,99 +237,89 @@ class TestLoadGateEmptyCanvas:
         assert "text" not in loads[0]["arg"]
         # Modal NOT consulted — the empty canvas gate didn't ask.
         assert out["modalCalls"] == []
+        # AND NOT APPENDED INTO (2026-09-07).  A load into a canvas that holds
+        # something adds to it; with NOTHING open there is nothing to add to,
+        # and an install is also what anchors the timeline at point 0 -- which
+        # an appended-into canvas would have no floor to retract to.
+        assert not [c for c in out["canvasCalls"] if c["fn"] == "applyOp"], (
+            "an empty canvas was appended into rather than installed")
 
 
-class TestLoadGateCleanCanvas:
+class TestLoadGateNonEmptyCanvas:
+    """SOMETHING OPEN -> the incoming structure is ADDED to it.
 
-    def test_clean_canvas_sets_directly_no_modal(self):
-        """A loaded-but-not-modified canvas is overwriteable without
-        prompting — the user has saved (or just loaded) it; nothing
-        will be lost."""
+    *"the load from project or other generators should by default ADD their
+    results into the molview structure instead of clear the existing one"*
+    (user, 2026-09-07).
+
+    THE THREE TESTS THAT STOOD HERE ARE GONE, and they are gone because their
+    subject is: a clean canvas overwritten silently, a dirty one overwritten
+    after a confirm, and a cancel leaving it alone.  Nothing is discarded now,
+    so there is nothing to confirm and no cancel to make -- the modal is not
+    consulted in either case below.  Replacing rather than adding is a separate
+    gesture: Start empty, then load.
+    """
+
+    def test_a_loaded_canvas_is_appended_to(self):
         out = _run_node('''
             const canvas = _mkFakeCanvas({
                 empty: false, dirty: false,
                 structure: { title: "old", elements: ["C"] },
-                source: { kind: "file", file: "/p/a.xyz" },
             });
             const modal = _mkFakeModal(false);
             page._bind(canvas, modal);
             const r = await page.loadIntoCanvas(
-                { structure: { title: "new", elements: ["C"] } },
+                { structure: { title: "new", elements: ["N", "N"] } },
                 { kind: "smiles" }
             );
             console.log(JSON.stringify({
                 envelope:   r,
                 modalCalls: modal._calls(),
-                lastSet:    canvas._calls().filter(
-                                c => c.fn === "installMolecule"
-                            ).pop(),
+                ops:        canvas._calls().map(c => c.fn),
+                append:     canvas._calls().filter(
+                                c => c.fn === "applyOp").pop(),
+                elements:   canvas.getStructure().elements,
             }));
         ''')
         assert out["envelope"] == {"ok": True}
-        assert out["modalCalls"] == []  # not consulted
-        assert out["lastSet"]["structure"]["title"] == "new"
+        assert out["modalCalls"] == [], (
+            "the discard confirm was asked for a load that discards nothing")
+        assert "installMolecule" not in out["ops"], (
+            f"a loaded canvas was replaced instead of added to: {out['ops']}")
+        assert out["append"]["op"] == "append"
+        assert out["append"]["addition"]["title"] == "new"
+        assert out["elements"] == ["C", "N", "N"], (
+            f"the two structures did not both survive: {out['elements']}")
 
-
-class TestLoadGateDirtyCanvas:
-
-    def test_dirty_canvas_proceed_overwrites(self):
-        """Dirty canvas + user picks Discard → canvas is overwritten."""
+    def test_a_dirty_canvas_is_appended_to_without_asking(self):
+        """Unsaved work is not a reason to ask any more: an append does not
+        overwrite it.  It also cannot be lost -- every edit records a timeline
+        point (§ 11.2, 2026-09-07), so there is nothing sitting off the
+        sequence for a dialog to protect.
+        """
         out = _run_node('''
             const canvas = _mkFakeCanvas({
                 empty: false, dirty: true,
                 structure: { title: "edited", elements: ["C"] },
-                source: { kind: "smiles" },
             });
-            const modal = _mkFakeModal(true);  // user clicks Discard
+            const modal = _mkFakeModal(false);   // would say Cancel
             page._bind(canvas, modal);
             const r = await page.loadIntoCanvas(
-                { structure: { title: "new", elements: ["C"] } },
+                { structure: { title: "new", elements: ["N"] } },
                 { kind: "file", file: "/p/b.xyz" }
             );
             console.log(JSON.stringify({
                 envelope:   r,
                 modalCalls: modal._calls(),
-                lastSet:    canvas._calls().filter(
-                                c => c.fn === "installMolecule"
-                            ).pop(),
+                ops:        canvas._calls().map(c => c.fn),
+                elements:   canvas.getStructure().elements,
             }));
         ''')
         assert out["envelope"] == {"ok": True}
-        assert out["modalCalls"] == ["confirmDiscardUnsaved"]
-        # The overwrite landed.
-        assert out["lastSet"]["structure"]["title"] == "new"
-
-    def test_dirty_canvas_cancel_does_not_overwrite(self):
-        """Dirty canvas + user picks Cancel → canvas untouched +
-        envelope reports cancelled."""
-        out = _run_node('''
-            const canvas = _mkFakeCanvas({
-                empty: false, dirty: true,
-                structure: { title: "edited", elements: ["C"] },
-                source: { kind: "smiles" },
-            });
-            const modal = _mkFakeModal(false);  // user clicks Cancel
-            page._bind(canvas, modal);
-            const r = await page.loadIntoCanvas(
-                { structure: { title: "new", elements: ["C"] } },
-                { kind: "file", file: "/p/b.xyz" }
-            );
-            const setCalls = canvas._calls().filter(
-                c => c.fn === "installMolecule");
-            console.log(JSON.stringify({
-                envelope:   r,
-                modalCalls: modal._calls(),
-                setCount:   setCalls.length,
-                stillDirty: canvas._state().dirty,
-                stillTitle: canvas.getStructure().title,
-            }));
-        ''')
-        assert out["envelope"] == {"ok": False, "cancelled": True}
-        assert out["modalCalls"] == ["confirmDiscardUnsaved"]
-        # No load call landed — canvas is intact.
-        assert out["setCount"] == 0
-        assert out["stillDirty"] is True
-        assert out["stillTitle"] == "edited"
+        assert out["modalCalls"] == [], (
+            "a dirty canvas still triggered the discard confirm, which would "
+            "let a Cancel refuse a load that discards nothing")
+        assert out["elements"] == ["C", "N"]
 
 
 # ----- modifier helpers ------------------------------------------ #

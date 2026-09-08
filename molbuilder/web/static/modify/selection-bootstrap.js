@@ -330,56 +330,65 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             page.onPanelChange(_refreshLoadUI);
         }
 
-        // "Commit a structure file into the workspace" -- a THIN wrapper over the ONE
-        // format-aware load door, ``projects.parser.openMolecule`` (structure-load-save-
-        // contract.md).  All the composition -- read the .xyz + .molstruct.json via the
-        // projects file package, parse + apply the sidecar server-side, install through
-        // the model primitive in ONE store write, tolerate a missing sidecar -- lives in
-        // the parser door now, so this tab neither hand-wires the seam nor reaches around
-        // a door into the store.  The tab's only jobs: inject the dirty-canvas WARNING (a
-        // UI concern the DOM-free layer can't own) and surface an error banner.  Used by
-        // the Load button + the sidebar dblclick (onCommit).
+        /* "Add a project file to what is open" -- ASK THE SERVER FOR THE
+         * STRUCTURE, then hand it to the page's one canvas gate.
+         *
+         * IT NO LONGER GOES THROUGH `projects.parser.openMolecule`, and the
+         * reason is the behaviour, not the plumbing.  That door REPLACES what
+         * a viewer holds (`enforce: true`, with a dirty-canvas confirm in
+         * front of it), which is right for the tabs that show you one file at
+         * a time -- structure-optimization, spectra, the results inspector,
+         * which still use it.  The Modify tab ADDS (user, 2026-09-07), so it
+         * asks the same question of the same route and hands the answer to
+         * `structurePage.loadIntoCanvas`, exactly as the five generator panels
+         * do.  ONE GATE decides install-vs-append for every source of a
+         * structure on this page, rather than the file path having a second
+         * opinion of its own.
+         *
+         * `/api/build/load` with a PATH is the file channel: the server reads
+         * the `.xyz` AND its paired `.molstruct.json` through `StructureCodec`
+         * and answers with the envelope.  The browser reads no bytes and
+         * derives no sidecar path.
+         */
         async function _commitFile(path) {
             if (!path) return;
-            const proj = window.molbuilder && window.molbuilder.projects;
-            if (!proj || !proj.parser
-                    || typeof proj.parser.openMolecule !== "function") {
-                // No parser door on this page -- the page can't load a structure
-                // without it (the old store-side Path-A load-fetch is gone).
-                // Nothing to fall back to; warn and no-op.
-                if (window.console && window.console.warn) {
-                    window.console.warn(
-                        "[selection-bootstrap] cannot commit file: projects "
-                        + "parser door (openMolecule) not available on this page");
-                }
-                return;
-            }
-            const warn = window.molbuilder && window.molbuilder.warningModal;
-            const confirmDiscard =
-                (warn && typeof warn.confirmDiscardUnsaved === "function")
-                    ? () => warn.confirmDiscardUnsaved() : null;
-            const res = await proj.parser.openMolecule(
-                _mounted, path, { confirmDiscard });
             const s = document.getElementById("status");
-            if (!s) return;
-            if (res && res.ok === false && !res.cancelled && res.error) {
-                s.textContent = res.error;
-                s.className = "status error";
+            const say = (text, cls) => {
+                if (!s) return;
+                s.textContent = text;
+                s.className = "status " + cls;
+            };
+            let body;
+            try {
+                const r = await fetch("/api/build/load", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ path: path }),
+                });
+                body = await r.json();
+                if (!r.ok || !body || body.ok !== true) {
+                    say((body && body.error) || `Could not load ${path}`,
+                        "error");
+                    return;
+                }
+            } catch (e) {
+                say(`Could not load ${path}: ${(e && e.message) || e}`, "error");
                 return;
             }
-            if (res && res.cancelled) return;    // the user kept what was there
-            // This page performed the load, so this page is what knows which
-            // file is on the canvas (§ 6.7).  Recorded under the page's own tag,
-            // so a reopened tab still knows; both readouts below read it back.
-            window.molbuilder.structurePage.markLoadedFrom(path);
+            const gate = await window.molbuilder.structurePage.loadIntoCanvas(
+                { structure: body.structure }, { file: path });
+            if (!gate || gate.ok !== true) return;
             _refreshLoadUI();
-            /* SAY WHAT LANDED. The line only ever spoke up when a load FAILED,
-             * so after a successful one it still read "No structure loaded." —
-             * the template's opening text — beside a drawn molecule. The count
-             * comes from the viewer, which is the thing that now holds it. */
+            /* SAY WHAT LANDED, and say which of the two things happened. The
+             * line only ever spoke up when a load FAILED, so after a successful
+             * one it still read "No structure loaded." — the template's opening
+             * text — beside a drawn molecule. The count comes from the viewer,
+             * which is the thing that now holds it. */
             const n = (_mounted.data.getElements() || []).length;
-            s.textContent = `Loaded ${_basename(path)} — ${n} atoms.`;
-            s.className = "status ok";
+            const added = body.n_atoms;
+            say(n > added
+                ? `Added ${_basename(path)} — ${added} atoms, ${n} in total.`
+                : `Loaded ${_basename(path)} — ${n} atoms.`, "ok");
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));

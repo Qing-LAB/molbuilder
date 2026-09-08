@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from molbuilder.modify import (
+    append_structure,
     SUPPORTED_FCC_ELEMENTS,
     SUPPORTED_FCC_PLANES,
     add_atom,
@@ -173,6 +174,91 @@ def test_delete_dedups_repeated_indices(linear_dimer):
 
 
 # --------------------------------------------------------------------- #
+#  append_structure                                                     #
+# --------------------------------------------------------------------- #
+
+
+def _frag(elements, xs, regions=None):
+    return Structure(
+        elements=list(elements),
+        positions=np.array([[float(x), 0.0, 0.0] for x in xs]),
+        regions=regions or {},
+    )
+
+
+def test_append_centres_the_incoming_fragment_on_the_origin():
+    """"just add the generated/loaded content centered at (0,0,0)" (user,
+    2026-09-07).
+
+    The origin is where `add_slab` places from and where an anchorless
+    `add_atom` measures its offset, so a fragment arrives somewhere STATED
+    rather than wherever its file happened to put it.
+    """
+    base = _frag(["C"], [5.0])
+    add = _frag(["N", "N"], [10.0, 12.0])
+    out, _notes = append_structure(base, add)
+    assert out.n_atoms == 3
+    # The base did not move.
+    assert np.allclose(out.positions[0], [5.0, 0, 0])
+    # The addition's CENTROID is the origin, and its internal geometry is
+    # untouched -- centring is a rigid translation, not a rescale.
+    added = out.positions[1:]
+    assert np.allclose(added.mean(axis=0), [0.0, 0.0, 0.0])
+    assert np.isclose(np.linalg.norm(added[1] - added[0]), 2.0)
+
+
+def test_append_numbers_a_label_the_open_structure_already_carries():
+    """Two fragments both called ``benzene#`` would be ONE region, and a label
+    exists to pick its atoms apart.  The incoming one is numbered.
+    """
+    base = _frag(["C"], [0.0], {"benzene#": [0]})
+    add = _frag(["C"], [3.0], {"benzene#": [0]})
+    out, notes = append_structure(base, add)
+    assert out.regions == {"benzene#": [0], "benzene#2": [1]}
+    assert any("benzene#2" in n for n in notes), notes
+    # And again: the next one is 3, not a second 2.
+    out2, _ = append_structure(out, add)
+    assert sorted(out2.regions) == ["benzene#", "benzene#2", "benzene#3"]
+
+
+def test_append_leaves_the_reserved_frozen_label_spelled_as_it_is():
+    """The exception is about the NAME, not the atoms: something downstream
+    acts on that exact spelling (`Structure.frozen_atoms`, the SIESTA
+    constraints emitter, the PySCF freeze list).  Numbered, the incoming atoms
+    would carry a label nothing recognises -- silently unfrozen.
+    """
+    base = _frag(["C", "C"], [0.0, 1.0], {FROZEN_LABEL: [0]})
+    add = _frag(["N", "N"], [5.0, 6.0], {FROZEN_LABEL: [1]})
+    out, _notes = append_structure(base, add)
+    assert FROZEN_LABEL + "2" not in out.regions
+    assert out.frozen_atoms == [0, 3], (
+        "the incoming frozen atom did not stay frozen after the merge")
+
+
+def test_append_keeps_the_open_structures_cell_and_says_so():
+    """The canvas being built in owns its box; an incoming fragment contributes
+    atoms.  A dropped lattice is invisible in the result, so it is said.
+    """
+    base = _frag(["C"], [0.0])
+    base.cell = np.diag([10.0, 10.0, 10.0])
+    base.__post_init__()
+    add = _frag(["N"], [3.0])
+    add.cell = np.diag([20.0, 20.0, 20.0])
+    add.__post_init__()
+    out, notes = append_structure(base, add)
+    assert np.allclose(out.cell, np.diag([10.0, 10.0, 10.0]))
+    assert any("not adopted" in n for n in notes), notes
+
+
+def test_append_of_nothing_says_nothing_and_changes_nothing():
+    base = _frag(["C"], [0.0], {"a": [0]})
+    out, notes = append_structure(base, Structure(elements=[],
+                                                  positions=np.zeros((0, 3))))
+    assert out.n_atoms == 1 and out.regions == {"a": [0]}
+    assert notes == []
+
+
+# --------------------------------------------------------------------- #
 #  add_atom                                                             #
 # --------------------------------------------------------------------- #
 
@@ -208,6 +294,44 @@ def test_add_atom_atom_name_defaults_to_element(linear_dimer):
 def test_add_atom_rejects_bad_anchor(linear_dimer):
     with pytest.raises(IndexError):
         add_atom(linear_dimer, "S", anchor_index=99, offset=[0, 0, 0])
+
+
+def test_add_atom_without_anchor_measures_from_the_origin():
+    """``anchor_index=None`` is "nothing is selected", and it means the WORLD
+    ORIGIN -- not atom 0, and not a refusal (user, 2026-09-07).
+
+    The offset is then the position outright, which is the only reading that
+    lets the same panel place an atom whether or not something is picked.
+
+    NO ATOM SITS AT THE ORIGIN HERE, deliberately.  Against a fixture whose
+    first atom is at (0, 0, 0) -- which `linear_dimer` is -- "measured from
+    the origin" and "quietly fell back to atom 0" produce the SAME position,
+    so the check that matters cannot fail and proves nothing.
+    """
+    offset = np.array([1.25, -0.5, 2.0])
+    s = Structure(elements=["C", "O"],
+                  positions=np.array([[3.0, 1.0, 0.0], [4.0, 1.0, 0.0]]))
+    out = add_atom(s, "S", None, offset)
+    assert out.n_atoms == 3
+    assert np.allclose(out.positions[-1], offset)
+    # Not a fallback to ANY existing atom -- which is the bug shape here.
+    for i, p in enumerate(s.positions):
+        assert not np.allclose(out.positions[-1], p + offset), (
+            f"anchorless add fell back to atom {i}")
+
+
+def test_add_atom_without_anchor_places_the_first_atom_on_an_empty_structure():
+    """The case that forced the change: an EMPTY canvas has no index to pass,
+    so requiring an anchor made a one-atom structure unbuildable from here.
+    """
+    empty = Structure(elements=[], positions=np.zeros((0, 3)))
+    out = add_atom(empty, "C", None, [0.0, 0.0, 0.0])
+    assert out.n_atoms == 1
+    assert out.elements == ["C"]
+    assert np.allclose(out.positions[0], [0.0, 0.0, 0.0])
+    # The Structure's own default fills the columns an anchor would have
+    # supplied, so nothing downstream can tell this atom had no anchor.
+    assert out.chain_ids == ["A"]
 
 
 def test_add_atom_rejects_unknown_element(linear_dimer):
@@ -651,10 +775,15 @@ def test_junction_end_to_end(orthogonal, size, per_side):
     # After orient with default midpoint centring, atom 3 is on +z (top),
     # atom 0 on -z (bottom).
     junction = oriented
-    for start_z, grow in ((+4.5, "+z"), (-4.5, "-z")):
+    # BOTH SIDES CONTINUE THE CRYSTAL outward from the junction, and in the
+    # walk vocabulary that is a different value per side: read along the
+    # growth direction, going up from a layer is the forward walk and going
+    # down from one is the backward walk.  (Under the old `stacking` this was
+    # unsayable growing up -- the argument had no effect there at all.)
+    for start_z, grow, sequence in ((+4.5, "+z", "ABC"), (-4.5, "-z", "ACB")):
         junction = add_slab(
             junction, "Au", "111", size, start_z=start_z, grow=grow,
-            stacking="continue", orthogonal=orthogonal,
+            sequence=sequence, orthogonal=orthogonal,
         )
     n_au = sum(1 for e in junction.elements if e == "Au")
     # two sides × per_side atoms
@@ -693,12 +822,12 @@ def test_junction_stepped_contacts_via_two_calls():
     z0 = float(oriented.positions[0, 2])
     z3 = float(oriented.positions[3, 2])
     s1 = add_slab(oriented, "Au", "111", (3, 3, inner_layers),
-                  start_z=z0 - inner_gap, grow="-z", stacking="continue")
+                  start_z=z0 - inner_gap, grow="-z", sequence="ACB")
     s2 = add_slab(s1, "Au", "111", (3, 3, inner_layers),
                   start_z=z3 + inner_gap, grow="+z")
     # Outer stacks: 4×4 single layer, both sides, further out.
     s3 = add_slab(s2, "Au", "111", (4, 4, 1),
-                  start_z=z0 - outer_gap, grow="-z", stacking="continue")
+                  start_z=z0 - outer_gap, grow="-z", sequence="ACB")
     junction = add_slab(s3, "Au", "111", (4, 4, 1),
                         start_z=z3 + outer_gap, grow="+z")
 

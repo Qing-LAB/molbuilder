@@ -649,12 +649,21 @@ def test_a_trajectory_arrives_whole_in_one_install():
     """
     out = _run(
         """
+        /* The real front door (workspace.md § 5), answered from a Map.
+         *
+         * `persist(tag, bytes, identity)` -- THREE arguments.  This stub took
+         * four (`tag, session, point, identity`) until 2026-09-07, so `point`
+         * held the identity, `identity` was undefined, and reading
+         * `.state_index` off it threw on every write.  history.js catches that
+         * and answers "the write did not land", which meant nothing was ever
+         * stored and `readState` always answered null -- so the retract below
+         * was landing on nothing and the assertion about it could not fail. */
         const slots = new Map();
-        // The real front door (workspace.md § 5), answered from a Map.
+        const isDraft = (id) => /-draft$/.test(id.workspace_id);
         const m = createModel({ workspace: {
             workspaceId: () => "id",
-            persist: (tag, session, point, identity) => {
-                if (point) slots.set(identity.state_index, point);
+            persist: (tag, bytes, identity) => {
+                if (!isDraft(identity)) slots.set(identity.state_index, bytes);
                 return true;
             },
             readState: async (identity) => (slots.has(identity.state_index)
@@ -672,8 +681,20 @@ def test_a_trajectory_arrives_whole_in_one_install():
         const installed = { frames: m.frameCount(), at: m.currentFrame(),
                             forces: m.getCoordinates().forcesPerFrame };
 
-        // Let the anchor's write land, then go back to it.
+        /* Let the anchor's write land, MOVE AWAY FROM IT, then go back.
+         *
+         * The step away is what makes the retract measurable.  Retracting from
+         * the anchor onto the anchor leaves the structure where it already was
+         * whatever point 0 holds -- `restoreState` returns early on a state it
+         * cannot read -- so the assertion below passed even with nothing
+         * stored at all.  A fourth frame appended first means point 0 and the
+         * present differ, and coming back has to undo the difference. */
         await new Promise((r) => setTimeout(r, 0));
+        // What subscribers saw is a fact about THE INSTALL, so it is taken
+        // before anything else touches the frames.
+        const seenAtInstall = seen.slice();
+        m.addFrame([[0, 0, 3], [1, 0, 3]]);
+        const beforeRetract = m.frameCount();
         await m.load(0);
 
         // A frame that does not carry the loaded atoms is refused at the load,
@@ -685,7 +706,8 @@ def test_a_trajectory_arrives_whole_in_one_install():
         } catch (e) { refused = e.message; }
 
         console.log(JSON.stringify({
-            installed, seen, afterRetract: m.frameCount(), refused,
+            installed, seen: seenAtInstall, beforeRetract,
+            afterRetract: m.frameCount(), refused,
         }));
         """
     )
@@ -702,12 +724,80 @@ def test_a_trajectory_arrives_whole_in_one_install():
         "a subscriber saw the structure part-way in — the frames landed in a "
         f"second settle after the atoms: {out['seen']}"
     )
+    assert out["beforeRetract"] == 4, (
+        "the appended frame never landed, so the retract below measures nothing"
+    )
     assert out["afterRetract"] == 3, (
-        "retracting to the anchor lost the trajectory, because point 0 was laid "
-        "down before the frames arrived (§ 11.2)"
+        "retracting to the anchor did not restore the 3-frame trajectory: "
+        f"got {out['afterRetract']}.  1 means point 0 was laid down before the "
+        "frames arrived (§ 11.2); 4 means it restored nothing at all"
     )
     assert out["refused"] and "§ 10.8" in out["refused"], (
         f"a frame that does not fit the loaded atoms was accepted: {out['refused']}"
+    )
+
+
+def test_an_edit_lays_down_a_point_so_retract_steps_back_one_edit():
+    """§ 11.2 (changed 2026-09-07 at the user's request): "every edit lays down
+    a point of its own", so Retract always steps back exactly one edit.
+
+    Before this, an edit only rewrote the DRAFT and the sequence stayed where it
+    was, so a Retract after three edits went back to wherever the last MANUAL
+    Save state had been -- which for a person who had never pressed the button
+    is the whole session at once.
+
+    Driven through the model rather than the history module, because the claim
+    is about the EDIT GATE spending the operation's declaration, not about the
+    write machine underneath it.
+    """
+    out = _run(
+        """
+        /* The real front door (workspace.md § 5): persist(tag, bytes, identity),
+           where a DRAFT is told apart from a numbered point by its
+           workspace_id suffix -- not by an extra argument. */
+        const points = new Map();
+        const isDraft = (id) => /-draft$/.test(id.workspace_id);
+        const m = createModel({ workspace: {
+            workspaceId: () => "id",
+            persist: (tag, bytes, identity) => {
+                if (!isDraft(identity)) points.set(identity.state_index, bytes);
+                return true;
+            },
+            readState: async (identity) => (points.has(identity.state_index)
+                ? points.get(identity.state_index) : null),
+            pruneStatesAbove: () => {},
+        } });
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+        await new Promise((r) => setTimeout(r, 0));
+
+        /* THREE EDITS, NO SAVE STATE PRESSED.  The stand-in server answers each
+           with a two-atom structure, so the count never changes and nothing
+           else clears; what is being watched is the SEQUENCE. */
+        const counts = [];
+        for (let i = 0; i < 3; i += 1) {
+            await m.applyOp("translate", { dx: 1 });
+            await new Promise((r) => setTimeout(r, 0));
+            counts.push(points.size);
+        }
+
+        console.log(JSON.stringify({
+            points: [...points.keys()].sort((a, b) => a - b),
+            afterEachEdit: counts,
+            badge: m.uncommitted,
+        }));
+        """
+    )
+    # Point 0 is the install's anchor; each edit adds one above it.
+    assert out["points"] == [0, 1, 2, 3], (
+        "three edits did not lay down three points -- Retract can only reach "
+        f"the last manual save: {out['points']}"
+    )
+    assert out["afterEachEdit"] == [2, 3, 4], (
+        f"the sequence did not advance once per edit: {out['afterEachEdit']}"
+    )
+    assert out["badge"] is False, (
+        "the badge still says there is work off the sequence, after every edit "
+        "put itself on it"
     )
 
 
@@ -1348,9 +1438,17 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
         }));
         """
     )
-    assert out["keys"] == ["annotations", "elements", "forcesPerFrame",
-                           "frames", "periodicity"], (
-        f"the one read does not carry § 6.2's five fields: {out['keys']}"
+    # THE WHOLE STRUCTURE, and the list grew when `getStructure` became the
+    # holistic read (2026-09-06): `title`, `info` and `channelDefs` are § 6.2
+    # fields that used to be reachable only through other calls, which is the
+    # same "assembled from two moments" failure this test is named for.
+    # EXACT rather than a superset, deliberately: a field silently DROPPED is
+    # what this catches, and a superset check cannot see one go.  A field
+    # legitimately added updates this line, on purpose.
+    assert out["keys"] == ["annotations", "channelDefs", "elements",
+                           "forcesPerFrame", "frames", "info", "periodicity",
+                           "title"], (
+        f"the one read does not carry § 6.2's fields: {out['keys']}"
     )
     # The four facts § 9.3 names, each read off that single answer.
     assert out["frames"] == [[[0, 0, 0], [1, 0, 0]], [[0, 0, 1], [1, 0, 1]]], (
@@ -1408,58 +1506,68 @@ def test_the_facts_a_request_carries_all_came_from_one_read():
     assert out["elements"] == ["C"]
 
 
-def test_what_the_caller_knew_about_the_atoms_reaches_the_server():
+def test_what_the_caller_knew_about_the_atoms_travels_in_the_envelope():
     """§ 9.3: `installMolecule` is "the only way a structure gets in", so
     everything the caller knows about that structure has to fit through it.
 
     THE CASE THIS EXISTS FOR is a trajectory. There is no `.molstruct.json`
     beside a run: the region labels and frozen tags come out of the input
     script the Build tab wrote, and the lattice out of the run's output. Both
-    are handed over with the structure, in one call, exactly as the frames are
-    — the alternative is a second door, and § 9.3 has one.
+    have to arrive WITH the structure, in one call, exactly as the frames do —
+    the alternative is a second door, and § 9.3 has one.
 
-    THEY ARE TWO FIELDS BECAUSE THEY ARE TWO FACTS from two places, and one of
-    them is checked. The label block is a document the server wrote, carried as
-    BYTES and never opened here — it holds its own atom-count guard, and a
-    caller that parsed it and put a key back would be writing a format it does
-    not own. The cell is a plain value in the block every other structure door
-    already takes, so the server applies it through the seam that also refuses
-    a bad one.
+    THEY TRAVEL IN THE ENVELOPE, and that is the change of 2026-09-07. This
+    used to assert three side-blocks on the TEXT branch — `atomMetadata`,
+    `periodicity`, `info` — which existed to carry back to the server what a
+    coordinate document cannot hold, after the browser had just flattened a
+    structure the server already had. The trajectory tab now hands over frame 0
+    as an envelope the server assembled (`watch.py::_frame0_structure`), so the
+    labels and the cell are simply IN the structure and there is nothing left
+    to repair. The three fields are gone; this is the guarantee that replaced
+    them.
 
-    Both were silently dropped: the request builder forwarded neither, so a
-    trajectory opened with no labels and no cell at HTTP 200.
+    (`web-api.md` § 1: "the browser sends what it holds; it never sends a
+    document it wrote".)
     """
     out = _run(
         """
         const m = createModel({});
-        await m.installMolecule({
-            text: "x", filename: "run.xyz",
-            atomMetadata: '{"n_atoms_total":2,"regions":{"frozen_atoms":[1]}}',
-            periodicity: { cell: [[9,0,0],[0,9,0],[0,0,9]] },
-        });
+        const envelope = {
+            elements:  ["C", "O"],
+            positions: [[0, 0, 0], [1, 0, 0]],
+            metadata:  {
+                regions:     { anchor: [0], frozen_atoms: [1] },
+                periodicity: { cell: [[9,0,0],[0,9,0],[0,0,9]] },
+            },
+        };
+        await m.installMolecule({ structure: envelope, filename: "run.xyz" });
         const sent = globalThis.__requests[0].body;
         console.log(JSON.stringify({
             route: globalThis.__requests[0].route,
-            carried: sent.atom_metadata || null,
-            cell: (sent.periodicity || {}).cell || null,
-            keys: Object.keys(sent).sort(),
+            keys:  Object.keys(sent).sort(),
+            regions: sent.structure && sent.structure.metadata
+                     && sent.structure.metadata.regions,
+            cell: sent.structure && sent.structure.metadata
+                  && sent.structure.metadata.periodicity
+                  && sent.structure.metadata.periodicity.cell,
         }));
         """
     )
     assert out["route"] == "/api/build/load"
-    assert out["carried"] == (
-        '{"n_atoms_total":2,"regions":{"frozen_atoms":[1]}}'
-    ), (
-        "the label block was dropped or rewritten. Dropped: a trajectory opens "
+    assert out["regions"] == {"anchor": [0], "frozen_atoms": [1]}, (
+        "the labels were dropped or rewritten. Dropped: a trajectory opens "
         "with no region labels and no frozen tags, at HTTP 200 — nothing "
-        "refused them. Rewritten: whatever re-stated `n_atoms_total` also "
-        "disabled the guard that stops a label set landing on the wrong atoms"
+        f"refused them. Got: {out['regions']}"
     )
     assert out["cell"] == [[9, 0, 0], [0, 9, 0], [0, 0, 9]], (
         "the caller's cell never left the browser, so no trajectory can draw "
         "the box its run used"
     )
-    assert "atom_metadata" in out["keys"] and "periodicity" in out["keys"]
+    # ONE KEY, not four.  The side-blocks are gone, and a body that grew one
+    # back would mean a caller is again writing what the envelope already
+    # holds.
+    assert out["keys"] == ["structure"], (
+        f"the envelope did not travel alone: {out['keys']}")
 
 
 def test_a_caller_that_knew_nothing_extra_sends_nothing_extra():
@@ -1659,36 +1767,51 @@ def test_the_model_never_names_the_drawing_library():
 # § 11.2 / § 9.4 — the badge, raised inside the gate
 # ---------------------------------------------------------------------------
 
-def test_an_edit_raises_the_badge_and_a_failed_one_does_not():
-    """§ 11.2: the unsaved-changes flag is "not bookkeeping" — it says there is
-    work here that is not on the sequence yet.
+def test_an_edit_records_itself_and_a_failed_one_records_nothing():
+    """§ 11.1: when the server refuses, "no history state is recorded".
+    Recording inside the gate and AFTER the change lands is what makes that
+    fall out rather than needing a case of its own: a refused edit never
+    reaches the line.
 
-    § 11.1: when the server refuses, "no history state is recorded". Raising the
-    badge inside the gate and AFTER the change lands is what makes that fall out
-    rather than needing a case of its own: a refused edit never reaches the line.
+    THE SEQUENCE IS WHAT IS MEASURED, not the badge, and that changed on
+    2026-09-07 with § 11.2's rule.  While an edit only rewrote the draft, the
+    badge going up WAS the record of it and "an edit raises the badge" was the
+    whole observable.  Now an edit lays down a point and the badge goes back
+    down when that point lands -- so the badge is False either side of a
+    successful edit, and asking it whether the edit was recorded gets the same
+    answer as asking it whether the edit was refused.  The position on the
+    sequence tells them apart.
     """
     out = _run(
         """
         const m = await loaded();
-        const fresh = m.uncommitted;
+        const fresh = { at: m.state_index, badge: m.uncommitted };
 
         await m.applyOp("translate");
-        const afterEdit = m.uncommitted;
+        await new Promise((r) => setTimeout(r, 0));
+        const afterEdit = { at: m.state_index, badge: m.uncommitted };
 
         globalThis.__serverFails = true;
-        const before = m.uncommitted;
-        // The refusal leaves by throwing (§ 6.9); the badge is what is on trial.
-        try { await m.applyOp("translate"); } catch (_) {}
+        // The refusal leaves by throwing (§ 6.9).
+        let threw = false;
+        try { await m.applyOp("translate"); } catch (_) { threw = true; }
+        await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({
-            fresh, afterEdit, afterFailure: m.uncommitted, before,
+            fresh, afterEdit, threw,
+            afterFailure: { at: m.state_index, badge: m.uncommitted },
         }));
         """
     )
-    assert out["fresh"] is False, "a freshly opened structure has no unsaved work"
-    assert out["afterEdit"] is True, "an edit must raise the badge"
-    assert out["afterFailure"] is True, (
-        "a failed edit must leave the badge exactly as it was — it recorded "
-        "nothing and changed nothing"
+    assert out["fresh"]["badge"] is False, (
+        "a freshly opened structure has no unsaved work")
+    assert out["afterEdit"]["at"] == out["fresh"]["at"] + 1, (
+        f"an edit did not lay down a point (§ 11.2): {out}")
+    assert out["afterEdit"]["badge"] is False, (
+        "the badge is still up after an edit put itself on the sequence")
+    assert out["threw"] is True, "a refused edit must throw (§ 6.9)"
+    assert out["afterFailure"] == out["afterEdit"], (
+        "a failed edit changed the sequence or the badge — it recorded "
+        f"nothing and changed nothing: {out}"
     )
 
 
@@ -1722,7 +1845,7 @@ def test_a_read_only_viewer_has_no_history_and_no_badge():
     assert out["at"] == 0
 
 
-def test_writing_a_label_raises_the_badge_and_is_frozen_read_only():
+def test_writing_a_label_records_a_point_and_is_frozen_read_only():
     """§ 9.4: "Tagging is an edit. A label becomes part of what an atom IS and
     travels to the calculation, so writing one is frozen along with the rest."
 
@@ -1732,9 +1855,11 @@ def test_writing_a_label_raises_the_badge_and_is_frozen_read_only():
         """
         const m = await loaded();
         m.selection.add([0]);
+        const before = m.state_index;
         m.selection.writeLabel("anchor");
+        await new Promise((r) => setTimeout(r, 0));
         const first = m.getRegions();
-        const badge = m.uncommitted;
+        const recorded = m.state_index - before;
 
         m.selection.clear();
         m.selection.add([1]);
@@ -1744,12 +1869,16 @@ def test_writing_a_label_raises_the_badge_and_is_frozen_read_only():
         const roWrote = ro.selection.writeLabel("anchor");
 
         console.log(JSON.stringify({
-            first, badge, replaced: m.getRegions(), roWrote,
+            first, recorded, replaced: m.getRegions(), roWrote,
         }));
         """
     )
     assert out["first"] == {"anchor": [0]}
-    assert out["badge"] is True, "tagging is an edit, so it raises the badge"
+    # Tagging is an EDIT, so it lays down a point like any other (§ 11.2, and
+    # the gate says so itself: `recordEdit(true)`).  This asked the badge until
+    # 2026-09-07, which was the only observable an edit had back then.
+    assert out["recorded"] == 1, (
+        f"tagging did not lay down a timeline point: {out}")
     assert out["replaced"] == {"anchor": [1]}, (
         f"applying a label must replace that label's previous set: {out['replaced']}"
     )
@@ -2045,9 +2174,10 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
         m.selection.all(2);
         globalThis.__nextPayload = globalThis.__payload(
             [globalThis.__atomRow(0, "C", 0)]);
-        await m.applyOp("delete", {});        // unsaved work on top of it
+        await m.applyOp("delete", {});        // point 2 -- an edit records one
         await new Promise((r) => setTimeout(r, 0));
         const wasAt = m.state_index, wasDirty = m.uncommitted;
+        const wasAbove0 = files.has("id-s:1") && files.has("id-s:2");
 
         m.clear();
         await new Promise((r) => setTimeout(r, 0));
@@ -2071,13 +2201,25 @@ def test_clear_restarts_the_timeline_and_IS_the_state_it_starts_from():
             point0: held(point0), draft: held(draft),
             draftAt: draft ? draft.at : null,
             reopenedAtoms: two.getElements(),
-            aboveIsGone: !files.has("id-s:1"),
+            wasAbove0,
+            aboveIsGone: !files.has("id-s:1") && !files.has("id-s:2"),
         }));
         """
     )
-    assert out["wasAt"] == 1 and out["wasDirty"] is True, (
+    # THE PRECONDITION IS A SEQUENCE WITH SOMETHING ABOVE #0, which is what
+    # `clear` has to end.  It used to be stated as "standing at 1, and dirty",
+    # which stopped being true on 2026-09-07 when every edit began laying down
+    # a point of its own (§ 11.2): the delete now takes the position to 2 and
+    # leaves nothing unsaved.  The subject of the test is untouched -- it is
+    # about what `clear` does to that sequence, not how the sequence was built.
+    assert out["wasAt"] == 2, (
         "the setup did not build a sequence to end -- this test would pass "
         f"on a viewer that was already at #0: {out}")
+    assert out["wasAbove0"] is True, (
+        f"the setup wrote no points above #0 for `clear` to prune: {out}")
+    assert out["wasDirty"] is False, (
+        "an edit left work off the sequence, so it did not checkpoint "
+        f"(§ 11.2): {out}")
     assert out["at"] == 0, (
         f"`clear` left the timeline standing at #{out['at']}")
     assert out["dirty"] is False, "`clear` left the unsaved badge up"

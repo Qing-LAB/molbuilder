@@ -18,14 +18,14 @@ def _two_slabs(struct, element, plane, size, *, gap=8.0, **kw):
     callers that wanted it.  What these tests are about -- the CELL a build
     captures -- is `_finish_slab`'s, and that has not moved.
 
-    `stacking="continue"` on the `-z` side is the redesign's answer to the
+    `sequence="ACB"` on the `-z` side is the redesign's answer to the
     mirror the old builder applied unconditionally.
     """
     from molbuilder.modify import add_slab
     out = add_slab(struct, element, plane, size,
                    start_z=gap / 2.0, grow="+z", **kw)
     return add_slab(out, element, plane, size,
-                    start_z=-gap / 2.0, grow="-z", stacking="continue", **kw)
+                    start_z=-gap / 2.0, grow="-z", sequence="ACB", **kw)
 
 
 
