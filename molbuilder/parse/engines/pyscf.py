@@ -39,7 +39,8 @@ from __future__ import annotations
 import math
 import os
 
-from ...runfiles import (compose as _rf_compose, parse as _rf_parse,
+from ...runfiles import (compose as _rf_compose, find as _rf_find,
+                         parse as _rf_parse,
                          stem as _rf_stem)
 import re
 from pathlib import Path
@@ -333,25 +334,21 @@ def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
     # redirect on the DECK's name, which carries the token.
     job, token = _resolve_job_token(base, fname)
     stem = _stemmed(job, token)
-    candidates: List[str] = []
-    try:
-        for entry in os.listdir(base):
-            if entry.startswith(stem + "-run") \
-                    and entry.endswith(".pyscf.log"):
-                candidates.append(os.path.join(base, entry))
-    except OSError:
-        pass
-    # NUMERIC run order, and the bare log at the FRONT so ``reversed``
-    # reads it LAST -- exactly the docstring's rule (fixed 2026-08-13):
-    # a lexicographic sort put run10 before run3, and appending the bare
-    # log after the sort made the FALLBACK beat every -run<N>.
-    def _run_n(path: str) -> int:
-        m = re.search(r"-run(\d+)\.pyscf\.log$", os.path.basename(path))
-        return int(m.group(1)) if m else -1
-    candidates.sort(key=_run_n)
-    bare = os.path.join(base, _rf_compose(stem, ".pyscf.log"))
-    if os.path.isfile(bare):
-        candidates.insert(0, bare)
+    # ONE CALL, and it already carries the order this needs.  This listed the
+    # directory itself, matched `stem + "-run"` by prefix, then pulled N back
+    # out with a regex of its own -- in a module that imports `runfiles`'
+    # composer AND its parser two lines below.  Composing through the door and
+    # reading by hand is the asymmetry `project-layout.md` § 4.5 names, and
+    # here it sat in one function.
+    #
+    # NUMERIC run order with the bare log at the FRONT, so `reversed` reads it
+    # LAST -- the docstring's rule (fixed 2026-08-13: a lexicographic sort put
+    # run10 before run3, and appending the bare log after the sort made the
+    # FALLBACK beat every -run<N>).  `runfiles.find` sorts by run index with
+    # the counterless name first, which IS that rule; it is not re-imposed
+    # here.
+    candidates: List[str] = [str(path) for path, _rf
+                             in _rf_find(base, stem, role=".pyscf.log")]
 
     for log_path in reversed(candidates):
         try:

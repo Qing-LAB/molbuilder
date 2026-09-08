@@ -34,7 +34,6 @@ from ..bench.result import (
     parse_mpi_ranks,
 )
 
-_RUN_IDX = re.compile(r"-run(\d+)\.")
 
 
 def _read(path: Path, *, tail: Optional[int] = None,
@@ -59,15 +58,17 @@ def _read(path: Path, *, tail: Optional[int] = None,
 
 
 def _latest_run_file(d: Path, basename: str, suffix: str) -> Optional[Path]:
-    """The ``<basename>-runN.<suffix>`` with the highest run index N."""
-    cands = list(d.glob(f"{basename}-run*.{suffix}"))
-    if not cands:
-        return None
+    """The ``<basename>-runN.<suffix>`` with the highest run index N.
 
-    def _idx(p: Path) -> int:
-        m = _RUN_IDX.search(p.name)
-        return int(m.group(1)) if m else -1
-    return max(cands, key=_idx)
+    Through `runfiles.find`, which returns its hits sorted by run index, so
+    the newest is the last one.  This spelled the glob and its own
+    index regex -- the second copy of a counter `runfiles` composes in one
+    place (`project-layout.md` § 4.5).  ``suffix`` arrives here without the
+    leading dot; a role carries it.
+    """
+    from ..runfiles import find
+    hits = find(d, basename, role="." + suffix.lstrip("."))
+    return hits[-1][0] if hits else None
 
 
 #: How far into a SIESTA ``.out`` the setup lines can sit.  The launch

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 #: A stage artifact token: `01_coarse`, `02_electrode_L`.  The ordinal is
@@ -341,6 +342,77 @@ def parse(filename: str, label: str,
             return None                 # a token with no role is not a file
     # No token: the role itself began with `_` (`_optimized.xyz`).
     return RunFile(label, None, rest)
+
+
+def find(directory, label: str, *,
+         role: Optional[str] = None,
+         roles: "tuple[str, ...]" = (),
+         stage: Optional[str] = None,
+         run: Optional[int] = None) -> "list[tuple[Path, RunFile]]":
+    """Our files in *directory*, read back — the counterpart of :func:`compose`.
+
+    **`project-layout.md` § 4.5: for every name it composes, the framework
+    owns the search.**  Two callers spelled ``glob(f"{basename}-run*.{suffix}")``
+    for the ``-run<N>`` counter whose one home is this module — `materialize`
+    and `summarize` — and each carried its OWN regex to pull ``N`` back out, so
+    the counter grammar was written three times to be composed once.  They
+    bypassed this module because it offered nothing to bypass it WITH.
+
+    Returns ``(path, RunFile)`` pairs, sorted by run index then name, so a
+    caller that wants the latest takes the last and one that wants them all
+    walks in order.  **The parsing is :func:`parse`'s**, not a second reader:
+    a name this module cannot read is not ours and is left out, which is what
+    keeps a foreign file in the same directory from being reported as an
+    attempt.
+
+    ``role`` narrows to one (``".out"``); ``roles`` passes a caller's own
+    vocabulary through to :func:`parse` for the ``_``-prefixed kind, exactly as
+    that function documents.  ``stage`` and ``run`` filter on what was parsed —
+    ``run=None`` means *any*, and a file with no counter is matched only by
+    ``run=None``, because "the file with no run index" and "run 0" are
+    different things.
+
+    Takes a directory and returns paths: stdlib ``pathlib`` only, so this stays
+    importable by a monitor shipped beside a job (§ 4.5's floor rule).
+    """
+    d = Path(directory)
+    try:
+        entries = sorted(d.iterdir())
+    except OSError:
+        return []
+    out: "list[tuple[Path, RunFile]]" = []
+    for entry in entries:
+        parsed = parse(entry.name, label, roles)
+        if parsed is None:
+            continue
+        if role is not None and parsed.role != role:
+            continue
+        if stage is not None and parsed.stage != stage:
+            continue
+        if run is not None and parsed.run != run:
+            continue
+        out.append((entry, parsed))
+    out.sort(key=lambda pair: (pair[1].run if pair[1].run is not None else -1,
+                               pair[0].name))
+    return out
+
+
+def latest_run(directory, label: str, *,
+               roles: "tuple[str, ...]" = (),
+               stage: Optional[str] = None,
+               role: Optional[str] = None) -> Optional[int]:
+    """The highest ``-run<N>`` present here, or ``None`` when nothing carries one.
+
+    The question both callers actually asked.  `materialize` asked it across
+    three roles at once to find the newest attempt's marker; `summarize` asked
+    it per role to read the newest log.  Neither wanted the files — they wanted
+    the number — and asking for it by name is what stops the next caller
+    writing a fourth ``-run*`` glob.
+    """
+    runs = [rf.run for _p, rf in
+            find(directory, label, role=role, roles=roles, stage=stage)
+            if rf.run is not None]
+    return max(runs) if runs else None
 
 
 def is_carried(f: "RunFile | str", label: str = "") -> bool:

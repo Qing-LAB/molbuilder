@@ -559,27 +559,25 @@ def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
     that never said goodbye.
     """
     d = Path(attempt_dir)
-    _idx = re.compile(r"-run(\d+)\.")
-
-    ns = []
-    # BOTH STDOUT SPELLINGS.  The wrapper's redirect is engine-specific --
-    # SIESTA's `-runN.out`, PySCF's `-runN.pyscf.log` (§ 2.2's catalogue).
+    # THE INDEX IS ASKED FOR, not scanned for.  This globbed
+    # `f"{basename}-run*.{suffix}"` over three suffixes and pulled N back out
+    # with a regex of its own -- the `-run<N>` counter written twice here and
+    # once more in `summarize`, for a grammar `runfiles` composes in one
+    # place (`project-layout.md` § 4.5).  `latest_run` reads it through
+    # `runfiles.parse`, so a name this module cannot read is not counted as
+    # an attempt.
     #
-    # THIS WAS WRITTEN, MEASURED TO CHANGE NOTHING, AND DROPPED -- correctly,
-    # in a world where the PySCF wrapper never wrote `.concluded` at all, so
-    # the index came from the marker or from nowhere.  Making that wrapper
-    # conclude (2026-09-08) is what made it necessary, in the same change:
-    # without it the scan sees only `.concluded` files, so a NEWER killed
-    # attempt with a `-runN.pyscf.log` and no marker is invisible and this
-    # reports the OLDER attempt's goodbye as if it were the latest word.
-    for suffix in ("out", "pyscf.log", "concluded"):
-        for f in d.glob(f"{basename}-run*.{suffix}"):
-            m = _idx.search(f.name)
-            if m:
-                ns.append(int(m.group(1)))
-    if not ns:
+    # ACROSS EVERY ROLE, which is the rule and not an implementation detail.
+    # The wrapper's redirect is engine-specific -- SIESTA's `-runN.out`,
+    # PySCF's `-runN.pyscf.log` -- and an engine that dies before printing
+    # leaves a `.concluded` and no output at all.  Asking without a `role=`
+    # ranges over all of them, so a NEWER killed attempt cannot hide behind
+    # an OLDER one's goodbye.
+    from ..runfiles import latest_run
+    newest = latest_run(d, basename)
+    if newest is None:
         return None
-    mark = d / f"{basename}-run{max(ns)}.concluded"
+    mark = d / f"{basename}-run{newest}.concluded"
     try:
         return mark.read_text(encoding="utf-8").strip()
     except OSError:

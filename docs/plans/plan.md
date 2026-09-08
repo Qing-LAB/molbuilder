@@ -986,10 +986,26 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 |---|---|---|
 | **M1** | *(done 2026-09-08)* The inventory, as a re-runnable tool: `tools/classify_path_finders.py`. 72 searches, 24 owned, 0 unclassified | shipped |
 | **M2** | *(done 2026-09-08)* The design + contract: one L1 stdlib-only `paths.py`, contract at `project-layout.md` § 4.5 | agreed and written |
-| **M3** | Give `runfiles` the reader half — `find(dir, label, role=…, run=…)` returning what `compose` would have produced. Kills the twice-spelled `-run*` glob first, since both callers are in-tree and tested | `materialize` and `summarize` both ask; the pattern appears once |
+| **M3** | *(done 2026-09-08)* `runfiles.find` + `runfiles.latest_run`. Four hand-rolled readers of the `-run<N>` counter retired: the globs in `materialize` and `summarize`, and the index regexes in `summarize` and `parse/engines/pyscf.py` | shipped; survey's owned bucket 22 → 20 |
 | **M4** | Give `Shape` the rest of the directory finders, beside `stage_glob` which already works this way | `jobset/_cli.py`'s `bench-*/**` glob is gone |
 | **M5** | The endpoint contract: every path the Task-setup card renders arrives from the server. Removes `viewer.js`'s `stage_token` re-implementation | the browser composes no path; `test_the_plan_door_composes_no_name_of_its_own` extends to cover `--from` |
 | **M6** | `parse/contract.py`'s engine-output globs move behind `runfiles.WRITTEN`, which already declares those roles | one vocabulary for what an engine writes |
+
+**Still spelling `-run<N>` after M3:** `siesta/makov_payne.py`, and it is the
+interesting one — that code is SHIPPED beside a job
+(`materialize` stages it with `MONITOR_COMPANIONS`), so it cannot import
+`runfiles` unless `runfiles` ships too. It is stdlib-only precisely so it
+can; adding it to the companion list is the step that closes the last one,
+and it belongs after M4 rather than squeezed into M3.
+
+**M3 found two properties nobody was testing**, both load-bearing in the code
+it replaced and both green under mutation until tests were written for them:
+`latest_run` must be the MAXIMUM (the minimum reads an earlier attempt's
+goodbye as the latest word — what `attempt_concluded`'s own comment forbids),
+and `find` must sort the counterless name FIRST (last, and the PySCF
+fallback beats every real attempt — the 2026-08-13 bug its comment records).
+Moving a rule into a shared door does not test it; it widens who depends on
+it, which is the argument for writing the test at the same commit.
 
 **Do M1 and M2 before any code.** § 5a's rule applies to this section as much as any other:
 the table above was measured on 2026-09-08 and will be wrong by the time it is

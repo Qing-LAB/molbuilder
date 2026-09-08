@@ -25,6 +25,7 @@ import itertools
 import pytest
 
 from molbuilder.runfiles import (QUALIFIERS, WRITTEN, RunFile, RunFileError,
+                                 find, latest_run,
                                  compose, is_carried, manifest, parse,
                                  patterns, tail)
 
@@ -404,3 +405,76 @@ def test_each_file_says_which_moment_it_appears_in():
     assert compose(LABEL, ".fdf", "01_coarse") in prep
     assert compose(LABEL, ".run.sh", "01_coarse") in prep
     assert compose(LABEL, ".molwatch.log", "01_coarse") not in prep
+
+
+# ══ THE READER — find / latest_run ═════════════════════════════════════════
+#
+# Added with the doors (2026-09-08, plan.md § 5k M3).  Both properties below
+# were load-bearing in the code that these doors REPLACED -- the inline scan
+# in `attempt_concluded` and the hand-rolled candidate sort in the PySCF
+# reader -- and neither was covered: mutating `max` to `min`, and the
+# counterless-first order to counterless-last, left the whole suite green.
+# One door with three callers makes that gap wider than it was.
+
+class TestTheReader:
+    """`find` and `latest_run` — `compose`'s counterpart (project-layout § 4.5)."""
+
+    @staticmethod
+    def _lay(d, names):
+        for n in names:
+            (d / n).write_text("")
+        return d
+
+    def test_only_our_files_come_back(self, tmp_path):
+        self._lay(tmp_path, ["JOB-run0.out", "JOB.fdf",
+                             "somebody-elses.log", "OTHER-run1.out"])
+        got = [p.name for p, _ in find(tmp_path, "JOB")]
+        assert got == ["JOB.fdf", "JOB-run0.out"], got
+
+    def test_a_role_narrows_it(self, tmp_path):
+        self._lay(tmp_path, ["JOB-run0.out", "JOB-run1.out",
+                             "JOB-run1.concluded"])
+        got = [p.name for p, _ in find(tmp_path, "JOB", role=".out")]
+        assert got == ["JOB-run0.out", "JOB-run1.out"], got
+
+    def test_the_counterless_name_sorts_FIRST(self, tmp_path):
+        """The PySCF reader's fallback rule, and why it is the door's job.
+
+        That reader walks its candidates REVERSED and wants the bare log read
+        LAST, so a `-run<N>` always beats it.  Sorted the other way the
+        fallback wins over every real attempt -- the 2026-08-13 bug, which its
+        comment records and no test caught.  The order lives here now, so it
+        is stated once and checked once.
+        """
+        self._lay(tmp_path, ["JOB-run2.pyscf.log", "JOB.pyscf.log",
+                             "JOB-run10.pyscf.log", "JOB-run3.pyscf.log"])
+        got = [p.name for p, _ in find(tmp_path, "JOB", role=".pyscf.log")]
+        assert got[0] == "JOB.pyscf.log", f"the bare log must lead: {got}"
+        assert got == ["JOB.pyscf.log", "JOB-run2.pyscf.log",
+                       "JOB-run3.pyscf.log", "JOB-run10.pyscf.log"], got
+
+    def test_run_10_is_not_run_1(self, tmp_path):
+        """NUMERIC, not lexicographic -- the other half of the same 2026-08-13
+        fix, which a string sort gets wrong at exactly ten attempts."""
+        self._lay(tmp_path, ["JOB-run9.out", "JOB-run10.out"])
+        assert latest_run(tmp_path, "JOB") == 10
+
+    def test_the_latest_run_is_the_HIGHEST_across_every_role(self, tmp_path):
+        """`attempt_concluded` asks this to find the newest attempt's marker.
+
+        Lowest instead of highest reads an EARLIER attempt's goodbye as the
+        latest word -- which is what that function's own comment says must not
+        happen, for a warm-retry chain where only the final process concludes.
+        And it ranges over roles: an engine that dies before printing leaves a
+        `.concluded` and no output at all.
+        """
+        self._lay(tmp_path, ["JOB-run0.out", "JOB-run0.concluded",
+                             "JOB-run1.pyscf.log"])
+        assert latest_run(tmp_path, "JOB") == 1
+
+    def test_no_counter_anywhere_is_None_not_zero(self, tmp_path):
+        self._lay(tmp_path, ["JOB.fdf", "JOB.out"])
+        assert latest_run(tmp_path, "JOB") is None
+
+    def test_a_directory_that_is_not_there_is_empty_not_an_error(self, tmp_path):
+        assert find(tmp_path / "nope", "JOB") == []
