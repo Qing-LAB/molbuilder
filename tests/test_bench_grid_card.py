@@ -342,6 +342,79 @@ def test_there_is_exactly_ONE_admission_door():
         assert invented not in door, f"the grid door computes {invented} itself"
 
 
+class TestPickingThisMachineIsAnAnswer:
+    """`"(this machine)"` and *nobody said* are two states, and the door
+    collapsed them into one `None`.
+
+    The `None` is right and load-bearing: it lets `record_scopes` prefer the
+    bundle's own `environment.json`, the snapshot a described calculation
+    carries.  Forcing this door to `LOCAL_TARGET` on 2026-09-02 threw that
+    away and a GPU grid stopped resolving.  But `machine_for` raises
+    `AmbiguousTarget` for `None` when named records exist and the folder has
+    no snapshot -- so on a not-yet-prepped calculation the card showed an
+    ambiguity refusal naming a `--target` flag nobody can type in a browser,
+    beside a Prep button that worked, because prep had been told the answer
+    and this door had discarded it.
+    """
+
+    @pytest.fixture()
+    def machine_with_named_records(self, tmp_path, monkeypatch):
+        """A workstation that also holds a cluster's record — the setup that
+        makes the question real (`choice_required`: any named record does)."""
+        cfg = tmp_path / "cfg"
+        (cfg / "environments").mkdir(parents=True)
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+        # A DIFFERENT GPU FROM THE BUNDLE'S, deliberately.  The bundle
+        # snapshot says `a100.40gb`; these say plain `a100`.  Writing the
+        # same topology in both places makes every "which record answered?"
+        # assertion pass whichever one did -- which is how a first draft of
+        # these tests let the 2026-09-02 regression through untouched.
+        env = Environment(scheduler="slurm",
+                          topology=Topology(sockets=2, cores_per_socket=32,
+                                            gpus_per_node=4,
+                                            gpu_type="a100"),
+                          domains=[Domain.from_row(r) for r in _DOMAINS])
+        (cfg / "environment.json").write_text(env.to_json() + "\n")
+        (cfg / "environments" / "sol.json").write_text(env.to_json() + "\n")
+        return cfg
+
+    @staticmethod
+    def _unprepped(bundle):
+        """A described calculation that has not been prepped: no snapshot."""
+        (bundle / "environment.json").unlink()
+        return bundle
+
+    def test_the_grid_resolves_when_this_machine_was_picked(
+            self, client, bundle, machine_with_named_records):
+        d = _post(client, self._unprepped(bundle),
+                  {"mpi_np": [48], "omp_threads": [1], "use_gpu": [False]},
+                  target="(this machine)")
+        assert d["ok"] is True, d
+        assert d["cells"], "a picked machine must yield cells"
+
+    def test_naming_nothing_is_still_refused(
+            self, client, bundle, machine_with_named_records):
+        """The other half.  The refusal is right when nobody answered -- what
+        was wrong was applying it to somebody who did."""
+        d = _post(client, self._unprepped(bundle),
+                  {"mpi_np": [48], "omp_threads": [1], "use_gpu": [False]},
+                  target=None)
+        assert d["ok"] is False and d["error"]
+
+    def test_a_prepped_folders_own_snapshot_still_wins(
+            self, client, bundle, machine_with_named_records):
+        """What the `None` is FOR, and the reason this is not fixed by
+        mapping the label to `LOCAL_TARGET`: the bundle here carries a
+        record with a100.40gb, and that is the machine the grid is measured
+        against even though a named record and a local one both exist."""
+        d = _post(client, bundle,
+                  {"mpi_np": [4], "omp_threads": [1], "use_gpu": [True],
+                   "gpu_count": [1]},
+                  target="(this machine)")
+        assert d["ok"] is True, d
+        assert d["cells"][0]["gpu_type"] == "a100.40gb", d["cells"][0]
+
+
 # --------------------------------------------------------------------- #
 #  What a prep will write, per stage — task-setup.md § 7.1               #
 # --------------------------------------------------------------------- #
@@ -476,6 +549,32 @@ class TestThePlanComesFromTheProducer:
         assert d["bench"]["axes"] == {"mpi_np": [4, 8, 16], "omp_threads": [4]}
         assert d["bench"]["allocation"]["domain"] == "htc"
 
+    def test_the_bench_row_names_the_container_the_sweep_LANDS_in(self, client):
+        """The card showed `bench-<token>/`, composed in the browser.
+
+        It named nothing: the container is `<NN>_<stage>/bench` in the
+        hierarchy, and the dash form it showed is a TRIAL's name
+        (`bench-<point>`), which lives INSIDE one.  ONE PER RUNG, because a
+        sweep measures a rung and there is a container per rung.
+        """
+        d = _plan(client, _PLAN_TASK)
+        assert d["bench"]["dirs"] == ["01_coarse/bench", "02_tight/bench"]
+
+    def test_flat_qualifies_the_container_instead_of_nesting_it(self, client):
+        """The other layout, and the reason the browser may not guess: flat
+        has no stage directory to sit inside, so the token qualifies the
+        container's own name (`bench_<NN>_<stage>`).  Two flat stages sharing
+        one root `bench/` is the bug that rule was written for."""
+        t = dict(_PLAN_TASK, shape="flat")
+        assert _plan(client, t)["bench"]["dirs"] == ["bench_01_coarse",
+                                                     "bench_02_tight"]
+
+    def test_a_disabled_rung_takes_its_container_with_it(self, client):
+        t = dict(_PLAN_TASK,
+                 stages=[dict(_PLAN_TASK["stages"][0], enabled=False),
+                         _PLAN_TASK["stages"][1]])
+        assert _plan(client, t)["bench"]["dirs"] == ["02_tight/bench"]
+
     def test_a_disabled_rung_is_not_listed(self, client):
         t = dict(_PLAN_TASK,
                  stages=[dict(_PLAN_TASK["stages"][0], enabled=False),
@@ -497,7 +596,14 @@ def test_the_plan_door_composes_no_name_of_its_own():
     door = src[src.index("def api_task_setup_prep_plan"):
                src.index("def api_task_setup_machines")]
     assert "token_for" in door and "stage_dir" in door
-    for invented in ('f"{i:02d}_', "zfill", "01_", "bench-"):
-        if invented == "bench-":
-            continue          # the LITERAL label of the bench row, not a name
+    # AND WHERE THE SWEEP LANDS.  `bench-` used to sit in the list below with
+    # a `continue` beside it -- *"the LITERAL label of the bench row, not a
+    # name"* -- an exemption carved out for the one literal that WAS the bug:
+    # the card composed `bench-<token>/` in the browser, which names no
+    # directory in any layout.  The exemption went with the literal; what
+    # replaces it is the door asking the one speller.
+    assert "bench_container" in door, (
+        "the bench row's directory must come from `materialize."
+        "bench_container`, the one spelling of that rule")
+    for invented in ('f"{i:02d}_', "zfill", "01_"):
         assert invented not in door, f"the door builds {invented} itself"

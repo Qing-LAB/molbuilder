@@ -2058,28 +2058,36 @@ def api_task_setup_bench_grid():
         return jsonify({"ok": False,
                         "error": "bench: must be an object of "
                                  "axis -> points"}), 400
-    # The picker offers "(this machine)" as a LABEL; `None` is what the
-    # record reader takes for it here.
+    # The picker offers "(this machine)" as a LABEL, not a name; `LOCAL_TARGET`
+    # is the name.  Translated exactly as the prep door translates it, so the
+    # browser sends what it shows and the server speaks one vocabulary.
     #
-    # NOT `LOCAL_TARGET`, which is what the prep door translates to -- and
-    # the difference is deliberate, not drift.  `LOCAL_TARGET` means *the
-    # box I am on, explicitly*, and reads this machine's own scope record;
-    # `None` means *nobody named one*, which lets `record_scopes` prefer
-    # THE BUNDLE'S OWN `environment.json` -- the snapshot a described
-    # calculation carries and the grid must be measured against.  Forcing
-    # the two doors to one value on 2026-09-02 threw that snapshot away and
-    # a GPU grid stopped resolving.
+    # THIS DOOR SENT `None` INSTEAD until 2026-09-08, and the note here said
+    # the divergence was deliberate: that `LOCAL_TARGET` would discard the
+    # bundle's own `environment.json` -- the snapshot a described calculation
+    # carries -- which forcing the two doors together on 2026-09-02 had done,
+    # stopping a GPU grid from resolving.
     #
-    # The gap this leaves is narrow and real: on a NOT-YET-PREPPED folder,
-    # on a machine that has named records, `None` has no snapshot to prefer
-    # and `record.py` raises `AmbiguousTarget` -- a 400 whose callers hide
-    # themselves, so both fit blocks vanish with no message while the Prep
-    # button beside them works.  That is a surfacing bug in the callers,
-    # not a reason to discard the snapshot here.
+    # That is no longer true, and it is measured rather than assumed.
+    # `record_scopes` puts the calculation's snapshot FIRST whatever the
+    # target, and `machine_for` treats `LOCAL_TARGET` as not-by-name, so
+    # nothing short-circuits past it.  On a bundle holding a record, `None`
+    # and `LOCAL_TARGET` return THE SAME record; they part company on one
+    # thing only -- with no snapshot and named records present, `None` cannot
+    # tell which machine was meant and raises `AmbiguousTarget`, while
+    # `LOCAL_TARGET` reads this box's own scope.
+    #
+    # `None` was therefore standing for two states at once -- *nobody named a
+    # machine* and *the person picked "(this machine)"* -- and only the first
+    # is what the refusal is for.  So a not-yet-prepped calculation on a
+    # machine with named records showed an ambiguity refusal naming a
+    # `--target` flag nobody can type in a browser, beside a Prep button that
+    # worked, because prep had been told the answer and this door threw it
+    # away.  Kept apart now by saying the name, which is all the fix needs.
     from molbuilder.scheduler.record import LOCAL_TARGET
     target = body.get("target") or None
     if target in ("(this machine)", LOCAL_TARGET):
-        target = None
+        target = LOCAL_TARGET
 
     import contextlib
     import io
@@ -2179,8 +2187,34 @@ def api_task_setup_prep_plan():
     if task.bench:
         # Every axis, with its points.  A row of length one is a DECISION and
         # measures one cell; the card says which is which (§ 6.2b).
+        #
+        # AND WHERE THE SWEEP LANDS, because the card was inventing it.  The
+        # bench row rendered a literal `bench-<token>/` composed in the
+        # browser -- the one place on this card that did not ask, and wrong
+        # in every layout: the real container is `bench_<NN>_<stage>` flat,
+        # `<NN>_<stage>/bench` hierarchical, bare `bench` stageless, and the
+        # dash form it showed is a TRIAL's name (`bench-<point>`), which
+        # lives INSIDE the container.  This function's own docstring already
+        # forbade it -- *"a list composed in the browser would be a second
+        # answer free to disagree with the thing it describes"* -- so this
+        # asks `bench_container`, which is the ONE spelling of that rule.
+        #
+        # A LIST, because a sweep measures ONE RUNG and there is a container
+        # per rung; the card's single bench row would otherwise have to pick
+        # a stage and be wrong about the others.  Order follows the rungs.
+        #
+        # NO FALLBACK FOR AN EMPTY LIST, because `rows` cannot be empty here:
+        # `stages.md` § 6.5 refuses a calculation with no stages, and
+        # `Task.from_dict` refuses one with every stage disabled -- *"an
+        # all-disabled ladder is an empty one spelled longer"*.  A branch for
+        # either would be a location invented for a sweep with no subject.
+        from molbuilder.jobset.materialize import bench_container
+        seen: list = []
+        for where in (bench_container(shape, r["token"]) for r in rows):
+            if where not in seen:
+                seen.append(where)
         bench = {"axes": {k: list(v) for k, v in task.bench.items()},
-                 "allocation": alloc}
+                 "allocation": alloc, "dirs": seen}
     # WHAT PREP WRITES FOR THE WHOLE RUN, beside the per-stage rows above
     # (user, 2026-09-07: *"we should add a card that list all the generated
     # data file from the setup ... more the ones we designed to be
