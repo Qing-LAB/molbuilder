@@ -108,7 +108,7 @@ flowchart TB
   L2 -->|reads/writes| L1
 ```
 
-**The L1 index, grouped by the object each module owns.** All 24 of them —
+**The L1 index, grouped by the object each module owns.** All 25 of them —
 this is the list `tests/test_layering.py` enforces, and
 `tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
 fails if the two drift apart. *(The diagram above named `pseudos` and `checkpoint` as L1 until
@@ -119,7 +119,7 @@ how "which layer does this go in?" becomes a guess.)*
 |---|---|---|
 | **geometry** | `structure` · `cell` · `selection` · `periodicity_gate` · `chemistry` · `residues` · `engine_atom_index` | atoms and positions, the cell, an atom selection, chemical facts, and how an atom is numbered for a given engine |
 | **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding |
-| **the job as described** | `task` · `config` · `identity` · `runfiles` · `warmfiles` · `annotations_fdf` | `task.json`, the engine-knob dataclasses, how a run id is written, **the run-file name grammar and the catalogue of what molbuilder writes**, the warm-file rules, the fdf annotation strategies |
+| **the job as described** | `task` · `config` · `identity` · `runfiles` · `paths` · `warmfiles` · `annotations_fdf` | `task.json`, the engine-knob dataclasses, how a run id is written, **the run-file name grammar and the catalogue of what molbuilder writes**, **the two layouts and where every file sits in them, with the search for each name it composes** (`project-layout.md` § 4.5 — was `jobset/shape.py` on floor 4 until 2026-09-08), the warm-file rules, the fdf annotation strategies |
 | **the machine** | `scheduler` | what a machine offers and what a job may ask of it — records, queues, admission, placement, emission, and **the quantities a job asks for and every dialect each is written in** (`quantities.py`) |
 | **infrastructure** | `persist` · `config_dir` · `constants` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, **the physical constants**, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
 
