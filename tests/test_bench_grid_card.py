@@ -549,16 +549,19 @@ class TestThePlanComesFromTheProducer:
         assert d["bench"]["axes"] == {"mpi_np": [4, 8, 16], "omp_threads": [4]}
         assert d["bench"]["allocation"]["domain"] == "htc"
 
-    def test_the_bench_row_names_the_container_the_sweep_LANDS_in(self, client):
+    def test_the_bench_rungs_name_the_container_the_sweep_LANDS_in(self, client):
         """The card showed `bench-<token>/`, composed in the browser.
 
         It named nothing: the container is `<NN>_<stage>/bench` in the
         hierarchy, and the dash form it showed is a TRIAL's name
-        (`bench-<point>`), which lives INSIDE one.  ONE PER RUNG, because a
-        sweep measures a rung and there is a container per rung.
+        (`bench-<point>`), which lives INSIDE one.  ONE ENTRY PER RUNG,
+        because `prep bench` takes a stage and the container lives inside
+        the stage it measures.
         """
         d = _plan(client, _PLAN_TASK)
-        assert d["bench"]["dirs"] == ["01_coarse/bench", "02_tight/bench"]
+        assert d["bench"]["rungs"] == [
+            {"stage": "coarse", "dir": "01_coarse/bench"},
+            {"stage": "tight", "dir": "02_tight/bench"}]
 
     def test_flat_qualifies_the_container_instead_of_nesting_it(self, client):
         """The other layout, and the reason the browser may not guess: flat
@@ -566,14 +569,15 @@ class TestThePlanComesFromTheProducer:
         container's own name (`bench_<NN>_<stage>`).  Two flat stages sharing
         one root `bench/` is the bug that rule was written for."""
         t = dict(_PLAN_TASK, shape="flat")
-        assert _plan(client, t)["bench"]["dirs"] == ["bench_01_coarse",
-                                                     "bench_02_tight"]
+        assert [r["dir"] for r in _plan(client, t)["bench"]["rungs"]] == [
+            "bench_01_coarse", "bench_02_tight"]
 
     def test_a_disabled_rung_takes_its_container_with_it(self, client):
         t = dict(_PLAN_TASK,
                  stages=[dict(_PLAN_TASK["stages"][0], enabled=False),
                          _PLAN_TASK["stages"][1]])
-        assert _plan(client, t)["bench"]["dirs"] == ["02_tight/bench"]
+        assert _plan(client, t)["bench"]["rungs"] == [
+            {"stage": "tight", "dir": "02_tight/bench"}]
 
     def test_a_disabled_rung_is_not_listed(self, client):
         t = dict(_PLAN_TASK,

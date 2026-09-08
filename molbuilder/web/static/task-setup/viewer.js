@@ -1890,17 +1890,20 @@ function paintPlan(box, host, body) {
         // WHERE IT LANDS IS ASKED FOR, NOT SPELLED HERE.  This rendered the
         // literal "bench-<token>/" -- the only path this card ever composed,
         // and wrong in every layout (the real container is bench_<NN>_<stage>
-        // flat, <NN>_<stage>/bench hierarchical, bare bench stageless; the
-        // dash form is a TRIAL's name and sits INSIDE one).  `prep-plan` now
-        // sends `dirs`, from `materialize.bench_container` -- the one
-        // spelling of that rule, and the same one prep lays the record down
-        // with.  One per rung, because a sweep measures one rung.
-        const dirs = (body.bench.dirs || []).map((d) => d + "/").join("  ");
-        host.appendChild(el("li", { class: "ts-planrow ts-planrow--bench" },
-            el("span", { class: "ts-plan-stage" }, "bench"),
-            el("code", { class: "ts-plan-dir" }, dirs),
-            el("span", { class: "ts-plan-ask" },
-               axes + " \u00b7 " + askLine(body.bench.allocation))));
+        // flat, <NN>_<stage>/bench hierarchical; the dash form it showed is a
+        // TRIAL's name and sits INSIDE one).  `prep-plan` sends the rungs,
+        // each directory from `materialize.bench_container` -- the one
+        // spelling of that rule, and the same one prep lays the record with.
+        //
+        // ONE ROW PER RUNG, because `prep bench` takes a stage: each row is a
+        // command someone runs, and the row says which rung it is for.
+        for (const rung of (body.bench.rungs || [])) {
+            host.appendChild(el("li", { class: "ts-planrow ts-planrow--bench" },
+                el("span", { class: "ts-plan-stage" }, "bench \u00b7 " + rung.stage),
+                el("code", { class: "ts-plan-dir" }, rung.dir + "/"),
+                el("span", { class: "ts-plan-ask" },
+                   axes + " \u00b7 " + askLine(body.bench.allocation))));
+        }
     }
 }
 
