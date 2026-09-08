@@ -129,6 +129,16 @@ _DISPATCH_CASES = [
     # Plain .log (PySCF stdout etc.) falls through trajectory's narrow
     # .molwatch.log match → source.
     ("/tmp/run/foo.log", "source", "plain_log→source"),
+    # ...and so does the COMPOUND one, which is the case worth stating
+    # separately: `.molwatch.log` IS claimed by trajectory, so a matcher
+    # written a little too loosely takes `.pyscf.log` with it.  PySCF's
+    # wrapper output was renamed from `.out` to `.pyscf.log` in 2026-06 so
+    # the dispatcher could tell PySCF from SIESTA; it is plain stdout, not
+    # a trajectory format, and it belongs in the text viewer until a
+    # dedicated inspector ships.  (Guarded until 2026-09-08 by a regex over
+    # `trajectory.js`'s match() body -- which is how it came to be checked
+    # by spelling rather than by asking the registry.)
+    ("/tmp/run/foo.pyscf.log", "source", "pyscf_log→source"),
     # .pdb is the second structure-inspector trigger.
     ("/tmp/protein.pdb", "structure", "pdb→structure"),
     # source claims a handful of plain text extensions (.txt is one).

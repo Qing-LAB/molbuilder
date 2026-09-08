@@ -46,7 +46,6 @@ DIRECTORY and the CONFIG; the record it delegates.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -230,8 +229,16 @@ def seed_machine_config(activation: str,
     if path.exists():
         return Step(path, "kept", _activation_note())
     _ensure_root()
+    # THE MODE IS CLAIMED BEFORE THE CONTENT LANDS.  `persist.write_bytes`
+    # PRESERVES an existing target's mode and gives a NEW one 0644, so
+    # writing first and chmod-ing after leaves the file briefly readable by
+    # everyone with its contents already in it.  `auth_setup` engineered
+    # against exactly that window -- *"create with mode bits at open() time
+    # so there's no world-readable window"* -- and this is the same file.
+    # Touching it 0600 first makes the writer's own preserve-the-mode branch
+    # do the work.
+    path.touch(mode=0o600)
     write_json(path, seed_document(activation, preamble))
-    os.chmod(path, 0o600)
     note = f'script_generation.activation = "{activation}"'
     if preamble:
         note += f"; preamble = {preamble!r}"

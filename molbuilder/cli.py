@@ -1441,6 +1441,27 @@ def _check_tls_readable(cert, key) -> None:
     )
 
 
+def _read_config_object(path):
+    """The config file at ``path`` as a dict, or ``None`` when it is not one.
+
+    **A top-level value that is not an object is UNREADABLE, not empty.**
+    `molbuilder.json` is an object by definition, and `runtime_config`
+    refuses anything else by name -- but that refusal guards the CONFIG
+    DIRECTORY's copy, and ``--output`` names a file that never passes it.
+    So both readers here have to answer the question themselves, and they
+    must answer it the same way: one of them treated a JSON list as a
+    mapping and called ``.get`` on it (a traceback, 2026-09-08), the other
+    handed it to ``dict()`` (a traceback, under --force, for longer than
+    that).  One reader now, and ``None`` is the single "cannot use this".
+    """
+    import json as _json
+    try:
+        doc = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
 @cli.command("auth-setup",
               short_help="generate molbuilder.json's auth block for "
                          "ASU CAS and/or Google OAuth (interactive)")
@@ -1568,19 +1589,21 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     # the comment keys), so the guard would refuse the sign-in wizard on
     # exactly the fresh installs it exists to serve.  A seeded file carries no
     # `auth`; there is nothing there to clobber.
-    prior_auth = False
+    why = None
     if output_path.exists():
-        try:
-            prior_auth = bool(
-                json.loads(output_path.read_text()).get("auth"))
-        except (OSError, json.JSONDecodeError):
+        prior = _read_config_object(output_path)
+        if prior is None:
             # Unreadable is not the same as absent -- refuse rather than
-            # overwrite a file whose contents we could not see.
-            prior_auth = True
-    if prior_auth and not force:
+            # overwrite a file whose contents we could not see, and say
+            # THAT, because "it already has an auth block" would send
+            # someone looking for one that is not there.
+            why = "cannot be read as a JSON object"
+        elif prior.get("auth"):
+            why = "already carries an `auth` block"
+    if why and not force:
         click.echo(
-            f"Error: {output_path} already carries an `auth` block.  "
-            f"Re-run with --force to replace it, or pass --output PATH.",
+            f"Error: {output_path} {why}.  Re-run with --force to replace "
+            f"it, or pass --output PATH.",
             err=True,
         )
         sys.exit(2)
@@ -1679,15 +1702,13 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     # 7. Merge auth block into existing molbuilder.json (if any) -------
     existing = None
     if output_path.exists():
-        try:
-            existing = json.loads(output_path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
+        existing = _read_config_object(output_path)
+        if existing is None:
             click.echo(
-                f"Warning: could not parse existing {output_path} "
-                f"({exc}).  --force is set, replacing it whole.",
+                f"Warning: could not read existing {output_path} as a JSON "
+                f"object.  --force is set, replacing it whole.",
                 err=True,
             )
-            existing = None
     auth_block = _as.build_auth_block(providers=providers)
     _as.emit_molbuilder_json(
         output_path, auth_block,

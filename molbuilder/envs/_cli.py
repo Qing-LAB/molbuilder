@@ -1591,7 +1591,20 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo("=" * 70)
     click.echo(f"config directory: {config_dir()}")
     click.echo("=" * 70)
-    _seed_config(None, auto_yes, True, caps.conda_binary)
+    try:
+        _seed_config(None, auto_yes, True, caps.conda_binary)
+    except Exception as exc:                                  # noqa: BLE001
+        # REPORTED, NOT FATAL -- the same rule the installs above follow
+        # ("Failures are recorded but bootstrap continues so the user gets a
+        # full report at the end").  A read-only HOME or a config path that
+        # is a file would otherwise abort a bootstrap that had just spent
+        # forty minutes building envs, and take the doctor report with it.
+        click.echo(f"  ! could not seed the config directory: "
+                   f"{type(exc).__name__}: {exc}", err=True)
+        # `_fix_cmd` takes a recipe name; this verb has none, so the empty
+        # string is passed deliberately and the join drops nothing else.
+        click.echo(f"  ! fix that, then run: "
+                   f"{_fix_cmd('init-config', '').rstrip()}", err=True)
 
     # Refresh capabilities so doctor sees newly-created envs.
     from .. import diagnostics as _diag
