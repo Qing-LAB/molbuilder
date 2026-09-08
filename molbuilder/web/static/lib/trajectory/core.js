@@ -2677,6 +2677,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             atomMetadata: r.atomMetadata,
             periodicity:  r.periodicity,
             info:         r.info,
+            // Same rule, same reason: frame 0's envelope rides with the load
+            // and a poll that re-sends frames must not drop it.
+            structure:    r.structure,
         });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
@@ -3025,6 +3028,21 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // contract), composed by the same server-side answer as
                 // the two above -- see watch.py::_run_metadata.
                 info:         r.info || null,
+                // FRAME 0 AS AN ENVELOPE -- what the viewer installs
+                // (watch.py::_frame0_structure).  Forwarded here beside the
+                // three above because it arrives the same way and for the same
+                // reason: only the LOAD response carries it.
+                //
+                // IT WAS MISSING, and nothing said so.  `rebuildModel` read
+                // `state.structure`, the store had the slot, and APPLY had the
+                // line that writes it -- but neither producer ever put the key
+                // in the payload, so the write was unreachable and `frame0`
+                // was null on every load.  The tab then took its
+                // "geometry could not be assembled" branch and returned before
+                // installing anything, so a run opened with no frame bar and
+                // no viewer at all.  Broken from the commit that introduced
+                // the envelope (2026-09-07) until this line.
+                structure:    r.structure || null,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so

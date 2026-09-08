@@ -357,6 +357,30 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
         f"while the run falls.  The viewer is drawing the relaxation "
         f"backwards, which would tell a person their optimisation "
         f"diverged.")
+    # AND THE 3-D VIEWER HAS THE RUN'S FRAMES, which is the half this test is
+    # NAMED for and did not check until 2026-09-07.  It asserted the energy
+    # plot only -- and that plot is drawn from `state.data`, which is populated
+    # by a different path from the one that feeds MolView.  So the whole
+    # trajectory viewer could be, and was, completely dead while these four
+    # tests stayed green: `state.structure` was read, the store had the slot,
+    # APPLY had the line that writes it, and NEITHER producer put the key in
+    # the payload -- so `frame0` was null and the tab returned before
+    # installing anything.
+    #
+    # The frame bar is the honest thing to look at: MolView shows it only when
+    # it is holding more than one frame (§ 8), and its counter says how many.
+    counter = page.wait_for_function(
+        """() => {
+            const el = document.querySelector('.molviewer-frames-counter');
+            const m = el && el.textContent.match(/(\\d+)\\s*\\/\\s*(\\d+)/);
+            return m ? Number(m[2]) : null;
+        }""",
+        timeout=30000, polling=250).json_value()
+    assert counter == steps, (
+        f"MolView is holding {counter} frames and the log records {steps}.  "
+        f"The energy plot above already agreed with the log, so this is the "
+        f"viewer alone -- the run reached the page and not the 3-D window.")
+
     assert errors == [], f"the page reported JS errors: {errors}"
 
 
