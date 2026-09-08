@@ -109,7 +109,74 @@ python -m molbuilder serve      # the web UI on 127.0.0.1:8000
 
 Once the host env exists, **`molbuilder envs` is the same surface** the shim used —
 `list`, `install <name>`, `bootstrap`, `doctor`, `validate`, `clean`, `repair`,
-`advise`.
+`advise`, `init-config`.
+
+### 2.1 What `bootstrap` seeds — the config directory *(2026-09-08)*
+
+`bootstrap` finishes by running **`molbuilder envs init-config`**, which creates
+the per-user config directory and writes the one thing a fresh machine cannot
+work out for itself:
+
+| what | why it is seeded here |
+|---|---|
+| `<config dir>/` | mode `0700` — the session key, the OAuth client secret and the notify tokens live in it. Matches what `auth-setup` already creates it as; the files inside are `0600` (`configuration.md` § 2.1b) |
+| `<config dir>/molbuilder.json` | `script_generation.activation`, mode `0600`, plus `_`-prefixed comment keys naming the command and the document that own each section |
+| `<config dir>/environments/` | where a record for a machine you prep **for** but are not **on** goes — `jobset probe --write --name sol` writes one, you copy it here |
+| `<config dir>/environment.json` | this machine, probed, through the same doors `jobset probe --write` uses |
+
+The config directory is `$MOLBUILDER_CONFIG_DIR` if set, else
+`$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder`
+(`configuration.md` § 2.1c).
+
+**Why the installer and not first run.** `script_generation.activation` has no
+default, and without it *every* wrapper refuses to render —
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 names the symptom as
+*"the `.fdf` saved but no `.run.sh` appeared"* and says it bites a workstation
+first. Install is the one moment in the program's life when the answer is both
+known and being discussed: conda has just been located and you have just
+confirmed it. Every later surface can only report that nobody ever said.
+
+**It is asked, never sniffed.** Activation is *declared*
+(`running-a-job.md` § 5; `detect_conda_activation` was deleted 2026-08-13 for
+having zero callers). `bootstrap` puts the question to you and writes your
+answer; `--yes` takes the recommendation — `conda activate` when conda's
+`etc/profile.d/conda.sh` hook is on disk, `source activate` otherwise — and
+**prints the line it wrote** either way, so a wrong default is visible rather
+than silent. Override it without being asked:
+
+```bash
+bash scripts/install-env.sh init-config --activation "source activate" --yes
+```
+
+**Nothing is ever overwritten.** Every step reports `created` or `kept`; a file
+that exists is left exactly as it is, down to its bytes — so re-running is a
+no-op that prints what is already there, and a `molbuilder.json` you have been
+editing is never merged into. Re-run it any time:
+
+```bash
+bash scripts/install-env.sh init-config     # idempotent; asks about activation
+```
+
+`--no-probe` seeds the config but writes no `environment.json` — for a build
+host, or an image baked once and copied, where the machine installed on is not
+the machine that runs anything.
+
+**What it deliberately does not seed** is the `scheduler` block. Partition, QOS
+and node topology are *facts about a machine*, not preferences
+(`configuration.md` M-1), and a guessed partition emits jobs the queue rejects.
+`jobset probe` measures them into `environment.json` instead.
+
+**Sign-in, TLS, the admin list** are sections of the same `molbuilder.json`.
+`molbuilder auth-setup` writes the `auth` block (CAS or Google) and **preserves
+every other key**, so running it after `bootstrap` keeps the seeded
+`script_generation` — it refuses only when an `auth` block is already there, and
+`--force` replaces that one section. For the other providers (GitHub, Microsoft,
+ORCID), TLS and the admin list, the fully worked template with every key
+explained is **`docs/ops/examples/molbuilder.json.example`** — copy the sections
+you need out of it; the seeded file names that path rather than carrying a
+second copy of it. Reference:
+[`ops/access-control.md`](?doc=ops/access-control.md) and
+[`ops/deployment.md`](?doc=ops/deployment.md) § 5.
 
 ## 3. What lives where — the backends
 

@@ -378,9 +378,79 @@ def reset_capabilities() -> None:
     _snapshot = None
 
 
+# --------------------------------------------------------------------- #
+#  What travels WITH a machine's record                                  #
+# --------------------------------------------------------------------- #
+
+
+def local_facts(env: "Any") -> "Tuple[Any, Optional[str]]":
+    """Attach this machine's three portable facts to a probed record.
+
+    Returns ``(environment, note)`` -- the record with the facts on it, and a
+    line to show the operator when there were none to attach.
+
+    **HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD**
+    (2026-08-24).  A wrapper is generated on one machine and executed on
+    another; the record is what carries the target across, and activation is as
+    much a fact about the target as its core count.  Probing Sol records
+    ``module load mamba`` / ``source activate``; copying that record to the
+    workstation is then SUFFICIENT to generate a wrapper that runs on Sol.
+    Without it, ``prep --target sol`` had Sol's queues and the workstation's
+    conda hook, and every job died sourcing a path that exists on neither the
+    cluster nor anywhere else it was sent.
+
+    **WHICH ENVIRONMENTS EXIST HERE** travels too -- the other half of the
+    pair.  ``conda env list`` enumerates without entering, so this is free from
+    whatever env the probe itself runs in.  **AND WHAT THEY WERE BUILT FOR**:
+    an env name is not portable, so that list means nothing without the
+    instruction set it was seen on (user, 2026-08-26: *"we should know our
+    compiled/installed architecture"*).  ``platform.machine()`` -- the machine
+    running this, which is the machine those envs live on.
+
+    Here rather than in ``scheduler/record.py`` because it reads live config
+    and enumerates envs: the scheduler package is L1 and **stdlib-only by
+    contract** (a record is read on the target inside a backend env with no
+    molbuilder installed), and this module is where "what is true of this
+    machine" already lives.  It was inline in ``jobset probe`` until
+    2026-09-08, when ``envs init-config`` became a second caller -- and a
+    second copy is a copy that drifts (`configuration.md` line 42).
+    """
+    import dataclasses as _dc
+    try:
+        from .runtime_config import get_script_generation
+        sg = get_script_generation(project_dir=None)
+        sg_rec = {k: v for k, v in (("preamble", sg.get("preamble")),
+                                    ("activation", sg.get("activation")))
+                  if v}
+    except Exception:      # pragma: no cover - a broken config is its own error
+        sg_rec = {}
+    try:
+        envs_here = sorted(get_capabilities().conda_envs or ())
+    except Exception:      # pragma: no cover - enumeration is best-effort
+        envs_here = []
+    env_arch = None
+    if envs_here:
+        import platform as _pl
+        env_arch = _pl.machine() or None
+    # The note is about ``script_generation`` and is gated on
+    # ``script_generation`` ALONE.  It was composed inside an ``else`` that
+    # also required the env list to be empty -- so on any machine with a conda
+    # env (which is every machine that can run anything) the warning was
+    # suppressed by a fact it has nothing to do with.  It was unreachable
+    # twice over: ``notes_sg`` was then assigned and read by nothing.
+    note = None if sg_rec else (
+        "this machine states no script_generation, so the record carries "
+        "none -- a bundle prepped ELSEWHERE for this machine will be refused "
+        "until it does")
+    if sg_rec or envs_here:
+        return _dc.replace(env, script_generation=sg_rec or {},
+                           conda_envs=envs_here, env_arch=env_arch), note
+    return env, note
+
+
 __all__ = [
     "DEFAULT_ENV_NAMES", "TOOL_TO_CATEGORY", "EXTENSION_TO_CATEGORY",
     "Capabilities",
-    "detect", "initialize",
+    "detect", "initialize", "local_facts",
     "get_capabilities", "set_capabilities", "reset_capabilities",
 ]

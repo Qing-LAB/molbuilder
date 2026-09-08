@@ -3400,49 +3400,13 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     env = resolve_environment(now_iso=now, overrides=overrides or None,
                               scheduler_override=scheduler_flag)
 
-    # HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD
-    # (2026-08-24).  A wrapper is generated on one machine and executed on
-    # another; the record is what carries the target across, and activation
-    # is as much a fact about the target as its core count.  Probing Sol
-    # records `module load mamba` / `source activate`; copying that record
-    # to the workstation is then SUFFICIENT to generate a wrapper that runs
-    # on Sol.  Without it, `prep --target sol` had Sol's queues and the
-    # workstation's conda hook, and every job died sourcing a path that
-    # exists on neither the cluster nor anywhere else it was sent.
-    import dataclasses as _dc
-    from ..runtime_config import get_script_generation as _gsg
-    try:
-        _sg = _gsg(project_dir=None)
-        _sg_rec = {k: v for k, v in
-                   (("preamble", _sg.get("preamble")),
-                    ("activation", _sg.get("activation")))
-                   if v}
-    except Exception:      # pragma: no cover - a broken config is its own error
-        _sg_rec = {}
-    # WHICH ENVIRONMENTS EXIST HERE travels too -- the other half of the
-    # pair.  `conda env list` enumerates without entering, so this is free
-    # from whatever env the probe itself runs in.
-    try:
-        from ..diagnostics import get_capabilities as _gc
-        _envs_here = sorted(_gc().conda_envs or ())
-    except Exception:      # pragma: no cover - enumeration is best-effort
-        _envs_here = []
-    # AND WHAT THEY WERE BUILT FOR.  An env name is not portable, so the
-    # list above means nothing without the instruction set it was seen on
-    # (user, 2026-08-26: "we should know our compiled/installed
-    # architecture").  `platform.machine()` -- the machine running the
-    # probe, which is the machine those envs live on.
-    _env_arch = None
-    if _envs_here:
-        import platform as _pl
-        _env_arch = _pl.machine() or None
-    if _sg_rec or _envs_here:
-        env = _dc.replace(env, script_generation=_sg_rec or {},
-                          conda_envs=_envs_here, env_arch=_env_arch)
-    else:
-        notes_sg = ("this machine states no script_generation, so the "
-                    "record carries none -- a bundle prepped ELSEWHERE for "
-                    "this machine will be refused until it does")
+    # THE THREE FACTS THAT TRAVEL WITH A RECORD -- how this machine enters
+    # its environment, which envs exist here, and what they were built
+    # for.  `diagnostics.local_facts` owns them and states why; `envs
+    # init-config` became the second caller 2026-09-08, which is what
+    # took them out of this function.
+    from ..diagnostics import local_facts as _local_facts
+    env, notes_sg = _local_facts(env)
 
     notes = []
     # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
@@ -3545,6 +3509,13 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         for d in env.domains:
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
                        f"{d.partition}/{d.qos}")
+    # AFTER `derive_domains`, for the reason stated above it -- that call
+    # REASSIGNS `notes`, so anything appended earlier is dropped.  This
+    # line was composed and never shown: `notes_sg` was assigned and read
+    # by nothing, so the one machine that most needed the warning -- the
+    # one stating no script_generation -- was the one told nothing.
+    if notes_sg:
+        notes.append(notes_sg)
     if notes:
         click.echo("\nNotes / assumptions (read before --write):")
         for n in notes:

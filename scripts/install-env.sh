@@ -138,6 +138,10 @@ bash scripts/install-env.sh clean molbuilder-siesta-gpu --yes
 
 # 7. Health check / verify everything:
 bash scripts/install-env.sh doctor
+
+# 8. Re-seed / inspect the per-user config directory (bootstrap
+#    already ran this; it never overwrites, so re-running is safe):
+bash scripts/install-env.sh init-config
 ==============================================================
 
 Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
@@ -147,6 +151,21 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
 
   bash scripts/install-env.sh doctor
       Health report: which envs exist, which verify, which need help.
+
+  bash scripts/install-env.sh init-config [flags]
+      Seed the per-user config directory -- molbuilder.json (with
+      script_generation.activation, which has NO default and without
+      which every generated wrapper refuses to render), the
+      environments/ directory, and this machine's probed
+      environment.json.  Run automatically at the end of bootstrap.
+      Never overwrites: a file that exists is reported and left as
+      it is, so re-running is a no-op that prints what is there.
+        --activation "conda activate" | "source activate"
+                                 declare it instead of being asked
+        --no-probe               seed the config, write no record
+                                 (build host / baked image)
+        --yes / -y               take the recommendation, printed
+      See docs/ops/installation.md section 2.1.
 
   bash scripts/install-env.sh install <recipe> [flags]
       Install (or repair) one recipe.  Flags forwarded to Python:

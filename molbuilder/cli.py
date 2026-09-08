@@ -1555,10 +1555,32 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     google_secret_file = _as.google_client_secret_path()
 
     # 3. Bail early on clobber unless --force --------------------------
-    if output_path.exists() and not force:
+    #
+    # WHAT IS WORTH GUARDING IS AN AUTH BLOCK, NOT A FILE.  Step 7 MERGES:
+    # `emit_molbuilder_json` replaces the `auth` section and preserves every
+    # other top-level key -- its docstring says so, promising that "an install
+    # that already has e.g. ``envs`` or ``tls`` sections stays intact".  This
+    # guard refused before reading, so that merge was reachable only with
+    # --force and the promise described a path nobody could take.
+    #
+    # It was harmless while a fresh machine had no molbuilder.json.  Since
+    # 2026-09-08 `envs init-config` seeds one at install time (activation plus
+    # the comment keys), so the guard would refuse the sign-in wizard on
+    # exactly the fresh installs it exists to serve.  A seeded file carries no
+    # `auth`; there is nothing there to clobber.
+    prior_auth = False
+    if output_path.exists():
+        try:
+            prior_auth = bool(
+                json.loads(output_path.read_text()).get("auth"))
+        except (OSError, json.JSONDecodeError):
+            # Unreadable is not the same as absent -- refuse rather than
+            # overwrite a file whose contents we could not see.
+            prior_auth = True
+    if prior_auth and not force:
         click.echo(
-            f"Error: {output_path} already exists.  Re-run with "
-            f"--force to overwrite, or pass --output PATH.",
+            f"Error: {output_path} already carries an `auth` block.  "
+            f"Re-run with --force to replace it, or pass --output PATH.",
             err=True,
         )
         sys.exit(2)

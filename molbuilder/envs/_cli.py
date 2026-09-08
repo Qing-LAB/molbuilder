@@ -22,10 +22,13 @@ from typing import Iterable, Optional, TextIO
 
 import click
 
+from ..config_dir import config_dir
 from ..diagnostics import get_capabilities, reset_capabilities
+from ..runtime_config import ACTIVATION_FORMS
 from . import advise as _advise
 from . import builds as _builds
 from . import doctor as _doctor
+from . import initconfig
 from . import install as _install
 from . import validate as _validate
 from .recipes import BUILTIN_RECIPES, recipe_by_name
@@ -1578,6 +1581,18 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         else:
             click.echo("bootstrap complete; every recipe installed.")
 
+    # THE CONFIG DIRECTORY IS PART OF A FIRST INSTALL.  Until this ran
+    # here, a bootstrap left the machine one file short of being able to
+    # render any wrapper -- `running-a-job.md` 5.2 names the symptom
+    # (*"the .fdf saved but no .run.sh appeared"*) and says it bites a
+    # workstation first.  This is the moment the answer is known: the
+    # env manager has just been located and confirmed.
+    click.echo("")
+    click.echo("=" * 70)
+    click.echo(f"config directory: {config_dir()}")
+    click.echo("=" * 70)
+    _seed_config(None, auto_yes, True, caps.conda_binary)
+
     # Refresh capabilities so doctor sees newly-created envs.
     from .. import diagnostics as _diag
     caps_after = _diag.detect()
@@ -1625,3 +1640,111 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
 
 
 __all__ = ["envs_group"]
+
+
+# --------------------------------------------------------------------- #
+#  init-config -- seed the per-user config directory                     #
+# --------------------------------------------------------------------- #
+#
+# WHY THIS IS AN ``envs`` SUBCOMMAND rather than its own group.  The
+# installer is how a person first meets this program, and
+# ``scripts/install-env.sh`` forwards "$@" verbatim to ``molbuilder envs``
+# -- its DESIGN INVARIANT, with ``--gcc`` the single stated exception.  A
+# command under this group is therefore reachable as
+# ``bash scripts/install-env.sh init-config`` with no shell change at all,
+# which is the whole point: the seeding logic lives in Python, where every
+# other non-chicken-and-egg concern already lives.
+
+
+def _recommended_activation(conda_binary: "Optional[str]") -> tuple:
+    """``(activation, preamble)`` to OFFER -- a default for a question, not
+    an answer to one.
+
+    The distinction is the rule.  ``activation`` is DECLARED, never detected
+    (`running-a-job.md` § 5; ``detect_conda_activation`` deleted 2026-08-13),
+    and nothing here writes anything: it proposes, the person confirms, and
+    ``--yes`` is the person saying *take the recommendation* -- which is then
+    PRINTED, so a wrong default is visible rather than silent.
+
+    The split follows the hook.  A ``conda.sh`` on disk means a shell that can
+    define the ``conda activate`` function once the hook is sourced -- the
+    workstation case, and the preamble to source it comes back too.  No hook
+    means micromamba or a module-based cluster toolchain, where
+    ``source activate`` is the form that works.
+    """
+    preamble = initconfig.conda_hook(conda_binary)
+    if preamble:
+        return "conda activate", preamble
+    return "source activate", None
+
+
+def _render_init_config(steps: "Iterable") -> None:
+    """One line per step: what it is, whether it appeared, and what to know."""
+    for step in steps:
+        mark = "+" if step.created else "="
+        click.echo(f"  {mark} {step.path}")
+        if step.note:
+            click.echo(f"      {step.note}")
+
+
+def _seed_config(activation: "Optional[str]", auto_yes: bool,
+                 probe: bool, conda_binary: "Optional[str]") -> None:
+    """Ask (unless told), seed, report.  Shared by the command and bootstrap."""
+    recommended, preamble = _recommended_activation(conda_binary)
+    if activation is None:
+        if auto_yes:
+            activation = recommended
+        else:
+            click.echo("")
+            click.echo("How does this machine enter a conda env?")
+            click.echo("  1) conda activate   -- conda's hook is sourced "
+                       "(typical workstation)")
+            click.echo("  2) source activate  -- HPC, `module load mamba` "
+                       "toolchain")
+            default = "1" if recommended == "conda activate" else "2"
+            choice = click.prompt("Choice", default=default,
+                                  type=click.Choice(("1", "2")),
+                                  show_choices=False)
+            activation = "conda activate" if choice == "1" else "source activate"
+    if activation != "conda activate":
+        # The hook line is what makes the ``conda activate`` FUNCTION exist in
+        # a non-interactive shell.  ``source activate`` is a script on PATH and
+        # needs no such thing, so carrying the line there would be a preamble
+        # that sources a file for no reason.
+        preamble = None
+    _render_init_config(initconfig.init_config(activation, preamble, probe))
+
+
+@envs_group.command(
+    "init-config",
+    short_help="seed the per-user config directory (molbuilder.json + record)")
+@click.option("--activation", type=click.Choice(sorted(ACTIVATION_FORMS)),
+              default=None,
+              help="declare how this machine enters a conda env, instead of "
+                   "being asked.  Written into "
+                   "``script_generation.activation``, which has no default "
+                   "and without which EVERY wrapper refuses to render "
+                   "(docs execution/running-a-job.md 5.2).")
+@click.option("--no-probe", "probe", flag_value=False, default=True,
+              help="do not write environment.json.  For a build host or a "
+                   "container image baked once and copied, where the machine "
+                   "installed on is not the machine that runs anything.")
+@click.option("--yes", "-y", "auto_yes", is_flag=True,
+              help="take the recommended activation without asking.  The "
+                   "value chosen is printed either way.")
+def cmd_init_config(activation: "Optional[str]", probe: bool,
+                    auto_yes: bool) -> None:
+    """Create the config directory and seed what a fresh machine cannot infer.
+
+    \b
+      <config dir>/                 0700 -- it holds secrets
+      <config dir>/molbuilder.json  script_generation.activation
+      <config dir>/environments/    records for machines you prep FOR
+      <config dir>/environment.json this machine, probed
+
+    **Idempotent, and never overwrites.**  A file that already exists is
+    reported and left exactly as it is; re-running prints what is there.  Run
+    automatically at the end of ``bootstrap``.
+    """
+    click.echo(f"config directory: {config_dir()}")
+    _seed_config(activation, auto_yes, probe, get_capabilities().conda_binary)

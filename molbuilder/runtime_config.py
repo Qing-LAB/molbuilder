@@ -1013,7 +1013,11 @@ def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
 # ``activation``: how to activate the env.  NO DEFAULT -- the operator
 #                 must set it explicitly in at least one scope, OR the
 #                 generator refuses to emit a wrapper (per § 2).
-_ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
+#: The two legal values, in ONE home.  Public because the validator is no
+#: longer the only reader: `envs init-config` offers these at install time
+#: as the prompt's choices, and a second literal there would be a second
+#: list to keep in step.  Presentation order is the caller's business.
+ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
 _SCRIPT_GENERATION_DEFAULTS: Dict[str, Any] = {
     "preamble":   "",
     "activation": None,  # explicit-only; no smuggled default
@@ -1088,10 +1092,10 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
     # already-normalised dict which carries None).
     if "activation" in raw and raw["activation"] is not None:
         v = raw["activation"]
-        if v not in _ACTIVATION_FORMS:
+        if v not in ACTIVATION_FORMS:
             raise RuntimeConfigError(
                 f"{CONFIG_FILENAME}: 'script_generation.activation' "
-                f"must be one of {_ACTIVATION_FORMS!r}; got {v!r}."
+                f"must be one of {ACTIVATION_FORMS!r}; got {v!r}."
             )
         out["activation"] = v
     return out

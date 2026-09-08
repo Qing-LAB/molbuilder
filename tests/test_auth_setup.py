@@ -378,8 +378,20 @@ def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
 
 
 def test_cli_refuses_to_clobber_without_force(isolated_home):
+    """WHAT --force GUARDS IS AN AUTH BLOCK, which is what it says it guards:
+    *"overwrite an existing molbuilder.json's auth block.  Other top-level
+    sections (envs, tls, ...) survive."*
+
+    This asserted refusal on ANY existing file until 2026-09-08 -- stricter
+    than the flag's own help, and stricter than the writer it guarded, whose
+    docstring promises that "an install that already has e.g. ``envs`` or
+    ``tls`` sections stays intact".  That promise described a path only
+    --force could reach.  It went unnoticed while a fresh machine had no
+    molbuilder.json; `envs bootstrap` now seeds one, so the old rule would
+    have refused this wizard on every fresh install.
+    """
     out = isolated_home / "molbuilder.json"
-    out.write_text('{"keep": true}')
+    out.write_text('{"auth": {"providers": [{"id": "old", "kind": "cas"}]}}')
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
@@ -388,9 +400,30 @@ def test_cli_refuses_to_clobber_without_force(isolated_home):
         "--output", str(out),
     ], catch_exceptions=False)
     assert r.exit_code != 0
-    assert "already exists" in r.output
+    assert "auth" in r.output
     # File untouched.
-    assert json.loads(out.read_text()) == {"keep": True}
+    assert json.loads(out.read_text())["auth"]["providers"][0]["id"] == "old"
+
+
+def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
+    """The other half of the same rule, and the one a fresh install takes.
+
+    A seeded molbuilder.json carries `script_generation` and no `auth`; there
+    is nothing to clobber, so the wizard writes its block and leaves the rest.
+    """
+    out = isolated_home / "molbuilder.json"
+    out.write_text('{"script_generation": {"activation": "conda activate"}}')
+    runner = CliRunner()
+    r = runner.invoke(cli, [
+        "auth-setup",
+        "--provider", "asu",
+        "--asurite", "jdoe",
+        "--output", str(out),
+    ], catch_exceptions=False)
+    assert r.exit_code == 0, r.output
+    data = json.loads(out.read_text())
+    assert data["auth"]["providers"], "the wizard wrote its block"
+    assert data["script_generation"]["activation"] == "conda activate"
 
 
 def test_cli_force_overwrites_existing(isolated_home):

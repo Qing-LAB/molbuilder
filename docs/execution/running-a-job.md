@@ -745,7 +745,12 @@ Exactly two keys. `activation` must be `"source activate"` or
 rendering **any** wrapper refuses with an operator message pointing here
 (`require_activation`, called from `render_run_wrapper`, which every wrapper
 goes through). On a fresh install that is the *"the `.fdf` saved but no
-`.run.sh` appeared"* symptom, and it bites a workstation first. `preamble` is arbitrary shell run before activation (the
+`.run.sh` appeared"* symptom, and it bites a workstation first — which is why
+**`bootstrap` now seeds it**: `molbuilder envs init-config` asks how this
+machine enters a conda env and writes the answer here, at the one moment it is
+both known and being discussed ([`ops/installation.md`](?doc=ops/installation.md)
+§ 2.1). It is still *declared*, never detected; the installer asks, and prints
+what it wrote. `preamble` is arbitrary shell run before activation (the
 `module load` lines). (Legacy `preactivate` is accepted as an alias for
 `preamble` for one release; `preactivate_format` / `autodetect_conda` are
 dropped with a warning.)

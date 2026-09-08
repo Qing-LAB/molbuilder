@@ -69,8 +69,12 @@ def config_dir() -> Path:
     ``$MOLBUILDER_CONFIG_DIR`` if set, else ``$XDG_CONFIG_HOME/molbuilder``,
     else ``~/.config/molbuilder``.
 
-    Not created, and not required to exist -- every caller either writes it
-    on demand or treats an absent file as *unset*.  Read at CALL time rather
+    Not required to exist -- every caller either writes it on demand or treats
+    an absent file as *unset*.  It IS created up front on a first install:
+    ``molbuilder envs init-config``, which ``envs bootstrap`` runs at the end,
+    makes the directory and seeds ``molbuilder.json`` (`configuration.md`
+    § 2.1c).  That changes nothing here; an absent directory is still legal and
+    still means *nothing was said*.  Read at CALL time rather
     than captured at import, so a test (or an operator) that moves the root
     moves every one of the callers above together.
 

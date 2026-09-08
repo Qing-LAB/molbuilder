@@ -240,6 +240,17 @@ filesystem root.
 `tests/test_config_dir_has_one_home.py` pins all of it, including that no other
 module reads either variable itself.
 
+**Who creates it.** Nobody had to, and that was the gap: every reader treats an
+absent file as *unset*, so a machine on which the directory had never been made
+was indistinguishable from one deliberately left unconfigured — and
+`script_generation.activation`, which has no default, made that state a refusal
+to render any wrapper (`execution/running-a-job.md` § 5.2). **`molbuilder envs
+init-config` creates it**, and `bootstrap` runs it at the end of a first
+install ([`ops/installation.md`](?doc=ops/installation.md) § 2.1). Nothing else
+changes: the directory is still not *required* to exist, every caller still
+writes on demand, and the seeding never overwrites — a file that is there is
+reported and left byte-for-byte as it is.
+
 ### 2.1d Operational state — `$XDG_STATE_HOME`, and `paths` may name it
 
 *(Built 2026-08-31. `archive/2026-09-01-config-access-plan.md` § 3.2.)*
