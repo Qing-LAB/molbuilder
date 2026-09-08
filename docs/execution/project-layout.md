@@ -29,7 +29,17 @@ restate the rules inside a single run directory — those are `job-contracts.md`
 
 **A calculation is a portable folder; everything the machine derives
 stays one level down.** The folder `init` writes travels to any machine
-unchanged; `prep` adds stage dirs; `launch` adds attempts.
+unchanged; **`prep` adds stage dirs *and the attempt inside them*; `launch`
+runs what prep set up and records that it ran.**
+
+*(Corrected 2026-09-08. This said "`launch` adds attempts" and was wrong in
+the direction that matters: `prepare_attempt` -- "set ONE stage up to run" --
+resolves the next `run-<n>`, creates it and links the deck in, all of it
+design and none of it spending a queue slot, while `_launch_dir` REFUSES a
+hierarchical stage with no attempt open (C5, 2026-08-12) precisely because
+opening one is not launch's job. The old line was not merely stale: a caller
+that implemented it -- rendering the decks and stopping -- produced a folder
+`launch` refuses, and one did.)*
 
 ```
 <project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
@@ -38,7 +48,8 @@ unchanged; `prep` adds stage dirs; `launch` adds attempts.
   pseudos/  (H.psml, ...)               travel with the calculation
   01_coarse/                            <- prep writes the stage (hierarchical shape)
     <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine
-    run-0/  run-1/                      <- attempts: one try each, warm files linked
+    run-0/  run-1/                      <- attempts: PREP opens and links each one;
+                                           launch runs it and writes run.json
       *-run0.out  *.concluded           the output + the conclusion marker (rc inside)
   bench-K2C1/run-0/                     <- a benchmark trial is its own attempt
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
@@ -51,7 +62,7 @@ unchanged; `prep` adds stage dirs; `launch` adds attempts.
 | **attempt = run-N** | every try is its own numbered dir; warm files LINK from the previous attempt | § 1.5 |
 | **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means killed — the launch gate ASKS, never decides | § 1.6 |
 | **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `task.json`'s `execution` | § 2.3.2 |
-| **who writes where** | init → the portable floor; prep → stage dirs; launch/monitor → attempts; a person → anything, said aloud | § 2 |
+| **who writes where** | init → the portable floor; prep → stage dirs **and the attempt in them**; launch/monitor → what a run produces (`run.json`, output, the conclusion marker); a person → anything, said aloud | § 2 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
 
 ---

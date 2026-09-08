@@ -1107,6 +1107,47 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment)
+
+    # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
+    #
+    # `prepare_attempt` says the rule in its own words: *"Set ONE stage up to
+    # run ... preparing is still design and the split from starting is what
+    # gives you somewhere to look before committing cluster time."*  Resolve
+    # the next `run-<n>`, create it, link the deck in -- all of it design,
+    # none of it spending a queue slot.  `launch` starts what prep set up and
+    # records that it ran; `_launch_dir` REFUSES a hierarchical stage with no
+    # attempt open (C5, 2026-08-12) precisely because opening one is not its
+    # job.
+    #
+    # It ran in ONE CALLER -- the CLI, which called this and then opened the
+    # attempt itself, under a comment calling that "the CLI's OWN addition".
+    # So `prep_calculation` returned a folder that `launch` refuses, and every
+    # other caller got exactly that: the browser's Prep button rendered the
+    # decks, reported success, and told the person to launch something the
+    # launcher would not take.  A verb that is only finished by one of its
+    # callers is not a verb.
+    #
+    # `project-layout.md` said the opposite in two places -- *"launch adds
+    # attempts"* -- which is why the browser's half was not obviously wrong:
+    # it implemented the document.  The document is corrected with this.
+    #
+    # TRIALS ALREADY DID THIS.  A bench point's deck is rendered straight into
+    # its attempt (`trial_work_dir` above), so a sweep has been complete since
+    # § 1.5a gave trials attempts.  Only the ladder rung was left half-done --
+    # the asymmetry was inside this function, not between two surfaces.
+    if kind == "ladder" and stage:
+        from .materialize import prepare_attempt, shape_of as _shape_of
+        _sh = _shape_of(js, base)
+        if _sh is not None and _sh.keeps_attempts_as_directories:
+            # Flat keeps no attempt directories at all (§ 1.5a): its container
+            # IS the run, and `prepare_attempt` refuses it by name.
+            #
+            # Idempotent by `resolve_attempt`'s rule -- reuse the last attempt
+            # until it has been launched, then open the next -- so a caller
+            # that opens one itself (the CLI, passing --from or --cold) lands
+            # on this same directory rather than a second one.
+            prepare_attempt(js, base, stage)
+
     if log is not None:
         log.close()
     return dirs

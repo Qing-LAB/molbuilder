@@ -1783,9 +1783,18 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
     and names the verb that opens the attempt."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    import shutil
     from molbuilder.jobset.prep import prep_calculation as _pc
     _pc(calc, "coarse", allocation=Resources(mpi_np=2, cpus_per_task=2),
-        emit_sbatch=False)             # library prep: NO attempt opened
+        emit_sbatch=False)
+    # THE STATE IS BUILT, NOT LEFT BEHIND BY PREP.  This used to call
+    # `prep_calculation` and assert no attempt appeared -- "library prep: NO
+    # attempt opened" -- which pinned the half-verb as if it were the design:
+    # prep returned a folder `launch` refuses, and every caller that was not
+    # the CLI shipped it.  Prep opens the attempt now (2026-09-08), so the
+    # state C5 guards against is reached the way a person reaches it: an
+    # attempt deleted, or a bundle prepped before that change.
+    shutil.rmtree(calc / "01_coarse" / "run-0")
     assert not (calc / "01_coarse" / "run-0").exists()
     res = CliRunner().invoke(jobset_group,
                              ["launch", "run", "coarse",
