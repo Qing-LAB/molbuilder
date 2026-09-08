@@ -2137,7 +2137,7 @@ def api_task_setup_prep_plan():
                         "error": "task: must be the description object"}), 400
     from molbuilder.jobset._cli import run_condition
     from molbuilder.jobset.prep import token_for
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
     try:

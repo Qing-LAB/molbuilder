@@ -203,7 +203,7 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     #  detector cannot see it and the reverse check would call the row stale.
     #  That is this module's stated blind spot, not an omission; the guard on
     #  it is question 2, which asks about behaviour rather than names.
-    #  `Shape.stage_dir` / `Shape.stage_glob` (molbuilder/jobset/shape.py, the
+    #  `Shape.stage_dir` / `Shape.stage_glob` (molbuilder/paths.py, the
     #  § 9 object, 2026-08-10) belong to this group and are NOT rows here.
     #  They are METHODS, and the function detector is `^def` -- anchored at
     #  column 0, because what it inventories is a declaration, and a method is

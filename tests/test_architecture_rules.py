@@ -114,7 +114,7 @@ _ONE_BUILDER = {
     "StageRef":        ("jobset/materialize.py", "stage_refs"),
     "Attempt":         ("jobset/materialize.py", "prepare_attempt"),
     "LaunchAgreement": ("jobset/agreement.py",   "launch_agreement"),
-    "Shape":           ("jobset/shape.py",       None),
+    "Shape":           ("paths.py",              None),
 }
 
 
@@ -212,7 +212,11 @@ _FLOOR = {
     "siesta/input.py":        3,
     "pyscf/input.py":         3,
     "jobset/materialize.py":  4,
-    "jobset/shape.py":        4,
+    # Moved out of `jobset` 2026-09-08 and DOWN to floor 1: it held
+    # floor 4 for one import of a two-element tuple, and the layout
+    # has to be reachable from a job shipped with no molbuilder
+    # installed (`project-layout.md` 4.5).
+    "paths.py":               1,
     # ``runwrap`` renders text from decided values, exactly as an engine's script
     # writer does, and imports nothing above floor 3.  Keeping it here is what
     # makes the preparation sequence walk the floors without going backwards

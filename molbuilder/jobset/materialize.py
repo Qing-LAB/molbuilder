@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:                      # annotations only
-    from .shape import Shape
+    from ..paths import Shape
 
 import json
 import os
@@ -45,6 +45,12 @@ RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
 RUN_LAUNCH_FILE = "run.json"
 
 
+#: What a trial's directory starts with.  One home, because the finder below
+#: and `job_dir_name` must agree, and `jobset/_cli.py` spelled it twice more
+#: -- once in a glob and once in a loop that walked path parts looking for it.
+TRIAL_PREFIX = "bench-"
+
+
 def job_dir_name(job_name: str) -> str:
     """The on-disk directory for a **trial** — ``bench-<point>``.
 
@@ -56,7 +62,7 @@ def job_dir_name(job_name: str) -> str:
     what every caller should use, because the answer depends on the job SET
     (the deck each job carries) rather than on a name alone.
     """
-    return f"bench-{job_name}"
+    return f"{TRIAL_PREFIX}{job_name}"
 
 
 def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
@@ -86,6 +92,42 @@ def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
     lookup.
     """
     return f"{bench_container(shape, stage_token)}/{job_dir_name(job_name)}"
+
+
+def trials_in(container) -> "List[Path]":
+    """The trial directories in a bench container — :func:`trial_dir`'s search.
+
+    `project-layout.md` § 4.5: for every name it composes, the framework owns
+    the search.  A caller wanting the trials globbed ``bench-*`` itself, which
+    is this module's prefix spelled somewhere else.
+    """
+    c = Path(container)
+    try:
+        return sorted(d for d in c.iterdir()
+                      if d.is_dir() and d.name.startswith(TRIAL_PREFIX))
+    except OSError:
+        return []
+
+
+def launched_trials(container, shape: "Shape") -> "List[str]":
+    """The names of the trials in *container* that ``launch`` has started.
+
+    THE SHAPE DECIDES WHERE THE RECORD SITS, which is why this takes one
+    rather than globbing across the difference: a trial keeps attempts since
+    § 1.5a, so its ``run.json`` is at ``bench-<point>/run-<n>/`` in the
+    hierarchy and at ``bench-<point>/`` in flat.  The caller that asked used
+    ``glob("bench-*/**/run.json")`` -- one pattern for both depths -- and then
+    walked the path parts backwards looking for the ``bench-`` component,
+    because taking the parent would have named the ATTEMPT in the layout that
+    has one.  Both halves of that are this module's knowledge.
+    """
+    out: "List[str]" = []
+    for trial in trials_in(container):
+        places = ([trial / f"run-{n}" for n in attempts(trial)]
+                  if shape.keeps_attempts_as_directories else [trial])
+        if any(was_launched(p) for p in places):
+            out.append(trial.name)
+    return out
 
 
 def trial_work_dir(container, shape) -> Path:
@@ -147,7 +189,7 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     else.)*
     """
     from ..task import FILENAME, read_task
-    from .shape import Shape
+    from ..paths import Shape
     desc = Path(base_dir) / FILENAME
     if not desc.is_file():
         return None
@@ -270,7 +312,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
 
     ``shape`` decides where a **stage** sits: hierarchical gives each one a
     directory, flat is depth 1 and they all sit in the bundle root
-    (:class:`~molbuilder.jobset.shape.Shape`).  A described trial nests
+    (:class:`~molbuilder.paths.Shape`).  A described trial nests
     under its stage's directory, so the shape reaches it through the stage;
     only the tokenless fallback ignores it.
 
@@ -287,7 +329,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     commit that made flat emit one** — the kind of sentence that survives the
     change it describes because nothing executes it.
     """
-    from .shape import Shape
+    from ..paths import Shape
     sh = shape or Shape.named("hierarchical")
     refs = stage_refs(jobset)
     out: Dict[str, str] = {}
@@ -897,6 +939,7 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
 
 
 __all__ = ["Attempt", "trial_dir", "trial_work_dir",
+           "TRIAL_PREFIX", "trials_in", "launched_trials",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "attempts", "was_launched", "latest_attempt", "run_dir",
            "resolve_attempt",

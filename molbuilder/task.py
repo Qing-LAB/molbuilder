@@ -74,7 +74,9 @@ SCHEMA = "molbuilder/task@1"
 FILENAME = "task.json"
 
 #: § 6.7 — required, no default, never inferred.
-SHAPES = ("flat", "hierarchical")
+# The layout vocabulary lives with the layout (`paths`), which is floor 1
+# and stdlib-only; this module validates a DECLARED shape against it.
+from .paths import SHAPES
 
 #: § 2 — "three fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
@@ -1209,7 +1211,7 @@ def write_task(path, task: Task):
     return write_json(path, task.to_dict())
 
 
-__all__ = ["SCHEMA", "FILENAME", "SHAPES", "STAGE_FIELDS",
+__all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Allocation",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "read_task", "varies_for", "write_task"]

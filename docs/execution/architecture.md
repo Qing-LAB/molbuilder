@@ -173,7 +173,7 @@ flowchart TB
     end
     subgraph F4["<b>4 · layout</b> — folders, links, copies, attempts"]
       direction LR
-      Y1["jobset/materialize.py"]; Y2["jobset/shape.py"]
+      Y1["jobset/materialize.py"]
     end
     subgraph F3["<b>3 · plan &amp; render</b> — values, and the text of every file"]
       direction LR
@@ -187,7 +187,7 @@ flowchart TB
     subgraph F1["<b>1 · names &amp; plain facts</b>"]
       direction LR
       N1["identity.py"]; N2["scheduler/record.py"]; N3["persist.py"]
-      N4["scheduler/probe.py"]
+      N4["scheduler/probe.py"]; N5["paths.py"]; N6["runfiles.py"]
     end
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
     F5 -.-> F1
@@ -210,10 +210,10 @@ note records the deletion.)*
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `scheduler/record` · `scheduler/probe` · `persist` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` | `environment.json` | know what a folder is |
+| **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `paths` · `scheduler/record` · `scheduler/probe` · `persist` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `Shape.named` · `Shape.stage_dir` · `Shape.stage_glob` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` | `environment.json` | know what a folder is |
 | **2** | **description** | what the person asked for | `task` | `read_task` · `write_task` · `derive_run` · `varies_for` | `task.json` | **name a machine** |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **and the text of every file** | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` · `siesta/input` · `pyscf/input` · `runwrap` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `render_fdf` / `render_script` · `write_run_wrapper` · `render_sbatch` | `job-set.json` · the scripts · `.run.sh` · `.sbatch` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
-| **4** | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
+| **4** | **layout** | where every file sits | `jobset/materialize` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `run_status` | — | write anything |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |

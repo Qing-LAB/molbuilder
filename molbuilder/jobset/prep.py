@@ -793,7 +793,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # -- the log's own home is the same container, and a second import site
     # would be a second chance to spell it differently.
     from .materialize import bench_container, trial_dir
-    from .shape import Shape
+    from ..paths import Shape
 
     base = Path(base_dir).resolve()
     if not base.is_dir():
@@ -905,7 +905,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     jobs: List[Job] = []
     from .materialize import (bench_container, trial_dir,
                               trial_work_dir)
-    from .shape import Shape as _Shape
+    from ..paths import Shape as _Shape
     _shape = _Shape.named(task.shape)
     # ONE line per unique finding, however many trials repeat it (user,
     # 2026-08-28, O5).  The gate still FIRES per deck -- every trial is
@@ -1274,7 +1274,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     from ..transport.stages import (TRANSPORT_STAGES, StageError,
                                     bias_points, bias_token, config_for,
                                     render_stage_deck, warm_declaration)
-    from .shape import Shape
+    from ..paths import Shape
 
     base = Path(base_dir).resolve()
     if not base.is_dir():
@@ -1449,7 +1449,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
     """
     from ..transport.stages import bias_token, stage_inputs
     from .materialize import ATTEMPT_RE, attempt_concluded
-    from .shape import Shape
+    from ..paths import Shape
 
     base = Path(base_dir)
     attempt_dir = Path(attempt_dir)

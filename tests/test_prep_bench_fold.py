@@ -929,7 +929,7 @@ class TestTheRunsOwnCondition:
         (62039301-05)."""
         from molbuilder.jobset.materialize import bench_container
         from molbuilder.jobset.prep import token_for
-        from molbuilder.jobset.shape import Shape
+        from molbuilder.paths import Shape
         from molbuilder.task import read_task
 
         d = json.loads((calc / "task.json").read_text())
@@ -2883,3 +2883,26 @@ def test_a_grouped_launch_records_where_was_launched_LOOKS(calc, monkeypatch):
             f"{job.name}: no run.json at {where} -- the record and the "
             f"check must name one directory")
         assert was_launched(where), f"{job.name} reads as never launched"
+
+
+def test_only_a_bench_prefixed_directory_counts_as_a_trial(tmp_path):
+    """`trials_in` filters by the prefix `job_dir_name` composes.
+
+    Every directory in a real bench container happens to be a trial, so
+    dropping the filter changes nothing anyone has built — which is exactly
+    why it needed a case of its own: mutating it away left the whole bench
+    fold green.  A container also holds the sweep's own record, and a person
+    may put anything beside it; neither is an attempt at a measurement.
+    """
+    from molbuilder.jobset.materialize import TRIAL_PREFIX, trials_in
+    (tmp_path / f"{TRIAL_PREFIX}K4C1").mkdir()
+    (tmp_path / f"{TRIAL_PREFIX}K8C1").mkdir()
+    (tmp_path / "notes").mkdir()                 # a person's own folder
+    (tmp_path / "job-set.json").write_text("{}")  # the sweep's record
+    assert [d.name for d in trials_in(tmp_path)] == [
+        f"{TRIAL_PREFIX}K4C1", f"{TRIAL_PREFIX}K8C1"]
+
+
+def test_a_container_that_is_not_there_is_empty_not_an_error(tmp_path):
+    from molbuilder.jobset.materialize import trials_in
+    assert trials_in(tmp_path / "nope") == []

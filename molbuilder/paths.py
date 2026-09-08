@@ -1,11 +1,21 @@
-"""``Shape`` — where a stage's files live, in whichever layout was chosen.
+"""Where a calculation's files live — the layout, and how to FIND it.
 
-**Module:** floor 4 (layout).  Imports exactly one thing of the tree —
-``task.SHAPES``, floor 2's vocabulary constant — and callers hand it
-tokens, so it stays reachable from anywhere that needs a path.  *(R8,
-2026-08-12: this header claimed an ``identity`` import it does not make
-and labelled ``task`` L1 where the floor table puts the description on
-floor 2.)*
+**Module:** floor 1, and **stdlib-only**, which is the property the whole
+design rests on.  The monitor ships beside a job
+(``runwrap.MONITOR_COMPANIONS``) and runs under the JOB's python with no
+molbuilder installed; ``config_dir.py`` already travels for that reason.  A
+path module a running job cannot import is a path module the job works
+around.
+
+**Contract:** [`project-layout.md`](?doc=execution/project-layout.md) § 4.5 —
+*for every name it composes, the framework owns the search.*  The run-file
+GRAMMAR stays in `runfiles` (§ 2.2a); this owns the TREE and the finders.
+
+*(Was ``jobset/shape.py``, floor 4, until 2026-09-08.  It sat there for one
+import — ``from ..task import SHAPES``, a two-element tuple of literals, held
+by floor 2 and read by this module alone.  Moving that constant here inverts
+one line and drops the whole naming-and-layout surface to a floor a shipped
+job can reach.)*
 
 **Contract:** [`execution/project-layout.md`](?doc=execution/project-layout.md)
 § 1 (the two shapes, and the table this object is a transcription of) ·
@@ -37,7 +47,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..task import SHAPES
+#: The two layouts, and the vocabulary both the description and the tree
+#: check against.  It lives HERE, not in ``task``, so this module imports
+#: nothing above floor 1 -- ``task`` imports it back for its own validation.
+#: A description DECLARES the shape and nothing infers it
+#: (`engines/stages.md` § 6.7).
+SHAPES = ("flat", "hierarchical")
 
 
 @dataclass(frozen=True)

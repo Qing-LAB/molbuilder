@@ -125,6 +125,17 @@ _L1_MODULES = {
                          # contract: a record is read on the target inside a
                          # backend env with no molbuilder installed.  `persist`
                          # is the one dependency, for the @major check.
+    "paths",             # THE LAYOUT and its finders (`project-layout.md`
+                         # § 4.5).  Was `jobset/shape.py` on floor 4 until
+                         # 2026-09-08, held there by one import of
+                         # `task.SHAPES` -- a two-element tuple of literals.
+                         # L1 and STDLIB-ONLY for `runfiles`' reason: a job
+                         # ships with a monitor and no molbuilder installed,
+                         # so a path module it cannot import is one it works
+                         # around.
+    "runfiles",          # the run-file GRAMMAR, and its reader
+                         # (`job-contracts.md` § 2.2a).  L1 on stdlib alone,
+                         # which is what lets it travel beside a job.
     "identity",          # the run id: normalise once, build from inputs
                          # (execution/run-identity.md 2-3).  L1 on stdlib
                          # alone, and that is load-bearing: the CLI, the web

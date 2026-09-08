@@ -2148,7 +2148,7 @@ def test_status_seq_is_none_for_a_sweep_point():
 def test_shape_refuses_anything_that_is_not_one_of_the_two():
     """`engines/stages.md` § 6.7: required, never inferred.  A constructor that
     accepted a third word would let a typo become a layout."""
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     assert Shape.named("flat").name == "flat"
     assert Shape.named("hierarchical").name == "hierarchical"
     with pytest.raises(ValueError) as e:
@@ -2165,7 +2165,7 @@ def test_hierarchical_tells_stages_apart_by_PATH_and_flat_by_NAME():
     A layer that only asks *which directory* is right in the hierarchy and
     silently wrong in flat: it answers about every stage at once.
     """
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     hier, flat = Shape.named("hierarchical"), Shape.named("flat")
 
     assert hier.stage_dir("03_tight") == "03_tight"
@@ -2180,7 +2180,7 @@ def test_only_the_hierarchy_keeps_attempts_as_directories():
     wrapper writes, so there is no attempt directory to open and `--from` has
     nothing to name -- *"continuing: free, the next stage finds them lying
     there."*"""
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     assert Shape.named("hierarchical").keeps_attempts_as_directories is True
     assert Shape.named("flat").keeps_attempts_as_directories is False
 
@@ -2190,7 +2190,7 @@ def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
     it the bundle's own prep would build `01_coarse/`, `02_medium/` inside a
     calculation whose description says flat."""
     from molbuilder.jobset.materialize import job_dir_names
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
 
     assert job_dir_names(js, Shape.named("flat")) == {"coarse": ".",
@@ -2206,7 +2206,7 @@ def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
     (which is why a bench bundle needs no description to be laid out)."""
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB_p1.fdf")])
     assert (job_dir_names(js, Shape.named("flat"))

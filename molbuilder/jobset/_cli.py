@@ -720,7 +720,7 @@ def _stage_bench_dir(base, stage):
     from ..task import FILENAME, read_task
     from .materialize import bench_container
     from .prep import token_for
-    from .shape import Shape
+    from ..paths import Shape
     desc = Path(base) / FILENAME
     if not desc.is_file():
         return None, None                    # hand-built set: no container
@@ -818,7 +818,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
         return
     task = read_task(desc)
     from .materialize import RUN_LAUNCH_FILE, attempts, was_launched
-    from .shape import Shape
+    from ..paths import Shape
     evidence = []
     # A BENCH prep weighs ONE kind of evidence only (user, 2026-08-21:
     # "bench always starts cold -- there is no point of asking"): launched
@@ -854,22 +854,14 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     # see them.  § 6.5 retired that shape on 2026-08-16: every attempt now
     # lives under its stage, so the gate above sees all of them.)
     if bench_container is not None:
-        # DEPTH-AGNOSTIC, and the NAME comes from the `bench-` component.
-        # A trial keeps attempts since 2026-08-27 (`project-layout.md`
-        # § 1.5a), so its record is at `bench-<point>/run-<n>/run.json` in
-        # hierarchical and `bench-<point>/run.json` in flat.  `**` matches
-        # zero or more directories, so one glob answers for both; taking
-        # `p.parent.name` would have named the ATTEMPT (`run-0`) rather
-        # than the trial in the layout that has one.
-        def _trial_name(rec: Path) -> str:
-            for part in reversed(rec.parts):
-                if part.startswith("bench-"):
-                    return part
-            return rec.parent.name
-
-        launched = [_trial_name(p) for p in
-                    sorted(Path(bench_container)
-                           .glob(f"bench-*/**/{RUN_LAUNCH_FILE}"))]
+        # ASKED FOR.  This globbed `bench-*/**/run.json` -- one pattern for
+        # both depths, since a trial keeps attempts (§ 1.5a) -- and then
+        # walked the path parts backwards for the `bench-` component, because
+        # taking the parent would have named the ATTEMPT in the layout that
+        # has one.  Both halves are `materialize`'s knowledge: the prefix it
+        # composes and where the shape puts the record.
+        from .materialize import launched_trials
+        launched = launched_trials(bench_container, Shape.named(task.shape))
         if launched:
             evidence.append(
                 f"launched trial(s) in "

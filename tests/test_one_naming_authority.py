@@ -32,7 +32,7 @@ PREP = ROOT / "molbuilder/jobset/prep.py"
 
 def test_both_composers_ask_the_same_function():
     from molbuilder.jobset.materialize import trial_dir
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     for shape_name in ("hierarchical", "flat"):
         sh = Shape.named(shape_name)
         got = trial_dir(sh, "01_coarse", "G1K4C6")
@@ -96,7 +96,7 @@ def test_the_two_agree_on_a_real_bundle(tmp_path):
     nothing checked."""
     from molbuilder.jobset.materialize import job_dir_names, trial_dir
     from molbuilder.jobset.model import Job, JobSet
-    from molbuilder.jobset.shape import Shape
+    from molbuilder.paths import Shape
     js = JobSet(name="sweep", kind="sweep", engine="siesta", jobs=[
         Job(name="G1K4C6", script="lbl_01_coarse.fdf"),
         Job(name="G2K8C6", script="lbl_01_coarse.fdf")])
