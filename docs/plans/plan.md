@@ -863,19 +863,43 @@ door that FINDS it. A caller holding a bundle and a question — *is there a
 sweep in here? which attempts exist? which run wrote this?* — has nowhere to
 ask, so it spells a glob, and the layout rule gains another site.
 
-| the rule | composed by | found by |
-|---|---|---|
-| `<NN>_<name>` stage token | `identity.stage_token` ← `prep.token_for` | `Shape.stage_glob` ✅ **the one that asks** |
-| the stage directory | `Shape.stage_dir` | — |
-| the bench container | `materialize.bench_container` | `materialize.sweep_set_paths` (added 2026-09-08, first of its kind) |
-| a trial directory | `materialize.trial_dir` | `jobset/_cli.py` spells `glob("bench-*/**/<run.json>")` |
-| the attempt `run-<n>` | `materialize.resolve_attempt` | `materialize.attempts` ✅ |
-| `-run<N>` on a filename | `runfiles.compose(run=…)` | **`glob(f"{basename}-run*.{suffix}")` in TWO modules** — `materialize` and `summarize`, the same pattern spelled twice |
-| the engine's own outputs | `runfiles.WRITTEN` | `parse/contract.py` spells `glob("*.fdf")`, `glob("*.molwatch.log")` |
+**M1 IS DONE AND IT IS A TOOL, not the table that used to stand here** —
+`tools/classify_path_finders.py`. Run it; do not quote the figures below,
+which are its output on 2026-09-08 and are here to say what it found, not to
+be cited later.
 
-The `-run*` row is the cleanest evidence: `runfiles` exists precisely so the
-counter grammar has one home, and the two readers of that grammar bypass it
-because it offers no reader.
+    python tools/classify_path_finders.py            # the summary
+    python tools/classify_path_finders.py --list owned
+
+| bucket | n | what it means |
+|---|---|---|
+| **owned — a door composes the name, none finds it** | **22** | the migration's subject |
+| owned — workspace store (a separate grammar) | 2 | same fault, different vocabulary |
+| door — a finder, not a caller | 3 | `sweep_set_paths` ×2, `named_environments` — what there should be more of |
+| foreign — not a name we compose | 18 | conda-meta, `*.psml`, `*.md` |
+| exact — a single named file | 10 | no pattern to own |
+| listing — no pattern | 17 | `iterdir`/`scandir` |
+| **unclassified** | **0** | every site was read; the twelve the syntactic pass could not settle carry a recorded reason |
+
+**Every override is keyed by `(file, function, pattern)` and never by line** —
+`classify_source_reads.py` keyed its reasons by line number and two came
+unanchored the first time tests were deleted around them (§ 5h).
+
+Three findings the survey produced that the hand table had not:
+
+1. **The `-run<N>` glob is spelled twice** — `materialize.py:576` and
+   `summarize.py:63`, both `f"{basename}-run*.{suffix}"`. `runfiles` exists so
+   that grammar has one home, and both readers bypass it because it offers no
+   reader. This is M3's first target.
+2. **`validation/identity.py:273` is the gap in one function.** Its suffixes
+   already come from the one rules file (`_engine_inventory` → `_warm_inventory`,
+   U3) — the VOCABULARY asks, and only the SEARCH is spelled by hand.
+3. **The first pass under-counted by four** because our names are usually built
+   from a constant (`_JS`, `SUFFIX`, `{label}`) rather than written out. A
+   survey that misses a name because the caller imported its constant reports
+   the code as tidier than it is, and does so exactly where it is least tidy:
+   a caller that knows the filename has a home and still assembles the search
+   by hand. The tool resolves module-level constants now.
 
 ### 5k.2 What the jobset round established, and why it belongs here
 
@@ -938,7 +962,7 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 
 | step | what | done when |
 |---|---|---|
-| **M1** | The inventory: every `glob`/`rglob`/`iterdir` in `molbuilder/` that spells a molbuilder name, with the composer it should have asked. The table in § 5k.1 is the start, not the answer — **run the survey, do not quote it** | a tool like `classify_source_reads.py`, re-runnable |
+| **M1** | *(done 2026-09-08)* The inventory, as a re-runnable tool: `tools/classify_path_finders.py`. 72 searches, 24 owned, 0 unclassified | shipped |
 | **M2** | The design + contract (tasks P2/P3): which module owns the finders, and where the contract for them lives. **No code before this** | agreed, written in the home the survey picks |
 | **M3** | Give `runfiles` the reader half — `find(dir, label, role=…, run=…)` returning what `compose` would have produced. Kills the twice-spelled `-run*` glob first, since both callers are in-tree and tested | `materialize` and `summarize` both ask; the pattern appears once |
 | **M4** | Give `Shape` the rest of the directory finders, beside `stage_glob` which already works this way | `jobset/_cli.py`'s `bench-*/**` glob is gone |
