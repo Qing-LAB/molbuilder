@@ -1118,9 +1118,26 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
     remote target was named, and substituting this machine's activation
     for another machine's is the 2026-08-24 failure exactly: it succeeds
     at generate time and dies on the cluster hours later on a path that
-    exists only here."""
-    if target and not (getattr(environment, "script_generation", None) or {}
-                       ).get("activation"):
+    exists only here.
+
+    **THE LOCAL TARGET IS EXEMPT, and every word above says why.**  `--target
+    this` names the machine the wrapper is being written ON, so "a path that
+    need not exist there" cannot arise -- there IS here, and the activation
+    comes from `molbuilder.json`'s `script_generation`
+    (`configuration.md` § 5), which is where a workstation states it.
+
+    It was not exempt until 2026-09-08, and the refusal it produced could not
+    be obeyed: it said *"on this, run `jobset probe --write --name this`, then
+    copy the record here"* -- but `this` is a RESERVED target name and that
+    probe is refused outright, there is nothing to copy from here to here, and
+    the possessive rendered as ``'this''s``.  A person following it exactly
+    would be told no by the next command.  Prepping for the box you are
+    sitting at is the most ordinary thing this tool does, and it was blocked
+    from the browser's Prep button by a check meant for a cluster."""
+    from ..scheduler.record import LOCAL_TARGET
+    if (target and target != LOCAL_TARGET
+            and not (getattr(environment, "script_generation", None) or {}
+                     ).get("activation")):
         raise PrepError(
             f"{target!r}'s machine record does not say how to enter its "
             f"environment, so a wrapper generated here would carry THIS "

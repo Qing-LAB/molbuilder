@@ -1108,8 +1108,7 @@ class AmbiguousTarget(Exception):
             "several machines could be meant and none was named.  Say which "
             "this calculation is for:\n" + listed +
             "\n    (there is no default; name one of the above)\n"
-            "  A record is written by `molbuilder jobset probe --write "
-            "--name NAME` on the machine it describes.")
+            "  These records already exist -- nothing needs probing.")
 
 
 #: THE TYPEABLE NAME FOR THIS MACHINE (2026-08-24).  ``known_machines``

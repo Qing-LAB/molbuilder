@@ -1483,11 +1483,12 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
                for f in ("mpi_np", "cpus_per_task", "gres")):
         _rec = None
         _ambiguous = None
+        _resolve_failed = None
         from ..scheduler.record import AmbiguousTarget as _Ambiguous
         try:
             from ..scheduler import machine_for
             _rec = machine_for(Path(base), target=target)
-        except _Ambiguous as _exc:
+        except _Ambiguous as _exc:      # noqa: PERF203
             # "SEVERAL MACHINES, NONE NAMED" IS NOT "NO RECORD", and the hint
             # below said the second when it meant the first -- so the advice
             # was `probe --write`, which cannot help: the record already
@@ -1496,8 +1497,17 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
             # dead end, and the one word that fixes it (`--target this`) was
             # printed AFTER it, by the real error (user, 2026-09-08).
             _ambiguous = _exc
-        except Exception:                                     # noqa: BLE001
-            _rec = None
+        except Exception as _exc:                             # noqa: BLE001
+            # ANY OTHER RESOLUTION FAILURE SPEAKS FOR ITSELF, and better than
+            # this hint can.  `--target sol` against a calculation already
+            # snapshotted to another machine raised here too, and the hint
+            # then said "no core count -- probe sol", when probing Sol is not
+            # the problem and the real error (one line later) already named
+            # the snapshot and how to move it.  Same shape as the
+            # `AmbiguousTarget` case above: a swallowed cause becomes wrong
+            # advice.  So the probe hint is printed ONLY when the record is
+            # genuinely absent -- which is the one case probing fixes.
+            _rec, _resolve_failed = None, _exc
         from ..runwrap import auto_ranks
         _w = auto_ranks(_rec, None, getattr(allocation, "domain", None))
         _where = (f"the selected target/domain"
@@ -1520,6 +1530,8 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
                        + _opts +
                        "\n      --target this   (this machine, already probed)\n"
                        "  Nothing needs probing: these records exist.")
+        elif _resolve_failed is not None:
+            pass          # the refusal that follows names the real cause
         else:
             click.echo(f"  no launch shape in `execution`, no flags, and no "
                        f"core count for {_where} --\n"

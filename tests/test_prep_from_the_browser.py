@@ -141,3 +141,54 @@ def test_there_is_no_launch_door_here(web_client):
     assert "api_task_setup_prep" in routes
     assert not any("launch" in r or "submit" in r for r in routes), (
         "a submit door appeared on the task-setup blueprint")
+
+
+def _record_without_activation():
+    """A machine record exactly as one written BEFORE 2026-08-24 looks: no
+    `script_generation`.  Every other fixture in the suite builds a fresh one,
+    which carries it -- which is why nothing here fired the guard below."""
+    from molbuilder.scheduler.record import Environment
+    return Environment.from_dict({
+        "schema": "molbuilder/environment@2",
+        "detected_at": "2026-08-01T00:00:00+00:00", "scheduler": "workstation",
+        "topology": {"sockets": 2, "cores_per_socket": 10,
+                     "threads_per_core": 1, "gpus_per_node": 0,
+                     "mem_total_gb": 64.0},
+        "site": {"partition": None, "qos": None, "account": None},
+        "domains": [],
+    })
+
+
+def test_the_local_target_is_not_asked_for_a_remote_machines_activation():
+    """THE BUG THE BROWSER FOUND AND THE CLI DID NOT (user, 2026-09-08).
+
+    `_require_remote_activation` refuses a target whose record does not say how
+    to enter its environment, because substituting THIS machine's activation
+    for a cluster's dies hours later on a path that exists only here.  It fired
+    for the LOCAL target too -- where "there" IS here -- and the refusal could
+    not be obeyed by anyone:
+
+        'this''s machine record does not say how to enter its environment ...
+        Fix: on this, run `molbuilder jobset probe --write --name this`, then
+        copy the record it writes into ~/.config/molbuilder/environments/ here
+
+    `this` is a RESERVED target name, so that probe is refused outright; there
+    is nothing to copy from here to here; and the possessive rendered
+    ``'this''s``.  Prepping for the box you are sitting at -- the most ordinary
+    thing this tool does -- was blocked from the browser's Prep button.
+
+    It hid because every fixture builds a FRESH record, and a fresh one carries
+    `script_generation`.  Only a record written before 2026-08-24 lacks it.
+    """
+    from molbuilder.jobset.prep import _require_remote_activation
+    _require_remote_activation(LOCAL_TARGET, _record_without_activation())
+    _require_remote_activation(None, _record_without_activation())
+
+
+def test_a_remote_target_is_still_refused_without_its_own_activation():
+    """The other half: the guard must keep doing its job for a real remote
+    target, which is the failure it was written for."""
+    from molbuilder.jobset.prep import PrepError, _require_remote_activation
+    with pytest.raises(PrepError) as exc:
+        _require_remote_activation("faraway", _record_without_activation())
+    assert "enter its environment" in str(exc.value)
