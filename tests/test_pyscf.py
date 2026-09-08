@@ -41,6 +41,40 @@ def h2o():
 # --------------------------------------------------------------------- #
 
 
+def test_the_run_with_block_names_the_wrapper_and_the_real_filename(h2o):
+    """The script is run BY THE WRAPPER, and its header has to say so.
+
+    It said ``python <job>.py`` -- the design from before a run had a
+    directory, when PySCF decks ran themselves (user, 2026-09-07).  Two things
+    were wrong with it by then.  It named a file that does not exist on a
+    staged run, because the deck is ``<job>_<stage>.py`` and only the stage
+    token was missing; and following it skips everything the wrapper exists to
+    do -- the environment activation, the tee, the SIGTERM trap and the monitor
+    that writes the live log (`running-a-job.md` § 2).
+
+    THE PLAIN INVOCATION STAYS (user, 2026-09-07): driving PySCF from the
+    command line is a legitimate thing to do, and the header still writes it
+    out.  What changed is which one is offered first, and that the direct one
+    now says whose job the environment and the redirection are.
+    """
+    text = render_script(h2o, PySCFConfig(job_name="my-job"),
+                         stage_token="02_medium")
+    assert "molbuilder jobset launch run 02_medium" in text, (
+        "the header does not offer the managed path at all")
+    assert "bash my-job_02_medium.run.sh" in text, (
+        "the header does not name the wrapper that runs this deck")
+    # The direct line is still here, and names the file that EXISTS.
+    assert "python my-job_02_medium.py" in text, (
+        "the plain invocation was dropped; it is a supported way to run this")
+    assert "python my-job.py" not in text, (
+        "the header names a file that does not exist on a staged run -- the "
+        "stage token is missing from the deck's own name")
+    i_managed = text.index("molbuilder jobset launch")
+    i_direct = text.index("python my-job_02_medium.py")
+    assert i_managed < i_direct, (
+        "the direct invocation is offered before the managed one")
+
+
 def test_default_render_compiles(h2o):
     text = render_script(h2o)
     compile(text, "<rendered>", "exec")

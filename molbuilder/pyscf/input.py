@@ -262,13 +262,35 @@ def spec_for(struct: Structure,
             out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
                        f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
         out.append("")
-        out.append("Run with:")
-        out.append(f"    python {label}.py")
+        # ONE SUFFIX, DERIVED ONCE.  The stage token qualifies the deck, the
+        # wrapper and three of the outputs; it was re-derived at each of them,
+        # which is four chances for one of them to drift from the rest.
+        _ss = f"_{stage_token}" if stage_token else ""
+        out.append("Run with -- the managed way, and the usual one:")
+        out.append(f"    molbuilder jobset launch run {stage_token or '<stage>'} "
+                   f"--mode direct|submit")
+        out.append(f"    bash {label}{_ss}.run.sh          "
+                   f"# the same wrapper, by hand")
+        out.append("")
+        out.append("    The wrapper beside this file is self-contained: it runs")
+        out.append("    unattended in a shell that inherits nothing, so it bakes")
+        out.append("    in the environment activation, sizes the threads, tees")
+        out.append("    the output, traps the scheduler's SIGTERM, and records")
+        out.append("    where and when it ran (`running-a-job.md` section 2).")
+        out.append("")
+        out.append("Or drive PySCF yourself:")
+        out.append(f"    python {label}{_ss}.py > {label}{_ss}.out 2>&1")
+        out.append("")
+        out.append("    Perfectly good, and the reason the plain invocation is")
+        out.append("    still written here -- but then the environment, the")
+        out.append("    redirection and the signal handling are yours: activate")
+        out.append("    the env first, and nothing cleans up if the job is")
+        out.append("    killed.  (The .molwatch.log is written by this script")
+        out.append("    either way, so a run started by hand is still watchable.)")
         out.append("")
         out.append("Outputs:")
         if cfg.log_file:
-            _lr = f"_{stage_token}" if stage_token else ""
-            out.append(f"    {label}{_lr}.log              -- pyscf verbose log")
+            out.append(f"    {label}{_ss}.log              -- pyscf verbose log")
         if cfg.chkfile:
             out.append(f"    {label}.chk              -- checkpoint (DM, mol)")
         if cfg.save_initial_xyz:
@@ -276,24 +298,22 @@ def spec_for(struct: Structure,
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append(f"    {label}_optimized.xyz    -- final relaxed coords")
         if cfg.optimize and cfg.write_trajectory and cfg.optimizer == "geometric":
-            _rung = f"_{stage_token}" if stage_token else ""
-            out.append(f"    {label}_geom{_rung}_optim.xyz   -- this rung's streaming")
+            out.append(f"    {label}_geom{_ss}_optim.xyz   -- this rung's streaming")
             out.append("                                          trajectory (multi-frame")
             out.append("                                          XYZ).  A ladder is one")
             out.append("                                          job per rung, so each")
             out.append("                                          writes its own.")
-            out.append(f"    {label}_geom{_rung}.log         -- geomeTRIC's opt log")
+            out.append(f"    {label}_geom{_ss}.log         -- geomeTRIC's opt log")
             out.append("                                          for this rung.")
         if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
-            _mr = f"_{stage_token}" if stage_token else ""
-            out.append(f"    {label}{_mr}.molwatch.log     -- unified per-step log: marker-")
+            out.append(f"    {label}{_ss}.molwatch.log     -- unified per-step log: marker-")
             out.append("                                  delimited blocks containing")
             out.append("                                  coords, energy (eV), forces")
             out.append("                                  (eV/Ang), and SCF cycle history.")
             out.append("                                  Single-file input for molwatch.")
         out.append("")
-        out.append("Dependencies:")
-        out.append("    Use the generated molbuilder run wrapper.")
+        out.append("Environment:")
+        out.append("    The wrapper activates it; this is how it gets built.")
         out.append("    Bootstrap managed environments once:")
         out.append("        bash scripts/install-env.sh bootstrap --yes")
         if cfg.optimize and cfg.optimizer == "berny":

@@ -38,10 +38,25 @@ def small_struct():
 # --------------------------------------------------------------------- #
 
 
+#: What follows the Outputs list in the header, and therefore ends it.
+#: SPLIT ON A HEADING, WHICH IS A STRING THIS FILE DOES NOT OWN -- the heading
+#: was "Dependencies:" until 2026-09-07 and the rename made this extractor run
+#: to end-of-file, so the "block" swallowed the whole script and every
+#: must-not-appear assertion started reading the code below it.  Failing loudly
+#: was luck; a heading that moved the other way would have made the assertions
+#: vacuous instead.  Named here so the coupling is at least visible.
+_OUTPUTS_BLOCK_ENDS_AT = "Environment:"
+
+
 def _outputs_block(text: str) -> str:
     """Extract the 'Outputs:' section of the script's header docstring."""
     after = text.split("Outputs:", 1)[1]
-    end = after.split("Dependencies:")[0]
+    assert _OUTPUTS_BLOCK_ENDS_AT in after, (
+        f"the header no longer has a {_OUTPUTS_BLOCK_ENDS_AT!r} heading after "
+        f"Outputs:, so this extractor cannot tell where the list ends -- it "
+        f"would return the whole script and every assertion below would be "
+        f"reading the code, not the header")
+    end = after.split(_OUTPUTS_BLOCK_ENDS_AT)[0]
     return end
 
 

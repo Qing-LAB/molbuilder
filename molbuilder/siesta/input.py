@@ -1126,17 +1126,44 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         _mw_name   = molwatch_log_basename(cfg.system_label, stage_token)
         if cfg.verbose_comments:
             out.append("# === Run with (job-layout v1) ===")
+            out.append("# The managed way, and the usual one:")
+            out.append("#     molbuilder jobset launch run "
+                       + (stage_token or "<stage>")
+                       + " --mode direct|submit")
+            out.append(f"#     bash {cfg.system_label}{_stage_suffix}.run.sh"
+                       "          # the same wrapper, by hand")
             out.append(
-                "# Run from this directory -- all outputs share the "
-                "SystemLabel basename below.")
+                "# The wrapper beside this deck is self-contained: it runs "
+                "unattended in a shell")
+            out.append(
+                "# that inherits nothing, so it bakes in the environment "
+                "activation, resolves the")
+            out.append(
+                "# rank count, tees the output, traps the scheduler's "
+                "SIGTERM, and records where")
+            out.append("# and when it ran (running-a-job.md section 2).")
+            out.append("#")
             # the deck's OWN rank count (R11 -- a hardcoded 4 contradicted
             # the BENCH-MARKS mpi_np three blocks down; "auto" says the
             # wrapper decides)
             _np_hint = "auto" if cfg.mpi_np is None else str(int(cfg.mpi_np))
+            out.append(
+                "# Or drive SIESTA yourself, from this directory -- all "
+                "outputs share the")
+            out.append("# SystemLabel basename below:")
             out.append(f"#     mpirun -np {_np_hint} siesta "
                        f"< {_fdf_name} > {_out_name}"
                        + ("   # -np auto: the wrapper resolves it"
                           if cfg.mpi_np is None else ""))
+            out.append(
+                "# Perfectly good, and the reason the plain invocation is "
+                "still written here -- but")
+            out.append(
+                "# then the environment, the redirection and the signal "
+                "handling are yours: load")
+            out.append(
+                "# the modules first, and nothing cleans up if the job is "
+                "killed.")
             if stage_token:
                 out.append(f"# Stage {stage_token} -- {_stage_science(cfg)}")
                 # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE.

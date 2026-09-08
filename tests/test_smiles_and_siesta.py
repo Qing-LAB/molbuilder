@@ -822,6 +822,40 @@ def test_cg_relax_does_not_emit_md_temperature_block():
 # 2026-09-05; it does not any more.
 
 
+def test_the_run_with_block_names_the_wrapper_before_the_engine():
+    """The deck is run BY THE WRAPPER, and its header has to say so first.
+
+    Both emitters used to open with the engine command -- PySCF with
+    ``python <job>.py``, SIESTA with the bare ``mpirun`` line -- which is the
+    design from before a run had a directory (user, 2026-09-07: *"the PySCF
+    used to directly generate these scripts that run by itself, but now we
+    handle it with this run directory and the script setup that would take
+    care of the environment setup and data redirection and management and
+    monitoring"*).
+
+    `running-a-job.md` § 2 already owned the rule: ``<label>.run.sh`` runs
+    unattended in a shell that inherits nothing, so it bakes the activation,
+    tees the output, traps SIGTERM and carries the monitor.  The headers were
+    the restatements that drifted.
+
+    THE ENGINE LINE STAYS (user, 2026-09-07): driving SIESTA from the command
+    line is a legitimate thing to do.  What changed is which one is offered
+    first, and that the direct one now says whose job the environment, the
+    redirection and the signal handling are.
+    """
+    fdf = render_fdf(_h2_struct(),
+                     SiestaConfig(system_label="my-job"),
+                     stage_token="02_medium")
+    i_managed = fdf.index("molbuilder jobset launch")
+    i_eng = fdf.index("mpirun -np")
+    assert i_managed < i_eng, (
+        "the header offers the raw engine command before the managed path")
+    assert "my-job_02_medium.run.sh" in fdf, (
+        "the header does not name the wrapper that runs this deck")
+    assert "handling are yours" in fdf, (
+        "the direct invocation does not say what it leaves to the reader")
+
+
 def test_fdf_stage_suffix_appears_in_run_with_block():
     # The token is a RENDER ARGUMENT since 2026-08-12 (C7): the emitter
     # never learns the word from the config.  (And an ARTIFACT TOKEN since
