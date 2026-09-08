@@ -1342,12 +1342,20 @@ def api_task_setup_prep():
     `project-layout.md` § 2.2 says the deck cannot be finished in the
     browser: that section's argument is about WHOSE FACTS the deck is
     rendered from, not about which surface presses the button.  `prep`
-    needs four inputs; two are portable (the template, the description)
-    and two are the target machine's (`molbuilder.json`,
-    `bench-result.json`).  A named target's record supplies the machine
-    half -- that is what `environments/<name>.json` IS -- so prepping FOR
-    Sol FROM here is the case `preparing-for-another-machine.md` exists
-    for, and prepping for THIS machine is the ordinary one.
+    needs three inputs: two portable (the template, the description) and
+    one the target machine's (`molbuilder.json`).  A named target's record
+    supplies the machine half -- that is what `environments/<name>.json`
+    IS -- so prepping FOR Sol FROM here is the case
+    `preparing-for-another-machine.md` exists for, and prepping for THIS
+    machine is the ordinary one.
+
+    *(This said FOUR inputs and named `bench-result.json` as the second
+    machine one, until 2026-09-08.  The verdict left prep's inputs on
+    2026-09-02 -- `prep_run_inputs` records the removal in its own list --
+    and `project-layout.md` § 2.3.3 states the rule it left behind: the
+    verdict is "a REPORT you read, and `prep run` never opens it".  A
+    retired input in the argument for why remote prep works is worse than
+    a stale comment: it is the load-bearing half of that argument.)*
 
     What this door does NOT do is submit.  `prep` writes files into the
     calculation and can be run again; `launch` spends a queue slot and
