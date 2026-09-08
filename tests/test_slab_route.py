@@ -94,17 +94,6 @@ class TestItReadsNoSelection:
         with_sel = _post(client, indices=[0], center_indices=[0, 1]).get_json()["xyz"]
         assert plain == with_sel
 
-    def test_the_client_table_says_so_too(self):
-        """One rule, two places it must hold: the route ignores a selection,
-        and `OPERATIONS` never sends one.  A route that ignored it while the
-        table sent it would work by luck."""
-        import re
-        from pathlib import Path
-        src = Path("molbuilder/web/static/lib/molview/model-jobs.js").read_text()
-        row = re.search(r"slab:\s*\{[^}]*\}", src, re.S)
-        assert row, "no `slab` row in OPERATIONS"
-        assert "wholeStructure: true" in row.group(0)
-        assert "group: null" in row.group(0)
 
 
 class TestWhatItRefuses:

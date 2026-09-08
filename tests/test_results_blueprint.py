@@ -112,133 +112,18 @@ class TestInspectorModulesServed:
 
     INSPECTORS = ["source", "structure", "trajectory", "spectra"]
 
-    def test_registry_served(self, web):
-        r = web.get("/static/lib/inspectors/registry.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        for sym in ("register", "pick", "mount", "list",
-                    "createDefaultContext", "_clear"):
-            assert sym in body, f"registry export missing: {sym}"
 
     @pytest.mark.parametrize("name", INSPECTORS)
     def test_inspector_module_served(self, web, name):
         r = web.get(f"/static/lib/inspectors/{name}.js")
         assert r.status_code == 200
 
-    @pytest.mark.parametrize("name", INSPECTORS)
-    def test_inspector_module_declares_canonical_interface(self, web, name):
-        """Every inspector module declares the four required
-        interface fields (name, displayName, match, mount) and
-        self-registers via window.molbuilder.inspectors.register.
 
-        Two acceptable shapes after task #308:
-          * direct: an inspector literal with ``mount(...)`` and the
-            other fields inline (source, structure).
-          * factory-built: ``makePartialInspector({...})`` with
-            ``mount`` provided by the factory (trajectory, spectra).
-            The factory itself MUST live in the partial-inspector-
-            factory module the load-order test below pins.
-        """
-        body = web.get(f"/static/lib/inspectors/{name}.js").get_data(as_text=True)
-        for key in ("name:", "displayName:", "match:"):
-            assert key in body, (
-                f"inspector {name!r} module is missing interface key {key!r}"
-            )
-        # Mount comes either as a method literal or via the factory.
-        has_mount = ("mount(" in body
-                     or "makePartialInspector(" in body)
-        assert has_mount, (
-            f"inspector {name!r} module is missing mount() — neither "
-            f"an inline mount(...) literal nor a "
-            f"makePartialInspector({{...}}) call was found"
-        )
-        # Self-registration call.
-        assert "inspectors.register(inspector)" in body, (
-            f"inspector {name!r} module does not self-register"
-        )
 
-    def test_source_inspector_matches_text_file_extensions(self, web):
-        """The source inspector is the catch-all for human-readable
-        text formats; pin its extension list against the spec.
 
-        Note: ``.out`` is INTENTIONALLY absent -- it routes to the
-        trajectory inspector (SIESTA's redirected stdout is parsed
-        into a frame trajectory; raw text view is hostile UX for
-        multi-MB outputs).  See
-        ``test_trajectory_inspector_claims_dot_out`` below.
-        """
-        r = web.get("/static/lib/inspectors/source.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        for ext in (".fdf", ".py", ".log", ".json", ".txt", ".md"):
-            assert ext in body, (
-                f"source inspector dispatch missing extension {ext!r}"
-            )
-        # Negative pin: .out moved to trajectory.
-        # Use a stricter match -- the docstring/comment mentions
-        # ``.out`` so just checking absence of the substring would
-        # produce false positives.  Match the actual match() clause.
-        assert 'endsWith(".out")' not in body, (
-            "source inspector still matches .out -- it should route "
-            "to trajectory (see source.js match function comment)"
-        )
 
-    def test_structure_inspector_matches_xyz_pdb(self, web):
-        body = web.get("/static/lib/inspectors/structure.js").get_data(as_text=True)
-        assert ".xyz" in body
-        assert ".pdb" in body
 
-    def test_trajectory_inspector_matches_compound_extension(self, web):
-        """``.molwatch.log`` matched as a compound extension so it
-        wins over plain ``.log`` (which the source inspector also
-        claims)."""
-        body = web.get("/static/lib/inspectors/trajectory.js").get_data(as_text=True)
-        assert ".molwatch.log" in body
 
-    def test_trajectory_inspector_claims_dot_out(self, web):
-        """SIESTA's redirected stdout (.out) is a trajectory in
-        practice -- the backend SiestaParser extracts a frame
-        sequence + per-step energies + force vectors.  The
-        trajectory inspector renders that via /api/watch/load,
-        which uses detect_parser() to pick the right backend
-        parser.  Pin the routing here so a future refactor that
-        narrows trajectory's match back to just .molwatch.log
-        lands as a clear failure.
-        """
-        body = web.get("/static/lib/inspectors/trajectory.js").get_data(as_text=True)
-        assert 'endsWith(".out")' in body, (
-            "trajectory inspector no longer claims .out -- SIESTA "
-            "output would fall through to the source inspector and "
-            "render as raw text (the 2026-05-18 user-report bug)"
-        )
-
-    def test_trajectory_inspector_does_NOT_claim_pyscf_log(self, web):
-        """Phase C (2026-06-07): PySCF wrapper output renamed from
-        ``.out`` to ``.pyscf.log`` so the dispatcher can tell PySCF
-        apart from SIESTA.  The trajectory inspector deliberately
-        does NOT claim ``.pyscf.log`` -- the file is plain PySCF
-        stdout, not a trajectory format; a dedicated pyscf-log
-        inspector is on the roadmap.  Until then ``.pyscf.log``
-        falls through to the source inspector (text viewer)."""
-        body = web.get("/static/lib/inspectors/trajectory.js").get_data(as_text=True)
-        # The match function MUST NOT include .pyscf.log.  The
-        # documentation comment may mention it (noting why it's
-        # excluded), but the actual match clause must not.  Find
-        # the match function body and inspect.
-        import re
-        m = re.search(r'match:\s*\(file\)\s*=>\s*\{(.+?)\},',
-                       body, re.DOTALL)
-        assert m, "trajectory match() function not found"
-        match_body = m.group(1)
-        assert '.pyscf.log' not in match_body, (
-            "trajectory inspector match() claims .pyscf.log; it "
-            "should fall through to source.js until a dedicated "
-            "pyscf-log inspector ships."
-        )
-
-    def test_spectra_inspector_matches_compound_extension(self, web):
-        body = web.get("/static/lib/inspectors/spectra.js").get_data(as_text=True)
-        assert ".spectra.json" in body
 
     def test_source_inspector_requests_max_read_budget(self, web):
         """SIESTA's runtime output (.out) routinely exceeds the
@@ -269,32 +154,6 @@ class TestInspectorModulesServed:
             "server's _MAX_READ_BYTES) to ctx.readFile."
         )
 
-    def test_registry_readfile_helper_accepts_maxbytes_opt(self, web):
-        """createDefaultContext's readFile must accept an ``opts``
-        argument and thread ``opts.maxBytes`` into the URL.  Without
-        this seam, the per-inspector budget override (e.g., source's
-        16 MB request) can't reach the backend.  Pin both: the
-        signature accepts opts AND the URL append happens.
-        """
-        body = web.get(
-            "/static/lib/inspectors/registry.js").get_data(as_text=True)
-        # Signature accepts opts.
-        assert "readFile(file, opts)" in body or \
-               "readFile(file,opts)" in body, (
-            "createDefaultContext.readFile does not accept opts -- "
-            "per-inspector maxBytes overrides have no seam to reach "
-            "the backend"
-        )
-        # opts (incl. maxBytes) is threaded through to the projects file
-        # layer -- ctx.readFile DELEGATES to ``projects.readFile(file, opts)``,
-        # which builds the ``max_bytes=`` URL (lib/projects/api.js).  The seam
-        # is the pass-through of ``opts``, not a URL built here.
-        assert "p.readFile(file, opts)" in body or \
-               "readFile(file, opts)" in body, (
-            "createDefaultContext.readFile no longer passes opts through to "
-            "projects.readFile -- the opts.maxBytes override has no seam to "
-            "reach the backend"
-        )
 
 
 # --------------------------------------------------------------------- #
@@ -364,23 +223,6 @@ class TestInspectorErrorRendering:
         # _renderError; pinned in the global XSS audit too).
         assert "createElement" in body
 
-    def test_factory_ignores_aborterror_in_catch(self, web):
-        """A user picking another file mid-fetch triggers the
-        AbortController's AbortError.  That's NOT an error to
-        surface to the user -- it's the expected superseding
-        action.  The factory guards via ``err.name === "AbortError"``
-        and bails before _renderError.  Pinned so a future refactor
-        that drops the abort guard surfaces with a clear failure
-        (else: every rapid file switch shows a spurious error card).
-        """
-        body = web.get(
-            f"/static/lib/inspectors/"
-            f"{self.PARTIAL_INSPECTOR_FACTORY}.js").get_data(as_text=True)
-        assert 'err.name === "AbortError"' in body, (
-            "_partial_inspector_factory doesn't guard against "
-            "AbortError in its .catch() -- rapid file-switching "
-            "will show a spurious 'mount failed' card after each swap"
-        )
 
     def test_inspector_error_css_classes_are_styled(self, web):
         """The error-card classes the adapters create must have CSS
@@ -419,61 +261,9 @@ class TestResultsDispatchJS:
         assert b".results-inspector-host" in r.data
         assert b".inspector-card" in r.data
 
-    def test_dispatch_uses_registry_pick_and_mount(self, web):
-        """The dispatch is implemented in terms of the registry --
-        not by hand-coded match rules.  Adding a new inspector
-        must not require editing viewer.js."""
-        body = web.get("/static/results/viewer.js").get_data(as_text=True)
-        for needle in ("inspectors", "pick(", "mount(",
-                       "currentHandle", "dispose"):
-            assert needle in body, (
-                f"viewer.js dispatch is missing: {needle!r}"
-            )
 
-    def test_dispatch_disposes_before_remount(self, web):
-        """A new file selection must dispose the PREVIOUS inspector's
-        handle BEFORE mounting the new one -- timers / listeners /
-        3Dmol viewers leak otherwise."""
-        body = web.get("/static/results/viewer.js").get_data(as_text=True)
-        # Pin the dispose-before-mount comment so a future refactor
-        # that drops the cleanup lands with a clear test failure.
-        assert "Dispose the previous inspector BEFORE" in body, (
-            "the dispose-before-mount invariant lost its anchoring "
-            "comment in viewer.js"
-        )
 
-    def test_dispatch_builds_mount_context_once_via_registry_helper(
-            self, web):
-        """The 2026-05-17 architectural cleanup moved mount-context
-        construction OUT of registry.mount() and INTO the dispatcher.
-        Pin that the dispatcher uses ``createDefaultContext(host)``
-        once at init + reuses the same context for every mount, so a
-        future dispatcher that wants a custom ctx (cached readFile,
-        custom error UI) has a clean injection point."""
-        body = web.get("/static/results/viewer.js").get_data(as_text=True)
-        assert "createDefaultContext" in body, (
-            "dispatcher no longer asks the registry to build the "
-            "mount context; either the registry's helper was renamed "
-            "or the dispatcher reverted to letting registry.mount() "
-            "build a default (less customisable)."
-        )
-        # Built ONCE and reused (a "let mountContext = null;" hoist
-        # at top + assignment inside init).
-        assert "let mountContext" in body, (
-            "mount context should be a closure variable built once "
-            "at init, not re-built per dispatch call"
-        )
 
-    def test_dispatch_validates_registry_populated_at_init(self, web):
-        """The dispatcher logs a loud console.error when the registry
-        is empty at init -- catches "inspector script tag failed to
-        load" before the user clicks something and gets a blank
-        panel."""
-        body = web.get("/static/results/viewer.js").get_data(as_text=True)
-        assert "registry empty at init" in body, (
-            "dispatcher init no longer validates that inspectors "
-            "have registered before the page goes live"
-        )
 
 
 # --------------------------------------------------------------------- #

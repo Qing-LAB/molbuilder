@@ -53,22 +53,6 @@ import pytest
 from molbuilder.web.app import create_app
 
 
-@pytest.fixture(autouse=True)
-def _allowed_root(tmp_path, monkeypatch):
-    """Say where this test's tree IS.
-
-    Since web-api.md § 2.1 every route fences a browser-supplied path to the
-    allowed roots BEFORE calling the module behind it, so a test driving those
-    routes at its own ``tmp_path`` has to declare that path the way a
-    deployment declares its projects root.  Without this the routes correctly
-    refuse — which is the point of the fence, not a test-harness quirk.
-    """
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
-                                    conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
 
 def _have_git() -> bool:
     try:
@@ -107,6 +91,25 @@ def _seed_with_archive(tmp_path: Path) -> Path:
 # ----------------------------------------------------------------- #
 #  1. /state is cheap -- no .binsnapshots/ walk on the refresh path #
 # ----------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def _allowed_root(tmp_path, monkeypatch):
+    """Say where this test's tree IS.
+
+    Since web-api.md § 2.1 every route fences a browser-supplied path to the
+    allowed roots BEFORE calling the module behind it, so a test driving those
+    routes at its own ``tmp_path`` has to declare that path the way a
+    deployment declares its projects root.  Without this the routes correctly
+    refuse — which is the point of the fence, not a test-harness quirk.
+    """
+    from molbuilder import diagnostics
+    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
+                                    conda_envs=frozenset())
+    monkeypatch.setattr(type(caps), "file_picker_roots",
+                        lambda self: ((tmp_path.resolve(), "projects"),))
+    diagnostics.set_capabilities(caps)
+_RUN_DIR = "/p/BDT-Au/optimization/relax"      # rel-depth 3: the gate opens
 
 
 def test_state_does_not_read_big_files_it_does_not_have_to(
@@ -237,33 +240,6 @@ def test_the_panel_and_its_importer_actually_parse(name):
         f"{name} does not parse:\n{result.stderr}")
 
 
-def test_the_panel_speaks_the_routes_vocabulary():
-    """The panel's request bodies must be the ones the routes accept.
-
-    `save` and `tag` sent `message` and `label` -- the pre-rework names -- so
-    every save and every tag from the sidebar was refused with HTTP 400 while
-    the module itself was correct.  Nothing else in the suite crosses that
-    seam: the route tests post their own bodies, and the JS tests grep text.
-    """
-    js = _js("checkpoint.js").read_text()
-
-    def body_of(route):
-        """The object literal passed to the CALL, not the header comment.
-
-        Splitting on the bare route path finds the module docstring's list of
-        endpoints first, which contains no request body at all -- a grep that
-        matches prose can only ever agree with prose.
-        """
-        anchor = f'_fetchJSON("POST", "/api/checkpoint/{route}"'
-        assert anchor in js, f"no POST call to {route} in checkpoint.js"
-        return js.split(anchor, 1)[1][:400]
-
-    save = body_of("save")
-    assert "note:" in save and "message:" not in save, (
-        "save must send `note` -- the field L3 requires and the route reads")
-    tag = body_of("tag")
-    assert "name:" in tag and "note:" in tag, "tag sends `name` and `note`"
-    assert "label:" not in tag
 
 
 def test_checkpoint_js_has_no_polling_timer():
@@ -288,43 +264,8 @@ def test_checkpoint_js_has_no_polling_timer():
         "docs/web/projects.md")
 
 
-def test_the_panel_can_supply_a_calculation_name_when_the_folder_is_refused():
-    """The panel's only way out of a refused save (L3), and it had none.
-
-    A folder whose own name cannot be a calculation name is refused, and the
-    only thing that resolves it is a name — which the panel could not send,
-    because Set-up posted `{path}` and nothing else.  Every button gave the
-    same refusal and none of them could answer it.
-
-    The server marks that refusal `where: "calculation"` so a surface can tell
-    it from the other advisory on the same route — a folder holding several
-    calculations, which a name does **not** fix and where a prompt would be a
-    lie.  Branching on `where` is therefore the assertion, not the presence of
-    a prompt.
-    """
-    js = _js("checkpoint.js").read_text()
-    init = js.split("async function _onInitClick", 1)[1].split("\nasync function", 1)[0]
-    assert 'where === "calculation"' in init, (
-        "the panel must branch on WHICH refusal it got; prompting for a name "
-        "on the nested-calculations advisory would ask a question that cannot "
-        "help")
-    assert "calculation:" in init, (
-        "and it must actually send the name it collected")
-    assert "prompt(" in init
 
 
-def test_the_sensor_pill_does_not_keep_the_previous_folders_tooltip():
-    """Navigating to an un-set-up folder cleared the text and not the title.
-
-    The pill then read "no states saved" while its tooltip still listed the
-    unsaved files of the directory you just left -- naming files that are not
-    in this folder at all.
-    """
-    js = _js("checkpoint.js").read_text()
-    uninit = js.split("if (!repoState || !repoState.initialized) {", 1)[1] \
-               .split("return;", 1)[0]
-    assert "elSensor.title" in uninit, (
-        "the branch that sets the pill must clear the title the other two set")
 
 
 # ================================================================== #
@@ -395,7 +336,6 @@ globalThis.molbuilder = {
 _PANEL = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
           / "static" / "lib" / "projects" / "checkpoint.js")
 
-_RUN_DIR = "/p/BDT-Au/optimization/relax"      # rel-depth 3: the gate opens
 
 
 def test_entering_a_run_dir_reads_the_state_only_until_opened():

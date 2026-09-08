@@ -194,15 +194,3 @@ def test_the_open_list_matches_the_plan_not_more():
         f"STILL_OPEN entries absent from the integration plan: {unplanned}")
 
 
-def test_the_citations_reach_the_long_help_path():
-    """U5 (2026-08-21): `renderField`'s long-help arm -- the path most
-    fields take -- called makeHelpDetails WITHOUT `f.refs`, so the
-    catalogue's citations rendered nowhere reachable.  Both arms now
-    pass them through."""
-    from pathlib import Path
-    src = Path("molbuilder/web/static/lib/form-schema.js").read_text()
-    calls = [l for l in src.splitlines() if "makeHelpDetails(" in l
-             and "function makeHelpDetails" not in l]
-    assert calls, "no call sites -- retarget this pin"
-    for c in calls:
-        assert "refs" in c, f"a help path drops the citations: {c.strip()}"

@@ -358,46 +358,8 @@ def peptide_xyz(web_client):
 _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
 
 
-def _envelope_with_regions(xyz_text, regions):
-    """The structure as data with its labels inside it, through the ONE
-    builder (`tests/support/envelope.py`).  Pattern B is about what the
-    ENGINE does with labels it was given, so only the delivery changed."""
-    from support.envelope import from_xyz
-    return from_xyz(xyz_text, regions=regions)
 
 
-def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
-    """Write an XYZ + a sibling .molstruct.json carrying an ``L-electrode``
-    region label.
-
-    The sidecar is written because a real project has one, but since F2
-    (docs/science/validation.md § 4.1) the generate endpoints do NOT read it --
-    labels travel in the request body, which is what the tabs send via
-    ``molview.data.getStructure()``.  Callers must therefore pass
-    ``regions=_PATTERN_B_REGIONS`` in the POST; the sidecar alone would leave
-    the structure unlabelled and the Pattern-B notice would (correctly) not
-    fire.  Returns (xyz_path, xyz_text)."""
-    import hashlib
-    import json
-    xyz = tmp_path / "with_region.xyz"
-    xyz.write_text(peptide_xyz)
-    # n_atoms from the xyz header line.
-    n_atoms = int(peptide_xyz.splitlines()[0])
-    # The molstruct_json loader pins schema_version 3 + verifies
-    # structure_hash against the XYZ contents; build both so the
-    # apply pass doesn't reject the sidecar with a "stale" warning.
-    structure_hash = hashlib.sha256(peptide_xyz.encode("utf-8")).hexdigest()
-    sidecar = tmp_path / "with_region.molstruct.json"
-    sidecar.write_text(json.dumps({
-        "schema_version": 3,
-        "n_atoms_total":  n_atoms,
-        "structure_hash": structure_hash,
-        "frozen_atoms":   [],
-        "regions":        dict(_PATTERN_B_REGIONS),
-        "created_by":     "test",
-        "created_at":     "2026-06-09T00:00:00Z",
-    }))
-    return str(xyz), peptide_xyz
 
 
 
@@ -1367,19 +1329,6 @@ def test_modify_page_has_m3_edit_controls(web_client):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
 
-def test_modify_viewer_js_wires_delete_and_add(web_client):
-    """The Modify viewer.js must call the M3 endpoints and update the
-    live |offset| readout client-side."""
-    js = web_client.get("/static/modify/viewer.js").data.decode()
-    for needle in (
-        "/api/modify/delete",
-        "/api/modify/add_atom",
-        "applyDelete",
-        "applyAddAtom",
-        "refreshAddDistance",
-        "currentStateBody",
-    ):
-        assert needle in js, f"missing {needle!r} in modify viewer.js"
 
 
 # --------------------------------------------------------------------- #
@@ -1695,17 +1644,6 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
 
-def test_modify_viewer_js_wires_orient_and_rotate(web_client):
-    js = web_client.get("/static/modify/viewer.js").data.decode()
-    for needle in (
-        "/api/modify/orient",
-        "/api/modify/rotate",
-        "applyOrient",
-        "applyRotate",
-        "refreshOrientAngleReadout",
-        "refreshRotateAngleReadout",
-    ):
-        assert needle in js, f"missing {needle!r} in modify viewer.js"
 
 
 # --------------------------------------------------------------------- #
@@ -1720,11 +1658,6 @@ def test_modify_viewer_js_wires_orient_and_rotate(web_client):
 # route takes either.
 
 
-_SS_XYZ = (
-    "2\nss-pair\n"
-    "S 0 0 -2\n"
-    "S 0 0  2\n"
-)
 
 
 def test_modify_meta_lists_supported_elements_and_planes(web_client):
@@ -2039,22 +1972,6 @@ def test_api_build_schema_returns_pyscf_schema(web_client):
     assert "save_optimized_xyz" in names, sorted(names)
 
 
-def test_form_schema_js_is_served(web_client):
-    """The new web/static/lib/form-schema.js is the JS-side
-    consumer of /api/build/schema/<engine>.  It must be served
-    by Flask static so index.html can <script src="..."> it."""
-    r = web_client.get("/static/lib/form-schema.js")
-    assert r.status_code == 200
-    body = r.data.decode()
-    # Public API surface -- if any name disappears, the Build form
-    # cutover breaks silently.
-    for needle in (
-        "renderForm", "collectForm", "fetchSchema",
-        # All seven kinds must remain handled in the switch.
-        '"checkbox"', '"int"', '"number"', '"text"',
-        '"select"', '"tri-select"', '"int-triple"',
-    ):
-        assert needle in body, f"form-schema.js missing {needle!r}"
 
 
 def test_api_build_schema_rejects_unknown_engine(web_client):

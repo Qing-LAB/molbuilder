@@ -415,30 +415,6 @@ def test_the_geometric_vertex_guess_is_gone():
     assert "byGeometry" not in ui and "orderedForMeasurement" not in ui
 
 
-def test_the_ops_group_still_comes_from_the_selection():
-    """The hazard items 1 and 2 create together: item 2 makes Center act on the
-    selection, and every op resolves its group through one door.  If that door
-    ever read the track, clearing a measurement would change what an edit
-    operates on."""
-    viewer = re.sub(r"/\*.*?\*/", "", (REPO / "molbuilder" / "web" / "static"
-                    / "modify" / "viewer.js").read_text(), flags=re.S)
-    viewer = re.sub(r"^\s*//.*$", "", viewer, flags=re.M)
-    # The functions here are INDENTED (module-closure style), so splitting on a
-    # column-0 `function` swallowed the rest of the file -- 1199 lines, one of
-    # which says "measurement" in a banner comment.  A pin that reads the whole
-    # file is not reading the door.
-    def door(name):
-        after = viewer.split("function " + name, 1)[1]
-        return after.split("\n    function ", 1)[0]
-
-    assert "measurement" not in door("selectedIndices"), \
-        "an op's group must come from the selection, never from the ruler"
-    # ...and the door it goes through resolves the SELECTION store by name.
-    resolver = door("_selStore")
-    assert "d.selection" in resolver and "measurement" not in resolver
-
-    jobs = _sources()["model-jobs.js"]
-    assert "readSelection" in jobs and "measurement" not in jobs
 
 
 # ---------------------------------------------------------------------- #

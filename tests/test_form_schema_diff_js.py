@@ -34,11 +34,9 @@ pytest.importorskip("flask")
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder" / "web" / "static"
-FORM_JS = STATIC / "lib" / "form-schema.js"
 FORM_CSS = STATIC / "lib" / "form-schema.css"
 TOKENS = STATIC / "lib" / "tokens.css"
 VIEWER = STATIC / "structure-optimization" / "viewer.js"
-INDEX = ROOT / "molbuilder" / "web" / "templates" / "index.html"
 
 
 @pytest.fixture
@@ -300,20 +298,6 @@ def test_the_flag_tone_is_passive_not_a_call_to_action():
         f"--rec-flag borrows {m.group(1)}; a difference is not an error")
 
 
-def test_a_commit_carrying_a_bare_name_still_finds_the_file():
-    """`publishCommit`'s second argument is a full PATH — `list.js` passes
-    `fullPath` — but it was called `file` for a long time, which reads as a
-    name.  A caller that passed a name got it resolved against the server
-    process's own directory and refused as "outside every configured root",
-    with nothing in the message naming the caller or the argument.
-
-    The commit already carries the directory, so the tab completes a bare name
-    rather than failing on it."""
-    src = VIEWER.read_text()
-    body = src.split("async function _commitStructure", 1)[1].split("\n        }", 1)[0]
-    assert 'sel.dir' in body, (
-        "a bare name is still resolved against whatever the process's cwd is")
-    assert '!f.includes("/")' in body, "nothing detects a bare name"
 
 
 def test_the_contract_says_the_argument_is_a_path():

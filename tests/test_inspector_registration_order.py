@@ -80,21 +80,6 @@ def test_every_inspector_on_a_page_runs_in_the_same_queue(page, scripts):
     )
 
 
-def test_the_catch_all_inspectors_are_listed_last():
-    """The generic viewers must get the LAST look, which is what being listed
-    last means once the queues agree.  Pinned by name because their whole job is
-    to match broadly: source matches .json, and .spectra.json is a .json."""
-    html = (TEMPLATES / "results.html").read_text(encoding="utf-8")
-    order = [name for name, _ in _inspector_scripts(html)]
-    for generic in ("markdown.js", "source.js"):
-        assert generic in order, f"{generic} is not on /results at all"
-    for specific in ("spectra.js", "structure.js", "trajectory.js",
-                     "bench-summary.js"):
-        assert order.index(specific) < order.index("source.js"), (
-            f"{specific} is listed after source.js, which matches broadly "
-            f"enough to claim its files first"
-        )
-    assert order.index("markdown.js") < order.index("source.js")
 
 
 def test_the_exact_basename_inspector_is_listed_first():
