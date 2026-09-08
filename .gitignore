@@ -113,8 +113,10 @@ test-artifacts/
 # scratch for test runs and throwaway checks (never committed)
 .testtmp/
 
-# Release tarballs unpacked in the working tree -- never source (2026-09-08:
-# an 82 MB qe-7.5 pack reached origin via `git add -A`).
+# Third-party source that gets unpacked in the working tree -- never ours,
+# and never small (2026-09-08: an 82 MB qe-7.5 pack reached origin via
+# `git add -A`).  Both the archive AND what it unpacks to.
+qe-*
 *.tar.gz
 *.tar.bz2
 *.tar.xz
