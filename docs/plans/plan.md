@@ -932,6 +932,28 @@ Four findings from 2026-09-08, each one a caller of the framework-to-be:
    the whole tree, then hand-spelled globs — before landing on
    `sweep_set_paths` beside its namer (`ef079932`).
 
+### 5k.2a The design, agreed 2026-09-08
+
+**One module, `molbuilder/paths.py`, L1 and stdlib-only.** The contract is
+[`project-layout.md` § 4.5](?doc=execution/project-layout.md) — written there
+because that document already owns the tree, the shapes and the attempt rule,
+and because this week proved it is the document callers actually implement
+(`prep` followed its "launch adds attempts" line and produced a folder the
+launcher refused). The run-file GRAMMAR stays in `job-contracts.md` § 2.2a.
+
+**What made one module possible.** `Shape` is floor 2 for a single import —
+`from ..task import SHAPES`, where `SHAPES = ("flat", "hierarchical")` — and
+that constant is imported from `task` by exactly one module, `shape.py`
+itself. Moving it into `paths` and having `task` import it back inverts one
+line and makes the whole naming-and-layout surface stdlib-only, which is the
+property the monitor needs (`MONITOR_COMPANIONS` already ships `config_dir.py`
+on the same grounds).
+
+**What it absorbs:** `jobset/shape.py` whole. **What it leaves alone:**
+`runfiles` (the filename grammar, already correct and already L1, imported by
+`paths`), `identity.stage_token`, `task` (the description), and
+`materialize`'s JobSet-level assembly, which delegates.
+
 ### 5k.3 The rule the framework adds
 
 > **For every name it composes, it owns the search.** A door that can build
@@ -963,7 +985,7 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 | step | what | done when |
 |---|---|---|
 | **M1** | *(done 2026-09-08)* The inventory, as a re-runnable tool: `tools/classify_path_finders.py`. 72 searches, 24 owned, 0 unclassified | shipped |
-| **M2** | The design + contract (tasks P2/P3): which module owns the finders, and where the contract for them lives. **No code before this** | agreed, written in the home the survey picks |
+| **M2** | *(done 2026-09-08)* The design + contract: one L1 stdlib-only `paths.py`, contract at `project-layout.md` § 4.5 | agreed and written |
 | **M3** | Give `runfiles` the reader half — `find(dir, label, role=…, run=…)` returning what `compose` would have produced. Kills the twice-spelled `-run*` glob first, since both callers are in-tree and tested | `materialize` and `summarize` both ask; the pattern appears once |
 | **M4** | Give `Shape` the rest of the directory finders, beside `stage_glob` which already works this way | `jobset/_cli.py`'s `bench-*/**` glob is gone |
 | **M5** | The endpoint contract: every path the Task-setup card renders arrives from the server. Removes `viewer.js`'s `stage_token` re-implementation | the browser composes no path; `test_the_plan_door_composes_no_name_of_its_own` extends to cover `--from` |

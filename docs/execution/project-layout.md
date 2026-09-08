@@ -2036,6 +2036,80 @@ item 12b.)*
 
 ---
 
+### 4.5 Every name that is composed is also FOUND — one module, `paths` *(agreed 2026-09-08)*
+
+**The rule.**
+
+> **For every name it composes, the framework owns the search.** A door that
+> can build `<NN>_<stage>/bench` answers *where are the bench containers in
+> this bundle* without the caller spelling a pattern.
+
+**Why it is a rule and not an obvious courtesy.** Measured by
+`tools/classify_path_finders.py` on 2026-09-08: of 72 path searches under
+`molbuilder/`, **22 look for a name one of our own doors composes**, and three
+are finders. So a caller holding a bundle and a question — *is there a sweep
+in here, which attempts exist, what did this run write* — had nowhere to ask
+and spelled a glob, and the layout rule gained a site each time. Two of those
+sites spell the SAME pattern: `f"{basename}-run*.{suffix}"` in `materialize`
+and again in `summarize`, for the `-run<N>` counter whose one home is
+`runfiles` — which they bypass because it offers no reader.
+
+The sharpest one is `validation/identity.py`, where the engine's file
+vocabulary already comes from the one rules file and only the *search* is
+hand-written: the half that asks and the half that spells, in one function.
+
+#### What `paths` owns
+
+`molbuilder/paths.py` — **L1, and stdlib-only, which is load-bearing.** The
+monitor ships beside a job (`runwrap.MONITOR_COMPANIONS`) and runs under the
+JOB's python with no molbuilder installed; `config_dir.py` already travels for
+exactly this reason. A path module that a running job cannot import is a path
+module the job works around.
+
+| question | door |
+|---|---|
+| what is this file called? | `runfiles.compose` / `parse` / `stem` / `tail` — **unchanged**, § 2.2a still owns the grammar |
+| which files here match? | `runfiles.find` |
+| where does this stage live? | `Shape.stage_dir` (moves into `paths`) |
+| which stage directories exist? | `Shape.stage_glob` — the door that already worked this way, and the model for the rest |
+| where does a sweep live? | `bench_container` / `sweep_set_paths` |
+| where does a trial run? | `trial_dir`, `trial_work_dir` |
+| which attempts exist? | `attempts`, `resolve_attempt` |
+| **the whole path at once** | `paths.path_for(label, stage, run, role, shape)` — one call, because a caller wanting a file wants a path, not three calls to join |
+
+`runfiles` keeps the filename grammar it already owns correctly and is
+imported by `paths`, L1 to L1. `materialize` keeps JobSet-level assembly and
+delegates. `identity.stage_token` stays the one speller of `<NN>_<name>`.
+
+#### One import inverts, and it is a two-element tuple
+
+`Shape` is floor 2 today for a single reason: `from ..task import SHAPES`,
+where `SHAPES = ("flat", "hierarchical")`. That is a vocabulary constant, not
+a dependency of substance, and it is imported from `task` by exactly one
+module — `shape.py` itself. **`SHAPES` moves into `paths`, and `task` imports
+it from there.** With that one line reversed the whole naming-and-layout
+surface is stdlib-only.
+
+#### What it must never do
+
+- **Never infer the shape from the disk.** `flat` and `hierarchical` are
+  DECLARED (§ 1); a finder that guessed from what it saw would reintroduce
+  the drift the shapes exist to prevent. The shape arrives as a value.
+- **Never read `task.json`.** A door that reads the description is not
+  stdlib-only and cannot travel with a job. Callers that have a description
+  pass what they read from it.
+- **Never answer a question about CONTENT.** *What is in this directory, and
+  how is the run doing* is `parse.dirs.job.run_status` (§ 5c of the plan).
+  `paths` says where to look; the reader says what is there.
+
+#### How a violation is noticed
+
+`tools/classify_path_finders.py` — a search that spells one of our names lands
+in its `owned` bucket, and the migration is done when that bucket is the
+finders themselves. Its verdicts are keyed by `(file, function, pattern)` and
+never by line, because reasons keyed to line numbers come unanchored the first
+time anything above them is edited (`plans/plan.md` § 5h).
+
 ## 5. The files, and which of them are sources
 
 At the calculation level every file is one of three things, and confusing them is
