@@ -233,21 +233,24 @@ def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
 
 
 def _truncated_pyscf(tmp_path: Path, basename: str = "myjob") -> Path:
-    """Build a PySCF wrapper truncated before the ``exec`` engine launch,
-    same trick as :func:`_truncated_siesta`: the run-index, cold-restart
-    and warm-start-detection logic all execute, the engine does not."""
+    """Build a PySCF wrapper truncated before the engine launch, same trick
+    as :func:`_truncated_siesta`: the run-index, cold-restart and
+    warm-start-detection logic all execute, the engine does not."""
     _bind()
     script = tmp_path / f"{basename}.py"
     script.write_text("# fake\n")
     wrapper = write_run_wrapper(script, resources=Resources())
     text = _strip_preamble_activation(wrapper.read_text())
-    # "\nexec python", NOT "\nexec ": the log-redirect line
-    # (``exec > >(tee ...)``) matches the bare form FIRST, and cutting
-    # there skips the warm-start detection this harness exists to reach
-    # (that vacuous cut let the first version of the fresh-dir pin pass
-    # against the broken render).
-    cut = text.find("\nexec python")
-    assert cut > 0, "no exec-python launch line in the PySCF wrapper"
+    # The launch line, anchored on the `set +e` that immediately precedes
+    # it.  It was `exec python` until 2026-09-08, when the PySCF branch
+    # stopped `exec`-ing so that the shell could outlive the engine and
+    # write the conclusion marker.  The anchor must stay PRECISE: a bare
+    # "\nexec " matched the log-redirect line (``exec > >(tee ...)``) first
+    # and cut before the warm-start detection this harness exists to reach,
+    # which let an earlier version of the fresh-dir pin pass against a
+    # broken render.  A bare "\npython " would be the same mistake again.
+    cut = text.find("\nset +e\npython ")
+    assert cut > 0, "no python launch line in the PySCF wrapper"
     wrapper.write_text(text[:cut] + "\nexit 0\n")
     return wrapper
 

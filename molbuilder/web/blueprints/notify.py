@@ -369,7 +369,7 @@ def api_notify(route: str):
 
     keys = read_keys(current_app.config["MB_NOTIFY_KEYS_FILE"])
     user = _resolve_user(sig, ts, body, keys)
-    if user is None or not _SAFE_USER.match(user):
+    if user is None or not _SAFE_USER.fullmatch(user):
         # NOT marked as an auth challenge: see the module docstring.  A bad
         # signature is a probe and the limiter should hear about it.
         _deny()

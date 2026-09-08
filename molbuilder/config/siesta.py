@@ -180,7 +180,7 @@ def _validate_kgrid_displacement(value, cfg=None):
 
 
 def _validate_basename(label: str):
-    """Return a validate callable for SiestaConfig.system_label /
+    r"""Return a validate callable for SiestaConfig.system_label /
     PySCFConfig.job_name.  Used as ``metadata["validate"]`` -- the
     validation pass surfaces a clean error-severity ``Issue`` instead
     of letting a malformed basename reach the filesystem.
@@ -204,7 +204,7 @@ def _validate_basename(label: str):
 
     **Verifying beats extracting.**  `pyscf/layout.py` does not parse the name
     out of a deck; it takes the identity the deck was written FOR and checks
-    the deck states it (``^JOB\s*=\s*(['\"])<label>\1``), which tolerates
+    the deck states it (``^JOB\s*=\s*(['"])<label>\1``), which tolerates
     both emitted spellings by construction and answers the question that
     matters -- *did we get the right result* -- rather than *what token is in
     there*.  Prefer that shape.

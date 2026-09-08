@@ -2175,12 +2175,27 @@ def render_run_wrapper(script_path: Path, *,
         # refused, for one and the same job.
         _rec = machine_record
         if _rec is None:
+            from .scheduler.record import AmbiguousTarget as _Ambiguous
             try:
                 from .scheduler import machine_for
                 _rec = machine_for(project_dir or script_path.parent)
+            except _Ambiguous:
+                # NOT "no record" -- THE OPPOSITE, and swallowing it told the
+                # person the reverse of the truth.  `AmbiguousTarget` means
+                # several machines ARE on file and none was named; its own
+                # message lists them, `--target this` included.  Folding it
+                # into `_rec = None` produced *"this machine has no record --
+                # run `jobset probe --write`"*, which is false when the record
+                # is right there, and sends you to a command that cannot help:
+                # probing again rewrites the record that already exists, and
+                # `probe --name this` refuses because `this` is reserved.  So
+                # the advice led to a dead end and the design looked
+                # self-contradictory when it was only mis-reported
+                # (user, 2026-09-08).  Let the real refusal through.
+                raise
             except Exception:                                 # noqa: BLE001
-                # AmbiguousTarget and friends: no record is an answer here,
-                # and the refusal below is the one that names the command.
+                # A genuinely absent record: the refusal below names the
+                # command that creates one, and that IS the right advice.
                 _rec = None
         _target = auto_ranks(_rec, None,
                              getattr(resources, "domain", None))
@@ -3473,8 +3488,17 @@ def render_run_wrapper(script_path: Path, *,
     # exec) so we can inspect the .out for ``propor: ERROR: IMAX = 0``
     # on failure and print a targeted retry hint.  Layer-on-top
     # cost: one extra bash process for the wrapper's lifetime; cheap.
-    # For PySCF the original exec is preserved -- no diagnostic
-    # surface there yet.
+    # PySCF ran through `exec` until 2026-09-08 -- "the original exec is
+    # preserved, no diagnostic surface there yet".  The CONCLUSION MARKER is
+    # the reason that "yet" ran out: `exec` replaces this shell, so nothing
+    # can run afterwards, and the marker is by definition the wrapper's LAST
+    # ACT.  `job-contracts.md` § 2.2 and `project-layout.md` § 1.6 state it
+    # for the wrapper with no engine qualifier -- and "absent means killed",
+    # so a PySCF run that finished cleanly was signalling that it had been
+    # force-stopped.  MEASURED 2026-09-08: `attempt_concluded` answered
+    # 'rc=0 at ...' for a finished SIESTA attempt and None for an identically
+    # finished PySCF one, which is what `submit.py` refuses a ladder on.
+    # The cost is the one already accepted above: one extra bash process.
     if category == "siesta":
         # Always-on launch-command audit log + the --dry-run preview, both
         # extracted into named block-emitters (see their docstrings for
@@ -3758,7 +3782,19 @@ def render_run_wrapper(script_path: Path, *,
             f'    _log INFO "dry-run complete; no PySCF launched"\n'
             f'    exit 0\n'
             f'fi\n'
-            f"exec {inner}\n"
+            # NOT `exec`: the shell has to outlive the engine to conclude.
+            f"set +e\n"
+            f"{inner}\n"
+            f"_pyscf_exit=$?\n"
+            f"set -e\n"
+            f'    # CONCLUDED -- an error is a conclusion (project-layout.md\n'
+            f'    # 1.6, "the other file"): the engine returned and this\n'
+            f'    # process gets to say goodbye.  MAIN LINE ONLY, never the\n'
+            f'    # cleanup trap: a walltime SIGTERM runs the trap, and a\n'
+            f'    # forced stop must leave NO marker.\n'
+            f'printf "rc=%s at %s\\n" "$_pyscf_exit" "$(date)" '
+            f'> "{basename}-run${{_run_n}}.concluded"\n'
+            f'exit "$_pyscf_exit"\n'
         )
 
     # Engine-specific output suffix.  SIESTA's wrapper writes
@@ -4550,7 +4586,7 @@ def _parse_gres_flag(gres: str) -> Tuple[Optional[str], int]:
     g = gres.strip()
     if g.isdigit():
         return None, int(g)
-    m = _GRES_RE.match(g)
+    m = _GRES_RE.fullmatch(g)
     if not m:
         raise WrapperError(
             f"invalid --gres value {gres!r}; expected "

@@ -816,7 +816,7 @@ def read_notify_keys(path=None):
     if not isinstance(route, str):
         return None, {}
     route = route.strip().strip("/")      # whitespace first, then the slashes
-    if not _ROUTE_RE.match(route):
+    if not _ROUTE_RE.fullmatch(route):
         return None, {}
     if not isinstance(keys, dict):
         return None, {}
@@ -919,7 +919,7 @@ def is_channel_name(name: str) -> bool:
     by asking this, rather than restating a regex that would then be free to
     drift from the file those names have to match.
     """
-    return bool(isinstance(name, str) and _CHANNEL_RE.match(name))
+    return bool(isinstance(name, str) and _CHANNEL_RE.fullmatch(name))
 
 
 #: What molbuilder calls itself on the wire.  **Not decoration**: Discord's
@@ -1155,7 +1155,7 @@ def load_channels(path: Optional[str] = None,
     out: Dict[str, Dict[str, Any]] = {}
     for name, spec in chans.items():
         name = str(name)
-        if not _CHANNEL_RE.match(name):
+        if not _CHANNEL_RE.fullmatch(name):
             _say(f"{p}: channel name {name!r} is not letters, digits, '-' "
                  f"or '_'; skipping it")
             continue

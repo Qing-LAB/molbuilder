@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import time as _time
 from pathlib import Path
 
 import pytest
@@ -900,10 +901,42 @@ def _fake_status(states):
     field anyone used was split out of that eleven-field summary and the
     caller moved to `run_status`.
     """
-    def fake(run_dir):
+    def fake(run_dir, match="*"):
         s = states[Path(run_dir).name]
         return {"state": s, "detail": s}
     return fake
+
+
+def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
+    """ONE DIRECTORY, EVERY RUNG -- that is what the flat shape is
+    (`project-layout.md` § 1), so "how is this directory doing" is not the
+    question anyone means; "how is THIS RUNG doing" is.
+
+    `run_status` bucketed the whole directory and picked the highest stage
+    ordinal / newest mtime, so every rung of a flat calculation reported the
+    newest rung's state.  The caller's existence check was already narrowed by
+    `Shape.stage_glob` -- and said in a comment why -- but the filter stopped
+    at the gate and never reached here.
+
+    MEASURED 2026-09-08 on a built fixture: with the later rung's `.out`
+    present a finished, day-old rung read ('running', 'running'); with that one
+    file moved aside and nothing else changed, ('stale', ...).
+    """
+    from molbuilder.parse.dirs.job import run_status
+    old = tmp_path / "bdt_01_coarse-run0.out"
+    new = tmp_path / "bdt_02_tight-run0.out"
+    old.write_text("Job completed\n")
+    new.write_text("still going\n")
+    past = _time.time() - 86400
+    os.utime(old, (past, past))
+
+    coarse = run_status(tmp_path, "bdt_01_coarse*")
+    tight = run_status(tmp_path, "bdt_02_tight*")
+    assert coarse["active_source"] == old.name
+    assert tight["active_source"] == new.name
+    # The hierarchical answer is unchanged: the DIRECTORY selected the rung,
+    # so no glob is passed and the newest file still speaks for it.
+    assert run_status(tmp_path)["active_source"] == new.name
 
 
 def test_status_fresh_bundle_all_not_started(tmp_path):
@@ -2531,6 +2564,40 @@ def test_a_flat_stage_that_never_ran_does_not_borrow_a_siblings_state(tmp_path):
     # `finished`), which is a different contract.  This test is about which
     # files a stage owns, and asserting past that would make it fail for a
     # reason it does not name.
+
+
+def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
+    """The SECOND half of the same rule, and the half that had no test.
+
+    The one above proves a stage with NO output does not borrow a sibling's —
+    that is caught by the existence gate, which was already shape-aware. This
+    proves the case the gate lets through: **both** rungs have real output, and
+    they must still be told apart. The gate narrows with `Shape.stage_glob` and
+    then hands the directory to `run_status`; until 2026-09-08 it handed over
+    no glob at all, so `run_status` picked "highest ordinal, newest mtime"
+    across the whole directory and every row showed the newest rung's state.
+
+    Reverting only that one argument passes every other test in this suite —
+    which is how it shipped. This is the test that fails.
+    """
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    _describe(tmp_path, "flat")
+    old = tmp_path / "JOB_01_coarse-run0.out"
+    new_ = tmp_path / "JOB_03_tight-run0.out"
+    old.write_text("Job completed\n")
+    new_.write_text("still going, no end marker\n")
+    past = _time.time() - 86400
+    os.utime(old, (past, past))
+    for a in (tmp_path / "run.json",):
+        a.write_text('{"mode": "direct"}')
+
+    by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
+    assert by_name["coarse"].detail != by_name["tight"].detail, (
+        "both rungs reported the same state -- the newest file spoke for the "
+        "whole directory, which is the flat-shape bug this narrows")
+    assert "86" in by_name["coarse"].detail, (
+        f"coarse should report its OWN day-old file, got "
+        f"{by_name['coarse'].detail!r}")
 
 
 def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_path):

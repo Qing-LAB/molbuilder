@@ -701,28 +701,16 @@ import subprocess
 _MANUAL = {"MB_LAUNCHED_BY": "manual"}
 
 
-def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
-    """Render a wrapper + chop off everything after the run-index
-    resolver block + strip the conda activation step, then append
-    ``exit 0``.  The truncated wrapper short-circuits after
-    $_out_file is set, so we can inspect that value without needing
-    conda or the SIESTA / PySCF binary.
+def _strip_activation(text: str) -> str:
+    """Remove the per-run-log + conda-activation + bootstrap block from a
+    rendered wrapper so a test can EXECUTE it in a bare shell.
 
-    Conda stripping is needed because the live PySCF env's
-    ``activate.d/cuda-nvcc_activate.sh`` references unbound vars
-    (host-specific issue, not a molbuilder bug) and ``set -u`` in
-    the wrapper would abort before the resolver ran."""
-    _bind()
-    script = tmp_path / f"{basename}{suffix}"
-    script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
-    text = wrapper_path.read_text()
-    # Strip the per-run logging + conda activation block in-place
-    # (preserving line numbers downstream).  Range: from the
-    # ``# --- Per-run log file`` comment that opens the logging
-    # preamble through the trailing ``which python:`` log line that
-    # closes the post-activation state dump.  Post 2026-06-24's
-    # rewrite, the activation block emits 6 detection paths + per-run
+    Extracted 2026-09-08 from :func:`_emit_truncated_wrapper`, which is now
+    one caller: the conclusion tests below run a wrapper to COMPLETION and
+    must not truncate it, but need the same block gone for the same reason
+    (``source activate`` exits 127 with no conda, and ``set -e`` then aborts
+    before anything under test runs).
+    """
     # log file + tee'd output, all of which we strip together so the
     # downstream tests can exercise just the run-index resolver.
     log_start = text.find("# --- Per-run log file")
@@ -756,12 +744,37 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     # Plus the blank line that separates blocks.
     if text[cut_end:cut_end + 1] == "\n":
         cut_end += 1
-    text = (
+    return (
         text[:log_start]
-        + "# Conda activation + logging stripped for the truncated test wrapper.\n"
+        + "# Conda activation + logging stripped for the test wrapper.\n"
         + ": # no-op\n\n"
         + text[cut_end:]
     )
+
+
+def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
+    """Render a wrapper + chop off everything after the run-index
+    resolver block + strip the conda activation step, then append
+    ``exit 0``.  The truncated wrapper short-circuits after
+    $_out_file is set, so we can inspect that value without needing
+    conda or the SIESTA / PySCF binary.
+
+    Conda stripping is needed because the live PySCF env's
+    ``activate.d/cuda-nvcc_activate.sh`` references unbound vars
+    (host-specific issue, not a molbuilder bug) and ``set -u`` in
+    the wrapper would abort before the resolver ran."""
+    _bind()
+    script = tmp_path / f"{basename}{suffix}"
+    script.write_text("# fake\n")
+    wrapper_path = write_run_wrapper(script, resources=Resources())
+    text = wrapper_path.read_text()
+    # Strip the per-run logging + conda activation block in-place
+    # (preserving line numbers downstream).  Range: from the
+    # ``# --- Per-run log file`` comment that opens the logging
+    # preamble through the trailing ``which python:`` log line that
+    # closes the post-activation state dump.  Post 2026-06-24's
+    # rewrite, the activation block emits 6 detection paths + per-run
+    text = _strip_activation(text)
     # Cut at the line right AFTER the resolver's echo to keep that
     # line in the wrapper -- it prints "[molbuilder] run index: N ...".
     marker = '[molbuilder] run index:'
@@ -1565,3 +1578,71 @@ def test_a_generated_wrapper_declares_its_engine(deck, engine):
     assert block.get("engine") == engine, (
         f"a wrapper for {deck} declares engine={block.get('engine')!r}, "
         f"expected {engine!r}")
+
+
+# --------------------------------------------------------------------- #
+#  Both engines conclude — asked of the DIRECTORY, not of the source     #
+# --------------------------------------------------------------------- #
+
+class TestBothEnginesConclude:
+    """`job-contracts.md` § 2.2 and `project-layout.md` § 1.6 state the
+    conclusion marker for **the wrapper**, with no engine qualifier: *"the
+    wrapper's last act… absent means killed"*.
+
+    PySCF's wrapper ended in `exec`, which REPLACES the shell, so nothing could
+    run after the engine and the marker was never written. MEASURED
+    2026-09-08: `attempt_concluded` answered `'rc=0 at …'` for a finished
+    SIESTA attempt and `None` for an identically finished PySCF one — and
+    `submit.py` refuses to continue a ladder on exactly that `None`, so a
+    completed PySCF stage read as *still running, or force-stopped*.
+
+    **These run the wrapper and look at the directory afterwards.** Reading the
+    rendered text for a `printf … > …concluded` line would pass on a line that
+    `exec` makes unreachable — which is the whole bug. The question is what the
+    run LEAVES BEHIND, so that is what is asked, and it is asked through
+    `attempt_concluded`, the door the launcher itself uses.
+    """
+
+    @staticmethod
+    def _run_to_completion(tmp_path, rc: int):
+        """Render a PySCF wrapper over a deck that exits ``rc``, run it, and
+        hand back the directory for inspection."""
+        _bind()
+        deck = tmp_path / "myjob.py"
+        deck.write_text(f"import sys\nsys.exit({rc})\n")
+        wrapper = write_run_wrapper(deck, resources=Resources())
+        # `_strip_activation` removes the block that DEFINES `_log`, so the
+        # stripped wrapper needs a no-op stand-in.  A shim rather than a
+        # second stripper: the wrapper under test must be the shipped one
+        # minus its conda step, not a variant grown for the test.
+        wrapper.write_text("_log() { :; }\n"
+                           + _strip_activation(wrapper.read_text()))
+        cp = subprocess.run([shutil.which("bash") or "/bin/bash",
+                             str(wrapper)],
+                            cwd=str(tmp_path), capture_output=True, text=True,
+                            timeout=60, env={**os.environ, **_MANUAL})
+        return tmp_path, cp
+
+    @pytest.mark.parametrize("rc", [0, 3])
+    def test_a_finished_pyscf_attempt_says_so_with_its_exit_code(self,
+                                                                 tmp_path, rc):
+        from molbuilder.jobset.materialize import attempt_concluded
+        d, cp = self._run_to_completion(tmp_path, rc)
+        said = attempt_concluded(d, "myjob")
+        assert said is not None, (
+            "a finished PySCF attempt left no conclusion, so the launcher "
+            "reads it as still running or force-stopped.\n"
+            f"wrapper rc={cp.returncode}\nstderr: {cp.stderr[-700:]}")
+        assert said.startswith(f"rc={rc} "), said
+
+    def test_the_engine_output_and_the_marker_share_one_attempt_index(self,
+                                                                      tmp_path):
+        """Both are named from the same run index, so a reader that finds one
+        finds the other. `-run0` is the FIRST attempt, not a retry."""
+        from molbuilder.runfiles import compose, parse
+        d, _cp = self._run_to_completion(tmp_path, 0)
+        left = [p.name for p in d.iterdir()
+                if p.name.endswith((".concluded", ".pyscf.log"))]
+        assert set(left) == {compose("myjob", ".concluded", run=0),
+                             compose("myjob", ".pyscf.log", run=0)}, left
+        assert {parse(n, "myjob").run for n in left} == {0}

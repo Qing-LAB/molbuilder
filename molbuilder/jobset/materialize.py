@@ -436,7 +436,7 @@ def attempts(stage_dir: Path) -> List[int]:
         return []
     out = []
     for d in Path(stage_dir).iterdir():
-        m = ATTEMPT_RE.match(d.name)
+        m = ATTEMPT_RE.fullmatch(d.name)
         if m and d.is_dir():
             out.append(int(m.group(1)))
     return sorted(out)
@@ -536,7 +536,17 @@ def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
     _idx = re.compile(r"-run(\d+)\.")
 
     ns = []
-    for suffix in ("out", "concluded"):
+    # BOTH STDOUT SPELLINGS.  The wrapper's redirect is engine-specific --
+    # SIESTA's `-runN.out`, PySCF's `-runN.pyscf.log` (§ 2.2's catalogue).
+    #
+    # THIS WAS WRITTEN, MEASURED TO CHANGE NOTHING, AND DROPPED -- correctly,
+    # in a world where the PySCF wrapper never wrote `.concluded` at all, so
+    # the index came from the marker or from nowhere.  Making that wrapper
+    # conclude (2026-09-08) is what made it necessary, in the same change:
+    # without it the scan sees only `.concluded` files, so a NEWER killed
+    # attempt with a `-runN.pyscf.log` and no marker is invisible and this
+    # reports the OLDER attempt's goodbye as if it were the latest word.
+    for suffix in ("out", "pyscf.log", "concluded"):
         for f in d.glob(f"{basename}-run*.{suffix}"):
             m = _idx.search(f.name)
             if m:

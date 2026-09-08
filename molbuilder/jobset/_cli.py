@@ -1482,9 +1482,20 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
     if not any(getattr(allocation, f, None) not in (None, "")
                for f in ("mpi_np", "cpus_per_task", "gres")):
         _rec = None
+        _ambiguous = None
+        from ..scheduler.record import AmbiguousTarget as _Ambiguous
         try:
             from ..scheduler import machine_for
             _rec = machine_for(Path(base), target=target)
+        except _Ambiguous as _exc:
+            # "SEVERAL MACHINES, NONE NAMED" IS NOT "NO RECORD", and the hint
+            # below said the second when it meant the first -- so the advice
+            # was `probe --write`, which cannot help: the record already
+            # exists, probing rewrites it, and `probe --name this` refuses
+            # because `this` is reserved.  Every road from that sentence is a
+            # dead end, and the one word that fixes it (`--target this`) was
+            # printed AFTER it, by the real error (user, 2026-09-08).
+            _ambiguous = _exc
         except Exception:                                     # noqa: BLE001
             _rec = None
         from ..runwrap import auto_ranks
@@ -1499,6 +1510,16 @@ def prep_run_inputs(base, target, task, stage, allocation=None):
                        f'"execution": {{"mpi_np": N}} in task.json\n'
                        f"  To measure first:       "
                        f"molbuilder jobset prep bench {stage or '<stage>'}")
+        elif _ambiguous is not None:
+            _opts = "\n".join(
+                f"      --target {c}" for c in _ambiguous.choices
+                if c != "(this machine)")
+            click.echo("  no launch shape in `execution` and no flags, and\n"
+                       "  more than one machine is on file -- so there is no\n"
+                       "  target to read a core count FROM until you name one:\n"
+                       + _opts +
+                       "\n      --target this   (this machine, already probed)\n"
+                       "  Nothing needs probing: these records exist.")
         else:
             click.echo(f"  no launch shape in `execution`, no flags, and no "
                        f"core count for {_where} --\n"

@@ -34,7 +34,7 @@ here still described a file that *"already has an id"*.
 **On the character set.** § 3 is explicit that the set *"is not a new
 decision"* — `job-contracts.md § 2.1` Rule 2 fixes it, and this module does not
 get to widen it. Four validators in the tree already spell it
-(``projects._NAME_PATTERN``, ``checkpoint._REF_SAFE_ID`` — which cites this very
+(``projects._NAME_PATTERN``, ``checkpoint._CALC_NAME_RE`` — which cites this very
 contract — plus ``bench/grid`` and ``config/pyscf``). **None of them
 normalises**; they all reject. This is the first transform, so nothing is being
 duplicated here. Consolidating those four spellings is a real cleanup and is
@@ -199,7 +199,7 @@ OUR_FILE_PATTERNS: Sequence[str] = _runfile_patterns()
 # --------------------------------------------------------------------- #
 #  How a stage is NAMED, and how every surface REFERS to one.            #
 #  Contract: decision 27 (the token) and decision 28 / § 8f (the         #
-#  resolver) in `execution/staged-runs-implementation-plan.md`.          #
+#  resolver) in `archive/2026-08-19-staged-runs-implementation-plan.md`  #
 # --------------------------------------------------------------------- #
 
 #: A stage token at the **tail** of a filename: ``_<NN>_<name>``, then the

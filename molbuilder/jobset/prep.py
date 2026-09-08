@@ -1421,8 +1421,8 @@ def gather_transport_inputs(base_dir, task, stage: str,
                 f"and {upstream} has not been prepped -- {run_first}")
         attempts = sorted(
             (d for d in up_dir.iterdir()
-             if d.is_dir() and ATTEMPT_RE.match(d.name)),
-            key=lambda d: int(ATTEMPT_RE.match(d.name).group(1)),
+             if d.is_dir() and ATTEMPT_RE.fullmatch(d.name)),
+            key=lambda d: int(ATTEMPT_RE.fullmatch(d.name).group(1)),
             reverse=True)
         concluded = [d for d in attempts
                      if attempt_concluded(d, stem) is not None]

@@ -333,7 +333,7 @@ def _parse_index_range(expression: str, n: int) -> List[int]:
         return []
     out: set = set()
     for tok in expression.split(","):
-        m = _RANGE_TOKEN_RE.match(tok)
+        m = _RANGE_TOKEN_RE.fullmatch(tok)
         if not m:
             raise SelectionError(
                 f"ByIndexRange: invalid token {tok!r} in expression "

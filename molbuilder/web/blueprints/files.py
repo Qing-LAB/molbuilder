@@ -1250,7 +1250,7 @@ def _validate_upload_filename(name: str) -> Optional[str]:
         return f"filename may not contain path separators: {name!r}"
     if name in (".", ".."):
         return f"filename {name!r} is not a real filename"
-    if not _UPLOAD_FILENAME_RE.match(name):
+    if not _UPLOAD_FILENAME_RE.fullmatch(name):
         return (
             f"filename {name!r} contains unsupported characters; "
             f"allowed: letters, digits, '.', '_', '-' "

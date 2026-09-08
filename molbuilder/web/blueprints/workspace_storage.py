@@ -118,7 +118,7 @@ def _state_dir():
 
 
 def _valid_ws_id(ws_id) -> bool:
-    return isinstance(ws_id, str) and bool(_WS_ID_RE.match(ws_id))
+    return isinstance(ws_id, str) and bool(_WS_ID_RE.fullmatch(ws_id))
 
 
 def _state_index(v):

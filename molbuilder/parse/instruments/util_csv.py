@@ -190,11 +190,11 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
     if cpu_mean is not None:
         out["cpu_mean_pct"] = round(cpu_mean, 1)
     sm_means = [m for m in (_time_weighted(_series(h)) for h, v in cols.items()
-                            if _CSV_GPU_SM.match(h) and v) if m is not None]
+                            if _CSV_GPU_SM.fullmatch(h) and v) if m is not None]
     if sm_means:
         out["gpu_sm_mean_pct"] = round(max(sm_means), 1)
     vram_peaks = [max(v) for h, v in cols.items()
-                  if _CSV_GPU_VRAM.match(h) and v]
+                  if _CSV_GPU_VRAM.fullmatch(h) and v]
     if vram_peaks:
         out["gpu_vram_peak_gb"] = round(max(vram_peaks), 2)
     return out

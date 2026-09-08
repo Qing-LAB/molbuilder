@@ -132,7 +132,7 @@ def _parse_conda_spec(
     ``"="``.  Glob characters in version/build are preserved so
     fnmatch can match against the installed value.
     """
-    m = _CONDA_SPEC_RE.match(spec.strip())
+    m = _CONDA_SPEC_RE.fullmatch(spec.strip())
     if not m:
         return None
     name = m.group(1)

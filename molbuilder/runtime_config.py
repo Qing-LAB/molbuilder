@@ -345,7 +345,7 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
 
     # --- common required fields ------------------------------------- #
     pid = _require_str(out, "id", idx)
-    if not _ID_RE.match(pid):
+    if not _ID_RE.fullmatch(pid):
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: auth.providers[{idx}].id {pid!r} "
             f"must be a URL-safe slug matching {_ID_RE.pattern} "

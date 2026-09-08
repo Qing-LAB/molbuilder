@@ -35,6 +35,7 @@ reads.  These tests pin:
 from __future__ import annotations
 
 from pathlib import Path
+import json
 from textwrap import dedent
 
 import pytest
@@ -317,3 +318,82 @@ class TestArchitecturalContract:
         frozen = traj.runtime_info.get("frozen_atoms")
         # .fdf path -> 1-based 10,11,12 -> 0-based 9,10,11.
         assert sorted(frozen) == [9, 10, 11]
+
+
+class TestTheSidecarPathLearnsTheSameLesson:
+    """The 2026-06-14 fix above cured the `.fdf` pairing by reading the
+    constraints out of the `.out` itself.  **The SIDECAR lookup beside it kept
+    the broken stem logic** and nobody noticed, because it is a fallback: when
+    it finds nothing the viewer simply shows no frozen atoms, which is exactly
+    what an unconstrained calculation looks like.
+
+    A run artifact carries the rung and the attempt; the sidecar carries
+    neither — it is written once for the calculation, stemmed on the bare
+    label, because it CARRIES (`job-contracts.md` § 2.2a).  MEASURED
+    2026-09-08 before the fix: `bdt.out` → {0, 2}; `bdt_01_coarse.out` →
+    set(), i.e. every staged run.
+
+    **And the label is required to strip the rung.**  The first fix guessed it
+    by stripping any `_<NN>_<name>` tail, which is not decidable from a
+    filename: `bdt_01_coarse.out` and `sample_02_test.out` (an UNSTAGED
+    calculation whose label reads that way) are the same shape.  That guess
+    handed the second one a different calculation's sidecar — wrong data, which
+    is worse than the missing data it replaced.  So the strip now happens only
+    when the caller knows the label, and the tests say so both ways.
+    """
+
+    @staticmethod
+    def _sidecar(d, name, frozen):
+        from molbuilder.structure import FROZEN_LABEL
+        (d / name).write_text(json.dumps({"regions": {FROZEN_LABEL: frozen}}))
+
+    @pytest.mark.parametrize("artifact", [
+        "bdt.out",                            # unstaged — worked before
+        "bdt_01_coarse.out",                  # a rung
+        "bdt_01_coarse-run0.out",             # a rung's attempt
+        "bdt_01_coarse-run0.pyscf.log",       # PySCF's stdout role
+        "bdt_02_electrode_L-run3.out",        # a stage name carrying `_`
+        "bdt_01_coarse_geom_optim.xyz",       # geomeTRIC's trajectory
+    ])
+    def test_a_run_artifact_finds_the_sidecar_when_the_label_is_known(
+            self, tmp_path, artifact):
+        from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "bdt.molstruct.json", [0, 2])
+        (tmp_path / artifact).touch()
+        assert read_frozen_atoms(str(tmp_path / artifact), "bdt") == {0, 2}
+
+    def test_without_a_label_it_refuses_to_guess_which_part_is_the_rung(
+            self, tmp_path):
+        """THE REGRESSION PIN.  `sample_02_test` is a whole label, not
+        `sample` + rung `02_test`, and nothing in the filename says which.
+        Guessing gave this artifact a neighbour's frozen atoms."""
+        from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "sample.molstruct.json", [5, 6, 7])
+        (tmp_path / "sample_02_test.out").touch()
+        assert read_frozen_atoms(str(tmp_path / "sample_02_test.out")) == set()
+        # …and with the real label it is still nothing: this artifact's own
+        # sidecar does not exist, and the neighbour's is not a substitute.
+        assert read_frozen_atoms(str(tmp_path / "sample_02_test.out"),
+                                 "sample_02_test") == set()
+
+    def test_a_prepped_bundle_spells_it_source_and_that_is_also_found(
+            self, tmp_path):
+        """A prepped bundle holds `<label>.source.molstruct.json` (the
+        hand-over's reserved name); a structure folder holds
+        `<label>.molstruct.json`.  Both are real and both are tried."""
+        from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "bdt.source.molstruct.json", [3, 4])
+        (tmp_path / "bdt_01_coarse.molwatch.log").touch()
+        assert read_frozen_atoms(
+            str(tmp_path / "bdt_01_coarse.molwatch.log"), "bdt") == {3, 4}
+
+    def test_an_exact_stem_still_wins_over_a_stripped_one(self, tmp_path):
+        """The stripped form is APPENDED to the candidates, never
+        substituted, so a directory where the exact stem does match keeps the
+        answer it had."""
+        from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "bdt_01_coarse.molstruct.json", [7])
+        self._sidecar(tmp_path, "bdt.molstruct.json", [9])
+        (tmp_path / "bdt_01_coarse.out").touch()
+        assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out"),
+                                 "bdt") == {7}

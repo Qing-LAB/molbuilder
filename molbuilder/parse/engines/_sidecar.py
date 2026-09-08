@@ -35,28 +35,56 @@ import os
 import re
 from typing import Set
 
+from ...runfiles import parse as _rf_parse
 
-def read_frozen_atoms(traj_path: str) -> Set[int]:
+
+def read_frozen_atoms(traj_path: str, label: str = "") -> Set[int]:
     """Return frozen-atom 0-based indices from the sidecar next to
     ``traj_path``.  Looks for several naming conventions used across
     engines (``<stem>.molstruct.json``, with ``_optim`` and ``_geom``
     suffix-strip fallbacks for PySCF/geomeTRIC outputs)."""
     base, fname = os.path.split(traj_path)
     stem = fname
-    if stem.endswith("_optim.xyz"):
-        stem = stem[: -len("_optim.xyz")]
-    elif stem.endswith(".xyz"):
-        stem = stem[: -len(".xyz")]
-    elif stem.endswith(".out"):
-        stem = stem[: -len(".out")]
-    elif stem.endswith(".molwatch.log"):
-        stem = stem[: -len(".molwatch.log")]
-    candidates = [
-        os.path.join(base, f"{stem}.molstruct.json"),
-    ]
+    for _role in ("_optim.xyz", ".xyz", ".pyscf.log", ".out",
+                  ".molwatch.log"):
+        if stem.endswith(_role):
+            stem = stem[: -len(_role)]
+            break
+    stems = [stem]
     if stem.endswith("_geom"):
-        candidates.append(
-            os.path.join(base, stem[:-5] + ".molstruct.json"))
+        stems.append(stem[:-len("_geom")])
+    # A RUN ARTIFACT CARRIES THE RUNG AND THE ATTEMPT; THE SIDECAR DOES NOT.
+    # The sidecar is written once for the calculation and stemmed on the bare
+    # label (`job-contracts.md` § 2.2a: it carries no stage token, which is
+    # what "carried" means), so a stem taken off `<label>_<stage>-run0.out`
+    # never matched it.  MEASURED 2026-09-08: frozen atoms came back for
+    # `bdt.out` and empty for `bdt_01_coarse.out`.
+    #
+    # THE LABEL IS REQUIRED TO STRIP THE RUNG, AND GUESSING IT IS A BUG.  A
+    # first version stripped any `_<NN>_<name>` tail off the stem.  From a
+    # filename alone that is not decidable: `bdt_01_coarse.out` (rung
+    # `01_coarse` of `bdt`) and `sample_02_test.out` (an UNSTAGED calculation
+    # whose label simply reads that way) are the same shape, and the guess
+    # handed the second one a DIFFERENT calculation's sidecar -- measured
+    # 2026-09-08, `{5, 6, 7}` where the answer is nothing.  That is the exact
+    # ambiguity `runfiles.parse` refuses to resolve without a label, and the
+    # reason it takes one.  So: with a label, strip exactly; without one, do
+    # not strip at all.  `-run<N>` is peeled either way -- it is a declared
+    # counter (`runfiles.QUALIFIERS`), unambiguous at the tail.
+    for _s in list(stems):
+        _bare = _RUN_INDEX_SUFFIX_RE.sub("", _s)
+        if label and _bare.startswith(label + "_"):
+            _parsed = _rf_parse(_bare + ".x", label)
+            if _parsed is not None and _parsed.stage:
+                _bare = label
+        if _bare != _s:
+            stems.append(_bare)
+    candidates = [os.path.join(base, f"{_s}{sfx}")
+                  for _s in stems
+                  # `.source.molstruct.json` is what a PREPPED bundle holds
+                  # (`web/handover-procedure.md`); `.molstruct.json` is what a
+                  # structure folder holds.  Both are real, so both are tried.
+                  for sfx in (".molstruct.json", ".source.molstruct.json")]
     sidecar_path = next(
         (p for p in candidates if os.path.isfile(p)), None)
     if sidecar_path is None:
@@ -88,6 +116,8 @@ _FDF_POSITION_RANGE_RE = re.compile(
 
 
 _RUN_INDEX_SUFFIX_RE = re.compile(r"-run\d+$")
+
+
 
 _SIESTA_CONSTRAINTS_HEADER_RE = re.compile(
     r"siesta:\s+Constraints\s+applied\s+in\s+the\s+following\s+order:",

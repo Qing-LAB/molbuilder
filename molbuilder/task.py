@@ -311,7 +311,7 @@ class Stage:
         filename (``<label>_<name>.fdf``) and into an unquoted bash array
         literal in the runner.  The rule is the same one, read from the same
         pattern -- not a second copy of it."""
-        if not isinstance(self.name, str) or not STAGE_NAME_RE.match(self.name):
+        if not isinstance(self.name, str) or not STAGE_NAME_RE.fullmatch(self.name):
             raise ValueError(
                 f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
                 "becomes a filename and a shell word "
@@ -429,7 +429,7 @@ class Task:
         ``stages`` is never an empty tuple: that would be the second
         spelling of "one stage" § 6.5 rules out."""
         if not isinstance(self.calculation, str) \
-                or not STAGE_NAME_RE.match(self.calculation):
+                or not STAGE_NAME_RE.fullmatch(self.calculation):
             raise ValueError(
                 f"task: calculation {self.calculation!r} must match "
                 "[A-Za-z0-9_]+ -- it names a section of the engine's "
@@ -476,7 +476,7 @@ class Task:
                     "task: 'structure' is required for every calculation "
                     "except transport")
         for name, cite in self.slots.items():
-            if not isinstance(cite, str) or not _CITATION_RE.match(cite):
+            if not isinstance(cite, str) or not _CITATION_RE.fullmatch(cite):
                 raise ValueError(
                     f"task: slot {name!r} must cite a directory by its "
                     f"tree-relative path (no leading '/', no '..', no "
@@ -701,7 +701,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # the calculation TYPE first this once: whether `structure` is
     # required depends on it (transport's structure IS its citation).
     calc = obj.get("calculation", "optimization")
-    if not isinstance(calc, str) or not STAGE_NAME_RE.match(calc):
+    if not isinstance(calc, str) or not STAGE_NAME_RE.fullmatch(calc):
         _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
                 "names a section of the engine's warm-file vocabulary "
                 "(job-contracts.md 4.2a)")
@@ -943,7 +943,7 @@ def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
                     f"the machine has, or write [] for none")
         names = []
         for item in got:
-            if not (isinstance(item, str) and _CHANNEL_RE.match(item)):
+            if not (isinstance(item, str) and _CHANNEL_RE.fullmatch(item)):
                 _refuse(f"notify.channels: {item!r} is not a channel name -- "
                         f"letters, digits, '-' and '_'. A name is all that "
                         f"travels; the address and key stay on the machine")
@@ -1020,7 +1020,7 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     _check_keys(obj, STAGE_FIELDS, where=where)
     if "name" not in obj:
         _refuse("missing required key 'name'", where=where)
-    if not STAGE_NAME_RE.match(name):
+    if not STAGE_NAME_RE.fullmatch(name):
         _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
                 "a filename (engines/stages.md 6.6)")
 

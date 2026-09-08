@@ -98,7 +98,7 @@ def validate_name(name: str, *, kind: str = "name") -> str:
     """
     if not isinstance(name, str) or not name:
         raise InvalidName(f"{kind} must be a non-empty string")
-    if not _NAME_PATTERN.match(name):
+    if not _NAME_PATTERN.fullmatch(name):
         raise InvalidName(
             f"{kind} {name!r} contains characters outside [A-Za-z0-9_-]; "
             f"these would clash with SIESTA's basename-based file "
@@ -475,7 +475,7 @@ def list_projects(*, base: Optional[Path] = None) -> List[str]:
     for p in root.iterdir():
         if not p.is_dir():
             continue
-        if _NAME_PATTERN.match(p.name):
+        if _NAME_PATTERN.fullmatch(p.name):
             valid.append(p.name)
         else:
             _log.warning(
@@ -508,7 +508,7 @@ def list_structures(project: str, topic: str, *,
     if not td.is_dir():
         return []
     return sorted(p.name for p in td.iterdir()
-                   if p.is_dir() and _NAME_PATTERN.match(p.name))
+                   if p.is_dir() and _NAME_PATTERN.fullmatch(p.name))
 
 
 # ---------------------------------------------------------------- #

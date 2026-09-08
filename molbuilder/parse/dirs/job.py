@@ -90,18 +90,25 @@ def _iso_z(ts: float) -> str:
 # ---- file enumeration ------------------------------------------------ #
 
 
-def _enumerate_files(run_dir: Path) -> Dict[str, List[Path]]:
+def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     """Bucket relevant files in the dir by kind.
 
     Returns {"fdf": [...], "out": [...], "xv": [...], "struct_out": [...],
              "molstruct_json": [...], "ani": [...], "molwatch": [...]}.
     Paths sorted by name within each bucket.
+
+    ``match`` NARROWS THE DIRECTORY TO ONE RUNG, and in the flat shape that is
+    the whole question: every stage of a flat calculation shares one directory
+    and is told apart by FILENAME (`project-layout.md` § 1), so a bucket built
+    from the whole directory answers about all of them at once.  The caller
+    passes `Shape.stage_glob(token, label)`; ``"*"`` is the hierarchical
+    answer, where the directory has already selected the stage.
     """
     by_kind: Dict[str, List[Path]] = {
         "fdf": [], "out": [], "xv": [], "struct_out": [],
         "molstruct_json": [], "ani": [], "molwatch": [],
     }
-    for child in sorted(run_dir.iterdir()):
+    for child in sorted(run_dir.glob(match)):
         if not child.is_file():
             continue
         name = child.name
@@ -154,7 +161,7 @@ def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
 # ---- status + progress ---------------------------------------------- #
 
 
-def run_status(run_dir) -> Dict[str, Any]:
+def run_status(run_dir, match: str = "*") -> Dict[str, Any]:
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
 
@@ -166,6 +173,15 @@ def run_status(run_dir) -> Dict[str, Any]:
     * **which file speaks for the directory.**  A folder holds one
       ``.out`` per run index and one molwatch log per stage; a parser
       sees one file and cannot pick.  Highest stage, newest mtime.
+
+      ``match`` says WHICH RUNG is being asked about, and without it this
+      answered about whichever rung ran last.  The caller's own existence
+      check was already shape-aware -- `runstatus._stage_state` narrows with
+      `Shape.stage_glob` and its comment says why -- but the call through to
+      here passed no filter, so in the flat shape (one directory, every
+      stage) a finished rung reported the newest rung's state.  Measured
+      2026-09-08: with a later stage's `.out` present a stale rung read
+      "running"; with that one file moved aside, "stale".
     * **staleness.**  A file with no ending marker is honestly
       "running" -- nothing IN it separates a slow DFT step from a job
       the scheduler killed.  Only the filesystem can, so the age check
@@ -177,7 +193,7 @@ def run_status(run_dir) -> Dict[str, Any]:
     run-states by building every PLOT and discarding them.
     """
     run_dir = Path(run_dir)
-    files = _enumerate_files(run_dir)
+    files = _enumerate_files(run_dir, match)
     out_states = _out_conclusions(files["out"])
     mw_states = _molwatch_conclusions(files["molwatch"])
     return _build_status(

@@ -137,12 +137,13 @@ def _resolve_job_token(base: str, fname: str) -> Tuple[str, Optional[str]]:
     """``(job, token)`` for a PySCF artifact filename -- THE inverse of
     the generator's naming, in one place.
 
-    The writer's grammar (``pyscf/input.py``; verified against it,
-    2026-08-19 -- three private stem-strippers here each assumed the
-    pre-stage spelling and silently missed every staged run's siblings):
+    The writer's grammar (``pyscf/input.py``; the token sits immediately
+    after the label, never inside the role -- `job-contracts.md` § 2.2a.
+    These two rows said ``<job>_geom[_<token>]...`` until 2026-09-08,
+    contradicting this module's own header two paragraphs up):
 
-      * trajectory        ``<job>_geom[_<token>]_optim.xyz``
-      * geomeTRIC log     ``<job>_geom[_<token>].log`` / ``.qdata``
+      * trajectory        ``<job>[_<token>]_geom_optim.xyz``
+      * geomeTRIC log     ``<job>[_<token>]_geom.log`` / ``.qdata``
       * pyscf stdout      ``<job>[_<token>].log``
       * molwatch          ``<job>[_<token>].molwatch.log``
       * wrapper stdout    ``<job>[_<token>]-run<N>.pyscf.log``
@@ -398,7 +399,11 @@ def _read_qdata_forces(
     if qpath is None:
         return [None] * n_frames, [None] * n_frames
 
-    frozen_set = read_frozen_atoms(traj_path)
+    # THE LABEL IS FREE HERE -- `_resolve_job_token` already worked it out,
+    # so the sidecar lookup can strip this artifact's rung exactly instead
+    # of guessing at it (see `_sidecar.read_frozen_atoms`).
+    frozen_set = read_frozen_atoms(traj_path,
+                                   _resolve_job_token(base, os.path.basename(traj_path))[0])
 
     max_forces:             List[Optional[float]] = []
     max_forces_constrained: List[Optional[float]] = []

@@ -197,7 +197,10 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
                            else f"launched ({mode}), no output yet"))
     try:
         from ..parse.dirs.job import run_status
-        st = run_status(observed)
+        # THE SAME GLOB THE EXISTENCE CHECK USED.  It stopped at the gate
+        # above until 2026-09-08, so a flat calculation's every stage row
+        # showed the newest stage's state.
+        st = run_status(observed, out_glob)
     except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
     return (st.get("state", "unknown"), st.get("detail", ""))

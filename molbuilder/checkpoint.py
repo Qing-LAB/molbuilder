@@ -540,7 +540,7 @@ def format_manifest(entries: Sequence[Tuple[str, int, str]]) -> bytes:
     seen = set()
     lines = []
     for sha256, size, key in sorted(entries, key=lambda e: e[2]):
-        if not _SHA256_RE.match(sha256):
+        if not _SHA256_RE.fullmatch(sha256):
             raise CheckpointError(
                 f"cannot write MANIFEST: {sha256!r} is not 64 lowercase hex "
                 f"characters (job-contracts.md § 6.1).")
@@ -615,10 +615,10 @@ def parse_manifest(raw: bytes, where: str) -> Dict[str, Tuple[str, int]]:
             raise _bad(where, f"line {idx} has {len(parts)} tab-separated "
                               f"field(s); the format is exactly three")
         sha256, size_s, key = parts
-        if not _SHA256_RE.match(sha256):
+        if not _SHA256_RE.fullmatch(sha256):
             raise _bad(where, f"line {idx}: {sha256!r} is not 64 lowercase "
                               f"hex characters")
-        if not _SIZE_RE.match(size_s):
+        if not _SIZE_RE.fullmatch(size_s):
             raise _bad(where, f"line {idx}: {size_s!r} is not a decimal "
                               f"integer without leading zeros")
         _check_key(key, f"malformed MANIFEST in {where}, line {idx}")
@@ -643,7 +643,7 @@ def manifest_digest(raw: bytes) -> str:
 
 def archive_dir(root: Path, digest: str) -> Path:
     """``<root>/.binsnapshots/<digest>/`` — named by content, not by state."""
-    if not _SHA256_RE.match(digest):
+    if not _SHA256_RE.fullmatch(digest):
         raise CheckpointError(
             f"archive name {digest!r} is not a sha256 digest; an archive is "
             f"named by its MANIFEST's content (checkpointing.md § 3).")
@@ -743,7 +743,7 @@ def _existing_by_sha(root: Path, wanted: Sequence[str]) -> Dict[str, Path]:
         man = adir / MANIFEST_NAME
         # A staging directory is not an archive until it is renamed into place;
         # indexing one would offer a half-written file for reuse.
-        if not (adir.is_dir() and man.is_file()) or not _SHA256_RE.match(adir.name):
+        if not (adir.is_dir() and man.is_file()) or not _SHA256_RE.fullmatch(adir.name):
             continue
         try:
             entries = parse_manifest(man.read_bytes(), str(adir))
@@ -1003,7 +1003,7 @@ _CALC_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 def check_calculation_name(name: str) -> str:
     """L3: refuse a name that would have to be repaired to be used."""
-    if not _CALC_NAME_RE.match(name or ""):
+    if not _CALC_NAME_RE.fullmatch(name or ""):
         raise CalculationNameError(
             f"calculation name {name!r} is not [A-Za-z0-9_-]+.  It is written "
             f"verbatim into every state and never rewritten, so a name that "
@@ -1057,7 +1057,7 @@ def _trailer_value(message: str, key: str) -> Optional[str]:
 def trailer_of(message: str) -> Optional[str]:
     """The archive digest a state names, or None if it carries no anchor."""
     value = _trailer_value(message, TRAILER)
-    return value if value and _SHA256_RE.match(value) else None
+    return value if value and _SHA256_RE.fullmatch(value) else None
 
 
 def calculation_of(message: str) -> Optional[str]:

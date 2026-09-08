@@ -169,7 +169,7 @@ def issue_notify_key(user: str, *, path: Optional[Path] = None,
     """
     from .monitor import (notify_keys_document, notify_keys_path,
                           read_notify_keys)
-    if not NOTIFY_USER_RE.match(user or ""):
+    if not NOTIFY_USER_RE.fullmatch(user or ""):
         raise NotifyKeyError(
             f"{user!r} is not usable as a user id here. It becomes a log "
             f"FILENAME on the server, so it is limited to letters, digits "
