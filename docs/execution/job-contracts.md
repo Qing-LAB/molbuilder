@@ -420,9 +420,35 @@ my-job_01_coarse-run2.out         this rung's second attempt
 
 **The two separators are the grammar.** § 6.3 already said it — *"a hyphen
 announces a counter follows... a stage is not a counter, it is a name"* — so
-`_` introduces the stage and `-run` the attempt, and neither can be read as the
+`_` introduces the stage and a hyphen a counter, and neither can be read as the
 other. That rule is what makes the name reversible; without it `parse` would be
 guessing, which is what the call sites doing their own splitting were.
+
+**A counter is a CLASS, not one keyword** (`runfiles.QUALIFIERS`). The hyphen's
+meaning is *"a declared keyword and a number follow"*, and the declaration holds
+one entry today — `run`, the wrapper's attempt. It was a literal `-run(\d+)`
+written into the parser in three places until 2026-09-07, which made a second
+counter a parser edit; it is now a line in that tuple, and `compose`, `tail` and
+`parse` all read the class off it. Counters are emitted in declared order, so
+one name has one spelling, and a name whose counters arrive in another order is
+not read as counters at all — it would otherwise produce a `RunFile` whose own
+`name` differs from the string it came from.
+
+**A bench point is deliberately not a counter.** It is a whole *label*
+(`bdt-G1K4C6`), because a trial's warm files must never meet the run's
+(`project-layout.md` § 2.3.2), and a qualifier would put them back in one
+name-space. Measured: `bdt-G1K4C6_01_coarse-run2.out` parses as that label with
+the same three segments one level down, and returns None against `bdt`. The
+same measurement is why the name carries no **engine** segment either — the two
+engines' roles are already disjoint, in both what they leave behind (`.XV` /
+`.DM` against `.chk` / `_optimized.xyz`) and what molbuilder writes for them
+(`.fdf` against `.py` / `.pyscf.log` / `_geom.log`), so a segment would restate
+what the suffix says; and the files that are genuinely shared belong to the one
+wrapper that runs both engines, so a token on `.run.sh` would be a claim about
+the file that is not true of it. A carried file settles it: it is found *by
+name* by the next rung, which may be the other engine (a SIESTA relaxation into
+a PySCF spectrum), so a name saying which engine wrote it would be invisible to
+the rung that wants it (user asked, 2026-09-07).
 
 - **`<label>`** is § 2.1's basename — the `SystemLabel` / `JOB` literal.
 - **`<stage>`** is the artifact token (`01_coarse`), and it sits **immediately
@@ -440,11 +466,43 @@ guessing, which is what the call sites doing their own splitting were.
 hands the next its geometry and density, so a token in them would make every
 rung look for a file only its own stage ever wrote.
 
+### Which door to call — before you write code that names a file
+
+**Rule A14** (`architecture.md` § 7). If you are about to build, find, glob or
+split the name of a file a run produces, you are calling `runfiles`. There is no
+case where concatenating one is right, and the table says which door each case
+is:
+
+| you have… and you want… | call |
+|---|---|
+| a label, a role, maybe a stage and an attempt → **the name** | `compose(label, role, stage=None, run=None, **counters)` |
+| a filename → **its segments back** | `parse(filename, label, roles=())` — pass your engine's roles when a role of yours begins with `_` |
+| a label and a stage → **the part every role attaches to** (your tail is not a role: a log suffix, a directory) | `stem(label, stage=None)` |
+| a role, but the label only exists at **run time** (you are emitting it *into* a generated script, next to its own `JOB` / `SystemLabel`) | `tail(role, stage=None, run=None, **counters)` |
+| a name → **does it cross rungs?** | `is_carried(name_or_runfile, label="")` |
+| a label and a rung → **every file that will appear, with a line each** | `manifest(label, stage, engine, when, calculation)` |
+| **all the files molbuilder writes**, as globs | `patterns()` — and `identity.OUR_FILE_PATTERNS` already *is* this |
+| a new kind of file | add a row to `WRITTEN`; do not spell its suffix at the call |
+| a new counter (`-try2`, `-seg3`) | add the keyword to `QUALIFIERS`; the parser needs no edit |
+
+**Never do these**, each of which has cost us a defect that is written up in
+this section: build a name with `f"{label}_{token}{suffix}"`; write a role
+literal (`".molwatch.log"`, `"_geom_optim.xyz"`) at a call site; glob for one
+with a star you placed by hand; split a name on `_`; key a name on a stage's
+*position* rather than its token; or read `""` as "no ladder" — say
+`token or None` and mean it.
+
+**A name is correct because it came out of a checked generator**, not because a
+search of the output failed to find something wrong. That is why the suite for
+this is one file driving `compose`/`parse` over the product of their segments,
+and not a check beside each writer.
+
 **One module owns the grammar and the catalogue** — `molbuilder/runfiles.py`:
 
 ```python
-compose(label, role, stage=None, run=None)  -> str        # the name
-parse(filename, label)                      -> RunFile | None
+QUALIFIERS                                  # the counters a `-` may introduce
+compose(label, role, stage=None, run=None, **counters) -> str
+parse(filename, label, roles=())             -> RunFile | None
 stem(label, stage=None)                     -> str        # what a role attaches to
 tail(role, stage=None, run=None)            -> str        # for a script that
                                                           # knows its label only

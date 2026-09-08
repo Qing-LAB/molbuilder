@@ -1829,6 +1829,10 @@ continues from the real run's state — never from a trial's.
 > four separators and what each one means. This section explains *why* the two
 > levels differ; that table is what other layers copy from, and it wins if the
 > two ever disagree.
+>
+> **And a run FILE's name is not written by hand at all.** `runfiles` composes
+> and parses it — see § 2.2a's *"Which door to call"* and rule **A14**. This
+> section is for understanding the shape; that one is what you call.
 
 ### 4.1 A stage is identified by its name; a stage *directory* also carries a number
 

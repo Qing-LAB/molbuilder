@@ -790,7 +790,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 
 | | rule | checked by |
 |---|---|---|
-| **A1** | **one namer.** Every name a file gets comes from `identity`; nothing builds one by hand | `test_architecture_rules` — only `identity.py` may spell `<NN>_<name>` |
+| **A1** | **one speller for the stage token.** `<NN>_<name>` is assembled in `identity` and nowhere else | `test_architecture_rules` — the set of modules that spell `<NN>_<name>` must BE `{identity.py}` |
 | **A2** | **one layout per calculation**, and nothing guesses which | `test_jobset` — every consumer's layout comes from `Shape.named(task.shape)` |
 | **A3** | **a deck and its launch travel together** | `test_jobset` — the rank count in the deck equals the one it is started at, or it is refused first |
 | **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | `test_architecture_rules` — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
@@ -802,6 +802,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
 | **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | `test_architecture_rules` — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
 | **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing | `test_bench_grid_card` — the browser's prep door must call `prep_run_inputs` and must call none of the pieces it is made of |
+| **A14** | **one composer for a run file's name.** `<label>[_<stage>][-run<N>]<role>` is built by `runfiles` and read back by `runfiles.parse`. No call site concatenates a name, spells a role, or invents a counter keyword — see `job-contracts.md` § 2.2a for which door to call | `test_runfile_names` — the generator over the product of its segments: round trip, what each segment refuses, and that every name the catalogue can produce is matched by its globs |
 | **A13** | **a run shows its end point.** Every launch parameter the run will be executed with is displayed with its value and its source, resolved by the emitter — never re-derived by the surface, and never left blank when blank resolves to a number | `test_task_setup_tab` — the run card renders an emitted value for every launch parameter, including the ones the description does not state |
 
 > **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
@@ -822,6 +823,26 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > builds its own object; what must not happen is a *second* function building
 > one — including inside the same file, which a module-level rule would wave
 > through.
+
+> **A1 and A14 are two rules, and they were one until 2026-09-07.** A1 used to
+> read *"every name a file gets comes from `identity`"*, which was never true of
+> filenames: `identity` owns the stage **token** and the run **id**, and its
+> check only ever looked at who assembles `<NN>_<name>`. The filename itself —
+> label, token, counter, role — had no owner at all, so every writer and reader
+> built one out of strings, and one file ended up with six spellings, only the
+> emitter's right (§ 2.2a of `job-contracts.md` has the measurement). A14 gives
+> the filename the owner A1 was mistakenly credited with.
+>
+> **A14's check is the generator, not the call sites, and that is a real gap.**
+> `test_runfile_names` proves the API is total and reversible over its whole
+> parameter space, which is what makes a name trustworthy without looking at
+> it. What nothing yet forbids is a *new* call site building a name by hand
+> beside it. Measured 2026-09-07 by scanning for an interpolation followed by a
+> declared role: **44 such sites in 14 modules**, of which most are genuine
+> hand-builds, a few are molbuilder's own tooling logs (not run files at all),
+> and the rest are names emitted *into* a generated script, where the label is a
+> runtime variable and `runfiles.tail` is the door. A source fence of A1's shape
+> would close it; it is not written, and A14 should not be read as if it were.
 
 > **A10 is the rule the 2026-08-21 Sol failure was missing.** `prep bench`
 > refused over pseudopotentials naming

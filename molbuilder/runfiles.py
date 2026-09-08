@@ -82,21 +82,90 @@ _CARRIED_ROLES = ("_optimized.xyz", "_geom_optim.xyz",
 _LABEL = re.compile(r"[A-Za-z0-9_-]+")
 
 
+#: The COUNTERS a hyphen may introduce, in the order they appear in a name.
+#:
+#: § 6.3 gives the hyphen ONE meaning -- *"a hyphen announces a counter
+#: follows... a stage is not a counter, it is a name"* -- and a counter is a
+#: keyword plus a number.  ``run`` is the wrapper's attempt and is the only one
+#: today; the point of naming the class is that the SECOND one is a line here
+#: rather than an edit to the parser, which is where a hand-written
+#: ``-run(\d+)`` had put it.
+#:
+#: A benchmark point is deliberately NOT one.  It is a whole LABEL
+#: (``bdt-G1K4C6``), because a trial's warm files must never meet the run's
+#: (`project-layout.md` § 2.3.2) -- a qualifier would put them back in one
+#: name-space, which is the thing the separate label prevents.  Measured
+#: 2026-09-07: ``bdt-G1K4C6_01_coarse-run2.out`` parses as that label with the
+#: same three segments, one level down, and returns None against ``bdt``.
+QUALIFIERS: "tuple[str, ...]" = ("run",)
+
+_KEYWORDS = "|".join(QUALIFIERS)
+#: One counter at the FRONT of what is left, and the same run of them anchored
+#: at the END -- the two places a name can put them.  Both are built from
+#: :data:`QUALIFIERS`, so neither can know a keyword the declaration does not.
+_COUNTER = re.compile(r"-(" + _KEYWORDS + r")([0-9]+)")
+_COUNTER_RUN_AT_END = re.compile(r"(?:-(?:" + _KEYWORDS + r")[0-9]+)+$")
+
+
 class RunFileError(ValueError):
     """A name that cannot be composed, refused rather than guessed at."""
 
 
+def _take_counters(text: str) -> "tuple[tuple[tuple[str, int], ...], str]":
+    """Peel every declared counter off the FRONT of ``text``."""
+    found: "list[tuple[str, int]]" = []
+    while True:
+        m = _COUNTER.match(text)
+        if not m:
+            return tuple(found), text
+        found.append((m.group(1), int(m.group(2))))
+        text = text[m.end():]
+
+
+def _take_counters_at_end(text: str
+                          ) -> "tuple[tuple[tuple[str, int], ...], str]":
+    """The same, from the END -- where the role has already been taken off."""
+    m = _COUNTER_RUN_AT_END.search(text)
+    if not m:
+        return (), text
+    found, left = _take_counters(m.group(0))
+    return found, text[:m.start()] if not left else text
+
+
+def _in_declared_order(found: "tuple[tuple[str, int], ...]") -> bool:
+    """Counters appear in :data:`QUALIFIERS` order, and each at most once.
+
+    :func:`compose` emits them that way, so a name that does not is not one
+    this module builds -- and reading it would give a `RunFile` whose own
+    ``name`` differs from the string it came from.  Refused instead.
+    """
+    seen = [QUALIFIERS.index(k) for k, _ in found]
+    return len(set(seen)) == len(seen) and seen == sorted(seen)
+
+
 @dataclass(frozen=True)
 class RunFile:
-    """What a filename says it is.  ``stage`` is None for a carried file."""
+    """What a filename says it is.  ``stage`` is None for a carried file.
+
+    ``counters`` holds every declared qualifier the name carried, in order, as
+    ``(keyword, number)`` pairs -- a tuple rather than a dict so the record
+    stays hashable and comparable.  :attr:`run` reads the one that exists
+    today, which is what nearly every caller wants.
+    """
     label: str
     stage: Optional[str]
     role:  str
-    run:   Optional[int] = None
+    counters: "tuple[tuple[str, int], ...]" = ()
+
+    @property
+    def run(self) -> Optional[int]:
+        """The wrapper's attempt, or None when the name carries no counter."""
+        return dict(self.counters).get("run")
 
     @property
     def name(self) -> str:
-        return compose(self.label, self.role, self.stage, self.run)
+        return compose(self.label, self.role, self.stage,
+                       **dict(self.counters))
 
 
 def stem(label: str, stage: Optional[str] = None) -> str:
@@ -141,7 +210,7 @@ def stem(label: str, stage: Optional[str] = None) -> str:
 
 
 def compose(label: str, role: str, stage: Optional[str] = None,
-            run: Optional[int] = None) -> str:
+            run: Optional[int] = None, **counters: int) -> str:
     """The one way a run file gets its name (§ 2.2a).
 
     ``role`` is what the file IS and begins with ``.`` or ``_`` -- ``".chk"``,
@@ -151,9 +220,12 @@ def compose(label: str, role: str, stage: Optional[str] = None,
     ``stage`` omitted is a CARRIED file, which is a statement and not a
     default: it says this file crosses rungs.
 
-    ``run`` is the wrapper's attempt counter (``-run2``).  It is a COUNTER and
-    takes a hyphen, where a stage is a NAME and takes an underscore -- § 6.3's
-    rule, and the reason the two cannot be confused when read back.
+    ``run`` is the wrapper's attempt (``-run2``), spelled out because it is the
+    counter that exists; any other keyword in :data:`QUALIFIERS` is passed by
+    name and lands in ``counters``.  All of them are COUNTERS and take a
+    hyphen, where a stage is a NAME and takes an underscore -- § 6.3's rule,
+    and the reason the two cannot be confused when read back.  They are emitted
+    in declared order, so one name has one spelling.
     """
     if not role or role[0] not in "._":
         raise RunFileError(
@@ -161,11 +233,20 @@ def compose(label: str, role: str, stage: Optional[str] = None,
             f"says what the file IS, and the separator is what lets `parse` "
             f"find where the label ends.")
     if run is not None:
-        if isinstance(run, bool) or not isinstance(run, int) or run < 0:
+        counters = {"run": run, **counters}
+    for key, value in counters.items():
+        if key not in QUALIFIERS:
             raise RunFileError(
-                f"run must be a non-negative attempt counter, not {run!r}.")
-    _run = "" if run is None else f"-run{run}"
-    return f"{stem(label, stage)}{_run}{role}"
+                f"{key!r} is not a counter this grammar knows "
+                f"({', '.join(QUALIFIERS)}).  A hyphen announces a COUNTER "
+                f"(job-contracts.md § 6.3); declare the keyword in "
+                f"`runfiles.QUALIFIERS` rather than spelling it at a call.")
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise RunFileError(
+                f"{key} must be a non-negative counter, not {value!r}.")
+    _counters = "".join(f"-{k}{counters[k]}"
+                        for k in QUALIFIERS if k in counters)
+    return f"{stem(label, stage)}{_counters}{role}"
 
 
 #: A stand-in label for :func:`tail`.  Any legal label would do; what matters
@@ -175,7 +256,7 @@ _PLACEHOLDER = "L"
 
 
 def tail(role: str, stage: Optional[str] = None,
-         run: Optional[int] = None) -> str:
+         run: Optional[int] = None, **counters: int) -> str:
     """Everything AFTER the label -- for a writer that has no label yet.
 
     A generated script names its own outputs at RUN time, from its own ``JOB``
@@ -192,7 +273,8 @@ def tail(role: str, stage: Optional[str] = None,
     For geomeTRIC, which takes a PREFIX and appends its own suffix, ask for the
     trajectory's tail and drop what geomeTRIC will add.
     """
-    return compose(_PLACEHOLDER, role, stage, run)[len(_PLACEHOLDER):]
+    return compose(_PLACEHOLDER, role, stage, run,
+                   **counters)[len(_PLACEHOLDER):]
 
 
 def parse(filename: str, label: str,
@@ -221,16 +303,11 @@ def parse(filename: str, label: str,
     if not rest:
         return None
 
-    def _split_run(tail: str):
-        """Take `-run<N>` off the front of what is left, if it is there."""
-        m = re.match(r"-run([0-9]+)", tail)
-        return (int(m.group(1)), tail[m.end():]) if m else (None, tail)
-
-    # CARRIED: the role follows the label, possibly behind an attempt counter.
+    # CARRIED: the role follows the label, possibly behind a counter.
     if rest[0] in ".-":
-        run, tail = _split_run(rest)
-        if tail and tail[0] in "._":
-            return RunFile(label, None, tail, run)
+        counters, tail = _take_counters(rest)
+        if tail and tail[0] in "._" and _in_declared_order(counters):
+            return RunFile(label, None, tail, counters)
         return RunFile(label, None, rest) if rest[0] == "." else None
     if rest[0] != "_":
         return None                     # a longer label, not this one
@@ -250,20 +327,16 @@ def parse(filename: str, label: str,
     for role in known:
         if not after.endswith(role):
             continue
-        head = after[:-len(role)]
-        run, head = (None, head)
-        m = re.search(r"-run([0-9]+)$", head)
-        if m:
-            run, head = int(m.group(1)), head[:m.start()]
-        if _STAGE.fullmatch(head):
-            return RunFile(label, head, role, run)
+        counters, head = _take_counters_at_end(after[:-len(role)])
+        if _STAGE.fullmatch(head) and _in_declared_order(counters):
+            return RunFile(label, head, role, counters)
     # Otherwise the token runs to the role's own separator, which for every
     # remaining role is the first `.`.
     m = re.match(r"([0-9]{2,}_[A-Za-z0-9_]+)", after)
     if m:
-        run, role = _split_run(after[m.end():])
-        if role and role[0] == ".":
-            return RunFile(label, m.group(1), role, run)
+        counters, role = _take_counters(after[m.end():])
+        if role and role[0] == "." and _in_declared_order(counters):
+            return RunFile(label, m.group(1), role, counters)
         if not role:
             return None                 # a token with no role is not a file
     # No token: the role itself began with `_` (`_optimized.xyz`).

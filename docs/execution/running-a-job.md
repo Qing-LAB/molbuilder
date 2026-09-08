@@ -62,6 +62,14 @@ does not restate them; it explains how to *operate* them.
 
 ## 2. The standalone contract — a wrapper that runs anywhere
 
+> **The wrapper's own files are named by `runfiles` too** — its stdout, its
+> session log, the monitor's pair, the SCF timing log, the conclusion marker.
+> They are the ones that carry the attempt counter, and `-run<N>` is not a
+> literal anywhere: it is the one keyword `runfiles.QUALIFIERS` declares, so a
+> second counter is a line there rather than an edit to whatever reads names.
+> See [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a, *"Which
+> door to call"* (rule **A14**).
+
 The single most important property of a generated run is that the wrapper is
 **self-contained at runtime**: it reads no config, probes no toolchain, and has
 no fallback path. Everything site-specific is **baked in** when the wrapper is

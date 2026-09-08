@@ -76,6 +76,14 @@ flowchart LR
     L --> I["<b>BDT_Au_relax_Au38C6H4S2</b><br/>the <b>id</b><br/>= a record in task.json"]
 ```
 
+> **The label is the stem, and the stem is where this contract stops.** What
+> gets attached to it — the stage token, the attempt counter, the role — is
+> `job-contracts.md` § 2.2a's grammar, and it is composed by `runfiles`, never
+> by hand (rule **A14**). This document owns *what the label is*; that one owns
+> *what a filename made from it looks like*, and its
+> *"Which door to call"* table is what you read before writing code that names
+> one.
+
 A hash would be exact and unreadable. A formula is neither, and that is the trade
 made deliberately: a **name** you can recognise in a directory listing, and an
 **id** you can read in a description, are worth more day to day than one token

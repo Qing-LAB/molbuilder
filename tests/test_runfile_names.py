@@ -24,8 +24,21 @@ import itertools
 
 import pytest
 
-from molbuilder.runfiles import (WRITTEN, RunFile, RunFileError, compose,
-                                 is_carried, manifest, parse, patterns)
+from molbuilder.runfiles import (QUALIFIERS, WRITTEN, RunFile, RunFileError,
+                                 compose, is_carried, manifest, parse,
+                                 patterns, tail)
+
+
+def expect(label, stage, role, run=None):
+    """The `RunFile` a name with these segments must read back as.
+
+    Written here rather than spelled at each assertion because the COUNTERS
+    are a declared class now (`runfiles.QUALIFIERS`), not a field per keyword
+    -- so a second counter is a line in that tuple and this helper, not an
+    edit to every expectation in the file.
+    """
+    counters = () if run is None else (("run", run),)
+    return RunFile(label, stage, role, counters)
 
 LABEL = "my-job"
 
@@ -63,7 +76,7 @@ def test_every_name_the_generator_makes_reads_back_to_its_segments(
     name = compose(label, role, stage, run)
     got = parse(name, label)
     assert got is not None, f"{name!r} did not parse"
-    assert got == RunFile(label, stage, role, run)
+    assert got == expect(label, stage, role, run)
     assert got.name == name
 
 
@@ -90,16 +103,16 @@ def test_a_role_with_underscores_is_not_mistaken_for_a_stage():
     `01_coarse_geom`.  A stage begins with two digits, and that is what ends it.
     """
     assert parse("my-job_01_coarse_geom_optim.xyz", LABEL) == \
-        RunFile(LABEL, "01_coarse", "_geom_optim.xyz")
+        expect(LABEL, "01_coarse", "_geom_optim.xyz")
     # AND WITH A STAGE NAME THAT ITSELF CARRIES `_`, which is the case the
     # separator cannot decide and the role vocabulary can.
     assert parse("my-job_02_electrode_L_geom_optim.xyz", LABEL) == \
-        RunFile(LABEL, "02_electrode_L", "_geom_optim.xyz")
+        expect(LABEL, "02_electrode_L", "_geom_optim.xyz")
     assert parse("my-job_02_electrode_L.fdf", LABEL) == \
-        RunFile(LABEL, "02_electrode_L", ".fdf")
+        expect(LABEL, "02_electrode_L", ".fdf")
     # The same trailing role with no stage in front stays a role.
     assert parse("my-job_geom_optim.xyz", LABEL) == \
-        RunFile(LABEL, None, "_geom_optim.xyz")
+        expect(LABEL, None, "_geom_optim.xyz")
 
 
 def test_carried_is_the_absence_of_a_stage():
@@ -151,9 +164,53 @@ def test_a_stage_POSITION_cannot_become_a_name(bad):
 
 
 @pytest.mark.parametrize("bad", [-1, "2", 1.5, True])
-def test_a_run_that_is_not_an_attempt_count_is_refused(bad):
-    with pytest.raises(RunFileError, match="attempt counter"):
+def test_a_counter_that_is_not_a_count_is_refused(bad):
+    with pytest.raises(RunFileError, match="non-negative counter"):
         compose(LABEL, ".out", None, bad)
+
+
+# --------------------------------------------------------------------- #
+#  The qualifier class -- one declaration, not a hand-written keyword    #
+# --------------------------------------------------------------------- #
+#
+#  § 6.3 gives the hyphen ONE meaning: a counter follows, and a counter is a
+#  keyword plus a number.  `parse` knew the keyword `run` from a literal
+#  `-run(\d+)` written into it three times, so a second counter would have
+#  been a parser edit.  It is a line in `QUALIFIERS` now.
+
+def test_the_only_counter_today_is_the_attempt():
+    """Stated so that adding one is a DECISION.  `stage` is not here and never
+    will be -- it is a NAME and takes `_` -- and neither is a bench point,
+    which is a whole label (`project-layout.md` § 2.3.2)."""
+    assert QUALIFIERS == ("run",)
+
+
+def test_a_keyword_the_grammar_does_not_declare_is_refused():
+    """The refusal names the declaration, because that is where the fix is:
+    a caller inventing `-seg2` at the call site is how the hyphen would come
+    to mean two things."""
+    with pytest.raises(RunFileError, match="QUALIFIERS"):
+        compose(LABEL, ".out", None, None, seg=2)
+
+
+@pytest.mark.parametrize("run", [None, 0, 7])
+def test_the_declared_keyword_round_trips_through_every_door(run):
+    """`compose`, `tail` and `parse` read the counter off ONE declaration, so
+    the three cannot disagree about what a hyphen introduces."""
+    name = compose(LABEL, ".out", "01_coarse", run)
+    assert name.endswith(tail(".out", "01_coarse", run))
+    got = parse(name, LABEL)
+    assert got.run == run
+    assert dict(got.counters).get("run") == run
+    assert got.name == name
+
+
+def test_a_hyphen_that_introduces_no_declared_keyword_is_not_a_counter():
+    """`-v2` is not a counter, so it is part of the LABEL -- which is why a
+    bench trial's `bdt-G1K4C6` reads as a label and not as a qualifier."""
+    assert parse("my-job-v2.out", LABEL) is None
+    assert parse("my-job-v2.out", "my-job-v2") == expect("my-job-v2", None,
+                                                         ".out")
 
 
 # --------------------------------------------------------------------- #

@@ -771,6 +771,17 @@ value-beside-its-reason guarantees that Sections give structurally are
 delivered by the block's own emitters — honest, but enforced by review and
 its render tests rather than by the framework walk.*
 
+> **A writer names nothing by hand.** The deck's own filename, and every name
+> the deck writes *into itself* for its outputs, come from `runfiles` — see
+> [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a, *"Which door to
+> call"* (rule **A14**). The in-script case is the one worth naming here,
+> because it is the one that looks like it needs a string: a generated deck
+> names its outputs from its own `JOB` / `SystemLabel` at run time, so the
+> writer emits only the part *after* the label — that is `runfiles.tail`, and
+> it is cut from a real `compose` result so it cannot disagree with one.
+> Assembling it beside one instead is how geomeTRIC's prefix carried the stage
+> token in the wrong place, in two decks, for five weeks (§ 2.2a).
+
 **Spectra crossed over** (spectra-migration plan, P0–P3 landed 2026-08-21):
 a vibrational spectrum is the `vibration` calculation KIND — described,
 prepped and run like any stage, with the old `spectra/engine_base.py`
