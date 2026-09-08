@@ -927,16 +927,25 @@ Two constraints carry over and are not negotiable:
 
 ### 5k.4 Migration — each step separately green
 
+**NOTHING BELOW IS BUILT.** No framework module exists — there is no
+`paths.py`, no `locator.py`; the `paths-framework` branch is an empty
+placeholder pointing at an old `main`. `runfiles.py` (`3dfa76c9`) and the
+composers in § 5k.1 predate this section and are its INPUTS, not its output.
+`materialize.sweep_set_paths` was added 2026-09-08 while fixing a `status`
+message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
+§ 5k.3, not a step of this migration. Recorded that way because listing it as
+"M1, done" read as though the framework had started.
+
 | step | what | done when |
 |---|---|---|
-| **M1** | *(done 2026-09-08)* `sweep_set_paths` beside `bench_container` — one finder, to prove the shape | shipped |
-| **M2** | The inventory: every `glob`/`rglob`/`iterdir` in `molbuilder/` that spells a molbuilder name, with the composer it should have asked. The table in § 5k.1 is the start, not the answer — **run the survey, do not quote it** | a tool like `classify_source_reads.py`, re-runnable |
+| **M1** | The inventory: every `glob`/`rglob`/`iterdir` in `molbuilder/` that spells a molbuilder name, with the composer it should have asked. The table in § 5k.1 is the start, not the answer — **run the survey, do not quote it** | a tool like `classify_source_reads.py`, re-runnable |
+| **M2** | The design + contract (tasks P2/P3): which module owns the finders, and where the contract for them lives. **No code before this** | agreed, written in the home the survey picks |
 | **M3** | Give `runfiles` the reader half — `find(dir, label, role=…, run=…)` returning what `compose` would have produced. Kills the twice-spelled `-run*` glob first, since both callers are in-tree and tested | `materialize` and `summarize` both ask; the pattern appears once |
 | **M4** | Give `Shape` the rest of the directory finders, beside `stage_glob` which already works this way | `jobset/_cli.py`'s `bench-*/**` glob is gone |
 | **M5** | The endpoint contract: every path the Task-setup card renders arrives from the server. Removes `viewer.js`'s `stage_token` re-implementation | the browser composes no path; `test_the_plan_door_composes_no_name_of_its_own` extends to cover `--from` |
 | **M6** | `parse/contract.py`'s engine-output globs move behind `runfiles.WRITTEN`, which already declares those roles | one vocabulary for what an engine writes |
 
-**Do M2 before M3.** § 5a's rule applies to this section as much as any other:
+**Do M1 and M2 before any code.** § 5a's rule applies to this section as much as any other:
 the table above was measured on 2026-09-08 and will be wrong by the time it is
 acted on.
 
