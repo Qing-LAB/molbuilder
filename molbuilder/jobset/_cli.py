@@ -44,6 +44,46 @@ def _load(bundle: str) -> tuple:
     base = Path(bundle)
     jpath = base / _JOBSET_FILE
     if not jpath.is_file():
+        # WHAT IS HERE DECIDES WHAT TO SAY.  This answered "nothing to do ...
+        # run `jobset init` first" for every absence, which is wrong twice on
+        # a calculation that HAS been prepped: a sweep's set lives in its
+        # bench container, one directory down, so `status` reported nothing
+        # while `summarize` could read the whole thing -- and `init` is not
+        # the verb for a folder that is already described.  A refusal that
+        # names the wrong verb costs more than one that names none.
+        from ..task import FILENAME as _TASK_FILE
+        described = (base / _TASK_FILE).is_file()
+        sweeps = sorted(str(p.parent.relative_to(base))
+                        for p in base.rglob(_JOBSET_FILE))
+        if sweeps:
+            where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
+            raise click.ClickException(
+                f"no {_JOBSET_FILE} at the root of {base}, so there is no "
+                f"LADDER here to report on -- but a sweep is prepped in "
+                f"{where}.  A sweep's state is its own verb: "
+                f"`molbuilder jobset summarize bench <stage>` reads the "
+                f"trials and prints the verdict.  `status` answers the other "
+                f"question -- which RUNG is done and which to resume from "
+                f"(project-layout.md § 2.3.2).")
+        if described:
+            # THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a
+            # detected problem carries the invocation that repairs it).  The
+            # rung is in hand -- the description is right there -- so naming
+            # `<stage>` would be this refusal declining to read a file it has
+            # already found.
+            _rung = "<stage>"
+            try:
+                from ..task import read_task as _read_task
+                _t = _read_task(base / _TASK_FILE)
+                _rung = next((st.name for st in (_t.stages or ())
+                              if st.enabled is not False), "<stage>")
+            except Exception:      # a description mid-edit is its own error
+                pass
+            raise click.ClickException(
+                f"no {_JOBSET_FILE} in {base}: this calculation is described "
+                f"but nothing is prepped yet.  `prep` derives the set from "
+                f"the description (job-system.md § 5.1):\n"
+                f"    molbuilder jobset prep run {_rung}")
         raise click.ClickException(
             f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
             "describes it and `prep` derives it (job-system.md § 5.1); run "
