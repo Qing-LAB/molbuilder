@@ -39,8 +39,16 @@ from .model import FILENAME as _JOBSET_FILE
 
 
 def _load(bundle: str) -> tuple:
-    """Load ``<bundle>/job-set.json`` -> (JobSet, bundle Path).  A friendly
-    error if it isn't there (the host producer writes it; see § 5)."""
+    """Load ``<bundle>/job-set.json`` -> (JobSet, bundle Path).
+
+    **When it is absent the refusal reads the folder first**, because the
+    same absence means three different things and only one of them is
+    "nothing has happened here": a sweep keeps its set in the bench
+    container rather than the root, a described calculation is simply not
+    prepped yet, and a bare directory has not been described at all.  Shared
+    by five verbs, so what it says is about the STATE it found and not about
+    the verb that arrived.
+    """
     base = Path(bundle)
     jpath = base / _JOBSET_FILE
     if not jpath.is_file():
@@ -53,18 +61,40 @@ def _load(bundle: str) -> tuple:
         # names the wrong verb costs more than one that names none.
         from ..task import FILENAME as _TASK_FILE
         described = (base / _TASK_FILE).is_file()
-        sweeps = sorted(str(p.parent.relative_to(base))
-                        for p in base.rglob(_JOBSET_FILE))
+        # WHERE A SWEEP'S SET LIVES IS ASKED FOR, not spelled here.
+        # `materialize.sweep_set_paths` is the search counterpart of
+        # `bench_container`, and lives beside it so the layout has one home.
+        # This walked the whole tree with `rglob` -- every attempt directory
+        # full of engine output -- to find files that can only be in two
+        # places; spelling those two places HERE would have been a third copy
+        # of the layout rule, which is the habit, not the fix.
+        from .materialize import sweep_set_paths
+        found = sweep_set_paths(base)
+        # AND IT IS READ BEFORE IT IS NAMED.  Calling every set below the root
+        # "a sweep" is the message claiming what it has not checked; `kind` is
+        # in the file.  One that will not load is left out entirely rather
+        # than described as something it might not be.
+        sweeps = []
+        for _p in found:
+            try:
+                if JobSet.load(_p).kind == "sweep":
+                    sweeps.append(str(_p.parent.relative_to(base)))
+            except Exception:          # unreadable: not evidence of anything
+                pass
         if sweeps:
             where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
+            _how = ("`molbuilder jobset summarize bench <stage>` reads the "
+                    "trials and prints the verdict"
+                    if described else
+                    "that folder has no " + _TASK_FILE + ", so `summarize` "
+                    "cannot read it either -- it works through the "
+                    "description")
             raise click.ClickException(
                 f"no {_JOBSET_FILE} at the root of {base}, so there is no "
                 f"LADDER here to report on -- but a sweep is prepped in "
-                f"{where}.  A sweep's state is its own verb: "
-                f"`molbuilder jobset summarize bench <stage>` reads the "
-                f"trials and prints the verdict.  `status` answers the other "
-                f"question -- which RUNG is done and which to resume from "
-                f"(project-layout.md § 2.3.2).")
+                f"{where}.  A sweep's state is its own verb: {_how}.  "
+                f"`status` answers the other question -- which RUNG is done "
+                f"and which to resume from (project-layout.md § 2.3.2).")
         if described:
             # THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a
             # detected problem carries the invocation that repairs it).  The

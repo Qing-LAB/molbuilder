@@ -185,6 +185,32 @@ def bench_container(shape: "Shape", token: str = "") -> str:
     return f"{sd}/bench"
 
 
+def sweep_set_paths(bundle) -> "List[Path]":
+    """Every place a SWEEP's ``job-set.json`` can be in this bundle.
+
+    The search counterpart of :func:`bench_container`, and it lives beside it
+    for that reason: the namer says where a sweep's state GOES and this says
+    where to look for it, so a layout change moves one file instead of two
+    that must be kept in step by hand.
+
+    `bench_container` produces exactly three shapes and no more --
+    ``bench_<NN>_<stage>`` and bare ``bench`` at the root (flat, stageless),
+    ``<NN>_<stage>/bench`` in the hierarchy -- so two globs cover all of them
+    without walking the tree.  **It cannot simply call `bench_container`**:
+    that takes a shape and a token, and the caller this exists for is an
+    error path with no ``job-set.json`` to read them from.  That asymmetry --
+    one door to COMPOSE a path, none to FIND one -- is what the paths
+    framework is for; when it lands, this is one of its callers and the
+    patterns below move into it.
+
+    Returns the paths that exist, unread: whether a set is a sweep is in the
+    file, and reading it is the caller's business.
+    """
+    from .model import FILENAME as _JS
+    base = Path(bundle)
+    return sorted(set(base.glob(f"*/{_JS}")) | set(base.glob(f"*/*/{_JS}")))
+
+
 def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
