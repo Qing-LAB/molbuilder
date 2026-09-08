@@ -14,7 +14,6 @@ cell look fine in one place and be refused in another.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +26,6 @@ from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 REPO = Path(__file__).resolve().parents[1]
-VIEWER = REPO / "molbuilder" / "web" / "static" / "task-setup" / "viewer.js"
 
 #: A small Sol-SHAPED menu, written by hand so the fits list is a fact about
 #: this fixture rather than about whatever the developer's cluster last
@@ -191,155 +189,14 @@ class TestTheDoorServesTheOneEnumerator:
         assert "gpu_count" in d["error"] and "use_gpu" in d["error"]
 
 
-class TestTheBrowserDoesNotEnumerate:
-    """Source pins.  The browser must ASK for the grid, never derive it."""
-
-    def _src(self) -> str:
-        src = VIEWER.read_text()
-        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-        return re.sub(r"^\s*//.*$", "", src, flags=re.M)
-
-    def test_the_card_asks_the_one_door(self):
-        assert "/api/task-setup/bench-grid" in self._src()
-
-    def test_it_sends_the_axes_THE_ROWS_WERE_PAINTED_FROM(self):
-        """One source for both, or they disagree.
-
-        `renderMachine` takes the task as an ARGUMENT and is called with
-        the handover object in handover mode; reading the module's `_task`
-        instead described a different object than the rows above it.  And
-        the axes must be the in-memory model's, not the file's, so the
-        list tracks typing rather than the last save.
-        """
-        src = self._src()
-        rm = src.split("function renderMachine", 1)[1]
-        assert "scheduleFitRefresh(bench)" in rm, (
-            "the list must be refreshed from the same `bench` the rows "
-            "were painted from, not from a module global")
-        body = src.split("async function refreshFit", 1)[1]
-        assert "_fitBench" in body
-
-    def test_it_stays_quiet_where_there_is_no_description(self):
-        """Handover and empty modes have no `task.json`, and the door
-        reads one -- so a request there could only 400."""
-        src = self._src()
-        body = src.split("async function refreshFit", 1)[1].split(
-            "function paintFit", 1)[0]
-        assert '_mode !== "description"' in body
-
-    # `test_a_stale_answer_is_dropped` stood here and asserted `"_fitSeq" in
-    # src and "seq !== _fitSeq" in src` -- two substrings of a private
-    # variable's name.  A rename fails it on working code; a guard written
-    # where it can never be true, or compared against the wrong thing,
-    # passes it.  The claim is about ORDER, so the test that replaced it
-    # controls the order: tests/test_task_setup_prep_e2e.py::
-    # test_a_bench_grid_answer_that_arrives_late_is_dropped stubs fetch,
-    # parks the first reply, lets the second paint, then releases the first
-    # and checks the card kept the later answer.  Mutation-checked by
-    # deleting the `seq !== _fitSeq` line.
-
-    def test_the_request_is_debounced(self):
-        """Every keystroke repaints the rows; the server answer is worth
-        one request per PAUSE.
-
-        Asserting the name ``_fitTimer`` appears was the first version of
-        this pin, and it survived deleting the `setTimeout` -- the name
-        still occurs in its own declaration.  A presence check cannot tell
-        a working debounce from a dead one, which is the same fault that
-        let `payload.info` stay green over a bug.  So this reads the
-        scheduler's BODY.
-        """
-        src = self._src()
-        # To the NEXT function, not to the first `}` -- the body holds a
-        # `{}` literal, and splitting on a brace truncated before the line
-        # under test, so the pin reported on its own arithmetic.
-        body = src.split("function scheduleFitRefresh", 1)[1].split(
-            "async function refreshFit", 1)[0]
-        assert "setTimeout(refreshFit" in body, (
-            "scheduleFitRefresh must DEFER the call, not make it")
-        assert "clearTimeout" in body, (
-            "and cancel the pending one, or every keystroke still fires")
-
-    def test_a_failed_fetch_hides_the_list_and_keeps_the_card(self):
-        """`loadSweepChoices`' recorded lesson: a card that cannot get a
-        nicety shows what it has.  Only a card that cannot get its
-        SUBSTANCE may refuse -- and this list is not the substance."""
-        src = self._src()
-        tail = src.split("async function refreshFit", 1)[1].split(
-            "function paintFit", 1)[0]
-        assert tail.count("host.hidden = true") >= 2, (
-            "a failed or unparseable answer must hide the list, never "
-            "throw out of renderMachine and strand the card")
 
 
 # --------------------------------------------------------------------- #
 #  The RUN's own numbers — the same door, a grid of one                  #
 # --------------------------------------------------------------------- #
 
-def test_the_browser_assembles_nothing_of_its_own():
-    """**The UI is not a second framework** *(user, 2026-09-02: "if you
-    handcraft two branches to collect the parameter and generate the thing,
-    then you have to maintain two branches of the logic… The user can do the
-    same thing using CLI").*
-
-    So the prep door calls `prep_run_inputs` and composes nothing itself.
-    It DID compose its own for an hour on 2026-09-02, and every divergence
-    was a different run: no `run-config.toml` verdict, no bench pins, and at
-    first no condition pins -- a solver chosen on the run card reached the
-    sbatch's neighbour and not the deck.
-
-    Source-level because that is where the rule lives: a behavioural test
-    would need a benchmark, a verdict and a condition all at once, and would
-    still pass the day someone re-derived ONE of the three here.
-    """
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
-    door = src[src.index("def api_task_setup_prep("):
-               src.index("def api_task_setup_save(")]
-    assert "prep_run_inputs(" in door, (
-        "the browser's prep door no longer calls the one assembly")
-    # CALLS, not mentions, and on a WORD boundary: the door's own comments
-    # name these to say why it does not reach for them, and `run_inputs` is
-    # a substring of the very function it is supposed to call.
-    #
-    # `run_condition` is allowed: a pure read of the posted document for
-    # DISPLAY (the preview's fallback when the machine cannot hold the
-    # condition), not a step in assembling what prep receives.
-    import re as _re
-    # `_apply_run_config` was the fourth name here until 2026-09-02.  It is
-    # deleted -- a benchmark no longer reaches a run at all -- and a name in
-    # this list that nothing defines is a check that cannot fail.
-    for reassembled in ("_declared_execution_pins",
-                        "declared_run_shape", "run_inputs"):
-        assert not _re.search(rf"(?<![\w.]){reassembled}\(", door), (
-            f"the door calls {reassembled} itself -- that is the second "
-            f"branch of logic the one assembly exists to prevent")
 
 
-def test_there_is_exactly_ONE_admission_door():
-    """`generator.md` § 2: a run is a sweep of length one.
-
-    So there is one door and not two that agree: a `/run-fit` endpoint stood
-    beside `bench-grid` on 2026-09-01, building a one-point axis from each
-    value and calling the same `_bench_inputs` -- its own contract row said
-    so. Deleted the same day. This fails if a second one comes back, because
-    two doors is how one comes to say a run fits where `launch` refuses it.
-    """
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
-    calls = [ln for ln in src.splitlines()
-             if "_bench_inputs(" in ln and not ln.lstrip().startswith("#")]
-    assert len(calls) == 2, (
-        "the browser asks the enumerator from exactly two places -- the grid "
-        "card's door and the prep door -- and neither enumerates its own: "
-        + "\n".join(calls))
-    assert "run_fit" not in src and "run-fit" not in src
-    door = src[src.index("def api_task_setup_bench_grid"):
-               src.index("def api_task_setup_prep_plan")]
-    for invented in ("max_cores", "admit(", "def _fits"):
-        assert invented not in door, f"the grid door computes {invented} itself"
 
 
 class TestPickingThisMachineIsAnAnswer:
@@ -593,21 +450,3 @@ class TestThePlanComesFromTheProducer:
         assert d["ok"] is False and d["error"]
 
 
-def test_the_plan_door_composes_no_name_of_its_own():
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
-    door = src[src.index("def api_task_setup_prep_plan"):
-               src.index("def api_task_setup_machines")]
-    assert "token_for" in door and "stage_dir" in door
-    # AND WHERE THE SWEEP LANDS.  `bench-` used to sit in the list below with
-    # a `continue` beside it -- *"the LITERAL label of the bench row, not a
-    # name"* -- an exemption carved out for the one literal that WAS the bug:
-    # the card composed `bench-<token>/` in the browser, which names no
-    # directory in any layout.  The exemption went with the literal; what
-    # replaces it is the door asking the one speller.
-    assert "bench_container" in door, (
-        "the bench row's directory must come from `materialize."
-        "bench_container`, the one spelling of that rule")
-    for invented in ('f"{i:02d}_', "zfill", "01_"):
-        assert invented not in door, f"the door builds {invented} itself"

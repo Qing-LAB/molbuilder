@@ -164,6 +164,111 @@ real control in the real browser to completion before calling it done. Every
 button defect this session survived unit tests, structural sweeps and a
 passing full lane, and died the moment the button was actually pressed.
 
+## 1c. What review must carry because a test cannot *(2026-09-08)*
+
+`testing.md` § 3a is the rule — *a test asserts on the END PRODUCT, never on
+the source that made it*. Thirty-seven tests in the task-setup lane broke it:
+they read `viewer.js`, `style.css`, `task_setup.html` or `build.py` as text,
+split on a function name, and asserted a substring. They were deleted rather
+than rewritten, and **this section is what they are replaced by** — not a
+checklist of the thirty-seven claims, which would be the same lint written in
+prose, but the four *reasons* a source pin gets written at all.
+
+**Why a source pin is worse than no test.** It fails on a rename that changes
+nothing, and passes on a rewrite that changes everything, so its signal is
+uncorrelated with the property it names. Two recorded cases:
+
+- `"_targetArg()" in src` stayed true through the defect it existed to catch:
+  `setMachine()` updated the variable and re-synced the buttons but never
+  re-ran `renderNext()`, so the command blocks a person copies were built
+  before the machine existed. *The pin read the concatenation; nobody read the
+  card.* (Replaced by a Playwright test that clicks the picker and reads the
+  block.)
+- `"_fitTimer" in src` survived deleting the `setTimeout` — the name still
+  occurs in its own declaration.
+
+**The one legitimate reason to open a source file in a test** is to *execute*
+what you lift out of it: `_row_badge` and `_continue_tail` in
+`tests/test_task_setup_tab.py` slice a block of `viewer.js`, hand it its
+inputs, and run it under node. A refactor that keeps the rule keeps them
+passing. Lifting to *read* is the pin; lifting to *run* is a test.
+
+### 1c.1 The four questions that replace them
+
+Each is a class of failure that is **silent at runtime** — nothing throws,
+nothing logs, and the screen looks plausible. That silence is why someone
+reached for a grep. Ask these of any diff touching a surface.
+
+**(a) Does the surface answer a question a producer already owns?**
+The failure is *two deciders*, and it is silent because both answers are
+well-formed — they simply differ. A browser that composes a path, a name, a
+grid, a condition or a refusal message is a second implementation of a rule
+that lives in Python, and it will agree until the day the rule moves.
+
+Look for: string arithmetic that yields something the server also yields
+(`String(n).padStart(2,"0") + "_" + name` is `identity.stage_token`);
+a literal path segment in markup or JS; a message that paraphrases a refusal
+instead of showing it; a second enumeration of anything the server enumerates.
+The question to ask is never *is this string right today* but **who owns this
+rule, and is this the owner?** If it is not, the surface should be asking.
+
+**(b) Does a reference resolve to anything?**
+The failure is a *dangling name*, silent because the platform's default for
+"not found" is to do nothing: `var(--ts-x)` with no definition applies no
+property; a class with no rule leaves default styling; a duplicate `id`
+silently wins or loses; a taught command that is not a real verb fails only
+when a person types it.
+
+Look for: tokens used vs. defined, classes in markup vs. selectors in sheets,
+ids for uniqueness, and every command string the page prints against the CLI
+that must accept it.
+
+**This class is the one that stays a test**, and `testing.md` § 3a draws the
+line: a *property of the shipped artifact* is a legitimate thing to assert —
+it names no implementation and survives any rewrite that keeps the property —
+while *the presence of one line of implementation* is a pin. A set difference
+over tokens is the first; `"saveState(" in body` is the second. Seven such
+checks live in `tests/test_task_setup_tab.py` and
+`tests/test_task_setup_notify_js.py`; they were deleted in the first pass of
+this clean-up and restored, because "reads a shipped file" is not the test —
+*what it asks of it* is.
+
+What review adds here is the half a set difference cannot see: whether the
+thing a name resolves TO is the right thing. A class that matches a rule
+somewhere still leaves the wrong rule applying; a command that exists still
+takes different arguments than the page prints beside it.
+
+**(c) Does an order hold that nothing enforces?**
+The failure is a *sequence*, silent because each step succeeds on its own.
+Write before navigate; guard before rebuild; show the notice before leaving
+the page; check the failure before the POST. Reordered, every line still runs
+and returns cleanly — the work is simply lost.
+
+Look for: a `return` that must precede a side effect, a navigation that must
+follow a render, a validation whose result is computed and then not consulted.
+Read the function **top to bottom against what the user sees**, not as a set
+of statements. A test can catch these only by driving the real sequence, which
+is what the e2e lane is for; review catches them by reading.
+
+**(d) Is state that belongs to one subject carried into another?**
+The failure is *stale carry-over*, silent because the stale value is a
+perfectly valid value of the right type — it just describes the previous
+folder, engine, stage or machine.
+
+Look for: every module-level variable a surface keeps, and one question
+each — *what is this about, and what happens when that subject changes?* A
+per-folder cache with no reset is the shape; so is a per-engine cache keyed by
+nothing.
+
+### 1c.2 How to report one
+
+Under R3: say which class you swept, and name what you did not. "Swept (a)
+across the task-setup card; did not read the checkpoint panel" is honest.
+A finding is worth reporting only with the **silent consequence** attached —
+*this renders no background*, *this copies a command that does not run*, *this
+measures the previous folder* — because that consequence is what tells the
+reader whether it is a defect or a deliberate choice.
+
 ## 2. The audit dimensions
 
 What there is to audit; each has a checklist in § 5.

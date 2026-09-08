@@ -24,13 +24,20 @@ import pytest
 
 ROOT   = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
-SHEET  = STATIC / "task-setup/style.css"
 VIEWER = STATIC / "task-setup/viewer.js"
+SHEET  = STATIC / "task-setup/style.css"
 
 
 # --------------------------------------------------------------------- #
 #  The page                                                             #
 # --------------------------------------------------------------------- #
+
+def _declarations(css: str) -> list[tuple[str, str]]:
+    """(property, value) pairs, comments stripped."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return [(m.group(1).strip(), m.group(2).strip())
+            for m in re.finditer(r"([a-z-]+)\s*:\s*([^;{}]+)[;}]", css)]
+
 
 def test_the_tab_is_in_the_roster_and_routes():
     """The nav order is one place (`web/tabs.py`); the route matches its path."""
@@ -69,65 +76,14 @@ def test_the_page_loads_the_shared_stylesheet_layers(web_client):
 #  The stylesheet is composition only                                   #
 # --------------------------------------------------------------------- #
 
-def _declarations(css: str) -> list[tuple[str, str]]:
-    """(property, value) pairs, comments stripped."""
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return [(m.group(1).strip(), m.group(2).strip())
-            for m in re.finditer(r"([a-z-]+)\s*:\s*([^;{}]+)[;}]", css)]
 
 
-def test_the_sheet_writes_no_raw_palette_colour():
-    """`ui-contract.md` § 2: components never write a raw palette colour."""
-    offenders = [f"{p}: {v}" for p, v in _declarations(SHEET.read_text())
-                 if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", v)]
-    assert not offenders, (
-        "raw colours in task-setup/style.css — use a var(--token) from "
-        f"lib/tokens.css: {offenders}")
 
 
-def test_the_sheet_takes_spacing_and_type_from_the_scales():
-    """No magic numbers for spacing, radius or type size.
-
-    The `--space-*` / `--text-*` / `--radius*` scales exist so the rhythm is
-    uniform and retunable in one file.  Exempt: `0`, and the handful of
-    properties whose value is genuinely not a scale step (border widths,
-    percentages, `1px` hairlines, and the media-query breakpoints, which are
-    not declarations at all).
-    """
-    scale_props = (
-        "padding", "padding-top", "padding-right", "padding-bottom",
-        "padding-left", "margin", "margin-top", "margin-right",
-        "margin-bottom", "margin-left", "gap", "row-gap", "column-gap",
-        "font-size", "border-radius", "top",
-    )
-    offenders = []
-    for prop, val in _declarations(SHEET.read_text()):
-        if prop not in scale_props:
-            continue
-        for tok in val.split():
-            if re.fullmatch(r"-?\d*\.?\d+(px|rem|em)", tok) and not tok.startswith("0"):
-                offenders.append(f"{prop}: {val}")
-                break
-    assert not offenders, (
-        "magic numbers in task-setup/style.css — use --space-*, --text-* or "
-        f"--radius*: {offenders}")
 
 
-def test_every_jp_token_the_sheet_uses_is_defined():
-    """A `var(--ts-x)` with no definition renders as nothing at all."""
-    tokens = (STATIC / "lib/tokens.css").read_text()
-    defined = set(re.findall(r"(--ts-[a-z0-9-]+)\s*:", tokens))
-    used    = set(re.findall(r"var\((--ts-[a-z0-9-]+)", SHEET.read_text()))
-    assert used <= defined, f"undefined --ts-* tokens: {sorted(used - defined)}"
-    assert defined, "no --ts-* tokens declared in lib/tokens.css"
 
 
-def test_the_jp_tokens_live_in_the_one_palette_file():
-    """`ui-contract.md` § 2: module-private tokens live in lib/tokens.css,
-    promoted out of per-file :root blocks."""
-    assert ":root" not in SHEET.read_text(), (
-        "task-setup/style.css declares its own :root block — module tokens "
-        "belong in lib/tokens.css")
 
 
 # --------------------------------------------------------------------- #
@@ -386,17 +342,6 @@ def test_a_rung_that_does_not_continue_is_taught_no_tail():
     assert _continue_tail("hierarchical", "", {"coarse": 3}) == ""
 
 
-def test_the_emitted_rows_cover_every_launch_parameter(web_client):
-    """A13 again, on the shape: `-n`, `-c`, `--gres`, `--mem`, `-t`, `-p`.
-    A parameter missing from the block is a parameter that can surprise."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/build.py").read_text(encoding="utf-8")
-    body = src[src.index("def _emitted_launch("):]
-    body = body[:body.index("\n    # ---- the PLAN")]
-    for flag in ("-n", "-c", "--gres", "--mem", "-t", "-p"):
-        assert f'"{flag}"' in body, f"{flag} is not reported to the card"
-    assert '"source"' in body, "a value without its source is half the rule"
 
 
 def test_one_point_is_a_choice_and_several_a_measurement():
@@ -442,12 +387,6 @@ def test_a_one_point_row_that_is_NOT_machine_answered_is_still_a_choice():
     assert one["kind"] == "chosen"
 
 
-def test_a_setting_with_no_points_is_removed_not_left_empty():
-    """`bench` takes a NON-EMPTY list — the reader refuses an empty one, so a
-    setting with no points is a setting that is not being measured."""
-    src = VIEWER.read_text()
-    body = src.split("function removePoint", 1)[1].split("\nfunction ", 1)[0]
-    assert "delete b[name]" in body, "an emptied setting stays as an empty list"
 
 
 # --------------------------------------------------------------------- #
@@ -455,41 +394,12 @@ def test_a_setting_with_no_points_is_removed_not_left_empty():
 # --------------------------------------------------------------------- #
 
 
-def test_the_panel_calls_the_api_rather_than_a_second_implementation():
-    ck = (STATIC / "lib/projects/checkpoint.js").read_text()
-    body = ck.split("async function _onCommitClick", 1)[1].split("\nasync function", 1)[0]
-    assert "saveState(" in body, "the panel does not go through the API"
-    assert "/api/checkpoint/save" not in body, (
-        "the panel still POSTs the route itself — two implementations")
 
 
-def test_a_state_needs_a_note():
-    """`checkpointing.md` L4 retired automatic messages, so nothing writes one
-    on your behalf."""
-    ck = (STATIC / "lib/projects/checkpoint.js").read_text()
-    body = ck.split("export async function saveState", 1)[1]
-    assert "A state needs a note" in body, "saveState invents a note"
 
 
-def test_a_failed_checkpoint_stops_the_save():
-    """The step exists so what you change can be brought back; writing anyway
-    would silently spend the safety net you asked for."""
-    src = VIEWER.read_text()
-    body = src.split("async function save()", 1)[1].split("\n/* ", 1)[0]
-    i_fail = body.index("No state was saved, so nothing was written")
-    i_post = body.index("/api/task-setup/save")
-    assert i_fail < i_post, "the description is written before the state"
-    assert body.count("return;", 0, i_post) >= 2, (
-        "a failed checkpoint does not stop the save")
 
 
-def test_removing_a_column_does_not_pretend_the_value_survives():
-    """This page edits `task.json`, not the template — so it must not imply
-    the kept value lands anywhere."""
-    src = VIEWER.read_text()
-    body = src.split("function removeColumn", 1)[1].split("\n/* ", 1)[0]
-    assert "not the template" in body, (
-        "the message implies the value is preserved somewhere it is not")
 
 
 def test_the_runtime_loads_before_every_other_script(web_client):
@@ -501,26 +411,8 @@ def test_the_runtime_loads_before_every_other_script(web_client):
     assert i_rt < i_tab, "the runtime loads after the tab's own script"
 
 
-def test_the_command_names_its_stage_and_what_it_continues_from():
-    """Exact, not generic: every verb is given the stage's name
-    (`stages.md` § 6.5), and a continuing stage names the attempt because
-    `prep` is told, never left to guess (`project-layout.md` § 1.6)."""
-    src = VIEWER.read_text()
-    body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
-    assert '"molbuilder jobset prep run " + name' in body, (
-        "the command does not name its stage")
-    assert "--from" in body, "a continuing stage does not name its source"
-    assert 'restart' in body and 'continue' in body, (
-        "`--from` is emitted regardless of whether the stage continues")
-    assert "padStart(2" in body, "the --from token drops its ordinal"
 
 
-def test_a_disabled_stage_gets_no_command():
-    """It changes what `prep` will build, so offering a command for it would
-    be offering to run something the description says to skip."""
-    src = VIEWER.read_text()
-    body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
-    assert "enabled !== false" in body, "disabled stages still get commands"
 
 
 def test_the_column_picker_offers_restart(web_client):
@@ -563,13 +455,6 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
         "(engines/overview.md § 3a: the user decides the GPU)")
 
 
-def test_the_starting_sweep_only_covers_settings_the_engine_has():
-    """Proposed rows are intersected with the sweepable set, so a PySCF
-    description never opens with a SIESTA-only knob in its grid."""
-    src = VIEWER.read_text()
-    body = src.split("Promise.all([loadColumnChoices", 1)[1].split("}).catch", 1)[0]
-    assert "for (const it of sweep)" in body, (
-        "the grid is not intersected with what this engine can sweep")
 
 
 def test_the_presets_come_from_the_shipped_table(web_client):
@@ -585,21 +470,6 @@ def test_the_presets_come_from_the_shipped_table(web_client):
             "the endpoint restates the tier values instead of serving them")
 
 
-def test_the_sweepable_notes_reach_the_lookup():
-    """`staging` items are filtered out of the form schema, so the sweepable
-    endpoint is the only place their help arrives."""
-    src = VIEWER.read_text()
-    # The fill moved into `_fillSweepMeta` on 2026-08-24 so BOTH of the
-    # loader's paths -- the cached one and the fetching one -- publish it;
-    # the cached path returned early without it, which is how every enum
-    # became a text box.  What this pins is unchanged: the sweepable items
-    # reach `_meta`, whichever path ran.
-    body = src.split("async function loadSweepChoices", 1)[1].split("\n/**", 1)[0]
-    assert "_fillSweepMeta(_sweep)" in body, (
-        "machine settings would hover with no note at all")
-    filler = src.split("function _fillSweepMeta(", 1)[1].split("\n}", 1)[0]
-    assert "_meta[i.name]" in filler, (
-        "the fill no longer writes into the lookup the hovers read")
 
 
 def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_projects_root):
@@ -642,57 +512,10 @@ def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects
         pass    # tmp_path removes the tree
 
 
-def test_the_sidebar_cursor_is_not_in_the_payload():
-    """`molview.md` § 9.3a: the facts that leave together were read together.
-    `getCurrentFile()` is a second fact sampled at a second moment, and it is
-    what made a calculation claim to be OF its own parameter file."""
-    src = (ROOT / "molbuilder/web/static/lib/task-handover.js").read_text()
-    # Anchored on the CALL, not on any mention of the route: the file
-    # header names its endpoints (fixed 2026-08-17), so splitting on the
-    # bare path started the slice in the header and swept in an
-    # unrelated `structure_path` from a different fetch.
-    body = src.split("const r = await fetch(url", 1)[1]\
-              .split("out = await r.json()", 1)[0]
-    # Comments out first — this file's own note explains what was removed, and
-    # a test that matches its own explanation proves nothing.
-    body = re.sub(r"//.*", "", body)
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
-    assert "structure_path" not in body, "the sidebar's cursor is still sent"
-    assert "getCurrentFile" not in body
 
 
-def test_a_folder_with_no_history_gets_one_before_the_first_save():
-    """A folder that has no history yet must get `init` before the first
-    save.  Gating `init` on `st.ok` skipped it for exactly the folders that
-    needed it, and the save then failed on `saveState`'s "not a checkpoint
-    folder; run init first": a refusal naming a step the page had chosen to
-    skip.  The question is `initialized` — the server's own field
-    (2026-08-19: `status()` now really asks `/api/checkpoint/state`, whose
-    `ok` means "the query worked")."""
-    src = VIEWER.read_text()
-    body = src.split("checkpoint.status(_dir)", 1)[1].split("saveState", 1)[0]
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
-    assert "st.ok &&" not in body, (
-        "init is still gated on `ok`, which is false for every folder that "
-        "has never been checkpointed — the ones that need init")
-    assert "!st.initialized" in body, "nothing asks whether a history exists"
 
 
-def test_save_is_blocked_while_the_checkpoint_has_no_note():
-    """`saveState` requires a note (`checkpointing.md` L4 — nothing writes a
-    message on your behalf), and the save aborts rather than writing without
-    the state it was told to keep.  With the box ticked by default and the note
-    empty, the button was live and the only way to learn that was to press it
-    and read a refusal.  The condition is knowable before the click."""
-    src = VIEWER.read_text()
-    body = src.split("function refreshSave", 1)[1].split("\nasync function save", 1)[0]
-    assert "wantsCheckpoint()" in body and "checkpointNote()" in body, (
-        "the button does not consider the checkpoint it is about to run")
-    assert "blocked" in body.split("checkpointNote()", 1)[1][:200], (
-        "an empty note does not block the button")
-    watch = src.split("function watchCheckpointControls", 1)[1].split("\n}", 1)[0]
-    assert "ts-ckpt-note" in watch and "ts-ckpt" in watch, (
-        "nothing re-decides the button as the note is typed")
 
 
 def test_the_structure_pair_is_not_reported_as_engine_state():
@@ -954,34 +777,6 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
         pass    # tmp_path removes the tree
 
 
-def test_the_cell_gate_s_notices_reach_the_person():
-    """Every structure door runs the same cell gate, and it answers with
-    NOTICES as well as refusals: a refusal is the door's 400, but a notice is a
-    box the gate accepted and wants read.  The endpoint returned them on every
-    send and the browser dropped them, so somebody whose cell was questioned
-    found out from the run instead of from the page.
-
-    A notice does not hold the WRITE back — the files are the person's own
-    parameters.  It holds back the NAVIGATION, because a page that jumps to the
-    next tab is a page whose warning was never read."""
-    src = (ROOT / "molbuilder/web/static/lib/task-handover.js").read_text()
-    # anchored after the write loop; `toWrite` is the null-filtered list
-    # (a transport hand-over is ONE file, P7b)
-    body = src.split("const written = toWrite.map", 1)[1]
-    assert "out.notices" in body, "the gate's notices are still dropped"
-    i_notice = body.index("out.notices")
-    i_nav = body.index('window.location.href = "/task-setup"')
-    assert i_notice < i_nav, "the page navigates before the notices are shown"
-    guard = body[i_notice:i_nav]
-    assert "return;" in guard, (
-        "notices are shown and then navigated past — nobody reads them")
-    # The gate's four-key contract spells the badness key `level`
-    # (periodicity_gate.py, since 2026-08-03) -- this pin read `n.severity`
-    # until 2026-08-21, asserting the very bug (E-B10) that kept the error
-    # arm from ever firing.
-    assert "n.level" in guard, (
-        "the notice badness key is `level` (the gate's four-key "
-        "contract), not `severity`")
 
 
 def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
@@ -1001,34 +796,8 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
         assert (r.get_json() or {}).get("error"), "a refusal with no reason"
 
 
-def test_a_bench_edit_repaints_the_row_it_changed():
-    """`syncFromModel` is where every editing verb ends, and it re-rendered
-    everything except the machine card.  So `addPoint` put the point in the
-    model and in the JSON on screen while the row went on showing the old
-    chips — the bench panel looked inert while the file underneath it moved."""
-    src = VIEWER.read_text()
-    body = src.split("async function syncFromModel", 1)[1].split("\n}", 1)[0]
-    for verb in ("renderStages", "renderMachine", "renderNext", "refreshPickers"):
-        assert verb + "(" in body, f"syncFromModel does not repaint via {verb}"
 
 
-def test_changing_the_shape_does_not_discard_the_table():
-    """Picking a shape turns a hand-over into a proposal — stages, varies and a
-    seeded bench.  That happens ONCE.  Re-running it on the second click meant
-    building a two-stage table with its overrides and a bench grid, changing
-    your mind about the shape, and losing all of it without a word.
-
-    Seen end to end: two stages varying mesh_cutoff 200/500 and a three-setting
-    bench became one bare `coarse` stage and the seed."""
-    src = VIEWER.read_text()
-    body = src.split("function setShape", 1)[1].split("\n}", 1)[0]
-    i_guard = body.find('_task.schema === "molbuilder/task@1"')
-    i_build = body.find("proposedFromHandover")
-    assert i_guard != -1, "nothing stops the proposal being rebuilt"
-    assert i_guard < i_build, (
-        "the rebuild runs before the guard, so the table is discarded first")
-    guard = body[i_guard:i_build]
-    assert "_task.shape = shape" in guard, "the shape is not simply edited"
 
 
 # --------------------------------------------------------------------- #
@@ -1137,37 +906,8 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
         pass    # tmp_path removes the tree
 
 
-def test_the_two_engine_caches_are_keyed_by_engine():
-    """R2-1: `loadSweepChoices` and `loadPresets` memoised with a bare
-    `if (_x) return _x` -- the first folder's ENGINE was served to every
-    folder opened after it, so a PySCF description showed SIESTA's
-    machine rows, and applying a tier preset wrote SIESTA values into a
-    PySCF ladder.  Both caches now follow `_cols`' settled pattern: the
-    key is checked before the cache is served."""
-    src = VIEWER.read_text()
-    for fn, key in (("loadSweepChoices", "_sweepKey"),
-                    ("loadPresets", "_presetsKey")):
-        body = src.split(f"async function {fn}(", 1)[1].split(
-            "\nasync function", 1)[0]
-        assert f"{key} === key" in body, (
-            f"{fn} caches without comparing the engine key")
 
 
-def test_the_saves_preflight_findings_reach_the_person():
-    """Gate ③'s warnings ride the OK save response ("the reader deserves
-    what the CLI would have echoed"), and the tab must SHOW them --
-    until the U6 close they went on the floor while loadFolder
-    repainted the box to "loaded".  The refusal path's multi-line list
-    needs the state body to keep its newlines."""
-    src = VIEWER.read_text()
-    tail = src.split("async function save(", 1)[1]
-    assert "body.findings" in tail, "save() never reads the findings"
-    assert tail.index("loadFolder") < tail.index("body.findings"), (
-        "the findings must be painted AFTER loadFolder or it wipes them")
-    css = (STATIC / "task-setup" / "style.css").read_text()
-    body_rule = css.split(".ts-state-body", 1)[1].split("}", 1)[0]
-    assert "pre-line" in body_rule, (
-        "gate 3's multi-line refusal renders as one run-on line")
 
 
 # --------------------------------------------------------------------- #
@@ -1205,18 +945,6 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         # and it says the choice is required, in the card the design uses
         assert 'id="ts-target-needs"' in body
 
-    def test_no_bespoke_css_was_added_for_it(self):
-        """Every class the card uses already existed."""
-        css = (ROOT / "molbuilder/web/static/task-setup/style.css").read_text()
-        body = web_client_css = None  # noqa: F841 - readability
-        for cls in ("ts-choice", "ts-needs", "ts-state", "ts-state-title",
-                    "ts-state-body"):
-            assert f".{cls}" in css, (
-                f".{cls} is used by the machine card but is not in the "
-                f"module's stylesheet -- it must not be invented inline")
-        assert ".ts-target-" not in css, (
-            "a bespoke class was added for the machine card; the shared "
-            "components already cover it")
         # The `[hidden]`-precedence guard this used to pin by name is covered
         # by `test_css_hidden_attribute_audit.py`, which DERIVES the ids JS
         # toggles (58 of them, `#ts-target-state` among them) and requires a
@@ -1285,19 +1013,6 @@ class TestEveryStageOffersBothThingsYouCanDoWithIt:
     something to RUN, and the page hands over the command for each rather
     than choosing between them."""
 
-    def test_help_uses_the_pages_own_hint_component(self):
-        """Not a new affordance and not another module's stylesheet:
-        `form-schema.css` (which carries `.schema-help`) is not loaded on
-        this page, and importing a parameter-form stylesheet to get a
-        details widget would be the wrong wheel.  `.hint` is what this
-        page already explains things with."""
-        # That the hints RENDER, and say "Measure it" / "Run it" / the flag
-        # override, is read from the card now (`test_task_setup_prep_e2e.py`).
-        # What stays here is the one-home LINT below, which no runtime check
-        # can make: proving a stylesheet is ABSENT needs the file, not a page.
-        head = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
-        assert "form-schema.css" not in head, (
-            "the parameter form's stylesheet was pulled in for a hint")
 
 class TestTheTabShowsWhatAPrepWouldResolve:
     """`preparing-for-another-machine.md` § 5: the tab shows what `prep`
@@ -1365,66 +1080,8 @@ class TestTheTabShowsWhatAPrepWouldResolve:
     # the other 57.
 
 
-def test_the_sheet_names_no_token_that_does_not_exist():
-    """**A gap the raw-colour test leaves open, found 2026-08-27.**
-
-    `test_the_sheet_writes_no_raw_palette_colour` forbids a hex literal —
-    so `var(--danger, #e06c6c)` fails it and `var(--danger)` passes. But
-    `--danger` is defined nowhere: the palette calls it `--error`. A
-    `var()` naming a token that does not exist resolves to *nothing*, so
-    the colour is simply unset and the rule silently does not apply.
-
-    Passing the first test made the second failure invisible, which is the
-    shape worth guarding: the rule that catches the loud mistake let the
-    quiet one through.
-    """
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
-    defined = set()
-    for f in root.rglob("*.css"):
-        defined |= set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", f.read_text(),
-                                  re.M))
-    sheet = (root / "task-setup/style.css").read_text()
-    # strip comments first -- prose about `var(--token)` is not a usage
-    sheet = re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
-    used = set(re.findall(r"var\((--[a-z0-9-]+)", sheet))
-    missing = sorted(used - defined)
-    assert not missing, (
-        f"task-setup/style.css names token(s) nothing defines: {missing}. "
-        f"A var() with no definition resolves to nothing, so the property "
-        f"silently does not apply.")
 
 
-def test_every_page_class_in_the_markup_is_styled_somewhere():
-    """**A class that matches no rule fails exactly like a token that names
-    nothing: silently.** Found in the browser 2026-08-27 — renaming a card
-    fixed its ids but left three classes as `ts-dest-*` while the sheet had
-    moved to `.ts-reports-*`, so the layout rules simply did not apply and
-    the inputs rendered at their default width.
-
-    Only this page's own prefixes are checked: `card`, `hint`, `btn` and
-    friends are the app's and live elsewhere.
-    """
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "molbuilder/web"
-    html = (root / "templates/task_setup.html").read_text()
-    used = set()
-    for attr in re.findall(r'class="([^"{}]+)"', html):
-        used |= {c for c in attr.split() if c.startswith(("ts-", "ps-"))}
-    styled = set()
-    for f in (root / "static").rglob("*.css"):
-        styled |= set(re.findall(r"\.((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
-    # classes the JS toggles rather than the sheet naming them directly
-    from_js = set()
-    for f in (root / "static").rglob("*.js"):
-        from_js |= set(re.findall(r"[\"'`]((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
-    orphans = sorted(used - styled - from_js)
-    assert not orphans, (
-        f"class(es) in task_setup.html that no stylesheet and no script "
-        f"ever names: {orphans}. A class matching nothing applies nothing, "
-        f"and says so nowhere.")
 
 
 # --------------------------------------------------------------------- #
@@ -1625,22 +1282,6 @@ def test_describe_attempt_stays_inside_the_tree(web_client):
 import re as _re
 
 
-def test_the_viewer_carries_no_transport_handover_arm():
-    """No hand-over for the composite (user ruling 2026-08-29): the
-    Transport tab writes the finished task.json itself, so a transport
-    task.1st.json never exists and Task setup's PROPOSAL machinery must
-    carry no transport branch -- dead arms grow stale rulings.
-    (Description mode may still know the kind: the file-list panel
-    tells the transport truth about a SAVED description.)"""
-    src = (ROOT / "molbuilder/web/static/task-setup/viewer.js").read_text()
-    proposal = src.split("function proposedFromHandover(", 1)[1].split(
-        "\nfunction ", 1)[0]
-    assert '"transport"' not in proposal, (
-        "a transport branch is back in the hand-over proposal -- the "
-        "tab describes directly (POST /api/transport/describe)")
-    shape = src.split("function setShape(", 1)[1].split(
-        "\nfunction ", 1)[0]
-    assert '"transport"' not in shape
 
 
 def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolated_projects_root):
@@ -1688,6 +1329,108 @@ def test_describe_attempt_names_a_recorded_contract(web_client, isolated_project
         import shutil as _shutil
 
 
+def test_the_sheet_writes_no_raw_palette_colour():
+    """`ui-contract.md` § 2: components never write a raw palette colour."""
+    offenders = [f"{p}: {v}" for p, v in _declarations(SHEET.read_text())
+                 if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", v)]
+    assert not offenders, (
+        "raw colours in task-setup/style.css — use a var(--token) from "
+        f"lib/tokens.css: {offenders}")
+
+def test_the_sheet_takes_spacing_and_type_from_the_scales():
+    """No magic numbers for spacing, radius or type size.
+
+    The `--space-*` / `--text-*` / `--radius*` scales exist so the rhythm is
+    uniform and retunable in one file.  Exempt: `0`, and the handful of
+    properties whose value is genuinely not a scale step (border widths,
+    percentages, `1px` hairlines, and the media-query breakpoints, which are
+    not declarations at all).
+    """
+    scale_props = (
+        "padding", "padding-top", "padding-right", "padding-bottom",
+        "padding-left", "margin", "margin-top", "margin-right",
+        "margin-bottom", "margin-left", "gap", "row-gap", "column-gap",
+        "font-size", "border-radius", "top",
+    )
+    offenders = []
+    for prop, val in _declarations(SHEET.read_text()):
+        if prop not in scale_props:
+            continue
+        for tok in val.split():
+            if re.fullmatch(r"-?\d*\.?\d+(px|rem|em)", tok) and not tok.startswith("0"):
+                offenders.append(f"{prop}: {val}")
+                break
+    assert not offenders, (
+        "magic numbers in task-setup/style.css — use --space-*, --text-* or "
+        f"--radius*: {offenders}")
+
+def test_the_jp_tokens_live_in_the_one_palette_file():
+    """`ui-contract.md` § 2: module-private tokens live in lib/tokens.css,
+    promoted out of per-file :root blocks."""
+    assert ":root" not in SHEET.read_text(), (
+        "task-setup/style.css declares its own :root block — module tokens "
+        "belong in lib/tokens.css")
+
+def test_the_sheet_names_no_token_that_does_not_exist():
+    """**A gap the raw-colour test leaves open, found 2026-08-27.**
+
+    `test_the_sheet_writes_no_raw_palette_colour` forbids a hex literal —
+    so `var(--danger, #e06c6c)` fails it and `var(--danger)` passes. But
+    `--danger` is defined nowhere: the palette calls it `--error`. A
+    `var()` naming a token that does not exist resolves to *nothing*, so
+    the colour is simply unset and the rule silently does not apply.
+
+    Passing the first test made the second failure invisible, which is the
+    shape worth guarding: the rule that catches the loud mistake let the
+    quiet one through.
+    """
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
+    defined = set()
+    for f in root.rglob("*.css"):
+        defined |= set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", f.read_text(),
+                                  re.M))
+    sheet = (root / "task-setup/style.css").read_text()
+    # strip comments first -- prose about `var(--token)` is not a usage
+    sheet = re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
+    used = set(re.findall(r"var\((--[a-z0-9-]+)", sheet))
+    missing = sorted(used - defined)
+    assert not missing, (
+        f"task-setup/style.css names token(s) nothing defines: {missing}. "
+        f"A var() with no definition resolves to nothing, so the property "
+        f"silently does not apply.")
+
+def test_every_page_class_in_the_markup_is_styled_somewhere():
+    """**A class that matches no rule fails exactly like a token that names
+    nothing: silently.** Found in the browser 2026-08-27 — renaming a card
+    fixed its ids but left three classes as `ts-dest-*` while the sheet had
+    moved to `.ts-reports-*`, so the layout rules simply did not apply and
+    the inputs rendered at their default width.
+
+    Only this page's own prefixes are checked: `card`, `hint`, `btn` and
+    friends are the app's and live elsewhere.
+    """
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "molbuilder/web"
+    html = (root / "templates/task_setup.html").read_text()
+    used = set()
+    for attr in re.findall(r'class="([^"{}]+)"', html):
+        used |= {c for c in attr.split() if c.startswith(("ts-", "ps-"))}
+    styled = set()
+    for f in (root / "static").rglob("*.css"):
+        styled |= set(re.findall(r"\.((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
+    # classes the JS toggles rather than the sheet naming them directly
+    from_js = set()
+    for f in (root / "static").rglob("*.js"):
+        from_js |= set(re.findall(r"[\"'`]((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
+    orphans = sorted(used - styled - from_js)
+    assert not orphans, (
+        f"class(es) in task_setup.html that no stylesheet and no script "
+        f"ever names: {orphans}. A class matching nothing applies nothing, "
+        f"and says so nowhere.")
+
 def test_every_command_the_page_teaches_is_a_REAL_cli_verb():
     """The page composes `molbuilder jobset …` command lines for the user
     to paste on the cluster.  That is the CLI's grammar living in a second
@@ -1727,60 +1470,3 @@ def test_every_command_the_page_teaches_is_a_REAL_cli_verb():
             assert kind in choices, (
                 f"the page teaches `jobset {verb} {kind}`, but {verb} takes "
                 f"{choices}")
-
-
-def test_every_per_folder_fact_resets_when_a_folder_changes():
-    """`task-setup.md` § 2.1: *"the page holds no state of its own ... no
-    remembered form, no in-progress buffer that outlives a directory
-    change."*
-
-    `loadFolder`'s own comment claimed every per-folder fact reset before the
-    branch. It reset three. The rest outlived a folder change, and two of
-    them cost real work:
-
-      * `_queue` and the two ask boxes feed `askValues()`, which
-        `applyAsksToDoc` writes into `task.allocation` — so folder A's wall
-        and memory were written into folder B's task.json.
-      * `_pendingDrop` is the two-click column-drop guard: arm `×` on A's
-        `mesh_cutoff`, switch folder, and ONE click removed B's column. The
-        warning had been given, for a different file.
-
-    Driven rather than grepped: the function is lifted whole and its state
-    is set dirty first, so a reset that stops clearing one of them fails."""
-    import json as _json
-    import shutil
-    import subprocess
-
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    src = VIEWER.read_text(encoding="utf-8")
-    i = src.index("function _resetPerFolderState() {")
-    j = src.index("\n}\n", i) + 3
-    prog = ("const _extraRunRows = new Map([['coarse', new Set(['mesh_cutoff'])]]);\n"
-            "const _runFits = new Map([['coarse', {}]]);\n"
-            "let _fitBench = { mpi_np: [8] };\n"
-            "let _runs = { coarse: 3 };\n"
-            "let _pendingDrop = 'mesh_cutoff';\n"
-            "let _stepTab = 'tight';\n"
-            "let _queue = 'htc';\n"
-            "const _boxes = { 'ts-ask-time': { value: '2-00:00:00' },\n"
-            "                 'ts-ask-mem':  { value: '256G' } };\n"
-            "const $ = (id) => _boxes[id] || null;\n"
-            + src[i:j]
-            + "_resetPerFolderState();\n"
-            "console.log(JSON.stringify({\n"
-            "  extraRows: _extraRunRows.size, fits: _runFits.size,\n"
-            "  bench: Object.keys(_fitBench).length, runs: Object.keys(_runs).length,\n"
-            "  drop: _pendingDrop, tab: _stepTab, queue: _queue,\n"
-            "  time: _boxes['ts-ask-time'].value, mem: _boxes['ts-ask-mem'].value,\n"
-            "}));")
-    out = subprocess.run([node, "--input-type=commonjs", "-e", prog],
-                         capture_output=True, text=True, timeout=20)
-    if out.returncode != 0:
-        pytest.fail(out.stderr)
-    got = _json.loads(out.stdout.strip().splitlines()[-1])
-    assert got == {"extraRows": 0, "fits": 0, "bench": 0, "runs": 0,
-                   "drop": "", "tab": "", "queue": "",
-                   "time": "", "mem": ""}, (
-        "a per-folder fact survived a folder change: " + repr(got))

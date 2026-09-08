@@ -139,6 +139,14 @@ thing under test:
 The test is *"which question is this asking?"* — a property of the shipped
 artifact, or the presence of one line of implementation.
 
+**What replaces a retired pin is REVIEW, not silence.** The claims those
+tests make are real; what is wrong is asking a grep to check them. The four
+classes of silent failure they were reaching for — a surface that answers a
+question a producer owns, a reference that resolves to nothing, an order
+nothing enforces, state carried between subjects — are written up as review
+guidance in [`process/code-audit.md`](?doc=process/code-audit.md) § 1c, with
+what each one looks like and why it cannot be seen at runtime.
+
 **When you meet an old one, investigate before deleting.** Work out what it
 was trying to establish, then either **redesign** it to observe that through
 behaviour, or **retire** it because the intent has no observable consequence.

@@ -298,34 +298,6 @@ def test_ticking_nothing_writes_an_EMPTY_LIST_not_nothing():
     assert doc["notify"]["channels"] == []
 
 
-def test_the_card_writes_ONE_file_and_has_no_control_for_a_secret():
-    """**The rule that used to be held by a comment.**
-
-    The address and key lived in this card from 2026-08-27 until 2026-08-31,
-    under a template comment reminding whoever edited it that one card wrote
-    two files -- `task.json`, which travels, and `config_dir()/notify`, which
-    must not.  They are on the This-machine tab now, so the rule is held by
-    there being nowhere on this page to type one.
-
-    A comment is not a mechanism.  This is the mechanism.
-    """
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1]
-    html = (root / "molbuilder/web/templates/task_setup.html").read_text()
-    # `assert 'id="ts-notify-card"' in html` and `assert
-    # "/api/notify/channels" in js` stood among these and are gone: both are
-    # true of a card that never unhides and a fetch that never fires.  That
-    # the card appears and paints this machine's channels is driven in
-    # test_task_setup_prep_e2e.py::
-    # test_the_notify_card_offers_this_machines_channels.  What is left here
-    # is the half text is the right instrument for -- ABSENCE, over a whole
-    # class, which no runtime test can prove without walking every path.
-    for gone in ('id="ts-reports-key"', 'id="ts-reports-url"',
-                 'id="ts-reports-save"', 'type="password"'):
-        assert gone not in html, f"{gone} came back to the page that travels"
-    js = (root / "molbuilder/web/static/task-setup/viewer.js").read_text()
-    for gone in ("/api/notify/destination", "saveDestination"):
-        assert gone not in js, f"{gone} still writes a second file from here"
 
 
 def test_a_channels_secret_never_reaches_the_description():
@@ -370,36 +342,8 @@ def test_a_channels_secret_never_reaches_the_description():
             f"not go with it")
 
 
-def test_the_card_says_KEY_not_token():
-    """The secret stopped being a bearer token on 2026-08-27; it signs and
-    never travels. A card still calling it a token teaches the old model."""
-    from pathlib import Path
-    html = (Path(__file__).resolve().parents[1]
-            / "molbuilder/web/templates/task_setup.html").read_text()
-    card = html[html.index("ts-notify-card") - 900:]
-    card = card[:card.index("ts-notify-opts")]
-    assert "token" not in card.lower(), "the card still says token"
 
 
-def test_no_two_elements_share_an_id_in_the_task_setup_page():
-    """**Found in the browser, 2026-08-27, and it fails in silence.**
-
-    A `ts-reports-card` was first written as `ts-dest-card` — a name
-    already taken by the *Where this saves* card, where "dest" means the
-    destination FOLDER. `getElementById` returns the first match, so the
-    new card's JS would have read and written the wrong section entirely,
-    with no error anywhere.
-
-    Duplicate ids are invalid HTML and this is the failure mode: not a
-    crash, but the wrong element quietly answering.
-    """
-    import re
-    from pathlib import Path
-    html = (Path(__file__).resolve().parents[1]
-            / "molbuilder/web/templates/task_setup.html").read_text()
-    ids = re.findall(r'\bid="([^"]+)"', html)
-    dupes = sorted({i for i in ids if ids.count(i) > 1})
-    assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
 
 
 def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
@@ -467,3 +411,24 @@ def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
     assert out["afterSync"] == out["afterPatch"], (
         "serialising the model destroyed what the card had just written -- "
         "`patchDoc` did not move `_task` with the buffer")
+
+
+def test_no_two_elements_share_an_id_in_the_task_setup_page():
+    """**Found in the browser, 2026-08-27, and it fails in silence.**
+
+    A `ts-reports-card` was first written as `ts-dest-card` — a name
+    already taken by the *Where this saves* card, where "dest" means the
+    destination FOLDER. `getElementById` returns the first match, so the
+    new card's JS would have read and written the wrong section entirely,
+    with no error anywhere.
+
+    Duplicate ids are invalid HTML and this is the failure mode: not a
+    crash, but the wrong element quietly answering.
+    """
+    import re
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "molbuilder/web/templates/task_setup.html").read_text()
+    ids = re.findall(r'\bid="([^"]+)"', html)
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
