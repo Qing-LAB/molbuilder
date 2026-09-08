@@ -682,8 +682,34 @@ ship `warm-files.toml`. `job-contracts.md` § 4.2a's heading said
 the instrument is `tools/classify_source_reads.py`. **Run it — do not quote a
 number from here.**)*
 
-**Measured 2026-09-07: 3 to convert, 64 to keep** — and all three are blocked
-behind **T1**, not behind effort. Of 1,220 assertions over
+**Measured 2026-09-08 after the sweep: 0 to convert, 57 to keep** (was 64 to
+keep, 0 to convert, on 2026-09-07 — the "3 to convert" that stood here was a
+mis-read of a run whose overrides had come unanchored; see below).
+
+**The sweep, 2026-09-08.** 59 source pins retired across the task-setup lane
+and the rest of the suite, 7 restored after `testing.md` § 3a was re-read —
+it blesses artifact-property checks by name ("a stylesheet declares no raw hex
+colours, or no duplicate selector"), and the first pass had cut on the surface
+feature *reads a shipped file* rather than on what the assertion ASKS of it.
+Of the 10 assertions that left this population, 7 were in the KEEP bucket by
+the SYNTACTIC pass with no override recorded — which this tool's own preamble
+says is a first pass and not a verdict ("Every site was then READ, and the ones
+the rules got wrong are named in `_OVERRIDES`"). What replaces them is
+[`process/code-audit.md` § 1c](?doc=process/code-audit.md), four classes of
+silent failure rather than 59 spellings.
+
+**AND THE OVERRIDES CAME UNANCHORED, which is the finding worth keeping.**
+`_OVERRIDES` is keyed by `(file, line number)`, and each entry is a reason
+someone wrote after READING that site. Deleting tests moved the lines, so two
+override entries silently stopped matching — one displaced by two lines, one
+orphaned when its test went — and the sites fell back to the syntactic pass.
+The tool then reported "3 to convert" for assertions nobody had reclassified.
+Re-anchored 2026-09-08. **A verdict anchored to a line number is a verdict
+that edits can move without saying so**, and this population is edited by
+definition. Re-keying it — by test function name plus the asserted text, or
+any anchor that survives an edit — is open work, and until it is done, editing
+a file in this population means re-running the tool and checking its overrides
+still point where their reasons say. Of 1,220 assertions over
 a file's text, 1,153 read **generated output** — a deck, a wrapper, an
 `.sbatch`, a log — which is a real property of a real product and correct as
 text. 67 read a file a person wrote, and 64 of those are lints. Three earlier
@@ -822,6 +848,106 @@ green run had hidden all of them.
    (checked on disk), and all three spectrumchart box traps.
 
 
+
+## 5k. The paths framework — COMPOSE has homes, FIND has none
+
+*(Opened 2026-09-08, from the jobset round. Replaces the loose "P2–P5" note.
+Contract when written: [`job-contracts.md` § 2.2a](?doc=execution/job-contracts.md)
+owns the run-file grammar and [`project-layout.md` § 1](?doc=execution/project-layout.md)
+the directory layout; this section is the plan, not a second contract.)*
+
+### 5k.1 The measured problem
+
+Every name molbuilder writes has a door that COMPOSES it. Almost nothing has a
+door that FINDS it. A caller holding a bundle and a question — *is there a
+sweep in here? which attempts exist? which run wrote this?* — has nowhere to
+ask, so it spells a glob, and the layout rule gains another site.
+
+| the rule | composed by | found by |
+|---|---|---|
+| `<NN>_<name>` stage token | `identity.stage_token` ← `prep.token_for` | `Shape.stage_glob` ✅ **the one that asks** |
+| the stage directory | `Shape.stage_dir` | — |
+| the bench container | `materialize.bench_container` | `materialize.sweep_set_paths` (added 2026-09-08, first of its kind) |
+| a trial directory | `materialize.trial_dir` | `jobset/_cli.py` spells `glob("bench-*/**/<run.json>")` |
+| the attempt `run-<n>` | `materialize.resolve_attempt` | `materialize.attempts` ✅ |
+| `-run<N>` on a filename | `runfiles.compose(run=…)` | **`glob(f"{basename}-run*.{suffix}")` in TWO modules** — `materialize` and `summarize`, the same pattern spelled twice |
+| the engine's own outputs | `runfiles.WRITTEN` | `parse/contract.py` spells `glob("*.fdf")`, `glob("*.molwatch.log")` |
+
+The `-run*` row is the cleanest evidence: `runfiles` exists precisely so the
+counter grammar has one home, and the two readers of that grammar bypass it
+because it offers no reader.
+
+### 5k.2 What the jobset round established, and why it belongs here
+
+Four findings from 2026-09-08, each one a caller of the framework-to-be:
+
+1. **A verb must be finished by the verb.** `prep_calculation` placed a TRIAL
+   through `trial_work_dir` (which knows the attempt layer) and a LADDER RUNG
+   through a bare `stage_dir` (which does not), so a rung came out half-prepped
+   and `launch` refused it. Fixed in `c23a743d`. **For the framework:** the
+   attempt is not a side effect of one caller — it is part of the answer to
+   *where does this job's files go*, and the framework must expose that as one
+   question with one answer, not as `stage_dir` plus a step someone remembers.
+
+2. **The contract and the code disagreed about which verb owns the attempt**
+   (`project-layout.md` said "launch adds attempts"; `_launch_dir` refuses
+   without one). Corrected in the same commit. **For the framework:** the
+   layout document and the path doors must be checkable against each other,
+   or a caller implementing the document produces something the code refuses.
+
+3. **The browser is a caller, not an exception.** The bench row composed
+   `bench-<token>/` client-side and was wrong in every layout (`6e20cc4b`,
+   `cdd5ace1`). `viewer.js:2019` still re-implements `identity.stage_token`
+   as `String(n).padStart(2,"0") + "_" + name` to build a `--from` argument;
+   it agrees today and has no reason to keep agreeing. **For the framework:**
+   the browser cannot import Python, so the server must SEND every path the
+   page shows — the framework's web obligation is an endpoint contract, not
+   a JS port.
+
+4. **The finder gap surfaced twice in one function in one day** — `rglob` over
+   the whole tree, then hand-spelled globs — before landing on
+   `sweep_set_paths` beside its namer (`ef079932`).
+
+### 5k.3 The rule the framework adds
+
+> **For every name it composes, it owns the search.** A door that can build
+> `<NN>_<stage>/bench` must answer *where are the bench containers in this
+> bundle* without the caller spelling a pattern.
+
+Two constraints carry over and are not negotiable:
+
+- **L1, stdlib-only.** `runfiles` already is, and that is load-bearing: the
+  monitor ships beside a job (`runwrap.MONITOR_COMPANIONS`) and runs under the
+  JOB's python with no molbuilder installed. A finder that imports `task` or
+  `Shape` cannot go in the same module — which is why `Shape` (L2, it reads
+  `task.SHAPES`) and `runfiles` (L1) are separate today and must stay so.
+- **The layout is DECLARED, never inferred.** `flat` vs `hierarchical` comes
+  from the description; a finder that guesses from what it sees on disk would
+  re-introduce the drift the shapes exist to prevent.
+
+### 5k.4 Migration — each step separately green
+
+| step | what | done when |
+|---|---|---|
+| **M1** | *(done 2026-09-08)* `sweep_set_paths` beside `bench_container` — one finder, to prove the shape | shipped |
+| **M2** | The inventory: every `glob`/`rglob`/`iterdir` in `molbuilder/` that spells a molbuilder name, with the composer it should have asked. The table in § 5k.1 is the start, not the answer — **run the survey, do not quote it** | a tool like `classify_source_reads.py`, re-runnable |
+| **M3** | Give `runfiles` the reader half — `find(dir, label, role=…, run=…)` returning what `compose` would have produced. Kills the twice-spelled `-run*` glob first, since both callers are in-tree and tested | `materialize` and `summarize` both ask; the pattern appears once |
+| **M4** | Give `Shape` the rest of the directory finders, beside `stage_glob` which already works this way | `jobset/_cli.py`'s `bench-*/**` glob is gone |
+| **M5** | The endpoint contract: every path the Task-setup card renders arrives from the server. Removes `viewer.js`'s `stage_token` re-implementation | the browser composes no path; `test_the_plan_door_composes_no_name_of_its_own` extends to cover `--from` |
+| **M6** | `parse/contract.py`'s engine-output globs move behind `runfiles.WRITTEN`, which already declares those roles | one vocabulary for what an engine writes |
+
+**Do M2 before M3.** § 5a's rule applies to this section as much as any other:
+the table above was measured on 2026-09-08 and will be wrong by the time it is
+acted on.
+
+### 5k.5 What must not change
+
+`runfiles` stays stdlib-only; `Shape` stays the only reader of `task.SHAPES`;
+`identity.stage_token` stays the one speller of `<NN>_<name>`; and no finder
+may infer the shape from the disk. A migration step that needs one of these to
+move is a step that has found a design problem, not a step to push through.
+
+---
 
 ## 6. Closed by consolidation — what was archived, and why
 

@@ -112,7 +112,12 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
              "vocabulary (ui-contract.md 5.1), and the sibling line "
              "quantifies over EVERY severity the contract defines, so none "
              "renders bare")
-        for ln in (951, 957)
+        # Re-anchored 2026-09-08: a sweep removed 14 pins from this file
+        # and moved these two down.  The reason below was written about
+        # THESE assertions; keyed by LINE, it silently stopped applying
+        # and they fell back to the syntactic pass, which reads a CSS
+        # assertion as a browser question.  See plan.md 5k.
+        for ln in (741, 747)
     },
     "tests/test_molview_info_js.py": {
         62: (KEEP_LINT,
@@ -121,7 +126,7 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
              "the drift this catches, and only reading the files can see it"),
     },
     "tests/test_form_schema_diff_js.py": {
-        279: (KEEP_LINT,
+        277: (KEEP_LINT,
               "paired with `.rec-diff-list` NOT in the tab sheet: the widget "
               "is generic, so the forms module owns it and no tab may "
               "redefine it (ui-contract.md 1)"),
@@ -182,14 +187,7 @@ _OVERRIDES: dict[str, dict[int, tuple[str, str]]] = {
               "presence line keeps the two absence checks from passing "
               "trivially on a file that stopped rendering findings"),
     },
-    "tests/test_task_setup_tab.py": {
-        1214: (KEEP_LINT,
-               "every class the machine card uses must ALREADY exist in the "
-               "module sheet, and the paired line forbids any `.ts-target-*` "
-               "-- i.e. no bespoke class invented for one card.  A browser "
-               "sees the paint, not which sheet paid for it"),
-    },
-    "tests/test_structure_info_bridge.py": {
+        "tests/test_structure_info_bridge.py": {
         ln: (B_BROWSER,
              "the aliasing runs inside `mountInspector` via "
              "`inspectorLifecycle.alias`, and the resets and the APPLY branch "
