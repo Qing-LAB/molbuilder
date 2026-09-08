@@ -581,7 +581,7 @@ directory's wrapper will carry.
 ```
   01_coarse   run-0/           8 × 6 · htc · 1-00:00:00 · 128G
   02_tight    run-0/          16 × 6 · htc · 2-00:00:00 · 128G
-  bench       bench-<token>/   4,8,16 × 1,2 · general · 0-00:30:00
+  bench       bench_<token>/   4,8,16 × 1,2 · general · 0-00:30:00
 ```
 
 **It is a confirmation, not a second answer.** The names and the numbers come

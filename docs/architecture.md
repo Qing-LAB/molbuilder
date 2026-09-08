@@ -110,8 +110,8 @@ flowchart TB
 
 **The L1 index, grouped by the object each module owns.** All 24 of them —
 this is the list `tests/test_layering.py` enforces, and
-`test_the_documented_L1_index_is_the_enforced_one` fails if the two drift
-apart. *(The diagram above named `pseudos` and `checkpoint` as L1 until
+`tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
+fails if the two drift apart. *(The diagram above named `pseudos` and `checkpoint` as L1 until
 2026-08-24; both are L2. A picture that disagrees with the enforced rule is
 how "which layer does this go in?" becomes a guess.)*
 

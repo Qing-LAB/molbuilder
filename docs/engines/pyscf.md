@@ -99,9 +99,18 @@ by the config flag in column 2):
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization |
 | `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry |
-| `<job>_geom_<stage>_optim.xyz` | `optimize` + `write_trajectory` + `optimizer=="geometric"` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
-| `<job>_geom_<stage>.log` | same | geomeTRIC's own per-stage log |
+| `<job>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` + `optimizer=="geometric"` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
+| `<job>_<stage>_geom.log` | same | geomeTRIC's own per-stage log |
 | `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` + geometric | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
+
+> **The stage token sits immediately after the label, never inside the role**
+> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
+> These two rows read `<job>_geom_<stage>…` until 2026-09-08 — the spelling
+> from before the grammar was written down, and a name molbuilder has never
+> produced. § 2.2a's *"one file, six beliefs"* table counts the copies that
+> were fixed on 2026-09-02 and 09-07; this page was a seventh, missed because
+> it writes the placeholder as `<stage>` rather than the `*` that sweep
+> searched for. Build the name with `runfiles.compose`, never by hand.
 
 The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so

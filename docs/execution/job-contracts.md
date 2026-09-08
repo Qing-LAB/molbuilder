@@ -418,8 +418,9 @@ my-job-run2.out                   this attempt's
 my-job_01_coarse-run2.out         this rung's second attempt
 ```
 
-**The two separators are the grammar.** § 6.3 already said it — *"a hyphen
-announces a counter follows... a stage is not a counter, it is a name"* — so
+**The two separators are the grammar.** § 6.3 already said half of it — *"a
+hyphen announces `a counter follows`"* — and this section supplies the other
+half: a stage is not a counter, it is a name. So
 `_` introduces the stage and a hyphen a counter, and neither can be read as the
 other. That rule is what makes the name reversible; without it `parse` would be
 guessing, which is what the call sites doing their own splitting were.
@@ -479,7 +480,7 @@ is:
 | a filename → **its segments back** | `parse(filename, label, roles=())` — pass your engine's roles when a role of yours begins with `_` |
 | a label and a stage → **the part every role attaches to** (your tail is not a role: a log suffix, a directory) | `stem(label, stage=None)` |
 | a role, but the label only exists at **run time** (you are emitting it *into* a generated script, next to its own `JOB` / `SystemLabel`) | `tail(role, stage=None, run=None, **counters)` |
-| a name → **does it cross rungs?** | `is_carried(name_or_runfile, label="")` |
+| a name → **does it cross rungs?** | `is_carried(name_or_runfile, label="")` — takes a `RunFile` or a filename |
 | a label and a rung → **every file that will appear, with a line each** | `manifest(label, stage, engine, when, calculation)` |
 | **all the files molbuilder writes**, as globs | `patterns()` — and `identity.OUR_FILE_PATTERNS` already *is* this |
 | a new kind of file | add a row to `WRITTEN`; do not spell its suffix at the call |
@@ -504,7 +505,7 @@ QUALIFIERS                                  # the counters a `-` may introduce
 compose(label, role, stage=None, run=None, **counters) -> str
 parse(filename, label, roles=())             -> RunFile | None
 stem(label, stage=None)                     -> str        # what a role attaches to
-tail(role, stage=None, run=None)            -> str        # for a script that
+tail(role, stage=None, run=None, **counters) -> str       # for a script that
                                                           # knows its label only
                                                           # at run time
 is_carried(name_or_runfile, label="")       -> bool
@@ -1171,11 +1172,14 @@ a catalogue that says `1000` and `300.0`.)*
   parser refuse rather than guess.
 - Top-level keys (`n_atoms`, `gpu_mode`, …) are informational.
 - `field <name> …` lines declare the **only** parameters a tool may override.
-  `anchor=<text>` is the literal token a parser greps for at the start of an
-  engine-body line (`^\s*<anchor>\b`) to find the override site — **anchor-based,
-  not line-number-based**, so it survives layout drift above it. For a `.fdf`
-  the anchor is the SIESTA keyword; for a `.py` it would be the Python
-  identifier.
+  `anchor=<text>` names the keyword a value belongs to. It once described a
+  **deck splicer**: a parser would find `^\s*<anchor>\b` in the engine body and
+  rewrite that line in place. *(Retired — a trial is rendered from the
+  description with pins, never spliced; § 6.1 and `engines/template.md` § 8.1.
+  Nothing compiles this into a regex today: `anchor` is written into the
+  BENCH-MARKS block, read back by `_extract_bench_marks_dict` as a string, and
+  compared with `==`. The pattern is kept here only to say what the field
+  meant; do not build a splicer on it.)*
 - `type` ∈ `{int, float, str, pow2, enum}` (`pow2` = power of two; `enum` was
   added for `Diag.Algorithm`). `range=[a,b]` and `unit=…` are advisory bounds
   for validating a requested override.
@@ -1613,7 +1617,9 @@ sweep changed on 2026-08-08 for the reason below.
 > **The exception is anchored on the run's id, and that is load-bearing**
 > *(2026-08-17)*. *"What molbuilder wrote"* is derived from the one enumeration
 > — `identity.OUR_FILE_PATTERNS` — and each pattern's `{label}` becomes **this
-> run's id**, never `*`. Widening it to a star protects every file of that
+> run's label**, never `*`. (It read *"id"* until 2026-09-08. The id is
+> `<label>_<formula>` and § 2.0a keeps it out of filenames entirely, so
+> substituting it here would build a glob that matches nothing on disk.) Widening it to a star protects every file of that
 > *shape*, which is a different and much larger set: `{label}.xyz` read as
 > `*.xyz` claimed PySCF's `<JOB>_optimized.xyz`, so `--cold` walked past warm
 > state in the operation whose entire purpose is leaving nothing behind.

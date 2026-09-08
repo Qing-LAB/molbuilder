@@ -148,16 +148,19 @@ Two rules keep this from hiding anything:
 > and geomeTRIC's two per-stage trajectories. The generator was right; the menu
 > was reading it at the wrong granularity.
 >
-> Note the naming: a staged run's master is `<label>-stage<N>.molwatch.log`
-> while its satellites are plain `<label>_*`, so matching a master to its
-> satellites means stripping the `-stage<N>` overlay suffix first
-> (`execution/job-contracts.md § 2.3`).
+> Note the naming: a staged run's master is `<label>_<stage>.molwatch.log`
+> while its carried satellites are plain `<label>_*`, so matching a master to
+> its satellites means stripping the stage token first
+> (`execution/job-contracts.md § 2.2a`).
 
-> **⚠ This module is the consumer of that name, and it is changing.** The
-> trajectory log will be named for **the deck that produced it** —
-> `<label>_<stage>.molwatch.log`, the same name whether stages share a directory
-> or each has its own — instead of carrying a `-stage<N>` infix
-> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.3).
+> **✅ That rename landed on 2026-08-10 and this section was not updated
+> until 2026-09-08.** The trajectory log is named for **the deck that produced
+> it** — `<label>_<stage>.molwatch.log`, the same name whether stages share a
+> directory or each has its own — and the `-stage<N>` infix is gone
+> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
+> The consumer has already moved with it: `lib/inspectors/trajectory.js`'s
+> `absorbs()` matches the current grammar. Read the rest of this note as
+> history, not as a change to plan for.
 > **What that costs here:** the run decoder's stage regex keys on the hyphen
 > form, so it changes with the rename, and anything that groups a staged run's
 > logs by parsing `N` out of the filename must instead read the stage from the
