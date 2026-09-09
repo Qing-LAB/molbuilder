@@ -32,13 +32,18 @@ from molbuilder.siesta.makov_payne import (
 
 class TestComputeCorrection:
     def test_q_plus_one_vacuum_L15(self):
-        """At q=+1, ε=1, L=15 Å the leading-term correction is
-        ~1.36 eV.  This pins the formula constant in eV rather than
-        Hartree."""
+        """The correction is ~1.36 eV for q=+1 in a 15 A vacuum box.
+
+        This is the number the pre-run warning quotes to a person
+        (`validation/siesta.py`, printed to two decimals), so what matters is
+        the SCALE: a correction well above chemical accuracy, which is the
+        warning's whole point. The formula is fixed algebra over three
+        constants, so a tighter pin here buys nothing -- it was
+        `1.35 < dE < 1.40` with a comment restating the arithmetic, and both
+        the window and the comment said the same thing twice.
+        """
         dE = compute_correction(q=1, L_angstrom=15.0, epsilon_r=1.0)
-        # α/(2 L_bohr) in Hartree = 2.8373 / (2 * 28.345) ≈ 0.05005
-        # Times HARTREE_EV = 27.211 → ≈ 1.362 eV.
-        assert 1.35 < dE < 1.40
+        assert 1.3 < dE < 1.4
 
     def test_q_squared_dependence(self):
         """ΔE scales as q²."""
@@ -139,16 +144,29 @@ class TestScriptGeneration:
             out = result.stdout
             assert "E_total (raw, eV)" in out
             assert "E_total (corrected, eV)" in out
-            # Spot-check the numeric correction: V = 15³ → L = 15.
-            # ΔE = 2.8373 / (2 × 15 / 0.529) × 27.211 → ≈ +1.362 eV.
-            # The correction is ADDED (Makov-Payne Eq. 15: the raw
-            # charged-periodic energy is spuriously too low):
-            # E_corrected = -123.4567 + 1.362 → ≈ -122.09.
-            lines = [ln for ln in out.splitlines()
-                     if "E_total (corrected" in ln]
-            assert lines, "expected an E_total (corrected) line"
-            corrected = float(lines[0].split("=")[-1].strip())
-            assert -122.5 < corrected < -121.5
+
+            def _val(tag):
+                ln = [l for l in out.splitlines() if tag in l]
+                assert ln, f"expected a {tag!r} line in:\n{out}"
+                return float(ln[0].split("=")[-1].strip())
+
+            raw       = _val("E_total (raw")
+            correction = _val("DeltaE_MP")
+            corrected = _val("E_total (corrected")
+
+            # THE DIRECTION, which is the defect that shipped.  Until 2026-07
+            # the correction was SUBTRACTED, moving the energy the wrong way by
+            # 2*dE -- worse than not correcting at all.  Makov & Payne Eq. 15:
+            # the charged periodic cell sits against a compensating background
+            # whose Madelung self-energy is negative, so the raw energy is
+            # spuriously too LOW and the correction must RAISE it.
+            assert correction > 0, f"the correction is not positive: {correction}"
+            assert corrected > raw, (
+                f"the correction LOWERED the energy ({raw} -> {corrected}); "
+                f"Makov-Payne raises it (Eq. 15, sign fixed 2026-07)")
+            assert corrected == pytest.approx(raw + correction, abs=1e-6), (
+                f"the script's own three numbers do not add up: "
+                f"{raw} + {correction} != {corrected}")
 
     def test_script_handles_missing_out(self):
         s = render_correction_script(system_label="job", q=1)
