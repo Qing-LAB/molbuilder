@@ -45,17 +45,19 @@ to look; the sections are where the argument is.
 |---|---|---|---|
 | **#64** | two task-setup routes drop `cfg`, so findings carry no `workflow_group` and the page cannot place them on a card | **FIXED 2026-09-09** — `validation.task.config_class_for` gives the engine→config lookup one owner, both sites pass it, and the guard file now covers them | § 2.1 |
 | **#65** | the XSS allowlist matches files by SUFFIX, so a bare `viewer.js` entry exempts five files; two of its three patterns are dead and the live one lands in a viewer the comment never names | **FIXED 2026-09-09** — exact-path matching, and a lint over the table that then found **nine MORE dead entries** | § 2.2 |
-| **#66** | four tests owed a REDESIGN, not a deletion — still in the tree, still weak — plus the untested BROKEN env-state gate in `run_install` | weak guards | § 3 |
+| **#66** | four tests owed a REDESIGN, not a deletion — still in the tree, still weak — plus the untested BROKEN env-state gate in `run_install` | **GAP CLOSED 2026-09-09** (the BROKEN gate now has a test, 4 mutants killed); **the four redesigns remain** — `TS6` | § 3 |
 | **#67** | `POST /api/selection/eval` answers **HTML 500 with a stack trace** where its contract says JSON 400, for three malformed-rule shapes | **FIXED 2026-09-09** — `_LEAF_KINDS` declares what each leaf must be, refused at the untrusted boundary | § 6.1 |
 | **#68** | the topic refusal says *"canonical six"* for a set of **nine** — and `test_web_files.py:1077` asserts the stale wording, so the test protects the drift | **FIXED 2026-09-09** — the message carries no count at all, and the test asserts the vocabulary | § 6.1 |
-| **#69** | `files._validate_op_target` is a guard that **cannot fire**, while its docstring claims a protection that never runs | dead guard | § 6.1 |
-| **#70** | six file routes have **no outside-root test at all** — three of them mutations — and `/upload`'s is #74 | coverage | § 6.1 |
+| **#69** | `files._validate_op_target` is a guard that **cannot fire**, while its docstring claims a protection that never runs — **and it was worse than recorded: a THIRD copy of a rule that already lives inline in `rename` (`files.py:1781`) and `delete` (`:2359`), so the "centralisation" it claimed never happened and the only consolidated copy was the dead one** | **FIXED 2026-09-09** — deleted; the wholesale directory refusal is strictly stronger. **Residual: the depth-2 topic rule is still written twice, live** — merging them is a design change, `TS5`'s tail | § 6.1 |
+| **#70** | six file routes have **no outside-root test at all** — three of them mutations — and `/upload`'s is #74 | **FIXED 2026-09-09** — one artifact lint over the whole class of path-taking routes; the fence removed from each of the six in turn, six kills | § 6.1 |
 | **#71** | `web-api.md § 1` says the fence answers **403**; the fence answers **400**, and one test hedges `in (400, 403)`, which is how it stayed invisible | **FIXED 2026-09-09 in the DOCUMENT** — the code was right and consistent across eight routes; the roots are an addressable-space boundary, not a permission model | § 6.1 |
-| **#72** | `TestTheDownloadButtonSaysWhatItIsDoing` carries a user-dated contract and **zero tests** | § 3a.1 misinformation | § 6.1 |
+| **#72** | `TestTheDownloadButtonSaysWhatItIsDoing` carries a user-dated contract and **zero tests** | **FIXED 2026-09-09** — retired. § 3a.1's *write the e2e first* applies when the class is the only thing holding the rule; it was not (two documents, the JS source, and `TestDownloadZip` below it) | § 6.1 |
 | **#73** | a dead local at `test_periodicity_gate.py:775` marking a dropped assertion | **FIXED 2026-09-09** | § 6.1 |
 | **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **FIXED 2026-09-09** — a genuinely outside path, and the echoed path is excluded from the evidence | § 6.2 |
 | **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **FIXED 2026-09-09** — asserts `along a`, and that no axis that fits is named | § 6.2 |
-| **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **science coverage** | `science/test-design-findings.md` § 7a |
+| **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **FIXED 2026-09-09** — a non-coplanar fixture and the SIGNED triple product; an inversion and two reflections all killed | `science/test-design-findings.md` § 7a |
+| **#79** | **717 test functions never execute.** 43 files use the `tests/_node_esm.py` harness; `node` is not on PATH, not in the `molbuilder` env, and not declared as a dependency anywhere — so they `pytest.skip`. Measured 2026-09-09: **67 passed, 717 skipped** across those files | **open, and it gates `TS6`** | § 6.5 |
+| **#78** | the sidecar↔selection path was covered as two halves that never met — labels written, and labels re-selected, with nothing joining them | **FIXED 2026-09-09** — one end-to-end test through the real doors, with REPEATED elements so identity cannot ride on the element; an off-by-one on read, bleeding labels and empty labels all killed | `science/test-design-findings.md` § 7a |
 | **#77** | **nine MORE dead XSS exemptions**, found the moment the allowlist got a lint — patterns gone from the files they name, each a standing permission for whatever is written at that name next | **FIXED 2026-09-09** | § 6.1 |
 
 **Sequenced, judged and tracked in `plans/plan.md` § 5m** (rows `TS1`–`TS9`). This file is the
@@ -572,6 +574,42 @@ per test rather than per file. **Every one of its 63 tests SKIPS** on this
 machine (`node` not available), so those verdicts rest on reading.
 
 ---
+### 6.5 The tier that does not run — `#79`
+
+**Measured 2026-09-09, running the 43 files that use the node harness:
+`67 passed, 717 skipped`.**
+
+`tests/_node_esm.py:43` calls `pytest.skip("node not available")`, and `node` is
+not on PATH, not in the `molbuilder` env, and is not declared as a test
+dependency in `envs/recipes.py` or anywhere else. So **717 test functions —
+about 11% of the suite — never execute on this machine, and nothing in the repo
+says where they are expected to.**
+
+**This is the `test_pyscf_smoke.py` finding at scale.**
+`science/test-design-findings.md` § 1 already states the principle for one file:
+*"a science gate that never executes is not a gate."* The same sentence applies
+to a tier of 717.
+
+**Three consequences, and the third is the one that bites:**
+
+1. **Coverage figures that include them are overstated.** The header pass took
+   the suite from 67.3% to 74.6% *documented*, and some of what it documented
+   has never run.
+2. **Every audit verdict about those files rests on READING.** The 2026-09-09
+   pass said so honestly for `test_projects_public_surface_js.py` — all 63 of
+   its tests skip — but that caveat applies to all 43.
+3. **It blocks a redesign.** `#66`'s first item is a § 3a source pin
+   (`test_checkpoint_js_has_no_polling_timer` greps `checkpoint.js` for
+   `"setInterval"`). The correct replacement drives the module through this
+   harness and observes what it schedules — which on a machine without node
+   swaps *a weak test that runs* for *a correct test that skips*. That is a
+   decision about the environment, not about the test, and it is recorded here
+   rather than taken quietly.
+
+**What this file does NOT decide**: whether node belongs in the env, in CI, or
+in a documented developer prerequisite. That is an environment change and needs
+the user.
+
 
 ## 7. What is deliberately NOT in this file
 

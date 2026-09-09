@@ -213,7 +213,7 @@ Recorded under the same rule as everything above: **none is a proposal to
 delete.** Companion record for the non-science half:
 [`process/test-audit-findings.md § 6`](?doc=process/test-audit-findings.md).
 
-### The one that was measured, and it is the sharpest in this file
+### The one that was measured, and it is the sharpest in this file — **FIXED 2026-09-09**
 
 **`test_modify.py::test_orient_handles_antiparallel_case` — an INVERSION passes.**
 The antiparallel branch of `_rotation_matrix_from_a_to_b` (`modify.py:267`) is
@@ -229,8 +229,27 @@ rotation, `det = +1`) with `-np.eye(3)` (an inversion, `det = −1`) was run on
 **An inversion flips the chirality of any real molecule.** The shipped code is
 correct; nothing in the suite would notice if it stopped being. The cause is the
 fixture: a **two-atom** structure, in which a reflection and a rotation are
-indistinguishable. *Redesign:* assert `det(R) == 1` directly, or add a third
-off-axis atom and compare the signed triple product across the operation.
+indistinguishable.
+
+> **CLOSED 2026-09-09.** The fixture is now four atoms, deliberately
+> **non-coplanar** — three would still span a plane, and a reflection through
+> that plane is undetectable. The test asserts the **signed** triple product is
+> unchanged, which is the only quantity that separates a rotation from an
+> improper transform: distances, angles and the pair's final direction are all
+> invariant under both. An inversion, a reflection through xy, and a reflection
+> in the axis plane are each killed.
+
+**And the second half of that gap is closed too.** `science/test-design-findings.md`
+recorded that *nothing joins the sidecar to the selection evaluator* — `ByRegion`
+lived only in the selection tests, `apply_to_structure` in eight other files, and
+neither met. `tests/test_atom_identity_end_to_end.py` now walks the whole path
+through the real doors: labels → `metadata_to_dict` → `save` → `load` →
+`apply_to_structure` → `evaluate(ByRegion(...))`, asserting on **element and
+position, never on the index** — an index that round-trips while pointing at a
+different atom is the entire failure. The fixture carries **repeated elements**,
+which the audit had flagged as missing, so an index shift lands on a different
+carbon and stays chemically plausible. An off-by-one on read, bleeding labels
+and empty labels are each killed.
 
 ### Assertions weaker than they read
 

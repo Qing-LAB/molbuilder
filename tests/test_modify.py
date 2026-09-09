@@ -689,32 +689,68 @@ def test_orient_angle_zero_matches_default(linear_dimer):
 
 
 def test_orient_handles_antiparallel_case():
-    """SCIENCE. The 180-degree case: a pair already pointing along -z is flipped to
-    +z rather than producing a degenerate rotation.
+    """SCIENCE. The 180-degree case is a PROPER rotation -- it flips the pair to
+    +z without inverting the molecule's handedness.
 
-    Catches the singularity in the axis-angle construction. The rotation axis is
-    built from `cross(v, target)`, which is the ZERO VECTOR when the two are
-    antiparallel -- so the formula divides by zero, or normalises a zero vector
-    into NaNs, and every coordinate in the structure becomes NaN. The
-    implementation needs a special case, and this is the only test that enters it.
+    THE FAILURE THIS CATCHES.  `cross(v, target)` is the ZERO VECTOR when the
+    two are antiparallel, so the general axis-angle formula divides by zero or
+    normalises a zero vector into NaNs.  The implementation needs a special
+    case, and a special case is exactly where an IMPROPER transform slips in: a
+    reflection or an inversion also maps -z to +z, also leaves every distance
+    unchanged, and is not a rotation.  `-I` would pass a distances-only test and
+    turn every molecule into its mirror image -- a different compound, silently.
 
-    Contract: `web/tabs.md` § 2.
+    WHY THE SIGNED TRIPLE PRODUCT.  A rotation has det = +1 and an improper
+    transform det = -1, and the observable difference is CHIRALITY: the signed
+    volume of any tetrahedron the atoms form. Distances, angles and the pair's
+    final direction are all invariant under both, so none of them can tell the
+    two apart. This is the only quantity that can.
 
-    DESIGN NOTE: the fixture has TWO atoms, so a REFLECTION through the xy-plane
-    satisfies every assertion here exactly as a rotation does. A degenerate-case
-    fallback that returned an improper transform (det = -1) would pass and would
-    invert the chirality of any real molecule. Asserting det(R) == +1, or using a
-    third off-axis atom, is what would make it fail for the right reason.
+    Contract: `web/tabs.md` § 2. MEASURED 2026-09-09 (#76): the previous fixture
+    had TWO atoms, in which a reflection and a rotation are indistinguishable --
+    replacing the branch with `-np.eye(3)` left this test, all 101 in this file,
+    and all 320 in every file touching `orient` green, `validation/test_geometry.py`
+    included.
     """
+    # FOUR atoms, deliberately NOT coplanar: three of them would still span a
+    # plane, and a reflection through that plane is undetectable.  A tetrahedron
+    # has a handedness; that is the whole point of the fixture.
     s = Structure(
-        elements=["C", "C"],
-        positions=np.array([[0, 0, 0], [0, 0, -2.5]]),
+        elements=["C", "C", "N", "O"],
+        positions=np.array([[0.0, 0.0,  0.0],
+                            [0.0, 0.0, -2.5],     # the anchor pair, along -z
+                            [1.3, 0.0, -0.8],
+                            [0.0, 1.1, -1.7]]),
         title="flip",
     )
+
+    def _chirality(p):
+        """The signed volume of the tetrahedron, from atom 0."""
+        return float(np.dot(np.cross(p[1] - p[0], p[2] - p[0]), p[3] - p[0]))
+
+    before = _chirality(s.positions)
+    assert abs(before) > 1e-6, "the fixture is coplanar and cannot see a mirror"
+
     out = orient_along_axis(s, (0, 1), axis="z", center="first")
+
+    # 1. the original claim: the pair ends along +z.
     a1 = out.positions[1]
     assert np.isclose(a1[2], 2.5)
     assert abs(a1[0]) < 1e-10 and abs(a1[1]) < 1e-10
+
+    # 2. the claim that makes it a ROTATION: handedness survives, sign and all.
+    after = _chirality(out.positions)
+    assert np.isclose(after, before, rtol=1e-9, atol=1e-9), (
+        f"the transform is not a proper rotation: the signed volume went "
+        f"{before:+.6f} -> {after:+.6f}. A sign flip is a mirror image -- a "
+        f"different compound.")
+
+    # 3. and it is rigid: every pair distance is unchanged.
+    for i in range(4):
+        for j in range(i + 1, 4):
+            d0 = np.linalg.norm(s.positions[i] - s.positions[j])
+            d1 = np.linalg.norm(out.positions[i] - out.positions[j])
+            assert np.isclose(d0, d1), f"distance {i}-{j} moved: {d0} -> {d1}"
 
 
 def test_orient_rejects_coincident_anchors():

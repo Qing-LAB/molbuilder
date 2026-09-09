@@ -270,15 +270,48 @@ def test_gap_6_pyscf_emits_post_processing_hook(h2):
 
 
 def test_gap_7_installation_documents_siesta_version():
-    """The installation guide names the SIESTA release used by the recipe."""
-    from pathlib import Path
+    """The installation guide names the SIESTA release the RECIPES pin — read
+    from `recipes.py`, not retyped here.
 
-    repo_root = Path(__file__).parent.parent
-    installation = (repo_root / "docs" / "ops" / "installation.md").read_text().lower()
-    assert "siesta" in installation
-    assert re.search(r"siesta.*5\.4\.2", installation) or re.search(
-        r"5\.4\.2.*siesta", installation
-    ), "The installation guide must name the recipe SIESTA 5.4.2 release."
+    THE FAILURE THIS CATCHES.  A person following the guide builds a different
+    SIESTA from the one molbuilder was measured against.  `.fdf` input format
+    and TranSiesta output format are version-sensitive, and `recipes.py` pins a
+    version deliberately so the source build and the packaged env stay
+    identical -- "a paper-citable, reproducible default", in its own words.
+
+    REDESIGNED 2026-09-09 (#66).  It grepped the doc for a HARD-CODED `5.4.2`,
+    which means it was measuring TWO constants and could not see them drift
+    apart: the exact drift it exists for -- the recipe moves to 5.5 and the doc
+    does not -- left it GREEN, because the doc still said 5.4.2 and that was all
+    it read.  A test that retypes the value it is checking is not checking it.
+
+    Contract: `ops/installation.md`, and `envs/recipes.py` as the pin's one
+    home.  The version is taken from the packaged conda spec rather than from
+    `_SIESTA_REF`, because that one honours `MOLBUILDER_SIESTA_TAG` and would
+    make this test fail on a developer machine that has legitimately overridden
+    it -- the packaged pin is a literal and is what the guide describes.
+    """
+    from pathlib import Path
+    from molbuilder.envs.recipes import BUILTIN_RECIPES
+
+    pinned = set()
+    for rec in BUILTIN_RECIPES:
+        for spec in (getattr(rec, "conda_packages", ()) or ()):
+            m = re.match(r"siesta=([0-9][0-9.]*)=", spec)
+            if m:
+                pinned.add(m.group(1))
+    assert pinned, (
+        "no recipe pins a `siesta=<version>=` conda spec any more -- repoint "
+        "this test at wherever the pin moved, do not delete it")
+
+    guide = (Path(__file__).parent.parent / "docs" / "ops" / "installation.md"
+             ).read_text(encoding="utf-8")
+    assert "siesta" in guide.lower()
+    missing = sorted(v for v in pinned if v not in guide)
+    assert not missing, (
+        f"`envs/recipes.py` pins SIESTA {missing} and `ops/installation.md` "
+        f"never names it, so the guide builds a different SIESTA from the one "
+        f"molbuilder was measured against. Pinned: {sorted(pinned)}")
 
 
 # --------------------------------------------------------------------- #

@@ -191,6 +191,69 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     )
 
 
+def test_run_install_blocks_when_env_state_is_broken(monkeypatch, tmp_path):
+    """An env directory with no `conda-meta/` BLOCKS the install and says
+    `--clean`, instead of letting `conda create` fail cryptically.
+
+    THE FAILURE THIS CATCHES.  `probe_env_state` returns BROKEN for a directory
+    that exists without `conda-meta/` (`install.py:401`) -- a half-finished or
+    interrupted install.  `run_install` must stop there (`:650`,
+    `state.needs_cleanup`): if it proceeds, `conda create` refuses with "prefix
+    already exists" and the person is left staring at a conda error with no idea
+    that `--clean` is the answer.  Worse, nothing downstream runs, so a
+    `succeeded is True` here would report a working env that is not one.
+
+    WHY THIS TEST EXISTS AT ALL.  A test of this NAME was deleted on 2026-09-08
+    because its own body comment admitted the mismatch -- *"the fake_run above
+    returns no real dir, so probe_env_state sees FRESH ... this test as written
+    confirms that the FRESH path still works"*.  It had promised a gate the
+    suite did not have, which is worse than an absent test: the audit that read
+    it counted the gate as covered.  This is the gate, actually exercised.
+
+    Contract: `ops/environments.md` -- the state machine and `--clean`;
+    recorded as a coverage gap by the 2026-09-08 audit
+    (`process/test-audit-findings.md` § 3.5).
+
+    BROKEN needs all three of: registered, directory present, no `conda-meta/`.
+    The sibling above serves the same fixture WITH `conda-meta` and gets
+    PRESENT, so the two differ by exactly the signal under test.
+    """
+    recipe = _ALL_PHASES_RECIPE
+    fake_env = tmp_path / recipe.name
+    fake_env.mkdir(parents=True)          # ... and deliberately NO conda-meta/
+
+    _bind(conda_envs=(recipe.name,))
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv) if not isinstance(argv, str) else [argv]
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{fake_env}"]}}')
+        if argv_list[1:2] == ["info"]:
+            return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
+        return _stub(0, stdout="")
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
+
+    calls = []
+    def fake_stream(*a, **kw):
+        calls.append(a)
+        return (0, "Version 1.40")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
+
+    result = install.run_install(recipe)
+
+    assert result.succeeded is False, (
+        "a BROKEN env reported a successful install; the person is told they "
+        "have a working environment that has no conda-meta/")
+    create = next(s for s in result.steps if s.label == "conda create")
+    assert create.returncode is None, (
+        f"the blocked step must not claim an exit code: {create.returncode!r}")
+    assert "BROKEN" in create.output and "--clean" in create.output, (
+        f"the refusal does not tell the person what to do: {create.output!r}")
+    # NOTHING may run past the gate -- pip, extra steps and verify would all
+    # execute against an env that does not exist.
+    assert calls == [], f"work ran past the BROKEN gate: {len(calls)} call(s)"
+
+
 def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
     """Regression test for the 2026-06-15 ``--clean → install`` bug.
 

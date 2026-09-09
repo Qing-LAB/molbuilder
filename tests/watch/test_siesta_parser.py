@@ -238,13 +238,53 @@ def test_source_format_tag(siesta_path):
     assert result["source_format"] == "siesta"
 
 
-def test_scf_history_default_empty(tmp_path):
-    """A SIESTA log with no scf: lines (header noise only) should
-    yield scf_history=[]."""
-    p = tmp_path / "noisy.out"
-    p.write_text("Welcome to SIESTA\nredata: blah\n")
-    result = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
-    assert result["scf_history"] == []
+def test_scf_history_collapses_to_empty_when_a_frame_carries_no_scf(tmp_path):
+    """A run with GEOMETRY but no `scf:` lines reports `scf_history == []`,
+    not `[[]]`.
+
+    THE FAILURE THIS CATCHES.  `_helpers.py:240` collapses the per-frame SCF
+    lists to `[]` only when EVERY frame's `scf_history` is None -- the
+    parser-says-no-SCF-data signal -- because a frame with `scf_history=[]` is
+    intentional (a molwatch preview block carries an empty SCF section) and must
+    survive as `[]`. Lose that branch and a geometry-only run reports `[[]]`,
+    which every reader counts as "one SCF cycle happened".
+
+    REDESIGNED 2026-09-09 (#66).  The previous fixture was two header lines with
+    no `outcoor`, so there were NO FRAMES, `result.frames` was falsy, and the
+    branch this test names was never entered -- `out_scf` was already `[]`
+    before any SCF logic ran. It asserted the right answer for the wrong reason
+    and could not fail. One frame is what makes the branch reachable, and this
+    is now its only coverage.
+
+    Contract: `model/parse.md` (the frozen `ParseResult` hierarchy);
+    `process/test-audit-findings.md` § 3.4 records the defect.
+
+    WHAT THIS STILL DOES NOT COVER, measured 2026-09-09: the `all(...)` is not
+    distinguished from `any(...)` here, because one frame makes the two agree.
+    The case that separates them is a MIXED run -- one frame with
+    `scf_history=None` beside one with `[]`, which is the molwatch preview block
+    the branch comment names -- and `SiestaParser` cannot produce it from a
+    single `.out`. Mutating `all` to `any` leaves this green. Recorded rather
+    than hidden: closing it means a helper-level test over a hand-built
+    `ParseResult`, which is `TS7`'s kind of work, not this redesign's.
+    """
+    p = tmp_path / "geometry_only.out"
+    p.write_text(
+        "Welcome to SIESTA -- v4.1\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.00000000    2.00000000    3.00000000   1       1  C\n"
+        "\n"
+        "siesta: E_KS(eV) =          -50.0000\n",
+        encoding="utf-8")
+    parsed = SiestaParser.parse(str(p))
+    assert parsed.frames, (
+        "the fixture produced no frames, so the collapse branch is not "
+        "reachable and this test would pass for the wrong reason again")
+    assert all(f.scf_history is None for f in parsed.frames), (
+        "the fixture carries SCF data; the branch under test needs a frame "
+        "whose scf_history is None")
+    assert trajectory_to_legacy_dict(parsed)["scf_history"] == []
 
 
 def test_scf_history_collects_per_cycle(siesta_path):

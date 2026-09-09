@@ -235,14 +235,66 @@ def test_refuse_on_error_carries_every_error_not_just_the_first():
 # --------------------------------------------------------------------- #
 
 def test_the_codec_still_does_not_import_an_engine():
-    """L1.  If ``task.py`` ever reaches for a config class, this half stops
-    having a reason to exist and ``tests/test_layering.py`` stops protecting
-    anything."""
+    """`task.py` imports no engine config — checked as IMPORTS, not as text.
+
+    THE FAILURE THIS CATCHES.  `preflight` takes `config_cls` as a parameter
+    precisely because the codec cannot reach for one: `task.py` is the L1 codec
+    for `task.json` and must describe a job for ANY engine. The moment it
+    imports `molbuilder.config`, this half of the preflight stops having a
+    reason to exist and the engine-agnosticism is gone.
+
+    WHY NOT `test_layering.py`.  It does not cover this and cannot: its
+    `_L1_MODULES` holds BOTH `config` and `task`, so `task` -> `config` is an
+    L1 -> L1 import and legal there. This is a module-specific prohibition, not
+    a layer rule, and it lives beside the parameter it justifies.
+
+    REDESIGNED 2026-09-09 (#66).  It read `task.py` as TEXT and looked for four
+    literal spellings, so it was wrong in both directions: it fired on a COMMENT
+    that merely mentioned `SiestaConfig`, and it missed
+    `from molbuilder.config import siesta`, which is the import that would
+    actually break the rule. `testing.md` § 3a — assert on the end product, and
+    here the product is the import graph.
+
+    Contract: `engines/stages.md` § 6 (the codec is engine-agnostic);
+    `process/test-audit-findings.md` § 3.3.
+    """
+    import ast
     import molbuilder.task as t
-    src = open(t.__file__).read()
-    for banned in ("config.siesta", "config.pyscf", "SiestaConfig",
-                   "PySCFConfig"):
-        assert banned not in src, banned
+
+    tree = ast.parse(open(t.__file__, encoding="utf-8").read())
+    reached = set()
+
+    def _sub(prefix, name):
+        """Record `<prefix>.<name>` and every package on the way to it."""
+        full = f"{prefix}.{name}" if prefix else name
+        parts = full.split(".")
+        for i in range(1, len(parts) + 1):
+            reached.add(".".join(parts[:i]))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):                 # import molbuilder.config
+            for a in node.names:
+                _sub("", a.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:                               # from .config import siesta
+                _sub("molbuilder", node.module or "")
+                for a in node.names:
+                    _sub("molbuilder", f"{node.module}.{a.name}"
+                         if node.module else a.name)
+            else:                                        # from molbuilder.config import siesta
+                _sub("", node.module or "")
+                for a in node.names:
+                    _sub(node.module or "", a.name)
+
+    # Only molbuilder's own packages are the subject; stdlib and third party
+    # are not a layering question.
+    reached = {m for m in reached if m.startswith("molbuilder")}
+
+    offenders = sorted(m for m in reached if m.startswith("molbuilder.config"))
+    assert not offenders, (
+        f"`task.py` reaches an engine config: {offenders}. The codec must "
+        f"describe a job for ANY engine, which is why `preflight` takes "
+        f"`config_cls` as a parameter. All molbuilder imports: {sorted(reached)}")
 
 
 def test_pyscf_gets_the_same_treatment_as_siesta():

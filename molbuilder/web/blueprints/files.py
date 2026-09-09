@@ -59,8 +59,8 @@ from flask import Blueprint, jsonify, request
 
 from molbuilder import diagnostics
 from molbuilder.projects import (
-    CANONICAL_TOPICS, InvalidName, OutsideRoot, ProjectExists,
-    contain, populate_project_skeleton, projects_root,
+    CANONICAL_TOPICS, InvalidName, OutsideRoot,
+    contain, populate_project_skeleton,
     validate_name, validate_topic,
 )
 
@@ -1007,7 +1007,10 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
 
     Raises :class:`molbuilder.projects.InvalidName` on rejection.
     """
-    roots = _allowed_roots()
+    # (`roots = _allowed_roots()` stood here until 2026-09-09 and was never
+    #  read: `_root_containing` does the walk.  Residue of the refactor that
+    #  gave the roots one accessor -- not a dropped check, the containment is
+    #  the `hit is None` arm below.)
     hit = _root_containing(parent_abs)
     root = hit[0] if hit is not None else None
     if root is None:
@@ -1900,41 +1903,30 @@ def api_files_rename():
 # shell.
 
 
-def _validate_op_target(
-    resolved: Path, op: str,
-) -> Optional["Tuple[dict, int]"]:
-    """Shared validation for rename / move / copy / delete on the
-    SOURCE path: depth-0 + canonical-topic protection.  Returns
-    ``None`` on OK; otherwise ``(error_envelope, http_status)``.
-
-    Centralises the "would orphan a canonical project layout" check
-    so move / copy stay in lockstep with rename + delete.
-    """
-    rel_parts = _rel_parts_inside_root(resolved)
-    if rel_parts is None:
-        return ({
-            "ok":    False,
-            "error": f"path {str(resolved)!r} not inside any picker root",
-        }, 400)
-    depth = len(rel_parts)
-    if depth == 0:
-        return ({
-            "ok":    False,
-            "error": f"refusing to {op} the picker root itself",
-        }, 400)
-    if (depth == 2
-            and resolved.is_dir()
-            and rel_parts[1] in CANONICAL_TOPICS):
-        return ({
-            "ok":    False,
-            "error": (
-                f"refusing to {op} canonical-topic directory "
-                f"{rel_parts[1]!r} via the UI (would orphan the "
-                f"project layout).  Use your shell if you really "
-                f"need to."
-            ),
-        }, 400)
-    return None
+# `_validate_op_target` was DELETED 2026-09-09 (#69).  It claimed to
+# "centralise the 'would orphan a canonical project layout' check so move /
+# copy stay in lockstep with rename + delete", and it did none of that:
+#
+#   * it had ONE caller, `api_files_move`, and every one of its three arms
+#     needs a DIRECTORY -- the picker root itself (depth 0), a canonical topic
+#     directory (depth 2 + `is_dir()`), or a path outside every root.  `move`
+#     returns 400 for `src.is_dir()` BEFORE reaching it, and `src` came from
+#     `_resolve_within_roots`, so it is inside a root by construction.  No arm
+#     could ever fire.
+#   * `copy` never called it at all.
+#   * and the rule it "centralised" is still written twice, live and inline,
+#     in `api_files_rename` and `api_files_delete`.  The only consolidated copy
+#     was the dead one.
+#
+# What actually protects move/copy is the wholesale directory refusal above,
+# which is STRICTLY STRONGER than a topic check.  A docstring claiming a
+# protection that does not run is worse than no protection: an audit read this
+# one and counted the guard as covered.
+#
+# STILL OPEN, recorded rather than fixed here: the depth-2 canonical-topic rule
+# lives in two live inline copies (`rename`, `delete`).  Merging them is a
+# design change, not the removal of dead code, so it is `TS5`'s tail and not
+# this commit.
 
 
 def _resolve_dst_dir(raw_dest: str, op: str) -> Tuple[Optional[Path], Optional["Tuple[dict, int]"]]:
@@ -2059,10 +2051,6 @@ def api_files_move():
             ),
         }), 400
 
-    err = _validate_op_target(src, "move")
-    if err is not None:
-        body_, status = err
-        return jsonify(body_), status
 
     dst_dir, derr = _resolve_dst_dir(raw_dest_dir, "move")
     if derr is not None:

@@ -3094,16 +3094,19 @@ class TestRootsContract:
             read_config(cfg_file)
 
 
-class TestTheDownloadButtonSaysWhatItIsDoing:
-    """The sidebar's Download control (user, 2026-08-29): the message
-    lives INSIDE the button while the server compresses, and the button
-    is unclickable until the browser's save has started -- which is
-    only knowable because the build has its own door."""
-
-    @staticmethod
-    def _src(web):
-        return web.get(
-            "/static/lib/projects/mutation-bar.js").get_data(as_text=True)
+# RETIRED 2026-09-09 -- `TestTheDownloadButtonSaysWhatItIsDoing` held a
+# user-dated contract (2026-08-29: the message lives INSIDE the button while the
+# server compresses, and the button is unclickable until the save has started)
+# and ZERO tests: only a `_src()` helper reading `mutation-bar.js` that nothing
+# called, residue of the eleven source pins removed from this file.
+#
+# `testing.md` § 3a.1's rule is "write the e2e, THEN retire" -- and it applies
+# when the class is the only thing holding the rule.  It was not.  The contract
+# is stated in `web/projects.md` (the two-phase button) and `web/web-api.md`
+# (why the route is split), the JS carries it at `mutation-bar.js:95`, and the
+# SERVER half it exists for is tested by `TestDownloadZip` directly below.  What
+# was left was `§ 3a.1`'s load-bearing misinformation: a reader saw coverage
+# that was not there, and an auditor counted it.  #72.
 
 
 class TestDownloadZip:
@@ -3323,3 +3326,70 @@ class TestDownloadZip:
                 "the archived copy shadowed the live file")
         assert not any(".binsnapshots" in n for n in names), (
             "the snapshot history rode along after all")
+
+
+# ── #70: the fence, over the whole class of routes that take a path ─────────
+
+def _fence_probe(web, kind, outside, inside):
+    """Issue one request per route with `outside` where a path is expected."""
+    if kind == "stat":
+        return web.get(f"/api/files/stat?path={outside}")
+    if kind == "read":
+        return web.get(f"/api/files/read?path={outside}")
+    if kind == "read_range":
+        return web.get(f"/api/files/read_range?path={outside}&offset=0&max_bytes=8")
+    if kind == "rename":
+        return web.post("/api/files/rename",
+                        json={"path": str(outside), "new_name": "x.txt"})
+    if kind == "move":
+        return web.post("/api/files/move",
+                        json={"path": str(outside), "dest_dir": str(inside)})
+    if kind == "move_dest":
+        return web.post("/api/files/move",
+                        json={"path": str(inside / "water.xyz"),
+                              "dest_dir": str(outside)})
+    if kind == "copy":
+        return web.post("/api/files/copy",
+                        json={"path": str(outside), "dest_dir": str(inside)})
+    if kind == "copy_dest":
+        return web.post("/api/files/copy",
+                        json={"path": str(inside / "water.xyz"),
+                              "dest_dir": str(outside)})
+    raise AssertionError(f"no probe for {kind!r}")
+
+
+@pytest.mark.parametrize("kind", [
+    "stat", "read", "read_range",
+    "rename", "move", "move_dest", "copy", "copy_dest",
+])
+def test_every_path_route_is_fenced(web, picker_root, kind):
+    """Every route that takes a path from the browser refuses one outside the
+    picker roots — and this asks ALL of them, not the four that had a test.
+
+    THE FAILURE THIS CATCHES.  `web-api.md` § 2.1: the fence at the route is the
+    only thing standing between a path in a JSON body and the filesystem. A
+    route that forgets `_resolve_within_roots` reads or MUTATES anywhere the
+    server user can reach, and nothing else in the system would notice.
+
+    WHY A LINT AND NOT EIGHT TESTS.  This is `testing.md` § 3b's artifact-lint
+    category: a property over every member of a class, which replaces the manual
+    sweep. A new path-taking route joins the list here rather than shipping
+    unfenced and waiting for someone to write its test — which is precisely what
+    happened to the six below.
+
+    MEASURED (#70, 2026-09-09): genuine outside-root tests existed for `list`,
+    `mkdir`, `write`, `delete` and `zip_prepare`. There were NONE for `stat`,
+    `read`, `read_range`, `rename`, `move` or `copy`, and `upload`'s could not
+    fail (#74). Three of those six are mutations. Both the source AND the
+    destination are probed for `move`/`copy`: a fence on one is not a fence.
+    """
+    # Above the root for `test_delete_outside_root_rejected`'s reason: anything
+    # under it resolves INSIDE, which is how #74 came to pass on its own name.
+    outside = picker_root.parent.parent / "molbuilder_test_outside" / "loot.txt"
+    r = _fence_probe(web, kind, outside, picker_root)
+    assert r.status_code == 400, (
+        f"/api/files/{kind} did not refuse a path outside the roots "
+        f"(status {r.status_code}) -- `web-api.md` § 2.1")
+    body = r.get_json()
+    assert body is not None and body.get("ok") is False, (
+        f"the refusal is not the JSON envelope: {r.get_data(as_text=True)[:120]}")
