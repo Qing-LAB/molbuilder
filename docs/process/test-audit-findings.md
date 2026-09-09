@@ -269,7 +269,51 @@ covers and requires **both** tests to go red.
 | undecidable by design | 1 |
 | addressing error of mine | 1 |
 
-**One wrong in five decided.** The wrong one was
+**A SECOND BATCH ON 2026-09-09 MADE THE NUMBER WORSE.** Eight of the § 5
+verdicts were put through the harness: four are undecidable by REACH (see below),
+one inconclusive, **two came back NOT-SUBSUMED** and two CONFIRMED.
+
+| campaign | decided | wrong |
+|---|---|---|
+| 2026-09-08/09, seven pairs | 5 | 1 |
+| 2026-09-09 `TS7`, eight pairs | 4 | 2 |
+| **running total** | **9** | **3** |
+
+> **One wrong in THREE decided, not one in five.** Every unapplied verdict in
+> § 5 is a lead, and the two proved false today are both cuts that would have
+> been applied on the auditor's reasoning alone.
+
+Both new false verdicts have the same shape: **the candidate drives a ROUTE that
+reaches an arm of the fence the named coverer's input never reaches** —
+`files.py:173` (the missing-`path` refusal) and `:192` (the `..` refusal). A
+door-level test exercises the arm; it does not exercise the route reaching it.
+
+**Two limits of the instrument, both hit today and both now in its docstring:**
+
+- **A verdict is against the NAMED coverer, never against the whole suite.**
+  `test_a_traversal_is_refused_by_its_own_name` was first run against the door
+  test, came back NOT-SUBSUMED, and was re-run against the SECOND coverer the
+  auditor named — NOT-SUBSUMED again. But the two coverers *between them* reach
+  both arms. Name every coverer the claim rests on, or the verdict is about the
+  pair list.
+- **`NO-COVERAGE` can be the instrument's reach, not the test's.** `sys.settrace`
+  does not follow a subprocess, so the four `test_admin_reload` pairs — which
+  probe forked behaviour through `_serve_probe` — report zero molbuilder lines
+  however much code they drive. That is *ask a different way*, never a finding.
+
+**And the harness itself was broken when it was committed.** It loaded its
+coverage plug-in as `-p covplug` — a module written into the scratch directory of
+the session that first ran it and **never committed** — while the plug-in that is
+in the repository is `tools/_pertest_coverage.py`. So the tool could not
+reproduce its own published result, and failed **silently**: `covered_lines`
+returned an empty set and every pair came back `NO-COVERAGE`, which reads like a
+finding rather than a broken instrument. It also required `CLAUDE_JOB_DIR` and so
+ran only in the session that wrote it. Both fixed 2026-09-09; a missing plug-in
+now raises with the pytest output attached. **This is the fault this tool exists
+to catch, in the tool, while it was being cited as the authority for the number
+above.**
+
+**One wrong in five** was the earlier figure. The wrong one was
 `test_parse_is_deterministic` (restored in `09c05c51`): it compares the whole
 legacy dict for **one file parsed twice**, reaching the wall-clock→elapsed
 derivation at `parse/engines/_helpers.py:303`. The test claimed to cover it
@@ -320,7 +364,7 @@ a later batch would be void, and none is.
 - `test_admin_reload.py::test_serve_supervises_by_default` (L319) — identical
   probe call to `test_the_parent_forks_before_importing_the_application` (L330),
   which asserts `forked` on its first line.
-- `test_ask_parsers_agree_across_surfaces.py::test_nothing_that_should_be_refused_became_acceptable`
+- **CONFIRMED 2026-09-09** (both died, 2/2 informative mutants) — `test_ask_parsers_agree_across_surfaces.py::test_nothing_that_should_be_refused_became_acceptable`
   (L240) — same three refusal classes on the same two functions as
   `test_ask.py::test_an_answer_that_is_not_a_number_is_refused_with_the_shape`,
   which additionally checks the message. One of the two was cut, not both.
@@ -338,7 +382,7 @@ a later batch would be void, and none is.
   `sys.modules` at fork time, which L330 asserts directly on the real `serve`
   path. *Lost:* a top-level **flask** import in `cli.py`, which L330's own probe
   cannot see because it imports flask itself.
-- `test_ask.py::test_the_request_is_shown_even_when_it_is_accepted_unasked`
+- **INCONCLUSIVE 2026-09-09** — no mutant killed the candidate, so the harness has NO OPINION; the cut stays unapplied. — `test_ask.py::test_the_request_is_shown_even_when_it_is_accepted_unasked`
   (L90) — `confirm` echoes the text unconditionally at `jobset/ask.py:339` and
   only then appends `"  (--yes)"`, so a sibling asserting `said[1]` already
   requires `said[0]` to be the request. *Lost:* the request text being mangled
@@ -350,18 +394,25 @@ a later batch would be void, and none is.
   before any notification has been shown; the same `hidden` toggle is driven by
   list length in both cases, and this is an e2e second saved on every run.
 
+
+> **The four `test_admin_reload` verdicts above are UNDECIDABLE BY REACH, not
+> confirmed.** Measured 2026-09-09: all four report `NO-COVERAGE` because they
+> probe forked behaviour through `_serve_probe`, and `sys.settrace` does not
+> follow a subprocess. They stay unapplied, and settling them needs a different
+> method — not another argument.
+
 ### Thin wrappers over a tested door
 
-- `test_api_bench_summary.py::test_a_traversal_is_refused_by_its_own_name` (L82)
+- **NOT-SUBSUMED 2026-09-09 — DO NOT CUT.** Against the door test the coverer survived a mutant at `bench.py:53`; against the auditor's *second* named coverer it survived 2/5 at `files.py:192-193`, the `..` arm of the fence, which that coverer's input never reaches. — `test_api_bench_summary.py::test_a_traversal_is_refused_by_its_own_name` (L82)
   — door is `web/blueprints/files.py:163::_resolve_within_roots`; `bench.py:55-57`
   returns the door's own `exc.message`/`exc.status` unchanged. Door test:
   `test_web_files.py::TestPathTraversalDefense::test_dot_dot_in_raw_path_rejected`.
   *Lost:* nothing — `test_a_readable_sweep_outside_the_roots_is_still_refused`
   still proves this route reaches the fence at all.
-- `test_api_bench_summary.py::test_a_missing_path_argument_is_refused` (L88) —
+- **NOT-SUBSUMED 2026-09-09 — DO NOT CUT.** The coverer survived a mutant at `files.py:173`, the missing-`path` refusal: it passes a path that exists, so it never reaches that arm. — `test_api_bench_summary.py::test_a_missing_path_argument_is_refused` (L88) —
   same door; the route has no missing-arg branch (`request.args.get("path","")`
   straight in, `files.py:173` raises).
-- `test_ask.py::test_the_listing_and_the_submission_cannot_disagree` (L143) —
+- **CONFIRMED 2026-09-09** (both died, 1/1) — `test_ask.py::test_the_listing_and_the_submission_cannot_disagree` (L143) —
   door is `scheduler/admit.py::admits`; `ask._why_not` (`ask.py:250-261`) is one
   `return list(admits(row, Request(...)))` and the test retypes that same
   `Request` on the right-hand side. *Lost:* someone reimplementing `_why_not`

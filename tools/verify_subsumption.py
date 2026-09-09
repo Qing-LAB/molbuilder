@@ -14,6 +14,19 @@ which INPUTS reach which code, and it was measured wrong 1 time in 5:
     ??    INCONCLUSIVE  test_root_landing_path_follows_TABS   no mutant killed it
     ??    INCONCLUSIVE  test_carbon_is_twelve_times_hydrogen  no mutant killed it
 
+A second batch on 2026-09-09 made the number WORSE, not better:
+
+    KEEP  NOT-SUBSUMED  test_a_traversal_is_refused_by_...    coverer survived 2/5
+    KEEP  NOT-SUBSUMED  test_a_missing_path_argument_is_...   coverer survived 1/4
+    ok    CONFIRMED     test_the_listing_and_the_submissi...  both died, 1/1
+    ok    CONFIRMED     test_nothing_that_should_be_refus...  both died, 2/2
+    ??    INCONCLUSIVE  test_the_request_is_shown_even_...    no mutant killed it
+
+**Running total: 3 wrong in 9 DECIDED -- one in three, not one in five.** Both
+new false verdicts are the same shape: the candidate drives a route that reaches
+an arm of the fence (`files.py:173`, the missing-path refusal; `:192`, the `..`
+refusal) which the named coverer's input never reaches.
+
 The false one is instructive.  `test_parse_is_deterministic` compares the whole
 legacy dict for ONE file parsed twice, so it reaches the wall-clock-to-elapsed
 derivation at `parse/engines/_helpers.py:303`.  Its supposed coverer compares two
@@ -52,24 +65,79 @@ WHAT IT CANNOT DO, and each of these was hit in the first run:
     bare name matches nothing and reports NO-COVERAGE, which looks like a finding
     and is not.
   * It is **slow**: a tree copy plus two pytest runs per mutant.
+  * **A verdict is against the NAMED coverer, never against the whole suite.**
+    "Is C subsumed by X" is the question; "is C subsumed by anything" is not.
+    Measured 2026-09-09: `test_a_traversal_is_refused_by_its_own_name` came back
+    NOT-SUBSUMED against the door test, was re-run against the SECOND coverer the
+    auditor named, and came back NOT-SUBSUMED again -- but the two coverers
+    between them do reach both arms of the fence. Name every coverer the claim
+    rests on, or the verdict is about your pair list.
+
+  * **NO-COVERAGE can be the instrument's reach, not the test's.** `sys.settrace`
+    does not follow a subprocess, so a test that probes forked behaviour
+    (`test_admin_reload.py`'s `_serve_probe` family) reports zero molbuilder
+    lines however much code it drives. Four of eight pairs landed here on
+    2026-09-09. Treat NO-COVERAGE as "ask a different way", never as a finding.
+
   * A CONFIRMED verdict is evidence, not proof: the operator set is finite.
 """
 
 import ast, json, os, subprocess, sys, pathlib, shutil, tempfile
 
-TMP = os.environ["CLAUDE_JOB_DIR"] + "/tmp"
+# Scratch for the coverage plug-in and the mutated copies.  It honoured only
+# `CLAUDE_JOB_DIR` until 2026-09-09 and raised `KeyError` without it -- so the
+# tool ran in exactly the session that wrote it and nowhere else, which is the
+# opposite of what a verification tool is for.  `--tmp` first, then the
+# environment, then a temp directory it makes itself.
+def _scratch() -> str:
+    for i, a in enumerate(sys.argv):
+        if a == "--tmp" and i + 1 < len(sys.argv):
+            d = sys.argv[i + 1]
+            sys.argv[i:i + 2] = []
+            return d
+    for var in ("SUBSUMPTION_TMP", "CLAUDE_JOB_DIR"):
+        if os.environ.get(var):
+            return os.environ[var].rstrip("/") + "/tmp"
+    return tempfile.mkdtemp(prefix="verify_subsumption.")
+
+
+TMP = _scratch()
+os.makedirs(TMP, exist_ok=True)
 PY  = sys.executable
+
+
+#: The per-test coverage plug-in, IN THIS REPOSITORY.  It was loaded as
+#: `-p covplug` until 2026-09-09 -- a module written into the scratch directory
+#: of the session that first ran this tool and never committed -- so the tool
+#: shipped unable to reproduce its own published result, and did so SILENTLY:
+#: `covered_lines` returned an empty set and every pair came back NO-COVERAGE,
+#: which reads like a finding rather than a broken instrument.  That is the
+#: exact fault this tool exists to catch, in the tool itself.
+_COV_PLUGIN = "_pertest_coverage"
+_TOOLS_DIR = str(pathlib.Path(__file__).resolve().parent)
 
 
 def covered_lines(nodeid):
     out = f"{TMP}/cov_one.json"
     if os.path.exists(out):
         os.unlink(out)
-    env = dict(os.environ, PYTHONPATH=TMP, MB_COV_OUT=out)
-    subprocess.run([PY, "-m", "pytest", "-q", "-p", "no:randomly", "-p", "covplug",
-                    nodeid], env=env, capture_output=True, timeout=900)
+    env = dict(os.environ,
+               PYTHONPATH=os.pathsep.join([TMP, _TOOLS_DIR,
+                                           os.environ.get("PYTHONPATH", "")]),
+               MB_COV_OUT=out)
+    r = subprocess.run([PY, "-m", "pytest", "-q", "-p", "no:randomly",
+                        "-p", _COV_PLUGIN, nodeid],
+                       env=env, capture_output=True, timeout=900, text=True)
     if not os.path.exists(out):
-        return set()
+        # LOUD.  An empty coverage set is indistinguishable from "this test
+        # touches no molbuilder code", and reporting the second when the first
+        # happened is how a broken instrument reads as a verdict.
+        raise SystemExit(
+            f"the coverage plug-in produced no output for {nodeid}.\n"
+            f"  plug-in: {_COV_PLUGIN} (from {_TOOLS_DIR})\n"
+            f"  pytest exit {r.returncode}\n"
+            f"  --- stdout ---\n{(r.stdout or '')[-1500:]}\n"
+            f"  --- stderr ---\n{(r.stderr or '')[-800:]}")
     d = json.load(open(out))
     hits = set()
     for k, v in d.items():          # a parametrized id expands to several
@@ -125,7 +193,7 @@ class _Mut(ast.NodeTransformer):
 def mutants_for(rel, lines, root):
     src = (root / rel).read_text()
     try:
-        base = ast.parse(src)
+        ast.parse(src)          # a syntax guard only; each mutant re-parses
     except SyntaxError:
         return
     for ln in sorted(lines):
