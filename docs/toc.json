@@ -79,6 +79,9 @@
         },
         {
           "path": "science/junction-cell.md"
+        },
+        {
+          "path": "science/test-design-findings.md"
         }
       ]
     },
@@ -282,6 +285,9 @@
         },
         {
           "path": "process/screenshots.md"
+        },
+        {
+          "path": "process/test-audit-findings.md"
         }
       ]
     },

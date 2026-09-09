@@ -1,9 +1,12 @@
 # Scientific-validation tests — design findings, 2026-09-08
 
 **Role:** record — a review queue, not a contract
+**Domain:** science
 **Companions:** [`process/testing.md § 3b`](?doc=process/testing.md) — the rule these were
 gathered under; [`science/validation.md`](?doc=science/validation.md) — what the gates
-are for.
+are for; [`process/test-audit-findings.md`](?doc=process/test-audit-findings.md) — the
+same audit's NON-science half (two real code defects, four tests owed a redesign,
+and the unapplied subsumption verdicts).
 
 ## Why this file exists
 
