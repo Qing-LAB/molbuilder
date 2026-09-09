@@ -508,3 +508,19 @@ class TestFindingARoleWithNoLabel:
 
     def test_a_directory_that_is_not_there_is_empty(self, tmp_path):
         assert find_by_role(tmp_path / "nope", ".fdf") == []
+
+
+def test_find_returns_files_and_not_directories(tmp_path):
+    """`find`'s first line says *our FILES*, and it iterated everything.
+
+    Found by reading the module end to end rather than by a failure: the two
+    halves of one door disagreed, since `find_by_role` had always checked.
+    Unreachable in today's layouts — a stage directory carries no label prefix
+    — which is exactly why nothing caught it, and why the claim was worth
+    making true rather than narrowing.
+    """
+    (tmp_path / "JOB-run0.out").write_text("")
+    (tmp_path / "JOB-run1.out").mkdir()          # a directory that parses
+    got = [p.name for p, _ in find(tmp_path, "JOB")]
+    assert got == ["JOB-run0.out"], got
+    assert latest_run(tmp_path, "JOB") == 0, "a directory is not an attempt"

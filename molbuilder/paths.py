@@ -17,14 +17,17 @@ by floor 2 and read by this module alone.  Moving that constant here inverts
 one line and drops the whole naming-and-layout surface to a floor a shipped
 job can reach.)*
 
-**Contract:** [`execution/project-layout.md`](?doc=execution/project-layout.md)
-§ 1 (the two shapes, and the table this object is a transcription of) ·
-[`engines/stages.md`](?doc=engines/stages.md) § 6.7 (*required, never
-inferred*; *"`prep` **reads** it; it does not decide it"*) ·
-[`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (the
-names, in both shapes).
+Also [`engines/stages.md`](?doc=engines/stages.md) § 6.7 (*required, never
+inferred*; *"`prep` **reads** it; it does not decide it"*) and
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 (the names, in
+both shapes).
 
-WHY THIS IS AN OBJECT AND NOT AN ``if shape ==`` IN FOUR MODULES.  The two
+WHAT IS HERE.  `Shape` — the two layouts and the questions a layout answers —
+and the ATTEMPT, `run-<n>`, with its composer, its reader and its finder.  The
+run-file GRAMMAR is next door in `runfiles`; this is the tree those names sit
+in.
+
+WHY SHAPE IS AN OBJECT AND NOT AN ``if shape ==`` IN FOUR MODULES.  The two
 layouts do not differ by one branch — they differ in **what a stage is told
 apart BY**:
 
@@ -121,8 +124,6 @@ class Shape:
         return self.name
 
 
-__all__ = ["Shape"]
-
 
 # ══ THE ATTEMPT ════════════════════════════════════════════════════════════
 #
@@ -186,3 +187,12 @@ def attempts_in(container) -> "list[int]":
     except OSError:
         return []
     return sorted(n for n in found if n is not None)
+
+
+__all__ = [
+    # the layout
+    "SHAPES", "Shape",
+    # the attempt -- composer, reader, finder (§ 4.5's pairing)
+    "ATTEMPT_PREFIX", "attempt_name", "attempt_dir",
+    "attempt_index", "attempts_in",
+]

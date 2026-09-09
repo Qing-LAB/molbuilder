@@ -377,7 +377,17 @@ def find(directory, label: str, *,
     """
     d = Path(directory)
     try:
-        entries = sorted(d.iterdir())
+        # FILES, which is what the first line of this docstring says and what
+        # every caller wants.  It iterated everything and checked nothing, so
+        # a DIRECTORY whose name happened to parse would have come back as a
+        # run file -- unreachable in today's layouts (a stage directory
+        # carries no label prefix) and still a claim the function was not
+        # keeping.  `find_by_role` below has always checked; the two halves
+        # of one door disagreed.
+        #
+        # Not sorted here: the sort at the end orders by run index and
+        # replaces any order this produced.
+        entries = [e for e in d.iterdir() if e.is_file()]
     except OSError:
         return []
     out: "list[tuple[Path, RunFile]]" = []
