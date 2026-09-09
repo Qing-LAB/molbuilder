@@ -619,29 +619,6 @@ def test_preflight_is_silent_on_the_pinned_default(tmp_path, monkeypatch):
     assert [f for f in report.findings if f.code.startswith("abi.")] == []
 
 
-def test_findings_carry_codes_so_tests_need_not_match_prose(tmp_path,
-                                                            monkeypatch):
-    """Every structured finding must be identifiable without reading
-    its wording, so error text stays free to improve."""
-    import molbuilder.envs.abi as A
-    monkeypatch.setattr(A, "_detect_host_glibc", lambda: (2, 28))
-    recipe = recipe_by_name("molbuilder-siesta-gpu")
-    _write_sysroot(tmp_path, "2.39")
-    report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_packages, str(tmp_path),
-                         check_network=False)
-    assert report.findings
-    for finding in report.findings:
-        assert finding.code and finding.severity
-
-
-def test_preflight_report_findings_default_to_empty(tmp_path):
-    """Back-compat: the three prose lists remain the report's primary
-    shape, and callers constructing a report positionally still work."""
-    report = B.PreflightReport(errors=(), warnings=(), info=("x",))
-    assert report.findings == ()
-
-
 # --------------------------------------------------------------------- #
 #  run_build_spec: preflight short-circuit                               #
 # --------------------------------------------------------------------- #

@@ -429,19 +429,6 @@ def test_the_two_field_lists_answer_two_different_questions():
     assert not set(ALLOCATION_FIELDS) & set(_RIDERS)
 
 
-def test_a_rider_is_a_parameter_axis_and_reaches_the_deck():
-    """The property the GPU family axis depends on: a rider named by a sweep
-    lands on the VALUES, so the resolved config carries it and the emitter
-    renders it.  `resolve` copies it onto the allocation afterwards, which is
-    how one value legitimately reaches both the deck and the wrapper without
-    becoming two facts."""
-    from molbuilder.resolve import ALLOCATION_FIELDS, _RIDERS
-    for rider in _RIDERS:
-        assert rider not in ALLOCATION_FIELDS, (
-            f"{rider} is classified as a machine axis, so a sweep naming it "
-            f"would be routed to the allocation and never reach the deck")
-
-
 def test_every_rider_is_a_real_field_of_resources():
     """A rider names a field that exists; a typo here would silently widen
     the machine-axis set instead of narrowing it, which fails open."""

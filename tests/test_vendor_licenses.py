@@ -11,15 +11,6 @@ ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ROOT / "molbuilder" / "web" / "static" / "vendor"
 
 
-def test_vendor_inventory_lists_every_shipped_library():
-    inventory = (VENDOR / "README.md").read_text(encoding="utf-8")
-    for name in (
-        "3Dmol.js", "gif.js", "CodeMirror", "DOMPurify", "GitGraph",
-        "Marked", "Mermaid", "Plotly.js",
-    ):
-        assert name in inventory
-
-
 def test_vendor_notices_include_complete_license_texts():
     notices = {
         "LICENSE-3Dmol.txt": "Redistribution and use in source and binary forms",

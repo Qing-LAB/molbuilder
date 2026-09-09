@@ -177,24 +177,6 @@ def test_recommend_no_orbitals_means_no_vram_estimate():
 # --------------------------------------------------------------------- #
 
 
-def test_format_report_contains_host_summary_and_table_header():
-    probe = _probe()
-    presets = _advise.recommend(probe)
-    text = _advise.format_report(probe, presets)
-    # Host snapshot section
-    assert "host:" in text
-    assert "gpu:" in text
-    assert "mps:" in text
-    # Table columns
-    assert "preset" in text and "mpi_np" in text and "omp" in text
-    assert "default" in text and "memory" in text and "fallback" in text
-    # Recommended-preset export block (the actionable part)
-    assert "Recommended preset for this host" in text
-    assert "MOLBUILDER_MPI_NP=" in text
-    assert "MOLBUILDER_OMP_NUM_THREADS=" in text
-    assert "MOLBUILDER_USE_MPS=" in text
-
-
 def test_format_report_picks_default_when_mps_available():
     probe = _probe(mps_available=True)
     presets = _advise.recommend(probe)

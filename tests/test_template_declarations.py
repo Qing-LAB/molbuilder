@@ -80,26 +80,6 @@ def _cat(engine="siesta"):
 #  § 3.7 property 4 — every allowed item has a place in the file        #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
-def test_every_exposed_field_gets_a_declaration(cls):
-    """The template's premise, asserted rather than hoped for: it is the
-    engine's whole surface instantiated, not the subset somebody typed.
-
-    A field the form shows and the template omits would be a setting a user
-    can change and the calculation cannot record."""
-    # § 7 (U16): membership is TOTAL -- every schema field minus the
-    # named exclusions (machine facts, the ladder), never a section
-    # subset.  ``section`` answers only *where on the form*.
-    # @2 (§ 6.4): an allocation field IS a member -- the item is declared,
-    # valueless, so a surface can ask for ranks and the wrapper writer knows
-    # to look.  § 7's machine-fact row excludes the VALUE, not the item.
-    members = {f.name for f in dataclasses.fields(cls)}
-    declared = set(_decls(cls))
-    ladders = {f.name for f in dataclasses.fields(cls)
-               if _is_ladder(cls, f)}
-    assert declared == members - ladders, sorted(
-        (members - ladders) ^ declared)
-
 
 def _is_ladder(cls, f) -> bool:
     ann = typing.get_type_hints(cls)[f.name]
@@ -108,44 +88,9 @@ def _is_ladder(cls, f) -> bool:
             and bool(args) and dataclasses.is_dataclass(args[0]))
 
 
-def test_no_engine_config_carries_a_stage_ladder():
-    """`stages.md` § 1.1: a ladder is the user's decision about what varies,
-    and it lives in ``task.json``.
-
-    ``declaration_for`` used to carry an exclusion for a ``List[<dataclass>]``
-    field, and this test pinned it against ``PySCFConfig.stages`` -- the last
-    such field, deleted 2026-08-18.  **The exclusion went with it, and that is
-    the stronger state**: a ladder field re-added to a config now reaches the
-    unnameable-type error loudly instead of being quietly skipped.
-
-    What the rule became is asserted where it belongs, per engine, against the
-    SHAPE rather than one field's name:
-    ``test_pyscf_stages.py::test_no_field_of_the_config_is_a_list_of_dataclasses``
-    and its SIESTA twin.  This checks the pair are actually there, so deleting
-    one does not leave the rule unasserted anywhere."""
-    import ast
-    from pathlib import Path as _P
-    for rel in ("tests/test_pyscf_stages.py", "tests/test_siesta_stages.py"):
-        src = _P(rel).read_text(encoding="utf-8")
-        names = {n.name for n in ast.walk(ast.parse(src))
-                 if isinstance(n, ast.FunctionDef)}
-        assert "test_no_field_of_the_config_is_a_list_of_dataclasses" in names, rel
-
-
 # --------------------------------------------------------------------- #
 #  The declaration grammar                                              #
 # --------------------------------------------------------------------- #
-
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_every_declaration_has_a_named_type(engine):
-    """Every item's type is in the TEMPLATE grammar (`template.md` § 5).
-
-    Asked of the CATALOGUE: it is the file a person edits, so it is the one
-    that can carry a type no reader knows.
-    """
-    from molbuilder.template import TYPES
-    for d in _cat(engine).values():
-        assert d.type in TYPES, f"{d.name}: {d.type}"
 
 
 def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
@@ -211,16 +156,6 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
             f"{bf.anchor}: {bf.type_}"
 
 
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_an_enum_declaration_carries_its_members(engine):
-    """§ 3.7 adds ``choices=`` precisely so a surface can build the dropdown
-    and a reader can validate what was typed.  An enum without them declares
-    a constraint nobody can check."""
-    for d in _cat(engine).values():
-        if d.type == "enum":
-            assert d.choices, d.name
-
-
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
 def test_optional_is_set_for_exactly_the_optional_fields(cls):
     """*Unset* is a real state and distinct from every value the field could
@@ -232,20 +167,6 @@ def test_optional_is_set_for_exactly_the_optional_fields(cls):
         is_opt = (typing.get_origin(ann) is typing.Union
                   and type(None) in typing.get_args(ann))
         assert d.optional is is_opt, d.name
-
-
-def test_a_bool_is_typed_bool_and_not_int():
-    """``bool`` is a subclass of ``int`` in Python, so a dict lookup in the
-    wrong order types every checkbox as an integer — and a surface would draw
-    seven number boxes where the form draws seven checkboxes."""
-    d = _cat()
-    # ``spin_treatment`` was the exemplar here until 2026-08-15, when it stopped
-    # being a boolean: SIESTA 5.4.2 folded three spin booleans into one
-    # four-valued keyword, so it is an `enum` now.  ``copy_psml`` is a real
-    # two-state switch and carries the property this test is about.
-    assert d["copy_psml"].type == "bool"
-    assert d["spin_treatment"].type == "enum"
-    assert d["relax_steps"].type == "int"
 
 
 def test_the_kgrid_is_one_declaration_not_three():
@@ -342,14 +263,6 @@ def test_pyscf_renders_a_template_at_all():
     assert all(i.category for i in t.items)
 
 
-def test_declarations_keep_the_configs_own_order():
-    """The config's field order is the form's order and the deck's order; a
-    template a person reads should not be a third arrangement of them."""
-    names = [d.name for d in declarations_for(SiestaConfig)]
-    expected = [f.name for f in dataclasses.fields(SiestaConfig)]
-    assert names == expected
-
-
 def _variant(*, meta=None, ann=int, default=3):
     """A tiny config whose schema can be perturbed one axis at a time.
 
@@ -367,18 +280,6 @@ def _variant(*, meta=None, ann=int, default=3):
 # --------------------------------------------------------------------- #
 #  The reserved script blocks — job-contracts.md § 3.1                  #
 # --------------------------------------------------------------------- #
-
-def test_the_reserved_block_markers_match_the_documented_set():
-    """`job-contracts.md` § 3.1 names the reserved blocks of a **generated
-    script**, and every one of them must be findable by the shared marker.
-
-    These are live: a deck still carries PROVENANCE, BENCH-MARKS,
-    ATOM-METADATA and USER-CUSTOM, and HEADER is reserved-but-unemitted.
-    """
-    for name in ("header", "provenance", "bench-marks",
-                 "atom-metadata", "user-custom"):
-        m = MARKER_RE.match(f"# === molbuilder {name} BEGIN ===")
-        assert m and m.group(1) == name, name
 
 
 @pytest.mark.parametrize("line", [

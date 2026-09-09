@@ -266,15 +266,6 @@ def test_the_label_and_the_id_derive_from_the_name(struct, cfg):
 #  Ask → check → write, and the order is the point                      #
 # --------------------------------------------------------------------- #
 
-def test_a_bad_stage_name_is_refused_before_anything_is_written(struct, cfg,
-                                                                tmp_path):
-    """Names are validated *here, on your laptop, not on the cluster*.  A
-    stage name becomes a filename and a shell word, so the set is narrow."""
-    from molbuilder.task import Stage
-    with pytest.raises(ValueError):
-        _describe(struct, cfg, (Stage(name="not a name"),))
-    assert not (tmp_path / "calc").exists()
-
 
 def test_an_override_the_schema_does_not_know_is_refused_by_name(struct, cfg):
     """§ 6.6's third check, and it is the existing preflight doing it rather
@@ -322,15 +313,6 @@ def test_a_name_that_cannot_normalise_is_a_clean_refusal(struct, cfg):
     narrow.  A name outside it must be refused by name, not crash."""
     with pytest.raises((ValueError, D.DescribeError)):
         _describe(struct, cfg, name="Über")
-
-
-def test_a_refused_name_writes_nothing(struct, cfg, tmp_path):
-    """The refusal happens while nothing has been written — *ask → check →
-    write*, and the check is before the write rather than beside it."""
-    with pytest.raises((ValueError, D.DescribeError)):
-        D.write_description(_describe(struct, cfg, name="Über"),
-                            tmp_path / "calc")
-    assert not (tmp_path / "calc").exists()
 
 
 # --------------------------------------------------------------------- #

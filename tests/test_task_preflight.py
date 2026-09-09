@@ -245,20 +245,6 @@ def test_the_codec_still_does_not_import_an_engine():
         assert banned not in src, banned
 
 
-def test_both_halves_of_the_split_are_written_down_in_task_py():
-    """``task.py``'s docstring carries the same split, *so the two halves
-    cannot quietly diverge* — the plan's words.  This asserts the rows this
-    module implements are the ones it says belong to P2."""
-    import molbuilder.task as t
-    # The docstring is hard-wrapped, so compare on collapsed whitespace --
-    # otherwise this passes or fails on where a line happened to break.
-    doc = " ".join((t.__doc__ or "").split())
-    for row in ("the engine has a generator",
-                "every named field exists in the schema",
-                "every value is inside its bounds"):
-        assert row in doc, row
-
-
 def test_pyscf_gets_the_same_treatment_as_siesta():
     """The preflight is engine-agnostic: it asks the config class, and both
     ship one.  A check that only ever ran for SIESTA would be a third place

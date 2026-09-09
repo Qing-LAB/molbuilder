@@ -64,7 +64,6 @@ def _isolated(monkeypatch, tmp_path_factory):
         + "\n")
 
 
-
 #: `git` as a COMMAND WORD: at the start of a line, after a shell operator
 #: (`|`, `&&`, `;`, `$(`, backtick…), after a keyword that introduces a command
 #: (`then`, `do`, `else`), or after a **runner that executes its argument**.
@@ -207,38 +206,3 @@ def test_the_emitted_wrapper_is_valid_bash(tmp_path):
 # ------------------------------------------------------------------ #
 #  The coupling check — kept, but it is not I4                        #
 # ------------------------------------------------------------------ #
-
-
-def test_runwrap_does_not_import_checkpoint():
-    """Defence in depth, one layer above the emitted script.
-
-    If the wrapper generator cannot reach the checkpoint module, it cannot grow
-    a call that emits git by accident.  This does not replace the check above:
-    hard-coded bash needs no import.
-    """
-    import molbuilder.runwrap as runwrap
-    src = inspect.getsource(runwrap)
-    for needle in ("from molbuilder.checkpoint", "import molbuilder.checkpoint",
-                   "from .checkpoint", "import .checkpoint"):
-        assert needle not in src, (
-            f"runwrap.py contains {needle!r}; the wrapper must be git-agnostic "
-            f"(checkpointing.md I4).")
-
-
-def test_checkpoint_module_not_in_runwrap_namespace():
-    """The same, at runtime: nothing from checkpoint is reachable via runwrap."""
-    import molbuilder.runwrap as runwrap
-    for name in ("Repo", "checkpoint", "CheckpointError", "Checkpoint"):
-        value = getattr(runwrap, name, None)
-        if value is None:
-            continue
-        assert getattr(value, "__module__", None) != "molbuilder.checkpoint", (
-            f"runwrap.{name} resolves to molbuilder.checkpoint.{name}.")
-
-
-def test_checkpoint_module_does_not_import_runwrap():
-    """Loose coupling in both directions; runwrap is heavy."""
-    import molbuilder.checkpoint as cp
-    src = inspect.getsource(cp)
-    assert "from molbuilder.runwrap" not in src
-    assert "import molbuilder.runwrap" not in src

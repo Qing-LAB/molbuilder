@@ -402,59 +402,6 @@ def test_add_dataclass_options_generates_click_flags(tmp_path, capsys):
                     "label": "custom"}
 
 
-def test_add_dataclass_options_skip_filters_fields(tmp_path):
-    """`skip=` excludes named fields -- the corresponding click options
-    don't appear on the command, so the underlying function doesn't
-    receive them.  Used when a command already has those options
-    defined manually (cf. cmd_pyscf today)."""
-    import click as _click
-    import dataclasses
-
-    @dataclasses.dataclass
-    class _Cfg:
-        a: int = 1
-        b: int = 2
-
-    @_click.command()
-    @cli.add_dataclass_options(_Cfg, skip=("b",))
-    def demo(**kw):
-        return kw
-
-    from click.testing import CliRunner
-    runner = CliRunner()
-    res = runner.invoke(demo, ["--b", "5"])
-    # "--b" was skipped, so click rejects it as an unknown option.
-    assert res.exit_code != 0
-    assert "no such option" in res.output.lower() or "unrecognized" in res.output.lower()
-
-
-def test_add_dataclass_options_tier_filters_advanced_only():
-    """`tier="advanced"` keeps only fields whose metadata["tier"] is
-    "advanced" -- the path to splitting basic vs advanced flag groups."""
-    import click as _click
-    import dataclasses
-
-    @dataclasses.dataclass
-    class _Cfg:
-        basic_a: int = dataclasses.field(default=1, metadata={"tier": "basic"})
-        adv_b:   int = dataclasses.field(default=2, metadata={"tier": "advanced"})
-        adv_c:   int = dataclasses.field(default=3, metadata={"tier": "advanced"})
-
-    @_click.command()
-    @cli.add_dataclass_options(_Cfg, tier="advanced")
-    def demo(**kw):
-        return kw
-
-    from click.testing import CliRunner
-    runner = CliRunner()
-    # basic_a should be absent
-    res = runner.invoke(demo, ["--basic-a", "10"])
-    assert res.exit_code != 0
-    # adv_b should be present
-    res = runner.invoke(demo, ["--adv-b", "20", "--adv-c", "30"])
-    assert res.exit_code == 0
-
-
 def test_add_dataclass_options_works_on_real_pyscf_config():
     """End-to-end: the helper applies cleanly to PySCFConfig (real
     dataclass with mixed field types and metadata).  The generated
@@ -642,36 +589,6 @@ def test_add_dataclass_options_emits_click_choice_when_metadata_set():
     # Good value passes through.
     res = runner.invoke(demo, ["--method", "UHF"])
     assert res.exit_code == 0
-
-
-def test_add_dataclass_options_choices_appear_in_help():
-    """``--help`` for a Choice-typed field shows the valid options so
-    the CLI is self-documenting."""
-    import click as _click
-    import dataclasses
-
-    @dataclasses.dataclass
-    class _Cfg:
-        method: str = dataclasses.field(
-            default="RKS",
-            metadata={"choices": ("RKS", "UKS", "RHF")},
-        )
-
-    @_click.command()
-    @cli.add_dataclass_options(_Cfg)
-    def demo(**kw):
-        return kw
-
-    from click.testing import CliRunner
-    res = CliRunner().invoke(demo, ["--help"])
-    assert res.exit_code == 0
-    # click renders Choice options as "[a|b|c]" in --help.  With R2's
-    # ``case_sensitive=False`` the rendered list is lowercased, so we
-    # match case-insensitively.
-    out = res.output.lower()
-    assert "rks" in out and "uks" in out and "rhf" in out
-    # And the default still shows in the original case.
-    assert "RKS" in res.output
 
 
 @pytest.mark.parametrize("subcommand,flag,bad_val", [

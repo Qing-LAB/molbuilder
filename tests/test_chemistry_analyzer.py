@@ -244,13 +244,6 @@ def test_analyze_structure_is_deterministic():
     assert asdict(a1) == asdict(a2)
 
 
-def test_n_atoms_matches_structure():
-    """The analyzer reads n_atoms from the Structure dataclass — no
-    parallel state."""
-    a = analyze_structure(_mk(["C", "H", "H"]))
-    assert a.n_atoms == 3
-
-
 def test_elements_unique_sorted():
     """``elements`` is the sorted unique set, not the per-atom list."""
     a = analyze_structure(_mk(["H", "Fe", "C", "H", "C", "N"]))

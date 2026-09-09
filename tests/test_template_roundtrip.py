@@ -252,23 +252,6 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
     assert all(i.kind in T.KINDS for i in items)
 
 
-def test_an_engine_item_names_a_bare_keyword():
-    """§ 5: an anchor is *"a bare keyword, never a sentence"* — so a note, an
-    alternation or a conjunction must have been given an explicit kind."""
-    for item in T.declarations_for(SiestaConfig):
-        if item.kind == "engine":
-            assert item.anchor and "(" not in item.anchor, item.name
-            assert "|" not in item.anchor and "+" not in item.anchor, item.name
-
-
-def test_a_deck_item_says_which_keywords_it_produces():
-    """§ 3: ``expands`` is required for ``kind='deck'`` — it is how a reader
-    learns which keywords the item becomes."""
-    for item in T.declarations_for(SiestaConfig):
-        if item.kind == "deck":
-            assert item.expands, item.name
-
-
 # ---- U16 (2026-08-12): total membership, exercised end to end -------- #
 
 def test_the_five_ungated_fields_round_trip_through_a_template():

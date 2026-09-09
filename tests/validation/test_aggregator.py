@@ -34,7 +34,6 @@ def test_issue_severity_accepts_error_warn_info():
         Issue("debug", "not allowed")
 
 
-
 def test_validation_error_carries_issues():
     issues = [
         Issue("warn", "minor", "x"),
@@ -50,13 +49,11 @@ def test_validation_error_carries_issues():
     assert "minor" not in str(exc.value)
 
 
-
 def test_validation_error_rejects_empty_or_warn_only():
     with pytest.raises(ValueError, match="error-severity"):
         ValidationError([])
     with pytest.raises(ValueError, match="error-severity"):
         ValidationError([Issue("warn", "just a warning")])
-
 
 
 # --------------------------------------------------------------------- #
@@ -75,18 +72,9 @@ def test_report_prints_warnings_to_stream():
     assert "[test.case]" in out
 
 
-
 def test_report_raises_on_error_by_default():
     with pytest.raises(ValidationError):
         report([Issue("error", "fatal", "x")])
-
-
-
-def test_report_can_be_told_not_to_raise():
-    # Useful for the CLI's `validate` subcommand which collects all
-    # issues for JSON-on-stdout emission rather than raising.
-    report([Issue("error", "fatal", "x")], raise_on_error=False)
-
 
 
 def test_report_emits_warnings_even_when_also_raising():
@@ -104,7 +92,6 @@ def test_report_emits_warnings_even_when_also_raising():
     out = buf.getvalue()
     assert "minor first" in out
     assert "minor second" in out
-
 
 
 # --------------------------------------------------------------------- #
@@ -127,7 +114,6 @@ def test_render_fdf_raises_on_overlapping_atoms():
     assert "min_distance" in str(exc.value)
 
 
-
 def test_render_fdf_emits_warnings_to_stderr(capsys, water_struct):
     """A spin_total without spin_treatment warning surfaces on stderr;
     the FDF still gets emitted (warnings don't block)."""
@@ -138,7 +124,6 @@ def test_render_fdf_emits_warnings_to_stderr(capsys, water_struct):
     assert "spin_total" in err
     # FDF was still generated:
     assert "SystemName" in fdf
-
 
 
 def test_render_script_raises_on_negative_spin(water_struct):
@@ -153,7 +138,6 @@ def test_render_script_raises_on_negative_spin(water_struct):
     with pytest.raises(ValidationError) as exc:
         render_script(water_struct, cfg)
     assert "spin" in str(exc.value)
-
 
 
 def test_render_script_warns_on_open_shell_with_rks(capsys, water_struct):

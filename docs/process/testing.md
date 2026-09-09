@@ -134,6 +134,51 @@ because a rule existed, rather than because the rule can plausibly break unseen.
 test removed, be able to say what now goes undetected and why that is acceptable.
 If that sentence will not come, the honest answer is *unsure*, not *cut*.
 
+### Every test states its GOAL and its CONTRACT, in its first lines *(user, 2026-09-08)*
+
+> *"The tests should have their goal clearly stated upfront in their starting
+> comments, and the related contract specified, so that it is easy to identify
+> obsolete design pinners."*
+
+**A test's docstring opens with two things:**
+
+1. **The failure it catches** — the concrete thing that goes wrong if this test
+   is deleted and the code drifts. Not what the test *does* (the body says
+   that); what it *prevents*.
+2. **The contract it serves** — the document and section that owns the rule, or
+   the dated defect it commemorates. `job-contracts.md § 2.2a`. `2026-08-27, the
+   card showed one arbitrary node's cores`.
+
+```python
+def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output():
+    """A rung with no output of its own must not report a sibling's state.
+
+    `project-layout.md` § 1: in flat, one directory holds every stage and the
+    token in the filename is what selects. Measured 2026-09-08 — without the
+    narrowing, a stage that had never run reported the newest stage's `.out`.
+    """
+```
+
+**Why this is a rule and not a style note: it is what makes a test's own
+obsolescence visible.** The audit that produced § 3b spent most of its effort
+reconstructing, from the body outward, what each test was *for* — and the
+verdicts that were hardest to reach were exactly the tests that never said.
+Several turned out to guard code that had been deleted: a `-stage<N>` filename
+spelling retired 2026-08-10, a `_mb_mem_est` block with zero hits in the
+package, a `MOLBUILDER_PREACTIVATE_CMDS` hook that no longer exists. **Each of
+those was one grep from being retired, and stayed for months, because the test
+never named the thing it was protecting.**
+
+A stated contract also fails usefully. When the contract moves, the citation
+goes stale and `tests/test_docs_structure.py` and `tests/test_no_retired_doc_paths.py`
+say so — the test announces its own obsolescence instead of quietly pinning a
+retired design.
+
+**The four questions a header should let a reader answer without reading the
+body:** what breaks if this goes; who owns the rule; has it ever actually
+happened; and is that rule still live. A test that cannot answer the fourth is
+the obsolete design pinner this rule exists to surface.
+
 ### The one exception: scientific validation *(user, 2026-09-08)*
 
 > *"The only test I ask you to be careful about is the scientific validation

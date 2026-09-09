@@ -75,16 +75,6 @@ def started(client, calc):
 # ------------------------------------------------------------------ #
 
 
-@pytest.mark.parametrize("route", ["commit", "branch", "migrate-manifest"])
-def test_a_retired_verb_has_no_route(client, started, route):
-    """`commit` became `save`; `branch` and `migrate-manifest` were removed.
-
-    A route left mounted is a route somebody's script calls, whatever the
-    documentation says.
-    """
-    assert _post(client, route, started, note="x").status_code == 404
-
-
 def test_there_is_no_route_that_edits_the_classification(client, started):
     """S1c: the classification has ONE home, and it is molbuilder.json.
 

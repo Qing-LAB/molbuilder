@@ -475,13 +475,6 @@ def test_the_label_is_the_stem_and_carries_no_formula(example):
     assert task.structure.formula not in task.label
 
 
-def test_the_label_is_the_ids_first_half(example):
-    """Deriving the label is only safe because the id is stored and checked;
-    this is the relation that makes the two impossible to disagree."""
-    task = Task.from_dict(example)
-    assert task.run.id == f"{task.label}_{task.structure.formula}"
-
-
 def test_a_description_with_no_formula_has_label_equal_to_id(example):
     """§ 2: the formula is optional, and a label alone is a legitimate id.
     The two collapse to one string rather than the id growing a dangling

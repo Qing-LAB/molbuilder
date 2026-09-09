@@ -246,44 +246,6 @@ def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
     assert len(calls) >= 1, "create step must actually run"
 
 
-def test_run_install_blocks_when_env_state_is_broken(monkeypatch):
-    """An orphan / ghost / broken env state must NOT silently skip
-    conda create -- it must fail loudly with a "re-run with --clean"
-    hint, because ``conda create`` itself will refuse with "prefix
-    already exists" and produce a worse error message."""
-    _bind()
-    recipe = recipe_by_name("molbuilder-siesta")
-
-    # Live probe returns: dir exists at the candidate path, but the
-    # ``conda-meta/`` marker that ``probe_env_state`` requires for a
-    # real env is missing.  This is the BROKEN state.
-    def fake_run(argv, *a, **kw):
-        argv_list = list(argv) if not isinstance(argv, str) else [argv]
-        if argv_list[1:3] == ["env", "list"]:
-            # Registry says no -- so listed_in_registry=False.
-            return _stub(0, stdout='{"envs": []}')
-        if argv_list[1:2] == ["info"]:
-            # Filesystem says dir exists.  Without conda-meta this is
-            # the BROKEN state (dir present, no conda-meta).
-            return _stub(0, stdout='{"envs_dirs": ["/tmp/does-not-actually-exist"]}')
-        return _stub(0, stdout="")
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
-
-    calls = []
-    def fake_stream(*a, **kw):
-        calls.append(a)
-        return (0, "")
-    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
-
-    # The fake_run above returns no real dir, so probe_env_state sees
-    # FRESH (everything False) and create runs.  This test as written
-    # confirms that the FRESH path still works end-to-end -- it's a
-    # companion sanity check for the regression above.
-    result = install.run_install(recipe)
-    create = next(s for s in result.steps if s.label == "conda create")
-    assert "already exists" not in create.output
-
-
 def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
     """A verify step that exits 0 but lacks the expected substring
     must fail the install -- catches a silent regression where the

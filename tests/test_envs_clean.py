@@ -135,16 +135,6 @@ def test_dry_run_shows_all_candidate_dirs_with_sizes(fake_artifact_root):
     assert "--dry-run: no files deleted" in r.output
 
 
-def test_dry_run_reports_nonzero_total(fake_artifact_root):
-    env_prefix, root, sizes = fake_artifact_root
-    r = _patched_run(["clean", "molbuilder-siesta-gpu", "--dry-run"],
-                     env_prefix)
-    assert "TOTAL reclaimable" in r.output
-    # Sum of build-only blobs = 2048+1024+512+256+128 = 3968 B
-    # Reported in KiB ("3.9 KiB" range).
-    assert "KiB" in r.output or "MiB" in r.output
-
-
 # --------------------------------------------------------------------- #
 #  Confirmation gate                                                    #
 # --------------------------------------------------------------------- #

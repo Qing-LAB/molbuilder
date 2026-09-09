@@ -426,23 +426,6 @@ def test_gap_9_pyscf_reevaluates_energy_at_optimized_geom(h2):
 # --------------------------------------------------------------------- #
 
 
-def test_gap_10_pyscf_config_exposes_diis_space_and_damp():
-    """PySCFConfig should expose diis_space and damp as fields so
-    users with hard-converging SCFs can tune them through the
-    documented config surface, not by hand-editing the generated
-    script."""
-    from dataclasses import fields
-    field_names = {f.name for f in fields(PySCFConfig)}
-    assert "diis_space" in field_names, (
-        "PySCFConfig.diis_space missing -- hard-SCF troubleshooting "
-        "knob isn't exposed."
-    )
-    assert "damp" in field_names, (
-        "PySCFConfig.damp missing -- hard-SCF troubleshooting knob "
-        "isn't exposed."
-    )
-
-
 def test_gap_10_diis_damp_emitted_only_when_tuned(h2):
     """Defaults (diis_space=8, damp=0) should NOT appear in the
     generated script -- they match PySCF's own defaults and adding

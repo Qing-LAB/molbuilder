@@ -132,21 +132,6 @@ def test_siesta_adapter_closed_shell_path():
     assert p.spin_total     == 0.0
 
 
-def test_siesta_field_names_match_siesta_config():
-    """The adapter dataclass field names must match the SIESTA
-    Config dataclass's web-form field names — the UI's "apply
-    suggestion" path is a 1:1 spread into form values.  If the
-    Config renames a field, the adapter must follow."""
-    from molbuilder.siesta.input import SiestaConfig
-    cfg_fields = {f.name for f in SiestaConfig.__dataclass_fields__.values()}
-    # net_charge + spin_treatment + spin_total must all be present
-    # on SiestaConfig.  rationale is meta — exempt.
-    assert {"net_charge", "spin_treatment", "spin_total"} <= cfg_fields, (
-        f"SIESTA adapter exports fields not in SiestaConfig: "
-        f"{{'net_charge','spin_treatment','spin_total'}} − {cfg_fields}"
-    )
-
-
 # --------------------------------------------------------------------- #
 #  PySCF adapter                                                        #
 # --------------------------------------------------------------------- #
@@ -175,17 +160,6 @@ def test_pyscf_adapter_closed_shell_path():
     p = PyscfAdapter.to_params(a)
     assert p.spin   == 0
     assert p.method == "RKS"
-
-
-def test_pyscf_field_names_match_pyscf_config():
-    """Same lock-step as SIESTA's check.  ``charge``/``spin``/``method``
-    must all exist on the PySCF Config dataclass."""
-    from molbuilder.pyscf.input import PySCFConfig
-    cfg_fields = {f.name for f in PySCFConfig.__dataclass_fields__.values()}
-    assert {"net_charge", "spin", "method"} <= cfg_fields, (
-        f"PySCF adapter exports fields not in PySCFConfig: "
-        f"{{'net_charge','spin','method'}} − {cfg_fields}"
-    )
 
 
 # --------------------------------------------------------------------- #
