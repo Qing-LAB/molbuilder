@@ -99,11 +99,28 @@ def _wrap(*entries):
 class TestAuthDefaultOff:
 
     def test_empty_config_has_no_auth(self):
+        """A config with no `auth` section defaulting to auth ON (a login page
+        nobody can pass), or -- the other direction -- a providers list
+        fabricated so `init_auth` installs a gate with no way through.
+
+        `deployment.md` § 3: no `auth` section means no login, the right shape
+        for a personal machine. `runtime_config._read_auth` decides this with a
+        PRESENCE check rather than truthiness.
+        """
         cfg = _normalise({})
         assert get_auth(cfg) == {}
         assert get_providers(cfg) == []
 
     def test_config_without_auth_section_unaffected(self):
+        """Another section's reader introducing an `auth` key as a side effect,
+        so a config that never asked for sign-in gets a gate.
+
+        `deployment.md` § 3. Honest note (2026-09-09): this reaches the same
+        `if 'auth' not in raw` line as `test_empty_config_has_no_auth` with a
+        different payload, and no reader writes back into `raw` -- raised as a
+        cut candidate, with the loss stated as a future normaliser that
+        injected defaults into the raw mapping.
+        """
         cfg = _normalise({
             "tls": {"cert": "/tmp/c", "key": "/tmp/k"},
             "envs": {"siesta": "molbuilder-siesta"},
@@ -120,22 +137,62 @@ class TestAuthDefaultOff:
 class TestProvidersListShape:
 
     def test_missing_providers_rejected(self):
+        """`"auth": {}` starting the server with authentication silently OFF:
+        the operator wrote an auth section, saw no error, and the site is open.
+        This is the shape a half-finished hand edit leaves behind.
+
+        `deployment.md` § 3, and § 7 which names this file as the owner of
+        `molbuilder.json` auth validation. The refusal names `auth.providers`.
+        """
         with pytest.raises(RuntimeConfigError, match="auth.providers"):
             _normalise({"auth": {}})
 
     def test_empty_providers_rejected(self):
+        """A providers list with nothing in it: a login page with no buttons --
+        the server is up, the gate is on, and nobody can get in.
+
+        `deployment.md` § 3. Honest note (2026-09-09): this raises at the same
+        line as `test_missing_providers_rejected` and
+        `test_non_list_providers_rejected` (one `not isinstance(list) or not
+        providers` in `_read_auth`), so it is raised as a cut candidate -- the
+        loss being one more spelling of a refusal that single line already
+        gives.
+        """
         with pytest.raises(RuntimeConfigError, match="non-empty"):
             _normalise({"auth": {"providers": []}})
 
     def test_non_list_providers_rejected(self):
+        """A single provider object written where a list belongs -- the
+        commonest JSON hand-edit slip -- accepted and then indexed as a
+        mapping.
+
+        `deployment.md` § 3. Honest note (2026-09-09): the same single raise as
+        the two tests above; raised as a cut candidate for that reason.
+        """
         with pytest.raises(RuntimeConfigError, match="non-empty list"):
             _normalise({"auth": {"providers": {"id": "x"}}})
 
     def test_non_object_entry_rejected(self):
+        """A string in the providers list reaching the per-entry validators,
+        which index it as a mapping: an AttributeError at startup instead of a
+        message naming the bad entry.
+
+        `deployment.md` § 3; the refusal must say which index is wrong, because
+        a list of five providers otherwise gives the operator nothing to look
+        at.
+        """
         with pytest.raises(RuntimeConfigError, match="must be an object"):
             _normalise({"auth": {"providers": ["not-an-object"]}})
 
     def test_duplicate_ids_rejected(self):
+        """Two providers sharing an id. The login and callback routes dispatch
+        BY id, so the second entry shadows the first and sign-ins through one
+        provider get checked against the other's `allowed_users` -- silently,
+        and failing OPEN whenever the shadowing list is the looser one.
+
+        `access-control.md` § 3.1 (`allowed_users` is per provider, not
+        global); `deployment.md` § 3.
+        """
         raw = _wrap(
             _google_entry(id="x"),
             _google_entry(id="x", client_id="other.apps.googleusercontent.com"),
@@ -144,6 +201,13 @@ class TestProvidersListShape:
             _normalise(raw)
 
     def test_two_providers_with_distinct_ids_ok(self):
+        """A uniqueness check that rejects two DIFFERENT providers: the real
+        deployment shape -- institutional CAS plus Google for outside
+        collaborators -- would not load at all.
+
+        `access-control.md` § 3.1. Order is asserted because the login page
+        renders its buttons in config order.
+        """
         cfg = _normalise(_wrap(_google_entry(), _cas_entry()))
         ids = [p["id"] for p in get_providers(cfg)]
         assert ids == ["google", "asu_cas"]
@@ -158,6 +222,12 @@ class TestCommonFields:
 
     @pytest.mark.parametrize("missing", ["id", "label", "kind"])
     def test_missing_required_field_rejected(self, missing):
+        """A provider entry missing `id`, `label` or `kind`. No id means no
+        callback URL to register with the provider, no kind means no validator
+        runs at all, and no label means an unlabelled button on the login page.
+
+        `deployment.md` § 3.
+        """
         entry = _google_entry()
         del entry[missing]
         with pytest.raises(RuntimeConfigError, match=missing):
@@ -165,10 +235,28 @@ class TestCommonFields:
 
     @pytest.mark.parametrize("field", ["id", "label", "kind"])
     def test_empty_required_field_rejected(self, field):
+        """An empty string standing in for a missing key -- `""` as an id would
+        produce the callback route `/oauth-callback/`.
+
+        `deployment.md` § 3. Honest note (2026-09-09):
+        `runtime_config._require_str` refuses missing and empty in ONE
+        condition (`not isinstance(val, str) or not val`), so this
+        parametrization reaches the same line as
+        `test_missing_required_field_rejected`; raised as a cut candidate.
+        """
         with pytest.raises(RuntimeConfigError):
             _normalise(_wrap(_google_entry(**{field: ""})))
 
     def test_id_must_be_slug(self):
+        """An id that is not URL-safe. The id becomes a path segment in
+        `/login/<id>` and `/oauth-callback/<id>`, and the redirect URI
+        registered in the provider's console must match it byte for byte -- a
+        space or a capital produces a callback the provider rejects at the END
+        of a sign-in, with an error that blames the provider rather than the
+        config.
+
+        `deployment.md` § 3.1 (the redirect URI) and `access-control.md` § 3.
+        """
         # Digits are allowed anywhere (including leading), since they
         # are URL-safe; the regex bars only uppercase, whitespace,
         # punctuation, and leading underscore/hyphen.
@@ -187,11 +275,25 @@ class TestCommonFields:
                 _normalise(_wrap(_google_entry(id=bad_id)))
 
     def test_id_good_slugs_accepted(self):
+        """The slug regex tightening under maintenance until a working config
+        stops loading: digits and hyphens are legal, and an operator's
+        `asu_cas` or `my-org-github` must keep working across upgrades.
+
+        `deployment.md` § 3.
+        """
         for good_id in ("google", "asu_cas", "g-1", "my-org-github"):
             cfg = _normalise(_wrap(_google_entry(id=good_id)))
             assert get_providers(cfg)[0]["id"] == good_id
 
     def test_unsupported_kind_rejected(self):
+        """A `kind` molbuilder cannot serve accepted at parse time: the
+        operator writes `"ldap"`, sees no error, and finds out at the login
+        page -- or worse, believes sign-in is configured when no provider is
+        wired at all.
+
+        `deployment.md` § 3.4 (the five supported kinds); the registry is
+        `runtime_config._KIND_VALIDATORS`.
+        """
         for bad in ("ldap", "saml", "openldap", "kerberos", "facebook"):
             with pytest.raises(RuntimeConfigError, match="not supported"):
                 _normalise(_wrap(_google_entry(kind=bad)))
@@ -205,16 +307,39 @@ class TestCommonFields:
 class TestAllowedUsers:
 
     def test_missing_rejected(self):
+        """A provider with no allowlist at all. Whether that means nobody or
+        EVERYONE is decided downstream, and any default resolving to 'everyone'
+        opens the server to every account the provider will authenticate -- the
+        whole of Google, for instance.
+
+        `access-control.md` § 3.1: `allowed_users` is per provider and
+        required.
+        """
         entry = _google_entry()
         del entry["allowed_users"]
         with pytest.raises(RuntimeConfigError, match="allowed_users"):
             _normalise(_wrap(entry))
 
     def test_string_rejected(self):
+        """The sharpest fail-open in this file. `allowed_users:
+        "user@example.com"` written as a bare string would make the membership
+        test a SUBSTRING match over characters, admitting any identity that is
+        a substring of the allowed one -- and the config looks right on the
+        page.
+
+        `access-control.md` § 3.1; the enforcement site is
+        `web/auth.py::authenticate`.
+        """
         with pytest.raises(RuntimeConfigError, match="list of strings"):
             _normalise(_wrap(_google_entry(allowed_users="user@example.com")))
 
     def test_list_of_non_strings_rejected(self):
+        """A number or null in the allowlist reaching `casefold()` at sign-in
+        time: a 500 inside the callback, AFTER the provider has authenticated
+        the person, with nothing on screen naming the config.
+
+        `access-control.md` § 3.1.
+        """
         with pytest.raises(RuntimeConfigError, match="list of strings"):
             _normalise(_wrap(_google_entry(
                 allowed_users=["user@example.com", 42]
@@ -259,6 +384,13 @@ class TestOAuthSharedFields:
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_missing_client_id_rejected(self, kind):
+        """An OAuth provider registered with no client id: the redirect to the
+        provider is built anyway and fails at the provider's own page, where
+        the error names the client rather than the config.
+
+        `deployment.md` § 3.1 (the console hands out the id and the secret
+        together).
+        """
         entry = _google_entry(kind=kind, id=kind)
         del entry["client_id"]
         with pytest.raises(RuntimeConfigError, match="client_id"):
@@ -266,6 +398,12 @@ class TestOAuthSharedFields:
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_both_secret_forms_rejected(self, kind):
+        """Both secret forms set with the loser silently ignored: the operator
+        rotates the FILE and the server keeps using the literal from the config
+        -- the rotation reports success and changes nothing.
+
+        `deployment.md` § 5.1 (the config carries paths, never secret bytes).
+        """
         entry = _google_entry(
             kind=kind, id=kind,
             client_secret="literal",
@@ -276,6 +414,14 @@ class TestOAuthSharedFields:
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_neither_secret_form_rejected(self, kind):
+        """No secret at all: authlib builds a client with `client_secret=None`
+        and the token exchange fails as `invalid_client` at the end of a sign-
+        in. The message must offer BOTH forms -- an error naming only
+        `client_secret_file` sends an operator who wanted the literal form
+        hunting for a file to create.
+
+        `deployment.md` § 5.1.
+        """
         entry = _google_entry(kind=kind, id=kind)
         del entry["client_secret_file"]
         with pytest.raises(RuntimeConfigError) as exc:
@@ -290,6 +436,12 @@ class TestOAuthSharedFields:
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_literal_secret_accepted(self, kind):
+        """The literal form being refused because the file form is preferred: a
+        valid config stops loading, and the literal is the only form available
+        when the secret comes from a secret manager rather than a file.
+
+        `deployment.md` § 5.1.
+        """
         entry = _google_entry(kind=kind, id=kind)
         del entry["client_secret_file"]
         entry["client_secret"] = "GOCSPX-literal"
@@ -300,6 +452,14 @@ class TestOAuthSharedFields:
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_secret_file_accepted(self, kind):
+        """The preferred form failing to round-trip -- and, in the second
+        assertion, a `client_secret` key being SYNTHESISED into the entry from
+        the file's contents, which would put secret bytes into anything that
+        echoes the parsed config.
+
+        `deployment.md` § 5.1: `molbuilder.json` carries paths only, never
+        secret bytes.
+        """
         cfg = _normalise(_wrap(_google_entry(kind=kind, id=kind)))
         p = get_providers(cfg)[0]
         assert p["client_secret_file"] == "/etc/molbuilder/google.secret"
@@ -354,6 +514,14 @@ class TestSecretFileMtimeReload:
         os.utime(str(path), (future, future))
 
     def test_first_call_reads_secret_and_records_mtime(self, tmp_path):
+        """No mtime recorded on the first call means the rotation watcher has
+        no baseline: every later call sees 'unchanged', so a rotated secret
+        never takes effect without a restart -- exactly the failure task #100
+        exists to remove.
+
+        `deployment.md` § 3.3 (rotate the secret; a restart is not required).
+        The rotation itself is pinned by the siblings below.
+        """
         from molbuilder.web.auth_providers.oauth import (
             _ensure_client, _OAUTH_CLIENTS_EXT_KEY,
         )
@@ -591,6 +759,19 @@ class TestAuthlibNamespaceCollisionProtection:
     """
 
     def test_authlib_name_prefixes_every_id(self):
+        """An operator id reaching authlib unmangled. Authlib exposes
+        registered clients as attributes on the `OAuth` instance, so an id of
+        `register` or `cache` collides with the instance's own methods --
+        registration then either shadows a method or silently returns the wrong
+        object at login.
+
+        `deployment.md` § 3. This is half one of the protection; half two is
+        `TestCommonFields::test_id_reserved_mb_prefix_rejected`. Honest note
+        (2026-09-09): the sibling
+        `test_authlib_name_prefix_constant_is_mb_underscore` asserts the same
+        `mb_` literal this test already hard-codes, and is raised as a cut
+        candidate.
+        """
         from molbuilder.web.auth_providers.oauth import _authlib_name
         # Operator ids -- valid slugs per the schema regex.  The
         # mangler must produce ``mb_<id>`` for every one.
@@ -625,10 +806,24 @@ class TestAuthlibNamespaceCollisionProtection:
 class TestGoogleSpecific:
 
     def test_hosted_domain_defaults_empty(self):
+        """A Google provider without `hosted_domain` failing to load, or
+        defaulting to a restriction: the documented default is no domain
+        restriction, with `allowed_users` doing the gating.
+
+        `access-control.md` § 3.1 (the allowlist is the gate); the field is
+        normalised in `runtime_config._validate_google`.
+        """
         cfg = _normalise(_wrap(_google_entry()))
         assert get_providers(cfg)[0]["hosted_domain"] == []
 
     def test_hosted_domain_list_of_strings(self):
+        """The key dropped or misspelled during normalisation. The enforcement
+        site then sees no domain restriction and admits accounts from outside
+        the domain, while the config still shows the restriction the operator
+        wrote -- a fail-OPEN with no error anywhere.
+
+        `access-control.md` § 3.1.
+        """
         cfg = _normalise(_wrap(_google_entry(
             hosted_domain=["asu.edu", "anothersite.org"]
         )))
@@ -637,6 +832,17 @@ class TestGoogleSpecific:
         ]
 
     def test_hosted_domain_non_list_rejected(self):
+        """A bare string domain silently iterated character by character at the
+        enforcement site.
+
+        `access-control.md` § 3.1. Honest note (2026-09-09): this reaches
+        `runtime_config._require_str_list`'s type branch -- the same line
+        `TestAllowedUsers::test_string_rejected` and
+        `test_list_of_non_strings_rejected` already drive -- so it is raised as
+        a cut candidate; its one distinct bit, that `hosted_domain` is routed
+        through that helper at all, is held by
+        `test_hosted_domain_list_of_strings`.
+        """
         with pytest.raises(RuntimeConfigError, match="list of strings"):
             _normalise(_wrap(_google_entry(hosted_domain="asu.edu")))
 
@@ -652,10 +858,22 @@ class TestGitHubSpecific:
         return _google_entry(kind="github", id="github", **kw)
 
     def test_allowed_organizations_defaults_empty(self):
+        """A GitHub provider without `allowed_organizations` failing to load,
+        or defaulting to a restriction: as with Google's domain, the documented
+        default is no org restriction and `allowed_users` gates.
+
+        `access-control.md` § 3.1.
+        """
         cfg = _normalise(_wrap(self._entry()))
         assert get_providers(cfg)[0]["allowed_organizations"] == []
 
     def test_allowed_organizations_accepted(self):
+        """The key dropped or renamed in normalisation, so an org restriction
+        the operator wrote is never enforced -- the same fail-open as
+        `hosted_domain`, on the GitHub path.
+
+        `access-control.md` § 3.1.
+        """
         cfg = _normalise(_wrap(self._entry(
             allowed_organizations=["my-org", "another-org"]
         )))
@@ -664,6 +882,13 @@ class TestGitHubSpecific:
         ]
 
     def test_allowed_organizations_non_list_rejected(self):
+        """A bare string organisation, iterated character by character
+        downstream.
+
+        `access-control.md` § 3.1. Honest note (2026-09-09): the same shared
+        `_require_str_list` branch as the `allowed_users` and `hosted_domain`
+        type tests; raised as a cut candidate for that reason.
+        """
         with pytest.raises(RuntimeConfigError, match="list of strings"):
             _normalise(_wrap(self._entry(allowed_organizations="my-org")))
 
@@ -679,18 +904,45 @@ class TestMicrosoftSpecific:
         return _google_entry(kind="microsoft", id="microsoft", **kw)
 
     def test_tenant_id_defaults_to_common(self):
+        """The Microsoft tenant defaulting to something other than `common`: a
+        narrower default silently refuses every personal Microsoft account, and
+        a wrong tenant sends users to a sign-in page for an organisation they
+        are not in.
+
+        `deployment.md` § 3.4 (the other OAuth providers take the same shape,
+        written by hand); the default lives in
+        `runtime_config._validate_microsoft`.
+        """
         cfg = _normalise(_wrap(self._entry()))
         assert get_providers(cfg)[0]["tenant_id"] == "common"
 
     def test_tenant_id_string_accepted(self):
+        """A configured tenant ignored in favour of the default: an operator
+        restricting sign-in to their tenant gets `common` and every Microsoft
+        account instead -- fail-open, and invisible in the config file.
+
+        `deployment.md` § 3.4.
+        """
         cfg = _normalise(_wrap(self._entry(tenant_id="asu.onmicrosoft.com")))
         assert get_providers(cfg)[0]["tenant_id"] == "asu.onmicrosoft.com"
 
     def test_tenant_id_empty_rejected(self):
+        """An empty tenant reaching the Microsoft authority URL, producing a
+        malformed endpoint that fails at sign-in rather than at startup.
+
+        `deployment.md` § 3.4.
+        """
         with pytest.raises(RuntimeConfigError, match="tenant_id"):
             _normalise(_wrap(self._entry(tenant_id="")))
 
     def test_tenant_id_non_string_rejected(self):
+        """A numeric tenant id -- a GUID pasted without quotes -- reaching URL
+        construction.
+
+        `deployment.md` § 3.4. Honest note (2026-09-09): the same `not
+        isinstance(tenant, str) or not tenant` condition as
+        `test_tenant_id_empty_rejected`; one of the pair is a cut candidate.
+        """
         with pytest.raises(RuntimeConfigError, match="tenant_id"):
             _normalise(_wrap(self._entry(tenant_id=42)))
 
@@ -703,6 +955,15 @@ class TestMicrosoftSpecific:
 class TestORCIDSpecific:
 
     def test_minimal_entry_valid(self):
+        """An ORCID entry routed through another kind's validator, which would
+        add `hosted_domain` or `tenant_id` defaults that have no meaning for
+        it.
+
+        `deployment.md` § 3.4 (ORCID takes the shared OAuth shape and adds
+        nothing). Honest note (2026-09-09): the audit records this as UNSURE
+        rather than a cut -- no shipped code reads those keys for an ORCID
+        provider, so the mixup it catches may have no consequence.
+        """
         cfg = _normalise(_wrap(_google_entry(kind="orcid", id="orcid")))
         p = get_providers(cfg)[0]
         assert p["kind"] == "orcid"
@@ -721,6 +982,15 @@ class TestORCIDSpecific:
 class TestCASSpecific:
 
     def test_minimal_entry_valid(self):
+        """The CAS defaults drifting. `version` decides which ticket-validation
+        protocol is spoken, so a default of 1 or 2 makes every ticket fail
+        against a v3 server; and `service_url` / `ca_certs` / `email_attribute`
+        must default to None rather than to a string, because the client
+        branches on their absence.
+
+        `deployment.md` § 3.2 (ASURITE sign-in);
+        `runtime_config._validate_cas`.
+        """
         cfg = _normalise(_wrap(_cas_entry()))
         p = get_providers(cfg)[0]
         assert p["kind"] == "cas"
@@ -733,22 +1003,48 @@ class TestCASSpecific:
 
     @pytest.mark.parametrize("missing", ["login_url", "service_validate_url"])
     def test_missing_required_url_rejected(self, missing):
+        """A CAS provider with no `login_url` or no `service_validate_url`. The
+        first gives a login button that goes nowhere; the second means tickets
+        are never validated -- and a validation step that is skipped rather
+        than failed is the shape of an authentication bypass.
+
+        `deployment.md` § 3.2.
+        """
         entry = _cas_entry()
         del entry[missing]
         with pytest.raises(RuntimeConfigError, match=missing):
             _normalise(_wrap(entry))
 
     def test_version_accepts_1_2_3(self):
+        """The version check tightening to a single value, which would refuse a
+        legitimate CAS 2 deployment at startup.
+
+        `deployment.md` § 3.2.
+        """
         for v in (1, 2, 3):
             cfg = _normalise(_wrap(_cas_entry(version=v)))
             assert get_providers(cfg)[0]["version"] == v
 
     def test_version_other_values_rejected(self):
+        """`True`, `3.0` and `"3"` slipping through. `True in (1, 2, 3)` is
+        True in Python, so a boolean would be accepted as protocol version 1
+        and every ticket validated against the wrong protocol -- which is why
+        the code tests `type(version) is int` rather than `isinstance`.
+
+        `deployment.md` § 3.2.
+        """
         for bad in (0, 4, "3", 3.0, None):
             with pytest.raises(RuntimeConfigError, match="version"):
                 _normalise(_wrap(_cas_entry(version=bad)))
 
     def test_optional_strings_accepted(self):
+        """An optional CAS field dropped in normalisation: `ca_certs`
+        disappearing turns certificate verification into whatever the default
+        trust store does, and `service_url` disappearing sends ticket
+        validation to the wrong callback.
+
+        `deployment.md` § 3.2.
+        """
         cfg = _normalise(_wrap(_cas_entry(
             service_url="https://app.example.com/cas-callback/asu_cas",
             ca_certs="/etc/ssl/certs/ca-certificates.crt",
@@ -763,16 +1059,36 @@ class TestCASSpecific:
         "service_url", "ca_certs", "email_attribute", "email_domain",
     ])
     def test_optional_string_empty_rejected(self, field):
+        """An empty string where None means 'not set': `ca_certs: ""` is a path
+        that cannot be opened, and `email_attribute: ""` looks configured while
+        matching no attribute -- both fail at sign-in, not at startup.
+
+        `deployment.md` § 3.2.
+        """
         with pytest.raises(RuntimeConfigError, match=field):
             _normalise(_wrap(_cas_entry(**{field: ""})))
 
     def test_neither_email_attribute_nor_domain_rejected(self):
+        """A CAS provider that can never produce an email: the allowlist match
+        then has nothing to compare, so either nobody can sign in or --
+        depending on how the enforcement site treats None -- everybody can.
+
+        `access-control.md` § 3.1 (identity is matched against the provider's
+        own list). ASU CAS releases only the principal, which is why
+        `email_domain` exists at all.
+        """
         entry = _cas_entry()
         del entry["email_domain"]
         with pytest.raises(RuntimeConfigError, match="email_attribute"):
             _normalise(_wrap(entry))
 
     def test_attribute_only_accepted(self):
+        """The two-way requirement read as 'both required': a CAS server that
+        DOES release an email attribute would be forced to declare a synthesis
+        domain too, and the synthesised address would then shadow the real one.
+
+        `deployment.md` § 3.2.
+        """
         entry = _cas_entry(email_attribute="mail")
         del entry["email_domain"]
         cfg = _normalise(_wrap(entry))
@@ -817,6 +1133,13 @@ class TestMixedConfig:
         assert provs[1]["kind"] == "cas"
 
     def test_all_five_kinds_accepted(self):
+        """A kind listed as supported but not wired into the validator
+        registry: the operator's config is refused with 'not supported' for a
+        provider the documentation offers.
+
+        `deployment.md` § 3.4 (Google and CAS through the wizard; GitHub,
+        Microsoft and ORCID by hand).
+        """
         cfg = _normalise(_wrap(
             _google_entry(),
             _google_entry(kind="github",    id="github"),
@@ -847,6 +1170,14 @@ class TestSecretKeyFileIsRetired:
     """
 
     def test_a_config_naming_it_is_refused(self):
+        """A config naming `secret_key_file` being read and ignored: the
+        operator points it at a key, the server reads a different one, and
+        every restart invalidates every session. That is the measured defect --
+        the key had two homes at once and the wizard reported success.
+
+        `configuration.md` § 2.1e (the session key has one home and the config
+        cannot name it); `access-control.md` § 3.4.
+        """
         with pytest.raises(RuntimeConfigError, match="no longer configured"):
             _normalise({"secret_key_file": "~/.mb/key"})
 
@@ -876,16 +1207,38 @@ class TestTrustProxy:
     proxy that scrubs+sets those headers must set the flag explicitly."""
 
     def test_default_is_false(self):
+        """`trust_proxy` defaulting to True: `ProxyFix` would be installed on a
+        direct-TLS deployment, where `X-Forwarded-Host` is attacker-controlled
+        -- and the OAuth redirect URI molbuilder builds could then be pointed
+        at another host.
+
+        `deployment.md` § 5 (`auth.trust_proxy` installs ProxyFix); auth review
+        P1 #7.
+        """
         cfg = _normalise(_wrap(_google_entry()))
         assert cfg["auth"]["trust_proxy"] is False
 
     def test_explicit_true_accepted(self):
+        """The opt-in silently ignored: an operator behind a reverse proxy sets
+        the flag, ProxyFix is not installed, and every OAuth redirect URI
+        carries the proxy's internal address -- sign-in then fails at the
+        provider with a URI mismatch.
+
+        `deployment.md` § 5.
+        """
         raw = _wrap(_google_entry())
         raw["auth"]["trust_proxy"] = True
         cfg = _normalise(raw)
         assert cfg["auth"]["trust_proxy"] is True
 
     def test_explicit_false_accepted(self):
+        """An explicit `false` handled differently from the default.
+
+        `deployment.md` § 5. Honest note (2026-09-09): `test_default_is_false`
+        asserts the same resulting value through the same
+        `auth.get("trust_proxy", False)` plus bool check; raised as a cut
+        candidate, loss: nothing measurable.
+        """
         raw = _wrap(_google_entry())
         raw["auth"]["trust_proxy"] = False
         cfg = _normalise(raw)
@@ -893,6 +1246,13 @@ class TestTrustProxy:
 
     @pytest.mark.parametrize("bad", [1, 0, "true", "false", None, []])
     def test_non_bool_rejected(self, bad):
+        """The dangerous one: `"false"` is a non-empty string and therefore
+        TRUTHY, so an operator who writes the JSON string instead of the
+        boolean would get ProxyFix installed while their config says it is off
+        -- and `X-Forwarded-*` spoofing with it.
+
+        `deployment.md` § 5; auth review P1 #7.
+        """
         raw = _wrap(_google_entry())
         raw["auth"]["trust_proxy"] = bad
         with pytest.raises(RuntimeConfigError, match="trust_proxy"):
@@ -929,6 +1289,14 @@ class TestAuthenticate:
         return app
 
     def test_exact_match_accepted(self):
+        """An allowlist match that never succeeds: the gate refuses the people
+        it exists to admit, and the only symptom is a 403 after a successful
+        sign-in at the provider.
+
+        `access-control.md` § 3 (step 5: the email is checked against that
+        provider's list; step 6 returns the user to the page they asked for,
+        which is the redirect asserted here).
+        """
         from molbuilder.web.auth import authenticate
         app = self._app_with([_google_entry(
             allowed_users=["alice@example.com"]
@@ -940,6 +1308,14 @@ class TestAuthenticate:
         assert hasattr(resp, "status_code") and resp.status_code == 302
 
     def test_match_is_case_insensitive_both_sides(self):
+        """Case handled on one side only: an operator who writes
+        `Alice@Example.COM` -- as a mail client displays it -- locks Alice out,
+        and the config looks correct.
+
+        `access-control.md` § 3.1. The parse site preserves case deliberately
+        (`TestAllowedUsers::test_preserved_verbatim`), so the enforcement site
+        is the only place folding may happen.
+        """
         from molbuilder.web.auth import authenticate
         app = self._app_with([_google_entry(
             allowed_users=["Alice@Example.COM"]
@@ -960,6 +1336,13 @@ class TestAuthenticate:
         assert hasattr(resp, "status_code") and resp.status_code == 302
 
     def test_unknown_email_denied(self):
+        """The gate admitting an identity that is not on the list -- the whole
+        point of the allowlist. The message must name the rejected identity AND
+        the provider, or an operator diagnosing a locked-out colleague has to
+        read server logs to learn which of two providers refused them.
+
+        `access-control.md` § 3 and § 3.1.
+        """
         from molbuilder.web.auth import authenticate
         app = self._app_with([_google_entry(
             allowed_users=["alice@example.com"]
@@ -973,6 +1356,13 @@ class TestAuthenticate:
         assert "google" in body
 
     def test_empty_allowlist_denies_everyone(self):
+        """An empty list read as 'no restriction' instead of 'no one' -- the
+        fail-OPEN reading of the same data, and the reason the schema accepts
+        an empty list as valid rather than refusing it.
+
+        `access-control.md` § 3.1; the schema half is
+        `TestAllowedUsers::test_empty_list_accepted_fail_closed`.
+        """
         from molbuilder.web.auth import authenticate
         app = self._app_with([_google_entry(allowed_users=[])])
         with app.test_request_context("/"):
@@ -998,6 +1388,12 @@ class TestAuthenticate:
             assert status == 403
 
     def test_unknown_provider_id_404(self):
+        """A callback for a provider id that is not configured falling through
+        to a real provider, or 500ing. The id arrives in the URL, so this is
+        attacker-controlled input at the authentication boundary.
+
+        `access-control.md` § 3 (the callback routes dispatch by id).
+        """
         from molbuilder.web.auth import authenticate
         from werkzeug.exceptions import NotFound
         app = self._app_with([_google_entry()])
@@ -1022,6 +1418,14 @@ class TestCASExtractEmail:
         return base
 
     def test_attribute_string_wins_when_present(self):
+        """The configured attribute ignored in favour of the synthesised
+        `principal@domain`: a CAS server that releases a real mailbox is
+        overridden by a guess, and the guess is what gets matched against
+        `allowed_users`.
+
+        `access-control.md` § 3 (identity from CAS); the chain itself is
+        documented in `web/auth_providers/cas.py`'s module docstring.
+        """
         from molbuilder.web.auth_providers.cas import _extract_email
         email, denied = _extract_email(
             "jdoe",
@@ -1043,6 +1447,13 @@ class TestCASExtractEmail:
         assert email == "jdoe@asu.edu"
 
     def test_attribute_empty_list_falls_through_to_domain(self):
+        """An attribute that is present but EMPTY being returned as the email:
+        an empty address reaches the allowlist match and denies a user the
+        domain fallback would have admitted.
+
+        `cas.py` module docstring (the attribute-then-domain chain); the guard
+        is `isinstance(raw, list) and raw`.
+        """
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
             "jdoe",
@@ -1053,6 +1464,12 @@ class TestCASExtractEmail:
         assert email == "jdoe@asu.edu"
 
     def test_attribute_missing_falls_through_to_domain(self):
+        """A configured attribute the server does not release ending the chain
+        instead of falling through. ASU CAS releases only the principal, so
+        this is the normal case rather than an edge one.
+
+        `deployment.md` § 3.2; `cas.py` module docstring.
+        """
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
             "jdoe",
@@ -1062,6 +1479,12 @@ class TestCASExtractEmail:
         assert email == "jdoe@asu.edu"
 
     def test_no_attribute_configured_just_synthesises(self):
+        """The synthesis path requiring an attribute to be configured first:
+        the ASURITE deployment sets only `email_domain`, so this is the shape
+        that actually ships.
+
+        `deployment.md` § 3.2.
+        """
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
             "jdoe",
@@ -1071,6 +1494,13 @@ class TestCASExtractEmail:
         assert email == "jdoe@asu.edu"
 
     def test_lowercases_the_result(self):
+        """A mixed-case email leaving CAS unnormalised. The enforcement site
+        folds both sides, so this is defence in depth -- what it really holds
+        is that the attribute path and the synthesis path agree on case, so one
+        person is one identity however their IdP spells it.
+
+        `access-control.md` § 3.1.
+        """
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
             "JDoe",
@@ -1103,6 +1533,13 @@ class TestSafeNextTarget:
         "/with-dash", "/with_under", "/with%20space",
     ])
     def test_safe_paths_pass_through(self, safe):
+        """An over-tight guard clamping every legitimate `next` to `/`: signing
+        in would always land on the home page instead of the page the user
+        asked for, which is the only reason the parameter exists.
+
+        `access-control.md` § 3 (step 6: the user lands on the page they
+        originally asked for).
+        """
         from molbuilder.web.auth import _safe_next_target
         assert _safe_next_target(safe) == safe
 
@@ -1121,5 +1558,15 @@ class TestSafeNextTarget:
         r"/\\evil.example.com",
     ])
     def test_dangerous_inputs_clamped_to_root(self, dangerous):
+        """An open redirect at the login boundary. `//evil.example.com` and
+        `http://evil.example.com` are the classic phishing carriers -- a link
+        to the real, trusted molbuilder host that deposits the user on someone
+        else's page the moment they sign in; `javascript:` would execute on the
+        redirect; and the non-string cases are what a crafted query string
+        sends.
+
+        `access-control.md` § 3 (the stashed next target), as defence in depth
+        behind Flask's own redirect handling.
+        """
         from molbuilder.web.auth import _safe_next_target
         assert _safe_next_target(dangerous) == "/"

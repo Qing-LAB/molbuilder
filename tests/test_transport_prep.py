@@ -183,6 +183,25 @@ def calc(tmp_path):
 class TestTheLadderPreps:
 
     def test_seed_preps_end_to_end(self, calc):
+        """SCIENCE + the shared-tail lint. The seed stage preps whole: a `diagon` deck
+        in its own stage directory, sharing the task's `SystemLabel`, with the
+        wrapper, the composed record, the citation's pseudopotentials and the
+        job-set row beside it.
+
+        Catches two failures with one run. (1) The seed is a plain SIESTA
+        single-point whose job is to produce the `.DM` the device warm-starts from
+        -- so it must be `SolutionMethod diagon`, and its `SystemLabel` must be the
+        task's, or the density it writes is named something the device stage does
+        not look for and the expensive TranSIESTA run starts cold. (2) The transport
+        arm going around the shared prep tail: the wrapper, `job-set.json` and
+        `STAGE-PLAN.md` are what every other calculation gets, and a forked
+        transport path that produced a deck and none of the rest would look correct
+        in the directory listing and be unlaunchable.
+
+        Contract: `engines/transport.md` § 1 (one citation, five derived stages)
+        + § 3.1 (a citation names a directory, and the directory must hold what the
+        stage consumes).
+        """
         dirs = prep_calculation(calc, "seed")
         assert dirs
         deck = calc / "01_seed" / "T_01_seed.fdf"
@@ -229,6 +248,21 @@ class TestTheLadderPreps:
                          if "mpi_np" in ln or "np_default" in ln))
 
     def test_the_electrode_deck_is_the_tshs_the_device_asks_for(self, calc):
+        """SCIENCE. The electrode deck's `SystemLabel` IS the `.TSHS` stem the device
+        deck names -- one spelling written by two different writers -- and the
+        electrode saves its H/S at all.
+
+        Catches the lead self-energy never being built from the lead. Sigma_L and
+        Sigma_R come from a SEPARATE pristine bulk run (`engines/transport.md` § 2:
+        hence three runs), and the only thing joining that run to the device is the
+        filename. Two writers each choose it: a drift between them means the device
+        stage looks for a `.TSHS` nobody wrote, or -- worse, once the gather is
+        permissive -- picks up a stale one. `TS.HS.Save true` is the other half:
+        without it the electrode run converges happily and writes nothing.
+
+        Contract: `engines/transport.md` § 2 (Sigma from a separate bulk-lead run)
+        + § 5 (the consistency contract).
+        """
         prep_calculation(calc, "electrode_L")
         prep_calculation(calc, "device")
         elec = (calc / "02_electrode_L" / "T_02_electrode_L.fdf"
@@ -242,6 +276,22 @@ class TestTheLadderPreps:
         assert "TS.HS.Save             true" in elec
 
     def test_the_device_deck_is_transiesta_on_the_sorted_junction(self, calc):
+        """SCIENCE. The device deck is `SolutionMethod transiesta` with a `TS.Elecs`
+        block, and its coordinate block is CATEGORICALLY SORTED -- six Au rows, then
+        the four bridge rows as S C C S.
+
+        Catches the two ways the device stage stops being an NEGF calculation.
+        Without `transiesta` + `TS.Elecs` it is an ordinary closed-boundary
+        single-point that converges and means nothing. And TranSIESTA identifies
+        each electrode by a CONTIGUOUS atom range, so the order of the coordinate
+        block is not cosmetic: an unsorted junction makes the lead ranges name the
+        wrong atoms, and the run computes transmission through a region that is not
+        the molecule. Asserting the species column, not just the row count, is what
+        distinguishes "sorted" from "reordered into a different wrong order".
+
+        Contract: `engines/transport.md` § 4 (region labels drive the partition;
+        the categorical sort) + § 2 (the L | bridge | R partition is one cell).
+        """
         prep_calculation(calc, "device")
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
         assert "SolutionMethod         transiesta" in text
@@ -255,6 +305,21 @@ class TestTheLadderPreps:
         assert [r[3] for r in rows[6:10]] == ["3", "2", "2", "3"]
 
     def test_the_transmission_deck_carries_the_tbt_window(self, calc):
+        """SCIENCE. The transmission deck carries the tbtrans energy window
+        (`TS.TBT.NumE`, `TS.TBT.Emin`).
+
+        Catches the deliverable being computed over no energy range. T(E) is
+        evaluated on a grid the deck specifies; with the window keywords missing,
+        tbtrans falls back to its own defaults and the transmission curve -- the one
+        number this whole five-stage ladder exists to produce -- is reported over an
+        interval nobody chose and that need not contain E_F.
+
+        Contract: `engines/transport.md` § 2 (T(E) = Tr[Gamma_L G Gamma_R G+])
+        + § 1 (the transmission stage's product).
+
+        THIN: it asserts the keywords are PRESENT, not that their values bracket
+        E_F, which is what makes the window right or wrong.
+        """
         prep_calculation(calc, "transmission")
         text = (calc / "05_transmission" / "T_05_transmission.fdf"
                 ).read_text()
@@ -303,6 +368,20 @@ class TestTheLadderPreps:
         assert "SolutionMethod         transiesta" in text
 
     def test_buffer_atoms_emit_ts_atoms_buffer(self, tmp_path):
+        """SCIENCE. A junction carrying `buffer` atoms emits `TS.Atoms.Buffer` with the
+        right ranges AND explicit electrode positions.
+
+        Catches the second half being forgotten, which is the silent one.
+        TranSIESTA's default electrode placement is "the first N and the last N
+        atoms"; the categorical sort puts BUFFER atoms outermost, so that default
+        now names buffer padding as the leads. The deck must therefore state
+        `elec-pos begin 3` / `elec-pos end -3` explicitly. Emit the buffer block and
+        not the positions and the run completes, having built the lead self-energies
+        from atoms deliberately excluded from the NEGF region.
+
+        Contract: `engines/transport.md` § 4 (the `buffer` label: atoms excluded
+        from the NEGF region, placed outermost by the categorical sort).
+        """
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct(buffers=True))
         dest = _describe_transport(root)
@@ -319,6 +398,18 @@ class TestTheLadderPreps:
 class TestTheRecord:
 
     def test_written_once_and_reused_by_later_stages(self, calc):
+        """The composed record is written ONCE: a later stage loads it rather than
+        recomposing (asserted by mtime).
+
+        Catches every stage re-deriving the junction from the citation. Five stages
+        that each compose their own geometry can disagree -- a re-read of a live
+        `.XV`, a re-sort, a re-numbering -- and then the electrode ranges the device
+        deck names no longer address the atoms the electrode deck computed. One
+        composition, reused, is what makes the five decks describe one system.
+
+        Contract: `engines/transport.md` § 1 (one citation -> five derived stages)
+        + § 5 (the consistency contract).
+        """
         prep_calculation(calc, "seed")
         stamp = (calc / "junction.xyz").stat().st_mtime_ns
         prep_calculation(calc, "electrode_L")
@@ -326,6 +417,18 @@ class TestTheRecord:
             "a later stage loads the record instead of recomposing")
 
     def test_a_repointed_citation_recomposes(self, calc, tmp_path):
+        """The exception to "written once": re-pointing `task.json` at a DIFFERENT
+        concluded attempt recomposes, and `slot-provenance.json` names the new one.
+
+        Catches the cached record outliving the citation it came from. The two rules
+        pull opposite ways -- reuse the record, but not when it answers a question
+        nobody is asking any more -- and getting this half wrong is invisible: the
+        user re-cites a better relaxation, prep succeeds, and every stage is built
+        from the old geometry. The provenance file is what makes the answer auditable
+        afterwards.
+
+        Contract: `engines/transport.md` § 3.1 (what a citation names) + § 5.
+        """
         prep_calculation(calc, "seed")
         # a second concluded attempt with a different relaxed geometry
         root = tmp_path / "projects"
@@ -372,17 +475,50 @@ class TestTheRecord:
 class TestRefusals:
 
     def test_an_unnamed_stage_is_refused_naming_the_ladder(self, calc):
+        """Prep with no stage named is refused, and the refusal LISTS the ladder.
+
+        Catches a default. The composite has five stages that must run in order; if
+        `prep_calculation` picked one (the first, the only enabled one) the user
+        would get a prepped stage they did not ask for and would not know which. The
+        message naming both ends of the ladder is what turns the refusal into the
+        answer.
+
+        Contract: `engines/transport.md` § 1 + § 3 (prep + launch the ladder, stage
+        by stage).
+        """
         with pytest.raises(PrepError) as e:
             prep_calculation(calc)
         msg = str(e.value)
         assert "seed" in msg and "transmission" in msg
 
     def test_an_unknown_stage_is_refused_by_name(self, calc):
+        """A stage name that is not on this ladder is refused, quoting what was asked
+        for.
+
+        Catches a typo silently prepping something else -- "coarse" is a relaxation
+        stage name, exactly the kind of name a user carries over from the
+        calculation they cited. Quoting the rejected string is what tells them it was
+        their word and not the ladder that was wrong.
+
+        Contract: `engines/transport.md` § 1.
+        """
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "coarse")
         assert "'coarse'" in str(e.value).replace('"', "'")
 
     def test_a_disabled_seed_refuses_with_the_skip_rule(self, calc):
+        """Prepping a stage the description has DISABLED is refused, and the refusal
+        cites the ruling that makes the seed skippable.
+
+        Catches a disabled stage prepping anyway. The seed is the one stage that may
+        legitimately be turned off (ruling Q4 -- the device can start cold), so
+        `enabled: false` is a real choice a user makes; prepping it regardless would
+        put a deck and a job-set row in the tree for a stage the DAG does not expect,
+        and the gather then looks for a `.DM` that will never be produced.
+
+        Contract: `engines/transport.md` § 1 + ruling Q4 (the seed is skippable),
+        whose other half is `test_a_disabled_seed_drops_its_row`.
+        """
         from molbuilder.task import (Stage, Task, derive_run, read_task,
                                      write_task)
         t = read_task(calc / "task.json")
@@ -397,11 +533,39 @@ class TestRefusals:
         assert "disabled" in str(e.value) and "Q4" in str(e.value)
 
     def test_a_sweep_is_refused_naming_the_bias_axis(self, calc):
+        """A generic `sweep=` on a transport prep is refused, naming bias.
+
+        Catches two axes of variation existing at once. Transport already has ONE
+        axis -- the bias points -- with its own layout (a v-dir per point) and its
+        own chained launch that hands `.TSDE` forward. A second, generic sweep would
+        multiply against it into a directory shape nothing walks, and the chain
+        would carry a converged density between points that differ in something
+        other than voltage.
+
+        Contract: `engines/transport.md` § 1; the bias axis is
+        `archive/2026-09-01-transport-design.md` § 4.3.
+        """
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "seed", sweep={"x": [1, 2]})
         assert "bias" in str(e.value)
 
     def test_a_moved_frozen_atom_stops_prep(self, calc, tmp_path):
+        """SCIENCE. If the cited relaxation MOVED an atom that was declared frozen,
+        prep refuses.
+
+        Catches the geometric premise of the whole composite being false. The
+        electrode atoms are frozen because they must stay a pristine bulk slab --
+        that is what lets the same lattice be used for the separate bulk-lead run
+        the self-energies come from. If the relaxation moved one, the "bulk"
+        electrode in the device is no longer the bulk the lead run computes Sigma
+        for, so the leads are matched to a material that is not there. Nothing
+        downstream can see this: the deck renders, the run converges, and the
+        transmission is wrong.
+
+        Contract: `engines/transport.md` § 2 (Sigma comes from a separate pristine
+        bulk-lead run; frozen is the geometry constraint that keeps the two the same)
+        + § 4 (the electrode regions are BULK metal only).
+        """
         root = tmp_path / "projects"
         _write_xv(root / "J/optimization/Relax/01_coarse/run-0/Relax.XV",
                   _junction_struct(), perturb_electrode=(0, 0.05))
@@ -411,6 +575,20 @@ class TestRefusals:
 
     def test_a_pseudo_the_citation_cannot_supply_is_named(self, calc,
                                                           tmp_path):
+        """SCIENCE. A pseudopotential missing from the cited directory stops prep, and
+        the refusal names the file.
+
+        Catches the five stages being built on a different pseudopotential from the
+        relaxation they cite. The pseudopotential defines the effective nuclear
+        potential and the valence partitioning -- change it and the energies are not
+        comparable to the geometry that was relaxed with it. § 3.1's rule is that a
+        citation names a DIRECTORY and the directory must hold what the stage
+        consumes, so the failure mode without this gate is a silent fallback to a
+        system-wide `.psml` that happens to be on the path.
+
+        Contract: `engines/transport.md` § 3.1 (files, not layout) +
+        `science/pseudopotentials.md`.
+        """
         (tmp_path / "projects" / "J" / "optimization" / "Relax"
          / "01_coarse" / "run-0" / "Au.psml").unlink()
         with pytest.raises(PrepError) as e:
@@ -455,6 +633,19 @@ class TestTheGather:
         return read_task(calc / "task.json")
 
     def test_device_gathers_dm_and_both_tshs(self, calc, tmp_path):
+        """SCIENCE. The device gather copies in exactly three inputs -- the seed's
+        `T.DM` and BOTH electrodes' `.TSHS` -- and records where each came from.
+
+        Catches a device run starting without one of its leads. The `.TSHS` files
+        are the pristine bulk H/S the self-energies Sigma_L and Sigma_R are built
+        from; gather one and not the other and TranSIESTA is asked for a
+        two-terminal calculation with one terminal. `.gathered-from` is the audit
+        trail: without it, a device attempt cannot afterwards be traced to the
+        electrode runs whose numbers it depends on.
+
+        Contract: `engines/transport.md` § 2 (three runs; Sigma from the separate
+        bulk runs) + § 6 (the pieces and data flow).
+        """
         from molbuilder.jobset.prep import gather_transport_inputs
         for st in ("seed", "electrode_L", "electrode_R"):
             prep_calculation(calc, st)
@@ -501,6 +692,18 @@ class TestTheGather:
 
     def test_an_unprepped_upstream_is_refused_by_name(self, calc,
                                                       tmp_path):
+        """Gathering for the device when an upstream stage was never prepped is a named
+        refusal.
+
+        Catches the gather silently producing an empty input set. "Never prepped" and
+        "prepped but still running" are different states with different advice, and
+        the one that must never happen is either of them becoming "gathered nothing
+        and carried on" -- a device attempt with no `.TSHS` in it launches and dies
+        on the cluster hours later.
+
+        Contract: `engines/transport.md` § 3 (each prep gathers what the stage
+        consumes from the CONCLUDED stages before it).
+        """
         from molbuilder.jobset.prep import gather_transport_inputs
         dest = tmp_path / "d"
         dest.mkdir()
@@ -526,6 +729,18 @@ class TestTheGather:
 
     def test_a_concluded_attempt_missing_its_product_is_refused(
             self, calc, tmp_path):
+        """A stage that concluded but did not write its named product is refused,
+        saying which file is missing.
+
+        Catches "it finished" being mistaken for "it produced". The conclusion marker
+        records that the wrapper exited, not that SIESTA wrote a density -- an SCF
+        that hit its iteration limit, or a run killed after the last write, leaves a
+        concluded attempt with no `T.DM`. Without this gate the device gathers
+        nothing from the seed and warm-starts from a file that is not there.
+
+        Contract: `engines/transport.md` § 3 (gather from the concluded stages
+        before it); the sibling gates are stale-deck and not-yet-concluded.
+        """
         from molbuilder.jobset.prep import gather_transport_inputs
         for st in ("seed", "electrode_L", "electrode_R"):
             prep_calculation(calc, st)
@@ -563,6 +778,18 @@ class TestTheGather:
 
     def test_transmission_gathers_the_device_products(self, calc,
                                                       tmp_path):
+        """SCIENCE. The transmission gather takes the device's `T.TS.HSX` plus both
+        electrode `.TSHS` -- and NOT the `.TSDE`.
+
+        Catches tbtrans being fed the wrong file. SIESTA 5.x writes the converged
+        device Hamiltonian as `TS.HSX`; the `.TSDE` is the density matrix used to
+        warm-start the next bias point, not the H/S tbtrans evaluates T(E) from. The
+        distinction was measured live on 2026-08-29, and the failure it prevents is
+        a transmission computed from the wrong matrix rather than an error.
+
+        Contract: `engines/transport.md` § 2 (T(E) is built from the device G and
+        the leads' Gamma) + § 6.
+        """
         from molbuilder.jobset.prep import gather_transport_inputs
         for st in ("electrode_L", "electrode_R", "device"):
             prep_calculation(calc, st)
@@ -597,6 +824,17 @@ class TestTheLaunchSide:
             "only the transmission stage routes to tbtrans")
 
     def test_the_device_declares_its_tsde_warm_row(self, calc):
+        """The device job declares `T.TSDE` and `T.DM` as warm-start rows; an electrode
+        single-point declares none.
+
+        Catches the warm-start bookkeeping being applied uniformly. The device is the
+        expensive stage and the only one where resuming from a previous density pays;
+        an electrode is a cheap single-point where re-running beats reasoning about
+        whether a half-written copy is trustworthy. Declaring warm rows for a stage
+        that should start clean is how a corrupt density silently seeds a run.
+
+        Contract: `engines/transport.md` § 1 + § 6 (the data flow between stages).
+        """
         prep_calculation(calc, "device")
         prep_calculation(calc, "electrode_L")
         js = json.loads((calc / "job-set.json").read_text())
@@ -608,6 +846,17 @@ class TestTheLaunchSide:
             "is cheaper than reasoning about a half-finished copy")
 
     def test_the_device_deck_honours_the_seed_dm(self, calc):
+        """SCIENCE. The device deck sets `DM.UseSaveDM true`.
+
+        Catches the seed stage being pointless. SIESTA's default is FALSE, so
+        gathering `T.DM` into the device attempt puts the file in place and leaves
+        it unread -- the TranSIESTA SCF starts from scratch, the run costs what the
+        seed was meant to save, and nothing anywhere reports that the warm start did
+        not happen. The whole seed rung's justification is this one keyword.
+
+        Contract: `engines/transport.md` § 1 (the seed produces the density the
+        device starts from) + § 6.
+        """
         prep_calculation(calc, "device")
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
         assert "DM.UseSaveDM           true" in text, (
@@ -628,6 +877,19 @@ class TestTheCliRoute:
 
     def test_prep_routes_without_a_template(self, calc, tmp_path,
                                             monkeypatch):
+        """The CLI preps a transport stage from `task.json` ALONE -- no template -- and
+        opens the attempt directory like any other rung.
+
+        Catches the template gate refusing the composite. Every other calculation
+        preps through a template; transport has none by design (the electronic
+        contract comes from the cited deck, § 5), so the gate has to open for a
+        task.json with no template beside it. Get that wrong and the arm is
+        unreachable from the command line while every direct-call test in this file
+        still passes.
+
+        Contract: `engines/transport.md` § 3 (the CLI) + § 5 (one template governs,
+        and it is the citation's).
+        """
         r = self._invoke(["prep", "run", "seed", "--bundle",
                           "J/transport/T"], tmp_path / "projects",
                          monkeypatch)
@@ -637,6 +899,20 @@ class TestTheCliRoute:
 
     def test_prep_device_gathers_through_the_cli(self, calc, tmp_path,
                                                  monkeypatch):
+        """The CLI route gathers too -- and for a BIAS SCAN it opens one attempt ladder
+        per bias point, each with its own deck, wrapper and gathered inputs.
+
+        Catches the gather living only in the Python door. The CLI is what a person
+        actually runs; a route that renders the decks and skips the gather produces
+        per-point attempts that look complete and contain no `.TSHS`. The per-point
+        assertion is the sharper half: a single shared attempt for a two-point scan
+        would pass any "did it gather" check and then run both voltages in one
+        directory, overwriting the first point's results with the second's.
+
+        Contract: `engines/transport.md` § 3 (a bias scan launches as one chain job
+        walking the points); the layout is `archive/2026-09-01-transport-design.md`
+        § 4.3.
+        """
         for st in ("seed", "electrode_L", "electrode_R"):
             prep_calculation(calc, st)
         _conclude(calc, "seed", ["T.DM"])
@@ -660,6 +936,16 @@ class TestTheCliRoute:
     def test_prep_device_refuses_through_the_cli_too(self, calc,
                                                      tmp_path,
                                                      monkeypatch):
+        """The CLI refuses an unready device with the same named refusal the Python door
+        gives, and a non-zero exit code.
+
+        Catches the refusal being swallowed at the CLI boundary. A door that raises
+        and a command that prints the reason and exits 0 are different things: a
+        script driving the ladder reads the exit code, so a zero here means the
+        caller proceeds to launch a device attempt that was never prepared.
+
+        Contract: `engines/transport.md` § 3 (prep + launch stage by stage).
+        """
         for st in ("seed", "electrode_L", "electrode_R"):
             prep_calculation(calc, st)
         _conclude(calc, "seed", ["T.DM"])      # electrodes stay unconcluded
@@ -671,6 +957,16 @@ class TestTheCliRoute:
 
     def test_prep_bench_on_transport_is_refused(self, calc, tmp_path,
                                                 monkeypatch):
+        """`prep bench` on a transport calculation is refused.
+
+        Catches a benchmark ladder being built for the composite. Benchmarking sizes
+        a run by scaling one job across widths; the transport stages are five
+        DIFFERENT calculations with a dependency order and a chained bias walk, so
+        "benchmark it" has no meaning here -- and silently producing something would
+        put bench rungs in a job-set the transport launcher then tries to walk.
+
+        Contract: `engines/transport.md` § 1 (the composite's shape).
+        """
         r = self._invoke(["prep", "bench", "device", "--bundle",
                           "J/transport/T"], tmp_path / "projects",
                          monkeypatch)
@@ -679,6 +975,19 @@ class TestTheCliRoute:
 
     def test_init_refuses_the_flat_shape(self, calc, tmp_path,
                                          monkeypatch):
+        """`jobset init --calculation transport --shape flat` is refused, naming
+        hierarchical.
+
+        Catches the composite being described in a layout that cannot hold it. Flat
+        puts every stage's files in ONE directory distinguished by a filename token;
+        the five transport stages each need their own directory (and the device
+        needs a v-dir per bias point beneath it), so a flat transport description
+        would collide five decks and their attempts in one place. Refusing at
+        `init` is the only cheap moment -- after that there is a tree to unpick.
+
+        Contract: `engines/transport.md` § 1 + `execution/project-layout.md`
+        (flat vs hierarchical).
+        """
         r = self._invoke(["init", "--calculation", "transport",
                           "--shape", "flat",
                           "--bundle", "J/transport/T2",
@@ -729,6 +1038,20 @@ class TestTheBiasScan:
             f'echo "density-from-{point}" > T.TSDE\n')
 
     def test_the_points_render_their_own_decks(self, calc):
+        """SCIENCE. Each bias point renders its OWN deck carrying its OWN
+        `TS.Voltage`, and the stage-directory deck is the equilibrium point's.
+
+        Catches every point running at the same voltage. The bias is the independent
+        variable of the whole scan -- the difference in the leads' chemical
+        potentials, mu_L - mu_R -- so a per-point directory whose deck still says
+        0.0 eV produces a set of identical equilibrium results labelled as an I-V
+        curve. Nothing about the output would look wrong. The stage-directory copy
+        being the equilibrium point's matters too: it is what a person opens to read
+        the deck, and it must not be an arbitrary point's.
+
+        Contract: `engines/transport.md` § 2 (each lead carries a chemical
+        potential); the layout is `archive/2026-09-01-transport-design.md` § 4.3.
+        """
         prep_calculation(calc, "device")
         v0 = (calc / "04_device" / "v0" / "T_04_device.fdf").read_text()
         v2 = (calc / "04_device" / "v0.2" / "T_04_device.fdf").read_text()
@@ -741,6 +1064,18 @@ class TestTheBiasScan:
                 ).is_file(), "each point carries its own wrapper"
 
     def test_a_single_point_keeps_the_plain_layout(self, tmp_path):
+        """A single-point (equilibrium-only) description does NOT grow a v-dir layer.
+
+        Catches the per-point directory becoming unconditional. Most transport runs
+        are one voltage; wrapping them in a `v0/` subdirectory would change the path
+        of every deck and product for the common case, and every downstream reader
+        -- the gather, the results presenter, a person -- would have to know which
+        shape it was looking at. The v-dir layer exists for the AXIS, not for every
+        run.
+
+        Contract: `archive/2026-09-01-transport-design.md` § 4.3 (layout ruled
+        2026-08-29).
+        """
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct())
         dest = _describe_transport(root, bias=(0.0,))
@@ -771,6 +1106,20 @@ class TestTheBiasScan:
 
     def test_the_chain_stops_on_a_failed_point(self, calc, tmp_path,
                                                monkeypatch):
+        """SCIENCE. When a bias point FAILS, the chain stops -- the later points are not
+        walked -- and the failure's return code is reported.
+
+        Catches the walk continuing past a failure. Each point warm-starts from the
+        PREVIOUS point's `.TSDE`, so point 3 after a failed point 2 would either
+        start from point 1's density (a voltage jump the continuation was designed to
+        avoid) or from whatever half-written file the failed run left behind. Both
+        produce a converged-looking answer at the wrong bias. The three-point fixture
+        is what makes "stopped" distinguishable from "there was nothing left to do":
+        the log must hold exactly one entry.
+
+        Contract: `archive/2026-09-01-transport-design.md` § 4.3 (one submission
+        walking the points with the .TSDE handed forward).
+        """
         from molbuilder.jobset.submit import submit_transport_chain
         from molbuilder.task import read_task
         # a three-point scan: rewrite the description (the id derives
@@ -793,6 +1142,16 @@ class TestTheBiasScan:
 
     def test_an_unprepped_point_refuses_the_chain(self, calc, tmp_path,
                                                   monkeypatch):
+        """A chain launch with one point unprepped is refused, naming the point and the
+        command that fixes it.
+
+        Catches the chain launching a partial scan. The submission walks every point
+        in one job; a missing attempt directory discovered mid-walk would mean the
+        earlier points have already run and the user has a half-finished scan with no
+        single command to resume it. Refusing before anything runs is the difference.
+
+        Contract: `archive/2026-09-01-transport-design.md` § 4.3.
+        """
         from molbuilder.jobset.submit import (SubmitError,
                                               submit_transport_chain)
         task, js = self._ready(calc, tmp_path, monkeypatch)
@@ -803,6 +1162,18 @@ class TestTheBiasScan:
 
     def test_a_launched_point_refuses_relaunch(self, calc, tmp_path,
                                                monkeypatch):
+        """A point whose attempt already carries a `run.json` refuses relaunch, citing
+        immutability.
+
+        Catches results being overwritten in place. An attempt directory is immutable
+        once launched -- that is what makes a result traceable to the deck that
+        produced it -- and a chain that re-walked a launched point would write new
+        output over old in the same directory, leaving a run.json and a set of
+        products that came from two different launches.
+
+        Contract: `execution/running-a-job.md` (the attempt is immutable once
+        launched) + `archive/2026-09-01-transport-design.md` § 4.3.
+        """
         from molbuilder.jobset.submit import (SubmitError,
                                               submit_transport_chain)
         task, js = self._ready(calc, tmp_path, monkeypatch)
@@ -852,6 +1223,17 @@ class TestTheOverrideLane:
             varies=tuple(sorted(overrides)), stages=stages))
 
     def test_a_knob_override_lands_in_the_deck(self, calc):
+        """A transport-only knob set as a stage override reaches the rendered deck.
+
+        Catches the override lane being inert. The composite has no template, so a
+        stage's `overrides` bag is the description's ONLY place to say anything the
+        citation does not own -- the transmission window, the contour. An override
+        that is accepted, written into task.json, and then not rendered gives the
+        user a description that reads as configured and a deck that is at defaults.
+
+        Contract: `engines/transport.md` § 5 (the invariant set is the citation's;
+        everything else is the description's).
+        """
         self._with_override(calc, "device",
                             {"transmission_n_points": 101})
         prep_calculation(calc, "device")
@@ -859,12 +1241,37 @@ class TestTheOverrideLane:
         assert "TS.TBT.NumE            101" in text
 
     def test_a_contract_field_is_sealed(self, calc):
+        """SCIENCE. A CONTRACT field -- here `basis_size` -- cannot be overridden on a
+        stage when the citation is a concluded relaxation; the refusal says it is
+        the citation's to say.
+
+        Catches the consistency contract being broken one keyword at a time. The
+        invariant set (basis, XC, energy shift, mesh, k, electronic temperature) must
+        be IDENTICAL across the seed, both electrodes and the device, because the
+        electrode `.TSHS` and the device Hamiltonian are matched matrices: a device
+        computed in TZP against leads computed in DZP does not just lose accuracy, it
+        mismatches the basis the self-energies are expressed in. Sealing the field is
+        what makes "one template governs" enforceable rather than advisory.
+
+        Contract: `engines/transport.md` § 5 (the consistency contract -- the
+        invariant set) + § 3.1 (fdf-is-truth: the contract is read from the cited
+        deck).
+        """
         self._with_override(calc, "device", {"basis_size": "DZP"})
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "device")
         assert "citation's to say" in str(e.value)
 
     def test_an_unknown_knob_is_refused_by_name(self, calc):
+        """A misspelled override key is refused, quoting the key.
+
+        Catches a typo being silently ignored. `n_pionts` for `n_points` is accepted
+        by any dict, written into task.json, and then does nothing -- the user
+        believes they set the transmission grid and the deck renders at the default.
+        Quoting the offending key is what turns the refusal into a fix.
+
+        Contract: `engines/transport.md` § 5.
+        """
         self._with_override(calc, "transmission", {"n_pionts": 7})
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "transmission")
@@ -877,6 +1284,20 @@ class TestFormBContract:
     ordinary overrides and land in the rendered deck."""
 
     def test_an_open_contract_field_reaches_the_deck(self, tmp_path):
+        """SCIENCE, and the other half of the seal. When the citation is a labeled
+        PAIR (form B) rather than a concluded run, `basis_size` is an ORDINARY
+        override and must reach the deck.
+
+        Catches the seal being applied unconditionally. A pair has no deck, so there
+        is no cited electronic contract to defer to -- if the field stayed sealed
+        there would be no way to state the basis at all, and every form-B transport
+        calculation would render at the default basis with the user unable to change
+        it. The rule is not "these fields are frozen", it is "these fields belong to
+        the citation when the citation HAS them".
+
+        Contract: `engines/transport.md` § 3.1 (what makes a directory citable --
+        form A vs form B) + § 5 (the invariant set).
+        """
         from molbuilder.workingcopy_structure import StructureCodec
         root = tmp_path / "projects"
         pair = root / "J" / "structure" / "junc"
@@ -897,6 +1318,18 @@ class TestFormBContract:
         assert "TZP" in deck, "the open contract field must reach the deck"
 
     def test_the_same_field_stays_sealed_for_a_relaxation(self, calc):
+        """SCIENCE. The paired negative: the SAME field, on a form-A citation, is still
+        sealed.
+
+        Catches the form-B opening being implemented as "stop sealing". The two
+        tests are only meaningful together -- either alone is satisfied by a
+        constant answer -- and the failure this one catches is the dangerous
+        direction: a description silently re-specifying the basis the cited
+        relaxation was run at, so the device Hamiltonian and the geometry it uses
+        come from different electronic structures.
+
+        Contract: `engines/transport.md` § 5 + § 3.1.
+        """
         import json as _json
         t = _json.loads((calc / "task.json").read_text())
         for st in t["stages"]:

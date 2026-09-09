@@ -102,6 +102,16 @@ def _run_node(snippet: str) -> object:
 class TestSurfacePresence:
 
     def test_all_M4_methods_are_callable(self):
+        """Every name `web/projects.md` § 5 promises is present on the public object
+        and is a function.
+
+        RECORDED HONESTLY for the section 3b review rather than defended: this is a
+        signature restated in a second language. All thirteen names are also CALLED
+        behaviourally elsewhere in this file (`p.setShared` is the one exception --
+        the behaviour tests reach `state.setShared` directly), so what the `typeof`
+        sweep adds over those is that the name is EXPORTED onto `projects.*`, which a
+        correct module plus review already covers. Raised as a cut candidate.
+        """
         out = _run_node('''
             const p = state.projects;
             console.log(JSON.stringify({
@@ -153,6 +163,16 @@ class TestOnCommit:
         assert out["callsAfterSubscribe"] == []
 
     def test_publishCommit_fires_subscribers(self):
+        """`publishCommit` delivers `{dir, file}` -- the file's FULL path -- to every
+        `onCommit` subscriber.
+
+        `web/projects.md` § 5 states the payload and is explicit that `path` is
+        the full path, "not its name -- subscribers use it as one". A publisher
+        sending the basename hands every tab a string it then resolves against its own
+        current directory: the double-click opens a different file, or none, with no
+        error anywhere. Cross-language: this payload is the whole contract between the
+        sidebar and every tab that follows it.
+        """
         out = _run_node('''
             const calls = [];
             state.projects.onCommit(p => calls.push(p));
@@ -257,6 +277,15 @@ class TestOnCommit:
         assert out == []
 
     def test_unsubscribe_works(self):
+        """The function `onCommit` returns actually removes the subscriber.
+
+        A no-op unsubscribe is invisible until a tab is torn down and rebuilt:
+        the stale callback keeps firing (its exception swallowed by the
+        publisher's per-subscriber isolation, so nothing reports it), and the
+        duplicate-registration throw -- `web/projects.md` § 2, the same
+        callback twice is an error -- then refuses the re-subscribe. Together
+        those turn a leak into a tab that cannot be re-entered.
+        """
         out = _run_node('''
             const calls = [];
             const unsub = state.projects.onCommit(p => calls.push(p));
@@ -286,6 +315,14 @@ class TestOnCommit:
 class TestReadFile:
 
     def test_delegates_to_apiRead(self):
+        """`projects.readFile` reaches `/api/files/read` with the path URL-encoded.
+
+        CUT CANDIDATE (section 3b, "test the DOOR's outcome"): `state.readFile` is
+        `return await apiRead(path, opts)` -- one line, no decision of its own -- so
+        this observes `api.js`'s outcome through a wrapper. The URL composition lives
+        in `apiRead`, and `test_projects_api_envelope_js.py` drives that door
+        directly.
+        """
         out = _run_node('''
             let capturedUrl = null;
             global.fetch = async (url) => {
@@ -310,6 +347,14 @@ class TestReadFile:
         assert "%2Fprojects%2Fjob%2Fa.xyz" in out["url"]
 
     def test_failure_passes_through(self):
+        """A server error envelope reaches the caller unchanged through
+        `projects.readFile`.
+
+        CUT CANDIDATE, same reason as the test above: the wrapper is a single
+        `return await apiRead(...)`, and the uniform never-throw envelope is
+        `api.js`'s contract, held by `test_projects_api_envelope_js.py`
+        (`TestNetworkFailure` / `TestNonJsonResponse`).
+        """
         out = _run_node('''
             global.fetch = async () => ({
                 ok: false,
@@ -361,6 +406,16 @@ class TestReadRange:
         assert "max_bytes=" not in out["url"]
 
     def test_explicit_offset_and_max_bytes_in_url(self):
+        """`readRange(path, offset, maxBytes)` puts both on the query string.
+
+        The property is real -- a dropped `offset` makes the paginated source
+        inspector re-read the first chunk forever -- but it is composed in
+        `api.js::apiReadRange`, and `state.readRange` only forwards. MOVE CANDIDATE
+        rather than a cut: it belongs beside
+        `test_apiReadRange_returns_server_body_verbatim` in
+        `test_projects_api_envelope_js.py`, which today asserts the envelope and not
+        the URL.
+        """
         out = _run_node('''
             let capturedUrl = null;
             global.fetch = async (url) => {
@@ -405,6 +460,13 @@ class TestReadRange:
         assert "offset=-262144" in out["url"]
 
     def test_server_error_envelope_passes_through(self):
+        """A 400 from the range route arrives as `{ok:false, error}` rather than a throw.
+
+        CUT CANDIDATE: `state.readRange` forwards to `apiReadRange` with no branch of
+        its own, and the never-throw envelope rule -- `web/projects.md` § 5,
+        "they never throw" -- belongs to `api.js` and is held by
+        `test_projects_api_envelope_js.py`.
+        """
         out = _run_node('''
             global.fetch = async () => ({
                 ok: false, status: 400,
@@ -433,6 +495,14 @@ class TestReadRange:
         assert "network error" in out["error"]
 
     def test_abort_signal_threads_into_fetch(self):
+        """`opts.signal` reaches `fetch`, so a slow range read can be cancelled.
+
+        Forwarded verbatim by a one-line wrapper, so by section 3b this is a caller
+        test for a door's property. MOVE CANDIDATE, not a cut: the door file pins
+        signal forwarding for `apiRead`, `apiWrite`, `apiDelete`, `apiUpload`,
+        `apiList`, `apiRename` and `apiMkdir` -- but NOT for `apiReadRange`, so
+        deleting this outright is the only version of the change that loses coverage.
+        """
         out = _run_node('''
             let capturedSignal = null;
             global.fetch = async (url, init) => {
@@ -484,6 +554,14 @@ class TestRefreshOnSuccess:
         assert out["refreshArgs"] == ["/projects"]
 
     def test_mkdir_refreshes_parent(self):
+        """A successful `mkdir` refreshes the PARENT directory, so the new folder appears
+        without a manual reload.
+
+        `web/projects.md` § 5: each organizing call "refreshes the sidebar on
+        success". This is the wrapper's OWN decision -- `api.js` knows nothing about
+        the sidebar -- and the argument is what makes it correct: refreshing the wrong
+        directory leaves the new folder invisible while re-listing something else.
+        """
         out = _run_node('''
             const refreshArgs = [];
             state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
@@ -498,6 +576,13 @@ class TestRefreshOnSuccess:
         assert out == ["/p/parent"]
 
     def test_upload_refreshes_target_dir(self):
+        """A successful upload refreshes the directory it was uploaded INTO.
+
+        The same rule (`web/projects.md` § 5) with a different derivation: the
+        target directory is an argument here rather than derived from a path. A file
+        that lands on disk and does not appear in the sidebar reads to the user as an
+        upload that failed, and the usual response is to upload it a second time.
+        """
         out = _run_node('''
             const refreshArgs = [];
             state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
@@ -512,6 +597,13 @@ class TestRefreshOnSuccess:
         assert out == ["/p/dest"]
 
     def test_rename_refreshes_parent_dir(self):
+        """A successful rename refreshes the parent, derived from the OLD path.
+
+        The wrapper strips the last path segment itself, falling back to the projects
+        root for a top-level entry -- logic `api.js` does not have. Getting it wrong
+        leaves the sidebar showing the old name for a file that no longer has it, so
+        the next click acts on a path the server will refuse.
+        """
         out = _run_node('''
             const refreshArgs = [];
             state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
@@ -548,6 +640,12 @@ class TestRefreshOnSuccess:
         assert out["refreshArgs"] == []
 
     def test_deleteEntry_refreshes_parent_dir(self):
+        """A successful delete refreshes the containing directory.
+
+        The same parent derivation as rename, with a sharper consequence: a row left
+        in the sidebar for a deleted file is a row someone clicks, and the tab then
+        tries to open a file that is gone. `web/projects.md` § 5.
+        """
         out = _run_node('''
             const refreshArgs = [];
             state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
@@ -589,6 +687,15 @@ class TestNoRefreshOnFailure:
         assert out["refreshArgs"] == []
 
     def test_upload_network_failure_does_not_refresh(self):
+        """A network drop during upload returns the failure envelope AND does not
+        refresh.
+
+        Two halves that must hold together: `fetch` throwing must not propagate
+        (`web/projects.md` § 5 -- these calls never throw), and the refresh must
+        be gated on `r.ok` rather than merely on having returned. A refresh after a
+        failed upload re-lists a directory that did not change, which on a slow
+        filesystem makes a failure look like a success that has not appeared yet.
+        """
         out = _run_node('''
             const refreshArgs = [];
             state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
@@ -734,6 +841,14 @@ class TestReadCurrentFileEnvelope:
     {ok:true, path, text}; ReadErr is {ok:false, error}."""
 
     def test_no_file_selected_returns_null(self):
+        """With nothing selected, `readCurrentFile()` returns `null` -- distinct from an
+        error envelope.
+
+        Three terminal states, three shapes: `null` for "no file selected",
+        `{ok:true,...}` for a read, `{ok:false,error}` for a failure. Callers branch on
+        `null` first, so folding it into an error envelope makes every tab show a read
+        error on a page where the user has simply not picked anything yet.
+        """
         out = _run_node('''
             const r = await state.projects.readCurrentFile();
             console.log(JSON.stringify(r));
@@ -741,6 +856,13 @@ class TestReadCurrentFileEnvelope:
         assert out is None
 
     def test_success_returns_envelope_with_ok(self):
+        """A successful `readCurrentFile()` returns the read envelope with `ok:true`.
+
+        The middle of the three states above. It also pins that the file read is the
+        one in the shared selection slot (`web/projects.md` § 2) rather than one
+        passed in -- a reader pointed at the wrong slot returns another file's
+        contents with `ok:true`, which no caller checks for.
+        """
         out = _run_node('''
             sessionStorage.setItem("molbuilder.current_file", "/p/f.xyz");
             global.fetch = async () => ({
@@ -755,6 +877,13 @@ class TestReadCurrentFileEnvelope:
         assert out == {"ok": True, "path": "/p/f.xyz", "text": "hello"}
 
     def test_failure_returns_envelope_not_null(self):
+        """A failed read of the selected file returns `{ok:false, error}` -- NOT `null`.
+
+        The third state, and the one that actually goes wrong: `null` is the caller's
+        "nothing is selected" signal, so returning it for a read failure makes a
+        missing or unreadable file look like an empty selection, and the tab silently
+        does nothing instead of reporting the error.
+        """
         out = _run_node('''
             sessionStorage.setItem("molbuilder.current_file", "/p/f.xyz");
             global.fetch = async () => ({
@@ -776,6 +905,14 @@ class TestRefreshEnvelope:
     Previously returned undefined on every path, violating Principle 6."""
 
     def test_no_current_dir_returns_envelope_not_undefined(self):
+        """`refresh()` with no current directory returns `{ok:false, error}`, not
+        `undefined`.
+
+        Commemorates the defect the envelope rule was written for: `refresh` returned
+        `undefined` on every path, so a caller writing `if (r.ok)` threw on a property
+        of undefined instead of handling the case. Every call on this surface returns
+        a uniform result (`web/projects.md` § 5).
+        """
         out = _run_node('''
             const r = await state.projects.refresh();
             console.log(JSON.stringify({
@@ -788,6 +925,14 @@ class TestRefreshEnvelope:
         assert "no current directory" in out["r"]["error"]
 
     def test_no_refresh_handler_returns_envelope(self):
+        """`refresh()` before the sidebar has wired its handler answers a clean failure
+        envelope rather than throwing.
+
+        Tabs subscribe and then act, while the sidebar's init is asynchronous. A throw
+        here lands in another tab's setup, where nothing catches it and it stops that
+        tab loading -- for a condition that resolves itself a moment later. The same
+        fail-safe shape `navigateTo` has before `setNavigateToImpl` runs.
+        """
         out = _run_node('''
             sessionStorage.setItem("molbuilder.current_dir", "/p");
             const r = await state.projects.refresh();
@@ -797,6 +942,12 @@ class TestRefreshEnvelope:
         assert "no refresh handler" in out["error"]
 
     def test_success_returns_ok_envelope(self):
+        """A refresh whose handler succeeds returns exactly `{ok:true}`.
+
+        The positive control for the three failure envelopes around it: a `refresh`
+        that always reported failure would satisfy every one of them. Asserted as an
+        equality, which also pins that no internal detail rides out on the result.
+        """
         out = _run_node('''
             sessionStorage.setItem("molbuilder.current_dir", "/p");
             state.setRefreshHandler(async (dir) => { /* success */ });
@@ -806,6 +957,13 @@ class TestRefreshEnvelope:
         assert out == {"ok": True}
 
     def test_handler_throws_returns_error_envelope(self):
+        """A refresh handler that throws is caught, and the underlying message is kept.
+
+        `web/projects.md` § 5 -- these calls never throw -- but swallowing the
+        REASON is the other half of the failure: "refresh failed" alone tells a person
+        nothing, so the handler's own message is carried inside it. A transient
+        listing failure must not take down the caller that asked for the refresh.
+        """
         out = _run_node('''
             sessionStorage.setItem("molbuilder.current_dir", "/p");
             state.setRefreshHandler(async () => {
@@ -829,6 +987,15 @@ class TestWriteFileEdgeFields:
     conflict programmatically per § 6.2."""
 
     def test_writeFile_preserves_actual_mtime_on_409(self):
+        """A 409 edit-conflict carries `actual_mtime` out of `writeFile`, not just
+        `error`.
+
+        The recorded defect: `writeFile` destructured only `error` and dropped
+        `actual_mtime`, so a tab could not tell an edit conflict from any other
+        failure programmatically -- the file on disk had changed under the editor and
+        the only thing offered was a generic error. That field is what lets the caller
+        offer "reload and re-apply" instead.
+        """
         out = _run_node('''
             global.fetch = async () => ({
                 ok: false, status: 409,
@@ -1119,6 +1286,15 @@ class TestUploadEnvelopeShape:
     relPath from the projects root."""
 
     def test_upload_computes_relPath_from_projects_root(self):
+        """`upload` adds `relPath` -- the path relative to the projects root -- which the
+        server does not send.
+
+        This is the wrapper DECIDING something the door cannot: `/api/files/upload`
+        returns `{ok, path, size, mtime}` only, and `relPath` is computed here from
+        the resolved projects root so an upload envelope has the same shape as a write
+        envelope. A caller displaying `relPath` otherwise shows the absolute
+        filesystem path -- a home directory and username in the UI -- or `undefined`.
+        """
         out = _run_node('''
             state.setProjectsRoot("/home/u/projects");
             global.fetch = async () => ({
@@ -1152,6 +1328,17 @@ class TestSetSharedStorageFailure:
     won't survive a reload."""
 
     def test_setShared_swallows_sessionStorage_error_and_publishes(self):
+        """A `sessionStorage` write that throws must not stop the selection being
+        published -- and the publish carries the INTENDED payload, not the stale
+        stored one.
+
+        Private-browsing `SecurityError` and quota failures are real, and the slots
+        are the browser's short-term storage (`web/projects.md` § 2). The subtle
+        half is the second assertion: the publish reads its payload explicitly instead
+        of re-reading storage, so after a failed write subscribers get `/after` rather
+        than the `/before` still on disk. Without it, every tab quietly follows a
+        selection the user has already moved away from.
+        """
         out = _run_node('''
             // Make sessionStorage.setItem throw.  Use a wrapper
             // so we can flip it on/off.
@@ -1198,6 +1385,15 @@ class TestSubscribeDedupThrows:
     unsubscribe + double-init bugs at the call site."""
 
     def test_onChange_throws_on_duplicate(self):
+        """Registering the same `onChange` callback twice throws, and the message names
+        the API.
+
+        `web/projects.md` § 2: "Registering the same callback twice is an error,
+        on purpose." It catches a forgotten unsubscribe or a double-init at the call
+        site; without it the callback fires twice per event and the tab does its work
+        twice -- which for a save pipeline or a schema reload is a real double
+        execution, not a cosmetic one.
+        """
         out = _run_node('''
             const cb = (p) => {};
             state.projects.onChange(cb);
@@ -1212,6 +1408,13 @@ class TestSubscribeDedupThrows:
         assert "already registered" in out["msg"]
 
     def test_onProjectsRootResolved_throws_on_duplicate(self):
+        """The same duplicate-registration rule holds on `onProjectsRootResolved`.
+
+        One rule, several subscribe APIs -- and each keeps its own registration set,
+        so the guard has to be present on each. This is the one most likely to be
+        missed, because it fires once and callers assume a one-shot cannot leak.
+        `web/projects.md` § 5 lists it beside `onChange` and `onCommit`.
+        """
         out = _run_node('''
             const cb = (p) => {};
             state.projects.onProjectsRootResolved(cb);
@@ -1264,6 +1467,15 @@ class TestPublishSnapshotSemantics:
     fire-once-immediately on their own subscribe call."""
 
     def test_new_subscriber_registered_during_publish_loop_does_not_fire_in_progress(self):
+        """A subscriber registered from INSIDE a publish loop does not also receive that
+        same event.
+
+        Without the snapshot taken before iterating, the new subscriber is visited by
+        the in-progress loop as well as by its own fire-once-on-subscribe, so it gets
+        the same selection twice and the tab acts on it twice. Iterating a live set
+        while callbacks add to it is also where a non-terminating publish lives. The
+        expected sequence is spelled out in the body's comment.
+        """
         out = _run_node('''
             const calls = [];
             const lateCb = (p) => calls.push({fn:"late", file:p.file});
@@ -1341,6 +1553,14 @@ class TestOnProjectsRootResolved:
     resolved-state per the standard contract."""
 
     def test_subscriber_fires_when_setProjectsRoot_lands(self):
+        """A subscriber registered BEFORE the root resolves is called when it does, and
+        not before.
+
+        `web/projects.md` § 5 -- `onProjectsRootResolved` is the one-shot for
+        tabs that load before the sidebar's init has answered. Firing early hands a
+        tab an empty root that it then joins paths onto; not firing at all leaves the
+        tab waiting forever for a resolution that already happened.
+        """
         out = _run_node('''
             const calls = [];
             state.projects.onProjectsRootResolved(p => calls.push(p));
@@ -1369,6 +1589,16 @@ class TestOnProjectsRootResolved:
         assert out == [{"root": "/p"}]
 
     def test_unsubscribe_works(self):
+        """Unsubscribing from `onProjectsRootResolved` before the root lands
+        means no call at all.
+
+        The one-shot's own teardown, and the one place it matters: a tab that
+        unmounts while the sidebar is still resolving must not be called back
+        into afterwards. That callback runs against a DOM that no longer
+        exists, and the publisher isolates per-subscriber exceptions, so the
+        failure is silent -- a tab that half-initialises something it has
+        already thrown away.
+        """
         out = _run_node('''
             const calls = [];
             const unsub = state.projects.onProjectsRootResolved(

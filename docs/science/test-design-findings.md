@@ -60,7 +60,7 @@ executes is not a gate.
 | `…::test_junction_stepped_contacts_via_two_calls` | atom counts only | Hard-codes "ASE's fcc(111) Au inter-layer spacing ≈2.355 Å" into its arithmetic and never asserts it. If ASE's lattice constant moved, the stacks would overlap and the test would still pass. Measure `a/√3` from the built geometry. |
 | `…::test_add_atom_zero_offset_is_advisory_not_blocked` | a finding is raised | Neither the threshold nor the value. A validator flagging every pair at any separation passes. |
 | — spectra | `n_h >= 25` for ARNDC | A floor that **over**-addition passes, when over/under-deletion is the measured failure mode. |
-| — spectra | `span_after > span_before + 15.0` | Exactly computable; asserted as an inequality. |
+| `test_periodicity_gate.py::test_translating_the_whole_molecule_keeps_the_box_with_it` | `span_after > span_before + 15.0` | Exactly computable (the translation is a known +20 Å); asserted as an inequality. **Filed under "spectra" until 2026-09-09 and therefore unfindable** — `grep -rn span_after tests/` returns `test_periodicity_gate.py:756` and nothing else. |
 
 ## 3. Assertions that cannot fail, or fail for the wrong reason
 
@@ -206,6 +206,109 @@ file is ever redesigned.
   through a forwarder (`modify.translate` with no `indices` is
   `struct.translated(vec)`). The version that would earn its place is the
   `indices=` branch, where annotation carriage could actually be lost.
+
+## 7a. From the 2026-09-09 header pass — nine more, one of them measured
+
+Recorded under the same rule as everything above: **none is a proposal to
+delete.** Companion record for the non-science half:
+[`process/test-audit-findings.md § 7`](?doc=process/test-audit-findings.md).
+
+### The one that was measured, and it is the sharpest in this file
+
+**`test_modify.py::test_orient_handles_antiparallel_case` — an INVERSION passes.**
+The antiparallel branch of `_rotation_matrix_from_a_to_b` (`modify.py:267`) is
+the singular case, `cross(a, -a) == 0`. Replacing its `2·nnᵀ − I` (a proper
+rotation, `det = +1`) with `-np.eye(3)` (an inversion, `det = −1`) was run on
+2026-09-09:
+
+- the named test passes,
+- **all 101 tests in `test_modify.py` pass**,
+- and **all 320 tests in every file that touches `orient` pass** — including
+  `tests/validation/test_geometry.py`.
+
+**An inversion flips the chirality of any real molecule.** The shipped code is
+correct; nothing in the suite would notice if it stopped being. The cause is the
+fixture: a **two-atom** structure, in which a reflection and a rotation are
+indistinguishable. *Redesign:* assert `det(R) == 1` directly, or add a third
+off-axis atom and compare the signed triple product across the operation.
+
+### Assertions weaker than they read
+
+- **`test_modify.py:434::test_delete_preserves_metadata_in_lockstep` asserts
+  LENGTH, not contents.** Four `len(...) == out.n_atoms` checks. `delete_atoms`
+  builds six comprehensions over one `keep` set, and a copy-paste error in one
+  of them yields the right length and the wrong contents — every atom after the
+  deletion point wearing its neighbour's name and residue. That is an
+  atom-identity error that renders as a valid structure and reaches both
+  emitters. *Fix:* assert the survivors equal `[orig[i] for i in keep]`.
+- **`test_atom_selection.py:342::test_not_is_complement` asserts a relation, not
+  the atoms.** It compares `evaluate(Not(au))` against
+  `evaluate(Minus(All(), au))` — but in `_evaluate` both are literally
+  `frozenset(range(n)) - _evaluate(operand)`, so a mutation breaking `n` breaks
+  both and stays green. It is `Not`'s **only** evaluation test. *Fix:* assert the
+  named set, and keep the equivalence as a second line.
+- **`test_atom_selection.py:370::test_first_n_more_than_available` asserts
+  Python's slice semantics.** `ordered[:99]` is a language guarantee. The
+  property it means to protect is a design decision — a saved rule whose
+  structure has since shrunk degrades rather than refusing — which would be
+  observable by evaluating a rule written for 11 atoms against a structure of 5.
+- **`test_transport_prep.py:337::test_the_transmission_deck_carries_the_tbt_window`
+  checks presence, not the window.** `"TS.TBT.NumE" in text and "TS.TBT.Emin" in
+  text` is satisfied by any values, including a range entirely above the Fermi
+  level — and a window that does not bracket `E_F` is the failure that matters
+  for `T(E)`. This one line is an outlier in an unusually strong file (which
+  elsewhere asserts species columns, `elec-pos` offsets, `kz = 1`, and the
+  `.TSHS` stem two writers share). *Fix:* derive `Emin`/`Emax` from the cited
+  deck's `E_F` and assert the sign relation.
+
+### Gaps, not weaknesses
+
+- **`spectra/test_parsers_json.py:1063` pins the impossible `homo_idx`, not the
+  realistic one.** It refuses `homo_idx = 99` against a 5-orbital array.
+  In-range-but-wrong is what actually happens: an off-by-one HOMO shifts the
+  level diagram, the gap, and the gap *shift* — and `web/spectra.md § 3.1`
+  records those shifts at ~0.018 meV, small enough that a wrong index looks like
+  a different answer rather than an error. **Nothing anywhere checks that
+  `homo_idx` is the index of the highest OCCUPIED orbital** (against the
+  electron count, or a sign change in the occupations). The sharpest physics gap
+  in that file.
+- **Nothing joins the sidecar to the selection evaluator.** `ByRegion` appears
+  only in `test_atom_selection.py`; `apply_to_structure` appears in eight other
+  files but never with a rule evaluation. So the end-to-end path that decides
+  *which atoms are computed* — labels written to `.molstruct.json`, applied to a
+  `Structure`, then a `ByRegion` rule re-selecting exactly those atoms — is
+  covered as two halves that never meet. `model/overview.md` § 2 names index
+  translation as where an off-by-one happens, and both halves use hand-built
+  0-based fixtures, so a shift introduced between them is invisible. **A test to
+  write.**
+- **`TestOpsPreservePeriodicity` is asymmetric in the dangerous direction.** The
+  two rotation tests assert only `axis_kind` and `vacuum` — correctly skipping
+  the lattice check, since rotation legitimately rotates the vectors — but
+  nothing in that class then asserts anything about the rotated cell, and the
+  check that does lives in another class with its own two-atom fixture. So for
+  the fixture carrying a real `("periodic","periodic","transport")` cell, a
+  rotation could return `cell=None` and both tests pass. *Fix:* assert
+  `out.cell is not None` and that `det(out.cell)` is unchanged — the volume is
+  invariant under any rotation and is the cheapest statement of it.
+
+### The sidecar pairing — protected, and two notes
+
+- **The fixture hand-builds the artifact, two schema versions stale.**
+  `test_web_files.py:1596 _seed_paired` writes `{"schema_version": 7, …}` by
+  hand while `sidecars/molstruct.py:92` is `SCHEMA_VERSION = 9` (2026-08-29).
+  The artifact under test is not the artifact the codec writes, and the existing
+  door — `molstruct`'s own writer — is bypassed. Nothing fails today because the
+  file operations only move bytes, which is exactly why it can drift unnoticed.
+- **The pairing tests assert file presence, not scientific survival.** After
+  rename/move/copy the strongest assertion is
+  `json.loads(new_sidecar)["n_atoms_total"] == 3`. **`regions` and
+  `frozen_atoms` — the fields whose silent loss is the harm the pairing exists
+  to prevent — are never read back**, and no pairing test re-opens the moved pair
+  through `StructureCodec.read`. A future coherence check that a rename
+  invalidated would leave all of them green. *Fix:* one line of the existing
+  door — load the moved pair and assert the labels come back.
+
+---
 
 ## 8. Two tests worth copying
 

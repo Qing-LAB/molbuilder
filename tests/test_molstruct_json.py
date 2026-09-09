@@ -50,6 +50,15 @@ def _write_xyz(tmp_path: Path, n: int = 4) -> Path:
 
 class TestSidecarPathFor:
     def test_plain_xyz(self, tmp_path):
+        """The sidecar's name is the structure's name with its suffix REPLACED by
+        `.molstruct.json`.
+
+        The pair is linked by filename and by nothing else (`structure-molstruct.md`
+        section 6), so a namer that appended rather than replaced would write
+        `relaxed.xyz.molstruct.json` -- which the loader never finds, and every region
+        label and frozen-atom index on that structure is silently gone at the next
+        load.
+        """
         p = tmp_path / "relaxed.xyz"
         assert msj.sidecar_path_for(p).name == "relaxed.molstruct.json"
 
@@ -60,6 +69,14 @@ class TestSidecarPathFor:
         assert msj.sidecar_path_for(p).name == "job.spectra.molstruct.json"
 
     def test_no_suffix(self, tmp_path):
+        """A structure file with no extension still gets `<name>.molstruct.json`.
+
+        The suffix-replacement path has to handle "there is no suffix" without
+        producing a name-less dotfile and without leaving the pair unmatched. Same
+        pairing rule as `test_plain_xyz` (`structure-molstruct.md` § 6); this is
+        the branch `Path.with_suffix` gets wrong in the opposite direction from the
+        compound-suffix case beside it.
+        """
         p = tmp_path / "bridge"
         assert msj.sidecar_path_for(p).name == "bridge.molstruct.json"
 
@@ -71,6 +88,15 @@ class TestSidecarPathFor:
 
 class TestToDict:
     def test_minimum_required_fields(self):
+        """The canonical builder writes the schema version, the two integrity fields and
+        an EMPTY label store -- and no second home for frozen atoms.
+
+        `assert "frozen_atoms" not in d` is the load-bearing line: the reserved label
+        lives inside `regions`, one store (`structure-annotations.md` § 2). A
+        builder that also wrote a top-level key would produce files whose two copies
+        can disagree -- the schema-3 shape `load` refuses outright
+        (`structure-molstruct.md` § 2).
+        """
         d = msj.to_dict(n_atoms_total=4, structure_hash="a" * 64)
         assert d["schema_version"] == msj.SCHEMA_VERSION
         assert d["n_atoms_total"]  == 4
@@ -82,6 +108,14 @@ class TestToDict:
         assert d["created_at"].endswith("Z")
 
     def test_regions_sorted_and_deduped(self):
+        """Region indices are normalised to sorted, unique order at BUILD time.
+
+        Sidecars are compared for equality (the round-trip and hash tests below) and
+        walked in order by the engine emitters. Without normalisation two sidecars
+        naming the same atoms in a different order are different files, and a
+        duplicated index emits the same atom twice into a constraint block.
+        `structure-molstruct.md` § 1.
+        """
         d = msj.to_dict(
             {"regions": {"L-electrode": [3, 1, 1, 0]}},
             n_atoms_total=10, structure_hash="b" * 32,
@@ -99,6 +133,13 @@ class TestToDict:
         assert msj.frozen_atoms(d) == [0, 1, 5]
 
     def test_region_out_of_range_raises(self):
+        """A label naming an atom the structure does not have is REFUSED at build time.
+
+        `n_atoms_total` is the bound, and an index past it means the labels were built
+        against a different structure. Caught here rather than at engine-load, where
+        it would surface as a constraint on a nonexistent atom -- the same class of
+        staleness `structure_hash` exists for (`structure-molstruct.md` § 3).
+        """
         with pytest.raises(msj.MolstructJsonError, match="out of range"):
             msj.to_dict(
                 {"regions": {"L-electrode": [5]}},
@@ -117,6 +158,13 @@ class TestToDict:
         assert d["regions"]["b"] == [1, 2]
 
     def test_empty_label_raises(self):
+        """An empty-string label is refused.
+
+        `""` is what an unfilled name box produces. Accepted, it enters the one label
+        store as a real channel (`structure-annotations.md` § 2), draws a
+        nameless row in the filter panel, and rides into the script's ATOM-METADATA
+        block (`job-contracts.md` § 3.4) as a region nothing can refer to.
+        """
         with pytest.raises(msj.MolstructJsonError, match="non-empty"):
             msj.to_dict(
                 {"regions": {"": [0]}},
@@ -124,10 +172,26 @@ class TestToDict:
             )
 
     def test_bad_n_atoms_raises(self):
+        """A negative atom count is refused at build.
+
+        `n_atoms_total` is one of the two integrity pins: `apply_to_structure`
+        compares it against the structure it is applied to and refuses on mismatch
+        (`structure-molstruct.md` § 3). A negative value can never match, so the
+        pin would refuse every load instead of catching a real edit -- and a pin that
+        fires always gets switched off.
+        """
         with pytest.raises(msj.MolstructJsonError, match="non-negative"):
             msj.to_dict(n_atoms_total=-1, structure_hash="b" * 32)
 
     def test_bad_hash_raises(self):
+        """`structure_hash` must look like a hash, refused at build if it does not.
+
+        The sidecar's own reader deliberately does NOT verify the hash -- the caller
+        compares it against the geometry it loaded (`structure-molstruct.md` section
+        3). That makes the build-time format gate the only place a junk value is
+        caught; written through, it would be compared later and never match, turning
+        the staleness check into an unconditional refusal.
+        """
         with pytest.raises(msj.MolstructJsonError, match="hex string"):
             msj.to_dict(n_atoms_total=3, structure_hash="short")
 
@@ -139,6 +203,14 @@ class TestToDict:
 
 class TestSaveLoadRoundTrip:
     def test_round_trip_identity(self, tmp_path):
+        """Every field except the generated timestamp survives save then load.
+
+        The sidecar carries the region labels and frozen atoms that XYZ cannot
+        represent (`structure-molstruct.md` § 1), and there is no second copy to
+        recover from: anything the codec drops on the way through is a label silently
+        gone by the next load. `created_at` is excluded because it is generated per
+        build rather than carried.
+        """
         xyz = _write_xyz(tmp_path, n=6)
         payload = msj.to_dict(
             {"regions": {"L-electrode": [0, 1], "R-electrode": [4, 5],
@@ -321,22 +393,57 @@ class TestWithLockSerialisation:
 
 class TestLoadErrors:
     def test_missing_file(self, tmp_path):
+        """A missing sidecar raises `MolstructJsonError`, not a bare `OSError`.
+
+        Every caller of `load` catches this module's own error type; an `OSError`
+        escaping it reaches a route as a 500 and the CLI as a traceback. The message
+        names the file, which is what tells a person WHICH pair is broken when a
+        project holds dozens.
+        """
         with pytest.raises(msj.MolstructJsonError, match="failed to read"):
             msj.load(tmp_path / "missing.molstruct.json")
 
     def test_invalid_json(self, tmp_path):
+        """Malformed JSON is reported as a sidecar error naming the file, not as a raw
+        `JSONDecodeError`.
+
+        Sidecars are hand-editable text, so a truncated write or a manual edit is the
+        expected failure -- and the person needs to be told which file, which the
+        underlying decode error does not say. `structure-molstruct.md` § 2,
+        "what refused means at each surface".
+        """
         p = tmp_path / "bad.molstruct.json"
         p.write_text("{not json,,,")
         with pytest.raises(msj.MolstructJsonError, match="not valid JSON"):
             msj.load(p)
 
     def test_top_level_must_be_object(self, tmp_path):
+        """A JSON array (or any non-object) at the top level is refused at the door.
+
+        The rest of the reader indexes the payload by key, so a list would raise a
+        `TypeError` deep inside the field walk instead -- and the message would name
+        a field rather than the real problem. `structure-molstruct.md` § 1 fixes
+        the envelope as an object.
+        """
         p = tmp_path / "bad.molstruct.json"
         p.write_text('[1, 2, 3]')
         with pytest.raises(msj.MolstructJsonError, match="must be an object"):
             msj.load(p)
 
     def test_unknown_schema_version(self, tmp_path):
+        """A version outside the readable set is refused rather than read as the current
+        one.
+
+        `structure-molstruct.md` § 2: {7, 8, 9} are readable because each later
+        one only ADDED optional fields, while anything older stores the same facts in
+        DIFFERENT places (v3's top-level frozen atoms) -- reading it as current drops
+        a person's frozen-atom list silently.
+
+        RECORDED DOUBT for the section 3b review: version 99 is one of the five cases
+        `test_any_version_but_the_current_one_is_refused` already parametrizes, on the
+        same payload and the same call, with a stricter message match. This looks like
+        a genuine duplicate.
+        """
         p = tmp_path / "bad.molstruct.json"
         p.write_text(_json.dumps({
             "schema_version": 99,
@@ -347,6 +454,14 @@ class TestLoadErrors:
             msj.load(p)
 
     def test_missing_required_field(self, tmp_path):
+        """A sidecar missing `structure_hash` is refused, and the message names the
+        field.
+
+        `structure_hash` and `n_atoms_total` are the two integrity pins
+        (`structure-molstruct.md` § 3). A reader that tolerated an absent one
+        would apply labels from a sidecar that cannot be checked against its
+        structure -- precisely the stale-pair case the pins exist for.
+        """
         p = tmp_path / "bad.molstruct.json"
         p.write_text(_json.dumps({
             "schema_version": 7,
@@ -357,6 +472,14 @@ class TestLoadErrors:
             msj.load(p)
 
     def test_load_propagates_error_with_path(self, tmp_path):
+        """A validation failure inside `load` carries BOTH the file path and the
+        underlying reason.
+
+        The builder's own error says "region index out of range"; without the path
+        wrapped around it, a person with a project full of sidecars is told a rule was
+        broken and not where. The end product asserted is the raised error's message,
+        which is the only place the two facts meet.
+        """
         p = tmp_path / "bad.molstruct.json"
         p.write_text(_json.dumps({
             "schema_version": 7,
@@ -384,6 +507,15 @@ class TestApplyToStructure:
         )
 
     def test_applies_labels_and_frozen(self, tmp_path):
+        """Applying a sidecar puts the labels on the Structure AND makes `frozen_atoms`
+        read back from that same one store.
+
+        `frozen_atoms` is a reserved LABEL, not a second field
+        (`structure-annotations.md` sections 2 and 5), and this asserts the two views
+        agree after apply. A `regions` that carried the label while `s.frozen_atoms`
+        stayed empty emits a deck with nothing held fixed -- the run relaxes atoms the
+        person pinned.
+        """
         s = self._struct(n=4)
         data = msj.to_dict(
             {"regions": {"L-electrode": [0, 1], "R-electrode": [3],
@@ -396,6 +528,14 @@ class TestApplyToStructure:
         assert s.frozen_atoms == [0]
 
     def test_atom_count_mismatch_raises(self, tmp_path):
+        """Applying a sidecar to a structure with a different atom count REFUSES.
+
+        The integrity pin doing its job (`structure-molstruct.md` § 3): the
+        indices in `regions` are positions in one specific atom list, so applying them
+        to a structure that has since gained or lost atoms labels the WRONG atoms --
+        silently, with every index still in range. The refusal says the labels "no
+        longer point" at this structure.
+        """
         s = self._struct(n=3)
         data = msj.to_dict(n_atoms_total=4, structure_hash="b" * 32)
         with pytest.raises(msj.MolstructJsonError, match="no longer point"):
@@ -503,6 +643,14 @@ class TestSelectionRules:
         return msj.sha256_of_file(xyz)
 
     def test_writes_and_reads_rule_tree(self, tmp_path):
+        """A `selection.py` rule tree survives the sidecar round-trip as JSON.
+
+        `selection_rules` is a sidecar-ONLY pass-through (`structure-molstruct.md`
+        section 4) -- not a `Structure` field, so nothing else in the load path would
+        notice it being dropped or flattened. What is at stake is re-evaluating a
+        saved selection ("the left electrode is the first 4 Au") against an edited
+        structure; `op` and `n` are what `selection.from_json` needs to rebuild it.
+        """
         from molbuilder.selection import (
             ByElement, FirstN, to_json as rule_to_json,
         )
@@ -520,6 +668,14 @@ class TestSelectionRules:
         assert loaded["selection_rules"]["L-electrode"]["n"] == 4
 
     def test_rule_for_unknown_target_raises(self, tmp_path):
+        """A rule aimed at a label that is not in the store is refused at BUILD time.
+
+        A rule whose target does not exist can never be applied, so accepting it
+        writes a sidecar describing a selection nothing will ever re-create --
+        discovered, if at all, months later when someone tries to refresh the labels.
+        `structure-molstruct.md` § 4: the rules are keyed by label, and the
+        labels are the ones in `regions`.
+        """
         from molbuilder.selection import All, to_json as rule_to_json
         with pytest.raises(msj.MolstructJsonError, match="doesn't match"):
             msj.to_dict(
@@ -533,6 +689,14 @@ class TestSelectionRules:
             )
 
     def test_malformed_rule_raises(self, tmp_path):
+        """A malformed rule surfaces at sidecar-build time, not at engine-load time.
+
+        `to_dict` re-parses each rule through `selection.from_json`, so
+        `{"op": "not_a_real_op"}` is refused while the person is still looking at the
+        panel that produced it. Without the re-parse the bad recipe is written to disk
+        and raises when a generator later tries to re-evaluate it, far from the edit
+        that caused it. `structure-molstruct.md` § 4.
+        """
         with pytest.raises(msj.MolstructJsonError, match="invalid rule"):
             msj.to_dict(
                 {"regions": {"L-electrode": [0]}},
@@ -569,6 +733,14 @@ class TestStructureHashInvariant:
         assert msj.sha256_of_file(a) != msj.sha256_of_file(b)
 
     def test_hash_is_stable_for_same_bytes(self, tmp_path):
+        """Identical bytes hash identically -- the half that makes the pin usable.
+
+        Its sibling pins that DIFFERENT bytes differ; this one pins that the same
+        structure written twice is not read as an edit. A hash that folded in the
+        path, the mtime or a salt would make every sidecar look stale against its own
+        structure (`structure-molstruct.md` § 3), and the check would be turned
+        off rather than trusted.
+        """
         a = tmp_path / "a.xyz"
         b = tmp_path / "b.xyz"
         text = _toy_xyz_text(4)
@@ -581,6 +753,14 @@ class TestPbcFollowsAxisKind:
     """Review F3: pbc is the DERIVED view of axis_kind, not of cell-presence."""
 
     def test_isolated_axis_keeps_pbc_false_despite_cell(self):
+        """`pbc` is DERIVED from `axis_kind`, never from the presence of a cell.
+
+        Review F3's defect: a structure carrying a cell read back as periodic in all
+        three directions, so a molecule given a vacuum box for convenience was
+        computed as a 3-D crystal -- k-point sampling and periodic images along an
+        axis that is physically isolated. `model/structure-periodicity.md` owns the
+        rule; this is the sidecar half of it.
+        """
         d = msj.to_dict({"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
                          "axis_kind": ["periodic", "periodic", "isolated"]},
                         n_atoms_total=2, structure_hash="0" * 32)
@@ -591,6 +771,15 @@ class TestPbcFollowsAxisKind:
         assert tuple(bool(x) for x in s.pbc) == (True, True, False)
 
     def test_celled_without_axis_kind_or_pbc_is_periodic(self):
+        """A cell with no `axis_kind` and no `pbc` still reads as periodic in all three
+        directions.
+
+        The other half of F3: making `pbc` follow `axis_kind` must not turn every
+        sidecar written before `axis_kind` existed into an isolated molecule. A cell
+        and nothing else is exactly what a genuine crystal's sidecar looks like, and
+        reading it as non-periodic drops the k-point sampling from a calculation that
+        needs it. `model/structure-periodicity.md`.
+        """
         d = msj.to_dict({"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]]},
                         n_atoms_total=2, structure_hash="0" * 32)
         s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
@@ -612,6 +801,14 @@ class TestInfoBlock:
                          cell=np.eye(3) * 10)
 
     def test_info_rides_the_pair_whole(self, tmp_path):
+        """The schema-9 `info` block survives a full `StructureCodec` write-then-load,
+        nested structure and all.
+
+        `info` is free-form and non-structural, so nothing in the load path validates
+        it: a codec that flattened it, dropped a nested key, or wrote it lossily would
+        lose the recorded calculation provenance with no error anywhere. Asserted
+        through the shipped pair door rather than through `to_dict`.
+        """
         from molbuilder.workingcopy_structure import StructureCodec
         s = self._struct()
         s.info = {"calculation": {"engine": "siesta",
@@ -621,6 +818,13 @@ class TestInfoBlock:
         assert back.info == s.info
 
     def test_an_empty_store_writes_no_key(self, tmp_path):
+        """An empty `info` store writes NO `info` key at all.
+
+        Absent means "nothing recorded"; `{}` would mean "recorded, and it was
+        empty". Writing the empty object makes every new pair differ on disk from a
+        schema-8 one for no reason, and makes "was anything recorded here?"
+        unanswerable from the file.
+        """
         from molbuilder.workingcopy_structure import StructureCodec
         StructureCodec().write(self._struct(), tmp_path / "k.xyz")
         raw = _json.loads((tmp_path / "k.molstruct.json").read_text())
@@ -629,6 +833,14 @@ class TestInfoBlock:
             "leave the file shaped like a schema-8 one")
 
     def test_info_never_enters_the_hash(self, tmp_path):
+        """Two structures with the same atoms and different `info` have the SAME
+        `structure_hash`.
+
+        `structure_hash` answers "is this sidecar still about this structure"
+        (`structure-molstruct.md` § 3). `info` describes the structure rather
+        than being part of it, so hashing it would make recording a note read as an
+        edit -- every staleness check firing on a change that touched no atom.
+        """
         from molbuilder.workingcopy_structure import StructureCodec
         a, b = self._struct(), self._struct()
         b.info = {"note": "recording MORE about the same atoms"}
@@ -641,6 +853,15 @@ class TestInfoBlock:
             "different one")
 
     def test_a_v8_file_loads_with_an_empty_store(self, tmp_path):
+        """A pair whose sidecar no longer carries `info` loads with an EMPTY store, not
+        with whatever was there before.
+
+        Full-replace, not merge: apply is the sidecar's complete statement about the
+        structure, so a v8 file -- which cannot carry `info` at all -- must not leave
+        a stale block in place from a previous load. `structure-molstruct.md` section
+        2's additive-bump rule is what makes reading a v8 file legal in the first
+        place.
+        """
         from molbuilder.workingcopy_structure import StructureCodec
         s = self._struct()
         s.info = {"stale": True}
@@ -655,6 +876,15 @@ class TestInfoBlock:
             "not keep serving a stale one")
 
     def test_an_unserialisable_value_refuses_at_write(self):
+        """A value JSON cannot carry is refused when the payload is BUILT, not when it is
+        written.
+
+        `info` is free-form, so a caller can put anything in it. Failing later, inside
+        `save`, leaves the structure written and no sidecar beside it -- the unpaired
+        state `structure-molstruct.md` § 6 exists to prevent -- plus a stray
+        `.tmp` from the atomic-replace path. Refusing in `to_dict` means nothing has
+        touched the disk yet.
+        """
         with pytest.raises(msj.MolstructJsonError, match="JSON"):
             msj.to_dict({"regions": {}}, n_atoms_total=1,
                         structure_hash="b" * 32,

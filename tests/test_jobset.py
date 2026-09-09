@@ -82,6 +82,16 @@ def _ladder() -> JobSet:
 
 
 def test_jobset_roundtrips_through_job_set_at_1():
+    """A `JobSet` survives `to_dict` -> `from_dict` losslessly, nested records
+    included.
+
+    `job-set.json` is the file every later verb reads: `plan`, `submit` and
+    `status` all work from the loaded object, never from the description that
+    built it (`job-system.md` § 3.1). A field the codec drops is a resource
+    request or a warm-file declaration that vanishes between `prep` and `launch`,
+    with nothing to compare against. The two spot checks -- `warm[0].name` and
+    `resources.exclusive` -- are the nested levels a shallow dict copy flattens.
+    """
     js = _ladder()
     d = js.to_dict()
     assert d["schema"] == SCHEMA
@@ -92,6 +102,14 @@ def test_jobset_roundtrips_through_job_set_at_1():
 
 
 def test_from_dict_rejects_unknown_schema():
+    """A `job-set.json` written under a different schema is REFUSED, not read
+    best-effort.
+
+    This file outlives the code that wrote it: it sits in a bundle on scratch for
+    weeks. Reading a foreign schema field by field would apply whatever happens to
+    match and drop the rest, which for this file means launching with the wrong
+    resources on a machine that charges for them. `job-system.md` § 3.
+    """
     d = _ladder().to_dict()
     d["schema"] = "job-set@99"
     with pytest.raises(ValueError, match="schema mismatch"):
@@ -99,10 +117,25 @@ def test_from_dict_rejects_unknown_schema():
 
 
 def test_validate_passes_clean_ladder():
+    """The ordinary ladder validates clean -- no findings.
+
+    The negative control for the whole `validate` group: every other test here
+    asserts that a specific defect IS reported, and a validator that reported
+    something about every job-set would satisfy all of them while making
+    `materialize` and `submit` -- both of which refuse on a non-empty result --
+    reject every real bundle.
+    """
     assert _ladder().validate() == []
 
 
 def test_validate_catches_duplicate_names():
+    """Two jobs sharing one name are reported.
+
+    The job name is the identifier everything else resolves through: the
+    directory (`bench-<name>`), the `-J` queue name, `--only`, and the status row
+    (`job-contracts.md` § 6.3). Two jobs sharing it means one directory
+    holding two jobs' files and a `--only` that silently picks one of them.
+    """
     js = _ladder()
     js.jobs[1].name = "s1"
     assert any("duplicate" in e for e in js.validate())
@@ -136,6 +169,15 @@ def test_a_job_declares_exactly_these_six_things():
 
 
 def test_validate_catches_empty_and_bad_kind():
+    """A job-set with no jobs, and one whose `kind` is not a known kind, are both
+    reported.
+
+    `kind` selects real behaviour downstream -- a ladder runs one stage at a time
+    while a sweep's points are independent (`job-system.md` § 3) -- so an
+    unknown value cannot be defaulted; there is nothing to default TO. And an
+    empty job-set would prep and submit successfully while doing nothing, which
+    reads to the person as a finished launch.
+    """
     assert any("empty" in e for e in
                JobSet("n", "siesta", "ladder", jobs=[]).validate())
     assert any("kind" in e for e in
@@ -193,6 +235,15 @@ def test_materialize_lays_no_link_into_another_job(tmp_path):
 
 
 def test_materialize_is_idempotent(tmp_path):
+    """Running `materialize` twice leaves the same REAL files, with no error and no
+    duplication.
+
+    `prep` is re-run routinely -- after editing a deck, after a failed attempt --
+    so a second pass that raised on existing directories, or that turned the
+    copies into links, would make the ordinary repair workflow the broken path.
+    The `is_file() and not is_symlink()` pair is the same property the first-pass
+    test asserts: a run directory holds real files, not links up to a root copy.
+    """
     js = _ladder()
     for f in js.shared + [j.script for j in js.jobs]:
         (tmp_path / f).write_text("x")
@@ -203,6 +254,14 @@ def test_materialize_is_idempotent(tmp_path):
 
 
 def test_materialize_rejects_invalid_jobset(tmp_path):
+    """`materialize` refuses an invalid job-set instead of laying out directories for
+    it.
+
+    `validate` is only useful if the verbs consult it. Without this gate a
+    duplicate name reaches the filesystem as one directory holding two jobs'
+    files -- and the refusal has to happen BEFORE anything is written, because a
+    half-materialised bundle is worse than none.
+    """
     js = _ladder()
     js.jobs[1].name = "s1"                 # duplicate
     with pytest.raises(ValueError, match="invalid JobSet"):
@@ -210,6 +269,14 @@ def test_materialize_rejects_invalid_jobset(tmp_path):
 
 
 def test_job_dir_name():
+    """A job's directory is `bench-<name>` -- one namer, no second speller.
+
+    Every consumer derives the directory through this function: `materialize`
+    creates it, `prep` renders into it, `submit` looks for the wrapper in it, and
+    `status` reads the `.out` from it. A hand-built spelling anywhere else is a
+    directory nothing else can find. `job-contracts.md` § 6.3 owns the
+    identifier conventions.
+    """
     assert job_dir_name("stage1") == "bench-stage1"
 
 
@@ -326,6 +393,14 @@ def test_render_plan_shows_warm_files_and_no_order():
 
 
 def test_render_plan_sweep_says_independent():
+    """A sweep's plan tells the reader its jobs are INDEPENDENT.
+
+    The plan is what a person reads before launching, and the two kinds carry
+    opposite instructions: a ladder is ordered, a sweep is not (`job-system.md`
+    section 3). The wording matters because of the rule beside it -- a scheduler
+    is handed one job at a time, so the PERSON is the one sequencing; telling them
+    a sweep must be run in order would be a different, and wrong, instruction.
+    """
     js = JobSet("sweep", "siesta", "sweep",
                 jobs=[Job("a", "a.fdf"), Job("b", "b.fdf")])
     assert "independent" in render_plan(js)
@@ -443,12 +518,28 @@ def test_prep_omits_the_retry_loop_when_no_budget_is_asked_for(tmp_path):
 
 
 def test_prep_rejects_missing_script(tmp_path):
+    """`prep` refuses when a job's deck is not in the bundle, and names what is
+    missing.
+
+    The alternative is a bundle that preps "successfully" and produces a wrapper
+    pointing at a file that is not there -- discovered by SLURM hours later as a
+    failed job with an unhelpful log, after the queue wait has been paid.
+    `PrepError` at the door keeps the diagnosis at the moment of the mistake.
+    """
     from molbuilder.jobset.prep import PrepError
     with pytest.raises(PrepError, match="not in"):
         prep_jobset(_sweep(), tmp_path, emit_sbatch=False)
 
 
 def test_render_plan_surfaces_per_job_ranks_and_cores():
+    """The plan shows the per-job `-n` / `-c` / `--gres` variation, because for a
+    sweep that variation IS the experiment.
+
+    A benchmark sweep exists to compare resource settings (`job-system.md`
+    section 7). A plan printing one shared resource line -- or the first point's
+    -- shows a table where every row looks the same, and the trial the person is
+    about to launch is not the one they read.
+    """
     # the plan MUST show the -n/-c variation -- that IS the sweep.
     txt = render_plan(_sweep())
     assert "n=1" in txt and "n=2" in txt
@@ -546,6 +637,14 @@ def test_submit_slurm_parses_the_id_and_records_the_launch(tmp_path,
 
 
 def test_submit_slurm_errors_when_not_prepped(tmp_path):
+    """Launching before `prep` is a named refusal, not a crash.
+
+    The wrapper is what `sbatch` is pointed at. Without this check the
+    alternatives are a `FileNotFoundError` traceback or -- worse -- an `sbatch`
+    call for a script that does not exist, which queues and then fails on the
+    node. The message names the next step (`prep first`), which is the whole value
+    of catching it here.
+    """
     # real run (not dry): a missing wrapper is a friendly error, not a crash.
     (tmp_path / "bench-s1").mkdir()
     with pytest.raises(SubmitError, match="prep first"):
@@ -553,6 +652,14 @@ def test_submit_slurm_errors_when_not_prepped(tmp_path):
 
 
 def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
+    """A non-zero `sbatch` exit is raised, carrying the scheduler's own stderr.
+
+    The failure this prevents is the silent one: a submit path ignoring the return
+    code reports the job as launched, records no id, and leaves a person watching
+    a queue for something that was never queued. `sbatch` refuses for ordinary
+    reasons -- a bad QOS, an over-limit time request (`asu-sol.md`) -- and its
+    own message is the only thing that says which.
+    """
     js = _ladder()
     (tmp_path / "bench-s1").mkdir()
     (tmp_path / "bench-s1" / "demo_s1.sbatch").write_text("x")
@@ -647,18 +754,41 @@ def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
 
 
 def test_submit_direct_dry_run_passes_np_omp(tmp_path):
+    """`--mode direct` invokes the job's wrapper with `-np` / `-omp` on the command
+    line.
+
+    Direct mode has no scheduler to carry resources, so the rank and thread counts
+    reach the wrapper as arguments or they do not reach it at all -- the job then
+    runs at whatever the wrapper's defaults are, which for a benchmark means
+    measuring a configuration nobody asked for. `job-contracts.md` § 6.2
+    owns the config-to-scheduler parameter vocabulary.
+    """
     res = submit_jobset(_sweep(), tmp_path, mode="direct", dry_run=True)
     assert res[0].command[0] == "bash"
     assert "-np" in res[0].command and "-omp" in res[0].command
 
 
 def test_submit_direct_rejects_domain(tmp_path):
+    """`--domain` under `--mode direct` is refused rather than ignored.
+
+    A domain is a SLURM partition and there is no partition in direct mode.
+    Accepting and dropping it would let someone believe they had launched on `htc`
+    while the work ran on the machine in front of them; the message says the flag
+    has "no meaning in 'direct'" rather than merely rejecting it.
+    """
     with pytest.raises(SubmitError, match="no meaning in 'direct'"):
         submit_jobset(_sweep(), tmp_path, mode="direct", domain="htc",
                       dry_run=True)
 
 
 def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
+    """Two door refusals: an unknown `mode`, and a job-set that does not validate.
+
+    Both raise `SubmitError`, which is what the CLI renders as a message instead
+    of a traceback. The second is the same `validate` gate `materialize` carries,
+    asserted again here because `submit` reads `job-set.json` from disk and is
+    therefore the verb most likely to meet a file the current code did not write.
+    """
     with pytest.raises(SubmitError, match="unknown mode"):
         submit_jobset(_sweep(), tmp_path, mode="bogus", dry_run=True)
     bad = _ladder()
@@ -668,6 +798,14 @@ def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
 
 
 def test_submit_exclusive_suppresses_mem(tmp_path):
+    """`--exclusive` and `--mem` are never both emitted -- exclusive wins.
+
+    A whole-node allocation already grants the node's memory; passing `--mem`
+    alongside it caps the job BELOW what it was given, so a request meant to take
+    a whole node quietly runs constrained and the benchmark measures the cap.
+    `job-contracts.md` § 6.2 maps the config vocabulary onto scheduler
+    flags; this is where two of them conflict.
+    """
     js = JobSet("x", "siesta", "sweep",
                 jobs=[Job("j", "j.fdf",
                           resources=Resources(exclusive=True, mem="120G"))])
@@ -681,6 +819,13 @@ def test_submit_exclusive_suppresses_mem(tmp_path):
 # --------------------------------------------------------------------- #
 
 def test_jobset_write_load_roundtrip(tmp_path):
+    """`write` -> `load` through a real file on disk is lossless.
+
+    The in-memory `to_dict` / `from_dict` round-trip is asserted above; this is
+    the half that goes through JSON on disk, where a tuple comes back a list and a
+    `Path` refuses to encode at all. Every verb after `prep` reads this file
+    rather than the object that made it (`job-system.md` § 3.1).
+    """
     js = _ladder()
     p = js.write(tmp_path / "job-set.json")
     assert p.is_file()
@@ -698,6 +843,15 @@ def _runner():
 
 
 def test_cli_plan_reads_jobset_json(tmp_path):
+    """`jobset plan --bundle <dir>` finds `job-set.json` in the bundle and renders
+    the plan from it.
+
+    The CLI's contract with the on-disk layout: the file is found by NAME at the
+    bundle root, not passed as a path (`job-system.md` § 5). The remaining
+    assertions hold the wording that went with the deleted dependency edges
+    (2026-08-10) -- no `s1 -> s2` order the framework claims to enforce, and
+    `ONE AT A TIME` as an instruction to a person.
+    """
     _ladder().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
@@ -711,6 +865,12 @@ def test_cli_plan_reads_jobset_json(tmp_path):
 
 
 def test_cli_errors_without_jobset_json(tmp_path):
+    """A directory that is not a bundle exits non-zero and says `no job-set.json`.
+
+    Pointing `--bundle` at the wrong directory is the ordinary mistake. Exiting 0
+    with an empty plan would read as "this bundle has no jobs" -- a different and
+    much more alarming thing to be told about work you believe you prepared.
+    """
     runner, grp = _runner()
     r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
@@ -940,12 +1100,29 @@ def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
 
 
 def test_status_fresh_bundle_all_not_started(tmp_path):
+    """A bundle where nothing has been prepped reports every stage `not-started`, and
+    points at the first one.
+
+    `not-started` has to stay distinguishable from `pending` (a directory exists,
+    nothing has run) and from `finished`, because `first_incomplete` is what a
+    person is told to resume from (`job-system.md` § 5.4) -- a fresh bundle
+    reporting anything else sends them to the wrong stage.
+    """
     st = jobset_status(_ladder(), tmp_path)        # nothing prepped
     assert [s.state for s in st.stages] == ["not-started", "not-started"]
     assert st.first_incomplete == "s1" and st.complete is False
 
 
 def test_status_pending_and_warm_files(tmp_path):
+    """A directory with warm files but no output reads `pending`, and the warm files
+    are NAMED.
+
+    "Prepared but not run" and "ran and produced nothing" are the two states a
+    person most needs told apart, and both look like an absent `.out`. The warm
+    list is what the next stage would continue from (`job-contracts.md` section
+    4.2), so showing it is how someone checks a restart will actually be warm
+    before spending the allocation to find out.
+    """
     (tmp_path / "bench-s1").mkdir()
     (tmp_path / "bench-s1" / "demo.XV").write_text("x")   # label = jobset.name
     st = jobset_status(_ladder(), tmp_path)
@@ -954,6 +1131,15 @@ def test_status_pending_and_warm_files(tmp_path):
 
 
 def test_status_first_incomplete_advances(tmp_path, monkeypatch):
+    """With the first stage finished and the second running, `first_incomplete` moves
+    to the second and the set is not complete.
+
+    `first_incomplete` is the resume pointer (`job-system.md` § 5.4) and it
+    has to follow the stage STATES, not the row order: a pointer stuck at stage
+    one sends a person to re-run finished work, and one that runs ahead skips a
+    stage still going. That `running` counts as incomplete is the part a plain
+    "is it finished?" test would not pin.
+    """
     import molbuilder.parse.dirs.job as jobmod
     for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
@@ -966,6 +1152,14 @@ def test_status_first_incomplete_advances(tmp_path, monkeypatch):
 
 
 def test_status_complete_when_all_finished(tmp_path, monkeypatch):
+    """Every stage finished means `complete` is True, `first_incomplete` is None, and
+    the rendered status SAYS so.
+
+    The terminal state has to be unambiguous in both the object and the text a
+    person reads. `first_incomplete` left pointing at the last stage offers a
+    resume for a ladder that is done -- an allocation spent to discover the work
+    was already there.
+    """
     import molbuilder.parse.dirs.job as jobmod
     for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
@@ -978,6 +1172,14 @@ def test_status_complete_when_all_finished(tmp_path, monkeypatch):
 
 
 def test_render_status_shows_resume_pointer(tmp_path):
+    """The rendered status names the calculation, the stage to resume from, and that
+    nothing resumes on its own.
+
+    `does NOT auto-resume` is the load-bearing line: nothing in the system
+    advances a ladder -- the person launches each stage (`job-system.md` section
+    5.4) -- so a status screen that only reported states would let someone leave a
+    bundle sitting for days believing the next stage was queued.
+    """
     txt = render_status(jobset_status(_ladder(), tmp_path))
     assert "JOB-SET STATUS -- demo" in txt
     assert "First incomplete stage: s1" in txt
@@ -985,6 +1187,14 @@ def test_render_status_shows_resume_pointer(tmp_path):
 
 
 def test_cli_status(tmp_path):
+    """`jobset status --bundle <dir>` renders the status through the CLI.
+
+    The path an operator on a login node actually uses: read `job-set.json` from
+    the bundle, compute the status, print it. RECORDED DOUBT for the section 3b
+    review -- the command is a thin caller of `jobset_status` + `render_status`,
+    both tested directly above, so what this adds is that the subcommand is wired
+    at all and exits 0 on a bundle where nothing has run.
+    """
     _ladder().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
@@ -993,6 +1203,15 @@ def test_cli_status(tmp_path):
 
 
 def test_status_finished_with_real_siesta_out(tmp_path):
+    """The status reader reaches `finished` through the REAL parser on a real SIESTA
+    output, with nothing monkeypatched.
+
+    Its neighbours stub `run_status` to place a state; this one does not, which
+    makes it the only test in the group that would notice the status dict's shape
+    drifting between `parse.dirs.job` and `jobset.runstatus`. Under that drift
+    every stubbed test still passes and every real bundle reports the wrong state.
+    The fixture is a frozen finished run from `tests/watch/fixtures/siesta_frozen`.
+    """
     # DEPTH: the real decode_run_dir -> "finished" path (not monkeypatched),
     # so a drift in the status-dict shape between decode + runstatus is caught.
     import shutil
@@ -1156,6 +1375,16 @@ def test_stage_refs_carries_the_jobs_name_not_the_tokens():
 
 
 def test_job_dir_names_sweep_is_unchanged_by_the_total_refs():
+    """A sweep point's directory is `bench/bench-<name>` -- nested, unlike a ladder
+    rung's.
+
+    The two kinds use two conventions (`project-layout.md` § 4.1): a ladder
+    is flat, one directory per calculation, and a sweep's trials live under a
+    `bench/` of their own. This pins the sweep half against the change that made
+    `stage_refs` total -- giving every job a ref, points with no ordinal included
+    -- because the risk of that change was precisely that the namer would start
+    treating a point like a rung.
+    """
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
@@ -2090,6 +2319,16 @@ def test_plan_prints_the_seq_not_the_row():
 
 
 def test_status_prints_the_seq_not_the_row(tmp_path):
+    """The status table's number column prints the stage's ASSIGNED seq, not its row
+    position.
+
+    The sibling of `test_plan_prints_the_seq_not_the_row`, in the surface a person
+    reads while a run is going. A ladder whose stages are 01 and 03 must show 1
+    and 3; `enumerate()` shows 1 and 2, and the reader then names stage "2" to
+    `--only` -- which is either a different stage or nothing at all.
+    `project-layout.md` § 4.2: the number is assigned once and never
+    guessed.
+    """
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     st = jobset_status(js, tmp_path)
     assert [s.seq for s in st.stages] == [1, 3]
@@ -2394,6 +2633,17 @@ def test_a_deck_and_a_launch_that_agree_are_not_refused(tmp_path):
 
 
 def test_two_explicit_rank_counts_that_differ_are_refused(tmp_path):
+    """A deck rendered for 8 ranks, launched at 32, is refused before the engine sees
+    it -- and BOTH numbers are named.
+
+    The general form of the 2026-08-10 live failure recorded in
+    `test_a_deck_rendered_for_no_rank_count_refuses_an_explicit_one`: a
+    `BlockSize` derived from one rank count and a launch at another makes SIESTA
+    refuse at startup with a message about processor count that says nothing about
+    which two statements disagreed. `project-layout.md` § 2.3.1 -- a
+    parameter that depends on the launch cannot be decided before the launch is
+    known.
+    """
     from molbuilder.jobset.submit import submit_jobset, SubmitError
     js = _one_stage_bundle(tmp_path, mpi_np_deck=8, mpi_np_launch=32)
     with pytest.raises(SubmitError) as e:

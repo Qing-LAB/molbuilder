@@ -101,6 +101,18 @@ def _write_json(tmp_path: Path, payload: dict, name: str = "spectra.json") -> Pa
 class TestParseSpectraJsonHappyPath:
 
     def test_round_trip_minimal_results(self, tmp_path):
+        """PLUMBING. The smallest valid result survives write -> read with its numbers
+        intact, including the MO-energy ndarray.
+
+        Catches the round trip losing the array fields. `to_dict` turns ndarrays
+        into lists and `from_dict` turns them back; a half-done conversion leaves
+        a Python list where the viewer expects an array, and the failure surfaces
+        far downstream as a shape error in the level diagram. This is the file's
+        baseline -- if it is red, nothing else here means anything.
+
+        Contract: `web/spectra.md` § 6 (`POST /api/spectra/load` parses an
+        existing `.spectra.json`); the wire shape is `spectra/results.py`.
+        """
         original = _make_minimal_results()
         p = _write_json(tmp_path, original.to_dict())
         loaded = parse_spectra_json(p)
@@ -124,6 +136,19 @@ class TestParseSpectraJsonHappyPath:
         assert loaded.engine == "pyscf"
 
     def test_accepts_str_path(self, tmp_path):
+        """PLUMBING. The door takes a `str` path, not only a `Path`.
+
+        Catches the door being rewritten to call `path.exists()` / `path.open()`
+        directly instead of `os.fspath` -- every other test in this file hands it
+        a `Path`, so a `Path`-only door would pass all of them and break the
+        callers that pass strings (`/api/spectra/load` hands over whatever
+        `_resolve_within_roots` returned).
+
+        Contract: `web/spectra.md` § 6.
+
+        THIN: the door's first line is `os.fspath(path)`, and `os.fspath(str)` is
+        identity by stdlib guarantee. See the audit note.
+        """
         original = _make_minimal_results()
         p = _write_json(tmp_path, original.to_dict())
         loaded = parse_spectra_json(str(p))
@@ -149,6 +174,17 @@ class TestParseSpectraJsonHappyPath:
 class TestParseSpectraJsonMissing:
 
     def test_missing_file_raises_not_found_error(self, tmp_path):
+        """PLUMBING. A missing file raises `SpectraJsonNotFoundError`, which is BOTH a
+        `FileNotFoundError` and a `SpectraJsonError`.
+
+        Catches the route's single `except SpectraJsonError` losing this case: the
+        live-watch poller reads the checkpoint before the engine has written it, so
+        "not there yet" is the NORMAL state, not an error. If the class stopped
+        inheriting `SpectraJsonError`, that ordinary poll would escape the handler
+        and answer 500 instead of the typed 404 the UI branches on.
+
+        Contract: `web/spectra.md` § 6 (missing -> 404 with `kind: not_found`).
+        """
         bad = tmp_path / "does_not_exist.spectra.json"
         with pytest.raises(SpectraJsonNotFoundError) as exc_info:
             parse_spectra_json(bad)
@@ -159,6 +195,14 @@ class TestParseSpectraJsonMissing:
         assert isinstance(exc_info.value, SpectraJsonError)
 
     def test_missing_file_message_names_path(self, tmp_path):
+        """PLUMBING. The not-found message contains the path that was not found.
+
+        Catches a message that says only "spectra.json not found" -- the poller
+        watches one path and the user picked another, and without the path in the
+        sentence there is nothing to compare.
+
+        Contract: `web/spectra.md` § 6 (the error text is what the UI shows).
+        """
         bad = tmp_path / "missing.spectra.json"
         with pytest.raises(SpectraJsonNotFoundError) as exc_info:
             parse_spectra_json(bad)
@@ -173,6 +217,18 @@ class TestParseSpectraJsonMissing:
 class TestParseSpectraJsonMalformed:
 
     def test_invalid_json_raises_malformed(self, tmp_path):
+        """PLUMBING. Syntactically broken JSON is a `MalformedError`, not a raw
+        `json.JSONDecodeError`.
+
+        Catches the decode error escaping unwrapped. The live-watch poller catches
+        `SpectraJsonError`; a bare `JSONDecodeError` goes past it and kills the
+        poll loop on a file the engine is halfway through replacing.
+
+        Contract: `web/spectra.md` § 6 (malformed -> 400 with `kind`).
+
+        NOTE: this and seven other tests in the file land on the same
+        `except json.JSONDecodeError` branch; see the audit note on that cluster.
+        """
         p = tmp_path / "bad.spectra.json"
         p.write_text("{not valid json", encoding="utf-8")
         with pytest.raises(SpectraJsonMalformedError):
@@ -188,6 +244,15 @@ class TestParseSpectraJsonMalformed:
         assert "object" in str(exc_info.value).lower()
 
     def test_empty_file_raises_malformed(self, tmp_path):
+        """PLUMBING. A zero-byte file is Malformed, not an unhandled exception.
+
+        Catches the create-then-write race: the poller stats a file that exists
+        and has no content yet. `json.loads("")` raises, and if it raised
+        unwrapped the watch loop would die on a file that is about to be perfectly
+        valid a millisecond later.
+
+        Contract: `web/spectra.md` § 7 (live updating) + § 6 (typed errors).
+        """
         p = tmp_path / "empty.spectra.json"
         p.write_text("", encoding="utf-8")
         with pytest.raises(SpectraJsonMalformedError):
@@ -224,6 +289,18 @@ class TestParseSpectraJsonSchemaVersion:
         assert exc_info.value.actual == SCHEMA_VERSION + 1
 
     def test_legacy_schema_version_rejected(self, tmp_path):
+        """PLUMBING. `schema_version: 0` is a `SchemaError`.
+
+        Contract: `spectra/results.py` -- `READABLE_SCHEMA_VERSIONS` is the one
+        home for what this parser can read.
+
+        CUT CANDIDATE, and the name is wrong. Version 4 IS legacy and IS readable
+        (`READABLE_SCHEMA_VERSIONS == {4, 5}`), so "legacy rejected" states the
+        opposite of the contract. What it actually exercises -- `actual not in
+        READABLE_SCHEMA_VERSIONS` -- is the same line
+        `test_future_schema_version_rejected` and
+        `test_schema_error_message_names_both_versions` already run.
+        """
         payload = _make_minimal_results().to_dict()
         payload["schema_version"] = 0
         p = _write_json(tmp_path, payload)
@@ -288,6 +365,18 @@ class TestParseSpectraJsonForwardCompat:
     without breaking older readers."""
 
     def test_extra_top_level_keys_ignored(self, tmp_path):
+        """PLUMBING. An unknown top-level key does not fail the parse, and does not get
+        attached to the typed object either.
+
+        Catches forward-compat breaking in both directions: a strict reader makes
+        a file written by a newer molbuilder unreadable by an older one, and an
+        auto-attaching reader would let a stray key shadow a real field name on
+        the dataclass. `from_dict` names the fields it reads, which is what keeps
+        both from happening.
+
+        Contract: the forward-compat rule in
+        `archive/old_docs/tabs/spectra/spec.md` § 5, inherited by this door.
+        """
         payload = _make_minimal_results().to_dict()
         payload["future_field_added_in_v2"] = {"some": "data"}
         p = _write_json(tmp_path, payload)
@@ -326,16 +415,45 @@ class TestParseSpectraJsonDict:
     wire as a Python dict (already decoded by Flask)."""
 
     def test_round_trip_dict(self):
+        """PLUMBING. The in-memory door (`parse_spectra_json_dict`) reconstitutes a
+        result from an already-decoded dict.
+
+        Catches the two doors drifting: `/api/spectra/load` accepts either a
+        `path` or an inline `json` object, and the inline arm never touches the
+        filesystem or `json.loads`. It is a SEPARATE function with its own copy of
+        the schema check, so nothing in the file-path tests above covers it.
+
+        Contract: `web/spectra.md` § 6 (the door takes `{'json': {...}}` too).
+        """
         original = _make_minimal_results()
         loaded = parse_spectra_json_dict(original.to_dict())
         assert loaded.engine == "pyscf"
         assert len(loaded.modes) == 1
 
     def test_non_dict_rejected(self):
+        """PLUMBING. A JSON array handed to the in-memory door is Malformed.
+
+        Catches the dict door indexing into a list and raising `TypeError` from
+        inside `from_dict` -- which would surface as a FieldError ("malformed
+        field") for what is actually a wrong top-level shape, sending the user to
+        look for a bad field in a document that has none.
+
+        Contract: `web/spectra.md` § 6.
+        """
         with pytest.raises(SpectraJsonMalformedError):
             parse_spectra_json_dict([1, 2, 3])  # type: ignore[arg-type]
 
     def test_missing_schema_version_rejected(self):
+        """PLUMBING. The in-memory door runs the schema-version gate too.
+
+        Catches the inline arm of `/api/spectra/load` skipping the version check.
+        The dict path duplicates that check in `_parse_spectra_json_dict` rather
+        than sharing it with the file path, so it can be deleted from one and not
+        the other, and a v6 payload posted inline would then be reconstituted by a
+        v5 reader -- silently, with whatever fields happened to still line up.
+
+        Contract: `web/spectra.md` § 6 (wrong schema -> 422) + `spectra/results.py`.
+        """
         original = _make_minimal_results()
         d = original.to_dict()
         del d["schema_version"]
@@ -343,6 +461,15 @@ class TestParseSpectraJsonDict:
             parse_spectra_json_dict(d)
 
     def test_field_error_wrapped(self):
+        """PLUMBING. A missing required field on the in-memory path is a FieldError,
+        not a bare `KeyError`.
+
+        Catches the dict door's error wrapping being dropped: `KeyError('engine')`
+        escaping `except SpectraJsonError` at the route means a 500 and an HTML
+        body where the UI expects `{ok, error, kind}`.
+
+        Contract: `web/spectra.md` § 6.
+        """
         original = _make_minimal_results()
         d = original.to_dict()
         del d["engine"]
@@ -361,6 +488,19 @@ class TestExceptionHierarchy:
     distinguish failure modes by type.  Pin the inheritance."""
 
     def test_specific_errors_inherit_base(self):
+        """PLUMBING, and load-bearing. All four parser exceptions inherit
+        `SpectraJsonError`.
+
+        Catches the silent hole this file's whole exception design exists to
+        close: `/api/spectra/load` catches `SpectraJsonError` ONCE
+        (`web/blueprints/spectra.py`) and maps by type inside the handler. Re-parent
+        any one of the four to `Exception` and that route stops catching it -- the
+        failure becomes a 500 HTML page, the browser's `r.json()` throws, and the
+        user sees "network error" instead of "update molbuilder". Nothing else
+        would go red: every other test in this file catches the specific class.
+
+        Contract: `web/spectra.md` § 6 (each `kind` -> its own status code).
+        """
         for cls in (SpectraJsonNotFoundError,
                     SpectraJsonMalformedError,
                     SpectraJsonSchemaError,
@@ -394,6 +534,18 @@ class TestSchemaVersionTypeSafety:
     to reject bool explicitly."""
 
     def test_bool_true_rejected_as_schema_version(self, tmp_path):
+        """PLUMBING. `schema_version: true` is a SchemaError, and the error carries
+        `True` as the actual version.
+
+        Catches the check being written as `d["schema_version"] not in READABLE`:
+        `True == 1` in Python because `bool` subclasses `int`, so a boolean would
+        compare equal to a version number and walk straight past a naive gate.
+        The parser has to say `isinstance(x, int) and not isinstance(x, bool)`,
+        and this is the only test that distinguishes the two spellings.
+
+        Contract: `spectra/results.py` (`READABLE_SCHEMA_VERSIONS`) +
+        `web/spectra.md` § 6.
+        """
         payload = _make_minimal_results().to_dict()
         payload["schema_version"] = True
         p = _write_json(tmp_path, payload)
@@ -402,6 +554,15 @@ class TestSchemaVersionTypeSafety:
         assert exc_info.value.actual is True
 
     def test_string_schema_version_rejected(self, tmp_path):
+        """PLUMBING. The string `"1"` is not a schema version.
+
+        Contract: `spectra/results.py` + `web/spectra.md` § 6.
+
+        CUT CANDIDATE: it takes the same `not isinstance(actual, int)` branch as
+        `test_float_schema_version_rejected`, which asserts the sharper of the two
+        (1.0 compares EQUAL to 1, so a numeric check would let it through; "1"
+        never would).
+        """
         payload = _make_minimal_results().to_dict()
         payload["schema_version"] = "1"  # string "1", not int
         p = _write_json(tmp_path, payload)
@@ -449,6 +610,21 @@ class TestParseRejectsNonFinite:
                "nan" in str(exc_info.value).lower()
 
     def test_infinity_token_rejected(self, tmp_path):
+        """SCIENCE-ADJACENT. The bare `Infinity` token is rejected at decode time.
+
+        Catches a diverged SCF loading as a real energy. Python's `json` accepts
+        `NaN` / `Infinity` / `-Infinity` although RFC 8259 does not, so without
+        the `parse_constant` hook an energy that blew up would reconstitute as
+        `float('inf')` and propagate into every derived quantity -- the level
+        diagram, the gap, the Methods numbers -- with no complaint anywhere.
+
+        Contract: `web/spectra.md` § 6; the hook and its message live at
+        `parse/sidecars/spectra.py::_reject_nonfinite_constant`.
+
+        REDUNDANT WITH ITS SIBLINGS: `parse_constant` fires identically for all
+        three tokens, and `test_nan_token_rejected` additionally asserts the
+        message. Recorded, not cut -- the class is protected.
+        """
         p = tmp_path / "with_inf.spectra.json"
         raw = (
             '{"schema_version": 4, "engine": "pyscf", '
@@ -459,6 +635,18 @@ class TestParseRejectsNonFinite:
             parse_spectra_json(p)
 
     def test_negative_infinity_token_rejected(self, tmp_path):
+        """SCIENCE-ADJACENT. The `-Infinity` token is rejected at decode time.
+
+        Same failure as the sibling above -- a diverged SCF energy entering the
+        result as a finite-looking number -- for the sign an SCF energy actually
+        runs away in.
+
+        Contract: `web/spectra.md` § 6;
+        `parse/sidecars/spectra.py::_reject_nonfinite_constant`.
+
+        REDUNDANT WITH ITS SIBLINGS (one `parse_constant` hook, three tokens).
+        Recorded, not cut.
+        """
         p = tmp_path / "with_neginf.spectra.json"
         raw = (
             '{"schema_version": 4, "engine": "pyscf", '
@@ -480,6 +668,18 @@ class TestParseEncodingTolerance:
     of poisoning the first byte of the JSON document."""
 
     def test_utf8_bom_tolerated(self, tmp_path):
+        """PLUMBING. A UTF-8 BOM at the head of the file is stripped, not treated as
+        the first character of the document.
+
+        Catches the reader dropping `encoding="utf-8-sig"`. A BOM makes
+        `json.loads` fail on character 0 with an unhelpful message, and the user's
+        only clue is an invisible byte -- so the failure looks like file
+        corruption rather than an editor's default.
+
+        Contract: this is the reader's own stated tolerance
+        (`parse/sidecars/spectra.py`, `utf-8-sig` on open); the writer's strict
+        half is `test_no_bom_in_output`.
+        """
         p = tmp_path / "bom.spectra.json"
         payload = _make_minimal_results().to_dict()
         # Write the file with an explicit BOM.
@@ -530,6 +730,15 @@ class TestDumpSpectraJson:
     follow when emitting JSON checkpoints."""
 
     def test_round_trip(self, tmp_path):
+        """PLUMBING. The writer's product is readable by the reader.
+
+        Catches the two halves of the wire format drifting apart. Every other test
+        in this class checks one property of the written file; this is the one
+        that checks the pair still closes -- and it is the only place a writer
+        change is required to survive an actual parse.
+
+        Contract: `web/spectra.md` § 6; the format is `spectra/results.py`.
+        """
         original = _make_minimal_results()
         p = tmp_path / "out.spectra.json"
         dump_spectra_json(original, p)
@@ -607,6 +816,15 @@ class TestDumpSpectraJson:
         assert '\n  "engine"' not in raw
 
     def test_pathlike_accepted(self, tmp_path):
+        """PLUMBING. The writer takes an `os.PathLike` destination.
+
+        Catches the writer being narrowed to `str` -- every caller in the package
+        holds a `Path`, so a str-only writer would break the engine's checkpoint
+        write while every string-based test kept passing.
+
+        Contract: `web/spectra.md` § 6 (the engine writes the checkpoint the door
+        later reads).
+        """
         original = _make_minimal_results()
         # pathlib.Path is os.PathLike.
         dump_spectra_json(original, tmp_path / "x.json")
@@ -684,6 +902,22 @@ class TestImaginaryModeRoundTrip:
     must preserve sign + flag faithfully."""
 
     def test_negative_frequency_with_has_imag(self, tmp_path):
+        """SCIENCE. An imaginary mode round-trips with its NEGATIVE frequency AND its
+        `has_imag` flag, alongside a real mode in the same file.
+
+        Catches the sign being lost. An imaginary frequency is how a saddle point
+        announces itself -- the structure is not a minimum, and the reported
+        "frequency" is the magnitude of an imaginary number written negative by
+        convention. Drop the sign (an `abs()`, a `max(0, ...)`, an unsigned wire
+        type) and a transition state loads as a perfectly ordinary vibration, with
+        nothing on screen to say the geometry is wrong. The flag alone is not
+        enough and the sign alone is not enough: both travel, and the mixed-mode
+        file is what makes a per-mode rather than per-file handling visible.
+
+        Contract: the wire format's imaginary-mode rule,
+        `archive/old_docs/tabs/spectra/spec.md` § 5, enforced in
+        `spectra/results.py::ModeData`.
+        """
         from molbuilder.spectra.results import PHASE_COMPLETE, SCHEMA_VERSION
         imag_mode = ModeData(
             index_1based          = 1,
@@ -751,6 +985,18 @@ class TestEmptyModesList:
     accept this without barfing."""
 
     def test_empty_modes_in_progress_state(self, tmp_path):
+        """PLUMBING. A checkpoint with `modes: []` and `phase_frequencies: running`
+        parses.
+
+        Catches the reader treating "no modes yet" as corruption. This is the
+        normal state for the whole of L2 -- the live-watch poller reads it on
+        every tick between setup and the first Hessian -- so a parser that
+        demanded at least one mode would make the progress display fail exactly
+        while there is progress to display.
+
+        Contract: `web/spectra.md` § 7 (live updating) + the phase model in
+        `archive/old_docs/tabs/spectra/spec.md` § 6.1.
+        """
         from molbuilder.spectra.results import PHASE_RUNNING, SCHEMA_VERSION
         results = SpectraResults(
             schema_version             = SCHEMA_VERSION,
@@ -815,6 +1061,25 @@ class TestCrossModeInvariants:
             parse_spectra_json(p)
 
     def test_homo_idx_out_of_range_field_error(self, tmp_path):
+        """SCIENCE -- one of the four physics-carrying tests in this file. A
+        `homo_idx` outside the MO-energy array is refused, naming the field.
+
+        Catches a result whose HOMO points at nothing. Every electronic-structure
+        number the tab shows is read RELATIVE to this index: the HOMO level, the
+        LUMO above it, the gap between them, and the gap SHIFT that is the whole
+        point of the ES phase (`web/spectra.md` § 3.1 -- the shifts are ~0.018 meV,
+        so a silently wrong index does not look wrong, it looks like a different
+        answer). Out of range means the reader either raises deep in the viewer or
+        wraps around and reports a different orbital's energy as the HOMO.
+
+        Contract: `web/spectra.md` § 3.1 (the level diagram is indexed from
+        `homo_idx`); enforced at `spectra/results.py::SpectraResults.__post_init__`.
+
+        DESIGN NOTE: this pins the OUT-OF-RANGE case only. Nothing here or
+        elsewhere checks that `homo_idx` is the index of the highest OCCUPIED
+        orbital -- an index that is in range but off by one passes, and an off-by-
+        one HOMO is the realistic failure, not 99.
+        """
         payload = _make_minimal_results().to_dict()
         # 5 MO energies in the fixture array -> valid range [0, 5)
         payload["equilibrium"]["homo_idx"] = 99
@@ -903,6 +1168,18 @@ class TestNullForRequiredFields:
     the typed dataclass tries to math with None."""
 
     def test_null_scf_energy_rejected(self, tmp_path):
+        """SCIENCE-ADJACENT. A JSON `null` where the equilibrium SCF energy belongs is
+        a FieldError at the door.
+
+        Catches `None` entering the typed object in a slot everything downstream
+        does arithmetic on. The energy is the reference every ES displacement is
+        measured against, so a null does not fail here -- it fails a hundred lines
+        later, as `TypeError: unsupported operand` inside a subtraction, with no
+        hint that a file field was empty.
+
+        Contract: `web/spectra.md` § 6 (bad field -> 400); the required-vs-optional
+        split is `spectra/results.py`.
+        """
         payload = _make_minimal_results().to_dict()
         payload["equilibrium"]["scf_energy_eh"] = None
         p = _write_json(tmp_path, payload)
@@ -910,6 +1187,16 @@ class TestNullForRequiredFields:
             parse_spectra_json(p)
 
     def test_null_n_atoms_total_rejected(self, tmp_path):
+        """SCIENCE-ADJACENT. A null `n_atoms_total` is a FieldError.
+
+        Catches the atom count going missing. It is the right-hand side of the
+        free/frozen partition check (`web/spectra.md` § 8) -- with `None` there,
+        the partition arithmetic cannot run, so the check that decides WHICH atoms
+        the frequencies belong to is skipped rather than failed.
+
+        Contract: `web/spectra.md` § 8 (the two lists must partition
+        `range(n_atoms_total)`).
+        """
         payload = _make_minimal_results().to_dict()
         payload["n_atoms_total"] = None
         p = _write_json(tmp_path, payload)
@@ -917,6 +1204,17 @@ class TestNullForRequiredFields:
             parse_spectra_json(p)
 
     def test_null_mode_frequency_rejected(self, tmp_path):
+        """SCIENCE-ADJACENT. A null `frequency_cm1` on a mode is a FieldError.
+
+        Catches a mode with no frequency reaching the spectrum. The frequency is
+        the mode's x-coordinate on the chart and its argument to every
+        thermal/zero-point amplitude formula (`web/spectra.md` § 4.1); a `None`
+        there either crashes the chart or -- worse, if something coerces it -- puts
+        a peak at 0 cm-1 that no calculation produced.
+
+        Contract: `web/spectra.md` § 6; the required fields are
+        `spectra/results.py::ModeData`.
+        """
         payload = _make_minimal_results().to_dict()
         payload["modes"][0]["frequency_cm1"] = None
         p = _write_json(tmp_path, payload)
@@ -948,6 +1246,14 @@ class TestNestedFieldErrors:
     can locate them."""
 
     def test_missing_equilibrium_block(self, tmp_path):
+        """PLUMBING. A file with no `equilibrium` block at all is a FieldError.
+
+        Catches the whole nested block going missing being reported as something
+        other than a field problem -- `from_dict` would raise `KeyError` and, if
+        unwrapped, escape the route's `except SpectraJsonError` as a 500.
+
+        Contract: `web/spectra.md` § 6.
+        """
         payload = _make_minimal_results().to_dict()
         del payload["equilibrium"]
         p = _write_json(tmp_path, payload)
@@ -955,6 +1261,17 @@ class TestNestedFieldErrors:
             parse_spectra_json(p)
 
     def test_missing_nested_scf_energy(self, tmp_path):
+        """PLUMBING. A field missing from INSIDE `equilibrium` is a FieldError, not a
+        raw KeyError.
+
+        Catches the wrapping being applied only at the top level. Nested lookups
+        happen inside `SpectraResults.from_dict`, one frame further in, so a
+        `try` placed around the outer dict only would let the inner `KeyError`
+        through -- and the nested fields are exactly where a hand-edited or
+        version-skewed file goes wrong.
+
+        Contract: `web/spectra.md` § 6.
+        """
         payload = _make_minimal_results().to_dict()
         del payload["equilibrium"]["scf_energy_eh"]
         p = _write_json(tmp_path, payload)
@@ -962,6 +1279,17 @@ class TestNestedFieldErrors:
             parse_spectra_json(p)
 
     def test_missing_nested_mo_energies(self, tmp_path):
+        """PLUMBING. A missing `equilibrium.mo_energies_eh` is a FieldError.
+
+        Catches the same wrapping gap as its sibling above, on the array field --
+        the one whose absence would otherwise surface as a numpy error rather than
+        a named missing field.
+
+        Contract: `web/spectra.md` § 6.
+
+        NEAR-DUPLICATE of `test_missing_nested_scf_energy`: both delete one key
+        from the same sub-dict and reach the same `except KeyError` line.
+        """
         payload = _make_minimal_results().to_dict()
         del payload["equilibrium"]["mo_energies_eh"]
         p = _write_json(tmp_path, payload)
@@ -969,6 +1297,15 @@ class TestNestedFieldErrors:
             parse_spectra_json(p)
 
     def test_missing_mode_required_field(self, tmp_path):
+        """PLUMBING. A required field missing from a MODE dict is a FieldError.
+
+        Catches the wrapping gap one level deeper still: modes are reconstituted
+        in a loop inside `ModeData.from_dict`, so this is the third distinct frame
+        a `KeyError` can be raised from, and each has to be caught by the same
+        outer handler.
+
+        Contract: `web/spectra.md` § 6.
+        """
         payload = _make_minimal_results().to_dict()
         del payload["modes"][0]["frequency_cm1"]
         p = _write_json(tmp_path, payload)
@@ -1010,6 +1347,18 @@ class TestPhaseStatusValidation:
     rejects it."""
 
     def test_invalid_phase_string_rejected(self, tmp_path):
+        """PLUMBING. A phase status outside {empty, running, complete} is a FieldError.
+
+        Catches an unknown phase word reaching the UI, which branches on these
+        three strings to decide what to draw. An unrecognised value is not an
+        error there -- it just matches none of the branches, so the tab renders a
+        finished run as if nothing had started.
+
+        Contract: the phase vocabulary in
+        `archive/old_docs/tabs/spectra/spec.md` § 5, enforced in
+        `spectra/results.py::SpectraResults.__post_init__`; `web/spectra.md` § 7
+        for what reads it.
+        """
         payload = _make_minimal_results().to_dict()
         payload["phase_frequencies"] = "halfway"  # not a valid state
         p = _write_json(tmp_path, payload)
@@ -1055,6 +1404,18 @@ class TestNumericPrecisionRoundTrip:
         assert loaded.equilibrium_scf_eh == results.equilibrium_scf_eh
 
     def test_very_small_and_very_large_floats(self, tmp_path):
+        """SCIENCE-ADJACENT. MO energies spanning 1e-10 to 1e+5 Hartree round-trip
+        EXACTLY (`assert_array_equal`, not `approx`).
+
+        Catches precision loss in the array path. MO energies are compared to each
+        other, not to zero: the ES gap shifts the tab reports are ~1e-5 eV
+        differences between numbers of order 1e+1, so any rounding on write --
+        a `%.6f` format, a float32 cast, a `round()` -- destroys the quantity
+        while leaving every value looking plausible. Exact equality is the
+        assertion that can see that; `approx` cannot.
+
+        Contract: `web/spectra.md` § 3.1 (the shifts are small and are the point).
+        """
         results = _make_minimal_results()
         # Subnormal-ish + a huge value, both finite.
         results.equilibrium_mo_energies_eh = np.array([
@@ -1139,6 +1500,20 @@ class TestGeometryRoundTrip:
     these keys still loads."""
 
     def test_geometry_round_trips(self, tmp_path):
+        """SCIENCE-ADJACENT. The optional `equilibrium.elements` + `positions_ang`
+        survive the round trip, and appear under `equilibrium` on the wire.
+
+        Catches the geometry the modes belong TO being dropped. An eigenvector is
+        a displacement of specific atoms at specific places; without the elements
+        and positions, the viewer animates a mode against whatever structure
+        happens to be loaded, which is how a displacement gets drawn on the wrong
+        atom. The wire-shape half matters because the reader looks under
+        `equilibrium` -- written at the top level, they round-trip as None and the
+        loss is silent.
+
+        Contract: `model/overview.md`'s atom-index invariant + `web/spectra.md`
+        § 4 (clicking a mode animates it on this geometry).
+        """
         results = _make_minimal_results()
         results.equilibrium_elements = ["O", "H"]
         results.equilibrium_positions_ang = np.array([
@@ -1207,6 +1582,25 @@ class TestComprehensiveRoundTrip:
     The whole shebang round-trips bit-exact (within float repr)."""
 
     def test_full_feature_set_round_trip(self, tmp_path):
+        """SCIENCE-ADJACENT, and the file's integration test. One file carrying every
+        feature at once -- an imaginary mode, a mode with an ES block, a mode with
+        neither Raman nor ES, nested config, unicode methods text, scientific-
+        notation energies -- round-trips field by field.
+
+        Catches the interactions the single-feature tests structurally cannot see:
+        a mode's ES block being attached to the WRONG mode (here mode 2 has one
+        and modes 1 and 3 must not), `selected_mode_idxs_1based` drifting off the
+        1-based convention it is named for, and an Optional field written as
+        `null` for one mode being read back onto another. Every other test in this
+        file uses a one-mode fixture where none of those can happen.
+
+        Contract: `web/spectra.md` § 6 + the wire format in
+        `spectra/results.py`.
+
+        DESIGN NOTE: it asserts field equality, not the physics -- the mode
+        ORDER (frequencies ascending, imaginary first) is a convention the viewer
+        depends on and nothing here checks it.
+        """
         from molbuilder.spectra.results import PHASE_COMPLETE, SCHEMA_VERSION
 
         es = ModeElectronicStructure(
@@ -1354,6 +1748,20 @@ class TestNumericFormats:
     or hand-edited files might produce."""
 
     def test_scientific_notation_lowercase_e(self, tmp_path):
+        """PLUMBING. A small energy written in scientific notation loads as the number
+        it spells.
+
+        Catches `parse_float` -- the hook the non-finite check is installed
+        through -- mangling ordinary exponent notation. The hook replaces
+        CPython's float conversion for EVERY float literal in the document, so a
+        mistake in it does not fail loudly; it changes values.
+
+        Contract: `parse/sidecars/spectra.py::_strict_finite_float`.
+
+        NOTE: this writes the value through `json.dumps`, so the literal actually
+        on disk is whatever Python chose to emit -- the notation the name promises
+        is only guaranteed by the uppercase-E sibling, which hand-writes its JSON.
+        """
         payload = _make_minimal_results().to_dict()
         # Replace SCF energy with a scientific-notation literal.
         # We can't easily inject the textual literal via to_dict
@@ -1423,6 +1831,20 @@ class TestNumericFormats:
         assert "overflow" in msg or "non-finite" in msg
 
     def test_negative_overflow_literal_rejected(self, tmp_path):
+        """SCIENCE-ADJACENT. `-1e500` -- valid JSON syntax, overflows to `-inf` -- is
+        rejected.
+
+        Catches the negative half of the runaway-energy case, which is the half
+        that actually happens: an SCF that fails to converge runs the total energy
+        down, not up. `parse_constant` never sees this literal (it is syntactically
+        a normal number), so `_strict_finite_float` is the only thing standing
+        between it and a `-inf` equilibrium energy.
+
+        Contract: `parse/sidecars/spectra.py::_strict_finite_float`.
+
+        REDUNDANT WITH `test_overflow_literal_rejected`: `math.isfinite` is
+        sign-blind. Recorded, not cut -- the class is protected.
+        """
         body = (
             '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": -1e500}}'

@@ -400,6 +400,150 @@ rather than re-argued per auditor.
 
 ---
 
+## 7. The header pass, 2026-09-09 — what writing the goal down uncovered
+
+Three agents wrote the § 3b header (*the failure it catches* + *the contract that
+owns the rule*) into the ten files with the most undocumented tests: **436
+headers over 897 functions in ten files.** Every edit was verified to be
+**docstrings only** — the AST of each file with docstrings stripped is
+byte-identical before and after — and all three suites pass.
+
+**The method is the finding.** Writing the header honestly forces the § 3b
+question, because you cannot state the failure a test catches when it catches
+nothing. Every item below came out of trying to write one sentence.
+
+### 7.1 Code defects, all reproduced before being recorded here
+
+**`#67` — `POST /api/selection/eval` answers HTML 500 where its contract says
+JSON 400.** `web/blueprints/selection.py:127` catches `SelectionError` **and
+only** `SelectionError`. Three payload shapes escape it, measured through the
+Flask test client on 2026-09-09 against a control that behaves correctly:
+
+| `rule` | raises at | status |
+|---|---|---|
+| `{"op":"or","operands":5}` | `selection.py:461` `tuple(from_json(r) for r in raw)` | **500** |
+| `{"op":"by_element","elements":5}` | `selection.py:228` `set(rule.elements)` | **500** |
+| `{"op":"first_n","rule":{"op":"all"},"n":"x"}` | `selection.py:306` `rule.n < 0` | **500** |
+| `{"op":"not_a_real_op"}` *(control)* | refused by the codec | 400, `{"ok":false,…}` |
+
+The three 500s return Flask's HTML error page with a stack trace, not the
+`{ok,error}` envelope `web-api.md` § 1 requires. **The filter panel round-trips a
+rule on every keystroke in the index box**, so this is on a live path. The fix
+has two halves and the second is a design question, which is why it is recorded
+rather than patched: validate that a sub-rule LIST field is a list at
+`selection.py:461`, and validate leaf field types at construction — the
+`evaluate`-time `TypeError`s are not reachable from `from_json` alone.
+
+**`#68` — the topic refusal says "canonical six" for a set of NINE, and a test
+pins the drift.** `projects.py:70-80` holds nine entries (verified: `len == 9`);
+`job-contracts.md` § 2.5 states nine and carries an explicit *"Drift corrected
+(2026-07-27): the source doc said six."* The message an operator actually sees
+still says six (`projects.py:115`), `projects.py:493`'s docstring repeats it, and
+**`tests/test_web_files.py:1077` asserts the stale wording** — so the test is
+currently protecting the drift rather than catching it. Fix the message, then
+the test.
+
+**`#69` — `files._validate_op_target` is a guard that cannot fire.** Defined at
+`files.py:1903`, docstring: *"Centralises the 'would orphan a canonical project
+layout' check so move / copy stay in lockstep with rename + delete."* It has
+exactly one call site (`:2062`, in `api_files_move`) — and `:2053` returns 400
+for `src.is_dir()` **first**, while both of the helper's branches require a
+directory. **Copy never calls it at all.** Behaviour today is unaffected because
+directories are refused wholesale; what is wrong is that a docstring claims a
+protection that does not run, and `test_move_refuses_canonical_topic_dir` looks
+like its coverage.
+
+**`#70` — seven file routes have no working fence test.** Verified by name
+search: genuine outside-root tests exist for `list` (at the door), `mkdir`,
+`write`, `delete` and `zip_prepare`. **Zero** for `/api/files/stat`, `/read`,
+`/read_range`, `/rename`, `/move`, `/copy` — and `/upload`'s is `#72` below, so
+it does not count. Three of those six are MUTATIONS, and `web-api.md` § 2.1 says
+the fence at the route is the only thing standing there.
+
+**`#71` — the document and the fence disagree on the fence's status code.**
+`web/web-api.md` § 1's table assigns **403** to *"a path escaping the allowed
+roots"*; `files._resolve_within_roots` (`:203`, `:205`) raises **400** for both
+`..` and outside-root, and every test asserts 400. The only 403s in `files.py`
+are OS `PermissionError`. `test_web_files.py:3189` hedges with `in (400, 403)`,
+which is how the disagreement stayed invisible. **The fix belongs in the
+document or the fence, never in the test.**
+
+**`#72` — `TestTheDownloadButtonSaysWhatItIsDoing` (`test_web_files.py:3085`)
+carries a user-dated contract and ZERO tests.** Its docstring records the
+2026-08-29 ruling (*Zipping…* / unclickable-until-save) and the class holds only
+a `_src()` helper that nothing calls — residue of the eleven source pins removed
+from this file. `testing.md § 3a.1`'s load-bearing misinformation: a reader sees
+coverage that is not there. Write the behaviour test or delete the class.
+
+**`#73` — a dead local marking a dropped assertion.**
+`test_periodicity_gate.py:775` binds `said = " ".join(...)` and never uses it —
+residue of the 2026-08-03 prose→id migration. Harmless, except that a reader
+takes it as evidence a message check exists.
+
+### 7.2 Tests that cannot fail — two measured, not argued
+
+**The sharpest thing this pass found: `test_upload_outside_root_rejected`
+(`test_web_files.py:2517`) passes on its own temp-directory name.** It asserts
+`"outside" in err or "root" in err` after posting to `tmp_path / "elsewhere"` —
+but the `picker_root` fixture wires *that same* `tmp_path` as the root, so the
+target is INSIDE the fence and the real error is *"target_dir does not exist"*.
+The assertion passes because pytest's temp directory is named after the test:
+
+    /tmp/pytest-of-qqing/pytest-36/test_upload_outside_root_rejec0/elsewhere
+                                        ^^^^^^^      ^^^^                 
+
+Both words are in the path the message echoes. **A test named for the fence,
+which never reaches the fence, and cannot fail.** `test_delete_outside_root_rejected`
+(`:2235`) shows how to build a genuinely outside path.
+
+**`test_too_small_cell_is_a_hard_error` (`test_periodicity_gate.py:219`) asserts
+`"a" in str(exc.value)`.** The letter `a` occurs in "than", "cannot", and every
+English sentence — verified to pass for a message naming the WRONG axis and for
+one naming no axis at all. The comment above it records that the 2026-08-03
+change existed specifically to stop pinning prose and start pinning *which
+axis*; the replacement asserts nothing. Fix: `assert "along a" in msg`, or key on
+the finding id as the rest of that file does.
+
+### 7.3 Cut candidates — 22, and none applied
+
+| slice | CUT | UNSURE | MOVE / redesign |
+|---|---|---|---|
+| A — `test_web_files`, `test_auth_config` | 16 | 4 | 1 (write the e2e first) |
+| B — periodicity, spectra-json, modify, transport-prep | 5 | 5 | — |
+| C — selection, jobset, rate-limit, projects-js, molstruct-json | 6 | 1 | 2 |
+
+**Only one of the twenty-two is measured** (the tautological upload test above,
+replayed verbatim). Every other verdict is read from the code path, and § 4
+measures that reasoning at **1 wrong in 5** — so they are leads. The three
+highest-confidence ones share a payload and a call rather than merely a code
+path, and `tools/verify_subsumption.py` would settle them in about fifteen
+minutes each.
+
+**One verdict is worth reading for the reasoning rather than the outcome.**
+Slice C had `test_specific_errors_inherit_base` on its cut list as an API-shape
+assertion, then read the route: `/api/spectra/load` has exactly ONE
+`except SpectraJsonError` and maps by type inside it, so re-parenting any of the
+four classes turns a typed 404 into a 500 HTML page and nothing else in the suite
+goes red. It stays, and its header now says why. That is the § 3b question
+answered properly in the keep direction.
+
+### 7.4 A file-level verdict worth keeping
+
+`test_projects_public_surface_js.py` — 63 tests — reads from its name like the
+API-shape file § 3b forbids. It is not: **54 of the 63 drive real behaviour** of
+decisions the wrapper layer makes that `api.js` cannot (the refresh-on-success
+policy and its parent derivation, the three-state `null`/`ReadOk`/`ReadErr`
+contract, `navigateTo`'s pre-init fail-safe, `safeSave`'s abort→cancelled fold,
+and the subscribe/publish semantics). **1** is the signature restated, **8** are
+thin wrappers over a door tested elsewhere, and **3 are genuine cross-language
+contracts that could break silently** — `relPath` computed on the JS side from a
+route that does not return it, `actual_mtime` (a Python field name, dropped
+once already), and the 409 status. That is the distinction § 3b asks for, made
+per test rather than per file. **Every one of its 63 tests SKIPS** on this
+machine (`node` not available), so those verdicts rest on reading.
+
+---
+
 ## 6. What is deliberately NOT in this file
 
 - **The applied cuts.** They are in the commit messages listed in § 0, each with

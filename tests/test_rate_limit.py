@@ -91,6 +91,17 @@ class TestSignatureMatch:
     ])
     def test_known_signatures_trigger_immediate_block(
             self, fast_client, path):
+        """Each attack-string family blocks on the FIRST request, with the connection
+        closed and a bounded `Retry-After`.
+
+        `access-control.md` § 4.1: the signature signal is the one that needs no
+        count, and it is on even when the count-based signals are off. The seven paths
+        are one per pattern family (XSS, `<meta>` refresh, SQLi union, SQLi drop,
+        `document.cookie`, `/etc/passwd`, traversal), and the URL is DECODED before
+        matching -- a family that silently stopped matching is invisible from outside,
+        because the route refuses these paths anyway (404) and only the 429 plus
+        `Connection: close` distinguishes "refused" from "cooled off".
+        """
         r = fast_client.get(path)
         assert r.status_code == 429
         assert r.headers.get("Connection") == "close"
@@ -99,6 +110,13 @@ class TestSignatureMatch:
         assert 1 <= retry <= 7200
 
     def test_legitimate_url_does_not_match_signatures(self, fast_client):
+        """The app's own URLs must not trip the signature list.
+
+        This catches the expensive direction: a pattern broadened to catch more
+        scanners that also matches `/api/health` blocks every visitor instantly, on
+        the endpoint the page polls at 1 Hz. `access-control.md` § 4.1 -- the
+        signature signal has no threshold to soften a false positive with.
+        """
         # Real molbuilder URLs MUST NOT trip the signature.
         r = fast_client.get("/api/health")
         assert r.status_code == 200, r.data
@@ -106,6 +124,14 @@ class TestSignatureMatch:
         assert r.status_code == 200
 
     def test_block_persists_to_next_request(self, fast_client):
+        """A block is on the ADDRESS, not on the request that triggered it.
+
+        A limiter refusing only the offending request would let a scanner keep
+        walking; the block exists to cool the address off for the whole cooldown
+        (`deployment.md` § 4). Asserted by following the signature hit with a
+        perfectly legitimate URL and requiring the 429 plus `Connection: close`
+        anyway.
+        """
         # First: signature hit blocks the IP.
         fast_client.get("/?<script>x</script>")
         # Second: even a legitimate URL is dropped.
@@ -123,6 +149,15 @@ class TestStorm404:
     """N+ 4xx responses within the window flip the IP to blocked."""
 
     def test_blocks_on_threshold_404s(self, fast_client):
+        """Enough 4xx inside the window blocks the address -- and the block then applies
+        to a URL that would have answered 200.
+
+        `access-control.md` sections 4.1 and 4.3: the 404-storm signal is what catches
+        a scanner enumerating filenames, and counting 4xx rather than 404s
+        specifically is what makes it cheap. The SEVENTH request is the one asserted,
+        because the sixth may legitimately be either the 404 or the 429 depending on
+        whether the counter is consulted before or after the response.
+        """
         # threshold_404 = 5 (set by fast_client fixture).  Six
         # 404s should land the 6th one as a 429 (or the same
         # 404, depending on after-vs-before timing).  Verify the
@@ -137,6 +172,14 @@ class TestStorm404:
         )
 
     def test_200s_do_not_count_toward_storm(self):
+        """Successful requests never accumulate toward the 404 signal.
+
+        `access-control.md` § 4.3: only 4xx counts, and that is exactly what
+        lets the front end poll. Twenty successful `/api/health` calls is a page left
+        open for twenty seconds; if they counted, the app would block its own users --
+        the failure `TestTheSignInCheckIsNotEvidence` records in its other form.
+        Total-burst is set out of reach here so only the 4xx signal could fire.
+        """
         # Many 200s do NOT trip 404 storm (it counts only 4xx).
         # Build a client whose total-burst is effectively
         # disabled so this test isolates the 4xx-storm signal
@@ -164,6 +207,15 @@ class TestStormTotal:
     """M+ requests within the total-burst window flip the IP."""
 
     def test_blocks_on_threshold_total(self):
+        """When total-burst IS enabled it blocks on its own, with the 4xx signal out of
+        reach.
+
+        `access-control.md` § 4.4: this signal ships DISABLED
+        (`threshold_total = 0`) because a 60-per-60s cap once throttled the app's own
+        1 Hz poll. It still has to work when an operator turns it on, and with
+        `threshold_404` at 10,000 a block here cannot have come from the other
+        signal.
+        """
         # Build a client where 4xx threshold is sky-high so it
         # CAN'T be the trigger.  Only the total-burst signal can
         # fire here.
@@ -191,6 +243,15 @@ class TestTTLExpiry:
     """Once cooldown elapses, the IP is auto-cleared on next probe."""
 
     def test_block_clears_after_cooldown(self, fast_client, monkeypatch):
+        """A block expires on its own; nothing has to clear it.
+
+        `deployment.md` § 4: state is in-process memory and the block is a
+        cooldown, not a ban. If the TTL were never consulted, a visitor caught by a
+        false positive is locked out until the server restarts -- and the admin clear
+        route is no way back, because reaching it needs a session, which needs the
+        sign-in page they are blocked from. Time is advanced on the module's own
+        `time.monotonic`, so the test does not sleep.
+        """
         # Block via signature.
         r = fast_client.get("/?<script>x</script>")
         assert r.status_code == 429
@@ -221,6 +282,15 @@ class TestAllowlist:
     """Allowlisted IPs are never blocked, even on signature match."""
 
     def test_allowlist_exempts_signature_match(self):
+        """An allowlisted address is never blocked, not even by the signal that needs no
+        count.
+
+        `access-control.md` § 4.2: the allowlist is one of the two ways never to
+        be counted, and loopback is on it by default -- which is what keeps the
+        ordinary localhost deployment from being able to lock itself out. Asserted on
+        the absence of `Connection: close` rather than on a status, because the
+        route's own answer (404 here) is not the limiter's business.
+        """
         _app, client = _build_client({"allowlist": ["10.0.0.5"]})
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "10.0.0.5"}
@@ -234,6 +304,13 @@ class TestAllowlist:
         assert r.headers.get("Connection") != "close"
 
     def test_cidr_allowlist_matches(self):
+        """An allowlist entry may be a CIDR block, and every address inside it is exempt.
+
+        Operators write a subnet, not fifty addresses. A parser treating
+        `10.0.0.0/24` as a literal string matches nothing at all -- the allowlist is
+        present, reads correctly in `molbuilder.json`, and exempts no one; the first
+        sign is a blocked colleague.
+        """
         _app, client = _build_client({"allowlist": ["10.0.0.0/24"]})
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "10.0.0.42"}
@@ -241,6 +318,13 @@ class TestAllowlist:
         assert r.headers.get("Connection") != "close"
 
     def test_non_allowlisted_neighbour_still_blocked(self):
+        """An address just outside the allowlisted block is still blocked.
+
+        The other half of CIDR parsing, and the half where a mistake is dangerous
+        rather than merely annoying: a prefix length dropped or misread widens
+        `10.0.0.0/24` to `10.0.0.0/8` and quietly exempts sixteen million addresses
+        from every signal. `access-control.md` § 4.2.
+        """
         _app, client = _build_client({"allowlist": ["10.0.0.0/24"]})
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "10.0.1.7"}
@@ -248,6 +332,14 @@ class TestAllowlist:
         assert r.status_code == 429
 
     def test_malformed_allowlist_entries_logged_and_skipped(self, caplog):
+        """A typo in an allowlist entry is logged and skipped -- it neither stops the
+        server nor swallows the valid entries beside it.
+
+        The allowlist is hand-written in `molbuilder.json` (`deployment.md` section
+        5). If one bad entry raised, a typo would stop the server starting; if it were
+        skipped in silence, the operator's intended exemption is missing with no way
+        to find out. The WARNING record is the only thing that says which happened.
+        """
         with caplog.at_level("WARNING"):
             _app, _client = _build_client(
                 {"allowlist": ["10.0.0.0/24", "not-an-ip", ""]}
@@ -265,6 +357,14 @@ class TestXFFTrust:
     """``trust_proxy`` controls whether XFF is honoured."""
 
     def test_xff_ignored_by_default(self):
+        """`X-Forwarded-For` is ignored unless `trust_proxy` is on, so a header cannot
+        spoof an allowlisted address.
+
+        The security half of that knob: XFF is attacker-controlled on a direct
+        connection, so honouring it by default lets anyone exempt themselves from
+        every signal by sending one header. `access-control.md` § 4.2. The test
+        spoofs exactly that and requires the block anyway.
+        """
         # trust_proxy defaults to False.  An attacker setting XFF
         # to spoof an allowlisted IP must NOT bypass the limiter.
         _app, client = _build_client({"allowlist": ["10.0.0.5"]})
@@ -280,6 +380,14 @@ class TestXFFTrust:
         )
 
     def test_xff_honoured_when_trust_proxy_true(self):
+        """With `trust_proxy` on, the LEFTMOST XFF entry is taken as the client.
+
+        Behind a reverse proxy every request arrives from the proxy's address, so
+        without this the limiter tracks one address for the whole world and a single
+        scanner blocks everybody. Leftmost-not-rightmost is the part that drifts
+        silently: the rightmost entry is the proxy itself, and picking it puts the
+        deployment straight back into the one-address state it was configured out of.
+        """
         _app, client = _build_client({
             "trust_proxy": True,
             "allowlist":   ["10.0.0.5"],
@@ -320,6 +428,15 @@ class TestAdminEndpoints:
     """``/api/admin/rate_limit/*`` surfaces for live inspection."""
 
     def test_status_reports_blocked_ips(self, fast_client):
+        """The admin status route reports WHICH addresses are blocked, WHY, and for how
+        long.
+
+        `deployment.md` § 4 fixes the shape
+        (`{enabled, blocked:[{ip,reason,ttl_s}], ...}`). Without the reason and the
+        TTL, an operator asked "why can my colleague not reach the site" can see that
+        an address is blocked but not whether it was a signature or a storm, nor
+        whether waiting fixes it -- so the only remedy left is to clear everything.
+        """
         # Trigger a block from the attacker IP.
         fast_client.get("/?<script>x</script>")
         # Switch to a NON-attacker IP so the status query itself
@@ -341,6 +458,13 @@ class TestAdminEndpoints:
         assert entry["ttl_s"] > 0
 
     def test_clear_single_ip(self, fast_client):
+        """Clearing one address unblocks THAT address, and the unblocking is real.
+
+        Asserted on the end product -- the previously-blocked address makes a
+        successful request afterwards -- rather than on the `{"cleared": 1}` count,
+        because a route reporting a clear it did not perform is exactly the failure an
+        operator cannot see from the response. `deployment.md` § 4.
+        """
         fast_client.get("/?<script>x</script>")
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
@@ -358,6 +482,13 @@ class TestAdminEndpoints:
         assert r.status_code == 200
 
     def test_clear_all(self, fast_client):
+        """`{"all": true}` clears every block in one call.
+
+        The escape hatch for when the limiter has caught something it should not have
+        and the operator does not know which address to name. A route that accepted
+        the body and cleared nothing would look successful and leave the site
+        unreachable for the person complaining.
+        """
         fast_client.get("/?<script>x</script>")
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
@@ -372,6 +503,13 @@ class TestAdminEndpoints:
         assert body["cleared"] >= 1
 
     def test_clear_rejects_non_dict_body(self, fast_client):
+        """A non-object body is a 400 with `ok:false`, not a 500.
+
+        The clear route reads keys off the body, and a JSON array reaches the same
+        code unless the shape is checked at the door. The route is admin-only, so the
+        cost is not exposure -- it is that a mistyped `curl` answers with a stack
+        trace instead of a message.
+        """
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
         _admin_login(fast_client.application, fast_client)
@@ -383,6 +521,13 @@ class TestAdminEndpoints:
         assert r.get_json()["ok"] is False
 
     def test_clear_rejects_missing_ip(self, fast_client):
+        """An empty body is refused rather than treated as "clear everything".
+
+        One route serves two operations, distinguished only by the body -- so the
+        dangerous default is the silent one: `{}` falling through to the `all` branch
+        would clear every block whenever a caller forgot the field. Refusing makes the
+        destructive form something you have to ask for by name.
+        """
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
         _admin_login(fast_client.application, fast_client)
@@ -396,6 +541,15 @@ class TestAdminRoleGate:
     """
 
     def test_unauthenticated_session_refused(self):
+        """With no session at all, the admin routes answer 403 and say why.
+
+        `access-control.md` § 5: these routes let a caller see and clear the
+        block list, so "signed in" is the floor. The message matters as much as the
+        status -- `deployment.md` § 4's gotcha is that with auth off there is no
+        session key and these routes ALWAYS answer 403, and "admin auth required" is
+        what tells an operator that is what happened rather than a permissions
+        mistake.
+        """
         _app, client = _build_client({})
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
@@ -438,6 +592,13 @@ class TestAdminRoleGate:
         assert client.get("/api/admin/rate_limit/status").status_code == 200
 
     def test_non_admin_email_refused_when_allowlist_set(self):
+        """Once the `admin` section names addresses, a signed-in stranger is refused.
+
+        `access-control.md` § 5: naming addresses NARROWS the set, and the
+        default (anyone who signed in) is what a named list departs from. Read as an
+        addition instead of a restriction, writing the list down would have no effect
+        -- and an operator who deliberately narrowed the set would believe they had.
+        """
         app, client = _build_client({}, admins=["operator@asu.edu"])
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
@@ -448,6 +609,13 @@ class TestAdminRoleGate:
         assert r.status_code == 403
 
     def test_listed_admin_email_passes(self):
+        """And the address that IS named gets in.
+
+        The half that makes the refusal beside it meaningful: a gate that refused
+        everyone would pass its own negative test, and the symptom -- an operator
+        locked out of their own server's admin routes -- looks identical to a config
+        mistake. `access-control.md` § 5, one list, one meaning.
+        """
         app, client = _build_client({}, admins=["operator@asu.edu"])
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
@@ -458,6 +626,14 @@ class TestAdminRoleGate:
         assert r.status_code == 200, r.get_data(as_text=True)
 
     def test_admin_email_match_is_case_insensitive(self):
+        """`Operator@ASU.EDU` in the config matches `operator@asu.edu` in the session.
+
+        Two normalisations have to agree: `auth.py` lowercases the address before
+        stashing it in the session, and the admin set is lowercased when read from
+        config. If either side stopped, an operator who typed their own address with
+        capitals is refused by their own list, with a 403 and no explanation.
+        `access-control.md` § 5.
+        """
         # auth.py lowercases the email before stashing it in the session; the
         # admin set is lowercased when it is read from config.
         app, client = _build_client({}, admins=["Operator@ASU.EDU"])
@@ -470,6 +646,13 @@ class TestAdminRoleGate:
         assert r.status_code == 200
 
     def test_clear_endpoint_also_gated(self):
+        """The MUTATING admin route carries the same gate as the read-only one.
+
+        Two routes, one rule -- and the read one is the one people test. A refactor
+        that decorated `status` and forgot `clear` leaves anyone who can sign in able
+        to erase the block list, which is the limiter's only state.
+        `access-control.md` § 5.
+        """
         # Same gate on the mutating endpoint — verify in case a
         # future refactor decorates one but forgets the other.
         _app, client = _build_client({})
@@ -482,6 +665,14 @@ class TestAdminRoleGate:
         assert r.status_code == 403
 
     def test_a_malformed_admin_list_does_not_crash_the_app(self):
+        """Junk entries in the admin list are dropped, and the valid address survives.
+
+        `molbuilder.json` is hand-edited (`deployment.md` § 5). A `None` or an
+        `int` in the list must not raise while the app is being built -- the server
+        would fail to start over a typo in a section that gates two routes -- and the
+        blanks must not enter the set, where an empty string would match a session
+        carrying no email.
+        """
         # Non-string entries + blanks are dropped so a typo in
         # molbuilder.json doesn't take the server down on start.
         from molbuilder.web.admin import named_admins
@@ -540,6 +731,17 @@ class TestTheSignInCheckIsNotEvidence:
 
     def test_a_polling_tab_with_an_expired_session_is_never_blocked(
             self, app_with_auth):
+        """The app must not lock its own user out: a page polling with an expired session
+        gets 401 every time, never 429.
+
+        MEASURED, 2026-08-03 (`access-control.md` § 4.3; the class docstring
+        above carries the full account). The limiter counts 4xx, and a session
+        expiring with a tab open turns the page's own 1 Hz poll into one 4xx per
+        second -- twenty in thirty seconds, and the visitor was blocked for an hour on
+        EVERY path, the sign-in page included. From their side the site was simply
+        down. Twelve polls is twelve seconds of an open tab, and the assertion is that
+        the set of status codes is exactly {401}.
+        """
         client = app_with_auth.test_client()
         env = {"REMOTE_ADDR": "203.0.113.9"}
         codes = [client.get("/api/build/schema/siesta", environ_base=env)
@@ -613,6 +815,15 @@ class TestAuthenticatedBypass:
     """
 
     def test_signature_match_allowed_for_authenticated(self):
+        """A logged-in session bypasses the limiter -- the signature signal included.
+
+        `access-control.md` § 4.2: a principal who passed the identity provider
+        is by definition not an anonymous scanner, and `allowed_users` is a required
+        field, so a session exists only for someone an operator wrote down. The test
+        blocks the SAME URL without the session first, so a pass cannot come from the
+        pattern having quietly stopped matching -- which is how this test would
+        otherwise rot into a tautology.
+        """
         # Build a client with an absurdly tight threshold so
         # even ONE bad request would trip.  Then put a "user" in
         # the session and verify the limiter stays out of the
@@ -645,6 +856,14 @@ class TestAuthenticatedBypass:
         )
 
     def test_404_storm_not_counted_for_authenticated(self):
+        """A signed-in user's 4xx responses do not accumulate toward the storm signal.
+
+        The general form of the expired-session defect: a person clicking through a
+        tab that 404s a few times must not be cooled off for an hour.
+        `threshold_404` is 3 here and five 404s are made, so the counter would have
+        fired twice over if the session were not consulted first.
+        `access-control.md` § 4.2.
+        """
         # 4xx responses from an authenticated user must NOT
         # accumulate toward the 404 storm signal.
         app, client = _build_client({
@@ -675,6 +894,15 @@ class TestDisabledMode:
     """``rate_limit.enabled=false`` makes the module a no-op."""
 
     def test_signature_passes_through_when_disabled(self):
+        """`rate_limit.enabled = false` makes the module a no-op -- including the signal
+        that never needs a count.
+
+        The signature check runs before every request and is on even when the
+        count-based signals are off (`deployment.md` § 4), so "off" has to mean
+        off for it too, or an operator who disabled the limiter still has it blocking
+        people. This is also the shape the rest of the suite rests on: conftest's
+        `web_client` builds the app this way so unrelated tests never trip a signal.
+        """
         from molbuilder.web.app import create_app
         app = create_app(config={"rate_limit": {"enabled": False}})
         client = app.test_client()
@@ -696,6 +924,15 @@ class TestLRUEviction:
     """
 
     def test_eviction_drops_oldest_ip(self):
+        """The tracked-address table is BOUNDED, and it is the oldest entry that goes.
+
+        The state is in-process memory (`deployment.md` § 4) and the key is
+        attacker-supplied: without a bound, a scanner rotating source addresses grows
+        the dict until the process dies -- the limiter becoming the denial of service.
+        Evicting the NEWEST would be worse than no bound at all, since the address
+        currently attacking is the one that would be forgotten. (Reads `rl._states`
+        directly; there is no public accounting of the table's size.)
+        """
         # max_tracked_ips=3 so we can trigger eviction with 4 IPs.
         _app, client = _build_client({"max_tracked_ips": 3})
         # Hit from 4 different IPs.

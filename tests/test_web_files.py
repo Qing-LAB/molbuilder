@@ -86,6 +86,17 @@ def web(picker_root):
 class TestFilesRoots:
 
     def test_roots_lists_single_projects_root(self, web, picker_root):
+        """A second picker root would put files outside the projects tree one
+        click away on every tab.
+
+        `web-api.md` § 4 (`GET /api/files/roots`) and `job-contracts.md` § 2.5:
+        `projects/` is the one tree the browser browses. The route also owes
+        the sidebar `path` / `label` / `exists` per root -- without `exists`
+        the header cannot tell a missing root from an empty one. The root SET
+        itself is pinned at its source by
+        `TestRootsContract::test_capabilities_returns_only_projects_root`; here
+        the roots are monkeypatched, so what this holds is the envelope.
+        """
         # Single root by design (v1): just projects/.  No CWD, no
         # user-configurable additions.  Plural return shape preserved
         # so future re-addition of multi-root is a one-line change.
@@ -107,6 +118,16 @@ class TestFilesRoots:
 class TestFilesList:
 
     def test_list_root_returns_entries(self, web, picker_root):
+        """Files sorted ahead of directories would make the sidebar unnavigable
+        -- the folders a user is looking for scroll off under a long file list.
+
+        `web-api.md` § 4 (`GET /api/files/list`) and `projects.md` § 4:
+        directories first, then files by name. Honest note (2026-09-09): the
+        hidden-entry assertion at the end of this test cannot fail -- the
+        fixture plants no dotfile at this level -- so
+        `test_list_filters_hidden_entries` is where that rule is actually
+        exercised.
+        """
         r = web.get(f"/api/files/list?path={picker_root}")
         assert r.status_code == 200
         j = r.get_json()
@@ -123,6 +144,14 @@ class TestFilesList:
         assert all(not e["name"].startswith(".") for e in j["entries"])
 
     def test_list_filters_hidden_entries(self, web, picker_root):
+        """A listing that stopped filtering dotfiles would show `.git`,
+        `.binsnapshots` and `.molbuilder_workspace` as ordinary browsable
+        folders, inviting a user to delete storage a run depends on.
+
+        `projects.md` § 4 (what the sidebar shows) and `web-api.md` § 4. This
+        is the only test that reaches the hidden filter with a dotfile actually
+        present.
+        """
         r = web.get(
             f"/api/files/list?path={picker_root}/spectrum/BDT"
         )
@@ -133,6 +162,13 @@ class TestFilesList:
         assert ".hidden" not in names
 
     def test_list_ext_filter(self, web, picker_root):
+        """A filter that also hid directories would strand every matching file
+        that lives one folder down: the user cannot navigate to what the filter
+        is for.
+
+        `web-api.md` § 4 (`GET /api/files/list`, `ext=`): the filter narrows
+        FILES only.
+        """
         r = web.get(
             f"/api/files/list?path={picker_root}&ext=.xyz,.json"
         )
@@ -146,6 +182,12 @@ class TestFilesList:
         assert "notes.txt" not in names      # not in filter
 
     def test_list_ext_filter_normalises_no_dot(self, web, picker_root):
+        """A caller writing `ext=xyz` instead of `ext=.xyz` gets an empty
+        folder and no error -- the failure is silent, which is why it is pinned
+        rather than left to review.
+
+        `web-api.md` § 4 (`GET /api/files/list`).
+        """
         # ext=xyz (no leading dot) should behave the same as ext=.xyz
         r = web.get(f"/api/files/list?path={picker_root}&ext=xyz")
         names = [e["name"] for e in r.get_json()["entries"]]
@@ -153,6 +195,12 @@ class TestFilesList:
         assert "config.json" not in names
 
     def test_list_entries_carry_kind_size_mtime(self, web, picker_root):
+        """A dropped or renamed key blanks the sidebar row with no error, and
+        `size: 0` on a directory would render a folder as an empty file.
+
+        `web-api.md` § 4 (`GET /api/files/list`), `projects.md` § 4: each entry
+        carries kind, size (null for a directory) and mtime.
+        """
         r = web.get(f"/api/files/list?path={picker_root}")
         entries = {e["name"]: e for e in r.get_json()["entries"]}
         # Files report size + finite mtime; dirs report size=null.
@@ -163,17 +211,36 @@ class TestFilesList:
         assert entries["spectrum"]["size"] is None
 
     def test_list_missing_path_400(self, web):
+        """A `path`-less request answered with a 500, or with a listing of some
+        default directory, instead of a named 400.
+
+        `web-api.md` § 1 (status codes): a malformed request is 400 and the
+        message names the missing parameter. The refusal comes from the fence
+        (`files._resolve_within_roots`, § 2.1) -- its empty-path branch.
+        """
         r = web.get("/api/files/list")
         assert r.status_code == 400
         assert "missing 'path'" in r.get_json()["error"]
 
     def test_list_nonexistent_path_404(self, web, picker_root):
+        """A missing directory answered as a 500 (a server fault) or as a 200
+        with an empty list -- the sidebar would show a folder that is not there
+        instead of saying it is gone.
+
+        `web-api.md` § 1 status table: 404 is 'no such file / directory'.
+        """
         r = web.get(
             f"/api/files/list?path={picker_root}/nope_no_such_dir"
         )
         assert r.status_code == 404
 
     def test_list_file_not_directory_400(self, web, picker_root):
+        """Pointing `list` at a file answered with a 500 from the OS error, or
+        with a one-entry listing, instead of the usage error it is.
+
+        `web-api.md` § 1 status table: a bad request is 400, and 5xx is
+        reserved for a server fault.
+        """
         # Pointing list at a file (not a dir) is a usage error.
         r = web.get(
             f"/api/files/list?path={picker_root}/water.xyz"
@@ -189,6 +256,13 @@ class TestFilesList:
 class TestFilesStat:
 
     def test_stat_file(self, web, picker_root):
+        """`stat` losing `kind`, `size` or `mtime` leaves the preview header
+        blank and the editor with no mtime to send back as `expected_mtime` --
+        which silently disables the lost-update guard on save.
+
+        `web-api.md` § 4 (`GET /api/files/stat`); the save side of that same
+        mtime is `test_write_mtime_mismatch_returns_409`.
+        """
         r = web.get(
             f"/api/files/stat?path={picker_root}/water.xyz"
         )
@@ -200,6 +274,12 @@ class TestFilesStat:
         assert j["mtime"] > 0
 
     def test_stat_directory(self, web, picker_root):
+        """A directory reported as `kind: file`, or with `size: 0` instead of
+        null, makes the sidebar offer a preview of a folder.
+
+        `web-api.md` § 4 (`GET /api/files/stat`): the same kind / size
+        convention the listing uses.
+        """
         r = web.get(
             f"/api/files/stat?path={picker_root}/spectrum"
         )
@@ -209,6 +289,11 @@ class TestFilesStat:
         assert j["size"] is None
 
     def test_stat_nonexistent_404(self, web, picker_root):
+        """A stat of something that is gone answered 200 or 500 rather than 404
+        -- the client cannot tell 'deleted' from 'the server broke'.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.get(
             f"/api/files/stat?path={picker_root}/nope"
         )
@@ -223,6 +308,12 @@ class TestFilesStat:
 class TestFilesRead:
 
     def test_read_returns_text(self, web, picker_root):
+        """`read` reporting a `size` that does not match the text it returned:
+        a truncated body reported as whole leaves the viewer believing it holds
+        the file when it holds part of it.
+
+        `web-api.md` § 4 (`GET /api/files/read`).
+        """
         r = web.get(
             f"/api/files/read?path={picker_root}/water.xyz"
         )
@@ -233,6 +324,14 @@ class TestFilesRead:
         assert j["size"] == len(j["text"])
 
     def test_read_respects_max_bytes_with_413(self, web, picker_root):
+        """Without the cap, one click on a multi-gigabyte `.DM` pulls it
+        through the request thread and into the browser; and a 413 that omits
+        the file's real `size` leaves the viewer unable to say how big it is or
+        to fall back to `read_range`.
+
+        `web-api.md` § 1 status table (413 = payload too large) and § 1a (the
+        three-second rule).
+        """
         # File is ~35 bytes; cap at 5 → 413 with the file's actual size.
         r = web.get(
             f"/api/files/read?path={picker_root}/water.xyz&max_bytes=5"
@@ -243,12 +342,22 @@ class TestFilesRead:
         assert j["size"] > 5
 
     def test_read_directory_400(self, web, picker_root):
+        """Reading a directory answered as a 500 from `IsADirectoryError`
+        instead of the usage error it is.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.get(
             f"/api/files/read?path={picker_root}/spectrum"
         )
         assert r.status_code == 400
 
     def test_read_rejects_invalid_max_bytes(self, web, picker_root):
+        """A non-integer `max_bytes` reaching `int()` unguarded is a 500 on a
+        request the caller merely mistyped.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.get(
             f"/api/files/read?path={picker_root}/water.xyz"
             f"&max_bytes=not_an_int"
@@ -256,6 +365,13 @@ class TestFilesRead:
         assert r.status_code == 400
 
     def test_read_rejects_max_bytes_above_ceiling(self, web, picker_root):
+        """Without the 16 MB ceiling a caller can name any size and have the
+        server read that much into memory inside one request thread -- a denial
+        of service from a single URL.
+
+        `web-api.md` § 1a (the three-second rule) and § 2 (the 50 MB global
+        upload cap; this is the read-side ceiling).
+        """
         # Hard ceiling is 16 MB.
         r = web.get(
             f"/api/files/read?path={picker_root}/water.xyz"
@@ -264,6 +380,14 @@ class TestFilesRead:
         assert r.status_code == 400
 
     def test_read_non_utf8_400(self, web, picker_root):
+        """A binary file answered with mojibake, or with a 500 from
+        `UnicodeDecodeError`, instead of a refusal that says the file is not
+        text -- the viewer would render replacement characters and the user
+        would conclude the file is corrupt.
+
+        `web-api.md` § 1 status table; the message must name UTF-8, because
+        that message is what the preview shows.
+        """
         bad = picker_root / "binary.dat"
         bad.write_bytes(b"\xff\xfe\xfd\xfc not valid utf-8")
         r = web.get(f"/api/files/read?path={bad}")
@@ -318,6 +442,15 @@ class TestFilesReadRange:
 
     def test_read_range_eof_true_when_chunk_reaches_end(
             self, web, picker_root):
+        """A chunk that reaches the end without `eof: true` leaves the viewer's
+        paginator asking for the same offset forever.
+
+        `web-api.md` § 4 (`GET /api/files/read_range`, task #119, 2026-06-02).
+        Honest note (2026-09-09):
+        `test_read_range_default_returns_start_of_file` reaches the same `eof`
+        computation with the same relation (requested span larger than the
+        file), so this is raised as a cut candidate.
+        """
         small = picker_root / "small.log"
         small.write_text("hello world\n")
         # Request more than file size -> get the whole file, eof.
@@ -359,6 +492,15 @@ class TestFilesReadRange:
 
     def test_read_range_offset_past_end_returns_400(
             self, web, picker_root):
+        """An offset past the end answered with an empty 200 would be
+        indistinguishable from a legitimate end-of-file read, so a client
+        paging a file that was truncated under it loops instead of reporting
+        the change.
+
+        `web-api.md` § 4 (`read_range`). The other side of the boundary is
+        `test_read_range_offset_at_eof_returns_empty_chunk`: offset ==
+        file_size is 200, offset > file_size is 400.
+        """
         small = picker_root / "short.log"
         small.write_text("12345")
         r = web.get(
@@ -386,6 +528,11 @@ class TestFilesReadRange:
 
     def test_read_range_invalid_offset_returns_400(
             self, web, picker_root):
+        """A non-integer `offset` reaching `int()` unguarded is a 500 on a
+        mistyped request.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.get(
             f"/api/files/read_range?path={picker_root}/water.xyz"
             f"&offset=not_an_int")
@@ -393,6 +540,11 @@ class TestFilesReadRange:
 
     def test_read_range_invalid_max_bytes_returns_400(
             self, web, picker_root):
+        """The same for `max_bytes`: `read_range` parses two numbers, and a
+        guard added to one and not the other is the drift this catches.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.get(
             f"/api/files/read_range?path={picker_root}/water.xyz"
             f"&max_bytes=zero")
@@ -400,17 +552,35 @@ class TestFilesReadRange:
 
     def test_read_range_max_bytes_above_ceiling_returns_400(
             self, web, picker_root):
+        """`read_range` is the endpoint a viewer calls in a loop, so an
+        unbounded `max_bytes` here is the cheapest way to make the server read
+        an arbitrary amount per request.
+
+        `web-api.md` § 1a; mirrors the `read` ceiling pinned by
+        `test_read_rejects_max_bytes_above_ceiling`.
+        """
         r = web.get(
             f"/api/files/read_range?path={picker_root}/water.xyz"
             f"&max_bytes=99999999999")
         assert r.status_code == 400
 
     def test_read_range_missing_file_404(self, web, picker_root):
+        """A range read of a file that is gone answered as an empty 200 or a
+        500 rather than 404 -- the viewer cannot tell a deleted file from a
+        server fault mid-scroll.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.get(
             f"/api/files/read_range?path={picker_root}/no-such.log")
         assert r.status_code == 404
 
     def test_read_range_directory_returns_400(self, web, picker_root):
+        """Ranging over a directory answered as a 500 from the OS error instead
+        of a usage 400.
+
+        `web-api.md` § 1 status table.
+        """
         d = picker_root / "subdir"
         d.mkdir(exist_ok=True)
         r = web.get(f"/api/files/read_range?path={d}")
@@ -477,6 +647,17 @@ class TestPathTraversalDefense:
     """
 
     def test_dot_dot_in_raw_path_rejected(self, web):
+        """A raw `..` reaching path resolution. The ones that resolve outside
+        are caught by the containment check, but a `..` that cancels back
+        INSIDE the root (`<root>/proj/../secret`) resolves to a legal path and
+        would be served -- the raw-string refusal is the only thing that stops
+        it.
+
+        `web-api.md` § 2.1 (a path from the browser is fenced at the ROUTE).
+        This is the DOOR test for `files._resolve_within_roots`;
+        `test-audit-findings.md` § 5 names it as the coverer that let other
+        routes' thin traversal wrappers be cut.
+        """
         # Even before resolution, a path with .. is rejected.  This
         # avoids ambiguity for users who type '..' assuming it would
         # be normalised harmlessly.
@@ -485,12 +666,27 @@ class TestPathTraversalDefense:
         assert ".." in r.get_json()["error"]
 
     def test_absolute_path_outside_root_rejected(self, web, picker_root):
+        """Without the containment check, any absolute path the server process
+        can read becomes readable by anyone with a session -- `/etc/shadow` was
+        the measured case (`web-api.md` § 2.1, the 2026-06-18 `watch.py` fix).
+
+        `web-api.md` § 2.1. The refusal must also NAME the allowed roots, which
+        is what the error-text assertion holds.
+        """
         # /etc is not inside the tmp picker root → outside-root reject.
         r = web.get("/api/files/list?path=/etc")
         assert r.status_code == 400
         assert "outside every configured root" in r.get_json()["error"]
 
     def test_symlink_to_outside_root_rejected(self, web, picker_root):
+        """The fence resolves symlinks BEFORE it checks containment; reverse
+        those two steps and a symlink planted inside `projects/` -- by an
+        upload, a shared filesystem, or the user's own `ln -s` -- reads
+        anything on the machine while every raw-string check still passes.
+
+        `web-api.md` § 2.1. This is the only test that pins the resolve-then-
+        check ORDER.
+        """
         # Symlink resolves to /tmp (outside the picker_root tmp).
         # _resolve_within_roots follows symlinks before checking, so
         # the resolved path is what the boundary check sees.
@@ -501,6 +697,15 @@ class TestPathTraversalDefense:
         assert "outside every configured root" in r.get_json()["error"]
 
     def test_empty_path_400(self, web):
+        """An empty `path` falling through the fence to `Path('')`, which
+        resolves to the process CWD -- the caller would get a listing of
+        wherever the server was launched.
+
+        `web-api.md` § 2.1 and § 1 status table. It is also the only test in
+        this file that drives `/api/files/stat` through the fence at all: the
+        audit of 2026-09-09 records that stat / read / read_range have no
+        outside-root test of their own.
+        """
         r = web.get("/api/files/stat?path=")
         assert r.status_code == 400
 
@@ -516,6 +721,15 @@ class TestSidebarPartialAndShim:
     that also load a file via the selection) include the banner DOM."""
 
     def test_projects_page_route_removed(self, web):
+        """A re-added `/projects` page would give the sidebar a second home,
+        and the two would disagree about what is selected.
+
+        `projects.md` § 1 (the one door) -- the standalone tab was retired for
+        the persistent sidebar. Honest note (2026-09-09): no document records
+        the removal (`web-api.md` § 7's removed-routes table does not carry
+        it), so this test is the only record of it, which is the weakness
+        rather than the strength; raised as a cut candidate.
+        """
         # The standalone /projects tab was retired in favour of the
         # persistent sidebar.  Make sure the old route is gone so a
         # bookmark lands on a clean 404 rather than a half-rendered
@@ -615,6 +829,14 @@ class TestSidebarPartialAndShim:
         assert "dialogs"      not in state, "state.js cannot import from dialogs.js"
 
     def test_projects_selection_shim_removed(self, web, picker_root):
+        """The per-tab selection shim coming back would put a second subscriber
+        on the selection, so a picked file loads twice -- and, when the two
+        disagree, into two different viewers.
+
+        `projects.md` § 3 (opening a molecule -- one door). Like the
+        `/projects` route pin above, the retirement is recorded nowhere but
+        here; raised as a cut candidate.
+        """
         # The per-tab projects-selection shim was retired -- the sidebar
         # actions section took over (no more "Use this file" banner).
         r = web.get("/static/lib/projects-selection.js")
@@ -625,6 +847,14 @@ class TestSidebarPartialAndShim:
         "/spectrum-calculation", "/transport-calculation",
         "/results"])
     def test_sidebar_included_in_every_tab(self, web, picker_root, path):
+        """A tab shipped without the sidebar partial has NO way to open a file
+        -- the sidebar is the only file-picking door, so the tab is unusable
+        and nothing else in the suite would say so.
+
+        `projects.md` § 1 (the one door) and § 4. Parametrized over every
+        served tab, so a NEW tab that forgets the include is caught by adding
+        one line here.
+        """
         r = web.get(path)
         assert r.status_code == 200, path
         body = r.get_data(as_text=True)
@@ -644,6 +874,17 @@ class TestSidebarPartialAndShim:
     def test_sidebar_layout_opt_in_is_server_side(
         self, web, picker_root, path,
     ):
+        """The shell's layout opt-in arriving from JS instead of the server:
+        the first paint uses the pre-shell geometry, so Plotly and 3Dmol
+        initialise at the wrong size and stay broken until the user resizes the
+        window. This bit users under the since-retired `has-projects-sidebar`
+        shim.
+
+        `projects.md` § 4. Honest note (2026-09-09): the second half of this
+        test -- that the JS does not spell `setAttribute(data-sidebars)` -- is
+        a `testing.md` § 3a source pin on shipped text rather than a behaviour,
+        and is raised for redesign, not deletion.
+        """
         # The app-shell layout opt-in -- ``<body data-sidebars="projects">``
         # -- must be in the SERVER-rendered markup, not added later by the
         # type=module sidebar JS.  page-shell.css keys the whole flex-column
@@ -669,6 +910,15 @@ class TestSidebarPartialAndShim:
     def test_subscriber_tabs_use_inquire_api(
         self, web, picker_root, path,
     ):
+        """`/molbuilder` losing its selection bootstrap: picking an `.xyz` in
+        the sidebar silently stops loading it into the viewer -- the click just
+        does nothing.
+
+        `projects.md` § 3 (opening a molecule -- the one door) and
+        `model/structure.md` § 3.1 (`projects.parser.openMolecule`, reached
+        through `window.molbuilder.projects`). The negative half (retired ids
+        stay absent) is spelling on shipped markup and is the weaker part.
+        """
         # /molbuilder is the canonical "subscriber tab": it reacts
         # to the Projects-sidebar selection by auto-loading the
         # picked XYZ into the viewer + selection panel.  The wiring
@@ -698,6 +948,14 @@ class TestSidebarPartialAndShim:
         assert 'id="projects-banner"' not in body, path
 
     def test_projects_nav_entry_removed(self, web):
+        """A tab link pointing at a route the server does not serve -- the user
+        clicks a header tab and lands on a 404.
+
+        `tabs.md` (the canonical tab order lives in `web.tabs.TABS`) and
+        `web-api.md` § 4. It checks EVERY app-tab link against the served set,
+        so it is an artifact lint over the whole class rather than one link --
+        the kind `testing.md` § 3b keeps.
+        """
         # The "Projects" app-tab entry was removed from _app_header.html
         # when we pivoted to the sidebar (otherwise users get a dead
         # tab link).  The sidebar's own <h2>Projects</h2> title
@@ -755,6 +1013,13 @@ class TestFilesMkdir:
     """
 
     def test_mkdir_creates_subdir_inside_root(self, web, picker_root):
+        """`mkdir` reporting success without creating the directory, or
+        creating it somewhere other than the path it echoes back -- the sidebar
+        then navigates to a folder that is not there.
+
+        `web-api.md` § 4 (`POST /api/files/mkdir`); `job-contracts.md` § 2.5
+        for the name grammar.
+        """
         # picker_root is wired as projects/ for these tests.
         r = web.post(
             "/api/files/mkdir",
@@ -767,6 +1032,14 @@ class TestFilesMkdir:
         assert (picker_root / "new_project").is_dir()
 
     def test_mkdir_rejects_bad_name_at_root_level(self, web, picker_root):
+        """A project directory with a space or a dot in its name breaks
+        SIESTA's basename-based file discovery downstream -- the run fails much
+        later, inside the engine, with nothing pointing back at the folder
+        name.
+
+        `job-contracts.md` § 2.5 (each path segment matches `[A-Za-z0-9_-]+`);
+        `projects.validate_name` is the door.
+        """
         # ^[A-Za-z0-9_-]+$ disallows spaces, dots, slashes.
         r = web.post(
             "/api/files/mkdir",
@@ -779,6 +1052,16 @@ class TestFilesMkdir:
     def test_mkdir_rejects_non_canonical_topic_at_topic_depth(
         self, web, picker_root,
     ):
+        """An ad-hoc topic at depth 2 fragments the project tree: `Raman/`
+        beside `spectrum/` means the 'same analysis across structures'
+        comparison no longer finds anything.
+
+        `job-contracts.md` § 2.5 (the fixed topic vocabulary). Honest note
+        (2026-09-09): the message asserted here says 'canonical six' while the
+        set holds NINE topics (`projects.py:115`; the doc corrected six to nine
+        on 2026-07-27), so this test currently pins the stale wording --
+        reported as a code defect.
+        """
         # Set up projects/<project>/ then try to create a non-canonical
         # topic underneath.  The picker_root acts as projects/.
         (picker_root / "myproj").mkdir()
@@ -797,6 +1080,12 @@ class TestFilesMkdir:
     def test_mkdir_accepts_canonical_topic_at_topic_depth(
         self, web, picker_root,
     ):
+        """The other half: a depth-2 check that refused everything would make
+        the canonical layout uncreatable through the UI, and only a positive
+        case separates an over-tight guard from a correct one.
+
+        `job-contracts.md` § 2.5.
+        """
         (picker_root / "myproj").mkdir()
         r = web.post(
             "/api/files/mkdir",
@@ -809,6 +1098,12 @@ class TestFilesMkdir:
         assert (picker_root / "myproj" / "spectrum").is_dir()
 
     def test_mkdir_409_when_already_exists(self, web, picker_root):
+        """A second `mkdir` on an existing folder answered 200 -- the sidebar
+        reports a folder created when it merely found one, so a user who
+        retypes an existing project name believes they made a new one.
+
+        `web-api.md` § 1 status table (409 = the destination exists).
+        """
         (picker_root / "preexisting").mkdir()
         r = web.post(
             "/api/files/mkdir",
@@ -818,6 +1113,11 @@ class TestFilesMkdir:
         assert "already exists" in r.get_json()["error"]
 
     def test_mkdir_400_for_missing_name(self, web, picker_root):
+        """A `name`-less request creating something anyway -- an empty segment,
+        or the parent itself -- instead of a named 400.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.post(
             "/api/files/mkdir", json={"parent": str(picker_root)},
         )
@@ -825,6 +1125,12 @@ class TestFilesMkdir:
         assert "missing 'name'" in r.get_json()["error"]
 
     def test_mkdir_400_for_parent_outside_root(self, web, picker_root):
+        """`mkdir` is a WRITE, so a route that skipped the fence lets a session
+        create directories anywhere the server user can write.
+
+        `web-api.md` § 2.1. What this test holds is that THIS route reaches the
+        fence at all; the fence's own behaviour is `TestPathTraversalDefense`.
+        """
         # Reuses the same outside-root rejection as /api/files/list.
         r = web.post(
             "/api/files/mkdir",
@@ -835,6 +1141,14 @@ class TestFilesMkdir:
         assert not Path("/etc/evil").exists()  # paranoia
 
     def test_mkdir_400_for_dot_dot_in_parent(self, web, picker_root):
+        """A raw `..` in `parent` reaching resolution.
+
+        `web-api.md` § 2.1. Honest note (2026-09-09): the parent used here
+        (`<root>/..`) resolves OUTSIDE the root, so containment refuses it even
+        with the string check removed, and
+        `test_mkdir_400_for_parent_outside_root` already proves this route
+        reaches the fence -- raised as a cut candidate.
+        """
         r = web.post(
             "/api/files/mkdir",
             json={"parent": str(picker_root) + "/..",
@@ -844,6 +1158,11 @@ class TestFilesMkdir:
         assert ".." in r.get_json()["error"]
 
     def test_mkdir_400_for_parent_not_a_directory(self, web, picker_root):
+        """A parent that is a regular file answered as a 500 from the OS error
+        rather than the usage 400 it is.
+
+        `web-api.md` § 1 status table.
+        """
         # parent points at a regular file -> 400.
         r = web.post(
             "/api/files/mkdir",
@@ -860,6 +1179,14 @@ class TestProjectsCreate:
     Atomic: any subdir failure rolls back the whole project tree."""
 
     def test_create_project_bootstraps_full_skeleton(self, web, picker_root):
+        """A project created with a partial tree: the user picks `spectrum` in
+        a later tab and it is not there, with nothing saying why.
+
+        `job-contracts.md` § 2.5 (the project tree and its topics). This test
+        loops over `CANONICAL_TOPICS` itself, so it proves the ROUTE builds
+        what the tuple says -- never what the tuple should contain; the two
+        tests below pin the contents.
+        """
         r = web.post("/api/projects/create", json={"name": "myproj"})
         assert r.status_code == 200
         j = r.get_json()
@@ -875,6 +1202,15 @@ class TestProjectsCreate:
     def test_create_includes_structure_and_pseudopotential(
         self, web, picker_root,
     ):
+        """The two STORAGE topics dropping out of the canonical set -- which
+        the test above cannot catch, because it reads the same tuple it checks.
+        Without `structure/` there is nowhere for an uploaded geometry to land,
+        and without `pseudopotential/` the project-local `.psml` cache has no
+        home.
+
+        `job-contracts.md` § 2.5 (nine topics: two storage, six run, one free-
+        form).
+        """
         # Both new storage-dir entries land alongside the run-topic
         # dirs as part of the canonical skeleton.
         r = web.post("/api/projects/create", json={"name": "with_storage"})
@@ -883,6 +1219,15 @@ class TestProjectsCreate:
         assert (picker_root / "with_storage" / "pseudopotential").is_dir()
 
     def test_create_includes_user_freeform_topic(self, web, picker_root):
+        """`user/` disappearing, or the depth rule tightening so nothing may be
+        created inside it -- the user loses the one place in the tree with no
+        naming rules.
+
+        `job-contracts.md` § 2.5 (`user` is free-form: a workspace with no
+        rules inside it). The second half proves the topic vocabulary binds at
+        depth 1 ONLY -- `free_subdir` is legal inside `user/` and would be
+        refused as a topic.
+        """
         # 'user' lands at depth 1 alongside the other canonical topics.
         # Free-form: any subdir name (regex-valid) is accepted inside.
         r = web.post("/api/projects/create", json={"name": "with_user"})
@@ -901,6 +1246,13 @@ class TestProjectsCreate:
         assert (user_dir / "free_subdir").is_dir()
 
     def test_create_writes_readme_in_every_subdir(self, web, picker_root):
+        """A topic added to the tuple without its README leaves a new user in
+        an empty folder with no idea what belongs there; a project README that
+        stops naming a topic hides that topic entirely.
+
+        `job-contracts.md` § 2.5. The loop is over `CANONICAL_TOPICS`, so a
+        topic added later is covered without a test edit.
+        """
         # Each canonical subdir gets a small README.md describing its
         # purpose -- this is the "teaching" hint a new user sees when
         # navigating the tree.
@@ -917,6 +1269,14 @@ class TestProjectsCreate:
             assert content.startswith(f"# {t}/"), t
 
     def test_create_returns_409_on_name_conflict(self, web, picker_root):
+        """A second create over an existing project rebuilding the skeleton on
+        top of it: READMEs rewritten and -- if the bootstrap ever gained a
+        clean step -- real results destroyed by a name collision.
+
+        `web-api.md` § 1 status table (409). The last assertion is the load-
+        bearing one: the refusal is detection-only and the existing tree is
+        untouched.
+        """
         # First create succeeds.
         web.post("/api/projects/create", json={"name": "dup"})
         # Second create returns 409 with a clear message.
@@ -932,6 +1292,15 @@ class TestProjectsCreate:
     def test_create_409_when_project_dir_exists_from_hand(
         self, web, picker_root,
     ):
+        """A conflict check that consulted its own bookkeeping instead of the
+        filesystem: a directory the user made in a shell would be
+        indistinguishable from free space, and create would write into it.
+
+        `web-api.md` § 1 status table. Honest note (2026-09-09): this is close
+        to the test above and the audit records it as UNSURE rather than a cut
+        -- it is the only case where the pre-existing directory was not made by
+        the route.
+        """
         # Same 409 path applies when the dir already exists outside
         # the /api/projects/create flow (e.g., user mkdir'd by hand).
         (picker_root / "handmade").mkdir()
@@ -939,12 +1308,23 @@ class TestProjectsCreate:
         assert r.status_code == 409
 
     def test_create_400_on_invalid_name(self, web, picker_root):
+        """A project name carrying a space, a dot or a slash. The slash is the
+        dangerous one: `my/proj` would create a nested path from a single
+        field.
+
+        `job-contracts.md` § 2.5 (`[A-Za-z0-9_-]+` per segment).
+        """
         # validate_name regex: ^[A-Za-z0-9_-]+$ -- reject spaces, dots.
         for bad in ["my project", "my.proj", "my/proj", "weird*name", ""]:
             r = web.post("/api/projects/create", json={"name": bad})
             assert r.status_code == 400, bad
 
     def test_create_400_when_name_missing(self, web, picker_root):
+        """A nameless create answered by making something -- a directory named
+        after the empty string, or the root itself treated as the target.
+
+        `web-api.md` § 1 status table.
+        """
         r = web.post("/api/projects/create", json={})
         assert r.status_code == 400
         assert "missing 'name'" in r.get_json()["error"]
@@ -958,10 +1338,25 @@ class TestSidebarCreateUI:
     web/projects.md § Mutation UX."""
 
     def test_create_bar_in_partial(self, web, picker_root):
+        """The create bar disappearing from the sidebar header, which is where
+        all three mutation actions live.
+
+        `projects.md` § 4. Honest note (2026-09-09): if the bar were removed
+        `test_three_action_buttons_visible` fails too, so what only this test
+        holds is the CONTAINER class that `projects-sidebar.css:232` styles --
+        a rename would silently unstyle the header. Raised as a cut candidate
+        with that loss stated.
+        """
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'class="ps-create-bar"' in body
 
     def test_three_action_buttons_visible(self, web, picker_root):
+        """A button losing its id leaves the JS unable to wire it: the control
+        renders and does nothing when clicked -- the failure mode with no error
+        anywhere.
+
+        `projects.md` § 4 (the sidebar's three actions, v2 2026-06-12).
+        """
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         # Three distinct buttons with stable ids for the JS to wire.
         assert 'id="ps-create-project-btn"' in body
@@ -997,6 +1392,14 @@ class TestFilesWrite:
     picker root)."""
 
     def test_write_happy_path_creates_file(self, web, picker_root):
+        """`write` reporting success without the bytes landing, or landing
+        somewhere other than the path it echoes -- the tab says 'saved' and the
+        file is not there.
+
+        `web-api.md` § 4 (`POST /api/files/write`), `projects.md` § 3 (the
+        server writes; the browser never does). The returned `mtime` is what
+        the caller sends back as `expected_mtime` on the next save.
+        """
         sub = picker_root / "myproj" / "topic_a"
         sub.mkdir(parents=True)
         target = str(sub / "out.txt")
@@ -1013,6 +1416,13 @@ class TestFilesWrite:
     def test_write_409_on_existing_file_no_overwrite(
         self, web, picker_root,
     ):
+        """A generate-and-save that clobbers by default: a second run of the
+        same tab silently replaces a file the user had already edited.
+
+        `web-api.md` § 1 status table (409) and `projects.md` § 4.1. The final
+        assertion is the one that matters -- the refusal must not touch the
+        file.
+        """
         sub = picker_root / "myproj" / "topic_a"
         sub.mkdir(parents=True)
         (sub / "out.txt").write_text("original")
@@ -1027,6 +1437,11 @@ class TestFilesWrite:
         assert (sub / "out.txt").read_text() == "original"
 
     def test_write_with_overwrite_true_clobbers(self, web, picker_root):
+        """The opt-in becoming a no-op: the caller asks for a deliberate
+        replacement, gets a 200, and the old bytes stay on disk.
+
+        `web-api.md` § 4 (`POST /api/files/write`, `overwrite`).
+        """
         sub = picker_root / "myproj" / "topic_a"
         sub.mkdir(parents=True)
         (sub / "out.txt").write_text("original")
@@ -1038,6 +1453,14 @@ class TestFilesWrite:
         assert (sub / "out.txt").read_text() == "new"
 
     def test_write_mtime_mismatch_returns_409(self, web, picker_root):
+        """The lost update: two tabs open the same file, both save, and the
+        second overwrites the first with no sign anything happened. The
+        response must also carry `actual_mtime`, or the editor cannot offer a
+        reload.
+
+        `web-api.md` § 1 status table (409); the read side of the mtime is
+        `test_stat_file`.
+        """
         # Edit-and-save flow: write with a wrong expected_mtime.
         sub = picker_root / "myproj" / "topic_a"
         sub.mkdir(parents=True)
@@ -1055,6 +1478,12 @@ class TestFilesWrite:
         assert (sub / "out.txt").read_text() == "original"
 
     def test_write_mtime_match_succeeds(self, web, picker_root):
+        """A guard that refuses even when the file has NOT changed makes
+        editing impossible -- every save 409s. Only a positive case separates a
+        correct comparison from a broken one.
+
+        `web-api.md` § 4 (`POST /api/files/write`, `expected_mtime`).
+        """
         sub = picker_root / "myproj" / "topic_a"
         sub.mkdir(parents=True)
         f = sub / "out.txt"
@@ -1068,6 +1497,12 @@ class TestFilesWrite:
         assert f.read_text() == "edit"
 
     def test_write_at_root_depth_rejected(self, web, picker_root):
+        """Files written straight into `projects/`, where the sidebar shows
+        projects: a loose `.xyz` at that level looks like a project and is not
+        one.
+
+        `job-contracts.md` § 2.5 (three levels: project / topic / calculation).
+        """
         # Cannot write directly into projects/ root; depth >= 1
         # required.  Keeps the root clean (only project dirs there).
         target = str(picker_root / "orphan.txt")
@@ -1078,12 +1513,26 @@ class TestFilesWrite:
         assert not (picker_root / "orphan.txt").exists()
 
     def test_write_outside_root_rejected(self, web, picker_root):
+        """`write` is the most dangerous route in this file -- a skipped fence
+        means arbitrary file creation as the server user.
+
+        `web-api.md` § 2.1: what this holds is that the route reaches the
+        fence.
+        """
         r = web.post("/api/files/write",
                      json={"path": "/etc/evil", "text": "x"})
         assert r.status_code == 400
         assert "outside every configured root" in r.get_json()["error"]
 
     def test_write_dot_dot_rejected(self, web, picker_root):
+        """The `..` that CANCELS. `<root>/proj/../outside` resolves to
+        `<root>/outside`, which is INSIDE the root, so the containment check
+        passes it; only the raw-string refusal stops the write from landing
+        outside the folder the user is looking at.
+
+        `web-api.md` § 2.1. This is the one per-route `..` test whose case is
+        not already covered by its outside-root sibling.
+        """
         r = web.post("/api/files/write",
                      json={"path": str(picker_root) + "/proj/../outside",
                            "text": "x"})
@@ -1091,6 +1540,13 @@ class TestFilesWrite:
         assert ".." in r.get_json()["error"]
 
     def test_write_missing_parent_dir(self, web, picker_root):
+        """A save into a folder that does not exist answered by creating the
+        whole chain -- a typo in a path silently makes a tree -- or by a 500
+        from the OS error.
+
+        `web-api.md` § 1 status table; `mkdir` is the route that creates
+        directories.
+        """
         sub = picker_root / "myproj"
         sub.mkdir()
         target = str(sub / "no" / "such" / "dir" / "file.txt")
@@ -1100,6 +1556,12 @@ class TestFilesWrite:
         assert "parent directory does not exist" in r.get_json()["error"]
 
     def test_write_rejects_non_string_text(self, web, picker_root):
+        """A JSON number or object in `text` reaching the writer: either a 500
+        mid-write, or a file containing Python's repr of the object.
+
+        `web-api.md` § 1 (the request envelope is strict where a file is
+        written).
+        """
         sub = picker_root / "myproj" / "topic_a"
         sub.mkdir(parents=True)
         r = web.post("/api/files/write",
@@ -1175,6 +1637,14 @@ class TestFilesDeleteSidecarPairing:
         )
 
     def test_xyz_delete_removes_sidecar(self, web, picker_root):
+        """Deleting `water.xyz` and leaving `water.molstruct.json` behind: the
+        orphan then pairs with the NEXT file that takes the name, handing a
+        different structure someone else's region labels and frozen atoms.
+
+        `projects.md` § 4.1 and `model/structure.md` § 2.4 (a structure and its
+        sidecar move as one). Measured 2026-07 -- delete was the one operation
+        that had not been paired.
+        """
         struct, sidecar = _seed_paired(picker_root, stem="water")
         assert struct.exists() and sidecar.exists()
         r = self._delete(web, struct)
@@ -1186,6 +1656,12 @@ class TestFilesDeleteSidecarPairing:
         assert j["sidecar_removed"] == str(sidecar)
 
     def test_pdb_delete_removes_sidecar(self, web, picker_root):
+        """`.pdb` dropping out of the paired-suffix set -- which the `.xyz`
+        test above cannot see, because both read the same set.
+
+        `projects.md` § 4.1; the suffix set is the sidecar-pairing helper in
+        `web/blueprints/files.py`.
+        """
         struct, sidecar = _seed_paired(picker_root, stem="prot", ext=".pdb")
         r = self._delete(web, struct)
         assert r.status_code == 200
@@ -1193,6 +1669,12 @@ class TestFilesDeleteSidecarPairing:
         assert not sidecar.exists()
 
     def test_delete_without_sidecar_is_fine(self, web, picker_root):
+        """The pairing branch turning a plain delete into a 404 or a 500 when
+        there is no sidecar -- the common case broken by the code that handles
+        the rare one. `sidecar_removed: null` is what the sidebar reports.
+
+        `projects.md` § 4.1.
+        """
         struct = picker_root / "lonely.xyz"
         struct.write_text("1\nx\nH 0 0 0\n")
         r = self._delete(web, struct)
@@ -1201,6 +1683,12 @@ class TestFilesDeleteSidecarPairing:
         assert not struct.exists()
 
     def test_deleting_the_sidecar_directly_is_single_file(self, web, picker_root):
+        """Deleting a sidecar taking its structure with it: the user asked to
+        drop the labels and loses the geometry.
+
+        `projects.md` § 4.1 -- pairing triggers on the STRUCTURE file only, so
+        naming the sidecar is a single-file operation, matching rename.
+        """
         # Deleting the .molstruct.json itself leaves the .xyz untouched (a
         # single-file op, matching rename's "sidecar renamed directly" rule).
         struct, sidecar = _seed_paired(picker_root, stem="water")
@@ -1230,6 +1718,14 @@ class TestFilesRenameSidecarPairing:
         )
 
     def test_xyz_rename_takes_sidecar(self, web, picker_root):
+        """Renaming `water.xyz` to `bridge.xyz` and orphaning
+        `water.molstruct.json`: the next load finds no sidecar and the user's
+        regions, frozen atoms and cell disappear with no error.
+
+        `projects.md` § 4.1 and `model/structure.md` § 2.4. Measured
+        2026-06-12. The payload assertion matters too -- the sidecar must be
+        MOVED, not regenerated.
+        """
         struct, sidecar = _seed_paired(picker_root, stem="water")
         r = self._rename(web, struct, "bridge.xyz")
         assert r.status_code == 200, r.get_data(as_text=True)
@@ -1245,6 +1741,11 @@ class TestFilesRenameSidecarPairing:
         assert json.loads(new_sidecar.read_text())["n_atoms_total"] == 3
 
     def test_pdb_rename_takes_sidecar(self, web, picker_root):
+        """`.pdb` dropping out of the paired-suffix set on the rename path
+        specifically.
+
+        `projects.md` § 4.1.
+        """
         struct, sidecar = _seed_paired(picker_root, stem="prot", ext=".pdb")
         r = self._rename(web, struct, "protein.pdb")
         assert r.status_code == 200
@@ -1311,6 +1812,12 @@ class TestFilesMove:
         return web.post("/api/files/move", json=body)
 
     def test_move_file_to_new_dir(self, web, picker_root):
+        """A move that copies without removing the source, or removes without
+        landing the destination: the first silently duplicates results, the
+        second loses them.
+
+        `web-api.md` § 4 (`POST /api/files/move`).
+        """
         src = picker_root / "config.json"   # seeded by fixture
         dst_dir = picker_root / "spectrum"  # seeded by fixture
         r = self._move(web, src, dst_dir)
@@ -1320,6 +1827,11 @@ class TestFilesMove:
         assert (dst_dir / "config.json").exists()
 
     def test_move_with_rename(self, web, picker_root):
+        """`new_name` ignored on a move: the file lands under its old name, so
+        a move-and-rename that was meant to avoid a collision creates one.
+
+        `web-api.md` § 4 (`POST /api/files/move`).
+        """
         src = picker_root / "config.json"
         dst_dir = picker_root / "spectrum"
         r = self._move(web, src, dst_dir, new_name="renamed.json")
@@ -1327,6 +1839,11 @@ class TestFilesMove:
         assert (dst_dir / "renamed.json").exists()
 
     def test_move_xyz_takes_sidecar(self, web, picker_root):
+        """Moving a structure out from under its sidecar -- the same orphaning
+        as rename, on the path that crosses directories.
+
+        `projects.md` § 4.1, `model/structure.md` § 2.4.
+        """
         struct, sidecar = _seed_paired(picker_root, stem="water")
         dst_dir = picker_root / "structures"
         dst_dir.mkdir()
@@ -1352,6 +1869,13 @@ class TestFilesMove:
         assert not (dst_dir / "water.molstruct.json").exists()
 
     def test_move_refuses_directory(self, web, picker_root):
+        """Moving a directory through this route: it would relocate a whole
+        calculation (or a topic) with none of the layout checks the delete
+        route applies, from a single drag.
+
+        `web-api.md` § 4; `job-contracts.md` § 2.5 (the tree's three levels are
+        structural).
+        """
         src_dir = picker_root / "spectrum"
         other = picker_root / "other"
         other.mkdir()
@@ -1360,11 +1884,23 @@ class TestFilesMove:
         assert "directories" in r.get_json()["error"]
 
     def test_move_refuses_when_dest_missing(self, web, picker_root):
+        """A move into a directory that does not exist answered by creating it
+        -- a typo in `dest_dir` scatters files into new folders -- or by a 500.
+
+        `web-api.md` § 1 status table. Honest note: the assertion accepts 400
+        or 404, so it does not pin WHICH refusal; recorded as a design weakness
+        on 2026-09-09.
+        """
         src = picker_root / "config.json"
         r = self._move(web, src, picker_root / "does-not-exist")
         assert r.status_code in (400, 404)
 
     def test_move_refuses_overwrite(self, web, picker_root):
+        """A move that silently replaces a file at the destination: the
+        overwritten file is gone, and neither name in the request refers to it.
+
+        `web-api.md` § 1 status table (409).
+        """
         src = picker_root / "config.json"
         dst_dir = picker_root / "spectrum"
         # Pre-existing file at dst with same name.
@@ -1451,6 +1987,12 @@ class TestFilesCopy:
         return web.post("/api/files/copy", json=body)
 
     def test_copy_file_to_new_dir(self, web, picker_root):
+        """A copy that MOVES (source gone) or that lands a truncated file. The
+        byte comparison is what separates a real copy from a created-and-empty
+        one.
+
+        `web-api.md` § 4 (`POST /api/files/copy`).
+        """
         src = picker_root / "config.json"
         original = src.read_text()
         dst_dir = picker_root / "spectrum"
@@ -1460,6 +2002,11 @@ class TestFilesCopy:
         assert (dst_dir / "config.json").read_text() == original
 
     def test_copy_with_rename(self, web, picker_root):
+        """`new_name` ignored on copy, which turns every rename-copy into a
+        same-name copy and therefore a 409 the user did not ask for.
+
+        `web-api.md` § 4 (`POST /api/files/copy`).
+        """
         src = picker_root / "config.json"
         dst_dir = picker_root / "spectrum"
         r = self._copy(web, src, dst_dir, new_name="backup.json")
@@ -1468,12 +2015,25 @@ class TestFilesCopy:
         assert src.exists()
 
     def test_copy_same_dir_requires_new_name(self, web, picker_root):
+        """A copy onto itself: source and destination are one path, so an
+        implementation that opens the destination for writing first truncates
+        the very file it is copying.
+
+        `web-api.md` § 4 (`POST /api/files/copy`).
+        """
         src = picker_root / "config.json"
         r = self._copy(web, src, picker_root)
         # Same path = source.  Refused.
         assert r.status_code == 400
 
     def test_copy_xyz_takes_sidecar(self, web, picker_root):
+        """A copied structure arriving without its sidecar: the copy silently
+        loses the regions and frozen atoms, and the difference from the
+        original surfaces only in a later calculation. The verbatim payload
+        comparison is what proves the sidecar was COPIED rather than rebuilt.
+
+        `projects.md` § 4.1, `model/structure.md` § 2.4.
+        """
         struct, sidecar = _seed_paired(picker_root, stem="water")
         dst_dir = picker_root / "structures"
         dst_dir.mkdir()
@@ -1492,6 +2052,11 @@ class TestFilesCopy:
         )
 
     def test_copy_refuses_overwrite(self, web, picker_root):
+        """A copy that overwrites a file at the destination -- the same silent
+        loss as move, with the source still present to make it look harmless.
+
+        `web-api.md` § 1 status table (409).
+        """
         src = picker_root / "config.json"
         dst_dir = picker_root / "spectrum"
         (dst_dir / "config.json").write_text("existing\n")
@@ -1499,6 +2064,11 @@ class TestFilesCopy:
         assert r.status_code == 409
 
     def test_copy_refuses_directory(self, web, picker_root):
+        """A recursive directory copy from one click: on a run directory that
+        duplicates gigabytes of restart files inside a request thread.
+
+        `web-api.md` § 4 and § 1a (the three-second rule).
+        """
         src_dir = picker_root / "spectrum"
         other = picker_root / "other"
         other.mkdir()
@@ -1573,6 +2143,12 @@ class TestFilesDelete:
     # --- happy paths ---------------------------------------------- #
 
     def test_delete_file_happy_path(self, web, picker_root):
+        """Delete reporting success without removing the file -- the sidebar
+        row disappears and comes back on refresh -- or taking the parent
+        directory with it.
+
+        `web-api.md` § 4 (`DELETE /api/files/delete`).
+        """
         target = picker_root / "proj" / "spectrum" / "geom.xyz"
         target.parent.mkdir(parents=True)
         target.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
@@ -1587,6 +2163,12 @@ class TestFilesDelete:
         assert target.parent.is_dir()
 
     def test_delete_empty_dir_happy_path(self, web, picker_root):
+        """An empty directory refused as 'not a file' would leave the user no
+        way to remove a folder they made by mistake; the recursive flag exists
+        for NON-empty ones.
+
+        `web-api.md` § 4 (`DELETE /api/files/delete`).
+        """
         target = picker_root / "proj" / "user" / "scratch"
         target.mkdir(parents=True)
         r = self._delete(web, target)
@@ -1594,6 +2176,11 @@ class TestFilesDelete:
         assert not target.exists()
 
     def test_delete_recursive_removes_non_empty_dir(self, web, picker_root):
+        """`recursive=true` honoured only one level deep, leaving a half-
+        emptied tree the sidebar still shows.
+
+        `web-api.md` § 4 (`DELETE /api/files/delete`).
+        """
         # Free-form subdir inside user/ so the canonical-topic
         # protection doesn't apply.
         target = picker_root / "proj" / "user" / "scratch"
@@ -1608,17 +2195,36 @@ class TestFilesDelete:
     # --- rejection paths ----------------------------------------- #
 
     def test_delete_missing_body_400(self, web):
+        """A DELETE with no JSON at all reaching `body['path']`: a 500 on a
+        request that is merely malformed, and -- if the code defaulted instead
+        -- a delete of whatever that default resolves to.
+
+        `web-api.md` § 1 status table; the branch is the route's
+        `request.get_json(silent=True) or {}`.
+        """
         # No JSON body at all.
         r = web.delete("/api/files/delete")
         assert r.status_code == 400
         assert "path" in r.get_json()["error"]
 
     def test_delete_missing_path_400(self, web):
+        """A body carrying `recursive` but no `path` -- the dangerous shape,
+        because everything else a delete needs is present.
+
+        `web-api.md` § 1 status table; the route's `not raw_path.strip()`
+        branch, which also covers a whitespace-only path.
+        """
         r = web.delete("/api/files/delete", json={"recursive": True})
         assert r.status_code == 400
         assert "path" in r.get_json()["error"]
 
     def test_delete_nonexistent_path_404(self, web, picker_root):
+        """A delete of something already gone answered 200, so the UI reports a
+        removal that never happened and a client retrying a failed delete
+        cannot tell success from absence.
+
+        `web-api.md` § 1 status table.
+        """
         target = picker_root / "proj" / "ghost.xyz"
         # ``ghost.xyz``'s parent ``proj`` doesn't exist either; the
         # resolver still computes a path inside the root, and the
@@ -1628,6 +2234,13 @@ class TestFilesDelete:
         assert r.status_code == 404
 
     def test_delete_outside_root_rejected(self, web, picker_root):
+        """The worst case in this file: a delete route that skipped the fence
+        removes anything the server user can remove. The comment in the body is
+        load-bearing -- `tmp_path` IS the picker root here, so an outside path
+        must be built above it.
+
+        `web-api.md` § 2.1.
+        """
         # Absolute path on a sibling tree the picker root has never
         # heard of.  (Can't use pytest's ``tmp_path`` here -- the
         # ``picker_root`` fixture aliases the SAME tmp directory, so
@@ -1639,6 +2252,15 @@ class TestFilesDelete:
         assert "outside" in err or "root" in err
 
     def test_delete_dot_dot_in_path_rejected(self, web, picker_root):
+        """A raw `..` in a delete path.
+
+        `web-api.md` § 2.1. Honest note (2026-09-09): the path used here
+        resolves outside the root, so containment refuses it without the string
+        check, and `test_delete_outside_root_rejected` already proves this
+        route reaches the fence -- raised as a cut candidate. The distinct case
+        (a `..` that cancels back inside the root) is pinned on `write`, not
+        here.
+        """
         # Defense in depth: ``..`` in the raw string is rejected.
         r = web.delete(
             "/api/files/delete",
@@ -1648,6 +2270,13 @@ class TestFilesDelete:
         assert ".." in r.get_json()["error"]
 
     def test_delete_picker_root_itself_rejected(self, web, picker_root):
+        """`recursive=true` on `projects/` itself -- one request removes every
+        project on the machine.
+
+        `job-contracts.md` § 2.5 (depth 0 is the tree). The depth rule is the
+        route's own decision, not the fence's, which is why it needs its own
+        test.
+        """
         # Cannot delete projects/ -- depth-0 protection.
         r = self._delete(web, picker_root, recursive=True)
         assert r.status_code == 400
@@ -1655,6 +2284,14 @@ class TestFilesDelete:
         assert "root" in err.lower()
 
     def test_delete_canonical_topic_dir_rejected(self, web, picker_root):
+        """Removing `projects/<proj>/spectrum/` orphans the layout: every later
+        tab that resolves a run by topic finds nothing. The refusal must hold
+        even with `recursive=true`, which is exactly when the user believes
+        they authorised it.
+
+        `job-contracts.md` § 2.5. The final assertion -- the directory still
+        exists -- is what separates a refusal from a report.
+        """
         # projects/<proj>/spectrum/ is a canonical topic at depth 2.
         # Refused even with recursive=true -- protect the layout.
         target = picker_root / "proj" / "spectrum"
@@ -1667,6 +2304,13 @@ class TestFilesDelete:
         assert target.exists(), "target must not have been deleted"
 
     def test_delete_user_topic_dir_rejected(self, web, picker_root):
+        """`user` being treated as an ordinary folder because it is the free-
+        form one. It is a canonical topic, and losing it takes the whole
+        workspace with it.
+
+        `job-contracts.md` § 2.5 (nine topics, `user` among them; added
+        2026-05-16).
+        """
         # ``user`` IS a canonical topic too (added 2026-05-16 for the
         # free-form workspace).  Same protection applies.
         target = picker_root / "proj" / "user"
@@ -1679,6 +2323,12 @@ class TestFilesDelete:
 
     def test_delete_subdir_under_canonical_topic_allowed(self, web,
                                                           picker_root):
+        """The topic guard applied to everything BELOW the topic: a user could
+        then never delete a run directory (`spectrum/water_v1/`), which is the
+        normal workflow.
+
+        `job-contracts.md` § 2.5 -- the protection is at depth 2 only.
+        """
         # depth-3 free-form subdir IS deletable, even when its parent
         # is a canonical topic.  This is the canonical user workflow:
         # ``projects/<proj>/spectrum/<run>/`` can be removed.
@@ -1690,6 +2340,13 @@ class TestFilesDelete:
 
     def test_delete_file_named_canonical_topic_allowed(self, web,
                                                         picker_root):
+        """The topic guard matching on NAME alone: a plain file called
+        `spectrum` at depth 2 would become undeletable, with a message about
+        the project layout that does not apply to it.
+
+        `job-contracts.md` § 2.5 -- the guard is about directories, because
+        only a directory can hold the layout.
+        """
         # The canonical-topic guard fires only for DIRECTORIES.  A
         # plain file at depth 2 named ``spectrum`` (no extension) is
         # deletable -- it's not the layout-orphaning case.
@@ -1702,6 +2359,13 @@ class TestFilesDelete:
 
     def test_delete_non_empty_dir_without_recursive_409(self, web,
                                                          picker_root):
+        """A non-empty directory removed without the caller asking for
+        recursion: the user meant to delete a folder they believed empty and
+        takes its contents with it.
+
+        `web-api.md` § 1 status table (409). Both the directory and its content
+        must survive the refusal.
+        """
         target = picker_root / "proj" / "user" / "scratch"
         target.mkdir(parents=True)
         (target / "f.txt").write_text("x")
@@ -1714,6 +2378,12 @@ class TestFilesDelete:
 
     def test_delete_project_dir_with_recursive_allowed(self, web,
                                                         picker_root):
+        """The depth-2 topic guard leaking up to depth 1: a project could never
+        be removed through the UI even when the user explicitly asked to.
+
+        `job-contracts.md` § 2.5 -- depth 1 is a project, and deleting one
+        deliberately is legitimate.
+        """
         # depth-1 = a project dir.  Deletable with recursive=true
         # because the user explicitly wants to nuke the project.
         # The canonical-topic guard only fires at depth 2.
@@ -1749,6 +2419,12 @@ class TestFilesUpload:
         )
 
     def test_upload_happy_path_writes_file(self, web, picker_root):
+        """An upload that lands truncated, or under a different name than it
+        reports. The byte comparison and the echoed path are what the caller
+        uses to confirm the save.
+
+        `web-api.md` § 4 (`POST /api/files/upload`), `projects.md` § 4.
+        """
         target = picker_root / "proj" / "spectrum"
         target.mkdir(parents=True)
         r = self._post(web, target, "water.spectra.json", b'{"ok":1}\n')
@@ -1762,6 +2438,11 @@ class TestFilesUpload:
         assert body["mtime"] > 0
 
     def test_upload_missing_target_dir_400(self, web):
+        """No `target_dir` answered by writing somewhere -- the CWD, or the
+        first root -- instead of a named refusal.
+
+        `web-api.md` § 1 status table.
+        """
         # Missing target_dir form field.
         import io
         r = web.post(
@@ -1773,6 +2454,12 @@ class TestFilesUpload:
         assert "target_dir" in r.get_json()["error"]
 
     def test_upload_missing_file_part_400(self, web, picker_root):
+        """A multipart body with no `file` part reaching
+        `request.files['file']`: a 500 (KeyError) on a request that is merely
+        incomplete, which is what a mis-wired form sends.
+
+        `web-api.md` § 1 status table.
+        """
         target = picker_root / "proj" / "spectrum"
         target.mkdir(parents=True)
         r = web.post(
@@ -1784,6 +2471,11 @@ class TestFilesUpload:
         assert "'file'" in r.get_json()["error"]
 
     def test_upload_at_root_depth_rejected(self, web, picker_root):
+        """Uploads landing directly in `projects/`, beside the project
+        directories, where nothing later can tell them apart from one.
+
+        `job-contracts.md` § 2.5; the same depth rule `write` obeys.
+        """
         # Uploading directly into the picker root (depth 0) is forbidden;
         # parallels the same rule on /api/files/write.
         r = self._post(web, picker_root, "stray.txt")
@@ -1791,6 +2483,13 @@ class TestFilesUpload:
         assert "subdirectory" in r.get_json()["error"]
 
     def test_upload_to_missing_dir_400(self, web, picker_root):
+        """An upload into a directory that is not there answered by creating
+        the path, so a stale `target_dir` silently makes a folder instead of
+        reporting that the folder is gone.
+
+        `web-api.md` § 1 status table. Honest note: the assertion accepts 400
+        or 404 and so does not pin which refusal fires.
+        """
         # target_dir resolves inside the root but doesn't exist on disk.
         nonexistent = picker_root / "proj" / "ghost"
         r = self._post(web, nonexistent, "file.txt")
@@ -1802,6 +2501,12 @@ class TestFilesUpload:
         assert body["ok"] is False
 
     def test_upload_to_a_file_400(self, web, picker_root):
+        """`target_dir` pointing at a file: without the directory check the
+        upload either 500s on the OS error or, worse, writes THROUGH the name
+        and destroys the file that was there.
+
+        `web-api.md` § 1 status table.
+        """
         # target_dir is a file, not a directory.
         target = picker_root / "proj" / "spectrum"
         target.mkdir(parents=True)
@@ -1811,12 +2516,34 @@ class TestFilesUpload:
         assert "directory" in r.get_json()["error"]
 
     def test_upload_outside_root_rejected(self, web, tmp_path):
+        """Nothing -- and the audit of 2026-09-09 raises this as a CUT
+        candidate rather than invent a purpose for it. `tmp_path` is the same
+        directory the `picker_root` fixture wires as the root, so `tmp_path /
+        'elsewhere'` is INSIDE the fence: the 400 observed here is 'target_dir
+        does not exist or is not a directory', the case
+        `test_upload_to_missing_dir_400` already covers, and the error-text
+        assertion passes only because pytest's temp directory is named after
+        this test and therefore contains the words 'outside' and 'root'.
+        Measured by replaying the request on 2026-09-09.
+
+        The property is real (`web-api.md` § 2.1) and deserves a test;
+        `test_delete_outside_root_rejected` shows how to build a path that is
+        genuinely outside the root.
+        """
         # Absolute path completely outside the picker root.
         r = self._post(web, tmp_path / "elsewhere", "file.txt")
         assert r.status_code == 400
         assert "outside" in r.get_json()["error"] or "root" in r.get_json()["error"]
 
     def test_upload_dot_dot_in_target_rejected(self, web, picker_root):
+        """A raw `..` in `target_dir` reaching resolution.
+
+        `web-api.md` § 2.1. Honest note (2026-09-09): this target resolves
+        outside the root, so containment refuses it without the string check --
+        but because the sibling outside-root test cannot fail (see above), this
+        is currently the ONLY test proving upload reaches the fence at all.
+        Keep it until that one is repaired.
+        """
         # Defense in depth: '..' in raw target_dir string is rejected
         # even though the resolution step would also catch it.
         r = self._post(web, str(picker_root) + "/proj/../..", "file.txt")
@@ -1824,6 +2551,13 @@ class TestFilesUpload:
         assert ".." in r.get_json()["error"]
 
     def test_upload_existing_filename_409(self, web, picker_root):
+        """An upload silently replacing a file of the same name: the user drops
+        a second `geom.xyz` into a run folder and the first is gone with no
+        prompt.
+
+        `web-api.md` § 1 status table (409). Refusal is the default;
+        `overwrite` is the opt-in.
+        """
         # No implicit overwrite: clash at destination is 409.  The
         # sidebar's UX is "delete first, then re-upload".
         target = picker_root / "proj" / "spectrum"
@@ -1980,6 +2714,17 @@ class TestFilesUpload:
 
 
     def test_upload_filename_with_path_separator_400(self, web, picker_root):
+        """A filename carrying a SPACE being accepted -- despite this test's
+        name, which claims the path-separator case. The body sends 'has
+        space.txt'; separators are stripped by `os.path.basename` before
+        validation and are covered by `test_upload_strips_client_path_prefix`.
+
+        `web-api.md` § 4 (`POST /api/files/upload`, the filename regex). The
+        audit of 2026-09-09 records the name / body mismatch as a design
+        defect: nothing in the suite drives a separator that survives
+        `basename`, and the space case is already carried by
+        `test_write_upload_filename_parity`.
+        """
         # ``file.filename`` may carry the client's full path on some
         # browsers; we basename it server-side.  This test sends a
         # bare slash to confirm the validator catches what slips
@@ -2001,6 +2746,13 @@ class TestFilesUpload:
         assert "unsupported" in r.get_json()["error"]
 
     def test_upload_dotfile_rejected(self, web, picker_root):
+        """A dotfile uploaded into a folder whose listing filters dotfiles out:
+        the file exists, occupies the name, and the user cannot see it to
+        delete it.
+
+        `projects.md` § 4 (hidden entries are never listed); the filename
+        anchor is `^[A-Za-z0-9]`.
+        """
         # Leading-dot filenames (.bashrc etc.) are rejected by the
         # ^[A-Za-z0-9] anchor.  Matches the sidebar list endpoint's
         # hidden-filter so we don't upload files that wouldn't show
@@ -2012,6 +2764,15 @@ class TestFilesUpload:
         assert "unsupported" in r.get_json()["error"]
 
     def test_upload_strips_client_path_prefix(self, web, picker_root):
+        """A browser sending the full client path as the filename (`/tmp/from-
+        client/water.xyz`) either being refused as invalid -- an upload that
+        works in one browser and not another -- or reaching the writer with
+        separators still in it.
+
+        `web-api.md` § 4 (`POST /api/files/upload`). This is the real path-
+        separator case; `test_upload_filename_with_path_separator_400` does not
+        cover it despite its name.
+        """
         # Some browsers / curl invocations send the FULL client path
         # as ``file.filename``.  ``os.path.basename`` strips that
         # before validation + write, so the file lands at
@@ -2050,6 +2811,14 @@ class TestFilesWriteAutoRename:
 
     def test_auto_rename_picks_dash_2_on_first_collision(
             self, web, picker_root):
+        """A dialog that promises auto-rename over a `write` that 409s instead:
+        the export appears to fail for a reason the user was told would not
+        happen. The original must also survive -- an auto-rename that clobbers
+        is worse than the 409 it replaced.
+
+        `projects.md` § 5 (`safeSave` confirms the `<stem>-2<ext>` the server
+        picked); Phase 6e second review, BOMB #11.
+        """
         target = picker_root / "proj"
         target.mkdir(parents=True)
         (target / "structure.xyz").write_text("first\n")
@@ -2065,6 +2834,11 @@ class TestFilesWriteAutoRename:
 
     def test_auto_rename_walks_multiple_collisions(
             self, web, picker_root):
+        """A suffix picker that tries `-2` once and gives up: the third export
+        of the same default filename fails.
+
+        `projects.md` § 5.
+        """
         target = picker_root / "proj"
         target.mkdir(parents=True)
         for n in ["structure.xyz", "structure-2.xyz",
@@ -2077,6 +2851,12 @@ class TestFilesWriteAutoRename:
 
     def test_auto_rename_no_collision_uses_original_path(
             self, web, picker_root):
+        """`auto_rename` renaming unconditionally -- every export lands as
+        `<stem>-2` even in an empty folder, so the name the dialog showed is
+        never the name on disk.
+
+        `projects.md` § 5.
+        """
         target = picker_root / "proj"
         target.mkdir(parents=True)
         r = self._post(web, target / "fresh.xyz", "data\n",
@@ -2241,6 +3021,15 @@ class TestSidebarStubsUI:
     E2E layer (deferred Playwright suite)."""
 
     def test_preview_modal_starts_hidden(self, web, picker_root):
+        """The preview modal painting over the page for one frame on every
+        load, before the JS hides it.
+
+        `projects.md` § 4. Honest note (2026-09-09): the class docstring says
+        the behaviour is exercised by 'the deferred Playwright suite' -- a
+        suite that does not exist -- which `testing.md` § 3a.1 reads as a
+        verdict rather than a caveat: write the e2e that visits the page, then
+        retire this markup pin.
+        """
         # The hidden attribute ensures it doesn't flash on first paint
         # before JS runs.
         body = web.get("/spectrum-calculation").get_data(as_text=True)
@@ -2253,6 +3042,13 @@ class TestRootsContract:
     OK per the runtime_config contract)."""
 
     def test_capabilities_returns_only_projects_root(self):
+        """A second root re-entering at the SOURCE -- the CWD, or an operator-
+        supplied list -- which every route-level test in this file is blind to,
+        because they monkeypatch this method away.
+
+        `job-contracts.md` § 2.5 (`projects/` is the tree) and `web-api.md` §
+        4.
+        """
         from molbuilder.diagnostics import Capabilities
         caps = Capabilities(runtime_config={})
         roots = caps.file_picker_roots()
@@ -2262,6 +3058,17 @@ class TestRootsContract:
         assert str(path).endswith("/projects")
 
     def test_stale_file_picker_section_is_refused_by_name(self, tmp_path):
+        """A retired config section read and silently dropped: an operator's
+        `file_picker.roots` block sits in the file looking effective while the
+        picker ignores it -- which is what happened to a real config before the
+        unknown-keys guard (2026-08-12).
+
+        `configuration.md` § 4 (the `runtime_config._SECTIONS` registry makes
+        "known" one total list, so anything outside it is refused). Precisely:
+        `file_picker` is NOT a named gravestone the way `secret_key_file` is --
+        it falls to the generic unknown-top-level-key refusal, which quotes the
+        offending key, which is why matching on the name passes.
+        """
         # The file_picker section went with the single-root pivot, and
         # since the unknown-keys guard (2026-08-12) a section the loader
         # does not know is REFUSED with its name, not silently dropped:
@@ -2312,6 +3119,14 @@ class TestDownloadZip:
         return body, r
 
     def test_a_directory_streams_as_its_named_zip(self, web, picker_root):
+        """An archive whose members sit at the top level rather than under the
+        folder's name -- unzipping on the far machine scatters a run's files
+        into the current directory -- and bytes that do not survive the round
+        trip, which is a corrupt result at the other end.
+
+        `web-api.md` § 4 (`zip_prepare` / `download_zip`) and `projects.md` § 4
+        (user, 2026-08-28: carry a calculation to another machine without ssh).
+        """
         import io
         import zipfile
         body, r = self._fetch(web, picker_root / "spectrum" / "BDT")
@@ -2342,31 +3157,71 @@ class TestDownloadZip:
         assert "already downloaded" in again.get_json()["error"]
 
     def test_an_unknown_token_is_refused(self, web, picker_root):
+        """A token the server never issued being answered with anything but a
+        refusal: a guessed or ignored token is a read of an arbitrary archive.
+
+        `web-api.md` § 4 -- the archive is streamed BY TOKEN, single-use.
+        """
         r = web.get("/api/files/download_zip",
                     query_string={"token": "deadbeef"})
         assert r.status_code == 404
         assert r.get_json()["ok"] is False
 
     def test_the_projects_root_itself_is_refused(self, web, picker_root):
+        """Zipping `projects/` itself: every project on the machine compressed
+        inside one request thread -- both a denial of service and an archive
+        nobody asked for.
+
+        `web-api.md` § 4 and § 1a (the three-second rule); the message must say
+        what was refused.
+        """
         r = self._prepare(web, picker_root)
         assert r.status_code == 400
         assert "refusing to zip a projects root" in r.get_json()["error"]
 
     def test_a_file_names_the_single_file_door(self, web, picker_root):
+        """A single file answered with a one-member zip: the user asked for the
+        file and gets an archive to unpack. The refusal must NAME
+        `/api/files/download`, or the sidebar has nowhere to send them.
+
+        `web-api.md` § 4 (`/api/files/download` is the single-file door).
+        """
         r = self._prepare(web, picker_root / "water.xyz")
         assert r.status_code == 400
         assert "/api/files/download" in r.get_json()["error"]
 
     def test_outside_the_fence_is_refused(self, web, picker_root):
+        """`zip_prepare` is a READ of a whole tree, so a skipped fence exports
+        an arbitrary directory as a downloadable archive -- the most complete
+        exfiltration available in this file.
+
+        `web-api.md` § 2.1. Honest note (2026-09-09): the assertion accepts 400
+        or 403 because § 1's status table assigns a path escape to 403 while
+        the fence raises 400 -- reported as a doc / code disagreement.
+        """
         r = self._prepare(web, "/etc")
         assert r.status_code in (400, 403)
         assert r.get_json()["ok"] is False
 
     def test_missing_is_a_404(self, web, picker_root):
+        """A missing directory answered with an empty archive: the far machine
+        receives a valid zip with nothing in it and the user finds out after
+        the transfer.
+
+        `web-api.md` § 1 status table.
+        """
         r = self._prepare(web, picker_root / "spectrum" / "nope")
         assert r.status_code == 404
 
     def test_symlinks_escape_skipped_inside_followed(self, web, picker_root):
+        """Two failures in opposite directions. A symlink pointing OUT of the
+        tree, if followed, exports whatever it names (`/etc/hostname` here); an
+        inside-the-tree symlink, if skipped or stored as a link, leaves the far
+        machine unpacking a dangling name where a real file's bytes are needed.
+        `skipped` is what tells the user something was left behind.
+
+        `web-api.md` § 4 (the zip row) and § 2.1; user, 2026-08-29.
+        """
         import io
         import zipfile
         d = picker_root / "spectrum" / "linked"

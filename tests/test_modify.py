@@ -85,9 +85,31 @@ class TestOpsPreservePeriodicity:
     checked separately in :class:`TestRigidTransformMovesTheBox`, not here."""
 
     def test_delete_preserves_lattice(self, periodic_dimer):
+        """SCIENCE. Deleting an atom leaves the cell, axis kinds and vacuum untouched.
+
+        Catches the 2026-07 regression this class exists for: a modify op returning
+        a Structure built without `_carry_periodicity`, so the periodic box quietly
+        became None. The emitted FDF then had no `LatticeVectors` block, SIESTA
+        built a default cell, and the run converged on a different physical system
+        with no warning anywhere. Atom-count edits are lattice-VECTOR-invariant --
+        removing an atom does not change the crystal.
+
+        Contract: `model/structure-periodicity.md` § 3c (a rigid transform moves the
+        box; an atom-count edit does not touch it).
+        """
         _assert_lattice_preserved(delete_atoms(periodic_dimer, [1]), periodic_dimer)
 
     def test_add_atom_preserves_lattice(self, periodic_dimer):
+        """SCIENCE. Appending an atom leaves the cell, axis kinds and vacuum untouched.
+
+        Same regression, other direction: `add_atom` constructs a new Structure and
+        has its own chance to forget the periodicity fields. Adding an atom to a
+        junction must not silently turn a transport cell into an isolated box --
+        the transport axis length IS the device length, and losing it makes the
+        electrodes non-commensurate with the bulk lead.
+
+        Contract: `model/structure-periodicity.md` § 3c + § 2 (axis kinds).
+        """
         _assert_lattice_preserved(
             add_atom(periodic_dimer, "S", 0, [1.5, 0, 0]), periodic_dimer)
 
@@ -95,6 +117,18 @@ class TestOpsPreservePeriodicity:
         # orient is a whole-structure rotation -> it ROTATES the lattice vectors
         # (checked in TestRigidTransformMovesTheBox); the non-geometric axis_kind /
         # vacuum tags still carry verbatim.
+        """SCIENCE. `orient_along_axis` carries the NON-geometric periodicity tags --
+        axis kinds and vacuum -- verbatim.
+
+        Catches a whole-structure rotation resetting the axis kinds to isolated
+        defaults. The lattice VECTORS legitimately rotate here (that is
+        `TestRigidTransformMovesTheBox`), which is exactly why this test cannot use
+        `_assert_lattice_preserved` -- and why the tags need their own check: they
+        are the half that must NOT change, and a rotation that rebuilds the cell
+        from scratch loses them without touching a single coordinate.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         out = orient_along_axis(periodic_dimer, (0, 5), axis="z")
         assert out.axis_kind == periodic_dimer.axis_kind
         assert out.vacuum == periodic_dimer.vacuum
@@ -103,6 +137,15 @@ class TestOpsPreservePeriodicity:
         # A rotation ROTATES the lattice vectors (checked in
         # TestRigidTransformMovesTheBox), but the non-geometric axis_kind / vacuum
         # tags still carry verbatim.
+        """SCIENCE. `rotate_around_axis` carries axis kinds and vacuum verbatim.
+
+        The same split as the orient test above, for the other rotation op: the
+        vectors turn with the atoms, the KINDS do not. A rotation that reset
+        `("periodic", "periodic", "transport")` to `("isolated",)*3` would leave the
+        geometry perfect and the calculation non-periodic.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         out = rotate_around_axis(periodic_dimer, axis="z", angle=30)
         assert out.axis_kind == periodic_dimer.axis_kind
         assert out.vacuum == periodic_dimer.vacuum
@@ -110,12 +153,44 @@ class TestOpsPreservePeriodicity:
     def test_translate_preserves_lattice(self, periodic_dimer):
         # Translation is lattice-VECTOR-invariant (only the origin corner moves),
         # so cell / axis_kind / vacuum all carry verbatim.
+        """SCIENCE. A translation leaves the lattice VECTORS unchanged (only the origin
+        corner moves).
+
+        Catches a translate that rebuilds the cell from the moved atoms' bounding
+        box -- which would silently resize a crystal's lattice constant because the
+        user shifted the molecule. Translation is the one rigid transform under
+        which the vectors are invariant, and that has to stay stated separately from
+        rotation, where they are not.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         _assert_lattice_preserved(periodic_dimer.translated((1, 0, 0)), periodic_dimer)
 
     def test_center_preserves_lattice(self, periodic_dimer):
+        """SCIENCE. `Structure.centered()` is a translation, so it too leaves the
+        lattice vectors alone.
+
+        Catches the centring helper being written as "rebuild the box around the
+        centred atoms". Centring is the op most likely to be implemented that way --
+        its whole purpose is to move atoms relative to a frame -- and doing so
+        would change a periodic cell's dimensions as a side effect of a cosmetic act.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         _assert_lattice_preserved(periodic_dimer.centered(), periodic_dimer)
 
     def test_copy_preserves_lattice(self, periodic_dimer):
+        """SCIENCE. `Structure.copy()` carries the periodicity fields.
+
+        Catches the quietest path of all: `delete_atoms` short-circuits to
+        `struct.copy()` whenever nothing is actually removed, so a `copy()` that
+        dropped the cell would make a no-op delete destroy the box. No coordinate
+        changes, no atom count changes, and the lattice is gone -- and the other
+        tests in this class all take the non-no-op branch.
+
+        Contract: `model/structure.md` § 1 (the object and what a copy holds) +
+        `model/structure-periodicity.md` § 3c.
+        """
         _assert_lattice_preserved(periodic_dimer.copy(), periodic_dimer)
 
 
@@ -135,6 +210,17 @@ def single_anchor():
 
 
 def test_delete_drops_listed_indices(linear_dimer):
+    """SCIENCE. Delete removes exactly the listed atoms and leaves the survivors'
+    COORDINATES untouched.
+
+    Catches the index bookkeeping being off. Deleting the four H atoms must
+    leave the two C atoms at 0.0 and 3.0 -- assert the positions, not just the
+    count, because a slice that kept the wrong four atoms gives the same
+    `n_atoms == 2` and a completely different molecule. Which atoms survive a
+    delete decides which atoms are computed.
+
+    Contract: `model/structure.md` § 1 (per-atom arrays are index-parallel).
+    """
     out = delete_atoms(linear_dimer, [1, 2, 3, 4])
     assert out.n_atoms == 2
     assert out.elements == ["C", "C"]
@@ -143,6 +229,21 @@ def test_delete_drops_listed_indices(linear_dimer):
 
 
 def test_delete_preserves_metadata_in_lockstep(linear_dimer):
+    """SCIENCE. Every per-atom metadata column comes back the same LENGTH as the
+    surviving atom list.
+
+    Catches a column left unsliced. `elements`, `positions`, `atom_names`,
+    `residue_ids`, `residue_names` and `chain_ids` are parallel arrays indexed
+    by atom, so one column that is not sliced makes every atom after the
+    deletion point wear its neighbour's name and residue -- an atom-identity
+    error that reads as a perfectly valid structure and reaches the emitters
+    intact.
+
+    Contract: `model/structure.md` § 1 (the index-parallel invariant).
+
+    NOTE: this asserts LENGTH only. A column sliced with the wrong `keep` set
+    would have the right length and the wrong contents.
+    """
     out = delete_atoms(linear_dimer, [1, 3])
     assert len(out.atom_names)     == out.n_atoms
     assert len(out.residue_ids)    == out.n_atoms
@@ -151,23 +252,68 @@ def test_delete_preserves_metadata_in_lockstep(linear_dimer):
 
 
 def test_delete_no_op_when_indices_empty(linear_dimer):
+    """An empty index list changes nothing, and does not mutate the input.
+
+    Contract: `modify.delete_atoms`'s own docstring (indices in any order,
+    duplicates tolerated).
+
+    CUT CANDIDATE: it reaches the same `len(keep) == n_atoms -> struct.copy()`
+    branch as `test_delete_silently_ignores_out_of_range_indices` and
+    `test_delete_atoms_no_op_branch_preserves_metadata`, both of which assert
+    strictly more about it.
+    """
     out = delete_atoms(linear_dimer, [])
     assert out.n_atoms == linear_dimer.n_atoms
     assert linear_dimer.n_atoms == 6
 
 
 def test_delete_does_not_mutate_input(linear_dimer):
+    """Delete is pure: the structure passed in is unchanged afterwards.
+
+    Catches an in-place rewrite. The Modify tab keeps the pre-edit structure
+    for undo, and every op in this module returns a new object -- an op that
+    edited its argument would corrupt that history silently, because the caller
+    holds the same object it just "copied from".
+
+    Contract: `web/tabs.md` § 2 (the ops are pure functions the tab composes).
+
+    THIN: `delete_atoms` builds its lists with comprehensions and slices
+    `positions` with a fancy index (which copies), so purity is structural
+    rather than defended. See the audit note.
+    """
     delete_atoms(linear_dimer, [0])
     assert linear_dimer.n_atoms == 6
     assert linear_dimer.elements[0] == "C"
 
 
 def test_delete_silently_ignores_out_of_range_indices(linear_dimer):
+    """SCIENCE-ADJACENT. An index outside [0, n_atoms) is dropped, not acted on --
+    and -1 does NOT mean "the last atom".
+
+    Catches Python's negative-index semantics leaking into an atom selection.
+    `delete_atoms` computes `set(range(n)) - set(indices)`, so -1 falls out;
+    written as a list comprehension with `del`, -1 would delete the LAST atom
+    instead. The browser sends indices from a selection that may be stale after
+    an earlier edit, so out-of-range arrivals are ordinary -- and deleting the
+    wrong atom because of one is silent.
+
+    Contract: `modify.delete_atoms` (the tolerated-input rule in its docstring).
+    """
     out = delete_atoms(linear_dimer, [99, -1])
     assert out.n_atoms == linear_dimer.n_atoms
 
 
 def test_delete_dedups_repeated_indices(linear_dimer):
+    """A repeated index removes one atom, not three.
+
+    Catches the delete being written as repeated removal rather than a set
+    difference: `[1, 1, 1]` would then take out atoms 1, 2 and 3 as the list
+    shifted underneath it -- three atoms gone for one the user picked, and the
+    indices that vanished are neighbours, so the result still looks like a
+    plausible molecule.
+
+    Contract: `modify.delete_atoms` ("duplicates are tolerated").
+    """
     out = delete_atoms(linear_dimer, [1, 1, 1])
     assert out.n_atoms == linear_dimer.n_atoms - 1
     assert out.elements == ["C", "H", "H", "H", "C"]
@@ -251,6 +397,17 @@ def test_append_keeps_the_open_structures_cell_and_says_so():
 
 
 def test_append_of_nothing_says_nothing_and_changes_nothing():
+    """Appending an empty structure is a true no-op -- same atoms, same regions,
+    and NO notice.
+
+    Catches the notice machinery firing on nothing. `append_structure` reports
+    what it did (a renamed label, a cell it did not adopt); an empty addition
+    did none of those, and a spurious sentence on the Cell page after an action
+    that changed nothing is how a notice surface stops being read.
+
+    Contract: `web/molview.md` § 6.8 (a notice describes something that is
+    true); the append op is `archive/2026-09-01-modify-redesign-plan.md`.
+    """
     base = _frag(["C"], [0.0], {"a": [0]})
     out, notes = append_structure(base, Structure(elements=[],
                                                   positions=np.zeros((0, 3))))
@@ -264,6 +421,18 @@ def test_append_of_nothing_says_nothing_and_changes_nothing():
 
 
 def test_add_atom_at_offset(linear_dimer):
+    """SCIENCE. The offset is measured FROM THE ANCHOR ATOM, so the new atom lands
+    at `positions[anchor] + offset`.
+
+    Catches the offset being read as an absolute position. The anchor here is
+    atom 5 at (3, 0, 0), not the origin, so the two readings differ -- with an
+    anchor at the origin they would not, and the test would prove nothing. This
+    is how a user places a bond at a stated length: get the reference point
+    wrong and the "1.5 Å" they typed becomes a distance from somewhere else.
+
+    Contract: `web/tabs.md` § 2 (the add-atom op); the anchorless reading is
+    `test_add_atom_without_anchor_measures_from_the_origin`.
+    """
     out = add_atom(linear_dimer, "S", anchor_index=5, offset=[0.0, 0.0, 1.5])
     assert out.n_atoms == linear_dimer.n_atoms + 1
     assert out.elements[-1] == "S"
@@ -272,6 +441,16 @@ def test_add_atom_at_offset(linear_dimer):
 
 
 def test_add_atom_gets_fresh_residue_id(linear_dimer):
+    """A newly added atom gets a residue id nobody else has -- specifically
+    `max(existing) + 1`.
+
+    Catches the new atom inheriting the anchor's residue. Residue ids are what
+    separate the molecule from what was added to it (and what `add_slab` uses to
+    keep an electrode separable), so an atom that joins the anchor's residue
+    cannot afterwards be selected apart from it.
+
+    Contract: `model/structure.md` § 1 (per-atom residue columns).
+    """
     out = add_atom(linear_dimer, "S", 5, [0.0, 0.0, 1.5])
     anchor_residue = linear_dimer.residue_ids[5]
     new_residue = out.residue_ids[-1]
@@ -280,6 +459,16 @@ def test_add_atom_gets_fresh_residue_id(linear_dimer):
 
 
 def test_add_atom_residue_name_default_and_override(linear_dimer):
+    """A new atom's residue name defaults to `MOD` and honours an explicit
+    override.
+
+    Catches the override being ignored -- the caller passes `residue_name=` for
+    a chemically meaningful group (a thiol cap, a solvent molecule) and gets
+    `MOD` anyway, so the residue label that would let it be picked out later
+    never lands.
+
+    Contract: `model/structure.md` § 1.
+    """
     out = add_atom(linear_dimer, "S", 0, [1, 0, 0])
     assert out.residue_names[-1] == "MOD"
     out2 = add_atom(linear_dimer, "S", 0, [1, 0, 0], residue_name="THI")
@@ -287,11 +476,31 @@ def test_add_atom_residue_name_default_and_override(linear_dimer):
 
 
 def test_add_atom_atom_name_defaults_to_element(linear_dimer):
+    """With no `atom_name`, the new atom's name is its element symbol.
+
+    Catches an appended atom arriving with an empty name column -- the PDB
+    writer and the viewer's atom list both read `atom_names`, so a blank there
+    shows as an unnamed row and writes a malformed PDB ATOM record.
+
+    Contract: `model/structure.md` § 1.
+
+    THIN: this restates a one-line `atom_name or element` default.
+    """
     out = add_atom(linear_dimer, "Au", 0, [0, 0, 1])
     assert out.atom_names[-1] == "Au"
 
 
 def test_add_atom_rejects_bad_anchor(linear_dimer):
+    """An anchor index that is not an atom raises `IndexError`.
+
+    Catches a stale selection silently landing an atom somewhere. The browser
+    sends the anchor as an index; if atoms were deleted since, that index may no
+    longer exist -- and the failure mode without a bounds check is not a crash
+    but numpy's negative-index wraparound placing the atom relative to the
+    WRONG anchor, which looks like a successful edit.
+
+    Contract: `web/tabs.md` § 2.
+    """
     with pytest.raises(IndexError):
         add_atom(linear_dimer, "S", anchor_index=99, offset=[0, 0, 0])
 
@@ -408,6 +617,17 @@ def test_orient_default_midpoint_centers_anchors_symmetrically(linear_dimer):
 
 
 def test_orient_first_center_places_a0_at_origin(linear_dimer):
+    """SCIENCE. `center="first"` puts anchor 0 exactly at the world origin with the
+    pair along +z.
+
+    Catches the two centring modes being confused. Under `midpoint` the anchors
+    straddle the origin; under `first` one of them IS the origin. `add_slab`
+    stacks from the origin along z, so building an electrode against a molecule
+    oriented with the wrong convention offsets the whole junction by half the
+    molecular length -- a geometry error that produces a valid-looking cell.
+
+    Contract: `web/tabs.md` § 2 (the orient op's centring modes).
+    """
     out = orient_along_axis(linear_dimer, anchor_indices=(0, 5),
                              axis="z", center="first")
     a0 = out.positions[0]
@@ -425,6 +645,16 @@ def test_orient_none_center_no_translation(linear_dimer):
 
 
 def test_orient_along_x_axis(linear_dimer):
+    """SCIENCE. Orienting to `axis="x"` puts the anchor pair on x with its midpoint
+    at the origin.
+
+    Catches a wrong entry in the axis lookup table. The z case is the one every
+    other orient test uses, so an x/y swap -- or an x entry that is actually a
+    reflection -- would leave all of them green while every structure a user
+    orients along x came out rotated into the wrong plane.
+
+    Contract: `web/tabs.md` § 2.
+    """
     out = orient_along_axis(linear_dimer, (0, 5), axis="x")
     # Default center='midpoint': anchor pair lies along x, midpoint at origin
     a0 = out.positions[0]
@@ -459,6 +689,23 @@ def test_orient_angle_zero_matches_default(linear_dimer):
 
 
 def test_orient_handles_antiparallel_case():
+    """SCIENCE. The 180-degree case: a pair already pointing along -z is flipped to
+    +z rather than producing a degenerate rotation.
+
+    Catches the singularity in the axis-angle construction. The rotation axis is
+    built from `cross(v, target)`, which is the ZERO VECTOR when the two are
+    antiparallel -- so the formula divides by zero, or normalises a zero vector
+    into NaNs, and every coordinate in the structure becomes NaN. The
+    implementation needs a special case, and this is the only test that enters it.
+
+    Contract: `web/tabs.md` § 2.
+
+    DESIGN NOTE: the fixture has TWO atoms, so a REFLECTION through the xy-plane
+    satisfies every assertion here exactly as a rotation does. A degenerate-case
+    fallback that returned an improper transform (det = -1) would pass and would
+    invert the chirality of any real molecule. Asserting det(R) == +1, or using a
+    third off-axis atom, is what would make it fail for the right reason.
+    """
     s = Structure(
         elements=["C", "C"],
         positions=np.array([[0, 0, 0], [0, 0, -2.5]]),
@@ -471,6 +718,15 @@ def test_orient_handles_antiparallel_case():
 
 
 def test_orient_rejects_coincident_anchors():
+    """SCIENCE. Two anchors at the same position are refused by name.
+
+    Catches the zero-length direction vector reaching the normaliser. There is
+    no axis through two coincident points, so the rotation is undefined --
+    without the check, `v / |v|` is 0/0 and the whole structure comes back as
+    NaN coordinates, which then travel silently into a written file.
+
+    Contract: `web/tabs.md` § 2.
+    """
     s = Structure(
         elements=["C", "C"],
         positions=np.array([[0, 0, 0], [0, 0, 0]]),
@@ -481,11 +737,29 @@ def test_orient_rejects_coincident_anchors():
 
 
 def test_orient_rejects_same_anchor_twice(linear_dimer):
+    """The same atom given as both anchors is refused, naming "distinct".
+
+    Catches the coincident-anchor check being the only guard: a user picking one
+    atom twice in the UI is the common way to reach the degenerate case, and
+    "the two anchors are at the same place" is the wrong sentence to show them --
+    it sends them looking for overlapping atoms rather than at their selection.
+
+    Contract: `web/tabs.md` § 2.
+    """
     with pytest.raises(ValueError, match="distinct"):
         orient_along_axis(linear_dimer, (3, 3), axis="z")
 
 
 def test_orient_rejects_bad_axis(linear_dimer):
+    """An axis name outside {x, y, z} is refused.
+
+    Catches an unknown axis falling through to a default. If the lookup used
+    `.get(axis, z_axis)`, a typo in the request body would orient the structure
+    along z and report success -- the user's molecule silently points the wrong
+    way rather than the request being rejected.
+
+    Contract: `web/tabs.md` § 2.
+    """
     with pytest.raises(ValueError, match="axis"):
         orient_along_axis(linear_dimer, (0, 5), axis="w")
 
@@ -516,6 +790,20 @@ class TestRigidTransformMovesTheBox:
         )
 
     def test_rotate_origin_pivot_rotates_vectors_and_origin(self):
+        """SCIENCE. Under `center="origin"`, the atoms, the lattice VECTORS and the
+        world-space origin CORNER all rotate the same way, and the non-geometric
+        tags do not.
+
+        Catches the bug this class was written for: a rotation that turned the atoms
+        and left an axis-aligned box behind them. The box then no longer wraps the
+        structure, so atoms sit outside a cell the user never changed, and a
+        periodic run folds them onto images of the wrong neighbours. All three
+        quantities are asserted against the explicit R-transpose so a rotation
+        applied in the wrong sense or the wrong frame is visible as a value, not
+        just as "something moved".
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         s = self._boxed()
         out = rotate_around_axis(s, axis="z", angle=90.0, center="origin")
         # atoms rotate about the world origin
@@ -528,6 +816,16 @@ class TestRigidTransformMovesTheBox:
         assert out.axis_kind == s.axis_kind and out.vacuum == s.vacuum
 
     def test_rotate_centroid_pivot_rotates_origin_about_centroid(self):
+        """SCIENCE. Under `center="centroid"`, the box corner rotates about THE SAME
+        pivot the atoms do.
+
+        Catches the two halves using different pivots -- atoms about the centroid,
+        the corner about the world origin. Nothing raises; the box simply slides off
+        the structure by an amount that grows with how far the molecule is from the
+        origin, so it looks correct for a centred molecule and wrong for every other.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         s = self._boxed()
         out = rotate_around_axis(s, axis="z", angle=90.0, center="centroid")
         c = s.positions.mean(axis=0)
@@ -539,6 +837,18 @@ class TestRigidTransformMovesTheBox:
         # The invariant the fix exists for: after a whole-structure rotation, every
         # atom's FRACTIONAL coordinate in the (rotated) box is unchanged -- the box
         # still wraps the atoms exactly as before.
+        """SCIENCE, and the invariant the other two tests are special cases of: after a
+        whole-structure rotation, every atom's FRACTIONAL coordinate in the box is
+        unchanged.
+
+        Catches any rotation error the explicit-matrix tests miss, because it states
+        the physics instead of the arithmetic: a rigid rotation of the system is a
+        change of viewpoint, so nothing about where an atom sits INSIDE its cell may
+        change. An arbitrary 37 degrees, not 90, so a mistake that happens to be
+        symmetric under a quarter turn cannot hide.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         s = self._boxed()
         out = rotate_around_axis(s, axis="z", angle=37.0, center="centroid")
         def frac(st):
@@ -547,6 +857,16 @@ class TestRigidTransformMovesTheBox:
         assert np.allclose(frac(out), frac(s), atol=1e-9)
 
     def test_translate_moves_origin_not_vectors(self):
+        """SCIENCE. A translation moves the box CORNER with the atoms and leaves the
+        lattice vectors alone.
+
+        Catches the corner being left behind: translate the structure 10 Å and the
+        box stays where it was, so the atoms are now outside a cell nobody edited.
+        This is the exact asymmetry with rotation -- there the vectors turn too --
+        and getting it backwards (translating the vectors) would resize the cell.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         s = self._boxed()
         out = s.translated((10.0, 0.0, 0.0))
         assert np.allclose(out.cell_origin, [11.0, 2.0, 3.0], atol=1e-9)  # corner follows
@@ -556,6 +876,18 @@ class TestRigidTransformMovesTheBox:
         # orient is ALWAYS whole-structure (anchors only define the rotation), so it
         # moves the box too: the atoms' fractional coords in the (rotated) box are
         # unchanged -- the box still wraps the structure.
+        """SCIENCE. `orient_along_axis` is a whole-structure rotation, so it moves the
+        box too -- fractional coordinates unchanged, and the vectors visibly no
+        longer axis-aligned.
+
+        Catches orient being treated as "a rotation of the selection". The anchors
+        only DEFINE the rotation; every atom and the box turn. The second assertion
+        is what makes this test able to fail for the right reason: without it, an
+        op that rotated nothing at all would satisfy the fractional-coordinate check
+        trivially.
+
+        Contract: `model/structure-periodicity.md` § 3c.
+        """
         s = self._boxed()
         out = orient_along_axis(s, (0, 1), axis="z", center="none")
         def frac(st):
@@ -622,6 +954,14 @@ def test_rotate_combined_with_orient_redirects_tilt():
 
 
 def test_rotate_rejects_bad_axis(linear_dimer):
+    """An unknown rotation axis is refused.
+
+    Catches the same silent-default failure as the orient sibling: a mistyped
+    axis rotating the structure about z and reporting success, so the user's
+    molecule ends up in an orientation nothing asked for and nothing reported.
+
+    Contract: `web/tabs.md` § 2.
+    """
     with pytest.raises(ValueError, match="axis"):
         rotate_around_axis(linear_dimer, axis="w", angle=10.0)
 
@@ -691,6 +1031,20 @@ def test_electrode_metadata_marks_atoms_as_ELC(single_anchor):
 
 
 def test_electrode_rejects_unsupported_element(single_anchor):
+    """SCIENCE. An element outside the supported fcc set is refused by name -- both
+    a non-fcc metal (Fe) and an fcc one we do not support (Al).
+
+    Catches the slab builder being handed a metal whose crystal structure the
+    fcc surface constructor does not describe. Fe is bcc: ASE would still return
+    a slab, built on an fcc lattice constant that is not iron's, and the
+    resulting electrode is a fictitious material. Al is the sharper half -- it
+    IS fcc, so the refusal is about what this project has lattice constants and
+    pseudopotentials FOR, not about crystallography, and it must be refused for
+    that reason rather than accidentally accepted because the geometry works.
+
+    Contract: `SUPPORTED_FCC_ELEMENTS` (the closed list, pinned by
+    `test_electrode_supported_lists_match_table`) + `science/junction-cell.md`.
+    """
     with pytest.raises(ValueError, match="unsupported electrode element"):
         add_slab(single_anchor, "Fe", "111", (2, 2, 1))
     with pytest.raises(ValueError, match="unsupported electrode element"):
@@ -698,6 +1052,17 @@ def test_electrode_rejects_unsupported_element(single_anchor):
 
 
 def test_electrode_rejects_unsupported_plane(single_anchor):
+    """SCIENCE. A Miller index outside {100, 110, 111} is refused by name.
+
+    Catches a plane reaching ASE that we have no surface geometry for. "101" is
+    a legitimate index and ASE has no `fcc101` builder, so the failure without
+    this check is an AttributeError from inside a library -- and the user is
+    told nothing about which planes a junction can actually be built on. The
+    three supported planes are the ones whose interlayer spacings and surface
+    unit cells the junction geometry is derived from.
+
+    Contract: `SUPPORTED_FCC_PLANES` + `science/junction-cell.md`.
+    """
     with pytest.raises(ValueError, match="unsupported crystal plane"):
         add_slab(single_anchor, "Au", "101", (2, 2, 1))
 
@@ -941,6 +1306,17 @@ def test_rotate_around_axis_python_default_is_origin_pivot():
 
 
 def test_rotate_around_axis_rejects_unknown_center():
+    """A pivot name outside the supported set is refused -- `"midpoint"` is
+    `orient`'s vocabulary, not `rotate`'s.
+
+    Catches the two ops' centring vocabularies being conflated. `orient` takes
+    midpoint/first/none, `rotate` takes origin/centroid; passing one op's word
+    to the other must fail rather than fall through to a default, because a
+    silent fallback rotates the structure about the wrong pivot and the result
+    is a valid structure in the wrong place.
+
+    Contract: `web/tabs.md` § 2.
+    """
     s = Structure(elements=["C"], positions=np.array([[0., 0., 0.]]))
     with pytest.raises(ValueError, match="center"):
         rotate_around_axis(s, axis="z", angle=10.0, center="midpoint")
@@ -1068,6 +1444,20 @@ def test_orient_along_axis_preserves_metadata():
 
 
 def test_rotate_around_axis_preserves_metadata():
+    """SCIENCE. A rotation carries `frozen_atoms` and every region through
+    unchanged.
+
+    Catches the atom LABELS being lost or renumbered by a pure rotation. No atom
+    index changes under a rotation, so the frozen set and the transport regions
+    must come back identical -- and if they do not, the calculation holds the
+    wrong atoms fixed, or the transport code reads the wrong atoms as the left
+    electrode. Neither is visible in the geometry, which is what makes it worth
+    a test. Commemorates audit task #186 (2026-06-02), when every modify op
+    dropped these fields.
+
+    Contract: `model/structure-annotations.md` (what each reserved label means)
+    + `web/molview.md` § 6.6 (reserved labels are interpreted downstream).
+    """
     s  = _struct_with_meta()
     s2 = rotate_around_axis(s, axis="z", angle=90.0,
                              center="centroid")
