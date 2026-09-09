@@ -130,21 +130,3 @@ def test_self_check_pattern_catches_violation():
     assert floors == ["320px"], (
         f"regex should match bare '320px' floor; got {floors!r}"
     )
-
-
-def test_self_check_pattern_accepts_min_floor():
-    """Sanity: the min(...) form is accepted as compliant."""
-    sample = """
-    .x {
-        grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-    }
-    """
-    offenders = [
-        (m.group("floor").strip())
-        for m in _PATTERN.finditer(sample)
-        if re.match(r"^\d", m.group("floor").strip())
-        and not m.group("floor").strip().startswith("min(")
-    ]
-    assert offenders == [], (
-        f"min(...) form should be accepted; got offenders {offenders!r}"
-    )

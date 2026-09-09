@@ -132,7 +132,6 @@ _BARE_ASSIGN_GET_RE = re.compile(
 )
 
 
-
 def _scan_js_for_hidden_ids() -> set[str]:
     """Return the set of HTML element ids that some JS file assigns
     ``.hidden`` on (either ``true`` or ``false``).  These are the
@@ -462,32 +461,6 @@ def test_every_dynamically_hidden_class_has_a_guard(all_hidden_guards):
             "(the control is hidden in JS and drawn anyway):\n"
             + "\n".join(sorted(failures))
         )
-
-
-def test_audit_actually_found_some_hidden_ids(dynamically_hidden_ids):
-    """Sanity gate: if the JS-scanner returns an empty set, the
-    main test passes vacuously and a future scanner regression
-    (e.g., a regex that stops matching) goes unnoticed.  Assert
-    that we found at least the canonical few ids we know JS hides.
-    """
-    # 2026-06-14: ``hide-frozen-row`` and ``phase-indicator`` were
-    # removed -- neither is dynamically hidden by JS any more (the
-    # hide-frozen row is template-owned + always-visible; the
-    # phase-indicator's setHidden was refactored).  Use IDs the
-    # current scanner actually finds.  This sanity gate's purpose
-    # is to catch a regex regression in the scanner; any handful
-    # of real ids satisfies that.
-    expected_some_of = {
-        "auto-detect-panel",  # /structure-optimization (was fdf-output; that lane retired 2026-08-15)
-        "auto-detect-panel", # /structure-optimization
-    }
-    found = dynamically_hidden_ids & expected_some_of
-    assert found, (
-        "JS-scan returned no canonical hidden-ids.  The "
-        "regex in _scan_js_for_hidden_ids is likely broken; "
-        f"expected to find any of {expected_some_of}, got "
-        f"{sorted(dynamically_hidden_ids)[:10]}."
-    )
 
 
 # --------------------------------------------------------------------- #

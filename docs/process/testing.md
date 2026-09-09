@@ -100,6 +100,147 @@ cleanly when that backend is absent, rather than failing. You design the test to
 fit the environment model — you never edit an env to make a test pass (that rule is
 load-bearing elsewhere too).
 
+## 3b. A test earns its place by the failure it would have caught *(user, 2026-09-08)*
+
+**More tests are not better results.** A suite is a cost paid on every run and
+every refactor, and a test that cannot fail — or that only restates a signature —
+is cost with no signal. The question is never *is this true?* but **what would
+have to break for this to go red, and has that ever happened?**
+
+> **The default is REMOVAL.** *(user, 2026-09-08: "there is no real thing or bug
+> that was detected by most of the tests that are designed this way. Only good
+> tests fall out of this style. You should ask always: why should I keep this
+> test — if there is no strong reason, then remove it.")*
+>
+> The burden of proof is on KEEPING. Not *can I justify cutting this* — **why
+> should this exist**, answered with a concrete failure it would catch that
+> nothing else catches. No strong answer, no test.
+
+**Judge at the FRAMEWORK level, not the assertion level.** The question is not
+whether an assertion is true. It is whether the test protects a property of the
+system **that the framework does not already guarantee**. If a correct API, a
+type, a frozen dataclass, a validator, or another test already makes the asserted
+state impossible to reach, the test is rigidity with no benefit: it costs on every
+run and on every refactor and buys nothing.
+
+**And "it pins a contract" is not automatically a strong reason.** A contract test
+earns its place when the contract could be violated *silently* — when nothing else
+would go red. If breaking it fails ten other tests first, this one is a monument to
+the rule, not a guard on it. That distinction is the whole of this section: the
+objection is never to contract tests, it is to **mechanical** ones — written
+because a rule existed, rather than because the rule can plausibly break unseen.
+
+**Cutting mechanically is the same failure in the other direction.** For every
+test removed, be able to say what now goes undetected and why that is acceptable.
+If that sentence will not come, the honest answer is *unsure*, not *cut*.
+
+### The one exception: scientific validation *(user, 2026-09-08)*
+
+> *"The only test I ask you to be careful about is the scientific validation
+> ones. These must be correct and rigid — but how they should be designed can be
+> discussed."*
+
+**Everything above is suspended for a test that asserts a physical or chemical
+fact, or gates a calculation against a science rule.** Rigidity there is the
+feature, not the cost: a science test that looks over-strict is doing its job,
+and *"another test would fail first"* is not a reason to drop one — physical
+correctness is the property with no cheap second opinion.
+
+In scope: numbers with physical meaning (frequencies, IR/Raman intensities,
+thermochemistry, energies, forces, transmission, conductance, charge, dipole);
+comparisons against literature values, windows or orderings; the `validation`
+package and its gates; unit conversions and constants; and the structural facts
+that decide **which atoms are computed** — net charge and protonation, species
+order, basis and pseudopotential coverage, cell and periodicity, atom-index
+convention, frozen atoms and region labels. Anything citing `docs/science/`.
+
+**DESIGN is open; correctness is not.** A science test may fairly be criticised
+for asserting an implementation detail instead of the physical quantity, for an
+arbitrary or undocumented tolerance, for being able to pass for a physically
+wrong reason, or for lacking a stated reference. Those are improvements to
+propose — never grounds to delete.
+
+### The three kinds that earn a place
+
+| kind | what it pins | why a review cannot replace it |
+|---|---|---|
+| **a measured regression** | a defect that ACTUALLY happened, with its numbers | a person forgets; the file does not |
+| **an artifact lint** | a property over *every* member of a class | it replaces the manual sweep entirely (§ 3a) |
+| **a contract a document states** | a rule someone wrote down and code must obey | the document and the code drift silently |
+
+### What does NOT earn a place
+
+**An API-shape assertion.** *"`find_by_role` returns sorted paths"*, *"`compose`
+refuses an unknown field"* — that is the signature restated in a second
+language. A correct API plus static review covers it, and the test only fails
+when someone deliberately changes the thing it copies.
+
+**A test per call site — and the sharp form of this is not what it first looks
+like** *(user, 2026-09-08: "isn't it more important to check the return values
+or the outcome of a module/function?")*.
+
+Yes — a return value is exactly what to assert. The mistake is asserting the
+return of the **wrong function**. A thin caller of a door returns the door's
+answer, so a test of that caller observes the DOOR's outcome through a wrapper:
+
+```
+test_the_watch_resolver_finds_a_molwatch_log_first   -> watch._resolve_run_directory
+test_find_template_still_refuses_two_answers         -> template.find_template
+test_the_provenance_step_reads_the_wrapper           -> parse.contract._declared_in_provenance
+test_read_system_degrades_on_a_missing_bundle        -> summarize._read_system
+```
+
+All four are callers of `runfiles.find_by_role`. If the door is right they all
+pass; if it is wrong they all fail together — **four tests carrying one bit**.
+
+> **Test the DOOR's outcome. Test a caller only where the caller DECIDES
+> something the door cannot know.**
+
+A caller earns its own test when it adds a rule of its own — and those are worth
+a lot, because that is where the real defects were:
+
+- `runstatus._stage_state` deciding *queued* vs *pending* from which roles are
+  present — the policy is the caller's, and a finished PySCF rung reported
+  **queued** because `.pyscf.log` was not in the set it asked for;
+- `materialize.attempt_concluded` **degrading rather than raising** on a deck
+  name it was handed — a reporter's contract, not the grammar's;
+- `parse.engines._sidecar.read_frozen_atoms` reconstructing a name instead of
+  asking by role — every staged run silently lost its frozen atoms.
+
+None of those three is visible from the door. All three are real, measured, and
+each is worth more than the twelve wrapper tests put together.
+
+### The rule that follows, and it is the sharp one
+
+> **Unifying an API must REDUCE the test count.**
+
+If N call sites each needed their own test, and they now share one door, those N
+tests collapse into one door test plus the guard that keeps callers on the door.
+A unification that *adds* tests has usually not unified anything — it has added a
+layer and kept the old surface, and the test count is the first place that shows.
+
+*This section exists because the opposite happened. The paths framework
+(`plans/plan.md` § 5l) was undertaken to reduce complexity, and the migration
+shipped **five new test files in one day** — one test per migrated call site,
+alongside the guard that already made most of them unnecessary. The count is
+evidence: it went up while the API was being unified, which is precisely the
+signal this rule names.*
+
+### How to review a test for retirement
+
+Ask in order, and stop at the first *yes*:
+
+1. **Is it subsumed?** Would another test already fail for this cause? *(Measured
+   case: a `RETIRED` doc-path pattern — four alternation arms, three lookbehinds
+   — enumerated locations that had all been deleted from disk, so the neighbouring
+   "every cited path must exist" test already flagged every one. The whole
+   apparatus, its test and its allowlist entry were guarding a class its sibling
+   covered.)*
+2. **Can it fail?** Break the code it names and watch. A test that stays green is
+   not a test (`feedback: mutation-test the test`).
+3. **Does it restate a signature?** Then delete it and let review carry it.
+4. **Does it name a defect that happened?** Keep it, and keep the numbers in it.
+
 ## 3a. A test asserts on the END PRODUCT, never on the source that made it
 
 *(User ruling, 2026-09-03: "tests should be focusing on end product and

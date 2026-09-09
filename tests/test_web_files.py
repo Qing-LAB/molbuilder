@@ -916,10 +916,6 @@ class TestProjectsCreate:
             content = (proj / t / "README.md").read_text()
             assert content.startswith(f"# {t}/"), t
 
-    def test_user_topic_is_canonical(self):
-        from molbuilder.projects import CANONICAL_TOPICS
-        assert "user" in CANONICAL_TOPICS
-
     def test_create_returns_409_on_name_conflict(self, web, picker_root):
         # First create succeeds.
         web.post("/api/projects/create", json={"name": "dup"})
@@ -2244,59 +2240,6 @@ class TestSidebarStubsUI:
     is reviewable.  Markup checks here; behaviour is exercised at the
     E2E layer (deferred Playwright suite)."""
 
-    def test_upload_action_in_partial(self, web, picker_root):
-        """2026-06-12: the upload action lives in its own dedicated
-        button alongside New project + New folder (see
-        TestSidebarCreateUI for the bar's full anchor set)."""
-        body = web.get("/spectrum-calculation").get_data(as_text=True)
-        assert 'data-action="upload"' in body
-        assert 'id="ps-create-upload-btn"' in body
-        assert "Upload" in body
-
-    def test_preview_modal_markup_full(self, web, picker_root):
-        r = web.get("/spectrum-calculation")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        # Modal scaffolding: backdrop, window, header (title + close),
-        # CodeMirror mount point (#ps-preview-cmview replaces the
-        # earlier <pre>+<textarea> pair — single editor for both view
-        # and edit, virtual scroll caps DOM memory for large files,
-        # search + jump-to-line addons handle find/Go-to-line).  Task
-        # #310 (2026-06-09) ripped out the <pre>/textarea pair; #302
-        # (2026-06-09) wired Edit + Save via /api/files/write +
-        # expected_mtime.
-        assert 'id="ps-preview-modal"' in body
-        assert 'class="ps-preview-backdrop"' in body
-        assert 'id="ps-preview-title"' in body
-        assert 'id="ps-preview-meta"' in body
-        assert 'id="ps-preview-cmview"' in body
-        assert 'id="ps-preview-error"' in body
-        assert 'id="ps-preview-status"' in body
-        # The retired pair must NOT come back — guard against a
-        # future refactor that accidentally re-introduces a duplicate
-        # body / edit element alongside the CodeMirror mount.
-        assert 'id="ps-preview-body"' not in body, (
-            "ps-preview-body was retired in task #310 — CodeMirror "
-            "owns the view; re-introducing the <pre> means two "
-            "elements receive content for the same modal"
-        )
-        assert 'id="ps-preview-edit"' not in body, (
-            "ps-preview-edit textarea was retired in task #310 — "
-            "CodeMirror handles edit mode by toggling readOnly off"
-        )
-        # Edit toggle + Save button both present.  Save starts
-        # disabled (no dirty edits on first open) but is no longer
-        # the "coming soon" stub from v1.
-        assert 'id="ps-preview-edit-btn"' in body
-        assert 'id="ps-preview-save-btn"' in body
-        save_attrs = body.split(
-            'id="ps-preview-save-btn"', 1,
-        )[1].split(">", 1)[0]
-        assert "disabled" in save_attrs, (
-            "Save button must start disabled — it enables when the "
-            "editor has unsaved changes"
-        )
-
     def test_preview_modal_starts_hidden(self, web, picker_root):
         # The hidden attribute ensures it doesn't flash on first paint
         # before JS runs.
@@ -2331,13 +2274,6 @@ class TestRootsContract:
         with pytest.raises(RuntimeConfigError, match="file_picker"):
             read_config(cfg_file)
 
-    def test_get_file_picker_roots_removed_from_runtime_config(self):
-        # The accessor that v1 added was dropped during the single-
-        # root pivot.  Importing it should fail; this test pins the
-        # removal so a future revert is caught.
-        import molbuilder.runtime_config as rc
-        assert not hasattr(rc, "get_file_picker_roots")
-
 
 class TestTheDownloadButtonSaysWhatItIsDoing:
     """The sidebar's Download control (user, 2026-08-29): the message
@@ -2349,83 +2285,6 @@ class TestTheDownloadButtonSaysWhatItIsDoing:
     def _src(web):
         return web.get(
             "/static/lib/projects/mutation-bar.js").get_data(as_text=True)
-
-    def test_the_button_walks_prepare_then_token(self, web):
-        src = self._src(web)
-        assert "/api/files/zip_prepare" in src, (
-            "the button still navigates straight at the archive, so it "
-            "cannot know when the build started or finished")
-        assert "download_zip?token=" in src
-
-    def test_the_label_carries_the_state(self, web):
-        src = self._src(web)
-        for state in ('"Zipping…"', '"Saving…"', '"Download"'):
-            assert state in src, f"the button never says {state}"
-        assert "ps-create-action-label" in src, (
-            "the state is written somewhere other than the button's "
-            "own label")
-
-    def test_one_function_owns_the_buttons_state(self, web):
-        """Found by reading (2026-08-29): the button had two writers --
-        the enablement pass, which `projects.onChange` fires on every
-        sidebar navigation, and the busy setter.  They contradicted
-        each other in both directions: browsing during a build handed
-        the button back (a second click, a second archive), and the
-        busy reset lit it unconditionally, so finishing while parked at
-        the projects root left it enabled and inert.
-
-        One writer, with busy and context as its inputs, is what makes
-        both impossible -- so what is pinned here is the SHAPE, not the
-        two symptoms."""
-        src = self._src(web)
-        assert "elZipBtn.disabled = zipBusy || root;" in src, (
-            "the button's disabled flag is not decided from busy AND "
-            "context together")
-        # The busy setter must not touch the element itself.
-        setter = src[src.index("function _setZipBusy("):]
-        setter = setter[:setter.index("\n}")]
-        assert "elZipBtn" not in setter, (
-            "the busy setter writes the button directly -- that is the "
-            "second writer this design exists to remove")
-        assert "_updateButtonEnablement();" in setter, (
-            "the busy setter does not go through the one writer")
-
-    def test_the_archive_reports_what_it_produced(self, web):
-        """The server counts the files, the bytes and anything it left
-        behind; saying none of it left the original complaint half
-        answered.  `skipped` is the load-bearing one -- those are
-        symlinks pointing out of the projects tree, dropped on purpose,
-        and a silently dropped file is not acceptable in something
-        being carried to another machine."""
-        src = self._src(web)
-        assert "out.files" in src and "out.bytes" in src, (
-            "the prepare call's own report of what it built is ignored")
-        assert "out.skipped" in src, (
-            "files left out of the archive are never mentioned")
-        assert "Last archive: " in src
-
-    def test_the_offer_row_cannot_ghost(self, web):
-        """A display-setting rule on an element JS hides with
-        `.hidden` beats the UA's `[hidden] { display: none }` on
-        source order (code-audit.md).  The transport tab's fix row is
-        hidden that way, so it needs its own guard."""
-        css = web.get(
-            "/static/transport/style.css").get_data(as_text=True)
-        assert "#transport-junction-fix[hidden]" in css, (
-            "the offer row would sit on the card as an empty ghost")
-
-    def test_the_title_names_the_target_and_what_is_left_out(self, web):
-        src = self._src(web)
-        assert "_dirName(dir)" in src, (
-            "the control names no target -- which is how a person "
-            "downloads a whole project by accident")
-        assert ".binsnapshots" in src and "no checkpoint history" in src
-
-    def test_the_busy_state_is_styled_by_the_modules_own_sheet(self, web):
-        css = web.get(
-            "/static/lib/projects/projects-sidebar.css").get_data(as_text=True)
-        assert ".ps-create-action[disabled].is-busy" in css, (
-            "a working button would render as merely unavailable")
 
 
 class TestDownloadZip:

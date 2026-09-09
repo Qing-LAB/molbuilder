@@ -6,14 +6,19 @@ The closeout audit (docs/archive/2026-07-28-document-migration.md, P0)
 found ~319 references in active code/tests still pointing at retired
 locations; they were repointed 2026-07-29.  This test keeps it that way:
 
-  1. No retired-layout path may appear in active sources — neither the
-     retired directories (``docs/protocols/``, ``docs/types/``,
-     ``docs/tabs/``) nor the retired root-level docs.  Directory
-     prefixes are matched on their own so even a reference wrapped
-     across source lines is caught.
-  2. Stronger, future-proof: every ``docs/**.md`` path an active source
-     mentions must EXIST on disk — so the next doc move can't strand
-     references the way the migration did.
+  1. Every ``docs/**.md`` path an active source mentions must EXIST on
+     disk — so the next doc move cannot strand references the way the
+     migration did.
+  2. A BARE basename of a document that exists only under ``archive/`` is
+     a citation too, and the one the first rule structurally cannot see.
+
+  **There were THREE until 2026-09-08.**  A `RETIRED` pattern enumerated
+  the migration's old locations -- four alternation arms carrying three
+  lookbehinds, all of them working around the fact that ``old_docs/``
+  ends in ``docs/``.  Every location it named is GONE FROM DISK, so rule 1
+  already flags any citation of one: the enumeration was guarding a class
+  its neighbour covered, and the machinery existed only to keep the two
+  from colliding.  Deleted with its test and its allowlist entry.
 
 Archive content is historical evidence, not authority (archive
 README): if a comment genuinely means the old document, it must say
@@ -35,27 +40,11 @@ EXTS = {".py", ".js", ".html", ".css", ".md", ".toml", ".sh", ".json",
 
 # Files whose text legitimately narrates the retired layout.
 ALLOWLIST = {
-    "tests/test_docs_structure.py",   # closeout history in its docstring
-    "tests/test_no_retired_doc_paths.py",   # this file
+    # This file names retired paths in prose to explain what it guards.
+    # `test_docs_structure.py` was here too, for a RETIRED pattern that no
+    # longer exists -- checked 2026-09-08: `DOC_PATH` flags it zero times.
+    "tests/test_no_retired_doc_paths.py",
 }
-
-# Retired locations.  ``docs/archive/old_docs/`` is the sanctioned way
-# to cite history, so ``old_docs/`` only trips when NOT under archive.
-RETIRED = re.compile(
-    # (?<!old_): ``docs/archive/old_docs/tabs/…`` is the sanctioned
-    # history citation (the comment above), and ``old_docs/tabs/``
-    # CONTAINS the substring ``docs/tabs/`` -- without the lookbehind
-    # this arm flagged exactly the citations the old_docs arm permits.
-    r"(?<!old_)docs/(?:protocols|types|tabs)/"
-    # Same collision, one arm down: ``old_docs/job-execution.md`` ENDS
-    # WITH ``docs/job-execution.md``, so without this lookbehind the
-    # sanctioned history citation trips the retired-root-level arm --
-    # and the two tests then disagree about the one form each requires.
-    r"|(?<!old_)docs/(?:config|deployment|README_install|installation"
-    r"|job-execution|science|MIGRATION)\.md"
-    r"|(?<![\w/])README_install\.md"
-    r"|(?<!archive/)(?<![\w])old_docs/"
-)
 
 # A LEFT BOUNDARY, because `old_docs/` ends in `docs/`.  Without it any path
 # whose directory ends that way -- and `docs/archive/old_docs/` is a real tree --
@@ -64,33 +53,6 @@ RETIRED = re.compile(
 # for the same reason; this one never got it.  Measured 2026-09-08: the boundary
 # changes 1 match out of 660 across the repo, and that one is spurious.
 DOC_PATH = re.compile(r"(?<![A-Za-z0-9_\-])docs/[A-Za-z0-9_\-./]+\.md")
-
-
-def test_the_two_arms_agree_about_the_sanctioned_history_form():
-    """`docs/archive/old_docs/…` must be legal to BOTH arms, not just one.
-
-    The module docstring permits exactly that form -- *"if a comment genuinely
-    means the old document, it must say ``docs/archive/old_docs/…``
-    explicitly"* -- and :data:`RETIRED` carries two lookbehinds to honour it,
-    the second with the warning that without them *"the two tests then disagree
-    about the one form each requires."*
-
-    :data:`DOC_PATH` never got the same treatment, so it read the INNER
-    ``docs/...`` out of any ``old_docs/...`` path and reported a citation of a
-    file that does not exist -- the two arms disagreeing, exactly as predicted.
-    Measured 2026-09-08 (the boundary changes 1 match in 660, and that one is
-    spurious).
-    """
-    sanctioned = "docs/archive/old_docs/tabs/spectra/overview.md"
-    assert [m.group(0) for m in DOC_PATH.finditer(f"see {sanctioned} for it")] \
-        == [sanctioned], "the sanctioned history citation must match WHOLE"
-    assert not RETIRED.search(sanctioned), (
-        "and it must not trip the retired-path arm -- that is what the two "
-        "lookbehinds above are for")
-    # a path merely ENDING in `docs/` is not a docs citation
-    assert not DOC_PATH.findall("archive/old_docs/zz-only.md")
-    # ...while an ordinary one still is
-    assert DOC_PATH.findall("see docs/model/parse.md") == ["docs/model/parse.md"]
 
 
 def _scan_files():
@@ -111,31 +73,6 @@ def _read(p: Path):
         return p.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         return None
-
-
-def test_no_active_source_cites_a_retired_doc_path():
-    hits = []
-    for p in _scan_files():
-        rel = p.relative_to(REPO).as_posix()
-        if rel in ALLOWLIST:
-            continue
-        text = _read(p)
-        if text is None:
-            continue
-        for m in RETIRED.finditer(text):
-            line = text.count("\n", 0, m.start()) + 1
-            hits.append(f"{rel}:{line}: {m.group(0)}")
-    assert not hits, (
-        "active sources cite RETIRED doc paths — repoint each to its "
-        "owner in the domain tree (the migration ledger "
-        "docs/archive/MIGRATION.md maps old -> new).\n"
-        "  NOT a remedy: rewriting the citation as docs/archive/old_docs/... "
-        "That form was recommended here until 2026-08-10 and it is the wrong "
-        "answer for CODE — docs/README.md calls the archive 'Not a source of "
-        "truth', so a docstring that specifies behaviour by citing it is "
-        "describing live code with a document nobody maintains.  Cite the "
-        "archive only to narrate history, never to specify.\n  "
-        + "\n  ".join(sorted(hits)))
 
 
 def test_every_cited_doc_path_exists():

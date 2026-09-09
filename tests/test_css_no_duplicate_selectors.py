@@ -191,32 +191,6 @@ def test_no_duplicate_full_selectors():
         pytest.fail("\n".join(lines))
 
 
-def test_allowlist_entries_still_have_duplicates():
-    """The ALLOWLIST is a punch list of known-duplicate selectors
-    waiting for a follow-up cleanup.  If an entry no longer has
-    duplicates in the codebase, it should be removed from the
-    allowlist (the cleanup is done).
-
-    This protects against bit-rot — the allowlist staying populated
-    long after the dupes are gone."""
-    homes = _collect_selector_homes()
-    stale = []
-    for sel in ALLOWLIST:
-        files = homes.get(sel, [])
-        if len(files) <= 1:
-            stale.append((sel, files))
-    if stale:
-        lines = [
-            "ALLOWLIST contains selectors that no longer have",
-            "duplicates in the codebase (cleanup is done — remove",
-            "them from ALLOWLIST):",
-            "",
-        ]
-        for sel, files in stale:
-            lines.append(f"  {sel!r}  (currently in: {files or ['none']})")
-        pytest.fail("\n".join(lines))
-
-
 # --------------------------------------------------------------------- #
 #  The other shape: one rule, copied under two DIFFERENT selectors       #
 # --------------------------------------------------------------------- #

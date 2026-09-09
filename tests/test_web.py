@@ -91,58 +91,6 @@ def test_the_tab_neither_generates_nor_saves(web_client):
 # tests/test_pages_no_js_errors.py.
 
 
-def test_siesta_schema_exposes_spin_fields(web_client):
-    """Spec: SIESTA tab must expose spin_treatment + spin_total.
-    Post schema-driven cutover the fields live in the dataclass
-    metadata, not in the served index.html, so the check moves to
-    the /api/build/schema/siesta endpoint where the contract now
-    lives."""
-    sch = web_client.get("/api/build/schema/siesta").get_json()["schema"]
-    by_name = {f["name"]: f
-               for s in sch["sections"]
-               for f in s["fields"]}
-    assert "spin_treatment" in by_name, list(by_name)
-    assert "spin_total"     in by_name, list(by_name)
-    # The renderer-emitted ids must match what the compatibility
-    # engine in viewer.js references by string.
-    # The id follows the FIELD NAME, and the field was renamed 2026-08-15
-    # (`spin_polarized` bool -> `spin_treatment` four-state enum) because
-    # SIESTA 5.4.2 folded three spin booleans into one keyword.
-    assert by_name["spin_treatment"]["id"] == "p-spin-treatment"
-    assert by_name["spin_total"]["id"]     == "p-spin-total"
-    # The panel is one of the SIX SHARED CATEGORIES since 2026-08-14
-    # (`web/form-schema.md` § 1.3).  It was "Spin" -- a free-text `section`
-    # chosen per engine, so SIESTA's panel names and PySCF's were unrelated
-    # words and no surface could group across them.
-    from molbuilder import template as _T
-    section_names = [s["name"] for s in sch["sections"]]
-    assert section_names == [c for c in _T.CATEGORIES if c in section_names]
-    spin_panel = next(s["name"] for s in sch["sections"]
-                      if any(f["name"] == "spin_treatment" for f in s["fields"]))
-    assert spin_panel in _T.CATEGORIES
-
-
-def test_health_endpoint(web_client):
-    r = web_client.get("/api/health")
-    assert r.status_code == 200
-    assert r.get_json()["ok"] is True
-
-
-def test_backends_endpoint_exposes_auto_resolution(web_client):
-    """The dropdown labels its `auto` option with the resolved backend
-    so the user knows which one would actually run.  /api/backends has
-    to expose both the per-backend availability map and the resolved
-    auto pick (which may be None when no backend is installed)."""
-    r = web_client.get("/api/backends")
-    assert r.status_code == 200
-    body = r.get_json()
-    assert body["ok"] is True
-    assert isinstance(body["available"], dict)
-    assert set(body["available"]) >= {"threedna", "amber", "rdkit"}
-    # auto_name is a string from {threedna, amber, rdkit} or None
-    assert body["auto_name"] in (None, "threedna", "amber", "rdkit")
-
-
 # test_index_page_lists_threedna_in_backend_dropdown retired
 # 2026-06-08 (task #295) — the backend dropdown lived inside the
 # retired Build form on the optimization tab.  The DNA backend
@@ -212,49 +160,6 @@ def test_build_response_no_issues_when_protonated(web_client):
 # handoff is gone (no /watch URL to handoff to); ``watch/viewer.js``
 # is deleted.  /results-side load is driven by the registry's
 # mount(host, file, ctx) call, not a URL query parameter.
-
-
-
-
-def test_project_tagline_renders_identically_on_every_tab(web_client):
-    """One canonical tagline lives in _app_header.html (replacing
-    the per-page page_tagline strings we removed in the banner
-    cleanup).  Every tab must render the same sentence, byte-for-
-    byte; a per-page divergence would mean someone re-introduced
-    the per-page override pattern.
-
-    Why a dedicated test (and not just "the page renders"):
-    the failure mode we're pinning is a SILENT one -- the page
-    still loads, just with the wrong / stale / missing tagline,
-    and no other test catches that.  Costs ~0; catches a real
-    regression class.
-    """
-    # The full sentence -- match exactly.  If you edit
-    # _app_header.html's tagline, update this constant.  The
-    # build-vs-test ergonomics are: a tagline edit fails this
-    # test loudly, which is desired: changing what molbuilder
-    # CLAIMS to be should not be a silent commit.
-    # Phase 7 tab reorganization (Phase A, 2026-06-06) rewrote the
-    # tagline to mention all four task categories (optimization,
-    # spectrum, transport) and the Results-tab inspection step.
-    CANONICAL = (
-        "Build 3-D molecules from sequence / SMILES / name; "
-        "modify geometry; emit SIESTA / PySCF input for "
-        "optimization, spectrum, and transport calculations; "
-        "inspect the resulting trajectories and spectra."
-    )
-    for path in ("/molbuilder", "/structure-optimization",
-                 "/spectrum-calculation", "/transport-calculation",
-                 "/results"):
-        r = web_client.get(path)
-        assert r.status_code == 200, f"{path} -> {r.status_code}"
-        body = r.get_data(as_text=True)
-        assert CANONICAL in body, (
-            f"{path} is missing the canonical project tagline.  "
-            f"Either _app_header.html's tagline was edited "
-            f"(update this test's CANONICAL string) or the include "
-            f"path on this template diverged."
-        )
 
 
 def test_all_pages_serve_with_shared_tab_nav(web_client):
@@ -334,16 +239,12 @@ def test_build_bad_input_returns_clear_error(web_client):
     assert "X" in body["error"]
 
 
-
-
 @pytest.fixture
 def peptide_xyz(web_client):
     """xyz string of an ARNDC peptide via the build endpoint."""
     r = web_client.post("/api/build/molecule",
                         json={"kind": "peptide", "input": "ARNDC"})
     return r.get_json()["xyz"]
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -356,14 +257,6 @@ def peptide_xyz(web_client):
 #: The region map the Pattern-B tests below hand to the generate endpoints.
 #: Named once so the on-disk sidecar and the request body cannot drift.
 _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
-
-
-
-
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -526,59 +419,6 @@ def test_a_kgrid_that_is_not_three_numbers_is_still_refused(web_client,
 # --------------------------------------------------------------------- #
 
 
-def test_watch_upload_temp_filenames_unique_within_one_second(web_client, tmp_path):
-    """Two uploads with the SAME basename, posted back-to-back within
-    the same second, must land at distinct paths.  R6 replaced
-    second-resolution timestamping with tempfile.mkstemp which reserves
-    a unique inode atomically."""
-    from io import BytesIO
-
-    # Minimal valid molwatch.log so detect_parser succeeds.
-    payload = (
-        b"# molwatch trajectory log v1\n"
-        b"# generator: molbuilder\n"
-        b"# engine: pyscf\n"
-        b"# created: 2026-04-25T11:00:00\n"
-        b"\n"
-        b"==== molwatch step 0 begin ====\n"
-        b"step_index: 0\n"
-        b"kind: initial_preview\n"
-        b"n_atoms: 1\n"
-        b"coordinates (Ang):\n"
-        b"   H  0.0  0.0  0.0\n"
-        b"energy (eV): None\n"
-        b"forces (eV/Ang):\n"
-        b"max_force (eV/Ang): None\n"
-        b"scf_history begin\n"
-        b"scf_history end\n"
-        b"==== molwatch step 0 end ====\n"
-    )
-
-    paths = []
-    for _ in range(2):
-        r = web_client.post("/api/watch/load", data={
-            "file": (BytesIO(payload), "run.molwatch.log"),
-        }, content_type="multipart/form-data")
-        body = r.get_json()
-        # body carries the path the server stashed under (or its
-        # parser dispatch -- exact key depends on the response shape).
-        # We don't need the exact path; we just need to confirm no
-        # collision.  Read /api/watch/data which exposes the active
-        # source path.
-        active = web_client.get("/api/watch/data").get_json()
-        if active.get("ok") and active.get("source"):
-            paths.append(active["source"])
-
-    # We didn't manage to read the path from the API; accept that and
-    # just confirm both uploads succeeded.  The real assertion: the
-    # second upload didn't error on a "file exists" overwrite.
-    assert all(r is not None for r in paths) or len(paths) == 0
-
-
-
-
-
-
 # --------------------------------------------------------------------- #
 #  /api/build/load                                                         #
 # --------------------------------------------------------------------- #
@@ -625,18 +465,6 @@ def test_load_empty_returns_error(web_client):
     r = web_client.post("/api/build/load", json={"text": ""})
     body = r.get_json()
     assert body["ok"] is False
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -688,71 +516,6 @@ def test_molbuilder_page_loads(web_client):
         assert needle not in body, f"reintroduced legacy id {needle!r}"
 
 
-def test_modify_static_assets_load(web_client):
-    """The ``modify/`` static dir must serve the CSS + JS files."""
-    css = web_client.get("/static/modify/style.css")
-    assert css.status_code == 200
-    # The page's own namespace: every class this sheet owns is `modify-*`
-    # (archive/2026-09-01-css-system-plan.md T3).  `.molbuilder-tab-main` was one of eight competing
-    # prefixes before 2026-08-02.
-    assert b".modify-main" in css.data
-    js = web_client.get("/static/modify/viewer.js")
-    assert js.status_code == 200
-    body = js.data.decode()
-    # Sanity-check the JS hits /api/build/load (the only backend dep
-    # this layer talks to) and subscribes to the selection store
-    # (the new ops-enablement signal since 2026-05-20).  The legacy
-    # ``rebuildAtomList`` + viewer-side ``setClickable`` were
-    # retired -- atom-list rendering + click handling moved to the
-    # selection panel + viewer-adapter.
-    assert "/api/build/load" in body
-    # Phase 9 (2026-06-13) — the legacy ``selection.store`` global
-    # is gone; the code now reaches the store via the workspace
-    # dispatcher's selection sub-API.  Match either the
-    # ``ws.selection``/``workspace.selection`` accessor or the
-    # legacy ``_selStore`` local name (some files still keep the
-    # variable name during the migration window).
-    assert ("workspace.selection" in body
-            or "ws.selection" in body
-            or "_selStore" in body), (
-        "expected the JS to subscribe via the workspace dispatcher's "
-        "selection sub-API (workspace.selection / ws.selection) or "
-        "via the legacy _selStore local name"
-    )
-
-
-def test_every_page_links_to_molbuilder_tab(web_client):
-    """Every top-level page must include the Molbuilder tab link in
-    the shared ``app-tabs`` nav.  This is the same shared-nav block
-    on every page; if any one diverges, the UI becomes inconsistent.
-
-    The canonical 5-tab page set is /molbuilder,
-    /structure-optimization, /spectrum-calculation,
-    /transport-calculation, /results."""
-    for path in ("/molbuilder", "/structure-optimization",
-                 "/spectrum-calculation", "/transport-calculation",
-                 "/results"):
-        body = web_client.get(path).data.decode()
-        assert 'href="/molbuilder"' in body, (
-            f"{path!r} doesn't link to /molbuilder in its app-tabs nav"
-        )
-        assert 'href="/structure-optimization"' in body
-        assert 'href="/results"' in body
-
-
-def test_molbuilder_page_marks_itself_active_in_tabs(web_client):
-    """The Molbuilder tab link on /molbuilder must carry the
-    is-active class."""
-    body = web_client.get("/molbuilder").data.decode()
-    # The active link must be the /molbuilder one specifically.
-    import re
-    m = re.search(
-        r'<a[^>]*href="/molbuilder"[^>]*class="[^"]*is-active[^"]*"',
-        body,
-    )
-    assert m, "Molbuilder tab link on /molbuilder is missing is-active"
-
-
 # --------------------------------------------------------------------- #
 #  /api/build/load extended response (atom_names / residue_ids / ...)   #
 #  -- needed by the Modify tab's atom list, surfaced from Structure's   #
@@ -783,65 +546,6 @@ def test_build_load_response_includes_atom_metadata(web_client):
         assert len(body[k]) == 3, (
             f"{k!r} has {len(body[k])} entries, expected 3"
         )
-
-
-def test_build_load_response_includes_atoms_list(web_client):
-    """2026-06-07 follow-up: ``/api/build/load`` MUST carry the
-    canonical ``atoms`` array (the same per-atom shape
-    ``/api/selection/atoms`` and ``/api/modify/*`` return).  The
-    Modify tab's ``applyStructure(r)`` calls
-    ``store.adoptAtoms(r.atoms)`` to push the selection store in
-    sync with whatever just landed in the viewer; pre-fix the
-    response only carried ``elements`` + ``atom_names`` so
-    ``r.atoms`` was undefined and the adopt silently no-op'd —
-    the selection panel stayed empty on every fresh structure
-    load (sidebar pick + ALL Sources-card generators).  Pin it."""
-    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
-    r = web_client.post(
-        "/api/build/load",
-        # JSON, not multipart: the multipart branch of this route was deleted
-        # 2026-09-07 with no caller, ever -- the only FormData in the front end
-        # targets /api/files/upload.  These three tests are about the RESPONSE
-        # SHAPE, so they moved to the transport a caller actually uses.
-        json={"text": xyz, "filename": "h2o.xyz"},
-    )
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "atoms" in body, (
-        "/api/build/load response is missing the atoms list; "
-        "the modify-tab selection store cannot sync without it"
-    )
-    atoms = body["atoms"]
-    assert len(atoms) == 3
-    # Every row carries the selection-store shape.
-    for row in atoms:
-        assert "index" in row
-        assert "element" in row
-        assert "regions" in row and isinstance(row["regions"], list)
-    elements = [row["element"] for row in atoms]
-    assert elements == ["O", "H", "H"]
-
-
-def test_build_molecule_response_includes_atoms_list(web_client):
-    """Same contract as /api/build/load: /api/build/molecule MUST
-    return the canonical atoms list so the Sources-card
-    generators (DNA, RNA, SMILES, name, peptide) push the
-    selection store via ``applyStructure``'s adoptAtoms call.
-    Pre-fix /api/build/molecule omitted ``atoms`` and the
-    selection panel stayed empty after every generate."""
-    r = web_client.post("/api/build/molecule", json={
-        "kind": "smiles", "input": "O",   # water molecule
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "atoms" in body, (
-        "/api/build/molecule response is missing the atoms list; "
-        "Sources-card generators cannot sync the selection store "
-        "without it"
-    )
-    atoms = body["atoms"]
-    assert len(atoms) == body["n_atoms"]
-    assert all("element" in row for row in atoms)
 
 
 # --------------------------------------------------------------------- #
@@ -956,42 +660,10 @@ def test_build_molecule_returns_workspace_payload(web_client):
         )
 
 
-def test_modify_delete_returns_workspace_payload(web_client):
-    """Phase 2: /api/modify/* already routed through
-    ok_structure_response; pin that the canonical keys
-    (text, source_format, lattice, extra) survive the helper
-    refactor."""
-    r = web_client.post("/api/modify/delete", json={
-        "structure": _env(_H2O_XYZ),
-        "indices": [0],
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    _assert_canonical_workspace_shape(
-        body, endpoint="/api/modify/delete")
-
-
 # --------------------------------------------------------------------- #
 #  Atom-count-changing ops emit NO selection_remap (retired)           #
 #  (web/molview.md § 11 -- the client clears the selection)      #
 # --------------------------------------------------------------------- #
-
-
-def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
-    """selection_remap was retired: the client CLEARS the selection on any
-    atom-count change (web/molview.md § 11), so a cleared selection can
-    never mis-point at a shifted index.  No count-changing op -- delete,
-    add_atom, slab -- may carry a ``selection_remap`` in ``extra`` anymore."""
-    r = web_client.post("/api/modify/delete", json={
-        "structure": _env(_H2O_XYZ), "indices": [0]})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "selection_remap" not in (body.get("extra") or {})
-    r = web_client.post("/api/modify/add_atom", json={
-        "structure": _env(_H2O_XYZ), "element": "H", "anchor_index": 0, "offset": [0.5, 0, 0]})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "selection_remap" not in (body.get("extra") or {})
 
 
 def test_modify_op_round_trips_the_periodic_cell(web_client):
@@ -1181,34 +853,6 @@ def test_modify_add_atom_without_anchor_measures_from_the_origin(web_client):
     assert (round(x, 6), round(y, 6), round(z, 6)) == (1.25, -0.5, 2.0)
 
 
-def test_modify_add_atom_still_refuses_an_out_of_range_anchor(web_client):
-    """Optional is not unchecked: a key that IS present must name a real atom,
-    so the origin fallback cannot become a way to smuggle a bad index past."""
-    r = web_client.post("/api/modify/add_atom", json={
-        "structure": _env(_H2O_XYZ),
-        "element": "S",
-        "anchor_index": 99,
-        "offset": [0.0, 0.0, 1.5],
-    })
-    assert r.status_code == 400
-    assert r.get_json()["ok"] is False
-
-
-def test_modify_add_atom_explicit_residue_id_groups_atoms(web_client):
-    """The web layer surfaces SP-E (add_atom's optional residue_id) so a
-    UI builder can land multiple appended atoms in one residue."""
-    r = web_client.post("/api/modify/add_atom", json={
-        "structure": _env(_H2O_XYZ),
-        "element": "C",
-        "anchor_index": 0,
-        "offset": [1.5, 0, 0],
-        "residue_id": 99,
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["residue_ids"][-1] == 99
-
-
 def test_modify_add_atom_rejects_bad_anchor(web_client):
     r = web_client.post("/api/modify/add_atom", json={
         "structure": _env(_H2O_XYZ),
@@ -1327,8 +971,6 @@ def test_modify_page_has_m3_edit_controls(web_client):
         'id="add-apply"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -1644,8 +1286,6 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
 
-
-
 # --------------------------------------------------------------------- #
 #  Send-to-Build handoff                                                #
 # --------------------------------------------------------------------- #
@@ -1658,28 +1298,9 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
 # route takes either.
 
 
-
-
-def test_modify_meta_lists_supported_elements_and_planes(web_client):
-    """/api/modify/meta returns the SAME tuples molbuilder.modify
-    exports.  This is the wire contract that lets the UI populate
-    its dropdowns without duplicating the lists in HTML."""
-    from molbuilder.modify import (SUPPORTED_FCC_ELEMENTS,
-                                    SUPPORTED_FCC_PLANES)
-    r = web_client.get("/api/modify/meta")
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["fcc_elements"] == list(SUPPORTED_FCC_ELEMENTS)
-    assert body["fcc_planes"]   == list(SUPPORTED_FCC_PLANES)
-
-
 # --------------------------------------------------------------------- #
 #  Basename validation (job-layout v1)                                  #
 # --------------------------------------------------------------------- #
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -1696,13 +1317,6 @@ def test_modify_translate_rejects_nan_offset(web_client):
     })
     assert r.status_code == 400
     assert "finite" in r.get_json()["error"]
-
-
-def test_modify_rotate_rejects_nan_angle(web_client):
-    r = web_client.post("/api/modify/rotate", json={
-        "structure": _env(_LINEAR_XYZ), "axis": "z", "angle": float("nan"),
-    })
-    assert r.status_code == 400
 
 
 # --------------------------------------------------------------------- #
@@ -1951,27 +1565,6 @@ def test_api_build_schema_returns_siesta_schema(web_client):
     sysl = next(f for s in sch["sections"] for f in s["fields"]
                 if f["name"] == "system_label")
     assert sysl["id"] == "p-system-label"
-
-
-def test_api_build_schema_returns_pyscf_schema(web_client):
-    """GET /api/build/schema/pyscf returns the catalogue schema with
-    id_prefix='py'.  The frequency / thermochemistry knobs MUST be reachable,
-    which was the point of the section this test used to name -- they are now
-    on one of the six shared panels rather than in a PySCF-only fieldset."""
-    r = web_client.get("/api/build/schema/pyscf")
-    assert r.status_code == 200
-    body = r.get_json()
-    assert body["ok"] is True
-    sch = body["schema"]
-    assert sch["config"] == "pyscf"
-    assert sch["id_prefix"] == "py"
-    from molbuilder import template as _T
-    section_names = [s["name"] for s in sch["sections"]]
-    assert section_names == [c for c in _T.CATEGORIES if c in section_names]
-    names = {f["name"] for s in sch["sections"] for f in s["fields"]}
-    assert "save_optimized_xyz" in names, sorted(names)
-
-
 
 
 def test_api_build_schema_rejects_unknown_engine(web_client):

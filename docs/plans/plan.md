@@ -972,11 +972,11 @@ solve in JS.
 
 | added 2026-09-08 | why the standard removes it |
 |---|---|
-| `runfiles.role_matches`, and patterned roles | `.runwrap-*.log` is **not** a role with a wildcard in it. It is role `.runwrap.log` carrying a **`stamp` field**. A glob inside a role is a coordinate that escaped into the vocabulary, and `role_matches` is the machinery built to chase it. |
+| ~~`runfiles.role_matches`, and patterned roles~~ **— gone, N2** | `.runwrap-*.log` was **not** a role with a wildcard in it. It is role `.runwrap-{stamp}.log` carrying a **`stamp` field**. A glob inside a role is a coordinate that escaped into the vocabulary, and `role_matches` was the machinery built to chase it. |
 | `find_by_role`'s underscore refusal | `find` takes partial coordinates, and the catalogue disambiguates an underscore role — which is already how `parse` does it. The refusal was an internal limitation published as API. |
 | `sidecars_in`, `is_sidecar`, `sidecar_path_for` | `.molstruct.json` is a **role** whose address has no stage and no attempt. Three functions in a second module become three verbs on one address. |
 | the `compose`-vs-`tail` rule | invented to accommodate `attempt_concluded` being handed a foreign stem (`my.relaxation`). **A foreign file is not in the address space.** The caller should be told that, not served — and `tail` should not be the door that makes serving it possible. |
-| `_stage_state(label, stage, out_glob)` | two ways to say one rung, in one signature. `out_glob` goes when `run_status` takes coordinates. |
+| `_stage_state(label, stage, out_glob)` | two ways to say one rung, in one signature. `out_glob` goes when `run_status` takes coordinates. **N2 already took half of it**: the `role="*.out"` / `"*.log"` it passed to `find` was the same wildcard fault one layer out, and `runfiles.roles_ending(".out", ".log")` replaced it — the catalogue now says which roles count as output, derived rather than restated, so a new `.log` row joins the set without editing `runstatus`. |
 
 **This is not a retraction of M7/M8.** Both fixed real, measured defects (§ 5k.4c,
 § 5k.4d) and both are green. What is being retracted is the *method* of adding a
@@ -1110,6 +1110,36 @@ boundary. Fixed by ② rather than separately.
   `process/code-audit.md` D4 then demands, or import the door and delete the
   copy.**
 
+#### What N2 established, beyond the one row
+
+**A field is declared in two halves, and neither may be guessed.** Its SHAPE
+lives once in `runfiles.FIELD_SHAPES` (`stamp` is `[0-9]{8}-[0-9]{6}`, which is
+`date +%Y%m%d-%H%M%S`); WHICH rows carry it is `Artifact.fields`. `compose`
+refuses a missing field and refuses a value that does not match the shape —
+both would produce a name `parse` cannot read back, and the round trip
+(`parse(name).name == name`) is what makes the template a declaration rather
+than a label.
+
+**`patterns()` is the one place a star is produced, and its output did not
+move.** `identity.OUR_FILE_PATTERNS` and `runwrap`'s `--cold` sweep read that
+view; the family is still `{label}.runwrap-*.log` and `{label}_*.runwrap-*.log`,
+byte for byte. A `--cold` run that stopped recognising the wrapper log would
+leave it to be appended to by the next launch, so a test pins the two views
+together.
+
+**The Task-setup card stopped showing a person a glob.** `manifest()` rendered
+`<label>_<stage>.runwrap-*.log` in a list of *files this prep will write*; it now
+renders `runwrap-<stamp>.log`, which is what actually appears.
+
+**N2 broke `runstatus` and had to fix it, which is the pattern to expect from
+here on.** `_stage_state` passed `role="*.out"` to `find` — a wildcard in a role,
+the very thing being removed, one layer out from the catalogue. Narrowing to the
+exact roles `.out` and `.log` was not open either: it drops `.pyscf.log`, where
+PySCF writes *"and not to .out"*, so a finished PySCF rung would answer **queued**
+(§ 1.6's forbidden line). The fix is the standard's own shape — the catalogue
+answers *which roles are output* — and it is a preview of N5: **each step will
+find residue of the previous one, because the earlier method left it.**
+
 ### 5l.5 The dependency order — the workflow the API must have
 
 1. **catalogue** — the roles and their fields. Data; no dependencies.
@@ -1128,7 +1158,7 @@ under the job's python.
 | step | what | done when |
 |---|---|---|
 | ~~**N1**~~ | **DONE 2026-09-08.** `segments()` in the same tool, wired into `--check` and the summary, with the override discipline the other two passes use. Corrected the row above: 10 sites, not 9. Five mutations, five killed — including the `GUARDED_UNDECLARED = ()` kill switch and the first-component rule (dropping it lets Flask routes back in) | shipped |
-| **N2** | **the catalogue grows `fields`, and the NAME GRAMMAR honours them** — layers 1 and 3 of § 5l.5, which is why this can precede the address. `.runwrap-*.log` → `.runwrap.log` + `stamp`; `role_matches` and patterned roles deleted | the wrapper log is composed and parsed through a field, and the patterned-role machinery is gone |
+| ~~**N2**~~ | **DONE 2026-09-08.** `FIELD_SHAPES` declares a field's shape once (as `QUALIFIERS` does for counters); `Artifact.fields` declares which rows carry one; `.runwrap-*.log` → `.runwrap-{stamp}.log` + `stamp`. `role_matches` and `_tail_of`'s pattern arm **deleted**, and both pattern branches in `find` / `find_by_role` are equality again. Six mutations, six killed | shipped |
 | **N3** | `Ref` + the three verbs, **beside** the existing API. No caller moves | the verbs answer every question § 5l.4 lists, with tests over the address, not over call sites |
 | **N4** | the 16 layout functions and the 13 name functions delegate to the verbs. Nothing deleted | one implementation behind every existing name; the suite unchanged |
 | **N5** | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |

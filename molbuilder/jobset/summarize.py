@@ -88,18 +88,18 @@ def _wrapper_log(d: Path, basename: str) -> Optional[Path]:
     that carry no ``-run<N>``, which these do not, so the last one is the
     newest.
 
-    **Through the door** (`project-layout.md` § 4.5).  It globbed
-    ``f"{basename}.runwrap-*.log"`` until 2026-09-08 -- the one role the
-    catalogue declares AS a pattern, spelled a second time here -- and it
-    could not do otherwise, because `find` compared a role exactly and so
-    could never answer for a patterned one (`runfiles.role_matches`).
+    **Through the door** (`project-layout.md` § 4.5), asking for the role the
+    catalogue declares -- a TEMPLATE with a ``stamp`` field, so the request is an
+    ordinary equality like ``.out``.  It globbed ``f"{basename}.runwrap-*.log"``
+    until 2026-09-08 because the row WAS a glob and no door could answer for it;
+    § 5l.3 took the wildcard out of the vocabulary and made the stamp a field.
 
     ``None`` rather than a name nothing writes: the old fallback was
     ``<basename>.runwrap-none.log``, a composed spelling for a file that
     cannot exist, which is the same handcraft in the other direction.
     """
     from ..runfiles import find
-    hits = find(d, basename, role=".runwrap-*.log")
+    hits = find(d, basename, role=".runwrap-{stamp}.log")
     return hits[-1][0] if hits else None
 
 

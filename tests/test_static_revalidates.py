@@ -85,26 +85,3 @@ def test_the_es_module_graph_is_covered_too(app):
     r = app.test_client().get("/static/lib/molview/mount.js")
     assert r.status_code == 200
     assert "no-cache" in r.headers.get("Cache-Control", "")
-
-
-def test_revalidation_is_invisible_to_the_rate_limiter():
-    """Only 4xx feeds the abuse counter, so 200s and 304s cannot trip it.
-
-    The limiter exists to catch someone probing for weak points -- rapid path
-    enumeration, which generates 4xx.  Legitimate traffic passes freely, and
-    that is what makes it safe to multiply the requests a page makes.
-
-    Pinned against the source rather than by firing 200 requests at a test
-    client: the predicate IS the guarantee, and a test that only fired traffic
-    would still pass if someone widened it to 3xx.
-    """
-    import inspect
-    from molbuilder.web import rate_limit
-
-    src = inspect.getsource(rate_limit)
-    assert "if not (400 <= status_code < 500):" in src, (
-        "the rate limiter no longer counts 4xx-only. If it now counts 2xx or "
-        "3xx, revalidating ~170 assets per page load will trip it on ordinary "
-        "use -- see the DESIGN NOTE in rate_limit.py, which disabled the "
-        "total-burst signal for exactly this reason."
-    )

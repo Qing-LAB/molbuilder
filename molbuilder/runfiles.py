@@ -101,6 +101,87 @@ _LABEL = re.compile(r"[A-Za-z0-9_-]+")
 #: same three segments, one level down, and returns None against ``bdt``.
 QUALIFIERS: "tuple[str, ...]" = ("run",)
 
+#: Every declared FIELD, in ONE place -- the same discipline
+#: :data:`QUALIFIERS` gives counters.
+#:
+#: **A field is the bounded flexibility** (`plans/plan.md` § 5l.1). A role names
+#: what a file IS; a field carries a value that varies per file and belongs to
+#: the NAME rather than to the vocabulary. Before 2026-09-08 the wrapper's
+#: session log was declared as ``.runwrap-*.log`` -- a glob stored AS a role --
+#: and the module grew `role_matches` to compare one, because a role with a
+#: wildcard in it is a coordinate that escaped into the vocabulary.
+#:
+#: **Why not a counter.** § 6.3's separator rule is that a hyphen announces a
+#: COUNTER and an underscore a NAME; a counter is a declared keyword followed
+#: by digits (``-run2``) and is ordered, so two names cannot spell one thing.
+#: A stamp is neither a keyword nor a number and carries no ordering claim, so
+#: it is a third thing and says so.
+@dataclass(frozen=True)
+class Field:
+    """One declared field: what it means, its shape, and one real example.
+
+    ``example`` is not decoration.  It is what lets anything WALK the catalogue
+    and build a name -- the suite composes every role at every stage and every
+    attempt, and a template it cannot fill is a row it cannot check.  It is also
+    how a reader learns what ``[0-9]{8}-[0-9]{6}`` looks like without decoding
+    it, and a test asserts it matches its own shape, so it cannot rot.
+    """
+    what: str
+    shape: str
+    example: str
+
+
+FIELDS: "dict[str, Field]" = {
+    "stamp": Field(
+        what="when this launch started, from the wrapper's own clock",
+        # `runwrap`: `date +%Y%m%d-%H%M%S`
+        shape=r"[0-9]{8}-[0-9]{6}",
+        example="20260908-120000"),
+}
+
+_FIELD_RE = re.compile(r"\{([a-z_]+)\}")
+
+
+def _fields_in(role: str) -> "tuple[str, ...]":
+    """The field names a role TEMPLATE carries, in the order they appear."""
+    return tuple(_FIELD_RE.findall(role))
+
+
+def _role_pattern(role: str) -> "re.Pattern":
+    """A templated role, compiled -- each field replaced by its declared shape."""
+    out, last = [], 0
+    for m in _FIELD_RE.finditer(role):
+        out.append(re.escape(role[last:m.start()]))
+        name = m.group(1)
+        if name not in FIELDS:
+            raise RunFileError(
+                f"role {role!r} names the field {name!r}, which has no shape. "
+                f"Declare it in `runfiles.FIELDS`; a field whose shape is "
+                f"not written down cannot be read back out of a filename.")
+        out.append(f"(?P<{name}>{FIELDS[name].shape})")
+        last = m.end()
+    out.append(re.escape(role[last:]))
+    return re.compile("".join(out) + r"\Z")
+
+
+def canonical_role(concrete: str) -> "tuple[str, dict]":
+    """A role read off a filename, mapped back to the TEMPLATE it matches.
+
+    ``(".runwrap-20260908-120000.log")`` -> ``(".runwrap-{stamp}.log",
+    {"stamp": "20260908-120000"})``, and anything that matches no template comes
+    back unchanged with no fields. This is what lets every comparison in this
+    module stay an EQUALITY on the declared role -- which is why
+    `role_matches`, and the pattern-matching it forced into `find` and
+    `find_by_role`, are gone.
+    """
+    for a in WRITTEN:
+        if not a.fields:
+            continue
+        m = _role_pattern(a.role).match(concrete)
+        if m:
+            return a.role, m.groupdict()
+    return concrete, {}
+
 _KEYWORDS = "|".join(QUALIFIERS)
 #: One counter at the FRONT of what is left, and the same run of them anchored
 #: at the END -- the two places a name can put them.  Both are built from
@@ -158,6 +239,11 @@ class RunFile:
     stage: Optional[str]
     role:  str
     counters: "tuple[tuple[str, int], ...]" = ()
+    #: The declared FIELDS the name carried, as ``(name, value)`` pairs -- a
+    #: tuple for the reason ``counters`` is one.  :attr:`role` is the TEMPLATE
+    #: for a name that carries fields, so two wrapper logs from two launches
+    #: compare equal on role and differ here, which is what a field is for.
+    fields: "tuple[tuple[str, str], ...]" = ()
 
     @property
     def run(self) -> Optional[int]:
@@ -167,7 +253,7 @@ class RunFile:
     @property
     def name(self) -> str:
         return compose(self.label, self.role, self.stage,
-                       **dict(self.counters))
+                       **dict(self.counters), **dict(self.fields))
 
 
 def stem(label: str, stage: Optional[str] = None) -> str:
@@ -236,6 +322,27 @@ def compose(label: str, role: str, stage: Optional[str] = None,
             f"find where the label ends.")
     if run is not None:
         counters = {"run": run, **counters}
+    # FIELDS FIRST: a templated role is filled in before anything else looks at
+    # it, so everything downstream sees a concrete name.  A field is refused
+    # unless the role declares it, and a declared one is refused unless its
+    # value matches the shape in `FIELDS` -- a stamp that is not a stamp
+    # would produce a name `parse` could not read back.
+    _wanted = _fields_in(role)
+    if _wanted:
+        _given = {k: counters.pop(k) for k in list(counters) if k in _wanted}
+        missing = [f for f in _wanted if f not in _given]
+        if missing:
+            raise RunFileError(
+                f"role {role!r} needs the field(s) {', '.join(missing)}; a "
+                f"template cannot be composed without them.  Pass "
+                f"{missing[0]}=... , or ask `patterns()` if you want the glob.")
+        for k, v in _given.items():
+            if not re.fullmatch(FIELDS[k].shape, str(v)):
+                raise RunFileError(
+                    f"{k}={v!r} does not match the declared shape "
+                    f"{FIELDS[k].shape!r} for that field "
+                    f"({FIELDS[k].what}; e.g. {FIELDS[k].example}).")
+        role = _FIELD_RE.sub(lambda m: str(_given[m.group(1)]), role)
     for key, value in counters.items():
         if key not in QUALIFIERS:
             raise RunFileError(
@@ -290,6 +397,18 @@ def tail(role: str, stage: Optional[str] = None,
                    **counters)[len(_PLACEHOLDER):]
 
 
+def _carrying(label: str, stage: Optional[str], role: str,
+              counters: "tuple[tuple[str, int], ...]" = ()) -> "RunFile":
+    """A :class:`RunFile` whose role has been mapped back to its template.
+
+    Every arm of :func:`parse` builds its result through here, so a concrete
+    role and its declared template can never disagree about which file this is.
+    """
+    template, values = canonical_role(role)
+    return RunFile(label, stage, template, counters,
+                   tuple(sorted(values.items())))
+
+
 def parse(filename: str, label: str,
           roles: "tuple[str, ...]" = ()) -> Optional[RunFile]:
     """Read a name back, or None when it is not this label's file.
@@ -320,8 +439,8 @@ def parse(filename: str, label: str,
     if rest[0] in ".-":
         counters, tail = _take_counters(rest)
         if tail and tail[0] in "._" and _in_declared_order(counters):
-            return RunFile(label, None, tail, counters)
-        return RunFile(label, None, rest) if rest[0] == "." else None
+            return _carrying(label, None, tail, counters)
+        return _carrying(label, None, rest) if rest[0] == "." else None
     if rest[0] != "_":
         return None                     # a longer label, not this one
     after = rest[1:]
@@ -342,48 +461,31 @@ def parse(filename: str, label: str,
             continue
         counters, head = _take_counters_at_end(after[:-len(role)])
         if _STAGE.fullmatch(head) and _in_declared_order(counters):
-            return RunFile(label, head, role, counters)
+            return _carrying(label, head, role, counters)
     # Otherwise the token runs to the role's own separator, which for every
     # remaining role is the first `.`.
     m = re.match(r"([0-9]{2,}_[A-Za-z0-9_]+)", after)
     if m:
         counters, role = _take_counters(after[m.end():])
         if role and role[0] == "." and _in_declared_order(counters):
-            return RunFile(label, m.group(1), role, counters)
+            return _carrying(label, m.group(1), role, counters)
         if not role:
             return None                 # a token with no role is not a file
     # No token: the role itself began with `_` (`_optimized.xyz`).
-    return RunFile(label, None, rest)
+    return _carrying(label, None, rest)
 
 
-def _tail_of(name: str, role: str) -> str:
-    """The end of *name* as long as *role*, for a label-less role comparison.
+def _tail(name: str, role: str) -> str:
+    """The end of *name*, long enough to hold *role* -- for a label-less match.
 
-    A patterned role has no fixed length, so the slice is taken from the first
-    literal segment of the pattern instead: `.runwrap-*.log` anchors on
-    `.runwrap-`, and everything from there is what the pattern must match.
+    A templated role has no fixed length, so the slice is taken from the first
+    literal segment of the template (`.runwrap-` for `.runwrap-{stamp}.log`).
     """
-    if "*" in role:
-        head = role.split("*", 1)[0]
+    head = role.split("{", 1)[0]
+    if head != role:
         i = name.find(head)
         return name[i:] if i >= 0 else name
     return name[-len(role):] if len(role) <= len(name) else name
-
-
-def role_matches(found: str, asked: str) -> bool:
-    """Does the role read off a filename answer the role a caller asked for?
-
-    Equality, EXCEPT for the one row :data:`WRITTEN` declares WITH a ``*`` in
-    it.  The wrapper's session log is ``.runwrap-<stamp>.log`` -- one file per
-    launch, stamped with the clock -- so the catalogue spells the FAMILY,
-    there being no single name to spell.  A caller asking for that role is
-    asking for the family, and until 2026-09-08 this module could only compare
-    a role exactly, which is why `summarize._wrapper_log` still carried its own
-    ``glob(f"{basename}.runwrap-*.log")``: the door could not answer the
-    question, so the caller kept the pattern.  One role in the catalogue is a
-    pattern; the comparison honours the catalogue's own spelling.
-    """
-    return fnmatchcase(found, asked) if "*" in asked else found == asked
 
 
 def find(directory, label: str, *,
@@ -407,12 +509,10 @@ def find(directory, label: str, *,
     keeps a foreign file in the same directory from being reported as an
     attempt.
 
-    ``role`` narrows to one (``".out"``) -- **or to a family, when it carries a
-    ``*``**: :data:`WRITTEN` declares one row that way (``.runwrap-*.log``, one
-    file per launch), and :func:`role_matches` reads a starred role as the
-    pattern the catalogue means.  ``role="*.log"`` is the same mechanism used
-    deliberately by `runstatus`, where the question is *has the engine written
-    anything* and `.pyscf.log` must count.  ``roles`` passes a caller's own
+    ``role`` narrows to one, and it is an EQUALITY on the declared role -- pass
+    the catalogue's spelling, template and all (``".runwrap-{stamp}.log"``).
+    Every name is mapped back to its template by :func:`canonical_role` before
+    the comparison, so one rule reads and one rule matches.  ``roles`` passes a caller's own
     vocabulary through to :func:`parse` for the ``_``-prefixed kind, exactly as
     that function documents.  ``stage`` and ``run`` filter on what was parsed —
     ``run=None`` means *any*, and a file with no counter is matched only by
@@ -442,7 +542,7 @@ def find(directory, label: str, *,
         parsed = parse(entry.name, label, roles)
         if parsed is None:
             continue
-        if role is not None and not role_matches(parsed.role, role):
+        if role is not None and parsed.role != role:
             continue
         if stage is not None and parsed.stage != stage:
             continue
@@ -486,12 +586,14 @@ def find_by_role(directory, role: str) -> "list[Path]":
             + ", ".join(sorted(r for r in known if r.startswith("."))))
     d = Path(directory)
     try:
-        # `role_matches` on the TAIL: a dotted role is recognisable with no
-        # label, and the one patterned row (`.runwrap-*.log`) is matched as the
-        # family the catalogue declares rather than as a literal nothing has.
+        # EQUALITY on the canonical role.  A templated role (`.runwrap-{stamp}.log`)
+        # is matched by mapping each concrete name back to its template, which
+        # is the same reading `parse` does -- so there is one rule, not a
+        # pattern-matcher here and a parser there.  `role_matches` and
+        # `_tail_of` stood here until 2026-09-08 (§ 5l.3).
         return sorted(p for p in d.iterdir()
-                      if p.is_file() and role_matches(_tail_of(p.name, role),
-                                                      role))
+                      if p.is_file() and canonical_role(_tail(p.name, role))[0]
+                      == role)
     except OSError:
         return []
 
@@ -565,6 +667,11 @@ class Artifact:
     """
     role: str
     what: str
+    #: The FIELDS this role's template carries, if any -- the bounded
+    #: flexibility (`plans/plan.md` § 5l.1).  A role naming ``{stamp}`` is a
+    #: family of names, and the field is what tells them apart; the shape of
+    #: each is declared once in :data:`FIELDS`.
+    fields: "tuple[str, ...]" = ()
     #: Can this file carry a stage token?  False for the three that belong to
     #: the calculation rather than to a rung -- the template and the source
     #: pair are written once, at the bundle root.
@@ -687,8 +794,13 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # `<label>_<stage>_geom.log`, matched no row, so our own log came back to
     # the user as the engine's warm state (measured 2026-09-07).
     Artifact("_geom.log", "geomeTRIC's optimizer log", engine="pyscf"),
-    Artifact(".runwrap-*.log", "the wrapper's own session log — one per "
-                               "launch, stamped with the clock"),
+    # A TEMPLATE, NOT A GLOB.  This was `.runwrap-*.log` until 2026-09-08 -- a
+    # wildcard stored as a role -- and the module had to grow `role_matches` to
+    # compare one.  The stamp is a FIELD: the file it names is real and
+    # concrete, and what varies is a value the name carries (§ 5l.1).
+    Artifact(".runwrap-{stamp}.log", "the wrapper's own session log — one per "
+                                     "launch, stamped with the clock",
+             fields=("stamp",)),
     # The monitor's two files gained the wrapper's run index on 2026-08-27,
     # so both spellings are listed: a directory can hold artifacts from
     # before the change, and a cold sweep that misses one leaves it to be
@@ -715,6 +827,22 @@ _ATTEMPT_GLOBS = {"never": ("",), "maybe": ("", "-run*"), "always": ("-run*",)}
 FIRST_ATTEMPT = 0
 
 
+def roles_ending(*suffixes: str) -> "tuple[str, ...]":
+    """Every DECLARED role whose name ends with one of *suffixes*.
+
+    A vocabulary question, answered from the catalogue.  It exists because
+    `runstatus` asks *"has the engine produced anything"* and the honest form of
+    that question is a SET OF ROLES, not a glob: it passed ``role="*.out"`` and
+    ``role="*.log"`` to :func:`find` until 2026-09-08, which required a role
+    comparison that could match a wildcard -- the same fault as declaring a glob
+    in :data:`WRITTEN` (§ 5l.3).
+
+    The set is what the old globs matched, derived rather than restated, so a new
+    ``.log`` row joins it without anyone editing `runstatus`.
+    """
+    return tuple(a.role for a in WRITTEN if a.role.endswith(suffixes))
+
+
 def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
              ) -> "tuple[str, ...]":
     """The ``{label}``-keyed glob family for :data:`WRITTEN`.
@@ -727,10 +855,16 @@ def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
     """
     out = []
     for a in artifacts if artifacts is not None else WRITTEN:
+        # A FIELD BECOMES A STAR HERE, and only here.  `.runwrap-{stamp}.log`
+        # yields `.runwrap-*.log` -- the same string this function produced when
+        # the glob WAS the role, so `identity.OUR_FILE_PATTERNS` and `runwrap`'s
+        # `--cold` sweep see no change.  A glob belongs in the glob view, not in
+        # the vocabulary (§ 5l.3).
+        role = _FIELD_RE.sub("*", a.role)
         stems = ["{label}"] + (["{label}_*"] if a.staged else [])
         for stem in stems:
             for run in _ATTEMPT_GLOBS[a.attempt]:
-                name = f"{stem}{run}{a.role}"
+                name = f"{stem}{run}{role}"
                 if name not in out:
                     out.append(name)
     return tuple(out)
@@ -772,7 +906,12 @@ def manifest(label: str, stage: Optional[str] = None,
         if calculation and a.calculation and a.calculation != calculation:
             continue
         run = None if a.attempt == "never" else FIRST_ATTEMPT
-        rows.append({"name": compose(label, a.role, stage, run),
+        # A FIELD HAS NO VALUE UNTIL THE FILE IS WRITTEN, so the card shows the
+        # field's NAME: `<label>_<stage>.runwrap-<stamp>.log`.  It showed
+        # `...runwrap-*.log` until 2026-09-08 -- a glob, in a list telling a
+        # person which files a prep is about to write.
+        _role = _FIELD_RE.sub(lambda m: f"<{m.group(1)}>", a.role)
+        rows.append({"name": compose(label, _role, stage, run),
                      "what": a.what,
                      "when": a.when,
                      "carries_attempt": a.attempt != "never"})

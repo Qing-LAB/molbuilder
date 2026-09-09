@@ -37,7 +37,11 @@ from .model import JobSet
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
 from ..paths import attempt_name
-from ..runfiles import find
+from ..runfiles import find, roles_ending
+
+#: What "the engine produced something" means, from the catalogue rather than a
+#: glob -- every declared role whose name ends in `.out` or `.log`.
+_OUTPUT_ROLES = roles_ending(".out", ".log")
 
 
 def _warm_files(engine: str):
@@ -197,14 +201,15 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     # `run_status` below, which buckets the ENGINE's files too -- a vocabulary
     # `runfiles.WRITTEN` deliberately does not carry.
     #
-    # The role vocabulary is ``*.out`` / ``*.log`` and that is deliberate, not
-    # a leftover glob: what is wanted is *"has the engine produced anything"*,
-    # and the catalogue has no field for that.  Narrowing to the exact roles
-    # ``.out`` and ``.log`` would drop `.pyscf.log` -- which is where PySCF
-    # writes, *"and not to .out"* -- so a finished PySCF rung would report
-    # itself queued.
-    has_output = bool(find(observed, label, role="*.out", stage=stage)
-                      or find(observed, label, role="*.log", stage=stage))
+    # WHICH ROLES COUNT AS OUTPUT IS A SET, AND THE CATALOGUE HOLDS IT.  This
+    # passed ``role="*.out"`` / ``"*.log"`` until 2026-09-08 -- a wildcard in a
+    # role, the same fault as declaring one (§ 5l.3) -- and it could not simply
+    # ask for `.out` and `.log`, because that drops `.pyscf.log`, where PySCF
+    # writes *"and not to .out"*, so a finished PySCF rung would report itself
+    # QUEUED (§ 1.6's forbidden line).  `roles_ending` derives exactly what the
+    # globs matched, so a new `.log` row joins the set without editing this line.
+    has_output = any(find(observed, label, role=r, stage=stage)
+                     for r in _OUTPUT_ROLES)
     if not has_output:
         if launch is None:
             return ("pending", "prepped, not launched (no run.json)")

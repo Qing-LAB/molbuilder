@@ -231,6 +231,28 @@ def _legal_runs(a):
     return {"never": [None], "maybe": [None, 0, 3], "always": [0, 3]}[a.attempt]
 
 
+def _fields_for(a):
+    """A legal value for every field this role declares, from the catalogue.
+
+    `runfiles.FIELDS` carries an ``example`` precisely so a walker like this one
+    can fill a template it does not know the shape of -- and a test below pins
+    each example to its own shape, so this cannot quietly start composing an
+    illegal name.
+    """
+    from molbuilder.runfiles import FIELDS
+    return {f: FIELDS[f].example for f in a.fields}
+
+
+def test_every_declared_examples_matches_its_own_shape():
+    """The example is load-bearing (see `_fields_for`), so it cannot rot."""
+    import re
+    from molbuilder.runfiles import FIELDS
+    for name, f in FIELDS.items():
+        assert re.fullmatch(f.shape, f.example), (
+            f"field {name!r}: example {f.example!r} does not match its own "
+            f"shape {f.shape!r}")
+
+
 @pytest.mark.parametrize("art", WRITTEN, ids=lambda a: a.role)
 @pytest.mark.parametrize("label", LABELS)
 @pytest.mark.parametrize("stage", STAGES)
@@ -247,7 +269,8 @@ def test_every_name_the_catalogue_can_produce_is_matched_by_its_globs(
     fails for any future row whose glob and whose name are spelled apart.
     """
     for run in _legal_runs(art):
-        name = compose(label, art.role, stage if art.staged else None, run)
+        name = compose(label, art.role, stage if art.staged else None,
+                       run, **_fields_for(art))
         assert any(fnmatch.fnmatchcase(name, p.format(label=label))
                    for p in patterns()), (
             f"{name!r} is a name molbuilder writes and no glob matches it")
@@ -258,7 +281,8 @@ def test_a_file_that_carries_no_stage_never_grows_one(art):
     """The three that belong to the CALCULATION -- the template and the
     source pair -- are written once at the bundle root, so a stage token in
     one would claim a rung wrote it."""
-    got = compose("my-job", art.role, "01_coarse" if art.staged else None)
+    got = compose("my-job", art.role, "01_coarse" if art.staged else None,
+                  **_fields_for(art))
     assert ("_01_coarse" in got) is art.staged
 
 

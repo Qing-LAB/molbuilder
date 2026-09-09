@@ -26,18 +26,3 @@ def test_pdb_header_before_first_atom_is_pdb():
 
 def test_blank_leading_lines_skipped():
     assert _sniff_structure_format("\n\n  \n2\nx\nH 0 0 0\nH 1 0 0\n") == "xyz"
-
-
-def test_empty_is_pdb():
-    assert _sniff_structure_format("") == "pdb"
-
-
-def test_the_inline_load_sniffer_is_gone():
-    # The /api/build/load path must NOT re-implement the sniff inline; it delegates
-    # to _sniff_structure_format.  Guard against the duplication creeping back.
-    import inspect
-    import molbuilder.web.blueprints.build as build_mod
-    src = inspect.getsource(build_mod)
-    assert 'first.strip().isdigit()' not in src, (
-        "the inline content sniffer is back -- both load paths must call "
-        "_sniff_structure_format")

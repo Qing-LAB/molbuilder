@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder import runfiles
-from molbuilder.runfiles import find, find_by_role, role_matches
+from molbuilder.runfiles import canonical_role, find, find_by_role
 
 
 # `_stage_state(observed, launch, label, stage, out_glob)` -- the label and the
@@ -33,30 +33,95 @@ def _touch(d, *names):
 # 1.  The patterned role -- the one row in the catalogue that is a family.     #
 # --------------------------------------------------------------------------- #
 
-def test_the_catalogue_declares_exactly_one_patterned_role():
-    """`.runwrap-*.log` is the only row with a ``*``, and that is why
-    :func:`runfiles.role_matches` exists at all.
+def test_no_role_in_the_catalogue_is_a_GLOB():
+    """A wildcard in a role is a coordinate that escaped into the vocabulary.
 
-    If a second one appears, this fails — and the reader of the next role has
-    to decide whether a pattern is really what the file's name is, rather than
-    inheriting a mechanism silently.
+    `.runwrap-*.log` was declared that way until 2026-09-08, and the module had
+    to grow `role_matches` to compare one — a whole mechanism to chase a star.
+    § 5l.3: the stamp is a **field**, so the role is a template and every
+    comparison is an ordinary equality again. A new starred row would bring the
+    mechanism back, so it fails here instead.
     """
-    patterned = sorted(a.role for a in runfiles.WRITTEN if "*" in a.role)
-    assert patterned == [".runwrap-*.log"], (
-        f"the patterned rows are now {patterned}; `role_matches` and "
-        f"`find_by_role` treat a starred role as a family — check that is what "
-        f"the new row means.")
+    starred = sorted(a.role for a in runfiles.WRITTEN if "*" in a.role)
+    assert not starred, (
+        f"these rows declare a glob as a role: {starred}. If the name varies, "
+        f"declare the varying part as a FIELD (`fields=(...)` on the row, its "
+        f"shape in `runfiles.FIELDS`) — see § 5l.1.")
 
 
-def test_role_matches_is_equality_for_an_ordinary_role():
-    """A plain role must not become a pattern by accident.
+def test_every_declared_field_has_a_declared_shape():
+    """A field whose shape is not written down cannot be read back out.
 
-    ``.out`` matching ``.pyscf.out`` (or the reverse) is the failure mode that
-    would make every role comparison in the module quietly fuzzy.
+    The shapes live in one place for the reason `QUALIFIERS` does: `compose`
+    validates against it and `parse` reads with it, so the two cannot disagree
+    about what a stamp looks like.
     """
-    assert role_matches(".out", ".out")
-    assert not role_matches(".pyscf.log", ".log")
-    assert not role_matches(".log", ".pyscf.log")
+    for a in runfiles.WRITTEN:
+        for f in a.fields:
+            assert f in runfiles.FIELDS, (
+                f"role {a.role!r} names the field {f!r} with no shape in "
+                f"`FIELDS`")
+        # and the template must actually mention what it declares
+        assert set(a.fields) == set(runfiles._fields_in(a.role)), (
+            f"role {a.role!r} declares fields {a.fields} but its template "
+            f"names {runfiles._fields_in(a.role)}")
+
+
+def test_canonical_role_maps_a_name_back_to_its_TEMPLATE():
+    """The one reading that replaced `role_matches`.
+
+    A plain role must come back unchanged and must NOT become fuzzy — ``.out``
+    matching ``.pyscf.out``, or ``.log`` matching ``.pyscf.log``, is the failure
+    mode that would make every comparison in the module quietly approximate.
+    """
+    assert canonical_role(".runwrap-20260908-120000.log") == (
+        ".runwrap-{stamp}.log", {"stamp": "20260908-120000"})
+    for plain in (".out", ".pyscf.log", ".log", "_geom.log"):
+        assert canonical_role(plain) == (plain, {}), plain
+    # a stamp-shaped thing that is not in the right place stays foreign
+    assert canonical_role(".runwrap-nope.log") == (".runwrap-nope.log", {})
+
+
+def test_a_field_round_trips_through_compose_and_parse():
+    """`parse` then `.name` must give back the byte-identical filename.
+
+    That is what makes the template a real declaration rather than a label: the
+    grammar can rebuild the exact name it read.
+    """
+    written = "bdt_01_tight.runwrap-20260908-120000.log"
+    rf = runfiles.parse(written, "bdt")
+    assert rf is not None
+    assert rf.role == ".runwrap-{stamp}.log"
+    assert dict(rf.fields) == {"stamp": "20260908-120000"}
+    assert rf.name == written
+
+
+def test_a_template_cannot_be_composed_without_its_field():
+    """An omission is refused, and so is a value of the wrong shape.
+
+    Both would produce a name `parse` could not read back — which is exactly
+    what the field's declared shape exists to prevent.
+    """
+    with pytest.raises(runfiles.RunFileError) as e:
+        runfiles.compose("bdt", ".runwrap-{stamp}.log")
+    assert "needs the field" in str(e.value)
+    with pytest.raises(runfiles.RunFileError) as e:
+        runfiles.compose("bdt", ".runwrap-{stamp}.log", stamp="not-a-stamp")
+    assert "declared shape" in str(e.value)
+
+
+def test_the_glob_family_is_unchanged_by_the_field():
+    """`patterns()` must still emit `{label}.runwrap-*.log`.
+
+    `identity.OUR_FILE_PATTERNS` and `runwrap`'s `--cold` sweep read that view,
+    and a `--cold` run that stopped recognising the wrapper log would leave it to
+    be appended to by the next launch. The star belongs in the GLOB view, which
+    is the only place it is now produced.
+    """
+    from molbuilder.identity import OUR_FILE_PATTERNS
+    fam = [p for p in runfiles.patterns() if "runwrap" in p]
+    assert fam == ["{label}.runwrap-*.log", "{label}_*.runwrap-*.log"]
+    assert [p for p in OUR_FILE_PATTERNS if "runwrap" in p] == fam
 
 
 def test_find_answers_for_the_wrapper_log_family(tmp_path):
@@ -73,7 +138,7 @@ def test_find_answers_for_the_wrapper_log_family(tmp_path):
                "bdt_01_tight.runwrap-20260908-120000.log",
                "bdt_02_fine.runwrap-20260908-130000.log",
                "other.runwrap-20260908-140000.log")
-    hits = [p.name for p, _rf in find(d, "bdt", role=".runwrap-*.log",
+    hits = [p.name for p, _rf in find(d, "bdt", role=".runwrap-{stamp}.log",
                                      stage="01_tight")]
     assert hits == ["bdt_01_tight.runwrap-20260101-000000.log",
                     "bdt_01_tight.runwrap-20260908-120000.log"]
@@ -84,7 +149,7 @@ def test_find_by_role_answers_for_the_family_without_a_label(tmp_path):
     """Label-less, because the catalogue's role is recognisable on its own."""
     d = _touch(tmp_path, "a.runwrap-20260101-000000.log",
                "b.runwrap-20260102-000000.log", "a.out")
-    assert [p.name for p in find_by_role(d, ".runwrap-*.log")] == [
+    assert [p.name for p in find_by_role(d, ".runwrap-{stamp}.log")] == [
         "a.runwrap-20260101-000000.log", "b.runwrap-20260102-000000.log"]
 
 
