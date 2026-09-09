@@ -2046,17 +2046,61 @@ item 12b.)*
 
 **Why it is a rule and not an obvious courtesy.** Measured by
 `tools/classify_path_finders.py` on 2026-09-08: of 72 path searches under
-`molbuilder/`, **22 look for a name one of our own doors composes**, and three
-are finders. So a caller holding a bundle and a question — *is there a sweep
-in here, which attempts exist, what did this run write* — had nowhere to ask
-and spelled a glob, and the layout rule gained a site each time. Two of those
-sites spell the SAME pattern: `f"{basename}-run*.{suffix}"` in `materialize`
-and again in `summarize`, for the `-run<N>` counter whose one home is
-`runfiles` — which they bypass because it offers no reader.
+`molbuilder/`, **22 looked for a name one of our own doors composes**, and
+three were finders. So a caller holding a bundle and a question — *is there a
+sweep in here, which attempts exist, what did this run write* — had nowhere to
+ask and spelled a glob, and the layout rule gained a site each time. Two of
+those sites spelled the SAME pattern: `f"{basename}-run*.{suffix}"` in
+`materialize` and again in `summarize`, for the `-run<N>` counter whose one
+home is `runfiles` — which they bypassed because it offered no reader.
 
-The sharpest one is `validation/identity.py`, where the engine's file
-vocabulary already comes from the one rules file and only the *search* is
-hand-written: the half that asks and the half that spells, in one function.
+**The rule is not obeyed by intention, it is obeyed because the door can answer.**
+Every one of those sites had a reason, and in three of them the reason was that
+the door genuinely could not:
+
+- `summarize._wrapper_log` kept `glob(f"{basename}.runwrap-*.log")` because
+  `.runwrap-*.log` is the one row in `runfiles.WRITTEN` that is a FAMILY rather
+  than a name — one file per launch, stamped with the clock — and `find`
+  compared a role by equality, so it could never answer for a patterned one.
+  `runfiles.role_matches` is that gap closed.
+- `transport/compose` held four hand-written copies of `.molstruct.json`
+  because the sidecar suffix had a composer (`sidecars.molstruct.sidecar_path_for`)
+  and no public name and no finder. `SUFFIX`, `sidecars_in` and `is_sidecar`
+  are that gap closed.
+- `runfiles.find` iterated `iterdir()` and checked nothing, while its own
+  docstring said *our FILES* and its sibling `find_by_role` did check. Two
+  halves of one door disagreeing is the same defect one level in.
+
+**A migration is not mechanical, and where the answer changed it changed on
+purpose.** Moving `runstatus._stage_state` onto the grammar nearly broke it:
+narrowing the existence check from the glob's `*.out` / `*.log` to the exact
+roles `.out` and `.log` loses `.pyscf.log`, *"the same, for PySCF under the
+wrapper — it writes here and not to `.out`"* — so a finished PySCF rung would
+have answered **queued**, which is § 1.6's one forbidden line. The check asks
+for the role families for that reason, and
+`tests/test_path_framework_doors.py` holds the case.
+
+#### What is NOT ours, and why that is part of the rule
+
+The rule says *for every name **it composes***, and that boundary is load-bearing.
+`job-contracts.md` § 4.2 is explicit that what an ENGINE writes cannot be
+enumerated — *"an engine's output set depends on its version and on which
+options are on, so enumerating THAT is a snapshot pretending to be a rule"* —
+which is why `runfiles.WRITTEN` stops where our own writing stops, and why
+`find_by_role` **refuses** a role outside it rather than answering emptily.
+
+So these searches have no door and must not grow one:
+
+| the search | whose name it is |
+|---|---|
+| `*.XV`, `*{suffix}` from `warmfiles.inventory` | SIESTA's restart state. The vocabulary already comes from one home (`<engine>/warm-files.toml`); only the loop is local |
+| a bare `*.xyz` in a cited directory | a person's structure file. Its SIDECAR is ours, and is paired through the composer |
+| `*_geom_optim.xyz` | geomeTRIC's, via the declared `pyscf.input.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
+| conda-meta's `*.json` | conda's |
+
+Each is an entry in the survey's `_OVERRIDES` carrying the reason someone wrote
+after reading the site — and an entry that matches no site is itself a failure,
+so an exemption cannot quietly outlive the code it excused.
 
 #### What `paths` owns
 
@@ -2105,10 +2149,32 @@ surface is stdlib-only.
 #### How a violation is noticed
 
 `tools/classify_path_finders.py` — a search that spells one of our names lands
-in its `owned` bucket, and the migration is done when that bucket is the
-finders themselves. Its verdicts are keyed by `(file, function, pattern)` and
-never by line, because reasons keyed to line numbers come unanchored the first
-time anything above them is edited (`plans/plan.md` § 5h).
+in its `owned` bucket. Its verdicts are keyed by `(file, function, pattern)`
+and never by line, because reasons keyed to line numbers come unanchored the
+first time anything above them is edited (`plans/plan.md` § 5h).
+
+**The bucket is empty, and a test keeps it empty.** `tools/classify_path_finders.py
+--check` exits non-zero on any `owned` or `unclassified` site and on any
+exemption that no longer matches one; `tests/test_path_framework.py` is that
+check as an assertion. Three things stop it from being decorative:
+
+1. **It is shown to fail.** The same survey is pointed at a throwaway package
+   holding one hand-spelled `glob("*.out")` and must return `owned` — and a
+   third case, a call THROUGH the door, must not, so it cannot pass by flagging
+   everything.
+2. **An exemption cannot excuse a violation.** An override may only assign a
+   non-failing verdict; otherwise any site could be silenced with
+   `("owned - ...", "later")` and the check would go green while the code got
+   worse.
+3. **The verdict it recognises must be one the guard fails on.** Emptying
+   `FAILING_VERDICTS` leaves the classifier working perfectly and every
+   assertion green — a kill switch on the whole guard, and it survived until
+   that assertion was added (measured 2026-09-08).
+
+The survey covers `molbuilder/`, not `tests/`. That is deliberate: a test that
+located our files through the door would be asserting that the door agrees with
+itself. A test spells the name because the literal IS the independent check on
+the grammar.
 
 ## 5. The files, and which of them are sources
 

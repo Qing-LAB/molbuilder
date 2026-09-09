@@ -73,7 +73,11 @@ def atom_metadata_json_for_run_dir(
         # one metadata block across stages, so the first script carrying a
         # non-empty block wins; later scripts are consulted only if earlier
         # ones are absent or empty.
-        scripts = sorted(d.glob("*.fdf")) + sorted(d.glob("*.py"))
+        # THE ROLES COME FROM THE CATALOGUE.  `.fdf` and `.py` are
+        # `runfiles.WRITTEN`'s, one per engine, spelled here as globs until
+        # 2026-09-08 (`project-layout.md` § 4.5).
+        from ...runfiles import find_by_role
+        scripts = find_by_role(d, ".fdf") + find_by_role(d, ".py")
     except OSError:                                         # pragma: no cover
         return None
     for script in scripts:

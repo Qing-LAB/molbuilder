@@ -826,7 +826,11 @@ def find_template(base) -> Optional["_Path"]:
     here* and *I cannot tell which* are different answers and must not return
     the same value (§ 8.0's rule, applied to a path).
     """
-    found = sorted(_Path(base).glob(f"*{SUFFIX}"))
+    # `.template.toml` IS a role `runfiles.WRITTEN` declares -- the answers
+    # file, written once at the bundle root -- so the search is the
+    # catalogue's too (`project-layout.md` § 4.5).
+    from .runfiles import find_by_role
+    found = find_by_role(base, SUFFIX)
     if not found:
         return None
     if len(found) > 1:

@@ -194,6 +194,19 @@ def _basename_from_py(path: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+def _by_role(directory: str, role: str) -> "List[object]":
+    """`runfiles.find_by_role`, taking this module's string directories.
+
+    One import site rather than five: the resolver below asks four roles and
+    the cell reader a fifth, and each of them spelled its own
+    ``glob.glob(os.path.join(...))``.
+    """
+    from pathlib import Path
+
+    from molbuilder.runfiles import find_by_role
+    return find_by_role(Path(directory), role)
+
+
 def _newest(paths: List[str]) -> Optional[str]:
     """Pick the most recently modified path from a list."""
     valid = [p for p in paths if os.path.isfile(p)]
@@ -235,14 +248,22 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     """
     attempts: List[str] = []
 
+    # EVERY ROLE BELOW IS ASKED OF THE CATALOGUE (`project-layout.md` § 4.5).
+    # Step 1's `*.molwatch.log` and steps 2-3's `*.fdf` / `*.py` were the role
+    # vocabulary spelled outside the module that declares it -- and step 1 is
+    # exactly `find_by_role`'s stated reason for existing: *"which molwatch
+    # logs are here"* is asked of a folder before anything has said whose it
+    # is.  `find_by_role` returns Paths; `_newest` and the callers below take
+    # strings, so each list is spelled back out at the boundary.
+    #
     # 1. *.molwatch.log directly in the directory.
-    log_hits = glob.glob(os.path.join(directory, "*.molwatch.log"))
+    log_hits = [str(p) for p in _by_role(directory, ".molwatch.log")]
     attempts.append(f"*.molwatch.log -> {len(log_hits)} match(es)")
     if log_hits:
         return _newest(log_hits), attempts
 
     # 2. SIESTA: *.fdf -> SystemLabel -> sibling outputs.
-    fdf_hits = glob.glob(os.path.join(directory, "*.fdf"))
+    fdf_hits = [str(p) for p in _by_role(directory, ".fdf")]
     attempts.append(f"*.fdf -> {len(fdf_hits)} match(es)")
     for fdf in fdf_hits:
         label = _basename_from_fdf(fdf)
@@ -258,7 +279,7 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
                 return cand, attempts
 
     # 3. PySCF: *.py -> JOB -> sibling outputs.
-    py_hits = glob.glob(os.path.join(directory, "*.py"))
+    py_hits = [str(p) for p in _by_role(directory, ".py")]
     attempts.append(f"*.py -> {len(py_hits)} match(es)")
     for py in py_hits:
         name = _basename_from_py(py)
@@ -294,7 +315,7 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
                         f"{'found' if os.path.isfile(cand) else 'missing'}")
         if os.path.isfile(cand):
             return cand, attempts
-    out_hits = glob.glob(os.path.join(directory, "*.out"))
+    out_hits = [str(p) for p in _by_role(directory, ".out")]
     if out_hits:
         attempts.append(f"*.out -> picked {os.path.basename(out_hits[0])}")
         return _newest(out_hits), attempts
@@ -366,9 +387,9 @@ def _run_periodicity_json(
         out["cell"] = lattice
     try:
         if search_dir:
-            import glob as _glob
-            pairs = sorted(_glob.glob(
-                os.path.join(search_dir, "*.source.xyz")))
+            # `.source.xyz` is the catalogue's role for *"the structure the
+            # calculation is of"*, so the catalogue finds it.
+            pairs = [str(p) for p in _by_role(search_dir, ".source.xyz")]
             if pairs:
                 from pathlib import Path as _Path
 

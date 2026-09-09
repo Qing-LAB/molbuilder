@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Optional
 
@@ -344,6 +345,36 @@ def parse(filename: str, label: str,
     return RunFile(label, None, rest)
 
 
+def _tail_of(name: str, role: str) -> str:
+    """The end of *name* as long as *role*, for a label-less role comparison.
+
+    A patterned role has no fixed length, so the slice is taken from the first
+    literal segment of the pattern instead: `.runwrap-*.log` anchors on
+    `.runwrap-`, and everything from there is what the pattern must match.
+    """
+    if "*" in role:
+        head = role.split("*", 1)[0]
+        i = name.find(head)
+        return name[i:] if i >= 0 else name
+    return name[-len(role):] if len(role) <= len(name) else name
+
+
+def role_matches(found: str, asked: str) -> bool:
+    """Does the role read off a filename answer the role a caller asked for?
+
+    Equality, EXCEPT for the one row :data:`WRITTEN` declares WITH a ``*`` in
+    it.  The wrapper's session log is ``.runwrap-<stamp>.log`` -- one file per
+    launch, stamped with the clock -- so the catalogue spells the FAMILY,
+    there being no single name to spell.  A caller asking for that role is
+    asking for the family, and until 2026-09-08 this module could only compare
+    a role exactly, which is why `summarize._wrapper_log` still carried its own
+    ``glob(f"{basename}.runwrap-*.log")``: the door could not answer the
+    question, so the caller kept the pattern.  One role in the catalogue is a
+    pattern; the comparison honours the catalogue's own spelling.
+    """
+    return fnmatchcase(found, asked) if "*" in asked else found == asked
+
+
 def find(directory, label: str, *,
          role: Optional[str] = None,
          roles: "tuple[str, ...]" = (),
@@ -395,7 +426,7 @@ def find(directory, label: str, *,
         parsed = parse(entry.name, label, roles)
         if parsed is None:
             continue
-        if role is not None and parsed.role != role:
+        if role is not None and not role_matches(parsed.role, role):
             continue
         if stage is not None and parsed.stage != stage:
             continue
@@ -439,8 +470,12 @@ def find_by_role(directory, role: str) -> "list[Path]":
             + ", ".join(sorted(r for r in known if r.startswith("."))))
     d = Path(directory)
     try:
+        # `role_matches` on the TAIL: a dotted role is recognisable with no
+        # label, and the one patterned row (`.runwrap-*.log`) is matched as the
+        # family the catalogue declares rather than as a literal nothing has.
         return sorted(p for p in d.iterdir()
-                      if p.is_file() and p.name.endswith(role))
+                      if p.is_file() and role_matches(_tail_of(p.name, role),
+                                                      role))
     except OSError:
         return []
 

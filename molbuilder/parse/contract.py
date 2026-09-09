@@ -157,9 +157,14 @@ def _declared_in_provenance(directory: Path) -> set:
     one artifact every prepared run carries whatever the task.
     """
     from molbuilder.script_emit import _extract_provenance_dict
+    # THE THREE ROLES COME FROM THE CATALOGUE.  `.run.sh`, `.fdf` and `.py`
+    # are all `runfiles.WRITTEN` rows, so the search is the catalogue's --
+    # this spelled them as globs, which is the § 4.2a fault R1 closed
+    # elsewhere in this same module, in its § 4.5 form.
+    from ..runfiles import find_by_role
     out = set()
-    for pattern in ("*.run.sh", "*.fdf", "*.py"):
-        for f in sorted(directory.glob(pattern)):
+    for role in (".run.sh", ".fdf", ".py"):
+        for f in find_by_role(directory, role):
             try:
                 block = _extract_provenance_dict(
                     f.read_text(encoding="utf-8", errors="replace"))

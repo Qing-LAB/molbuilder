@@ -37,6 +37,7 @@ from .model import JobSet
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
 from ..paths import attempt_name
+from ..runfiles import find
 
 
 def _warm_files(engine: str):
@@ -166,7 +167,8 @@ def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
-                 out_glob: str = "*") -> tuple:
+                 out_glob: str = "*", label: str = "",
+                 stage: Optional[str] = None) -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
 
     ``observed`` is the latest attempt where there is one, and the stage
@@ -182,13 +184,23 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     """
     if not observed.is_dir():
         return ("not-started", "no directory yet (not prepped)")
-    # ``out_glob`` is `Shape.stage_glob` -- "*" in the hierarchy, where the
-    # directory has already selected the stage, and ``<label>_<NN>_<name>*`` in
-    # flat, where ONE directory holds every stage and the filename is what
-    # selects.  Without it a flat stage that has never run reports whatever its
-    # sibling's `.out` says, because the glob matched the sibling's file.
-    has_output = (any(observed.glob(out_glob + ".out"))
-                  or any(observed.glob(out_glob + ".log")))
+    # WHICH FILES ARE THIS RUNG'S, asked of the grammar rather than spelled
+    # (`project-layout.md` § 4.5).  ``label`` + ``stage`` is the right narrowing
+    # in BOTH shapes and needs no shape knowledge at all: the deck is
+    # ``<label>_<token>`` whichever layout it sits in (`prep` composes it with
+    # `runfiles.stem` either way), so the token in the filename selects the rung
+    # in flat and is simply redundant in the hierarchy.  ``out_glob`` stays for
+    # `run_status` below, which buckets the ENGINE's files too -- a vocabulary
+    # `runfiles.WRITTEN` deliberately does not carry.
+    #
+    # The role vocabulary is ``*.out`` / ``*.log`` and that is deliberate, not
+    # a leftover glob: what is wanted is *"has the engine produced anything"*,
+    # and the catalogue has no field for that.  Narrowing to the exact roles
+    # ``.out`` and ``.log`` would drop `.pyscf.log` -- which is where PySCF
+    # writes, *"and not to .out"* -- so a finished PySCF rung would report
+    # itself queued.
+    has_output = bool(find(observed, label, role="*.out", stage=stage)
+                      or find(observed, label, role="*.log", stage=stage))
     if not has_output:
         if launch is None:
             return ("pending", "prepped, not launched (no run.json)")
@@ -244,7 +256,8 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         token = refs[job.name].token
         out_glob = (sh.stage_glob(token, label)
                     if (sh is not None and token) else "*")
-        state, detail = _stage_state(observed, launch, out_glob)
+        state, detail = _stage_state(observed, launch, out_glob,
+                                     label, token or None)
         stages.append(StageStatus(
             ref=refs[job.name], dir=d.name, state=state, detail=detail,
             attempt=(attempt.name if attempt else None),

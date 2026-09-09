@@ -1,0 +1,271 @@
+"""The guard for `project-layout.md` § 4.5 -- and the proof that it can fail.
+
+**THE RULE.**  *For every name it composes, the framework owns the search.*  A
+name molbuilder writes has one composer (`runfiles.compose`, `paths.attempt_dir`,
+`materialize.trial_dir`, `sidecars.molstruct.sidecar_path_for`); § 4.5 says it
+must also have exactly one FINDER, because a caller with a question and no
+finder spells a glob, and every spelling is a place the rule can drift.  That
+is not a hypothesis: the survey found 24 such sites on 2026-09-08, one of them
+added by the very commit that closed the previous one.
+
+**WHY A TEST AND NOT A REVIEW ITEM.**  A migration is provable only if the
+finished state is checkable.  "17 is fewer than 24" is a progress report; a
+check that fails the build when someone hand-spells the twenty-fifth is a
+guarantee.  `tools/classify_path_finders.py` is the instrument -- an AST pass
+over `molbuilder/`, not a text grep -- and this is the assertion.
+
+**THE EXEMPTIONS ARE PART OF THE GUARANTEE, NOT A HOLE IN IT.**  Some searches
+are for names molbuilder does not compose (SIESTA's `.XV`, conda-meta's
+`*.json`), and § 4.5 gives those no door by design.  Each is an entry in
+`_OVERRIDES` carrying the reason someone wrote after reading the site.  Two
+things keep that from becoming a silencer: an exemption that matches no site is
+itself a failure (:func:`stale_overrides`), and the buckets an exemption may
+name are the non-failing ones only -- an override cannot mark a handcrafted
+site as fine, it can only say which OTHER thing the site is.
+
+**MUTATION-TESTED.**  A guard that asserts the tree is clean passes just as
+happily when the classifier has stopped classifying, so the second test points
+the same survey at a throwaway package holding one hand-spelled glob and
+requires the verdict `owned`.  That is the failure the first test is claiming
+to prevent, demonstrated rather than asserted.
+"""
+from __future__ import annotations
+
+import importlib.util
+import pathlib
+import sys
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+TOOL = ROOT / "tools" / "classify_path_finders.py"
+
+
+def _tool():
+    """Import the survey as a module -- it is a tool, not a package member."""
+    spec = importlib.util.spec_from_file_location("_classify_path_finders", TOOL)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# --------------------------------------------------------------------------- #
+# 1.  The guard.                                                              #
+# --------------------------------------------------------------------------- #
+
+def test_no_path_search_is_handcrafted():
+    """Every search in `molbuilder/` is a door, door-fed, or recorded foreign.
+
+    The failure message names the site and the door it should have asked, so a
+    person who hits this in CI is told what to call rather than told off.
+    """
+    t = _tool()
+    rows = t.survey()
+    bad = [r for r in rows if r["verdict"].startswith(t.FAILING_VERDICTS)]
+    assert not bad, (
+        "these path searches spell a name the framework composes "
+        "(`project-layout.md` § 4.5 -- for every name it composes, the "
+        "framework owns the search):\n"
+        + "\n".join(
+            f'  {r["file"]}:{r["line"]}  {r["func"]}()  '
+            f'{r["call"]}({r["pattern"]!r})'
+            + (f'\n      -> ask {r["composer"]}' if r["composer"] else "")
+            + (f'\n      ({r["names"]})' if r["names"] else "")
+            for r in bad)
+        + "\n\nIf the name is genuinely not ours, read the site and record it "
+          "in `_OVERRIDES` in tools/classify_path_finders.py with the reason.")
+
+
+def test_no_recorded_exemption_has_come_unanchored():
+    """An override that matches no site is a failure, not a leftover.
+
+    `classify_source_reads.py` keyed its reasons by LINE NUMBER; deleting tests
+    around them displaced two and landed one on an unrelated assertion, and the
+    tool then reported a number for work nobody had done (2026-09-08).  These
+    keys are (file, function, pattern), which survives an edit above the site
+    -- but not a rename, a move, or a fix.  A dead exemption is how a rule
+    stops applying without anyone deciding that, so it fails here.
+    """
+    t = _tool()
+    stale = t.stale_overrides(t.survey())
+    assert not stale, (
+        "these recorded exemptions match no site any more -- the site was "
+        "renamed, moved, or fixed.  Delete the entry (if fixed) or re-anchor "
+        "it (if moved):\n" + "\n".join(f"  {k}" for k in stale))
+
+
+def test_an_exemption_cannot_excuse_a_handcrafted_site():
+    """The buckets an override may name exclude the failing ones.
+
+    Otherwise the guard has a back door: any site could be silenced by adding
+    ``("owned - ...", "we'll do it later")`` beside it, and the check would go
+    green while the codebase got worse.  An override says which OTHER thing a
+    site is; it cannot say that being handcrafted is acceptable.
+    """
+    t = _tool()
+    offenders = {key: verdict for key, (verdict, _why) in t._OVERRIDES.items()
+                 if verdict.startswith(t.FAILING_VERDICTS)}
+    assert not offenders, (
+        "an override may not assign a failing verdict -- that would make the "
+        "guard silenceable:\n"
+        + "\n".join(f"  {k} -> {v!r}" for k, v in offenders.items()))
+
+
+def test_every_exemption_carries_a_reason():
+    """A bare verdict is not a decision anyone can re-check.
+
+    The whole value of the exemption list is that someone READ the site; the
+    reason is the evidence of that, and the next person needs it to know
+    whether the judgement still holds.  **Non-empty, not long** -- a length
+    floor would be a rule no document states, and some of these sites really
+    are one clause ("conda-meta's own naming"); what must not happen is a
+    verdict with nothing behind it.
+    """
+    t = _tool()
+    thin = sorted(k for k, (_v, why) in t._OVERRIDES.items() if not why.strip())
+    assert not thin, (
+        "these exemptions state a verdict with no reason:\n"
+        + "\n".join(f"  {k}" for k in thin))
+
+
+# --------------------------------------------------------------------------- #
+# 2.  The mutation test -- the guard must actually catch one.                  #
+# --------------------------------------------------------------------------- #
+
+_HANDCRAFTED = '''\
+from pathlib import Path
+
+
+def newest_output(d):
+    """Spells `.out` -- a role `runfiles.WRITTEN` declares."""
+    return sorted(Path(d).glob("*.out"))[-1]
+'''
+
+_HANDCRAFTED_ATTEMPT = '''\
+from pathlib import Path
+
+
+def attempts(d):
+    """Spells the attempt-directory prefix `paths.ATTEMPT_PREFIX` owns."""
+    return sorted(Path(d).glob("run-*"))
+'''
+
+_THROUGH_THE_DOOR = '''\
+from molbuilder.runfiles import find_by_role
+
+
+def newest_output(d):
+    return find_by_role(d, ".out")[-1]
+'''
+
+
+@pytest.mark.parametrize("source,expect_owned", [
+    (_HANDCRAFTED, True),
+    (_HANDCRAFTED_ATTEMPT, True),
+    (_THROUGH_THE_DOOR, False),
+])
+def test_the_guard_catches_a_new_handcrafted_search(tmp_path, source,
+                                                   expect_owned):
+    """Point the same survey at a package holding the defect.
+
+    This is the test the first one needs in order to mean anything: it fails if
+    the classifier stops recognising a role from the catalogue, or the attempt
+    prefix, or starts calling a door a violation.  The third case is what keeps
+    it from passing by simply flagging everything.
+    """
+    t = _tool()
+    pkg = tmp_path / "molbuilder"
+    pkg.mkdir()
+    (pkg / "offender.py").write_text(source, encoding="utf-8")
+    rows = t.survey(pkg=pkg, root=tmp_path)
+    owned = [r for r in rows if r["verdict"].startswith("owned")]
+    if expect_owned:
+        assert owned, (
+            "the guard did not notice a hand-spelled name the framework "
+            f"composes.  Verdicts seen: {[r['verdict'] for r in rows]}")
+        assert owned[0]["composer"], "and it did not name the door to ask"
+        # ...AND THE VERDICT MUST BE ONE THE GUARD FAILS ON.  Recognising the
+        # site is only half of it: emptying `FAILING_VERDICTS` leaves the
+        # classifier working perfectly and every assertion in this file green,
+        # which is a kill switch on the whole guard (measured 2026-09-08, this
+        # mutation survived until this line was added).
+        assert owned[0]["verdict"].startswith(t.FAILING_VERDICTS), (
+            f"{owned[0]['verdict']!r} is recognised but not FAILING: the guard "
+            f"would report this site and pass.  FAILING_VERDICTS is "
+            f"{t.FAILING_VERDICTS!r}")
+    else:
+        assert not owned, (
+            "a call THROUGH the door was reported as handcrafted: "
+            f"{[(r['pattern'], r['verdict']) for r in rows]}")
+
+
+def test_the_survey_sees_a_name_hidden_behind_a_constant(tmp_path):
+    """An imported filename constant does not hide the site.
+
+    The first pass matched literal patterns only, so `glob(f"*/{_JS}")` came
+    back *unclassified* while `_JS` is `job-set.json` -- and a caller that
+    knows the filename has a home and still assembles the search by hand is
+    exactly the worst case, not an edge one.
+    """
+    t = _tool()
+    pkg = tmp_path / "molbuilder"
+    pkg.mkdir()
+    (pkg / "offender.py").write_text(
+        'from pathlib import Path\n'
+        'ROLE = ".molwatch.log"\n\n\n'
+        'def logs(d):\n'
+        '    return sorted(Path(d).glob("*" + ROLE))\n'
+        '    # noqa\n',
+        encoding="utf-8")
+    # `"*" + ROLE` is a BinOp, which `_pattern_of` unparses; the constant map
+    # is what makes the f-string form resolvable.  Assert the f-string form,
+    # which is the one that actually appeared in the codebase.
+    (pkg / "offender2.py").write_text(
+        'from pathlib import Path\n'
+        'ROLE = ".molwatch.log"\n\n\n'
+        'def logs(d):\n'
+        '    return sorted(Path(d).glob(f"*{ROLE}"))\n',
+        encoding="utf-8")
+    rows = t.survey(pkg=pkg, root=tmp_path)
+    hidden = [r for r in rows if r["file"].endswith("offender2.py")]
+    assert hidden and hidden[0]["verdict"].startswith("owned"), (
+        "a role reached through a module constant was not recognised: "
+        f"{hidden}")
+
+
+# --------------------------------------------------------------------------- #
+# 3.  The vocabulary is the catalogue's, not the survey's own copy.            #
+# --------------------------------------------------------------------------- #
+
+def test_the_survey_derives_its_vocabulary_from_the_catalogue():
+    """Every role in `runfiles.WRITTEN` is a name the survey recognises.
+
+    The table was hand-copied beside the catalogue until 2026-09-08 and had
+    already drifted -- it claimed `.XV` was ours, and `.XV` is SIESTA's own
+    restart file, which `WRITTEN` deliberately excludes.  A survey with its own
+    copy of the vocabulary is the very habit it exists to find, so the check is
+    that adding a row to the catalogue is enough.
+    """
+    from molbuilder.runfiles import WRITTEN
+    t = _tool()
+    known = {needle for needle, _door, _what in t.OWNED}
+    missing = sorted({a.role for a in WRITTEN} - known)
+    assert not missing, (
+        f"these catalogued roles are invisible to the survey: {missing}.  "
+        f"`OWNED` must derive from `runfiles.WRITTEN`, never restate it.")
+
+
+def test_the_survey_does_not_claim_an_engines_files():
+    """`.XV` and `.STRUCT_OUT` are not in the survey's owned vocabulary.
+
+    The other half of the same drift: a survey that claims an engine's output
+    sends the next person looking for a door that cannot exist, because
+    `job-contracts.md` § 4.2 is explicit that what an engine writes is not
+    enumerable -- *"a snapshot pretending to be a rule."*
+    """
+    t = _tool()
+    known = {needle for needle, _door, _what in t.OWNED}
+    for engine_file in (".XV", ".DM", ".STRUCT_OUT", ".ANI", ".TSHS"):
+        assert engine_file not in known, (
+            f"{engine_file} is the ENGINE's; no door of ours composes it")

@@ -521,11 +521,24 @@ def list_structures(project: str, topic: str, *,
 # inputs, intermediate frames, and other noise the picker shouldn't
 # surface.  Add new patterns here if a new engine ships its own output
 # naming convention.
-_GEOM_OUTPUT_PATTERNS: Tuple[str, ...] = (
-    "*_optimized.xyz",     # PySCF geomopt final-frame export
-    "*.STRUCT_OUT",        # SIESTA final relaxed coords
-    "*_geom_optim.xyz",    # PySCF geomeTRIC trajectory (last frame is opt)
-)
+def _geom_output_patterns() -> Tuple[str, ...]:
+    """The picker's patterns, with the two PySCF roles taken from their home.
+
+    ``_optimized.xyz`` and ``_geom_optim.xyz`` are declared once, in
+    `pyscf/input.py`, from `pyscf/warm-files.toml` -- and that module's own
+    comment names the cost of a second copy: *"that is exactly how
+    `_geom_optim.xyz` came to have six spellings."*  This was the fourth.
+
+    ``.STRUCT_OUT`` stays a literal because it is SIESTA's, and molbuilder
+    declares no vocabulary for what an engine writes (`job-contracts.md`
+    § 4.2).  WHICH of those files is a startable geometry is this picker's own
+    curation -- the rules file has no field for it -- so the SELECTION lives
+    here and only the SPELLINGS are asked for.
+    """
+    from .pyscf.input import ROLE_GEOM_TRAJ, ROLE_OPTIMIZED
+    return ("*" + ROLE_OPTIMIZED,    # PySCF geomopt final-frame export
+            "*.STRUCT_OUT",          # SIESTA final relaxed coords
+            "*" + ROLE_GEOM_TRAJ)    # geomeTRIC trajectory (last frame is opt)
 
 
 def find_geom_candidates(*, base: Optional[Path] = None,
@@ -535,7 +548,7 @@ def find_geom_candidates(*, base: Optional[Path] = None,
 
     Scans either the whole ``projects/`` tree (``project=None``) or
     just one project subtree.  Returns paths matching one of
-    :data:`_GEOM_OUTPUT_PATTERNS`, sorted by mtime descending (newest
+    :func:`_geom_output_patterns`, sorted by mtime descending (newest
     first) when ``newest_first``, alphabetically otherwise.
 
     Pure read; returns ``[]`` if the scanned root doesn't exist.
@@ -554,11 +567,11 @@ def find_geom_candidates(*, base: Optional[Path] = None,
     if not root.is_dir():
         return []
 
-    # Patterns in _GEOM_OUTPUT_PATTERNS are deliberately non-overlapping
+    # Patterns in _geom_output_patterns() are deliberately non-overlapping
     # (no bare *.xyz / *.pdb fallback) -- one file matches at most one
     # pattern, so we don't need dedup.
     found: List[Path] = []
-    for pattern in _GEOM_OUTPUT_PATTERNS:
+    for pattern in _geom_output_patterns():
         found.extend(root.rglob(pattern))
 
     if newest_first:

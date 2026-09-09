@@ -143,7 +143,10 @@ def collect_record(base_dir, task) -> Dict:
             continue
         energies, trans = parse_avtrans(avtrans[0].read_text())
         current = None
-        for out in sorted(where.glob("*.out"),
+        # `.out` IS the catalogue's role, so the catalogue finds it; the
+        # newest-first order is this caller's own question and stays here.
+        from ..runfiles import find_by_role
+        for out in sorted(find_by_role(where, ".out"),
                           key=lambda p: p.stat().st_mtime, reverse=True):
             current = parse_current_a(out.read_text())
             if current is not None:

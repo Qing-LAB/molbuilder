@@ -990,7 +990,7 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 | **M4** | *(done 2026-09-08)* **a** — `Shape` moves to a floor-1 `paths.py` (`SHAPES` with it), plus `TRIAL_PREFIX` / `trials_in` / `launched_trials`. **b** — the ATTEMPT gets a composer at last: `attempt_name` / `attempt_dir` / `attempt_index` / `attempts_in` retire nine `f"run-{n}"` spellings across four modules and the regex two of them reached across for | shipped; owned 24 → 19 |
 | **M5** | *(done 2026-09-08)* `/api/task-setup/attempts` answers from the DECLARED shape; `runsForStages` and the `--from` builder stop composing. Four browser re-implementations gone — `stage_token`, `/^run-\d+$/`, the flat `_<token>-run` form, and a shape inferred from disk | shipped |
 | **M6** | *(done 2026-09-08)* `runfiles.find_by_role` — the label-less half, for the caller that has a folder and no label. `parse/contract.py`'s `*.fdf` and `*.molwatch.log` ask it | shipped; owned 19 → 17 |
-| **M7** | *(open)* the same treatment for the rest — see below | owned 17 → the finders |
+| **M7** | *(done 2026-09-08)* the rest, each site read before it moved; three doors added where the door could not answer; the survey's `owned` bucket **empty**, guarded by `tests/test_path_framework.py` | shipped; owned 17 → 0 |
 
 **M4b's number moved while it was being fixed.** The plan said eight
 `f"run-{n}"` spellings; re-derived at the start of the work it was NINE, and
@@ -1038,7 +1038,82 @@ that section counts assertions over a file's text, and these pass its filter.
 **The instrument needs the rule before the population can be counted** — a
 slice taken by literal offset is a pin even when the slice is executed.
 
-### 5k.4b Where M1–M6 left it, and what M7 is
+### 5k.4c What M7 did, and the three doors it had to add
+
+**Owned went 17 → 0**, and the finished state is a check rather than a count:
+`tools/classify_path_finders.py --check` fails on any `owned` or
+`unclassified` site and on any exemption that no longer matches one;
+`tests/test_path_framework.py` is that check as an assertion, and
+`tests/test_path_framework_doors.py` asserts what each migrated caller now
+ANSWERS. Re-run the tool rather than trusting this paragraph (§ 5a).
+
+**§ 5k.4b's table was right that the risk is not in the mechanical ones — and
+wrong about three of the four rows.** Re-derived at the start of the work:
+
+| § 5k.4b predicted | what reading it showed |
+|---|---|
+| `identity.py` `*{suffix}` needs `find_by_role` to take an unchecked role | **it needs no door.** The suffixes are the ENGINE's warm-restart vocabulary, which `WRITTEN` deliberately excludes, so § 4.5 — *for every name **it composes*** — does not reach it. `find_by_role`'s refusal is correct and stays |
+| `identity.py` `{label}*` is a leftover to migrate | **it IS the door.** `warm_files_present` is the § 4.2 subtraction — everything named after the label that `is_ours` does not claim — and `check_id_change` and `runstatus` both ask it |
+| `workspace_storage.py` ×2 need their own namer first | **they already have one.** `_state_path` composes and `_state_indices` finds, both from the one `_STATE_SUFFIX`, in the same module; nothing outside it spells `.wc.json` (the four hits in `workspace/dispatcher.js` are prose). A self-contained grammar already obeying § 4.5 |
+| `template.py` `*.template.toml` — the door belongs beside `template` | **no: `.template.toml` is a row in `runfiles.WRITTEN`.** A role the catalogue declares is found by the catalogue; a second finder in `template` would be the two-readers fault § 4.5 exists to prevent |
+
+**Three doors were added, and each because a caller genuinely could not ask:**
+
+1. **`runfiles.role_matches`** — `.runwrap-*.log` is the one `WRITTEN` row that
+   is a FAMILY, not a name (one file per launch, stamped with the clock), and
+   `find` compared roles by equality. `summarize._wrapper_log` kept its own
+   glob because the door could not answer, not because nobody had looked.
+2. **`sidecars.molstruct.SUFFIX` / `sidecars_in` / `is_sidecar`** — the sidecar
+   had a composer (`sidecar_path_for`) and no public suffix and no finder, so
+   `transport/compose` carried four copies of the literal.
+3. **`runfiles.find`'s `is_file()` filter** — its docstring said *our FILES*
+   and it checked nothing, while `find_by_role`, written later, did. Found by
+   reading the module end to end, not by a failing test.
+
+**Two sites were re-declarations rather than searches, and were fixed as such:**
+`parse/contract._declared_in_provenance` globbed `.run.sh` / `.fdf` / `.py` —
+three catalogue rows spelled as patterns, the § 4.2a fault R1 closed elsewhere
+in the same module — and `projects._GEOM_OUTPUT_PATTERNS` was a FOURTH copy of
+`_geom_optim.xyz`, the spelling `pyscf/input.py`'s own comment says *"came to
+have six spellings."* Both now ask their home; the picker keeps the CURATION
+(which engine outputs are a startable geometry — the rules file has no field
+for that) and asks only for the spellings.
+
+**Where the answer changed, it changed on purpose.** Three of them:
+
+- `runstatus._stage_state` is now label- and stage-scoped through the grammar,
+  and **asks for the role FAMILIES `*.out` / `*.log` rather than the exact
+  roles.** Narrowing to `.out` and `.log` loses `.pyscf.log` — the catalogue
+  says PySCF *"writes here and not to `.out`"* — so a finished PySCF rung would
+  have answered **queued**, § 1.6's one forbidden line. Caught by reading the
+  catalogue, held by a test, and confirmed by mutation.
+- `summarize._wrapper_log` returns `None` where it returned
+  `<basename>.runwrap-none.log` — a composed name for a file that cannot
+  exist, the same handcraft pointing the other way.
+- `transport/compose`'s `.XV` / `.xyz` globs gained `is_file()`, matching what
+  `find_by_role` guarantees for the roles beside them.
+
+**Nine mutations, nine killed.** Including two on the guard itself: an override
+allowed to name a failing verdict (the back door), and `FAILING_VERDICTS`
+emptied — which leaves the classifier working perfectly and every assertion
+green. That one **survived** until the mutation test was made to assert that
+the verdict it recognises is one the guard fails on.
+
+**`tests/` is out of the survey's scope, and that is a design position, not a
+deferral.** 193 path searches live there, 73 of them spelling one of our names.
+A test that located our files through the door would be asserting that the door
+agrees with itself; the literal in a test IS the independent check on the
+grammar. What is NOT settled is the subset that globs merely to LOCATE a file
+it then reads — those gain nothing from the literal and can go stale silently.
+Separating the two is a review, not a sweep, and it is open.
+
+**Still open, unchanged by M7:** `siesta/makov_payne.py` spells `-run<N>` and
+cannot import `runfiles` until `runfiles` joins `MONITOR_COMPANIONS`; § 5k.4a's
+~40 text-anchored source slices in tests; and `classify_source_reads.py`'s
+line-keyed overrides (this survey's are keyed by `(file, function, pattern)`
+and a dead key now FAILS, which is the pattern to copy there).
+
+### 5k.4b Where M1–M6 left it, and what M7 was
 
 **Owned went 24 → 17.** The seven closed were the ones with a door already
 waiting or one step from it; the seventeen left are listed by

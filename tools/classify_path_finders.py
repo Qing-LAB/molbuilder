@@ -42,42 +42,41 @@ PKG = ROOT / "molbuilder"
 
 SEARCH_ATTRS = {"glob", "rglob", "iterdir", "listdir", "scandir"}
 
-#: What OUR names look like, and the door that composes each.  A pattern that
-#: matches none of these is somebody else's name.
-OWNED = [
-    ("-run",            "runfiles.compose(run=…) / runfiles.tail",
-     "the -run<N> counter (job-contracts.md § 6.3)"),
-    ("run-",            "materialize.resolve_attempt / materialize.attempts",
-     "the attempt directory (project-layout.md § 1.5)"),
-    ("bench-",          "materialize.trial_dir",
-     "a trial's directory"),
-    ("bench_",          "materialize.bench_container",
-     "the flat bench container"),
-    ("/bench",          "materialize.bench_container",
-     "the hierarchical bench container"),
-    ("job-set.json",    "jobset.model.FILENAME (+ materialize.sweep_set_paths)",
-     "the set a prep derives"),
-    ("bench-result",    "summarize.run_summarize_jobset",
-     "the verdict"),
-    ("environment.json", "scheduler.record.FILENAME",
-     "the machine record"),
-    ("task.json",       "task.FILENAME", "the description"),
-    (".fdf",            "runfiles.WRITTEN / runfiles.compose",
-     "a SIESTA deck"),
-    (".run.sh",         "runfiles.WRITTEN", "the wrapper"),
-    (".sbatch",         "runfiles.WRITTEN", "the header"),
-    (".molwatch.log",   "runfiles.WRITTEN", "the trajectory log"),
-    (".concluded",      "runfiles.WRITTEN", "the conclusion marker"),
-    (".molstruct.json", "runfiles.WRITTEN", "the structure sidecar"),
-    ("runwrap-",        "runfiles.WRITTEN", "the wrapper's own log"),
-    ("{label}",         "runfiles.stem", "the calculation's own file stem"),
-    ("<molbuilder.jobset.model.FILENAME>", "jobset.model.FILENAME",
-     "the set a prep derives"),
-    (".template.toml",  "template.FILENAME / template_path",
-     "the answers file"),
-    (".source.xyz",     "runfiles.WRITTEN", "the structure pair"),
-    (".XV",             "runfiles.WRITTEN", "a SIESTA restart coordinate"),
-]
+#: What OUR names look like, and the door that composes each.
+#:
+#: DERIVED FROM THE CATALOGUE, not copied beside it.  This was a hand-written
+#: list until 2026-09-08 and it had already drifted: it claimed ``.XV`` was
+#: ours, and ``.XV`` is SIESTA's own restart file.  `runfiles.WRITTEN` says
+#: what MOLBUILDER writes and deliberately does not enumerate what an engine
+#: writes -- *"an engine's output set depends on its version and on which
+#: options are on, so enumerating THAT is a snapshot pretending to be a
+#: rule"*.  A survey with its own copy of the vocabulary is the very habit it
+#: exists to find.
+def _owned_rules() -> "list[tuple[str, str, str]]":
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from molbuilder.jobset.materialize import TRIAL_PREFIX
+    from molbuilder.paths import ATTEMPT_PREFIX
+    from molbuilder.runfiles import WRITTEN
+    rules = [
+        (ATTEMPT_PREFIX, "paths.attempt_dir / paths.attempts_in",
+         "the attempt directory (project-layout.md § 1.5)"),
+        (TRIAL_PREFIX, "materialize.trial_dir / materialize.trials_in",
+         "a trial's directory"),
+        ("-run", "runfiles.compose(run=…) / runfiles.find",
+         "the -run<N> counter (job-contracts.md § 6.3)"),
+    ]
+    # Every role the catalogue declares, longest first so `.source.xyz` is
+    # recognised before `.xyz` -- which is NOT a role of ours and must not be
+    # matched by one.
+    for a in sorted(WRITTEN, key=lambda x: len(x.role), reverse=True):
+        door = ("runfiles.find_by_role" if a.role.startswith(".")
+                else "runfiles.find(dir, label, role=…)")
+        rules.append((a.role, door, a.what))
+    return rules
+
+
+OWNED = _owned_rules()
 
 #: Names that are not ours: a third party's, or the language's.
 FOREIGN_HINTS = (".psml", ".md", "*.py", "python*", ".dist-info", "x3dna",
@@ -88,8 +87,7 @@ FOREIGN_HINTS = (".psml", ".md", "*.py", "python*", ".dist-info", "x3dna",
 #: Every entry was READ before it was written -- the syntactic pass above is a
 #: first guess and these are the corrections, each with why.
 _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
-    # -- the finders that already exist.  Not sites to migrate: they are what
-    #    the framework is meant to have more of.
+    # -- THE FINDERS.  Not sites to migrate: they are what § 4.5 asks for.
     ("molbuilder/jobset/materialize.py", "sweep_set_paths", "*/{_JS}"):
         ("door - a finder, not a caller",
          "the counterpart of `bench_container`, added 2026-09-08"),
@@ -99,46 +97,95 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
         ("door - a finder, not a caller",
          "`environments/<name>.json` -- this IS the door every caller asks, "
          "and the name it searches for is the file's own"),
-
-    # -- ours, and the search is hand-spelled
-    ("molbuilder/transport/compose.py", "classify_citation", "*.xyz"):
-        ("owned - a door composes this name",
-         "the structure PAIR: the two lines below pair each hit with its "
-         "`.molstruct.json`, which is `runfiles.WRITTEN`'s sidecar"),
-    ("molbuilder/transport/record.py", "collect_record", "*.out"):
-        ("owned - a door composes this name",
-         "engine stdout, which the wrapper names `<basename>-run<N>.out`"),
-    ("molbuilder/validation/identity.py", "_foreign_state", "*{suffix}"):
-        ("owned - a door composes this name",
-         "THE CLEANEST CASE IN THE SURVEY: `suffix` already comes from the "
-         "one rules file (`_engine_inventory` -> `_warm_inventory`, U3), so "
-         "the VOCABULARY asks and only the SEARCH is spelled by hand.  The "
-         "gap this framework closes, in one function"),
-    ("molbuilder/web/blueprints/watch.py", "_resolve_run_directory",
-     "os.path.join(directory, '*.out')"):
-        ("owned - a door composes this name",
-         "engine stdout again, through `os.path.join`, which the pattern "
-         "reader does not unwrap"),
-
-    # -- ours, but a different grammar: the workspace store, not run files
+    ("molbuilder/validation/identity.py", "warm_files_present", "{label}*"):
+        ("door - a finder, not a caller",
+         "THE SUBTRACTION ITSELF (`job-contracts.md` § 4.2): everything named "
+         "after the label that `runfiles.is_ours` does not claim came from the "
+         "engine.  It searches for OUR name in order to answer about what is "
+         "NOT ours, and it is the door `check_id_change` and `runstatus` ask"),
     ("molbuilder/web/blueprints/workspace_storage.py", "_state_indices",
      "{ws_id}.*.wc.json"):
-        ("owned - workspace store (a separate grammar)",
-         "the browser workspace's own files; same fault, different vocabulary "
-         "-- out of scope for the run-file framework, in scope for the rule"),
-    ("molbuilder/web/blueprints/workspace_storage.py", "_warn_if_residue_piling",
-     "*.wc.json"):
-        ("owned - workspace store (a separate grammar)", "the same store"),
+        ("door - a finder, not a caller",
+         "A SELF-CONTAINED GRAMMAR THAT ALREADY OBEYS § 4.5.  The browser "
+         "workspace store composes with `_state_path` and finds with this, "
+         "both from the one `_STATE_SUFFIX` in the same module, and nothing "
+         "outside the module spells `.wc.json` (checked 2026-09-08: the four "
+         "hits in `workspace/dispatcher.js` are prose)"),
+    ("molbuilder/web/blueprints/workspace_storage.py",
+     "_warn_if_residue_piling", "*.wc.json"):
+        ("door - a finder, not a caller",
+         "the same store counting its own residue, through the same constant"),
 
-    # -- somebody else's names
+    # -- DOOR-FED: the pattern is a PARAMETER, and its one producer is a door.
+    #    A survey that reads syntax cannot see that; each of these was read.
+    ("molbuilder/parse/dirs/job.py", "_enumerate_files", "match"):
+        ("door-fed - the pattern comes from a door",
+         "`match` is `paths.Shape.stage_glob` -- WHICH FILES ARE THIS RUNG'S, "
+         "answered by the layout layer.  The per-suffix bucketing below it is "
+         "parser dispatch over a vocabulary that is half the ENGINE's "
+         "(`.XV`, `.STRUCT_OUT`, `.ANI`), which `runfiles.WRITTEN` "
+         "deliberately does not carry"),
+    ("molbuilder/projects.py", "find_geom_candidates", "pattern"):
+        ("door-fed - the pattern comes from a door",
+         "`_geom_output_patterns()` takes both PySCF spellings from "
+         "`pyscf.input.ROLE_OPTIMIZED` / `ROLE_GEOM_TRAJ` (their one home, "
+         "from `pyscf/warm-files.toml`).  WHICH engine outputs count as a "
+         "startable geometry is this picker's own curation -- the rules file "
+         "has no field for it -- so the selection stays and the spellings ask"),
+    ("molbuilder/web/blueprints/watch.py", "_resolve_run_directory",
+     "os.path.join(directory, optim_glob)"):
+        ("door-fed - the pattern comes from a door",
+         "`optim_glob` is `'*' + ROLE_GEOM_TRAJ`, the declared constant.  It "
+         "cannot go through `runfiles.find_by_role`, and that refusal is the "
+         "grammar's own rule rather than a gap: `_geom_optim.xyz` is an "
+         "UNDERSCORE role, and without a label a trailing `_geom_optim.xyz` "
+         "cannot be told from a stage token named `..._geom_optim` with `.xyz` "
+         "as the role (`runfiles.parse`).  Refused rather than answered wrongly"),
+
+    # -- SOMEBODY ELSE'S NAMES.  molbuilder composes none of these, so § 4.5
+    #    gives them no door: *"for every name IT COMPOSES, the framework owns
+    #    the search."*  What an engine writes is not knowable by enumeration
+    #    (`job-contracts.md` § 4.2), which is why `runfiles.WRITTEN` is the
+    #    list that CAN be complete and stops where our own writing stops.
+    ("molbuilder/transport/compose.py", "classify_citation", "*.XV"):
+        ("foreign - not a name we compose",
+         "SIESTA's own restart file -- the geometry it saves and reloads.  "
+         "The survey's hand-written vocabulary claimed this one as ours until "
+         "2026-09-08, which is why the table is derived from `WRITTEN` now"),
+    ("molbuilder/transport/compose.py", "classify_citation", "*.xyz"):
+        ("foreign - not a name we compose",
+         "A PERSON'S STRUCTURE FILE.  `WRITTEN` declares `.source.xyz` and "
+         "`_initial.xyz`; a bare `.xyz` in a cited directory is whatever the "
+         "user put there.  Its SIDECAR is ours, and the line below pairs each "
+         "hit through `sidecars.molstruct.sidecar_path_for`"),
+    ("molbuilder/validation/identity.py", "_foreign_state", "*{suffix}"):
+        ("foreign - not a name we compose",
+         "THE ENGINE'S WARM-RESTART SUFFIXES, and the vocabulary already comes "
+         "from its one home (`warmfiles.inventory`, U3) -- what is spelled "
+         "here is only the loop over it.  No door, because molbuilder does not "
+         "compose `.XV` or `.DM`; `find_by_role` refuses a role outside "
+         "`WRITTEN` on purpose, so that a typo is a refusal and not an empty "
+         "list.  The question is also the mirror of `warm_files_present`: "
+         "files keyed by SOME OTHER id, which needs the suffix list to tell an "
+         "orphaned restart file from an unrelated one"),
     ("molbuilder/envs/_cli.py", "_du", "*"):
         ("foreign - not a name we compose",
          "a byte count over a conda env: matches everything, names nothing"),
     ("molbuilder/envs/abi.py", "installed_package_version", "{name}-*.json"):
-        ("foreign - not a name we compose", "conda-meta's own naming"),
+        ("foreign - not a name we compose",
+         "conda-meta's own naming, read to learn a package's version"),
     ("molbuilder/envs/doctor.py", "_read_conda_meta", "*.json"):
-        ("foreign - not a name we compose", "conda-meta again"),
+        ("foreign - not a name we compose",
+         "conda-meta again -- the same directory, asked what is installed"),
 }
+
+#: The verdicts a site may NOT have once the migration is done.  `--check`
+#: fails on either, and `tests/test_path_framework.py` runs `--check`.
+#:
+#: `owned` means a door composes the name and this caller spelled it anyway.
+#: `unclassified` means nobody has read the site -- which is the same defect
+#: one step earlier, because an unread site cannot be known to be either.
+FAILING_VERDICTS = ("owned", "unclassified")
 
 
 def _module_strings(tree: ast.AST) -> dict[str, str]:
@@ -198,10 +245,21 @@ def _enclosing(tree: ast.AST, node: ast.AST) -> str:
     return best
 
 
-def survey() -> list[dict]:
+def survey(pkg: "pathlib.Path | None" = None,
+           root: "pathlib.Path | None" = None) -> list[dict]:
+    """Every path search under *pkg*, classified.
+
+    ``pkg``/``root`` are parameters so the GUARD CAN BE SHOWN TO FAIL.  A test
+    that only asserts the real package is clean proves nothing about the check:
+    it passes identically when the classifier has stopped classifying.  Pointed
+    at a throwaway package holding one hand-spelled `glob("*.out")`, this must
+    report `owned` -- and `tests/test_path_framework.py` asserts exactly that.
+    """
+    pkg = PKG if pkg is None else pkg
+    root = ROOT if root is None else root
     rows: list[dict] = []
-    for path in sorted(PKG.rglob("*.py")):
-        rel = str(path.relative_to(ROOT))
+    for path in sorted(pkg.rglob("*.py")):
+        rel = str(path.relative_to(root))
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:                              # pragma: no cover
@@ -241,13 +299,55 @@ def survey() -> list[dict]:
     return rows
 
 
+def stale_overrides(rows: list[dict]) -> list[tuple]:
+    """Override keys that match no site any more.
+
+    THE LESSON `classify_source_reads.py` PAID FOR (2026-09-08): its reasons
+    were keyed by line number, an edit displaced two and orphaned a third, and
+    the tool then reported a count for assertions nobody had reclassified.
+    Keying by (file, function, pattern) survives an edit above the site -- but
+    not a RENAME or a deletion, and a silently-dead exemption is how a rule
+    stops applying without anyone deciding that.  So the dead keys are reported
+    rather than ignored.
+    """
+    live = {(r["file"], r["func"], r["pattern"]) for r in rows}
+    return sorted(k for k in _OVERRIDES if k not in live)
+
+
+def _check(rows: list[dict]) -> int:
+    bad = [r for r in rows
+           if r["verdict"].startswith(FAILING_VERDICTS)]
+    stale = stale_overrides(rows)
+    for r in bad:
+        print(f'HANDCRAFTED  {r["file"]}:{r["line"]}  {r["func"]}()')
+        print(f'    {r["call"]}({r["pattern"]!r})   [{r["verdict"]}]')
+        if r["composer"]:
+            print(f'    -> ask {r["composer"]}')
+    for k in stale:
+        print(f"STALE OVERRIDE  {k}  -- matches no site; the site was renamed, "
+              f"moved or fixed.  Delete the entry or re-anchor it.")
+    if bad or stale:
+        print(f"\n{len(bad)} handcrafted, {len(stale)} stale override(s).  "
+              f"`project-layout.md` § 4.5: for every name it composes, the "
+              f"framework owns the search.")
+        return 1
+    print(f"{len(rows)} path searches, none handcrafted, "
+          f"{len(_OVERRIDES)} recorded exemptions all live.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--list", metavar="PREFIX",
                     help="every site whose verdict starts with PREFIX")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--check", action="store_true",
+                    help="exit 1 if any site is owned/unclassified, or if an "
+                         "override no longer matches a site")
     args = ap.parse_args()
     rows = survey()
+    if args.check:
+        return _check(rows)
     if args.json:
         json.dump(rows, sys.stdout, indent=1)
         return 0

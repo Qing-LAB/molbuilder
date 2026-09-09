@@ -80,15 +80,27 @@ def _latest_run_file(d: Path, basename: str, suffix: str) -> Optional[Path]:
 _SETUP_WINDOW = 512 * 1024
 
 
-def _wrapper_log(d: Path, basename: str) -> Path:
-    """The most recent ``<basename>.runwrap-<stamp>.log`` in ``d``.
+def _wrapper_log(d: Path, basename: str) -> Optional[Path]:
+    """The most recent ``<basename>.runwrap-<stamp>.log`` in ``d``, or None.
 
     The stamp is ``%Y%m%d-%H%M%S`` (``runwrap.py``), so lexical order IS
-    chronological order.  Returns a non-existent path when there is none
-    -- ``_read`` turns that into ``""`` and the caller simply learns less.
+    chronological order -- and `runfiles.find` returns name order for files
+    that carry no ``-run<N>``, which these do not, so the last one is the
+    newest.
+
+    **Through the door** (`project-layout.md` § 4.5).  It globbed
+    ``f"{basename}.runwrap-*.log"`` until 2026-09-08 -- the one role the
+    catalogue declares AS a pattern, spelled a second time here -- and it
+    could not do otherwise, because `find` compared a role exactly and so
+    could never answer for a patterned one (`runfiles.role_matches`).
+
+    ``None`` rather than a name nothing writes: the old fallback was
+    ``<basename>.runwrap-none.log``, a composed spelling for a file that
+    cannot exist, which is the same handcraft in the other direction.
     """
-    logs = sorted(d.glob(f"{basename}.runwrap-*.log"))
-    return logs[-1] if logs else d / f"{basename}.runwrap-none.log"
+    from ..runfiles import find
+    hits = find(d, basename, role=".runwrap-*.log")
+    return hits[-1][0] if hits else None
 
 
 def deck_value(deck: Path, keyword: str) -> Optional[str]:
@@ -119,7 +131,8 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
 
 def _trial_deck(d: Path, basename: str) -> Path:
     """The deck a trial ran, beside its results."""
-    return d / f"{basename}.fdf"
+    from ..runfiles import compose as _rf_compose
+    return d / _rf_compose(basename, ".fdf")
 
 
 def parse_point(label: str, d: Path, basename: str, engine: str,
@@ -231,7 +244,9 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # launcher handing back fewer ranks, OMP_NUM_THREADS set in the
     # environment) produced a row whose label described a run that never
     # happened -- and `choose_winner` ranked it against the others.
-    effective = parse_effective_run(out_head, _read(_wrapper_log(d, basename)))
+    _wlog = _wrapper_log(d, basename)
+    effective = parse_effective_run(out_head,
+                                    _read(_wlog) if _wlog is not None else "")
     deck = _trial_deck(d, basename)
     alg = deck_value(deck, "Diag.Algorithm")
     if alg is not None:
@@ -301,8 +316,10 @@ def _read_system(bundle: Path) -> Dict:
     # (roadmap 7.10 M1); the bare-root pattern stays first for a bundle
     # prepped before it.  This is already the degraded path (a malformed
     # description), so breadth beats precision here.
-    _decks = (list(Path(bundle).glob("*.fdf"))
-              + list(Path(bundle).glob("*/*.fdf")))
+    from ..runfiles import find_by_role
+    _decks = (find_by_role(bundle, ".fdf")
+              + [d for sub in Path(bundle).iterdir() if sub.is_dir()
+                 for d in find_by_role(sub, ".fdf")])
     for fdf in sorted(_decks):
         for line in _read(fdf).splitlines():
             toks = line.split("#", 1)[0].split()

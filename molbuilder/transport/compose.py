@@ -188,13 +188,24 @@ def classify_citation(cite_dir: Path) -> CitedDir:
     more information never loses to less.
     """
     from ..jobset.materialize import attempt_concluded
+    from ..runfiles import find_by_role
     cite_dir = Path(cite_dir)
-    decks = sorted(cite_dir.glob("*.fdf"))
-    xvs = sorted(cite_dir.glob("*.XV"))
-    xyzs = sorted(cite_dir.glob("*.xyz"))
-    pairs = [x for x in xyzs
-             if (cite_dir / (x.name[: -len(".xyz")] + ".molstruct.json")
-                 ).is_file()]
+    # THE DECK IS OURS AND THE REST IS NOT, and the two halves of this
+    # condition ask accordingly (`project-layout.md` § 4.5).  `.fdf` is a role
+    # `runfiles.WRITTEN` declares, so the catalogue searches for it.  `.XV` is
+    # SIESTA's own restart file and a bare `.xyz` is a person's structure --
+    # neither is a name molbuilder composes, so neither has a door here, and
+    # `WRITTEN` deliberately does not enumerate what an engine writes.
+    decks = find_by_role(cite_dir, ".fdf")
+    xvs = sorted(p for p in cite_dir.glob("*.XV") if p.is_file())
+    xyzs = sorted(p for p in cite_dir.glob("*.xyz") if p.is_file())
+    # THE PAIR IS COMPOSED BY THE MODULE THAT OWNS THE SUFFIX
+    # (`sidecars.molstruct.sidecar_path_for`), not by slicing `.xyz` off a
+    # name here -- and the slice was subtly its own rule: it stripped exactly
+    # ``.xyz`` where the composer strips the LAST suffix, so the two agreed
+    # only for names ending in `.xyz`, which is the only case reached.
+    from ..sidecars.molstruct import sidecar_path_for
+    pairs = [x for x in xyzs if sidecar_path_for(x).is_file()]
 
     if decks and xvs:
         if len(decks) > 1:
@@ -225,9 +236,13 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         # classification only RECORDS the state (describing ahead of a
         # running relax is legal); COMPOSING from it refuses (strict
         # composition, ruling Q2 -- compose_junction).
+        # `run.json` is ONE NAME, so it is asked as one -- it globbed a
+        # literal with no wildcard in it.  `.concluded` is the catalogue's, so
+        # the catalogue finds it.
+        from ..jobset.materialize import RUN_LAUNCH_FILE
         has_record = (concluded is not None
-                      or bool(list(cite_dir.glob("run.json"))
-                              + list(cite_dir.glob("*.concluded"))))
+                      or (cite_dir / RUN_LAUNCH_FILE).is_file()
+                      or bool(find_by_role(cite_dir, ".concluded")))
         return CitedDir(path=cite_dir, form="relaxation", deck=deck,
                         xv=xvs[0], concluded=concluded,
                         has_record=has_record)
@@ -241,8 +256,7 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         xyz = pairs[0]
         return CitedDir(
             path=cite_dir, form="structure", xyz=xyz,
-            sidecar=cite_dir / (xyz.name[: -len(".xyz")]
-                                + ".molstruct.json"))
+            sidecar=sidecar_path_for(xyz))
 
     # Neither form: name what IS there and what the condition wants.
     held = []
@@ -408,7 +422,9 @@ def labeled_citation_structure(cited: CitedDir):
             f"the deck {cited.deck.name} and {cited.xv.name} do not describe "
             f"the same relaxation: {exc}")
 
-    sidecars = sorted(cited.path.glob("*.molstruct.json"))
+    # Through the finder (§ 4.5); this globbed the suffix a second time.
+    from ..sidecars.molstruct import sidecars_in
+    sidecars = sidecars_in(cited.path)
     if len(sidecars) > 1:
         raise ComposeError(
             f"the cited deck {cited.deck.name} carries no ATOM-METADATA "
@@ -468,7 +484,8 @@ def swap_electrode_labels(cited: CitedDir) -> str:
     # one that is came from the same door that read them, so the swap
     # can never rewrite a block the composition does not read (form A
     # accepts either an in-body block OR a sidecar beside the deck).
-    if source.name.endswith(".molstruct.json"):
+    from ..sidecars.molstruct import is_sidecar
+    if is_sidecar(source):
         data = json.loads(source.read_text())
         data["regions"] = _swapped(data.get("regions"))
         _write_atomically(source, json.dumps(data, indent=2) + "\n")

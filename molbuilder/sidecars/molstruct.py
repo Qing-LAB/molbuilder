@@ -134,7 +134,13 @@ ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "structure_hash",
                  "selection_rules", "created_by", "created_at")
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
-_SIDECAR_SUFFIX = ".molstruct.json"
+SUFFIX = ".molstruct.json"
+
+#: The old private spelling.  `transport/compose` held four hand-written
+#: copies of this literal and a `glob("*.molstruct.json")` of its own until
+#: 2026-09-08; a suffix with a composer (:func:`sidecar_path_for`) and no
+#: public name is how that happens (`project-layout.md` § 4.5).
+_SIDECAR_SUFFIX = SUFFIX
 
 
 class MolstructJsonError(ValueError):
@@ -190,6 +196,27 @@ def sidecar_path_for(xyz_path: Union[str, Path]) -> Path:
     """
     p = Path(xyz_path)
     return p.with_name(p.stem + _SIDECAR_SUFFIX)
+
+
+def sidecars_in(directory: Union[str, Path]) -> "List[Path]":
+    """Every sidecar in *directory*, sorted by name — the finder half.
+
+    :func:`sidecar_path_for` composes the name; nothing found it, so
+    `transport/compose` spelled ``glob("*.molstruct.json")`` and
+    ``name.endswith(".molstruct.json")`` beside it.  **For every name it
+    composes, the framework owns the search** (`project-layout.md` § 4.5).
+    """
+    d = Path(directory)
+    try:
+        return sorted(p for p in d.iterdir()
+                      if p.is_file() and p.name.endswith(SUFFIX))
+    except OSError:
+        return []
+
+
+def is_sidecar(path: Union[str, Path]) -> bool:
+    """Is this a sidecar?  Asked of the one module that names the suffix."""
+    return Path(path).name.endswith(SUFFIX)
 
 
 def sha256_of_file(path: Union[str, Path]) -> str:
