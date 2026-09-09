@@ -289,10 +289,17 @@ def test_a_nested_archive_group_scans_its_OWN_directory(tmp_path):
     """
     from molbuilder.web.blueprints.docs import _build_toc_tree
     root = _isolated_docs(tmp_path)
-    # a doc in the NESTED directory, and one in its ancestor -- each must land
+    # A doc in the NESTED directory, and one in its ancestor -- each must land
     # in exactly one group, its own.
-    (root / "archive" / "old_docs" / "zz-nested-only.md").write_text(
-        "# Nested\n", encoding="utf-8")
+    #
+    # The nested group is `audit-2026-06-26` and NOT the `old_docs` one, whose
+    # directory name ends in the four letters a docs citation starts with -- so
+    # a fixture path under it reads to `test_no_retired_doc_paths` as a citation
+    # of a document that does not exist.  That lint gained the left boundary it
+    # was missing in the same commit; this test simply has no reason to stand in
+    # front of it.
+    nested = root / "archive" / "audits" / "audit-2026-06-26"
+    (nested / "zz-nested-only.md").write_text("# Nested\n", encoding="utf-8")
     (root / "archive" / "zz-top-only.md").write_text("# Top\n",
                                                      encoding="utf-8")
 
@@ -307,10 +314,10 @@ def test_a_nested_archive_group_scans_its_OWN_directory(tmp_path):
         return None
 
     tree = _build_toc_tree(root)
-    nested = group_children(tree, "old_docs") or []
-    assert "archive/old_docs/zz-nested-only.md" in nested, (
-        f"the nested group did not discover its own document: {nested[:6]}")
-    assert "archive/zz-top-only.md" not in nested, (
+    found = group_children(tree, "audit-2026-06-26") or []
+    assert "archive/audits/audit-2026-06-26/zz-nested-only.md" in found, (
+        f"the nested group did not discover its own document: {found[:6]}")
+    assert "archive/zz-top-only.md" not in found, (
         "the nested group surfaced its ANCESTOR's document as its own child")
 
 

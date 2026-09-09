@@ -57,7 +57,40 @@ RETIRED = re.compile(
     r"|(?<!archive/)(?<![\w])old_docs/"
 )
 
-DOC_PATH = re.compile(r"docs/[A-Za-z0-9_\-./]+\.md")
+# A LEFT BOUNDARY, because `old_docs/` ends in `docs/`.  Without it any path
+# whose directory ends that way -- and `docs/archive/old_docs/` is a real tree --
+# matches from the INNER `docs/`, so `old_docs/x.md` is reported as a citation of
+# a missing `docs/x.md`.  The RETIRED pattern above already carries `(?<!old_)`
+# for the same reason; this one never got it.  Measured 2026-09-08: the boundary
+# changes 1 match out of 660 across the repo, and that one is spurious.
+DOC_PATH = re.compile(r"(?<![A-Za-z0-9_\-])docs/[A-Za-z0-9_\-./]+\.md")
+
+
+def test_the_two_arms_agree_about_the_sanctioned_history_form():
+    """`docs/archive/old_docs/…` must be legal to BOTH arms, not just one.
+
+    The module docstring permits exactly that form -- *"if a comment genuinely
+    means the old document, it must say ``docs/archive/old_docs/…``
+    explicitly"* -- and :data:`RETIRED` carries two lookbehinds to honour it,
+    the second with the warning that without them *"the two tests then disagree
+    about the one form each requires."*
+
+    :data:`DOC_PATH` never got the same treatment, so it read the INNER
+    ``docs/...`` out of any ``old_docs/...`` path and reported a citation of a
+    file that does not exist -- the two arms disagreeing, exactly as predicted.
+    Measured 2026-09-08 (the boundary changes 1 match in 660, and that one is
+    spurious).
+    """
+    sanctioned = "docs/archive/old_docs/tabs/spectra/overview.md"
+    assert [m.group(0) for m in DOC_PATH.finditer(f"see {sanctioned} for it")] \
+        == [sanctioned], "the sanctioned history citation must match WHOLE"
+    assert not RETIRED.search(sanctioned), (
+        "and it must not trip the retired-path arm -- that is what the two "
+        "lookbehinds above are for")
+    # a path merely ENDING in `docs/` is not a docs citation
+    assert not DOC_PATH.findall("archive/old_docs/zz-only.md")
+    # ...while an ordinary one still is
+    assert DOC_PATH.findall("see docs/model/parse.md") == ["docs/model/parse.md"]
 
 
 def _scan_files():
