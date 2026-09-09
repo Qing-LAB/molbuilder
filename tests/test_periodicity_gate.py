@@ -216,8 +216,16 @@ class TestTheStateTable:
         # which axis -- not that a particular phrasing survives.
         with pytest.raises(ValueError) as exc:
             validate_periodicity(s)
-        assert "a" in str(exc.value), (
-            f"the refusal does not name the offending axis: {exc.value}")
+        # `"a" in str(exc.value)` stood here until 2026-09-09 and could not
+        # fail: the letter is in "than", "cannot", every English sentence, so
+        # a refusal naming the WRONG axis or no axis at all passed.  `along a`
+        # is the emitter's own phrasing and is the smallest string that can
+        # only come from naming this axis.
+        msg = str(exc.value)
+        assert "along a" in msg, (
+            f"the refusal does not name the offending axis: {msg}")
+        assert "along b" not in msg and "along c" not in msg, (
+            f"the refusal names an axis that fits: {msg}")
 
     def test_left_handed_cell_is_refused(self):
         """SCIENCE. A lattice with det < 0 is refused before anything else is judged.
@@ -772,7 +780,6 @@ class TestPeriodicityDoor:
         assert r.status_code == 200
         body = r.get_json()
         assert body["periodicity"]["cell_origin"][0] == 50.0, "the box moved too"
-        said = " ".join(n["message"] for n in (body.get("notices") or []))
         assert not _said(body.get("notices"), "cell.atoms_outside"), (
             f"spurious finding: {_wheres(body.get('notices'))}")
 

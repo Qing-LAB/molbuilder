@@ -45,8 +45,8 @@ free from the dataclass.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, fields, is_dataclass
-from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Tuple
+from dataclasses import dataclass, fields
+from typing import Any, ClassVar, Dict, FrozenSet, List, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -423,6 +423,67 @@ def to_json(rule: Rule) -> Dict[str, Any]:
     return out
 
 
+#: What each LEAF field of a rule must be, declared rather than inferred --
+#: the third table beside :data:`_SUBRULE_FIELDS` and
+#: :data:`_SUBRULE_LIST_FIELDS`, and for their reason: the annotation on a
+#: frozen dataclass is documentation, and nothing was checking it.
+#:
+#: WHY THIS EXISTS (2026-09-09).  ``from_json`` accepted any JSON value for a
+#: leaf and the wrong type then raised a bare ``TypeError`` -- from
+#: ``tuple(from_json(r) for r in raw)`` when a sub-rule LIST was a scalar, and
+#: from ``set(rule.elements)`` / ``rule.n < 0`` deep inside :func:`evaluate`.
+#: ``web/blueprints/selection.py`` catches :class:`SelectionError` and only
+#: that, so all three escaped as Flask's HTML 500 page WITH A STACK TRACE where
+#: `web-api.md` § 1 requires a JSON 400 -- on a route the filter panel calls on
+#: every keystroke.  A malformed rule is a bad REQUEST, and it is refused here,
+#: at the boundary where untrusted JSON becomes a rule.
+_LEAF_KINDS: Dict[str, str] = {
+    "elements":   "str-seq",
+    "names":      "str-seq",
+    "ids":        "str-seq",
+    "indices":    "int-seq",
+    "expression": "str",
+    "name":       "str",
+    "n":          "int",
+}
+
+
+def _check_leaf(op: str, name: str, raw: Any) -> Any:
+    """Refuse a leaf value the rule cannot hold, naming both.
+
+    Returns the value to store -- a sequence becomes a tuple, which is what
+    keeps the frozen dataclass hashable.
+    """
+    kind = _LEAF_KINDS.get(name)
+    if kind is None:                       # a leaf nothing declares: pass it on
+        return tuple(raw) if isinstance(raw, list) else raw
+    if kind.endswith("-seq"):
+        if not isinstance(raw, (list, tuple)) or isinstance(raw, (str, bytes)):
+            raise SelectionError(
+                f"from_json[{op!r}]: {name!r} must be a list, got "
+                f"{type(raw).__name__}")
+        want = str if kind == "str-seq" else int
+        for i, v in enumerate(raw):
+            # bool is an int subclass; a rule holding True as an index is a
+            # mistake that would evaluate to atom 1.
+            if not isinstance(v, want) or (want is int and isinstance(v, bool)):
+                raise SelectionError(
+                    f"from_json[{op!r}]: {name}[{i}] must be "
+                    f"{want.__name__}, got {type(v).__name__}")
+        return tuple(raw)
+    if kind == "int":
+        if not isinstance(raw, int) or isinstance(raw, bool):
+            raise SelectionError(
+                f"from_json[{op!r}]: {name!r} must be an int, got "
+                f"{type(raw).__name__}")
+        return raw
+    if not isinstance(raw, str):
+        raise SelectionError(
+            f"from_json[{op!r}]: {name!r} must be a str, got "
+            f"{type(raw).__name__}")
+    return raw
+
+
 def from_json(payload: Dict[str, Any]) -> Rule:
     """Deserialise a JSON-able dict back into a rule (or rule tree).
 
@@ -458,15 +519,18 @@ def from_json(payload: Dict[str, Any]) -> Rule:
             )
         raw = payload[f.name]
         if f.name in subrule_list_fields:
+            if not isinstance(raw, (list, tuple)):
+                raise SelectionError(
+                    f"from_json[{op!r}]: {f.name!r} must be a list of rules, "
+                    f"got {type(raw).__name__}")
             kwargs[f.name] = tuple(from_json(r) for r in raw)
         elif f.name in subrule_fields:
             kwargs[f.name] = from_json(raw)
-        elif isinstance(raw, list):
-            # Leaf-level lists (e.g. ByElement.elements) round-trip
-            # back to tuples to keep the frozen dataclass hashable.
-            kwargs[f.name] = tuple(raw)
         else:
-            kwargs[f.name] = raw
+            # Leaf-level lists (e.g. ByElement.elements) round-trip back to
+            # tuples to keep the frozen dataclass hashable, and the TYPE is
+            # checked here rather than left to blow up inside `evaluate`.
+            kwargs[f.name] = _check_leaf(op, f.name, raw)
     return cls(**kwargs)
 
 

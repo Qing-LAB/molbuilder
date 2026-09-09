@@ -112,7 +112,13 @@ def validate_topic(topic: str) -> str:
     validate_name(topic, kind="topic")
     if topic not in CANONICAL_TOPICS:
         raise InvalidName(
-            f"topic {topic!r} is not one of the canonical six: "
+            # NO COUNT IN THE MESSAGE.  It said "the canonical six" for a set
+            # that has been NINE since 2026-07-27 -- `job-contracts.md` § 2.5
+            # corrected itself and this did not, and a test asserted the stale
+            # wording, so the drift was pinned rather than caught.  The list is
+            # right there; a number beside it is a second thing to keep in step
+            # and buys nothing.
+            f"topic {topic!r} is not one of the canonical topics: "
             f"{', '.join(CANONICAL_TOPICS)}.  Pick the closest match "
             f"or extend molbuilder.projects.CANONICAL_TOPICS."
         )
@@ -490,7 +496,7 @@ def list_topics(project: str, *,
                  base: Optional[Path] = None) -> List[str]:
     """Topics present under ``project``, in canonical order.
 
-    Returns the canonical six intersected with what's on disk -- so
+    Returns the canonical topics intersected with what's on disk -- so
     the result is always a prefix of :data:`CANONICAL_TOPICS` ordering.
     Non-canonical directories under the project root are ignored.
     """

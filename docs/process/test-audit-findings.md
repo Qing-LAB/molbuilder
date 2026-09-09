@@ -36,28 +36,29 @@ used; that is what makes it fact-checkable rather than remembered.
 
 ## 0a. The defect ledger — every numbered finding, and where it lives
 
-**Nothing here is fixed.** Each row was reproduced against the working tree on
+**Status is per row.** Each was reproduced against the working tree on
 the date given, and the detail — the reproduction, the line numbers, and what
 the fix costs — is in the section named. This table exists so there is ONE place
 to look; the sections are where the argument is.
 
 | # | what | live? | detail |
 |---|---|---|---|
-| **#64** | two task-setup routes drop `cfg`, so findings carry no `workflow_group` and the page cannot place them on a card | page defect | § 2.1 |
-| **#65** | the XSS allowlist matches files by SUFFIX, so a bare `viewer.js` entry exempts five files; two of its three patterns are dead and the live one lands in a viewer the comment never names | security lint hole | § 2.2 |
+| **#64** | two task-setup routes drop `cfg`, so findings carry no `workflow_group` and the page cannot place them on a card | **FIXED 2026-09-09** — `validation.task.config_class_for` gives the engine→config lookup one owner, both sites pass it, and the guard file now covers them | § 2.1 |
+| **#65** | the XSS allowlist matches files by SUFFIX, so a bare `viewer.js` entry exempts five files; two of its three patterns are dead and the live one lands in a viewer the comment never names | **FIXED 2026-09-09** — exact-path matching, and a lint over the table that then found **nine MORE dead entries** | § 2.2 |
 | **#66** | four tests owed a REDESIGN, not a deletion — still in the tree, still weak — plus the untested BROKEN env-state gate in `run_install` | weak guards | § 3 |
-| **#67** | `POST /api/selection/eval` answers **HTML 500 with a stack trace** where its contract says JSON 400, for three malformed-rule shapes | **live, on a per-keystroke path** | § 6.1 |
-| **#68** | the topic refusal says *"canonical six"* for a set of **nine** — and `test_web_files.py:1077` asserts the stale wording, so the test protects the drift | user-visible | § 6.1 |
+| **#67** | `POST /api/selection/eval` answers **HTML 500 with a stack trace** where its contract says JSON 400, for three malformed-rule shapes | **FIXED 2026-09-09** — `_LEAF_KINDS` declares what each leaf must be, refused at the untrusted boundary | § 6.1 |
+| **#68** | the topic refusal says *"canonical six"* for a set of **nine** — and `test_web_files.py:1077` asserts the stale wording, so the test protects the drift | **FIXED 2026-09-09** — the message carries no count at all, and the test asserts the vocabulary | § 6.1 |
 | **#69** | `files._validate_op_target` is a guard that **cannot fire**, while its docstring claims a protection that never runs | dead guard | § 6.1 |
 | **#70** | six file routes have **no outside-root test at all** — three of them mutations — and `/upload`'s is #74 | coverage | § 6.1 |
-| **#71** | `web-api.md § 1` says the fence answers **403**; the fence answers **400**, and one test hedges `in (400, 403)`, which is how it stayed invisible | doc-vs-code | § 6.1 |
+| **#71** | `web-api.md § 1` says the fence answers **403**; the fence answers **400**, and one test hedges `in (400, 403)`, which is how it stayed invisible | **FIXED 2026-09-09 in the DOCUMENT** — the code was right and consistent across eight routes; the roots are an addressable-space boundary, not a permission model | § 6.1 |
 | **#72** | `TestTheDownloadButtonSaysWhatItIsDoing` carries a user-dated contract and **zero tests** | § 3a.1 misinformation | § 6.1 |
-| **#73** | a dead local at `test_periodicity_gate.py:775` marking a dropped assertion | cosmetic | § 6.1 |
-| **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **cannot fail** | § 6.2 |
-| **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **cannot fail** | § 6.2 |
+| **#73** | a dead local at `test_periodicity_gate.py:775` marking a dropped assertion | **FIXED 2026-09-09** | § 6.1 |
+| **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **FIXED 2026-09-09** — a genuinely outside path, and the echoed path is excluded from the evidence | § 6.2 |
+| **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **FIXED 2026-09-09** — asserts `along a`, and that no axis that fits is named | § 6.2 |
 | **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **science coverage** | `science/test-design-findings.md` § 7a |
+| **#77** | **nine MORE dead XSS exemptions**, found the moment the allowlist got a lint — patterns gone from the files they name, each a standing permission for whatever is written at that name next | **FIXED 2026-09-09** | § 6.1 |
 
-**Sequenced, judged and tracked in `plans/plan.md` § 5m.** This file is the
+**Sequenced, judged and tracked in `plans/plan.md` § 5m** (rows `TS1`–`TS9`). This file is the
 evidence; that section is the work.
 
 ---

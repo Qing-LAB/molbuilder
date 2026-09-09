@@ -165,6 +165,135 @@ def _is_safe_innerHTML_rhs(rhs: str) -> bool:
 # --------------------------------------------------------------------- #
 
 
+#: The innerHTML sites verified safe by inspection, keyed by the EXACT
+#: relative path under `STATIC_ROOT`.  Hoisted to module scope 2026-09-09 so
+#: `test_every_allowlist_entry_names_a_real_site` can quantify over it: an
+#: allowlist nobody audits grows into a hole, and this one had two dead entries
+#: and a suffix match that exempted five files through one line.
+
+#: RETIRED 2026-09-09 -- nine entries whose PATTERN no longer appears in the
+#: file they name, found the moment the lint below started quantifying over
+#: this table.  Each had become a standing permission for whatever gets written
+#: at that name next: four in `modify/viewer.js` (`tr` / `elSel` / `planeBox` /
+#: `infoBody`), three in `lib/spectra/core.js` (`methodsBody` / `modesTbody` /
+#: `panel`), and the two inspector wrappers whose `host.innerHTML = partialHtml`
+#: moved into `_partial_inspector_factory.js` -- which is separately exempted
+#: and still live.  A dead exemption is invisible until someone writes the
+#: pattern again, and then it is silent.
+INNERHTML_ALLOWLIST = {
+    # RE-DERIVED 2026-09-09, when the match became exact.  Three
+    # entries stood here as the bare string "viewer.js", under a
+    # comment naming "static/viewer.js, static/modify/viewer.js,
+    # static/spectra/viewer.js".  Measured against the tree:
+    #   * static/viewer.js DOES NOT EXIST;
+    #   * `hint.innerHTML` and `ul.innerHTML` match NO shipped file —
+    #     dead entries, standing ready to exempt those patterns in any
+    #     of the five files whose path ends in viewer.js;
+    #   * `if (c) c.innerHTML =` lives in exactly ONE file, and it is
+    #     not one the old comment named.
+    # Structure-optimization viewer: `c` is a container looked up by a
+    # constant id and the value is a static string; no untrusted data
+    # in the chain.
+    ("structure-optimization/viewer.js", "if (c) c.innerHTML ="),
+    # Modify tab: pre-existing patterns; same class of risk
+    # as the Watch atom-list (since fixed) — flagged for a
+    # focused hardening task tracked separately.
+    # Spectra inspector core (lifted from spectra/viewer.js in
+    # step 2.2 of the tab-merge; the entries below moved with
+    # the code — same patterns, same safety story).  Most use
+    # escapeHtml (now auto-accepted by the heuristic above); a
+    # few are static status messages with no dynamic content.
+    ("lib/spectra/core.js", "formContainer.innerHTML"),
+    ("lib/spectra/core.js", "esBarDiagram.innerHTML"),
+    ("lib/spectra/core.js", "modeViewer.innerHTML"),
+    ("lib/spectra/core.js", "spectrumChart.innerHTML"),
+    # Sidebar empty-state message (static literal).
+    ("lib/projects/projects-sidebar.js", "list.innerHTML"),
+    # Region-label definitions popover (Phase 2a transport
+    # UI shipped 2026-06-18): renderPopover() builds the
+    # innerHTML from a curated CANONICAL_DEFINITIONS array
+    # at the top of the same file — no user-controlled data
+    # in the value chain.  Region labels (the one dynamic
+    # piece) flow through escapeHtml().
+    # 2026-06-12: forms.js renamed to mutation-bar.js after the
+    # v2 buttons-not-inline-forms refactor; the New-project
+    # subdir-list innerHTML was deleted with the inline form
+    # (the hint now lives in the modal dialog as plain text).
+    # Allowlist entry retired.
+    # 'Selected: <strong></strong>' then textContent on the
+    # strong child -- safe by inspection.
+    ("lib/projects/list.js", "sel.innerHTML"),
+    # Trajectory inspector wrapper: assigns the response body
+    # of GET /partials/trajectory-inspector to host.innerHTML.
+    # Trust boundary: the endpoint renders Jinja-autoescaped
+    # ``_trajectory_inspector.html``, no user input flows
+    # through the template, same-origin fetch.  Equivalent
+    # to /watch's server-side ``{% include %}`` of the same
+    # file.  See molbuilder/web/blueprints/results.py for
+    # the endpoint.
+    # Spectra inspector wrapper: identical pattern to the
+    # trajectory adapter above.  Assigns the response body of
+    # GET /partials/spectra-inspector (Jinja-autoescaped
+    # render of ``_spectra_inspector.html``) to host.innerHTML.
+    # Same trust boundary; same justification.
+    # (RETIRED 2026-08-01: the fused molview selection-panel mount.
+    #  Its file `lib/molview/selection/mount-panel.js` had already been
+    #  deleted in the MolView rebuild, so this allowlisted an innerHTML
+    #  assignment that no longer existed -- and the route it fetched,
+    #  GET /partials/selection-panel, is retired with it.  An allowlist
+    #  entry for a deleted file is worse than none: it reads as a
+    #  reviewed exemption for code nobody can find.)
+    # Markdown inspector: the live-preview pane assigns
+    # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
+    # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes
+    # ``marked.parse(text)`` through ``DOMPurify.sanitize(...)`` on
+    # EVERY call before returning, so the only thing reaching
+    # innerHTML is DOMPurify-sanitised HTML (script/on*/javascript:/
+    # iframe stripped).  The heuristic can't see the sanitiser
+    # through the wrapper function; the sanitisation is mandatory and
+    # has one site.  (Source is user-editable markdown -> self-XSS at
+    # worst, and DOMPurify defends even that.)
+    ("lib/inspectors/markdown.js",
+     "elRender.innerHTML = _renderToHTML"),
+    # Documents tab render pane: same guarantee as the markdown
+    # inspector above, through the SHARED render path.  The RHS is
+    # ``markdownRender.render(r.text)`` (lib/markdown-render.js) =
+    # marked.parse piped through DOMPurify.sanitize on every call, so
+    # only sanitised HTML reaches innerHTML.  Source is app-shipped
+    # docs/*.md served read-only by /api/docs/read.  The loading /
+    # error states use textContent (no innerHTML), so this is the ONE
+    # innerHTML in documents/page.js.
+    ("documents/page.js",
+     "renderEl.innerHTML = window.molbuilder.markdownRender.render"),
+    # Mermaid diagram render (shared markdown-render.js): the RHS is
+    # ``out.svg`` from ``mermaid.render(...)`` run with
+    # securityLevel 'strict' (mermaid sandboxes label HTML), on
+    # app-shipped docs/*.md source.  The ONE innerHTML in the mermaid
+    # path; the code / error states use textContent + createElement.
+    ("lib/markdown-render.js",
+     "fig.innerHTML = out.svg"),
+    # Shared partial-inspector factory (task #308 dedupe):
+    # the ``host.innerHTML = partialHtml`` assignment moved
+    # out of the trajectory + spectra wrappers and into the
+    # factory itself.  Same trust boundary as the two
+    # allowlisted wrappers above — partialHtml is the
+    # response body of a same-origin GET to one of the
+    # ``/partials/*-inspector`` endpoints, all of which
+    # render Jinja-autoescaped templates with no user input.
+    ("lib/inspectors/_partial_inspector_factory.js",
+     "host.innerHTML = partialHtml"),
+    # (STALE 2026-08-01: this described selection-bootstrap.js fetching
+    #  GET /partials/selection-panel into host.innerHTML.  That route is
+    #  retired and the file no longer does it -- its only innerHTML is a
+    #  `= ""` clear, which the safe-RHS check passes unaided.  Kept as a
+    #  note rather than an entry, because an allowlist that outlives the
+    #  code it excuses is how a real finding gets waved through later.)
+    # Bundle-handoff result panel (Step 3 PR-E): builds an
+    # HTML array out of literal tags + escapeHtml(...) calls
+    # on every dynamic value (paths, engine name, region
+}
+
+
 class TestNoUnsafeInnerHTML:
     """Every dynamic ``el.innerHTML = ...`` assignment in the project's
     JS must be either an empty clear or a static string literal.
@@ -200,119 +329,7 @@ class TestNoUnsafeInnerHTML:
         # has a one-line "why this is safe" comment.  Growing this
         # list is fine when the value is genuinely safe; growing
         # it to silence a real vulnerability is not.
-        ALLOWLIST = {
-            # Build tab: category nav + compat hints — strings built
-            # from constants (id lists / DOM-derived names), no
-            # untrusted data.
-            ("viewer.js", "hint.innerHTML"),
-            ("viewer.js", "if (c) c.innerHTML ="),
-            ("viewer.js", "ul.innerHTML"),
-            # Modify tab: pre-existing patterns; same class of risk
-            # as the Watch atom-list (since fixed) — flagged for a
-            # focused hardening task tracked separately.
-            ("modify/viewer.js", "tr.innerHTML"),
-            ("modify/viewer.js", "elSel.innerHTML"),
-            ("modify/viewer.js", "planeBox.innerHTML"),
-            ("modify/viewer.js", "infoBody.innerHTML"),
-            # Spectra inspector core (lifted from spectra/viewer.js in
-            # step 2.2 of the tab-merge; the entries below moved with
-            # the code — same patterns, same safety story).  Most use
-            # escapeHtml (now auto-accepted by the heuristic above); a
-            # few are static status messages with no dynamic content.
-            ("lib/spectra/core.js", "formContainer.innerHTML"),
-            ("lib/spectra/core.js", "panel.innerHTML"),
-            ("lib/spectra/core.js", "methodsBody.innerHTML"),
-            ("lib/spectra/core.js", "modesTbody.innerHTML"),
-            ("lib/spectra/core.js", "esBarDiagram.innerHTML"),
-            ("lib/spectra/core.js", "modeViewer.innerHTML"),
-            ("lib/spectra/core.js", "spectrumChart.innerHTML"),
-            # Sidebar empty-state message (static literal).
-            ("lib/projects/projects-sidebar.js", "list.innerHTML"),
-            # Region-label definitions popover (Phase 2a transport
-            # UI shipped 2026-06-18): renderPopover() builds the
-            # innerHTML from a curated CANONICAL_DEFINITIONS array
-            # at the top of the same file — no user-controlled data
-            # in the value chain.  Region labels (the one dynamic
-            # piece) flow through escapeHtml().
-            # 2026-06-12: forms.js renamed to mutation-bar.js after the
-            # v2 buttons-not-inline-forms refactor; the New-project
-            # subdir-list innerHTML was deleted with the inline form
-            # (the hint now lives in the modal dialog as plain text).
-            # Allowlist entry retired.
-            # 'Selected: <strong></strong>' then textContent on the
-            # strong child -- safe by inspection.
-            ("lib/projects/list.js", "sel.innerHTML"),
-            # Trajectory inspector wrapper: assigns the response body
-            # of GET /partials/trajectory-inspector to host.innerHTML.
-            # Trust boundary: the endpoint renders Jinja-autoescaped
-            # ``_trajectory_inspector.html``, no user input flows
-            # through the template, same-origin fetch.  Equivalent
-            # to /watch's server-side ``{% include %}`` of the same
-            # file.  See molbuilder/web/blueprints/results.py for
-            # the endpoint.
-            ("lib/inspectors/trajectory.js", "host.innerHTML = partialHtml"),
-            # Spectra inspector wrapper: identical pattern to the
-            # trajectory adapter above.  Assigns the response body of
-            # GET /partials/spectra-inspector (Jinja-autoescaped
-            # render of ``_spectra_inspector.html``) to host.innerHTML.
-            # Same trust boundary; same justification.
-            ("lib/inspectors/spectra.js", "host.innerHTML = partialHtml"),
-            # (RETIRED 2026-08-01: the fused molview selection-panel mount.
-            #  Its file `lib/molview/selection/mount-panel.js` had already been
-            #  deleted in the MolView rebuild, so this allowlisted an innerHTML
-            #  assignment that no longer existed -- and the route it fetched,
-            #  GET /partials/selection-panel, is retired with it.  An allowlist
-            #  entry for a deleted file is worse than none: it reads as a
-            #  reviewed exemption for code nobody can find.)
-            # Markdown inspector: the live-preview pane assigns
-            # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
-            # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes
-            # ``marked.parse(text)`` through ``DOMPurify.sanitize(...)`` on
-            # EVERY call before returning, so the only thing reaching
-            # innerHTML is DOMPurify-sanitised HTML (script/on*/javascript:/
-            # iframe stripped).  The heuristic can't see the sanitiser
-            # through the wrapper function; the sanitisation is mandatory and
-            # has one site.  (Source is user-editable markdown -> self-XSS at
-            # worst, and DOMPurify defends even that.)
-            ("lib/inspectors/markdown.js",
-             "elRender.innerHTML = _renderToHTML"),
-            # Documents tab render pane: same guarantee as the markdown
-            # inspector above, through the SHARED render path.  The RHS is
-            # ``markdownRender.render(r.text)`` (lib/markdown-render.js) =
-            # marked.parse piped through DOMPurify.sanitize on every call, so
-            # only sanitised HTML reaches innerHTML.  Source is app-shipped
-            # docs/*.md served read-only by /api/docs/read.  The loading /
-            # error states use textContent (no innerHTML), so this is the ONE
-            # innerHTML in documents/page.js.
-            ("documents/page.js",
-             "renderEl.innerHTML = window.molbuilder.markdownRender.render"),
-            # Mermaid diagram render (shared markdown-render.js): the RHS is
-            # ``out.svg`` from ``mermaid.render(...)`` run with
-            # securityLevel 'strict' (mermaid sandboxes label HTML), on
-            # app-shipped docs/*.md source.  The ONE innerHTML in the mermaid
-            # path; the code / error states use textContent + createElement.
-            ("lib/markdown-render.js",
-             "fig.innerHTML = out.svg"),
-            # Shared partial-inspector factory (task #308 dedupe):
-            # the ``host.innerHTML = partialHtml`` assignment moved
-            # out of the trajectory + spectra wrappers and into the
-            # factory itself.  Same trust boundary as the two
-            # allowlisted wrappers above — partialHtml is the
-            # response body of a same-origin GET to one of the
-            # ``/partials/*-inspector`` endpoints, all of which
-            # render Jinja-autoescaped templates with no user input.
-            ("lib/inspectors/_partial_inspector_factory.js",
-             "host.innerHTML = partialHtml"),
-            # (STALE 2026-08-01: this described selection-bootstrap.js fetching
-            #  GET /partials/selection-panel into host.innerHTML.  That route is
-            #  retired and the file no longer does it -- its only innerHTML is a
-            #  `= ""` clear, which the safe-RHS check passes unaided.  Kept as a
-            #  note rather than an entry, because an allowlist that outlives the
-            #  code it excuses is how a real finding gets waved through later.)
-            # Bundle-handoff result panel (Step 3 PR-E): builds an
-            # HTML array out of literal tags + escapeHtml(...) calls
-            # on every dynamic value (paths, engine name, region
-        }
+        ALLOWLIST = INNERHTML_ALLOWLIST
         rel_name = str(js_path.relative_to(STATIC_ROOT))
         real_offenders = []
         for offender in offenders:
@@ -320,7 +337,13 @@ class TestNoUnsafeInnerHTML:
             payload = offender.split(": ", 1)[1] if ": " in offender else offender
             allowed = False
             for (af, ap) in ALLOWLIST:
-                if rel_name.endswith(af) and ap in payload:
+                # EXACT relative path, never a suffix.  `endswith` stood here
+                # until 2026-09-09 and a bare `"viewer.js"` entry then exempted
+                # FIVE files -- modify/, task-setup/, spectra/,
+                # structure-optimization/ and results/ -- so an exemption
+                # written for one tab silently covered every other viewer.  An
+                # allowlist that cannot say WHICH file it exempts is not one.
+                if rel_name == af and ap in payload:
                     allowed = True
                     break
             if not allowed:
@@ -559,7 +582,7 @@ class TestNoTemplateLiteralInnerHTMLInterp:
         rel = str(js_path.relative_to(STATIC_ROOT))
         unexempt = []
         for site in bad:
-            allowed = any(rel.endswith(p) and frag in site
+            allowed = any(rel == p and frag in site
                           for (p, frag) in ALLOWED)
             if not allowed:
                 unexempt.append(site)
@@ -568,3 +591,39 @@ class TestNoTemplateLiteralInnerHTMLInterp:
             f"interpolation: {unexempt}.  Add to ALLOWED if verified "
             f"safe."
         )
+
+
+@pytest.mark.parametrize(
+    "rel,frag", sorted(INNERHTML_ALLOWLIST),
+    ids=lambda v: v if "/" in str(v) or ".js" in str(v) else str(v)[:28])
+def test_every_allowlist_entry_names_a_real_site(rel, frag):
+    """Every innerHTML exemption names a file that EXISTS at that exact path,
+    and a pattern that is really in it.
+
+    GOAL: keep the allowlist from becoming a hole. An exemption that matches no
+    site is a standing permission for whatever is written next; an exemption
+    matched by SUFFIX is a permission for every file whose path happens to end
+    the same way.
+
+    MEASURED (#65, 2026-09-09). The matcher used `rel_name.endswith(af)` and
+    three entries were the bare string `"viewer.js"` -- of which FIVE files
+    exist (`modify/`, `task-setup/`, `spectra/`, `structure-optimization/`,
+    `results/`), so an exemption written for one tab silently covered all five.
+    The comment above them named `static/viewer.js`, WHICH DOES NOT EXIST. Two
+    of the three patterns matched no shipped file at all, and the third lived
+    in a viewer the comment never mentioned.
+
+    This is the artifact lint that replaces re-auditing by hand (`testing.md`
+    § 3b): it quantifies over the class, so the next dead entry fails the day
+    the code it exempted is deleted -- which is when it becomes a hole, not
+    when someone next looks.
+    """
+    f = STATIC_ROOT / rel
+    assert f.is_file(), (
+        f"allowlist entry {rel!r} is not a file under STATIC_ROOT. An entry "
+        f"must be an EXACT relative path -- a bare name like 'viewer.js' "
+        f"matches every viewer in the tree.")
+    assert frag in _strip_js_comments(f.read_text(encoding="utf-8")), (
+        f"allowlist entry ({rel!r}, {frag!r}) matches nothing in that file any "
+        f"more. Delete it: a dead exemption is a standing permission for "
+        f"whatever is written there next.")

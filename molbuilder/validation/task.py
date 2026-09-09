@@ -260,6 +260,29 @@ def _shipped() -> Dict[str, Any]:
     return {"siesta": SiestaConfig, "pyscf": PySCFConfig}
 
 
+def config_class_for(task, generators=None):
+    """The engine-config dataclass *task*'s engine is generated from, or None.
+
+    ONE OWNER for the engine -> config resolution, because there are two
+    callers and the second one used to do without.  `web/blueprints/build.py`
+    renders this task's preflight findings for the browser, and
+    `issues_to_json` needs the dataclass to resolve each finding's
+    ``workflow_group`` -- without it the key is OMITTED and the page cannot
+    attach the finding to its workflow-group card (`web/ui-contract.md`
+    Rule 2).  The route had nothing to ask, so it passed nothing.
+
+    Returns the CLASS, not an instance: `resolve_workflow_group` reads
+    ``metadata["workflow_group"]`` off the field declarations, so no values are
+    needed and constructing one would invent defaults that are not this task's.
+
+    ``None`` for an engine this backend has no generator for -- which
+    :func:`preflight` reports as its first error, and which leaves the caller
+    exactly where it was before, rather than raising on the refusal path.
+    """
+    known = dict(generators if generators is not None else _shipped())
+    return known.get(task.engine)
+
+
 def _names_exist(task, cls, fields) -> List[Issue]:
     """Every name in ``varies`` and every ``overrides`` key is a real field
     — a real TEMPLATE field: a machine fact refuses with § 7's story.

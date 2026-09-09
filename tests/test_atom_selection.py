@@ -504,6 +504,50 @@ class TestRoundTrip:
         with pytest.raises(SelectionError, match="missing required field"):
             from_json({"op": "by_element"})  # elements missing
 
+    @pytest.mark.parametrize("rule,why", [
+        ({"op": "or", "operands": 5},                     "a sub-rule LIST is a scalar"),
+        ({"op": "by_element", "elements": 5},             "a leaf sequence is a scalar"),
+        ({"op": "by_element", "elements": "Au"},          "a leaf sequence is a bare string"),
+        ({"op": "by_element", "elements": [1]},           "a str element is a number"),
+        ({"op": "by_click", "indices": ["x"]},            "an int index is a string"),
+        ({"op": "by_click", "indices": [True]},           "an int index is a bool"),
+        ({"op": "first_n", "rule": {"op": "all"}, "n": "x"},   "an int field is a string"),
+        ({"op": "first_n", "rule": {"op": "all"}, "n": True},  "an int field is a bool"),
+        ({"op": "by_region", "name": 5},                  "a str field is a number"),
+    ])
+    def test_from_json_refuses_a_leaf_of_the_wrong_type(self, rule, why):
+        """A malformed leaf is refused HERE, as a `SelectionError`, and never
+        reaches `evaluate` as a bare `TypeError`.
+
+        MEASURED DEFECT (#67, 2026-09-09). `web/blueprints/selection.py:127`
+        catches `SelectionError` and only that. Three of these built a rule
+        successfully and then raised `TypeError` deep inside the evaluator --
+        `tuple(from_json(r) for r in raw)` at `selection.py:461`,
+        `set(rule.elements)` at `:228`, `rule.n < 0` at `:306` -- so the route
+        answered Flask's HTML **500 page with a stack trace** where
+        `web/web-api.md` § 1 requires a JSON 400. The filter panel round-trips
+        a rule on EVERY KEYSTROKE in the index box, so this was a live path.
+
+        A bool is refused where an int is wanted because `bool` is an `int`
+        subclass: `True` as an index would silently evaluate to atom 1.
+        """
+        with pytest.raises(SelectionError):
+            from_json(rule)
+
+    def test_from_json_still_accepts_every_well_formed_leaf(self):
+        """The type gate above must not narrow what a valid rule may say.
+
+        The other half of #67: a check that refuses the malformed is only worth
+        having if it passes everything the rules legitimately hold -- a list or
+        a tuple for a sequence, and an empty one, which several callers build.
+        """
+        assert from_json({"op": "by_element", "elements": ["Au", "S"]}).elements \
+            == ("Au", "S")
+        assert from_json({"op": "by_element", "elements": []}).elements == ()
+        assert from_json({"op": "by_click", "indices": [0, 3]}).indices == (0, 3)
+        assert from_json({"op": "first_n", "rule": {"op": "all"}, "n": 0}).n == 0
+        assert from_json({"op": "by_region", "name": "lead"}).name == "lead"
+
     def test_from_json_non_dict_raises(self):
         """A non-object `rule` on the wire refuses cleanly rather than crashing the
         route.

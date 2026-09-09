@@ -374,8 +374,8 @@ IS the answer.
 
 | Status | Meaning |
 |---|---|
-| 400 | bad body / validation / parse failure (the default of `err()`) |
-| 403 | forbidden — a path escaping the allowed roots, or an admin-gate reject |
+| 400 | bad body / validation / parse failure (the default of `err()`) — **including a path escaping the allowed roots**: the picker roots are an addressable-space boundary, not a permission model, so a path outside them is a malformed request rather than a forbidden one *(corrected 2026-09-09; this row said 403 while `files._resolve_within_roots` had always raised 400 across eight routes, and one test hedged `in (400, 403)`, which is how the disagreement stayed invisible)* |
+| 403 | forbidden — an admin-gate reject. **Authorization only**: the caller is known and may not do this |
 | 404 | no such file / directory / route |
 | 409 | conflict — a rename/move/copy/mkdir/write whose destination exists |
 | 413 | payload too large — over the 50 MB global upload cap |

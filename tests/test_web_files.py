@@ -1074,7 +1074,14 @@ class TestFilesMkdir:
         )
         assert r.status_code == 400
         body = r.get_json()
-        assert "not one of the canonical six" in body["error"]
+        # ASSERT THE VOCABULARY, NOT A COUNT.  This said "the canonical six"
+        # until 2026-09-09 and so PINNED a drift: the set has been nine since
+        # 2026-07-27.  What a person needs from the refusal is the list they
+        # may pick from, which is what is asserted now.
+        from molbuilder.projects import CANONICAL_TOPICS
+        assert "not one of the canonical topics" in body["error"]
+        for _t in CANONICAL_TOPICS:
+            assert _t in body["error"], f"the refusal omits {_t!r}"
         assert not (picker_root / "myproj" / "Raman").exists()
 
     def test_mkdir_accepts_canonical_topic_at_topic_depth(
@@ -2515,25 +2522,30 @@ class TestFilesUpload:
         assert r.status_code == 400
         assert "directory" in r.get_json()["error"]
 
-    def test_upload_outside_root_rejected(self, web, tmp_path):
-        """Nothing -- and the audit of 2026-09-09 raises this as a CUT
-        candidate rather than invent a purpose for it. `tmp_path` is the same
-        directory the `picker_root` fixture wires as the root, so `tmp_path /
-        'elsewhere'` is INSIDE the fence: the 400 observed here is 'target_dir
-        does not exist or is not a directory', the case
-        `test_upload_to_missing_dir_400` already covers, and the error-text
-        assertion passes only because pytest's temp directory is named after
-        this test and therefore contains the words 'outside' and 'root'.
-        Measured by replaying the request on 2026-09-09.
+    def test_upload_outside_root_rejected(self, web, picker_root):
+        """An upload whose `target_dir` is outside the picker root is refused.
 
-        The property is real (`web-api.md` § 2.1) and deserves a test;
-        `test_delete_outside_root_rejected` shows how to build a path that is
-        genuinely outside the root.
+        `web-api.md` § 2.1 -- a path from the browser is fenced at the ROUTE.
+        Upload is the one mutating route whose fence had no working test.
+
+        REPAIRED 2026-09-09.  It took `tmp_path`, which the `picker_root`
+        fixture aliases to the SAME directory, so `tmp_path / 'elsewhere'` was
+        INSIDE the fence and the 400 came from "target_dir does not exist".
+        The assertion `"outside" in err or "root" in err` then passed on the
+        echoed path, because pytest names its temp directory after the test:
+        `.../test_upload_outside_root_rejec0/elsewhere` carries both words.
+        A test named for the fence that never reached it.
         """
-        # Absolute path completely outside the picker root.
-        r = self._post(web, tmp_path / "elsewhere", "file.txt")
+        # A sibling tree the picker root has never heard of -- built ABOVE it
+        # for the reason `test_delete_outside_root_rejected` records: anything
+        # under `tmp_path` resolves inside the root.
+        outside = picker_root.parent.parent / "molbuilder_test_outside"
+        r = self._post(web, outside, "file.txt")
         assert r.status_code == 400
-        assert "outside" in r.get_json()["error"] or "root" in r.get_json()["error"]
+        err = r.get_json()["error"]
+        # The path is NOT allowed to be the evidence -- that is what made the
+        # old assertion unfalsifiable.  The refusal must be the fence's.
+        assert "outside" in err.replace(str(outside), ""), err
 
     def test_upload_dot_dot_in_target_rejected(self, web, picker_root):
         """A raw `..` in `target_dir` reaching resolution.
@@ -3195,12 +3207,17 @@ class TestDownloadZip:
         an arbitrary directory as a downloadable archive -- the most complete
         exfiltration available in this file.
 
-        `web-api.md` § 2.1. Honest note (2026-09-09): the assertion accepts 400
-        or 403 because § 1's status table assigns a path escape to 403 while
-        the fence raises 400 -- reported as a doc / code disagreement.
+        `web-api.md` § 2.1, and § 1's status table for the code.
+
+        It accepted `in (400, 403)` until 2026-09-09, because the table said a
+        path escape was 403 while the fence has always raised 400. RESOLVED IN
+        THE DOCUMENT (the code was right and consistent across eight routes; a
+        path outside the roots is a malformed REQUEST, where 403 is the admin
+        gate, which is genuinely authorization). A hedged status is how that
+        disagreement stayed invisible for as long as it did.
         """
         r = self._prepare(web, "/etc")
-        assert r.status_code in (400, 403)
+        assert r.status_code == 400
         assert r.get_json()["ok"] is False
 
     def test_missing_is_a_404(self, web, picker_root):

@@ -362,3 +362,71 @@ def test_cfg_present_does_resolve_workflow_group():
         f"resolve workflow_group='stage'; got "
         f"{serialized[0].get('workflow_group')!r}."
     )
+
+
+# ── #64: the two task-setup sites the route tests above never reached ────────
+
+def _cfg_field_with_a_group():
+    """A SiestaConfig field that declares a `workflow_group`, and a value of
+    the wrong type for it -- so the preflight raises a `config.<key>` finding.
+    """
+    import dataclasses
+    from molbuilder.config.siesta import SiestaConfig
+    for f in dataclasses.fields(SiestaConfig):
+        if f.metadata.get("workflow_group") and f.type in ("int", int):
+            return f.name, f.metadata["workflow_group"]
+    raise AssertionError("no int field carries a workflow_group any more")
+
+
+def test_the_task_setup_save_findings_carry_their_workflow_group(
+        web_client, isolated_projects_root, tmp_path):
+    """A `config.<key>` finding from the task-setup SAVE route reaches the page
+    with its `workflow_group`, so the card can hold it.
+
+    `web/ui-contract.md` Rule 2. MEASURED DEFECT (#64, 2026-09-09):
+    `build.py:1760` and `:1805` called `_issues_to_json(_pf)` with no `cfg`, so
+    `workflow_group` was omitted and the page had nowhere to put the finding.
+    THIS FILE EXISTS TO PREVENT EXACTLY THAT -- its own docstring names
+    "`_issues_to_json(issues)` without the `cfg` kwarg" as the defect -- and its
+    route tests covered the siesta / pyscf / transport PREFLIGHT endpoints and
+    neither of these two. A guard that names a defect and does not cover the
+    site is the § 3a.1 shape: it reads as coverage that is not there.
+
+    Both save-route arms are asserted: the refusal (a preflight ERROR, 400) and
+    the success arm's advisory findings.
+    """
+    import json as _json
+    from support.envelope import envelope
+    key, group = _cfg_field_with_a_group()
+    d = isolated_projects_root / "wg" / "optimization" / "probe"
+    d.mkdir(parents=True, exist_ok=True)
+    # The description is built by the HAND-OVER door, not hand-listed, so a
+    # field the schema grows lands here instead of being forgotten.
+    over = web_client.post("/api/task-setup/handover", json=dict(
+        structure=envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]]),
+        engine="siesta", name="probe",
+        params={"system_label": "probe"})).get_json()
+    assert over and over.get("ok"), over
+    (d / over["handover_name"]).write_text(over["handover_text"])
+    h = _json.loads(over["handover_text"])
+    proposed = {"schema": "molbuilder/task@1", "engine": h["engine"],
+                "shape": "flat", "run": h["run"], "structure": h["structure"],
+                # the field must be PROMOTED before a stage may override it
+                # (`engines/stages.md` § 6.2), which the codec enforces before
+                # the preflight ever runs.
+                "varies": [key],
+                # a STRING where the field is an int -> `config.<key>`
+                "stages": [{"name": "coarse", "enabled": True,
+                            "overrides": {key: "not-an-int"}}]}
+    r = web_client.post("/api/task-setup/save",
+                        json={"dest": str(d), "text": _json.dumps(proposed)})
+    body = r.get_json()
+    findings = body.get("findings") or []
+    ours = [f for f in findings if f.get("where") == f"config.{key}"]
+    assert ours, (
+        f"no `config.{key}` finding on the wire; got "
+        f"{[f.get('where') for f in findings]} (status {r.status_code})")
+    for f in ours:
+        assert f.get("workflow_group") == group, (
+            "the finding reached the page with no workflow_group, so the card "
+            f"cannot hold it: {f}")

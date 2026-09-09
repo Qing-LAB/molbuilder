@@ -187,7 +187,6 @@ def api_structure_analyze():
     validation pass (``validation.check_open_shell_metal``) —
     auto-detect and validate cannot disagree by construction.
     """
-    from dataclasses import asdict
     from .files import _PickerError
     from molbuilder.chemistry import analyze_structure, registered_adapters
     from molbuilder.structure import Structure
@@ -1744,12 +1743,19 @@ def api_task_setup_save():
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
     from molbuilder.template import SUFFIX as _TPL_SUFFIX
-    from molbuilder.validation.task import preflight as _task_preflight
+    from molbuilder.validation.task import (preflight as _task_preflight,
+                                            config_class_for as _cfg_cls_for)
     _tpl_file = dest / f"{task.label}{_TPL_SUFFIX}"
     _pf = _task_preflight(
         task,
         template_text=(_tpl_file.read_text(encoding="utf-8")
                        if _tpl_file.is_file() else None))
+    # THE CONFIG CLASS RIDES WITH THE FINDINGS.  Without it `_issues_to_json`
+    # omits `workflow_group` and the page has no card to put a finding on
+    # (`web/ui-contract.md` Rule 2).  Both calls below passed nothing until
+    # 2026-09-09, and `test_workflow_group_wire_contract.py` -- written for
+    # exactly this defect -- covered the preflight routes and not these two.
+    _pf_cfg = _cfg_cls_for(task)
     _pf_errs = [i for i in _pf if i.severity == "error"]
     if _pf_errs:
         return jsonify({
@@ -1757,7 +1763,7 @@ def api_task_setup_save():
             "error": "the description fails its own preflight "
                      "(engines/stages.md § 6.6):\n  - "
                      + "\n  - ".join(i.message for i in _pf_errs),
-            "findings": _issues_to_json(_pf),
+            "findings": _issues_to_json(_pf, cfg=_pf_cfg),
         }), 400
 
     # ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  A folder already
@@ -1802,7 +1808,7 @@ def api_task_setup_save():
         # Gate ③'s non-refusing findings (sequence warnings and the
         # fingerprint note): the save proceeded, and the reader deserves
         # what the CLI would have echoed.
-        "findings":      _issues_to_json(_pf),
+        "findings":      _issues_to_json(_pf, cfg=_pf_cfg),
     })
 
 
