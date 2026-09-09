@@ -275,12 +275,16 @@ signal this rule names.*
 
 Ask in order, and stop at the first *yes*:
 
-1. **Is it subsumed?** Would another test already fail for this cause? *(Measured
-   case: a `RETIRED` doc-path pattern — four alternation arms, three lookbehinds
-   — enumerated locations that had all been deleted from disk, so the neighbouring
-   "every cited path must exist" test already flagged every one. The whole
-   apparatus, its test and its allowlist entry were guarding a class its sibling
-   covered.)*
+1. **Is it subsumed?** Would another test already fail for this cause?
+   **A subsumption verdict needs a MUTANT, not an argument** — break the code and
+   watch the *coverer* go red too: `python tools/verify_subsumption.py pairs.json`.
+   Measured 2026-09-08: this reasoning was **wrong 1 time in 5**, and coverage
+   cannot rescue it, because two tests can cover one line and still assert
+   different things about it. A verdict of INCONCLUSIVE means the harness has no
+   opinion — never that the cut is safe.
+   *(A subsumption that DID hold: a `RETIRED` doc-path pattern — four alternation
+   arms, three lookbehinds — enumerated locations all deleted from disk, so the
+   neighbouring "every cited path must exist" test flagged every one.)*
 2. **Can it fail?** Break the code it names and watch. A test that stays green is
    not a test (`feedback: mutation-test the test`).
 3. **Does it restate a signature?** Then delete it and let review carry it.
