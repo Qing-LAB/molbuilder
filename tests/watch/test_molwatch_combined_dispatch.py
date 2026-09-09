@@ -328,6 +328,31 @@ def regenerate_goldens():
 # --------------------------------------------------------------------
 
 
+def test_parse_is_deterministic(tmp_path):
+    """Two parses of ONE file must produce the identical legacy dict.
+
+    `model/parse.md` § 2b -- a parser holds no state between calls.  The failure
+    it catches: a mutable default captured by a rule callback survives across
+    parses and silently accumulates, so the second read of the same file differs
+    from the first.
+
+    **RESTORED 2026-09-09 after being cut as subsumed by
+    `test_cross_parse_independence`, which it is NOT.**  Mutation-tested: of
+    twelve mutants that killed this test, the supposed coverer survived one --
+    `parse/engines/_helpers.py:303`, the wall-clock-to-elapsed derivation.  This
+    test compares the WHOLE legacy dict for one file parsed twice, so it sees
+    that series; the coverer compares two DIFFERENT files (B-after-A against
+    B-alone) and never exercises the same-file derivation.  Two tests can cover
+    one line and still assert different things about it, which is exactly why a
+    subsumption claim needs a mutant and not an argument.
+    """
+    p = tmp_path / "det.molwatch.log"
+    p.write_text(_RICH_BLOCK)
+
+    a = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    b = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    assert a == b
+
 def test_cross_parse_independence(tmp_path):
     """Parsing file A then file B must yield the same B-signature as
     parsing B alone.  Guards against module-global state in
