@@ -136,6 +136,7 @@ def _build_toc_tree(root: Path) -> List[Dict]:
     Archive children are auto-populated from the filesystem.
     """
     import json as _json
+    from pathlib import PurePosixPath as _PurePosixPath
     toc_path = root / "toc.json"
     if not toc_path.is_file():
         return []   # fallback: empty tree
@@ -226,12 +227,23 @@ def _build_toc_tree(root: Path) -> List[Dict]:
         # listed in toc.json and append them as unlisted children.
         domain_dir = node.get("_dir")
         if not domain_dir:
-            # Derive from the first child's path prefix.
+            # Derive from the first child's OWN DIRECTORY.
+            #
+            # It took `path.split("/")[0]` -- the first component -- until
+            # 2026-09-08, so every nested group resolved to its top-level
+            # ANCESTOR: the `old_docs` node concluded its directory was
+            # `archive` and globbed `docs/archive/*.md` instead of
+            # `docs/archive/old_docs/*.md`.  Ten sidebar groups resolved to
+            # `archive` that way, which is the multiplier in the duplication
+            # this pairs with (see `_toc_paths` below).  Measured
+            # behaviour-neutral on the shipped tree: nine nodes change the
+            # directory they scan and zero new entries surface, because
+            # everything in those subdirectories is already listed.
             for c in children:
-                if "path" in c:
-                    prefix = c["path"].split("/")[0] if "/" in c["path"] else ""
-                    if prefix and (root / prefix).is_dir():
-                        domain_dir = prefix
+                if "path" in c and "/" in c["path"]:
+                    parent = str(_PurePosixPath(c["path"]).parent)
+                    if parent not in (".", "") and (root / parent).is_dir():
+                        domain_dir = parent
                         break
         if domain_dir:
             subdir = root / domain_dir
@@ -261,6 +273,15 @@ def _build_toc_tree(root: Path) -> List[Dict]:
                 if new:
                     _new_paths[label] = new
                     children.extend(new)
+                    # AND THE GUARD SET GROWS WITH THEM.  `_toc_paths` was
+                    # built once from the original tree and never updated, so
+                    # any two directory nodes resolving to the same directory
+                    # each appended the same unlisted file -- a new
+                    # `docs/archive/*.md` rendered TEN times (measured
+                    # 2026-09-08).  The persist below then wrote the entry into
+                    # the explicit tree, so every later render was clean and
+                    # the bug erased its own evidence.
+                    _toc_paths.update(e["path"] for e in new)
 
         # Resolve children, nesting sub-documents (R5 prefix convention)
         # under their parent doc.

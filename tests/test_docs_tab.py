@@ -215,3 +215,141 @@ def test_read_rejects_a_real_file_outside_docs_via_traversal(client):
     r = client.get("/api/docs/read?path=../pyproject.toml")
     assert r.status_code == 400
     assert r.get_json()["ok"] is False
+
+
+def _isolated_docs(tmp_path):
+    """A throwaway copy of `docs/`, because the builder PERSISTS.
+
+    `_build_toc_tree` writes the normalised tree back to `toc.json`, so a test
+    pointed at the real `docs/` modifies the repository — which is how a suite
+    run came back with `docs/toc.json` dirty (2026-09-08).
+    """
+    import shutil
+    from pathlib import Path
+    dst = tmp_path / "docs"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "docs", dst)
+    return dst
+
+
+def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
+    """The render after a new document lands must already be correct.
+
+    **This bug erased its own evidence, which is why it survived.** Adding a
+    `docs/archive/*.md` made it render TEN times; the builder then persisted the
+    tidied tree, so every later render was clean and nothing was ever visibly
+    wrong. Measured 2026-09-08: call 1 gave 230 paths with the new file ×10,
+    call 2 gave 221 and clean.
+
+    Two causes, and this test covers both because either alone reproduces it:
+
+    * `_toc_paths` was computed once from the original tree and never updated as
+      entries were appended, so every directory node resolving to the same
+      directory appended the same unlisted file.
+    * `domain_dir` came from `path.split("/")[0]` — the FIRST component — so
+      each nested group resolved to its top-level ancestor. Ten sidebar groups
+      resolved to `archive`, which was the multiplier.
+
+    Asserting the FIRST call is the whole point: asserting the second passes
+    against the bug.
+    """
+    from molbuilder.web.blueprints.docs import _build_toc_tree
+    root = _isolated_docs(tmp_path)
+    (root / "archive" / "9999-01-01-brand-new.md").write_text(
+        "# Brand new\n", encoding="utf-8")
+
+    def paths_of():
+        out = []
+
+        def collect(nodes):
+            for n in nodes:
+                if "path" in n:
+                    out.append(n["path"])
+                collect(n.get("children", []))
+        collect(_build_toc_tree(root))
+        return out
+
+    first = paths_of()
+    assert first.count("archive/9999-01-01-brand-new.md") == 1, (
+        f"a new archive doc appears "
+        f"{first.count('archive/9999-01-01-brand-new.md')}x in the FIRST "
+        f"render (should be 1)")
+    assert len(first) == len(set(first)), (
+        "duplicates in the first render: "
+        + repr(sorted({p for p in first if first.count(p) > 1})))
+    # ...and it stays right, which the old code also managed.
+    assert paths_of() == first
+
+
+def test_a_nested_archive_group_scans_its_OWN_directory(tmp_path):
+    """A group for `archive/old_docs/` must not glob `archive/`.
+
+    The consequence of getting this wrong is not only the duplication above: a
+    nested group would surface its ancestor's documents as though they were its
+    own children, so the sidebar's shape would stop matching the tree on disk.
+    """
+    from molbuilder.web.blueprints.docs import _build_toc_tree
+    root = _isolated_docs(tmp_path)
+    # a doc in the NESTED directory, and one in its ancestor -- each must land
+    # in exactly one group, its own.
+    (root / "archive" / "old_docs" / "zz-nested-only.md").write_text(
+        "# Nested\n", encoding="utf-8")
+    (root / "archive" / "zz-top-only.md").write_text("# Top\n",
+                                                     encoding="utf-8")
+
+    def group_children(nodes, label):
+        for n in nodes:
+            if "path" not in n and n.get("label") == label:
+                return [c.get("path") for c in n.get("children", [])
+                        if "path" in c]
+            hit = group_children(n.get("children", []), label)
+            if hit is not None:
+                return hit
+        return None
+
+    tree = _build_toc_tree(root)
+    nested = group_children(tree, "old_docs") or []
+    assert "archive/old_docs/zz-nested-only.md" in nested, (
+        f"the nested group did not discover its own document: {nested[:6]}")
+    assert "archive/zz-top-only.md" not in nested, (
+        "the nested group surfaced its ANCESTOR's document as its own child")
+
+
+def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):
+    """Two sidebar groups may curate the SAME folder — a legitimate shape.
+
+    `docs/toc.json` is hand-curated, so splitting one directory across two
+    labelled groups ("Recent" / "Older") is an ordinary thing to write. Both
+    groups then resolve to the same directory, and an unlisted file in it is
+    discovered by each — appearing twice.
+
+    **This is the case the shipped tree does not currently contain**, which is
+    why it needs its own fixture: reverting the `_toc_paths.update(...)` guard
+    leaves every other test in this file green (measured 2026-09-08). Without
+    this test that line would be unproven, and unproven code is either wrong or
+    unnecessary.
+    """
+    import json
+    from molbuilder.web.blueprints.docs import _build_toc_tree
+    root = tmp_path / "docs"
+    (root / "notes").mkdir(parents=True)
+    for name in ("alpha.md", "beta.md", "unlisted.md"):
+        (root / "notes" / name).write_text(f"# {name}\n", encoding="utf-8")
+    (root / "toc.json").write_text(json.dumps({"tree": [
+        {"label": "Recent", "children": [{"path": "notes/alpha.md"}]},
+        {"label": "Older",  "children": [{"path": "notes/beta.md"}]},
+    ]}), encoding="utf-8")
+
+    paths = []
+
+    def collect(nodes):
+        for n in nodes:
+            if "path" in n:
+                paths.append(n["path"])
+            collect(n.get("children", []))
+    collect(_build_toc_tree(root))
+
+    assert paths.count("notes/unlisted.md") == 1, (
+        f"an unlisted file in a directory curated by TWO groups was appended "
+        f"{paths.count('notes/unlisted.md')}x — `_toc_paths` is not growing "
+        f"as entries are added")
+    assert len(paths) == len(set(paths)), f"duplicates: {paths}"
