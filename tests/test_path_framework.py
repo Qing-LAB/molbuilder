@@ -269,3 +269,113 @@ def test_the_survey_does_not_claim_an_engines_files():
     for engine_file in (".XV", ".DM", ".STRUCT_OUT", ".ANI", ".TSHS"):
         assert engine_file not in known, (
             f"{engine_file} is the ENGINE's; no door of ours composes it")
+
+
+# --------------------------------------------------------------------------- #
+# 4.  The COMPOSE half -- the population a search survey cannot see.          #
+# --------------------------------------------------------------------------- #
+
+def test_no_counter_keyed_name_is_built_by_hand():
+    """`-run<N>` and `run-<N>` have one composer each, and nobody else spells them.
+
+    The search guard above is blind to this by construction: a duplicate
+    COMPOSER performs no search. `materialize.attempt_concluded` spelled
+    ``f"{basename}-run{newest}.concluded"`` on the line *after* asking
+    `runfiles.latest_run` for that counter, and `submit.py` built
+    ``f"{names[j]}/run-{n}"`` and handed it to `prepare_attempt` as the attempt
+    to continue FROM — a real path on the live continue-a-run route, not a
+    message. Both were found by reading a diff, which is why they are a test now.
+    """
+    t = _tool()
+    built = [r for r in t.compositions() if r["reason"] is None]
+    assert not built, (
+        "these build a counter-keyed name by hand instead of asking its one "
+        "composer (`project-layout.md` § 4.5):\n"
+        + "\n".join(f'  {r["file"]}:{r["line"]}  {r["func"]}()\n'
+                    f'      {r["text"][:100]}\n'
+                    f'      -> ask {r["door"]}'
+                    for r in built)
+        + "\n\nIf the number genuinely is not an attempt or a run index, read "
+          "the site and record it in `_COMPOSE_OVERRIDES` with the reason.")
+
+
+def test_no_compose_exemption_has_come_unanchored():
+    """Same rule as the search side: a dead exemption is a rule silently lapsing."""
+    t = _tool()
+    stale = t.stale_compose_overrides(t.compositions())
+    assert not stale, (
+        "these compose-side exemptions match no site any more:\n"
+        + "\n".join(f"  {k}" for k in stale))
+
+
+_BUILDS_A_COUNTER = '''\
+from pathlib import Path
+
+
+def marker(d, basename, n):
+    """Spells the wrapper's `-run<N>` counter, whose one composer is
+    `runfiles.compose(run=N)`."""
+    return Path(d) / f"{basename}-run{n}.concluded"
+'''
+
+_BUILDS_AN_ATTEMPT_PATH = '''\
+def continue_from(stage, n):
+    """Spells the attempt directory, whose composer is `paths.attempt_name`."""
+    return f"{stage}/run-{n}"
+'''
+
+_ASKS_THE_COMPOSER = '''\
+from pathlib import Path
+
+from molbuilder.paths import attempt_name
+from molbuilder.runfiles import compose
+
+
+def marker(d, basename, n):
+    return Path(d) / compose(basename, ".concluded", run=n)
+
+
+def continue_from(stage, n):
+    return f"{stage}/{attempt_name(n)}"
+'''
+
+
+@pytest.mark.parametrize("source,expect_built", [
+    (_BUILDS_A_COUNTER, True),
+    (_BUILDS_AN_ATTEMPT_PATH, True),
+    (_ASKS_THE_COMPOSER, False),
+])
+def test_the_compose_guard_catches_a_new_hand_built_name(tmp_path, source,
+                                                        expect_built):
+    """Shown to fail, and shown NOT to fail on the correct spelling.
+
+    The third case is what stops this passing by flagging every f-string that
+    mentions a run: composing through the door still interpolates the number,
+    just not next to the fragment.
+    """
+    t = _tool()
+    pkg = tmp_path / "molbuilder"
+    pkg.mkdir()
+    (pkg / "offender.py").write_text(source, encoding="utf-8")
+    rows = t.compositions(pkg=pkg, root=tmp_path)
+    if expect_built:
+        assert rows, "the guard did not notice a hand-built counter name"
+        assert rows[0]["door"], "and it did not name the composer to ask"
+        assert rows[0]["reason"] is None, "an unrecorded site must not read as excused"
+    else:
+        assert not rows, (
+            f"a name built THROUGH the composer was flagged: "
+            f"{[r['text'] for r in rows]}")
+
+
+def test_the_grammar_modules_are_exempt_by_identity_not_by_override():
+    """`runfiles` and `paths` compose these names for a living.
+
+    Exempting them with an override would be a lie about why: they are not
+    sites someone read and excused, they are the composers. So they are skipped
+    by module path, and the list of them is short enough to be checkable.
+    """
+    t = _tool()
+    assert t.GRAMMAR_MODULES == ("molbuilder/runfiles.py", "molbuilder/paths.py")
+    for mod in t.GRAMMAR_MODULES:
+        assert (ROOT / mod).is_file(), f"{mod} is exempted and does not exist"

@@ -614,11 +614,24 @@ def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
     # leaves a `.concluded` and no output at all.  Asking without a `role=`
     # ranges over all of them, so a NEWER killed attempt cannot hide behind
     # an OLDER one's goodbye.
-    from ..runfiles import latest_run
+    from ..runfiles import latest_run, tail as _rf_tail
     newest = latest_run(d, basename)
     if newest is None:
         return None
-    mark = d / f"{basename}-run{newest}.concluded"
+    # AND THE NAME IS COMPOSED BY THE GRAMMAR TOO.  This spelled
+    # `f"{basename}-run{newest}.concluded"` one line after asking `latest_run`
+    # for the counter -- the door answered the SEARCH and the caller still
+    # built the name (`project-layout.md` § 4.5, the compose half).
+    #
+    # `tail`, NOT `compose`, and the difference is load-bearing here:
+    # ``basename`` is whatever the DECK is called, and for a cited transport
+    # directory that is a person's own file -- `my.relaxation.fdf`.  `compose`
+    # would refuse it, correctly (§ 2.1: a label carrying a dot cannot be read
+    # back out of a filename), and this function's job is to answer None, not
+    # to raise at a person who named a file with a dot in it.  `tail` cuts the
+    # `-run<N>.concluded` end off a real `compose` result, so the GRAMMAR owns
+    # the tail and the caller owns the stem it was handed.
+    mark = d / (basename + _rf_tail(".concluded", run=newest))
     try:
         return mark.read_text(encoding="utf-8").strip()
     except OSError:

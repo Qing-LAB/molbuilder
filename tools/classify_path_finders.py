@@ -188,6 +188,105 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 FAILING_VERDICTS = ("owned", "unclassified")
 
 
+
+# --------------------------------------------------------------------------- #
+#  THE OTHER HALF: a name BUILT by hand.                                      #
+# --------------------------------------------------------------------------- #
+#
+# Everything above looks at SEARCHES, and a duplicate COMPOSER is invisible to
+# it.  That is how `materialize.attempt_concluded` came to spell
+# `f"{basename}-run{newest}.concluded"` on the line AFTER asking `latest_run`
+# for that very counter, and how `submit.py` built the path
+# `f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to
+# continue FROM.  Both measured 2026-09-08 -- by reviewing the search
+# migration's own diff, not by any check.
+#
+# WHY THIS RULE IS DELIBERATELY NARROW.  Matching "a string that ends in a
+# catalogued role" finds 35 sites of which two are real: `.clone.log`,
+# `serve-<port>.log` and `jobset-decisions.log` all end in `.log` and belong to
+# other grammars entirely.  A check with 33 exemptions is a nag list, not a
+# guard -- and a nag list is how a real finding gets scrolled past.
+#
+# So it matches the two fragments of the grammar that carry RULES rather than
+# just a spelling: the wrapper's `-run<N>` counter (`job-contracts.md` § 6.3 --
+# a hyphen announces a COUNTER, an underscore a NAME) and the attempt
+# directory's `run-<N>` prefix (`project-layout.md` § 1.5).  Both have exactly
+# one composer, both are keyed on a NUMBER, and a hand-built one is how an
+# off-by-one or a renamed prefix reaches disk.  Everything else about a name is
+# the role, and the role is what `WRITTEN` and `find_by_role` already guard.
+#
+# WHAT IT CANNOT SEE, and this is a limit rather than a caveat: a name spelled
+# inside a script molbuilder EMITS.  `siesta/makov_payne.py` carries
+# `glob("*-run*.out")` as template TEXT for a script that ships beside a job --
+# data here, code there, and no AST pass over `molbuilder/` can reach it.  That
+# one is recorded in `plans/plan.md` § 5k: it cannot use `runfiles` until
+# `runfiles` joins `runwrap.MONITOR_COMPANIONS`.
+
+#: Grammar fragments with one composer, keyed on a number.
+COUNTER_FRAGMENTS = ("-run", "run-")
+
+#: The modules that ARE the grammar; they compose these for a living.
+GRAMMAR_MODULES = ("molbuilder/runfiles.py", "molbuilder/paths.py")
+
+#: (file, function, unparsed f-string) -> reason.  Same anchoring rule as
+#: `_OVERRIDES`: (file, function, text), never a line number.
+_COMPOSE_OVERRIDES: "dict[tuple[str, str, str], str]" = {}
+
+
+def compositions(pkg: "pathlib.Path | None" = None,
+                 root: "pathlib.Path | None" = None) -> "list[dict]":
+    """Every f-string that builds a counter-keyed name by hand.
+
+    An f-string qualifies when a literal piece ENDS with one of
+    :data:`COUNTER_FRAGMENTS` and the next piece formats a value -- the number
+    interpolated straight after the fragment, which is exactly what
+    `runfiles.compose(run=N)` and `paths.attempt_name(n)` exist to do.
+    """
+    pkg = PKG if pkg is None else pkg
+    root = ROOT if root is None else root
+    rows: "list[dict]" = []
+    for path in sorted(pkg.rglob("*.py")):
+        rel = str(path.relative_to(root))
+        if rel in GRAMMAR_MODULES:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:                              # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.JoinedStr):
+                continue
+            vals = node.values
+            fragment = None
+            for i, v in enumerate(vals[:-1]):
+                if (isinstance(v, ast.Constant)
+                        and isinstance(v.value, str)
+                        and v.value.endswith(COUNTER_FRAGMENTS)
+                        and isinstance(vals[i + 1], ast.FormattedValue)):
+                    fragment = v.value
+                    break
+            if fragment is None:
+                continue
+            try:
+                text = ast.unparse(node)
+            except Exception:                            # pragma: no cover
+                text = "<?>"
+            where = _enclosing(tree, node)
+            rows.append(dict(
+                file=rel, line=node.lineno, func=where, fragment=fragment,
+                text=text,
+                door=("runfiles.compose(run=N)" if fragment.endswith("-run")
+                      else "paths.attempt_name(n)"),
+                reason=_COMPOSE_OVERRIDES.get((rel, where, text))))
+    return rows
+
+
+def stale_compose_overrides(rows: "list[dict]") -> "list[tuple]":
+    """Compose-side exemptions that match no site -- same failure as above."""
+    live = {(r["file"], r["func"], r["text"]) for r in rows}
+    return sorted(k for k in _COMPOSE_OVERRIDES if k not in live)
+
+
 def _module_strings(tree: ast.AST) -> dict[str, str]:
     """Module-level ``NAME = "literal"``, so an f-string can be resolved.
 
@@ -318,6 +417,12 @@ def _check(rows: list[dict]) -> int:
     bad = [r for r in rows
            if r["verdict"].startswith(FAILING_VERDICTS)]
     stale = stale_overrides(rows)
+    built = [r for r in compositions() if r["reason"] is None]
+    stale += stale_compose_overrides(compositions())
+    for r in built:
+        print(f'HAND-BUILT   {r["file"]}:{r["line"]}  {r["func"]}()')
+        print(f'    {r["text"][:110]}')
+        print(f'    -> ask {r["door"]}')
     for r in bad:
         print(f'HANDCRAFTED  {r["file"]}:{r["line"]}  {r["func"]}()')
         print(f'    {r["call"]}({r["pattern"]!r})   [{r["verdict"]}]')
@@ -326,13 +431,16 @@ def _check(rows: list[dict]) -> int:
     for k in stale:
         print(f"STALE OVERRIDE  {k}  -- matches no site; the site was renamed, "
               f"moved or fixed.  Delete the entry or re-anchor it.")
-    if bad or stale:
-        print(f"\n{len(bad)} handcrafted, {len(stale)} stale override(s).  "
+    if bad or stale or built:
+        print(f"\n{len(bad)} handcrafted search(es), {len(built)} hand-built "
+              f"name(s), {len(stale)} stale override(s).  "
               f"`project-layout.md` § 4.5: for every name it composes, the "
-              f"framework owns the search.")
+              f"framework owns the search -- and composes it in one place.")
         return 1
-    print(f"{len(rows)} path searches, none handcrafted, "
-          f"{len(_OVERRIDES)} recorded exemptions all live.")
+    print(f"{len(rows)} path searches, none handcrafted; "
+          f"{len(compositions())} counter-keyed names, all composed by a door; "
+          f"{len(_OVERRIDES) + len(_COMPOSE_OVERRIDES)} recorded exemptions, "
+          f"all live.")
     return 0
 
 
@@ -365,6 +473,14 @@ def main() -> int:
     print(f"path searches in molbuilder/ : {len(rows)}")
     for k in sorted(buckets):
         print(f"  {k:44} {buckets[k]:4}")
+    built = compositions()
+    print(f"counter-keyed names BUILT by hand (the compose half): "
+          f"{len([r for r in built if r['reason'] is None])} "
+          f"of {len(built)} sites")
+    for r in built:
+        if r["reason"] is None:
+            print(f'  {r["file"]}:{r["line"]}  {r["func"]}()  '
+                  f'-> ask {r["door"]}')
     owned = [r for r in rows if r["verdict"].startswith("owned")]
     print(f"\nOWNED -- a door composes the name, none finds it: {len(owned)}")
     per: dict[str, list[str]] = {}

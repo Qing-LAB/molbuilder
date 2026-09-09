@@ -50,7 +50,7 @@ from molbuilder.parse import (
 )
 from molbuilder.parse.contract import engine_of
 from molbuilder.pyscf.input import ROLE_GEOM_TRAJ
-from molbuilder.runfiles import compose as _rf
+from molbuilder.runfiles import RunFileError, compose as _rf
 from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
@@ -194,7 +194,7 @@ def _basename_from_py(path: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _by_role(directory: str, role: str) -> "List[object]":
+def _by_role(directory: str, role: str) -> "List[Any]":
     """`runfiles.find_by_role`, taking this module's string directories.
 
     One import site rather than five: the resolver below asks four roles and
@@ -301,7 +301,22 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
                 # That is what made the rung-aware glob that stood here
                 # redundant as well as wrong: the loop above covers the
                 # staged trajectory, under the name that is written.
-                base = _rf(stem, role)
+                try:
+                    base = _rf(stem, role)
+                except RunFileError:
+                    # A STEM OFF DISK IS NOT NECESSARILY A LABEL.  `JOB` and
+                    # `SystemLabel` are read through regexes bounded to
+                    # `[A-Za-z0-9_-]+`, deliberately -- but `py_stem` is a
+                    # FILENAME, so `my.job.py` yields `my.job`, which § 2.1
+                    # refuses (rightly: a dotted label cannot be read back out
+                    # of a filename).  A RESOLVER SAYS WHAT IT TRIED AND MOVES
+                    # ON; raising here turned the Watch tab into a 500 for a
+                    # person who put a dot in a filename.  Measured 2026-09-08;
+                    # introduced 3dfa76c9 when these names moved onto
+                    # `runfiles.compose`.
+                    attempts.append(
+                        f"  {stem}: not a run-file label (§ 2.1), skipped")
+                    break
                 cand = os.path.join(directory, base)
                 attempts.append(f"  -> {base}: "
                                 f"{'found' if os.path.isfile(cand) else 'missing'}")

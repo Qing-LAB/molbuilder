@@ -187,7 +187,7 @@ def classify_citation(cite_dir: Path) -> CitedDir:
     wins when both are present — the deck carries the contract, and
     more information never loses to less.
     """
-    from ..jobset.materialize import attempt_concluded
+    from ..jobset.materialize import RUN_LAUNCH_FILE, attempt_concluded
     from ..runfiles import find_by_role
     cite_dir = Path(cite_dir)
     # THE DECK IS OURS AND THE REST IS NOT, and the two halves of this
@@ -239,7 +239,6 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         # `run.json` is ONE NAME, so it is asked as one -- it globbed a
         # literal with no wildcard in it.  `.concluded` is the catalogue's, so
         # the catalogue finds it.
-        from ..jobset.materialize import RUN_LAUNCH_FILE
         has_record = (concluded is not None
                       or (cite_dir / RUN_LAUNCH_FILE).is_file()
                       or bool(find_by_role(cite_dir, ".concluded")))

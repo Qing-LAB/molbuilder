@@ -17,6 +17,10 @@ from molbuilder import runfiles
 from molbuilder.runfiles import find, find_by_role, role_matches
 
 
+# `_stage_state(observed, launch, label, stage, out_glob)` -- the label and the
+# stage come BEFORE the glob, and none of the three has a default.  These three
+# tests caught the reorder by failing, which is the argument for them: an empty
+# label matches nothing, so a positional slip reports every rung as unstarted.
 def _touch(d, *names):
     for n in names:
         p = d / n
@@ -127,7 +131,7 @@ def test_a_pyscf_rung_that_only_wrote_pyscf_log_is_not_reported_queued(tmp_path)
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.pyscf.log")
     state, _detail = _stage_state(tmp_path, {"job_id": 481923},
-                                  "bdt_01_relax*", "bdt", "01_relax")
+                                  "bdt", "01_relax", "bdt_01_relax*")
     assert state != "queued", (
         "a rung whose engine wrote .pyscf.log has produced output; reporting "
         "it queued is § 1.6's exact forbidden line")
@@ -142,8 +146,8 @@ def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_coarse.out")            # only the FIRST rung ran
-    state, detail = _stage_state(tmp_path, None, "bdt_02_fine*",
-                                 "bdt", "02_fine")
+    state, detail = _stage_state(tmp_path, None, "bdt", "02_fine",
+                                 "bdt_02_fine*")
     assert state == "pending", (
         f"rung 02_fine has written nothing; got {state!r} ({detail!r}) — it "
         f"has read its sibling's .out")
@@ -160,8 +164,8 @@ def test_a_hierarchical_rung_is_found_although_the_shape_says_star(tmp_path):
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_tight.out")
-    state, _d = _stage_state(tmp_path, {"mode": "direct"}, "*",
-                             "bdt", "01_tight")
+    state, _d = _stage_state(tmp_path, {"mode": "direct"}, "bdt",
+                             "01_tight", "*")
     assert state != "queued" and state != "pending"
 
 
@@ -288,3 +292,91 @@ def test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home():
     assert "*" + ROLE_OPTIMIZED in pats
     assert "*" + ROLE_GEOM_TRAJ in pats
     assert "*.STRUCT_OUT" in pats, "SIESTA's own name has no home of ours"
+
+
+def test_stage_state_cannot_be_asked_without_a_label(tmp_path):
+    """No default for the label, because an empty one matches NOTHING.
+
+    `runfiles.parse` states the rule this rests on: *"``label`` is required, and
+    that is the whole reason this can be exact."*  So a default of ``""`` would
+    not degrade — it would report *"prepped, not launched"* for a rung that has
+    finished, which is § 1.6's forbidden line reached by a signature rather than
+    by a bug.  Asserted as the outcome pair: the call is refused without a
+    label, and answers with one, on the same directory.
+    """
+    from molbuilder.jobset.runstatus import _stage_state
+    _touch(tmp_path, "bdt_01_tight.out")
+    with pytest.raises(TypeError):
+        _stage_state(tmp_path, None)                       # no label, no stage
+    state, _d = _stage_state(tmp_path, None, "bdt", "01_tight", "*")
+    assert state != "pending", (
+        "with the label given, this rung's .out is visible — which is exactly "
+        "what a defaulted empty label would have hidden")
+
+
+def test_read_system_degrades_on_a_missing_bundle():
+    """It is a REPORTER: absence degrades rather than raises.
+
+    Its own docstring promises that, and the M7 migration broke it — the
+    `glob("*/*.fdf")` it replaced yields nothing for a directory that is not
+    there, while a bare `iterdir()` raises `FileNotFoundError`.  Measured
+    2026-09-08 by re-reading the diff, not by any failing test, which is why
+    this one exists.
+    """
+    from pathlib import Path
+
+    from molbuilder.jobset.summarize import _read_system
+    assert _read_system(Path("/nonexistent/bundle/no-such-thing")) == {
+        "engine": "siesta"}
+
+
+def test_attempt_concluded_answers_for_a_persons_own_deck_name(tmp_path):
+    """A cited directory holds whatever the person named their deck.
+
+    `transport.classify_citation` calls this with `deck.stem`, and a cited
+    relaxation is not necessarily one molbuilder prepped — `my.relaxation.fdf`
+    is a legal thing to cite.  Composing the marker with `runfiles.compose`
+    would **raise** there (§ 2.1: a label carrying a dot cannot be read back out
+    of a filename, and that refusal is right), turning *"this directory has no
+    record"* into a crash at somebody who used a dot.  `runfiles.tail` is the
+    door for a caller holding a stem it did not choose: the grammar owns the
+    ``-run<N>.concluded`` end, the caller owns the stem.
+
+    Measured 2026-09-08: the first M8 spelling raised RunFileError here where
+    the code it replaced returned the marker.
+    """
+    from molbuilder.jobset.materialize import attempt_concluded
+    (tmp_path / "my.relaxation-run0.concluded").write_text("rc=0\n",
+                                                           encoding="utf-8")
+    assert attempt_concluded(tmp_path, "my.relaxation") == "rc=0"
+    # ...and our own naming still answers, which is what makes the test above
+    # a discrimination rather than a blanket loosening.
+    (tmp_path / "bdt_01_tight-run2.concluded").write_text("rc=1 (walltime)\n",
+                                                          encoding="utf-8")
+    assert attempt_concluded(tmp_path, "bdt_01_tight") == "rc=1 (walltime)"
+    assert attempt_concluded(tmp_path, "never_ran") is None
+
+
+def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
+    """A dot in a filename must not 500 the Watch tab.
+
+    `_resolve_run_directory` reads `JOB` and `SystemLabel` through regexes
+    bounded to ``[A-Za-z0-9_-]+`` — deliberately, so a malformed deck cannot
+    inject a path. But ``py_stem`` is the deck's FILENAME stem, taken off disk
+    and unbounded, and it goes into `runfiles.compose`: ``my.job.py`` gives
+    ``my.job``, which § 2.1 refuses (rightly — a dotted label cannot be read
+    back out of a filename).
+
+    A resolver's contract is to try each step, SAY what it tried, and fall
+    through. Raising there turns "I could not resolve this directory" into a
+    server error at somebody who used a dot. Introduced by ``3dfa76c9`` when
+    these names moved onto the composer; measured 2026-09-08.
+    """
+    from molbuilder.web.blueprints.watch import _resolve_run_directory
+    (tmp_path / "my.job.py").write_text("JOB = 'myjob'\n", encoding="utf-8")
+    (tmp_path / "run.out").write_text("done\n", encoding="utf-8")
+    chosen, attempts = _resolve_run_directory(str(tmp_path))
+    assert chosen is not None and chosen.endswith("run.out"), (
+        "the resolver should fall through to its generic step, not raise")
+    assert any("not a run-file label" in a for a in attempts), (
+        f"and it should SAY why it skipped the stem: {attempts}")

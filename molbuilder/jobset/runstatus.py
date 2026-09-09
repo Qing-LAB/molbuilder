@@ -167,14 +167,18 @@ def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
-                 out_glob: str = "*", label: str = "",
-                 stage: Optional[str] = None) -> tuple:
+                 label: str, stage: Optional[str], out_glob: str) -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
 
     ``observed`` is the latest attempt where there is one, and the stage
     container for a flat run (`project-layout.md` § 1.5) — the caller resolves
     that, because *where a run happens* is a layout question and this layer
     only reads.
+
+    ``label`` and ``stage`` have NO DEFAULTS, and that is the point: an empty
+    label matches nothing (`runfiles.parse` requires it), so a caller that
+    forgot to pass one would get *"no output"* for every stage -- § 1.6's
+    forbidden line, arrived at by a default rather than by a bug.
 
     ``launch`` is the attempt's ``run.json``. It is what separates *queued* from
     *never started*, which no amount of looking at an empty directory can do:
@@ -256,8 +260,8 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         token = refs[job.name].token
         out_glob = (sh.stage_glob(token, label)
                     if (sh is not None and token) else "*")
-        state, detail = _stage_state(observed, launch, out_glob,
-                                     label, token or None)
+        state, detail = _stage_state(observed, launch, label,
+                                     token or None, out_glob)
         stages.append(StageStatus(
             ref=refs[job.name], dir=d.name, state=state, detail=detail,
             attempt=(attempt.name if attempt else None),

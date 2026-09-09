@@ -64,7 +64,7 @@ from ..scheduler.quantities import slurm_time as _slurm_time
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
-from ..paths import attempt_dir
+from ..paths import attempt_dir, attempt_name
 
 
 class SubmitError(Exception):
@@ -498,7 +498,7 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
                 f"  read what it measured:  molbuilder jobset summarize "
                 f"bench <stage>\n"
                 f"  measure the point AGAIN: molbuilder jobset prep bench "
-                f"<stage>  (opens {d.name}/run-{ns[-1] + 1}, leaving "
+                f"<stage>  (opens {d.name}/{attempt_name(ns[-1] + 1)}, leaving "
                 f"{last.name} untouched)")
         raise SubmitError(
             f"job {job.name!r}: {last.name} has already been launched "
@@ -1909,7 +1909,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                     # user judges (project-layout.md 1.6, the other
                     # file); molbuilder never decides over them.
                     raise SubmitError(
-                        f"{_j.name}: {_names[_j.name]}/run-{_ns[-1]} was "
+                        f"{_j.name}: {_names[_j.name]}/"
+                        f"{attempt_name(_ns[-1])} was "
                         f"launched and never CONCLUDED -- it may still be "
                         f"RUNNING, or it was force-stopped (walltime, "
                         f"kill).\n"
@@ -1930,14 +1931,21 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                     # job would start had changed what the tree says.
                     continued.append(JobResult(
                         _j.name, [],
-                        f"WOULD continue {_names[_j.name]}/run-{_ns[-1]} "
-                        f"into run-{_ns[-1] + 1} (warm), then launch it"))
+                        f"WOULD continue {_names[_j.name]}/"
+                        f"{attempt_name(_ns[-1])} into "
+                        f"{attempt_name(_ns[-1] + 1)} (warm), then "
+                        f"launch it"))
                     _skip.add(_j.name)
                     continue
                 try:
                     _rep = prepare_attempt(
                         jobset, base, _j.name,
-                        continue_from=f"{_names[_j.name]}/run-{_ns[-1]}")
+                        # THE ATTEMPT'S NAME COMES FROM ITS COMPOSER.  This
+                        # is not a message -- it is the path `prepare_attempt`
+                        # continues FROM, spelled by hand on the live
+                        # continue-a-run path (§ 4.5).
+                        continue_from=(f"{_names[_j.name]}/"
+                                       f"{attempt_name(_ns[-1])}"))
                 except ValueError as _e:
                     # continuing is impossible -- no state to carry, or
                     # the stage's deck would not read it.  Both are
@@ -1945,7 +1953,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                     # died at startup), so the door refuses with the
                     # story rather than silently starting fresh.
                     raise SubmitError(
-                        f"{_j.name}: run-{_ns[-1]} was launched, so "
+                        f"{_j.name}: {attempt_name(_ns[-1])} was "
+                        f"launched, so "
                         f"re-submission continues by default -- but "
                         f"continuing is impossible here:\n  {_e}\n"
                         f"  Look at that run's logs; a FRESH attempt "
@@ -1957,7 +1966,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 continued.append(JobResult(
                     _j.name, [],
                     f"{_how}: "
-                    f"continuing {_names[_j.name]}/run-{_ns[-1]} -> "
+                    f"continuing {_names[_j.name]}/"
+                    f"{attempt_name(_ns[-1])} -> "
                     f"{_rep.dir.name} (copied: "
                     f"{', '.join(_rep.copied) or 'nothing to carry'}).  "
                     f"Fresh instead: prep run {_j.name} first."))

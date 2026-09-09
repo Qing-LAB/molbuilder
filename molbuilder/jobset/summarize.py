@@ -130,9 +130,16 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
 
 
 def _trial_deck(d: Path, basename: str) -> Path:
-    """The deck a trial ran, beside its results."""
-    from ..runfiles import compose as _rf_compose
-    return d / _rf_compose(basename, ".fdf")
+    """The deck a trial ran, beside its results.
+
+    `tail`, not `compose`, for the reason `materialize.attempt_concluded`
+    states: ``basename`` is ``Path(job.script).stem`` read out of
+    ``job-set.json``, so it is a stem this reader was HANDED, not a label it
+    chose.  `compose` validates the label and would raise on a hand-edited
+    one -- and every reader in this module degrades rather than raises.
+    """
+    from ..runfiles import tail as _rf_tail
+    return d / (basename + _rf_tail(".fdf"))
 
 
 def parse_point(label: str, d: Path, basename: str, engine: str,
@@ -317,9 +324,17 @@ def _read_system(bundle: Path) -> Dict:
     # prepped before it.  This is already the degraded path (a malformed
     # description), so breadth beats precision here.
     from ..runfiles import find_by_role
-    _decks = (find_by_role(bundle, ".fdf")
-              + [d for sub in Path(bundle).iterdir() if sub.is_dir()
-                 for d in find_by_role(sub, ".fdf")])
+    _root = Path(bundle)
+    try:
+        _subs = [s for s in _root.iterdir() if s.is_dir()]
+    except OSError:
+        # A MISSING BUNDLE DEGRADES.  `find_by_role` tolerates one; a bare
+        # `iterdir()` does not, and `glob("*/*.fdf")` -- what stood here --
+        # quietly yielded nothing.  Measured 2026-09-08: this raised
+        # FileNotFoundError where the docstring above promises a reporter.
+        _subs = []
+    _decks = (find_by_role(_root, ".fdf")
+              + [d for sub in _subs for d in find_by_role(sub, ".fdf")])
     for fdf in sorted(_decks):
         for line in _read(fdf).splitlines():
             toks = line.split("#", 1)[0].split()

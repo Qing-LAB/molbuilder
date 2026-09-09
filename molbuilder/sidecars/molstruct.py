@@ -134,13 +134,11 @@ ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "structure_hash",
                  "selection_rules", "created_by", "created_at")
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
+#: PUBLIC since 2026-09-08.  `transport/compose` held four hand-written copies
+#: of this literal and a `glob("*.molstruct.json")` of its own: a suffix with a
+#: composer (:func:`sidecar_path_for`) and no public name and no finder is how
+#: that happens (`project-layout.md` § 4.5).
 SUFFIX = ".molstruct.json"
-
-#: The old private spelling.  `transport/compose` held four hand-written
-#: copies of this literal and a `glob("*.molstruct.json")` of its own until
-#: 2026-09-08; a suffix with a composer (:func:`sidecar_path_for`) and no
-#: public name is how that happens (`project-layout.md` § 4.5).
-_SIDECAR_SUFFIX = SUFFIX
 
 
 class MolstructJsonError(ValueError):
@@ -195,7 +193,7 @@ def sidecar_path_for(xyz_path: Union[str, Path]) -> Path:
     so build the name explicitly from the stem.
     """
     p = Path(xyz_path)
-    return p.with_name(p.stem + _SIDECAR_SUFFIX)
+    return p.with_name(p.stem + SUFFIX)
 
 
 def sidecars_in(directory: Union[str, Path]) -> "List[Path]":

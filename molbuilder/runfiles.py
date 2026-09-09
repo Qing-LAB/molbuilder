@@ -274,6 +274,17 @@ def tail(role: str, stage: Optional[str] = None,
 
     For geomeTRIC, which takes a PREFIX and appends its own suffix, ask for the
     trajectory's tail and drop what geomeTRIC will add.
+
+    **:func:`compose` when you own the label; this when you were handed a stem.**
+    That is the same distinction from the reading side, and it decides real
+    cases: `materialize.attempt_concluded` is given whatever the DECK is called,
+    and a cited transport relaxation may be a person's own ``my.relaxation.fdf``.
+    :func:`compose` refuses that, correctly -- § 2.1, a label carrying a dot
+    cannot be read back out of a filename -- but the caller's job there is to
+    answer *"no record"*, not to raise at somebody who used a dot. Asking for
+    the tail keeps the GRAMMAR's half in the grammar and leaves the stem to the
+    caller who received it (both sites measured 2026-09-08, when composing
+    turned a report into a crash).
     """
     return compose(_PLACEHOLDER, role, stage, run,
                    **counters)[len(_PLACEHOLDER):]
@@ -396,7 +407,12 @@ def find(directory, label: str, *,
     keeps a foreign file in the same directory from being reported as an
     attempt.
 
-    ``role`` narrows to one (``".out"``); ``roles`` passes a caller's own
+    ``role`` narrows to one (``".out"``) -- **or to a family, when it carries a
+    ``*``**: :data:`WRITTEN` declares one row that way (``.runwrap-*.log``, one
+    file per launch), and :func:`role_matches` reads a starred role as the
+    pattern the catalogue means.  ``role="*.log"`` is the same mechanism used
+    deliberately by `runstatus`, where the question is *has the engine written
+    anything* and `.pyscf.log` must count.  ``roles`` passes a caller's own
     vocabulary through to :func:`parse` for the ``_``-prefixed kind, exactly as
     that function documents.  ``stage`` and ``run`` filter on what was parsed —
     ``run=None`` means *any*, and a file with no counter is matched only by

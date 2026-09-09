@@ -1107,7 +1107,72 @@ grammar. What is NOT settled is the subset that globs merely to LOCATE a file
 it then reads — those gain nothing from the literal and can go stale silently.
 Separating the two is a review, not a sweep, and it is open.
 
-**Still open, unchanged by M7:** `siesta/makov_payne.py` spells `-run<N>` and
+### 5k.4d M8 — the COMPOSE half, found by reviewing M7's own diff
+
+**A duplicate composer performs no search, so M7's guard was blind to it.** Two
+were live:
+
+| site | what it was |
+|---|---|
+| `materialize.attempt_concluded` | `f"{basename}-run{newest}.concluded"`, on the line AFTER asking `runfiles.latest_run` for that counter |
+| `submit.py:1940` | `f"{_names[_j.name]}/run-{_ns[-1]}"` handed to `prepare_attempt` as `continue_from` — a real path on the live continue-a-run route |
+
+Six more were `run-<n>` in user-facing messages, which would have started lying
+the day the prefix changed. All eight ask a composer now, and
+`classify_path_finders.compositions()` keeps it that way — narrow by design
+(`project-layout.md` § 4.5's compose half explains why 35 role-suffix matches
+would be the wrong instrument).
+
+**And re-reading M7's diff found three defects in it**, none of which any test
+had caught:
+
+1. **`summarize._read_system` raised on a missing bundle.** `glob("*/*.fdf")`
+   yields nothing for a directory that is not there; the bare `iterdir()` that
+   replaced it raises `FileNotFoundError` — against that function's own
+   docstring, *"absence degrades rather than raises — this is a reporter."*
+   The kind of difference a mechanical migration produces and a green suite
+   hides.
+2. **`_stage_state` gained `label: str = ""`.** An empty label matches nothing
+   (`runfiles.parse` requires one), so a caller who forgot it would get
+   *"prepped, not launched"* for every rung — § 1.6's forbidden line, reached by
+   a signature. Now required, and asserted as an outcome pair rather than as a
+   signature: refused without a label, answers with one, same directory.
+3. **`_SIDECAR_SUFFIX = SUFFIX`** — a back-compat alias, against the standing
+   no-shims rule. Deleted.
+
+**And the first M8 spelling was itself a regression, caught the same way.**
+`materialize.attempt_concluded` was moved onto `runfiles.compose`, which
+**validates the label** — and that function is handed whatever the DECK is
+called. A cited transport relaxation may be a person's own
+`my.relaxation.fdf`, so composing turned *"this directory has no record"* into
+a `RunFileError` at somebody who used a dot. `runfiles.tail` is the right door,
+and the distinction is now written into it:
+
+> **`compose` when you own the label; `tail` when you were handed a stem.**
+
+`summarize._trial_deck` had the same shape (its `basename` is
+`Path(job.script).stem`, read out of `job-set.json`) and moved too. Both are
+readers whose modules promise to degrade rather than raise, which is exactly
+what the label validation would have broken. **The lesson generalises past this
+migration: a door with a stricter contract than the code it replaces is a
+behaviour change, not a cleanup.**
+
+**And auditing that class found a pre-existing crash it had already caused.**
+`web/blueprints/watch.py`'s run resolver reads `JOB` and `SystemLabel` through
+regexes bounded to `[A-Za-z0-9_-]+` — deliberately, so a malformed deck cannot
+inject a path — but `py_stem` is the deck's **filename** stem, unbounded, and it
+went straight into `compose`. A PySCF script named `my.job.py` made the Watch
+tab raise `RunFileError` instead of falling through to its generic steps.
+Introduced by `3dfa76c9` (the commit that moved those names onto the composer),
+measured 2026-09-08, fixed by catching the grammar's own refusal and RECORDING
+it in the resolver's `attempts` list — which is what a resolver is for.
+
+**Seven more mutations, seven killed** — including the two guard-integrity ones
+(`COUNTER_FRAGMENTS` emptied; the `label` default restored). The second
+**survived** the first attempt, because nothing called `_stage_state` with
+defaults; the outcome test above is what closes it.
+
+**Still open, unchanged by M7 and M8:** `siesta/makov_payne.py` spells `-run<N>` and
 cannot import `runfiles` until `runfiles` joins `MONITOR_COMPANIONS`; § 5k.4a's
 ~40 text-anchored source slices in tests; and `classify_source_reads.py`'s
 line-keyed overrides (this survey's are keyed by `(file, function, pattern)`

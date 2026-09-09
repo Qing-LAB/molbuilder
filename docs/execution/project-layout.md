@@ -2171,6 +2171,55 @@ check as an assertion. Three things stop it from being decorative:
    assertion green — a kill switch on the whole guard, and it survived until
    that assertion was added (measured 2026-09-08).
 
+#### The rule has two halves, and the second one has its own check
+
+**A duplicate COMPOSER performs no search, so nothing above can see it.** That
+is how `materialize.attempt_concluded` came to spell
+`f"{basename}-run{newest}.concluded"` on the line *after* asking
+`runfiles.latest_run` for that very counter, and how `submit.py` built
+`f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to
+continue **from** — a real path on the live continue-a-run route, not a message.
+Both were found on 2026-09-08 by reading the search migration's own diff.
+
+`classify_path_finders.compositions()` is that half, and it is **narrow on
+purpose**. Matching *a string that ends in a catalogued role* finds 35 sites of
+which two are real — `.clone.log`, `serve-<port>.log` and
+`jobset-decisions.log` all end in `.log` and belong to other grammars — and a
+check with 33 exemptions is a nag list, not a guard. So it matches the two
+fragments that carry **rules** rather than just a spelling:
+
+| fragment | rule it carries | its one composer |
+|---|---|---|
+| `-run<N>` | § 6.3: a hyphen announces a COUNTER, an underscore a NAME | `runfiles.compose(run=N)` |
+| `run-<N>` | § 1.5: the attempt directory | `paths.attempt_name(n)` |
+
+Both are keyed on a **number**, which is what makes a hand-built one dangerous:
+an off-by-one or a renamed prefix reaches disk silently. Everything else about a
+name is the role, and the role is already guarded by `WRITTEN` and
+`find_by_role`. `runfiles.py` and `paths.py` are exempt **by identity, not by
+override** — they are the composers, not sites someone read and excused.
+
+**What neither half can see, and this is a limit rather than a caveat:** a name
+spelled inside a script molbuilder *emits*. `siesta/makov_payne.py` carries
+`glob("*-run*.out")` as template **text** for a script that ships beside a job —
+data here, code there, and no AST pass over `molbuilder/` reaches it. Recorded
+in `plans/plan.md` § 5k: it cannot use `runfiles` until `runfiles` joins
+`runwrap.MONITOR_COMPANIONS`.
+
+**Two composers are known and NOT closed**, because closing them is a decision
+rather than a migration:
+
+- `submit.py`'s group launcher — `<container>/launch/<name>.run.sh` and
+  `.sbatch`, ~8 hand-spelled sites across the bench-group and bias-chain paths.
+  A coherent sub-grammar with no door, on the submission route.
+- `web/blueprints/files.py` keeps its own `_SIDECAR_SUFFIX` and its own
+  `sidecar_path_for`, with a comment giving the reason ("keep its dependency
+  graph narrow"). Layering permits the import — `sidecars` is L2, `web` L3 — so
+  the stated reason does not rest on a rule; but it is a written decision, and
+  reversing one is not a migration step.
+
+#### Where the survey does not look
+
 The survey covers `molbuilder/`, not `tests/`. That is deliberate: a test that
 located our files through the door would be asserting that the door agrees with
 itself. A test spells the name because the literal IS the independent check on
