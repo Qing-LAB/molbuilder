@@ -1203,10 +1203,173 @@ mind when the count is re-derived: they are ordinary globs wearing a coat.
 
 ### 5k.5 What must not change
 
+> **§ 5k's METHOD is superseded by § 5l** *(user ruling, 2026-09-08)*. Its RULE
+> stands and is guarded; what stops is closing each asymmetry by adding a door
+> for the question a call site happened to ask. Read § 5l before acting on
+> anything in this section — five of the doors M7/M8 added are on its delete
+> list.
+
+
 `runfiles` stays stdlib-only; `Shape` stays the only reader of `task.SHAPES`;
 `identity.stage_token` stays the one speller of `<NN>_<name>`; and no finder
 may infer the shape from the disk. A migration step that needs one of these to
 move is a step that has found a design problem, not a step to push through.
+
+
+## 5l. The paths STANDARD — one address, three verbs *(user ruling, 2026-09-08)*
+
+**§ 5k's RULE was right and is now enforced. § 5k's METHOD has to stop.** The
+rule — *for every name it composes, the framework owns the search* — closed 24
+handcrafted searches and is guarded (§ 5k.4c). But it was applied by **adding a
+door for whatever question a call site happened to ask**, and the bill came due
+the same day. Measured after M1–M8:
+
+| the question | how many APIs answer it |
+|---|---|
+| which files are this rung's? | **4** — `runfiles.find(stage=)`, `find_by_role`, `Shape.stage_glob` (returns a glob *string*), `parse.dirs.job._enumerate_files(match)` (another glob) |
+| what is this file called? | **3** — `compose`, `stem` + caller concatenates, `tail` + caller prepends |
+| where does this thing live? | **16, across 3 modules** — `paths` 3, `jobset.materialize` 11, `sidecars.molstruct` 2 |
+| what stage is this file's? | **2** — `runfiles.parse` and `identity.parse_stage_token`, **measured to disagree** (§ 5l.4) |
+
+~40 public functions, and **five were added on 2026-09-08 alone, each to fit one
+call site**: `role_matches`, `find_by_role`'s underscore refusal, `sidecars_in`,
+`is_sidecar`, and the `compose`-vs-`tail` split. That is the API being bent to
+arbitrary use — by the framework whose reason to exist is to stop that.
+
+> **The ruling (user, 2026-09-08).** *"The API should be rigid standard, but
+> accommodating for a certain flexibility — but it cannot allow for any random
+> cases. All real needs, if they need to differentiate and build in a
+> hierarchical system, have to follow the hierarchy of that system to start
+> with. They may have their own labels or design systems, but that's it."* And:
+> *"don't twist the API design such that you can fit arbitrary kind of need,
+> but rather a standardized API that has reasonable extensibility."*
+>
+> So the direction of fit reverses. **A use that does not fit the standard is a
+> use that changes** — § 5l.4's third column is the deliverable, not an
+> apology.
+
+### 5l.1 The address — § 2.6's hierarchy, not a new one
+
+**§ 2.6 is already the authority and already numbers the tree.** This framework
+serves it and never redefines it. Five levels:
+
+> ① project → ② topic → ③ calculation → ④ stage → ⑤ attempt
+
+and § 2.6 is explicit that the benchmark rows get **no circled number** —
+*"they are nested containers inside a stage (④), not levels of the tree."*
+
+One address type, and it is the whole vocabulary:
+
+```
+Ref(project, topic, calculation, stage, bench, attempt, role, counters, fields)
+```
+
+- **`bench` is a qualifier on ④, not a sixth level.** A trial is a stage's
+  sub-container; inside it an attempt is ⑤ exactly as anywhere else. This is the
+  answer § 2.6 gives, and it is why `materialize`'s eleven layout functions can
+  collapse rather than fight the model.
+- **`counters`** are the declared numeric qualifiers (`runfiles.QUALIFIERS`).
+- **`fields`** are the row's own keys — *the bounded flexibility*. This is where
+  a need brings its own label without inventing a level.
+
+**An absent coordinate is a STATEMENT, never a default.** `stage=None` means
+*this file crosses rungs*; `attempt=None` means *not attempt-scoped*. That is
+already `runfiles`' rule for `stage` (it refuses `""` rather than reading it as
+None) and it becomes the rule on every axis — which is `process/code-audit.md`
+D1 applied to the address instead of re-learned per parameter.
+
+### 5l.2 Three verbs, and nothing else public
+
+| verb | signature | answers |
+|---|---|---|
+| **compose** | `compose(ref) -> Path` | full coordinates → the one path, directory and filename together |
+| **find** | `find(root, **partial) -> [(Path, Ref)]` | partial coordinates → every match, ordered |
+| **parse** | `parse(path, …) -> Ref \| None` | a path → its coordinates, or None when it is not ours |
+
+**Extensibility is a catalogue row and its fields — never a new function.** If a
+question seems to need a fourth verb, the question is malformed; that is the
+test § 5l.4 applies.
+
+`compose` returning a whole path (not a filename) is deliberate: a caller that
+wants a file wants a path, and the three-call detour (`stage_dir` +
+`attempt_dir` + `compose`) is where a caller starts joining strings.
+
+### 5l.3 What the standard DELETES that M7/M8 added
+
+| added 2026-09-08 | why the standard removes it |
+|---|---|
+| `runfiles.role_matches`, and patterned roles | `.runwrap-*.log` is **not** a role with a wildcard in it. It is role `.runwrap.log` carrying a **`stamp` field**. A glob inside a role is a coordinate that escaped into the vocabulary, and `role_matches` is the machinery built to chase it. |
+| `find_by_role`'s underscore refusal | `find` takes partial coordinates, and the catalogue disambiguates an underscore role — which is already how `parse` does it. The refusal was an internal limitation published as API. |
+| `sidecars_in`, `is_sidecar`, `sidecar_path_for` | `.molstruct.json` is a **role** whose address has no stage and no attempt. Three functions in a second module become three verbs on one address. |
+| the `compose`-vs-`tail` rule | invented to accommodate `attempt_concluded` being handed a foreign stem (`my.relaxation`). **A foreign file is not in the address space.** The caller should be told that, not served — and `tail` should not be the door that makes serving it possible. |
+| `_stage_state(label, stage, out_glob)` | two ways to say one rung, in one signature. `out_glob` goes when `run_status` takes coordinates. |
+
+**This is not a retraction of M7/M8.** Both fixed real, measured defects (§ 5k.4c,
+§ 5k.4d) and both are green. What is being retracted is the *method* of adding a
+door per question, and the five above are its residue.
+
+### 5l.4 The inventory — every case, with a verdict
+
+**Three axes, three instruments.** Axis 3 has no instrument yet; N1 builds it.
+
+| axis | instrument | state 2026-09-08 |
+|---|---|---|
+| searches for a name we compose | `tools/classify_path_finders.py` | 51 sites, **0 handcrafted**, guarded by `tests/test_path_framework.py` |
+| counter-keyed names built by hand | the same tool, `compositions()` | **0**, guarded |
+| **hierarchy segments spelled inline** | **none — N1** | **2 unclosed**: `pseudos/` ×4 (`prep.py` 486, 1225, 1226, 1740 — and 474 is a *private* door the fourth site bypasses) · `launch/` ×5 (`submit.py` 1201, 1514, 1341, 1603, 1652) |
+
+Then the uses, each judged against § 5l.1–5l.2 rather than accommodated:
+
+| case | verdict | why |
+|---|---|---|
+| `.runwrap-<stamp>.log` | **regulate — a field** | role `.runwrap.log` + `stamp`; deletes `role_matches` |
+| `.molstruct.json` | **regulate — a catalogue row** | a role whose address has no stage and no attempt |
+| `pseudos/` | **regulate — a coordinate** | § 2.6's shared package. A door exists (`prep._pseudo_dir`), is private, and is bypassed by one of its own module's sites |
+| `Shape.stage_glob`, `_enumerate_files(match)` | **the use changes** | a glob-shaped API becomes a partial-address `find` |
+| `identity.parse_stage_token` | **delete** | verb 3 on a coordinate the address already carries — and it disagrees with `parse` on `<label>_<stage>_geom_optim.xyz` (says the stage is `01_coarse_geom_optim`) and on `<label>_<stage>.runwrap-*.log` (says no stage). `parse` is right in both |
+| `attempt_concluded(foreign stem)` | **the use changes** | reject as not-ours; do not loosen the grammar to serve it |
+| `submit.py`'s `launch/<name>.{run.sh,sbatch}` | **the use changes** (P-4) | `launch/` is an ad-hoc segment and `<name>` is a *group*, not a calculation. Either a group becomes a real qualifier on ④, or the group launcher moves to where a launcher belongs |
+| `web/blueprints/files.py`'s sidecar copy | **the use changes** (P-5) | the ONLY constant collision in the whole tree, sitting behind a decision layering does not require |
+| `workspace_storage`'s `.wc.json` | **out of scope, and stated** | not a run file. Its own grammar, self-consistent, module-local — § 4.5 satisfied already |
+| SIESTA `.XV` and the warm suffixes | **out of scope, and stated** | § 4.2 — molbuilder does not compose them, so no door may claim them |
+| `_geom_optim.xyz` inside emitted script TEXT | **deferred, recorded** | `makov_payne.py` ships beside a job; needs `runfiles` in `runwrap.MONITOR_COMPANIONS` first |
+
+### 5l.5 The dependency order — the workflow the API must have
+
+1. **catalogue** — the roles and their fields. Data; no dependencies.
+2. **address** — the coordinate record; validates a role against the catalogue.
+3. **name grammar** — the filename half of compose/parse.
+4. **layout** — the directory half: a function of (shape, address).
+5. **the three verbs** — compose / find / parse over whole paths.
+6. **everyone else** — calls only the verbs.
+
+Each layer may import only the ones above it. **L1 and stdlib-only throughout**,
+so the monitor still ships beside a job (`runwrap.MONITOR_COMPANIONS`) and runs
+under the job's python.
+
+### 5l.6 Migration — each step separately green
+
+| step | what | done when |
+|---|---|---|
+| **N1** | the instrument for axis 3: hierarchy segments spelled inline, with the same override discipline (keyed by `(file, function, segment)`, a dead key FAILS). Records the two unclosed segments | the guard reports 2 and a test asserts it cannot silently become 3 |
+| **N2** | the catalogue grows `fields`; `.runwrap-*.log` → `.runwrap.log` + `stamp`; `role_matches` deleted | the wrapper log is found through a field, and the patterned-role machinery is gone |
+| **N3** | `Ref` + the three verbs, **beside** the existing API. No caller moves | the verbs answer every question § 5l.4 lists, with tests over the address, not over call sites |
+| **N4** | the 16 layout functions and the 13 name functions delegate to the verbs. Nothing deleted | one implementation behind every existing name; the suite unchanged |
+| **N5** | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |
+| **N6** | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
+| **N7** | delete the superseded surface | the guard asserts the framework's public surface IS the three verbs plus the catalogue |
+
+**Do N1 and the § 5l.4 re-derivation before N2.** § 5a's rule applies to this
+section as much as any other: every count above was measured on 2026-09-08 and
+will be wrong by the time anyone acts on it.
+
+### 5l.7 What must not change
+
+`runfiles`/`paths` stay stdlib-only; **the shape is DECLARED, never inferred
+from disk**; `identity.stage_token` stays the one speller of `<NN>_<name>`; and
+**§ 2.6 remains the authority on the tree** — this framework serves that
+hierarchy and never invents a level of its own. A migration step that needs one
+of these to move has found a design problem, not a step to push through.
 
 ---
 
