@@ -187,6 +187,12 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 #: one step earlier, because an unread site cannot be known to be either.
 FAILING_VERDICTS = ("owned", "unclassified")
 
+#: The undeclared hierarchy segments as of § 5l.6 N1 (2026-09-08).  `--check`
+#: fails when this SET changes -- a third invented segment is a new level of the
+#: tree created at a call site, which `project-layout.md` § 2.6 alone may do.
+#: Shrinking it is the point (N5); growing it is the failure.
+GUARDED_UNDECLARED = ("launch", "pseudos")
+
 
 
 # --------------------------------------------------------------------------- #
@@ -285,6 +291,136 @@ def stale_compose_overrides(rows: "list[dict]") -> "list[tuple]":
     """Compose-side exemptions that match no site -- same failure as above."""
     live = {(r["file"], r["func"], r["text"]) for r in rows}
     return sorted(k for k in _COMPOSE_OVERRIDES if k not in live)
+
+
+
+# --------------------------------------------------------------------------- #
+#  THE THIRD AXIS: a DIRECTORY of the hierarchy, spelled at a caller.         #
+# --------------------------------------------------------------------------- #
+#
+# The two passes above look at FILENAMES.  A directory built as
+# `container / "launch"` or `base / "pseudos"` is invisible to both -- and
+# `project-layout.md` § 2.6 is the authority on the tree, so a segment of it
+# spelled at a call site is the same fault one level up.
+#
+# WHY THE VOCABULARY IS SCOPED TO A CALCULATION, measured 2026-09-08.  A broad
+# net -- every `X / "plain-name"` -- finds 67 distinct segments across 128
+# sites at 11% precision: `Ha/`, `eV/`, `n/a` (units), `application/json` (a
+# MIME type), `bin`, `conda-meta`, `opt`, `envs` (conda's own trees), `docs/`,
+# `refs/` (git's).  That is the nag list § 5l warns about, so the pass is
+# scoped to the levels this standard owns.
+#
+# LEVELS ① AND ② ARE `projects.py`'s AND ARE ALREADY CLOSED: `CANONICAL_TOPICS`
+# is declared and `validate_topic` REFUSES anything outside it, so a topic
+# cannot be invented.  Including topics here found only noise --
+# `f"transport/v{sv}"` is a schema string and `client.get("user/orgs")` is a
+# GitHub endpoint, both flagged because `transport` and `user` are also topic
+# names.
+#
+# WHAT IS GUARDED IS THE SET OF UNDECLARED SEGMENTS, NOT THE SITE COUNT.  The
+# ten sites below go to zero in § 5l.6 step N5; what must not happen before
+# then is a THIRD invented segment joining them silently.
+
+def _calc_containers() -> "dict[str, str | None]":
+    """The containers a CALCULATION holds, and the door that names each.
+
+    ``None`` means **undeclared** -- the code uses the segment and nothing
+    declares it, which is the finding this pass exists to hold still.
+    """
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from molbuilder.checkpoint import ARCHIVE_DIR
+    return {
+        # declared, and reached through its door everywhere (checked 2026-09-08:
+        # `_cli.py`'s hardcoded `base/"bench"` was closed 2026-08-13)
+        "bench": "jobset.materialize.bench_container",
+        # declared as a constant, so the name has one home
+        ARCHIVE_DIR: "checkpoint.ARCHIVE_DIR",
+        # UNDECLARED -- § 5l.6 N5
+        "launch": None,
+        "pseudos": None,
+    }
+
+
+CALC_CONTAINERS = _calc_containers()
+
+#: (file, function, segment) -> reason.  Same anchoring rule as the two tables
+#: above: never a line number.
+_SEGMENT_OVERRIDES: "dict[tuple[str, str, str], str]" = {
+    ("molbuilder/jobset/prep.py", "_pseudo_dir", "pseudos"):
+        "THE DOOR ITSELF, and the finding is that it is PRIVATE -- three sites "
+        "in its own module spell the segment again rather than call it.  N5 "
+        "makes it a coordinate; until then this row keeps the door from being "
+        "reported as one of its own violations",
+}
+
+
+def segments(pkg: "pathlib.Path | None" = None,
+             root: "pathlib.Path | None" = None) -> "list[dict]":
+    """Every place a calculation-level directory segment is CONSTRUCTED.
+
+    Construction, not mention: a `Path` division, a string whose FIRST path
+    component is the segment, or an `os.path.join` argument.  The
+    first-component rule is what keeps Flask routes out -- `/api/bench/summary`
+    starts with `/`, so its first component is empty (the throwaway version of
+    this pass flagged three of those).
+    """
+    pkg = PKG if pkg is None else pkg
+    root = ROOT if root is None else root
+    names = set(CALC_CONTAINERS)
+    rows: "list[dict]" = []
+    seen: "set[tuple]" = set()
+    for path in sorted(pkg.rglob("*.py")):
+        rel = str(path.relative_to(root))
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:                              # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            seg = how = None
+            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) \
+               and isinstance(node.right, ast.Constant) \
+               and node.right.value in names:
+                seg, how = node.right.value, "Path /"
+            else:
+                txt = None
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    txt = node.value
+                elif isinstance(node, ast.JoinedStr) and node.values and \
+                        isinstance(node.values[0], ast.Constant):
+                    txt = node.values[0].value
+                if txt and "/" in txt and txt.split("/")[0] in names:
+                    seg, how = txt.split("/")[0], "path string"
+                elif isinstance(node, ast.Call) \
+                        and isinstance(node.func, ast.Attribute) \
+                        and node.func.attr == "join":
+                    for a in node.args:
+                        if isinstance(a, ast.Constant) and a.value in names:
+                            seg, how = a.value, "os.path.join"
+                            break
+            if seg is None:
+                continue
+            where = _enclosing(tree, node)
+            key = (rel, node.lineno, seg)
+            if key in seen:            # both rules can see one line
+                continue
+            seen.add(key)
+            rows.append(dict(
+                file=rel, line=node.lineno, func=where, segment=seg, how=how,
+                door=CALC_CONTAINERS[seg],
+                declared=CALC_CONTAINERS[seg] is not None,
+                reason=_SEGMENT_OVERRIDES.get((rel, where, seg))))
+    return rows
+
+
+def undeclared_segments(rows: "list[dict]") -> "list[str]":
+    """The segments the code builds and nothing declares -- the guarded number."""
+    return sorted({r["segment"] for r in rows if not r["declared"]})
+
+
+def stale_segment_overrides(rows: "list[dict]") -> "list[tuple]":
+    live = {(r["file"], r["func"], r["segment"]) for r in rows}
+    return sorted(k for k in _SEGMENT_OVERRIDES if k not in live)
 
 
 def _module_strings(tree: ast.AST) -> dict[str, str]:
@@ -419,6 +555,9 @@ def _check(rows: list[dict]) -> int:
     stale = stale_overrides(rows)
     built = [r for r in compositions() if r["reason"] is None]
     stale += stale_compose_overrides(compositions())
+    seg_rows = segments()
+    stale += stale_segment_overrides(seg_rows)
+    undeclared = undeclared_segments(seg_rows)
     for r in built:
         print(f'HAND-BUILT   {r["file"]}:{r["line"]}  {r["func"]}()')
         print(f'    {r["text"][:110]}')
@@ -431,6 +570,15 @@ def _check(rows: list[dict]) -> int:
     for k in stale:
         print(f"STALE OVERRIDE  {k}  -- matches no site; the site was renamed, "
               f"moved or fixed.  Delete the entry or re-anchor it.")
+    # THE SET, NOT THE SITE COUNT.  The ten sites go to zero in § 5l.6 N5;
+    # what must not happen before then is a THIRD invented segment.
+    if sorted(undeclared) != sorted(GUARDED_UNDECLARED):
+        print(f"UNDECLARED HIERARCHY SEGMENTS changed: {undeclared!r}\n"
+              f"    guarded set is {sorted(GUARDED_UNDECLARED)!r}\n"
+              f"    `project-layout.md` § 2.6 is the authority on the tree; a "
+              f"segment of it that nothing declares is a level invented at a "
+              f"call site.  Declare it (§ 5l.6 N5) or do not build it.")
+        return 1
     if bad or stale or built:
         print(f"\n{len(bad)} handcrafted search(es), {len(built)} hand-built "
               f"name(s), {len(stale)} stale override(s).  "
@@ -439,8 +587,11 @@ def _check(rows: list[dict]) -> int:
         return 1
     print(f"{len(rows)} path searches, none handcrafted; "
           f"{len(compositions())} counter-keyed names, all composed by a door; "
-          f"{len(_OVERRIDES) + len(_COMPOSE_OVERRIDES)} recorded exemptions, "
-          f"all live.")
+          f"{len(seg_rows)} hierarchy-segment sites over "
+          f"{len(undeclared)} undeclared segment(s) {undeclared} "
+          f"(§ 5l.6 N5 closes them); "
+          f"{len(_OVERRIDES) + len(_COMPOSE_OVERRIDES) + len(_SEGMENT_OVERRIDES)} "
+          f"recorded exemptions, all live.")
     return 0
 
 
@@ -481,6 +632,14 @@ def main() -> int:
         if r["reason"] is None:
             print(f'  {r["file"]}:{r["line"]}  {r["func"]}()  '
                   f'-> ask {r["door"]}')
+    seg_rows = segments()
+    print(f"hierarchy-segment sites (§ 2.6's tree, spelled at a call): "
+          f"{len(seg_rows)}")
+    for u in undeclared_segments(seg_rows):
+        here = [r for r in seg_rows if r["segment"] == u]
+        print(f"  {u!r} is UNDECLARED -- {len(here)} site(s): "
+              + ", ".join(f'{r["file"].split("/")[-1]}:{r["line"]}'
+                          for r in here))
     owned = [r for r in rows if r["verdict"].startswith("owned")]
     print(f"\nOWNED -- a door composes the name, none finds it: {len(owned)}")
     per: dict[str, list[str]] = {}

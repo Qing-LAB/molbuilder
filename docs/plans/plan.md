@@ -849,7 +849,7 @@ green run had hidden all of them.
 
 
 
-## 5k — CLOSED, and archived 2026-09-08
+## 5k — CLOSED 2026-09-08, and in git rather than a second file
 
 The paths framework's first program, M1–M8: every name molbuilder composes got a
 door that FINDS it, and every counter-keyed name got composed by its owner.
@@ -862,8 +862,9 @@ The rule it earned lives in the document that owns it —
 **Its METHOD did not survive its own last day.** Closing each asymmetry with a
 door per question left ~40 public functions answering four questions four ways,
 five of them added on 2026-09-08 to fit individual call sites. **§ 5l is the
-live plan**; this section is in `archive/2026-09-08-paths-framework-m1-m8.md`
-and is for recovering *why*, never for deciding what is open.
+live plan.** The 367 lines this section held are in git (the commits above and
+the plan as it stood at `e9586c09`) — read them there to recover *why*, never to
+decide what is open.
 
 ## 5l. The paths STANDARD — one address, three verbs *(user ruling, 2026-09-08)*
 
@@ -983,20 +984,48 @@ door per question, and the five above are its residue.
 
 ### 5l.4 The inventory — every case, with a verdict
 
-**Three axes, three instruments.** Axis 3 has no instrument yet; N1 builds it.
+**Three axes, three instruments** — all three shipped as of N1 (2026-09-08),
+all three in `tools/classify_path_finders.py`, all three in `--check`.
 
 | axis | instrument | state 2026-09-08 |
 |---|---|---|
 | searches for a name we compose | `tools/classify_path_finders.py` | 51 sites, **0 handcrafted**, guarded by `tests/test_path_framework.py` |
 | counter-keyed names built by hand | the same tool, `compositions()` | **0**, guarded |
-| **hierarchy segments spelled inline** | **none — N1** | **2 unclosed**: `pseudos/` ×4 (`prep.py` 486, 1225, 1226, 1740 — and 474 is a *private* door the fourth site bypasses) · `launch/` ×5 (`submit.py` 1201, 1514, 1341, 1603, 1652) |
+| hierarchy segments spelled inline | the same tool, `segments()` — **N1, shipped** | **2 undeclared segments over 10 sites**: `pseudos` ×5 (`prep.py` 486, 1225, 1226, 1739, 1740) · `launch` ×5 (`submit.py` 1201, 1341, 1514, 1603, 1652). Guarded as a SET, not a count |
 
-**What the throwaway version of the axis-3 measurement got wrong, so N1 does
-not repeat it:** matching a segment name anywhere in a string flagged the Flask
-routes `/api/structure/analyze`, `/api/bench/summary` and
-`/api/task-setup/attempts` — URLs, not filesystem paths. N1 must look at path
-*construction* (a `Path` division, or a string handed to an `open`/`mkdir`/glob),
-never at any string containing the word.
+**N1 corrected this row's own numbers, which is why it exists.** The hand-run
+version said *"`pseudos` ×4"* and missed `prep.py:1739` — the `f"pseudos/{p.name}"`
+form, a path built as a string rather than by `Path` division. The real figures
+are **5 and 5**. § 5a, demonstrated on the section that states § 5a.
+
+**What is guarded is the SET of undeclared segments, not the site count.** The
+ten sites go to zero in N5; what must not happen before then is a *third*
+invented segment joining them, because that is a level of the tree created at a
+call site and only § 2.6 may add one. `GUARDED_UNDECLARED` is asserted by
+equality, so closing one is a deliberate edit and not a quiet pass.
+
+**Why the vocabulary is a calculation's containers and nothing more.** A broad
+net — every `X / "plain-name"` — finds **67 distinct segments across 128 sites at
+11% precision**: units (`Ha/`, `eV/`, `n/a`), a MIME type (`application/json`),
+conda's own trees (`bin`, `conda-meta`, `opt`, `envs`), git's (`refs/`), the docs
+tree. That is the nag list this section warns about. **Levels ① and ② are
+`projects.py`'s and are already closed**: `CANONICAL_TOPICS` is declared *and*
+`validate_topic` refuses anything outside it, so a topic cannot be invented — and
+including topics measured 2 false positives out of 2 (`f"transport/v{sv}"` is a
+schema string; `client.get("user/orgs")` is a GitHub endpoint, both flagged
+because `transport` and `user` are also topic names).
+
+**What the throwaway version got wrong, now fixed in the shipped pass:** it
+matched a segment name anywhere in a string and so flagged the Flask routes
+`/api/structure/analyze`, `/api/bench/summary` and `/api/task-setup/attempts`.
+The rule is the FIRST path component — a route starts with `/`, so its first
+component is empty. A test holds that case.
+
+**Two of the four containers are already declared**, which is what makes the
+other two findings: `bench` has `materialize.bench_container` (and `_cli.py`'s
+hardcoded `base/"bench"` was closed 2026-08-13), and the history directory is
+`checkpoint.ARCHIVE_DIR`. A test asserts a declared segment names a door that
+really exists, so a rename cannot leave the claim standing.
 
 Then the uses, each judged against § 5l.1–5l.2 rather than accommodated:
 
@@ -1098,7 +1127,7 @@ under the job's python.
 
 | step | what | done when |
 |---|---|---|
-| **N1** | the instrument for axis 3: hierarchy segments spelled inline, with the same override discipline (keyed by `(file, function, segment)`, a dead key FAILS). Records the two unclosed segments | the guard reports 2 and a test asserts it cannot silently become 3 |
+| ~~**N1**~~ | **DONE 2026-09-08.** `segments()` in the same tool, wired into `--check` and the summary, with the override discipline the other two passes use. Corrected the row above: 10 sites, not 9. Five mutations, five killed — including the `GUARDED_UNDECLARED = ()` kill switch and the first-component rule (dropping it lets Flask routes back in) | shipped |
 | **N2** | **the catalogue grows `fields`, and the NAME GRAMMAR honours them** — layers 1 and 3 of § 5l.5, which is why this can precede the address. `.runwrap-*.log` → `.runwrap.log` + `stamp`; `role_matches` and patterned roles deleted | the wrapper log is composed and parsed through a field, and the patterned-role machinery is gone |
 | **N3** | `Ref` + the three verbs, **beside** the existing API. No caller moves | the verbs answer every question § 5l.4 lists, with tests over the address, not over call sites |
 | **N4** | the 16 layout functions and the 13 name functions delegate to the verbs. Nothing deleted | one implementation behind every existing name; the suite unchanged |
@@ -1143,7 +1172,6 @@ of these to move has found a design problem, not a step to push through.
 | `roadmap.md` | R3's old home. 1770 lines, ~85% closed work never struck; its live items are **E7–E11, C2, C3, W12–W15, N1–N4** — **plus § 6's architecture seams, which the 2026-09-01 fact-check never reached and this merge dropped**; recovered 2026-09-06 as **§ 5f**, **S1–S14** |
 | `archive/2026-09-01-audit-2026-08-21-fullstack-review.md` | its open list became roadmap § 7.5, and § 7.5 is now empty — verified |
 | `archive/2026-09-01-audit-2026-08-28-full-review.md` | O1–O3 closed in the document; O4's general case is **N1**, O5 is **N3**, its uncovered lane is **E11** |
-| `2026-09-08-paths-framework-m1-m8.md` | § 5k, whose RULE shipped and is guarded and whose METHOD § 5l replaced on its own last day. Kept to recover *why*, never to decide what is open. |
 
 ---
 

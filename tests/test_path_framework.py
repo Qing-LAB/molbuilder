@@ -379,3 +379,146 @@ def test_the_grammar_modules_are_exempt_by_identity_not_by_override():
     assert t.GRAMMAR_MODULES == ("molbuilder/runfiles.py", "molbuilder/paths.py")
     for mod in t.GRAMMAR_MODULES:
         assert (ROOT / mod).is_file(), f"{mod} is exempted and does not exist"
+
+
+# --------------------------------------------------------------------------- #
+# 5.  The THIRD axis -- a directory of the hierarchy, spelled at a caller.    #
+# --------------------------------------------------------------------------- #
+
+def test_no_third_hierarchy_segment_is_invented():
+    """`project-layout.md` § 2.6 is the authority on the tree.
+
+    **What is guarded is the SET of undeclared segments, not the site count.**
+    Ten sites build `launch/` and `pseudos/` today and § 5l.6 step N5 takes them
+    to zero; what must not happen in the meantime is a *third* segment joining
+    them silently — because that is a level of the tree created at a call site,
+    and only § 2.6 may add one.
+
+    Shrinking the set is the goal, so this asserts equality rather than
+    membership: closing one is a deliberate edit here, not a quiet pass.
+    """
+    t = _tool()
+    rows = t.segments()
+    got = t.undeclared_segments(rows)
+    assert got == sorted(t.GUARDED_UNDECLARED), (
+        f"undeclared hierarchy segments are now {got!r}, guarded set is "
+        f"{sorted(t.GUARDED_UNDECLARED)!r}.\n"
+        + "\n".join(f'  {r["file"]}:{r["line"]}  {r["func"]}()  '
+                    f'[{r["segment"]}]  {r["how"]}'
+                    for r in rows if not r["declared"])
+        + "\n\nIf a NEW segment appeared: declare it with a door "
+          "(§ 5l.6 N5) or do not build it. If one was CLOSED: update "
+          "GUARDED_UNDECLARED in tools/classify_path_finders.py.")
+
+
+def test_no_segment_exemption_has_come_unanchored():
+    """Third axis, same anchoring rule as the other two."""
+    t = _tool()
+    stale = t.stale_segment_overrides(t.segments())
+    assert not stale, (
+        "these segment exemptions match no site any more:\n"
+        + "\n".join(f"  {k}" for k in stale))
+
+
+def test_a_declared_segment_names_a_real_door():
+    """A row saying "declared" must name something that exists.
+
+    Otherwise the declaration is a comment: `bench` claims
+    `materialize.bench_container` and `.binsnapshots` claims
+    `checkpoint.ARCHIVE_DIR`, and a rename would leave the claim standing while
+    the door moved.
+    """
+    import importlib
+    t = _tool()
+    for seg, door in t.CALC_CONTAINERS.items():
+        if door is None:
+            continue
+        mod, _, attr = door.rpartition(".")
+        obj = importlib.import_module(f"molbuilder.{mod}")
+        assert hasattr(obj, attr), (
+            f"segment {seg!r} claims the door molbuilder.{door}, "
+            f"which does not exist")
+
+
+_INVENTS_A_SEGMENT = '''\
+from pathlib import Path
+
+
+def stash(base):
+    """Builds a container of the tree that nothing declares."""
+    return Path(base) / "scratchpad"
+'''
+
+_INVENTS_IT_AS_A_STRING = '''\
+def relative(name):
+    return f"scratchpad/{name}.out"
+'''
+
+_A_FLASK_ROUTE = '''\
+def register(bp):
+    @bp.route("/api/scratchpad/summary")
+    def summary():
+        return {}
+'''
+
+
+@pytest.mark.parametrize("source,expect_hit", [
+    (_INVENTS_A_SEGMENT, True),
+    (_INVENTS_IT_AS_A_STRING, True),
+    (_A_FLASK_ROUTE, False),
+])
+def test_the_segment_guard_catches_an_invented_container(tmp_path, source,
+                                                        expect_hit):
+    """Shown to fail — and shown NOT to fail on a URL.
+
+    The third case is the one that matters: the throwaway version of this pass
+    flagged `/api/structure/analyze`, `/api/bench/summary` and
+    `/api/task-setup/attempts` as hierarchy segments. A route starts with `/`,
+    so its first path component is empty, which is exactly what the rule uses to
+    tell a path from a URL.
+    """
+    t = _tool()
+    pkg = tmp_path / "molbuilder"
+    pkg.mkdir()
+    (pkg / "offender.py").write_text(source, encoding="utf-8")
+    # Point the vocabulary at the invented name, since the real table lists only
+    # the segments that really exist.
+    saved = dict(t.CALC_CONTAINERS)
+    t.CALC_CONTAINERS["scratchpad"] = None
+    try:
+        rows = t.segments(pkg=pkg, root=tmp_path)
+    finally:
+        t.CALC_CONTAINERS.clear()
+        t.CALC_CONTAINERS.update(saved)
+    hits = [r for r in rows if r["segment"] == "scratchpad"]
+    if expect_hit:
+        assert hits, f"the guard did not notice an invented container: {rows}"
+        assert not hits[0]["declared"], "and it read as declared"
+    else:
+        assert not hits, (
+            f"a Flask ROUTE was reported as a hierarchy segment: "
+            f"{[(r['how'], r['line']) for r in hits]}")
+
+
+def test_the_segment_pass_is_scoped_and_says_why():
+    """The vocabulary is a calculation's containers, not every directory name.
+
+    A broad net over every `X / "plain-name"` finds 67 segments across 128 sites
+    at 11% precision — units (`Ha/`, `eV/`), a MIME type (`application/json`),
+    conda's trees (`bin`, `conda-meta`, `opt`), git's (`refs/`). Measured
+    2026-09-08. This asserts the scope stayed small, so nobody widens it back
+    into a nag list without reading § 5l.4.
+    """
+    t = _tool()
+    assert len(t.CALC_CONTAINERS) <= 6, (
+        f"the segment vocabulary grew to {sorted(t.CALC_CONTAINERS)} — levels "
+        f"① and ② are `projects.py`'s (CANONICAL_TOPICS is declared AND "
+        f"validated), and a broad vocabulary is what makes this a nag list")
+    # levels ①/② must NOT be in here: `transport` and `user` are topic names and
+    # also ordinary words, and including them flagged a schema string and a
+    # GitHub endpoint.
+    from molbuilder.projects import CANONICAL_TOPICS
+    assert not (set(CANONICAL_TOPICS) & set(t.CALC_CONTAINERS)), (
+        "a canonical TOPIC is in the calculation-container vocabulary; topics "
+        "are validated by `projects.validate_topic` and including them here "
+        "measured 2 false positives out of 2")
