@@ -988,7 +988,7 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 | **M2** | *(done 2026-09-08)* The design + contract: one L1 stdlib-only `paths.py`, contract at `project-layout.md` § 4.5 | agreed and written |
 | **M3** | *(done 2026-09-08)* `runfiles.find` + `runfiles.latest_run`. Four hand-rolled readers of the `-run<N>` counter retired: the globs in `materialize` and `summarize`, and the index regexes in `summarize` and `parse/engines/pyscf.py` | shipped; survey's owned bucket 22 → 20 |
 | **M4** | *(done 2026-09-08)* **a** — `Shape` moves to a floor-1 `paths.py` (`SHAPES` with it), plus `TRIAL_PREFIX` / `trials_in` / `launched_trials`. **b** — the ATTEMPT gets a composer at last: `attempt_name` / `attempt_dir` / `attempt_index` / `attempts_in` retire nine `f"run-{n}"` spellings across four modules and the regex two of them reached across for | shipped; owned 24 → 19 |
-| **M5** | The endpoint contract: every path the Task-setup card renders arrives from the server. Removes `viewer.js`'s `stage_token` re-implementation | the browser composes no path; `test_the_plan_door_composes_no_name_of_its_own` extends to cover `--from` |
+| **M5** | *(done 2026-09-08)* `/api/task-setup/attempts` answers from the DECLARED shape; `runsForStages` and the `--from` builder stop composing. Four browser re-implementations gone — `stage_token`, `/^run-\d+$/`, the flat `_<token>-run` form, and a shape inferred from disk | shipped |
 | **M6** | `parse/contract.py`'s engine-output globs move behind `runfiles.WRITTEN`, which already declares those roles | one vocabulary for what an engine writes |
 
 **M4b's number moved while it was being fixed.** The plan said eight
@@ -1017,6 +1017,25 @@ it, which is the argument for writing the test at the same commit.
 **Do M1 and M2 before any code.** § 5a's rule applies to this section as much as any other:
 the table above was measured on 2026-09-08 and will be wrong by the time it is
 acted on.
+
+### 5k.4a A SECOND POPULATION, found doing M5 *(user, 2026-09-08)*
+
+**~40 tests slice a source file by TEXT ANCHOR and then run the slice** —
+`src.index("        let from = \"\";")` and its like, across ~20 files. They
+look sound because what they do with the slice is EXECUTE it, and
+`classify_source_reads.py` agrees: its `_RAN` rule credits them as *already
+runs the code*, so § 5h has never counted them.
+
+**The anchor is the pin.** M5 edited the `--from` block to stop composing a
+token; the slice stopped matching, and the test died with `[eval]:17` —
+telling nobody whether the page still worked. A test that cannot survive an
+edit to the lines it quotes is measuring spelling, whatever it does next.
+
+Two were converted in M5, to Playwright tests that read the command block a
+person actually copies. The rest are open, and they are NOT § 5h's backlog:
+that section counts assertions over a file's text, and these pass its filter.
+**The instrument needs the rule before the population can be counted** — a
+slice taken by literal offset is a pin even when the slice is executed.
 
 ### 5k.5 What must not change
 

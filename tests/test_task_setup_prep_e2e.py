@@ -1037,3 +1037,84 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
         f"a reply for the axes the user has already moved past repainted "
         f"the card: it shows {labels!r}.  The grid now describes a bench "
         f"nobody asked for, and says how many combinations fit it")
+
+
+def test_a_continuing_rung_copies_a_command_naming_the_LAST_attempt(
+        page, flask_server, two_stage_dir):
+    """The `--from` in the command a person copies names the newest attempt.
+
+    WHAT THIS REPLACES, AND WHY THE OLD ONE HAD TO GO.  `test_task_setup_tab
+    .py::test_a_HIERARCHICAL_continue_names_the_LAST_attempt_not_the_first`
+    lifted the `--from` block out of `viewer.js` by TEXT -- `src.index('
+    let from = "";')` -- handed it three inputs and ran it under node.  It ran
+    the real code, which is why it looked sound; but the SLICE was pinned to
+    an exact line, so editing the block to stop composing the stage token
+    broke the test with `[eval]:17` and said nothing about whether the page
+    still worked.  An anchor is a pin whatever you do with the slice.
+
+    This asks the page.  It also covers what the old one could not: the token
+    now arrives from `/api/task-setup/attempts`, so a broken endpoint, a
+    missing reset, or a page that never asked all show up here as a command
+    with no `--from` at all.
+    """
+    import json as _json
+    tj = two_stage_dir / "task.json"
+    doc = _json.loads(tj.read_text())
+    # A STAGE MAY ONLY OVERRIDE WHAT `varies` PROMOTED (`stages.md` § 6.2) --
+    # otherwise a demoted parameter leaves a value hiding, and `read_task`
+    # refuses the document by name.  Promote it, then set it.
+    doc["varies"] = sorted(set(doc.get("varies") or []) | {"restart"})
+    doc["stages"][1]["overrides"] = dict(doc["stages"][1].get("overrides") or {},
+                                         restart="continue")
+    tj.write_text(_json.dumps(doc, indent=2))
+    # three attempts on the rung being continued FROM
+    for n in (0, 1, 2):
+        (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
+
+    _open(page, flask_server, two_stage_dir)
+    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
+        "        .some(e => e.textContent.includes('--from'))", timeout=20000)
+    cmds = page.eval_on_selector_all(
+        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    tails = [c for c in cmds if "--from" in c]
+    assert tails, f"no continuing rung taught a --from: {cmds}"
+    assert any("--from 01_coarse/run-2" in c for c in tails), (
+        "the command must continue from the LAST attempt, not the first: "
+        f"{tails}")
+    assert not any("run-0" in c for c in tails), tails
+
+
+def test_a_FLAT_bundle_is_taught_no_from_at_all(
+        page, flask_server, two_stage_dir):
+    """The other half, so the rule is not "always emit a tail".
+
+    Flat keeps no attempt directories (`project-layout.md` § 1.5a): the warm
+    set is one shared set in the bundle root, continuing is free, and
+    `prepare_attempt` refuses an explicit `--from` there BY NAME.  The page
+    taught `--from 01_coarse/run-0` on every continuing rung regardless of
+    shape until 2026-09-02 -- a command that cannot run, naming a directory a
+    flat bundle does not have.
+    """
+    import json as _json
+    tj = two_stage_dir / "task.json"
+    doc = _json.loads(tj.read_text())
+    doc["shape"] = "flat"
+    doc["varies"] = sorted(set(doc.get("varies") or []) | {"restart"})
+    doc["stages"][1]["overrides"] = dict(doc["stages"][1].get("overrides") or {},
+                                         restart="continue")
+    tj.write_text(_json.dumps(doc, indent=2))
+
+    _open(page, flask_server, two_stage_dir)
+    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
+        "        .some(e => e.textContent.includes('jobset prep run'))",
+        timeout=20000)
+    cmds = page.eval_on_selector_all(
+        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    assert cmds, "the page taught no commands at all"
+    assert not any("--from" in c for c in cmds), (
+        "a flat bundle has no attempt directory to continue from: "
+        + repr([c for c in cmds if "--from" in c]))

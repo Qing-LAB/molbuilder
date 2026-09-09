@@ -123,6 +123,8 @@ let _handover   = null;   // the parsed task.1st.json, in handover mode
 let _task       = null;
 let _reparse    = null;   // debounce for the editor -> model re-parse
 let _runs       = {};     // stage name -> attempts on disk (T5)
+let _tokens     = {};     // stage name -> its <NN>_<name>, FROM THE SERVER
+                          // (this page composes no token of its own)
 
 const $ = (id) => document.getElementById(id);
 
@@ -994,6 +996,7 @@ function _resetPerFolderState() {
     _runFits.clear();        // the admission answer per stage
     _fitBench = {};          // the bench card's last posted axes
     _runs = {};              // attempts on disk, per stage
+    _tokens = {};            // and the token each one carries
     _pendingDrop = "";       // the armed column drop
     _stepTab = "";           // which rung's tab was open
     _queue = "";             // the chosen domain -- goes into `allocation`
@@ -2019,10 +2022,17 @@ function renderNext(task) {
         const hierarchical = _shape === "hierarchical";
         if (i > 0 && String(ov.restart || "") === "continue" && hierarchical) {
             const prev = enabled[i - 1];
-            const token = String(prev.full + 1).padStart(2, "0")
-                        + "_" + (prev.st.name || "");
+            /* THE TOKEN COMES FROM THE SERVER (`_tokens`, filled beside
+             * `_runs` by the one door that knows the declared shape).  This
+             * spelled `String(n).padStart(2,"0") + "_" + name` -- a second
+             * `identity.stage_token` in a language that cannot import it --
+             * and `"/run-" + n`, which `paths.attempt_name` composes.  Both
+             * agreed; neither had a reason to keep agreeing. */
+            const token = _tokens[prev.st.name || ""];
             const had = Number(_runs[prev.st.name || ""]) || 0;
-            from = " --from " + token + "/run-" + (had > 0 ? had - 1 : 0);
+            from = token
+                ? " --from " + token + "/run-" + (had > 0 ? had - 1 : 0)
+                : "";
         }
         const runs = _runs[name];
         const active = name === _stepTab;
@@ -2359,33 +2369,37 @@ async function _prepCall(kind, stage, plan) {
  *  claim this page should make from a filename.
  */
 async function runsForStages(projects, dir, task) {
+    /* ASKED FOR.  This worked the answer out here, and needed four of the
+     * server's rules to do it: it composed the stage token
+     * (`String(i+1).padStart(2,"0") + "_" + name`, which is
+     * `identity.stage_token`), matched `/^run-\d+$/` for the attempts
+     * (`paths.attempt_index`), counted `_<token>-run` in filenames for the
+     * flat case (the run-file counter), and -- the one that matters --
+     * chose between those two branches by looking at WHAT WAS ON DISK.
+     *
+     * The shape is DECLARED, never inferred (`project-layout.md` § 4.5 says
+     * so by name), so that branch was wrong whenever the disk had not caught
+     * up with the description: a hierarchical calculation prepped but not yet
+     * run has no `run-N` under its stage dir, the `dirHit` test still passed,
+     * and a stage dir missing entirely sent it down the flat path.
+     *
+     * `_tokens` is filled from the same answer, so the `--from` line below
+     * prints a token this page did not build. */
     const out = {};
-    const stages = (task && task.stages) || [];
-    let entries = [];
+    _tokens = {};
     try {
-        const listing = await projects.listDir(dir);
-        entries = (listing && listing.entries) || [];
-    } catch (_) { return out; }
-
-    const names = entries.map((e) => (e && e.name) || "");
-    for (let i = 0; i < stages.length; i++) {
-        const stage = stages[i];
-        const token = String(i + 1).padStart(2, "0") + "_" + (stage.name || "");
-        const dirHit = names.filter((n) => n === token);
-        let attempts = 0;
-        if (dirHit.length) {
-            try {
-                const sub = await projects.listDir(dir + "/" + token);
-                attempts = ((sub && sub.entries) || [])
-                    .filter((e) => /^run-\d+$/.test((e && e.name) || "")).length;
-            } catch (_) { /* unreadable is not zero, but it is all we can say */ }
-        } else {
-            // flat: one output per attempt, carrying the same token
-            attempts = names.filter(
-                (n) => n.indexOf("_" + token + "-run") !== -1).length;
+        const r = await fetch("/api/task-setup/attempts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dest: dir }),
+        });
+        const body = await r.json();
+        if (!body || !body.ok) return out;
+        for (const name of Object.keys(body.stages || {})) {
+            out[name] = body.stages[name].attempts;
+            _tokens[name] = body.stages[name].token;
         }
-        out[stage.name] = attempts;
-    }
+    } catch (e) { /* unreadable is not zero, but it is all we can say */ }
     return out;
 }
 

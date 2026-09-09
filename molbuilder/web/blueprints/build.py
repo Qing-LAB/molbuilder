@@ -2251,6 +2251,66 @@ def api_task_setup_prep_plan():
                     "bench": bench, "bundle": bundle, "once": once})
 
 
+@bp.route("/api/task-setup/attempts", methods=["POST"])
+def api_task_setup_attempts():
+    r"""How many attempts each stage has on disk — `project-layout.md` § 4.5.
+
+    **The browser worked this out itself**, and needed four of our rules to do
+    it: it composed the stage token, listed the folder, matched
+    ``/^run-\d+$/`` for the attempts, and fell back to counting
+    ``_<token>-run`` in filenames when no stage directory was there.  That
+    last branch is the one that matters — it **inferred the shape from what
+    it saw**, which § 4.5 forbids by name, so a hierarchical calculation
+    prepped-but-not-yet-run read as flat and was counted the flat way.
+
+    The shape is DECLARED (`engines/stages.md` § 6.7), the token comes from
+    `prep.token_for` and the attempts from `paths.attempts_in` — none of
+    which a browser can reach.  So it asks.
+
+    POST ``{dest}`` — a folder, because this is a question about what is on
+    disk, unlike `prep-plan` which reads only the document.
+    """
+    body = request.get_json(silent=True) or {}
+    dest_raw = str(body.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False, "error": "no folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    from molbuilder.jobset.prep import token_for
+    from molbuilder.paths import Shape, attempts_in
+    from molbuilder.runfiles import find
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.task import read_task
+    desc = dest / TASK_FILENAME
+    if not desc.is_file():
+        return jsonify({"ok": False, "error": f"no {TASK_FILENAME} here"}), 400
+    try:
+        task = read_task(desc)
+        shape = Shape.named(task.shape)
+    except Exception as exc:                      # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    stages = {}
+    for st in task.stages:
+        token = token_for(task, st.name)
+        sd = shape.stage_dir(token)
+        where = dest if sd == "." else dest / sd
+        if shape.keeps_attempts_as_directories:
+            n = len(attempts_in(where))
+        else:
+            # FLAT TELLS ATTEMPTS APART BY THE FILENAME'S COUNTER, not by a
+            # directory (§ 1.5a), so the count is how many run indices this
+            # rung's files carry -- read through `runfiles`, which owns that
+            # counter, rather than by matching `-run` in a listing.
+            runs = {rf.run for _p, rf in find(where, task.label, stage=token)
+                    if rf.run is not None}
+            n = len(runs)
+        stages[st.name] = {"token": token, "dir": sd, "attempts": n}
+    return jsonify({"ok": True, "shape": task.shape, "stages": stages})
+
+
 @bp.route("/api/task-setup/machines", methods=["GET"])
 def api_task_setup_machines():
     """Which machines a calculation could be prepared FOR.

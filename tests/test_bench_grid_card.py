@@ -450,3 +450,101 @@ class TestThePlanComesFromTheProducer:
         assert d["ok"] is False and d["error"]
 
 
+
+
+# --------------------------------------------------------------------- #
+#  How many attempts each stage has — asked, not worked out in the page  #
+# --------------------------------------------------------------------- #
+
+def _attempts(client, dest):
+    return client.post("/api/task-setup/attempts",
+                       json={"dest": str(dest)}).get_json()
+
+
+def test_the_attempts_door_answers_from_the_DECLARED_shape(client, bundle):
+    """`runsForStages` worked this out in the browser and needed four of our
+    rules to do it — the stage token, the `run-<n>` pattern, the flat
+    `_<token>-run` form, and a branch between the last two that it chose **by
+    looking at what was on disk**.
+
+    `project-layout.md` § 4.5 forbids that by name: the shape is DECLARED.
+    A hierarchical calculation whose stage directory does not exist yet is
+    still hierarchical, and the page counted it the flat way.
+    """
+    body = _attempts(client, bundle)
+    assert body["ok"] is True, body
+    assert body["shape"] == "hierarchical"
+    first = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
+    row = body["stages"][first]
+    assert row["token"] == "01_" + first
+    assert row["dir"] == "01_" + first
+    assert row["attempts"] == 0, "nothing is prepped in this fixture"
+
+
+def test_it_counts_the_attempt_directories_that_are_there(client, bundle):
+    first = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
+    for n in (0, 1, 2):
+        (bundle / f"01_{first}" / f"run-{n}").mkdir(parents=True)
+    assert _attempts(client, bundle)["stages"][first]["attempts"] == 3
+
+
+def test_a_flat_calculation_is_counted_BY_ITS_FILENAMES(client, bundle):
+    """Flat keeps no attempt directories (§ 1.5a): the counter is in the
+    name, and `runfiles` owns it.  The browser matched `_<token>-run` in a
+    listing, which is that grammar spelled in a language that cannot import
+    it."""
+    tj = bundle / "task.json"
+    doc = json.loads(tj.read_text())
+    doc["shape"] = "flat"
+    tj.write_text(json.dumps(doc, indent=2))
+    first = doc["stages"][0]["name"]
+    label = doc["run"]["name"]
+    for n in (0, 1):
+        (bundle / f"{label}_01_{first}-run{n}.out").write_text("")
+    body = _attempts(client, bundle)
+    assert body["shape"] == "flat"
+    assert body["stages"][first]["dir"] == "."
+    assert body["stages"][first]["attempts"] == 2
+
+
+def test_hierarchical_with_no_attempt_dirs_is_still_hierarchical(client, bundle):
+    """THE CASE THE BROWSER GOT WRONG, and the one the first three tests here
+    could not tell apart.
+
+    `runsForStages` chose its counting rule by looking at the disk.  A
+    hierarchical calculation that has been prepped-and-run in a way that left
+    flat-looking filenames beside the stage dir — or simply has files there
+    and no `run-N` yet — was counted the flat way and reported attempts it
+    does not have.  The shape is declared; there is no evidence that can
+    change it.
+    """
+    first = json.loads((bundle / "task.json").read_text())["stages"][0]["name"]
+    label = json.loads((bundle / "task.json").read_text())["run"]["name"]
+    sd = bundle / f"01_{first}"
+    sd.mkdir(parents=True)                                 # no run-N inside
+    # Flat-looking names INSIDE the stage directory -- which is what a run
+    # that happened in its own container leaves (the pre-C5 layout `launch`
+    # now refuses, and what an older bundle still holds).  A rule that counts
+    # by evidence reads three attempts here; the declared shape says the
+    # attempts of a hierarchical stage are its run-N DIRECTORIES, and there
+    # are none.
+    for n in (0, 1, 2):
+        (sd / f"{label}_01_{first}-run{n}.out").write_text("")
+    row = _attempts(client, bundle)["stages"][first]
+    assert row["attempts"] == 0, (
+        "a hierarchical stage counts run-N DIRECTORIES; filenames beside it "
+        f"are not attempts of it: {row}")
+
+
+def test_flat_counts_run_INDICES_not_files(client, bundle):
+    """One attempt writes several files — `.out`, `.concluded`, a log — and
+    they all carry the same `-run<N>`.  Counting files reports one attempt as
+    three."""
+    tj = bundle / "task.json"
+    doc = json.loads(tj.read_text())
+    doc["shape"] = "flat"
+    tj.write_text(json.dumps(doc, indent=2))
+    first, label = doc["stages"][0]["name"], doc["run"]["name"]
+    for role in (".out", ".concluded", ".pyscf.log"):
+        (bundle / f"{label}_01_{first}-run0{role}").write_text("")
+    assert _attempts(client, bundle)["stages"][first]["attempts"] == 1
