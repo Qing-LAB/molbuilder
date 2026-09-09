@@ -46,6 +46,8 @@ resolve it — they are the ones holding a bundle directory — and hand it down
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 #: The two layouts, and the vocabulary both the description and the tree
 #: check against.  It lives HERE, not in ``task``, so this module imports
@@ -120,3 +122,67 @@ class Shape:
 
 
 __all__ = ["Shape"]
+
+
+# ══ THE ATTEMPT ════════════════════════════════════════════════════════════
+#
+# ``run-<n>``, the directory one try of a stage or a trial runs in
+# (`project-layout.md` § 1.5 — immutable once it has run, which is why a
+# re-run opens the next rather than landing on top of one).
+#
+# IT HAD NO COMPOSER.  `f"run-{n}"` was written NINE times across four
+# modules, and the regex that reads it back sat in `materialize` and was
+# imported across into `prep` — a name spelled ten ways for a rule stated
+# once in the document.  One of those nine was added on 2026-09-08 by the
+# commit that gave the TRIAL directory a home, which is the habit exactly:
+# a caller reaches for an f-string because there is nothing to ask.
+
+#: What an attempt directory starts with.  One home, so the composer and the
+#: reader below cannot drift, and neither can a caller.
+ATTEMPT_PREFIX = "run-"
+
+
+def attempt_name(n: int) -> str:
+    """What attempt *n*'s directory is called.
+
+    Separate from :func:`attempt_dir` because a caller that is LISTING
+    attempts wants the name and not a path -- `runstatus` prints them in a
+    row, and composing a path to take ``.name`` off it again is the kind of
+    detour that sends the next person back to an f-string.
+    """
+    return f"{ATTEMPT_PREFIX}{int(n)}"
+
+
+def attempt_dir(container, n: int) -> Path:
+    """The directory attempt *n* of this stage or trial runs in."""
+    return Path(container) / attempt_name(n)
+
+
+def attempt_index(name: str) -> Optional[int]:
+    """The ``n`` in ``run-<n>``, or ``None`` when this is not one.
+
+    The reader for :func:`attempt_dir`, per § 4.5.  **Not padded** (§ 4.3),
+    so ``run-10`` is ten and not a tenth: a caller sorting these must sort the
+    INTEGERS, which is the whole reason this returns one.
+
+    Takes a bare directory NAME.  A caller holding a path passes ``p.name``;
+    accepting either would make ``run-1/run-2`` ambiguous.
+    """
+    if not name.startswith(ATTEMPT_PREFIX):
+        return None
+    tail = name[len(ATTEMPT_PREFIX):]
+    return int(tail) if tail.isdigit() else None
+
+
+def attempts_in(container) -> "list[int]":
+    """Every attempt index present in *container*, ascending.
+
+    The finder half.  `materialize.attempts` is the caller that had it, and
+    kept its own regex to do it.
+    """
+    c = Path(container)
+    try:
+        found = [attempt_index(d.name) for d in c.iterdir() if d.is_dir()]
+    except OSError:
+        return []
+    return sorted(n for n in found if n is not None)

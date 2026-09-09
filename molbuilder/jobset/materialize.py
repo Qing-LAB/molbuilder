@@ -32,10 +32,10 @@ from typing import Dict, List, Optional, Tuple
 
 from ..identity import StageRef, parse_stage_token, resolve_stage_ref
 from .model import JobSet, warm_carry
+from ..paths import attempt_dir, attempts_in
 
 #: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
 #: it has run, so a re-run is a NEW directory rather than an overwrite.
-ATTEMPT_RE = re.compile(r"^run-(\d+)$")
 
 #: Written by ``launch`` into the attempt, AFTER the launch succeeds
 #: (``project-layout.md`` § 1.6).  Its presence is the only honest answer to
@@ -123,7 +123,7 @@ def launched_trials(container, shape: "Shape") -> "List[str]":
     """
     out: "List[str]" = []
     for trial in trials_in(container):
-        places = ([trial / f"run-{n}" for n in attempts(trial)]
+        places = ([attempt_dir(trial, n) for n in attempts(trial)]
                   if shape.keeps_attempts_as_directories else [trial])
         if any(was_launched(p) for p in places):
             out.append(trial.name)
@@ -502,12 +502,11 @@ def attempts(stage_dir: Path) -> List[int]:
     """The attempt numbers present under ``stage_dir``, ascending."""
     if not Path(stage_dir).is_dir():
         return []
-    out = []
-    for d in Path(stage_dir).iterdir():
-        m = ATTEMPT_RE.fullmatch(d.name)
-        if m and d.is_dir():
-            out.append(int(m.group(1)))
-    return sorted(out)
+    # ASKED FOR.  This walked the directory and matched `ATTEMPT_RE` -- the
+    # regex that read a name `f"run-{n}"` composed in nine other places
+    # (`project-layout.md` § 4.5).  `paths.attempts_in` is the finder half of
+    # `paths.attempt_dir`, so the name is spelled once and read once.
+    return attempts_in(stage_dir)
 
 
 def was_launched(attempt_dir: Path) -> bool:
@@ -537,7 +536,7 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     stage as *"prepped, not launched"* — forever.
     """
     ns = attempts(stage_dir)
-    return (Path(stage_dir) / f"run-{ns[-1]}") if ns else None
+    return attempt_dir(stage_dir, ns[-1]) if ns else None
 
 
 def run_dir(container: Path) -> Path:
@@ -639,10 +638,10 @@ def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """
     existing = attempts(stage_dir)
     if existing:
-        last = Path(stage_dir) / f"run-{existing[-1]}"
+        last = attempt_dir(stage_dir, existing[-1])
         if not was_launched(last):
             return last, False
-        return Path(stage_dir) / f"run-{existing[-1] + 1}", True
+        return attempt_dir(stage_dir, existing[-1] + 1), True
     return Path(stage_dir) / "run-0", True
 
 

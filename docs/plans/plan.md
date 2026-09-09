@@ -987,9 +987,16 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 | **M1** | *(done 2026-09-08)* The inventory, as a re-runnable tool: `tools/classify_path_finders.py`. 72 searches, 24 owned, 0 unclassified | shipped |
 | **M2** | *(done 2026-09-08)* The design + contract: one L1 stdlib-only `paths.py`, contract at `project-layout.md` § 4.5 | agreed and written |
 | **M3** | *(done 2026-09-08)* `runfiles.find` + `runfiles.latest_run`. Four hand-rolled readers of the `-run<N>` counter retired: the globs in `materialize` and `summarize`, and the index regexes in `summarize` and `parse/engines/pyscf.py` | shipped; survey's owned bucket 22 → 20 |
-| **M4** | Give `Shape` the rest of the directory finders, beside `stage_glob` which already works this way | `jobset/_cli.py`'s `bench-*/**` glob is gone |
+| **M4** | *(done 2026-09-08)* **a** — `Shape` moves to a floor-1 `paths.py` (`SHAPES` with it), plus `TRIAL_PREFIX` / `trials_in` / `launched_trials`. **b** — the ATTEMPT gets a composer at last: `attempt_name` / `attempt_dir` / `attempt_index` / `attempts_in` retire nine `f"run-{n}"` spellings across four modules and the regex two of them reached across for | shipped; owned 24 → 19 |
 | **M5** | The endpoint contract: every path the Task-setup card renders arrives from the server. Removes `viewer.js`'s `stage_token` re-implementation | the browser composes no path; `test_the_plan_door_composes_no_name_of_its_own` extends to cover `--from` |
 | **M6** | `parse/contract.py`'s engine-output globs move behind `runfiles.WRITTEN`, which already declares those roles | one vocabulary for what an engine writes |
+
+**M4b's number moved while it was being fixed.** The plan said eight
+`f"run-{n}"` spellings; re-derived at the start of the work it was NINE, and
+one of the nine had been added the same day by M4a — the commit that gave the
+TRIAL directory a home reached for an f-string because the ATTEMPT still had
+none. That is the argument for the framework in a single diff: a rule with no
+door grows a new caller even while you are closing its old ones.
 
 **Still spelling `-run<N>` after M3:** `siesta/makov_payne.py`, and it is the
 interesting one — that code is SHIPPED beside a job

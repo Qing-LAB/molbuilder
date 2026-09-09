@@ -1448,7 +1448,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
     which electrode run fed it.  Returns ``[(source_rel, filename)]``.
     """
     from ..transport.stages import bias_token, stage_inputs
-    from .materialize import ATTEMPT_RE, attempt_concluded
+    from .materialize import attempt_concluded
     from ..paths import Shape
 
     base = Path(base_dir)
@@ -1477,11 +1477,13 @@ def gather_transport_inputs(base_dir, task, stage: str,
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has not been prepped -- {run_first}")
-        attempts = sorted(
-            (d for d in up_dir.iterdir()
-             if d.is_dir() and ATTEMPT_RE.fullmatch(d.name)),
-            key=lambda d: int(ATTEMPT_RE.fullmatch(d.name).group(1)),
-            reverse=True)
+        # Newest first, and NUMERICALLY -- `run-10` is ten, not a tenth
+        # (§ 4.3: the index is not padded).  This reached across for
+        # `materialize.ATTEMPT_RE` and applied it twice, once to filter and
+        # once to sort; `paths` owns both halves of the name now.
+        from ..paths import attempt_dir as _adir
+        from ..paths import attempts_in as _ain
+        attempts = [_adir(up_dir, n) for n in reversed(_ain(up_dir))]
         concluded = [d for d in attempts
                      if attempt_concluded(d, stem) is not None]
         if not concluded:

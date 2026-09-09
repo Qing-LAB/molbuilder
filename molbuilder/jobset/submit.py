@@ -64,6 +64,7 @@ from ..scheduler.quantities import slurm_time as _slurm_time
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
+from ..paths import attempt_dir
 
 
 class SubmitError(Exception):
@@ -478,7 +479,7 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
                 f"again, move the trial's directory aside yourself -- "
                 f"molbuilder never deletes results.")
         return d, None
-    last = d / f"run-{ns[-1]}"
+    last = attempt_dir(d, ns[-1])
     if was_launched(last):
         # A TRIAL IS REFUSED FOR THE SAME REASON AND ADVISED DIFFERENTLY.
         # `--from <attempt>` is a STAGE's remedy: it continues from what
@@ -1892,10 +1893,10 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
             for _j in jobset.jobs:
                 _d = base / _names[_j.name]
                 _ns = attempts(_d)
-                if not _ns or not was_launched(_d / f"run-{_ns[-1]}"):
+                if not _ns or not was_launched(attempt_dir(_d, _ns[-1])):
                     continue
                 _mark = attempt_concluded(
-                    _d / f"run-{_ns[-1]}", Path(_j.script).stem)
+                    attempt_dir(_d, _ns[-1]), Path(_j.script).stem)
                 if _mark is None and not (dry_run or mode == "ask"
                                           or continue_unconcluded):
                     # LAUNCHED BUT NEVER CONCLUDED -- still running, or

@@ -36,6 +36,7 @@ from .model import JobSet
 # vocabulary, already citing a retired doc.  The carry rows are status's
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
+from ..paths import attempt_name
 
 
 def _warm_files(engine: str):
@@ -317,7 +318,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     s = next(x for x in status.stages if x.name == stage_name)
     rows: List[tuple] = []
 
-    tries = ", ".join(f"run-{n}" for n in s.attempts) or "-"
+    tries = ", ".join(attempt_name(n) for n in s.attempts) or "-"
     rows.append(("attempt", f"{s.attempt or '-'}"
                             + (f"   (of {tries})" if len(s.attempts) > 1
                                else "")))

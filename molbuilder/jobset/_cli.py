@@ -36,6 +36,7 @@ from .runstatus import jobset_status, render_stage_status, render_status
 
 #: A11: the name comes from the module that writes the file.
 from .model import FILENAME as _JOBSET_FILE
+from ..paths import attempt_dir
 
 
 def _load(bundle: str) -> tuple:
@@ -844,7 +845,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
             sd = Shape.named(task.shape).stage_dir(token)
             d = Path(base) / sd if sd != "." else Path(base)
             for n in attempts(d):
-                a = d / f"run-{n}"
+                a = attempt_dir(d, n)
                 if was_launched(a):
                     evidence.append(
                         f"{a.relative_to(Path(base))}/ was launched "
