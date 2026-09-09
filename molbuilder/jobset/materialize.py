@@ -24,7 +24,6 @@ if TYPE_CHECKING:                      # annotations only
 
 import json
 import os
-import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +31,10 @@ from typing import Dict, List, Optional, Tuple
 
 from ..identity import StageRef, parse_stage_token, resolve_stage_ref
 from .model import JobSet, warm_carry
-from ..paths import attempt_dir, attempts_in
+from ..paths import (attempt_dir, attempts_in,
+                     TRIAL_PREFIX as _TRIAL_PREFIX,
+                     trial_name as _paths_trial_name,
+                     bench_container as _paths_bench_container)
 
 #: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
 #: it has run, so a re-run is a NEW directory rather than an overwrite.
@@ -48,7 +50,10 @@ RUN_LAUNCH_FILE = "run.json"
 #: What a trial's directory starts with.  One home, because the finder below
 #: and `job_dir_name` must agree, and `jobset/_cli.py` spelled it twice more
 #: -- once in a glob and once in a loop that walked path parts looking for it.
-TRIAL_PREFIX = "bench-"
+#: Re-exported from `paths`, which owns it since 2026-09-09 -- the address
+#: layer is floor 1 and cannot reach this module.  Kept as a name here because
+#: `submit` and the tests read it; there is one definition, not two.
+TRIAL_PREFIX = _TRIAL_PREFIX
 
 
 def job_dir_name(job_name: str) -> str:
@@ -62,7 +67,7 @@ def job_dir_name(job_name: str) -> str:
     what every caller should use, because the answer depends on the job SET
     (the deck each job carries) rather than on a name alone.
     """
-    return f"{TRIAL_PREFIX}{job_name}"
+    return _paths_trial_name(job_name)
 
 
 def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
@@ -221,10 +226,7 @@ def bench_container(shape: "Shape", token: str = "") -> str:
     ROOT while its record sat in ``bench/`` — so `launch` launched trials
     in directories the underway-ask never looked at (final review A-1/A-2).
     """
-    sd = shape.stage_dir(token) if token else "."
-    if sd == ".":
-        return f"bench_{token}" if token else "bench"
-    return f"{sd}/bench"
+    return _paths_bench_container(shape, token)
 
 
 def sweep_set_paths(bundle) -> "List[Path]":

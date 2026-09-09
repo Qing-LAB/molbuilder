@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Optional
 
@@ -825,6 +824,39 @@ _ATTEMPT_GLOBS = {"never": ("",), "maybe": ("", "-run*"), "always": ("-run*",)}
 #: THE FIRST ATTEMPT IS ZERO (`runwrap`: ``_run_n=0   # first run``), so this
 #: is the real name the first launch writes -- not a placeholder.
 FIRST_ATTEMPT = 0
+
+
+def is_stage_token(name: str) -> bool:
+    """Whether *name* has the shape of a stage token (``01_coarse``).
+
+    The reader half of the shape :data:`_STAGE` declares, so a caller asking
+    *is this directory a rung* does not carry the pattern.  It answers about
+    the SHAPE only -- `identity.StageRef` owns whether a token names a rung
+    this description actually has, which needs the description.
+    """
+    return bool(_STAGE.fullmatch(name))
+
+
+def roles(*, carried: bool = True) -> "tuple[str, ...]":
+    """Every role this module knows -- the catalogue, read as a vocabulary.
+
+    :data:`WRITTEN`'s roles, plus the engines' CARRIED ones unless
+    ``carried=False``.  The address layer (`ref`) validates against this, which
+    is what makes an undeclared role a catalogue question rather than something
+    a caller can slip past by spelling it (`plans/plan.md` § 5l.2: extensibility
+    is a catalogue row, never a new function).
+
+    Ordered and de-duplicated, so it is stable to compare against.
+    """
+    out = [a.role for a in WRITTEN]
+    if carried:
+        out += [r for r in _CARRIED_ROLES if r not in out]
+    seen, uniq = set(), []
+    for r in out:
+        if r not in seen:
+            seen.add(r)
+            uniq.append(r)
+    return tuple(uniq)
 
 
 def roles_ending(*suffixes: str) -> "tuple[str, ...]":

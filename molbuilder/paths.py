@@ -189,9 +189,132 @@ def attempts_in(container) -> "list[int]":
     return sorted(n for n in found if n is not None)
 
 
+
+# ══ THE BENCH CONTAINER AND THE TRIAL ══════════════════════════════════════
+#
+# `project-layout.md` § 2.6: the benchmark rows carry NO circled number --
+# they are "nested containers inside a stage (④), not levels of the tree."
+# So a trial is a QUALIFIER on ④, and both names below are layout, which is
+# why they live here beside `stage_dir` rather than in the module that
+# happened to need them first.
+#
+# THEY MOVED DOWN 2026-09-09.  Both rules were `jobset/materialize.py`'s,
+# floor 4, and the address layer is floor 1 -- a rule the framework cannot
+# reach is a rule its callers re-spell, which is § 4.5's whole subject.
+# `materialize.bench_container` and `materialize.job_dir_name` still exist
+# and still answer; they now ask these.
+
+#: What a TRIAL directory starts with.  Dash-joined, where the container is
+#: underscore-joined -- § 6.3's separator rule, and what keeps
+#: ``bench-G1K4C6`` (a trial) apart from ``bench_01_coarse`` (a container).
+TRIAL_PREFIX = "bench-"
+
+
+def trial_name(point: str) -> str:
+    """What the trial for *point* is called -- ``bench-<point>``.
+
+    `job-contracts.md` § 6.3 is the authority: ``bench-`` plus the coordinate
+    as ONE qualifier.  The composer half of the pair; :func:`trials_in` is
+    the finder.
+    """
+    return f"{TRIAL_PREFIX}{point}"
+
+
+def trial_point(name: str) -> Optional[str]:
+    """The ``<point>`` in ``bench-<point>``, or None when this is not one.
+
+    The reader for :func:`trial_name`, per § 4.5.  Takes a bare directory
+    NAME for :func:`attempt_index`'s reason.
+    """
+    if not name.startswith(TRIAL_PREFIX):
+        return None
+    point = name[len(TRIAL_PREFIX):]
+    return point or None
+
+
+def bench_container(shape: "Shape", token: str = "") -> str:
+    """Where a stage's bench state lives, **relative to the calculation root**.
+
+    ``<NN>_<stage>/bench`` in the hierarchy; ``bench_<NN>_<stage>`` at the root
+    of a FLAT calculation; bare ``bench`` for a stageless one.
+    `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
+    measures"* -- in flat there IS no stage directory to sit inside, so the
+    token qualifies the container's own name instead.
+
+    **The token qualifies it in flat because it once did not**, and two flat
+    stages' benchmarks then shared one root ``bench/``: each prep overwrote the
+    other's job-set, plan and verdict (2026-08-12 plan A5).
+
+    This is the ONE spelling of that rule.  It sat in two places until
+    2026-08-13 and the two disagreed in BOTH non-hierarchical layouts, so
+    `launch` launched trials in directories the underway-ask never looked at.
+    """
+    sd = shape.stage_dir(token) if token else "."
+    if sd == ".":
+        return f"bench_{token}" if token else "bench"
+    return f"{sd}/bench"
+
+
+def bench_containers_in(root, shape: "Shape") -> "list[tuple[str, Optional[str]]]":
+    """Every bench container under *root*, as ``(relative name, stage token)``.
+
+    The SEARCH half of :func:`bench_container`, which § 4.5 requires and which
+    did not exist -- a caller looking for *the benchmarks in this calculation*
+    had to know that the hierarchy hides them one level down inside each rung
+    while flat qualifies their own name.  That asymmetry is what made
+    ``bench_container`` need three shapes in one docstring.
+
+    The stage token is returned rather than re-derived: in flat it is IN the
+    container's name (``bench_01_coarse``) and in the hierarchy it is the
+    PARENT directory, so a caller reading either spelling itself would be
+    writing this function again with one of the two arms missing -- which is
+    the fault (A5, 2026-08-12) that let two flat stages share one ``bench/``.
+    """
+    r = Path(root)
+    out: "list[tuple[str, Optional[str]]]" = []
+    try:
+        entries = sorted(r.iterdir())
+    except OSError:
+        return out
+    if shape.keeps_attempts_as_directories:
+        if (r / "bench").is_dir():
+            out.append(("bench", None))
+        for d in entries:
+            if d.is_dir() and (d / "bench").is_dir():
+                out.append((f"{d.name}/bench", d.name))
+        return out
+    for d in entries:
+        if not d.is_dir():
+            continue
+        if d.name == "bench":
+            out.append(("bench", None))
+        elif d.name.startswith("bench_"):
+            out.append((d.name, d.name[len("bench_"):] or None))
+    return out
+
+
+def trials_in(container) -> "list[str]":
+    """Every trial POINT present in *container*, sorted -- :func:`trial_name`'s
+    search.
+
+    Returns the points, not the paths: a caller that wants a path composes one,
+    and a caller listing a sweep wants the coordinates.  `materialize.trials_in`
+    returns paths for its own callers and is the other half of the same pair.
+    """
+    c = Path(container)
+    try:
+        found = [trial_point(d.name) for d in c.iterdir() if d.is_dir()]
+    except OSError:
+        return []
+    return sorted(p for p in found if p is not None)
+
+
 __all__ = [
     # the layout
     "SHAPES", "Shape",
+    # the bench container and the trial -- ④'s qualifier, not a level
+    "TRIAL_PREFIX", "trial_name", "trial_point", "bench_container",
+    "bench_containers_in", "trials_in",
     # the attempt -- composer, reader, finder (§ 4.5's pairing)
     "ATTEMPT_PREFIX", "attempt_name", "attempt_dir",
     "attempt_index", "attempts_in",

@@ -943,6 +943,49 @@ already `runfiles`' rule for `stage` (it refuses `""` rather than reading it as
 None) and it becomes the rule on every axis — which is `process/code-audit.md`
 D1 applied to the address instead of re-learned per parameter.
 
+#### 5l.1a ⑤ and the wrapper's counter are TWO coordinates, not one *(measured 2026-09-09)*
+
+§ 5l.1 lists `attempt` and `counters` side by side without saying how they
+relate, and the two shapes make that question unavoidable. **Measured, not
+reasoned:**
+
+`runwrap._run_index_resolver` (`runwrap.py:127`) says outright what it is:
+
+> *"This one indexes attempts inside ONE directory, which is exactly the flat
+> shape's rule (`project-layout.md` § 1: attempts told apart by an output
+> index). **The hierarchy tells them apart by directory, and that is the layout
+> layer's job, not the wrapper's.**"*
+
+and the bash it emits always writes `-runN`, starting at `-run0` when no prior
+output is present (`runwrap.py:175-215`). A fresh `run-2/` contains no prior
+output, so the file inside it is `bdt_01_coarse-run0.out`.
+
+| | ⑤ `attempt` | the `run` counter in the filename |
+|---|---|---|
+| **hierarchical** | the directory `run-<n>` | the wrapper's index **inside** that directory — starts again at 0 |
+| **flat** | *does not exist as a directory* | the ONLY thing telling attempts apart (§ 1.5a) |
+
+**So `Ref.attempt` is ⑤ and `Ref.counters["run"]` is the wrapper's, and the
+address keeps them apart.** They coincide numerically in flat and diverge in
+hierarchical — `run-2/…-run0.out` is attempt 2, wrapper index 0, and an address
+that folded them would have to report one of those two numbers as the other.
+
+**This is not the `_stage_state(label, stage, out_glob)` fault in a new place.**
+That signature offered two ways to say ONE rung. These are two different
+quantities that happen to agree in one shape: collapsing them loses information
+in the other, which is the opposite failure.
+
+**The consequence for `compose`.** ⑤ is rendered by the LAYOUT (a directory
+component, hierarchical only, via `Shape.keeps_attempts_as_directories`); the
+counter is rendered by the NAME GRAMMAR (`runfiles.compose`'s `run=`). One
+coordinate, one renderer, and § 5l.5's layer boundary is what decides which.
+
+**And the stage token is rendered TWICE, deliberately.** `prep` composes
+`_rf(task.label, ".fdf", token or None)` in both shapes (`prep.py:1365`), so ④
+is in the filename always, and in the directory only in the hierarchy. That is
+redundant in the hierarchy and load-bearing in flat, and the address states it
+once either way.
+
 ### 5l.2 Three verbs, and nothing else public
 
 | verb | signature | answers |
@@ -1159,7 +1202,7 @@ under the job's python.
 |---|---|---|
 | ~~**N1**~~ | **DONE 2026-09-08.** `segments()` in the same tool, wired into `--check` and the summary, with the override discipline the other two passes use. Corrected the row above: 10 sites, not 9. Five mutations, five killed — including the `GUARDED_UNDECLARED = ()` kill switch and the first-component rule (dropping it lets Flask routes back in) | shipped |
 | ~~**N2**~~ | **DONE 2026-09-08.** `FIELD_SHAPES` declares a field's shape once (as `QUALIFIERS` does for counters); `Artifact.fields` declares which rows carry one; `.runwrap-*.log` → `.runwrap-{stamp}.log` + `stamp`. `role_matches` and `_tail_of`'s pattern arm **deleted**, and both pattern branches in `find` / `find_by_role` are equality again. Six mutations, six killed | shipped |
-| **N3** | `Ref` + the three verbs, **beside** the existing API. No caller moves | the verbs answer every question § 5l.4 lists, with tests over the address, not over call sites |
+| ~~**N3**~~ | **DONE 2026-09-09.** `molbuilder/ref.py` — `Ref` (③'s label through ⑤, plus the bench qualifier, counters and fields) and `compose` / `find` / `parse` over whole paths, L1 and importing only its two floor-1 siblings. **Two layout rules had to move down first**: `bench_container` and the trial name were `jobset/materialize`'s, floor 4, and the address layer is floor 1 — `materialize` still answers, by asking. `paths` also gained `bench_containers_in`, the SEARCH half `bench_container` never had (§ 4.5's pairing), because the flat container carries its stage in its own name and a search with no stage in hand cannot compose it. **17 tests over the address, parametrised on both shapes**; seven mutants, seven killed — two only after the first pass left them alive (`parse`'s own round-trip check, and the flat container's stage qualifier, whose measured defect needs TWO stages to see) | shipped |
 | **N4** | the 16 layout functions and the 13 name functions delegate to the verbs. Nothing deleted | one implementation behind every existing name; the suite unchanged |
 | **N5** | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |
 | **N6** | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
