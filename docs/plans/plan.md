@@ -1229,6 +1229,64 @@ of these to move has found a design problem, not a step to push through.
 
 ---
 
+## 5m. The test screen — what the audit found, sequenced *(2026-09-09)*
+
+**§ 5l is the framework; this is the suite.** Two audits ran under
+`process/testing.md` § 3b — a four-partition gate over ~3,000 test functions
+(2026-09-08) and a header pass over the ten most-undocumented files
+(2026-09-09). Their EVIDENCE lives in two records and stays there:
+
+- [`process/test-audit-findings.md`](?doc=process/test-audit-findings.md) — the
+  numbered defect ledger (§ 0a), the reproductions, and the unapplied verdicts.
+- [`science/test-design-findings.md`](?doc=science/test-design-findings.md) —
+  the protected class: where a science test would pass for a physically wrong
+  reason.
+
+**This section is the WORK.** It exists because a record with no plan row is a
+record nobody executes — which is how `science/test-design-findings.md` shipped
+on 2026-09-08 linked from nothing, failing two of the repo's own doc lints, and
+was one compaction from being lost.
+
+### 5m.1 The rule this section is under
+
+> **The default is REMOVAL, and the burden of proof is on keeping** (user,
+> 2026-09-08). The one exception is scientific validation: protected, and only
+> its DESIGN is open.
+
+And the number that governs everything below: **subsumption reasoning was
+measured wrong 1 time in 5** (`test-audit-findings.md` § 4). A verdict is a
+lead. `tools/verify_subsumption.py` is what turns one into a decision.
+
+### 5m.2 The rows
+
+| step | what | done when |
+|---|---|---|
+| **T1** | **The two tests that cannot fail** — `#74` (passes on pytest's own temp-directory name, so a fence test never reaches the fence) and `#75` (`"a" in str(exc.value)`, true of every English sentence). Both MEASURED, both one-line fixes with a real assertion behind them | each fails when the property it names is broken, shown by a mutant |
+| **T2** | **`#67`, the one live bug** — `/api/selection/eval` answers HTML 500 with a stack trace on three malformed-rule shapes, on a path the filter panel hits every keystroke. **The fix has a design half**: leaf-type validation belongs either in `from_json` or in the dataclasses, and the `evaluate`-time `TypeError`s are not reachable from `from_json` alone | the three payloads answer 400 with the `{ok,error}` envelope, and the control still does |
+| **T3** | **`#68` and `#71`, both doc-vs-code, both with a test holding the wrong side.** "Canonical six" for nine topics, with `test_web_files.py:1077` asserting the stale wording; and the fence's 400-vs-403, with a test hedging `in (400, 403)`. **Fix the rule first, then the restatements** — fixing the test would close the finding by making the disagreement permanent | the message and the document agree with the code, and each test asserts one status |
+| **T4** | **`#64` and `#65`** — the config dropped by two task-setup routes (needs a decision on where the route gets the task's engine config), and the XSS allowlist's suffix match, whose three bare `viewer.js` entries must be re-derived against what the tree actually contains | exact-path matching, and a guard covering both task-setup sites |
+| **T5** | **The coverage gaps, in severity order.** `#76` an inversion passes all 320 `orient` tests (a two-atom fixture cannot tell a reflection from a rotation) · the sidecar↔selection path covered as two halves that never meet · the BROKEN env-state gate in `run_install` · `#70`'s six routes with no fence test · `#72`'s class with a contract and no tests | each has a test that fails on the defect it names |
+| **T6** | **`#66`'s four redesigns** — still in the tree, still weak. The mechanism is a § 3a source pin in each; the property underneath is real and otherwise unguarded | the pin is replaced by an observation of the behaviour |
+| **T7** | **The verdict backlog, through the harness, in confidence order.** 22 candidates from the header pass (one measured) and 18 recovered from the surviving partition report — the rest of the ~110 are not recoverable and would have to be re-derived. **Nothing is cut on reading alone** | every applied cut has a mutant; every INCONCLUSIVE stays |
+| **T8** | **The science redesigns** — `science/test-design-findings.md` §§ 1–7a. Protected, so this is design work, not removal: a real external reference for `test_pyscf_smoke.py`, tolerances derived from the constants their own comments cite, and the assertions that currently pass for the wrong reason | each fails for the physical reason it names |
+| **T9** | **The remaining 1,627 undocumented tests** (of 6,411 — the pass took the suite from 67.3% to 74.6%). Writing the header IS the audit; it is what made T1–T6 findable | every test states its goal and its contract, and the obsolete ones have surfaced |
+
+### 5m.3 What is deliberately NOT a row
+
+**Re-deriving the ~90 lost verdicts.** Most auditors terminated on a session
+rate limit and their output was cleared with the session directory. Re-deriving
+a subsumption verdict that then cannot be applied without a mutant costs more
+than running the mutant on a verdict already in hand — so T7 spends the budget
+on the 40 that survive, and the rest are declared lost rather than quietly
+carried as if they were pending.
+
+**And the cuts already applied are not revisited.** They are source pins and
+cannot-fails, where the evidence is a line of shipped code rather than an
+argument about reachability, and their reasoning is in the commit messages
+`test-audit-findings.md` § 0 lists.
+
+---
+
 ## 6. Closed by consolidation — what was archived, and why
 
 | document | why it is a record now |

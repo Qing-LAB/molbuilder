@@ -34,6 +34,34 @@ used; that is what makes it fact-checkable rather than remembered.
 
 ---
 
+## 0a. The defect ledger — every numbered finding, and where it lives
+
+**Nothing here is fixed.** Each row was reproduced against the working tree on
+the date given, and the detail — the reproduction, the line numbers, and what
+the fix costs — is in the section named. This table exists so there is ONE place
+to look; the sections are where the argument is.
+
+| # | what | live? | detail |
+|---|---|---|---|
+| **#64** | two task-setup routes drop `cfg`, so findings carry no `workflow_group` and the page cannot place them on a card | page defect | § 2.1 |
+| **#65** | the XSS allowlist matches files by SUFFIX, so a bare `viewer.js` entry exempts five files; two of its three patterns are dead and the live one lands in a viewer the comment never names | security lint hole | § 2.2 |
+| **#66** | four tests owed a REDESIGN, not a deletion — still in the tree, still weak — plus the untested BROKEN env-state gate in `run_install` | weak guards | § 3 |
+| **#67** | `POST /api/selection/eval` answers **HTML 500 with a stack trace** where its contract says JSON 400, for three malformed-rule shapes | **live, on a per-keystroke path** | § 6.1 |
+| **#68** | the topic refusal says *"canonical six"* for a set of **nine** — and `test_web_files.py:1077` asserts the stale wording, so the test protects the drift | user-visible | § 6.1 |
+| **#69** | `files._validate_op_target` is a guard that **cannot fire**, while its docstring claims a protection that never runs | dead guard | § 6.1 |
+| **#70** | six file routes have **no outside-root test at all** — three of them mutations — and `/upload`'s is #74 | coverage | § 6.1 |
+| **#71** | `web-api.md § 1` says the fence answers **403**; the fence answers **400**, and one test hedges `in (400, 403)`, which is how it stayed invisible | doc-vs-code | § 6.1 |
+| **#72** | `TestTheDownloadButtonSaysWhatItIsDoing` carries a user-dated contract and **zero tests** | § 3a.1 misinformation | § 6.1 |
+| **#73** | a dead local at `test_periodicity_gate.py:775` marking a dropped assertion | cosmetic | § 6.1 |
+| **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **cannot fail** | § 6.2 |
+| **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **cannot fail** | § 6.2 |
+| **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **science coverage** | `science/test-design-findings.md` § 7a |
+
+**Sequenced, judged and tracked in `plans/plan.md` § 5m.** This file is the
+evidence; that section is the work.
+
+---
+
 ## 1. What the audit covered, and what was lost
 
 Seven auditors ran: four gating partitions over the main tree, then three over
@@ -400,7 +428,7 @@ rather than re-argued per auditor.
 
 ---
 
-## 7. The header pass, 2026-09-09 — what writing the goal down uncovered
+## 6. The header pass, 2026-09-09 — what writing the goal down uncovered
 
 Three agents wrote the § 3b header (*the failure it catches* + *the contract that
 owns the rule*) into the ten files with the most undocumented tests: **436
@@ -412,7 +440,7 @@ byte-identical before and after — and all three suites pass.
 question, because you cannot state the failure a test catches when it catches
 nothing. Every item below came out of trying to write one sentence.
 
-### 7.1 Code defects, all reproduced before being recorded here
+### 6.1 Code defects, all reproduced before being recorded here
 
 **`#67` — `POST /api/selection/eval` answers HTML 500 where its contract says
 JSON 400.** `web/blueprints/selection.py:127` catches `SelectionError` **and
@@ -480,7 +508,7 @@ coverage that is not there. Write the behaviour test or delete the class.
 residue of the 2026-08-03 prose→id migration. Harmless, except that a reader
 takes it as evidence a message check exists.
 
-### 7.2 Tests that cannot fail — two measured, not argued
+### 6.2 Tests that cannot fail — two measured, not argued
 
 **The sharpest thing this pass found: `test_upload_outside_root_rejected`
 (`test_web_files.py:2517`) passes on its own temp-directory name.** It asserts
@@ -504,7 +532,7 @@ change existed specifically to stop pinning prose and start pinning *which
 axis*; the replacement asserts nothing. Fix: `assert "along a" in msg`, or key on
 the finding id as the rest of that file does.
 
-### 7.3 Cut candidates — 22, and none applied
+### 6.3 Cut candidates — 22, and none applied
 
 | slice | CUT | UNSURE | MOVE / redesign |
 |---|---|---|---|
@@ -527,7 +555,7 @@ four classes turns a typed 404 into a 500 HTML page and nothing else in the suit
 goes red. It stays, and its header now says why. That is the § 3b question
 answered properly in the keep direction.
 
-### 7.4 A file-level verdict worth keeping
+### 6.4 A file-level verdict worth keeping
 
 `test_projects_public_surface_js.py` — 63 tests — reads from its name like the
 API-shape file § 3b forbids. It is not: **54 of the 63 drive real behaviour** of
@@ -544,7 +572,7 @@ machine (`node` not available), so those verdicts rest on reading.
 
 ---
 
-## 6. What is deliberately NOT in this file
+## 7. What is deliberately NOT in this file
 
 - **The applied cuts.** They are in the commit messages listed in § 0, each with
   the failure it would have caught and what now goes undetected. Restating them

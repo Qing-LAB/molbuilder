@@ -211,7 +211,7 @@ file is ever redesigned.
 
 Recorded under the same rule as everything above: **none is a proposal to
 delete.** Companion record for the non-science half:
-[`process/test-audit-findings.md § 7`](?doc=process/test-audit-findings.md).
+[`process/test-audit-findings.md § 6`](?doc=process/test-audit-findings.md).
 
 ### The one that was measured, and it is the sharpest in this file
 
