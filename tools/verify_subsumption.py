@@ -34,7 +34,20 @@ WHAT IT CANNOT DO, and each of these was hit in the first run:
 
   * **INCONCLUSIVE** means NO OPINION, never "verified".  The operators are
     mechanical -- flip a comparison, negate a bool, perturb a literal -- and
-    cannot reach every assertion.
+    cannot reach every assertion.  Two of seven landed here on the first run;
+    adding literal perturbation decided one of them
+    (`test_root_landing_path_follows_TABS`, a list of route paths -> CONFIRMED).
+
+    **The other is undecidable BY DESIGN, and the reason generalises: the value
+    asserted is not ours.**  `test_carbon_is_twelve_times_hydrogen` exercises
+    `chemistry.atomic_mass`, whose whole body is a lookup into ASE's table --
+    the module docstring says so: *"ASE ships the IUPAC standard atomic weights,
+    so this is a name for a table rather than a copy of one."*  There is no
+    molbuilder literal to perturb, and this tool deliberately mutates only
+    `molbuilder/`.  For that class, read instead of mutate: both tests reach the
+    same one-line function, and the sibling pins C to 12.011+-1e-3 and H to
+    1.008+-1e-3, confining the ratio to [11.903, 11.928] -- strictly inside the
+    candidate's 11.9+-0.2.  Arithmetic, not a mutation question.
   * A **class-nested test needs its full nodeid** (`file.py::Class::test_x`).  A
     bare name matches nothing and reports NO-COVERAGE, which looks like a finding
     and is not.
