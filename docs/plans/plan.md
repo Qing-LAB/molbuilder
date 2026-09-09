@@ -1086,6 +1086,45 @@ Then the uses, each judged against § 5l.1–5l.2 rather than accommodated:
 | SIESTA `.XV` and the warm suffixes | **out of scope, and stated** | § 4.2 — molbuilder does not compose them, so no door may claim them |
 | `_geom_optim.xyz` inside emitted script TEXT | **deferred, recorded** | `makov_payne.py` ships beside a job; needs `runfiles` in `runwrap.MONITOR_COMPANIONS` first |
 
+#### 5l.4b `.molstruct.json` does not have ③'s label — found by N4, blocked into N5
+
+§ 5l.3 says `sidecars_in`, `is_sidecar` and `sidecar_path_for` *"become three
+verbs on one address"*, and § 5l.4 files `.molstruct.json` as **regulate — a
+catalogue row**. N4 tried it and stopped at something the inventory had not
+seen. Measured 2026-09-09:
+
+**A sidecar's label is not the calculation's label — it is whatever the
+structure file happens to be called.** `sidecar_path_for` maps
+`relaxed.xyz → relaxed.molstruct.json`, and also
+`job.spectra.xyz → job.spectra.molstruct.json`. A label carrying a dot is
+exactly what `runfiles._LABEL` refuses, *because* allowing it would make `parse`
+ambiguous — so the address cannot name half the files this door legitimately
+names.
+
+**And `sidecars_in(directory)` searches with no label at all**, where
+`ref.find` requires one. That is not an oversight in `find`: the label is a
+coordinate, and "any label" is only decidable for a dotted role, which
+`job.spectra.molstruct.json` shows is not the case here either.
+
+**So the verdict changes, and § 5l.3's line was too quick.** Two things are
+true at once and the inventory conflated them:
+
+- **When a sidecar pairs with a file molbuilder composed**, it *is* a role whose
+  address has no stage and no attempt, and a catalogue row serves it.
+- **When it pairs with a person's own structure file**, it is beside a FOREIGN
+  file, and § 5l.3's own rule applies — *"a foreign file is not in the address
+  space; the caller should be told that, not served."* Loosening the grammar to
+  address `job.spectra` is the `compose`-vs-`tail` accommodation this section
+  exists to retract, arriving from the other side.
+
+**The decision N5 owes**, recorded here so it is not re-derived: does
+`.molstruct.json` become a catalogue row that serves only the composed case —
+leaving `sidecar_path_for` as a declared door for the foreign case, named as
+such rather than as part of the address space — or does the pairing rule move to
+where foreign names are legitimate? **Adding the row is not free either way**:
+`WRITTEN` drives `manifest()`, which is the Task-setup card's list of *files this
+prep will write*, and a sidecar for a person's own structure is not one of them.
+
 ### 5l.4a The three LIVE defects, measured — N5's actual content
 
 § 5l.4's verdict column says *the use changes*; these three are the ones a
@@ -1203,7 +1242,7 @@ under the job's python.
 | ~~**N1**~~ | **DONE 2026-09-08.** `segments()` in the same tool, wired into `--check` and the summary, with the override discipline the other two passes use. Corrected the row above: 10 sites, not 9. Five mutations, five killed — including the `GUARDED_UNDECLARED = ()` kill switch and the first-component rule (dropping it lets Flask routes back in) | shipped |
 | ~~**N2**~~ | **DONE 2026-09-08.** `FIELD_SHAPES` declares a field's shape once (as `QUALIFIERS` does for counters); `Artifact.fields` declares which rows carry one; `.runwrap-*.log` → `.runwrap-{stamp}.log` + `stamp`. `role_matches` and `_tail_of`'s pattern arm **deleted**, and both pattern branches in `find` / `find_by_role` are equality again. Six mutations, six killed | shipped |
 | ~~**N3**~~ | **DONE 2026-09-09.** `molbuilder/ref.py` — `Ref` (③'s label through ⑤, plus the bench qualifier, counters and fields) and `compose` / `find` / `parse` over whole paths, L1 and importing only its two floor-1 siblings. **Two layout rules had to move down first**: `bench_container` and the trial name were `jobset/materialize`'s, floor 4, and the address layer is floor 1 — `materialize` still answers, by asking. `paths` also gained `bench_containers_in`, the SEARCH half `bench_container` never had (§ 4.5's pairing), because the flat container carries its stage in its own name and a search with no stage in hand cannot compose it. **17 tests over the address, parametrised on both shapes**; seven mutants, seven killed — two only after the first pass left them alive (`parse`'s own round-trip check, and the flat container's stage qualifier, whose measured defect needs TWO stages to see) | shipped |
-| **N4** | the 16 layout functions and the 13 name functions delegate to the verbs. Nothing deleted | one implementation behind every existing name; the suite unchanged |
+| ~~**N4**~~ | **DONE 2026-09-09, and the count was a hypothesis as § 5a says.** Re-derived: the attempt functions (`attempts`, `latest_attempt`, `run_dir`, `resolve_attempt`) already delegate to `paths` — M4b did that — and `job_dir_name` / `bench_container` moved in N3. **Two sites were left, and each had a comment admitting it.** `sweep_set_paths`' docstring said outright *"one door to COMPOSE a path, none to FIND one — is what the paths framework is for; when it lands, this is one of its callers"*: it now asks `paths.bench_containers_in`, which gained a `shape=None` arm for exactly that caller (an error path with no `job-set.json` to read a shape from). `materialize.trials_in` spelled `startswith(TRIAL_PREFIX)` and now reads through `paths.trial_point`. **Two searches and two exemptions retired** — 55→52 and 16→14 — and `--check` failed on the stale entries, which is the guard working. Five mutants, five killed, one only after the first pass seeded every container and so never exercised the existence check. **The third item is BLOCKED, see § 5l.4b** | shipped |
 | **N5** | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |
 | **N6** | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
 | **N7** | delete the superseded surface, **one module per commit** — `sidecars.molstruct`, then `identity`, then `materialize`, then `paths`/`runfiles`. Forty functions cannot be retired in one separately-green step | the guard asserts the framework's public surface IS the three verbs plus the catalogue |

@@ -34,6 +34,8 @@ from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
                      TRIAL_PREFIX as _TRIAL_PREFIX,
                      trial_name as _paths_trial_name,
+                     trials_in as _paths_trials_in,
+                     bench_containers_in as _bench_containers_in,
                      bench_container as _paths_bench_container)
 
 #: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
@@ -107,11 +109,11 @@ def trials_in(container) -> "List[Path]":
     is this module's prefix spelled somewhere else.
     """
     c = Path(container)
-    try:
-        return sorted(d for d in c.iterdir()
-                      if d.is_dir() and d.name.startswith(TRIAL_PREFIX))
-    except OSError:
-        return []
+    # The PREFIX is not spelled here: `paths.trial_point` is the reader for
+    # `paths.trial_name`, and asking it is what keeps the pair in step.  This
+    # returns PATHS where `paths.trials_in` returns the points -- two callers,
+    # one rule (N4, 2026-09-09).
+    return [c / _paths_trial_name(pt) for pt in _paths_trials_in(c)]
 
 
 def launched_trials(container, shape: "Shape") -> "List[str]":
@@ -237,22 +239,28 @@ def sweep_set_paths(bundle) -> "List[Path]":
     where to look for it, so a layout change moves one file instead of two
     that must be kept in step by hand.
 
-    `bench_container` produces exactly three shapes and no more --
-    ``bench_<NN>_<stage>`` and bare ``bench`` at the root (flat, stageless),
-    ``<NN>_<stage>/bench`` in the hierarchy -- so two globs cover all of them
-    without walking the tree.  **It cannot simply call `bench_container`**:
-    that takes a shape and a token, and the caller this exists for is an
-    error path with no ``job-set.json`` to read them from.  That asymmetry --
-    one door to COMPOSE a path, none to FIND one -- is what the paths
-    framework is for; when it lands, this is one of its callers and the
-    patterns below move into it.
+    **N4, 2026-09-09: it now asks, and this docstring used to say why it
+    could not.**  It read: *"It cannot simply call `bench_container` -- that
+    takes a shape and a token, and the caller this exists for is an error path
+    with no `job-set.json` to read them from.  That asymmetry -- one door to
+    COMPOSE a path, none to FIND one -- is what the paths framework is for;
+    when it lands, this is one of its callers and the patterns below move into
+    it."*  It landed: `paths.bench_containers_in` is `bench_container`'s search
+    half, and it takes ``shape=None`` for exactly this caller.
+
+    So the two globs are gone.  They were also WIDER than the rule -- ``*/`` at
+    depth 1 matches any directory, not just a declared container -- and the
+    caller had to read every hit to find out whether it was a sweep at all.
+    Asking narrows the answer to the containers the layout declares.
 
     Returns the paths that exist, unread: whether a set is a sweep is in the
     file, and reading it is the caller's business.
     """
     from .model import FILENAME as _JS
     base = Path(bundle)
-    return sorted(set(base.glob(f"*/{_JS}")) | set(base.glob(f"*/*/{_JS}")))
+    return sorted(p for p in (base / rel / _JS
+                              for rel, _tok in _bench_containers_in(base))
+                  if p.is_file())
 
 
 def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:

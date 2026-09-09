@@ -88,11 +88,13 @@ FOREIGN_HINTS = (".psml", ".md", "*.py", "python*", ".dist-info", "x3dna",
 #: first guess and these are the corrections, each with why.
 _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
     # -- THE FINDERS.  Not sites to migrate: they are what § 4.5 asks for.
-    ("molbuilder/jobset/materialize.py", "sweep_set_paths", "*/{_JS}"):
-        ("door - a finder, not a caller",
-         "the counterpart of `bench_container`, added 2026-09-08"),
-    ("molbuilder/jobset/materialize.py", "sweep_set_paths", "*/*/{_JS}"):
-        ("door - a finder, not a caller", "the hierarchical half of the same"),
+    # (`sweep_set_paths`' two globs were exempted here as a DOOR from
+    #  2026-09-08 until N4 on 2026-09-09.  They are gone, not moved: it now
+    #  asks `paths.bench_containers_in`, which is `bench_container`'s search
+    #  half and did not exist when the exemption was written.  A door that
+    #  spells the layout it searches is a door only until the layout has a
+    #  finder -- which is what this tool's own `--check` said by failing when
+    #  the entries came unanchored.)
     ("molbuilder/scheduler/record.py", "named_environments", "*.json"):
         ("door - a finder, not a caller",
          "`environments/<name>.json` -- this IS the door every caller asks, "

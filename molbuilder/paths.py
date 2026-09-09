@@ -255,8 +255,17 @@ def bench_container(shape: "Shape", token: str = "") -> str:
     return f"{sd}/bench"
 
 
-def bench_containers_in(root, shape: "Shape") -> "list[tuple[str, Optional[str]]]":
+def bench_containers_in(root, shape: "Optional[Shape]" = None
+                        ) -> "list[tuple[str, Optional[str]]]":
     """Every bench container under *root*, as ``(relative name, stage token)``.
+
+    ``shape=None`` means **either layout** -- for a caller that has no
+    description to read one from.  That is not the inference
+    `engines/stages.md` § 6.7 forbids: that rule is about a description
+    DECLARING its shape, and this is a search saying it does not know which
+    tree it is walking.  The declared containers of the two layouts cannot
+    collide (``<NN>_<stage>/bench`` is one level down; ``bench_<NN>_<stage>``
+    is at the root), so the union is exact rather than a guess.
 
     The SEARCH half of :func:`bench_container`, which § 4.5 requires and which
     did not exist -- a caller looking for *the benchmarks in this calculation*
@@ -272,6 +281,14 @@ def bench_containers_in(root, shape: "Shape") -> "list[tuple[str, Optional[str]]
     """
     r = Path(root)
     out: "list[tuple[str, Optional[str]]]" = []
+    if shape is None:
+        seen: set = set()
+        for name in SHAPES:
+            for row in bench_containers_in(r, Shape.named(name)):
+                if row[0] not in seen:
+                    seen.add(row[0])
+                    out.append(row)
+        return sorted(out)
     try:
         entries = sorted(r.iterdir())
     except OSError:

@@ -445,3 +445,79 @@ def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
         "the resolver should fall through to its generic step, not raise")
     assert any("not a run-file label" in a for a in attempts), (
         f"and it should SAY why it skipped the stem: {attempts}")
+
+
+# ── N4: the two sites that stopped spelling the layout ───────────────────────
+
+def test_the_container_search_answers_without_a_declared_shape(tmp_path):
+    """A caller with no description to read a shape from still gets the
+    containers -- and gets only the DECLARED ones.
+
+    `paths.bench_container` is the namer; `bench_containers_in` is its search
+    half, and `shape=None` is the arm `jobset._cli`'s error path needs (it runs
+    when there is no readable `job-set.json`, which is the whole reason it runs).
+    A missing union arm returns nothing and the CLI silently stops listing
+    sweeps, which is why this is a test and not a review note.
+
+    `engines/stages.md` § 6.7 is not violated: that rule is a DESCRIPTION
+    declaring its shape, and this is a search saying it does not know which tree
+    it walks. The two layouts' containers cannot collide, so the union is exact.
+    """
+    from molbuilder.paths import Shape, bench_containers_in
+    for d in ("bench", "bench_01_coarse", "01_coarse/bench", "02_tight/bench",
+              "01_coarse/run-0", "not_a_container"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    either = dict(bench_containers_in(tmp_path))
+    assert either == {"bench": None, "bench_01_coarse": "01_coarse",
+                      "01_coarse/bench": "01_coarse", "02_tight/bench": "02_tight"}
+    # and each layout alone is a subset of it, never something else
+    for name in ("hierarchical", "flat"):
+        one = dict(bench_containers_in(tmp_path, Shape.named(name)))
+        assert set(one) <= set(either)
+
+
+def test_the_sweep_search_finds_the_declared_containers_and_not_a_stage(tmp_path):
+    """`sweep_set_paths` returns a `job-set.json` in a bench container, and NOT
+    one sitting in a stage directory.
+
+    Its two globs were `*/job-set.json` and `*/*/job-set.json` -- WIDER than the
+    rule, because `*/` at depth 1 matches any directory. Its own docstring said
+    it could not ask (*"one door to COMPOSE a path, none to FIND one -- is what
+    the paths framework is for; when it lands, this is one of its callers"*),
+    and N4 (2026-09-09) is that landing. The decoy below is what the globs would
+    have returned and the rule never places.
+
+    `job-contracts.md` § 6.3 via `paths.bench_container`: a sweep's record goes
+    in the container, a ladder's goes at the bundle root.
+
+    **It also returns only paths that EXIST.** Composing from the containers
+    means composing a name whether or not the file is there, where the globs it
+    replaced could only return what they found -- so a container prepared but
+    never written would hand the caller a path to nothing, and `jobset._cli`
+    swallows the failed load in a bare `except`. Silent, so it is asserted.
+    (Added 2026-09-09: a mutant that dropped the existence check left the rest
+    of this file green, because the first version seeded every container.)
+    """
+    from molbuilder.jobset.materialize import sweep_set_paths
+    for d in ("bench", "bench_01_coarse", "01_coarse/bench", "01_coarse"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+        (tmp_path / d / "job-set.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "02_tight" / "bench").mkdir(parents=True)   # a container, no set
+    got = {str(p.parent.relative_to(tmp_path)) for p in sweep_set_paths(tmp_path)}
+    assert got == {"bench", "bench_01_coarse", "01_coarse/bench"}
+    assert all(p.is_file() for p in sweep_set_paths(tmp_path))
+
+
+def test_the_trial_search_reads_the_prefix_through_its_own_reader(tmp_path):
+    """`materialize.trials_in` returns the trial directories and skips a
+    directory that merely sits beside them.
+
+    `paths.trial_name` composes `bench-<point>` and `paths.trial_point` reads it
+    back; this door spelled `startswith(TRIAL_PREFIX)` itself until N4. The pair
+    is § 4.5's rule, and a door that re-spells one half is how the two drift.
+    """
+    from molbuilder.jobset.materialize import trials_in
+    c = tmp_path / "01_coarse" / "bench"
+    for d in ("bench-G1", "bench-G2K4", "notatrial", "bench-"):
+        (c / d).mkdir(parents=True, exist_ok=True)
+    assert [p.name for p in trials_in(c)] == ["bench-G1", "bench-G2K4"]
