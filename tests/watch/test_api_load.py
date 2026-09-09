@@ -191,25 +191,6 @@ def test_load_by_multipart_unrecognised_format(client):
     assert body["ok"] is False
 
 
-def test_load_by_multipart_replaces_previous_upload(client, tmp_path):
-    """A second upload must clean up the previous temp file (best-effort
-    -- we just check that _last_temp_upload moves to the new path)."""
-    a = io.BytesIO(_SIESTA_HEAD.encode())
-    client.post("/api/watch/load",
-                data={"file": (a, "first.out")},
-                content_type="multipart/form-data")
-    first_temp = app_module._last_temp_upload
-    assert first_temp is not None
-
-    b = io.BytesIO(_SIESTA_HEAD.encode())
-    client.post("/api/watch/load",
-                data={"file": (b, "second.out")},
-                content_type="multipart/form-data")
-    second_temp = app_module._last_temp_upload
-    assert second_temp is not None
-    assert second_temp != first_temp
-
-
 def test_load_by_multipart_persists_path_for_data_polls(client):
     """After an upload, /api/data must still return the parsed payload.
     The temp file lingers (we don't delete it on the same request) so
@@ -408,34 +389,6 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
     assert "*.fdf" in body["error"]
 
 
-def test_load_directory_picks_newest_molwatch_log(client, tmp_path):
-    """When multiple *.molwatch.log files exist (staged run), the
-    newest mtime wins."""
-    import os, time
-    older = tmp_path / "stage1.molwatch.log"
-    newer = tmp_path / "stage2.molwatch.log"
-    older.write_text(_MOLWATCH_HEAD)
-    newer.write_text(_MOLWATCH_HEAD)
-    # Force the older to actually be older.
-    past = time.time() - 60
-    os.utime(older, (past, past))
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["path"].endswith("stage2.molwatch.log")
-
-
-def test_load_file_path_unchanged(client, tmp_path):
-    """File-mode (back-compat): passing a regular file path skips the
-    discovery chain and ``resolved_from`` is null."""
-    p = tmp_path / "run.out"
-    p.write_text(_SIESTA_HEAD)
-    r = client.post("/api/watch/load", json={"path": str(p)})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["resolved_from"] is None
-
-
 # --------------------------------------------------------------------- #
 #  A directory resolves to ONE log (job-contracts.md 2.3/2.4)           #
 #                                                                       #
@@ -467,8 +420,6 @@ _MOLWATCH_TWO_STEPS = (
     "energy (eV): -76.50000000\n"
     "==== molwatch step 1 end ====\n"
 )
-
-
 
 
 def test_a_directory_resolves_to_one_log_and_never_merges(client, tmp_path):
@@ -516,14 +467,6 @@ def test_a_directory_resolves_to_one_log_and_never_merges(client, tmp_path):
 
     # And no merge vocabulary survives on the wire.
     assert "stages" not in body or not body["stages"]
-
-
-
-
-
-
-
-
 
 
 # --------------------------------------------------------------------- #

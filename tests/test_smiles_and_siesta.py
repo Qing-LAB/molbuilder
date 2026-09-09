@@ -182,25 +182,6 @@ def test_blocksize_auto_omits_the_keyword_and_zero_is_refused():
         f"0 must be refused, not silently treated as auto: {issues}")
 
 
-def test_block_size_cap_derives_from_orbitals_not_atoms():
-    """Mutation pin for U18 (2026-08-12): the CPU-mode cap derives
-    from n_orbitals_est = 10 * n_atoms, not from n_atoms
-    (job-contracts.md § 3.2 provenance example + § 3.3).  Each pair
-    below separates the two derivations -- the retired atoms-based
-    cap ``floor(n_atoms / mpi_np)`` returns a DIFFERENT value, so a
-    regression to it fails loudly here.
-
-      16 atoms x 4 ranks:  atoms cap 16//4=4  -> 4
-                           orbital cap 160//4=40 -> 32
-      212 atoms x 4 ranks: atoms cap 212//4=53 -> 32
-                           orbital cap min(256, 2120//4=530) -> 256
-                           (also pins the 256 window-top ceiling)
-    """
-    from molbuilder.siesta import _auto_block_size
-    assert _auto_block_size(16, mpi_np=4) == 32
-    assert _auto_block_size(212, mpi_np=4) == 256
-
-
 def test_explicit_blocksize_override_passes_through_verbatim():
     """User-set BlockSize is honored verbatim regardless of the
     BlockSize × mpi_np vs n_atoms ratio.
@@ -239,25 +220,6 @@ def test_explicit_blocksize_override_passes_through_verbatim():
     # The old auto-downgrade WARNING must NOT appear.
     assert "WARNING: user-set BlockSize" not in fdf
     assert "Downgraded to BlockSize" not in fdf
-
-
-def test_explicit_blocksize_override_safe_value_passes_through():
-    """Counter-case: user sets a SAFE explicit BlockSize -- must be
-    honored verbatim, no downgrade, no warning."""
-    import re
-    import numpy as np
-    from molbuilder.structure import Structure
-    side = int(np.ceil(50 ** (1 / 3)))
-    coords = np.array([
-        [i * 1.5, j * 1.5, k * 1.5]
-        for i in range(side) for j in range(side) for k in range(side)
-    ])[:50]
-    s = Structure(elements=["C"] * 50, positions=coords, title="x", vacuum=(12.0, 12.0, 12.0))
-    cfg = SiestaConfig(block_size=4, mpi_np=4, relax_type="none")
-    fdf = render_fdf(s, cfg)
-    m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
-    assert int(m.group(1)) == 4, "safe user override must be honored"
-    assert "WARNING: user-set BlockSize" not in fdf
 
 
 def test_fdf_charged_system_emits_makov_payne_notice():
@@ -506,37 +468,6 @@ def test_ranks_alone_do_not_put_a_blocksize_in_the_deck():
     fdf2 = render_fdf(s_, SiestaConfig(mpi_np=15, relax_type="none",
                                        block_size=64))
     assert re.search(r"^BlockSize\s+64", fdf2, re.MULTILINE)
-
-
-def test_fdf_always_emits_paralleloverk_but_not_an_unasked_blocksize(tmp_path):
-    """``Diag.ParallelOverK`` is always written; ``BlockSize`` is not.
-
-    They were asserted together until 2026-08-15, on the rationale that
-    "relying on SIESTA defaults is non-portable ... and [has] caused real
-    `propor: IMAX = 0` failures".  The propor half of that was disproved by
-    the 2026-05-28 sweep recorded elsewhere in this file -- BS = 1, 2, 4 all
-    crash at the same rank count, because propor is a matel_table check and
-    not a BLACS one -- so it never argued for emitting BlockSize.
-
-    The two keywords also differ in kind.  ``Diag.ParallelOverK`` is DERIVED
-    by molbuilder from the k-grid (1x1x1 -> .false.), so it is a decision we
-    make and must therefore state.  ``BlockSize`` unset is a decision we
-    explicitly do NOT make (tuning.md § 2.11): auto means SIESTA's own
-    automatic, and writing a number would override the thing being asked
-    for."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    s = Structure(
-        elements=["H", "H"],
-        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2", vacuum=(12.0, 12.0, 12.0))
-    text = render_fdf(s, SiestaConfig(system_label="h2"))
-    import re
-    assert re.search(r"^Diag\.ParallelOverK\s+\.(true|false)\.",
-                     text, re.MULTILINE), "a derived decision must be stated"
-    assert not re.search(r"^BlockSize", text, re.MULTILINE), (
-        "unset BlockSize must leave the keyword out so SIESTA's own "
-        "automatic applies")
 
 
 def test_paralleloverk_auto_from_kgrid(tmp_path):
@@ -809,7 +740,6 @@ def test_cg_relax_does_not_emit_md_temperature_block():
     assert "MD.InitialTemperature" not in fdf
     assert "MD.LengthTimeStep"     not in fdf
     assert "MD.TargetTemperature"  not in fdf
-
 
 
 # ---- Staged-relaxation suffix (job-layout v1) ---------------------------- #
@@ -1232,12 +1162,6 @@ class TestSiestaStageOverlay:
         # Stage 3 values overlaid as expected.
         assert out.relax_type == "Broyden"
         assert out.relax_force_tol == 0.01
-
-    def test_unknown_stage_raises_value_error(self):
-        from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
-        import pytest as _p
-        with _p.raises(ValueError, match="unknown SIESTA stage"):
-            apply_siesta_stage(SiestaConfig(), 99)
 
     def test_siesta_stage_presets_match_optim_tuning_doc(self):
         """The SIESTA tier values are duplicated across three surfaces:

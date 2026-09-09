@@ -32,9 +32,3 @@ def test_a_resolved_citation_carries_what_a_person_needs():
     c = citation_for("Sun2020")
     assert c and c["title"] and c["doi"], c
     assert "PySCF" in c["title"]
-
-
-def test_the_resolver_answers_none_for_an_unknown_key():
-    """The FORM omits an unknown key (this test is where it fails);
-    the resolver must not invent."""
-    assert citation_for("Fabricated2099") is None

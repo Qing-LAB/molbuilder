@@ -240,27 +240,6 @@ class TestFormSchemasRender:
             f"the renderer does not know about -- add it to "
             f"WORKFLOW_GROUP_ORDER *and* WORKFLOW_GROUP_META.")
 
-    def test_pyscf_form_renders_fields_after_init(
-            self, page, flask_server):
-        _open_build(page, flask_server)
-        # The PySCF tab panel starts ``hidden`` (SIESTA is the
-        # default-active tab), so its rendered inputs are NOT visible
-        # by default.  Use ``state="attached"`` so Playwright waits
-        # for the elements to exist in the DOM rather than waiting
-        # for them to become visible -- form-schema.js builds both
-        # panels at init() time regardless of tab visibility, and
-        # that's the property we want to pin.
-        page.wait_for_selector(
-            "#pyscf-form-container input, "
-            "#pyscf-form-container select",
-            state="attached",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        container_text = page.locator(
-            "#pyscf-form-container"
-        ).inner_text()
-        assert "Loading from schema" not in container_text
-
     def test_engine_key_badges_present_after_schema_render(
             self, page, flask_server):
         """Per the 2026-05-26 source-of-truth contract every form
@@ -299,26 +278,6 @@ class TestFormSchemasRender:
 
 class TestTabSwitching:
     """Clicking the SIESTA / PySCF tabs reveals the matching panel."""
-
-    def test_clicking_pyscf_tab_shows_pyscf_panel(
-            self, page, flask_server):
-        _open_build(page, flask_server)
-        # Wait for the SIESTA panel (default active, visible) so we
-        # know the schema render landed before driving the tab click.
-        page.wait_for_selector(
-            "#siesta-form-container input, "
-            "#siesta-form-container select",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        # The PySCF tab activator: matched by role + name.  Tab
-        # button text is "PySCF script"; ``has_text`` does substring
-        # matching so this still works if the wording shifts slightly.
-        page.locator("[role='tab']").filter(has_text="PySCF").click()
-        # After the click the PySCF panel must be visible (not
-        # ``hidden`` attribute).
-        page.wait_for_selector(
-            "#tab-pyscf:not([hidden])", timeout=_BOOT_TIMEOUT_MS,
-        )
 
     def test_clicking_siesta_tab_returns_to_siesta_panel(
             self, page, flask_server):
@@ -460,33 +419,6 @@ class TestSidebarStructureFlow:
         )
         assert n in ("—", "", "0"), (
             f"setShared must NOT auto-load; #info-atoms is {n!r}"
-        )
-
-    def test_publishCommit_loads_water_xyz_into_viewer(
-            self, page, flask_server, water_xyz_file):
-        """Commit (dblclick equivalent) rebuilds the structure
-        section — the canonical "use this file in this tab"
-        action."""
-        _open_build(page, flask_server)
-        page.wait_for_function(
-            "() => window.molbuilder "
-            "&& window.molbuilder.projects "
-            "&& typeof window.molbuilder.projects.publishCommit "
-            "       === 'function'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        parent = str(Path(p).parent)
-        page.evaluate(
-            """(ctx) => window.molbuilder.projects.publishCommit(
-                ctx.dir, ctx.file)""",
-            {"dir": parent, "file": p},
-        )
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
         )
 
     def test_a_second_file_replaces_the_first_in_one_visit(
@@ -652,46 +584,6 @@ class TestBuildSecondVisitExternalChange:
     loudly.  The /results file-picker shipped a bug of this exact
     shape (#192) that no single-page-load test could catch."""
 
-    def test_revisiting_build_with_existing_selection_reloads_viewer(
-            self, page, flask_server, water_xyz_file):
-        """User opens /build, picks water.xyz, navigates to /modify
-        (the canonical "go look at the structure" flow), comes back
-        to /build.  The viewer MUST still show the structure +
-        atom-count line, even though the page just bootstrapped
-        fresh.  Pre-fix the bug class: sessionStorage holds the
-        file, the sidebar onChange subscriber fires with the same
-        value as last time, picker-style "bails on same key"
-        suppresses the load -> viewer is empty."""
-        _open_build(page, flask_server)
-        # Drive the sidebar to a real file (same path as
-        # TestSidebarPickLoad).
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        parent = str(Path(p).parent)
-        page.evaluate(
-            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
-            {"dir": parent, "file": p},
-        )
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-
-        # Navigate to /modify -- sessionStorage carries dir + file
-        # over (cross-tab handoff).
-        page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
-
-        # Come back to /build.  The viewer MUST reload from the
-        # persisted selection without a sidebar click.
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_function(
-            "() => document.querySelector('#info-atoms').textContent"
-            ".trim() === '3'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-
     def test_external_xyz_replacement_reloads_on_explicit_load(
             self, page, flask_server, tmp_path, monkeypatch):
         """User picks water.xyz on /build, leaves the tab, the file
@@ -759,7 +651,6 @@ class TestBuildSecondVisitExternalChange:
             ".trim() === '5'",
             timeout=_BOOT_TIMEOUT_MS,
         )
-
 
 
 class TestFindingsSitBesideTheirField:

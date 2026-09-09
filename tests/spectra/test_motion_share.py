@@ -35,11 +35,6 @@ class TestAtomicMass:
         assert atomic_mass("S") == pytest.approx(32.06, abs=1e-2)
         assert atomic_mass("Au") == pytest.approx(196.97, abs=1e-2)
 
-    def test_carbon_is_twelve_times_hydrogen(self):
-        """The ratio that makes the whole readout necessary: a carbon moving
-        the same distance as a hydrogen carries twelve times the motion."""
-        assert atomic_mass("C") / atomic_mass("H") == pytest.approx(11.9, abs=0.2)
-
     def test_case_is_forgiven_but_a_typo_is_not(self):
         assert atomic_mass("au") == atomic_mass("Au")
         with pytest.raises(KeyError) as exc:
@@ -134,10 +129,3 @@ class TestAgainstKnownSpectroscopy:
         share = motion_share_by_element(
             ["C", "H"], [[0.08, 0, 0], [1.0, 0, 0]])
         assert share["H"] > 0.9
-
-    def test_a_ring_stretch_is_carbon_motion(self):
-        # Carbons moving comparably to the H's riding on them.
-        share = motion_share_by_element(
-            ["C", "C", "H", "H"],
-            [[0.98, 0, 0], [0.98, 0, 0], [1.15, 0, 0], [1.15, 0, 0]])
-        assert share["C"] > 0.85

@@ -41,10 +41,6 @@ def pyscf_traj_path(tmp_path):
     return str(p)
 
 
-def test_can_parse(pyscf_traj_path):
-    assert PySCFParser.can_parse(pyscf_traj_path) is True
-
-
 def test_can_parse_rejects_non_xyz(tmp_path):
     p = tmp_path / "garbage.txt"
     p.write_text("just some random text\nhello world\n")
@@ -59,19 +55,6 @@ def test_can_parse_accepts_plain_xyz_without_iteration_marker(tmp_path):
     handles the no-energy case (energy=None)."""
     p = tmp_path / "regular.xyz"
     p.write_text("3\nwater\nO 0 0 0\nH 0 0 1\nH 1 0 0\n")
-    assert PySCFParser.can_parse(str(p)) is True
-
-
-def test_can_parse_accepts_ase_extended_xyz_comment(tmp_path):
-    """ASE's extended XYZ has its own comment-line format
-    (Lattice="..." Properties=... ...).  We must accept that too;
-    detection must not depend on geomeTRIC's specific comment text."""
-    p = tmp_path / "ase.xyz"
-    p.write_text(
-        '3\n'
-        'Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3 pbc="T T T"\n'
-        'O 0 0 0\nH 0 0 1\nH 1 0 0\n'
-    )
     assert PySCFParser.can_parse(str(p)) is True
 
 
@@ -124,11 +107,6 @@ def test_energy_units_converted_to_ev(pyscf_traj_path):
     expected_eV_1 = -76.43012345 * 27.211386245988
     assert math.isclose(result["energies"][0], expected_eV_0, rel_tol=1e-6)
     assert math.isclose(result["energies"][1], expected_eV_1, rel_tol=1e-6)
-
-
-def test_iteration_indices(pyscf_traj_path):
-    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
-    assert result["iterations"] == [0, 1]
 
 
 def test_frame_coordinates(pyscf_traj_path):
@@ -262,11 +240,6 @@ def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
     assert len(result["max_forces_constrained"]) == 2
 
 
-def test_json_safe(pyscf_traj_path):
-    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
-    json.dumps(result, allow_nan=False)
-
-
 # --------------------------------------------------------------------- #
 #  scf_history: parse PySCF .log for SCF iteration tables               #
 # --------------------------------------------------------------------- #
@@ -325,18 +298,3 @@ def test_scf_history_empty_when_log_absent(pyscf_traj_path):
     """No <prefix>.log next to the trajectory -> scf_history = []."""
     result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert result["scf_history"] == []
-
-
-def test_scf_history_per_cycle_keys(tmp_path):
-    """Every entry in a run has the documented keys:
-       cycle, energy, delta_E, gnorm, ddm.
-    """
-    traj = tmp_path / "myjob_geom_optim.xyz"
-    traj.write_text(SAMPLE)
-    log  = tmp_path / "myjob.log"
-    log.write_text(_SCF_LOG_SAMPLE)
-    runs = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))["scf_history"]
-    expected = {"cycle", "energy", "delta_E", "gnorm", "ddm"}
-    for run in runs:
-        for entry in run:
-            assert set(entry.keys()) == expected

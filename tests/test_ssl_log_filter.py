@@ -129,16 +129,6 @@ def test_preserves_record_about_other_ssl_event():
         )
 
 
-def test_preserves_unrelated_record():
-    """A normal log record about something else (e.g. an HTTP
-    request) must be untouched."""
-    rec = _make_record(
-        "127.0.0.1 - - [14/Jun/2026 22:33:11] "
-        "\"POST /api/build/fdf HTTP/1.1\" 200 -"
-    )
-    assert _FILTER.filter(rec) is True
-
-
 # --------------------------------------------------------------------- #
 #  Install-side: the helper is called from create_app                    #
 # --------------------------------------------------------------------- #

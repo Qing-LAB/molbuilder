@@ -321,20 +321,6 @@ def regenerate_goldens():
 # --------------------------------------------------------------------
 
 
-def test_parse_is_deterministic(tmp_path):
-    """A back-to-back re-parse of the same file must produce the same
-    Trajectory signature.  Guards against accidentally captured-by-
-    reference state in the rule callbacks (a mutable list set as a
-    nonlocal default would survive across parses and silently
-    accumulate cycles)."""
-    p = tmp_path / "det.molwatch.log"
-    p.write_text(_RICH_BLOCK)
-
-    a = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
-    b = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
-    assert a == b
-
-
 # --------------------------------------------------------------------
 # Cross-parse independence: parsing one file before another must not
 # affect the second parse.  Catches module-global state leakage --

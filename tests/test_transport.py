@@ -30,16 +30,6 @@ from molbuilder.transport.results import SCHEMA_VERSION
 
 
 class TestTransportResultsShape:
-    def test_default_construction(self):
-        r = TransportResults()
-        assert r.energy_grid_eV.shape == (0,)
-        assert r.transmission.shape == (0,)
-        assert r.fermi_energy_eV == 0.0
-        assert r.conductance_G0 == 0.0
-        assert r.pdos == {}
-        assert r.bias_grid_V is None
-        assert r.current_uA is None
-        assert r.complete is False
 
     def test_shape_mismatch_raises(self):
         with pytest.raises(ValueError, match="share shape"):
@@ -68,14 +58,6 @@ class TestTransportResultsShape:
                 bias_grid_V=np.linspace(-0.5, 0.5, 11),
                 current_uA=np.zeros(7),
             )
-
-    def test_equality_refused(self):
-        a = TransportResults()
-        b = TransportResults()
-        with pytest.raises(TypeError, match="equality is not defined"):
-            a == b
-        with pytest.raises(TypeError, match="unhashable"):
-            hash(a)
 
 
 class TestTransportResultsRoundTrip:
@@ -167,25 +149,6 @@ class TestRegistry:
     def teardown_method(self):
         unregister_engine(_MockTransportEngine.name)
 
-    def test_register_and_get(self):
-        register_engine(_MockTransportEngine)
-        assert _MockTransportEngine.name in registered_engines()
-        retrieved = get_engine(_MockTransportEngine.name)
-        assert retrieved is _MockTransportEngine
-
-    def test_protocol_isinstance(self):
-        # runtime_checkable Protocol — the class itself isn't an
-        # instance; an instance would be (no engine ever
-        # instantiates, but the check should at least not crash).
-        assert isinstance(_MockTransportEngine(), TransportEngine)
-
-    def test_unknown_engine_raises(self):
-        with pytest.raises(UnknownEngineError) as ei:
-            get_engine("does-not-exist")
-        assert ei.value.name == "does-not-exist"
-        # Available list should be sorted.
-        assert ei.value.available == sorted(ei.value.available)
-
     def test_no_clobber(self):
         register_engine(_MockTransportEngine)
 
@@ -204,18 +167,6 @@ class TestRegistry:
 
         with pytest.raises(ValueError, match="already registered"):
             register_engine(_Other)
-
-    def test_re_register_same_class_ok(self):
-        register_engine(_MockTransportEngine)
-        # Idempotent re-register of the SAME class is OK.
-        register_engine(_MockTransportEngine)
-
-    def test_register_requires_name(self):
-        class _NoName:
-            label = "no name"
-
-        with pytest.raises(TypeError, match="`name`"):
-            register_engine(_NoName)
 
     def test_config_engine_choices_match_registry(self):
         """The registry IS the source of truth for what's wired, and

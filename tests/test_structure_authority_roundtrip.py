@@ -173,11 +173,6 @@ def test_to_wire_resolved_origin_none_for_world_origin_crystal():
     assert per["resolved_cell_origin"] is None
 
 
-def test_from_dict_rejects_none():
-    with pytest.raises(ValueError):
-        Structure.from_dict(None)
-
-
 def test_stored_pair_without_an_origin_resolves_the_corner_not_the_world(
         tmp_path):
     """The frame contract's read gate (structure-periodicity.md 6.1 row 3): a

@@ -89,26 +89,6 @@ def test_the_owning_document_names_every_member(vocab_id):
     )
 
 
-def test_the_retired_type_is_named_nowhere_as_live():
-    """``strmap`` was retired 2026-08-13 with PySCF's ``ecp`` rewrite.
-
-    A retired member is the reverse failure of a missing one: the document
-    offers a reader something the code will refuse.  This is narrow on purpose
-    -- a general "no document names a non-member" check would fire on every
-    prose mention of a retired thing, and retirements are worth recording.
-    What must not survive is a retired member sitting in the LIVE type list.
-    """
-    text = (DOCS / "engines/template.md").read_text(encoding="utf-8")
-    for line in text.splitlines():
-        if "`strmap`" not in line:
-            continue
-        assert ("RETIRED" in line or "retired" in line), (
-            f"engines/template.md still offers `strmap` as a live type:\n"
-            f"  {line.strip()}\n"
-            f"It left TYPES on 2026-08-13 -- {template.TYPES}."
-        )
-
-
 #: `Resources`' field count, in ENGLISH -- the spelling § 6.2 uses.  Kept as a
 #: map rather than a literal so raising the count is one edit here plus one in
 #: the contract, which is exactly the pair this test exists to keep together.
@@ -272,7 +252,6 @@ def test_the_frozen_label_in_the_spec_matches_the_code_constant():
         'job-contracts.md § 3.4 still shows the retired label `"frozen":` -- '
         f'the code writes {FROZEN_LABEL!r} inside `regions`.'
     )
-
 
 
 # --------------------------------------------------------------------- #

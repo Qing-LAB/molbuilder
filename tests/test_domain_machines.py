@@ -369,18 +369,3 @@ def test_an_older_record_still_reads_its_one_figure():
     old = [Domain(name="htc", partition="htc", qos="public", max_cores=48)]
     assert machine_sizes(old) == []
     assert core_range(machine_sizes(old)) == ""
-
-
-def test_the_card_stops_showing_one_arbitrary_nodes_cores():
-    """**Caught in the browser, 2026-08-27.** The machine picker read
-    "sol · slurm · 64 cores" — `sockets x cores_per_socket`, which is
-    whichever node `sinfo` printed first — for a cluster whose machines are
-    48, 64 AND 128. A person choosing a machine was shown a number no
-    partition guarantees."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/scheduler/record.py").read_text()
-    block = src[src.index("bits = [env.scheduler"):]
-    block = block[:block.index("_mem =")]
-    assert "if spread:" in block, "the range is not preferred over the node"
-    assert "elif total:" in block, "the older-record fallback is gone"

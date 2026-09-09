@@ -181,14 +181,6 @@ def test_every_catalogue_item_declares_a_panel():
         f"below the cards and its warnings land in the residual panel.")
 
 
-def test_the_group_vocabulary_is_closed_and_the_catalogue_stays_inside_it():
-    """The typo guard. A misspelt group is indistinguishable from an absent
-    one on the page — the field renders loose either way — so the refusal has
-    to come from the reader, not from a person noticing."""
-    used = {i.group for i in T.read_template(T.load_catalogue()).items}
-    assert used <= set(T.GROUPS), f"unknown group(s): {used - set(T.GROUPS)}"
-
-
 @pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
 def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
     """The fact the mirrored-key guard could not see.

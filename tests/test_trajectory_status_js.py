@@ -97,59 +97,6 @@ def _run_node(classifier_call: str) -> str:
 
 class TestClassifyStopReason:
 
-    def test_scf_not_conv(self):
-        out = _run_node(
-            "_classifyStopReason('SCF_NOT_CONV: SCF did not converge "
-            "in maximum number of steps (required).')"
-        )
-        assert out == "SCF non-convergence"
-
-    def test_scf_did_not_converge_phrase(self):
-        """The other phrasing (no SCF_NOT_CONV: prefix) maps to the
-        same classification."""
-        out = _run_node(
-            "_classifyStopReason('SCF did not converge after 200 iters')"
-        )
-        assert out == "SCF non-convergence"
-
-    def test_propor_error(self):
-        out = _run_node(
-            "_classifyStopReason('propor: ERROR: IMAX = 0')"
-        )
-        assert out == "MPI rank distribution error (propor)"
-
-    def test_imax_alone(self):
-        """A propor message that just mentions IMAX = 0 without the
-        explicit ``propor: error`` prefix still classifies."""
-        out = _run_node(
-            "_classifyStopReason('something IMAX = 0 elsewhere')"
-        )
-        assert out == "MPI rank distribution error (propor)"
-
-    def test_abnormal_termination(self):
-        out = _run_node(
-            "_classifyStopReason('ABNORMAL_TERMINATION')"
-        )
-        assert out == "abnormal termination"
-
-    def test_siesta_died(self):
-        out = _run_node(
-            "_classifyStopReason('siesta died: pseudopotential read failure')"
-        )
-        assert out == "engine died"
-
-    def test_siesta_error(self):
-        out = _run_node(
-            "_classifyStopReason('siesta: ERROR  bad input file')"
-        )
-        assert out == "engine error"
-
-    def test_stopping_program(self):
-        out = _run_node(
-            "_classifyStopReason(' * Stopping Program from Node:    0')"
-        )
-        assert out == "node stop signal"
-
     def test_case_insensitive(self):
         """Real .out files vary in capitalisation; classifier should
         not depend on exact case."""

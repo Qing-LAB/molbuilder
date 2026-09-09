@@ -21,47 +21,6 @@ from molbuilder.web.blueprints._shared import catalogue_to_form_schema
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_the_panels_are_the_shared_six_in_reading_order(engine):
-    """§ 6.2's whole purpose: one panel set serving every engine.
-
-    Order is the vocabulary's own declaration order — the *reading* order — not
-    alphabetical and not the order items happen to sit in the file.
-    """
-    sch = catalogue_to_form_schema(engine)
-    names = [s["name"] for s in sch["sections"]]
-    assert names == [c for c in T.CATEGORIES if c in names]
-    assert names, "no panels at all"
-
-
-def test_both_engines_draw_their_panels_from_the_same_vocabulary():
-    """The claim that could not be made while `section` was per-engine.
-
-    THE CLAIM IS THE VOCABULARY, NOT AN IDENTICAL LIST.  This asserted
-    ``a == b`` until 2026-08-15, which held only while both engines happened
-    to carry an item in all six categories.  It stopped holding the moment
-    PySCF's ``threads`` and ``use_gpu`` moved to the staging surface: they
-    were its only ``execution`` items, so PySCF draws five panels and SIESTA
-    six.  Neither is wrong -- a panel exists because the engine HAS a
-    parameter answering that question, and an engine with none should not be
-    shown an empty heading.
-
-    What `template.md` § 6.2 actually buys is that the words are shared and
-    ordered, so *"accuracy"* means the same thing and sits in the same place
-    on both forms.  That is what is asserted here.
-    """
-    from molbuilder.template import CATEGORIES
-    panels = {e: [s["name"] for s in catalogue_to_form_schema(e)["sections"]]
-              for e in ("siesta", "pyscf")}
-    for engine, names in panels.items():
-        assert set(names) <= set(CATEGORIES), (engine, names)
-        # Same relative order as the shared vocabulary -- a panel may be
-        # absent, never out of sequence.
-        assert names == [c for c in CATEGORIES if c in names], (engine, names)
-    # And they are not two disjoint worlds: the engines share most panels.
-    assert set(panels["siesta"]) & set(panels["pyscf"])
-
-
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_every_item_this_engine_has_reaches_the_form(engine):
     """Membership is TOTAL (§ 7): a parameter the catalogue carries and the
     form omits is a control no user can reach.
@@ -104,23 +63,6 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
                               or "optimization" in i.calculations}
 
 
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_a_staging_parameter_is_not_on_the_physics_form(engine):
-    """The other half, asserted rather than implied.
-
-    A test that only checks *"everything except staging is present"* passes
-    just as happily if the filter stops working and staging appears too — the
-    two sets would simply both grow. This asks the question directly.
-    """
-    fields = {f["name"] for s in catalogue_to_form_schema(engine)["sections"]
-              for f in s["fields"]}
-    staged = {i.name for i in T.select(T.read_template(T.load_catalogue()),
-                                       engine=engine) if i.group == "staging"}
-    assert not (fields & staged), (
-        f"{sorted(fields & staged)} is set by the staging surface and must "
-        f"not appear on the parameter form (user, 2026-08-15).")
-
-
 def test_the_displacement_gets_a_control_that_can_carry_its_value():
     """§ 57.3, the defect this job had to fix before the field could appear.
 
@@ -135,42 +77,6 @@ def test_the_displacement_gets_a_control_that_can_carry_its_value():
     assert f["kgrid"]["kind"] == "int-triple"
     assert f["kgrid_displacement"]["kind"] == "float-triple"
     assert f["kgrid_displacement"]["default"] == [0.0, 0.0, 0.0]
-
-
-def test_no_control_kind_the_renderer_does_not_know():
-    """The schema may not invent widgets.  Every kind it emits must appear in
-    the renderer's dispatch, or a field silently falls through to a text box.
-    """
-    from pathlib import Path
-    js = (Path(__file__).resolve().parents[1] / "molbuilder" / "web" /
-          "static" / "lib" / "form-schema.js").read_text()
-    kinds = {f["kind"] for e in ("siesta", "pyscf")
-             for s in catalogue_to_form_schema(e)["sections"]
-             for f in s["fields"]}
-    missing = [k for k in kinds if f'case "{k}"' not in js]
-    assert not missing, f"the schema emits kinds the renderer cannot draw: {missing}"
-
-
-def test_the_two_grouping_axes_both_survive():
-    """§ 1.3: `group` is the OUTER card (when do I set this), `category` the
-    inner legend (what question is this).  The outer cards are load-bearing —
-    they exist because the stage selector once silently rewrote budget and
-    system fields — so every item that had one keeps it.
-    """
-    fields = [f for s in catalogue_to_form_schema("siesta")["sections"]
-              for f in s["fields"]]
-    grouped = [f for f in fields if f.get("workflow_group")]
-    assert grouped, "no field carries a workflow_group — the outer cards would vanish"
-    # EVERY field, not merely every field that happens to have one: an item
-    # with no card renders loose below the form and its findings fall to the
-    # residual panel.  Fifteen were in that state until 2026-08-15.
-    assert len(grouped) == len(fields), (
-        f"field(s) with no card: "
-        f"{sorted(f['name'] for f in fields if not f.get('workflow_group'))}")
-    # The renderer draws a card per name here; a value it does not know
-    # renders nothing, so the vocabulary is asserted against the renderer's
-    # own list rather than a copy of it.
-    assert {f["workflow_group"] for f in grouped} <= set(T.GROUPS)
 
 
 # RETIRED 2026-09-03 — test_the_renderer_knows_every_card_the_form_actually

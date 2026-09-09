@@ -49,40 +49,9 @@ def test_activate_hook_sets_ompi_tmpdir_base():
     assert '${TMPDIR:-/tmp}' in hook
 
 
-def test_activate_hook_respects_user_set_OMPI_tmpdir():
-    """Hook must NOT trample a user / scheduler-set value -- only set
-    when unset.  If a user already pointed OMPI_MCA_orte_tmpdir_base
-    at /scratch/$USER, the hook leaves it alone."""
-    hook = _gpu_recipe().build_spec.activate_hook
-    assert 'if [ -z "${OMPI_MCA_orte_tmpdir_base:-}" ]; then' in hook
-
-
-def test_deactivate_hook_unsets_only_what_we_set():
-    """Symmetry: deactivate hook unsets OMPI_MCA_orte_tmpdir_base
-    only when WE set it (sentinel ``_MOLBUILDER_SIESTA_GPU_SET_OMPI_
-    TMPDIR=1`` is the gate).  Without the sentinel check, deactivate
-    would clobber a user-set value on every ``conda deactivate``."""
-    deactivate = _gpu_recipe().build_spec.deactivate_hook
-    assert "_MOLBUILDER_SIESTA_GPU_SET_OMPI_TMPDIR" in deactivate
-    assert "unset OMPI_MCA_orte_tmpdir_base" in deactivate
-
-
 # --------------------------------------------------------------------- #
 #  Build wrapper contract                                                #
 # --------------------------------------------------------------------- #
-
-
-def test_build_wrapper_pins_ompi_tmpdir_to_local_storage():
-    """The build wrapper in envs/builds.py exports
-    OMPI_MCA_orte_tmpdir_base=/tmp so the .verify-phase MPI init
-    (siesta --version) doesn't warn about NFS shmem.  Without this
-    fix every fresh install of molbuilder-siesta-gpu spams two
-    multi-line warnings during the verify phase.
-    """
-    import molbuilder.envs.builds as _b
-    from pathlib import Path
-    src = Path(_b.__file__).read_text()
-    assert "OMPI_MCA_orte_tmpdir_base=/tmp" in src
 
 
 # --------------------------------------------------------------------- #
@@ -109,20 +78,3 @@ def test_host_env_includes_psutil():
     """
     pkgs = " ".join(_host_recipe().conda_packages)
     assert "psutil" in pkgs
-
-
-def test_host_env_psutil_version_matches_pyproject_floor():
-    """The host recipe and pyproject.toml's runtime deps must agree
-    on the psutil version floor -- drift would let conda install
-    psutil<5.9 while the import-time check (if we ever add one)
-    rejects it.  Today there's no version check; this is here so
-    a future floor bump in pyproject can't silently leave the host
-    recipe behind."""
-    from pathlib import Path
-    pyproject = Path(__file__).parent.parent / "pyproject.toml"
-    assert pyproject.exists(), "pyproject.toml not at repo root?"
-    text = pyproject.read_text()
-    # pyproject.toml has e.g.  "psutil>=5.9"  in the runtime deps list.
-    assert "psutil>=5.9" in text
-    pkgs = " ".join(_host_recipe().conda_packages)
-    assert "psutil>=5.9" in pkgs

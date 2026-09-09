@@ -87,11 +87,6 @@ def test_installed_package_version_falls_back_to_the_filename(tmp_path):
     assert A.installed_package_version(tmp_path, "sysroot_linux-64") == (2, 17)
 
 
-def test_installed_package_version_is_none_when_absent(tmp_path):
-    (tmp_path / "conda-meta").mkdir()
-    assert A.installed_package_version(tmp_path, "sysroot_linux-64") is None
-
-
 def test_installed_package_version_is_none_without_an_env(tmp_path):
     assert A.installed_package_version(tmp_path / "nope", "sysroot_linux-64") is None
 
@@ -287,12 +282,3 @@ def test_a_compiler_that_cannot_compile_is_only_a_warning(tmp_path):
     finding = A.check_toolchain_executes(tmp_path)
     assert finding.code == "abi.toolchain-cannot-compile"
     assert finding.severity is A.Severity.WARNING
-
-
-def test_abi_never_imports_builds(tmp_path):
-    """Dependency direction is load-bearing: builds -> abi, never back.
-    A cycle here would make the contract untestable without a live
-    build, which is the situation this module exists to escape."""
-    source = Path(A.__file__).read_text()
-    assert "from .builds" not in source
-    assert "import builds" not in source

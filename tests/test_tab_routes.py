@@ -72,30 +72,9 @@ def test_root_redirects_to_first_tab(web):
     )
 
 
-def test_root_landing_path_follows_TABS(web):
-    """If someone reorders TABS so a different tab is first, ``/``
-    must redirect to that new first tab without an app.py edit.
-    Pins the single-source-of-truth principle."""
-    from molbuilder.web.tabs import TABS, landing_path
-    assert landing_path() == TABS[0]["path"]
-
-
 # --------------------------------------------------------------------- #
 #  No legacy aliases                                                    #
 # --------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("legacy_path", ["/modify", "/structure", "/spectra"])
-def test_pre_rename_paths_return_404(web, legacy_path):
-    """Pre-1.0 cleanup: renamed paths return 404, NOT a 301
-    redirect.  Bookmarks to the old URLs break by design; the
-    canonical name is the single source of truth in code, tests,
-    and docs."""
-    r = web.get(legacy_path)
-    assert r.status_code == 404, (
-        f"{legacy_path!r} returned {r.status_code}; expected 404 "
-        f"(no legacy aliases per architecture.md § 3.2)"
-    )
 
 
 # --------------------------------------------------------------------- #

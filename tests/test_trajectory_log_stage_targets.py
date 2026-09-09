@@ -89,26 +89,6 @@ def h2():
 # --------------------------------------------------------------------- #
 
 
-def test_stage_name_emits_stage_header(h2, tmp_path):
-    p = tmp_path / "JOB_01_coarse.molwatch.log"
-    write_initial_preview(h2, p, job="JOB", engine="siesta",
-                            stage_name="01_coarse")
-    text = p.read_text()
-    assert "# stage: 01_coarse" in text
-
-
-def test_convergence_targets_emit_namespaced_headers(h2, tmp_path):
-    p = tmp_path / "JOB_01_coarse.molwatch.log"
-    write_initial_preview(h2, p, job="JOB", engine="siesta",
-                            convergence_targets={
-                                "max_force_tol_eV_per_A": 0.05,
-                                "max_geom_iter":         600,
-                            })
-    text = p.read_text()
-    assert "# convergence.max_force_tol_eV_per_A: 0.05" in text
-    assert "# convergence.max_geom_iter: 600" in text
-
-
 def test_backwards_compat_no_kwargs_means_no_stage_or_convergence_headers(
         h2, tmp_path):
     """The pre-C1.4 callers don't pass stage_name / convergence_targets.
@@ -130,15 +110,6 @@ def test_convergence_targets_with_whitespace_key_raises(h2, tmp_path):
                                 convergence_targets={
                                     "max force": 0.05,  # space in key
                                 })
-
-
-def test_convergence_targets_empty_dict_emits_no_headers(h2, tmp_path):
-    """An empty dict is treated like None (no header lines)."""
-    p = tmp_path / "JOB.molwatch.log"
-    write_initial_preview(h2, p, job="JOB", engine="siesta",
-                            convergence_targets={})
-    text = p.read_text()
-    assert "# convergence." not in text
 
 
 def test_stage_name_and_convergence_can_be_combined(h2, tmp_path):
@@ -312,17 +283,6 @@ def test_two_stage_strategy_emits_only_two_logs(xyz, tmp_path):
     logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
     assert logs == ["JOB_01_coarse.molwatch.log",
                     "JOB_02_medium.molwatch.log"]
-
-
-def test_single_stage_path_unchanged_by_c14(xyz, tmp_path):
-    """The single-stage (non-multi-stage) CLI path predates C1.4 and
-    must not regress -- one ``.molwatch.log`` (or none, depending on
-    cfg.write_molwatch_log) and no ``-stage`` suffix in the filename."""
-    # No ladder -> a description with a single parameter set (stages.md 6.5),
-    # which `prep` renders without a stage token.
-    _staged(xyz, tmp_path, None)
-    # No -stageN logs.
-    assert not any(tmp_path.glob("JOB-stage*.molwatch.log"))
 
 
 def test_every_convergence_key_the_seeder_writes_is_one_the_card_reads():

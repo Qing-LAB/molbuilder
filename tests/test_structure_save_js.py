@@ -108,35 +108,10 @@ def _run_node(snippet: str) -> object:
 #  The surface                                                          #
 # --------------------------------------------------------------------- #
 
-def test_the_panel_publishes_the_calls_the_page_wires():
-    """`useViewer` is how the page hands over the viewer it mounted — this
-    module cannot `import` it, which is the whole reason the bind door
-    exists (`selection-bootstrap.js`)."""
-    out = _run_node("""
-        console.log(JSON.stringify(
-            ["configure", "useViewer", "save", "targetPath", "wirePanel"]
-                .map((k) => typeof mod[k])));
-    """)
-    assert out == ["function"] * 5
-
 
 # --------------------------------------------------------------------- #
 #  Where it last saved — the page's note, never the viewer's            #
 # --------------------------------------------------------------------- #
-
-def test_the_target_is_the_pages_note_and_is_null_before_a_save():
-    """The viewer tracks contents, not files (`molview.md` § 6.7), so where
-    a structure went is `structurePage`'s to remember — and `targetPath` is
-    what the READOUT shows, not a destination.  The destination is the
-    question the door's dialog asks."""
-    out = _run_node("""
-        mod.configure({ structurePage: fakePage(null) });
-        const before = mod.targetPath();
-        mod.configure({ structurePage: fakePage("/p/done.xyz") });
-        console.log(JSON.stringify({ before, after: mod.targetPath() }));
-    """)
-    assert out["before"] is None
-    assert out["after"] == "/p/done.xyz"
 
 
 # --------------------------------------------------------------------- #

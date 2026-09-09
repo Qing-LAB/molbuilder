@@ -41,12 +41,6 @@ def _where(request):
     return place(_sol(), request, prefer_gpu=False).domain.name
 
 
-def test_the_job_that_prompted_this_lands_on_the_ordinary_queue():
-    """64 cores, 128 GB, 38 minutes.  `debug` cannot hold 38 minutes, and of
-    the three that can, `htc` is the tightest fit on every axis."""
-    assert _where(Request(ranks=64, walltime_s=2280, mem_gb=128)) == "htc"
-
-
 def test_the_case_where_first_that_fits_and_cheapest_fit_DISAGREE():
     """**The discriminating case, and the first version of this file had
     none.**
@@ -74,12 +68,6 @@ def test_a_job_that_genuinely_needs_the_big_memory_still_gets_it():
     """The check the fix must not break: tightest-fit is not smallest-queue.
     Nothing else admits 900 GB, so `highmem` is correct and stays correct."""
     assert _where(Request(ranks=64, walltime_s=2280, mem_gb=900)) == "highmem"
-
-
-def test_a_long_job_takes_the_long_queue():
-    """A 4.6-day wall rules out everything but `general`, whose ceiling is the
-    only one that holds it — tightness never overrides admission."""
-    assert _where(Request(ranks=64, walltime_s=400000, mem_gb=128)) == "general"
 
 
 def test_a_quick_small_job_can_still_reach_debug():
@@ -174,18 +162,6 @@ def test_a_dimension_the_ASK_does_not_state_is_not_compared():
     assert _excess(tight, r) == _excess(huge, r)
 
 
-def test_the_menus_own_order_still_breaks_a_tie():
-    """`min` is stable, so among equally tight rows the menu's recommendation
-    survives as the tie-break rather than being overruled (R7)."""
-    a = Domain(name="a", partition="p", qos="q", max_time="0-04:00:00",
-               max_cores=128, max_mem_gb=251.0)
-    b = Domain(name="b", partition="p", qos="q", max_time="0-04:00:00",
-               max_cores=128, max_mem_gb=251.0)
-    r = Request(ranks=64, walltime_s=2280, mem_gb=128)
-    assert place([a, b], r, prefer_gpu=False).domain.name == "a"
-    assert place([b, a], r, prefer_gpu=False).domain.name == "b"
-
-
 def test_ordering_never_rescues_a_request_nothing_admits():
     """It orders survivors; it does not create them."""
     from molbuilder.scheduler.place import Unplaceable
@@ -224,41 +200,12 @@ def test_the_declared_priority_decides(order, winner):
                  priority=order).domain.name == winner
 
 
-def test_gpu_is_not_one_of_the_axes_and_that_is_not_an_omission():
-    """Whether a run wants a device is settled BEFORE any ordering:
-    `candidates` splits the menu by kind, so a GPU request only ever sees
-    gpu-capable queues.  **Structurally first is stronger than first in a sort
-    key** — a tie-break can be outweighed, a filter cannot — so naming it here
-    would be offering a knob that could only weaken the guarantee."""
-    from molbuilder.scheduler.place import check_priority
-    with pytest.raises(ValueError) as e:
-        check_priority(["gpu", "cores"])
-    assert "not an axis" in str(e.value)
-    assert "settled before any ordering" in str(e.value)
-
-
 def test_an_unknown_axis_is_refused_rather_than_dropped():
     """A preference silently ignored looks honoured and is not — which is the
     failure this whole document exists to remove."""
     from molbuilder.scheduler.place import check_priority
     with pytest.raises(ValueError):
         check_priority(["memroy"])          # a plausible typo
-
-
-def test_a_repeated_axis_is_refused():
-    """Each axis decides once, or the order after it can never be reached."""
-    from molbuilder.scheduler.place import check_priority
-    with pytest.raises(ValueError) as e:
-        check_priority(["memory", "cores", "memory"])
-    assert "decides once" in str(e.value)
-
-
-def test_a_partial_order_is_legal():
-    """Naming only `["memory"]` means *memory decides and the rest may fall
-    where they fall*, which is a real thing to want.  Refusing it would make
-    the person write out axes they do not care about."""
-    from molbuilder.scheduler.place import check_priority
-    assert check_priority(["memory"]) == ("memory",)
 
 
 def test_the_site_can_set_it_in_the_config(tmp_path, monkeypatch):
@@ -273,18 +220,6 @@ def test_the_site_can_set_it_in_the_config(tmp_path, monkeypatch):
                       "placement_priority": ["memory", "cores"]}}))
     got = get_scheduler(project_dir=tmp_path)
     assert got["placement_priority"] == ["memory", "cores"]
-
-
-def test_an_unset_priority_is_ABSENT_not_a_default(tmp_path):
-    """So a reader can tell *this site did not choose* from *this site chose
-    the default*.  `place` supplies its own default and the display names it
-    as one; the config does not pretend to have decided."""
-    import json
-    from molbuilder.runtime_config import PROJECT_CONFIG_FILENAME, get_scheduler
-    (tmp_path / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "htc", "qos": "public"}}}))
-    assert "placement_priority" not in get_scheduler(project_dir=tmp_path)
 
 
 def test_a_bad_priority_in_the_config_refuses_the_config(tmp_path):

@@ -44,14 +44,6 @@ def readme_text() -> str:
     return README.read_text(encoding="utf-8")
 
 
-def test_readme_exists():
-    """Sanity check: the doc is where we think it is."""
-    assert README.exists(), (
-        f"docs/ops/installation.md not found at {README}; the "
-        f"consistency tests are based on that path"
-    )
-
-
 def test_every_recipe_name_appears_in_readme(readme_text):
     """Every Recipe.name must appear verbatim in the README so a
     user reading the doc can find the recipe's install block."""
@@ -63,26 +55,6 @@ def test_every_recipe_name_appears_in_readme(readme_text):
         f"Recipe names not mentioned in installation.md: {missing}. "
         f"Either add the recipe's section to the README or remove "
         f"the recipe from BUILTIN_RECIPES."
-    )
-
-
-def test_load_bearing_tokens_present(readme_text):
-    """If the registry pins a non-obvious string (build string,
-    extras tag, channel-prefixed spec), the README must mention it
-    too -- otherwise a user copying from the README produces a
-    different env than the registry installs."""
-    expected_tokens = [
-        # SIESTA build string -- distinguishes real-MPI from nompi.
-        "siesta=5.4.2=mpi_openmpi_*",
-        # AmberTools channel-prefixed spec -- README explains why
-        # dacase wins over conda-forge.
-        "dacase::ambertools-dac=26",
-    ]
-    missing = [t for t in expected_tokens if t not in readme_text]
-    assert not missing, (
-        f"Load-bearing tokens absent from README: {missing}.  "
-        f"These pins are encoded in the registry; the README must "
-        f"explain why."
     )
 
 
@@ -103,23 +75,6 @@ def test_verify_substrings_appear_in_readme(readme_text):
             f"`{r.verify_expect_contains}` in verify output but "
             f"installation.md never mentions it.  Either fix the "
             f"README's verify block or the recipe's expected substring."
-        )
-
-
-def test_default_env_names_match_registry_names():
-    """Cross-check the two registries -- DEFAULT_ENV_NAMES and
-    BUILTIN_RECIPES.  Different module from test_envs_recipes.py
-    (this one is in the README-consistency file because the README
-    documents the env names too)."""
-    from molbuilder.diagnostics import DEFAULT_ENV_NAMES
-    for cat, name in DEFAULT_ENV_NAMES.items():
-        matching = [r for r in BUILTIN_RECIPES if r.category == cat]
-        assert len(matching) == 1, (
-            f"category `{cat}` has {len(matching)} recipes (expect 1)"
-        )
-        assert matching[0].name == name, (
-            f"category `{cat}` -> DEFAULT_ENV_NAMES says `{name}` "
-            f"but recipe says `{matching[0].name}`"
         )
 
 

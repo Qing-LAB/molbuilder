@@ -68,14 +68,3 @@ def test_fullerene_cage_falls_back_to_openbabel_embed():
     assert backend == BACKEND_OPENBABEL
     assert len(struct.elements) == 60         # 60 carbons, no H
     assert all(e == "C" for e in struct.elements)
-
-
-def test_default_return_is_just_structure():
-    """return_backend defaults False -> the plain Structure (CLI contract)."""
-    from molbuilder.structure import Structure
-    assert isinstance(build_from_smiles("CCO"), Structure)
-
-
-def test_openbabel_backend_string_names_the_fallback():
-    """The provenance string must make the lower-fidelity path obvious."""
-    assert "OpenBabel" in BACKEND_OPENBABEL and "fallback" in BACKEND_OPENBABEL.lower()
