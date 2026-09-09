@@ -989,7 +989,8 @@ message — 27 lines, mostly docstring — and it is an EXAMPLE of the rule in
 | **M3** | *(done 2026-09-08)* `runfiles.find` + `runfiles.latest_run`. Four hand-rolled readers of the `-run<N>` counter retired: the globs in `materialize` and `summarize`, and the index regexes in `summarize` and `parse/engines/pyscf.py` | shipped; survey's owned bucket 22 → 20 |
 | **M4** | *(done 2026-09-08)* **a** — `Shape` moves to a floor-1 `paths.py` (`SHAPES` with it), plus `TRIAL_PREFIX` / `trials_in` / `launched_trials`. **b** — the ATTEMPT gets a composer at last: `attempt_name` / `attempt_dir` / `attempt_index` / `attempts_in` retire nine `f"run-{n}"` spellings across four modules and the regex two of them reached across for | shipped; owned 24 → 19 |
 | **M5** | *(done 2026-09-08)* `/api/task-setup/attempts` answers from the DECLARED shape; `runsForStages` and the `--from` builder stop composing. Four browser re-implementations gone — `stage_token`, `/^run-\d+$/`, the flat `_<token>-run` form, and a shape inferred from disk | shipped |
-| **M6** | `parse/contract.py`'s engine-output globs move behind `runfiles.WRITTEN`, which already declares those roles | one vocabulary for what an engine writes |
+| **M6** | *(done 2026-09-08)* `runfiles.find_by_role` — the label-less half, for the caller that has a folder and no label. `parse/contract.py`'s `*.fdf` and `*.molwatch.log` ask it | shipped; owned 19 → 17 |
+| **M7** | *(open)* the same treatment for the rest — see below | owned 17 → the finders |
 
 **M4b's number moved while it was being fixed.** The plan said eight
 `f"run-{n}"` spellings; re-derived at the start of the work it was NINE, and
@@ -1036,6 +1037,29 @@ person actually copies. The rest are open, and they are NOT § 5h's backlog:
 that section counts assertions over a file's text, and these pass its filter.
 **The instrument needs the rule before the population can be counted** — a
 slice taken by literal offset is a pin even when the slice is executed.
+
+### 5k.4b Where M1–M6 left it, and what M7 is
+
+**Owned went 24 → 17.** The seven closed were the ones with a door already
+waiting or one step from it; the seventeen left are listed by
+`classify_path_finders.py --list owned`, and re-run it rather than trusting
+this paragraph.
+
+Most are the SAME SHAPE M6 just gave a door to — a dotted role globbed with no
+label: `*.fdf` ×3, `*.out` ×2, `*.molwatch.log`, `*.source.xyz`,
+`*.molstruct.json`, `*.XV`, `*.template.toml`. Those are `find_by_role`
+calls; the work is mechanical and the risk is in the two that are not:
+
+| left over | why it is not mechanical |
+|---|---|
+| `validation/identity.py` `*{suffix}` | the suffix is a RUNTIME value from the engine's rules file, so the role cannot be checked against `WRITTEN` at the call — `find_by_role` would have to take an unchecked role, which is the check it exists for |
+| `validation/identity.py` `{label}*` | has a label but no role: *everything this calculation left here*. `find(dir, label)` answers it, but the caller wants names it can subtract a known set from, so the shape of the answer matters |
+| `web/blueprints/workspace_storage.py` ×2 | the workspace store's own grammar, not run files — same fault, different vocabulary, and it needs its own namer first |
+| `template.py` `*.template.toml` | `template` owns that name; the door belongs there, beside it, not in `runfiles` |
+
+**`os.path.join(dir, "*.fdf")` appears three times in `web/blueprints/watch.py`**
+and the survey reads the pattern through the join, which is worth keeping in
+mind when the count is re-derived: they are ordinary globs wearing a coat.
 
 ### 5k.5 What must not change
 

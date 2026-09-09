@@ -39,7 +39,11 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
     directory = Path(directory)
     if not directory.is_dir():
         return None
-    decks = sorted(directory.glob("*.fdf"))
+    # THE ROLE COMES FROM THE CATALOGUE.  `"*.fdf"` is `runfiles.WRITTEN`'s
+    # `.fdf` spelled outside the module that declares it
+    # (`project-layout.md` § 4.5).
+    from ..runfiles import find_by_role
+    decks = find_by_role(directory, ".fdf")
     if len(decks) == 1:
         return _siesta_contract(decks[0])
     return None
@@ -187,7 +191,8 @@ def _declared_in_molwatch(directory: Path) -> set:
     """
     from molbuilder.parse.engines.molwatch import _ENGINE_RE
     out = set()
-    for f in sorted(directory.glob("*.molwatch.log")):
+    from ..runfiles import find_by_role
+    for f in find_by_role(directory, ".molwatch.log"):
         try:
             with open(f, "r", encoding="utf-8", errors="replace") as fh:
                 for _ in range(40):

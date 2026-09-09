@@ -397,6 +397,44 @@ def find(directory, label: str, *,
     return out
 
 
+def find_by_role(directory, role: str) -> "list[Path]":
+    """Every file here in this ROLE, whoever's it is — sorted by name.
+
+    The label-less half of :func:`find`, and it exists because two callers
+    genuinely have no label: *"which deck is in this directory"* and *"which
+    molwatch logs are here"* are asked of a folder before anything has said
+    whose it is.  They globbed ``"*.fdf"`` and ``"*.molwatch.log"``, which is
+    the role vocabulary spelled outside the module that declares it.
+
+    **Only a DOTTED role, and that is this module's own rule** rather than a
+    limitation invented here — :func:`parse` states it: the vocabulary
+    matters *"only for roles that begin with ``_``: a stage NAME may contain
+    ``_`` too, so those two are the case the separator cannot decide ... A
+    dotted role never needs it."*  So a dotted role is recognisable with no
+    label, and an underscore one is refused rather than answered wrongly.
+
+    The role is checked against :data:`WRITTEN`, so a typo is a refusal here
+    instead of an empty list at the call site.
+    """
+    if not role.startswith("."):
+        raise RunFileError(
+            f"find_by_role({role!r}): only a dotted role can be found without "
+            f"a label -- an underscore role cannot be told from a stage name "
+            f"without one (see `parse`).  Use `find(dir, label, role=...)`.")
+    known = {a.role for a in WRITTEN}
+    if role not in known:
+        raise RunFileError(
+            f"find_by_role({role!r}): not a role molbuilder writes.  "
+            f"The catalogue is `runfiles.WRITTEN`; known dotted roles are "
+            + ", ".join(sorted(r for r in known if r.startswith("."))))
+    d = Path(directory)
+    try:
+        return sorted(p for p in d.iterdir()
+                      if p.is_file() and p.name.endswith(role))
+    except OSError:
+        return []
+
+
 def latest_run(directory, label: str, *,
                roles: "tuple[str, ...]" = (),
                stage: Optional[str] = None,

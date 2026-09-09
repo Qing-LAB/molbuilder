@@ -25,7 +25,7 @@ import itertools
 import pytest
 
 from molbuilder.runfiles import (QUALIFIERS, WRITTEN, RunFile, RunFileError,
-                                 find, latest_run,
+                                 find, find_by_role, latest_run,
                                  compose, is_carried, manifest, parse,
                                  patterns, tail)
 
@@ -478,3 +478,33 @@ class TestTheReader:
 
     def test_a_directory_that_is_not_there_is_empty_not_an_error(self, tmp_path):
         assert find(tmp_path / "nope", "JOB") == []
+
+
+class TestFindingARoleWithNoLabel:
+    """`find_by_role` — for the caller that has a folder and no label."""
+
+    def test_it_returns_every_file_in_that_role(self, tmp_path):
+        for n in ("JOB_01_c.fdf", "SOMEBODY_ELSE.fdf", "notes.txt"):
+            (tmp_path / n).write_text("")
+        assert [p.name for p in find_by_role(tmp_path, ".fdf")] == [
+            "JOB_01_c.fdf", "SOMEBODY_ELSE.fdf"]
+
+    def test_an_UNDERSCORE_role_is_refused_rather_than_answered(self, tmp_path):
+        """`parse` states the reason: a stage NAME may contain `_` too, so an
+        underscore role and a stage cannot be told apart without a label.
+        Answering anyway would split `my-job_01_coarse_geom_optim.xyz` at the
+        wrong place — the exact defect `parse` was written to end."""
+        with pytest.raises(RunFileError) as exc:
+            find_by_role(tmp_path, "_geom_optim.xyz")
+        assert "without a label" in str(exc.value)
+        assert "find(dir, label" in str(exc.value)
+
+    def test_a_role_nothing_writes_is_refused_with_the_catalogue(self, tmp_path):
+        """A typo is a refusal here, not an empty list at the call site —
+        which reads as *there are none of those* and is a different answer."""
+        with pytest.raises(RunFileError) as exc:
+            find_by_role(tmp_path, ".fdff")
+        assert ".fdf" in str(exc.value)
+
+    def test_a_directory_that_is_not_there_is_empty(self, tmp_path):
+        assert find_by_role(tmp_path / "nope", ".fdf") == []
