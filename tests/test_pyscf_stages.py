@@ -194,11 +194,14 @@ def test_every_shipped_tier_value_is_inside_its_items_bound(tier):
 #  The strategy presets choose which tiers run, and nothing else        #
 # --------------------------------------------------------------------- #
 
-def test_strategy_preset_names_match_siesta():
-    from molbuilder.config.siesta import SIESTA_STAGE_STRATEGY_PRESETS
-    assert (set(STAGE_STRATEGY_PRESETS)
-            == set(SIESTA_STAGE_STRATEGY_PRESETS))
-
+# `test_strategy_preset_names_match_siesta` stood here, with a twin in
+# `test_siesta_stages.py` asserting the same set equality in the other
+# direction, plus a whole file (`test_siesta_stage_strategy_presets_drift.py`)
+# comparing them value-for-value.  Three tests keeping one constant equal to
+# itself.
+#
+# There is one table since 2026-09-09 -- `config/stages.py` -- and both
+# engines import that object, so drift is not a state that exists.
 
 @pytest.mark.parametrize("strategy,expected", [
     ("publishable", [True, True, False]),

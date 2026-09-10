@@ -56,14 +56,14 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     Raises ``ValueError`` on an unknown strategy.
     """
     from ..config.siesta import (SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS,
-                                 SIESTA_STAGE_STRATEGY_PRESETS)
+                                 STAGE_STRATEGY_PRESETS)
 
-    if strategy not in SIESTA_STAGE_STRATEGY_PRESETS:
-        valid = ", ".join(sorted(SIESTA_STAGE_STRATEGY_PRESETS))
+    if strategy not in STAGE_STRATEGY_PRESETS:
+        valid = ", ".join(sorted(STAGE_STRATEGY_PRESETS))
         raise ValueError(
             f"unknown SIESTA stage strategy {strategy!r}; "
             f"choose from: {valid}")
-    enables = SIESTA_STAGE_STRATEGY_PRESETS[strategy]
+    enables = STAGE_STRATEGY_PRESETS[strategy]
     out: List[Stage] = []
     for i, tier in enumerate(sorted(SIESTA_STAGE_PRESETS)):
         overrides = dict(SIESTA_STAGE_PRESETS[tier])

@@ -115,11 +115,7 @@ PYSCF_RESTART_GROUP = RestartGroup(
 )
 
 
-STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
-    "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
-    "loose-only":  (True,  False, False),   # stage1 only (cheap warm-up)
-    "vib-quality": (True,  True,  True),    # all three (TIGHT for vib/IR/NEB)
-}
+from .stages import STAGE_STRATEGY_PRESETS   # THE shared table
 
 
 @dataclass

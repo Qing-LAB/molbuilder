@@ -1933,18 +1933,12 @@ def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
     return _dc.replace(cfg, **overlay)
 
 
-# Which of the three tiers a named strategy runs.  Pure enable-mask data:
-# it says nothing about how a stage is tuned, only which ones are in the
-# ladder.  ``siesta/stages.py::default_siesta_stages`` reads it together with
-# SIESTA_STAGE_PRESETS above to build the shipped ladder; keep aligned with
-# config/pyscf.py's STAGE_STRATEGY_PRESETS (the drift-guard test fires if
-# the two engines ever diverge; the JS third copy retired 2026-08-22 with
-# the stage-table widget).
-SIESTA_STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
-    "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
-    "loose-only":  (True,  False, False),   # stage1 only (CG warm-up)
-    "vib-quality": (True,  True,  True),    # all three (TIGHT for vib/IR)
-}
+# THE SHARED TABLE (`config/stages.py`).  This was a second copy with equal
+# values, and its own comment said "keep aligned with config/pyscf.py's
+# STAGE_STRATEGY_PRESETS (the drift-guard test fires if the two engines ever
+# diverge)" -- six tests keeping one constant equal to itself.  A strategy says
+# which TIERS run, which is not an engine's property.
+from .stages import STAGE_STRATEGY_PRESETS
 
 
 __all__ = [
@@ -1952,5 +1946,5 @@ __all__ = [
     "SIESTA_STAGE_NAMES",
     "SIESTA_STAGE_PRESETS",
     "apply_siesta_stage",
-    "SIESTA_STAGE_STRATEGY_PRESETS",
+    "STAGE_STRATEGY_PRESETS",
 ]

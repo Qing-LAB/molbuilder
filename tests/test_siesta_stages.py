@@ -34,7 +34,7 @@ import pytest
 from molbuilder.config.siesta import (
     SiestaConfig,
     SIESTA_STAGE_PRESETS,
-    SIESTA_STAGE_STRATEGY_PRESETS,
+    STAGE_STRATEGY_PRESETS,
     apply_siesta_stage,
 )
 from molbuilder.siesta.stages import default_siesta_stages
@@ -189,11 +189,8 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
 #  The strategy presets choose which tiers run, and nothing else        #
 # --------------------------------------------------------------------- #
 
-def test_strategy_preset_names_match_pyscf():
-    from molbuilder.config.pyscf import STAGE_STRATEGY_PRESETS
-    assert (set(SIESTA_STAGE_STRATEGY_PRESETS)
-            == set(STAGE_STRATEGY_PRESETS))
-
+# `test_strategy_preset_names_match_pyscf` stood here -- see the note at the
+# same place in `test_pyscf_stages.py`.  One table since 2026-09-09.
 
 @pytest.mark.parametrize("strategy,expected", [
     ("publishable", [True, True, False]),

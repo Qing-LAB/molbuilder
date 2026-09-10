@@ -129,17 +129,14 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "engines through one option.  It was also on `molbuilder pyscf` "
         "until 2026-08-18; a command that writes ONE deck had no business "
         "carrying a ladder (`stages.md` § 1.1a)"),
-    "SIESTA_STAGE_STRATEGY_PRESETS": (
-        2, "molbuilder/config/siesta.py",
-        "those presets -- pure enable-mask data now; the applier that turned "
-        "them into SiestaStageSpec objects went with the class (P2)"),
     "STAGE_STRATEGY_PRESETS": (
-        2, "molbuilder/config/pyscf.py",
-        "PySCF's copy of the enable-mask table.  Two homes for one fact, "
-        "and a drift test is what keeps them equal -- the honest reading is "
-        "that this is mechanism 2's remaining debt, not a second mechanism. "
-        "`default_pyscf_stages` reads it exactly as SIESTA's twin reads "
-        "SIESTA_STAGE_STRATEGY_PRESETS"),
+        2, "molbuilder/config/stages.py",
+        "the enable-mask table, ONE home since 2026-09-09.  It was two -- "
+        "this entry's predecessor called that 'mechanism 2's remaining debt, "
+        "not a second mechanism', and six tests kept one constant equal to "
+        "itself.  A strategy says which TIERS run, which is not an engine's "
+        "property, so both `default_*_stages` read the same object now and "
+        "the drift guards have nothing to compare"),
     "_refuse_duplicate_stage_names": (
         None, "molbuilder/task.py",
         "the ONE case-insensitive duplicate check (D10, 2026-08-13) -- "
