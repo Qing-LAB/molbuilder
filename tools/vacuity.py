@@ -50,6 +50,34 @@ def _named_modules(testfile):
     return {m for m in out if m}
 
 
+def _spread(rel, lines, root):
+    """Mutants sampled ACROSS the module, not the first N lines of it.
+
+    `mutants_for` walks sorted(lines), so a small budget always landed on the
+    earliest covered lines -- imports, module constants, the top of the first
+    function -- and never on validation deeper down.  Measured on
+    tests/spectra/test_atom_index_contract.py: 12 mutants, none killed, while
+    the file's whole point is that `SpectraResults.__post_init__` RAISES on a
+    bad free/frozen partition.  A budget that cannot reach the assertion
+    reports every test as blind, and this verdict DELETES tests.
+
+    So shuffle the covered lines (seeded by the path, so a verdict is
+    reproducible) and take one mutant per line before taking a second from
+    any line.
+    """
+    import random
+    lns = sorted(lines)
+    random.Random(rel).shuffle(lns)
+    per_line = {ln: iter(list(mutants_for(pathlib.Path("molbuilder") / rel,
+                                         {ln}, root))) for ln in lns}
+    while per_line:
+        for ln in list(per_line):
+            try:
+                yield next(per_line[ln])
+            except StopIteration:
+                del per_line[ln]
+
+
 def run_file(nodeid, root, timeout):
     try:
         r = subprocess.run([PYEXE, "-m", "pytest", "-q", "-p", "no:randomly",
@@ -66,6 +94,13 @@ def vacuity(testfile, budget=10, timeout=420):
     except SystemExit as e:
         return {"verdict": "NO-COVERAGE-RUN", "detail": str(e)[:200]}
     if not lines:
+        # No molbuilder PYTHON line ran.  Two very different things wear that
+        # shape: a file that drives JS through node (this instrument mutates
+        # Python, so it has nothing to say about those) and a file that
+        # exercises no product code at all.  Only the second is a finding.
+        src = pathlib.Path(testfile).read_text(errors="ignore")
+        if "node" in src or ".js" in src:
+            return {"verdict": "JS-SUBJECT", "killed": 0}
         return {"verdict": "NO-CODE", "killed": 0}
     work = tempfile.mkdtemp(prefix="vacuity_")
     root = pathlib.Path(work) / "repo"
@@ -112,11 +147,9 @@ def vacuity(testfile, budget=10, timeout=420):
                 continue                 # framework the test merely passed through
             if not (root / "molbuilder" / rel).exists():
                 continue
-            streams.append((rel, iter(mutants_for(pathlib.Path("molbuilder") / rel,
-                                                  by_file[rel], root))))
+            streams.append((rel, _spread(rel, by_file[rel], root)))
         if not streams:                  # nothing it names is reachable
-            streams = [(rel, iter(mutants_for(pathlib.Path("molbuilder") / rel,
-                                              by_file[rel], root)))
+            streams = [(rel, _spread(rel, by_file[rel], root))
                        for rel in sorted(by_file, key=lambda r: -len(by_file[r]))[:3]
                        if (root / "molbuilder" / rel).exists()]
         tried = killed = 0
