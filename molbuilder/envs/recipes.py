@@ -36,6 +36,8 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+
+from ..diagnostics import DEFAULT_ENV_NAMES
 from typing import Mapping, Optional, Tuple
 
 
@@ -735,7 +737,7 @@ _HOST = Recipe(
 
 
 _PYSCF = Recipe(
-    name="molbuilder-pySCF",
+    name=DEFAULT_ENV_NAMES["pyscf"],
     category="pyscf",
     description="PySCF (CPU + GPU runtime libs); Spectra-tab Raman/IR + "
                 "geomeTRIC geomopt; gpu4pyscf available when use_gpu=True.",
@@ -784,7 +786,7 @@ _PYSCF = Recipe(
 
 
 _SIESTA = Recipe(
-    name="molbuilder-siesta",
+    name=DEFAULT_ENV_NAMES["siesta"],
     category="siesta",
     description="SIESTA-MPI: DFT + (future) Transport.",
     channels=("conda-forge",),
@@ -836,7 +838,7 @@ _SIESTA = Recipe(
 
 
 _MDTOOLS = Recipe(
-    name="molbuilder-MDtools",
+    name=DEFAULT_ENV_NAMES["mdtools"],
     category="mdtools",
     description="AmberTools (tleap, parmchk2, antechamber, RESP, ...).",
     # dacase channel takes priority over conda-forge (which lags at
@@ -1451,7 +1453,7 @@ _SIESTA_GPU_BUILD = BuildSpec(
 
 
 _SIESTA_GPU = Recipe(
-    name="molbuilder-siesta-gpu",
+    name=DEFAULT_ENV_NAMES["siesta-gpu"],
     category="siesta-gpu",
     description="SIESTA + TranSiesta + TBtrans built from source with "
                 "CUDA-enabled ELPA (5.4.2 matches the precompiled CPU env).",

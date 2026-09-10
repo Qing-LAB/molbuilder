@@ -48,24 +48,13 @@ def test_recipe_names_are_unique():
     )
 
 
-def test_routed_recipes_match_default_env_names():
-    """Every recipe with ``category`` set must have a name matching
-    ``DEFAULT_ENV_NAMES[category]``.  Otherwise ``run_tool`` would
-    dispatch to a different env name than ``install`` builds."""
-    for r in BUILTIN_RECIPES:
-        if r.category is None:
-            continue
-        assert r.category in DEFAULT_ENV_NAMES, (
-            f"recipe `{r.name}` has unknown category `{r.category}`. "
-            f"Add it to DEFAULT_ENV_NAMES in molbuilder/diagnostics.py "
-            f"or fix the recipe."
-        )
-        assert DEFAULT_ENV_NAMES[r.category] == r.name, (
-            f"recipe `{r.name}` declares category `{r.category}` but "
-            f"DEFAULT_ENV_NAMES says category maps to "
-            f"`{DEFAULT_ENV_NAMES[r.category]}`.  These must agree."
-        )
-
+# `test_routed_recipes_match_default_env_names` stood here.  A routed recipe
+# takes its name FROM the table now (`name=DEFAULT_ENV_NAMES["pyscf"]`), so
+# both halves it asserted are structural: the names agree by construction, and
+# an unknown category is a `KeyError` at import -- demonstrated, not argued.
+#
+# The reverse direction below is NOT covered by that and stays: a category
+# added to `DEFAULT_ENV_NAMES` with no recipe is still writable.
 
 def test_default_env_names_all_have_recipes():
     """Reverse direction: every category in ``DEFAULT_ENV_NAMES``
