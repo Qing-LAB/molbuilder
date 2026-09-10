@@ -108,61 +108,33 @@ def junction() -> Structure:
 
 
 def test_the_junction_is_shaped_the_way_the_test_claims(junction):
-    """SCIENCE. Read the fixture before trusting anything built on it -- and
-    read it from the GEOMETRY, not from the numbers that built it.
+    """Read the fixture before trusting anything built on it.
 
-    THE FAILURE THIS CATCHES.  Every test in this file rests on this fixture
-    being a junction: two electrodes, a bridge between them, and the OUTERMOST
-    layer of each electrode held still -- the bulk contact the junction is
-    bolted to. `frozen_atoms` is what a relaxation will not move, so freezing
-    the wrong atoms relaxes the contact and pins the interior: the calculation
-    runs, converges, and answers about a structure nobody asked for.
+    WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT.  It checks the fixture
+    is the SHAPE the round-trip tests below need -- two electrodes' worth of
+    gold, a two-sulphur bridge, a transport axis -- so that a failure there is
+    about the sidecar and not about a fixture that quietly changed.
 
-    REDESIGNED 2026-09-09.  It asserted `len(frozen) == 2 * _ATOMS_PER_LAYER` --
-    a COUNT. Rewrite `_junction()` to freeze interior atoms and the count is
-    identical, so this test and every test built on it stay green while the
-    junction is physically wrong. The fixture's own comment states the claim
-    ("THE OUTERMOST LAYER OF EACH ELECTRODE IS HELD STILL ... This is the fact
-    that has to survive") and nothing checked it. Recorded at
-    `science/test-design-findings.md` § 3.
+    IT DOES NOT ASSERT WHICH ATOMS ARE FROZEN, and that is deliberate.
+    `frozen_atoms` is the USER'S choice: molbuilder never derives it, it carries
+    it (`structure.FROZEN_LABEL` is a reserved label in the one store; every
+    reference in the package reads, converts or writes it). A test asserting
+    that the outermost layer is the frozen one would be pinning a decision this
+    tool has no opinion about -- and the subject of this file is that whatever
+    the user chose SURVIVES write -> read -> write, for any set.
 
-    The outermost layers are now DERIVED from z: the Au atoms at the extreme
-    ends of the stack. That is what "outermost" means, and it cannot be
-    satisfied by a fixture that froze the wrong ones.
-
-    Contract: `science/junction-cell.md` § 4 (the transport axis and what the
-    electrodes are for).
+    (Tried and reverted 2026-09-09.  `science/test-design-findings.md` § 3 asked
+    for the outermost-layer claim to be checked, and it was, from z. The user's
+    objection is correct and the finding was wrong: it is the same fault as
+    asserting ASE's crystallography in `add_slab`'s tests -- precision spent on
+    something we neither decide nor own. The count stays because the round trip
+    needs a non-empty list to lose.)
     """
-    import numpy as _np
-
     assert junction.n_atoms == 2 * _ELECTRODE_LAYERS * _ATOMS_PER_LAYER + 12
     assert junction.elements.count("Au") == 24
     assert junction.elements.count("S") == 2
+    assert len(junction.regions["frozen_atoms"]) == 2 * _ATOMS_PER_LAYER
     assert junction.axis_kind == ("periodic", "periodic", "transport")
-
-    pos = _np.asarray(junction.positions, dtype=float)
-    z = pos[:, 2]
-    au = [i for i, e in enumerate(junction.elements) if e == "Au"]
-    assert au, "no gold: this is not a junction"
-
-    # "Outermost" = the extreme ends of the stack along the transport axis.
-    zmin, zmax = z[au].min(), z[au].max()
-    outermost = sorted(i for i in au
-                       if abs(z[i] - zmin) < 1e-6 or abs(z[i] - zmax) < 1e-6)
-    assert len(outermost) == 2 * _ATOMS_PER_LAYER, (
-        "the two end layers are not one layer of atoms each -- the fixture's "
-        "stacking changed and 'outermost layer' no longer means what it says")
-
-    assert sorted(junction.regions["frozen_atoms"]) == outermost, (
-        f"frozen_atoms is not the outermost layer of each electrode.  Frozen: "
-        f"{sorted(junction.regions['frozen_atoms'])}; outermost by z: "
-        f"{outermost}.  A relaxation would move the contact and hold the "
-        f"interior still -- the opposite of what a junction needs")
-
-    # And the bridge really is BETWEEN them, or "outermost" is meaningless.
-    bridge = junction.regions["bridge"]
-    assert zmin < z[bridge].min() and z[bridge].max() < zmax, (
-        "the molecule is not between the electrodes")
 
 
 # --------------------------------------------------------------------- #

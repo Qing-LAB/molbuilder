@@ -103,12 +103,17 @@ executes is not a gate.
   four fixed keys. Only `test_every_metal_has_the_two_literature_references`,
   which reads the raw JSON, can catch a re-add.
 - ~~**`test_junction_sidecar_roundtrip.py::test_the_junction_is_shaped_the_way_the_test_claims`**~~
-  — **CLOSED 2026-09-09.** It asserted `len(frozen) == 2 * _ATOMS_PER_LAYER`, a
-  COUNT, so freezing interior atoms instead kept every test in the file green
-  while the junction was physically wrong. The outermost layers are now DERIVED
-  from z — the Au atoms at the extreme ends of the stack — and the bridge is
-  asserted to lie between them, so "outermost" is checked rather than assumed.
-  The audit's own scenario (freeze the interior, same count) now fails.
+  — **WITHDRAWN 2026-09-09: THIS FINDING WAS WRONG.** It asked for the fixture's
+  "outermost layer is frozen" claim to be checked. That was done, from z — and
+  the user's objection retired it: **`frozen_atoms` is the USER'S choice.**
+  molbuilder never derives it; `structure.FROZEN_LABEL` is a reserved label and
+  every reference in the package reads, converts or writes it. Asserting which
+  atoms are frozen pins a decision this tool has no opinion about — the same
+  fault as asserting ASE's crystallography in `add_slab`'s tests, which §§ 2
+  above also had to withdraw. **We are designing a tool: it carries the user's
+  setup, it does not grade it.** The file's subject is that whatever they chose
+  survives write → read → write, for any set; the count assertion stays only
+  because the round trip needs a non-empty list to lose.
 
 ## 4. The claim is not where the test looks
 
