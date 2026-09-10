@@ -1,29 +1,27 @@
-"""Drift guard: ``docs/ops/installation.md`` ↔ ``Recipe`` registry.
+"""What the bootstrap inlines in bash must equal the Python recipe.
 
-The README is the human-readable source of truth; the registry is
-the machine-readable one.  These tests assert the two mention the
-same env names and pin a small number of load-bearing details
-(channels, build strings) so a quick "I'll just nudge this" edit on
-one side can't silently desync from the other.
+**The real subject is the duplication that cannot be removed.**
+`install-env.sh` needs the host env's package list FROM BASH, before the host
+env exists -- so it cannot dispatch into Python to read `recipes.py`, and it
+inlines `HOST_CONDA_PACKAGES` / `HOST_PIP_PACKAGES` as bash arrays.  Two
+sources of truth for one list, structurally, with no way to collapse them.
+Those two tests compare the arrays against the recipe exactly, and they are
+why this file exists: drift there installs a different host env than the one
+molbuilder believes it is running in.
 
-What we DO check:
+Two weaker checks ride along: every `Recipe.name` appears as a heading in
+`docs/ops/installation.md`, and every `verify_expect_contains` substring is
+mentioned there -- so a recipe a reader cannot find, or a verify step whose
+expected output is an invention, shows up.
 
-  * Every Recipe.name appears as a section heading in installation.md.
-  * Every load-bearing token (e.g. ``siesta=5.4.2=mpi_openmpi_*``,
-    ``dacase::ambertools-dac=26``, ``cupy-cuda13x[ctk]``) referenced by
-    a recipe appears in the README -- if the registry pins it, the doc
-    must explain why.
-  * Every Recipe.verify_expect_contains substring is mentioned in the
-    README (proves the verify step's expected output isn't an
-    invention).
-
-What we do NOT check:
-
-  * The README's prose around each recipe (intentional -- the README
-    explains the *why*; the registry encodes the *what*).
-  * Exact conda-package order (the README writes them across multi-line
-    bash blocks).
-  * Optional / GPU sub-recipes (out of scope for this ship).
+**Corrected 2026-09-10.**  This docstring claimed a third check -- "every
+load-bearing token (e.g. ``siesta=5.4.2=mpi_openmpi_*``) referenced by a
+recipe appears in the README" -- and no test in the file implements it.
+Measured: editing that exact pin in installation.md to 5.4.1 leaves all four
+tests green.  The claim is the reason the file was kept in the 2026-09-10
+retirement pass, so it mattered that it was false; the pin is guarded by
+nothing, and `project_siesta_env_capabilities` / the gcc-14.4 note are where
+that version actually lives.
 """
 from __future__ import annotations
 
