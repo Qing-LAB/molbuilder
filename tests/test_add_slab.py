@@ -109,22 +109,86 @@ class TestTheFactThatDecidedTheDesign:
 
 class TestItIsASliceOfARealCrystal:
 
+    # ARBITRARY metals and lattices.  The mechanism does not know what gold
+    # is: it asks ASE for a taller slab and keeps a window of it.  A test that
+    # pins a gold number is testing ASE's crystallography, which we neither
+    # wrote nor control -- `_build_ase_slab` is `builder(element, size=, a=)`
+    # and nothing else.
+    @pytest.mark.parametrize("element,a", [("Au", 4.0782), ("Cu", 3.6149),
+                                           ("Ag", 4.0853), ("Ni", 3.5240)])
     @pytest.mark.parametrize("plane,orth", SURFACES)
     @pytest.mark.parametrize("k0", (0, 1, 2))
-    def test_every_layer_matches_a_layer_of_the_ase_superset(
-            self, plane, orth, k0):
-        """The claim the whole design rests on.  Each layer's own lateral
-        pattern must be one ASE built — not a shifted approximation of one."""
-        n = 3
+    @pytest.mark.parametrize("n", (1, 2, 3, 4))
+    def test_the_slab_is_the_contiguous_window_ASE_built(
+            self, element, a, plane, orth, k0, n):
+        """THE CLAIM THE WHOLE DESIGN RESTS ON: the slab is a contiguous run of
+        ASE's own layers, starting at the registry that was asked for.
+
+        WHAT THIS LAYER ACTUALLY DOES.  It does not build a crystal.  It asks
+        ASE for `n_layers + period - 1` layers, then keeps
+        `zs[first : first + n_layers]` -- and that CUT is the entirety of what
+        molbuilder contributes.  Everything numeric (the lattice constant, the
+        layer spacing, the in-plane mesh, the ABAB step) belongs to ASE and is
+        passed straight through.
+
+        SO THE TEST IS STRUCTURAL, NOT NUMERIC, AND ELEMENT-AGNOSTIC.  It
+        rebuilds the superset with the same call, works out which window should
+        have been taken, and asserts the slab IS that window -- same layers,
+        same order, right count.  No distance appears in it, because a distance
+        would be asserting ASE's arithmetic back at itself.
+
+        THE FAILURE THIS CATCHES: a window off by one (the wrong registry), a
+        window that is not contiguous (layers from two places in the stack), a
+        count that is `tall` rather than `n_layers`, and an order reversed by
+        the growth walk.  Any of those makes a slab that is not a slice of a
+        real crystal -- the 1.249 Å class of defect this file exists for -- and
+        it still looks like a slab.
+
+        Contract: `science/junction-cell.md` § 3.1.
+        """
         period = STACKING_PERIOD[plane]
-        tall = _build_ase_slab("Au", plane, (2, 2, n + period - 1), orth, A_AU)
-        want = _shapes(np.asarray(tall.positions, float))
-        got = _shapes(_metal(_slab(plane=plane, size=(2, 2, n),
-                                   orthogonal=orth, start_registry=k0)))
-        assert len(got) == n
-        for layer in got:
-            assert any(layer.shape == w.shape and np.allclose(layer, w, atol=1e-6)
-                       for w in want), "a layer is not one ASE built"
+        tall = _build_ase_slab(element, plane, (2, 2, n + period - 1), orth, a)
+        superset = _shapes(np.asarray(tall.positions, float))
+
+        first = k0 % period                     # `sequence="ABC"`, the default
+        want = superset[first:first + n]
+        assert len(want) == n, "the superset is too short to answer this"
+
+        got = _shapes(_metal(add_slab(_base(), element, plane, (2, 2, n),
+                                      orthogonal=orth, start_registry=k0,
+                                      lattice_constant=a)))
+
+        assert len(got) == n, (
+            f"asked for {n} layers and got {len(got)} -- the trim kept the "
+            f"superset's {n + period - 1}")
+        for idx, (g, w) in enumerate(zip(got, want)):
+            assert g.shape == w.shape and np.allclose(g, w, atol=1e-6), (
+                f"layer {idx} is not a layer ASE built")
+
+        # AND IT IS THE RIGHT WINDOW.  The check above cannot say so: `_shapes`
+        # divides out each layer's OWN centroid, and on an fcc slab every layer
+        # has the same shape -- so any window passes it.  What distinguishes one
+        # window from another is how consecutive layers are DISPLACED relative
+        # to each other, which is exactly the registry.  Comparing the
+        # displacement SEQUENCE is translation-invariant, so it needs no
+        # absolute position and no distance of ours.
+        def _steps(centroids):
+            return [np.round(centroids[i + 1] - centroids[i], 6)
+                    for i in range(len(centroids) - 1)]
+
+        sup_c = [xy.mean(axis=0)
+                 for _, xy in _by_layer(np.asarray(tall.positions, float))]
+        got_c = [xy.mean(axis=0)
+                 for _, xy in _by_layer(_metal(add_slab(
+                     _base(), element, plane, (2, 2, n), orthogonal=orth,
+                     start_registry=k0, lattice_constant=a)))]
+        want_steps, got_steps = _steps(sup_c[first:first + n]), _steps(got_c)
+        assert len(got_steps) == len(want_steps)
+        for idx, (gs, ws) in enumerate(zip(got_steps, want_steps)):
+            assert np.allclose(gs, ws, atol=1e-6), (
+                f"layer {idx}->{idx + 1} steps by {gs}, but superset layers "
+                f"{first + idx}->{first + idx + 1} step by {ws}: the window "
+                f"does not start at registry {k0}")
 
     @pytest.mark.parametrize("plane,orth", SURFACES)
     def test_the_registry_control_actually_changes_the_slab(self, plane, orth):
@@ -384,47 +448,49 @@ class TestTheRegistryIsNotContaminatedByTheTrim:
             f"lattice step is {step:.3f} Å.  A slab that is not on the "
             f"lattice is not the crystal that was asked for")
 
-    # The registry step, as a multiple of the lattice constant.  Both are the
-    # magnitude of the ABAB stacking shift for that face, and both are
-    # MEASURED to match to 1e-6 (2026-09-09):
-    #   (100)  the second layer sits in the four-fold hollows, displaced by
-    #          half the surface mesh vector          -> a/2
-    #   (110)  displaced by (a/(2*sqrt2), a/2) -- half the [1-10] period and
-    #          half the [001] period                 -> a*sqrt(6)/4
-    @pytest.mark.parametrize("plane,orthogonal,step_of_a", [
-        ("100", True, 0.5),
-        ("110", True, 6 ** 0.5 / 4),
-    ])
-    def test_the_same_holds_on_the_two_period_surfaces(
-            self, plane, orthogonal, step_of_a):
+    @pytest.mark.parametrize("plane,orthogonal", [("100", True), ("110", True)])
+    def test_the_same_holds_on_the_two_period_surfaces(self, plane, orthogonal):
         """SCIENCE. Period 2, so an ODD layer count is the exposed case -- and
-        the registry moves the slab by THE LATTICE STEP for that face.
+        the registry moves the slab by the step ASE'S OWN CRYSTAL has, not by
+        some amount.
 
         THE FAILURE THIS CATCHES.  A registry that moves the slab by anything
         other than a lattice translation puts the electrode off its own crystal:
         the atoms are still Au, the picture still looks like a slab, and every
-        distance to the molecule is wrong. That is the 1.249 Å defect this class
-        exists for, on the two faces where the stacking period is 2.
+        distance to the molecule is wrong -- the 1.249 Å defect this class
+        exists for, on the two faces whose stacking period is 2.
 
-        REDESIGNED 2026-09-09.  It asserted `moved > 0.1`, which its own message
-        called "the registry did nothing" -- so it distinguished *moved at all*
-        from *did not move*, and nothing else. Its (111) sibling
-        (`test_neighbouring_registries_differ_by_the_lattice_step_on_111`) has
-        always compared against `a/sqrt(6)`; these two faces are equally
-        derivable and were not. Recorded at
-        `science/test-design-findings.md` § 2.
+        THE EXPECTED STEP IS MEASURED FROM ASE, NOT DERIVED HERE (2026-09-09).
+        It briefly asserted `a/2` and `a√6/4`, which are correct for these two
+        faces -- but they are ASE's crystallography, and this layer does not
+        compute a distance: `_build_ase_slab` is `builder(element, size=, a=)`
+        and the rest of `add_slab` keeps a WINDOW of what comes back. A test
+        that retypes the crystal's own numbers asserts ASE's arithmetic back at
+        itself and goes red when ASE is right and we are wrong about it. So the
+        superset is built here and its own consecutive-layer step is the
+        expectation.
+
+        (It asserted `moved > 0.1` before that, with the message "the registry
+        did nothing" -- which separated *moved* from *did not move* and nothing
+        else. Recorded at `science/test-design-findings.md` § 2.)
 
         Contract: `science/junction-cell.md` § 3.1.
         """
         import numpy as np
+        period = STACKING_PERIOD[plane]
+        superset = _build_ase_slab("Au", plane, (2, 2, 3 + period - 1),
+                                   orthogonal, self.A)
+        sup_c = [xy.mean(axis=0)
+                 for _, xy in _by_layer(np.asarray(superset.positions, float))]
+        expected = float(np.linalg.norm(sup_c[1] - sup_c[0]))
+
         a = self._bottom_layer_centroid(0, 3, plane, orthogonal)
         b = self._bottom_layer_centroid(1, 3, plane, orthogonal)
-        moved = np.linalg.norm(b - a)
-        step = self.A * step_of_a
-        assert moved == pytest.approx(step, abs=1e-3), (
-            f"({plane}) registry A->B moved {moved:.3f} Å, but the lattice "
-            f"step is {step:.3f} Å.  A slab that is not on the lattice is not "
-            f"the crystal that was asked for")
+        moved = float(np.linalg.norm(b - a))
+        assert moved == pytest.approx(expected, abs=1e-3), (
+            f"({plane}) registry A->B moved {moved:.3f} Å; ASE's own crystal "
+            f"steps {expected:.3f} Å between consecutive layers.  A slab that "
+            f"is not on the lattice is not the crystal that was asked for")
         # and it is a real lattice translation: doing it twice returns
         assert np.allclose(
             self._bottom_layer_centroid(2 % 2, 3, plane, orthogonal), a,
@@ -437,7 +503,6 @@ class TestTheRegistryIsNotContaminatedByTheTrim:
         for registry in (0, 1, 2):
             here = self._bottom_layer_centroid(registry, 4)
             import molbuilder.modify as M
-            from molbuilder.structure import Structure
             out = M.add_slab(Structure(elements=[], positions=np.zeros((0, 3))),
                              "Au", "111", (2, 2, 4), start_registry=registry,
                              start_z=0.0, offset=(3.0, -2.0),

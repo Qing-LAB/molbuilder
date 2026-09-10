@@ -1105,50 +1105,65 @@ def test_electrode_primitive_100_110_rejects_non_orthogonal(single_anchor, plane
 
 
 def test_electrode_lattice_constant_override(single_anchor):
-    """SCIENCE. An explicit `lattice_constant` scales the slab EXACTLY, so the
-    electrode is built at the lattice the person asked for.
+    """SCIENCE. An explicit `lattice_constant` REACHES ASE -- the slab is the
+    one ASE builds at that lattice, not the one at the default.
 
-    THE FAILURE THIS CATCHES.  The lattice constant sets every Au-Au distance in
-    the electrode, and a transport calculation is run against that geometry --
-    so a value that is silently ignored, or applied at the wrong scale, gives
-    numbers for a metal that is not the one on the page. It is also the knob a
-    person reaches for deliberately (a measured lattice, or a strained contact),
-    which means a wrong answer here looks like a result rather than a bug.
+    WHAT THIS LAYER OWNS, AND IT IS ONE THING.  `add_slab` does not compute a
+    distance:
 
-    WHY A RATIO, AND WHY EXACT.  An fcc slab's in-plane extent is LINEAR in `a`,
-    so `extent(5.0) / extent(default)` is exactly `5.0 / a_default` -- no
-    tolerance to choose. Verified 2026-09-09: both sides give 1.226031092.
+        a = lattice_constant if lattice_constant is not None
+            else _get_fcc_lattice()[element]
+        ... _build_ase_slab(element, plane, size, orthogonal, a)
 
-    REDESIGNED 2026-09-09.  It asserted `e_extent > d_extent + 0.5`, which is
-    satisfied by ANY lattice constant above the default -- 4.1 passes, and so
-    does a scaling applied to the wrong axis or applied twice. Its own docstring
-    called itself a "proxy for 'the kwarg actually reached ASE'", and that is
-    all it was. Recorded at `science/test-design-findings.md` § 2.
+    so the only way the knob can fail is by not being forwarded.  The geometry
+    that follows -- every Au-Au distance, the in-plane mesh, the layer spacing --
+    is ASE's, and asserting a number for it would be asserting ASE's arithmetic
+    back at itself.
 
-    The default is read from `modify._get_fcc_lattice()`, not retyped: a test
-    that hard-codes 4.0782 measures two constants and cannot see them part.
+    SO THE EXPECTATION COMES FROM ASE.  The slab is compared against
+    `_build_ase_slab` called directly at the same lattice, and against the
+    default, so a value ignored, defaulted, or applied at the wrong scale all
+    fail -- with no distance of ours anywhere in the test.
+
+    REDESIGNED TWICE ON 2026-09-09, and the second time is the point.  It first
+    asserted `e_extent > d_extent + 0.5` under a docstring calling itself "a
+    proxy for 'the kwarg actually reached ASE'" -- satisfied by any lattice
+    above the default.  I then made it assert `extent(5.0)/extent(default) ==
+    5.0/a` at `rel=1e-9`, which is EXACT and is a statement about ASE's
+    linearity, not about us.  Recorded at `science/test-design-findings.md` § 2.
     """
-    from molbuilder.modify import _get_fcc_lattice
+    from molbuilder.modify import _build_ase_slab, _get_fcc_lattice
 
-    def slab_extent(s):
-        au_xy = np.array([p[:2] for e, p in zip(s.elements, s.positions)
-                          if e == "Au"])
-        return (au_xy.max(axis=0) - au_xy.min(axis=0)).mean()
+    def extent(pos):
+        xy = np.asarray(pos, float)[:, :2]
+        return (xy.max(axis=0) - xy.min(axis=0))
 
-    a_default = _get_fcc_lattice()["Au"]
     asked = 5.0
-    default = add_slab(single_anchor, "Au", "100", (3, 3, 1),
-                       start_z=2.0, orthogonal=True)
-    expanded = add_slab(single_anchor, "Au", "100", (3, 3, 1),
-                        start_z=2.0, orthogonal=True, lattice_constant=asked)
+    a_default = _get_fcc_lattice()["Au"]
+    assert asked != a_default, "the override must differ from the default"
 
-    d_extent, e_extent = slab_extent(default), slab_extent(expanded)
-    assert d_extent > 0, "the default slab has no in-plane extent to compare"
-    assert e_extent / d_extent == pytest.approx(asked / a_default, rel=1e-9), (
-        f"the slab did not scale with the lattice constant: asked for "
-        f"{asked} against a default of {a_default}, so the extent should have "
-        f"grown by {asked / a_default:.6f}x and grew by "
-        f"{e_extent / d_extent:.6f}x")
+    kw = dict(start_z=2.0, orthogonal=True)
+    default = add_slab(single_anchor, "Au", "100", (3, 3, 1), **kw)
+    expanded = add_slab(single_anchor, "Au", "100", (3, 3, 1),
+                        lattice_constant=asked, **kw)
+
+    def au_only(s):
+        return np.array([p for e, p in zip(s.elements, s.positions)
+                         if e == "Au"])
+
+    # ASE, asked directly, at each lattice.  These are the expectations.
+    want_asked = extent(_build_ase_slab("Au", "100", (3, 3, 1), True,
+                                        asked).positions)
+    want_default = extent(_build_ase_slab("Au", "100", (3, 3, 1), True,
+                                          a_default).positions)
+
+    assert np.allclose(extent(au_only(expanded)), want_asked, atol=1e-6), (
+        f"the slab is not the one ASE builds at a={asked}: the override did "
+        f"not reach it")
+    assert np.allclose(extent(au_only(default)), want_default, atol=1e-6), (
+        "the default slab is not the one ASE builds at the default lattice")
+    assert not np.allclose(want_asked, want_default, atol=1e-6), (
+        "the fixture cannot tell the two lattices apart")
 
 
 # --------------------------------------------------------------------- #
