@@ -56,11 +56,15 @@ def _mw_log(dirpath, name, *, concluded):
     return p
 
 
-def test_status_shape(tmp_path):
-    s = run_status(_multi_stage(tmp_path))
-    assert s["state"] in ("running", "stale", "finished", "failed")
-    for fld in ("state", "detail", "last_change_at", "active_source"):
-        assert fld in s
+# `test_status_shape` stood here.  It asserted `s.state in ("running",
+# "stale", "finished", "failed")` -- the set of EVERY answer the function can
+# give, so it passed whatever came back -- and then that four keys were
+# present.  This file's own docstring already said as much.
+#
+# `run_status` returns a frozen `RunStatus` since 2026-09-09: the four fields
+# are the declaration, and `__post_init__` refuses a state outside
+# `RUN_STATES` where the wrong value is WRITTEN rather than where it is read.
+# Demonstrated: `RunStatus("Finished", "d")` raises.
 
 
 def test_a_crashed_run_reads_failed(tmp_path):
@@ -79,7 +83,7 @@ def test_a_crashed_run_reads_failed(tmp_path):
         "                           Welcome to SIESTA\n"
         "reinit: System Label: crash\n"
         "siesta: ERROR: out of memory in dense solver\n")
-    assert run_status(tmp_path)["state"] == "failed"
+    assert run_status(tmp_path).state == "failed"
 
 
 def test_a_concluded_molwatch_log_finishes_a_run_with_no_out(tmp_path):
@@ -87,8 +91,8 @@ def test_a_concluded_molwatch_log_finishes_a_run_with_no_out(tmp_path):
     log is the result file, and the answer is `finished`."""
     _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=True)
     s = run_status(tmp_path)
-    assert s["state"] == "finished"
-    assert s["detail"] == "job_completed"
+    assert s.state == "finished"
+    assert s.detail == "job_completed"
 
 
 def test_a_seed_molwatch_log_is_a_live_view_not_a_result(tmp_path):
@@ -97,8 +101,8 @@ def test_a_seed_molwatch_log_is_a_live_view_not_a_result(tmp_path):
     finished, and never as a state the seed's mtime could steer."""
     _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=False)
     s = run_status(tmp_path)
-    assert s["state"] == "running"
-    assert s["detail"] == "no result file yet"
+    assert s.state == "running"
+    assert s.detail == "no result file yet"
 
 
 # ---------------------------------------------------------------------------
@@ -134,16 +138,16 @@ def test_a_dead_run_goes_stale_rather_than_running_for_ever(tmp_path):
     os.utime(out, (old, old))
 
     s = run_status(tmp_path)
-    assert s["state"] == "stale", (
+    assert s.state == "stale", (
         f"an hour-dead run reports {s['state']!r}: {s}")
-    assert "no file growth" in s["detail"], s["detail"]
+    assert "no file growth" in s.detail, s.detail
 
     # ...and a run touched JUST NOW is still running, or the check above
     # would pass on a clock bug that ages everything.
     now = _wall_now_for_test()
     os.utime(out, (now, now))
     fresh = run_status(tmp_path)
-    assert fresh["state"] == "running", (
+    assert fresh.state == "running", (
         f"a run written this second reports {fresh['state']!r}: {fresh}")
 
 
@@ -185,7 +189,7 @@ def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
     os.utime(coarse, (now,       now))         # newest write, lower stage
 
     s = run_status(tmp_path)
-    assert s["active_source"] == final.name, (
+    assert s.active_source == final.name, (
         "the newest write won over the highest stage — that is mtime-only "
         f"ordering: {s}")
 
@@ -195,5 +199,5 @@ def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
     later.write_text(running)
     os.utime(later, (now - 300, now - 300))    # newer than run0, same stage
     s2 = run_status(tmp_path)
-    assert s2["active_source"] == later.name, (
+    assert s2.active_source == later.name, (
         f"within one stage the later attempt must win: {s2}")

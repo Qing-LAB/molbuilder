@@ -225,7 +225,11 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         st = run_status(observed, out_glob)
     except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
-    return (st.get("state", "unknown"), st.get("detail", ""))
+    # `run_status` returns a `RunStatus` since 2026-09-09; both fields are
+    # always present, so the old `.get(..., default)` pair is gone with the
+    # dict.  The "unknown" fallback lives in the except clause above, which is
+    # the only way this can fail to have an answer.
+    return (st.state, st.detail)
 
 
 def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:

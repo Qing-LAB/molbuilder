@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from molbuilder.identity import parse_stage_token
@@ -161,7 +162,36 @@ def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
 # ---- status + progress ---------------------------------------------- #
 
 
-def run_status(run_dir, match: str = "*") -> Dict[str, Any]:
+#: The verdicts `run_status` can reach.  A CLOSED set, and the enforcement is
+#: `RunStatus.__post_init__` below -- nothing in this repo type-checks, so the
+#: annotation alone would refuse nothing.  Until 2026-09-09 the function
+#: returned `Dict[str, Any]` and a test asserted `s["state"] in (all four)`,
+#: which passes whatever the code returns.
+RUN_STATES: "tuple[str, ...]" = ("running", "stale", "finished", "failed")
+
+
+@dataclass(frozen=True)
+class RunStatus:
+    """How a run directory is doing: the parser's verdict, plus the two
+    things no single file can answer.
+
+    `state` is one of :data:`RUN_STATES`; `active_source` names the file that
+    spoke for the directory (highest stage, newest mtime) and is `None` when
+    no result file exists yet.
+    """
+    state:          str
+    detail:         str
+    last_change_at: "Optional[str]" = None
+    active_source:  "Optional[str]" = None
+
+    def __post_init__(self) -> None:
+        if self.state not in RUN_STATES:
+            raise ValueError(
+                f"RunStatus.state must be one of {RUN_STATES}; "
+                f"got {self.state!r}")
+
+
+def run_status(run_dir, match: str = "*") -> "RunStatus":
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
 
@@ -225,12 +255,7 @@ def _build_status(out_paths: List[Path],
     files — every ``.out`` plus each concluded molwatch log
     (``running-a-job.md`` § 4)."""
     if not out_paths:
-        return {
-            "state":            "running",
-            "detail":           "no result file yet",
-            "last_change_at":   None,
-            "active_source":    None,
-        }
+        return RunStatus(state="running", detail="no result file yet")
     # Active source = highest stage, latest mtime.
     sorted_outs = sorted(
         out_paths,
@@ -262,12 +287,9 @@ def _build_status(out_paths: List[Path],
         # No ending marker and no growth: it is not running any more.
         state, detail = "stale", f"no file growth in {int(age_s)}s"
 
-    return {
-        "state":          state,
-        "detail":         detail,
-        "last_change_at": _iso_z(active.stat().st_mtime),
-        "active_source":  active.name,
-    }
+    return RunStatus(state=state, detail=detail,
+                     last_change_at=_iso_z(active.stat().st_mtime),
+                     active_source=active.name)
 
 
 def _wall_now() -> float:

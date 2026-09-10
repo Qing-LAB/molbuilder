@@ -1062,8 +1062,13 @@ def _fake_status(states):
     caller moved to `run_status`.
     """
     def fake(run_dir, match="*"):
+        # A `RunStatus`, not a look-alike dict.  The stub is now bound by the
+        # same constructor as the real thing, so a stubbed state outside
+        # `RUN_STATES` raises here instead of flowing into the ladder as a
+        # value production can never produce (2026-09-09).
+        from molbuilder.parse.dirs.job import RunStatus
         s = states[Path(run_dir).name]
-        return {"state": s, "detail": s}
+        return RunStatus(state=s, detail=s)
     return fake
 
 
@@ -1092,11 +1097,11 @@ def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
 
     coarse = run_status(tmp_path, "bdt_01_coarse*")
     tight = run_status(tmp_path, "bdt_02_tight*")
-    assert coarse["active_source"] == old.name
-    assert tight["active_source"] == new.name
+    assert coarse.active_source == old.name
+    assert tight.active_source == new.name
     # The hierarchical answer is unchanged: the DIRECTORY selected the rung,
     # so no glob is passed and the newest file still speaks for it.
-    assert run_status(tmp_path)["active_source"] == new.name
+    assert run_status(tmp_path).active_source == new.name
 
 
 def test_status_fresh_bundle_all_not_started(tmp_path):
