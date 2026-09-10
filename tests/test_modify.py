@@ -920,10 +920,71 @@ class TestRigidTransformMovesTheBox:
         assert not np.allclose(out.cell, s.cell)
 
 
-def test_rotate_around_z_default_no_op(linear_dimer):
-    """angle=0 returns positions unchanged."""
-    out = rotate_around_axis(linear_dimer, axis="z", angle=0.0)
-    assert np.allclose(out.positions, linear_dimer.positions, atol=1e-12)
+@pytest.mark.parametrize("axis", ["x", "y", "z"])
+@pytest.mark.parametrize("angle", [0.0, 37.0, 90.0, -113.5, 360.0])
+def test_a_rotation_is_rigid_and_proper(axis, angle):
+    """SCIENCE. Rotating a structure moves it without changing it: every
+    interatomic distance survives, and so does the molecule's handedness.
+
+    THE FAILURE THIS CATCHES.  A rotation is the one operation allowed to change
+    coordinates while changing NOTHING about the molecule, so an error here is
+    invisible by construction -- the atoms are the same elements, the picture
+    still looks like the molecule, and the geometry handed to an engine is a
+    different compound or a distorted one. Two ways it goes wrong:
+
+      * NOT RIGID -- a scale factor, a shear, or an axis vector left
+        un-normalised. Distances change; bond lengths are wrong everywhere.
+      * NOT PROPER -- a sign slip turning the rotation into a reflection
+        (det = -1). Distances all survive, so a distances-only test passes, and
+        the molecule is its own MIRROR IMAGE. That is a different compound, and
+        for anything chiral it is the wrong answer with no symptom.
+
+    REDESIGNED 2026-09-09.  It was `angle=0.0` asserting positions unchanged --
+    and `R(0) = I` holds for a WRONG AXIS, a FLIPPED SIGN and a
+    degrees/radians error alike, so it separated "did nothing" from "did
+    nothing". `angle=0.0` survives here as one row of five, where it now means
+    what it says because the other four can fail. Recorded at
+    `science/test-design-findings.md` § 3.
+
+    The fixture is four atoms and deliberately NON-COPLANAR: three would span a
+    plane, and a reflection through that plane is undetectable. The signed
+    volume of the tetrahedron is what separates a rotation from a reflection --
+    the same quantity, for the same reason, as
+    `test_orient_handles_antiparallel_case`.
+
+    Contract: `web/tabs.md` § 2 (the Modify tab's rigid transforms).
+    """
+    s = Structure(elements=["C", "N", "O", "F"],
+                  positions=np.array([[0.0, 0.0, 0.0],
+                                      [1.4, 0.0, 0.0],
+                                      [0.0, 1.1, 0.3],
+                                      [0.2, 0.3, 1.7]]))
+
+    def chirality(p):
+        p = np.asarray(p, float)
+        return float(np.dot(np.cross(p[1] - p[0], p[2] - p[0]), p[3] - p[0]))
+
+    def distances(p):
+        p = np.asarray(p, float)
+        return np.array([np.linalg.norm(p[i] - p[j])
+                         for i in range(len(p)) for j in range(i + 1, len(p))])
+
+    before = np.asarray(s.positions, float)
+    assert abs(chirality(before)) > 1e-6, "the fixture is coplanar"
+
+    out = rotate_around_axis(s, axis=axis, angle=angle)
+    after = np.asarray(out.positions, float)
+
+    assert np.allclose(distances(after), distances(before), atol=1e-9), (
+        f"{axis}/{angle}deg is not rigid: interatomic distances changed, so "
+        f"every bond length in the structure moved")
+    assert chirality(after) == pytest.approx(chirality(before), rel=1e-9), (
+        f"{axis}/{angle}deg is not a proper rotation: the signed volume went "
+        f"{chirality(before):+.6f} -> {chirality(after):+.6f}. A sign flip is "
+        f"a mirror image -- a different compound")
+    if angle in (0.0, 360.0):
+        assert np.allclose(after, before, atol=1e-9), (
+            f"{axis}/{angle}deg must be the identity")
 
 
 def test_rotate_around_z_90_deg():

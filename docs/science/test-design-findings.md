@@ -90,18 +90,25 @@ executes is not a gate.
 - **`spectra/test_spectrumchart_maths.py::test_it_does_not_depend_on_where_the_modes_are`** —
   `band(20) == 20`, character-identical to its sibling; `band()` takes only `w`,
   so the test **cannot express** its stated claim.
-- **`test_modify.py::test_rotate_around_z_default_no_op`** — R(0)=I holds for a
-  wrong axis, a flipped sign **and** a degrees/radians error alike. Needs a
-  nonzero angle.
+- ~~**`test_modify.py::test_rotate_around_z_default_no_op`**~~ — **CLOSED
+  2026-09-09.** Replaced by `test_a_rotation_is_rigid_and_proper`, parametrised
+  over three axes × five angles: every interatomic distance survives (rigid) and
+  the signed tetrahedron volume survives (proper, det = +1). `angle=0` remains as
+  one row, where it now means something because the other four can fail. Four
+  mutants killed — degrees read as radians, a reflection in place of the z
+  rotation, a 1% scale, and a sign flip. The non-coplanar fixture is what makes
+  a reflection visible, for the same reason as the antiparallel case.
 - **`test_fcc_lattice_table.py`** — three tests carry `assert "a_pbe_siesta_psml"
   not in e`, which cannot fail: `load_fcc_lattice_full` rebuilds each entry with
   four fixed keys. Only `test_every_metal_has_the_two_literature_references`,
   which reads the raw JSON, can catch a re-add.
-- **`test_junction_sidecar_roundtrip.py::test_the_junction_is_shaped_the_way_the_test_claims`** —
-  asserts the test file's own fixture literals, so it cannot see the physics
-  claim the fixture comment makes (that `frozen` is the **outermost** layer of
-  each electrode). Rewrite `_junction()` to freeze interior atoms and every test
-  in the file stays green while the junction is physically wrong.
+- ~~**`test_junction_sidecar_roundtrip.py::test_the_junction_is_shaped_the_way_the_test_claims`**~~
+  — **CLOSED 2026-09-09.** It asserted `len(frozen) == 2 * _ATOMS_PER_LAYER`, a
+  COUNT, so freezing interior atoms instead kept every test in the file green
+  while the junction was physically wrong. The outermost layers are now DERIVED
+  from z — the Au atoms at the extreme ends of the stack — and the bridge is
+  asserted to lie between them, so "outermost" is checked rather than assumed.
+  The audit's own scenario (freeze the interior, same count) now fails.
 
 ## 4. The claim is not where the test looks
 
