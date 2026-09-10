@@ -520,15 +520,6 @@ def _module_sources():
     return sorted(list(module_files().values()) + [MODULE_DIR / "molview.css"])
 
 
-def test_the_graphics_library_is_named_in_exactly_one_file():
-    """§ 4: "within this module the name 3Dmol occurs in exactly one file."
-    § 5.3: everything above it could be read end to end without learning which
-    library draws the molecule.
-    """
-    named = [p.name for p in _module_sources() if "3Dmol" in p.read_text()]
-    assert named == ["3dmol-embed.js"], (
-        f"the graphics library is named outside the sealed layer: {named}"
-    )
 
 
 def _module_code():

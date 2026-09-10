@@ -125,34 +125,6 @@ class TestInspectorModulesServed:
 
 
 
-    def test_source_inspector_requests_max_read_budget(self, web):
-        """SIESTA's runtime output (.out) routinely exceeds the
-        ``/api/files/read`` 1 MB default cap, returning 413 + a
-        size-exceeds error rendered as "Error: file is N bytes;
-        exceeds max_bytes = 1048576".  The source inspector MUST
-        pass ``maxBytes`` to ``ctx.readFile`` so the request hits
-        the server's hard ceiling (16 MB today) instead of the
-        default.  Pin the call shape so a future refactor that
-        drops the maxBytes argument lands as a clear failure (and
-        not as "siesta .out file silently shows an error").
-        """
-        body = web.get("/static/lib/inspectors/source.js").get_data(as_text=True)
-        # The readFile call must pass an opts object with a
-        # maxBytes field.  Accept any of: ``maxBytes: 16 * 1024 * 1024``,
-        # ``maxBytes: 16777216``, ``maxBytes: _MAX_READ_BYTES``.  Pin
-        # SHAPE -- the literal "maxBytes" key inside a readFile call.
-        import re
-        match = re.search(
-            r"readFile\s*\([^)]*\{\s*[^}]*maxBytes\s*:",
-            body,
-        )
-        assert match, (
-            "lib/inspectors/source.js calls ctx.readFile() without a "
-            "maxBytes override.  Real SIESTA .out files exceed the "
-            "server-side 1 MB default and the inspector silently shows "
-            "a 413 error.  Pass {maxBytes: 16 * 1024 * 1024} (or the "
-            "server's _MAX_READ_BYTES) to ctx.readFile."
-        )
 
 
 

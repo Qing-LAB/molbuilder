@@ -1,5 +1,9 @@
 """Routing tables, Capabilities snapshot, singleton lifecycle.
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 The module under test exposes three small dicts (``DEFAULT_ENV_NAMES``,
 ``TOOL_TO_CATEGORY``, ``EXTENSION_TO_CATEGORY``), one frozen dataclass
 (:class:`Capabilities`), one probe (:func:`detect`), and four singleton
@@ -171,23 +175,6 @@ def test_tool_available_unreachable(monkeypatch):
     monkeypatch.setattr(diagnostics.shutil, "which", lambda t: None)
     caps = _caps(conda_envs=set())
     assert caps.tool_available("tleap") is False
-
-
-def test_capabilities_is_frozen():
-    """No accidental attribute reassignment -- the snapshot is a stable
-    contract.  (The ``runtime_config`` *dict* is mutable by Python
-    semantics; treat it as read-only by convention -- see module
-    docstring.)
-
-    **THE EXCEPTION IS NAMED.**  It read
-    ``pytest.raises((AttributeError, Exception))``, where the second member
-    subsumes the first -- so ANY exception passed, including a `TypeError`
-    from a constructor that had drifted or an `ImportError` from a rename.
-    The refusal that matters is the dataclass's own, and it has a name.
-    """
-    caps = _caps()
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        caps.conda_binary = "/somewhere/else"   # type: ignore[misc]
 
 
 # --------------------------------------------------------------------- #

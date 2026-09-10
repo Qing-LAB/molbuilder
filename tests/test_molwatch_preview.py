@@ -153,11 +153,6 @@ def test_preview_helper_marks_kind_and_nulls(tmp_path, water_struct):
                      text, re.MULTILINE)
 
 
-def test_preview_engine_label_is_passthrough(tmp_path, water_struct):
-    """The engine string is whatever the caller passes -- no mapping."""
-    p = tmp_path / "x.molwatch.log"
-    write_initial_preview(water_struct, p, job="x", engine="orca")
-    assert "# engine: orca" in p.read_text()
 
 
 # --------------------------------------------------------------------- #

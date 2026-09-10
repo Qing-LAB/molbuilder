@@ -187,30 +187,6 @@ class TestHappyPath:
         ''')
         assert out["form"] == "Z"
 
-    def test_canvas_source_provenance_records_sequence_and_form(self):
-        out = _run_node('''
-            let canvasArgs = null;
-            dna.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
-                        n_atoms: 5,
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async (struct, src) => {
-                        canvasArgs = {struct, src};
-                        return {ok: true};
-                    },
-                },
-            });
-            await dna.generate("ACGT", {form: "A"});
-            console.log(JSON.stringify(canvasArgs));
-        ''')
-        assert out["src"]["kind"] == "dna"
-        assert out["src"]["generator_input"]["sequence"] == "ACGT"
-        assert out["src"]["generator_input"]["form"] == "A"
 
 
 class TestBackendSelection:

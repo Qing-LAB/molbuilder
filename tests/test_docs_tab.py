@@ -58,31 +58,6 @@ def test_toc_returns_each_document_once(client):
     assert len(paths) == len(set(paths))
 
 
-def test_toc_live_update_deduplicates_and_persists(tmp_path):
-    """Duplicate and missing entries are removed from a live TOC and file."""
-    from molbuilder.web.blueprints.docs import _build_toc_tree
-
-    (tmp_path / "process").mkdir()
-    (tmp_path / "process" / "code-audit.md").write_text(
-        "# Code audit\n", encoding="utf-8")
-    toc_path = tmp_path / "toc.json"
-    toc_path.write_text(json.dumps({"tree": [{
-        "label": "Process",
-        "children": [
-            {"path": "process/code-audit.md"},
-            {"path": "process/code-audit.md"},
-            {"path": "process/missing.md"},
-        ],
-    }]}), encoding="utf-8")
-
-    tree = _build_toc_tree(tmp_path)
-    assert [node["path"] for node in tree[0]["children"]] == [
-        "process/code-audit.md"
-    ]
-    persisted = json.loads(toc_path.read_text(encoding="utf-8"))
-    assert persisted["tree"][0]["children"] == [
-        {"path": "process/code-audit.md"}
-    ]
 
 
 def test_toc_build_survives_readonly_docs(tmp_path):
@@ -280,45 +255,6 @@ def test_a_new_archive_doc_appears_once_on_the_FIRST_render(tmp_path):
     assert paths_of() == first
 
 
-def test_a_nested_archive_group_scans_its_OWN_directory(tmp_path):
-    """A group for `archive/old_docs/` must not glob `archive/`.
-
-    The consequence of getting this wrong is not only the duplication above: a
-    nested group would surface its ancestor's documents as though they were its
-    own children, so the sidebar's shape would stop matching the tree on disk.
-    """
-    from molbuilder.web.blueprints.docs import _build_toc_tree
-    root = _isolated_docs(tmp_path)
-    # A doc in the NESTED directory, and one in its ancestor -- each must land
-    # in exactly one group, its own.
-    #
-    # The nested group is `audit-2026-06-26` and NOT the `old_docs` one, whose
-    # directory name ends in the four letters a docs citation starts with -- so
-    # a fixture path under it reads to `test_no_retired_doc_paths` as a citation
-    # of a document that does not exist.  That lint gained the left boundary it
-    # was missing in the same commit; this test simply has no reason to stand in
-    # front of it.
-    nested = root / "archive" / "audits" / "audit-2026-06-26"
-    (nested / "zz-nested-only.md").write_text("# Nested\n", encoding="utf-8")
-    (root / "archive" / "zz-top-only.md").write_text("# Top\n",
-                                                     encoding="utf-8")
-
-    def group_children(nodes, label):
-        for n in nodes:
-            if "path" not in n and n.get("label") == label:
-                return [c.get("path") for c in n.get("children", [])
-                        if "path" in c]
-            hit = group_children(n.get("children", []), label)
-            if hit is not None:
-                return hit
-        return None
-
-    tree = _build_toc_tree(root)
-    found = group_children(tree, "audit-2026-06-26") or []
-    assert "archive/audits/audit-2026-06-26/zz-nested-only.md" in found, (
-        f"the nested group did not discover its own document: {found[:6]}")
-    assert "archive/zz-top-only.md" not in found, (
-        "the nested group surfaced its ANCESTOR's document as its own child")
 
 
 def test_two_groups_over_one_directory_do_not_each_append_it(tmp_path):

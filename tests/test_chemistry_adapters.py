@@ -2,6 +2,10 @@
 of the scientific-validation machinery; see
 ``docs/science/validation.md`` § 4).
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 Pins the contract:
 
 * Each registered adapter returns a frozen dataclass whose field
@@ -105,13 +109,6 @@ def test_registered_adapters_returns_defensive_copy():
 # --------------------------------------------------------------------- #
 
 
-def test_siesta_adapter_returns_frozen_dataclass():
-    a = analyze_structure(_mk(["Fe"]))
-    params = SiestaAdapter.to_params(a)
-    assert isinstance(params, SiestaSuggestedParams)
-    assert is_dataclass(params)
-
-
 def test_siesta_adapter_open_shell_metal_path():
     """Fe → spin_treatment="polarized" + spin_total=2.0 + rationale carries
     'Fe' in the engine-agnostic explanation."""
@@ -135,13 +132,6 @@ def test_siesta_adapter_closed_shell_path():
 # --------------------------------------------------------------------- #
 #  PySCF adapter                                                        #
 # --------------------------------------------------------------------- #
-
-
-def test_pyscf_adapter_returns_frozen_dataclass():
-    a = analyze_structure(_mk(["Fe"]))
-    params = PyscfAdapter.to_params(a)
-    assert isinstance(params, PyscfSuggestedParams)
-    assert is_dataclass(params)
 
 
 def test_pyscf_adapter_open_shell_metal_path():

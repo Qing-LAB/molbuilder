@@ -1,5 +1,9 @@
 """L2/L3 tests for Phase E coords FileParsers.
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 Pins:
   * SiestaXVFileParser claims .XV, returns StructureResult with
     BOTH structure AND cell (the field that was missing in
@@ -179,11 +183,3 @@ def test_detect_routes_xv_to_siesta_xv_parser(tmp_path):
 # Frozen invariant ------------------------------------------------- #
 
 
-def test_structureresult_is_frozen(tmp_path):
-    """StructureResult inherits the frozen invariant from
-    ParseResult.  Catches an accidental drop of frozen=True on
-    the subclass."""
-    from dataclasses import FrozenInstanceError
-    r = parse(_xv(tmp_path))
-    with pytest.raises(FrozenInstanceError):
-        r.source_format = "tampered"

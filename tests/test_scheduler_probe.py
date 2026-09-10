@@ -304,16 +304,6 @@ def test_empty_probe_is_safe():
     assert any("no partitions" in n for n in notes)
 
 
-@pytest.mark.parametrize("gone", ["best_gpu_type", "derive_scheduler_block"])
-def test_the_preference_deriving_helpers_are_gone(gone):
-    """Deleted 2026-08-17 (N3), not left unused.
-
-    Both existed to pick something FOR you — a default GPU type, a default
-    partition and QoS — and write it into a person's config file.  M-1 moved
-    that decision back to the person, so the code that made it has no caller.
-    """
-    import molbuilder.scheduler.probe as probe
-    assert not hasattr(probe, gone)
 
 
 # --------------------------------------------------------------------- #

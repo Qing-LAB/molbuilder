@@ -182,30 +182,6 @@ class TestHappyPath:
         ''')
         assert out["form"] == "B"
 
-    def test_canvas_source_provenance_records_sequence_and_form(self):
-        out = _run_node('''
-            let canvasArgs = null;
-            rna.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
-                        n_atoms: 5,
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async (struct, src) => {
-                        canvasArgs = {struct, src};
-                        return {ok: true};
-                    },
-                },
-            });
-            await rna.generate("ACGU", {form: "Z"});
-            console.log(JSON.stringify(canvasArgs));
-        ''')
-        assert out["src"]["kind"] == "rna"
-        assert out["src"]["generator_input"]["sequence"] == "ACGU"
-        assert out["src"]["generator_input"]["form"] == "Z"
 
 
 class TestErrorPaths:

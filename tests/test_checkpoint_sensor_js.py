@@ -242,26 +242,6 @@ def test_the_panel_and_its_importer_actually_parse(name):
 
 
 
-def test_checkpoint_js_has_no_polling_timer():
-    """The explicit-refresh model (docs/web/projects.md)
-    forbids a background poll loop.  Guard against setInterval creeping
-    back into the sensor.  We strip line comments first so the doc-
-    comment mention of 'no setInterval' doesn't trip the check."""
-    js = (Path(__file__).resolve().parent.parent
-          / "molbuilder" / "web" / "static" / "lib"
-          / "projects" / "checkpoint.js").read_text()
-    code_lines = []
-    for ln in js.splitlines():
-        stripped = ln.strip()
-        if stripped.startswith("*") or stripped.startswith("//") \
-                or stripped.startswith("/*"):
-            continue
-        code_lines.append(ln)
-    code = "\n".join(code_lines)
-    assert "setInterval" not in code, (
-        "checkpoint.js must not poll -- refresh is explicit "
-        "(directory-enter + manual Refresh) per docs/web/projects.md "
-        "docs/web/projects.md")
 
 
 

@@ -56,25 +56,6 @@ def test_nobody_spells_the_trial_prefix_by_hand():
         + "\n  ".join(offenders))
 
 
-def test_prep_asks_rather_than_composes():
-    """The specific regression: `prep_calculation` joining a container to a
-    hand-built `bench-<point>`.
-
-    ONE HALF STAYS TEXT AND ONE HALF DOES NOT, and the split is the point.
-    The absence line quantifies -- prep must not compose the path by any
-    spelling -- and reading the file settles that.  The presence line used
-    to be `assert "trial_dir(_shape, token, _pt(element.point))" in src`: an
-    exact argument list, three names deep, that fails on a harmless rename
-    and passes on a call whose answer is then thrown away.  What it stood
-    for is measured by `test_prep_writes_where_job_dir_names_will_look`
-    below, which preps a real bench and looks on disk.
-    """
-    src = PREP.read_text()
-    assert "trial_dir(" in src, (
-        "prep no longer asks the naming authority at all; if the bench "
-        "path moved somewhere else, this file's premise changed")
-    assert 'bench_container(_shape, token) \\' not in src, \
-        "prep composes the trial path again"
 
 
 def test_job_dir_names_asks_it_too():

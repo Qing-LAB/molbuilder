@@ -1,5 +1,9 @@
 """Half-Phase-H gap closures from the pre-Phase-H audit.
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 Pins:
   * Public-surface coverage: every symbol exported from
     molbuilder.parse.__init__ has at least one test reference.
@@ -69,15 +73,6 @@ def test_parsewarning_constructible_with_documented_fields():
     assert w.snippet == "suspect line"
     assert w.error == "parse failure"
     assert w.category == "scf-format"
-
-
-def test_parsewarning_is_frozen():
-    """ParseWarning is frozen — mutation raises."""
-    from dataclasses import FrozenInstanceError
-    w = ParseWarning(source="x", line_no=None, snippet=None,
-                     error="x", category="x")
-    with pytest.raises(FrozenInstanceError):
-        w.error = "tampered"   # noqa
 
 
 def test_parsewarning_allows_none_for_line_no_and_snippet():

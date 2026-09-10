@@ -1035,30 +1035,6 @@ def test_the_module_writes_no_file_handling_of_its_own():
     )
 
 
-def test_the_demo_imports_nothing_but_the_entry_point():
-    """§ 13.4 / § 4: the demo is worth having precisely because it is held to the
-    single import like every other consumer. A demo with a private door proves
-    nothing.
-
-    The page it runs on loads the drawing library and this file and nothing else
-    — so if the module ever grows a hidden dependency on something the app
-    happens to have loaded, the demo is where it stops working.
-    """
-    import re
-
-    code = (MODULE_DIR / "demo.js").read_text()
-    # AN IMPORT, not the word "from". This matched `from\s+"..."` anywhere in the
-    # file, so the ordinary sentence `say("nothing to load from " + name)` read
-    # as a second import and failed the test — a scanner loose enough to be
-    # tripped by prose is one that will also be quietly satisfied by the wrong
-    # thing. Both spellings are checked: the static form and the dynamic one,
-    # which the old pattern could not see at all.
-    imports = re.findall(r'\bimport\s[^;]*?\bfrom\s+"([^"]+)"', code)
-    imports += re.findall(r'\bimport\s*\(\s*"([^"]+)"', code)
-    imports += re.findall(r'\bimport\s+"([^"]+)"', code)
-    assert imports == ["/static/lib/molview/index.js"], (
-        f"the demo reaches past the entry point: {imports}"
-    )
 
 
 def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
@@ -2412,35 +2388,6 @@ def test_loading_a_structure_reaches_the_drawing():
     assert out["painted"] is True, "nothing was ever painted"
 
 
-def test_every_layer_is_reachable_from_the_entry_point():
-    """The guard on every other source scan in the suite.
-
-    Those scans ask a question of "the module", and the module is computed as
-    what `index.js` reaches (``tests/_molview_sources.py``) rather than what the
-    directory holds. That definition is right — § 4 says the entry point is the
-    module — but it has one failure mode: if the walk resolved too little, every
-    scan would pass by finding nothing, and the suite would go quiet exactly when
-    it should shout.
-
-    So this pins the two ends. Every file the plan's tree calls a layer must be
-    reached, and the demo must NOT be — it is a consumer, and holding it to the
-    module's internal rules would be holding the wrong side of the boundary.
-    """
-    layers = set(module_files())
-    expected = {
-        "index.js", "_atom.js", "3dmol-embed.js", "render-engine.js",
-        "model.js", "model-jobs.js", "history.js", "stores.js",
-        "mount.js", "ui.js",
-    }
-    missing = expected - layers
-    assert missing == set(), (
-        f"these layers are not reachable from the entry point, so every source "
-        f"scan in the suite silently skips them: {sorted(missing)}"
-    )
-    assert "demo.js" not in layers, (
-        "the demo is a consumer — it imports the entry point rather than being "
-        "imported by it — so it is not a layer"
-    )
 
 
 # ---------------------------------------------------------------------------

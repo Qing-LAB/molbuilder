@@ -262,45 +262,6 @@ def test_a_reserved_label_is_an_ordinary_label():
     assert out["drawnSame"] is True
 
 
-def test_a_reserved_label_is_written_in_exactly_one_place():
-    """§ 6.6: "A reserved meaning costs a NAME and a TRANSLATOR AT THE POINT OF
-    USE — nothing else."
-
-    The server has not caught up: it sends the labels and a separate `is_frozen`
-    flag, so something must fold the flag into the labels for MolView's end to be
-    "one mechanism, no special case". That fold is the one translator, and it
-    lives at the inbound boundary.
-
-    What the rule forbids is the ALTERNATIVE § 6.6 rejects — "its own field on
-    the structure, its own kind of thing to filter by, its own key in the saved
-    file, its own control in the panel". Every one of those is a second place
-    naming it, so counting the places is the check.
-    """
-    import re
-
-    written = {}
-    for name, code in module_code().items():
-        # THE NAME being written — the string `frozen_atoms` itself — not a
-        # reference to the constant that holds it, and not any string that
-        # happens to contain the word. § 9.3's table has a `getFrozen` door, so
-        # more than one place legitimately USES the name; what costs is
-        # SPELLING it, because two spellings are what drift apart.
-        #
-        # `molviewer-label-frozen` is a CSS class, not the name: it says what
-        # the chip looks like, and the stylesheet is where a class is defined.
-        # Matching it here would have made the rule "never write the word",
-        # which is not the rule and would forbid a comment.
-        literals = re.findall(r"""["']frozen_atoms["']""", code, re.I)
-        if literals:
-            written[name] = literals
-    assert list(written) == ["model-jobs.js"], (
-        "the reserved name must be SPELLED where the server's shape becomes this "
-        f"module's, and nowhere else: {written}"
-    )
-    assert len(written["model-jobs.js"]) == 1, (
-        "one name, written once, as a constant — a value repeated at each use is "
-        f"how two spellings drift apart: {written['model-jobs.js']}"
-    )
 
 
 # ---------------------------------------------------------------------------

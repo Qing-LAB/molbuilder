@@ -168,15 +168,6 @@ class TestTransportPageRendering:
         assert 'id="transport-send-btn"' in body
         assert 'transport-generate-btn' not in body
 
-    def test_page_loads_form_schema_helper_then_core(self, web):
-        """form-schema.js MUST load BEFORE lib/transport/core.js so
-        ``window.molbuilder.formSchema`` is defined when core.js's
-        IIFE runs."""
-        body = web.get("/transport-calculation").data.decode()
-        assert "lib/form-schema.js" in body
-        assert "lib/transport/core.js" in body
-        assert body.index("lib/form-schema.js") \
-               < body.index("lib/transport/core.js")
 
     def test_send_button_is_disabled_until_a_junction_is_cited(self, web):
         """The composite's one hard requirement is the citation

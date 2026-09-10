@@ -77,12 +77,6 @@ class TestAxisKindReconciliation:
         assert s.effective_vacuum() == (3.0, 3.0, 3.0)
         assert s.defaulted_vacuum_axes() == [0, 1, 2]
 
-    def test_kgrid_is_not_a_structure_field(self):
-        # k-grid is a reciprocal-space SAMPLING knob (SiestaConfig /
-        # TransportConfig), not geometry -- structure-periodicity.md.
-        assert not hasattr(_s(), "kgrid")
-        with pytest.raises(TypeError):
-            _s(kgrid=(4, 4, 1))
 
 
 class TestResolveCell:

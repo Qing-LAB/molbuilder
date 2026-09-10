@@ -2,6 +2,10 @@
 scientific-validation machinery; see
 ``docs/science/validation.md`` § 3).
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 Pins the contract:
 
 * ``ChemistryAnalysis`` is a frozen dataclass (immutable conclusion).
@@ -56,25 +60,6 @@ def _mk(elements, residue_name="MET"):
 # --------------------------------------------------------------------- #
 #  Dataclass shape                                                      #
 # --------------------------------------------------------------------- #
-
-
-def test_chemistry_analysis_is_frozen_dataclass():
-    """The dataclass is frozen — conclusions are immutable once
-    computed, so a consumer cannot mutate (and thereby disagree
-    with) another consumer reading the same instance."""
-    a = analyze_structure(_mk(["C", "H", "H", "H", "H"]))
-    assert is_dataclass(a)
-    with pytest.raises(FrozenInstanceError):
-        a.suggested_spin = 99   # type: ignore[misc]
-
-
-def test_metal_hint_and_spin_choice_are_frozen_dataclasses():
-    """The nested hint dataclasses are also frozen.  Same rationale."""
-    a = analyze_structure(_mk(["Fe"]))
-    assert is_dataclass(a.metal_hints[0])
-    assert is_dataclass(a.metal_hints[0].common_spins[0])
-    with pytest.raises(FrozenInstanceError):
-        a.metal_hints[0].element = "X"   # type: ignore[misc]
 
 
 def test_asdict_round_trip_carries_full_payload():

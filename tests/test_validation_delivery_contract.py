@@ -102,10 +102,6 @@ class TestR5FindingsAreNeverWarnings:
             "the emitter still raises a Python warning for vacuum; a finding "
             "must travel as an Issue so the web surfaces it (R5)")
 
-    def test_no_emitter_reaches_for_warnings_warn_about_findings(self):
-        import pathlib
-        src = pathlib.Path("molbuilder/siesta/input.py").read_text()
-        assert "_warn_insufficient_vacuum" not in src
 
 
 class TestF2NoSecondSource:

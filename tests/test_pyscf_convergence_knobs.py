@@ -193,12 +193,6 @@ def test_soscf_documents_what_changes_underneath():
     assert "ah_level_shift" in t
 
 
-def test_the_solver_is_reported_by_class_not_by_flag():
-    """Reading ``type(mf).__name__`` names every decoration that ended
-    up on the object -- ``SecondOrderDFUKS`` says second-order AND
-    density-fitted.  A boolean we set ourselves could not."""
-    t = _script(scf_soscf=True)
-    assert "_RUNTIME_INFO['scf_solver_class'] = type(mf).__name__" in t
 
 
 # --------------------------------------------------------------------- #

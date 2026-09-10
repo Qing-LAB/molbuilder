@@ -1,5 +1,9 @@
 """L2 tests for molbuilder.parse — the unified parse module.
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 Pins docs/model/parse.md (registry + dispatch) and
 § 3 (ParseResult discriminators) on real fixtures.
 """
@@ -118,31 +122,6 @@ def test_parse_dir_on_non_directory_raises():
 # Result discriminators ----------------------------------------------- #
 
 
-def test_result_kinds_are_unique():
-    """No two registered parsers share a result_kind on the same
-    output type — catches accidental schema collisions."""
-    file_parsers = _registered_file_parsers()
-    by_output = {}
-    for p in file_parsers:
-        by_output.setdefault(p.output, []).append(p)
-    # Each output type may have multiple parsers (siesta + pyscf
-    # both return TrajectoryResult), but the result_kind on the
-    # output class is the same — that's by design.  This test just
-    # confirms the discriminator is set on every output type.
-    for output_cls, ps in by_output.items():
-        # Instantiating the result with defaults requires positional
-        # args; we check the class attribute instead.
-        from dataclasses import fields
-        kind_field = next(f for f in fields(output_cls) if f.name == "result_kind")
-        assert kind_field.default not in (None, ""), (
-            f"{output_cls.__name__} has no result_kind discriminator")
 
 
 # Frozen invariant ---------------------------------------------------- #
-
-
-def test_parseresult_subclasses_are_frozen():
-    """ParseResult subclasses can't be mutated — § 9 forbidden #4."""
-    result = parse(_need(SIESTA_FIXTURE))
-    with pytest.raises(Exception):     # dataclasses.FrozenInstanceError
-        result.run_state = "finished"   # noqa

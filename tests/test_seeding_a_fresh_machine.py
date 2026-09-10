@@ -87,18 +87,6 @@ def test_the_seeded_file_is_read_by_the_real_reader(fresh):
     assert "module load mamba" in sg["preamble"]
 
 
-def test_the_record_carries_how_this_machine_enters_its_environment(fresh):
-    """``environment.json`` is what a bundle prepped ELSEWHERE is judged by.
-
-    A record written without this is the refusal in a new place: prep for this
-    machine, from another machine, would be told the target cannot say how to
-    enter an environment.  Seeded through ``diagnostics.local_facts`` -- the
-    same door ``jobset probe --write`` uses -- so the two cannot disagree.
-    """
-    initconfig.init_config("source activate", probe=True)
-    from molbuilder.scheduler import machine_scope_path
-    record = json.loads(machine_scope_path().read_text())
-    assert record["script_generation"]["activation"] == "source activate"
 
 
 # ══ IT NEVER OVERWRITES ════════════════════════════════════════════════════

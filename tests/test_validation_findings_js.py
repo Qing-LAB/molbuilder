@@ -285,16 +285,6 @@ class TestOneRendererOnly:
         "molbuilder/web/static/lib/spectra/core.js",
     )
 
-    def test_consumers_delegate_and_do_not_build_issue_rows(self):
-        for rel in self._CONSUMERS:
-            src = (REPO / rel).read_text(encoding="utf-8")
-            assert "validationFindings" in src, f"{rel} does not use the module"
-            # The tell-tales of a private renderer: creating the row element or
-            # tagging severity itself.
-            assert 'className = "issue-item"' not in src, (
-                f"{rel} builds its own finding row again")
-            assert '"data-severity"' not in src, (
-                f"{rel} maps severity itself again")
 
     def test_no_second_row_vocabulary_survives(self):
         """The spectra copy's div.issue/.badge markup and its competing

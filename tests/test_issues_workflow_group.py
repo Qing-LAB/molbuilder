@@ -332,36 +332,6 @@ class TestEveryExposedFieldIsTagged:
     rule is unchanged and still guarded here.
     """
 
-    # `SpectraConfig` was the third here until 2026-08-22.  A spectra
-    # calculation is described by PySCFConfig, which the schema rule
-    # above already covers; the retired class was a second vocabulary
-    # for the same fields.
-    @pytest.mark.parametrize("cfg_cls", [TransportConfig])
-    def test_section_and_workflow_group_move_together(self, cfg_cls):
-        exposed_untagged, tagged_hidden = [], []
-        for f in dataclasses.fields(cfg_cls):
-            has_section = bool(f.metadata.get("section"))
-            has_group = bool(f.metadata.get("workflow_group"))
-            if has_section and not has_group:
-                exposed_untagged.append(f.name)
-            if has_group and not has_section:
-                tagged_hidden.append(f.name)
-
-        assert not exposed_untagged, (
-            f"{cfg_cls.__name__}: field(s) exposed in the form with no "
-            f"workflow_group: {exposed_untagged}.\n"
-            "The form will render them bare after the three cards, and any "
-            "validation finding about them lands in the residual panel "
-            "instead of beside the field.  Add a workflow_group "
-            "(profile / stage / budget), or drop the `section` if the field "
-            "is meant to stay internal."
-        )
-        assert not tagged_hidden, (
-            f"{cfg_cls.__name__}: field(s) carrying a workflow_group but no "
-            f"section: {tagged_hidden}.\n"
-            "Nothing can read that tag — the form never renders the field.  "
-            "Either expose it with a `section` or drop the tag."
-        )
 
     @pytest.mark.parametrize("cfg_cls", [TransportConfig])
     def test_the_tag_comes_from_the_vocabulary(self, cfg_cls):

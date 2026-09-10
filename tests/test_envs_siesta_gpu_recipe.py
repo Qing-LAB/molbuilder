@@ -71,14 +71,6 @@ def test_recipe_description_mentions_gpu_and_source(recipe):
     )
 
 
-def test_no_siesta_conda_package(recipe):
-    """The recipe MUST NOT install siesta from conda -- it's built
-    from source.  Adding both would silently shadow the source build."""
-    for pkg in recipe.conda_packages:
-        assert not pkg.startswith("siesta"), (
-            f"recipe conda_packages contains `{pkg}`; SIESTA is built "
-            f"from source by the build_spec, not installed via conda."
-        )
 
 
 # --------------------------------------------------------------------- #

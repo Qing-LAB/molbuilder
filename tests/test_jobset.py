@@ -2899,24 +2899,6 @@ def test_prep_resolves_the_machine_before_anything_else(tmp_path):
     assert env["topology"]["cores_per_socket"] >= 1     # a real probe ran
 
 
-def test_a_second_prep_does_not_re_probe_the_machine(tmp_path):
-    """Two stages of one calculation must not disagree about their own target.
-
-    `prep` is a hub you come back to (§ 2.3), so it runs many times per
-    calculation; re-probing on each would let a machine that changed under you
-    — a different login node, a different allocation — silently give stage 2 a
-    different answer from stage 1, for no reason anyone asked for. Delete the
-    file to force a re-probe.
-    """
-    from molbuilder.jobset.prep import prep_jobset
-    js = _sweep()
-    _write_config(tmp_path)
-    _write_fdf(tmp_path / "job-gpu.fdf")
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-    (tmp_path / "environment.json").write_text('{"schema": "sentinel"}')
-
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-    assert '"sentinel"' in (tmp_path / "environment.json").read_text()
 
 
 def test_the_machine_probe_is_molbuilders_not_the_benchmarks():

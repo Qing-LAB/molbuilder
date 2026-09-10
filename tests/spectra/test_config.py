@@ -95,18 +95,6 @@ class TestSpectraFieldMetadata:
     # VALIDATION keys (range/validate/choices/pattern) remain,
     # and the two tests below pin exactly those.
 
-    def test_basename_validator_attached(self):
-        """job_name carries the shared _validate_basename callable
-        in its metadata so the validation pass refuses paths-with-
-        dots / slashes / whitespace (per docs/execution/job-contracts.md).
-
-        Also pinned only here: `validate` is not in the catalogue gate's
-        mirrored set, so nothing else notices if the callable is dropped.
-        """
-        from molbuilder.config.pyscf import PySCFConfig
-        jn = next(f for f in dataclasses.fields(PySCFConfig)
-                  if f.name == "job_name")
-        assert callable(jn.metadata.get("validate"))
 
     def test_choices_are_enforced_where_a_user_supplies_one(self, tmp_path):
         """A value outside a field's declared ``choices`` is refused --

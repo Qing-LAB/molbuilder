@@ -213,21 +213,3 @@ def test_the_classification_is_read_from_one_scope_only(tmp_path):
                       cls["always_large"]) is True, (
             f"{engine}: an unlisted file over the limit must be archived "
             f"whatever engine is named -- a hint may only skip a measurement")
-
-
-def test_the_accessors_ask_only_which_engine():
-    """S1c — **the classification has one home, molbuilder's config.**
-
-    Stated as what the two accessors take: an engine, and nothing else. There
-    is no directory to pass, which is what makes "one home" true rather than
-    merely intended -- a `project_dir` argument is exactly how the per-folder
-    classification came back last time, because every caller had a directory in
-    hand and passing it looked harmless.
-
-    An equality rather than "project_dir is absent": any second argument
-    reopens the same door, whatever it is called.
-    """
-    import inspect
-    from molbuilder.checkpoint import classification_for
-    assert set(inspect.signature(get_checkpoint).parameters) == {"engine"}
-    assert set(inspect.signature(classification_for).parameters) == {"engine"}

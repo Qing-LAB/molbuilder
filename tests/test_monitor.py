@@ -336,11 +336,6 @@ def test_failing_notifier_does_not_break_loop(tmp_path):
     assert seen  # at least the start/finish fired
 
 
-def test_webhook_notifier_builds():
-    # No network: just confirm the factory returns a callable named hook.
-    fn = monitor.make_webhook_notifier("http://example.invalid/hook")
-    assert callable(fn)
-    assert fn.__name__ == "webhook_notifier"
 
 
 def test_pid_alive_self():

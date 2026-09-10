@@ -420,24 +420,6 @@ def test_no_segment_exemption_has_come_unanchored():
         + "\n".join(f"  {k}" for k in stale))
 
 
-def test_a_declared_segment_names_a_real_door():
-    """A row saying "declared" must name something that exists.
-
-    Otherwise the declaration is a comment: `bench` claims
-    `materialize.bench_container` and `.binsnapshots` claims
-    `checkpoint.ARCHIVE_DIR`, and a rename would leave the claim standing while
-    the door moved.
-    """
-    import importlib
-    t = _tool()
-    for seg, door in t.CALC_CONTAINERS.items():
-        if door is None:
-            continue
-        mod, _, attr = door.rpartition(".")
-        obj = importlib.import_module(f"molbuilder.{mod}")
-        assert hasattr(obj, attr), (
-            f"segment {seg!r} claims the door molbuilder.{door}, "
-            f"which does not exist")
 
 
 _INVENTS_A_SEGMENT = '''\

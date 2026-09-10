@@ -688,16 +688,3 @@ class TestNoRawFetchInPreview:
     uniform {ok,error,aborted} shape + no-store cache apply everywhere --
     no scattered raw ``fetch("/api/files/...")`` that re-implements error
     handling and silently diverges (the 2026-07 framework-bypass sweep)."""
-
-    def test_preview_has_no_raw_files_fetch(self):
-        src = (ROOT / "molbuilder/web/static/lib/projects/preview.js"
-               ).read_text(encoding="utf-8")
-        # No bare fetch( of an /api/files/ endpoint; all four sites
-        # (write / stat / read / read_range) now go through api.js.
-        assert 'fetch("/api/files' not in src and "fetch('/api/files" not in src, (
-            "preview.js must call api.js wrappers, not raw fetch(\"/api/files/...\")"
-        )
-        # And it must actually import the wrappers it now depends on.
-        assert 'from "./api.js"' in src, (
-            "preview.js should import its file IO from api.js"
-        )

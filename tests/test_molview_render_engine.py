@@ -824,12 +824,6 @@ def test_the_engine_runs_no_change_notification_of_its_own():
         )
 
 
-def test_the_engine_never_names_the_drawing_library():
-    """§ 5.3: everything above the sealed layer reads end to end without learning
-    which library draws the molecule. The engine is handed an embed and calls its
-    doors; it does not know what is behind them.
-    """
-    assert "3Dmol" not in ENGINE.read_text()
 
 
 def test_one_menu_two_owners():

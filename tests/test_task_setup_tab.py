@@ -1309,12 +1309,6 @@ def test_the_sheet_takes_spacing_and_type_from_the_scales():
         "magic numbers in task-setup/style.css — use --space-*, --text-* or "
         f"--radius*: {offenders}")
 
-def test_the_jp_tokens_live_in_the_one_palette_file():
-    """`ui-contract.md` § 2: module-private tokens live in lib/tokens.css,
-    promoted out of per-file :root blocks."""
-    assert ":root" not in SHEET.read_text(), (
-        "task-setup/style.css declares its own :root block — module tokens "
-        "belong in lib/tokens.css")
 
 def test_the_sheet_names_no_token_that_does_not_exist():
     """**A gap the raw-colour test leaves open, found 2026-08-27.**

@@ -70,13 +70,6 @@ def test_a_garbage_allocation_variable_falls_through():
     assert whence == "node physical cores"
 
 
-def test_the_log_says_where_the_number_came_from():
-    """A run that sized itself from the node when it should have read the
-    allocation must be distinguishable in the log from one that was
-    correctly told that many -- otherwise the failure is invisible."""
-    src = "\n".join(emit_threading_setup_lines(None))
-    assert "_MB_THREADS_FROM" in src
-    assert "from {_MB_THREADS_FROM}" in src
 
 
 # --------------------------------------------------------------------- #

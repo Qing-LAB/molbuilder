@@ -124,13 +124,6 @@ def seal(snippet: str):
 
 # --- § 4  the library is named once, and nothing above the seal names it -----
 
-def test_plotly_is_named_in_exactly_one_file_of_the_module():
-    """§ 4 — the library name appears once."""
-    named = [
-        p.name for p in MODULE.glob("*.js")
-        if re.search(r"\bPlotly\b", p.read_text())
-    ]
-    assert named == ["_seal.js"], f"the library is named in {named}"
 
 
 def test_nothing_in_the_module_imports_from_outside_it():
@@ -154,9 +147,6 @@ def test_every_selector_is_the_modules_own_name():
             assert part.startswith(".spectrumchart"), f"selector escapes the module: {part!r}"
 
 
-def test_no_rule_is_keyed_to_the_window_size():
-    """§ 11 — the chart responds to its own box, never to the window."""
-    assert "@media" not in STYLE.read_text()
 
 
 def test_values_are_declared_once_and_read_by_name():

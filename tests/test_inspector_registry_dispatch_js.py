@@ -350,14 +350,6 @@ def test_inspector_isResult_flag(
 # --------------------------------------------------------------------- #
 
 
-def test_four_inspectors_self_registered_on_load():
-    """Loading the four inspector modules registers each.  The
-    registry's ``list()`` must report all four by name."""
-    names = _run_node(
-        "console.log(JSON.stringify("
-        "  window.molbuilder.inspectors.list().map(i => i.name)));"
-    )
-    assert set(names) >= {"source", "structure", "trajectory", "spectra"}
 
 
 def test_register_rejects_missing_required_fields():

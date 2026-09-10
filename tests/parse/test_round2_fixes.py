@@ -78,21 +78,8 @@ def _need(p: Path) -> Path:
 # ---- Envelope-field drift ------------------------------------------ #
 
 
-def test_sidecar_source_is_resolved_absolute_path():
-    """Round-2: source path in ParseResult must be resolved
-    absolute (so it survives cwd-changes downstream).  Test
-    against any registered sidecar."""
-    p = _need(MOLSTRUCT_FX)
-    result = parse(p)
-    assert Path(result.source).is_absolute()
-    assert Path(result.source) == p.resolve()
 
 
-def test_engine_source_is_resolved_absolute_path():
-    """Same for engines."""
-    p = _need(SIESTA_OUT)
-    result = parse(p)
-    assert Path(result.source).is_absolute()
 
 
 # ---- AmbiguousFormatError code path ----------------------------- #

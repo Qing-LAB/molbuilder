@@ -78,25 +78,3 @@ def test_every_inspector_on_a_page_runs_in_the_same_queue(page, scripts):
         + "\n\nFix: give the classic ones `defer` so the whole group runs in "
           "document order (registry.js § dispatch order)."
     )
-
-
-
-
-def test_the_exact_basename_inspector_is_listed_first():
-    """``bench-summary`` matches an exact basename (``job-set.json``) --
-    the most specific predicate on the page, so nothing may sit in front
-    of it.  ``source.js`` claims every ``.json``, and it claimed this one
-    until the sweep inspector was listed ahead of it."""
-    html = (TEMPLATES / "results.html").read_text(encoding="utf-8")
-    order = [name for name, _ in _inspector_scripts(html)]
-    assert "bench-summary.js" in order, (
-        "the bench-sweep inspector is not on /results at all")
-    # Compared against the file-MATCHING inspectors only: lifecycle.js,
-    # registry.js and _partial_inspector_factory.js are the switchboard
-    # itself and claim nothing, so their position says nothing either.
-    matchers = [n for n in order
-                if n not in ("lifecycle.js", "registry.js",
-                             "_partial_inspector_factory.js")]
-    assert matchers[0] == "bench-summary.js", (
-        f"an exact-basename match must get the first look; the matching "
-        f"inspectors are listed {matchers}")

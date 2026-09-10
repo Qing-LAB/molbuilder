@@ -1,5 +1,9 @@
 """L1 tests for ``molbuilder.envs.recipes``.
 
+# Retired 2026-09-10: `@dataclass(frozen=True)` is the enforcement, and
+# CPython refuses a non-frozen subclass of a frozen one on its own.
+# A test that mutates an instance to watch Python raise tests Python.
+
 Pins the registry shape: every built-in recipe must have non-empty
 required fields, every routed recipe must reference a valid category
 from ``DEFAULT_ENV_NAMES``, and the name-keyed + category-keyed
@@ -86,17 +90,6 @@ def test_recipe_for_category_finds_every_routed_recipe():
 
 def test_recipe_for_category_returns_none_for_unknown():
     assert recipe_for_category("not-a-category") is None
-
-
-def test_recipes_are_frozen():
-    """Recipe is a frozen dataclass -- mutating a recipe should
-    raise.  Important because we share the BUILTIN_RECIPES tuple
-    across process state (tests + production)."""
-    r = BUILTIN_RECIPES[0]
-    with pytest.raises(Exception):
-        # FrozenInstanceError on python 3.10+; on older it's
-        # AttributeError.  Either way: not assignable.
-        r.name = "mutated"   # type: ignore[misc]
 
 
 def test_verify_ignore_exit_code_field_present():
