@@ -45,11 +45,18 @@ def _modules(testfile: str):
     """The JS files this test loads, read out of the test's own source."""
     src = pathlib.Path(testfile).read_text(errors="ignore")
     out, seen = [], set()
+    static = REPO / "molbuilder/web/static"
     for m in re.finditer(r"""["']([^"']*?\.js)["']""", src):
         rel = m.group(1).lstrip("/")
-        for cand in (REPO / rel,
-                     REPO / "molbuilder/web/static" / rel):
-            if cand.is_file() and cand not in seen:
+        cands = [REPO / rel, static / rel]
+        # A path assembled from components -- `/ "static" / "lib" / name` with
+        # the basename alone in a parametrize list -- leaves only "foo.js" as a
+        # literal, which resolves nowhere.  Fall back to basename search so
+        # those files are measured instead of reported NO-JS-SUBJECT.
+        if not any(c.is_file() for c in cands) and "/" not in rel:
+            cands += sorted(static.rglob(rel))
+        for cand in cands:
+            if cand.is_file() and cand not in seen and "vendor/" not in str(cand):
                 seen.add(cand); out.append(cand)
     return out
 
