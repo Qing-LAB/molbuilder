@@ -217,6 +217,11 @@ _FLOOR = {
     # has to be reachable from a job shipped with no molbuilder
     # installed (`project-layout.md` 4.5).
     "paths.py":               1,
+    # The ADDRESS and the three verbs over it (`plans/plan.md` § 5l), added
+    # 2026-09-08 by N3.  Floor 1 for `paths`' reason: it composes the
+    # catalogue, the grammar and the layout, and a composite that could not
+    # travel where its parts do would send a shipped job back to an f-string.
+    "ref.py":                 1,
     # ``runwrap`` renders text from decided values, exactly as an engine's script
     # writer does, and imports nothing above floor 3.  Keeping it here is what
     # makes the preparation sequence walk the floors without going backwards

@@ -56,6 +56,7 @@ to look; the sections are where the argument is.
 | **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **FIXED 2026-09-09** — a genuinely outside path, and the echoed path is excluded from the evidence | § 6.2 |
 | **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **FIXED 2026-09-09** — asserts `along a`, and that no axis that fits is named | § 6.2 |
 | **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **FIXED 2026-09-09** — a non-coplanar fixture and the SIGNED triple product; an inversion and two reflections all killed | `science/test-design-findings.md` § 7a |
+| **#80** | **the X3DNA probe reports a backend that cannot run.** `_looks_complete` checks the unpacked tree has `bin/fiber` and `config/` — FILE EXISTENCE, not runnability. `bin/x3dna_utils` is `#!/usr/bin/env ruby` and ruby is not installed here, so `auto_backend_name()` answers `threedna`, the `_x3dna` skip guard does not fire, and **six tests fail with `exit 127` instead of skipping**. Pre-existing — no commit touches `builders/`, `nucleic.py`, the test, or the pack | open | § 6.6 |
 | **#79** | **717 test functions never execute.** 43 files use the `tests/_node_esm.py` harness; `node` is not on PATH, not in the `molbuilder` env, and not declared as a dependency anywhere — so they `pytest.skip`. Measured 2026-09-09: **67 passed, 717 skipped** across those files | **open, and it gates `TS6`** | § 6.5 |
 | **#78** | the sidecar↔selection path was covered as two halves that never met — labels written, and labels re-selected, with nothing joining them | **FIXED 2026-09-09** — one end-to-end test through the real doors, with REPEATED elements so identity cannot ride on the element; an off-by-one on read, bleeding labels and empty labels all killed | `science/test-design-findings.md` § 7a |
 | **#77** | **nine MORE dead XSS exemptions**, found the moment the allowlist got a lint — patterns gone from the files they name, each a standing permission for whatever is written at that name next | **FIXED 2026-09-09** | § 6.1 |
@@ -670,6 +671,39 @@ to a tier of 717.
 in a documented developer prerequisite. That is an environment change and needs
 the user.
 
+
+### 6.6 A probe that answers "installed" for something that cannot run — `#80`
+
+**Measured 2026-09-09 while reviewing the full lane.** Six tests in
+`tests/test_dna_double_strand.py` fail, and the failure is not in molbuilder:
+
+```
+RuntimeError: X3DNA x3dna_utils failed (exit 127).
+  Command: .../x3dna-v2.4/bin/x3dna_utils cp_std BDNA
+  env: 'ruby': No such file or directory
+```
+
+`bin/x3dna_utils` is a Ruby script; ruby is not on this machine. The pack is
+unpacked in the repo, so **`_threedna._looks_complete` sees `bin/fiber` and
+`config/` and reports the backend available** — and `auto_backend_name()`
+returns `threedna`, so the `_x3dna` fixture's `pytest.skip` never fires.
+
+**This is the day's recurring fault, in a probe.** `#79` is the honest version
+of it — node is absent, 717 tests skip, and you can see that they did. Here the
+check says yes when the answer is no, so instead of a clean skip a reader gets
+six failures pointing at DNA duplex geometry, and the actual cause is a missing
+system interpreter three layers away.
+
+**Not fixed, and two reasons.** Installing ruby is an environment change, which
+is not mine to make. And making the probe check RUNNABILITY rather than presence
+is a design change in a subsystem this session has not otherwise touched — it is
+the same shape as `run_install`'s BROKEN env-state gate (`#66`), which took a
+state machine to get right, and the same question `TS10` asks about node.
+
+**What it would take:** the probe already resolves a concrete path
+(`_resolve()`); running the tool's own no-op or `--version` once and caching the
+result would separate *present* from *usable*. That is a decision about how
+eagerly molbuilder probes at import time, not a bug fix.
 
 ## 7. What is deliberately NOT in this file
 

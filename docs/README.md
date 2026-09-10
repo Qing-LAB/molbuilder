@@ -17,6 +17,36 @@ line each. If a doc is not listed here it does not exist (test-enforced:
 > every source file → target home — is
 > [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md).
 
+## Two words this repository uses in a specific way
+
+Both come up constantly — **"floor" appears about 500 times across these
+documents and 380 times in the code** — and neither is standard vocabulary, so
+they are glossed here rather than only where they are defined.
+
+| word | what it means here | who enforces it |
+|---|---|---|
+| **floor** | **which ROLE owns a decision.** Numbered 1 (names & plain facts) to 7 (surfaces). *A floor may call down and return up; it may never reach across.* | `tests/test_architecture_rules.py` |
+| **layer** / `L1`–`L3` | **import depth** — which file may `import` which. A different axis. | `tests/test_layering.py`, mechanically |
+
+**They overlap without matching**, which is exactly why two words are needed:
+`jobset` is one import tier (`L2`) and spans **five** floors. Reusing "layer"
+for both is the confusion the split exists to prevent.
+
+**Why "floor" and not "level" or "tier":** it is a storey of a building, and the
+metaphor carries the rule. You can go *down* and come back with an answer; you
+cannot go *up*, and you cannot cut sideways through a wall. A conventional word
+would not have said the direction, and "layer" was already taken.
+
+**It is not the same as the order things happen in.** `prep` walks floors 1→4
+and is a *route*, not a floor — giving it a floor number once left one of its
+five steps with nobody responsible for it, and the machine was never resolved
+for a staged run at all.
+
+Both are defined in full, with the failures behind them, in
+[`execution/architecture.md`](?doc=execution/architecture.md) § 1 — **the owner
+of both terms.** A module docstring saying *"Module: floor 1"* means that
+section.
+
 ## Structure — domains, not document kinds
 
 Documents are grouped by **domain** (the subsystem a reader works on), not
