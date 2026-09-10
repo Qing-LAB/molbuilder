@@ -190,6 +190,41 @@ class _Mut(ast.NodeTransformer):
         return node
 
 
+    def visit_BoolOp(self, node):
+        """DROP ONE CLAUSE of an `and`/`or` -- the operator that was missing, and
+        the one that matters most for a GUARD.
+
+        MEASURED 2026-09-09, and it cost three real tests nearly being cut.  A
+        validator is usually one condition with two clauses:
+
+            if not isinstance(providers, list) or not providers:   # runtime_config:446
+            if not isinstance(val, str)        or not val:         # :193
+            if not isinstance(tenant, str)     or not tenant:      # :269
+
+        and the two tests on it reach ONE CLAUSE EACH -- missing/non-list hits
+        the first, empty hits the second.  Flipping a comparison or perturbing a
+        literal kills both together, so the harness said CONFIRMED (subsumed) for
+        all three.  Drop `or not providers` and the empty-list test fails while
+        the missing-key test passes: they were never subsumed, and cutting them
+        would have let `providers: []` and `id: ""` through -- a site whose login
+        page has no buttons, and a callback route of `/oauth-callback/`.
+
+        So this operator is not an extra: without it the tool is blind to exactly
+        the shape it is most often pointed at.  Each clause is dropped in turn,
+        which is why `mutants_for` asks for one mutant per (line, index).
+        """
+        self.generic_visit(node)
+        if (self.done or getattr(node, "lineno", None) != self.target
+                or len(node.values) < 2):
+            return node
+        i = getattr(self, "boolop_drop", None)
+        if i is None or i >= len(node.values):
+            return node
+        kept = [v for j, v in enumerate(node.values) if j != i]
+        self.done = True
+        return kept[0] if len(kept) == 1 else ast.BoolOp(op=node.op, values=kept)
+
+
 def mutants_for(rel, lines, root):
     src = (root / rel).read_text()
     try:
@@ -197,16 +232,20 @@ def mutants_for(rel, lines, root):
     except SyntaxError:
         return
     for ln in sorted(lines):
-        tree = ast.parse(src)
-        m = _Mut(ln)
-        tree = m.visit(tree)
-        if not m.done:
-            continue
-        ast.fix_missing_locations(tree)
-        try:
-            yield ln, ast.unparse(tree)
-        except Exception:
-            continue
+        # index None = the comparison/literal operators; 0..2 = drop that clause
+        # of a boolean operator on this line (see `_Mut.visit_BoolOp`).
+        for drop in (None, 0, 1, 2):
+            tree = ast.parse(src)
+            m = _Mut(ln)
+            m.boolop_drop = drop
+            tree = m.visit(tree)
+            if not m.done:
+                continue
+            ast.fix_missing_locations(tree)
+            try:
+                yield ln, ast.unparse(tree)
+            except Exception:
+                continue
 
 
 def run(nodeid, root):

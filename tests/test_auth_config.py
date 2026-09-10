@@ -47,7 +47,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.runtime_config import (
-    RuntimeConfigError, _normalise,
+    RuntimeConfigError, _normalise, read_config,
     get_auth, get_providers,
 )
 
@@ -96,81 +96,93 @@ def _wrap(*entries):
 # --------------------------------------------------------------------- #
 
 
-class TestAuthDefaultOff:
+class TestTheConfigFileIsRefusedAtTheDoor:
+    """`read_config()` is the validator, and it is what the app calls.
 
-    def test_empty_config_has_no_auth(self):
-        """A config with no `auth` section defaulting to auth ON (a login page
-        nobody can pass), or -- the other direction -- a providers list
-        fabricated so `init_auth` installs a gate with no way through.
+    WHY THROUGH THE FILE, not `_normalise(dict)`.  `web/app.py:254` reads the
+    config at startup and refuses to start on any failure -- *"Bad config is
+    loud, not silent: refuse to start."*  `read_config` is the whole of that
+    validator: it finds the file, refuses invalid JSON, refuses a non-object
+    top level, runs the schema checks, and **re-raises naming WHICH FILE
+    refused**.
 
-        `deployment.md` § 3: no `auth` section means no login, the right shape
-        for a personal machine. `runtime_config._read_auth` decides this with a
-        PRESENCE check rather than truthiness.
+    The tests here used to call `_normalise` with a hand-built dict, which is
+    the middle step only -- so three things the door does were untested, and
+    one of them is a RECORDED DEFECT.  `runtime_config.py:133` exists because
+    *"a malformed project `.molbuilder.json` or XDG file used to refuse naming
+    `molbuilder.json` with no path (R10, 2026-08-12)"*: an operator with three
+    config files got an error that did not say which was broken.  A dict-level
+    test sits below that layer and cannot see it come back.
+
+    Contract: `deployment.md` § 3 (what `auth` must contain) and § 7 (this file
+    owns `molbuilder.json` auth validation); `access-control.md` § 3.1.
+    """
+
+    # (bad file contents, fragments the refusal must contain)
+    BAD = [
+        ('{"auth": {}}', ["auth.providers"]),
+        ('{"auth": {"providers": []}}', ["non-empty"]),
+        ('{"auth": {"providers": {"id": "x"}}}', ["non-empty list"]),
+        ('{"auth": {"providers": ["not-an-object"]}}', ["must be an object"]),
+        ('{"auth": {"providers": [', ["invalid JSON", "line"]),
+        ('[]', ["top-level", "object"]),
+        ('"a string"', ["top-level", "object"]),
+    ]
+
+    @pytest.mark.parametrize("text,must_say", BAD,
+                             ids=[t[:34] for t, _ in BAD])
+    def test_a_broken_config_file_is_refused_and_the_message_names_it(
+            self, tmp_path, text, must_say):
+        """A hand-edited `molbuilder.json` that is wrong is refused, and the
+        refusal says BOTH what is wrong and which file it was.
+
+        Every row is a slip somebody makes editing JSON by hand: an `auth`
+        section started and abandoned, a providers list left empty, one object
+        where a list belongs, a bare string in the list, a truncated file, and a
+        top level that is not an object at all. Each must stop startup rather
+        than configure the server wrongly -- an empty providers list is a login
+        page with no buttons, and a half-written `auth` section is a gate with
+        nothing behind it.
         """
-        cfg = _normalise({})
-        assert get_auth(cfg) == {}
-        assert get_providers(cfg) == []
+        cfg = tmp_path / "molbuilder.json"
+        cfg.write_text(text, encoding="utf-8")
+        with pytest.raises(RuntimeConfigError) as exc:
+            read_config(cfg)
+        msg = str(exc.value)
+        for frag in must_say:
+            assert frag in msg, f"refusal does not say {frag!r}: {msg}"
+        assert str(cfg) in msg, (
+            f"the refusal does not name WHICH file was broken (R10, "
+            f"2026-08-12) -- an operator with several config files is told "
+            f"nothing: {msg}")
 
-    def test_config_without_auth_section_unaffected(self):
-        """Another section's reader introducing an `auth` key as a side effect,
-        so a config that never asked for sign-in gets a gate.
+    def test_a_config_with_no_auth_section_is_accepted_with_auth_off(
+            self, tmp_path):
+        """No `auth` section means no login -- the right shape for a personal
+        machine -- and another section must not switch one on as a side effect.
 
-        `deployment.md` § 3. Honest note (2026-09-09): this reaches the same
-        `if 'auth' not in raw` line as `test_empty_config_has_no_auth` with a
-        different payload, and no reader writes back into `raw` -- raised as a
-        cut candidate, with the loss stated as a future normaliser that
-        injected defaults into the raw mapping.
+        `deployment.md` § 3: decided by a PRESENCE check, not truthiness. The
+        second file is the live case: a machine that configures TLS and envs and
+        never asked for sign-in must not acquire a gate.
         """
-        cfg = _normalise({
-            "tls": {"cert": "/tmp/c", "key": "/tmp/k"},
-            "envs": {"siesta": "molbuilder-siesta"},
-        })
-        assert get_auth(cfg) == {}
-        assert get_providers(cfg) == []
+        for text in ('{}',
+                     '{"tls": {"cert": "/tmp/c", "key": "/tmp/k"},'
+                     ' "envs": {"siesta": "molbuilder-siesta"}}'):
+            cfg = tmp_path / "molbuilder.json"
+            cfg.write_text(text, encoding="utf-8")
+            got = read_config(cfg)
+            assert get_auth(got) == {}, text
+            assert get_providers(got) == [], text
 
 
 # --------------------------------------------------------------------- #
-#  Providers list shape                                                 #
+#  Providers list shape -- the per-entry checks, still at the schema    #
+#  level because the door above already proves the file path reaches   #
+#  them.                                                               #
 # --------------------------------------------------------------------- #
 
 
 class TestProvidersListShape:
-
-    def test_missing_providers_rejected(self):
-        """`"auth": {}` starting the server with authentication silently OFF:
-        the operator wrote an auth section, saw no error, and the site is open.
-        This is the shape a half-finished hand edit leaves behind.
-
-        `deployment.md` § 3, and § 7 which names this file as the owner of
-        `molbuilder.json` auth validation. The refusal names `auth.providers`.
-        """
-        with pytest.raises(RuntimeConfigError, match="auth.providers"):
-            _normalise({"auth": {}})
-
-    def test_empty_providers_rejected(self):
-        """A providers list with nothing in it: a login page with no buttons --
-        the server is up, the gate is on, and nobody can get in.
-
-        `deployment.md` § 3. Honest note (2026-09-09): this raises at the same
-        line as `test_missing_providers_rejected` and
-        `test_non_list_providers_rejected` (one `not isinstance(list) or not
-        providers` in `_read_auth`), so it is raised as a cut candidate -- the
-        loss being one more spelling of a refusal that single line already
-        gives.
-        """
-        with pytest.raises(RuntimeConfigError, match="non-empty"):
-            _normalise({"auth": {"providers": []}})
-
-    def test_non_list_providers_rejected(self):
-        """A single provider object written where a list belongs -- the
-        commonest JSON hand-edit slip -- accepted and then indexed as a
-        mapping.
-
-        `deployment.md` § 3. Honest note (2026-09-09): the same single raise as
-        the two tests above; raised as a cut candidate for that reason.
-        """
-        with pytest.raises(RuntimeConfigError, match="non-empty list"):
-            _normalise({"auth": {"providers": {"id": "x"}}})
 
     def test_non_object_entry_rejected(self):
         """A string in the providers list reaching the per-entry validators,
