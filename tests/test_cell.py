@@ -276,7 +276,7 @@ class TestTwoVerdictsOneChecker:
         _rc, issues = cellmod.resolve_and_check(_mol(vacuum=(5.0, 5.0, 0.0)))
         notices = notices_for_report(issues)
         assert [n["where"] for n in notices] == ["cell.no_volume"]
-        assert notices[0]["level"] == "warn", (
+        assert notices[0]["severity"] == "warn", (
             "a loading or modifying door reports; only a generating one refuses")
 
     def test_a_notices_subject_is_its_id_and_cannot_disagree_with_it(self):

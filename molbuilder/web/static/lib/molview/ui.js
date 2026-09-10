@@ -2310,7 +2310,7 @@ function mountPanel(doc, card, model) {
         into.hidden = !(list && list.length);
         for (const notice of (list || [])) {
             const line = el("p", "molviewer-notice molviewer-notice--"
-                                 + (notice.level === "warn" ? "warn" : "info"));
+                                 + (notice.severity === "warn" ? "warn" : "info"));
             line.textContent = notice.message;
             into.appendChild(line);
         }

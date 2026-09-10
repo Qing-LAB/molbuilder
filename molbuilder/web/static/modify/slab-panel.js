@@ -387,7 +387,7 @@ export function init(viewer) {
         markCustom();
         onLatticeInputsChanged();
         const said = (j.notes || []).map((n) => n.message).join("  ·  ");
-        say((j.notes || []).some((n) => n.level === "warn") ? "warn" : "info",
+        say((j.notes || []).some((n) => n.severity === "warn") ? "warn" : "info",
             `${j.element}${j.n_atoms} from ${j.source}: a = ${j.a.toFixed(4)} Å`
             + (said ? "  ·  " + said : ""));
     }

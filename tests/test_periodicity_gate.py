@@ -52,7 +52,7 @@ def _problems(notices):
     (``cell.vacuum_ignored``).  A legal state may still have something worth
     saying about it; what it may not have is a complaint.
     """
-    return [n for n in (notices or []) if n.get("level") in ("warn", "error")]
+    return [n for n in (notices or []) if n.get("severity") in ("warn", "error")]
 
 
 def _wheres(notices):
@@ -122,13 +122,13 @@ class TestTheStateTable:
         assert out.cell_origin is None               # truth untouched
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert out.cell_contains_atoms(out.resolve_cell_origin())
-        assert notes and notes[0]["level"] == "info"
+        assert notes and notes[0]["severity"] == "info"
         # A notice says how loud it is, what it says, and WHAT IT IS ABOUT --
         # the subject is what decides where it is shown. What it must never
         # carry is a key saying "and I changed something", because nothing here
         # changes anything: that is the whole of clause 1, and a phantom dirty
         # state is what a correction marker would produce.
-        assert all(set(n) == {"level", "message", "where", "about"}
+        assert all(set(n) == {"severity", "message", "where", "about"}
                    for n in notes), notes
         assert all(n["about"] == "cell" for n in notes), notes
 
@@ -700,7 +700,7 @@ class TestPeriodicityDoor:
         # missing (molview.md § 9.3).
         assert per["resolved_cell"] is not None
         assert "resolved_cell_origin" in per and "resolved_vacuum" in per
-        assert any(n["level"] == "warn" for n in j["notices"])
+        assert any(n["severity"] == "warn" for n in j["notices"])
 
     def _explicit_box_structure(self):
         """Three atoms in a row inside a box the USER typed: 4 A cube at the
@@ -1268,8 +1268,8 @@ class TestTheLoadAnswerIsNotSilent:
             # The corner is DERIVED, so the load REPORTS it (info) and changes
             # nothing -- and the shape says so: two keys, no third one claiming
             # a correction, hence no phantom dirty state.
-            assert notices and notices[0]["level"] == "info"
-            assert all(set(n) == {"level", "message", "where", "about"}
+            assert notices and notices[0]["severity"] == "info"
+            assert all(set(n) == {"severity", "message", "where", "about"}
                        for n in notices), notices
             # ...and `about` is the SUBJECT, which is what puts the sentence on
             # the Cell page rather than above the atom list (molview.md § 6.8).
@@ -1635,7 +1635,7 @@ class TestTheDefaultVacuumGap:
         # turns into a false failure.
         said = [n for n in notes if n["where"] == "cell.vacuum_defaulted"]
         assert said, [n["message"][:70] for n in notes]
-        assert said[0]["level"] == "info"
+        assert said[0]["severity"] == "info"
         assert said[0]["about"] == "cell"
         msg = said[0]["message"]
         assert "3 Å" in msg          # the gap it chose, in the message

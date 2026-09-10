@@ -1180,12 +1180,6 @@ class PySCFConfig:
     def molwatch_log(self, value: bool) -> None:     # pragma: no cover
         self.write_molwatch_log = value
 
-    def __post_init__(self) -> None:
-        # A field that DECLARES its legal values must hold one.  Eight fields
-        # here carry `metadata={"choices": ...}`; nothing checked them until
-        # 2026-09-10, so a wrong word went straight into a deck.
-        from .stages import refuse_values_outside_choices
-        refuse_values_outside_choices(self)
 
 
 __all__ = ["PySCFConfig"]

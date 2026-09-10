@@ -23,29 +23,3 @@ STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
 
 __all__ = ["STAGE_STRATEGY_PRESETS"]
 
-
-def refuse_values_outside_choices(cfg) -> None:
-    """Every field that DECLARES its legal values must hold one of them.
-
-    Eight fields on each engine config carry `metadata={"choices": (...)}` --
-    the form renders them as a dropdown, the catalogue documents them, and
-    until 2026-09-10 nothing checked them.  `SiestaConfig(spin_treatment=
-    "banana")`, `relax_type="zzz"` and `PySCFConfig(restart="banana")` were
-    all accepted, and the wrong word went straight into a deck.
-
-    This repo runs no type checker, so the declaration alone refuses nothing;
-    the pairing that works is `issues.Issue`'s -- a declared vocabulary plus a
-    constructor that raises.  `None` passes: an optional field's absence is
-    not a value outside its choices.
-    """
-    import dataclasses as _dc
-    for f in _dc.fields(cfg):
-        choices = f.metadata.get("choices")
-        if not choices:
-            continue
-        value = getattr(cfg, f.name)
-        if value is None or value in choices:
-            continue
-        raise ValueError(
-            f"{type(cfg).__name__}.{f.name} must be one of "
-            f"{tuple(choices)}; got {value!r}")

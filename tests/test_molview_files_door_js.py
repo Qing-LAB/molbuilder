@@ -164,13 +164,13 @@ def test_the_gates_verdicts_ride_the_doors_result():
     out = _run(
         "__replies.push({ match: '/api/structure/export', body: { ok: true,"
         " files: [{ name: 's.xyz', text: '3\\n\\n' }],"
-        " notices: [{ level: 'warn', message: 'the origin is user-owned',"
+        " notices: [{ severity: 'warn', message: 'the origin is user-owned',"
         " about: 'cell.edit' }] } });\n"
         "const r = await molviewFiles.save('download', 's',"
         " { structure: { elements: ['O'] } });\n"
         "console.log(JSON.stringify(r));\n"
     )
     assert out["ok"] is True
-    assert out["notices"] == [{"level": "warn",
+    assert out["notices"] == [{"severity": "warn",
                                "message": "the origin is user-owned",
                                "about": "cell.edit"}]

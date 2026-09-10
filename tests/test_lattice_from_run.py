@@ -157,7 +157,7 @@ class TestTheNotesTheUserReads:
         assert d["ok"] is True, d
         assert d["coordination"] != 12
         warned = [n for n in d["notes"] if "neighbours" in n["message"]]
-        assert warned and warned[0]["level"] == "warn", d["notes"]
+        assert warned and warned[0]["severity"] == "warn", d["notes"]
         assert "slab" in warned[0]["message"]
 
     def test_a_file_too_big_to_measure_exactly_is_refused_not_sampled(

@@ -188,7 +188,7 @@ class TestTheWarningReachesTheUser:
         cannot be asked of a box whose faces are on top of each other."""
         j = self._slab(client, layers=4)
         assert j["ok"] is True, "a warning, never a refusal (§ 4.1)"
-        warns = [n for n in j["notices"] if n["level"] == "warn"]
+        warns = [n for n in j["notices"] if n["severity"] == "warn"]
         assert warns, "a slab with an unset c must say so"
         assert "collision" in warns[0]["message"]
         assert "not padded" in warns[0]["message"]
@@ -199,7 +199,7 @@ class TestTheWarningReachesTheUser:
         it cannot, because nothing has been decided about the box yet."""
         for layers in (4, 6):
             j = self._slab(client, layers=layers)
-            assert [n["level"] for n in j["notices"]] == ["warn"], layers
+            assert [n["severity"] for n in j["notices"]] == ["warn"], layers
 
     def test_it_uses_the_one_channel_and_not_a_second_door(self, client):
         j = self._slab(client, layers=4)
@@ -216,7 +216,7 @@ class TestTheWarningReachesTheUser:
         the layer count or the placement, both of which are in the Slab panel.
         """
         seen = self._slab(client, layers=4)["notices"]
-        assert {"level", "message", "where", "about"} <= set(seen[0])
+        assert {"severity", "message", "where", "about"} <= set(seen[0])
         assert seen[0]["where"] == "slab.seam_collision"
         assert seen[0]["about"] != "cell"
 

@@ -60,7 +60,10 @@ user had been shown.  The rule now lives once, on ``Structure``
 delegates to it.
 
 Notices (the machine-readable half of the contract).  Every entry is
-``{"level", "message", "where", "about"}`` -- FOUR keys since 2026-08-03.
+``{"severity", "message", "where", "about"}`` -- FOUR keys.  It was
+``level`` until 2026-09-10, which is why `task-handover.js` carried a
+comment about an error arm that could never fire: it read ``severity``,
+the only spelling `issues_to_json` ever used.  One name now.
 ``where`` is the stable id ``Issue`` carries, because the conditions now come
 from ``cell.check`` and a finding has to be identifiable without reading its
 prose; ``about`` is the subject, which is what decides where it is shown.
@@ -132,7 +135,7 @@ def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str
     """
     # BUILT THROUGH `issues.Issue`, and `about` is DERIVED.
     #
-    # This assembled `{"level", "message", "where", "about"}` by hand until
+    # This assembled `{"severity", "message", "where", "about"}` by hand until
     # 2026-09-09.  Two problems, both silent: `level` was never checked
     # against anything, and `about` stored a fact `where` already carried --
     # it was `where.split(".")[0]` in every case the tree produces
@@ -206,7 +209,7 @@ def _wire(i: "Issue") -> Dict[str, str]:
     (`#79`), so the wire rename waits on that decision rather than going in
     unverified.
     """
-    return {"level": i.severity, "message": i.message,
+    return {"severity": i.severity, "message": i.message,
             "where": i.where, "about": i.where.split(".")[0]}
 
 

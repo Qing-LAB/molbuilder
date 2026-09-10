@@ -789,7 +789,7 @@ export function createModel(opts) {
          * changes nothing (§ 9.3). */
         getNotices() {
             return notices
-                ? notices.map((n) => ({ level: n.level, message: n.message,
+                ? notices.map((n) => ({ severity: n.severity, message: n.message,
                                         about: n.about || null }))
                 : null;
         },

@@ -899,7 +899,7 @@ def _lattice_notes(measured, element: str):
 
     if measured.coordination != _FCC_COORDINATION:
         notes.append({
-            "level": "warn",
+            "severity": "warn",
             "message": (
                 f"Each {element} has {measured.coordination} neighbours at this "
                 f"distance; bulk fcc has {_FCC_COORDINATION}. That usually means "
@@ -909,7 +909,7 @@ def _lattice_notes(measured, element: str):
 
     if measured.second_shell is None:
         notes.append({
-            "level": "warn",
+            "severity": "warn",
             "message": (
                 "There is no second neighbour shell to check, so the fcc "
                 "signature could not be confirmed."),
@@ -918,7 +918,7 @@ def _lattice_notes(measured, element: str):
         ratio = measured.second_shell / measured.d_nn
         if abs(ratio - np.sqrt(2.0)) > _SECOND_SHELL_TOL:
             notes.append({
-                "level": "warn",
+                "severity": "warn",
                 "message": (
                     f"The second shell sits at {ratio:.3f}×the first; fcc puts "
                     f"it at √2 = 1.414. A different ratio means this is not a "
@@ -940,7 +940,7 @@ def _lattice_notes(measured, element: str):
             continue
         off = (measured.a - ref) / ref * 100.0
         notes.append({
-            "level": "info" if abs(off) < 5.0 else "warn",
+            "severity": "info" if abs(off) < 5.0 else "warn",
             "message": f"{off:+.1f}% from {label} ({ref:.4f} Å)",
         })
     return notes
