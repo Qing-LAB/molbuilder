@@ -56,6 +56,9 @@ to look; the sections are where the argument is.
 | **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **FIXED 2026-09-09** — a genuinely outside path, and the echoed path is excluded from the evidence | § 6.2 |
 | **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **FIXED 2026-09-09** — asserts `along a`, and that no axis that fits is named | § 6.2 |
 | **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **FIXED 2026-09-09** — a non-coplanar fixture and the SIGNED triple product; an inversion and two reflections all killed | `science/test-design-findings.md` § 7a |
+| **#83** | **a test that assumes the machine it runs on.** `test_runwrap_cold_restart.py::TestGpuFlagPrecedence::test_auto_omp_width_divides_by_the_effective_count` fixes 9 ranks and fails on a 4-core box — *"9 ranks x PE=1 oversubscribes 4 cores"*. Verified pre-existing (fails identically at `763f83e5~1`). Same class as `#79`/`#80`: the outcome depends on the environment and nothing says so — but here it FAILS rather than skips, so it reads as a defect | open | § 6.7 |
+| **#81** | **an optional backend that is absent answers HTTP 500.** `web-api.md` § 1 defines 500 as *"internal / I/O / parse fault"*, and it has **no bucket for "this machine cannot do that"** — so "3DNA is not installed" is reported as a server fault. The MESSAGE is good (*"double-strand DNA requires X3DNA…"*); the status says the server broke | open — needs a bucket decision | § 6.7 |
+| **#82** | **`GET /api/backends` exists and nothing consumes it.** It returns `{available, auto_name}` and its own comment says *"NO browser reads this today"*. So the Modify tab offers the two-strand duplex input unconditionally, with prose *"(Requires 3DNA…)"*, and a user without it learns by submitting and getting a 500 | open — `TS16` | § 6.7 |
 | **#80** | the X3DNA probe reports a backend that cannot run — `_looks_complete` checks FILE EXISTENCE, not runnability | **the instance is FIXED 2026-09-09** (the ruby dependency is gone, not satisfied); **the presence-vs-runnability gap remains open** — `TS15` | § 6.6 |
 | **#79** | **717 test functions never execute.** 43 files use the `tests/_node_esm.py` harness; `node` is not on PATH, not in the `molbuilder` env, and not declared as a dependency anywhere — so they `pytest.skip`. Measured 2026-09-09: **67 passed, 717 skipped** across those files | **open, and it gates `TS6`** | § 6.5 |
 | **#78** | the sidecar↔selection path was covered as two halves that never met — labels written, and labels re-selected, with nothing joining them | **FIXED 2026-09-09** — one end-to-end test through the real doors, with REPEATED elements so identity cannot ride on the element; an off-by-one on read, bleeding labels and empty labels all killed | `science/test-design-findings.md` § 7a |
@@ -733,6 +736,46 @@ so a 3DNA release with a different base set is followed, not contradicted.
 existence. `_resolve()` already yields a concrete path, so running the tool once
 and caching would separate *present* from *usable* — a decision about how
 eagerly molbuilder probes at import time, not a bug fix. `TS15`.
+
+### 6.7 A capability the server knows about and the browser does not — `#81`, `#82`
+
+**User framing, 2026-09-09:** *"this api/module should be concealed as backend
+support and provided when x3dna is available and exposed to web interface."*
+Measured against that, two of the three are already true and the third is not.
+
+| | state |
+|---|---|
+| **concealed** as backend support | ✅ `build_dna` dispatches; no caller names 3DNA |
+| **provided when available** | ✅ `available_backends()` → `{threedna: bool, …}` |
+| **exposed to the web interface** | ❌ `GET /api/backends` exists; **no browser reads it** |
+
+**What a user sees today, measured.** With no backend, all three DNA forms refuse
+with a specific and genuinely helpful message — *"No nucleic-acid backend
+available. Either: - install 3DNA…"* for a single strand, and *"double-strand DNA
+requires X3DNA (the 'threedna' backend, which builds duplex geometry via fiber /
+rebuild)"* for both duplex forms. **The messages are right. Two things around
+them are not.**
+
+**`#81` — the status code.** They return **500**, which § 1 defines as *"internal
+/ I/O / parse fault"*. This is not a fault: the request is well-formed, the
+server is healthy, and the answer is a configuration fact. A 500 is also what
+monitoring treats as an incident. **The contract has no bucket for this**, which
+is why it landed in the fault one — the same shape as `#71`, where the fence's
+status disagreed with the table. Candidates: `501` (currently *"a stubbed
+endpoint"*), `503`, or `400`. **Picking one is a contract decision, not a bug
+fix**, so it is recorded rather than taken.
+
+**`#82` — the browser never asks.** The route's own comment says *"NO browser
+reads this today (the Build backend picker left with task #295)"*, and the Modify
+tab documents the two-strand input in prose — *"(Requires 3DNA. Read 5'→3'…)"* —
+rather than gating on it. So a capability the server can answer for is
+discovered by failing.
+
+**Why this is worth more than a nicety:** the two-strand path is the ONLY one
+through `rebuild`, and until `#80` was fixed it was broken wherever ruby was
+absent. A UI that asked `/api/backends` would have shown that input as
+unavailable instead of letting a person submit and receive a 500 about a tool
+they have never heard of.
 
 ## 7. What is deliberately NOT in this file
 

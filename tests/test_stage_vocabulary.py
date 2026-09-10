@@ -161,6 +161,20 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/identity.py",
         "builds `<NN>_<name>` -- the one token every per-stage artifact is "
         "named from, and the same one a stage directory uses"),
+    "is_stage_token": (
+        None, "molbuilder/runfiles.py",
+        "the READER half of the shape `_STAGE` declares -- 'does this "
+        "directory name look like a rung'.  Added 2026-09-08 (N3) so the "
+        "address layer could ask instead of carrying the pattern; it answers "
+        "about SHAPE only, and `identity.StageRef` still owns whether a token "
+        "names a rung this description actually has"),
+    "_stage_dirs": (
+        None, "molbuilder/ref.py",
+        "enumerates the stage directories present under a calculation root, "
+        "for `ref.find` when the stage is left open.  Hierarchical only -- in "
+        "flat the stage is in the FILENAME, so there is nothing on disk to "
+        "walk and `runfiles.find(stage=)` answers it.  Reads what is there "
+        "rather than a description, because floor 1 cannot see the ladder"),
     "parse_stage_token": (
         None, "molbuilder/identity.py",
         "reads it back.  The decoder used to keep its own `-stage(N)` regex, "
