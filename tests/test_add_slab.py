@@ -384,14 +384,47 @@ class TestTheRegistryIsNotContaminatedByTheTrim:
             f"lattice step is {step:.3f} Å.  A slab that is not on the "
             f"lattice is not the crystal that was asked for")
 
-    @pytest.mark.parametrize("plane,orthogonal", [("100", True), ("110", True)])
-    def test_the_same_holds_on_the_two_period_surfaces(self, plane, orthogonal):
-        """Period 2, so an ODD layer count is the exposed case there."""
+    # The registry step, as a multiple of the lattice constant.  Both are the
+    # magnitude of the ABAB stacking shift for that face, and both are
+    # MEASURED to match to 1e-6 (2026-09-09):
+    #   (100)  the second layer sits in the four-fold hollows, displaced by
+    #          half the surface mesh vector          -> a/2
+    #   (110)  displaced by (a/(2*sqrt2), a/2) -- half the [1-10] period and
+    #          half the [001] period                 -> a*sqrt(6)/4
+    @pytest.mark.parametrize("plane,orthogonal,step_of_a", [
+        ("100", True, 0.5),
+        ("110", True, 6 ** 0.5 / 4),
+    ])
+    def test_the_same_holds_on_the_two_period_surfaces(
+            self, plane, orthogonal, step_of_a):
+        """SCIENCE. Period 2, so an ODD layer count is the exposed case -- and
+        the registry moves the slab by THE LATTICE STEP for that face.
+
+        THE FAILURE THIS CATCHES.  A registry that moves the slab by anything
+        other than a lattice translation puts the electrode off its own crystal:
+        the atoms are still Au, the picture still looks like a slab, and every
+        distance to the molecule is wrong. That is the 1.249 Å defect this class
+        exists for, on the two faces where the stacking period is 2.
+
+        REDESIGNED 2026-09-09.  It asserted `moved > 0.1`, which its own message
+        called "the registry did nothing" -- so it distinguished *moved at all*
+        from *did not move*, and nothing else. Its (111) sibling
+        (`test_neighbouring_registries_differ_by_the_lattice_step_on_111`) has
+        always compared against `a/sqrt(6)`; these two faces are equally
+        derivable and were not. Recorded at
+        `science/test-design-findings.md` § 2.
+
+        Contract: `science/junction-cell.md` § 3.1.
+        """
         import numpy as np
         a = self._bottom_layer_centroid(0, 3, plane, orthogonal)
         b = self._bottom_layer_centroid(1, 3, plane, orthogonal)
         moved = np.linalg.norm(b - a)
-        assert moved > 0.1, "the registry did nothing"
+        step = self.A * step_of_a
+        assert moved == pytest.approx(step, abs=1e-3), (
+            f"({plane}) registry A->B moved {moved:.3f} Å, but the lattice "
+            f"step is {step:.3f} Å.  A slab that is not on the lattice is not "
+            f"the crystal that was asked for")
         # and it is a real lattice translation: doing it twice returns
         assert np.allclose(
             self._bottom_layer_centroid(2 % 2, 3, plane, orthogonal), a,

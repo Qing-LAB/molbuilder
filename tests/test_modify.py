@@ -1105,19 +1105,50 @@ def test_electrode_primitive_100_110_rejects_non_orthogonal(single_anchor, plane
 
 
 def test_electrode_lattice_constant_override(single_anchor):
-    """Explicit lattice_constant changes the slab's overall extent
-    (proxy for 'the kwarg actually reached ASE')."""
-    default = add_slab(single_anchor, "Au", "100", (3, 3, 1),
-                       start_z=2.0, orthogonal=True)
-    expanded = add_slab(single_anchor, "Au", "100", (3, 3, 1),
-                        start_z=2.0, orthogonal=True, lattice_constant=5.0)
+    """SCIENCE. An explicit `lattice_constant` scales the slab EXACTLY, so the
+    electrode is built at the lattice the person asked for.
+
+    THE FAILURE THIS CATCHES.  The lattice constant sets every Au-Au distance in
+    the electrode, and a transport calculation is run against that geometry --
+    so a value that is silently ignored, or applied at the wrong scale, gives
+    numbers for a metal that is not the one on the page. It is also the knob a
+    person reaches for deliberately (a measured lattice, or a strained contact),
+    which means a wrong answer here looks like a result rather than a bug.
+
+    WHY A RATIO, AND WHY EXACT.  An fcc slab's in-plane extent is LINEAR in `a`,
+    so `extent(5.0) / extent(default)` is exactly `5.0 / a_default` -- no
+    tolerance to choose. Verified 2026-09-09: both sides give 1.226031092.
+
+    REDESIGNED 2026-09-09.  It asserted `e_extent > d_extent + 0.5`, which is
+    satisfied by ANY lattice constant above the default -- 4.1 passes, and so
+    does a scaling applied to the wrong axis or applied twice. Its own docstring
+    called itself a "proxy for 'the kwarg actually reached ASE'", and that is
+    all it was. Recorded at `science/test-design-findings.md` § 2.
+
+    The default is read from `modify._get_fcc_lattice()`, not retyped: a test
+    that hard-codes 4.0782 measures two constants and cannot see them part.
+    """
+    from molbuilder.modify import _get_fcc_lattice
+
     def slab_extent(s):
         au_xy = np.array([p[:2] for e, p in zip(s.elements, s.positions)
                           if e == "Au"])
-        return au_xy.max(axis=0) - au_xy.min(axis=0)
-    d_extent = slab_extent(default).mean()
-    e_extent = slab_extent(expanded).mean()
-    assert e_extent > d_extent + 0.5
+        return (au_xy.max(axis=0) - au_xy.min(axis=0)).mean()
+
+    a_default = _get_fcc_lattice()["Au"]
+    asked = 5.0
+    default = add_slab(single_anchor, "Au", "100", (3, 3, 1),
+                       start_z=2.0, orthogonal=True)
+    expanded = add_slab(single_anchor, "Au", "100", (3, 3, 1),
+                        start_z=2.0, orthogonal=True, lattice_constant=asked)
+
+    d_extent, e_extent = slab_extent(default), slab_extent(expanded)
+    assert d_extent > 0, "the default slab has no in-plane extent to compare"
+    assert e_extent / d_extent == pytest.approx(asked / a_default, rel=1e-9), (
+        f"the slab did not scale with the lattice constant: asked for "
+        f"{asked} against a default of {a_default}, so the extent should have "
+        f"grown by {asked / a_default:.6f}x and grew by "
+        f"{e_extent / d_extent:.6f}x")
 
 
 # --------------------------------------------------------------------- #
