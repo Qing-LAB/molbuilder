@@ -63,6 +63,9 @@ to look; the sections are where the argument is.
 | **#79** | **717 test functions never execute.** 43 files use the `tests/_node_esm.py` harness; `node` is not on PATH, not in the `molbuilder` env, and not declared as a dependency anywhere — so they `pytest.skip`. Measured 2026-09-09: **67 passed, 717 skipped** across those files | **open, and it gates `TS6`** | § 6.5 |
 | **#78** | the sidecar↔selection path was covered as two halves that never met — labels written, and labels re-selected, with nothing joining them | **FIXED 2026-09-09** — one end-to-end test through the real doors, with REPEATED elements so identity cannot ride on the element; an off-by-one on read, bleeding labels and empty labels all killed | `science/test-design-findings.md` § 7a |
 | **#77** | **nine MORE dead XSS exemptions**, found the moment the allowlist got a lint — patterns gone from the files they name, each a standing permission for whatever is written at that name next | **FIXED 2026-09-09** | § 6.1 |
+| **#84** | **a species label reaching an engine input as `Z=0`.** `transport/transiesta.py:342` and `transport/wizard.py:242` wrote `_Z.get(sp.capitalize(), 0)` into `%block ChemicalSpeciesLabel`. `Au1`/`Au2` — a user asking for two gold species — emitted `1 0 Au1`, which SIESTA accepts as a GHOST species: the run starts and is silently wrong. The plain SIESTA emitter asked the same question and raised `KeyError: 'Au1'`; `modify.py:200` raised `ValueError`. Three answers, one question | **FIXED 2026-09-09** — `chemistry.resolve_element` / `atomic_number` is the one door; the emitters let its `KeyError` propagate, and `validation.chemistry.check_species_labels` blocks first with a readable message. 3 mutants killed | § 6.8 |
+| **#85** | **the ECP warning silently did not fire for a labelled heavy element.** `validation/chemistry.py:168` asked a hand-copied 118-entry periodic table with `.get(sym, 0)`, so `Au1` scored 0, `0 > 36` was False, and the warning that all-electron gold is wrong twice over — cost, and missing scalar relativity — never appeared | **FIXED 2026-09-09** — reads through `atomic_number`; the hand-copied table is deleted (38 lines, one consumer, and the "keep the generator light on imports" reason had not applied since its last caller moved) | § 6.8 |
+| **#86** | **an alpha carbon read as calcium.** `structure.py:1440` derives the element from the PDB atom name when column 77-78 is empty, using a COLUMN convention as the guard. Left-justify the atom name — Open Babel and several MD writers do — and `ATOM 1 CA   ALA` yields element `Ca`. The residue name `ALA` is on the same line, unread. Measured 2026-09-09; the code's own comment names the hazard it then walks into | **CLOSED AS DESIGNED 2026-09-09** — the PDB spec puts the element inside the atom-name field at a fixed position (one-letter starts col 14, two-letter col 13), so the reader is following the format, not parsing a name. `Ca` appears only for a writer that violates the spec by left-justifying. **A file is authoritative: we do not gate what a file says.** No warning — that would police an input we were told to trust | § 6.8 |
 
 **Sequenced, judged and tracked in `plans/plan.md` § 5m** (rows `TS1`–`TS9`). This file is the
 evidence; that section is the work.
@@ -776,6 +779,58 @@ through `rebuild`, and until `#80` was fixed it was broken wherever ruby was
 absent. A UI that asked `/api/backends` would have shown that input as
 unavailable instead of letting a person submit and receive a 500 about a tool
 they have never heard of.
+
+### 6.8 One question, three answers — `#84`, `#85`, `#86`
+
+**Not a naming problem.** A species label is the user's; `Au1`/`Au2` is how you
+ask for two gold species with different basis or pseudopotential, and both
+engines are built for it — SIESTA's block is literally `index Z label`. Our
+layer was the only one that conflated the label with the element.
+
+Eleven modules normalized an element symbol by hand, five different ways
+(`.capitalize()`, `.strip().capitalize()`, `.title()` if len>1,
+`raw[:2].capitalize()`, and a hand-copied 118-entry table). Seven of them then
+used the result as a FACT — a Z, a mass, a pseudopotential. Those seven were
+the whole surface; everything else in the tree just carries the string.
+
+The three failure modes they had chosen, independently:
+
+| behaviour on an unknown label | where |
+|---|---|
+| raise `ValueError` | `modify.py:200` |
+| raise `KeyError` | `chemistry.py:240`, `:273`, `siesta/input.py:294`, `:1260` |
+| **substitute `Z=0` and continue** | `transiesta.py:342`, `wizard.py:242` — `#84` |
+| **score 0 and skip the check** | `validation/chemistry.py:168` — `#85` |
+
+`#84` is the sharp one because SIESTA *accepts* Z=0 — it is a ghost species.
+The run starts. Nothing reports a problem. The identical `KeyError → 0` shape
+had already been caught once, in `pyscf/input.py` on 2026-05-26, and its comment
+says so; it recurred because there was no door, only a habit.
+
+**The fix is one door and a deletion**, not a validator: `chemistry.resolve_element`
+(label → element) and `atomic_number` (label → Z), documented in
+`model/chemistry.md § 3`. Emitters let the `KeyError` propagate — a species with
+no element is not something a calculation can run — and `check_species_labels`
+runs at validate time so the readable message arrives before the emitter's
+exception does. A resolvable label is **info**, not a warning: said once, not
+nagged about on every run of a deliberate setup.
+
+`#86` is closed as designed, and the reason is the boundary rule this section
+exists to record:
+
+> **A file is authoritative — we do not touch what it says. We gate at
+> CREATE / ADD / MODIFY.** (User ruling, 2026-09-09.)
+
+The PDB format puts the element symbol *inside* the atom-name field at a fixed
+position: a one-letter element starts at column 14, a two-letter one at column
+13. So `structure.py:1440` is reading the FORMAT, not parsing a name, and it
+reads correctly — including the 11 X3DNA standard-base files in the tree, none
+of which carry an element column at all. `Ca` appears only when a writer
+violates the spec by left-justifying. That is the file being wrong, and a
+warning about it would be policing an input we were told to trust.
+
+`resolve_element` still refuses the atom-name namespace by docstring: `CA` is an
+alpha carbon there and calcium here, and nothing derives one from the other.
 
 ## 7. What is deliberately NOT in this file
 

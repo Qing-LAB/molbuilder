@@ -93,7 +93,64 @@ Two related counters:
 
 ---
 
-## 3. Geometry cleanup & properties
+## 3. Species labels — the name is the user's, the element is derived
+
+**We do not police names.** A species label is free text the user chose;
+`Au1` / `Au2` — two gold species carrying different basis sets or
+pseudopotentials — is ordinary input, not a typo. Both engines are built for
+it: SIESTA's `%block ChemicalSpeciesLabel` is `index Z label`, and PySCF takes
+labelled atoms. What a calculation cannot do without is the **element** behind
+the label, and deriving that is ours.
+
+One door does it, and it is **explicit, never clever**:
+
+| Function | Purpose |
+|---|---|
+| `split_species_label(label)` → `(name, index)` | `"Au1"` → `("Au", 1)`. A run of digits at the END is an index; everything before it is the name. **That is the whole of what a label is read for** |
+| `resolve_element(label)` → symbol | splits, then looks the name up **verbatim**. `Au1` → `Au` ✓ · `au` ✗ · `FE` ✗ · `Au_1` ✗ (its name is `Au_`). Raises `KeyError` carrying the correction when one exists |
+| `atomic_number(label)` → int | `resolve_element`, then one lookup. The Z an engine input needs beside the label |
+| `atomic_mass(label)` → float | the standard atomic weight, through the same resolution |
+| `is_atom(label, symbol)` → bool | **is this atom that element?** `is_atom("Au1", "Au")` is True. The one way to ask — a bare `el == "P"` says a labelled species is not phosphorus, and writing `el.capitalize() == sym` to fix that makes `CA` calcium again |
+
+**No case correction, anywhere.** Folding two letters is how `CA` becomes
+calcium and `CO` becomes cobalt — both real elements, so the result is a wrong
+structure that no later check can catch, because nothing records that a guess
+happened. A name we cannot look up is a question for the user; the error carries
+the correction so they can apply it knowingly.
+
+This costs nothing on file input, because **the format readers have already
+decoded**. `from_xyz` is `ase.io.read`, whose `get_chemical_symbols()` is
+canonical; the PDB reader decodes columns 77-78, whose convention *is* uppercase
+(every two-letter element in this repository's corpus is written `MG`, `NA`,
+`CL`, `MN`, `CD`). Decoding a format is not correcting a user. What arrives here
+un-canonical is what a **person typed**.
+
+> **The boundary rule** (user ruling, 2026-09-09): *a file is authoritative and
+> we do not touch what it says; we gate at **create / add / modify**.*
+
+**A caller emitting an engine input must let the `KeyError` propagate.** A
+species with no element is not something a calculation can run, and the
+alternative — quietly writing `Z=0`, which SIESTA accepts as a ghost species —
+means the run starts and is silently wrong. Two transport emitters did exactly
+that until 2026-09-09; the identical `KeyError → 0` shape had already been
+caught once in `pyscf/input.py` on 2026-05-26. One door is what stops a third.
+
+Emission is gated on `validate`, so the readable message comes first:
+`validation.chemistry.check_species_labels` reports an unresolvable label as an
+**error** (blocking) and a resolvable non-canonical one as **info** — said once,
+not warned about on every run of a deliberate setup.
+
+### Not this namespace
+
+`CA` is an alpha carbon as a **PDB atom name** and calcium as an **element
+symbol**. The two share strings and nothing else. Atom names and residue names
+are carried verbatim (`Structure.atom_names`, `Structure.residue_names`) and
+never reach `resolve_element`. See `model/structure.md` for the PDB reader's
+own element-column rules.
+
+---
+
+## 4. Geometry cleanup & properties
 
 | Function | Purpose |
 |---|---|
@@ -104,7 +161,7 @@ Two related counters:
 
 ---
 
-## 4. Not here — the scientific-correctness machinery
+## 5. Not here — the scientific-correctness machinery
 
 `chemistry.py` also decides whether a *calculation setup* is physically valid.
 That is a **science** concern, documented in `science/` (migrating in the

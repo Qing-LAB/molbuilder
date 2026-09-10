@@ -22,6 +22,62 @@ from ..issues import Issue
 from ..structure import Structure
 
 
+def check_species_labels(struct: Structure, *, engine_label: str = "the engine"
+                          ) -> List[Issue]:
+    """Every species label must NAME an element -- it need not BE one.
+
+    We do not police names.  ``Au1`` / ``Au2`` is how a user asks for two
+    gold species with different basis or pseudopotential, and SIESTA's own
+    ``%block ChemicalSpeciesLabel`` is ``index Z label`` precisely so that
+    works.  What a calculation cannot do is run a species whose element is
+    unknown, so:
+
+      * a label naming no element is an **error** -- it blocks emission with
+        a message naming the label, instead of the ``KeyError`` the emitter
+        would otherwise raise from inside a render;
+      * a label that resolves but is not itself a symbol is **info**: worth
+        saying once which element it was read as, not worth a warning that
+        nags every run of a deliberate setup.
+
+    Contract: ``chemistry.resolve_element``, which is the only place that
+    turns a label into an element.
+    """
+    from ..chemistry import resolve_element
+
+    issues: List[Issue] = []
+    unresolved: List[str] = []
+    labelled: List[str] = []
+    for el in dict.fromkeys(str(e) for e in struct.elements):
+        try:
+            sym = resolve_element(el)
+        except KeyError:
+            unresolved.append(el)
+            continue
+        if el.strip() != sym:
+            labelled.append(f"{el} -> {sym}")
+
+    if unresolved:
+        named = ", ".join(repr(u) for u in unresolved)
+        issues.append(Issue(
+            "error",
+            (f"species {named} name no element, so {engine_label} has no "
+             f"atomic number to run them with.  A label may carry more than "
+             f"the symbol -- 'Au1' and 'Au2' are read as gold -- but it must "
+             f"start with one.  Fix the element column of the structure file, "
+             f"or rename the species"),
+            "chemistry.species_label",
+        ))
+    if labelled:
+        issues.append(Issue(
+            "info",
+            (f"species labels read as elements: {', '.join(labelled)}.  "
+             f"The label is written through to the engine unchanged; the "
+             f"atomic number beside it is the element's"),
+            "chemistry.species_label",
+        ))
+    return issues
+
+
 def _check_peptide_protonation(struct: Structure,
                                cfg_charge) -> List[Issue]:
     """Hint at the gap between gas-phase neutral build and
@@ -97,8 +153,7 @@ def _check_ecp_declared_for_the_atoms_that_usually_want_one(
     Neither is inferred from the other, and a covered element is simply not
     mentioned.
     """
-    from ..chemistry import resolve_pyscf_ecp
-    from ..pyscf.input import _ATOMIC_NUMBER
+    from ..chemistry import atomic_number, resolve_pyscf_ecp
 
     # def2-* carries its own ECP for exactly these elements -- a fact about
     # the basis, not a rule this function applies to anything else.
@@ -108,9 +163,14 @@ def _check_ecp_declared_for_the_atoms_that_usually_want_one(
     covered = resolve_pyscf_ecp(struct, ecp, ecp_atoms) or {}
     uncovered: List[str] = []
     for el in struct.elements:
-        sym = str(el).capitalize()
-        if (_ATOMIC_NUMBER.get(sym, 0) > _ECP_HINT_Z
-                and sym not in covered and sym not in uncovered):
+        sym = str(el).strip()
+        try:
+            z = atomic_number(sym)
+        except KeyError:
+            # A label naming no element -- `check_species_labels` already
+            # reports it as an error.  Skipping keeps THIS check about ECPs.
+            continue
+        if z > _ECP_HINT_Z and sym not in covered and sym not in uncovered:
             uncovered.append(sym)
     if not uncovered:
         return []

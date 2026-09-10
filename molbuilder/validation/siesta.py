@@ -18,7 +18,8 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import check_open_shell_metal, _check_peptide_protonation
+from .chemistry import (check_open_shell_metal, check_species_labels,
+                        _check_peptide_protonation)
 from .sidecar import _check_frozen_atoms_consumed
 
 
@@ -488,6 +489,11 @@ def _validate_siesta(struct: Structure, cfg,
     # Geometry.Constraints).
     from .sidecar import check_unconsumed_region_labels
     issues += check_unconsumed_region_labels(struct, engine="SIESTA")
+
+    # A species label must name an element -- SIESTA needs the Z beside
+    # it in ChemicalSpeciesLabel.  Blocks here with a readable message
+    # rather than raising from inside the emitter.
+    issues += check_species_labels(struct, engine_label="SIESTA")
 
     # Peptide protonation hint -- same as PySCF side; see
     # _check_peptide_protonation for the full rationale.

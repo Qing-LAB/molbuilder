@@ -190,18 +190,24 @@ def add_atom(
             f"anchor_index {anchor_index} out of range for "
             f"{struct.n_atoms}-atom structure"
         )
-    # Scientific guard: the element must be a real periodic-table symbol.
-    # Without this a typo ("Xx") or a mis-cased symbol ("AU") rides silently
-    # into the Structure and only detonates much later in the SIESTA/PySCF
-    # emitters (KeyError on ase.data.atomic_numbers).  Canonicalise to
-    # Element-case first so "au" / "AU" become "Au" rather than being rejected.
-    from ase.data import atomic_numbers as _atomic_numbers
-    element = str(element).strip().capitalize()
-    if element not in _atomic_numbers:
+    # THE GATE.  A file is authoritative and is not second-guessed; this is
+    # the other side of that rule -- we are CREATING an atom, so the label is
+    # checked here, once, while the user is still looking at the field.
+    #
+    # The label must NAME an element; it need not BE one.  "Au1" is kept
+    # exactly as written (a deliberate second gold species), "Xx" is refused,
+    # and "au" is refused WITH the correction rather than silently applied:
+    # case-folding is what turns "CA" into calcium, so the answer is a
+    # question, not a guess.
+    from .chemistry import resolve_element
+    element = str(element).strip()
+    try:
+        resolve_element(element)
+    except KeyError as exc:
         raise ValueError(
-            f"unknown element symbol {element!r}; expected a periodic-table "
-            f"symbol like 'H', 'C', or 'Au'"
-        )
+            f"{exc.args[0]}  Expected a periodic-table symbol like 'H', 'C' "
+            f"or 'Au', or a species label built on one like 'Au1'"
+        ) from exc
     offset_arr = np.asarray(offset, dtype=float).reshape(3)
     # ADVISORY-NOT-ENFORCING (validation contract): a (near-)zero offset places
     # the new atom on top of the anchor.  We do NOT block it -- close / coincident

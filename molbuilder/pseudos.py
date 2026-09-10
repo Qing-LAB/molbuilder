@@ -618,7 +618,10 @@ def check_coverage(elements: Iterable[str],
     out: List[CoverageEntry] = []
     seen: set = set()
     for el in elements:
-        key = el.capitalize()
+        # BY LABEL, deliberately: SIESTA reads `<label>.psml`, so a species
+        # written `Au1` really does need `Au1.psml` and is not covered by
+        # `Au.psml`.  Verbatim -- no folding (`model/chemistry.md` § 3).
+        key = str(el).strip()
         if key in seen:
             continue
         seen.add(key)

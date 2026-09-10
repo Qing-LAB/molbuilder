@@ -537,13 +537,27 @@ def test_add_atom_rejects_unknown_element(linear_dimer):
         add_atom(linear_dimer, "Xx", anchor_index=0, offset=[1.0, 0, 0])
 
 
-def test_add_atom_canonicalises_element_case(linear_dimer):
-    """A mis-cased but real symbol ("au", "AU") is accepted and stored in
-    canonical Element-case so downstream symbol tables key on it."""
-    out = add_atom(linear_dimer, "au", anchor_index=0, offset=[1.0, 0, 0])
-    assert out.elements[-1] == "Au"
-    out2 = add_atom(linear_dimer, "FE", anchor_index=0, offset=[1.0, 0, 0])
-    assert out2.elements[-1] == "Fe"
+def test_add_atom_asks_about_a_mis_cased_symbol_instead_of_fixing_it(linear_dimer):
+    """THE GATE, and why it does not "help".
+
+    `add_atom` CREATES, so the label is checked here while the user can still
+    fix it -- but case is never folded on their behalf.  Folding two letters
+    is exactly how `CA` becomes calcium and `CO` becomes cobalt, and the
+    guess is unrecoverable because nothing records that a guess happened.
+    So the answer is the correction as a QUESTION.
+
+    Contract: `model/chemistry.md` § 3 (user ruling 2026-09-09, "explicit is
+    better than implicit").
+    """
+    for typo, meant in (("au", "Au"), ("FE", "Fe")):
+        with pytest.raises(ValueError) as exc:
+            add_atom(linear_dimer, typo, anchor_index=0, offset=[1.0, 0, 0])
+        assert typo in str(exc.value) and meant in str(exc.value), exc.value
+
+    # A file is authoritative and never reaches this gate; a person's
+    # deliberate species label passes through exactly as written.
+    out = add_atom(linear_dimer, "Au1", anchor_index=0, offset=[1.0, 0, 0])
+    assert out.elements[-1] == "Au1"
 
 
 def test_add_atom_zero_offset_is_advisory_not_blocked(linear_dimer):
@@ -1481,11 +1495,11 @@ def test_structure_copy_is_independent():
 
 
 # --------------------------------------------------------------------- #
-#  All modify ops MUST carry frozen_atoms + regions through.            #
+#  All modify ops MUST carry the label store through.                   #
 #                                                                       #
 #  Audit task #186 (2026-06-02) found every modify op silently         #
 #  dropped these fields when it returned a new Structure.  Concretely:  #
-#    * Pure-rotation ops (orient_along_axis, rotate_around_axis) and   #
+#    * Pure-rotation ops (orient_along_axis, rotate_around_axis) and    #
 #      add_atom / add_slab must carry the lists through               #
 #      verbatim (existing atom indices unchanged).                      #
 #    * delete_atoms must remap surviving indices to the post-delete    #
@@ -1501,31 +1515,32 @@ def _struct_with_meta():
         positions=np.array([[0., 0., 0.], [1., 0., 0.], [2., 0., 0.],
                             [3., 0., 0.], [4., 0., 0.]]),
         regions={"electrode": [0, 4], "bridge": [1, 2, 3]},
-        frozen_atoms=[0, 4],
     )
 
 
-def test_delete_atoms_remaps_frozen_atoms_and_regions():
-    """Delete atom 2 (which is in 'bridge', not frozen).  Surviving
-    frozen atoms [0, 4] should remap to [0, 3] in the new 4-atom
-    structure; 'bridge' [1, 2, 3] should remap to [1, 2] (atom 2 in
-    the new numbering corresponds to old atom 3)."""
+def test_delete_atoms_renumbers_surviving_members_to_their_new_index():
+    """Delete atom 2, which is in 'bridge'.  'electrode' [0, 4] must become
+    [0, 3] and 'bridge' [1, 2, 3] must become [1, 2] -- every survivor
+    renumbered to its new 0-based position.
+
+    Contract: `model/structure-annotations.md` § 2.1.  `delete_atoms` is the
+    only modify op that changes the index space, so this is the only place
+    the renumbering happens.
+    """
     s  = _struct_with_meta()
     s2 = delete_atoms(s, [2])
     assert s2.n_atoms == 4
-    assert s2.frozen_atoms == [0, 3]
-    assert s2.regions == {"electrode": [0, 3], "bridge": [1, 2],
-                          FROZEN_LABEL: [0, 3]}
+    assert s2.regions == {"electrode": [0, 3], "bridge": [1, 2]}
 
 
-def test_delete_atoms_drops_deleted_indices_from_frozen():
-    """Delete a frozen atom and verify it's removed from the list
-    (not just shifted to a nonsense index)."""
+def test_delete_atoms_drops_a_deleted_index_rather_than_shifting_it():
+    """Delete atom 0, a member of 'electrode'.  It must leave the label, not
+    survive as a wrong index -- the failure that silently constrains, or
+    reads as an electrode, an atom the user never picked.
+    """
     s  = _struct_with_meta()
-    s2 = delete_atoms(s, [0])         # remove a frozen atom
-    assert s2.frozen_atoms == [3]     # old 4 -> new 3; old 0 dropped
-    assert "electrode" in s2.regions
-    assert s2.regions["electrode"] == [3]   # only the surviving one
+    s2 = delete_atoms(s, [0])
+    assert s2.regions["electrode"] == [3]   # old 4 -> new 3; old 0 gone
 
 
 def test_delete_atoms_drops_empty_region_after_delete():
@@ -1540,69 +1555,56 @@ def test_delete_atoms_drops_empty_region_after_delete():
     assert s2.regions["keep"] == [0, 1]
 
 
-def test_delete_atoms_no_op_branch_preserves_metadata():
-    """When ``indices`` is empty (or all out-of-range) delete_atoms
-    short-circuits to ``struct.copy()`` -- copy() must also preserve
-    frozen_atoms + regions for this branch to hold."""
-    s  = _struct_with_meta()
-    s2 = delete_atoms(s, [])
-    assert s2.frozen_atoms == s.frozen_atoms
-    assert s2.regions == s.regions
+# An op that does not change the index space returns the label store
+# unchanged.  ONE property over the class of ops, not a test per op: the
+# ops share a single carry-through path, so five hand-written copies of
+# this assertion carried one bit between them.
+#
+# `frozen_atoms` is deliberately NOT named here.  It is an ordinary label
+# in `regions` (`structure.py`, one store since 2026-07-31) and the reindex
+# walks the store with no case for it -- so a test that singled it out
+# would be testing the label, not the mechanism.  That it is an ordinary
+# label is `tests/test_reserved_label_one_store.py`'s job.
+_INDEX_PRESERVING_OPS = {
+    "delete_atoms(none)": lambda s: delete_atoms(s, []),
+    "add_atom":           lambda s: add_atom(s, "H", anchor_index=0,
+                                             offset=(0.5, 0.0, 0.0)),
+    "orient_along_axis":  lambda s: orient_along_axis(s, anchor_indices=[0, 4],
+                                                      axis="z", center="first"),
+    "rotate_around_axis": lambda s: rotate_around_axis(s, axis="z", angle=90.0,
+                                                       center="centroid"),
+}
 
 
-def test_add_atom_preserves_existing_frozen_and_regions():
-    """The new atom is appended at index n; existing frozen + region
-    indices carry through unchanged.  The new atom is NOT frozen and
-    NOT in any region by default."""
-    s  = _struct_with_meta()
-    s2 = add_atom(s, "H", anchor_index=0, offset=(0.5, 0.0, 0.0))
-    assert s2.n_atoms == 6
-    assert s2.frozen_atoms == [0, 4]
-    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3],
-                          FROZEN_LABEL: [0, 4]}
+@pytest.mark.parametrize("name", sorted(_INDEX_PRESERVING_OPS))
+def test_an_index_preserving_op_returns_the_label_store_unchanged(name):
+    """SCIENCE. No atom index changes, so every label must come back on the
+    same atoms.
 
+    Catches labels being dropped or renumbered by an op that moves nothing.
+    Invisible in the geometry, which is what makes it worth a test: a lost
+    label means the calculation holds the wrong atoms fixed, or the transport
+    code reads the wrong atoms as the left electrode.  Commemorates audit task
+    #186 (2026-06-02), when every modify op dropped these fields.
 
-def test_orient_along_axis_preserves_metadata():
-    """Pure rotation: atom indices are unchanged."""
-    s  = _struct_with_meta()
-    s2 = orient_along_axis(s, anchor_indices=[0, 4], axis="z",
-                            center="first")
-    assert s2.frozen_atoms == [0, 4]
-    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3],
-                          FROZEN_LABEL: [0, 4]}
-
-
-def test_rotate_around_axis_preserves_metadata():
-    """SCIENCE. A rotation carries `frozen_atoms` and every region through
-    unchanged.
-
-    Catches the atom LABELS being lost or renumbered by a pure rotation. No atom
-    index changes under a rotation, so the frozen set and the transport regions
-    must come back identical -- and if they do not, the calculation holds the
-    wrong atoms fixed, or the transport code reads the wrong atoms as the left
-    electrode. Neither is visible in the geometry, which is what makes it worth
-    a test. Commemorates audit task #186 (2026-06-02), when every modify op
-    dropped these fields.
-
-    Contract: `model/structure-annotations.md` (what each reserved label means)
-    + `web/molview.md` § 6.6 (reserved labels are interpreted downstream).
+    Contract: `model/structure-annotations.md` (what a label means) +
+    `web/molview.md` § 6.6 (labels are interpreted downstream).
     """
-    s  = _struct_with_meta()
-    s2 = rotate_around_axis(s, axis="z", angle=90.0,
-                             center="centroid")
-    assert s2.frozen_atoms == [0, 4]
-    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3],
-                          FROZEN_LABEL: [0, 4]}
+    s = _struct_with_meta()
+    out = _INDEX_PRESERVING_OPS[name](s)
+    assert out.regions == s.regions, f"{name} did not carry the label store"
 
 
-def test_add_slab_preserves_existing_metadata():
-    """Adding electrode atoms must not perturb the existing structure's
-    frozen + region bookkeeping.  New electrode atoms are appended at
-    indices [old_n, new_n) and are NOT auto-frozen / auto-regioned."""
+def test_add_slab_leaves_existing_labels_on_their_atoms():
+    """add_slab APPENDS, so it is index-preserving for the atoms already
+    there -- but it is not in the table above because it needs its own
+    fixture (a slab wants somewhere to land).  The appended atoms join no
+    label: a region is something the user draws, not something a builder
+    guesses.
+    """
     s = Structure(
         elements=["S"],
         positions=np.array([[0., 0., 0.]]),
-        frozen_atoms=[0],
         regions={"anchor": [0]},
     )
     s2 = add_slab(
@@ -1610,9 +1612,5 @@ def test_add_slab_preserves_existing_metadata():
         size=(2, 2, 1), start_z=2.0, orthogonal=True,
     )
     assert s2.n_atoms > 1
-    # The original S at index 0 must still be frozen + in 'anchor'.
-    assert 0 in s2.frozen_atoms
-    assert s2.regions == {"anchor": [0], FROZEN_LABEL: [0]}
-    # No electrode atom was added to the existing lists.
-    assert all(i == 0 for i in s2.frozen_atoms)
-    assert all(i == 0 for v in s2.regions.values() for i in v)
+    # The original S at index 0 keeps its label; no appended atom joined one.
+    assert s2.regions == {"anchor": [0]}

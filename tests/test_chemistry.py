@@ -314,13 +314,34 @@ class TestDetectOpenShellMetals:
             s = Structure(elements=[el], positions=np.array([[0, 0, 0]]))
             assert detect_open_shell_metals(s) == [el]
 
-    def test_pdb_uppercase_normalised(self):
-        """PDB writes element symbols uppercased (FE not Fe).
-        detect_open_shell_metals must capitalize-match so a PDB-
-        loaded Structure isn't silently missed."""
+    def test_a_pdb_metal_arrives_decoded_so_nothing_downstream_folds(self):
+        """SCIENCE, and the boundary rule along one real path.
+
+        PDB columns 77-78 are written uppercase -- `FE`, `MG`, `CL` -- and the
+        READER decodes that, because uppercase IS the field's convention.  So
+        `detect_open_shell_metals` never sees `FE` and has no reason to
+        capitalize-match; folding downstream is what turns `CA` into calcium.
+
+        The old test asserted the fold against a hand-built
+        `Structure(["FE"])` -- a state the reader cannot produce.  This one
+        goes through the reader, so it pins the boundary instead of a
+        hypothetical.
+
+        Contract: `model/chemistry.md` § 3 -- a file is authoritative and is
+        decoded at the format; a person's label is gated at create/add/modify;
+        nothing anywhere folds case.
+        """
         from molbuilder.chemistry import detect_open_shell_metals
-        s = Structure(elements=["FE", "N", "N"],
-                      positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0]]))
+        line = list(" " * 80)
+        def put(col, text): line[col - 1:col - 1 + len(text)] = list(text)
+        put(1, "HETATM"); put(7, "    1"); put(13, "FE  "); put(18, "HEM")
+        put(22, "A"); put(23, "   1")
+        put(31, "   0.000"); put(39, "   0.000"); put(47, "   0.000")
+        put(77, "FE")
+        s = Structure.from_pdb("".join(line) + "\n")
+
+        assert s.elements   == ["Fe"], "the reader must decode cols 77-78"
+        assert s.atom_names == ["FE"], "the atom NAME is carried verbatim"
         assert detect_open_shell_metals(s) == ["Fe"]
 
 
@@ -345,10 +366,15 @@ class TestExplainMetalSpin:
         from molbuilder.chemistry import explain_metal_spin
         assert explain_metal_spin("Fe", 99) is None
 
-    def test_pdb_uppercase_normalised(self):
-        """Same normalisation contract as detect_open_shell_metals."""
+    def test_a_labelled_iron_still_gets_its_hint(self):
+        """`Fe1`/`Fe2` are two iron species, so the spin hint applies to both.
+        `FE` does not, and returning None is the honest answer -- the caller
+        that owns the label already had it refused at the gate.
+        """
         from molbuilder.chemistry import explain_metal_spin
-        assert explain_metal_spin("FE", 4) is not None
+        assert explain_metal_spin("Fe",  4) is not None
+        assert explain_metal_spin("Fe1", 4) == explain_metal_spin("Fe", 4)
+        assert explain_metal_spin("FE",  4) is None
 
 
 # --------------------------------------------------------------------- #
@@ -409,12 +435,26 @@ class TestResolvePyscfEcp:
         assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt", "Cl"]) == {
             "Pt": "lanl2dz", "Cl": "lanl2dz"}
 
-    def test_case_is_not_a_second_format(self):
-        """``["au"]`` and ``["Au"]`` select the same atom -- one spelling
-        to remember, not two to keep in step."""
+    def test_a_pattern_matches_the_label_or_its_element_but_never_a_fold(self):
+        """Case IS the format, and the RESULT is keyed by the label.
+
+        An `ecp={"Au": ...}` never reaches an atom the emitted `atom=` block
+        calls `Au1`, so `["Au"]` selects both species of a labelled pair and
+        keys the answer by their labels.  `["pt"]` selects nothing: folding it
+        is exactly the implicit behaviour this function's own docstring
+        rejects.
+        """
         from molbuilder.chemistry import resolve_pyscf_ecp
-        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["pt"]) == {
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["pt"]) is None
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt"]) == {
             "Pt": "lanl2dz"}
+
+        two = Structure(elements=["Au1", "Au2"],
+                        positions=np.array([[0., 0., 0.], [2.9, 0., 0.]]))
+        assert resolve_pyscf_ecp(two, "lanl2dz", ["Au"]) == {
+            "Au1": "lanl2dz", "Au2": "lanl2dz"}
+        assert resolve_pyscf_ecp(two, "lanl2dz", ["Au1"]) == {
+            "Au1": "lanl2dz"}
 
     def test_empty_means_empty_on_either_side(self):
         """No ECP, and never "pick one for me"."""
@@ -438,3 +478,154 @@ class TestResolvePyscfEcp:
         asked for, which is nothing."""
         from molbuilder.chemistry import resolve_pyscf_ecp
         assert resolve_pyscf_ecp(self._pt(), "", []) is None
+
+
+# --------------------------------------------------------------------- #
+#  A species LABEL is the user's; the element is ours to derive.        #
+#                                                                       #
+#  `Au1`/`Au2` -- two gold species with different basis or pseudo -- is #
+#  ordinary input.  SIESTA's `%block ChemicalSpeciesLabel` is           #
+#  `index Z label` for exactly that reason.  Until 2026-09-09 our layer #
+#  was the only one that conflated the two: the SIESTA emitter raised   #
+#  `KeyError: 'Au1'`, and BOTH transport emitters wrote `Z=0` into the  #
+#  block and carried on.                                                #
+#                                                                       #
+#  Contract: `chemistry.resolve_element`.                               #
+# --------------------------------------------------------------------- #
+
+class TestSpeciesLabel:
+
+    @staticmethod
+    def _two_golds() -> Structure:
+        return Structure(elements=["Au1", "Au2"],
+                         positions=np.array([[0., 0., 0.], [2.9, 0., 0.]]))
+
+    def test_a_trailing_index_is_the_only_thing_read_off_a_label(self):
+        """`Au1` is `Au` plus an index.  That is the WHOLE rule -- the name is
+        then looked up verbatim, so nothing is folded, stripped or guessed.
+        """
+        from molbuilder.chemistry import resolve_element, split_species_label
+        assert split_species_label("Au1") == ("Au", 1)
+        assert split_species_label("Au12") == ("Au", 12)
+        assert split_species_label("Au") == ("Au", None)
+        assert resolve_element("Au1") == "Au"
+        assert resolve_element(" Au ") == "Au"
+
+    def test_case_is_never_corrected_because_correcting_it_invents_elements(self):
+        """SCIENCE. `CA` folds to calcium and `CO` to cobalt -- both real
+        elements, so a fold produces a WRONG STRUCTURE that no later check can
+        catch, because nothing records that a guess happened.
+
+        The refusal carries the correction so the user can apply it knowingly.
+        Contract: `model/chemistry.md` § 3.
+        """
+        from molbuilder.chemistry import resolve_element
+        for typo, meant in (("au", "Au"), ("FE", "Fe"), ("CA", "Ca")):
+            with pytest.raises(KeyError) as exc:
+                resolve_element(typo)
+            assert typo in str(exc.value) and meant in str(exc.value)
+
+    def test_a_label_naming_no_element_is_refused_not_guessed(self):
+        """The refusal is the whole point: there is no sensible Z for 'Xx',
+        and the alternative to raising is emitting one anyway.
+        """
+        from molbuilder.chemistry import resolve_element
+        for junk in ("Xx", "", "  ", "42"):
+            with pytest.raises(KeyError):
+                resolve_element(junk)
+
+    def test_the_emitted_block_carries_the_label_and_the_right_Z(self):
+        """SCIENCE, and the END PRODUCT: what SIESTA is actually handed.
+
+        `1 79 Au1` -- the user's label in column 3, gold's atomic number in
+        column 2.  Before 2026-09-09 this block read `1 0 Au1`: SIESTA
+        accepts Z=0 as a ghost species, so the run would start and be
+        silently wrong rather than fail.
+        """
+        from molbuilder.transport.transiesta import _emit_geometry
+        block = [l.split() for l in _emit_geometry(self._two_golds(), None)
+                 if "Au" in l and l.strip().startswith(("1", "2"))]
+        assert block == [["1", "79", "Au1"], ["2", "79", "Au2"]], block
+
+    def test_an_unresolvable_species_stops_the_emitter_rather_than_shipping_Z0(self):
+        """The defect, stated as its failure: a species with no element must
+        not reach an engine input at all.
+        """
+        from molbuilder.transport.transiesta import _emit_geometry
+        s = Structure(elements=["Xx"], positions=np.zeros((1, 3)))
+        with pytest.raises(KeyError):
+            _emit_geometry(s, None)
+
+    def test_is_atom_is_how_the_question_gets_asked(self):
+        """SCIENCE. `el == "P"` says a labelled species is not that element,
+        and the obvious repair -- `el.capitalize() == sym` -- makes `CA`
+        calcium again.  Both failures are silent, so the question needs one
+        door.
+
+        Every element comparison in `molbuilder/` goes through this; the
+        phosphate finder, the hydrogen sweep and the amber CH2 fixer all
+        used a bare `==` until 2026-09-09.
+
+        Contract: `model/chemistry.md` § 3.
+        """
+        from molbuilder.chemistry import is_atom
+        assert is_atom("Au1", "Au") is True     # a label IS its element
+        assert is_atom("Au",  "Au") is True
+        assert is_atom("au",  "Au") is False    # no fold, ever
+        assert is_atom("Xx",  "Au") is False    # unreadable is not a match
+        assert is_atom("Ca",  "C")  is False    # calcium is not carbon
+
+    def test_a_labelled_species_is_recognised_as_its_element(self):
+        """A label must not hide an atom from the checks that read elements.
+
+        Until 2026-09-09 these folded case instead of resolving, so a
+        deliberate `Fe1`/`Fe2` was invisible: `_count_element` answered 0 and
+        `detect_open_shell_metals` found no metal -- and that detector is what
+        drives the spin advice in `validation/siesta.py` and the SCF guidance
+        in both PySCF emitters.
+
+        Iron, not gold, because iron is where open-shell decides something:
+        gold is closed-shell in any structure big enough to matter
+        (`_NOBLE_METAL_CLUSTER_THRESHOLD`, and the surface-DFT convention it
+        records).
+        """
+        from molbuilder.chemistry import (_count_element,
+                                          detect_open_shell_metals,
+                                          detect_transition_metals)
+        two_irons = Structure(
+            elements=["Fe1", "Fe2", "N"],
+            positions=np.array([[0., 0., 0.], [2.5, 0., 0.], [0., 2., 0.]]))
+        assert _count_element(two_irons, "Fe") == 2
+        assert detect_open_shell_metals(two_irons) == ["Fe"]
+        assert detect_transition_metals(two_irons) == ["Fe"]
+
+    def test_a_labelled_heavy_element_still_earns_its_ECP_warning(self):
+        """The same conflation, in the check that most needed not to have it.
+
+        The ECP hint asks "is this element past Kr", and it used to ask a
+        hand-copied 118-entry table with `.get(sym, 0)`.  A gold atom labelled
+        `Au1` scored 0, so the warning that all-electron gold is wrong twice
+        over -- cost and missing scalar relativity -- silently did not fire.
+        """
+        from molbuilder.validation.chemistry import (
+            _check_ecp_declared_for_the_atoms_that_usually_want_one as _ecp)
+        issues = _ecp(self._two_golds(), basis="sto-3g", ecp=None,
+                      ecp_atoms=None, engine_label="PySCF")
+        assert [i.severity for i in issues] == ["warn"], issues
+        assert "Au1" in issues[0].message
+
+    def test_validation_blocks_the_bad_label_and_only_notes_the_good_one(self):
+        """Emission is gated on `validate`, so the readable message arrives
+        before the emitter's KeyError does -- and a deliberate `Au1`/`Au2`
+        setup is noted once, not warned about on every run.
+        """
+        from molbuilder.validation.chemistry import check_species_labels
+        bad = Structure(elements=["Au", "Xx"], positions=np.zeros((2, 3)))
+        assert [i.severity for i in check_species_labels(bad)] == ["error"]
+
+        noted = check_species_labels(self._two_golds())
+        assert [i.severity for i in noted] == ["info"]
+        assert "Au1 -> Au" in noted[0].message
+
+        plain = Structure(elements=["Au", "S"], positions=np.zeros((2, 3)))
+        assert check_species_labels(plain) == []

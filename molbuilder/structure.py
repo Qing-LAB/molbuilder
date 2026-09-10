@@ -1412,16 +1412,19 @@ class Structure:
                 # the key so a LATER alternate doesn't sneak in
                 # (unusual file order but possible).
                 _seen_altloc_keys.add(altloc_key)
-            # PDB cols 77-78 hold the element symbol right-justified but
-            # with NO case convention -- many PDBs (incl. PDB Bank's
-            # canonical) emit ``FE``/``CL``/``NA`` upper-cased.
-            # Canonicalise to upper-then-lower (``Fe``/``Cl``/``Na``)
-            # so downstream consumers (siesta/input._detect_species,
-            # ase.data.atomic_numbers, the chemistry hint table) all see
-            # the form their tables key on.  Without this the SIESTA
-            # emitter crashes with ``KeyError: 'FE'`` for any PDB with
-            # a transition metal (caught 2026-05-25 against the
-            # hemeC-dithiol structure).
+            # DECODING THE FORMAT, not correcting the user.  Uppercase IS
+            # the convention for cols 77-78 -- every two-letter element in
+            # this repository's PDB corpus is written that way (MG, NA, CL,
+            # MN, CD), and PDB Bank's canonical files agree.  So mapping to
+            # symbol case here is reading the field, exactly as reading the
+            # element out of cols 13-14 below is.
+            #
+            # This is the boundary rule (user ruling, 2026-09-09): a FILE is
+            # authoritative and we decode what it says; a label a PERSON
+            # types is gated at create/add/modify and never case-corrected
+            # (``chemistry.resolve_element``, which does no folding at all).
+            # Caught 2026-05-25 against hemeC-dithiol, when an undecoded
+            # ``FE`` reached the SIESTA emitter.
             element = line[76:78].strip().capitalize()
             if not element:
                 # Element column 77-78 empty -- fall back to PDB-format

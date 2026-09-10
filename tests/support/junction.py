@@ -196,8 +196,9 @@ def xv_file(path, struct=None):
     only honest way -- by parsing it back and comparing to the structure it was
     built from; see the round-trip test beside its consumers.
     """
-    # The one atomic-number table in the tree (pyscf/input.py owns it).
-    from molbuilder.pyscf.input import _ATOMIC_NUMBER
+    # The one door from a species label to its atomic number
+    # (`chemistry.resolve_element`; docs/model/chemistry.md § 3).
+    from molbuilder.chemistry import atomic_number
 
     s = struct if struct is not None else build_junction()
     cell = s.resolve_cell() / _ANGSTROM_PER_BOHR
@@ -215,7 +216,7 @@ def xv_file(path, struct=None):
     for el, xyz in zip(s.elements, pos):
         rows.append("{:3d}{:6d}{:18.9f}{:18.9f}{:18.9f}    "
                     "{:16.9f}{:16.9f}{:16.9f}".format(
-                        species[el], _ATOMIC_NUMBER.get(el.capitalize(), 0),
+                        species[el], atomic_number(el),
                         *xyz, 0.0, 0.0, 0.0))
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return path

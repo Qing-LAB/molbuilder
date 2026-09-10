@@ -214,50 +214,29 @@ class TestStructureTransportMetadataCarryThrough:
             elements=["C"] * 5,
             positions=np.arange(15, dtype=float).reshape(5, 3),
             regions={"L-electrode": [0, 1], "bridge": [2]},
-            frozen_atoms=[0, 1, 4], vacuum=(12.0, 12.0, 12.0))
+            vacuum=(12.0, 12.0, 12.0))
 
-    def test_copy_preserves_frozen_atoms_and_regions(self):
+    def test_copy_is_defensive_so_the_new_labels_are_not_the_old_ones(self):
+        """The fact `copy()` owns that carry-through does not: mutate the
+        copy's label store and the original must not move with it.
+        """
         s  = self._struct_with_meta()
         s2 = s.copy()
-        assert s2.frozen_atoms == s.frozen_atoms
-        assert s2.regions      == s.regions
-        # Defensive copy: mutating the new structure must not mutate the old.
-        s2.frozen_atoms.append(2)
+        assert s2.regions == s.regions
         s2.regions["L-electrode"].append(2)
-        assert s.frozen_atoms == [0, 1, 4]
-        assert s.regions["L-electrode"] == [0, 1]
+        assert s.regions["L-electrode"] == [0, 1], "copy shares its lists"
 
-    def test_translated_preserves_frozen_atoms_and_regions(self):
+    @pytest.mark.parametrize("op", ["translated", "centered"],
+                             ids=["translated", "centered"])
+    def test_a_move_leaves_every_label_on_its_atom(self, op):
+        """Neither op changes the index space, so the label store comes back
+        as it went in.  `centered()` is implemented in terms of
+        `translated()` and is here because slab assembly calls it directly.
+        """
         s  = self._struct_with_meta()
-        s2 = s.translated([10.0, 0.0, 0.0])
-        assert s2.frozen_atoms == [0, 1, 4]
-        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2],
-                              "frozen_atoms": [0, 1, 4]}
-
-    def test_centered_preserves_frozen_atoms_and_regions(self):
-        # ``centered()`` is implemented in terms of ``translated()`` --
-        # this test pins the higher-level helper too because callers
-        # use it directly during slab assembly.
-        s  = self._struct_with_meta()
-        s2 = s.centered()
-        assert s2.frozen_atoms == [0, 1, 4]
-        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2],
-                              "frozen_atoms": [0, 1, 4]}
-
-    def test_concat_offsets_frozen_atoms_per_input(self):
-        # Two structures, each with its own frozen list.  Indices in the
-        # merged structure must be offset by the prior structures'
-        # n_atoms so frozen atom i in the second input lands at index
-        # n_first + i in the result.
-        s1 = Structure(
-            elements=["C"] * 3, positions=np.zeros((3, 3)),
-            frozen_atoms=[0, 2], vacuum=(12.0, 12.0, 12.0))
-        s2 = Structure(
-            elements=["O"] * 2, positions=np.ones((2, 3)),
-            frozen_atoms=[1], vacuum=(12.0, 12.0, 12.0))
-        merged = Structure.concat([s1, s2])
-        assert merged.n_atoms == 5
-        assert merged.frozen_atoms == [0, 2, 3 + 1]   # 0, 2, 4
+        s2 = (s.translated([10.0, 0.0, 0.0]) if op == "translated"
+              else s.centered())
+        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2]}
 
     def test_concat_merges_regions_with_offset_and_label_union(self):
         # Same label across inputs: indices merge into one combined list.

@@ -323,7 +323,7 @@ def _emit_geometry(struct: Structure,
     coordinates mistranslated a junction by its origin (review finding
     2026-07-29: far-face atoms wrapped into the leads).
     """
-    from ase.data import atomic_numbers as _Z
+    from ..chemistry import atomic_number
     species = sorted(set(struct.elements), key=lambda e: e.capitalize())
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
 
@@ -339,7 +339,10 @@ def _emit_geometry(struct: Structure,
     lines.append("")
     lines.append("%block ChemicalSpeciesLabel")
     for sp in species:
-        z = _Z.get(sp.capitalize(), 0)
+        # ``atomic_number`` raises rather than defaulting: a species with
+        # no element cannot be calculated, and Z=0 in this block is a
+        # ghost atom SIESTA would silently accept (fixed 2026-09-09).
+        z = atomic_number(sp)
         lines.append(f"  {species_idx[sp]:>3}  {z:>3}  {sp}")
     lines.append("%endblock ChemicalSpeciesLabel")
     lines.append("")

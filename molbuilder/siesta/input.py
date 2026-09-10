@@ -25,17 +25,19 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 
 try:
-    from ase.data import atomic_numbers
+    from ase.data import atomic_numbers   # noqa: F401 -- probe, see below
     from ase.io import read as _ase_read   # noqa: F401 -- probe, see below
 except ImportError as exc:  # pragma: no cover
     raise ImportError(
         "molbuilder.siesta needs ASE; install with `pip install ase`"
     ) from exc
-# ``_ase_read`` is imported and not called: it is a PROBE.  ``ase.data`` is a
-# plain table and imports even from a half-installed ASE, while ``ase.io``
-# pulls the reader machinery -- so asking for both is what turns a broken
-# install into this message instead of an AttributeError several hundred lines
-# into a render.
+# NEITHER is called: the pair is a PROBE.  ``ase.data`` is a plain table and
+# imports even from a half-installed ASE, while ``ase.io`` pulls the reader
+# machinery -- so asking for both is what turns a broken install into this
+# message instead of an AttributeError several hundred lines into a render.
+# (``atomic_numbers`` was also this module's Z lookup until 2026-09-09, when
+# that moved to the one door, ``chemistry.atomic_number``.  It stays here as
+# half the probe.)
 
 from ..runfiles import compose as _rf
 from ..structure import Structure
@@ -286,12 +288,18 @@ def _block_size_bounds(n_atoms: int,
 
 def _detect_species(elements: Iterable[str]) -> List[str]:
     """Unique species, sorted by atomic number, preserving first-seen order
-    only as a tiebreaker."""
+    only as a tiebreaker.
+
+    Sorted by the ELEMENT the label names, so ``Au1`` and ``Au2`` sort
+    together at Z=79 and stay two distinct species -- which is the
+    reason a user writes them (``chemistry.resolve_element``).
+    """
     seen: List[str] = []
     for s in elements:
         if s not in seen:
             seen.append(s)
-    return sorted(seen, key=lambda s: atomic_numbers[s])
+    from ..chemistry import atomic_number
+    return sorted(seen, key=atomic_number)
 
 
 def _wrap_into_cell(positions: np.ndarray, cell: np.ndarray
@@ -1254,10 +1262,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append("")
 
         # Species
+        from ..chemistry import atomic_number
         out.append("# --- Species ---")
         out.append("%block ChemicalSpeciesLabel")
         for i, s in enumerate(species):
-            out.append(f"{i + 1} {atomic_numbers[s]} {s}")
+            # ``index Z label``: the label is the user's, Z is derived.
+            out.append(f"{i + 1} {atomic_number(s)} {s}")
         out.append("%endblock ChemicalSpeciesLabel")
         out.append("")
 

@@ -25,21 +25,39 @@ from molbuilder.spectra.results import motion_share_by_element
 # --------------------------------------------------------------------- #
 
 class TestAtomicMass:
-    """``chemistry.atomic_mass`` is a NAME for ASE's table, not a copy."""
+    """``chemistry.atomic_mass`` is a NAME for ASE's table, not a copy.
 
-    def test_standard_weights_for_the_elements_this_program_runs_on(self):
-        # Standard atomic weights (natural isotopic mix), which is the
-        # convention a Hessian is built with and the one PySCF defaults to.
-        assert atomic_mass("H") == pytest.approx(1.008, abs=1e-3)
-        assert atomic_mass("C") == pytest.approx(12.011, abs=1e-3)
-        assert atomic_mass("S") == pytest.approx(32.06, abs=1e-2)
-        assert atomic_mass("Au") == pytest.approx(196.97, abs=1e-2)
+    So there is nothing here asserting a mass.  A test that transcribed
+    ASE's weights would be the second source of truth the function exists
+    to avoid, one directory over -- and it could only restate the table,
+    never check it.  Which table we read is a one-line import, verified by
+    reading it.
 
-    def test_case_is_forgiven_but_a_typo_is_not(self):
-        assert atomic_mass("au") == atomic_mass("Au")
-        with pytest.raises(KeyError) as exc:
-            atomic_mass("Xx")
-        assert "unknown element symbol" in str(exc.value)
+    That the masses are RIGHT is observable where it matters, in
+    ``TestMotionShare`` below: real eigenvectors through
+    ``motion_share_by_element``, where a wrong table moves the answer.
+    What is ours, and is tested here, is the label handling and the
+    refusal.
+    """
+
+    def test_a_species_label_carries_to_its_element(self):
+        """``Au1``/``Au2`` are one element with two labels -- a mass-weighted
+        quantity over them needs gold's weight, not a KeyError.
+
+        Contract: ``chemistry.resolve_element``.
+        """
+        assert atomic_mass("Au1") == atomic_mass("Au")
+        assert atomic_mass("Au2") == atomic_mass("Au")
+
+    def test_a_name_we_cannot_look_up_is_a_question_not_a_guess(self):
+        """No case folding: `atomic_mass` reads through `resolve_element`, so
+        a name that is not a symbol is refused rather than repaired.
+        `model/chemistry.md` § 3 owns the rule.
+        """
+        for typo in ("au", "Xx"):
+            with pytest.raises(KeyError) as exc:
+                atomic_mass(typo)
+            assert "unknown element symbol" in str(exc.value)
 
 
 # --------------------------------------------------------------------- #

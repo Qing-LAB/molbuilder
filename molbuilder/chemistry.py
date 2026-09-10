@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import fnmatch
 import math
+import re
 from dataclasses import dataclass, field
 from typing import (Any, Dict, Iterable, List, Literal, Optional, Protocol, Sequence,
                     Tuple, Type)
@@ -227,28 +228,138 @@ CLOSED_D10_METALS = frozenset({
 OPEN_SHELL_METALS = OPEN_D_TRANSITION_METALS | NOBLE_METALS_S1
 
 
+#: A species label is a name plus an optional trailing index: ``Au1`` is
+#: ``Au`` + 1.  The ONLY thing read off a label -- see
+#: :func:`split_species_label`.
+_TRAILING_INDEX = re.compile(r"^(.*?)(\d+)$")
+
+def resolve_element(label: str) -> str:
+    """The element a species LABEL names.
+
+    **A species label is the user's; the element is ours to derive.**
+    SIESTA's ``%block ChemicalSpeciesLabel`` is ``index Z label`` and PySCF
+    takes labelled atoms, so ``Au1`` / ``Au2`` -- two gold species carrying
+    different basis or pseudopotential -- is ordinary input, not a typo.  We
+    do not police the name.  What has to be right is the Z beside it, and
+    that is what this resolves.
+
+    **Explicit, not clever: the name is looked up VERBATIM.**  Split a
+    trailing index off the label, then use what is left as the key exactly
+    as written:
+
+        ``Au1`` -> ``Au`` + index 1 -> found
+        ``Au``  -> ``Au``           -> found
+        ``au``  -> ``au``           -> KeyError
+        ``FE``  -> ``FE``           -> KeyError
+
+    No case correction (user ruling, 2026-09-09: *"there are so many
+    misdetections associated with this"*).  Case-folding a two-letter symbol
+    is how ``CA`` becomes calcium and ``CO`` becomes cobalt, and the guesses
+    that follow are unfixable because nothing records that a guess happened.
+    A label we cannot look up is a question for the user, not something to
+    resolve on their behalf.
+
+    This costs nothing on file input, because **the format readers have
+    already decoded**: ``from_xyz`` is ``ase.io.read``, whose
+    ``get_chemical_symbols()`` is canonical, and the PDB reader decodes
+    columns 77-78, whose convention IS uppercase (``MG``, ``NA``, ``CL``).
+    Decoding a format is not correcting a user.  What reaches here
+    un-canonical is what a person typed: a UI field, or a species label they
+    chose -- and there an error naming the label is the useful answer.
+
+    Raises KeyError naming the label when the name is not an element.
+
+    **Callers emitting an engine input MUST let that propagate.**  A species
+    with no element is not something a calculation can run, and the
+    alternative -- quietly writing ``Z=0`` into ``ChemicalSpeciesLabel`` --
+    is the defect this function exists to end (``transport/transiesta.py``
+    and ``transport/wizard.py``, both fixed 2026-09-09).  The identical
+    ``KeyError -> 0`` shape was caught once already in ``pyscf/input.py``
+    on 2026-05-26; one door is what stops it recurring a third time.
+
+    NOT for PDB atom names or residue names.  ``CA`` is an alpha carbon in
+    the atom-name namespace and calcium in this one; the two share strings
+    and share nothing else.  Those namespaces are carried verbatim
+    (``Structure.atom_names``, ``Structure.residue_names``) and never
+    reach this door.
+    """
+    from ase.data import atomic_numbers as _Z
+    name, _index = split_species_label(label)
+    if name in _Z:
+        return name
+    hint = (f"  Did you mean {name.capitalize()!r}?  Case is not corrected -- "
+            f"folding two letters is how 'CA' becomes calcium."
+            if name.capitalize() in _Z else "")
+    origin = (f" (from species label {label!r})"
+              if name != str(label).strip() else "")
+    raise KeyError(f"unknown element symbol {name!r}{origin}.{hint}")
+
+
+def split_species_label(label: str) -> "tuple[str, Optional[int]]":
+    """``"Au1"`` -> ``("Au", 1)``; ``"Au"`` -> ``("Au", None)``.
+
+    The one rule for reading a species label: a run of digits at the END is
+    an index distinguishing two species of the same element, and everything
+    before it is the name.  Nothing else is interpreted -- no case folding,
+    no separator stripping -- so ``Au_1`` has the name ``Au_`` and is an
+    error rather than a silent success.  Explicit beats clever here: a label
+    is a key, and a key that needs guessing is a question for the user.
+    """
+    raw = str(label).strip()
+    m = _TRAILING_INDEX.match(raw)
+    if not m:
+        return raw, None
+    return m.group(1), int(m.group(2))
+
+
+def is_atom(label: str, symbol: str) -> bool:
+    """Is this species label an atom of ``symbol``?
+
+    **The one way to ask.**  ``el == "P"`` is the wrong question the moment a
+    user labels a species: ``Au1`` is gold, and a bare ``==`` says it is not.
+    Comparing labels also invites the fold this module refuses -- once you
+    write ``el.capitalize() == sym`` you have made ``CA`` calcium again.
+
+        is_atom("Au1", "Au")  -> True
+        is_atom("Au",  "Au")  -> True
+        is_atom("au",  "Au")  -> False    (a name we cannot look up)
+        is_atom("Xx",  "Au")  -> False
+
+    ``symbol`` is an element symbol, not a label: asking whether an atom is
+    ``"Au1"`` is asking about the user's naming, which is not a question this
+    module answers.  A label that names no element is simply not that atom --
+    ``validation.chemistry.check_species_labels`` is what reports it.
+    """
+    try:
+        return resolve_element(label) == symbol
+    except KeyError:
+        return False
+
+
+def atomic_number(label: str) -> int:
+    """Z for a species label.  :func:`resolve_element`, then one lookup.
+
+    The number every engine input needs beside the label the user chose.
+    """
+    from ase.data import atomic_numbers as _Z
+    return int(_Z[resolve_element(label)])
+
+
 def total_electrons(struct: Structure, charge: int = 0) -> int:
     """Sum of atomic numbers minus charge.  Used by parity checks
     (closed-shell spin=0 requires an even count; an odd total means
-    spin must be at least 1).  Raises KeyError on an unknown element
-    symbol (catches typos before PySCF does the same).
+    spin must be at least 1).  Raises KeyError on a label that names no
+    element (catches typos before PySCF does the same).
     """
-    from ase.data import atomic_numbers as _Z
-    total = 0
-    for el in struct.elements:
-        try:
-            total += int(_Z[el.capitalize()])
-        except KeyError:
-            raise KeyError(
-                f"unknown element symbol {el!r} -- check the structure "
-                f"file (typos, lowercase letters, missing-element-column "
-                f"fallback failures)"
-            )
-    return total - int(charge)
+    return sum(atomic_number(el) for el in struct.elements) - int(charge)
 
 
 def atomic_mass(element: str) -> float:
     """Standard atomic weight of ``element``, in amu.
+
+    Reads through :func:`resolve_element`, so a species label carries:
+    ``atomic_mass("Au1")`` is gold's weight, which is what a mass-weighted
+    quantity over a labelled species needs.
 
     The same lookup :func:`total_electrons` does for atomic number, for
     the other number every engine needs: ASE ships the IUPAC standard
@@ -268,15 +379,8 @@ def atomic_mass(element: str) -> float:
     table is the same convention.  Raises KeyError on an unknown symbol,
     with the same message shape as :func:`total_electrons`.
     """
-    from ase.data import atomic_numbers as _Z, atomic_masses as _M
-    try:
-        return float(_M[_Z[str(element).capitalize()]])
-    except KeyError:
-        raise KeyError(
-            f"unknown element symbol {element!r} -- check the structure "
-            f"file (typos, lowercase letters, missing-element-column "
-            f"fallback failures)"
-        )
+    from ase.data import atomic_masses as _M
+    return float(_M[atomic_number(element)])
 
 
 def check_spin_charge_parity(struct: Structure, charge: int, spin: int
@@ -380,7 +484,11 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
     for a transition-metal centre (oxidation state + spin-state name).
     None if no hint is registered for this combination.
     """
-    return _METAL_SPIN_HINTS.get((element.capitalize(), int(spin)))
+    try:
+        sym = resolve_element(element)
+    except KeyError:
+        return None                    # no hint for a label we cannot read
+    return _METAL_SPIN_HINTS.get((sym, int(spin)))
 
 
 # Per-element "starting value" recommendation for Spin.Total.  Used by
@@ -488,7 +596,9 @@ def suggest_spin_total(metals: "Iterable[str]") -> "tuple[float, list[tuple[floa
         If no metals are recognised, returns (1.0, []) -- a safe
         non-zero placeholder; the user will need to think about it.
     """
-    metals_seen = [m.capitalize() for m in metals]
+    # Already element symbols -- `detect_open_shell_metals` resolves through
+    # `resolve_element`, so there is nothing left to normalise here.
+    metals_seen = list(metals)
     if not metals_seen:
         return 1.0, []
     # Preferred starting value: max per-element default across the
@@ -549,18 +659,31 @@ def resolve_pyscf_ecp(struct: Structure,
     if not name or not patterns:
         return None
 
-    # Element symbols are canonically capitalised ("AU" / "au" -> "Au"), and
-    # so are the patterns, so ``["au"]`` and ``["Au"]`` select the same atom
-    # without either spelling being a second format to remember.
+    # Keyed by the LABEL as written, because that is what the emitted
+    # ``atom=`` block says: an ``ecp={"Au": ...}`` never reaches an atom the
+    # script calls ``Au1``.  A pattern matches either the label or the
+    # element it names, so ``["Au"]`` still selects ``Au1``/``Au2`` while
+    # ``["Au1"]`` selects just the one species.
+    #
+    # Matching is CASE-SENSITIVE, the same rule as everywhere else: folding
+    # is what turns ``CA`` into calcium, and this function's own docstring
+    # already says explicit beats implicit.  A pattern that matches nothing
+    # yields no ECP, and validation's existing hint is what surfaces that.
     present: List[str] = []
     for el in struct.elements:
-        sym = str(el).capitalize()
-        if sym not in present:
-            present.append(sym)
-    pats = [p.capitalize() for p in patterns]
+        label = str(el).strip()
+        if label not in present:
+            present.append(label)
 
-    matched = {sym: name for sym in present
-               if any(fnmatch.fnmatchcase(sym, p) for p in pats)}
+    def _selects(label: str) -> bool:
+        keys = [label]
+        try:
+            keys.append(resolve_element(label))
+        except KeyError:
+            pass                       # check_species_labels reports it
+        return any(fnmatch.fnmatchcase(k, p) for k in keys for p in patterns)
+
+    matched = {label: name for label in present if _selects(label)}
     return matched or None
 
 
@@ -577,7 +700,13 @@ def detect_open_shell_metals(struct: Structure) -> List[str]:
     seen = []
     seen_set: set = set()
     for el in struct.elements:
-        key = el.capitalize()
+        # The ELEMENT a label names -- so a deliberate ``Au1``/``Au2`` is
+        # still gold here.  An unresolvable label is skipped, not folded:
+        # ``validation.chemistry.check_species_labels`` is what reports it.
+        try:
+            key = resolve_element(el)
+        except KeyError:
+            continue
         if key in OPEN_SHELL_METALS and key not in seen_set:
             seen.append(key)
             seen_set.add(key)
@@ -599,7 +728,13 @@ def detect_transition_metals(struct: Structure) -> List[str]:
     seen: List[str] = []
     seen_set: set = set()
     for el in struct.elements:
-        key = el.capitalize()
+        # The ELEMENT a label names -- so a deliberate ``Au1``/``Au2`` is
+        # still gold here.  An unresolvable label is skipped, not folded:
+        # ``validation.chemistry.check_species_labels`` is what reports it.
+        try:
+            key = resolve_element(el)
+        except KeyError:
+            continue
         if key in _ALL_TRANSITION_METALS and key not in seen_set:
             seen.append(key)
             seen_set.add(key)
@@ -746,10 +881,23 @@ def _metal_hint(element: str) -> MetalHint:
     return MetalHint(element=element, common_spins=spins)
 
 
+def _resolves(label) -> bool:
+    """Does this species label name an element?  Used where an analysis must
+    skip what it cannot read rather than refuse the whole structure."""
+    try:
+        resolve_element(label)
+        return True
+    except KeyError:
+        return False
+
+
 def _count_element(struct: Structure, symbol: str) -> int:
-    """Number of atoms of ``symbol`` (case-insensitive) in struct."""
-    sym = symbol.capitalize()
-    return sum(1 for el in struct.elements if el.capitalize() == sym)
+    """Number of atoms of the element ``symbol`` in struct.
+
+    Counts by ELEMENT, so two gold species labelled ``Au1``/``Au2`` are two
+    gold atoms, not zero.
+    """
+    return sum(1 for el in struct.elements if is_atom(el, symbol))
 
 
 # Noble-metal cluster size at which the metallic-bonding closed-shell
@@ -792,7 +940,8 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
          by electron-count parity (0 if even, 1 if odd).
     """
     n_e = total_electrons(struct, 0)
-    elements_sorted = sorted({el.capitalize() for el in struct.elements})
+    elements_sorted = sorted({resolve_element(el) for el in struct.elements
+                              if _resolves(el)})
 
     # Categorize present metals.  Iterate the SORTED element list, NOT the
     # frozensets: a frozenset yields hash-order, which CPython randomizes per
@@ -1105,12 +1254,12 @@ def formal_charge_from_phosphates(struct: Structure) -> int:
 
     charge = 0
     for i, el in enumerate(elements):
-        if el != "P":
+        if not is_atom(el, "P"):
             continue
         # Non-bridging O = O whose only heavy neighbour is this P
         non_bridging = [
             j for j in nb_heavy[i]
-            if elements[j] == "O" and len(nb_heavy[j]) == 1
+            if is_atom(elements[j], "O") and len(nb_heavy[j]) == 1
         ]
         if len(non_bridging) < 1:
             continue
@@ -1180,11 +1329,11 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
     new_atoms: List[dict] = []
 
     for p_idx, el in enumerate(elements):
-        if el != "P":
+        if not is_atom(el, "P"):
             continue
         non_bridging = [
             j for j in nb_heavy[p_idx]
-            if elements[j] == "O" and len(nb_heavy[j]) == 1
+            if is_atom(elements[j], "O") and len(nb_heavy[j]) == 1
         ]
         if len(non_bridging) < 2:
             continue   # nothing to do (need >= 1 P=O + >= 1 OH)
@@ -1486,7 +1635,7 @@ def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
     n        = len(pos)
     keep     = np.ones(n, dtype=bool)
     for i in range(n):
-        if elements[i] != "H" or not keep[i]:
+        if not is_atom(elements[i], "H") or not keep[i]:
             continue
         for j in range(n):
             if i == j or not keep[j]:

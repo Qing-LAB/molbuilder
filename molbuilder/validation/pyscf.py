@@ -18,7 +18,8 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import (_check_ecp_declared_for_the_atoms_that_usually_want_one,
+from .chemistry import (check_species_labels,
+                        _check_ecp_declared_for_the_atoms_that_usually_want_one,
                         _check_metal_basis_adequacy,
                         check_open_shell_metal,
                         _check_peptide_protonation)
@@ -379,6 +380,7 @@ def _validate_pyscf(struct: Structure, cfg,
     # For sequences containing charged side chains, the physiological
     # charge differs.  Surface the gap so the user knows the script
     # is using neutral defaults; they can override with cfg.net_charge.
+    issues += check_species_labels(struct, engine_label="PySCF")
     issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
 
     # Inverse case: UKS / UHF with spin = 0 is almost always a mistake.

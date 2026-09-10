@@ -210,7 +210,7 @@ def render_electrode_fdf(
     single-point bulk SCF (no MD block); only ``kz`` and ``TS.HS.Save``
     distinguish it from an ordinary SIESTA point.
     """
-    from ase.data import atomic_numbers as _Z
+    from ..chemistry import atomic_number
 
     species = sorted(set(model.elements), key=lambda e: e.capitalize())
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
@@ -239,7 +239,9 @@ def render_electrode_fdf(
         "%block ChemicalSpeciesLabel",
     ]
     for sp in species:
-        L.append(f"  {species_idx[sp]:>3}  {_Z.get(sp.capitalize(), 0):>3}  {sp}")
+        # Raises on a label naming no element -- never Z=0.  See
+        # ``chemistry.resolve_element`` for why the label itself is free.
+        L.append(f"  {species_idx[sp]:>3}  {atomic_number(sp):>3}  {sp}")
     L += [
         "%endblock ChemicalSpeciesLabel",
         "",

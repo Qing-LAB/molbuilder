@@ -230,9 +230,11 @@ def _fix_methylene_hydrogens(struct):
     BOND_CH    = 1.09                     # C-H bond length, Ang
     HALF_HCH   = math.radians(109.471 / 2)  # tetrahedral half-angle
 
+    from ...chemistry import is_atom
+
     fixed = 0
     for i in range(n):
-        if elements[i] != "C": continue
+        if not is_atom(elements[i], "C"): continue
         if len(nb_heavy[i]) != 2 or len(nb_h[i]) != 2: continue
         c     = positions[i]
         a, b  = nb_heavy[i]
