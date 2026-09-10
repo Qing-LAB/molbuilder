@@ -1293,7 +1293,9 @@ was one compaction from being lost.
 > its DESIGN is open.
 
 And the number that governs everything below: **subsumption reasoning was
-measured wrong 1 time in 5** (`test-audit-findings.md` § 4). A verdict is a
+measured wrong on 9 of 19 candidates -- nearly half** (`test-audit-findings.md` § 4;
+the 1-in-5 and 1-in-3 figures came from a harness blind to the commonest
+validator defect). A verdict is a
 lead. `tools/verify_subsumption.py` is what turns one into a decision.
 
 ### 5m.2 The rows

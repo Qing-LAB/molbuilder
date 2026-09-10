@@ -5,7 +5,9 @@
 
 WHY THIS EXISTS.  A test-retirement audit (2026-09-08) classified ~110 tests
 CUT-SUBSUMED -- "another test fails for the same cause".  That is a claim about
-which INPUTS reach which code, and it was measured wrong 1 time in 5:
+which INPUTS reach which code, and with the FIXED operator set below it was
+measured wrong on 9 of 19 candidates -- NEARLY HALF.  The 1-in-5 figure this
+file used to publish was measured before `visit_BoolOp` existed:
 
     ok    CONFIRMED     test_preserves_unrelated_record       both died, 2/2
     ok    CONFIRMED     test_can_parse                        both died, 3/3
@@ -22,7 +24,9 @@ A second batch on 2026-09-09 made the number WORSE, not better:
     ok    CONFIRMED     test_nothing_that_should_be_refus...  both died, 2/2
     ??    INCONCLUSIVE  test_the_request_is_shown_even_...    no mutant killed it
 
-**Running total: 3 wrong in 9 DECIDED -- one in three, not one in five.** Both
+**That was still the blind set.**  With clause-dropping added, a re-run of 22
+pairs over 19 candidates gives **9 KEEP and 10 cuttable -- wrong on nearly
+half**, and three of the nine had been CLEARED FOR DELETION.  Both
 new false verdicts are the same shape: the candidate drives a route that reaches
 an arm of the fence (`files.py:173`, the missing-path refusal; `:192`, the `..`
 refusal) which the named coverer's input never reaches.

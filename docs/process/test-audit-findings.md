@@ -287,9 +287,10 @@ one inconclusive, **two came back NOT-SUBSUMED** and two CONFIRMED.
 | 2026-09-09 `TS7`, eight pairs | 4 | 2 |
 | **running total** | **9** | **3** |
 
-> **One wrong in THREE decided, not one in five.** Every unapplied verdict in
-> § 5 is a lead, and the two proved false today are both cuts that would have
-> been applied on the auditor's reasoning alone.
+> **Superseded the same day: the figure is 9 wrong of 19, nearly half** -- see
+> the correction at the top of this section. One-in-three was itself measured
+> with the blind harness. Every unapplied verdict in § 5 is a lead, and the ones
+> proved false are cuts that would have been applied on reasoning alone.
 
 Both new false verdicts have the same shape: **the candidate drives a ROUTE that
 reaches an arm of the fence the named coverer's input never reaches** —

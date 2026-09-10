@@ -278,9 +278,13 @@ Ask in order, and stop at the first *yes*:
 1. **Is it subsumed?** Would another test already fail for this cause?
    **A subsumption verdict needs a MUTANT, not an argument** — break the code and
    watch the *coverer* go red too: `python tools/verify_subsumption.py pairs.json`.
-   Measured 2026-09-08: this reasoning was **wrong 1 time in 5**, and coverage
-   cannot rescue it, because two tests can cover one line and still assert
-   different things about it. A verdict of INCONCLUSIVE means the harness has no
+   Measured with a FIXED operator set 2026-09-09: this reasoning was **wrong on
+   9 of 19 candidates -- nearly half**. (The earlier figures of 1-in-5 and
+   1-in-3 were measured with a harness that had no operator for dropping a
+   clause from an `or`, which is the commonest shape in a validator: a guard is
+   `not isinstance(x, T) or not x` and its two tests reach ONE CLAUSE EACH.)
+   Coverage cannot rescue it either, because two tests can cover one line and
+   still assert different things about it. A verdict of INCONCLUSIVE means the harness has no
    opinion — never that the cut is safe.
    *(A subsumption that DID hold: a `RETIRED` doc-path pattern — four alternation
    arms, three lookbehinds — enumerated locations all deleted from disk, so the
