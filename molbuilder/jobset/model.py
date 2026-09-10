@@ -94,10 +94,11 @@ class Resources:
     #: not say, and the wrapper falls back to reading the artifact it was
     #: handed -- which is a different thing from re-deriving: a wrapper
     #: written for a deck someone points at has nothing else to ask.
-    use_gpu:       Optional[bool]  = None
+    use_gpu:       Optional[bool] = field(default=None, metadata={"axis": "rider"})
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
-    continue_retries: Optional[int] = None   # NOT a SLURM flag -- baked into the wrapper
+    # NOT a SLURM flag -- baked into the wrapper.
+    continue_retries: Optional[int] = field(default=None, metadata={"axis": "rider"})
     #: WHEN this calculation should say something -- also not a SLURM flag,
     #: and here for the reason the paragraph above gives: this is the road a
     #: field takes from a job to its wrapper, and the alternative is a second
@@ -107,8 +108,8 @@ class Resources:
     #: WHERE to send it is deliberately absent: the destination and its
     #: credential are the user's own file on the machine that runs the job,
     #: because a description travels and a token must not travel with it.
-    notify_on_scf:      Optional[bool]  = None
-    notify_every_hours: Optional[float] = None
+    notify_on_scf:      Optional[bool] = field(default=None, metadata={"axis": "rider"})
+    notify_every_hours: Optional[float] = field(default=None, metadata={"axis": "rider"})
     #: WHICH channels, by NAME -- the only part of "where" that may ride
     #: here, and it rides for the same reason the two above do.  A name is a
     #: label the person chose on the machine that runs the job; the address
@@ -118,7 +119,7 @@ class Resources:
     #: coincide, so an unset field renders no flag and behaves exactly as it
     #: did before this existed.  An empty tuple is a real value meaning
     #: none, and it renders a flag (`run-reports.md` 3.0).
-    notify_channels: Optional[Tuple[str, ...]] = None
+    notify_channels: Optional[Tuple[str, ...]] = field(default=None, metadata={"axis": "rider"})
 
     #: WHAT each report carries beyond the name (`stages.md` § 6.9).  `None`
     #: is every field the monitor could determine; `()` is the summary line

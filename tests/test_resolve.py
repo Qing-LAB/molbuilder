@@ -131,6 +131,34 @@ def test_a_parameter_axis_lands_on_the_values_not_the_resources(template):
     assert all(e.resources.mpi_np == 64 for e in ps)
 
 
+def test_a_rider_axis_is_not_swallowed_as_a_machine_axis(template):
+    """SCIENCE, and the one regression the rider split exists for.
+
+    `use_gpu` rides `Resources` to reach the wrapper; it names no machine.
+    When it was read as a MACHINE axis the bench's GPU family axis went into
+    the allocation instead of the config, the flag never reached the deck, and
+    **every GPU trial emitted `Diag.ELPA.GPU .false.`** -- a CPU family
+    measured under GPU labels.
+
+    Nothing caught that.  Two tests stood next to `_RIDERS` asserting the two
+    lists partition `Resources` and that every rider names a real field; both
+    hold whether or not `use_gpu` is tagged, so dropping its tag passed 238
+    tests (measured 2026-09-09, when deriving `_RIDERS` from the dataclass
+    retired them and exposed the gap).
+
+    This asserts the CONSEQUENCE: a rider swept as an axis reaches the config
+    that renders the deck, not the allocation.
+    """
+    from molbuilder.resolve import _RIDERS
+    assert "use_gpu" in _RIDERS, (
+        "use_gpu must carry metadata={'axis': 'rider'} on Resources")
+    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                 sweep={"use_gpu": [True, False]}, stage=STAGE)
+    assert [e.values.use_gpu for e in ps] == [True, False], (
+        "a rider axis must land on the VALUES -- on the allocation it never "
+        "reaches the deck")
+
+
 def test_the_split_is_a_lookup_not_a_guess():
     """Every field of the allocation, and only those, routes to resources."""
     assert "mpi_np" in ALLOCATION_FIELDS and "max_memory_mb" in ALLOCATION_FIELDS
@@ -407,33 +435,18 @@ def test_a_sweep_axis_spelling_a_machine_fact_names_the_road(template):
 #  The riders — on Resources, but not machine axes                      #
 # --------------------------------------------------------------------- #
 
-def test_the_two_field_lists_answer_two_different_questions():
-    """`ALLOCATION_FIELDS` answers *"is this a machine axis?"* -- it decides
-    where a SWEEP AXIS lands.  `_RESOURCE_FIELDS` answers *"can Resources hold
-    this?"* -- it decides whether a TRANSLATION's answer is representable.
-
-    They were one list until 2026-08-23, and conflating them cost a real bug
-    each way round: adding `use_gpu` to `Resources` (so the wrapper could be
-    told, `execution/gpu.md` G7) silently reclassified the bench's GPU family
-    axis as a machine axis, so the flag never reached the config that renders
-    the deck and **every GPU trial emitted `Diag.ELPA.GPU .false.`** -- a CPU
-    family measured under GPU labels.  And once split, the translation check
-    still tested the narrower list while its refusal said *"names nothing on
-    Resources"*, which for a rider would have been false.
-    """
-    from molbuilder.resolve import (ALLOCATION_FIELDS, _RESOURCE_FIELDS,
-                                    _RIDERS)
-    assert set(ALLOCATION_FIELDS) | set(_RIDERS) == set(_RESOURCE_FIELDS), (
-        "the split is not a partition: every Resources field is either a "
-        "machine axis or a declared rider, and nothing is both or neither")
-    assert not set(ALLOCATION_FIELDS) & set(_RIDERS)
-
-
-def test_every_rider_is_a_real_field_of_resources():
-    """A rider names a field that exists; a typo here would silently widen
-    the machine-axis set instead of narrowing it, which fails open."""
-    import dataclasses
-    from molbuilder.jobset.model import Resources
-    from molbuilder.resolve import _RIDERS
-    names = {f.name for f in dataclasses.fields(Resources)}
-    assert set(_RIDERS) <= names, sorted(set(_RIDERS) - names)
+# `test_the_two_field_lists_answer_two_different_questions` and
+# `test_every_rider_is_a_real_field_of_resources` stood here.  `_RIDERS` is
+# DERIVED from `dataclasses.fields(Resources)` now -- each rider carries
+# `metadata={"axis": "rider"}` at its own declaration -- so a rider naming a
+# non-field cannot be written, and the partition is set algebra on one list.
+#
+# Of the pair, `ALLOCATION & RIDERS == set()` was already unconditional; the
+# other was equivalent to the second test, not to nothing.
+#
+# WHY THE SPLIT EXISTS, kept from their docstring: adding `use_gpu` to
+# `Resources` silently reclassified the bench's GPU family axis as a machine
+# axis, so the flag never reached the config that renders the deck and EVERY
+# GPU TRIAL EMITTED `Diag.ELPA.GPU .false.` -- a CPU family measured under GPU
+# labels.  Once split, the translation check still tested the narrower list
+# while its refusal said "names nothing on Resources".
