@@ -169,18 +169,8 @@ def test_resolve_cuda_version_falls_back_to_default_without_driver(monkeypatch):
     assert recipes._resolve_cuda_version() == "13.*"
 
 
-def test_extra_steps_are_tuples_of_tuples():
-    """Defensive shape check on extra_steps -- catches the easy
-    mistake of writing `extra_steps=(("python","-m","x"),)` vs
-    `extra_steps=("python","-m","x")`.  The latter would be parsed
-    as four single-character commands."""
-    for r in BUILTIN_RECIPES:
-        for step in r.extra_steps:
-            assert isinstance(step, tuple), (
-                f"recipe `{r.name}`: extra_steps entry `{step!r}` "
-                f"is not a tuple"
-            )
-            assert all(isinstance(arg, str) for arg in step), (
-                f"recipe `{r.name}`: extra_steps entry has non-str "
-                f"argv element: {step!r}"
-            )
+# `test_extra_steps_are_tuples_of_tuples` stood here.  Its docstring called
+# itself a "defensive shape check" and named the mistake --
+# `extra_steps=("python","-m","x")` instead of `(("python","-m","x"),)`,
+# which the installer runs as one command per character.  The constructor
+# refuses both that and a non-str argument now.

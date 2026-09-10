@@ -665,6 +665,32 @@ class Recipe:
     verify_ignore_exit_code: bool = False
     system_preconditions: Tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        """A recipe that cannot install is not a recipe.
+
+        Three tests asserted this at the registry: non-empty required fields,
+        and that `extra_steps` is a tuple OF TUPLES.  Nothing type-checks
+        here, so the annotations refused none of it -- the shape test's own
+        docstring named the mistake it covered for,
+        `extra_steps=("python","-m","x")` instead of
+        `(("python","-m","x"),)`, which the installer runs as one command per
+        character.  Malformed raises where it is written now.
+        """
+        for fld in ("name", "description", "channels", "conda_packages"):
+            if not getattr(self, fld):
+                raise ValueError(
+                    f"Recipe {self.name!r}: {fld} is required and non-empty")
+        for step in self.extra_steps:
+            if not isinstance(step, tuple) or not step:
+                raise TypeError(
+                    f"Recipe {self.name!r}: extra_steps takes a tuple OF "
+                    f"TUPLES -- got {step!r}.  A bare tuple of strings runs "
+                    f"as one command per character")
+            if not all(isinstance(a, str) for a in step):
+                raise TypeError(
+                    f"Recipe {self.name!r}: every extra_steps argument must "
+                    f"be a str; got {step!r}")
+
 
 # --------------------------------------------------------------------- #
 #  The built-in recipes                                                  #
