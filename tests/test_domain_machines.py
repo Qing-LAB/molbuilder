@@ -94,8 +94,8 @@ def test_a_gpu_ask_is_bounded_by_the_machines_that_HAVE_one():
     assert admits(htc, Request(ranks=64, gpus=1)) == []
     why = admits(htc, Request(ranks=65, gpus=1))
     assert why, "65 ranks + a device fits no device-bearing machine"
-    assert "64" in why[0].message and "128" not in why[0].message, (
-        f"the ceiling must be the widest machine WITH a device: {why[0].message}")
+    assert why[0].allowed == 64, (
+        f"the ceiling must be the widest machine WITH a device: {why[0]}")
 
 
 def test_the_same_ranks_without_a_device_still_enjoy_the_wide_nodes():
@@ -123,7 +123,7 @@ def test_a_machine_list_that_names_no_devices_does_not_bar_a_gpu_ask():
     # mutation survivor: dropping the fallback slid through because
     # max_cores caught probed rows, and this hand row has none.)
     why = admits(hand, Request(ranks=97, gpus=1))
-    assert why and "96" in why[0].message, (
+    assert why and why[0].allowed == 96, (
         "a device ask slipped past the stated machines when none of them "
         "named a device -- the filter emptied the list instead of "
         "standing aside")
@@ -133,8 +133,8 @@ def test_an_ask_no_machine_can_hold_is_refused_by_name():
     """R10 — name what WOULD fit. A refusal that stops at "no" leaves the
     person guessing at a number the record is already holding."""
     why = admits(_domains()["htc"], Request(ranks=256))
-    assert why and "256" in why[0].message
-    assert "128" in why[0].message, f"the refusal must name the largest: {why[0].message}"
+    assert why and why[0].asked == 256
+    assert why[0].allowed == 128, f"the refusal must name the largest: {why[0]}"
 
 
 def test_the_widest_machine_is_the_ceiling_for_every_queue():
@@ -167,7 +167,7 @@ def test_the_machines_bound_the_ask_even_with_no_max_cores():
     assert admits(hand, Request(ranks=96)) == []
     why = admits(hand, Request(ranks=97))
     assert why, "a stated set of machines must bound the ask"
-    assert "96" in why[0].message
+    assert why[0].allowed == 96
 
 
 def test_the_refusal_names_the_MACHINE_not_just_the_number():
@@ -176,7 +176,8 @@ def test_the_refusal_names_the_MACHINE_not_just_the_number():
     nodes: that is the difference between "trim this" and "this will
     queue"."""
     why = admits(_domains()["htc"], Request(ranks=256))
-    assert "134 node(s) of 128" in why[0].message, why[0].message
+    assert why[0].allowed == 128, why[0]
+    assert "134 node(s)" in why[0].note, why[0]
 
 
 def test_a_record_that_lists_no_machines_never_bars():

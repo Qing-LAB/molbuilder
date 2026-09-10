@@ -260,15 +260,36 @@ class TestTwoVerdictsOneChecker:
         assert notices[0]["level"] == "warn", (
             "a loading or modifying door reports; only a generating one refuses")
 
-    def test_every_notice_carries_its_id(self):
-        """The absence of this is why four tests once matched message prose --
-        which fails on a rewording and passes on a deleted check."""
-        from molbuilder.periodicity_gate import notices_for_report
+    def test_a_notices_subject_is_its_id_and_cannot_disagree_with_it(self):
+        """SCIENCE of a sort: the browser FILTERS on `about`
+        (`molview/ui.js`, `n.about === subject`), so a notice whose subject
+        disagrees with its id is one the user never sees.
+
+        `about` was a stored fourth key until 2026-09-09 and equalled
+        `where.split(".")[0]` in every case the tree produces -- two homes for
+        one fact.  It is derived now, and this asserts the DERIVATION rather
+        than the key set: the shape is structural (one writer,
+        `periodicity_gate._wire`), the agreement was not.
+
+        The test this replaces asserted `set(n) == {four names}` and
+        `n["about"] == "cell"` on cell notices only -- so hardcoding
+        `about: "cell"` passed the whole suite, and the `append` and `slab`
+        notices had nothing watching them at all (measured by mutation,
+        2026-09-09).
+        """
+        from molbuilder.periodicity_gate import _notice, notices_for_report
         _rc, issues = cellmod.resolve_and_check(_mol())
-        for n in notices_for_report(issues):
-            assert set(n) == {"level", "message", "where", "about"}
-            assert n["where"].startswith("cell.")
-            assert n["about"] == "cell"
+        wired = notices_for_report(issues)
+        assert wired, "the fixture must produce a notice for this to mean anything"
+        for n in wired:
+            assert n["about"] == n["where"].split(".")[0]
+
+        # And for the subjects that are NOT cell, which is where the old test
+        # was blind.
+        for where, subject in (("append.merge", "append"),
+                               ("slab.seam_ok", "slab"),
+                               ("cell.no_volume", "cell")):
+            assert _notice("info", "m", where)["about"] == subject
 
 
 class TestNothingIsWrittenBack:

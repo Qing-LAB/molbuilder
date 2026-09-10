@@ -23,7 +23,7 @@ read on the target inside a backend env with no molbuilder installed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from ..issues import Issue
+from .admit import Refusal
 from typing import List, Optional, Sequence
 
 from .admit import Request, admits, domain_serves_gpu
@@ -52,7 +52,7 @@ class Unplaceable(Exception):
     to meet the core cap has been sent round twice (R4, R10).
     """
 
-    def __init__(self, reasons: "Sequence[Issue]", *, gpu_side: bool):
+    def __init__(self, reasons: "Sequence[Refusal]", *, gpu_side: bool):
         # FINDINGS, not prose (2026-09-09).  Each carries `where` --
         # `admit.cores`, `admit.gpu_type` -- so a caller can say WHICH limit
         # bit without parsing the sentence, which is what the scheduler tests
@@ -206,10 +206,10 @@ def place(routing, request: Request, *, prefer_gpu: bool,
         # A finding like every other refusal (`admit._refusal`), so
         # `Unplaceable` carries ONE shape rather than two.
         raise Unplaceable(
-            [Issue("error",
-                   f"no domain named {named!r}; this machine offers "
-                   f"{', '.join(d.name for d in rows)}",
-                   "admit.no_such_domain")], gpu_side=prefer_gpu)
+            [Refusal("no_domain", named,
+                     note=f"this machine offers "
+                          f"{', '.join(d.name for d in rows)}")],
+            gpu_side=prefer_gpu)
 
     pool = candidates(rows, prefer_gpu=prefer_gpu)
     if not pool:

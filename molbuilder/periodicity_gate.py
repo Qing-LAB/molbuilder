@@ -86,6 +86,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
+from .issues import Issue
 from .structure import Structure
 
 # Containment tolerance (Angstrom-scale in fractional projections).  Loose
@@ -129,8 +130,23 @@ def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str
     not findings, they have no verdict, and nothing should key on an individual
     one.
     """
-    return {"level": level, "message": message,
-            "where": where, "about": "cell"}
+    # BUILT THROUGH `issues.Issue`, and `about` is DERIVED.
+    #
+    # This assembled `{"level", "message", "where", "about"}` by hand until
+    # 2026-09-09.  Two problems, both silent: `level` was never checked
+    # against anything, and `about` stored a fact `where` already carried --
+    # it was `where.split(".")[0]` in every case the tree produces
+    # (`cell.no_volume` -> `cell`, `append.merge` -> `append`,
+    # `slab.seam_ok` -> `slab`), so the pair could drift with nothing to say
+    # so.  Constructing an `Issue` first borrows its validated `severity`, so
+    # a typo'd level raises HERE instead of reaching the browser as a notice
+    # no stylesheet matches.
+    #
+    # The wire key stays `level`, not `severity`: three browser modules read
+    # `.level`, and the node harness that would check a rename SKIPS in this
+    # environment (`#79`), so the wire rename waits on that decision rather
+    # than going in unverified.
+    return _wire(Issue(level, message, where))
 
 
 def _refuse_on_error(s: Structure) -> None:
@@ -174,6 +190,24 @@ def notices_for_report(issues) -> List[Dict[str, str]]:
                 i.message, i.where)
         for i in issues
     ]
+
+
+def _wire(i: "Issue") -> Dict[str, str]:
+    """One `Issue` as the wire notice the browser reads.
+
+    THE ONLY PLACE the wire shape is written.  `about` is DERIVED from
+    `where` -- it was a stored fourth key until 2026-09-09 and was
+    `where.split(".")[0]` in every case, so the two could drift and nothing
+    would say so.  `molview/ui.js` filters notices by it
+    (`n.about === subject`), which is why it is emitted rather than dropped.
+
+    The key is still `level`, not `severity`: three browser modules read
+    `.level` and the node harness that would check a rename SKIPS here
+    (`#79`), so the wire rename waits on that decision rather than going in
+    unverified.
+    """
+    return {"level": i.severity, "message": i.message,
+            "where": i.where, "about": i.where.split(".")[0]}
 
 
 

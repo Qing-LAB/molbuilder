@@ -1220,10 +1220,10 @@ def _cells_this_machine_holds(base, plan, gtype, *,
             # as "it fits": the kept/crossed split is on ``why``, so a
             # cell nothing could even be offered to must carry a reason.
             # `place` refuses this case in the same words.
-            why = [Issue("error",
-                         "this machine has no gpu-capable queue" if want_gpu
-                         else "this machine has no queue for cpu work",
-                         "admit.no_queue")]
+            from ..scheduler.admit import Refusal
+            why = [Refusal("no_queue", "this machine",
+                           note="no gpu-capable queue" if want_gpu
+                                else "no queue for cpu work")]
         out.append((fam, (g, k, c), tuple(fits),
                     () if fits else _rank_reasons(why)))
     return out
@@ -1245,11 +1245,11 @@ def _rank_reasons(reasons):
     # comparison knew by name and threw into prose.
     seen, ranked = set(), []
     for r in reasons:
-        key = (r.where, r.message)
+        key = (r.limit, r.message)
         if key not in seen:
             seen.add(key)
             ranked.append(r)
-    ranked.sort(key=lambda r: (r.where == "admit.gpu_type", len(r.message)))
+    ranked.sort(key=lambda r: (r.limit == "gpu_type", len(r.message)))
     return tuple(ranked)
 
 

@@ -126,7 +126,7 @@ class TestTheSelectorSkipsACeilingItCannotUse:
                                  "gpu": {"a100": 1}})]
         with pytest.raises(Unplaceable) as exc:
             _gpu(tiny, _FIFTEEN_MIN + 1)
-        assert "debug allows 00:15:00" in exc.value.reasons[0].message
+        assert exc.value.reasons[0].allowed == "00:15:00"
 
     def test_no_menu_at_all_is_not_a_refusal(self):
         """R6's other half: a machine that promised nothing gets its header
@@ -157,15 +157,14 @@ class TestWhatFittingMeans:
 
 
 def _why(domain, request):
-    """`admits`, as `(where, message)` pairs.
+    """`admits`, as `(limit, asked, allowed)` triples.
 
-    A refusal is an `Issue` since 2026-09-09, so a test can name the limit
-    instead of recognising it by a substring.  The MESSAGE stays asserted
-    where it carries the number the user has to change -- that sentence is
-    the refusal's product.
+    A refusal carries its numbers as FIELDS, so nothing here reads a
+    sentence: the message is rendered from these three and asserting it
+    would be asserting the rendering.
     """
     from molbuilder.scheduler import admits
-    return [(i.where, i.message) for i in admits(domain, request)]
+    return [(i.limit, i.asked, i.allowed) for i in admits(domain, request)]
 
 
 class TestMemoryCanFinallyBeCompared:
@@ -199,7 +198,7 @@ class TestMemoryCanFinallyBeCompared:
         from molbuilder.scheduler import Request, admits
         d = _dom(name="small", max_mem_gb=256.0)
         assert _why(d, Request(mem_gb=390.0)) == [
-            ("admit.mem", "needs 390 GB but small allows 256 GB")]
+            ("mem", "390 GB", "256 GB")]
         assert admits(d, Request(mem_gb=128.0)) == []
 
 
@@ -230,8 +229,7 @@ class TestTheRequestStatesCoresOnce:
         # -- three substring sniffs standing in for a question `admits` could
         # always answer and threw into prose.  Since 2026-09-09 a refusal is
         # an `Issue` carrying `where`, so the claim is exact and says itself.
-        assert {i.where for i in why} == {
-            "admit.walltime", "admit.cores", "admit.mem"}
+        assert {i.limit for i in why} == {"walltime", "cores", "mem"}
 
 
 class TestSilenceIsNotARefusal:
@@ -251,7 +249,7 @@ class TestSilenceIsNotARefusal:
 
     def test_a_row_that_states_too_few_refuses(self):
         assert _why(_dom(name="one", gpu={"a100": 1}), Request(gpus=2)) == [
-            ("admit.gpus", "needs 2 GPUs but one offers at most 1")]
+            ("gpus", 2, 1)]
 
     def test_a_row_that_states_enough_admits(self):
         assert admits(_dom(name="four", gpu={"a100": 4}), Request(gpus=2)) == []
@@ -275,7 +273,7 @@ class TestNamingADomainDoesNotSkipTheCheck:
         with pytest.raises(Unplaceable) as exc:
             place(SOL, Request(walltime_s=38 * 60), prefer_gpu=True,
                   named="debug")
-        assert "debug allows 00:15:00" in exc.value.reasons[0].message
+        assert exc.value.reasons[0].allowed == "00:15:00"
 
     def test_a_named_domain_that_fits_is_used_even_if_not_cheapest(self):
         got = place(SOL, Request(walltime_s=600), prefer_gpu=True,
@@ -285,8 +283,8 @@ class TestNamingADomainDoesNotSkipTheCheck:
     def test_an_unknown_name_says_what_there_is(self):
         with pytest.raises(Unplaceable) as exc:
             place(SOL, Request(), prefer_gpu=True, named="nope")
-        assert ("debug" in exc.value.reasons[0].message
-                and "htc" in exc.value.reasons[0].message)
+        assert "debug" in exc.value.reasons[0].note
+        assert "htc" in exc.value.reasons[0].note
 
 
 class TestTheGpuColumnHasTwoShapes:
@@ -304,15 +302,13 @@ class TestTheGpuColumnHasTwoShapes:
     def test_the_probed_shape_is_type_to_count(self):
         d = _dom(name="sol", gpu={"a100": 4, "h100": 8})
         assert admits(d, Request(gpus=8)) == []
-        assert _why(d, Request(gpus=9)) == [
-            ("admit.gpus", "needs 9 GPUs but sol offers at most 8")]
+        assert _why(d, Request(gpus=9)) == [("gpus", 9, 8)]
 
     def test_the_declared_shape_describes_one_device(self):
         d = _dom(name="hand", gpu={"type": "a100", "per_node": 4,
                                    "mem_gb": 80})
         assert admits(d, Request(gpus=4)) == []
-        assert _why(d, Request(gpus=5)) == [
-            ("admit.gpus", "needs 5 GPUs but hand offers at most 4")]
+        assert _why(d, Request(gpus=5)) == [("gpus", 5, 4)]
 
     def test_a_label_in_the_column_is_skipped_not_raised(self):
         """An unreadable value is not a small one (R3) -- and it must not

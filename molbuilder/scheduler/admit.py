@@ -52,29 +52,35 @@ def _types_offered(row) -> Tuple[str, ...]:
     return tuple(d.type for d in row.devices if d.type)
 
 
-def _refusal(limit: str, message: str) -> Issue:
-    """One refusal, as the finding type this repository already has.
+@dataclass(frozen=True)
+class Refusal:
+    """One limit, what was asked, what is allowed.
 
-    `admits` returned `List[str]` until 2026-09-09 -- a FOURTH parallel
-    finding format beside `Issue` (138 sites), the hand-built
-    `{"level", "message"}` note dicts, and `ParseWarning`.  Nothing was
-    unified because there was no construction door: six `why.append(f"...")`
-    sites inside `_compare`, each writing prose, with the prose AS the return
-    value.  So callers joined strings and tests grepped substrings -- `"64" in
-    why[0]`, `"a100.40gb" in why[0]` -- for a limit the comparison knew by
-    name and threw away.
-
-    `Issue.where` is the field for exactly this ("dotted-namespace style" per
-    its own docstring, `geometry.min_distance`, `cell.no_volume`), so a
-    refusal needs no new type: it is `admit.<limit>`, and inventing a
-    `Refusal` dataclass would have made a FIFTH format while looking like a
-    fix.
-
-    `severity` is always `error`: `admits` answers "would this domain refuse
-    it", and every entry it returns IS a refusal (R3 -- it "only refuses what
-    the record positively rules out").
+    `admits` returned sentences until 2026-09-09, so callers and tests read
+    numbers back out of prose (`"64" in why[0]`).  The numbers are the answer;
+    the sentence is a rendering of them.
     """
-    return Issue("error", message, f"admit.{limit}")
+    limit:   str          # "walltime" | "cores" | "cpus_per_job" | "mem"
+                          # | "gpu_type" | "gpus" | "no_queue" | "no_domain"
+    domain:  str
+    asked:   "Any" = None
+    allowed: "Any" = None
+    note:    str = ""     # only what the numbers cannot say (a card name)
+
+    @property
+    def where(self) -> str:
+        return f"admit.{self.limit}"
+
+    @property
+    def message(self) -> str:
+        if self.asked is None and self.allowed is None:
+            return self.note or f"{self.domain} refuses this"
+        tail = f" ({self.note})" if self.note else ""
+        return (f"needs {self.asked} but {self.domain} allows "
+                f"{self.allowed}{tail}")
+
+    def as_issue(self) -> Issue:
+        return Issue("error", self.message, self.where)
 
 
 def _compare(row, *, cores: Optional[int] = None,
@@ -111,7 +117,7 @@ def _compare(row, *, cores: Optional[int] = None,
     claiming a small one.
     """
     from .quantities import parse_walltime
-    why: "List[Issue]" = []
+    why: "List[Refusal]" = []
 
     if walltime_s is not None and row.max_time:
         try:
@@ -119,9 +125,9 @@ def _compare(row, *, cores: Optional[int] = None,
         except ValueError:
             ceiling = None               # unreadable is not small
         if ceiling is not None and ceiling < walltime_s:
-            why.append(_refusal("walltime",
-                                f"needs {walltime_s // 60} min but "
-                                f"{row.name} allows {row.max_time}"))
+            why.append(Refusal("walltime", row.name,
+                               asked=f"{walltime_s // 60} min",
+                               allowed=row.max_time))
 
     if cores is not None:
         # REFUSE ONLY WHAT NO MACHINE HERE CAN HOLD.  A partition is a
@@ -159,10 +165,9 @@ def _compare(row, *, cores: Optional[int] = None,
             where = f" ({widest})" if widest else ""
             with_dev = (f" with {gpu_type}" if (gpus and gpu_type)
                         else " with a device" if gpus else "")
-            why.append(_refusal("cores",
-                                f"needs {cores} cores{with_dev} but "
-                                f"{row.name}'s largest machine{with_dev} "
-                                f"has {cap}{where}"))
+            why.append(Refusal("cores", row.name, asked=cores, allowed=cap,
+                               note=(f"largest machine{with_dev}"
+                                     f"{where}").strip()))
         # THE POLICY CEILINGS, beside the hardware one (R13).  What the
         # widest machine HAS and what policy LETS one job take are two
         # facts; both are read and the smaller governs.  `lightwork` is
@@ -178,9 +183,7 @@ def _compare(row, *, cores: Optional[int] = None,
             except (TypeError, ValueError):
                 pol = None                 # unreadable is not small (R3)
             if pol is not None and pol < cores:
-                why.append(_refusal("cpus_per_job",
-                                    f"needs {cores} cores but {row.name}'s policy "
-                                    f"allows {pol} {phrase}"))
+                why.append(Refusal("cpus_per_job", row.name, asked=cores, allowed=pol, note="policy"))
 
     if mem_gb is not None and row.max_mem_gb:
         try:
@@ -188,9 +191,7 @@ def _compare(row, *, cores: Optional[int] = None,
         except (TypeError, ValueError):
             cap_gb = None
         if cap_gb is not None and cap_gb < mem_gb:
-            why.append(_refusal("mem",
-                                f"needs {mem_gb:g} GB but {row.name} "
-                                f"allows {cap_gb:g} GB"))
+            why.append(Refusal("mem", row.name, asked=f"{mem_gb:g} GB", allowed=f"{cap_gb:g} GB"))
 
     if gpus:
         # R3 APPLIES TO DEVICES TOO.  A domain that states no inventory is not
@@ -216,9 +217,7 @@ def _compare(row, *, cores: Optional[int] = None,
         # same one".  So this matches the token, never a prefix of it.
         offered = _types_offered(row)
         if gpu_type and offered and gpu_type not in offered:
-            why.append(_refusal("gpu_type",
-                                f"needs {gpu_type} but {row.name} offers "
-                                f"{', '.join(sorted(offered))}"))
+            why.append(Refusal("gpu_type", row.name, asked=gpu_type, allowed=", ".join(sorted(offered))))
         # THE COUNT, of the type that was asked for.  Reading the largest
         # count over ALL types answers a question nobody asked: on Sol's
         # `public` that is 16 (a100.20gb MIG slices), which admitted every
@@ -226,9 +225,7 @@ def _compare(row, *, cores: Optional[int] = None,
         most = _devices_offered(row, device_type=gpu_type)
         if most is not None and most < gpus:
             named = f" {gpu_type}" if (gpu_type and gpu_type in offered) else ""
-            why.append(_refusal("gpus",
-                                f"needs {gpus}{named} GPUs but {row.name} offers at "
-                                f"most {most}{named}"))
+            why.append(Refusal("gpus", row.name, asked=gpus, allowed=most, note=(gpu_type or "")))
     return why
 
 
@@ -420,7 +417,7 @@ class Request:
         return self.ranks * max(self.cpus_per_task or 1, 1)
 
 
-def admits(domain, request: "Request") -> "List[Issue]":
+def admits(domain, request: "Request") -> "List[Refusal]":
     """Why this domain would refuse this request -- empty list means it fits.
 
     The typed door, and the one the decision graph's innermost branch walks

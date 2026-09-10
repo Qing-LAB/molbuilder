@@ -320,10 +320,14 @@ def api_modify_append():
     # rules are stated up front and nothing here went wrong -- but a renamed
     # label or a dropped cell is invisible in the result, which is exactly what
     # a receipt is for.
+    # THROUGH THE ONE DOOR (`periodicity_gate._notice`), like every other
+    # notice: `level` is validated by `issues.Issue` on the way and `about` is
+    # derived from `where`.  This spelled all four keys by hand until
+    # 2026-09-09, which is how the same concept came to ride the wire as
+    # `level` here and `severity` from `issues_to_json`.
+    from ...periodicity_gate import _notice
     return _ok_response(new_struct, extra={"notices": [
-        {"level": "info", "message": m,
-         "where": "append.merge", "about": "append"}
-        for m in notes
+        _notice("info", m, "append.merge") for m in notes
     ]})
 
 
@@ -646,7 +650,8 @@ def api_modify_slab():
 #: `periodicity_gate._notice` prescribes for a notice from another module, and
 #: any subject but ``"cell"`` lands in the general place, which is visible from
 #: either page.
-_SEAM_ABOUT = "slab"
+# `_SEAM_ABOUT = "slab"` stood here.  `about` is derived from `where` now
+# (`periodicity_gate._wire`), so the subject cannot disagree with the id.
 
 
 def _seam_notice(level: str, verdict: str, message: str):
@@ -655,8 +660,8 @@ def _seam_notice(level: str, verdict: str, message: str):
     ``where`` is the STABLE ID, so a finding is identifiable without reading
     its prose -- the reason that field exists (periodicity_gate, 2026-08-03).
     """
-    return {"level": level, "message": message,
-            "where": f"slab.seam_{verdict}", "about": _SEAM_ABOUT}
+    from ...periodicity_gate import _notice
+    return _notice(level, message, f"slab.seam_{verdict}")
 
 
 def _seam_notices(struct, element: str, plane: str):
