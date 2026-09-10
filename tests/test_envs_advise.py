@@ -136,6 +136,25 @@ def test_recommend_caps_np_by_atom_count():
     assert presets[0].mpi_np == 3
 
 
+@pytest.mark.parametrize("cores", [1, 2, 3, 4, 6, 8, 9, 12, 16, 20, 48, 64, 128])
+def test_no_preset_ever_oversubscribes_the_box(cores):
+    """SCIENCE. `mpi_np x omp` is how many threads actually run; more than the
+    box has and every rank fights for a core.
+
+    THE CORE COUNT IS INPUT.  `test_runwrap_cold_restart` asked the wrapper for
+    9 ranks and asserted `9 * PE <= phys_cores`, which can only pass on a box
+    with nine cores -- so on a 4-core machine it failed for the hardware, and
+    it was the lane's one permanent red until it was retired (2026-09-10).
+    `recommend` takes a `HostProbe`, so the same invariant is a property over
+    every count instead of a fact about whoever ran it.
+    """
+    for preset in _advise.recommend(_probe(phys_cores=cores, cps=cores)):
+        assert preset.mpi_np * preset.omp <= cores, (
+            f"{preset.name} asks for {preset.mpi_np} x {preset.omp} = "
+            f"{preset.mpi_np * preset.omp} threads on {cores} cores")
+        assert preset.mpi_np >= 1 and preset.omp >= 1, preset
+
+
 def test_recommend_caps_np_by_phys_cores_on_small_box():
     """4-core laptop: even the "default" preset can't ask for 4
     ranks if there aren't 4 cores' worth of independent budget."""
