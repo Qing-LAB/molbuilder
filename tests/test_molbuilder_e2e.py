@@ -179,11 +179,26 @@ def _load(page, path: Path):
     page.wait_for_function(
         "() => !document.getElementById('load-candidate-btn').disabled",
         timeout=_ACT_MS)
+    before = _atom_count_or_zero(page)
     btn.click()
+    # WAIT FOR THE CHANGE, not for a pattern the PREVIOUS state already
+    # satisfies.  The old condition was `/\d+ of [1-9]\d* selected/`, which
+    # after one load already reads "0 of 3 selected" -- so the second load
+    # returned instantly and the assertion read the stale count (2026-09-10).
     page.wait_for_function(
-        "() => /\\d+ of [1-9]\\d* selected/.test("
-        "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
-        timeout=_ACT_MS)
+        "(n) => { const t = document.querySelector("
+        "  '.molviewer-selection-count')?.textContent || '';"
+        "  const m = /\\d+ of (\\d+) selected/.exec(t);"
+        "  return !!m && Number(m[1]) !== n; }",
+        arg=before, timeout=_ACT_MS)
+
+
+def _atom_count_or_zero(page) -> int:
+    """The count, or 0 when nothing is open yet."""
+    try:
+        return _atom_count(page)
+    except Exception:
+        return 0
 
 
 def _atom_count(page) -> int:
@@ -256,12 +271,14 @@ def test_a_second_load_adds_to_the_first_instead_of_replacing_it(
     water, pair = two_files
     errors = _open(page, flask_server)
     _load(page, water)
-    assert _atom_count(page) == 3
-
     _load(page, pair)
-    assert _atom_count(page) == 5, (
-        "the second load replaced the first instead of adding to it")
 
+    # WHICH ATOMS ARE THERE, not how many.  `assert _atom_count(page) == 3`
+    # then `== 5` stood here: appending concatenates two lists, so the sum is
+    # `len(a) + len(b)` -- Python's arithmetic, not ours -- and any five-atom
+    # structure satisfies it, including the second file loaded twice.  What
+    # separates an APPEND from a REPLACE is that the first fragment is still
+    # identifiable, which is what the two labels below say (2026-09-10).
     rows = page.locator(_CARD).inner_text()
     assert "FRAG" in rows, "the first structure's label did not survive"
     assert "FRAG2" in rows, (

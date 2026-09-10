@@ -110,7 +110,7 @@ why: View changes how the drawing paints what it already has, so it can live in
 the 3D window's own controls; Export decides what leaves the viewer and what it
 is read from, so it is MolView's.
 
-**The toolbar switches.** Six icon buttons sit down the left edge, always
+**The toolbar switches.** Seven icon buttons sit down the left edge, always
 outside the canvas, never on top of the molecule:
 
 | Button | What it does |
@@ -121,6 +121,7 @@ outside the canvas, never on top of the molecule:
 | `➤` Show force vectors | draw the per-atom force arrows |
 | `▦` Show unit cell | draw the periodic cell box |
 | `◉` Show selected only | **isolate** — hide every unselected atom |
+| `∡` Measure | pick two or three atoms and read the distance or angle (§ 11.6) |
 
 **Isolate is a preference, and it stays where you put it.** With nothing
 selected there is nothing to hide, so the whole structure is drawn — the
@@ -1454,7 +1455,7 @@ card with the error written in it, rather than a half-built viewer.
 One card holds two things side by side: the **3D window**, and the **panel** you
 select in. Between them sits the **fold handle**.
 
-Down the window's left edge, **outside it**, the **rail** — the six toolbar
+Down the window's left edge, **outside it**, the **rail** — the seven toolbar
 switches of § 1.1. It is beside the window and not on top of it, which is why the
 card's own width includes it rather than the drawing losing space to it (§ 8.2).
 

@@ -59,9 +59,19 @@
 
     function _$(id) { return root.document.getElementById(id); }
 
-    /** The one fetch-failure sentence (lib/fetch-error.js). */
+    /** The one fetch-failure sentence (lib/fetch-error.js).
+     *
+     * DEGRADES INSTEAD OF ASSUMING.  This read
+     * `root.molbuilder.fetchError.format(e)` outright, so a page that loaded
+     * this module without the formatter raised a TypeError INSIDE the catch --
+     * the promise rejected rather than resolving to {ok:false,error}, the
+     * caller's .then never ran, and the user got silence.  That was live on the
+     * Transport tab (2026-09-10).  A missing formatter now costs the nicer
+     * wording, not the message. */
     function _formatFetchError(e) {
-        return root.molbuilder.fetchError.format(e);
+        var f = root.molbuilder && root.molbuilder.fetchError;
+        if (f && typeof f.format === "function") return f.format(e);
+        return (e && e.message) ? String(e.message) : "request failed";
     }
 
     /**

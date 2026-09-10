@@ -130,7 +130,14 @@ def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
     # it is -- that is the difference between "trim this" and "this will
     # queue".  A hand-written row with no `node_types` still falls back to
     # `max_cores`, which is what this fixture exercises.
-    assert "needs 64 cores but general's largest machine has 48" in t
+    # The FACTS R10 asks for, not the phrasing: what was asked, what is
+    # allowed, and WHICH machine sets the ceiling.  This read
+    # `"needs 64 cores but general's largest machine has 48" in t` and broke
+    # on a rewording when the refusal started carrying its numbers as fields
+    # (2026-09-09) -- the claim survived, the sentence did not.
+    assert "64 cores" in t and "48 cores" in t
+    assert "general" in t
+    assert "largest machine" in t
 
 
 

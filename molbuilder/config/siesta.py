@@ -1773,6 +1773,13 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
 NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shell DFT (broken-symmetry capable).  Most users wanting a singlet are better served by the non-polarized treatment -- the spin-restricted formalism is cheaper and gives the same answer.  Set 0.0 here only when you specifically want an anti-ferromagnetic / broken-symmetry singlet.""",
     })
 
+    def __post_init__(self) -> None:
+        # A field that DECLARES its legal values must hold one.  Eight fields
+        # here carry `metadata={"choices": ...}`; nothing checked them until
+        # 2026-09-10, so a wrong word went straight into a deck.
+        from .stages import refuse_values_outside_choices
+        refuse_values_outside_choices(self)
+
 
 # --------------------------------------------------------------------- #
 #  SIESTA stage presets (minimum-viable per-stage defaults)             #

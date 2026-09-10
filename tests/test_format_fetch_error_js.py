@@ -201,10 +201,14 @@ def test_the_formatter_has_exactly_one_home():
         "molbuilder.fetchError.format(): " + ", ".join(offenders))
 
 
-def test_every_page_that_formats_a_fetch_error_loads_the_module():
-    """A shared module nobody links is a ReferenceError at the worst moment."""
-    templates = _ROOT / "molbuilder/web/templates"
-    for page in ("index.html", "spectra.html"):
-        html = (templates / page).read_text(encoding="utf-8")
-        assert "lib/fetch-error.js" in html, (
-            f"{page} uses the fetch-error formatter but never loads it")
+# `test_every_page_that_formats_a_fetch_error_loads_the_module` stood here: a
+# sweep over templates for a <script> tag.  It caught nothing for months
+# because it named two pages by hand, and `transport_calculation.html` -- which
+# loads auto-detect.js -- was not one of them.
+#
+# Retired rather than widened.  A script-tag lint is neither an API contract
+# nor a correctness claim; the failure it guards is now UNCONSTRUCTIBLE:
+# `_formatFetchError` degrades to `e.message` when the formatter is absent
+# (auto-detect.js), so a page missing the module loses the nicer wording and
+# nothing else.  `test_the_formatter_has_exactly_one_home` below still keeps
+# the formatter itself from being re-implemented.

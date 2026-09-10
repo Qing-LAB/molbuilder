@@ -410,6 +410,27 @@ to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
 
 ## 4. Testing the front-end JS without a browser
 
+> **Neither test tool is installed by default, and neither is in a recipe.**
+> `node` and `playwright` are opt-in, per developer, into the *host* env:
+>
+> ```
+> conda install -n molbuilder -c conda-forge nodejs          # § 4
+> conda run -n molbuilder python -m pip install ".[e2e]"     # § 5
+> conda run -n molbuilder python -m playwright install chromium
+> ```
+>
+> `scripts/install-env.sh --help` § 9 carries both, with the checks.
+> Neither is needed to RUN molbuilder, and chromium is a large download
+> nobody should pay for by accident — which is why `bootstrap` leaves them
+> out (`envs/recipes.py` records the ruling: a browser-tooling-only env
+> cannot start the app, so e2e runs in the host env or not at all).
+>
+> **Know what a missing tool costs you.** Without `node`, **717 tests skip**
+> — and pytest counts a skip toward a green run, so the suite reports
+> healthy while every one of those modules goes unexercised. A full lane
+> here reads `9,414 collected` and runs about 7,800.
+
+
 Most front-end logic is tested **in Node, no browser** — 48 `*_js.py` tests,
 plus a handful of others. `tests/_node_esm.py` is **the harness to use**, and
 its `run_node(files, snippet)` loads an ordered list of module files via

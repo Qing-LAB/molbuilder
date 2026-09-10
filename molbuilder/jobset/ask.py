@@ -145,7 +145,7 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
         if fit:
             lines.append(f"         {fit}")
         if why:
-            lines.append(f"     -> {'; '.join(why)}")
+            lines.append(f"     -> {'; '.join(r.message for r in why)}")
     lines.append("")
     lines.append("  choose one with --domain <name>.  Nothing is submitted "
                  "until you do.")
@@ -247,7 +247,7 @@ def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
     return out
 
 
-def _why_not(row, ask: Ask, *, cores=None, gpu: bool = False) -> List[str]:
+def _why_not(row, ask: Ask, *, cores=None, gpu: bool = False) -> "List[Refusal]":
     """Why this queue cannot take this job — empty when it can.
 
     Reuses the scheduler's own admission so the listing and the submission
@@ -255,6 +255,9 @@ def _why_not(row, ask: Ask, *, cores=None, gpu: bool = False) -> List[str]:
     says no is worse than no table.
     """
     from ..scheduler.admit import Request, admits
+    # `Refusal`s since 2026-09-09: each carries its `limit`, `asked` and
+    # `allowed`.  The listing renders `.message`; a caller wanting to know
+    # WHICH limit bit reads the field instead of the sentence.
     return list(admits(row, Request(ranks=cores, walltime_s=ask.time_s,
                                     mem_gb=ask.mem_gb,
                                     gpus=1 if gpu else None)))

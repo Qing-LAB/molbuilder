@@ -171,6 +171,11 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
+{# `auto-detect.js` calls `molbuilder.fetchError.format` unguarded, so the
+   formatter has to be here too -- without it a network failure or a non-JSON
+   reply raises a TypeError INSIDE the catch, the promise rejects instead of
+   resolving to {ok:false,error}, and the user gets silence (2026-09-10). #}
+<script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 {# lib/task-handover.js supplies the destination guards + the file-layer

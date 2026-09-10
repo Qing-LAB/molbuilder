@@ -220,16 +220,35 @@ class TestOneFindingPerCause:
 class TestOneThreshold:
     """Every site that asks "does this box have a volume?" asks it the same way."""
 
-    def test_the_constant_is_shared_not_copied(self):
-        import inspect
-        from molbuilder import structure as structmod
-        from molbuilder.siesta import input as siesta_input
-        for mod in (structmod, siesta_input):
-            src = inspect.getsource(mod)
-            assert "ZERO_VOLUME_TOL" in src, (
-                f"{mod.__name__} does not take the zero-volume threshold from "
-                f"the one place that defines it; it used to carry its own "
-                f"literal, and the two disagreed (1e-8 vs 1e-6)")
+    def test_both_readers_move_when_the_one_threshold_moves(self, monkeypatch):
+        """SCIENCE. `structure.py` and the SIESTA emitter must refuse the same
+        boxes -- they carried their own literals once and disagreed, 1e-8
+        against 1e-6, so a cell one accepted the other rejected.
+
+        MOVE THE DEFINITION AND WATCH BOTH FOLLOW.  That catches a restored
+        literal AND an import-time snapshot (a module-level `from cell import
+        ZERO_VOLUME_TOL` binds once and would not move), and it survives a
+        rename.
+
+        This replaced `assert "ZERO_VOLUME_TOL" in inspect.getsource(mod)` --
+        a grep for a NAME, which passed if the name merely survived in a
+        comment beside a restored literal, and failed on a correct rename
+        (`testing.md` § 3a: assert the end product, never the source).
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.siesta.input import spec_for
+        from molbuilder.config.siesta import SiestaConfig
+
+        cell = np.diag([1e-1, 1e-1, 1e-1])          # det = 1e-3
+        s = Structure(elements=["C"], positions=np.zeros((1, 3)), cell=cell)
+        spec_for(s, SiestaConfig())                  # both accept it today
+
+        monkeypatch.setattr(cellmod, "ZERO_VOLUME_TOL", 1e-2)
+        with pytest.raises(ValueError):
+            Structure(elements=["C"], positions=np.zeros((1, 3)), cell=cell)
+        with pytest.raises(ValueError):
+            spec_for(s, SiestaConfig())
 
     def test_the_resolver_and_the_checker_agree_on_the_boundary(self):
         """``has_volume`` is the ONE answer; nothing recomputes a determinant."""

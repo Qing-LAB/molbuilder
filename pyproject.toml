@@ -98,7 +98,20 @@ test = [
 # tabs.  Skipped automatically when these aren't installed; install
 # with:
 #     pip install ".[e2e]"
+#     pip uninstall -y molbuilder      # keeps the extras, drops the wheel
 #     python -m playwright install chromium
+#
+# The uninstall matters: installing the extras installs the PROJECT, and a
+# molbuilder wheel in site-packages shadows the working tree from any cwd but
+# the repo root.
+#
+# NODE IS THE OTHER HALF, and it is not a pip package -- install it with
+# conda into the same host env:
+#     conda install -n molbuilder -c conda-forge nodejs
+# It runs the shipped ES modules directly (no browser).  Without it 717
+# tests skip, and pytest counts a skip toward a green run, so the suite
+# reports healthy while that JS is unexercised.  `scripts/install-env.sh
+# --help` § 9 carries both commands.
 # WSL / minimal Linux installs may also need:
 #     sudo python -m playwright install-deps chromium
 # (one-time, ~30 MB of system libs for the headless Chromium).

@@ -142,6 +142,38 @@ bash scripts/install-env.sh doctor
 # 8. Re-seed / inspect the per-user config directory (bootstrap
 #    already ran this; it never overwrites, so re-running is safe):
 bash scripts/install-env.sh init-config
+
+# 9. TEST TOOLING (optional -- only if you run the test suite).
+#    Deliberately NOT part of bootstrap: neither is needed to RUN
+#    molbuilder, and chromium is a large download nobody should pay
+#    for by accident.  Both go into the HOST env you already have.
+#
+#    (a) node -- runs the shipped ES modules directly, no browser.
+#        Without it 717 tests SKIP, and a skip is counted as a pass:
+#        the suite reports green while that JS is unexercised.
+conda install -n molbuilder -c conda-forge nodejs      # or: mamba install ...
+#
+#    (b) playwright -- drives a real headless chromium for the tests
+#        marked `e2e`.  Runs in the HOST env because these tests start
+#        the real server, which needs the full molbuilder import stack;
+#        a browser-tooling-only env cannot do that (see recipes.py).
+conda run -n molbuilder python -m pip install ".[e2e]"
+conda run -n molbuilder python -m pip uninstall -y molbuilder   # SEE BELOW
+conda run -n molbuilder python -m playwright install chromium
+#
+#        The uninstall is NOT optional.  `pip install ".[e2e]"` installs the
+#        PROJECT to reach its extras, which drops a molbuilder wheel into
+#        site-packages -- and from any directory other than the repo root,
+#        `import molbuilder` then finds the stale wheel instead of your working
+#        tree.  This shim's header says molbuilder is deliberately not
+#        pip-installed into the host env; that is why.  The extras survive the
+#        uninstall.
+#    WSL / minimal Linux may also need, once, as root:
+#        sudo python -m playwright install-deps chromium
+#
+#    Check what you have:
+conda run -n molbuilder node --version
+conda run -n molbuilder python -c "import playwright; print('playwright ok')"
 ==============================================================
 
 Post-bootstrap subcommands (forwarded verbatim to the Python CLI):

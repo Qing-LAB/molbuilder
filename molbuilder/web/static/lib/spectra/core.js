@@ -1527,12 +1527,16 @@
         addCell(raman);
         addCell(m.has_imag ? "✓" : "");
         addCell(m.electronic_structure ? "✓" : "");
-        if (anyES) {
-            addCell(fmt(_homoEq(m), 3),  "es-col");
-            addCell(fmt(_lumoEq(m), 3),  "es-col");
-            addCell(fmt(_gapEq(m),  3),  "es-col");
-            addCell(fmt(_dgapMax(m), 1), "es-col");
-        }
+        /* ALWAYS FOUR CELLS, because the header always has four.  This was
+         * `if (anyES)`, while `_spectra_inspector.html` emits the four
+         * `es-col` <th> unconditionally and no CSS hides them -- so on a
+         * result where no mode carries electronic structure, every row was
+         * four columns short of its header (2026-09-10).  An empty cell says
+         * "no value"; a missing cell shifts the whole row. */
+        addCell(anyES ? fmt(_homoEq(m), 3)  : "", "es-col");
+        addCell(anyES ? fmt(_lumoEq(m), 3)  : "", "es-col");
+        addCell(anyES ? fmt(_gapEq(m),  3)  : "", "es-col");
+        addCell(anyES ? fmt(_dgapMax(m), 1) : "", "es-col");
         return tr;
     }
 

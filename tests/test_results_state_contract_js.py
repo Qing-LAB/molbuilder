@@ -57,7 +57,7 @@ def core_body():
     return (_LIB / "trajectory" / "core.js").read_text()
 
 
-def _braced(src: str, open_idx: int) -> str:
+def _unused_braced(src: str, open_idx: int) -> str:
     """The object literal that starts at ``src[open_idx] == '{'``, brace
     to brace -- so a pin over a literal covers the whole literal however
     long it grows, rather than a fixed character count that a new field
@@ -74,31 +74,11 @@ def _braced(src: str, open_idx: int) -> str:
     raise AssertionError("unbalanced braces from the state literal")
 
 
-class TestBucketedStateShape:
-    """``state`` carries five named buckets (fileState, viewState,
-    uiPrefs, lifecycle, derived) + a ``machine`` field.  The contract
-    § 3 data-buckets section requires the partition; later tests
-    assume the buckets exist."""
-
-
-class TestBackcompatAliases:
-    """Existing render code reads/writes flat ``state.X`` (mtime,
-    data, currentFrame, ...).  PR 2 keeps that surface working via
-    Object.defineProperty getter/setter aliases that route to the
-    bucketed canonical home.  Pin the alias wiring so a refactor that
-    drops it doesn't silently break ~3000 lines of legacy reads."""
-
-
-# --------------------------------------------------------------------- #
-#  Trajectory: transition() orchestrator                                #
-# --------------------------------------------------------------------- #
-
-
-class TestTransitionOrchestrator:
-    """``transition(target, payload)`` is the SINGLE entry-point for
-    state-machine transitions.  Contract § 2 forbids direct mutation
-    of fileState / lifecycle / derived outside this function."""
-
+# Seven classes with a docstring and no test method stood here, plus an
+# unused `_ADAPTER_PATH`.  They claimed contracts -- bucketed state,
+# back-compat aliases, the transition orchestrator, refresh wiring, the
+# in-progress filter -- and asserted none of them.  Removed 2026-09-10;
+# the live versions are in `test_trajectory_transition_js.py`.
 
 class TestSettlePostLoad:
     """The 2-consecutive-ticks WATCHING -> LOADED buffer
@@ -175,88 +155,5 @@ class TestSettlePostLoad:
             f"call(s).  Expected >= 2 (noNewContent path + full-"
             f"rebuild path).  Either a write block was removed or a "
             f"direct write was reintroduced.")
-
-
-class TestRefreshListenerWiredOnce:
-    """PR 2.1 audit follow-up: the EVENT_REFRESH_REQUESTED listener
-    is wired ONCE at mount via _wireRefreshListener(), not re-wired
-    per-load by startPolling().  Pre-fix the listener piled up on
-    every load and only tore down on dispose."""
-
-
-# --------------------------------------------------------------------- #
-#  Refresh = file-switch (contract § 5)                                 #
-# --------------------------------------------------------------------- #
-
-
-class TestRefreshIsFileSwitch:
-    """The Refresh button MUST route through loadByPath() (which
-    delegates to transition('LOADING')), NOT pollOnce() directly.
-    Pre-PR-2 the inline pollOnce() left scfPollHistory + firstFit +
-    fileState entirely untouched -- the "half-refresh" bug class."""
-
-
-# --------------------------------------------------------------------- #
-#  Invariant 1: file-identity guard at fetch resolution                 #
-# --------------------------------------------------------------------- #
-
-
-    # RETIRED 2026-09-04 with the counter they describe.
-    #
-    # `fetchSeq` was a sequence number: bumped on LOADING, snapshotted
-    # before each fetch, re-checked after, to notice that a response had
-    # arrived for a file the user had moved off.  It existed because the
-    # filename and the data were written in two separate steps, so an
-    # answer could land under the wrong name.
-    #
-    # Since 2026-09-03 `transition("APPLY", ...)` REQUIRES the path and
-    # drops a payload whose file is not the one on screen, so the answer
-    # carries its own identity.  The remaining guards -- the status banner,
-    # the consecutive-error count, `stopWatch` -- now ask the same question
-    # of the same fact: `path !== state.fileState.path`.
-    #
-    # The replacement is STRICTLY STRONGER, which is why this is a deletion
-    # and not a trade.  `transition("IDLE")` never bumped the counter, so a
-    # fetch in flight when the inspector was disposed passed the old guard
-    # and fails the new one (`fileState.path` is null by then).  And
-    # `signal.aborted`, already checked beside it, is the only thing that
-    # can tell two loads of the SAME file apart -- which a counter could and
-    # a path cannot, so both halves are kept.
-    #
-    # These seven pinned the MECHANISM by name: "LOADING increments
-    # fetchSeq", "loadByPath captures mySeq", "the guard compares them".
-    # None could survive the mechanism being replaced by a better one, and
-    # none was checking the property -- that a late answer cannot be
-    # painted under the wrong file -- which is pinned behaviourally by
-    # test_spectra_from_a_real_run_e2e.py and
-    # test_trajectory_from_a_real_run_e2e.py, both mutation-verified
-    # against APPLY's path requirement.
-# --------------------------------------------------------------------- #
-#  Invariant 2: in-progress frame filter                                #
-# --------------------------------------------------------------------- #
-
-
-class TestInProgressFilter:
-    """Server emits ``data.in_progress[i]`` per-frame bool.  JS
-    ``plottableFrames(data)`` MUST filter those frames from plot
-    trace y-arrays -- the parser's placeholder energy is a
-    ``step_initial_etot`` fallback, not a real measurement."""
-
-
-# --------------------------------------------------------------------- #
-#  Wire-format: in_progress array landed                                #
-# --------------------------------------------------------------------- #
-
-
-class TestWireFormatInProgress:
-    """The server-side trajectory_result_to_legacy_dict adapter MUST
-    emit ``in_progress`` in the output dict.  Empty list when no
-    frame is in-progress.  Module rehomed in parse-module H2.adapter
-    (2026-06-20): legacy ``molbuilder/parsers/__init__.py`` →
-    ``molbuilder/parse/engines/_helpers.py``."""
-
-    _ADAPTER_PATH = (Path(__file__).resolve().parent.parent
-                     / "molbuilder" / "parse" / "engines"
-                     / "_helpers.py")
 
 

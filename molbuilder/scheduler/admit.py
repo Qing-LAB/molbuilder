@@ -65,6 +65,7 @@ class Refusal:
     domain:  str
     asked:   "Any" = None
     allowed: "Any" = None
+    unit:    str = ""     # "cores", "GPUs" -- when asked/allowed are bare
     note:    str = ""     # only what the numbers cannot say (a card name)
 
     @property
@@ -75,9 +76,10 @@ class Refusal:
     def message(self) -> str:
         if self.asked is None and self.allowed is None:
             return self.note or f"{self.domain} refuses this"
+        unit = f" {self.unit}" if self.unit else ""
         tail = f" ({self.note})" if self.note else ""
-        return (f"needs {self.asked} but {self.domain} allows "
-                f"{self.allowed}{tail}")
+        return (f"needs {self.asked}{unit} but {self.domain} allows "
+                f"{self.allowed}{unit}{tail}")
 
     def as_issue(self) -> Issue:
         return Issue("error", self.message, self.where)
@@ -165,7 +167,7 @@ def _compare(row, *, cores: Optional[int] = None,
             where = f" ({widest})" if widest else ""
             with_dev = (f" with {gpu_type}" if (gpus and gpu_type)
                         else " with a device" if gpus else "")
-            why.append(Refusal("cores", row.name, asked=cores, allowed=cap,
+            why.append(Refusal("cores", row.name, unit="cores", asked=cores, allowed=cap,
                                note=(f"largest machine{with_dev}"
                                      f"{where}").strip()))
         # THE POLICY CEILINGS, beside the hardware one (R13).  What the
@@ -183,7 +185,7 @@ def _compare(row, *, cores: Optional[int] = None,
             except (TypeError, ValueError):
                 pol = None                 # unreadable is not small (R3)
             if pol is not None and pol < cores:
-                why.append(Refusal("cpus_per_job", row.name, asked=cores, allowed=pol, note="policy"))
+                why.append(Refusal("cpus_per_job", row.name, unit="cores", asked=cores, allowed=pol, note="policy"))
 
     if mem_gb is not None and row.max_mem_gb:
         try:
@@ -225,7 +227,7 @@ def _compare(row, *, cores: Optional[int] = None,
         most = _devices_offered(row, device_type=gpu_type)
         if most is not None and most < gpus:
             named = f" {gpu_type}" if (gpu_type and gpu_type in offered) else ""
-            why.append(Refusal("gpus", row.name, asked=gpus, allowed=most, note=(gpu_type or "")))
+            why.append(Refusal("gpus", row.name, unit="GPUs", asked=gpus, allowed=most, note=(gpu_type or "")))
     return why
 
 

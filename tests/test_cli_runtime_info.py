@@ -113,12 +113,15 @@ def test_frozen_atoms_set_serialised_as_sorted_list(tmp_path):
     result = runner.invoke(cli, ["runtime-info", str(p), "--out", "-"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    if "frozen_atoms" in data:
-        # Must be a list, sorted ascending.  (Set serialisation
-        # would have failed json.dumps with TypeError.)
-        fa = data["frozen_atoms"]
-        assert isinstance(fa, list)
-        assert fa == sorted(fa)
+    # ASSERTED, not guarded on.  This whole body sat behind
+    # `if "frozen_atoms" in data:`, so the key going missing -- the regression
+    # the test is named for -- passed silently (2026-09-10).
+    assert "frozen_atoms" in data, (
+        f"the constrained atoms did not reach runtime_info: {sorted(data)}")
+    fa = data["frozen_atoms"]
+    # A set would have failed json.dumps with TypeError; sorted is what makes
+    # the sidecar deterministic.
+    assert fa == sorted(fa) and fa == [4, 5, 6], fa
 
 
 def test_unknown_format_exits_nonzero(tmp_path):
