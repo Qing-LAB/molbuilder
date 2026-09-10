@@ -269,7 +269,15 @@ covers and requires **both** tests to go red.
 | undecidable by design | 1 |
 | addressing error of mine | 1 |
 
-**A SECOND BATCH ON 2026-09-09 MADE THE NUMBER WORSE.** Eight of the § 5
+**THE NUMBER BELOW WAS MEASURED WITH A BROKEN INSTRUMENT. The corrected
+figure is ~50%.** The harness had no operator that drops a clause from an
+`or` — the commonest defect shape in a validator, whose two tests reach one
+clause each — so it killed both together and reported CONFIRMED. Added
+2026-09-09; the re-run of 22 pairs over 19 candidates gives **9 KEEP, 10
+cuttable**, and three of the nine were on its cleared-for-deletion list. Read
+everything below as the history of getting to that number, not as the number.
+
+**A second batch on 2026-09-09 first appeared to make it worse.** Eight of the § 5
 verdicts were put through the harness: four are undecidable by REACH (see below),
 one inconclusive, **two came back NOT-SUBSUMED** and two CONFIRMED.
 

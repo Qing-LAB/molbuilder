@@ -348,10 +348,20 @@ class TestTheWizardWritesWhereTheReaderReads:
         """`emit_molbuilder_json` used to assume its directory existed, and got
         away with it only because the wizard writes the session key first --
         correctness resting on call order.  Asserted directly on the emitter,
-        so a reordering upstream cannot hide it."""
+        so a reordering upstream cannot hide it.
+
+        The block is a REAL one (2026-09-09): the emitter now reads its own
+        output back through `read_config`, so `{"providers": []}` -- which this
+        test used as a throwaway payload -- is refused as the server would
+        refuse it.  The payload was always incidental to what this test is
+        about; it just had nothing stopping it being invalid before."""
         import molbuilder.auth_setup as _as
         target = tmp_path / "brand" / "new" / "molbuilder.json"
-        _as.emit_molbuilder_json(target, {"providers": []})
+        block = _as.build_auth_block([_as.build_google_entry(
+            client_id="x.apps.googleusercontent.com",
+            client_secret_file=tmp_path / "secret",
+            allowed_users=["me@asu.edu"])])
+        _as.emit_molbuilder_json(target, block)
         assert target.is_file()
         assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
 

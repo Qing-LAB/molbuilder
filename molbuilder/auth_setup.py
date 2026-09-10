@@ -316,10 +316,13 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
     wizard writes -- so the two cannot name different files, which they did
     (`configuration.md` § 2.1e).
     """
-    if not providers:
-        raise ValueError(
-            "build_auth_block: at least one provider is required."
-        )
+    # NO EMPTINESS CHECK HERE.  It raised `ValueError("at least one provider
+    # is required")` until 2026-09-09 -- a SECOND implementation of
+    # `runtime_config._read_auth`'s "non-empty list" rule, with a different
+    # message and a different exception type, and nothing checking the two
+    # agreed.  `emit_molbuilder_json` now reads its own output back through
+    # `read_config`, so the rule has one home and the wizard reports it in the
+    # server's own words.
     return {"providers": list(providers)}
 
 
@@ -376,4 +379,26 @@ def emit_molbuilder_json(output_path: Path,
     finally:
         os.close(fd)
     os.chmod(output_path, 0o600)
+
+    # READ IT BACK THROUGH THE VALIDATOR THE SERVER USES.
+    #
+    # `read_config` is the whole of that validator -- JSON parse, top-level
+    # shape, then every section's own reader -- and `web/app.py:254` refuses to
+    # start on anything it rejects.  This wizard wrote a config and, until
+    # 2026-09-09, never asked it: `molbuilder auth setup --output X` could only
+    # be checked by moving X into place and starting the server.
+    #
+    # It validates the FILE, not the dict it came from: that covers the bytes
+    # actually on disk (encoding, the json.dumps round trip) and it is the same
+    # door, so the wizard cannot drift from what the server will accept.  The
+    # file stays written -- a person can look at it and fix it -- and the
+    # refusal names which file and what is wrong.
+    from .runtime_config import RuntimeConfigError, read_config
+    try:
+        read_config(output_path)
+    except RuntimeConfigError as exc:
+        # `read_config` already names the file; do not say it twice.
+        raise RuntimeConfigError(
+            f"written, but the server would refuse it -- {exc}"
+        ) from None
     return output_path
