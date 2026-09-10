@@ -56,7 +56,7 @@ to look; the sections are where the argument is.
 | **#74** | `test_upload_outside_root_rejected` **passes on pytest's own temp-directory name** — a test named for the fence that never reaches it | **FIXED 2026-09-09** — a genuinely outside path, and the echoed path is excluded from the evidence | § 6.2 |
 | **#75** | `test_too_small_cell_is_a_hard_error` asserts `"a" in str(exc.value)` — true of every English sentence | **FIXED 2026-09-09** — asserts `along a`, and that no axis that fits is named | § 6.2 |
 | **#76** | an **inversion** (det −1, chirality-flipping) in place of `orient`'s rotation passes **all 320 tests** that touch the operation | **FIXED 2026-09-09** — a non-coplanar fixture and the SIGNED triple product; an inversion and two reflections all killed | `science/test-design-findings.md` § 7a |
-| **#80** | **the X3DNA probe reports a backend that cannot run.** `_looks_complete` checks the unpacked tree has `bin/fiber` and `config/` — FILE EXISTENCE, not runnability. `bin/x3dna_utils` is `#!/usr/bin/env ruby` and ruby is not installed here, so `auto_backend_name()` answers `threedna`, the `_x3dna` skip guard does not fire, and **six tests fail with `exit 127` instead of skipping**. Pre-existing — no commit touches `builders/`, `nucleic.py`, the test, or the pack | open | § 6.6 |
+| **#80** | the X3DNA probe reports a backend that cannot run — `_looks_complete` checks FILE EXISTENCE, not runnability | **the instance is FIXED 2026-09-09** (the ruby dependency is gone, not satisfied); **the presence-vs-runnability gap remains open** — `TS15` | § 6.6 |
 | **#79** | **717 test functions never execute.** 43 files use the `tests/_node_esm.py` harness; `node` is not on PATH, not in the `molbuilder` env, and not declared as a dependency anywhere — so they `pytest.skip`. Measured 2026-09-09: **67 passed, 717 skipped** across those files | **open, and it gates `TS6`** | § 6.5 |
 | **#78** | the sidecar↔selection path was covered as two halves that never met — labels written, and labels re-selected, with nothing joining them | **FIXED 2026-09-09** — one end-to-end test through the real doors, with REPEATED elements so identity cannot ride on the element; an off-by-one on read, bleeding labels and empty labels all killed | `science/test-design-findings.md` § 7a |
 | **#77** | **nine MORE dead XSS exemptions**, found the moment the allowlist got a lint — patterns gone from the files they name, each a standing permission for whatever is written at that name next | **FIXED 2026-09-09** | § 6.1 |
@@ -700,10 +700,39 @@ is a design change in a subsystem this session has not otherwise touched — it 
 the same shape as `run_install`'s BROKEN env-state gate (`#66`), which took a
 state machine to get right, and the same question `TS10` asks about node.
 
-**What it would take:** the probe already resolves a concrete path
-(`_resolve()`); running the tool's own no-op or `--version` once and caching the
-result would separate *present* from *usable*. That is a decision about how
-eagerly molbuilder probes at import time, not a bug fix.
+**RESOLVED FOR THIS CASE 2026-09-09 — by REMOVING the dependency, not
+satisfying it.** `x3dna_utils` is 3DNA's only interpreted tool (ruby now, Perl
+before upstream's 2.4 rewrite); `fiber`, `rebuild` and `analyze` are compiled
+binaries. And the one sub-command molbuilder used, `cp_std BDNA`, is a **pure
+file copy** (`lib/miscs.rb:373`): clear `Atomic[._]?.pdb` from the working
+directory, copy `config/atomic/BDNA_?.pdb` in under two fixed names each, copy
+`config/Atomic.p.pdb`. No computation, nothing version-specific.
+
+So molbuilder was shelling out to a language runtime for four `shutil.copy`
+calls. `_copy_standard_bases` does it directly, and **no environment needs a new
+package.**
+
+**It was user-facing.** The Modify tab offers *"Explicit / mismatched duplex:
+give the two strands comma-separated"*, and that input is the only path through
+`rebuild`. Without ruby it died with `exit 127`, while `ds,<sequence>` kept
+working because the canonical duplex goes through `fiber`. That asymmetry is why
+it went unnoticed.
+
+**What is guaranteed, and what is not.** Ruby is not installed here, so the
+output could NOT be diffed against the original's — stated rather than papered
+over. Instead: the expected file set was derived independently from 3DNA's own
+config tree and matches (11 files); each copy is byte-identical to its template;
+stale-clearing is exercised with a planted file *the copy cannot overwrite*
+(planting `Atomic_A.pdb` proved nothing — the BDNA copy overwrites it, and that
+mutant survived the first version of the test); and `rebuild`, a compiled binary
+reading those exact names, builds a correct 520-atom two-chain duplex. The guard
+test derives its expectation from the config tree rather than hard-coding names,
+so a 3DNA release with a different base set is followed, not contradicted.
+
+**STILL OPEN, the general case:** the probe answers *available* from file
+existence. `_resolve()` already yields a concrete path, so running the tool once
+and caching would separate *present* from *usable* — a decision about how
+eagerly molbuilder probes at import time, not a bug fix. `TS15`.
 
 ## 7. What is deliberately NOT in this file
 

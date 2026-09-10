@@ -494,6 +494,50 @@ _B_DNA_RISE  = 3.38    # Angstrom, rise per base-pair step
 _B_DNA_TWIST = 36.0    # degrees,  twist per base-pair step
 
 
+def _copy_standard_bases(root: str, workdir: str, dataset: str = "BDNA") -> None:
+    """Put X3DNA's standard base templates in *workdir*, the way `rebuild` wants
+    them.
+
+    THIS REPLACES `x3dna_utils cp_std <dataset>` (2026-09-09), AND THAT MATTERS
+    FOR ONE REASON: `x3dna_utils` is the ONLY ruby script in X3DNA -- `fiber`,
+    `rebuild` and `analyze` are compiled binaries -- and its `cp_std`
+    sub-command is a pure file copy.  Read it (`lib/miscs.rb:373`) and it clears
+    `Atomic[._]?.pdb` from the working directory, copies
+    `config/atomic/<dataset>_?.pdb` in under two fixed names each, and copies
+    `config/Atomic.p.pdb`.  No computation, nothing version-specific, nothing
+    that needs a language runtime.
+
+    So shelling out cost a whole interpreter dependency for four `shutil.copy`
+    calls, and on a machine without ruby the arbitrary/mismatched duplex path
+    died with `exit 127` -- while the CANONICAL duplex path kept working,
+    because it goes through `fiber`.  That asymmetry is why it went unnoticed:
+    the web UI's ordinary DNA build never touches this branch.  (#80.)
+
+    The lowercase alias is X3DNA's convention for a MODIFIED base and `rebuild`
+    looks for both spellings, so both are written -- dropping one would fail
+    only on modified residues, which is exactly the kind of gap that hides.
+    """
+    import shutil
+    cfg = Path(root) / "config"
+    work = Path(workdir)
+    for stale in work.glob("Atomic[._]?.pdb"):
+        stale.unlink()
+    templates = sorted(cfg.glob(f"atomic/{dataset}_?.pdb"))
+    if not templates:
+        raise RuntimeError(
+            f"X3DNA install at {root} has no {dataset} base templates under "
+            f"config/atomic/ -- the tree is incomplete, not merely unpacked")
+    for src in templates:
+        base = src.stem[-1]                     # BDNA_A.pdb -> "A"
+        shutil.copy(src, work / f"Atomic_{base}.pdb")
+        shutil.copy(src, work / f"Atomic.{base.lower()}.pdb")
+    phos = cfg / "Atomic.p.pdb"
+    if not phos.is_file():
+        raise RuntimeError(
+            f"X3DNA install at {root} is missing config/Atomic.p.pdb")
+    shutil.copy(phos, work / "Atomic.p.pdb")
+
+
 def _bp_step_par(strand1: str, strand2: str) -> str:
     """Serialize a 3DNA ``bp_step.par`` file for a two-strand duplex.
 
@@ -552,7 +596,10 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
             f"strand1={len(strand1)} nt, strand2={len(strand2)} nt.")
 
     par_text    = _bp_step_par(strand1, strand2)
-    x3dna_utils = os.path.join(found.root, "bin", "x3dna_utils")
+    # `x3dna_utils` is deliberately NOT used: it is 3DNA's only interpreted
+    # tool (ruby, and Perl before upstream's 2.4 rewrite) and the one
+    # sub-command we needed from it is a file copy.  See
+    # `_copy_standard_bases`.
     rebuild     = os.path.join(found.root, "bin", "rebuild")
 
     env = os.environ.copy()
@@ -562,20 +609,19 @@ def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
     with tempfile.TemporaryDirectory(prefix="molbuilder_3dna_") as workdir:
         Path(os.path.join(workdir, "bp_step.par")).write_text(par_text)
         pdb_path = os.path.join(workdir, "out.pdb")
-        # `rebuild -atomic` needs the standard B-DNA atomic templates copied into
-        # the CWD first; then it builds the all-atom duplex from bp_step.par.
-        for cmd in (
-            [x3dna_utils, "cp_std", "BDNA"],
-            [rebuild, "-atomic", "bp_step.par", "out.pdb"],
-        ):
-            res = subprocess.run(
-                cmd, capture_output=True, text=True,
-                cwd=workdir, env=env, stdin=subprocess.DEVNULL, timeout=60)
-            if res.returncode != 0:
-                raise RuntimeError(
-                    f"X3DNA {os.path.basename(cmd[0])} failed (exit "
-                    f"{res.returncode}).\nCommand: {' '.join(cmd)}\n"
-                    f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}")
+        # `rebuild -atomic` needs the standard B-DNA atomic templates in the CWD
+        # first.  We COPY THEM OURSELVES rather than shelling out to
+        # `x3dna_utils cp_std BDNA` -- see `_copy_standard_bases`.
+        _copy_standard_bases(found.root, workdir, "BDNA")
+        cmd = [rebuild, "-atomic", "bp_step.par", "out.pdb"]
+        res = subprocess.run(
+            cmd, capture_output=True, text=True,
+            cwd=workdir, env=env, stdin=subprocess.DEVNULL, timeout=60)
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"X3DNA {os.path.basename(cmd[0])} failed (exit "
+                f"{res.returncode}).\nCommand: {' '.join(cmd)}\n"
+                f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}")
         if not os.path.isfile(pdb_path):
             raise RuntimeError("rebuild produced no output PDB.")
         pdb_text = Path(pdb_path).read_text()

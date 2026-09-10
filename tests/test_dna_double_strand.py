@@ -204,3 +204,73 @@ def test_relax_clashes_clears_near_coincidence_generally(_x3dna):
         d, _, _ = min_nonbonded_contact(relaxed)
         assert d is not None and d >= 1.0, (
             f"{notation}: residual near-coincident contact {d} A after relief")
+
+
+def test_the_standard_base_templates_land_the_way_3dna_puts_them(_x3dna, tmp_path):
+    """SCIENCE-ADJACENT. `_copy_standard_bases` puts exactly the files
+    `rebuild -atomic` expects, which is what `x3dna_utils cp_std BDNA` used to do.
+
+    THE FAILURE THIS CATCHES.  `rebuild` reads the standard base geometry from
+    fixed filenames in its working directory.  Miss one, copy the wrong dataset,
+    or drop the lowercase alias, and it either dies or builds a duplex from the
+    wrong templates -- and a duplex built from the wrong base geometry still
+    looks like a duplex.
+
+    WHY WE COPY THEM OURSELVES (2026-09-09, #80).  `x3dna_utils` is 3DNA's only
+    interpreted tool -- ruby now, Perl before upstream's 2.4 rewrite -- while
+    `fiber`, `rebuild` and `analyze` are compiled binaries.  Its `cp_std`
+    sub-command is a pure file copy (`lib/miscs.rb:373`), so shelling out cost a
+    whole language runtime for four `shutil.copy` calls.  On a machine without
+    ruby the EXPLICIT/MISMATCHED duplex path died with `exit 127` while the
+    canonical `ds,` path kept working, because that one goes through `fiber` --
+    which is why it went unnoticed: it is the comma-separated form the Modify
+    tab offers, not the one most people type.
+
+    The expectation is DERIVED FROM 3DNA'S OWN CONFIG TREE, not hard-coded: the
+    dataset's templates are globbed and the required names computed from them,
+    so a 3DNA release that ships a different base set is followed rather than
+    contradicted.
+
+    Contract: `web/tabs.md` (the Modify tab's DNA input); 3DNA v2.4
+    `lib/miscs.rb::cp_std`.
+    """
+    import filecmp
+    from pathlib import Path
+    from molbuilder.builders.backends._threedna import (
+        _copy_standard_bases, _resolve)
+
+    root = _resolve().root
+    cfg = Path(root) / "config"
+    # A leftover this dataset does NOT produce -- an A-form template from a
+    # previous build.  Planting `Atomic_A.pdb` proves nothing: the BDNA copy
+    # overwrites it either way, which is why the clearing mutant survived the
+    # first version of this test (measured 2026-09-09).  Only a file nothing
+    # overwrites can show the clearing happened.
+    (tmp_path / "Atomic_Z.pdb").write_text("stale, must be cleared")
+    (tmp_path / "Atomic.z.pdb").write_text("stale, must be cleared")
+
+    _copy_standard_bases(root, str(tmp_path), "BDNA")
+
+    templates = sorted(cfg.glob("atomic/BDNA_?.pdb"))
+    assert templates, "the 3DNA tree has no BDNA templates to copy"
+    expected = {"Atomic.p.pdb"}
+    for src in templates:
+        b = src.stem[-1]
+        expected |= {f"Atomic_{b}.pdb", f"Atomic.{b.lower()}.pdb"}
+
+    assert {p.name for p in tmp_path.iterdir()} == expected, (
+        "the copied set is not the one `rebuild -atomic` looks for")
+    for src in templates:
+        b = src.stem[-1]
+        assert filecmp.cmp(src, tmp_path / f"Atomic_{b}.pdb", shallow=False), (
+            f"Atomic_{b}.pdb is not byte-identical to its BDNA template")
+        assert filecmp.cmp(src, tmp_path / f"Atomic.{b.lower()}.pdb",
+                           shallow=False), (
+            f"the lowercase alias for {b} (3DNA's modified-base spelling) "
+            f"does not match its template")
+    assert not (tmp_path / "Atomic_Z.pdb").exists(), (
+        "a stale Atomic_*.pdb from a previous build survived; `cp_std` clears "
+        "them and so must we, or `rebuild` reads geometry for a base this "
+        "duplex does not contain")
+    assert not (tmp_path / "Atomic.z.pdb").exists(), (
+        "the lowercase stale alias survived")
