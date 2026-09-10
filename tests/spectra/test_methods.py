@@ -467,3 +467,39 @@ def test_a_reference_with_no_occupied_levels_is_refused_not_indexed():
     from molbuilder.pyscf.vibration_emitters import homo_index
     with pytest.raises(ValueError, match="no occupied levels"):
         homo_index([0.0, 0.0, 0.0])
+
+
+def test_every_derived_quantity_is_named_in_the_provenance_table():
+    """The provenance table in `web/spectra.md` § 9b names every quantitative
+    key the emitter writes -- so a new number cannot ship undocumented.
+
+    THE FAILURE THIS CATCHES.  A spectrum is a quantitative result, and the
+    chain from PySCF's own objects to the number on screen is what makes it
+    checkable by someone who did not write it. A key added to the sidecar
+    without a row here is a number with no stated origin: a reader cannot tell
+    whether molbuilder passed it through or derived it, and therefore cannot
+    tell whose bug it would be.
+
+    ARTIFACT LINT (`testing.md` § 3b): it quantifies over the class rather than
+    naming today's keys, so the next one is caught the day it is added.
+
+    Contract: `web/spectra.md` § 9b.
+    """
+    from pathlib import Path
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "web" / "spectra.md"
+           ).read_text(encoding="utf-8")
+    table = doc[doc.index("## 9b. Provenance"):doc.index("### 9b.1")]
+
+    # The quantitative keys -- values a person reads off a chart or a paper.
+    # Bookkeeping keys (schema_version, engine, elements, ...) are excluded by
+    # name, so adding one does not force a row it does not need.
+    quantitative = {
+        "scf_energy_eh", "mo_energies_eh", "homo_idx", "frequency_cm1",
+        "eigenvector_canonical", "ir_intensity_km_mol",
+        "raman_activity_a4_amu", "amplitude_ang",
+    }
+    missing = sorted(k for k in quantitative if f"`{k}`" not in table
+                     and k not in table)
+    assert not missing, (
+        f"these quantitative keys have no row in `web/spectra.md` § 9b, so "
+        f"nothing states where their values come from: {missing}")

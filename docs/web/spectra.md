@@ -551,6 +551,56 @@ It has two forms and takes one optional engine paragraph:
 prose, so what is cited is what was actually said rather than a second list
 kept beside it.
 
+## 9b. Provenance — where every number comes from *(2026-09-09)*
+
+**This is a quantitative result, so the chain from the engine's output to the
+number on screen has to be written down.** Each row says what PySCF reports,
+what molbuilder does to it, and which sidecar key it lands in. The column that
+matters is the middle one: **anything molbuilder DERIVES is molbuilder's to get
+wrong, and is the only part its tests can meaningfully guard.**
+
+| sidecar key | PySCF reports | what molbuilder does | units |
+|---|---|---|---|
+| `equilibrium.scf_energy_eh` | `mf.kernel()` return | stored as-is | Hartree |
+| `equilibrium.mo_energies_eh` | `mf.mo_energy` | non-finite entries dropped (`_filter_finite`) | Hartree |
+| `equilibrium.homo_idx` | `mf.mo_occ` | **DERIVED** — `vibration_emitters.homo_index`: sums the two spin channels when `mo_occ` is 2-D (UHF/UKS), then takes the highest index with occupancy **> 0.5** | index into `mo_energies_eh` |
+| `modes[].frequency_cm1` | `thermo.harmonic_analysis(mol, hess)` → `freq_wavenumber` | sign convention applied (`_signed_wavenumber`): an imaginary root is reported as a NEGATIVE wavenumber, not dropped | cm⁻¹ |
+| `modes[].eigenvector_canonical` | `harmonic_analysis` → `norm_mode` | non-finite dropped; kept in PySCF's mass-weighted unit-norm convention | dimensionless |
+| `modes[].ir_intensity_km_mol` | `mf.dip_moment` at displaced geometries → `DMU_DR` | **DERIVED** — `dμ/dQ = einsum('kai,ka->i', DMU_DR, L_canonical)`, then `42.2561 · |dμ/dQ|²` | km/mol |
+| `modes[].raman_activity_a4_amu` | polarizability, in **atomic units (Bohr³)** | **DERIVED** — Placzek scalar, then one global `(Bohr/Å)⁶ ≈ 0.02197` conversion so the stored value is genuine Å⁴/amu, comparable to Gaussian/ORCA | Å⁴/amu |
+| `modes[].amplitude_ang` | — | molbuilder's own display choice (§ 4.1) | Å |
+| `electronic_structure.mo_energies_*_eh` | `mf.mo_energy` at ±displaced geometries | non-finite dropped | Hartree |
+
+### 9b.1 Two rules this table exists to enforce
+
+**A number molbuilder only PASSES THROUGH is not ours to test.** `scf_energy_eh`
+is `mf.kernel()`'s return value; a test asserting its magnitude is asserting
+PySCF's SCF, which we neither wrote nor control. What is ours is that it reaches
+the right key, in the right unit, unrounded.
+
+**A number molbuilder DERIVES must have its rule callable, not embedded in
+script text.** `homo_index` was inline in the generated script until
+2026-09-09, where nothing could call it — and it has a branch (restricted vs
+unrestricted `mo_occ`) whose failure is silent and affects only open-shell work.
+It is now a function the emitter splices in from its own source, so one
+implementation runs and is tested. The same standard applies to the IR and Raman
+scalars, which are still inline: **see § 9b.2.**
+
+### 9b.2 Still inline, and what would move them
+
+The IR and Raman derivations live in generated script text. Both carry a unit
+conversion that a reader cannot check without doing the algebra:
+
+- IR: the prefactor `42.2561` km·mol⁻¹ per (D/Å)²/amu.
+- Raman: `(Bohr/Å)⁶ ≈ 0.02197`, applied once on the final scalar, because PySCF
+  reports polarizability in Bohr³ and the textbook unit is Å⁴/amu.
+
+Neither has a branch, which is why they were left (the trigger stated in
+`siesta/makov_payne.py`: copy a branchless formula if you must, ship the source
+once it has a branch). **If either grows one — a second polarizability
+convention, a per-mode prefactor — it moves to a callable function the way
+`homo_index` did.**
+
 ## 10. Test map
 
 Engine + backend (`tests/spectra/`): `test_blueprint.py` (the page +

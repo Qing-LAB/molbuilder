@@ -39,6 +39,26 @@ verbatim (spec § 11.2).
 The atomic JSON writer is INLINED into every emitted deck
 (no molbuilder import at runtime) so cluster nodes need only
 the PySCF stack.
+
+PROVENANCE -- WHERE EVERY NUMBER COMES FROM.  This module writes a script whose
+output is a quantitative result, so the chain from PySCF's own objects to each
+sidecar key is stated in `web/spectra.md` § 9b and must be kept true here.  The
+distinction that matters:
+
+  * PASSED THROUGH -- `scf_energy_eh` is `mf.kernel()`'s return, `mo_energies_eh`
+    is `mf.mo_energy`, `frequency_cm1` is `harmonic_analysis`'s
+    `freq_wavenumber`.  These are PySCF's numbers.  What is ours is that they
+    reach the right key in the right unit, unrounded.
+  * DERIVED -- `homo_idx` (from `mf.mo_occ`), `ir_intensity_km_mol` (from
+    `mf.dip_moment` at displaced geometries) and `raman_activity_a4_amu` (from
+    the polarizability, in Bohr^3, converted once).  **These are ours to get
+    wrong**, and they are what this module's tests can meaningfully guard.
+
+A DERIVED rule that has a BRANCH lives as a callable function and is spliced
+into the script from its own source (see :func:`homo_index`), so one
+implementation runs and is tested.  A branchless one may stay inline; if it
+grows a branch, it moves.  That rule is stated once in
+`siesta/makov_payne.py` and applies here too.
 """
 from __future__ import annotations
 
