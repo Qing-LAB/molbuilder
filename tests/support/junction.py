@@ -181,7 +181,13 @@ def run_dir(tmp_path, label="junction"):
 
 
 #: SIESTA writes .XV in BOHR; the parser converts back on read.
-_ANGSTROM_PER_BOHR = 0.5291772108
+# THE one Bohr->Angstrom value (`molbuilder/constants.py`).  A literal
+# here would be a second home: three of them had already drifted to
+# THREE different values by 2026-09-09 (0.5291772108, 0.529177249 --
+# CODATA 1986 -- and 0.529177).  Importing is not circular: every use
+# below WRITES a fixture in Bohr, and the assertion is on the Angstrom
+# value that comes back.
+from molbuilder.constants import BOHR_ANGSTROM as _ANGSTROM_PER_BOHR
 
 
 def xv_file(path, struct=None):

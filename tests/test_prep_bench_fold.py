@@ -1498,10 +1498,23 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
     assert res.exit_code == 0, res.output
     _deck_path = next(dest.glob("01_coarse/*.fdf"))     # L1: in the stage dir
     deck = _deck_path.read_text()
-    if "makov_payne_correction.py" in deck:
-        assert (_deck_path.parent / "makov_payne_correction.py").is_file(), (
-            "the deck instructs running a script prep did not write "
-            "beside it")
+    # BOTH halves asserted.  This stood as `if "makov_payne_correction.py"
+    # in deck:` wrapping the file check, so rewording the header -- which is
+    # generated prose -- silently turned a net-charge test into a no-op
+    # (measured 2026-09-09).  The instruction IS the promise; it has to be
+    # there before "kept" can mean anything.
+    # The INSTRUCTION, not the filename: the header mentions the script in
+    # prose on a neighbouring line too, so matching the bare name passed even
+    # with the run line renamed (mutation, 2026-09-09).  What is promised is
+    # `python3 <script>`, and that is what has to be shipped.
+    import re as _re
+    m = _re.search(r"python3\s+(\S+\.py)", deck)
+    assert m, ("a charged deck must instruct running the correction script; "
+               "without that line the promise this test checks does not exist")
+    promised = m.group(1)
+    assert (_deck_path.parent / promised).is_file(), (
+        f"the deck instructs `python3 {promised}` and prep did not write it "
+        f"beside the deck")
 
 
 def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
@@ -2116,6 +2129,28 @@ def test_the_cap_is_clean_scf_must_converge_is_pinned_off(calc):
     _sweep, pins, _tr = _bench_inputs(calc, None)
     assert pins["scf_must_converge"] is False
     assert pins["max_scf_iter"] == 3
+
+    # AND WHERE SIESTA READS IT.  The two assertions above stop at the pins
+    # dict, an intermediate; SIESTA decides ABNORMAL_TERMINATION from the
+    # DECK.  A pin that fails to reach it emits NO keyword at all -- measured
+    # 2026-09-09 -- and SIESTA's own default is must-converge, which is
+    # exactly the outcome B2 exists to avoid.  So the absence is silent and
+    # only the rendered deck can show it.
+    import dataclasses as _dc
+    import numpy as _np
+    from molbuilder.structure import Structure as _S
+    from molbuilder.siesta.input import render_fdf as _render
+    _fields = {f.name for f in _dc.fields(SiestaConfig)}
+    _cfg = SiestaConfig(system_label="J",
+                        **{k: v for k, v in pins.items() if k in _fields})
+    _h2 = _S(elements=["H", "H"],
+             positions=_np.array([[0., 0., 0.], [0., 0., 0.74]]),
+             vacuum=(10., 10., 10.))
+    _deck = _render(_h2, _cfg)
+    assert "SCF.MustConverge .false." in _deck, (
+        "the cap's pin must reach the deck; SIESTA defaults to "
+        "must-converge when the keyword is absent")
+    assert "MaxSCFIterations  3" in _deck
 
 
 # --------------------------------------------------------------------- #

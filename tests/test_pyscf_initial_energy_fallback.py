@@ -52,7 +52,8 @@ _PYSCF_LOG_STEP0_ANSI = (
 )
 
 
-_HARTREE_TO_EV = 27.211386245988
+# Imported, not retyped -- `constants.py` is the one home.
+from molbuilder.constants import HARTREE_EV as _HARTREE_TO_EV
 
 
 class TestInitialEnergyFallback:

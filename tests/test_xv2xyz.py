@@ -15,7 +15,9 @@ from click.testing import CliRunner
 from molbuilder import cli
 from molbuilder.parse.coords import read_xv, read_xv_cell, xv_to_xyz
 
-_ANG = 0.5291772108
+# The one home (`molbuilder/constants.py`); this file carried a stale
+# `0.5291772108` until 2026-09-09.
+from molbuilder.constants import BOHR_ANGSTROM as _ANG
 
 # Minimal 3-atom .XV: cubic 10-Bohr cell + C, H, Au (Z=6,1,79); coords Bohr.
 _XV = (

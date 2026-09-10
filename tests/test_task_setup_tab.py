@@ -1047,7 +1047,8 @@ def _cited_junction(root, *, concluded=True):
     (attempt / "Relax_01_only.fdf").write_text(
         "SystemLabel Relax\nMeshCutoff 250.0 Ry\nPAO.BasisSize SZ\n"
         "XC.functional GGA\nXC.authors PBE\n")
-    bohr = 1.0 / 0.529177210903
+    from molbuilder.constants import BOHR_ANGSTROM
+    bohr = 1.0 / BOHR_ANGSTROM
     (attempt / "Relax.XV").write_text(
         f"  {10*bohr:.8f} 0.0 0.0  0.0 0.0 0.0\n"
         f"  0.0 {10*bohr:.8f} 0.0  0.0 0.0 0.0\n"

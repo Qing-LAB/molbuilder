@@ -10,11 +10,18 @@ from molbuilder import engine_atom_index as eai
 
 
 def _distinct_struct():
-    # Distinct elements AND positions so (element, position) uniquely ids an atom.
+    # REPEATED elements, distinct positions.  The name is historical: it used to
+    # be H/C/N/O/F, five distinct species, which made (element, position) unique
+    # by construction -- so the element half of every identity assertion below
+    # was decoration, and a wrong atom could only ever be caught by its
+    # coordinates (2026-09-09 audit).  Three carbons mean an index shift lands
+    # on a DIFFERENT CARBON and stays chemically plausible, which is the failure
+    # that is silent.
+    #
     # Explicit large cell so render_fdf emits coords as-is (a cell-less struct is
     # auto-boxed + uniformly shifted -- identity-preserving but it would move the
     # absolute coords we assert on).
-    els = ["H", "C", "N", "O", "F"]
+    els = ["C", "C", "N", "C", "O"]
     pos = np.array([[float(i), float(2 * i), float(3 * i)] for i in range(5)])
     return Structure(elements=els, positions=pos,
                      cell=np.diag([50.0, 50.0, 50.0]), pbc=[True, True, True])
@@ -74,7 +81,11 @@ def test_siesta_frozen_maps_to_correct_physical_atom():
 
 
 # --------------------------- PySCF / geomeTRIC ----------------------- #
-_ATOM = re.compile(r"^\s*([A-Z][a-z]?)\s+(-?\d+\.\d{6,})\s+(-?\d+\.\d{6,})\s+(-?\d+\.\d{6,})\s*$")
+# Any decimal width.  `\d{6,}` stood here and made a COORDINATE-FORMAT change
+# fail as "expected 5 atom lines, got 0" -- a parse miss wearing an identity
+# error's clothes.  The count assertion below still catches a missing atom, and
+# now says which thing broke (2026-09-09).
+_ATOM = re.compile(r"^\s*([A-Z][a-z]?)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s*$")
 
 
 def _pyscf_atoms(script):
@@ -94,7 +105,10 @@ def test_pyscf_frozen_maps_to_correct_physical_atom():
     s.frozen_atoms = [1, 3]
     script = render_script(s, PySCFConfig(optimize=True, optimizer="geometric"))
     atoms = _pyscf_atoms(script)
-    assert len(atoms) == 5, f"expected 5 atom lines, got {len(atoms)}"
+    assert len(atoms) == 5, (
+        f"expected 5 atom lines in the generated script, got {len(atoms)} -- "
+        f"if this is 0 the coordinate FORMAT changed and `_ATOM` no longer "
+        f"matches; that is a parse miss, not an identity error")
     m = re.search(r"xyz ([\d,]+)", script)
     assert m, "geomeTRIC $freeze xyz line not found"
     frozen_1based = {int(x) for x in m.group(1).split(",")}

@@ -232,15 +232,23 @@ def test_render_siesta_emits_propor_diagnostic():
     # (``$_out_file`` so --continue can write -runN.out); the grep
     # reads from that variable, not the baked basename.
     assert 'grep -aq "propor: ERROR" "$_out_file"' in text
-    # Cause 1: pseudopotential, checked FIRST.
-    assert "Kleinman-Bylander" in text
+    # THE ORDER IS THE CLAIM.  Three independent `in text` assertions stood
+    # here and a reordering passed all three -- including the exact revert
+    # the 2026-06-26 change was made to prevent, putting `-np` back first so
+    # a defective pseudopotential reads as "you asked for too many ranks"
+    # (measured 2026-09-09).  `.index` still raises on an absent cause, so
+    # presence is checked by the same line that checks sequence.
+    causes = ["Kleinman-Bylander",              # 1: the pseudopotential
+              "np IS a legitimate tunable",     # 2: ranks, as a tunable
+              "Spin.Total"]                     # 3: spin
+    at = [text.index(c) for c in causes]
+    assert at == sorted(at), (
+        "the propor diagnostic must name the pseudopotential FIRST; got "
+        + " -> ".join(c for _, c in sorted(zip(at, causes))))
+    # The rest of each cause's text, which ordering does not cover.
     assert "ekb=0" in text
     assert "molbuilder pseudo check" in text
-    # Cause 2: -np still a legitimate tunable, names the actual basename.
-    assert "bash hemeC.run.sh -np 8" in text
-    assert "np IS a legitimate tunable" in text
-    # Cause 3: spin.
-    assert "Spin.Total" in text
+    assert "bash hemeC.run.sh -np 8" in text   # names the actual basename
     # Re-exit with SIESTA's code.
     assert 'exit "$_siesta_exit"' in text
 

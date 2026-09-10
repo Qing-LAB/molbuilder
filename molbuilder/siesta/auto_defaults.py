@@ -34,9 +34,34 @@ class SiestaSuggestedParams:
     will eventually receive.
     """
     net_charge:     int
-    spin_treatment: str
+    spin_treatment: str          # one of `config.siesta.SPIN_TREATMENTS`
     spin_total:     float
     rationale:      str
+
+    def __post_init__(self) -> None:
+        # THE enforcement.  Nothing in this repo type-checks (no mypy /
+        # pyright), so an annotation refuses nothing at runtime -- the pairing
+        # `issues.Issue` uses is a declared vocabulary plus a constructor that
+        # rejects.  The vocabulary is NOT re-spelled here: it is imported from
+        # the module that declares the form field, so there is one home.
+        from ..config.siesta import SPIN_TREATMENTS
+        if self.spin_treatment not in SPIN_TREATMENTS:
+            raise ValueError(
+                f"SiestaSuggestedParams.spin_treatment must be one of "
+                f"{SPIN_TREATMENTS}; got {self.spin_treatment!r}")
+        # `spin_total: float` is an ANNOTATION, and annotations are not checked
+        # -- `SiestaSuggestedParams(0, "polarized", "abc", "why")` constructed
+        # happily until 2026-09-09, with a route test asserting
+        # `isinstance(si["spin_total"], float)` to cover for it.  Coerce here,
+        # so the wire value IS a float and a non-numeric raises at the point
+        # the wrong value was written.
+        if not isinstance(self.spin_total, float):
+            try:
+                object.__setattr__(self, "spin_total", float(self.spin_total))
+            except (TypeError, ValueError) as exc:
+                raise TypeError(
+                    f"SiestaSuggestedParams.spin_total must be a number "
+                    f"(mu_B); got {self.spin_total!r}") from exc
 
 
 @register_adapter("siesta")

@@ -107,13 +107,13 @@ def test_scf_cycle_hook_buffers_per_cycle_data(tmp_path, h2_mol):
     assert em._scf_buf[0]["cycle"] == 1     # 1-indexed in our log
     assert em._scf_buf[1]["cycle"] == 2
     # Hartree -> eV conversion for energy
-    assert em._scf_buf[0]["energy"] == pytest.approx(-1.10 * 27.211386245988)
+    assert em._scf_buf[0]["energy"] == pytest.approx(-1.10 * MolwatchEmitter.HARTREE_TO_EV)
     # Delta-E uses last_hf_e where available
     assert em._scf_buf[1]["delta_E"] == pytest.approx(
-        (-1.15 - -1.10) * 27.211386245988
+        (-1.15 - -1.10) * MolwatchEmitter.HARTREE_TO_EV
     )
     # Hartree/Bohr -> eV/Ang conversion for gradient norm
-    assert em._scf_buf[0]["gnorm"] == pytest.approx(1.0e-2 * 51.42208619)
+    assert em._scf_buf[0]["gnorm"] == pytest.approx(1.0e-2 * MolwatchEmitter.HARTREE_BOHR_TO_EV_ANG)
 
     # New SCF run starts: cycle=0 should reset the buffer.
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.16, "last_hf_e": None,
@@ -159,7 +159,7 @@ def test_opt_step_hook_writes_block_with_forces_and_scf_history(tmp_path,
     assert re.search(r"energy \(eV\): -3?\d\.\d{8}", block)
     # Forces are -gradient * (Hartree/Bohr -> eV/Ang) = -grad * 51.4221
     # H1's gradient was -0.05 Ha/Bohr, so its force is +0.05 * 51.42... eV/Ang
-    expected_F = 0.05 * 51.42208619
+    expected_F = 0.05 * MolwatchEmitter.HARTREE_BOHR_TO_EV_ANG
     assert re.search(rf"H\s+{expected_F:.8f}\s+", block), (
         f"expected force {expected_F:.8f} eV/Ang for H1; block was:\n{block}"
     )

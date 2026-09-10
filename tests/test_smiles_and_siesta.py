@@ -267,105 +267,107 @@ def test_fdf_neutral_system_no_makov_payne_block():
     assert "Makov-Payne" not in fdf
 
 
-def test_cell_volume_below_one_per_atom_raises():
-    """The 2026-05-28 cell-volume sanity tightening: ``vol <
-    n_atoms * 1.0 A^3`` raises with an actionable message naming
-    the most common cause (unit confusion producing sub-Angstrom
-    lattice vectors).
+# --------------------------------------------------------------------- #
+#  The cell-volume gate: `vol < n_atoms * 1.0 A^3` refuses.             #
+#                                                                       #
+#  OURS, entirely -- the threshold is molbuilder's choice               #
+#  (siesta/input.py, 2026-05-28; before that a flat `vol < 1.0` that    #
+#  only caught catastrophic input).  Three tests covered it and the     #
+#  middle one could not fail: its fixture put 10 atoms in a 2.29 A box, #
+#  so `render_fdf` refused with `cell.unfittable`, the `except` branch  #
+#  returned, and its `assert "BlockSize" in fdf` was never reached      #
+#  (measured 2026-09-09).  One parametrised boundary replaces them.     #
+# --------------------------------------------------------------------- #
 
-    Pre-2026-05-28 the threshold was a flat ``vol < 1.0 A^3`` --
-    only fired on truly catastrophic input.  The per-atom floor
-    scales with molecule size and catches realistic mistakes like
-    a coplanar lattice vector or a typo in a single component.
+# (n_atoms, cell volume A^3, does THIS gate refuse it)
+_VOLUME_GATE_BOUNDARY = [
+    (10, 9.9,  True),    # just below n * 1.0
+    (10, 10.0, False),   # EXACTLY at -- `<` not `<=`, so it passes
+    (2,   2.0, False),   # and again at another n, so the row is not a fluke
+    (1,  0.99, True),    # the floor scales with n, down to one atom
+    (1,  1.2,  False),   # just above
+]
+
+
+@pytest.mark.parametrize("n_atoms,volume,refused", _VOLUME_GATE_BOUNDARY)
+def test_the_cell_volume_gate_refuses_below_one_angstrom_cubed_per_atom(
+        n_atoms, volume, refused):
+    """SCIENCE. The threshold scales with the molecule, and the comparison
+    is strict.
+
+    A cell exactly at `n * 1.0` must PASS -- `<=` there would refuse a cell
+    that meets the stated rule, and no other test can see the difference.
+    A cell just below must be refused BY THIS GATE and not by something
+    downstream, which is why the assertion names the message: at 10 atoms
+    the cell is 2.15 A across and a dozen other checks would also fire.
+
+    Contract: `siesta/input.py`'s volume guard (2026-05-28).
     """
-    import re
     import numpy as np
     from molbuilder.structure import Structure
-    # 10 carbon atoms; needs cell volume >= 10 A^3 to pass.
-    s = Structure(elements=["C"] * 10,
-                  positions=np.zeros((10, 3)) + np.arange(10).reshape(10, 1) * 0.5,
-                  title="dense", vacuum=(12.0, 12.0, 12.0))
-    # Tiny cell: 1.5 A^3 cubic = 0.5 A side.  Below 10 A^3 threshold.
-    tiny_cell = np.eye(3) * 1.5 ** (1.0 / 3.0)
-    cfg = SiestaConfig(relax_type="none")
-    with pytest.raises(ValueError) as exc_info:
-        render_fdf(s, cfg, cell=tiny_cell)
-    msg = str(exc_info.value)
-    # Message must name the actual volume + the per-atom requirement.
-    assert re.search(r"volume \d+\.\d+ A\^3", msg), (
-        f"error message must quote the actual volume: {msg!r}"
-    )
-    assert "10 atom" in msg, (
-        f"error message must name the atom count (10): {msg!r}"
-    )
-    assert "10.0 A^3" in msg or "= 1 A^3 per atom" in msg, (
-        f"error message must name the per-atom requirement: {msg!r}"
-    )
-    # Diagnostic must mention the canonical "nm vs A" + "coplanar"
-    # causes so the user knows where to look.
-    assert ("nm" in msg or "coplanar" in msg), (
-        f"error message must name likely causes: {msg!r}"
-    )
+    s = Structure(
+        elements=["C"] * n_atoms,
+        positions=np.zeros((n_atoms, 3))
+        + np.arange(n_atoms).reshape(n_atoms, 1) * 0.5,
+        title="dense", vacuum=(12.0, 12.0, 12.0))
+    # `diag(v, 1, 1)`, NOT a cube: `det` is then exactly `v`.  A cubic cell
+    # of `v ** (1/3)` cubes back to 10.000000000000002 for v = 10, two ULP
+    # ABOVE the boundary -- which let a `<` -> `<=` mutant survive the row
+    # written to catch it (2026-09-09).  It also keeps the box long in x,
+    # so the atoms fit and `cell.unfittable` cannot mask this gate.
+    cell = np.diag([volume, 1.0, 1.0])
+    cfg = SiestaConfig(relax_type="none", wrap_into_cell=False)
 
-
-def test_cell_volume_just_above_threshold_passes():
-    """Boundary: vol slightly above n_atoms A^3 must pass (no
-    false-positive on legit dense cells)."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    # 10 atoms in a packed arrangement; 12 A^3 cell (1.2x threshold).
-    s = Structure(elements=["C"] * 10,
-                  positions=np.linspace([0, 0, 0],
-                                         [10, 10, 10], 10),
-                  title="dense", vacuum=(12.0, 12.0, 12.0))
-    # Cell with vol = 12 A^3 = (12)^(1/3) ~= 2.29 A side.
-    edge = 12.0 ** (1.0 / 3.0)
-    cell = np.eye(3) * edge
-    cfg = SiestaConfig(relax_type="none",
-                       wrap_into_cell=False)
-    # render_fdf will issue downstream warnings (atom overlap, etc.),
-    # but the volume gate itself must pass.  An unexpected ValueError
-    # RE-RAISES: swallowing it let the test go green without the render
-    # ever succeeding, its assertion never reached (found 2026-08-12).
     try:
-        fdf = render_fdf(s, cfg, cell=cell)
-    except ValueError as e:
-        if "below the minimum physical volume" in str(e):
-            raise AssertionError(
-                f"vol = 12 A^3 (1.2x of 10-atom threshold) should "
-                f"NOT trigger the volume gate; got: {e}"
-            )
-        # Any OTHER refusal (this dense fixture legitimately fails the
-        # overlap validation) still proves the property: the VOLUME gate
-        # did not fire.  Re-raising here instead hid nothing -- the old
-        # bare swallow did, which is why this branch asserts the message
-        # rather than passing silently (2026-08-12).
-        return
+        render_fdf(s, cfg, cell=cell)
+        fired = False
+    except ValueError as exc:
+        fired = "below the minimum physical volume" in str(exc)
+
+    assert fired is refused, (
+        f"n={n_atoms}, vol={volume} A^3: volume gate "
+        f"{'did not fire' if refused else 'fired'} when it should "
+        f"{'have' if refused else 'not have'}"
+    )
+
+
+def test_a_cell_the_gate_allows_renders_all_the_way_through():
+    """The other half: the gate is not merely quiet, the render completes.
+
+    The old `..._just_above_threshold_passes` meant to prove this and could
+    not, because its fixture did not fit its own cell.  One atom at 1.2x the
+    floor does fit, so this reaches a real FDF.
+    """
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(elements=["C"], positions=np.zeros((1, 3)),
+                  title="one", vacuum=(12.0, 12.0, 12.0))
+    fdf = render_fdf(s, SiestaConfig(relax_type="none", wrap_into_cell=False),
+                     cell=np.eye(3) * 1.2 ** (1.0 / 3.0))
     assert "BlockSize" in fdf, "render must produce a real FDF"
 
 
-def test_cell_volume_per_atom_threshold_scales_with_n_atoms():
-    """The new threshold is per-atom: a cell that's fine for 1 atom
-    must fail for many atoms in the same cell.  This is the
-    physical-fit invariant: the cell must contain the atoms."""
+def test_the_volume_refusal_says_what_to_look_at():
+    """The MESSAGE is the product here -- a bare refusal leaves the user
+    guessing between a unit slip, a coplanar vector and a typo, which are
+    the three ways this actually happens.
+
+    Contract: the message text in `siesta/input.py`'s volume guard.
+    """
     import numpy as np
     from molbuilder.structure import Structure
-    # 100 atoms in a 50 A^3 cell -- way below 100 A^3 threshold.
-    s = Structure(elements=["H"] * 100,
-                  positions=np.linspace([0, 0, 0],
-                                         [3, 3, 3], 100),
-                  title="crowded", vacuum=(12.0, 12.0, 12.0))
-    cell = np.eye(3) * 50.0 ** (1.0 / 3.0)   # vol = 50 A^3
-    cfg = SiestaConfig(relax_type="none")
-    with pytest.raises(ValueError, match="below the minimum"):
-        render_fdf(s, cfg, cell=cell)
-    # Same cell with 1 atom: still passes (1.0 A^3 floor for n=1).
-    s_single = Structure(elements=["H"],
-                         positions=np.array([[1.0, 1.0, 1.0]]),
-                         title="single", vacuum=(12.0, 12.0, 12.0))
-    cell_single = np.eye(3) * 2.0   # vol = 8 A^3 >> 1 A^3 (n=1)
-    fdf = render_fdf(s_single, cfg, cell=cell_single)
-    assert "BlockSize" in fdf
+    s = Structure(elements=["C"] * 10,
+                  positions=np.zeros((10, 3))
+                  + np.arange(10).reshape(10, 1) * 0.5,
+                  title="dense", vacuum=(12.0, 12.0, 12.0))
+    with pytest.raises(ValueError) as exc:
+        render_fdf(s, SiestaConfig(relax_type="none"),
+                   cell=np.eye(3) * 1.5 ** (1.0 / 3.0))
+    msg = str(exc.value)
+    assert re.search(r"volume \d+\.\d+ A\^3", msg), msg
+    assert "10 atom" in msg, msg
+    assert "10.0 A^3" in msg or "= 1 A^3 per atom" in msg, msg
+    assert "nm" in msg or "coplanar" in msg, msg
 
 
 def test_wrap_into_cell_boundary_handling():

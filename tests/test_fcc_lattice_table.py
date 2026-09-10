@@ -69,6 +69,12 @@ def test_every_metal_has_the_two_literature_references():
         # re-adding it would quietly restore a control that can never be
         # reachable: nothing in the codebase writes this file, so the value
         # would be null again and the radio would grey itself out again.
+        #
+        # THE ONLY PLACE THIS CAN BE SEEN.  It reads the raw JSON.  Two other
+        # tests carried the same line against `load_fcc_lattice_full` output,
+        # where it could not fail: the loader builds a fresh dict of four
+        # fixed keys, so a column re-added to the file never reaches it.
+        # Removed there 2026-09-09; this is the guard.
         assert "a_pbe_siesta_psml" not in entry, (
             f"{sym} carries a_pbe_siesta_psml. A per-run measurement does not "
             f"belong in a table every project shares -- it comes from "
@@ -187,7 +193,6 @@ def test_v2_loader_returns_full_dict():
         e = full[sym]
         assert isinstance(e["a_experimental"], float)
         assert isinstance(e["a_pbe"], float)
-        assert "a_pbe_siesta_psml" not in e
         assert isinstance(e["name"], str)
         assert e["system"] == "fcc"
 
@@ -205,7 +210,6 @@ def test_meta_endpoint_exposes_lattice_table(web_client):
         e = table[sym]
         assert "a_experimental" in e
         assert "a_pbe" in e
-        assert "a_pbe_siesta_psml" not in e
 
 
 def test_meta_endpoint_lattice_error_is_none_on_happy_path(web_client):

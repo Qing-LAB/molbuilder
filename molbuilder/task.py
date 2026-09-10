@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import contextvars
 import difflib
+import dataclasses as _dc
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, NoReturn, Optional, Tuple
@@ -80,9 +81,18 @@ from .paths import SHAPES
 
 #: § 2 — "three fields, and no others".  An ``overrides`` map naming one of
 #: these would be a stage redefining what a stage is.
-STAGE_FIELDS = ("name", "enabled", "overrides", "execution")
+#:
+#: DERIVED FROM THE DATACLASS, not typed beside it.  A hand-written tuple here
+#: is a second definition of what a `Stage` is, and the only thing holding the
+#: two together was a test in each engine's file asserting they matched -- a
+#: bean count where a one-line derivation does the job (2026-09-09).  Adding a
+#: field to `Stage` now updates this, `_check_keys`, and every caller at once;
+#: forgetting to is no longer a state that exists.
+#:
+#: Defined after `Stage` (bottom of this module) because it reads its fields.
 
 #: § 6.6 — a stage name becomes a filename, so the set is the narrow one.
+
 STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
@@ -1215,3 +1225,7 @@ __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Allocation",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "read_task", "varies_for", "write_task"]
+
+
+#: See the note beside § 2 above.  Derived here, where `Stage` is in scope.
+STAGE_FIELDS: "tuple[str, ...]" = tuple(f.name for f in _dc.fields(Stage))

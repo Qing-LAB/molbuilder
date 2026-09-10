@@ -37,7 +37,14 @@ from molbuilder.transport.compose import (FROZEN_TOL_ANG, ComposeError,
                                           compose_junction, read_xv,
                                           write_compose_record)
 
-_ANG_BOHR = 1.0 / 0.529177
+# THE one Bohr->Angstrom value (`molbuilder/constants.py`).  A literal
+# here would be a second home: three of them had already drifted to
+# THREE different values by 2026-09-09 (0.5291772108, 0.529177249 --
+# CODATA 1986 -- and 0.529177).  Importing is not circular: every use
+# below WRITES a fixture in Bohr, and the assertion is on the Angstrom
+# value that comes back.
+from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANGSTROM
+_ANG_BOHR = 1.0 / _BOHR_ANGSTROM
 _Z = {"Au": 79, "S": 16, "C": 6, "N": 7}
 
 #: six 2.5 Å layers a side (12.5 Å span — over the wizard's 12 Å lead

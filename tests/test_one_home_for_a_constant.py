@@ -52,11 +52,39 @@ _ALLOWED = {
 _NOT_A_COPY = ("51.42208619",)
 
 
+#: The suite is inside the net too, since 2026-09-09.  It was not, and by then
+#: `tests/` held FOUR spellings of the Bohr constant across five files --
+#: `0.5291772108` twice, `0.529177249` (CODATA 1986) and `0.529177` -- none
+#: matching `constants.py`'s `0.529177210903`.  A guard that policed only the
+#: package while the suite drifted was measuring the wrong half: a test that
+#: retypes a constant asserts against a second definition, which is the exact
+#: failure this file exists to prevent.
+#:
+#: Fixtures may still be BUILT from the constant -- importing to write input is
+#: not circular, because the assertion is on the value that comes back.
+_ROOTS = (PKG, REPO / "tests")
+
+
 def _python_files():
-    for path in sorted(PKG.rglob("*.py")):
-        if path == HOME or "__pycache__" in path.parts:
-            continue
-        yield path
+    me = Path(__file__).resolve()
+    for root in _ROOTS:
+        for path in sorted(root.rglob("*.py")):
+            # `constants.py` is the home; THIS file spells the digit prefixes
+            # in `_OWNED` because that is how it recognises them.
+            if path == HOME or path.resolve() == me:
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            yield path
+
+
+def _rel(path: Path) -> str:
+    """Package paths stay bare (`trajectory_log/emitter.py`) so the existing
+    `_ALLOWED` keys keep working; suite paths carry their `tests/` prefix."""
+    try:
+        return str(path.relative_to(PKG))
+    except ValueError:
+        return str(path.relative_to(REPO))
 
 
 def _code_only(text: str) -> str:
@@ -75,7 +103,7 @@ def _code_only(text: str) -> str:
 def test_no_module_retypes_a_constant(digits, name):
     offenders = []
     for path in _python_files():
-        rel = str(path.relative_to(PKG))
+        rel = _rel(path)
         if rel in _ALLOWED:
             continue
         code = _code_only(path.read_text(encoding="utf-8"))

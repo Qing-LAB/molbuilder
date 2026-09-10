@@ -101,13 +101,21 @@ def test_suggested_siesta_shape(web):
     xyz = "1\nFe\nFe 0 0 0\n"
     _, body = _post_analyze(web, _as_envelope(xyz))
     si = body["suggested"]["siesta"]
+    # THE KEY SET STAYS, and not as a shape check: `auto-detect.js` and
+    # `form-schema.js` spell these names, so a rename sails through Python
+    # (the route is `asdict(...)`, which follows the dataclass) and breaks the
+    # form-fill silently.  No Python type spans that boundary -- this is the
+    # same arrangement as `test_contact_distance_reference.py`'s JSON-vs-JS
+    # copy.  The docstring above already said so.
     assert set(si.keys()) == {
         "net_charge", "spin_treatment", "spin_total", "rationale"
     }
-    # A four-state MODE since 2026-08-15, not a boolean.
-    assert si["spin_treatment"] in (
-        "non-polarized", "polarized", "non-colinear", "spin-orbit")
-    assert isinstance(si["spin_total"], float)
+    # `si["spin_treatment"] in (...)` and `isinstance(si["spin_total"], float)`
+    # stood here.  Both are enforced at construction now
+    # (`SiestaSuggestedParams.__post_init__`, 2026-09-09): the vocabulary is
+    # `config.siesta.SPIN_TREATMENTS` -- ONE home, which the form field's
+    # `choices` reads too -- and `spin_total` is coerced, with a non-numeric
+    # raising where the wrong value is written rather than where it is read.
 
 
 def test_suggested_pyscf_shape(web):
@@ -115,9 +123,12 @@ def test_suggested_pyscf_shape(web):
     xyz = "1\nFe\nFe 0 0 0\n"
     _, body = _post_analyze(web, _as_envelope(xyz))
     py = body["suggested"]["pyscf"]
+    # Key set for the same reason as its SIESTA twin above: a JS-side rename
+    # tripwire, not a shape assertion.
     assert set(py.keys()) == {"net_charge", "spin", "method", "rationale"}
-    assert isinstance(py["spin"], int)
-    assert py["method"] in {"UKS", "RKS"}
+    # `isinstance(py["spin"], int)` and `py["method"] in {...}` are enforced by
+    # `PyscfSuggestedParams.__post_init__` now.  `method`'s legal values lived
+    # in a COMMENT beside `method: str` until 2026-09-09.
 
 
 def test_metal_hints_are_dicts_not_dataclasses(web):

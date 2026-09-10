@@ -66,13 +66,12 @@ class TestBandWidth:
         """§ 6.3 — the region you aim at is the region you see."""
         assert band(20) == 20
 
-    def test_it_does_not_depend_on_where_the_modes_are(self):
-        """§ 6.3 — the reason this stopped answering per mode. Each band used to
-        be clamped to half the gap to its nearer neighbour, which in a crowded
-        region shrank targets to a fraction of a pixel: some peaks were easy to
-        click and others were not hittable. Nothing about the neighbours enters
-        it now, so there is no arrangement of modes that can shrink one."""
-        assert band(20) == 20        # the frequencies are not an argument at all
+    # `test_it_does_not_depend_on_where_the_modes_are` stood here and was
+    # character-identical to the test above it (§ 6.3's per-mode clamp being
+    # gone).  `bandHalfWidth(w)` takes only `w`, so mode positions cannot
+    # enter it -- that is a fact about the SIGNATURE, read in one line, and a
+    # test asserting `band(20) == 20` a second time could not have caught a
+    # regression that reintroduced the clamp anyway.  Removed 2026-09-09.
 
 
 # --- § 9  the envelope ------------------------------------------------------

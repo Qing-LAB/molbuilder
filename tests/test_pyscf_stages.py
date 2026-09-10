@@ -131,12 +131,17 @@ def test_no_shipped_ladder_says_anything_about_restart():
             assert "restart" not in st.overrides, (strategy, st.name)
 
 
-def test_a_stage_has_exactly_the_four_fields_of_section_2():
-    """§ 2 -- the same four for both engines, because a ``Stage`` is not an
-    engine's type.  `execution` joined on 2026-09-02 (§ 6.8d): what this rung
-    RUNS at, where `overrides` is what it *is*."""
-    assert [f.name for f in dataclasses.fields(Stage)] == [
-        "name", "enabled", "overrides", "execution"]
+# `test_a_stage_has_exactly_the_four_fields_of_section_2` stood here, byte-
+# identical to the copy in `test_siesta_stages.py` (verified 2026-09-09).
+# `Stage` lives in `molbuilder/task.py` and is ENGINE-AGNOSTIC, so asserting
+# its field list once per engine is one fact in two homes.  The siesta file
+# keeps it.
+#
+# Note what this does NOT retire: deriving `task.STAGE_FIELDS` from
+# `dataclasses.fields(Stage)` removed a second DEFINITION of a stage's shape,
+# and that drift is now unconstructible -- but the surviving test pins the
+# dataclass against § 2's "four fields and no others", which is a design
+# decision no type can express.  A tripwire on a deliberate choice stays.
 
 
 def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():

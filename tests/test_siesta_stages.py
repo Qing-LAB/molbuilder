@@ -156,6 +156,13 @@ def test_a_stage_has_exactly_the_four_fields_of_section_2():
     through `varies`, `execution` reaches the launch through the grid
     enumerator -- and a field that changes the answer is refused from
     `execution` by name."""
+    # THE ONE HOME.  `Stage` is engine-agnostic (`molbuilder/task.py`), so the
+    # byte-identical copy that lived in `test_pyscf_stages.py` went 2026-09-09.
+    #
+    # This is a TRIPWIRE ON A DECISION, not a shape check: `task.STAGE_FIELDS`
+    # is derived from these fields now, so the two cannot drift, but "four and
+    # no others" is a design ruling and no type says it.  A fifth field should
+    # cost a conversation.
     assert [f.name for f in dataclasses.fields(Stage)] == [
         "name", "enabled", "overrides", "execution"]
 

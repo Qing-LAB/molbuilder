@@ -15,12 +15,20 @@ through the registry — no separate ``SpectraAdapter`` needed.
 """
 from __future__ import annotations
 
+from typing import Literal
 from dataclasses import dataclass
 
 from molbuilder.chemistry import (
     ChemistryAnalysis,
     register_adapter,
 )
+
+
+#: The SCF method strings PySCF accepts from us: UKS for open-shell DFT,
+#: RKS for closed-shell.  One home -- `PyscfSuggestedParams.method` and
+#: anything that validates it read this tuple.
+SCF_METHODS: "tuple[str, ...]" = ("UKS", "RKS")
+SCFMethod = Literal["UKS", "RKS"]
 
 
 @dataclass(frozen=True)
@@ -38,8 +46,29 @@ class PyscfSuggestedParams:
     """
     net_charge: int
     spin:      int
-    method:    str       # "UKS" | "RKS"
+    method:    SCFMethod
     rationale: str
+
+    def __post_init__(self) -> None:
+        # The Literal is for the reader; THIS is the enforcement.  Nothing in
+        # this repo type-checks (no mypy / pyright), so an annotation alone
+        # refuses nothing at runtime -- the same pairing `issues.Issue` uses.
+        # Until 2026-09-09 the legal values lived in a COMMENT beside
+        # `method: str`, and a route test asserted `py["method"] in {"UKS",
+        # "RKS"}` to make up for it.
+        if self.method not in SCF_METHODS:
+            raise ValueError(
+                f"PyscfSuggestedParams.method must be one of {SCF_METHODS}; "
+                f"got {self.method!r}")
+        # `spin: int` is an annotation and annotations are not checked; a str
+        # constructed happily until 2026-09-09, covered by a route test
+        # asserting `isinstance(py["spin"], int)`.  PySCF's `gto.M(spin=)` is
+        # 2S -- a count of unpaired electrons -- so a non-integer is not a
+        # rounding question, it is wrong.
+        if isinstance(self.spin, bool) or not isinstance(self.spin, int):
+            raise TypeError(
+                f"PyscfSuggestedParams.spin is 2S, a whole number of unpaired "
+                f"electrons; got {self.spin!r}")
 
 
 @register_adapter("pyscf")

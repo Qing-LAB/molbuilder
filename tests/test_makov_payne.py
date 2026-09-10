@@ -241,20 +241,23 @@ class TestScriptGeneration:
             )
             assert r.returncode == 0, r.stderr
 
-    def test_script_header_warns_about_slab_crystal(self):
-        """6th-review B3: the emit fires unconditionally on
-        NetCharge != 0, but Makov-Payne is the WRONG correction for
-        a charged crystal (3-D periodic with the unit cell carrying
-        net charge) OR a charged slab (2-D + vacuum normal).  The
-        script header must surface this applicability caveat so a
-        user running on a slab doesn't paste the wrong number into
-        a manuscript."""
-        s = render_correction_script(system_label="job", q=1)
-        assert "vacuum supercell" in s.lower()
-        assert "slab" in s.lower()
-        assert "crystal" in s.lower()
-        # Mentions the 2-D dipole/quadrupole alternative for slabs.
-        assert "SlabDipoleCorrection" in s
+    # `test_script_header_warns_about_slab_crystal` stood here and checked an
+    # APPLICABILITY DOMAIN as VOCABULARY: four keyword probes ("slab",
+    # "crystal", "vacuum supercell", "SlabDipoleCorrection") against the
+    # generated header.  A header stating the OPPOSITE -- that Makov-Payne is
+    # the right correction for a slab, and to ignore SlabDipoleCorrection --
+    # contains all four words and passed (2026-09-09).
+    #
+    # What molbuilder actually DECIDES here is `emit iff q != 0`
+    # (`siesta/input.py`), blind to geometry -- `render_correction_script`
+    # takes `(system_label, q, epsilon_r)` and never sees the structure, so
+    # it could not condition on slab-ness even in principle.  That decision
+    # is pinned by `test_charged_writes_script` and `test_neutral_skips_script`
+    # below.
+    #
+    # NOW UNCHECKED, deliberately: the caveat could be dropped from the header
+    # and no test would fail.  It is documentation, and a keyword probe never
+    # protected it -- prose cannot be validated by matching words in it.
 
 
 # --------------------------------------------------------------------- #

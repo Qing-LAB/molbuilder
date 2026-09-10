@@ -90,17 +90,29 @@ class TestItAnswersFromTheAtoms:
             f"a={d['a']} coincides with a cell edge {edges}")
         assert abs(d["a"] - float(np.linalg.det(struct.cell)) ** (1 / 3)) > 1.0
 
-    def test_it_compares_against_the_literature_and_says_by_how_much(
-            self, client, picker_root):
-        """The derived line is the cross-check (§ 3.3).  Au's PBE reference is
-        4.158 Å, so a 4.078 Å measurement must come back as about −1.9%."""
-        d = _ask(client, _write(picker_root, _au_supercell()))
-        said = " ".join(n["message"] for n in d["notes"])
-        assert "PBE" in said and "experimental" in said, said
-        pbe = [n for n in d["notes"] if "PBE" in n["message"]][0]
-        assert "-1.9%" in pbe["message"], pbe["message"]
-        assert pbe["level"] == "info", "2% from a reference is not a warning"
-
+    # RETIRED 2026-09-09, both halves of the literature cross-check:
+    # `test_it_compares_against_the_literature_and_says_by_how_much` and
+    # `test_the_second_shell_mistake_reads_as_a_big_offset` (below).
+    #
+    # Neither could reach the thing it was about.  `modify.py:939` computes
+    # `off` and `ref` and discards both into an f-string, so the note ships as
+    # `{level, message}` and a test had only prose to grep -- which is how one
+    # ended up asserting the substring `"-1.9%"` and the other a three-way
+    # alternation `"+38" or "+39" or "+41"`, three guesses at a rendered
+    # percentage.  Reaching for a regex over the message was the same mistake
+    # in better clothes.
+    #
+    # *User ruling: "Return type pinning is a static code review.  You should
+    # have code itself error when mismatch instead use test to count the
+    # beans."*  The fix is a typed note (`issues.Issue`, already the pattern at
+    # 138 sites) carrying `offset_pct` and `reference_a` as FIELDS -- then the
+    # shape cannot be wrong and needs no test at all.
+    #
+    # What the route owes the user is the MEASUREMENT, and that is data:
+    # `test_a_relaxed_supercell_gives_the_lattice_constant` asserts `a`,
+    # `d_nn`, `coordination` and `second_shell_ratio == sqrt(2)` -- which is
+    # the second-shell error stated as a number, not as a percentage in a
+    # sentence.
 
     def test_a_siesta_XV_reads_the_same_as_the_xyz(self, client, picker_root):
         """§ 3.3 names both readers, so both are driven.  A `.XV` is what a
@@ -147,20 +159,6 @@ class TestTheNotesTheUserReads:
         warned = [n for n in d["notes"] if "neighbours" in n["message"]]
         assert warned and warned[0]["level"] == "warn", d["notes"]
         assert "slab" in warned[0]["message"]
-
-    def test_the_second_shell_mistake_reads_as_a_big_offset(
-            self, client, picker_root):
-        """§ 3.3: the one mistake anyone makes is a SECOND-shell pair, a factor
-        1.414 out — and the comparison says so at once rather than the number
-        passing silently."""
-        d = _ask(client, _write(picker_root,
-                                _au_supercell(a=A * np.sqrt(2.0)),
-                                "Au-wrong.xyz"))
-        pbe = [n for n in d["notes"] if "PBE" in n["message"]][0]
-        assert pbe["level"] == "warn", pbe
-        assert "+38" in pbe["message"] or "+39" in pbe["message"] \
-            or "+41" in pbe["message"], pbe["message"]
-
 
     def test_a_file_too_big_to_measure_exactly_is_refused_not_sampled(
             self, client, picker_root):

@@ -81,12 +81,23 @@ class TestMotionShare:
         assert share["C"] == pytest.approx(0.90, abs=0.02)
         assert share["H"] == pytest.approx(0.10, abs=0.02)
 
-    def test_shares_account_for_all_of_the_motion(self):
+    def test_every_element_appears_once_ordered_by_how_much_it_carries(self):
+        """The two things a caller can rely on, neither of which is arithmetic.
+
+        `sum(shares) == 1` USED to be asserted here and cannot fail --
+        `results.py` returns `w / total` where `total` is that same sum, so
+        the claim is division, not behaviour (measured 2026-09-09).  What can
+        fail is the element set (an atom silently dropped, or two rows mapped
+        to one atom) and the ORDER, which the docstring promises largest-first
+        and the Spectra panel renders in the order it is given.
+        """
         elements = ["C", "H", "S", "Au"]
         rows = [[0.4, 0.1, 0], [1.0, 0, 0.2], [0.3, 0.3, 0], [0.05, 0, 0.05]]
         share = motion_share_by_element(elements, rows)
-        assert sum(share.values()) == pytest.approx(1.0, abs=1e-12)
+
         assert set(share) == {"C", "H", "S", "Au"}
+        assert list(share) == sorted(share, key=share.get, reverse=True), (
+            f"shares must come back largest-first, got {list(share)}")
 
     def test_either_stored_eigenvector_gives_the_same_answer(self):
         """The two forms differ by one scalar per mode (schema v2), and a

@@ -13,6 +13,13 @@ import math
 
 import pytest
 
+# Derived from the ONE home exactly as `parse/engines/pyscf.py` does --
+# this file retyped `27.211386245988 / 0.5291772108` six times, and the
+# Bohr half was already stale against `constants.py` (2026-09-09).
+from molbuilder.constants import (BOHR_ANGSTROM as _BOHR_ANGSTROM,
+                                  HARTREE_EV as _HARTREE_TO_EV)
+_HA_BOHR_TO_EV_ANG = _HARTREE_TO_EV / _BOHR_ANGSTROM
+
 from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 from molbuilder.parse.engines.pyscf import PySCFParser
 
@@ -103,8 +110,8 @@ def test_energy_units_converted_to_ev(pyscf_traj_path):
     """Hartree in the file -> eV in the result.  -76.4267520 Hartree
     is approximately -2079.7745 eV."""
     result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
-    expected_eV_0 = -76.42675200 * 27.211386245988
-    expected_eV_1 = -76.43012345 * 27.211386245988
+    expected_eV_0 = -76.42675200 * _HARTREE_TO_EV
+    expected_eV_1 = -76.43012345 * _HARTREE_TO_EV
     assert math.isclose(result["energies"][0], expected_eV_0, rel_tol=1e-6)
     assert math.isclose(result["energies"][1], expected_eV_1, rel_tol=1e-6)
 
@@ -154,7 +161,7 @@ def test_qdata_provides_max_forces(tmp_path):
     #   atom2 = sqrt(0.004^2+0.005^2+0.006^2) ~= 0.008775
     #   atom3 = sqrt(0.007^2+0.008^2+0.009^2) ~= 0.013928   <- max
     expected = math.sqrt(0.007**2 + 0.008**2 + 0.009**2)
-    expected *= 27.211386245988 / 0.5291772108     # Ha/Bohr -> eV/Ang
+    expected *= _HA_BOHR_TO_EV_ANG     # Ha/Bohr -> eV/Ang
     assert result["max_forces"][0] is not None
     assert math.isclose(result["max_forces"][0], expected, rel_tol=1e-6)
 
@@ -223,7 +230,7 @@ def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
 
     result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
     # Unconstrained tracks atom 0 (the frozen one with huge force).
-    HA_BOHR_TO_EV_ANG = 27.211386245988 / 0.5291772108
+    HA_BOHR_TO_EV_ANG = _HA_BOHR_TO_EV_ANG
     assert math.isclose(
         result["max_forces"][0], 0.50 * HA_BOHR_TO_EV_ANG, rel_tol=1e-6)
     assert math.isclose(
@@ -276,7 +283,7 @@ def test_scf_history_parses_two_runs(tmp_path):
     assert len(runs[0]) == 3
     assert len(runs[1]) == 3
     # Energies in eV (Hartree -> eV via 27.211386...)
-    HA = 27.211386245988
+    HA = _HARTREE_TO_EV
     assert math.isclose(runs[0][0]["energy"], -100.0 * HA)
     assert math.isclose(runs[1][2]["energy"], -110.5 * HA)
 
@@ -289,7 +296,7 @@ def test_scf_history_units_converted(tmp_path):
     log  = tmp_path / "myjob.log"
     log.write_text(_SCF_LOG_SAMPLE)
     runs = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))["scf_history"]
-    HA_BOHR_TO_EV_ANG = 27.211386245988 / 0.5291772108
+    HA_BOHR_TO_EV_ANG = _HA_BOHR_TO_EV_ANG
     # cycle 0 |g|=5.0 Ha/Bohr -> ... eV/A
     assert math.isclose(runs[0][0]["gnorm"], 5.0 * HA_BOHR_TO_EV_ANG)
 

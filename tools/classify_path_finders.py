@@ -160,6 +160,23 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
          "`_initial.xyz`; a bare `.xyz` in a cited directory is whatever the "
          "user put there.  Its SIDECAR is ours, and the line below pairs each "
          "hit through `sidecars.molstruct.sidecar_path_for`"),
+    ("molbuilder/builders/backends/_threedna.py", "_copy_standard_bases",
+     "Atomic[._]?.pdb"):
+        ("foreign - not a name we compose",
+         "X3DNA'S OWN WORKING-DIRECTORY CONVENTION.  `rebuild` reads "
+         "`Atomic_A.pdb` / `Atomic.a.pdb` from the cwd; we clear stale ones "
+         "before writing the set.  The framework composes no name here -- "
+         "these are the filenames a third-party binary looks for, and the "
+         "glob is how you find what a PREVIOUS build left behind"),
+    ("molbuilder/builders/backends/_threedna.py", "_copy_standard_bases",
+     "atomic/{dataset}_?.pdb"):
+        ("foreign - not a name we compose",
+         "X3DNA'S OWN DATA TREE, read from its install root: "
+         "`config/atomic/BDNA_A.pdb` and friends.  Enumerating them is the "
+         "point -- it is how `_copy_standard_bases` learns which bases the "
+         "install actually ships, and an install missing them is refused by "
+         "name.  Replaced `x3dna_utils cp_std`, whose ruby dependency this "
+         "removed entirely (#80, 2026-09-09)"),
     ("molbuilder/validation/identity.py", "_foreign_state", "*{suffix}"):
         ("foreign - not a name we compose",
          "THE ENGINE'S WARM-RESTART SUFFIXES, and the vocabulary already comes "

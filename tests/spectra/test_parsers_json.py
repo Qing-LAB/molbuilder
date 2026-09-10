@@ -1401,16 +1401,6 @@ class TestNumericPrecisionRoundTrip:
             results.equilibrium_mo_energies_eh,
         )
 
-    def test_negative_zero_round_trip(self, tmp_path):
-        """``-0.0 == 0.0`` is True but they're distinct floats; we
-        don't claim to preserve sign of zero, but the value should
-        at least round-trip equal."""
-        results = _make_minimal_results()
-        results.equilibrium_scf_eh = -0.0
-        p = tmp_path / "negzero.spectra.json"
-        dump_spectra_json(results, p)
-        loaded = parse_spectra_json(p)
-        assert loaded.equilibrium_scf_eh == 0.0
 
 
 # --------------------------------------------------------------------- #

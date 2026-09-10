@@ -125,8 +125,10 @@ def test_xv_cell_round_trip_against_synthetic_file(tmp_path: Path):
     conversion + the surface (so a future "I forgot to convert"
     regression fails loudly).
     """
-    # 5.43 Å = 5.43 / 0.529177249 Bohr ≈ 10.2626 Bohr
-    ang_per_bohr = 0.529177249
+    # 5.43 Å = 5.43 / BOHR_ANGSTROM Bohr ≈ 10.2626 Bohr.  Imported, not
+    # retyped: this WRITES the fixture, so it is input, and the assertion
+    # below is on the 5.43 that comes back.
+    from molbuilder.constants import BOHR_ANGSTROM as ang_per_bohr
     a_bohr = 5.43 / ang_per_bohr
     xv = tmp_path / "si.XV"
     # Cell rows: 6 numbers each (3 vector + 3 velocity); we only
@@ -141,7 +143,11 @@ def test_xv_cell_round_trip_against_synthetic_file(tmp_path: Path):
     )
     result = parse(xv)
     assert result.cell is not None
-    # The diagonal should be 5.43 Å (within float roundoff).
+    # 1e-3 Å is not a precision claim -- it discriminates the failure this
+    # test names: a FORGOTTEN conversion returns 10.26 Å, a factor of 1.9.
+    # Constant precision is not observable through a round trip at all
+    # (the same value goes in and comes out); that needs an external
+    # reference, and CODATA owns it, not us.
     assert abs(result.cell[0, 0] - 5.43) < 1e-3
     assert abs(result.cell[1, 1] - 5.43) < 1e-3
     assert abs(result.cell[2, 2] - 5.43) < 1e-3

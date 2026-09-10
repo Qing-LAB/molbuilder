@@ -834,13 +834,13 @@ def test_python_api_ecp_none_sentinel_disables_ecp(h2o, ecp_value):
     # any state, and the verbose COMMENT that mentions `ecp = ...` kept
     # the sibling positive test green with the kwarg block deleted.
     import re as _re
-    assert not _re.search(r'^\s*ecp\s+=', text, _re.M)
-    # The literal strings ecp="none" / ecp="None" must NEVER appear in
-    # the generated gto.M(...) call.
-    assert 'ecp     = "none"' not in text
-    assert 'ecp     = "None"' not in text
-    assert 'ecp = "none"'     not in text
-    assert 'ecp = "None"'     not in text
+    assert not _re.search(r'^\s*ecp\s+=', text, _re.M), (
+        "no ecp kwarg may be emitted for the none sentinel")
+    # Four `assert 'ecp     = "none"' not in text` lines stood here and were
+    # strictly subsumed by the line match above -- it catches any spacing,
+    # they caught one guess at it.  They were also the SAME fixed-width
+    # literals the comment above says were the original defect, left in place
+    # when the regex replaced them.  Removed 2026-09-09.
 
 
 def test_python_api_ecp_reaches_the_gto_kwarg(h2o):

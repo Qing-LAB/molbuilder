@@ -227,6 +227,15 @@ def _validate_basename(label: str):
     return _check
 
 
+#: How SIESTA treats spin.  THE one home: the form-field metadata below
+#: reads it, `siesta/auto_defaults.SiestaSuggestedParams` validates
+#: against it, and `validation/siesta.py` tests membership in it.  It was
+#: written out in four places until 2026-09-09, one of them a route test
+#: asserting `si["spin_treatment"] in (...)` -- a bean count standing in
+#: for a type.
+SPIN_TREATMENTS: "tuple[str, ...]" = (
+    "non-polarized", "polarized", "non-colinear", "spin-orbit")
+
 @dataclass
 class SiestaConfig:
     # Explicit form-section order for the schema-driven Build form.
@@ -1734,8 +1743,7 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # metals / radicals require it), not on stage.
         "workflow_group": "profile",
         "label":       "Spin treatment",
-        "choices":     ("non-polarized", "polarized",
-                        "non-colinear", "spin-orbit"),
+        "choices":     SPIN_TREATMENTS,
         "engine_key":  "Spin",
         "help":        ("How spin is treated.  non-polarized: spin-"
                         "degenerate, the cheap default.  polarized: "

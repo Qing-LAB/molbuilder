@@ -64,30 +64,30 @@ executes is not a gate.
 
 ## 3. Assertions that cannot fail, or fail for the wrong reason
 
-- **`test_smiles_and_siesta.py::test_cell_volume_just_above_threshold_passes`** —
+- ~~**`test_smiles_and_siesta.py::test_cell_volume_just_above_threshold_passes`**~~ — **CLOSED 2026-09-09.** Re-measured and confirmed: the fixture put 10 atoms in a 2.29 Å box, so `render_fdf` refused with `cell.unfittable` and the final assert was never reached. All three volume tests collapsed into one parametrised boundary over the gate molbuilder owns (`vol < n * 1.0`), plus a render-through and the message test. The exact-boundary row needed `diag(v,1,1)` rather than a cubic cell: `10.0**(1/3)` cubes back to `10.000000000000002`, two ULP above, which let the `<` → `<=` mutant survive the row written to catch it. Four mutants killed. *Original finding:*
   measured: `render_fdf` raises *"The molecule is longer than the cell along a,
   b, c"*, so the `except ValueError: … return` branch is taken and the final
   `assert "BlockSize" in fdf` is **never reached.** It proves only *"the volume
   gate was not the refusal"*, never that a 1.2× cell renders.
-- **`test_pyscf.py::test_python_api_ecp_none_sentinel_disables_ecp`** — four of
+- ~~**`test_pyscf.py::test_python_api_ecp_none_sentinel_disables_ecp`**~~ — **CLOSED 2026-09-09.** The four fixed-width literals were strictly subsumed by the `^\s*ecp\s+=` line match beside them — and were the same literals the test's own comment named as the original defect, left in place when the regex replaced them. Removed. *Original finding:* four of
   five assertions are vacuous *by its own docstring* (fixed-width literals the
   script never contains). Only the `re.search(r'^\s*ecp\s+=')` line checks
   anything.
-- **`test_a_charged_decks_promised_script_ships_with_it`** — its only assertion
+- ~~**`test_a_charged_decks_promised_script_ships_with_it`**~~ — **CLOSED 2026-09-09.** The premise is asserted now, not assumed. And sharpened past the original finding: matching the bare filename still passed with the run line renamed, because the header names the script in prose one line above. It now reads the promised filename OUT of the deck (`python3 (\S+\.py)`) and checks that exact file — two mutants killed. *Original finding:* its only assertion
   is inside `if "makov_payne_correction.py" in deck:`. **Reword the header and
   this net-charge test silently asserts nothing.**
-- **`test_makov_payne.py::test_script_header_warns_about_slab_crystal`** —
+- ~~**`test_makov_payne.py::test_script_header_warns_about_slab_crystal`**~~ — **CLOSED 2026-09-09, by removal.** Confirmed: `render_correction_script(system_label, q, epsilon_r)` never receives the structure, so it cannot condition on slab-ness even in principle; the decision molbuilder makes is `emit iff q != 0`, already pinned by `test_charged_writes_script` / `test_neutral_skips_script`. The caveat is documentation and a keyword probe never protected it. **Now unchecked, deliberately** — recorded at the removal site. *Original finding:*
   measures keyword presence in generated prose. **A header stating the opposite
   — that Makov-Payne is right for a slab — passes.** Makov-Payne is the *wrong*
   correction for a charged slab, so this is an applicability domain checked as
   vocabulary.
-- **`spectra/test_parsers_json.py::test_negative_zero_round_trip`** — asserts
+- ~~**`spectra/test_parsers_json.py::test_negative_zero_round_trip`**~~ — **CLOSED 2026-09-09, by removal.** Field survival is covered by the general round trip (`equilibrium_scf_eh = -76.4123`), and NaN/±Infinity have their own tests. Measured aside: `-0.0` *does* survive JSON with its sign bit — the test disclaimed the one thing that was true and asserted the one thing that could not fail. *Original finding:* asserts
   `loaded.equilibrium_scf_eh == 0.0` after writing `-0.0`. True by IEEE-754 for
   any value comparing equal to zero.
-- **`spectra/test_motion_share.py::test_shares_account_for_all_of_the_motion`** —
+- ~~**`spectra/test_motion_share.py::test_shares_account_for_all_of_the_motion`**~~ — **CLOSED 2026-09-09.** Confirmed arithmetic (`w / total` where `total` is that sum). Replaced by the two things a caller can rely on: the element set, and the largest-first ORDER the docstring promises and the panel renders in — which nothing tested. Two mutants killed, including one that made the ordering alphabetical. *Original finding:*
   `sum(share.values()) == 1.0` is true by construction (`results.py:425` divides
   by the total). Only its key-set half can fail.
-- **`spectra/test_spectrumchart_maths.py::test_it_does_not_depend_on_where_the_modes_are`** —
+- ~~**`spectra/test_spectrumchart_maths.py::test_it_does_not_depend_on_where_the_modes_are`**~~ — **CLOSED 2026-09-09, by removal.** `bandHalfWidth(w)` takes only `w`, so mode positions cannot enter it — a fact about the SIGNATURE, read in one line. And the test could not have caught a reintroduced clamp anyway: `band(20) == 20` would still hold. *Original finding:*
   `band(20) == 20`, character-identical to its sibling; `band()` takes only `w`,
   so the test **cannot express** its stated claim.
 - ~~**`test_modify.py::test_rotate_around_z_default_no_op`**~~ — **CLOSED
@@ -98,7 +98,7 @@ executes is not a gate.
   mutants killed — degrees read as radians, a reflection in place of the z
   rotation, a 1% scale, and a sign flip. The non-coplanar fixture is what makes
   a reflection visible, for the same reason as the antiparallel case.
-- **`test_fcc_lattice_table.py`** — three tests carry `assert "a_pbe_siesta_psml"
+- ~~**`test_fcc_lattice_table.py`**~~ — **CLOSED 2026-09-09.** Confirmed: `load_fcc_lattice_full` rebuilds each entry with four fixed keys, so the two `not in e` assertions against loader output could not fail. Removed; the raw-JSON guard stays and is marked as the only place a re-add is visible. Verified by re-adding the column to `fcc_lattice.json`: exactly one test fails. *Original finding:* three tests carry `assert "a_pbe_siesta_psml"
   not in e`, which cannot fail: `load_fcc_lattice_full` rebuilds each entry with
   four fixed keys. Only `test_every_metal_has_the_two_literature_references`,
   which reads the raw JSON, can catch a re-add.
@@ -117,35 +117,115 @@ executes is not a gate.
 
 ## 4. The claim is not where the test looks
 
-- **`test_render_siesta_emits_propor_diagnostic`** — the content is science (the
-  pseudopotential is checked *first*), but it is ten independent substring
-  assertions. **A reordering that put `-np` back first — the framing the
-  2026-06-26 change removed — passes all ten.** The ordering *is* the claim.
-- **`test_the_cap_is_clean_scf_must_converge_is_pinned_off`** — asserts the
-  `pins` dict, never the rendered deck. The science is not observed where SIESTA
-  reads it.
-- **The rank-agreement family (jobset)** compares `mpi_np` recorded in the deck
-  against `mpi_np` at launch — **an equality of two recorded numbers.** The rule
-  underneath ("ranks must not exceed what the system size supports") is never
-  checked: a deck rendered for 14 and launched at 14 passes even if 14 is
-  physically wrong.
-- **Both GPU-routing tests** assert a boolean `"gpu: yes/no"`. `Diag.ELPA.GPU`
-  selects **a different eigensolver — different numerics** — and neither asserts
-  that the deck and the activated environment agree on the solver.
-- **`test_in_progress_frames_stay_out_of_plots.py` (×3)** — hand-builds a
-  `Trajectory` whose `in_progress` flags *the test* sets. Nothing anywhere
-  asserts that a real mid-write SIESTA `.out` produces `in_progress=True`. The
-  rule *"a half-written geometry is never plotted"* is verified from the flag
-  onward, **never from the file onward.**
-- **`test_a_continue_carries_the_accumulative_records_too`** writes
-  `b"CDF\x01 pretend netcdf"`. The byte-for-byte carry is right, but nothing
-  shows a real `.MD.nc` stays readable and appendable, which is the docstring's
-  trajectory-length claim.
-- **`test_atom_identity_end_to_end.py`'s PySCF half** requires ≥6 decimals in
-  `_ATOM`; a coordinate-format change fails it as *"expected 5 atom lines, got
-  0"* rather than as an identity error. Both halves also use a structure where
-  element+position is unique by construction — a repeated element would
-  strengthen the "same physical atom" claim.
+> **Worked through 2026-09-09: three closed, four WITHDRAWN.** More than half
+> of this section was wrong, and in one recurring way — **a suite-wide absence
+> asserted from one file's contents.** The `in_progress` family and both
+> GPU-routing findings each said "nothing anywhere asserts X" about an X that
+> another file asserts directly; the rank-agreement finding asked for a rule
+> the user had deleted as unscientific six days earlier; the netCDF one asked a
+> test to validate a third-party FORMAT across a byte-for-byte copy. This is
+> the same error the mutation campaign measured in the audit proper (nine of
+> nineteen verdicts wrong), wearing different clothes: there, a verdict was
+> issued against the whole suite instead of the named coverer; here, an absence
+> was inferred from a single file. **Re-measure before acting** is the rule
+> either way.
+
+
+- ~~**`test_render_siesta_emits_propor_diagnostic`**~~ — **CLOSED 2026-09-09.**
+  Confirmed by measuring the rendered wrapper (pseudo at 40588, np at 41070,
+  spin at 41474). The three cause markers are now read with `.index` and their
+  positions asserted sorted, so presence and sequence are one assertion.
+  Mutation: swapping cause blocks 1 and 2 in `runwrap.py` — the exact
+  pre-2026-06-26 framing — now fails, and passed before. *Original finding:*
+- ~~**`test_the_cap_is_clean_scf_must_converge_is_pinned_off`**~~ — **CLOSED
+  2026-09-09.** The deck is asserted now (`SCF.MustConverge .false.`), and the
+  measurement sharpened the point: with the pin absent the emitter writes **no
+  keyword at all**, so SIESTA falls back to its own must-converge default —
+  the failure is silent, and only the deck can show it. Two mutants killed;
+  the second (dropping the field from `siesta/layout.py`) is one the pins-only
+  test could not see, since the pin can be correct and still not reach SIESTA.
+  *Original finding:*
+- ~~**The rank-agreement family (jobset)**~~ — **WITHDRAWN 2026-09-09: THIS
+  FINDING WAS WRONG, twice.**
+
+  It asked for "ranks must not exceed what the system size supports" to be
+  checked. **That rule was deliberately deleted by user ruling on 2026-09-03**,
+  and `runwrap._orbitals_per_rank_notice`'s docstring records why: the wrapper
+  used to clamp an auto rank count to `n_atoms` and warn above it, citing the
+  `propor IMAX=0` abort — but that abort comes from a PSML problem, not from
+  system size, so the clamp *"helped by accident on the systems where it fired
+  and refused perfectly good rank counts on the others."* Asking a test to
+  enforce it is asking the tool to grade a choice it has no basis to grade —
+  the same fault as the frozen-atoms finding below.
+
+  What molbuilder DOES decide here is a NOTICE, never a limit: `n_orbitals /
+  mpi_np` with both numbers shown, so the claim is checkable rather than a
+  verdict. That is tested (`test_runwrap.py`, the message and the empty case
+  when the deck states no atom count).
+
+  And the equality it dismisses is not nothing: `mpi_np` in the deck and
+  `mpi_np` at launch are two numbers **we** write in two places, and their
+  agreement is ours to keep — the same arrangement as
+  `test_contact_distance_reference.py`'s JSON-vs-JS copy, which this same audit
+  approved.
+- ~~**Both GPU-routing tests**~~ — **WITHDRAWN 2026-09-09: THE CLAIM IS FALSE,
+  and no test matches the description.** Nothing in the tree asserts a boolean
+  `"gpu: yes/no"`. What the routing tests assert is exactly the agreement this
+  finding says is missing:
+
+  * `test_runwrap_pair.py::test_the_pair_agrees_about_the_gpu_when_one_is_asked_for`
+    puts `Diag.ELPA.GPU .true.` in the deck and asserts the launcher activates
+    `molbuilder-siesta-gpu` **and** the sbatch carries `--gres=gpu:a100:1`;
+  * its sibling asserts the other direction, so it cannot pass by never
+    emitting a GPU header at all;
+  * `test_wrapper_preamble_preflight.py` goes further — a GPU deck on a machine
+    whose record lacks the GPU env is REFUSED at prep, with the machine named.
+
+  Deck-vs-environment solver agreement is the subject of all three. Recorded
+  rather than deleted because the pattern matters: this is the second § 4
+  finding asserting an absence that a file the auditor did not open contains.
+- ~~**`test_in_progress_frames_stay_out_of_plots.py` (×3)**~~ — **WITHDRAWN
+  2026-09-09: THE CLAIM IS FALSE.** It says nothing asserts that a real
+  mid-write `.out` produces `in_progress=True`. `test_siesta_in_progress_first_scf.py`
+  does exactly that, four times, feeding real `.out` text through
+  `SiestaParser` — `test_fresh_first_scf_emits_in_progress_frame` asserts the
+  True case and `test_clean_completed_run_does_not_emit_in_progress_frame` the
+  False one. **From the file onward**, in a file this finding did not open.
+
+  The three tests it names are the OTHER half and are right to hand-build the
+  flag: they test the ADAPTER, and the flag is that layer's input. The contact
+  point between the halves is one boolean on one dataclass (`Frame.in_progress`),
+  with nothing for the two sides to disagree about — unlike `#78`'s
+  sidecar↔selection seam, where the halves used different identity keys and a
+  join test earned its place.
+
+  **The auditing error is worth keeping**: a suite-wide absence was asserted
+  from one file's contents. That is the mirror of the rule the mutation
+  campaign settled — a verdict is against the NAMED coverer, never the whole
+  suite — and it is how several of the nine wrong verdicts happened.
+- ~~**`test_a_continue_carries_the_accumulative_records_too`**~~ — **WITHDRAWN
+  2026-09-09.** The carry is `shutil.copy2` — a byte-for-byte binary copy — so
+  a real `.MD.nc` and a twenty-byte stand-in are handled identically and the
+  format is not a variable molbuilder controls. Asking the test to show netCDF
+  stays appendable after a byte-identical copy is asking it to validate the
+  FORMAT, which is the same fault as asserting ASE's crystallography or the
+  user's frozen set. And the failure the docstring names — a truncated record
+  silently shortening a continued stage — is exactly what byte equality rules
+  out, so the existing assertion is the right one.
+- ~~**`test_atom_identity_end_to_end.py`'s PySCF half**~~ — **CLOSED
+  2026-09-09.** Both halves fixed. `_distinct_struct` now carries REPEATED
+  elements (`C C N C O`), so an index shift lands on a different carbon and
+  stays chemically plausible — the element half of each assertion is doing work
+  instead of decorating a fixture that could only fail on coordinates. And
+  `_ATOM` takes any decimal width, so a coordinate-format change fails as a
+  named parse miss rather than as *"expected 5 atom lines, got 0"*. Off-by-one
+  in `engine_atom_index` still dies.
+
+  Note these two tests are NOT the frozen-atoms fault withdrawn in § 3: they
+  assert an INDEX MAPPING (0-based internal → SIESTA/geomeTRIC 1-based), which
+  is entirely molbuilder's, not which atoms the user chose to freeze.
+
+  *Original finding:*
 
 ## 5. Constants and references retyped instead of imported
 
