@@ -29,19 +29,23 @@
  * before any other molbuilder script; every template (build,
  * modify, spectra, results) follows this rule.
  *
- * Naming: flat, dotted, lowercased.  Today's modules:
- *   "formSchema"                -- lib/form-schema.js
- *   "projects"                  -- lib/projects/projects-sidebar.js
- *   "workspace"                 -- lib/workspace/dispatcher.js  (Phase 10 — the public surface)
- *   "selection.panel"           -- lib/selection-panel.js
- *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
- *   "structure.page"            -- modify/structure/page.js
- *   "structure.save"            -- modify/structure/save.js
- *   "inspectors"                -- lib/inspectors/registry.js
+ * Naming: flat, dotted, lowercased -- "projects", "structure.save",
+ * "structure.warningModal".  THIS HEADER DOES NOT LIST THEM.  It used to,
+ * with the instruction "add the name to the list above", and it drifted
+ * exactly as that instruction guarantees: four of the eight names it
+ * carried (formSchema, selection.panel, selection.viewerAdapter,
+ * inspectors) registered nothing, while six that do register
+ * (structure.dna / .name / .peptide / .rna / .smiles,
+ * structure.warningModal) were absent.  A comment that restates what the
+ * code already knows is a second source of truth with no way to be wrong
+ * out loud.
  *
- * Adding a new module-with-a-global: pick a name in this scheme,
- * call register() at the END of your IIFE, add the name to the
- * list above.
+ * The live answer is `window.molbuilder.runtime.names()` -- a sorted
+ * snapshot of what has actually registered on this page.  Read it in the
+ * console; it cannot be stale.
+ *
+ * Adding a new module-with-a-global: pick a name in this scheme and call
+ * register() at the END of your IIFE.  Nothing else to update.
  */
 (function (root) {
     "use strict";
