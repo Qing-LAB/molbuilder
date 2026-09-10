@@ -33,8 +33,10 @@ from molbuilder.scheduler.record import Domain             # noqa: E402
 
 
 def _domains():
-    return {d.name: d for d in
-            (Domain.from_row(r) for r in derive_domains(*_sol())[0]) if d}
+    # `derive_domains` returns Domain objects since 2026-09-10 -- this helper
+    # used to re-parse its dicts through `Domain.from_row`, which is the tell
+    # that the dict was friction between two layers that both wanted the type.
+    return {d.name: d for d in derive_domains(*_sol())[0]}
 
 
 # --------------------------------------------------------------------- #

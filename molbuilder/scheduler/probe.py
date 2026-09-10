@@ -388,7 +388,7 @@ def derive_domains(
     partitions: List[Partition],
     qos: Dict[str, Tuple[Optional[str], Optional[int]]],
     allowed: Set[str],
-) -> Tuple[List[dict], List[str]]:
+) -> Tuple[List["Domain"], List[str]]:
     """Live probes -> **every (partition, qos) this account may submit to**,
     with the wall each allows, plus human notes.  Facts only.
 
@@ -407,7 +407,22 @@ def derive_domains(
     person's.
 
     Ordered cheapest ceiling first, deduped by ``(partition, qos)``.
+
+    **Returns ``Domain`` objects, not mappings** (2026-09-10).  It used to
+    build dicts that the one caller splatted into ``Domain(**row)`` on the
+    next line, which put the field set in two places: the keys written here
+    and ``Domain._KNOWN``.  The absent-vs-null rule the comments below
+    belabour -- a policy key ABSENT when the probe never asked, ``null``
+    when it asked and SLURM stated no cap -- was carried by whether an
+    ``if`` added a key, and a missing guard was invisible until a written
+    record could not say which had happened (`lightwork`, 2026-08-27; a
+    fresh Sol record, 2026-08-28).  ``Domain`` already holds that tri-state
+    in the type: ``UNSET`` is the default and never reaches disk, ``None``
+    means asked-and-uncapped and lands as ``null``.  Assigning the field is
+    now the only way to say it.
     """
+    from .record import Domain          # the type this returns
+
     notes: List[str] = []
     if not partitions:
         notes.append("sinfo listed no partitions.")
@@ -419,13 +434,12 @@ def derive_domains(
         allowed = {"public"}
 
     parts = sorted(partitions, key=lambda p: p.timelimit_secs)
-    domains: List[dict] = []
+    domains: List[Domain] = []
 
     # A debug domain iff the user actually holds the debug QoS.  It rides on
     # the cheapest partition because a debug QoS is a wall, not a place.
     def _row(name, max_time, part):
-        row = {"name": name, "max_time": max_time, "partition": part.name,
-               "qos": None}
+        kw: Dict[str, Any] = {}
         # The partition's GPU INVENTORY rides the row (`generator.md`
         # § 4.3a, 2026-08-21): sinfo's gres column is a measurement, and
         # without it a login node could not enumerate the GPU grid family
@@ -439,7 +453,7 @@ def derive_domains(
         # exactly the cap the GPU grid checks -- and on a cpu-only row
         # the widest node's.  The row stays yours to edit.
         if part.gpu_types:
-            row["gpu"] = dict(part.gpu_types)
+            kw["gpu"] = dict(part.gpu_types)
         # EVERY MACHINE THIS DOMAIN HOLDS, not a number derived from them
         # (2026-08-27, user: *list available machine types explicitly and
         # allow cpu request to fit that range instead of one lowest fit*).
@@ -449,15 +463,15 @@ def derive_domains(
         # admits work most nodes cannot hold.  Listing them refuses
         # neither and lets the person see the trade.
         if part.groups:
-            row["node_types"] = [g.as_row() for g in part.groups
-                                 if g.cores]
+            kw["node_types"] = [g.as_row() for g in part.groups
+                                if g.cores]
         # ``max_cores`` stays, as the WIDEST node -- the honest ceiling for
         # a refusal, since `admits` "only refuses what the record
         # positively rules out" (R3) and SLURM will not place a job on a
         # node too small; it waits for one that fits.
         widest = max((g.cores for g in part.groups if g.cores), default=None)
         if widest:
-            row["max_cores"] = widest
+            kw["max_cores"] = widest
         # THE TWO MEMORY FACTS, measured 2026-08-23
         # (`execution/scheduler.md` § 2).  Both fields have been on the
         # row since it was designed and neither was ever filled, so nothing
@@ -470,9 +484,9 @@ def derive_domains(
         # with nobody choosing it.  They are different facts and the code
         # that reads one must not read the other (submission.md § 1).
         if part.mem_mb:
-            row["max_mem_gb"] = round(part.mem_mb / 1024.0, 1)
+            kw["max_mem_gb"] = round(part.mem_mb / 1024.0, 1)
         if part.def_mem_per_cpu_mb:
-            row["default_mem_per_core_gb"] = round(
+            kw["default_mem_per_core_gb"] = round(
                 part.def_mem_per_cpu_mb / 1024.0, 2)
         # THE POLICY CEILING, beside the hardware one (R13).  ``max_cores``
         # says what the widest machine HAS; this says what the partition
@@ -488,24 +502,33 @@ def derive_domains(
         # or simply predated it).  Only a record that shows the question
         # was asked can settle `lightwork`.
         if part.policy_queried:
-            row["max_cpus_per_node"] = part.max_cpus_per_node
-        return row
+            kw["max_cpus_per_node"] = part.max_cpus_per_node
+        # CONSTRUCTED, not assembled.  A column this probe emits that
+        # ``Domain`` does not declare is a TypeError HERE, at the line that
+        # writes it -- which is what the dict could not do: `Domain(**row)`
+        # ran in the CLI one call away, so adding
+        # ``default_mem_per_core_gb`` to the row and not to the field list
+        # passed every test of the dict and died on the first real probe.
+        # Omitting a keyword is how a policy column stays UNSET (never
+        # asked); passing ``None`` is how it says asked-and-uncapped.
+        return Domain(name=name, max_time=max_time, partition=part.name,
+                      qos=None, **kw)
 
     if "debug" in allowed and "debug" in qos:
         mw_str = qos["debug"].maxwall_str
         row = _row("debug", mw_str or "0-00:15:00", parts[0])
-        row["qos"] = "debug"
+        row.qos = "debug"
         # Same absent-vs-null rule as the loop below -- and unconditional
         # here, because this arm's own guard just proved the QoS table
         # answered for ``debug``.  Missed in the R13 sweep until a real
         # Sol record (2026-08-28) showed every domain null'd but this one.
-        row["max_cpus_per_job"] = qos["debug"].max_cpus_per_job
+        row.max_cpus_per_job = qos["debug"].max_cpus_per_job
         # R14: HOW MANY JOBS this QoS lets one user submit at once.  `debug`
         # is the queue that made the rule -- ASU Sol caps it at 2, a bench
         # sweep sent six, two landed and four came back
         # QOSMaxSubmitJobPerUserLimit, and nothing in the record could have
         # said so beforehand because the column was never asked for.
-        row["max_submit_jobs"] = qos["debug"].max_submit_jobs_pu
+        row.max_submit_jobs = qos["debug"].max_submit_jobs_pu
         domains.append(row)
 
     for p in parts:
@@ -524,24 +547,24 @@ def derive_domains(
                              f"(infinite); capped the domain at "
                              f"{_INFINITE_STR} -- adjust if needed.")
         row = _row(p.name, max_time, p)
-        row["qos"] = q
+        row.qos = q
         # Same absent-vs-null rule as ``max_cpus_per_node`` above: the key
         # rides whenever the QoS table answered for this QoS, null meaning
         # *asked; it states no cpu cap*.
         if q in qos:
-            row["max_cpus_per_job"] = qos[q].max_cpus_per_job
-            row["max_submit_jobs"] = qos[q].max_submit_jobs_pu
+            row.max_cpus_per_job = qos[q].max_cpus_per_job
+            row.max_submit_jobs = qos[q].max_submit_jobs_pu
         domains.append(row)
 
     seen: Set[Tuple[str, str]] = set()
-    uniq: List[dict] = []
+    uniq: List[Domain] = []
     for d in domains:
-        key = (d["partition"], d["qos"])
+        key = (d.partition, d.qos)
         if key in seen:
             continue
         seen.add(key)
         uniq.append(d)
-    uniq.sort(key=lambda d: _to_secs(d["max_time"]))
+    uniq.sort(key=lambda d: _to_secs(d.max_time))
 
     notes.append(
         "ASSUMPTION: a QoS allowed to your account is valid on any reachable "

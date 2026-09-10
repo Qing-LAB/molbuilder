@@ -12,6 +12,8 @@ and nothing it covers is a benchmark.
 
 import pytest
 
+from dataclasses import fields as _fields
+from molbuilder.scheduler.record import UNSET
 from molbuilder.scheduler.probe import (derive_domains, parse_allowed_qos,
                                         parse_qos, parse_sinfo)
 
@@ -106,16 +108,16 @@ def test_a_domain_lists_every_machine_it_holds():
     User: *list available machine types explicitly and allow cpu request to
     fit that range instead of one lowest fit.*
     """
-    doms = {d["name"]: d for d in derive_domains(*_sol())[0]}
-    shapes = {(t["cores"], t["nodes"]) for t in doms["htc"]["node_types"]}
+    doms = {d.name: d for d in derive_domains(*_sol())[0]}
+    shapes = {(t["cores"], t["nodes"]) for t in doms["htc"].node_types}
     assert shapes == {(48, 51), (64, 3), (128, 134)}
     # the device rides with the machine that has it, not with the queue
-    by_cores = {t["cores"]: t for t in doms["htc"]["node_types"]}
+    by_cores = {t["cores"]: t for t in doms["htc"].node_types}
     assert by_cores[48]["gpu"] == {"a100": 4}
     assert "gpu" not in by_cores[128], "the CPU-only group has no device"
     # a single-shape partition lists exactly one
     assert [(t["cores"], t["nodes"])
-            for t in doms["highmem"]["node_types"]] == [(128, 11)]
+            for t in doms["highmem"].node_types] == [(128, 11)]
 
 
 def test_max_cores_is_the_WIDEST_machine():
@@ -127,14 +129,14 @@ def test_max_cores_is_the_WIDEST_machine():
     declared 64-rank CPU trial on a partition whose CPU nodes have 128
     cores, which is how the collapsed field was caught.
     """
-    doms = {d["name"]: d for d in derive_domains(*_sol())[0]}
-    assert doms["htc"]["max_cores"] == 128      # was 48: the GPU floor
-    assert doms["highmem"]["max_cores"] == 128
+    doms = {d.name: d for d in derive_domains(*_sol())[0]}
+    assert doms["htc"].max_cores == 128      # was 48: the GPU floor
+    assert doms["highmem"].max_cores == 128
     for name, row in doms.items():
-        widest = max((t["cores"] for t in row.get("node_types") or []
+        widest = max((t["cores"] for t in row.node_types or []
                       if t.get("cores")), default=None)
         if widest:
-            assert row["max_cores"] == widest, name
+            assert row.max_cores == widest, name
 
 
 def test_parse_qos_maxwall():
@@ -173,7 +175,7 @@ def test_every_reachable_partition_becomes_a_domain():
     there; what a run wants is the person's.
     """
     domains, _ = derive_domains(*_sol())
-    names = {d["name"] for d in domains}
+    names = {d.name for d in domains}
     assert {"highmem", "fpga", "lightwork", "arm", "gaudi"} <= names, \
         "a CPU-only or non-NVIDIA partition is still being filtered out"
     assert {"htc", "public", "general"} <= names
@@ -181,29 +183,29 @@ def test_every_reachable_partition_becomes_a_domain():
 
 def test_domains_are_ordered_cheapest_ceiling_first():
     domains, _ = derive_domains(*_sol())
-    assert [d["name"] for d in domains][:3] == ["debug", "htc", "lightwork"]
-    assert domains[-1]["name"] == "general"            # 14 days, the longest
+    assert [d.name for d in domains][:3] == ["debug", "htc", "lightwork"]
+    assert domains[-1].name == "general"            # 14 days, the longest
 
 
 def test_the_wall_is_the_smaller_of_partition_and_qos():
-    doms = {d["name"]: d for d in derive_domains(*_sol())[0]}
+    doms = {d.name: d for d in derive_domains(*_sol())[0]}
     # htc's partition limit is 4h and the public QoS has no ceiling -> 4h
-    assert doms["htc"]["max_time"] == "4:00:00"
+    assert doms["htc"].max_time == "4:00:00"
     # debug's QoS ceiling (15 min) is smaller than any partition limit
     # wall-relevant facts only -- the full field set is pinned by
     # test_a_domain_is_never_a_preference, the cap by
     # test_the_domain_row_carries_the_probed_core_cap (a dict equality
     # here broke for every new measured column, twice).
-    assert doms["debug"]["max_time"] == "00:15:00"
-    assert (doms["debug"]["partition"], doms["debug"]["qos"]) == \
+    assert doms["debug"].max_time == "00:15:00"
+    assert (doms["debug"].partition, doms["debug"].qos) == \
         ("htc", "debug")
-    assert doms["general"]["max_time"] == "14-00:00:00"
+    assert doms["general"].max_time == "14-00:00:00"
 
 
 def test_no_debug_domain_when_the_qos_is_not_held():
     parts, qos, _ = _sol()
     domains, _ = derive_domains(parts, qos, {"public"})
-    assert "debug" not in [d["name"] for d in domains]
+    assert "debug" not in [d.name for d in domains]
 
 
 def test_a_domain_is_never_a_preference():
@@ -234,14 +236,21 @@ def test_a_domain_is_never_a_preference():
         # rule -- and it is the field that made the rule: Sol's `debug`
         # caps a user at 2 submitted jobs, a bench sweep sent six, and
         # nothing in the record could have said so first.
-        assert set(d) <= {"name", "partition", "qos", "max_time", "gpu",
+        # Stated against the TYPE since derive_domains returns Domain
+        # objects: every field it POPULATES must be a measurement.  A
+        # preference can no longer arrive as a stray dict key -- it would
+        # have to be declared on `Domain` first -- but declaring one and
+        # filling it here is still possible, and that is what this bars.
+        filled = {f.name for f in _fields(d)
+                  if getattr(d, f.name) not in (None, UNSET, {}, [], "")}
+        assert filled <= {"name", "partition", "qos", "max_time", "gpu",
                           "max_cores", "node_types",
                           "max_cpus_per_job", "max_cpus_per_node",
                           "max_submit_jobs"}, \
-            f"a domain gained a field that is not a measurement: {sorted(d)}"
-    by = {d["name"]: d for d in domains}
-    assert by["htc"]["gpu"] == {"a100": 4, "a100.20gb": 16}
-    assert "gpu" not in by["fpga"], "no inventory -> no key, never null"
+            f"a domain gained a field that is not a measurement: {sorted(filled)}"
+    by = {d.name: d for d in domains}
+    assert by["htc"].gpu == {"a100": 4, "a100.20gb": 16}
+    assert by["fpga"].gpu is None, "no inventory -> nothing written, never null"
 
 
 def test_the_submitted_job_cap_rides_the_domain_that_states_one():
@@ -256,13 +265,13 @@ def test_the_submitted_job_cap_rides_the_domain_that_states_one():
     asked* and let R3 read it as permission.
     """
     domains, _ = derive_domains(*_sol())
-    by = {d["name"]: d for d in domains}
-    assert by["debug"]["max_submit_jobs"] == 2, by["debug"]
-    assert by["htc"]["max_submit_jobs"] is None, (
+    by = {d.name: d for d in domains}
+    assert by["debug"].max_submit_jobs == 2, by["debug"]
+    assert by["htc"].max_submit_jobs is None, (
         "htc states no submitted-job cap; asked-and-uncapped is null, not "
         "an absent key")
     for row in domains:
-        assert "max_submit_jobs" in row, (
+        assert row.max_submit_jobs is not UNSET, (
             f"{row['name']} does not say whether the question was asked")
 
 
@@ -291,8 +300,8 @@ def test_the_qos_assumption_is_stated_not_hidden():
 def test_no_allowed_qos_falls_back_and_says_so():
     parts, qos, _ = _sol()
     domains, notes = derive_domains(parts, qos, set())
-    assert all(d["qos"] == "public" for d in domains
-               if d["name"] != "debug")
+    assert all(d.qos == "public" for d in domains
+               if d.name != "debug")
     assert any("could not read your allowed QoS" in n for n in notes)
 
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from molbuilder.scheduler.record import UNSET
 from molbuilder.scheduler.probe import (derive_domains, parse_scontrol_partitions,
                                         parse_sinfo)
 
@@ -45,7 +46,7 @@ def _rows():
             p.def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
             p.max_cpus_per_node = pol.max_cpus_per_node
     rows, _notes = derive_domains(parts, {}, {"public"})
-    return {r["name"]: r for r in rows}
+    return {r.name: r for r in rows}
 
 
 # --------------------------------------------------------------------- #
@@ -54,8 +55,8 @@ def _rows():
 
 def test_the_memory_ceiling_is_measured_onto_every_row():
     rows = _rows()
-    assert rows["htc"]["max_mem_gb"] == pytest.approx(251.0, abs=0.1)
-    assert rows["highmem"]["max_mem_gb"] == pytest.approx(2002.0, abs=1.0)
+    assert rows["htc"].max_mem_gb == pytest.approx(251.0, abs=0.1)
+    assert rows["highmem"].max_mem_gb == pytest.approx(2002.0, abs=1.0)
 
 
 def test_a_partition_whose_nodes_differ_promises_the_SMALLEST():
@@ -74,10 +75,10 @@ def test_an_older_record_says_nothing_rather_than_zero():
                  "p|1:00:00|4|(null)|128"):         # the pre-08-23 format
         [p] = parse_sinfo(text)
         assert p.mem_mb is None
-    rows = {r["name"]: r for r in derive_domains(
+    rows = {r.name: r for r in derive_domains(
         parse_sinfo("p|1:00:00|4|(null)|128"),
         {}, {"public"})[0]}
-    assert "max_mem_gb" not in rows["p"], (
+    assert rows["p"].max_mem_gb is None, (
         "an unmeasured ceiling was written onto the row, so admission would "
         "compare an ask against a number nobody measured")
 
@@ -92,9 +93,9 @@ def test_a_zero_from_sinfo_is_unknown_and_not_a_ceiling_of_zero():
     ``if part.mem_mb:`` to ``is not None`` and watching nothing fail.
     """
     parts = parse_sinfo("p|1:00:00|4|(null)|128|0\n")
-    rows = {r["name"]: r for r in derive_domains(
+    rows = {r.name: r for r in derive_domains(
         parts, {}, {"public"})[0]}
-    assert "max_mem_gb" not in rows["p"], (
+    assert rows["p"].max_mem_gb is None, (
         "a queue reporting 0 MB was given a ceiling of 0 GB, so every job "
         "would be refused there for needing more memory than nothing")
 
@@ -105,9 +106,9 @@ def test_a_zero_per_core_default_is_unknown_too():
     parts = parse_sinfo(_SINFO)
     for pt in parts:
         pt.def_mem_per_cpu_mb = 0
-    rows = {r["name"]: r for r in derive_domains(
+    rows = {r.name: r for r in derive_domains(
         parts, {}, {"public"})[0]}
-    assert "default_mem_per_core_gb" not in rows["htc"]
+    assert rows["htc"].default_mem_per_core_gb is None
 
 
 # --------------------------------------------------------------------- #
@@ -125,7 +126,7 @@ def test_the_per_core_default_is_read_from_scontrol():
 def test_the_number_that_made_a_64_core_job_ask_for_128G():
     """The arithmetic nobody was shown, now checkable."""
     rows = _rows()
-    per_core = rows["htc"]["default_mem_per_core_gb"]
+    per_core = rows["htc"].default_mem_per_core_gb
     assert per_core == pytest.approx(2.0)
     assert 64 * per_core == pytest.approx(128.0), (
         "this is the 128 G that chose a queue without anyone deciding it")
@@ -148,9 +149,9 @@ def test_a_partition_that_states_no_per_core_default_maps_to_none(body, why):
 
 def test_a_row_carries_no_per_core_default_when_scontrol_is_silent():
     parts = parse_sinfo(_SINFO)          # def_mem_per_cpu_mb left unset
-    rows = {r["name"]: r for r in derive_domains(
+    rows = {r.name: r for r in derive_domains(
         parts, {}, {"public"})[0]}
-    assert "default_mem_per_core_gb" not in rows["htc"]
+    assert rows["htc"].default_mem_per_core_gb is None
 
 
 # --------------------------------------------------------------------- #
@@ -163,60 +164,16 @@ def test_the_ceiling_and_the_default_are_different_numbers():
     every job or promise a node it does not have."""
     rows = _rows()
     hm = rows["highmem"]
-    assert hm["max_mem_gb"] > 2000 and hm["default_mem_per_core_gb"] == 16.0
-    assert hm["max_mem_gb"] != hm["default_mem_per_core_gb"]
+    assert hm.max_mem_gb > 2000 and hm.default_mem_per_core_gb == 16.0
+    assert hm.max_mem_gb != hm.default_mem_per_core_gb
 
 
 # --------------------------------------------------------------------- #
 #  the row must become an OBJECT — the step this file did not test       #
 # --------------------------------------------------------------------- #
 
-def test_every_row_the_probe_builds_constructs_a_Domain():
-    """**The gap that shipped a crash.**
-
-    `derive_domains` returns dicts and `jobset probe --write` does
-    ``Domain(**row)``.  This file tested the dicts thoroughly and never the
-    step between, so adding `default_mem_per_core_gb` to the row without
-    adding it to `Domain` passed every test here and died on the first real
-    probe:
-
-        TypeError: Domain.__init__() got an unexpected keyword argument
-                   'default_mem_per_core_gb'
-
-    Testing the shape a producer emits, without testing that the consumer
-    accepts it, is a loop left open -- the same defect class as a field
-    declared and never read, one step earlier.
-    """
-    from molbuilder.scheduler import Domain
-    parts = parse_sinfo(_SINFO)
-    policy = parse_scontrol_partitions(_SCONTROL)
-    for p in parts:
-        pol = policy.get(p.name)
-        if pol is not None:
-            p.def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
-            p.max_cpus_per_node = pol.max_cpus_per_node
-    rows, _notes = derive_domains(parts, {}, {"public"})
-    assert rows, "the fixture produced no rows, so this proves nothing"
-    for row in rows:
-        d = Domain(**row)                      # exactly what `probe --write` does
-        assert d.name and d.partition and d.qos
 
 
-def test_the_columns_the_probe_writes_are_all_KNOWN_to_the_record():
-    """The same loop, stated as a rule rather than as one construction: a
-    column the probe emits that `Domain` does not name would land in `extra`
-    on read and crash on `Domain(**row)` -- present in the file, invisible to
-    the reader, fatal to the writer."""
-    from molbuilder.scheduler import Domain
-    parts = parse_sinfo(_SINFO)
-    for p in parts:
-        p.def_mem_per_cpu_mb = 2048
-    rows, _ = derive_domains(parts, {}, {"public"})
-    emitted = {k for row in rows for k in row}
-    unknown = sorted(emitted - set(Domain._KNOWN))
-    assert not unknown, (
-        f"the probe writes {unknown}, which `Domain` does not declare -- add "
-        f"the field (and say what it is for), or stop writing the column")
 
 
 # --------------------------------------------------------------------- #
@@ -241,9 +198,9 @@ def test_the_policy_cap_rides_the_row_and_admission_reads_it():
     parts[0].policy_queried = True
     rows, _ = derive_domains(parts, {}, {"public"})
     row = rows[0]
-    assert row["max_cpus_per_node"] == 8
-    assert row["max_cores"] == 128, "the hardware ceiling must survive"
-    d = Domain(**row)
+    assert row.max_cpus_per_node == 8
+    assert row.max_cores == 128, "the hardware ceiling must survive"
+    d = row          # already a Domain (probe.py)
     assert admits(d, Request(ranks=8)) == []
     why = admits(d, Request(ranks=9))
     assert why and why[0].allowed == 8 and why[0].note == "policy", (
@@ -275,15 +232,17 @@ def test_asked_and_unstated_writes_NULL_never_absence():
     rows, _ = derive_domains(parts, {"public": QosLimit(None, None, None)},
                              {"public"})
     row = rows[0]
-    assert "max_cpus_per_node" in row and row["max_cpus_per_node"] is None, (
+    assert row.max_cpus_per_node is None, (
         "asked-and-unstated must be a null in the record, not a missing key")
-    assert "max_cpus_per_job" in row and row["max_cpus_per_job"] is None
+    assert row.max_cpus_per_job is None
 
     # and NEVER asked stays absent -- the old records' honest shape
     parts2 = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
     rows2, _ = derive_domains(parts2, {}, {"public"})
-    assert "max_cpus_per_node" not in rows2[0]
-    assert "max_cpus_per_job" not in rows2[0]
+    # absent-vs-null in the TYPE now: UNSET is never-asked (and to_row drops
+    # it), None is asked-and-uncapped (and to_row writes null).
+    assert rows2[0].max_cpus_per_node is UNSET
+    assert rows2[0].max_cpus_per_job is UNSET
 
 
 def test_the_qos_cap_lands_on_the_row_too():
@@ -293,7 +252,7 @@ def test_the_qos_cap_lands_on_the_row_too():
     parts = parse_sinfo("htc|4:00:00|10|(null)|128|515000\n")
     rows, _ = derive_domains(
         parts, {"public": QosLimit(None, None, 96)}, {"public"})
-    assert rows[0]["max_cpus_per_job"] == 96
+    assert rows[0].max_cpus_per_job == 96
 
 
 def test_the_null_survives_the_trip_to_disk_and_back():
@@ -316,19 +275,19 @@ def test_the_null_survives_the_trip_to_disk_and_back():
             parts, {"public": QosLimit(None, None, None)}, {"public"})
         return rows
 
-    on_disk = _json.loads(_json.dumps(Domain(**_asked_rows()[0]).to_row()))
+    on_disk = _json.loads(_json.dumps(_asked_rows()[0].to_row()))
     for k in ("max_cpus_per_node", "max_cpus_per_job"):
         assert k in on_disk and on_disk[k] is None, (
             f"asked-and-uncapped must land as null, lost at {k}")
     # and a RELOADED record still says asked -- the second write too
     again = Domain.from_row(on_disk).to_row()
-    assert again["max_cpus_per_node"] is None
+    assert again["max_cpus_per_node"] is None   # to_row() is a mapping
     assert again["max_cpus_per_job"] is None
 
     # never-asked stays OFF the disk through the same trip
     parts2 = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
     rows2, _ = derive_domains(parts2, {}, {"public"})
-    disk2 = Domain(**rows2[0]).to_row()
+    disk2 = rows2[0].to_row()
     assert "max_cpus_per_node" not in disk2, (
         "a question never asked must not be reported as answered")
     assert "max_cpus_per_job" not in disk2
@@ -341,7 +300,7 @@ def test_a_numeric_cap_still_rides_the_row_to_disk():
     parts = parse_sinfo("htc|4:00:00|10|(null)|128|515000\n")
     rows, _ = derive_domains(
         parts, {"public": QosLimit(None, None, 96)}, {"public"})
-    assert Domain(**rows[0]).to_row()["max_cpus_per_job"] == 96
+    assert rows[0].to_row()["max_cpus_per_job"] == 96
 
 
 def test_the_consent_question_names_the_field_that_moved():
@@ -380,14 +339,14 @@ def test_the_debug_arm_records_its_qos_cap_too():
         parts, {"public": QosLimit(None, None, None),
                 "debug": QosLimit("0-00:15:00", 900, None)},
         {"public", "debug"})
-    debug = next(r for r in rows if r["name"] == "debug")
-    assert "max_cpus_per_job" in debug and debug["max_cpus_per_job"] is None, (
+    debug = next(r for r in rows if r.name == "debug")
+    assert debug.max_cpus_per_job is None, (
         "the debug arm asked the QoS table and must say so -- null, not absent")
 
     rows2, _ = derive_domains(
         parts, {"public": QosLimit(None, None, None),
                 "debug": QosLimit("0-00:15:00", 900, 8)},
         {"public", "debug"})
-    debug2 = next(r for r in rows2 if r["name"] == "debug")
-    assert debug2["max_cpus_per_job"] == 8, (
+    debug2 = next(r for r in rows2 if r.name == "debug")
+    assert debug2.max_cpus_per_job == 8, (
         "a capped debug QoS must put its number on the row admit reads")

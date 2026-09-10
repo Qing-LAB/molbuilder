@@ -3426,7 +3426,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     from datetime import datetime, timezone
     from pathlib import Path
 
-    from ..scheduler import (Domain, FILENAME, machine_scope_path,
+    from ..scheduler import (FILENAME, machine_scope_path,
                              read_environment, resolve_environment,
                              write_environment)
     # `_run` is PRIVATE to the record module and the package does not
@@ -3564,7 +3564,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                          "default was measured -- a job that states no --mem "
                          "will get whatever SLURM decides and molbuilder "
                          "cannot show you the number in advance.")
-        env.domains = [Domain(**r) for r in rows]
+        env.domains = rows          # already Domain objects (probe.py)
         env.source["domains"] = "sinfo+sacctmgr"
         click.echo(f"Probed (user={user}): {len(parts)} partitions; "
                    f"allowed QoS: {', '.join(sorted(allowed)) or '(unknown)'}")
