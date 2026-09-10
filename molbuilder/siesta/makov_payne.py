@@ -177,6 +177,24 @@ def render_correction_script(
     # anything from the molbuilder package — so a user who copies
     # the SIESTA bundle to a cluster without molbuilder installed
     # can still run it.  All physical constants are inlined.
+    #
+    # SO THE FORMULA IS WRITTEN TWICE, ON PURPOSE, and this note exists
+    # because nothing said so and an hour went into treating it as a possible
+    # bug (2026-09-09).  `compute_correction` at line 126 is the one molbuilder
+    # calls; the copy below is the one that runs beside a finished job.  They
+    # were MEASURED to agree that day, to the six decimals the script prints.
+    #
+    # WHAT IS NOT DUPLICATED: the constants.  `MADELUNG_CUBIC`, `HARTREE_EV` and
+    # `BOHR_ANGSTROM` are interpolated in from their one home, so the copy
+    # cannot drift on a VALUE -- only on the four lines of algebra, which have
+    # no branches and which a reviewer sees whole.
+    #
+    # IF IT EVER GROWS A BRANCH -- a non-cubic Madelung term, a second-order
+    # correction -- stop copying and ship the source instead:
+    # `runwrap._config_dir_source` is the pattern, and its own docstring gives
+    # the reason ("read rather than restated ... a comment is not a
+    # mechanism").  That is the moment, not before: the machinery to splice a
+    # function's source is more moving parts than four lines of arithmetic.
     return f'''#!/usr/bin/env python3
 """Makov-Payne post-process correction for SIESTA total energy.
 

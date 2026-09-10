@@ -140,6 +140,33 @@ def _root_containing(candidate) -> "Optional[Tuple[Path, Path]]":
     return None
 
 
+def _is_canonical_topic_dir(resolved, rel_parts) -> bool:
+    """Is this `projects/<project>/<topic>/` -- a canonical topic directory?
+
+    THE CONDITION HAS ONE HOME; THE POLICY DOES NOT, AND THAT IS DELIBERATE.
+    `rename` refuses outright ("use your shell if you really need to") while
+    `delete` takes `force=true`, so the sidebar's topic-dir kebab can proceed
+    after a strong confirmation.  Those are different answers to the same
+    question, which is why `_validate_op_target` could not centralise them: it
+    took `(resolved, op)` and had no notion of `force`, so it could only ever
+    express `rename`'s policy.  (Deleted 2026-09-09 as #69 -- its one caller
+    refused directories before reaching it, so no arm could fire.)
+
+    What the two routes DO share, and what drifts when it lives twice, is this
+    three-term test: depth 2, a directory, and a name in
+    :data:`molbuilder.projects.CANONICAL_TOPICS`.  Move the depth rule or change
+    the constant and one copy goes stale in silence.
+
+    Why it matters: a topic directory is made by the project skeleton and the
+    layout assumes it.  Renaming or deleting one orphans every calculation under
+    it -- present on disk, invisible to any reader walking
+    project -> topic -> calculation.
+    """
+    return (len(rel_parts) == 2
+            and resolved.is_dir()
+            and rel_parts[1] in CANONICAL_TOPICS)
+
+
 def _rel_parts_inside_root(resolved) -> "Optional[Tuple[str, ...]]":
     """The path's segments RELATIVE to the root that contains it, or
     ``None`` when no root does.
@@ -1781,7 +1808,7 @@ def api_files_rename():
             "error": ("refusing to rename the picker root itself"),
         }), 400
 
-    if depth == 2 and resolved.is_dir() and rel_parts[1] in CANONICAL_TOPICS:
+    if _is_canonical_topic_dir(resolved, rel_parts):
         return jsonify({
             "ok":   False,
             "error": (f"refusing to rename canonical-topic directory "
@@ -2344,9 +2371,9 @@ def api_files_delete():
     # fine to delete.  The ``force=true`` override lets the sidebar's
     # topic-dir kebab menu (added 2026-06-24) bypass this after the
     # user has acknowledged a strong confirmation prompt.
-    if (depth == 2 and resolved.is_dir()
-            and rel_parts[1] in CANONICAL_TOPICS
-            and not force):
+    # The CONDITION is shared with `rename`; the `force` escape is this route's
+    # own policy (see `_is_canonical_topic_dir`).
+    if _is_canonical_topic_dir(resolved, rel_parts) and not force:
         return jsonify({
             "ok":   False,
             "error": (f"refusing to delete canonical-topic directory "
