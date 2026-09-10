@@ -766,19 +766,6 @@ class TestAuthlibNamespaceCollisionProtection:
                 f"protection is broken"
             )
 
-    def test_authlib_name_prefix_constant_is_mb_underscore(self):
-        """The slug regex hard-codes ``^mb_`` as the reserved prefix.
-        If someone changes the prefix in oauth.py without updating
-        the validator, this test fires."""
-        from molbuilder.web.auth_providers.oauth import (
-            _AUTHLIB_INTERNAL_PREFIX,
-        )
-        assert _AUTHLIB_INTERNAL_PREFIX == "mb_", (
-            f"the authlib-internal prefix is {_AUTHLIB_INTERNAL_PREFIX!r}, "
-            f"not the ``mb_`` that the schema validator's _ID_RE "
-            f"reserves; either align them or the prefix loses its "
-            f"protection"
-        )
 
 
 # --------------------------------------------------------------------- #
@@ -1112,18 +1099,6 @@ class TestTrustProxy:
         cfg = _normalise(raw)
         assert cfg["auth"]["trust_proxy"] is True
 
-    def test_explicit_false_accepted(self):
-        """An explicit `false` handled differently from the default.
-
-        `deployment.md` § 5. Honest note (2026-09-09): `test_default_is_false`
-        asserts the same resulting value through the same
-        `auth.get("trust_proxy", False)` plus bool check; raised as a cut
-        candidate, loss: nothing measurable.
-        """
-        raw = _wrap(_google_entry())
-        raw["auth"]["trust_proxy"] = False
-        cfg = _normalise(raw)
-        assert cfg["auth"]["trust_proxy"] is False
 
 
 

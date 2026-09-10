@@ -135,24 +135,6 @@ class TestParseSpectraJsonHappyPath:
         loaded = parse_spectra_json(p)
         assert loaded.engine == "pyscf"
 
-    def test_accepts_str_path(self, tmp_path):
-        """PLUMBING. The door takes a `str` path, not only a `Path`.
-
-        Catches the door being rewritten to call `path.exists()` / `path.open()`
-        directly instead of `os.fspath` -- every other test in this file hands it
-        a `Path`, so a `Path`-only door would pass all of them and break the
-        callers that pass strings (`/api/spectra/load` hands over whatever
-        `_resolve_within_roots` returned).
-
-        Contract: `web/spectra.md` § 6.
-
-        THIN: the door's first line is `os.fspath(path)`, and `os.fspath(str)` is
-        identity by stdlib guarantee. See the audit note.
-        """
-        original = _make_minimal_results()
-        p = _write_json(tmp_path, original.to_dict())
-        loaded = parse_spectra_json(str(p))
-        assert loaded.engine == "pyscf"
 
     def test_intermediate_phase_state_round_trips(self, tmp_path):
         """A partially-complete file (L2 done, L3+L4 empty) round-
@@ -553,21 +535,6 @@ class TestSchemaVersionTypeSafety:
             parse_spectra_json(p)
         assert exc_info.value.actual is True
 
-    def test_string_schema_version_rejected(self, tmp_path):
-        """PLUMBING. The string `"1"` is not a schema version.
-
-        Contract: `spectra/results.py` + `web/spectra.md` § 6.
-
-        CUT CANDIDATE: it takes the same `not isinstance(actual, int)` branch as
-        `test_float_schema_version_rejected`, which asserts the sharper of the two
-        (1.0 compares EQUAL to 1, so a numeric check would let it through; "1"
-        never would).
-        """
-        payload = _make_minimal_results().to_dict()
-        payload["schema_version"] = "1"  # string "1", not int
-        p = _write_json(tmp_path, payload)
-        with pytest.raises(SpectraJsonSchemaError):
-            parse_spectra_json(p)
 
     def test_float_schema_version_rejected(self, tmp_path):
         """``1.0`` matches ``1`` numerically but isn't an int -- the

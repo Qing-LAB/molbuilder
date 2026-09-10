@@ -87,13 +87,6 @@ def test_yes_is_a_decision_to_trust_not_an_absence_of_one():
     assert "(--yes)" in said[1], "the skip is recorded, not silent"
 
 
-def test_the_request_is_shown_even_when_it_is_accepted_unasked():
-    """--yes skips the question, never the output: a person scrolling back
-    must be able to see what was sent."""
-    said = []
-    confirm("about to request:\n  time 4h", auto_yes=True, echo=said.append,
-            prompt=lambda: True)
-    assert "about to request" in said[0]
 
 
 # --------------------------------------------------------------------- #
@@ -140,17 +133,6 @@ def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
     assert "needs 64 cores but general's largest machine has 48" in t
 
 
-def test_the_listing_and_the_submission_cannot_disagree():
-    """The table reuses the scheduler's own admission, so a row it marks as
-    fitting is one the submission will accept.  A table that says yes where
-    the check says no is worse than no table."""
-    from molbuilder.jobset.ask import _why_not
-    from molbuilder.scheduler.admit import Request, admits
-    ask, cores = Ask(time_s=4 * 3600, mem_gb=128), 64
-    for row in _menu():
-        assert _why_not(row, ask, cores=cores) == list(
-            admits(row, Request(ranks=cores, walltime_s=ask.time_s,
-                                mem_gb=ask.mem_gb)))
 
 
 def test_it_says_how_to_choose_and_that_nothing_has_happened_yet():

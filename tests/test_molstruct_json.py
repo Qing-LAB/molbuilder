@@ -430,28 +430,6 @@ class TestLoadErrors:
         with pytest.raises(msj.MolstructJsonError, match="must be an object"):
             msj.load(p)
 
-    def test_unknown_schema_version(self, tmp_path):
-        """A version outside the readable set is refused rather than read as the current
-        one.
-
-        `structure-molstruct.md` § 2: {7, 8, 9} are readable because each later
-        one only ADDED optional fields, while anything older stores the same facts in
-        DIFFERENT places (v3's top-level frozen atoms) -- reading it as current drops
-        a person's frozen-atom list silently.
-
-        RECORDED DOUBT for the section 3b review: version 99 is one of the five cases
-        `test_any_version_but_the_current_one_is_refused` already parametrizes, on the
-        same payload and the same call, with a stricter message match. This looks like
-        a genuine duplicate.
-        """
-        p = tmp_path / "bad.molstruct.json"
-        p.write_text(_json.dumps({
-            "schema_version": 99,
-            "n_atoms_total": 3,
-            "structure_hash": "b" * 32,
-        }))
-        with pytest.raises(msj.MolstructJsonError, match="schema_version"):
-            msj.load(p)
 
     def test_missing_required_field(self, tmp_path):
         """A sidecar missing `structure_hash` is refused, and the message names the

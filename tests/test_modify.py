@@ -251,20 +251,6 @@ def test_delete_preserves_metadata_in_lockstep(linear_dimer):
     assert len(out.chain_ids)      == out.n_atoms
 
 
-def test_delete_no_op_when_indices_empty(linear_dimer):
-    """An empty index list changes nothing, and does not mutate the input.
-
-    Contract: `modify.delete_atoms`'s own docstring (indices in any order,
-    duplicates tolerated).
-
-    CUT CANDIDATE: it reaches the same `len(keep) == n_atoms -> struct.copy()`
-    branch as `test_delete_silently_ignores_out_of_range_indices` and
-    `test_delete_atoms_no_op_branch_preserves_metadata`, both of which assert
-    strictly more about it.
-    """
-    out = delete_atoms(linear_dimer, [])
-    assert out.n_atoms == linear_dimer.n_atoms
-    assert linear_dimer.n_atoms == 6
 
 
 def test_delete_does_not_mutate_input(linear_dimer):
