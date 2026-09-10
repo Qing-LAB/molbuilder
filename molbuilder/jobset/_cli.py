@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import click
+from ..issues import Issue
 
 from .ledger import record as _ledger
 from .model import JobSet
@@ -1219,8 +1220,10 @@ def _cells_this_machine_holds(base, plan, gtype, *,
             # as "it fits": the kept/crossed split is on ``why``, so a
             # cell nothing could even be offered to must carry a reason.
             # `place` refuses this case in the same words.
-            why = ["this machine has no gpu-capable queue" if want_gpu
-                   else "this machine has no queue for cpu work"]
+            why = [Issue("error",
+                         "this machine has no gpu-capable queue" if want_gpu
+                         else "this machine has no queue for cpu work",
+                         "admit.no_queue")]
         out.append((fam, (g, k, c), tuple(fits),
                     () if fits else _rank_reasons(why)))
     return out
@@ -1236,16 +1239,17 @@ def _rank_reasons(reasons):
     wrong-card reasons sort last, and duplicates -- Sol repeats the same
     node groups across debug/htc/general -- collapse.
     """
+    # Findings since 2026-09-09, so "which refusal is this" is a FIELD.
+    # The demotion rule used to read `" offers " in r and " at most " not in r`
+    # -- a substring standing in for `where == "admit.gpu_type"`, which the
+    # comparison knew by name and threw into prose.
     seen, ranked = set(), []
     for r in reasons:
-        if r not in seen:
-            seen.add(r)
+        key = (r.where, r.message)
+        if key not in seen:
+            seen.add(key)
             ranked.append(r)
-    # "offers at most 3 a30" NAMES the number to change and must not be
-    # demoted with it -- only the bare "offers <list>" (wrong queue
-    # entirely) sorts last.
-    ranked.sort(key=lambda r: (" offers " in r and " at most " not in r,
-                               len(r)))
+    ranked.sort(key=lambda r: (r.where == "admit.gpu_type", len(r.message)))
     return tuple(ranked)
 
 
@@ -1919,7 +1923,10 @@ def _bench_inputs(base, target, *, bench_override=None, report=None):
              "family": "gpu" if fam else "cpu",
              "ranks": _cell_ranks(fam, g, k), "cores_each": c,
              "gpus": (g if (fam and g) else 0), "gpu_type": gtype if g else None,
-             "fits": list(doms), "why": list(why)}
+             # The wire carries the SENTENCES; the finding's `where` is for
+             # callers inside the process (`_rank_reasons` ranks on it).  The
+             # browser renders prose, so it gets prose.
+             "fits": list(doms), "why": [i.message for i in why]}
             for fam, (g, k, c), doms, why in checked)
 
     # "THIS MACHINE" WAS THE WRONG WORD.  The menu these cells are checked

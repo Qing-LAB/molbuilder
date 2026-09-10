@@ -246,7 +246,7 @@ def test_the_policy_cap_rides_the_row_and_admission_reads_it():
     d = Domain(**row)
     assert admits(d, Request(ranks=8)) == []
     why = admits(d, Request(ranks=9))
-    assert why and "8" in why[0] and "policy" in why[0], (
+    assert why and "8" in why[0].message and "policy" in why[0].message, (
         f"a 9-core ask slid past an 8-core policy on 128-core nodes: {why}")
 
 

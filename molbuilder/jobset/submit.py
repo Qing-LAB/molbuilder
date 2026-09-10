@@ -946,7 +946,7 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
         raise SubmitError(
             f"{label or 'this group'} was prepared against a record that "
             f"allowed it, but THIS machine does not:\n    "
-            + "\n    ".join(why)
+            + "\n    ".join(i.message for i in why)
             + f"\n  The bundle's snapshot and {mine[0].name}'s current record "
               f"disagree -- re-run `prep` here so the trials are sized "
               f"against what this machine actually offers.")

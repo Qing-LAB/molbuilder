@@ -67,10 +67,10 @@ class TestTheCardIsCompared:
                                      gpu_type="a100.40gb"))
         assert why, ("public stocks no a100.40gb; admitting this is what "
                      "sent an unrunnable sbatch to the scheduler")
-        assert "a100.40gb" in why[0]
+        assert "a100.40gb" in why[0].message
         # R4/R10 -- the refusal names what IS here, so the way out is in
         # the message rather than in `sinfo`.
-        assert "a100" in why[0] and "a30" in why[0]
+        assert "a100" in why[0].message and "a30" in why[0].message
 
     def test_the_card_it_does_stock_is_admitted(self):
         assert admits(PUBLIC, Request(ranks=48, cpus_per_task=1, gpus=4,
@@ -98,8 +98,8 @@ class TestTheCeilingIsAmongMachinesWithThatCard:
         on the h200 node, which carries no a100.40gb at all."""
         why = admits(GENERAL, Request(ranks=128, cpus_per_task=1, gpus=4,
                                       gpu_type="a100.40gb"))
-        assert why and "64" in why[0], why
-        assert "a100.40gb" in why[0]
+        assert why and "64" in why[0].message, why
+        assert "a100.40gb" in why[0].message
         # ...and the same shape at 48 ranks fits those very nodes.
         assert admits(GENERAL, Request(ranks=48, cpus_per_task=1, gpus=4,
                                        gpu_type="a100.40gb")) == []
@@ -110,9 +110,9 @@ class TestTheCeilingIsAmongMachinesWithThatCard:
         a machine that does not exist.  One true reason, not two."""
         why = admits(PUBLIC, Request(ranks=128, cpus_per_task=1, gpus=4,
                                      gpu_type="a100.40gb"))
-        assert not any("largest machine with a100.40gb" in w for w in why), \
+        assert "admit.cores" not in [i.where for i in why], \
             why
-        assert any("offers" in w for w in why)
+        assert "admit.gpu_type" in [i.where for i in why]
 
     def test_naming_a_card_never_LOOSENS_the_core_ceiling(self):
         """A record that does not say which nodes hold its devices is
@@ -149,7 +149,7 @@ class TestTheCeilingIsAmongMachinesWithThatCard:
                                 "gpu": {"a100": 4}}])
         why = admits(row, Request(ranks=128, cpus_per_task=1, gpus=2,
                                   gpu_type="a100"))
-        assert why and "51 node(s) of 48" in why[0], why
+        assert why and "51 node(s) of 48" in why[0].message, why
 
 
 class TestTheCountIsOfTheCardAsked:
@@ -159,8 +159,8 @@ class TestTheCountIsOfTheCardAsked:
         as one number, the 16 admitted every 4-device ask."""
         why = admits(PUBLIC, Request(ranks=12, cpus_per_task=1, gpus=4,
                                      gpu_type="a30"))
-        assert why and "3" in why[0], why
-        assert "a30" in why[0]
+        assert why and "3" in why[0].message, why
+        assert "a30" in why[0].message
 
     def test_the_count_of_the_named_card_is_enough(self):
         assert admits(PUBLIC, Request(ranks=12, cpus_per_task=1, gpus=16,
@@ -189,7 +189,7 @@ class TestPlacementRoutesByTheCard:
                       walltime_s=3600)
         with pytest.raises(Unplaceable) as e:
             place([PUBLIC, GENERAL], req, prefer_gpu=True)
-        assert all("mi300x" in r for r in e.value.reasons)
+        assert all("mi300x" in r.message for r in e.value.reasons)
 
 
 class TestTheGresStringIsReadByOneDoor:
@@ -225,19 +225,32 @@ class TestTheGridFitCheckReportsHonestly:
             ".", [(True, (2, 4, 1)), (False, (0, 4, 1))], "a100")
         gpu_cell, cpu_cell = out[0], out[1]
         assert gpu_cell[3], "a GPU cell with nowhere to go must be crossed out"
-        assert "gpu-capable" in gpu_cell[3][0]
+        # The reason names its locus now: an empty pool is `admit.no_queue`,
+        # not a limit comparison that happened to fire.
+        assert gpu_cell[3][0].where == "admit.no_queue"
+        assert "gpu-capable" in gpu_cell[3][0].message
         assert not cpu_cell[3] and cpu_cell[2] == ("cpuonly",)
 
     def test_a_count_refusal_outranks_a_wrong_queue_one(self):
-        """`_rank_reasons` demotes *"gaudi offers hl225"* -- which only says
-        the wrong queue was asked.  It keyed on the word "offers", which the
-        COUNT refusal also uses, so the one naming the number to change was
-        demoted with it."""
+        """`_rank_reasons` demotes the WRONG-QUEUE refusal, which only says the
+        wrong queue was asked, below the COUNT refusal, which names the number
+        to change.
+
+        It used to decide that by reading `" offers " in r and " at most " not
+        in r` -- a substring standing in for a question the comparison already
+        knew the answer to, and one the count refusal's own wording could
+        defeat.  Since 2026-09-09 a refusal is an `Issue` carrying `where`, so
+        the demotion is `where == "admit.gpu_type"` and this test names the
+        ordering instead of recognising it by a fragment.
+        """
         from molbuilder.jobset._cli import _rank_reasons
-        first = _rank_reasons([
-            "needs a100 but gaudi offers hl225",
-            "needs 4 a30 GPUs but public offers at most 3 a30"])[0]
-        assert "at most 3" in first
+        from molbuilder.issues import Issue
+        ranked = _rank_reasons([
+            Issue("error", "needs a100 but gaudi offers hl225",
+                  "admit.gpu_type"),
+            Issue("error", "needs 4 a30 GPUs but public offers at most 3 a30",
+                  "admit.gpus")])
+        assert [i.where for i in ranked] == ["admit.gpus", "admit.gpu_type"]
 
     def test_a_stated_card_survives_an_unrelated_probe_failure(
             self, monkeypatch, tmp_path):
