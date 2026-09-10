@@ -637,7 +637,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         "n_errors": sum(1 for i in issues if i.severity == "error"),
         "n_warnings": sum(1 for i in issues if i.severity == "warn"),
         "issues": [
-            {"severity": i.severity, "message": i.message, "where": i.where}
+            i.to_json()
             for i in issues
         ],
     }

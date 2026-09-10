@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterable, List, Literal, Optional
+from typing import Any, Dict, Iterable, List, Literal, Optional
 
 # The closed set of severities a validator may emit.  Pinned in one
 # place so the runtime check + the static type stay in lock-step
@@ -85,6 +85,29 @@ class Issue:
                 f"Issue.severity must be one of {_SEVERITIES}; "
                 f"got {self.severity!r}"
             )
+
+    def to_json(self) -> "Dict[str, Any]":
+        """This finding as the wire object.
+
+        THE key set, in one place.  Four sites spelled it by hand
+        (`cli.py`, two blueprints, `_shared.issues_to_json`) and two tests
+        asserted `set(d) == {"severity","message","where"}` to hold them
+        together -- `_shared`'s own docstring said so: *"Schema duplicated
+        literally in both blueprints' tests; if a key changes here, those
+        tests catch it."*  That is a type's job.
+
+        `stage` rides beside `where`, never inside it (`engines/stages.md`
+        § 4 R2), and is omitted when absent so a single-run response is
+        byte-identical to what it was before ladders existed.
+        `workflow_group` is resolved from a config the web layer holds, so
+        `_shared.issues_to_json` adds it on top of this.
+        """
+        d: "Dict[str, Any]" = {"severity": self.severity,
+                               "message":  self.message,
+                               "where":    self.where}
+        if self.stage is not None:
+            d["stage"] = self.stage
+        return d
 
 
 class ValidationError(ValueError):

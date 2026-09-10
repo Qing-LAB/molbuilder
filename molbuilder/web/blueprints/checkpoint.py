@@ -29,6 +29,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from ...issues import Issue
 from flask import Blueprint, jsonify, request
 
 from molbuilder.runtime_config import CONFIG_FILENAME as _CONFIG_FILENAME
@@ -96,7 +97,7 @@ def _advisory(message: str, where: str = "") -> tuple:
     list, with a short ``error`` banner matching the issue message
     so a generic envelope reader has something to show.
     """
-    issue = {"severity": "error", "message": message, "where": where}
+    issue = Issue("error", message, where).to_json()
     body = {
         "ok":          False,
         "error":       message,

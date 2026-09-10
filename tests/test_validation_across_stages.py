@@ -186,7 +186,12 @@ def test_a_single_run_response_is_unchanged():
     """A finding with no stage must serialise exactly as it did before ladders
     existed — every existing wire-shape test pins these keys literally."""
     [d] = issues_to_json_single()
+    # `stage` omitted when absent is a DECISION (`Issue.to_json`), not a shape.
     assert "stage" not in d
+    # The key set is a Python<->JS rename tripwire: `validation-findings.js`
+    # reads `severity`, `message`, `where` and `workflow_group` by name, and
+    # the node harness that would catch a rename SKIPS here (#79).  One writer
+    # now (`Issue.to_json`) -- four sites spelled it by hand until 2026-09-09.
     assert set(d) == {"severity", "message", "where"}
 
 
@@ -197,7 +202,8 @@ def issues_to_json_single():
 
 def test_issue_still_defaults_its_stage_to_none():
     assert Issue("info", "m").stage is None
-    assert "stage" in {f.name for f in dataclasses.fields(Issue)}
+    # `assert "stage" in {f.name for f in fields(Issue)}` stood here: the line
+    # above cannot pass unless the field exists.
 
 
 # --------------------------------------------------------------------- #

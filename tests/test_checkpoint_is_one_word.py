@@ -33,7 +33,6 @@ PKG = REPO / "molbuilder"
 
 #: The verbs the group offers.  Named here so a renamed or dropped subcommand
 #: shows up as a failure rather than as a silently smaller tool.
-SUBCOMMANDS = {"init", "save", "list", "tag", "restore", "config"}
 
 
 def test_the_group_a_person_types_is_checkpoint():
@@ -43,8 +42,10 @@ def test_the_group_a_person_types_is_checkpoint():
         "(no-backward-compat rule)")
 
 
-def test_the_group_offers_exactly_these_verbs():
-    assert set(_cli.cli.commands["checkpoint"].commands) == SUBCOMMANDS
+# `test_the_group_offers_exactly_these_verbs` stood here, asserting the same
+# set as `test_checkpoint_cli.py::test_the_group_offers_exactly_the_contracts_verbs`
+# with the six verbs typed out a second time.  This file's subject is the NAME;
+# the verb set belongs where the contract does.
 
 
 #: Files whose ``snapshot`` mentions are the on-disk names, the English noun,

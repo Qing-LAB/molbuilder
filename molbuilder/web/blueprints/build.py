@@ -62,6 +62,7 @@ import pathlib
 from datetime import datetime
 from typing import Any, Dict
 
+from ...issues import Issue
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
@@ -1049,9 +1050,8 @@ def api_build_preflight():
         return jsonify({
             "ok":     False,
             "error":  f"bad parameters: {exc}",
-            "issues": [{"severity": "error",
-                        "message": f"bad parameters: {exc}",
-                        "where":   "config"}],
+            "issues": [Issue("error", f"bad parameters: {exc}",
+                             "config").to_json()],
         }), 400
 
     return jsonify({

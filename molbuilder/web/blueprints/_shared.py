@@ -96,8 +96,7 @@ def issues_to_json(issues, cfg=None):
     """
     out = []
     for i in issues:
-        d = {"severity": i.severity, "message": i.message,
-             "where": i.where}
+        d = i.to_json()          # THE key set lives on `Issue`
         # An Issue may pre-tag its workflow_group; if not, derive
         # from the where field via the config dataclass metadata.
         group = i.workflow_group
