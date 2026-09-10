@@ -322,6 +322,47 @@ def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
 # --------------------------------------------------------------------- #
 
 
+#: The HOMO rule, as a REAL FUNCTION so it can be called and tested.
+#:
+#: It lived only as emitted script text until 2026-09-09, and it has a BRANCH:
+#: PySCF gives `mo_occ` as a 1-D array for RHF/RKS and a 2-D (alpha, beta) array
+#: for UHF/UKS, which must be summed before the highest occupied level can be
+#: found.  Get that wrong and every OPEN-SHELL calculation reports the wrong
+#: HOMO -- and `web/spectra.md` § 3.1 records the level diagram, the gap and the
+#: gap shift all reading from this index, with shifts of ~0.018 meV, so a wrong
+#: index looks like a different answer rather than an error.
+#:
+#: The emitted script is built from THIS function's source (see
+#: `_emit_homo_rule`), so there is one implementation and the tests exercise the
+#: one that runs.  That is the trigger stated in `siesta/makov_payne.py`: copy a
+#: branchless formula if you must, but ship the source once it has a branch.
+def homo_index(mo_occ) -> int:
+    """Index of the highest occupied molecular orbital.
+
+    ``mo_occ`` is PySCF's occupation array: 1-D for a restricted reference,
+    2-D ``(alpha, beta)`` for an unrestricted one, which is summed to a total
+    occupancy first.  "Occupied" is occupancy above 0.5 -- half an electron --
+    which separates a filled level (1.0 unrestricted, 2.0 restricted) from an
+    empty one without assuming integer occupations.
+    """
+    import numpy as _np
+    occ = _np.asarray(mo_occ, dtype=float)
+    total = occ.sum(axis=0) if occ.ndim == 2 else occ
+    filled = _np.where(total > 0.5)[0]
+    if filled.size == 0:
+        raise ValueError(
+            "no molecular orbital has occupancy above 0.5: the reference has "
+            "no occupied levels, so there is no HOMO to index")
+    return int(_np.max(filled))
+
+
+def _emit_homo_rule() -> List[str]:
+    """The HOMO rule, spliced from :func:`homo_index` rather than retyped."""
+    import inspect
+    src = inspect.getsource(homo_index)
+    return [ln.rstrip() for ln in src.splitlines()]
+
+
 def _emit_atomic_writer() -> List[str]:
     """Inline the same atomic-write helper as
     :func:`molbuilder.sidecars.spectra.dump_spectra_json` so
@@ -676,15 +717,12 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("        f'the input geometry'")
     out.append("    )")
     out.append("MO_ENERGIES_EQ = _as_numpy(mf.mo_energy).copy()")
-    out.append("# HOMO index: highest occupied MO.  For UHF/UKS the mo_occ")
-    out.append("# is 2-D (alpha, beta) -- we sum to total occupancy and find")
-    out.append("# the highest level with occupancy > 0.  For RHF/RKS it's 1-D.")
-    out.append("_occ = _as_numpy(mf.mo_occ)")
-    out.append("if _occ.ndim == 2:")
-    out.append("    _total_occ = _occ.sum(axis=0)")
-    out.append("else:")
-    out.append("    _total_occ = _occ")
-    out.append("HOMO_IDX = int(np.max(np.where(_total_occ > 0.5)[0]))")
+    # THE HOMO RULE IS SPLICED, NOT RETYPED (2026-09-09).  It has a branch --
+    # RHF/RKS gives a 1-D mo_occ, UHF/UKS a 2-D (alpha, beta) that must be
+    # summed -- and a second copy of a branch is a second thing to get wrong.
+    # `homo_index` above is the one implementation and the one the tests call.
+    out.extend(_emit_homo_rule())
+    out.append("HOMO_IDX = homo_index(_as_numpy(mf.mo_occ))")
     out.append("")
     out.append("state['equilibrium'] = {")
     out.append("    'scf_energy_eh':  float(E_eq),")

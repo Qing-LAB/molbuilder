@@ -282,15 +282,29 @@ and empty labels are each killed.
 
 ### Gaps, not weaknesses
 
-- **`spectra/test_parsers_json.py:1063` pins the impossible `homo_idx`, not the
-  realistic one.** It refuses `homo_idx = 99` against a 5-orbital array.
-  In-range-but-wrong is what actually happens: an off-by-one HOMO shifts the
-  level diagram, the gap, and the gap *shift* — and `web/spectra.md § 3.1`
-  records those shifts at ~0.018 meV, small enough that a wrong index looks like
-  a different answer rather than an error. **Nothing anywhere checks that
-  `homo_idx` is the index of the highest OCCUPIED orbital** (against the
-  electron count, or a sign change in the occupations). The sharpest physics gap
-  in that file.
+- ~~**`spectra/test_parsers_json.py:1063` pins the impossible `homo_idx`.**~~
+  **CLOSED 2026-09-09, and the read side was never where it could be fixed.**
+  It refused `homo_idx = 99` against a 5-orbital array. In-range-but-wrong is
+  the real failure: `web/spectra.md` § 3.1 has the level diagram, the gap and
+  the gap SHIFT all reading from this index, at shifts of ~0.018 meV, so an
+  off-by-one looks like a different answer rather than an error.
+
+  **But the sidecar carries `homo_idx` WITHOUT the occupations it came from**,
+  and `SpectraResults` holds only `equilibrium_mo_energies_eh` — no occupancies,
+  no electron count, no elements. So the read side cannot cross-check it, and
+  `results.py:642`'s range test is the most it can do. This finding asked the
+  wrong layer.
+
+  **Where it lives is the emitter, and it is OURS**: PySCF reports occupation
+  numbers and molbuilder derives the index. It existed only as text inside the
+  generated script, where nothing could call it — **and it has a branch**: 1-D
+  `mo_occ` for RHF/RKS, 2-D `(alpha, beta)` for UHF/UKS, which must be summed.
+  Miss the sum and every OPEN-SHELL calculation reports one spin channel's HOMO.
+  It is now `vibration_emitters.homo_index`, spliced into the script from its own
+  source so there is one implementation, with nine cases and five mutants —
+  the dropped sum, the wrong axis, `min` for `max`, the threshold at 0, and the
+  empty-reference refusal.
+
 - **Nothing joins the sidecar to the selection evaluator.** `ByRegion` appears
   only in `test_atom_selection.py`; `apply_to_structure` appears in eight other
   files but never with a rule evaluation. So the end-to-end path that decides

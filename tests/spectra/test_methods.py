@@ -414,3 +414,56 @@ class TestRenderMethodsMdWithStruct:
         assert "2 frozen" in md
 
 
+
+
+# ── the HOMO rule -- ours, and it has a branch ──────────────────────────────
+
+@pytest.mark.parametrize("mo_occ,expected,why", [
+    ([2.0, 2.0, 0.0, 0.0],                    1, "restricted: 2 filled, 2 empty"),
+    ([2.0],                                   0, "restricted: a single filled level"),
+    ([[1.0, 1.0, 0.0], [1.0, 0.0, 0.0]],      1, "UNRESTRICTED: alpha+beta summed"),
+    ([[1.0, 1.0, 1.0], [1.0, 1.0, 0.0]],      2, "unrestricted doublet: alpha goes higher"),
+    ([2.0, 1.8, 0.3, 0.0],                    1, "fractional: 0.3 is not occupied"),
+    ([2.0, 0.6, 0.4],                         1, "fractional: 0.6 is, 0.4 is not"),
+    ([2.0, 0.0, 2.0],                         2, "unsorted occupancies: the HIGHEST index wins"),
+])
+def test_the_homo_is_the_highest_level_carrying_more_than_half_an_electron(
+        mo_occ, expected, why):
+    """SCIENCE. `homo_index` picks the highest MO with occupancy above 0.5 --
+    summing spin channels first when the reference is unrestricted.
+
+    THE FAILURE THIS CATCHES.  This index is molbuilder's, not PySCF's: PySCF
+    reports occupation numbers and WE derive the HOMO from them. `web/spectra.md`
+    § 3.1 has the level diagram, the HOMO-LUMO gap and the gap SHIFT all reading
+    from it, with shifts of ~0.018 meV -- so an index off by one does not look
+    like an error, it looks like a different answer.
+
+    THE BRANCH IS THE POINT.  PySCF gives `mo_occ` as 1-D for RHF/RKS and as
+    2-D `(alpha, beta)` for UHF/UKS. Miss the sum and every OPEN-SHELL
+    calculation reports the beta channel's HOMO, or the alpha one, instead of
+    the system's -- silently, and only for the open-shell half of the work.
+    The two unrestricted rows are the ones that catch it.
+
+    WHY THIS TEST CAN EXIST AT ALL (2026-09-09).  The rule lived only as text
+    inside the emitted PySCF script, where nothing could call it, and the
+    sidecar it writes carries `homo_idx` WITHOUT the occupations it came from --
+    so the read side cannot check it either, and `SpectraResults` validates only
+    that the index is in range. It is now a real function that the emitter
+    splices into the script, so the tests exercise the implementation that runs.
+    Recorded at `science/test-design-findings.md` § 7a.
+    """
+    from molbuilder.pyscf.vibration_emitters import homo_index
+    assert homo_index(mo_occ) == expected, why
+
+
+def test_a_reference_with_no_occupied_levels_is_refused_not_indexed():
+    """SCIENCE. No occupied MO means there is no HOMO -- refuse, rather than
+    hand back an index into an empty selection.
+
+    `np.max` of an empty array raises a bare `ValueError` about zero-size
+    reduction, which reaches a person as a traceback naming numpy rather than
+    their calculation. This says what is actually wrong.
+    """
+    from molbuilder.pyscf.vibration_emitters import homo_index
+    with pytest.raises(ValueError, match="no occupied levels"):
+        homo_index([0.0, 0.0, 0.0])
