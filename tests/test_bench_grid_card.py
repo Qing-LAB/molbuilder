@@ -548,3 +548,38 @@ def test_flat_counts_run_INDICES_not_files(client, bundle):
     for role in (".out", ".concluded", ".pyscf.log"):
         (bundle / f"{label}_01_{first}-run0{role}").write_text("")
     assert _attempts(client, bundle)["stages"][first]["attempts"] == 1
+
+
+def test_a_cell_this_box_cannot_hold_says_why_on_a_machine_with_no_queues():
+    """THE NO-SCHEDULER PATH IS A PATH, and until 2026-09-11 it crashed.
+
+    `admits` became `Refusal` findings on 2026-09-09 -- "which refusal is
+    this" is a FIELD, so callers stop reading numbers back out of prose.
+    `_local_refusals`, the answer for a box with no queues at all, kept
+    appending f-strings. Everything downstream reads the fields:
+    `_rank_reasons` dedups on `(limit, message)`, and the card renders
+    `.message` per cell. So on a workstation -- the commonest local case --
+    the first cell too wide for the box raised
+    `AttributeError: 'str' object has no attribute 'message'`, and
+    `/api/task-setup/bench-grid` handed that sentence to the screen as the
+    machine-fit verdict.
+
+    Found by walking the UI, not by a test: nothing exercised a grid whose
+    cells exceed a queue-less machine's width.
+    """
+    from molbuilder.jobset._cli import _local_refusals
+
+    why = _local_refusals((0, 8, 2), fam=False, gtype=None,
+                          cores_total=4, gpus_per_node=0)
+    assert why, "8 ranks x 2 cores does not fit 4 cores; that is a refusal"
+    r = why[0]
+    assert not isinstance(r, str), (
+        "a refusal is a finding, not a sentence — `_rank_reasons` and the "
+        "bench-grid card both read its fields"
+    )
+    assert r.limit == "cores" and r.asked == 16 and r.allowed == 4, (
+        f"the numbers are the answer and must stay fields: {r}"
+    )
+    assert "16" in r.message and "4" in r.message, (
+        f"the sentence still renders both numbers: {r.message!r}"
+    )

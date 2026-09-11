@@ -1260,15 +1260,27 @@ def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
     against: an unmeasured topology is silence, and silence never bars
     (R3).  Reasons name their numbers (R4).
     """
+    # FINDINGS, NOT SENTENCES -- the same conversion `admits` had on
+    # 2026-09-09 and this function did not get.  Everything downstream reads
+    # the FIELDS: `_rank_reasons` dedups on `(limit, message)` and demotes
+    # `limit == "gpu_type"`, and the task-setup card renders `.message` per
+    # cell.  Handed strings, all three raise -- and the browser showed the
+    # raise: `'str' object has no attribute 'message'` in the machine-fit
+    # panel, on the ONE path that reaches here, a box with no scheduler
+    # (found 2026-09-11 by walking the UI).  The numbers stay numbers; the
+    # sentence is rendered at the edge, once.
+    from ..scheduler.admit import Refusal
     g, k, c = cell
     ranks = _cell_ranks(fam, g, k)
     why = []
     if cores_total and ranks * c > cores_total:
-        why.append(f"needs {ranks * c} cores and this machine has "
-                   f"{cores_total}")
+        why.append(Refusal("cores", "this machine",
+                           asked=ranks * c, allowed=cores_total,
+                           unit="cores"))
     if fam and g and gpus_per_node and g > gpus_per_node:
-        why.append(f"needs {g} x {gtype or 'gpu'} and this machine has "
-                   f"{gpus_per_node}")
+        why.append(Refusal("gpus", "this machine",
+                           asked=g, allowed=gpus_per_node,
+                           unit=(gtype or "gpu")))
     return tuple(why)
 
 
@@ -1949,8 +1961,17 @@ def _bench_inputs(base, target, *, bench_override=None, report=None):
         click.echo(f"  crossed out ({len(crossed)}) -- no queue takes "
                    f"them:")
         for fam, (g, k, c), why in crossed:
+            # `.message`, NOT the Refusal itself.  These became findings on
+            # 2026-09-11 (`_local_refusals`, so the task-setup card could stop
+            # printing a Python AttributeError) and this line still
+            # interpolated the object -- which prints its repr,
+            # `Refusal(limit='cores', ..., asked=8192, ...)`, where the
+            # terminal wants "needs 8192 cores but this machine allows 4".
+            # The numbers are fields so callers can read them; the SENTENCE is
+            # what a person is shown.
             click.echo(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
-                       f"{_cell_shape(g, k, c, gtype):<37}  {why[0]}")
+                       f"{_cell_shape(g, k, c, gtype):<37}  "
+                       f"{why[0].message if hasattr(why[0], 'message') else why[0]}")
 
     cells = []
     for fam in families:

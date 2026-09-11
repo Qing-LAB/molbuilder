@@ -1970,7 +1970,15 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc, capsys):
     # The CELL, by the name its trial directory would carry, and both
     # numbers -- what was asked and what there is.
     assert "K4096C2" in shown
-    assert "8192 cores" in shown and "has 4" in shown
+    # THE NUMBERS, NOT THE VERB.  Refusals became findings on
+    # 2026-09-11 and render through one `Refusal.message`, which
+    # says "needs 8192 cores but this machine allows 4 cores";
+    # this pinned the older hand-built wording ("has 4") and so
+    # failed on a sentence that says the same thing.  What the
+    # line is about is that BOTH numbers reach the person.
+    assert "8192" in shown and re.search(r"\b4\b", shown), (
+        f"the refusal must name what was asked and what is "
+        f"allowed; it said: {shown!r}")
 
 
 def test_prep_bench_asks_only_about_launched_trials(calc):
@@ -2711,7 +2719,15 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
     assert "K2C1" in shown and "K4096C1" in shown
     # The struck one names its numbers (R4), not a verdict word.
     assert "crossed out (1)" in shown
-    assert "4096 cores" in shown and "has 4" in shown
+    # THE NUMBERS, NOT THE VERB.  Refusals became findings on
+    # 2026-09-11 and render through one `Refusal.message`, which
+    # says "needs 4096 cores but this machine allows 4 cores";
+    # this pinned the older hand-built wording ("has 4") and so
+    # failed on a sentence that says the same thing.  What the
+    # line is about is that BOTH numbers reach the person.
+    assert "4096" in shown and re.search(r"\b4\b", shown), (
+        f"the refusal must name what was asked and what is "
+        f"allowed; it said: {shown!r}")
 
 
 def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
