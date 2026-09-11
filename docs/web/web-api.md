@@ -45,7 +45,7 @@ built by `workspace_payload()` (the single serializer):
   "periodicity": { "…cell / origin / axis_kind / vacuum…" },
   "annotations": { "…regions / frozen / channels…" },
   "issues": [ "…" ],
-  "notices": [ { "level": "info|warn", "message": "…", "about": "cell" } ],
+  "notices": [ { "severity": "info|warn", "message": "…", "about": "cell" } ],
   "extra": { "…endpoint add-ons…" } }
 ```
 
@@ -197,7 +197,7 @@ which is a bug this project has already shipped once.
 
 ```json
 { "ok": true, "structure": { "geometry": …, "metadata": …, "document": … },
-  "notices": [ { "level": "info|warn", "message": "…", "about": "cell" } ] }
+  "notices": [ { "severity": "info|warn", "message": "…", "about": "cell" } ] }
 ```
 
 **What this replaces, door by door.**
@@ -262,7 +262,7 @@ cases the current designs need, and the answer for each is part of the contract:
 | **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
 | **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 6). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
 | **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
-| **what the server wants to say** | `notices` beside `ok` — `{level, message, where, about}` rows (`where` is the stable finding id; `about` is the subject that decides where it is shown) the door produces about the structure it is answering with: a box that no longer contains its atoms, a corner that had to be worked out because none was stored. Nothing is corrected, so a notice never reports a repair. They belong to the *call*, not to the structure, so they never ride inside it |
+| **what the server wants to say** | `notices` beside `ok` — `{severity, message, where, about}` rows (`where` is the stable finding id; `about` is the subject that decides where it is shown) the door produces about the structure it is answering with: a box that no longer contains its atoms, a corner that had to be worked out because none was stored. Nothing is corrected, so a notice never reports a repair. They belong to the *call*, not to the structure, so they never ride inside it |
 
 ### Strict where a file is read, lenient where the wire is
 
