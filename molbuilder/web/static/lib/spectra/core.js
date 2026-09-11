@@ -171,14 +171,9 @@
         },
 
         // uiPrefs: the knobs a person sets and expects to find again.
-        // PERSISTED to sessionStorage under
-        // `molbuilder.results.spectra.uiPrefs.v1` (`spectra.md` § 7) -- see
-        // _restorePrefs / _savePrefs below.  Trajectory leaves its own bucket
-        // empty on purpose (§ 13) and is unaffected.
-        //
-        // A knob added here is persisted and type-checked the day it appears:
-        // PREFS_DEFAULTS is snapshotted FROM this object, so there is no
-        // second list to update and no way for the two to disagree.
+        // PERSISTED through the workspace, tag `results:spectra:ui`
+        // (`workspace.md` § 4) -- see the lane below.  Trajectory leaves its
+        // own bucket empty on purpose (§ 13) and is unaffected.
         uiPrefs: {
             modeFilter:     "",
             sortColumn:     "index_1based",
@@ -230,63 +225,102 @@
         exporting:      null,    // the AbortController of a running export
     };
 
-    /* ── View preferences survive a page reload (`spectra.md` § 7) ─────────
+    /* ── How you were looking, kept where everything else is kept ──────────
      *
-     * The bucket above held these for the life of the MOUNT only, so a reload
-     * started every knob back at its default -- the contract said so and
-     * called the roundtrip "wired as a follow-up, not shipped".  This is it,
-     * under the key the contract already named.
+     * Contract: `spectra.md` § 7 (what a reload restores), `workspace.md` § 4
+     *           (the tag) and § 5 (the only two calls), `molview.md` § 11.2b
+     *           (the lane this copies -- "looking is not changing").
+     * Owns:     one workspace slot, tag `results:spectra:ui`, state_index 0,
+     *           holding the eight view knobs in `state.uiPrefs`.
      *
-     * ONE DOOR.  Every write to a knob goes through the `uiPrefs` alias
-     * setter wired below, so persistence hooks there -- not into the ~3000
-     * lines of render and event code that assign to the flat names.
-     *
-     * A SAVED VALUE IS NOT TRUSTED.  Session storage is editable and a stale
-     * blob outlives a rename, so a restored value is taken only when the key
-     * is one we define AND its type matches the default's.  A
-     * `broadeningFWHM` of "abc" would otherwise reach the broadening maths,
-     * and the viewer would fail on a value nobody typed.
+     * NOT sessionStorage.  `workspace.md` § 4 promises "there is one way to
+     * save and one way to load", and the browser-storage half underneath the
+     * workspace is deliberately not part of its surface.  A second store in
+     * the Results tab would be a second home for tab state -- the thing the
+     * tag exists to prevent.  `lib/molview/ui-context.js` already keeps a
+     * viewer's camera, frame and switches in exactly this shape, so this is
+     * that lane for the knobs MolView does not own.
      */
-    var PREFS_KEY = "molbuilder.results.spectra.uiPrefs.v1";
-    var PREFS_DEFAULTS = null;      // filled from the bucket, below
+    var PREFS_TAG       = "results:spectra:ui";
+    var PREFS_VERSION   = 1;
+    var PREFS_DELAY_MS  = 400;      // the same coalescing ui-context uses
+    var PREFS_DEFAULTS  = null;     // snapshotted from the bucket, below
 
-    function _savePrefsNow() {
-        try {
-            root.sessionStorage.setItem(
-                PREFS_KEY, JSON.stringify(state.uiPrefs));
-        } catch (_) {
-            // Best-effort: private mode, quota, or no storage at all (this
-            // module also runs under node in the logic tests).  The viewer
-            // keeps working; only surviving a reload degrades.
+    var _prefsArmed    = false;     // writes off until the restore has run
+    var _prefsApplying = false;     // and off while the restore applies
+    var _prefsTimer    = null;
+
+    function _ws() {
+        var w = root.molbuilder && root.molbuilder.workspace;
+        if (!w || typeof w.workspaceId !== "function"
+               || typeof w.persist !== "function"
+               || typeof w.readState !== "function") return null;
+        return w;
+    }
+
+    function _prefsIdentity(w) {
+        return { workspace_id: w.workspaceId(PREFS_TAG), state_index: 0 };
+    }
+
+    function _prefsFlush() {
+        _prefsTimer = null;
+        if (!_prefsArmed || _prefsApplying) return;
+        var w = _ws();
+        if (!w) return;
+        // persist() does not wait: true means sent, not saved.  A failure
+        // arrives later on onPersistError, and a lost preference is not worth
+        // interrupting anyone over -- the knobs still work for this session.
+        try { w.persist(PREFS_TAG, { v: PREFS_VERSION, prefs: state.uiPrefs },
+                        _prefsIdentity(w)); } catch (_) {}
+    }
+
+    function _prefsSchedule() {
+        if (!_prefsArmed || _prefsApplying) return;
+        if (_prefsTimer !== null) clearTimeout(_prefsTimer);
+        _prefsTimer = setTimeout(_prefsFlush, PREFS_DELAY_MS);
+    }
+
+    /* Read the slot back and apply what is usable.
+     *
+     * A STORED VALUE IS NOT TRUSTED.  A slot outlives a rename and the file is
+     * editable, so a knob is taken only when the key is one the bucket
+     * declares AND its type matches the default's: a `broadeningFWHM` of
+     * "abc" would otherwise reach the broadening maths and the viewer would
+     * fail on a value nobody typed.  `v` guards the shape as a whole, the way
+     * ui-context's VERSION does.
+     */
+    async function _prefsRestore() {
+        var w = _ws();
+        if (!w) { _prefsArmed = true; return; }
+        var saved = null;
+        try { saved = await w.readState(_prefsIdentity(w)); }
+        catch (_) { /* readState already answers null for any failure */ }
+        if (!saved || saved.v !== PREFS_VERSION
+                || !saved.prefs || typeof saved.prefs !== "object") {
+            _prefsArmed = true;
+            return;
         }
-    }
-
-    var _prefsSaveHandle = null;
-    function _savePrefs() {
-        // A slider drag assigns on every pointer move.  Coalesce.
-        if (_prefsSaveHandle !== null) return;
-        _prefsSaveHandle = setTimeout(function () {
-            _prefsSaveHandle = null;
-            _savePrefsNow();
-        }, 250);
-    }
-
-    function _restorePrefs() {
-        var raw;
-        try { raw = root.sessionStorage.getItem(PREFS_KEY); }
-        catch (_) { return; }
-        if (!raw) return;
-        var saved;
-        try { saved = JSON.parse(raw); } catch (_) { return; }
-        if (!saved || typeof saved !== "object") return;
-        for (var k in PREFS_DEFAULTS) {
-            if (!Object.prototype.hasOwnProperty.call(PREFS_DEFAULTS, k)) continue;
-            if (!Object.prototype.hasOwnProperty.call(saved, k)) continue;
-            if (typeof saved[k] !== typeof PREFS_DEFAULTS[k]) continue;
-            if (typeof saved[k] === "number" && !isFinite(saved[k])) continue;
-            // Straight into the bucket, never through the alias: going
-            // through the setter would save what we just read.
-            state.uiPrefs[k] = saved[k];
+        _prefsApplying = true;
+        try {
+            var got = saved.prefs, k;
+            for (k in PREFS_DEFAULTS) {
+                if (!Object.prototype.hasOwnProperty.call(PREFS_DEFAULTS, k)) continue;
+                if (!Object.prototype.hasOwnProperty.call(got, k)) continue;
+                if (typeof got[k] !== typeof PREFS_DEFAULTS[k]) continue;
+                if (typeof got[k] === "number" && !isFinite(got[k])) continue;
+                state.uiPrefs[k] = got[k];      // the bucket, not the alias
+            }
+        } finally {
+            _prefsApplying = false;
+            _prefsArmed = true;
+        }
+        // The knobs are read while rendering, and the read above is async, so
+        // a file already on screen was drawn with the defaults.  renderResults
+        // is the door every watch tick already goes through, so re-entering it
+        // is the ordinary path and not a special case.
+        if (state.fileState.results) {
+            try { renderResults(state.fileState.results, state.fileState.path); }
+            catch (_) {}
         }
     }
 
@@ -310,12 +344,13 @@
         });
         alias("results",        "fileState");
         alias("selectedMode",   "viewState");
-        // The uiPrefs knobs alias AND persist: the setter is the one door
-        // every write passes through (`spectra.md` § 7).
+        // The uiPrefs knobs alias AND schedule a save: the alias setter is
+        // the one door every write in the body already passes through, so the
+        // lane needs nothing from the ~3000 lines that assign the flat names.
         function prefAlias(key) {
             Object.defineProperty(state, key, {
                 get: function ()  { return state.uiPrefs[key]; },
-                set: function (v) { state.uiPrefs[key] = v; _savePrefs(); },
+                set: function (v) { state.uiPrefs[key] = v; _prefsSchedule(); },
                 enumerable: true,
                 configurable: true,
             });
@@ -336,10 +371,9 @@
     })();
 
     // The defaults ARE whatever the bucket was declared with -- snapshotted
-    // rather than retyped, so a knob added to the bucket is persisted and
-    // type-checked the day it appears, with nothing here to update.
+    // rather than retyped, so a knob added to uiPrefs is persisted and
+    // type-checked the day it appears and the two cannot disagree.
     PREFS_DEFAULTS = JSON.parse(JSON.stringify(state.uiPrefs));
-    _restorePrefs();
 
     // Transition orchestrator (contract § 2).  Single entry-point
     // for state-machine transitions; mirrors trajectory's
@@ -3199,6 +3233,13 @@
     }
 
     init();
+
+    // Put the view knobs back (`spectra.md` § 7).  Kicked here, once per
+    // mount, for the reason ui-context is attached after the model exists:
+    // the read is async and writes stay disarmed until it has finished, so a
+    // default announced during init cannot overwrite the saved value on its
+    // way in.  Nothing awaits it -- a slow read must not delay the form.
+    _prefsRestore();
 
     // PR 3 contract § 5: wire Refresh ONCE at mount.  Mirrors
     // trajectory's _wireRefreshListener pattern (which fixed the
