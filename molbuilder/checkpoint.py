@@ -57,6 +57,13 @@ from .task import FILENAME as _TASK_FILENAME
 # --------------------------------------------------------------------- #
 
 #: Where the archive lives, one directory per distinct content (§ 3).
+#:
+#: **DO NOT RENAME THIS TO MATCH THE TOOL'S NAME.**  The tool is
+#: `molbuilder checkpoint` everywhere a person types it, and the 2026-08-18
+#: rename deliberately left this alone (user's ruling): the directory sits
+#: inside calculation folders that already exist, and renaming it orphans
+#: real archives -- whole copies of large files -- to no one's benefit.  A
+#: verb someone types is the tool's name; a directory on disk is the data's.
 ARCHIVE_DIR = ".binsnapshots"
 
 #: The only two paths that are never stored (S1).  Not a policy about worth --
@@ -69,6 +76,14 @@ ARCHIVE_DIR = ".binsnapshots"
 #: is writing it.
 NEVER_STORED = (".git", ARCHIVE_DIR)
 
+#: The managed region of a calculation's ``.gitignore``.
+#:
+#: **CHANGING EITHER STRING CORRUPTS FOLDERS THAT ARE ALREADY INITIALISED.**
+#: `_rewrite_gitignore` finds the existing block BY these markers, so a
+#: folder written with the old pair grows a SECOND block on its next save
+#: while the stale one keeps excluding files -- silently, and only in
+#: folders that predate the change.  There is no migration: the strings are
+#: on disk in every checkpointed calculation.
 _GITIGNORE_BEGIN = "# === molbuilder checkpoint BEGIN ==="
 _GITIGNORE_END = "# === molbuilder checkpoint END ==="
 
