@@ -170,6 +170,35 @@ def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
         return {}                # present but unreadable: launched, details lost
 
 
+def _label_of(job: Any, token: Optional[str], fallback: str) -> str:
+    """The label THIS job's files carry, read off its own deck.
+
+    `JobSet.name` is the TASK's label; a sweep trial's deck is
+    `f"{task.label}-{point_token}"` (`resolve._label_for`), so the two differ
+    for exactly the case that matters.  `runfiles.find` needs the label the
+    filenames were written with, and the deck basename records it -- the same
+    source `summarize` reads.
+
+    A deck is `<label>_<stage>.<role>`, and the STAGE TOKEN CONTAINS AN
+    UNDERSCORE (`01_coarse`), so splitting on `_` is wrong.  The caller knows
+    the token, so strip exactly that.
+    """
+    script = getattr(job, "script", None)
+    # NO TOKEN, NO CHANGE.  Without the stage token there is nothing to strip
+    # off the stem, and guessing would make this worse than the jobset name it
+    # replaces -- that path keeps exactly the behaviour it had.
+    if not script or not token:
+        return fallback
+    stem = Path(str(script)).name
+    for role in (".run.sh", ".sbatch", ".sh", ".py", ".fdf"):
+        if stem.endswith(role):
+            stem = stem[: -len(role)]
+            break
+    if token and stem.endswith("_" + token):
+        stem = stem[: -(len(token) + 1)]
+    return stem or fallback
+
+
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
                  label: str, stage: Optional[str], out_glob: str) -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
@@ -267,9 +296,17 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         # In the hierarchy the directory already answered; in flat every stage
         # shares one, and the deck's token in each filename is the answer.
         token = refs[job.name].token
-        out_glob = (sh.stage_glob(token, label)
+        # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
+        # is `task.label`, while each trial's deck is `f"{task.label}-{token}"`
+        # (`resolve._label_for`) -- so asking `runfiles.find` for the jobset's
+        # name matched NOTHING for a trial, `has_output` was always False, and
+        # a finished trial answered § 1.6's forbidden "prepped, not launched".
+        # Read off the deck the way `summarize` does (`Path(job.script).stem`
+        # minus the stage suffix), which is the name the files actually carry.
+        job_label = _label_of(job, token or None, label)
+        out_glob = (sh.stage_glob(token, job_label)
                     if (sh is not None and token) else "*")
-        state, detail = _stage_state(observed, launch, label,
+        state, detail = _stage_state(observed, launch, job_label,
                                      token or None, out_glob)
         stages.append(StageStatus(
             ref=refs[job.name], dir=d.name, state=state, detail=detail,

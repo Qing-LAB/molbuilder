@@ -75,7 +75,15 @@ class Refusal:
     @property
     def message(self) -> str:
         if self.asked is None and self.allowed is None:
-            return self.note or f"{self.domain} refuses this"
+            # THE DOMAIN STAYS IN THE SENTENCE.  Returning the bare note lost
+            # it: `--domain typo` read "this machine offers public, general,
+            # htc" and never said which name had been typed, and the no-queue
+            # refusal read "no gpu-capable queue" without "this machine".
+            # Numbers are what `Refusal` renders; the subject is not optional.
+            if not self.note:
+                return f"{self.domain} refuses this"
+            return (self.note if self.note.startswith(self.domain)
+                    else f"{self.domain}: {self.note}")
         unit = f" {self.unit}" if self.unit else ""
         tail = f" ({self.note})" if self.note else ""
         return (f"needs {self.asked}{unit} but {self.domain} allows "

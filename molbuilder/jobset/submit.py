@@ -904,7 +904,10 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     except Unplaceable as exc:
         raise SubmitError(
             f"{label or 'this group'} cannot be placed on this machine:\n    "
-            + "\n    ".join(exc.reasons)
+            # `.message` -- `exc.reasons` is List[Refusal] since 2026-09-09.
+            # Joining the objects raised TypeError instead of this SubmitError,
+            # so an unplaceable group lost both the reasons and the remedies.
+            + "\n    ".join(r.message for r in exc.reasons)
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
               "Either run fewer trials per group, lower --trial-timeout, or "
               "name a longer domain with --domain <name>.") from None

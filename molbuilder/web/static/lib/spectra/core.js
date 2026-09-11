@@ -280,6 +280,38 @@
         _prefsTimer = setTimeout(_prefsFlush, PREFS_DELAY_MS);
     }
 
+    /* The controls must SHOW what was restored.
+     *
+     * Every handler reads its value out of the DOM (`onBroadeningChange` does
+     * `parseFloat(els.broadeningFwhm.value)`), so state alone is not enough:
+     * the box would still read 20 while the spectrum was broadened by the
+     * restored 42, and the first touch of any control would push the stale
+     * default back into state AND persist it -- a feature that silently undoes
+     * itself is worse than none.
+     *
+     * init() already primes these from the markup and re-runs
+     * `onAmplitudeModeChange()` so the panel cannot contradict itself -- its
+     * own comment names a restored "thermal" leaving the temperature box
+     * hidden as the thing it prevents.  That priming runs BEFORE this async
+     * read, so it has to happen again here, with the values that came back.
+     */
+    function _prefsToControls() {
+        var u = state.uiPrefs;
+        function put(el, v) { if (el && v !== undefined && v !== null) el.value = String(v); }
+        put(els.modesFilter,      u.modeFilter);
+        put(els.broadeningFwhm,   u.broadeningFWHM);
+        put(els.animAmplitude,    u.animAmplitude);
+        put(els.animSpeed,        u.animSpeed);
+        put(els.animAmplitudeMode, u.animAmplitudeMode);
+        put(els.animTemperature,  u.animTemperature);
+        // The mode pairing owns more than its own value: it decides whether the
+        // temperature box or the size slider is the one on screen.  Re-run the
+        // handler init() runs, for the same reason init() runs it.
+        if (els.animAmplitudeMode && typeof onAmplitudeModeChange === "function") {
+            try { onAmplitudeModeChange(); } catch (_) {}
+        }
+    }
+
     /* Read the slot back and apply what is usable.
      *
      * A STORED VALUE IS NOT TRUSTED.  A slot outlives a rename and the file is
@@ -310,6 +342,10 @@
                 if (typeof got[k] === "number" && !isFinite(got[k])) continue;
                 state.uiPrefs[k] = got[k];      // the bucket, not the alias
             }
+            // Still inside the applying window: pushing values into the
+            // controls fires their handlers, which assign to the same knobs,
+            // and `_prefsApplying` is what stops that echoing into a write.
+            _prefsToControls();
         } finally {
             _prefsApplying = false;
             _prefsArmed = true;

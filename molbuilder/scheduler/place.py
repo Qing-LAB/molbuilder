@@ -213,9 +213,15 @@ def place(routing, request: Request, *, prefer_gpu: bool,
 
     pool = candidates(rows, prefer_gpu=prefer_gpu)
     if not pool:
+        # A Refusal like every other, NOT a bare string: `Unplaceable.__init__`
+        # reads `.message` off each reason, so a string here raises
+        # AttributeError FROM INSIDE THE CONSTRUCTOR -- which no
+        # `except Unplaceable` can catch (runwrap.py, submit.py both have one).
+        # A machine with no GPU-capable queue crashed instead of refusing.
         raise Unplaceable(
-            ["this machine has no gpu-capable queue"
-             if prefer_gpu else "this machine has no queue for cpu work"],
+            [Refusal("no_queue", "this machine",
+                     note="no gpu-capable queue" if prefer_gpu
+                          else "no queue for cpu work")],
             gpu_side=prefer_gpu)
 
     reasons: List[str] = []
