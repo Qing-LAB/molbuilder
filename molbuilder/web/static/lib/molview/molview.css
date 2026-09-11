@@ -1430,19 +1430,17 @@
     margin: 0.4rem 0 0 0;
 }
 .molviewer-notices[hidden] { display: none; }
-.molviewer-notice {
-    margin: 0;
-    padding: 0.3rem 0.45rem;
-    border-left: 3px solid var(--molviewer-color-panel-edge);
-    border-radius: 3px;
-    background: var(--molviewer-color-panel-well);
-    color: var(--molviewer-color-panel-text);
+/* COMPOSITION ONLY.
+   The rows are `.issue-item`, written by `lib/validation-findings.js` and
+   styled once in `lib/page-shell.css` -- the sheet every page loads, which is
+   why they have a design on /results too.  This sheet owns where the box sits
+   and how dense it is, never what a severity looks like (`ui-contract.md` § 5:
+   composition is the surface's, the tone has one owner).  Three rules lived
+   here until 2026-09-11: a second vocabulary, with two of the three
+   severities in it, that drew an error in the colour of a remark. */
+.molviewer-notices.issues-panel .issue-item {
     font: var(--molviewer-text-2xs)/1.35 var(--molviewer-control-family);
 }
-/* The severity carries in the RULE, not in a colour written at the call site:
-   the message is the server's, the tone is this stylesheet's. */
-.molviewer-notice--warn { border-left-color: var(--molviewer-color-warn); }
-.molviewer-notice--info { border-left-color: var(--molviewer-color-accent); }
 
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
 .molviewer-selection-header-tabs { align-items: center; }

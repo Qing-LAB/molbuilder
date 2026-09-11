@@ -302,7 +302,11 @@
    § 1 — one shared definition, not N copies); the include also provides
    3Dmol + mol-viewer-embed. #}
 {% include "_molview_scripts.html" %}
-<script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
+{# An ES module now: it exports `render`/`clear` for the modules that import
+   it (lib/molview) and still publishes `molbuilder.validationFindings` for the
+   classic scripts on this page.  `type="module"` defers it, which costs those
+   nothing -- all three read the namespace at call time, inside a handler. #}
+<script type="module" src="{{ url_for('static', filename='lib/validation-findings-global.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>

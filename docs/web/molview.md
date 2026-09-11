@@ -1008,6 +1008,24 @@ about the structure the answer describes. They are not errors — an error fails
 the request. A notice is the server saying "this worked, and here is something
 you should know about the result".
 
+**And MolView does not DRAW one either** *(2026-09-11)*. A notice is a finding
+under a different word, so the row is `lib/validation-findings.js`'s —
+`science/validation.md` § 4.1 R2a — reached by a named `import` from `ui.js`.
+This module carried its own `drawNotices` until then, with a two-word severity
+map that put an error in the tone of a remark.
+
+> **Depending on it does not weaken § 4.** That
+> rule says nothing outside is importable but the entry point, and that a mount
+> needs only a host and a workspace door — a *public surface* and an *injection*
+> rule, not a vow to reimplement every shared concern. Depending downward on a
+> presentation module is reuse; what § 4 forbids is taking it off a global, and
+> `test_mounting_needs_only_a_host_and_a_workspace_door` proves mounting still
+> publishes nothing. The dependency set itself is pinned, so the next one is a
+> decision rather than an accident — `test_the_modules_molview_depends_on_are_these_and_no_others`
+> holds the set, so read it there rather than trusting a count written here.
+> MolView's sheet sets the row's type scale
+> for this panel's density and owns nothing about the severity.
+
 Every one of them is worded by `periodicity_gate` — MolView writes none and
 rewords none, because the numbers in them (determinants, per-axis clearances)
 were computed there and a second author would be writing a sentence only one of

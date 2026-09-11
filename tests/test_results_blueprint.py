@@ -703,16 +703,26 @@ class TestSpectraIssuesPanelSeverityCoverage:
     # test_validation_findings_js.py.
 
     def test_info_severity_is_visibly_styled_in_its_one_home(self):
-        """The row vocabulary is styled once, in lib/form-components.css.  An
-        ``info`` finding must be distinguishable there — the original concern
-        ("unstyled blocks") applies to whichever sheet owns the rows."""
+        """The row vocabulary is styled once — in lib/page-shell.css since
+        2026-09-11.  An ``info`` finding must be distinguishable there; the
+        original concern ("unstyled blocks") applies to whichever sheet owns
+        the rows.
+
+        THE OWNER MOVED, and that is the point of the move: these rules lived
+        in `form-components.css`, which only the FORM pages load, while the
+        renderer draws for every surface — `/results` loads no form sheet and
+        mounts MolView, whose notices go through the same module, so the rows
+        arrived there with no design at all.  `page-shell.css` is the sheet
+        every page has, which is the argument `ui-contract.md` § 5 already
+        makes for `.status.error`."""
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
-        shared = (root / "molbuilder/web/static/lib/form-components.css"
+        shared = (root / "molbuilder/web/static/lib/page-shell.css"
                   ).read_text()
         assert '.issue-item[data-severity="info"]' in shared, (
-            "form-components.css must style info-severity findings; it is the "
-            "ONE home for the row vocabulary (docs/web/ui-contract.md § 5.1)."
+            "page-shell.css must style info-severity findings; it is the ONE "
+            "home for the row vocabulary and the sheet EVERY page loads "
+            "(docs/web/ui-contract.md § 5.1)."
         )
         # Every severity the contract defines is styled, so none renders bare.
         for sev in ("error", "warn", "info"):

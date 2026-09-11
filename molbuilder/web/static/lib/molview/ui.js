@@ -19,6 +19,11 @@
  */
 "use strict";
 
+/* The shared findings renderer (`science/validation.md` § 4.1 R2) -- a named
+ * import, so the dependency is DECLARED and satisfied by the module loader
+ * rather than taken off a global.  § 4's rule is "nothing it needs comes from
+ * a global", and mounting must publish nothing; an import breaks neither. */
+import { render as renderFindings } from "../validation-findings.js";
 import { toDisplay } from "./_atom.js";
 import { FROZEN_LABEL, PREDEFINED_LABELS, PREDEFINED_LABEL_NAMES }
     from "./model-jobs.js";
@@ -1373,7 +1378,7 @@ function mountPanel(doc, card, model) {
      * so it is visible on either page: a notice about the whole structure --
      * from a load or from an edit -- has no row to sit under the way a cell
      * notice does. */
-    const panelNotices = el("div", "molviewer-notices");
+    const panelNotices = el("ul", "issues-panel molviewer-notices");
     panelNotices.hidden = true;
     root.appendChild(panelNotices);
     root.appendChild(pages.selection);
@@ -1659,10 +1664,14 @@ function mountPanel(doc, card, model) {
      * structure is still shown" -- implying the switch was still on. It is not,
      * and the tests passed anyway because none of them read the sentence
      * against the store. A browser did. */
-    // The panel's existing notice styling, not a class of its own: this says the
-    // same KIND of thing the cell notices say, and a second look for one job is
-    // how two things that should match stop matching.
-    const filterNote = el("div", "molviewer-notice molviewer-notice--warn");
+    // The same BOX the server's notices use, for the same reason the original
+    // comment here gave -- "this says the same kind of thing the cell notices
+    // say, and a second look for one job is how two things that should match
+    // stop matching".  Since 2026-09-11 that means the shared findings row
+    // rather than a pair of MolView classes, so the sentence MolView writes
+    // about the filter and the sentence the server writes about the box look
+    // alike because they ARE alike, not because two stylesheets agree.
+    const filterNote = el("ul", "issues-panel molviewer-notices");
     filterNote.hidden = true;
     filterSection.appendChild(filterNote);
     pages.selection.appendChild(filterSection);
@@ -1861,7 +1870,7 @@ function mountPanel(doc, card, model) {
     const cellReadout = el("dl", "molviewer-cell-readout");
     pages.cell.appendChild(cellReadout);
     // What the server said about this box, under the numbers it is about.
-    const cellNotices = el("div", "molviewer-notices");
+    const cellNotices = el("ul", "issues-panel molviewer-notices");
     cellNotices.hidden = true;
     pages.cell.appendChild(cellNotices);
 
@@ -1928,14 +1937,14 @@ function mountPanel(doc, card, model) {
          * question the user has since edited. */
         const outcome = state.filterOutcome;
         const matchedNothing = !!outcome && outcome.matched === 0;
-        filterNote.hidden = !matchedNothing;
-        if (matchedNothing) {
-            filterNote.textContent = outcome.isolateNotInEffect
+        drawNotices(filterNote, matchedNothing ? [{
+            severity: "warn",
+            message: outcome.isolateNotInEffect
                 ? "No atoms matched this filter, so nothing is selected. "
                   + "“Show selected only” is still on, and the whole "
                   + "structure is shown while nothing is selected."
-                : "No atoms matched this filter, so nothing is selected.";
-        }
+                : "No atoms matched this filter, so nothing is selected.",
+        }] : []);
 
         drawList(state);
         drawRows(state);
@@ -2305,15 +2314,33 @@ function mountPanel(doc, card, model) {
         else tab.removeAttribute("data-has-notices");
     }
 
+    /* NOTICES ARE FINDINGS, so they are drawn by the module that draws
+     * findings -- `lib/validation-findings.js`, `science/validation.md` § 4.1
+     * R2's one channel into the UI.
+     *
+     * This built its own rows until 2026-09-11, with its own two-word severity
+     * map (`severity === "warn" ? "warn" : "info"`), so an error arrived in the
+     * same grey as a remark -- the downgrade R4 forbids by name.  It was a
+     * SIXTH reader of one channel, written without looking for the module that
+     * already existed, and the guard for R2 could not see it because it checked
+     * a hardcoded list of two filenames.
+     *
+     * DEPENDING DOWNWARD IS NOT A BREACH OF § 4.  That rule says nothing
+     * outside MolView is importable but the entry point, and that a mount needs
+     * only a host and a workspace door -- it is about this module's public
+     * surface and what must be injected, not a vow to reimplement every shared
+     * concern.  MolView already depends on the app's palette
+     * (`--molviewer-*` tokens resolve to `--error`, `--warn`, `--accent`);
+     * this is the same dependency one layer up, and it goes the right way: a
+     * viewer reaching down to a presentation module, never sideways to another
+     * viewer and never back up.
+     *
+     * The router degrades to exactly what is wanted here: with no `formScope`
+     * and no `fieldIds` there are no cards to route to, so every row lands in
+     * the panel it was given, in server order, and the module owns the empty
+     * case (it hides the box) as well as the full one. */
     function drawNotices(into, list) {
-        into.textContent = "";
-        into.hidden = !(list && list.length);
-        for (const notice of (list || [])) {
-            const line = el("p", "molviewer-notice molviewer-notice--"
-                                 + (notice.severity === "warn" ? "warn" : "info"));
-            line.textContent = notice.message;
-            into.appendChild(line);
-        }
+        renderFindings(list || [], { panel: into });
     }
 
     function drawCell() {

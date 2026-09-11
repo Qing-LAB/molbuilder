@@ -23,7 +23,8 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
-from tests._molview_sources import module_code, module_files
+from tests._molview_sources import (module_code, module_dependencies,
+                                    module_files)
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -144,6 +145,29 @@ def test_mounting_needs_only_a_host_and_a_workspace_door():
 # ---------------------------------------------------------------------------
 # § 8 — mount always resolves
 # ---------------------------------------------------------------------------
+
+def test_the_modules_molview_depends_on_are_these_and_no_others():
+    """§ 4 is about the BOUNDARY, not about isolation.
+
+    MolView may reach DOWN to a shared module -- it reuses
+    `lib/validation-findings.js` rather than growing a second renderer for a
+    finding, and it already resolves its colours to the app's tokens. What
+    would break the module is a dependency that is not a decision: a reach
+    SIDEWAYS into another viewer, or a third module arriving through an
+    import nobody looked at.
+
+    So the set is named here and has to be edited deliberately. The
+    accompanying rule is the one the mount test checks: however MolView
+    reaches a dependency, it is by IMPORT and never off a global (§ 4 --
+    "nothing it needs comes from a global").
+    """
+    assert sorted(module_dependencies()) == ["validation-findings.js"], (
+        f"MolView's dependencies changed: {sorted(module_dependencies())}. "
+        f"Depending downward on a shared module is fine and is why this list "
+        f"is not empty — but each one is a design decision, so add it here "
+        f"with the reason."
+    )
+
 
 def test_mount_always_resolves_with_a_working_dispose():
     """§ 13.3: "a mount that cannot fit still returns `ok === false` AND a working
@@ -1520,7 +1544,10 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
         for (const pg of card.querySelectorAll(".molviewer-panel-tab")) {
             if (pg.getAttribute("data-page") === "cell") cellPage = pg;
         }
-        const notesIn = (box) => box.querySelectorAll(".molviewer-notice")
+        // The rows are `.issue-item` -- `lib/validation-findings.js` draws
+        // them for every surface.  What is MolView's is WHICH BOX each one
+        // lands in, and that is what this test is about.
+        const notesIn = (box) => box.querySelectorAll(".issue-item")
             .map(n => n.textContent);
         const boxes = card.querySelectorAll(".molviewer-notices");
         const onCell = [], aboveTabs = [];

@@ -74,6 +74,16 @@ function makeElement(doc, tag) {
             node.children.push(child);
             return child;
         },
+        // The other half of the pair, and the standard way a module empties a
+        // container: `while (el.firstChild) el.removeChild(el.firstChild)`.
+        // A stand-in that only grows describes a DOM that cannot be cleared.
+        get firstChild() { return node.children[0] || null; },
+        removeChild(child) {
+            const at = node.children.indexOf(child);
+            if (at >= 0) node.children.splice(at, 1);
+            if (child) child.parentNode = null;
+            return child;
+        },
         remove() {
             if (!node.parentNode) return;
             const at = node.parentNode.children.indexOf(node);

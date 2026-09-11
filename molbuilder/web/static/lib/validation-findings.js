@@ -31,7 +31,9 @@
  *      rendered card) goes to the residual panel.  ``render`` returns the
  *      counts it actually wrote, and ``total`` always equals ``issues.length``.
  *   R4 severity means one thing.  One row vocabulary
- *      (``li.issue-item[data-severity]``, styled once in form-components.css);
+ *      (``li.issue-item[data-severity]``, styled once in page-shell.css --
+ *      the sheet EVERY page loads, because this module draws for every
+ *      surface and /results loads no form sheet);
  *      an unrecognised or missing severity renders as ``info`` — never dropped.
  *      Server order is preserved (validate() emits geometry, then config, then
  *      engine checks — a documented deterministic order).
@@ -59,7 +61,37 @@
  * mounts inside a subtree and resolves its own ids against that root, so this
  * module must never reach for ``document`` itself.
  */
-(function (root) {
+/* TWO DELIVERY FORMS, ONE IMPLEMENTATION (2026-09-11).
+ *
+ * This module is imported two ways, because its consumers are two kinds of
+ * code and neither should have to become the other to reuse it:
+ *
+ *   * `import { render } from "/static/lib/validation-findings.js"` -- an ES
+ *     module declaring a dependency, which is how `lib/molview/` reaches it.
+ *     MolView may depend on this module; what it may NOT do is take it off a
+ *     global, because `web/molview.md` § 4 is "nothing it needs comes from a
+ *     global" and mounting a viewer must publish nothing.
+ *   * `molbuilder.validationFindings` -- the namespace, for the classic
+ *     scripts that cannot `import` at all (`lib/spectra/core.js`,
+ *     `structure-optimization/viewer.js`).  All three read it at CALL time
+ *     inside a handler, so the module being deferred costs them nothing.
+ *
+ * THE NAMESPACE IS PUBLISHED BY A SECOND FILE, `validation-findings-global.js`,
+ * and not by this one.  A module that registers itself on `window` makes every
+ * importer publish, which is the § 4 breach MolView's own mount test caught:
+ * importing a renderer must not add a name to the app's namespace.  So the
+ * registration is an entry point of its own, and a page that wants the
+ * namespace loads that instead.
+ *
+ * The body stays inside its function rather than being unwrapped to module
+ * scope, and the two exports below are the very functions the namespace hands
+ * out -- one implementation, no chance of the forms drifting.
+ *
+ * The argument is `globalThis` rather than the old `this`: at the top level of
+ * an ES module `this` is `undefined`, so the previous fallback threw the moment
+ * this file was imported rather than script-tagged.  `root` is still read, for
+ * the `document` a caller's panel cannot supply. */
+const _module = (function (root) {
     "use strict";
 
     var SEVERITIES = ["error", "warn", "info"];
@@ -70,7 +102,7 @@
         return (SEVERITIES.indexOf(s) !== -1) ? s : "info";
     }
 
-    // One row shape for every surface (form-components.css owns the styling).
+    // One row shape for every surface (page-shell.css owns the styling).
     function _row(doc, issue) {
         var li = doc.createElement("li");
         li.className = "issue-item";
@@ -260,6 +292,8 @@
         return summary;
     }
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.validationFindings = { render: render, clear: clear };
-})(typeof window !== "undefined" ? window : this);
+    return { render: render, clear: clear };
+})(typeof window !== "undefined" ? window : globalThis);
+
+export const render = _module.render;
+export const clear = _module.clear;

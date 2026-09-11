@@ -581,3 +581,105 @@ button:disabled {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
+
+
+/* ---- The findings row — one shape for every surface ----
+ *
+ * MOVED HERE FROM form-components.css, 2026-09-11.  `science/validation.md`
+ * § 4.1 R2 makes `lib/validation-findings.js` the one renderer of a finding
+ * and § 5.1 of this contract says the row looks the same on every tab -- but
+ * the rules lived in a sheet only the FORM pages load, and /results mounts
+ * MolView, which draws its notices (R2a: a notice is a finding) through that
+ * same module.  The rows would have rendered with no design at all.
+ *
+ * This is § 5's own argument one layer up: `.status.error` is defined only in
+ * page-shell "and every page loads page-shell -- so the same red appears
+ * whether the message is on the Build form, the Modify action row, the Spectra
+ * form".  A row drawn by one module for every surface belongs in the sheet
+ * every surface has.  A page may still compose around it (MolView sets the
+ * type scale for its dense panel) and may never re-pick the severity. */
+/* ---- Validation issues panel ----
+ * Structured per-issue list; each <li> carries data-severity picking the
+ * left-bar accent + leading glyph.  Populated by renderIssues(). */
+.issues-panel[hidden] { display: none; }
+.issues-panel {
+    list-style: none;
+    margin: var(--space-sm) 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    font-size: var(--text-sm);
+}
+.issues-panel .issue-item {
+    padding: var(--space-sm) var(--space-sm2) var(--space-sm) var(--space-sm2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--border-soft);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    line-height: 1.4;
+    display: flex;
+    gap: var(--space-sm);
+    align-items: baseline;
+}
+/* THE SEVERITY BAR AND GLYPH -- the three words, each with a rule.
+ * `science/validation.md` § 4.1 R4: error > warn > info, and no surface
+ * downgrades one to keep a screen quiet.  A severity the renderer can emit and
+ * this sheet cannot draw is the same defect one layer down. */
+.issues-panel .issue-item::before {
+    flex: 0 0 auto;
+    font-weight: 700;
+    content: "\2022";
+}
+.issues-panel .issue-item[data-severity="warn"] {
+    border-left-color: var(--warn-soft);
+    color: #e8c98c; /* exempt: lightened warn-amber for text-on-dark */
+}
+.issues-panel .issue-item[data-severity="warn"]::before {
+    content: "\26A0";
+    color: var(--warn-soft);
+}
+.issues-panel .issue-item[data-severity="error"] {
+    border-left-color: var(--error);
+    color: #ffb1b1; /* exempt: lightened error tint for text-on-dark */
+}
+.issues-panel .issue-item[data-severity="error"]::before {
+    content: "\2717";
+    color: var(--error);
+}
+.issues-panel .issue-item[data-severity="info"] {
+    border-left-color: var(--accent);
+    color: var(--text-secondary);
+}
+.issues-panel .issue-item[data-severity="info"]::before {
+    content: "i";
+    color: var(--accent);
+}
+/* The stable id (R1), shown so a user can quote it. */
+.issues-panel .issue-where {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    opacity: 0.65;
+    margin-left: auto;
+    padding-left: var(--space-sm2);
+}
+
+/* The message text of a finding.  Previously written by every renderer and
+ * styled by NONE -- it inherited whatever the panel gave it, which differed
+ * per page because two sheets owned .issues-panel.  One owner now
+ * (lib/validation-findings.js writes it, this rule styles it). */
+.issues-panel .issue-msg {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+/* The empty state, for panels that prefer a word over disappearing (the
+ * spectra Issues panel).  Panels without `emptyText` just hide. */
+.issues-panel .issues-empty {
+    list-style: none;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: var(--text-xs);
+    padding: 2px 0;
+}

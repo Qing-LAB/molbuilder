@@ -21,8 +21,8 @@ distinct thing**:
 ```mermaid
 flowchart TD
   T["lib/tokens.css<br/>every color, space, size — as var(--…)"]
-  PS["lib/page-shell.css<br/>body · header · .card · form controls<br/>.status severity · the app shell · .dock-panel · .card-row"]
-  FC["lib/form-components.css<br/>.app-grid · .issues-panel · .hint · shared buttons · viewer chrome"]
+  PS["lib/page-shell.css<br/>body · header · .card · form controls<br/>.status severity · <b>.issues-panel — the finding row</b><br/>the app shell · .dock-panel · .card-row"]
+  FC["lib/form-components.css<br/>.app-grid · .hint · shared buttons · viewer chrome<br/>a finding beside its .schema-field"]
   M["module sheets<br/>projects-sidebar · fused-layout · selection-panel · form-schema · the 3D embed"]
   P["the tab's own sheet<br/>composition only: max-width, per-instance values"]
   T --> PS --> FC --> M --> P
@@ -31,8 +31,8 @@ flowchart TD
 | Layer | Owns |
 |---|---|
 | `lib/tokens.css` | **only** the design tokens — every color, spacing, size, and type value (§ 2). Nothing else. |
-| `lib/page-shell.css` | the shell (`body`, `header`, `main`), the generic form controls, `.card`, the `.status` message severities, the app-shell + sidebar dock geometry, `.card-row`, the spinner. |
-| `lib/form-components.css` | the **shared form-page widgets** — the form grid, the issues panel, hints, the shared buttons, the viewer chrome. |
+| `lib/page-shell.css` | the shell (`body`, `header`, `main`), the generic form controls, `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner. |
+| `lib/form-components.css` | the **shared form-page widgets** — the form grid, hints, the shared buttons, the viewer chrome, and the one findings rule only a form can use (a finding sitting beside its `.schema-field` control). |
 | `lib/<module>/*.css` | one self-contained component each (the projects sidebar, the fused MolView card, the selection panel, the form renderer, the embed), class-prefixed so they don't collide. |
 | `<tab>/style.css` | **composition only** — arranging a page: max-width, centering, per-instance token values. |
 
@@ -192,7 +192,9 @@ own `[hidden]` guard (§ 6).
   tokens. See § 5 for why this matters.
 - **The issues panel** is the other severity surface — each issue gets a
   colored left bar and a leading glyph (⚠ / ✗ / i) from the same tokens, owned in
-  form-components.
+  **page-shell** *(moved there 2026-09-11, for the reason § 5 gives about
+  `.status`: it is drawn on every surface, so it has to be styled on every
+  surface)*.
 - **Cards** — `.card` in page-shell is the canonical surface (background, border,
   radius, padding, shadow), and **it is the only one**. Two tabs used to
   restyle it "deliberately"; on inspection (2026-08-24) both copies restated
@@ -307,7 +309,7 @@ prompt to look; only a re-picked *appearance* is the defect.
 The same rule, one layer up. A scientific finding (a validator `Issue`) is
 rendered by exactly one module — `lib/validation-findings.js` — which every page
 that shows findings mounts. One row shape
-(`li.issue-item[data-severity]`), styled once in `lib/form-components.css`;
+(`li.issue-item[data-severity]`), styled once in `lib/page-shell.css`;
 `workflow_group` puts a finding on its form card, everything else lands in the
 page's residual panel, and **nothing is dropped**.
 
@@ -324,6 +326,18 @@ all of it at once.
 The full producer-to-panel contract — where the facts come from, how the finding
 travels, and what the UI must do with it — is
 [`science/validation.md` § 4.1](?doc=science/validation.md).
+
+> **And a NOTICE is a finding** *(2026-09-11)*. The `notices` array beside `ok`
+> is the same `{severity, message, where}` row under a different word, so it is
+> drawn by the same module — including inside MolView, which reaches down to it
+> by `import` rather than carrying a renderer of its own. **A module with its
+> own design system composes, it does not re-implement**: MolView's sheet sets
+> the row's type scale for its dense panel (`.molviewer-notices.issues-panel
+> .issue-item`) and owns nothing about the severity, which is § 5's rule one
+> layer up. It had two of the three severities from
+> 2026-08-01 (`b39ba6bc`) to 2026-09-11 and drew an error in the tone of a
+> remark; nothing noticed, because the guard for "one renderer"
+> checked two filenames instead of searching. It searches now.
 
 ## 6. The `[hidden]` gotcha
 

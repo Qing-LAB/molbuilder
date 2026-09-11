@@ -35,27 +35,75 @@ ENTRY = MODULE_DIR / "index.js"
 _IMPORT = re.compile(r"""(?:from|import)\s+["']([^"']+)["']""")
 
 
-def module_files() -> dict[str, Path]:
-    """The module's layers: every file reachable from the entry point.
+def _walk() -> tuple[dict[str, Path], dict[str, Path]]:
+    """Walk the import graph from the entry point.
 
-    Returned as ``{filename: path}``, entry point included.
+    Returns ``(layers, dependencies)`` -- reachable files INSIDE the module
+    directory, and reachable files outside it.
     """
-    found: dict[str, Path] = {}
+    layers: dict[str, Path] = {}
+    deps: dict[str, Path] = {}
+    seen: set[Path] = set()
     pending = [ENTRY]
     while pending:
         path = pending.pop()
-        if path.name in found:
+        if path in seen or not path.exists():
             continue
-        if not path.exists():
+        seen.add(path)
+        inside = MODULE_DIR in path.parents
+        # `setdefault`, so a name reached twice keeps its FIRST answer.  The
+        # dict has always been keyed by filename; keying `seen` by full path
+        # (which is what lets a dependency be recorded without being walked)
+        # would otherwise let a later visit overwrite an earlier one.
+        (layers if inside else deps).setdefault(path.name, path)
+        # A DEPENDENCY IS NOT WALKED THROUGH.  What it imports is its own
+        # module's business; following it would drag a third module's files
+        # into MolView's answer and hold them to MolView's rules.
+        if not inside:
             continue
-        found[path.name] = path
         for spec in _IMPORT.findall(path.read_text()):
             if not spec.startswith("."):
                 continue          # a bare or absolute specifier is not a layer
             target = (path.parent / spec).resolve()
             if target.suffix == ".js":
                 pending.append(target)
-    return found
+    return layers, deps
+
+
+def module_files() -> dict[str, Path]:
+    """The module's LAYERS: files reachable from the entry point and living
+    inside the module directory.
+
+    **A reachable file outside the directory is a DEPENDENCY, not a layer**
+    (added 2026-09-11, when `ui.js` began importing
+    `lib/validation-findings.js` -- the one renderer for a finding, which
+    MolView reuses rather than copying).  The rules these tests enforce are
+    MolView's own: which drawing library is named, whose stylesheet defines a
+    class, what may touch the app namespace.  A module MolView depends on
+    answers to its OWN owner for all of those, and holding it to MolView's is
+    the same category error as holding the demo page to them.
+
+    See :func:`module_dependencies` for the other half.
+    """
+    return _walk()[0]
+
+
+def module_dependencies() -> dict[str, Path]:
+    """The modules MolView reaches DOWN to, by name — DIRECT ones only.
+
+    A dependency is recorded and not walked through, so what *it* imports is
+    absent here: that is its own module's business, and following it would
+    hold a third module's files to MolView's rules. The cost is that a
+    transitive dependency does not show up; the alternative was an answer
+    that stops being about MolView at all.
+
+    Kept visible on purpose: a dependency is a design decision, and one that
+    arrives unnoticed is how a module stops being separable. Depending
+    downward on a shared presentation module is reuse; a sideways reach into
+    another viewer would not be, and this is what lets a test tell them
+    apart.
+    """
+    return _walk()[1]
 
 
 def module_code() -> dict[str, str]:

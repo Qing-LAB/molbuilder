@@ -643,8 +643,20 @@ def api_transport_render() -> Any:
         # Mirrors /api/build/fdf, /api/build/pyscf,
         # /api/spectra/render.
         # web-api.md § 1, *Status codes* -- a scientific advisory is
-        # HTTP 200 with ok:false, and the form's workflow cards render
-        # the findings inline (`web/ui-contract.md` § 5.1).
+        # HTTP 200 with ok:false, carrying the findings rather than a
+        # bare error string.
+        #
+        # NO BROWSER READS THIS TODAY, corrected 2026-09-11.  This said
+        # "the form's workflow cards render the findings inline", which
+        # was true until the tab's Generate lane was retired on
+        # 2026-08-29: `lib/transport/core.js` no longer POSTs here and
+        # `transport_calculation.html` carries no findings panel at all.
+        # The route remains the engine's validation surface
+        # (`engines/transport.md` § 8) for the CLI and the tests.  If a
+        # browser lane returns, the findings go through the one renderer
+        # (`science/validation.md` § 4.1 R2) like every other surface --
+        # they are NOT to be shown as `error`'s text, which is why that
+        # string says "see issues".
         return jsonify({
             "ok":          False,
             "engine":      cfg.engine,

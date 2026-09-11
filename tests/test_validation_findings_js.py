@@ -63,8 +63,19 @@ var window = { document: doc };
 
 
 def _run(script: str) -> dict:
+    """Run the REAL module body against the stub DOM.
+
+    The file became an ES module on 2026-09-11 (it exports `render`/`clear` so
+    `lib/molview/` can import it, and a separate entry point publishes the
+    namespace for the classic scripts).  This harness inlines the source into a
+    plain eval, so the two `export` lines are stripped and the module's own
+    internal handle is used instead -- the same object both delivery forms
+    hand out.
+    """
+    import re as _re
     src = MODULE.read_text(encoding="utf-8")
-    prog = f"{_STUB}\n{src}\nvar F = window.molbuilder.validationFindings;\n{script}"
+    src = _re.sub(r"^export const \w+ = _module\.\w+;$", "", src, flags=_re.M)
+    prog = f"{_STUB}\n{src}\nvar F = _module;\n{script}"
     out = subprocess.run(["node", "-e", prog], capture_output=True, text=True,
                          timeout=60)
     assert out.returncode == 0, f"node failed:\n{out.stderr}"
@@ -308,10 +319,175 @@ class TestOneRendererOnly:
         tpl = REPO / "molbuilder/web/templates"
         for name in ("index.html", "spectra.html", "results.html"):
             html = (tpl / name).read_text(encoding="utf-8")
-            assert "filename='lib/validation-findings.js'" in html, (
-                f"{name} renders findings but never loads the module")
+            assert "filename='lib/validation-findings-global.js'" in html, (
+                f"{name} renders findings but never loads the namespace entry "
+                f"point.  Since 2026-09-11 the renderer itself publishes "
+                f"nothing -- a page that wants `molbuilder.validationFindings` "
+                f"for its classic scripts loads "
+                f"`lib/validation-findings-global.js`, and a module imports "
+                f"`lib/validation-findings.js` directly.")
         transport = (tpl / "transport_calculation.html").read_text(
             encoding="utf-8")
         assert "validation-findings" not in transport, (
             "the transport tab re-grew a findings include; its panel "
             "died with the Generate lane")
+
+
+class TestNoSecondRendererAnywhere:
+    """PINS `science/validation.md` § 4.1 **R2** — *one channel into the UI* —
+    by SEARCHING for a renderer instead of asking two named files whether they
+    delegate.
+
+    `TestOneRendererOnly` above checks a hardcoded pair of filenames, so it can
+    answer "do these two delegate?" and never "has a third appeared?". One had:
+    `lib/molview/ui.js` grew its own `drawNotices` for the same channel under a
+    different word — *notices*, not *issues* — with its own two-word severity
+    map, so an error was drawn in the grey of a remark. Six weeks, and nothing
+    asked.
+
+    A renderer gives itself away by writing a severity into markup. That is
+    what this looks for, everywhere, and MolView now passes it by REUSING the
+    module (`ui.js` imports `render`) rather than by being exempted.
+    """
+
+    def _writes_a_severity_into_markup(self):
+        import re
+        root = REPO / "molbuilder/web/static"
+        owner = (root / "lib/validation-findings.js").resolve()
+        hits = []
+        for path in sorted(root.rglob("*.js")):
+            if path.resolve() == owner:
+                continue
+            # VENDORED CODE IS NOT OURS TO HOLD TO THIS CONTRACT, and a
+            # minified bundle is a false positive waiting for the next upgrade
+            # -- which is how a guard ends up switched off rather than fixed.
+            if "vendor" in path.relative_to(root).parts:
+                continue
+            code = path.read_text(encoding="utf-8")
+            code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
+            code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+            # A severity reaching an element: as an attribute, or spliced into
+            # a class name.  Reading one to count, filter or pick a page tone
+            # is not rendering and does not match.
+            # TWO SHAPES, because a renderer can be written either way and the
+            # one-line form was the only one caught until the third review
+            # pass: `li.className = "row--" + n.severity` on one line, and the
+            # same thing split across two (`const c = "row--" + n.severity;`).
+            # Matching any string built from a severity catches both.  It can
+            # fire on a log line that interpolates one, which is the right way
+            # round to be wrong: a false positive is read, a false negative is
+            # the defect coming back.
+            if re.search(r'data-severity', code) or re.search(
+                    r'"[^"\n]*"\s*\+\s*[\w.\[\]"\']*[Ss]everity', code):
+                hits.append(str(path.relative_to(root)))
+        return hits
+
+    def test_nothing_but_the_module_turns_a_severity_into_markup(self):
+        found = self._writes_a_severity_into_markup()
+        assert found == [], (
+            f"these files draw a severity themselves: {found}. R2 is one "
+            f"channel into the UI — import `render` from "
+            f"lib/validation-findings.js instead. A module with its own design "
+            f"system may compose around the shared row (MolView sets its type "
+            f"scale on `.issues-panel .issue-item`), but a second row shape is "
+            f"how two things that should match stop matching."
+        )
+
+    def test_no_second_sheet_re_picks_how_a_finding_LOOKS(self):
+        """`ui-contract.md` § 5's own table, applied to the finding row.
+
+        A page or module sheet may say **where** the row sits and how much room
+        it takes — `form-schema.css` puts the panel on its card's full grid
+        span, `molview.css` sets the type scale for a dense panel — and that is
+        composition, which is legal and which deleting would move the page.
+        Declaring `color`, a border COLOUR or a background is a second owner,
+        "illegal, however sincere": it is how `modify/style.css` came to render
+        every status on that page dimmer than every other page for months.
+
+        The existing guard for this names the one page that did it and the four
+        rules it used. This asks the question of every sheet instead, which is
+        the lesson of the renderer guard one class up.
+        """
+        import re
+        root = REPO / "molbuilder/web/static"
+        owners = {"lib/page-shell.css", "lib/form-components.css"}
+        # What a rule may NOT re-pick.  `font-size` is deliberately absent:
+        # scale is density, which § 5 lists under composition.
+        appearance = re.compile(
+            r"^\s*(color|background|background-color|border-color"
+            r"|border-left-color|border-top-color|border-right-color"
+            r"|border-bottom-color)\s*:", re.M)
+        guilty = {}
+        for path in sorted(root.rglob("*.css")):
+            name = str(path.relative_to(root))
+            if name in owners:
+                continue
+            css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"),
+                         flags=re.S)
+            for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+                selector, body = block.group(1), block.group(2)
+                if ".issue-item" not in selector and ".issues-panel" not in selector:
+                    continue
+                hits = appearance.findall(body)
+                if hits:
+                    guilty.setdefault(name, []).append(
+                        f"{selector.strip()} -> {', '.join(hits)}")
+        assert guilty == {}, (
+            f"these sheets re-pick how a finding LOOKS: {guilty}. § 5: a "
+            f"surface owns where a message sits, never its tone — change "
+            f"`--error` / `--warn-soft` once in tokens.css and every finding "
+            f"on every tab should move together."
+        )
+
+    def test_the_row_is_styled_in_the_sheet_every_page_loads(self):
+        """One renderer for every surface needs one STYLESHEET on every
+        surface, and the vocabulary is three words (R4).
+
+        These rules lived in `form-components.css` until 2026-09-11 — a sheet
+        only the form pages load. `/results` mounts MolView, which draws its
+        notices through the same module, so the rows would have arrived there
+        with no design at all: the row shape was shared and its appearance was
+        not. `ui-contract.md` § 5 makes the same argument for `.status.error`,
+        which only page-shell defines *because* every page loads page-shell.
+        """
+        shell = (REPO / "molbuilder/web/static/lib/page-shell.css").read_text(
+            encoding="utf-8")
+        forms = (REPO / "molbuilder/web/static/lib/form-components.css"
+                 ).read_text(encoding="utf-8")
+        for word in ("error", "warn", "info"):
+            rule = f'.issue-item[data-severity="{word}"]'
+            assert rule in shell, (
+                f"page-shell.css has no rule for a {word} finding row, so it "
+                f"renders undesigned on every page that does not load the form "
+                f"sheet"
+            )
+            assert rule not in forms, (
+                f"{rule} is declared in form-components.css as well — two "
+                f"owners for one appearance is § 5's defect, and the one the "
+                f"move was meant to end"
+            )
+
+        # FOUND, NOT LISTED.  A page can draw a finding two ways: it renders
+        # them itself, or it mounts MolView, which draws its notices through
+        # the same module -- and `molview.css` is the tell for the second.
+        # Naming three files here would repeat the fault this class exists to
+        # fix: R2's old guard checked a hardcoded pair and could not see the
+        # third renderer when it appeared.
+        tpl = REPO / "molbuilder/web/templates"
+        for path in sorted(tpl.glob("*.html")):
+            html = path.read_text(encoding="utf-8")
+            draws = ("molview/molview.css" in html
+                     or "issues-panel" in html
+                     or "validation-findings" in html)
+            if not draws:
+                continue
+            # The LINK, not the words: results.html names page-shell.css in a
+            # comment too, so a substring check passed with the stylesheet
+            # actually removed (measured on the third review pass).
+            assert "filename='lib/page-shell.css'" in html, (
+                f"{path.name} can show a finding or a notice but does not load "
+                f"page-shell.css, so the rows render with no design at all — "
+                f"the defect that prompted the move off form-components.css"
+            )
+
+

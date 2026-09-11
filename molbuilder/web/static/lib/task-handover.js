@@ -244,6 +244,17 @@
          * was never read (`tabs.md` — a tab does not decide for its user). */
         const notices = Array.isArray(out.notices) ? out.notices : [];
         if (notices.length) {
+            // TWO TONES ON PURPOSE, and it is not R4's vocabulary.
+            //
+            // This is a page STATUS line about an action that has happened --
+            // `status error|ok|warn|muted`, owned by `page-shell.css` -- not a
+            // finding row.  There is no `.status.info`, and there should not
+            // be: whatever came back, the line's job is "go and read it", so
+            // the quiet tone would be the wrong one even if it existed.  The
+            // findings themselves keep their own severities wherever they are
+            // rendered.  (Written down 2026-09-11 after I "fixed" this to
+            // error/warn/info and gave the page a class the stylesheet has no
+            // rule for -- same word, different layer.)
             const worst = notices.some((n) => n && n.severity === "error")
                 ? "error" : "warn";
             say(worst,

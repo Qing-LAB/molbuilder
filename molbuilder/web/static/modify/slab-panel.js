@@ -387,7 +387,16 @@ export function init(viewer) {
         markCustom();
         onLatticeInputsChanged();
         const said = (j.notes || []).map((n) => n.message).join("  ·  ");
-        say((j.notes || []).some((n) => n.severity === "warn") ? "warn" : "info",
+        // WORST OF THE THREE, not "is any of them warn".  The vocabulary is
+        // error > warn > info (`science/validation.md` § 4.1 R4), and until
+        // 2026-09-11 an error in the notes was said in the info tone -- the
+        // downgrade R4 forbids by name.  This is the STATUS line's tone, which
+        // `page-shell.css` owns and which has all three; the notes themselves
+        // are rendered by the findings module wherever they are shown.
+        const worst = (notes) => notes.some((n) => n && n.severity === "error")
+            ? "error"
+            : notes.some((n) => n && n.severity === "warn") ? "warn" : "info";
+        say(worst(j.notes || []),
             `${j.element}${j.n_atoms} from ${j.source}: a = ${j.a.toFixed(4)} Å`
             + (said ? "  ·  " + said : ""));
     }
