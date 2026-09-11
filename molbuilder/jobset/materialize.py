@@ -476,6 +476,24 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             # warm files are ONE SHARED SET at the root (§ 1), so the next
             # stage finds them lying there; there is no producer directory to
             # reach into.
+            #
+            # EXCEPT THE PSEUDOPOTENTIALS, and the exception is this guard's
+            # own premise going stale (fixed 2026-09-11).  "Every file it
+            # needs already sits" held until `prep._pseudo_dir` began ADOPTING
+            # root `<El>.psml` into `pseudos/` (2026-08-28, 08656f2c) -- which
+            # in flat is the run directory being emptied of the one input
+            # SIESTA cannot look for anywhere else ("it opens
+            # `<element>.psml` in the directory it runs from and has no search
+            # path").  `project-layout.md` § 2241 says each run directory
+            # receives its own copies and `_pseudo_dir`'s own docstring says
+            # the run directories are untouched by it; in flat both stopped
+            # being true, so every flat SIESTA prep since that date rendered a
+            # deck that dies in `initatom` with "Pseudopotential file not
+            # found".  Hierarchical never reached this branch and never broke.
+            for _ps in sorted((base / "pseudos").glob("*.psml")):
+                _dst = d / _ps.name
+                if not _dst.exists():
+                    shutil.copy2(_ps, _dst)
             continue
         # The static package arrives as REAL COPIES (user, 2026-08-24;
         # `project-layout.md` § 1.0: the run directory "holds everything",
