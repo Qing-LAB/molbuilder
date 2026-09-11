@@ -170,12 +170,15 @@
             selectedMode: null,
         },
 
-        // uiPrefs: per-session knobs.  Contract § 3 reserves this
-        // bucket for sessionStorage-persisted values.  Spectra
-        // populates from day one (unlike trajectory which leaves
-        // it empty per § 13).  TODO(PR 3.1?): wire the
-        // sessionStorage roundtrip under key
-        // `molbuilder.results.spectra.uiPrefs.v1`.
+        // uiPrefs: the knobs a person sets and expects to find again.
+        // PERSISTED to sessionStorage under
+        // `molbuilder.results.spectra.uiPrefs.v1` (`spectra.md` § 7) -- see
+        // _restorePrefs / _savePrefs below.  Trajectory leaves its own bucket
+        // empty on purpose (§ 13) and is unaffected.
+        //
+        // A knob added here is persisted and type-checked the day it appears:
+        // PREFS_DEFAULTS is snapshotted FROM this object, so there is no
+        // second list to update and no way for the two to disagree.
         uiPrefs: {
             modeFilter:     "",
             sortColumn:     "index_1based",
@@ -227,6 +230,66 @@
         exporting:      null,    // the AbortController of a running export
     };
 
+    /* ── View preferences survive a page reload (`spectra.md` § 7) ─────────
+     *
+     * The bucket above held these for the life of the MOUNT only, so a reload
+     * started every knob back at its default -- the contract said so and
+     * called the roundtrip "wired as a follow-up, not shipped".  This is it,
+     * under the key the contract already named.
+     *
+     * ONE DOOR.  Every write to a knob goes through the `uiPrefs` alias
+     * setter wired below, so persistence hooks there -- not into the ~3000
+     * lines of render and event code that assign to the flat names.
+     *
+     * A SAVED VALUE IS NOT TRUSTED.  Session storage is editable and a stale
+     * blob outlives a rename, so a restored value is taken only when the key
+     * is one we define AND its type matches the default's.  A
+     * `broadeningFWHM` of "abc" would otherwise reach the broadening maths,
+     * and the viewer would fail on a value nobody typed.
+     */
+    var PREFS_KEY = "molbuilder.results.spectra.uiPrefs.v1";
+    var PREFS_DEFAULTS = null;      // filled from the bucket, below
+
+    function _savePrefsNow() {
+        try {
+            root.sessionStorage.setItem(
+                PREFS_KEY, JSON.stringify(state.uiPrefs));
+        } catch (_) {
+            // Best-effort: private mode, quota, or no storage at all (this
+            // module also runs under node in the logic tests).  The viewer
+            // keeps working; only surviving a reload degrades.
+        }
+    }
+
+    var _prefsSaveHandle = null;
+    function _savePrefs() {
+        // A slider drag assigns on every pointer move.  Coalesce.
+        if (_prefsSaveHandle !== null) return;
+        _prefsSaveHandle = setTimeout(function () {
+            _prefsSaveHandle = null;
+            _savePrefsNow();
+        }, 250);
+    }
+
+    function _restorePrefs() {
+        var raw;
+        try { raw = root.sessionStorage.getItem(PREFS_KEY); }
+        catch (_) { return; }
+        if (!raw) return;
+        var saved;
+        try { saved = JSON.parse(raw); } catch (_) { return; }
+        if (!saved || typeof saved !== "object") return;
+        for (var k in PREFS_DEFAULTS) {
+            if (!Object.prototype.hasOwnProperty.call(PREFS_DEFAULTS, k)) continue;
+            if (!Object.prototype.hasOwnProperty.call(saved, k)) continue;
+            if (typeof saved[k] !== typeof PREFS_DEFAULTS[k]) continue;
+            if (typeof saved[k] === "number" && !isFinite(saved[k])) continue;
+            // Straight into the bucket, never through the alias: going
+            // through the setter would save what we just read.
+            state.uiPrefs[k] = saved[k];
+        }
+    }
+
     // Backward-compat aliases.  ~3000 lines of existing render +
     // event code reads/writes the legacy flat shape; the aliases
     // route through to the bucketed canonical home so the body keeps
@@ -247,20 +310,36 @@
         });
         alias("results",        "fileState");
         alias("selectedMode",   "viewState");
-        alias("modeFilter",     "uiPrefs");
-        alias("sortColumn",     "uiPrefs");
-        alias("sortDir",        "uiPrefs");
-        alias("broadeningFWHM", "uiPrefs");
-        alias("animAmplitude",  "uiPrefs");
-        alias("animSpeed",      "uiPrefs");
-        alias("animAmplitudeMode", "uiPrefs");
-        alias("animTemperature",   "uiPrefs");
+        // The uiPrefs knobs alias AND persist: the setter is the one door
+        // every write passes through (`spectra.md` § 7).
+        function prefAlias(key) {
+            Object.defineProperty(state, key, {
+                get: function ()  { return state.uiPrefs[key]; },
+                set: function (v) { state.uiPrefs[key] = v; _savePrefs(); },
+                enumerable: true,
+                configurable: true,
+            });
+        }
+        prefAlias("modeFilter");
+        prefAlias("sortColumn");
+        prefAlias("sortDir");
+        prefAlias("broadeningFWHM");
+        prefAlias("animAmplitude");
+        prefAlias("animSpeed");
+        prefAlias("animAmplitudeMode");
+        prefAlias("animTemperature");
         alias("watchTimer",     "lifecycle");
         alias("watchInFlight",  "lifecycle");
         alias("watchAbort",     "lifecycle");
         alias("loadAbort",      "lifecycle");
         alias("watchErrors",    "lifecycle");
     })();
+
+    // The defaults ARE whatever the bucket was declared with -- snapshotted
+    // rather than retyped, so a knob added to the bucket is persisted and
+    // type-checked the day it appears, with nothing here to update.
+    PREFS_DEFAULTS = JSON.parse(JSON.stringify(state.uiPrefs));
+    _restorePrefs();
 
     // Transition orchestrator (contract § 2).  Single entry-point
     // for state-machine transitions; mirrors trajectory's

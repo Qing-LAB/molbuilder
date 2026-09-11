@@ -436,12 +436,23 @@ all its phases complete.
 Like every Results-tab viewer, the spectra viewer is a small **state machine**
 (idle → loading → loaded / watching → error), and **Refresh is a clean reload**
 of the same file — the same reset a file-switch does. The full "which state
-resets what" rules live in [`results.md § 4`](?doc=web/results.md). One caveat
+resets what" rules live in [`results.md § 4`](?doc=web/results.md). One thing
 specific here: your view **preferences** (the broadening width, the animation
-amplitude and speed, the table's sort and filter) survive a file-switch but are
-held **in memory for the life of the mount only** — a page reload starts them
-back at their defaults. (Persisting them to session storage is wired as a
-follow-up, not shipped.)
+amplitude and speed and its pairing, the thermal temperature, the table's sort
+and filter) **survive a page reload**, not just a file-switch — they are saved
+to session storage under `molbuilder.results.spectra.uiPrefs.v1` as you change
+them (shipped 2026-09-10; it had been a documented follow-up since the bucket
+was introduced).
+
+Two properties of that, because both are visible when they fail. **A saved
+value is not trusted**: session storage is editable by hand and a stored blob
+outlives a rename, so a value is restored only when its key is one the viewer
+declares *and* its type matches the default's — a `broadeningFWHM` of `"abc"`
+is dropped rather than handed to the broadening maths. And **storage that
+refuses is not an error**: private windows and quota failures leave the knobs
+at their defaults and the viewer working, because preferences are a
+convenience, not the result. Session storage is per-tab and per-browser, so a
+second tab keeps its own.
 
 ## 8. Frozen atoms travel with the structure
 
