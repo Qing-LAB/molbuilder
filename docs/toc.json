@@ -547,6 +547,11 @@
           "subtitle": "Plan sections closed and archived — 2026-09-07"
         },
         {
+          "path": "archive/2026-09-10-plan-consolidation.md",
+          "label": "Plan rows closed, withdrawn and measured untrue — consolidated 2026-09-10",
+          "subtitle": "Plan rows closed, withdrawn and measured untrue — consolidated 2026-09-10"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"
