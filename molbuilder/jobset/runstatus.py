@@ -37,7 +37,7 @@ from .model import JobSet
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
 from ..paths import attempt_name
-from ..runfiles import find, roles_ending
+from ..runfiles import find, is_stage_token, roles_ending
 
 #: What "the engine produced something" means, from the catalogue rather than a
 #: glob -- every declared role whose name ends in `.out` or `.log`.
@@ -170,33 +170,46 @@ def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
         return {}                # present but unreadable: launched, details lost
 
 
-def _label_of(job: Any, token: Optional[str], fallback: str) -> str:
+def _label_of(job: Any, fallback: str) -> str:
     """The label THIS job's files carry, read off its own deck.
 
     `JobSet.name` is the TASK's label; a sweep trial's deck is
     `f"{task.label}-{point_token}"` (`resolve._label_for`), so the two differ
-    for exactly the case that matters.  `runfiles.find` needs the label the
-    filenames were written with, and the deck basename records it -- the same
-    source `summarize` reads.
+    for exactly the case that matters.  Measured on a real sweep:
+    `find(trial_dir, "siesta-AuBDTAu", role=".out")` is `[]` while
+    `find(trial_dir, "siesta-AuBDTAu-G0K20C1ELPA1STAGE", role=".out")` finds
+    the run -- so `has_output` was False for a trial that had finished, and a
+    measured 269.8 s/iter sat beside "launched, no output yet".
 
-    A deck is `<label>_<stage>.<role>`, and the STAGE TOKEN CONTAINS AN
-    UNDERSCORE (`01_coarse`), so splitting on `_` is wrong.  The caller knows
-    the token, so strip exactly that.
+    THE STAGE IS FOUND, NOT ASSUMED.  A deck is `<label>_<stage>.<role>`, the
+    stage token itself contains an underscore (`01_coarse`), and
+    `StageRef.token` is None on a real sweep -- so neither splitting on `_` nor
+    trusting the caller's token works.  `runfiles.is_stage_token` is the
+    grammar's own answer: walk the underscore boundaries from the right and
+    take the first tail it recognises.
+
+    Label-free lookup was tried first and is not available: `find_by_role`
+    refuses an underscore role (`_geom.log`) because it cannot be told from a
+    stage name without a label.
     """
     script = getattr(job, "script", None)
-    # NO TOKEN, NO CHANGE.  Without the stage token there is nothing to strip
-    # off the stem, and guessing would make this worse than the jobset name it
-    # replaces -- that path keeps exactly the behaviour it had.
-    if not script or not token:
+    if not script:
         return fallback
     stem = Path(str(script)).name
     for role in (".run.sh", ".sbatch", ".sh", ".py", ".fdf"):
         if stem.endswith(role):
             stem = stem[: -len(role)]
             break
-    if token and stem.endswith("_" + token):
-        stem = stem[: -(len(token) + 1)]
-    return stem or fallback
+    parts = stem.split("_")
+    for i in range(len(parts) - 1, 0, -1):
+        if is_stage_token("_".join(parts[i:])):
+            return "_".join(parts[:i]) or fallback
+    # NO STAGE TOKEN, NO GUESS.  A ladder names its stages freely (`demo_s1.fdf`
+    # with output `demo.out`), and `s1` is not a stage token -- returning the
+    # whole stem would ask for `demo_s1.out` and find nothing.  The jobset's own
+    # name is right whenever the deck carries no token, which is every case this
+    # function is not here to fix.
+    return fallback
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
@@ -303,7 +316,7 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         # a finished trial answered § 1.6's forbidden "prepped, not launched".
         # Read off the deck the way `summarize` does (`Path(job.script).stem`
         # minus the stage suffix), which is the name the files actually carry.
-        job_label = _label_of(job, token or None, label)
+        job_label = _label_of(job, label)
         out_glob = (sh.stage_glob(token, job_label)
                     if (sh is not None and token) else "*")
         state, detail = _stage_state(observed, launch, job_label,
