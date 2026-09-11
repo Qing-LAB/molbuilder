@@ -23,10 +23,13 @@ behaviour. Conversion to the node harness is **B3** in `plans/plan.md`.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 import pytest
+
+from tests._node_esm import run_node
 
 
 _STATIC = (Path(__file__).resolve().parent.parent
@@ -73,58 +76,125 @@ class TestBucketedStateShape:
             f"five-bucket partition.")
 
 
+#: flat name -> the bucket that owns the value (`results.md` § 4).
+_FIELDS = [
+    ("results",           "fileState"),
+    ("selectedMode",      "viewState"),
+    ("modeFilter",        "uiPrefs"),
+    ("sortColumn",        "uiPrefs"),
+    ("sortDir",           "uiPrefs"),
+    ("broadeningFWHM",    "uiPrefs"),
+    ("animAmplitude",     "uiPrefs"),
+    ("animSpeed",         "uiPrefs"),
+    ("animAmplitudeMode", "uiPrefs"),
+    ("animTemperature",   "uiPrefs"),
+    ("watchTimer",        "lifecycle"),
+    ("watchInFlight",     "lifecycle"),
+    ("watchAbort",        "lifecycle"),
+    ("loadAbort",         "lifecycle"),
+    ("watchErrors",       "lifecycle"),
+]
+
+_KNOBS     = [f for f, b in _FIELDS if b == "uiPrefs"]
+_NOT_KNOBS = [f for f, b in _FIELDS if b != "uiPrefs"]
+
+
+@pytest.fixture(scope="module")
+def wired(core_body):
+    """Run the shipped `_wireBackcompatAliases` and report what it did.
+
+    Everything it reaches outside itself is real or faked at the edge:
+    `inspectorLifecycle.alias` is the module the core actually calls,
+    `state` is a bare object with the five buckets, and `_prefsSchedule` is
+    a counter -- the save the uiPrefs setters kick is itself a behaviour
+    (`spectra.md` § 7), so it is observed rather than stubbed away.
+    """
+    i = core_body.index("(function _wireBackcompatAliases()")
+    body = core_body[i: core_body.index("})();", i) + len("})();")]
+    probe = """
+const state = { fileState: {}, viewState: {}, uiPrefs: {}, lifecycle: {} };
+let scheduled = 0;
+function _prefsSchedule() { scheduled += 1; }
+const root = globalThis;
+""" + body + """
+const out = { roundTrip: {}, saves: {} };
+for (const [flat, bucket] of %s) {
+    const before = scheduled;
+    state[flat] = "v:" + flat;                     // write the LEGACY name
+    out.roundTrip[flat] = (state[bucket][flat] === "v:" + flat)  // bucket sees it
+                       && (state[flat] === "v:" + flat);         // and reads back
+    out.saves[flat] = scheduled - before;
+}
+out.watchPath = (function () {
+    state.watchPath = "/p/run.log";
+    return state.fileState.path === "/p/run.log"
+        && state.watchPath === "/p/run.log";
+})();
+console.log(JSON.stringify(out));
+""" % json.dumps([[f, b] for f, b in _FIELDS])
+    return run_node([_LIB / "inspectors" / "lifecycle.js"], probe)
+
+
 class TestBackcompatAliases:
-    """Existing render code throughout spectra/core.js reads the
-    legacy flat shape (state.results, state.selectedMode,
-    state.modeFilter, state.watchPath, etc.).  The bucketing keeps those
-    surfaces working via Object.defineProperty getter/setter aliases
-    that route to the bucketed canonical home -- same pattern as
-    trajectory's PR 2."""
+    """The legacy flat names and the buckets are ONE value.
 
-    def test_alias_helper_present(self, core_body):
-        assert re.search(
-            r"function\s+_wireBackcompatAliases",
-            core_body,
-        ), ("spectra/core.js no longer defines the "
-            "_wireBackcompatAliases IIFE.  Legacy render code "
-            "breaks.")
+    ~3000 lines of render and event code in `spectra/core.js` read and write
+    `state.modeFilter`, `state.results`, `state.watchTimer` and the rest.
+    The canonical home is a bucket (`results.md` § 4), and an alias is what
+    keeps the two from ever disagreeing.  Lose one and the flat write lands
+    on a plain property while every reader of the bucket sees nothing —
+    silently, because both spellings still exist.
 
-    @pytest.mark.parametrize("flat,bucket", [
-        ("results",        "fileState"),
-        ("selectedMode",   "viewState"),
-        ("modeFilter",     "uiPrefs"),
-        ("sortColumn",     "uiPrefs"),
-        ("sortDir",        "uiPrefs"),
-        ("broadeningFWHM", "uiPrefs"),
-        ("animAmplitude",  "uiPrefs"),
-        ("animSpeed",      "uiPrefs"),
-        ("watchTimer",     "lifecycle"),
-        ("watchInFlight",  "lifecycle"),
-        ("watchAbort",     "lifecycle"),
-        ("loadAbort",      "lifecycle"),
-        ("watchErrors",    "lifecycle"),
-    ])
-    def test_each_legacy_field_aliased(self, core_body, flat, bucket):
-        assert re.search(
-            r"alias\s*\(\s*[\"']" + flat + r"[\"']\s*,\s*[\"']"
-            + bucket + r"[\"']\s*\)",
-            core_body,
-        ), (f"spectra/core.js no longer aliases ``state.{flat}`` to "
-            f"``state.{bucket}.{flat}``.")
+    **This RUNS the real wiring**, the way `test_trajectory_transition_js.py`
+    runs the real `transition()`: `_wireBackcompatAliases` is lifted from the
+    shipped module and executed in node against the shared alias helper it
+    actually calls, so what is asserted is the round trip — write the flat
+    name, read the bucket — and not the spelling of the call that wired it.
 
-    def test_watchPath_aliased_to_fileState_path(self, core_body):
-        """Legacy ``state.watchPath`` is renamed to ``state.fileState.
-        path`` per contract § 7 spectra mapping.  Old code reading
-        watchPath via the alias gets the canonical value."""
-        assert "watchPath" in core_body, (
-            "spectra/core.js doesn't reference watchPath at all.  "
-            "Either the alias is missing or this test is stale.")
-        assert re.search(
-            r"\"watchPath\"\s*,\s*\{[^}]*get:[^}]*fileState\.path",
-            core_body, re.DOTALL,
-        ), ("spectra/core.js no longer aliases watchPath to "
-            "fileState.path.  Legacy code reading state.watchPath "
-            "gets stale data; the contract § 7 mapping is broken.")
+    *Until 2026-09-10 this was thirteen greps for the literal
+    `alias("modeFilter", "uiPrefs")`.  The uiPrefs knobs moved to a
+    `prefAlias` helper on 2026-09-10 (`fe9e67da`) — same aliasing, plus the
+    save the persistence lane needs — and six of the thirteen went red on a
+    change that broke nothing.  A grep for a call shape fails when a name
+    moves and passes when the behaviour breaks; this is the other way
+    round.*
+    """
+
+
+    @pytest.mark.parametrize("flat,bucket", _FIELDS)
+    def test_the_legacy_name_and_the_bucket_are_one_value(
+            self, wired, flat, bucket):
+        assert wired["roundTrip"][flat], (
+            f"writing ``state.{flat}`` did not land in "
+            f"``state.{bucket}.{flat}``.  The alias is gone, so the flat "
+            f"name and the bucket are now two values and the render code "
+            f"reading one cannot see the other.")
+
+    def test_watchPath_is_fileState_path(self, wired):
+        """The one RENAMING alias: `watchPath` -> `fileState.path`
+        (`results.md` § 7's spectra mapping)."""
+        assert wired["watchPath"], (
+            "``state.watchPath`` no longer reads through to "
+            "``state.fileState.path``; legacy code gets stale data.")
+
+    @pytest.mark.parametrize("flat", _KNOBS)
+    def test_a_knob_write_schedules_the_save(self, wired, flat):
+        """`spectra.md` § 7: the viewer's knobs survive a reload, and the
+        alias setter is the one door every write in the body passes
+        through.  A knob aliased WITHOUT the save persists nothing — the
+        state is right and the reload is empty."""
+        assert wired["saves"][flat] == 1, (
+            f"writing ``state.{flat}`` scheduled "
+            f"{wired['saves'][flat]} saves, not 1.  The knob is aliased "
+            f"but not persisted: § 7's lane never hears about the write.")
+
+    @pytest.mark.parametrize("flat", _NOT_KNOBS)
+    def test_a_non_knob_write_schedules_nothing(self, wired, flat):
+        """The lane is the UI's knobs and nothing else.  A timer handle or
+        a parsed file scheduling a save would write per poll tick."""
+        assert wired["saves"][flat] == 0, (
+            f"writing ``state.{flat}`` — not a uiPrefs knob — scheduled a "
+            f"preferences save.")
 
 
 # --------------------------------------------------------------------- #

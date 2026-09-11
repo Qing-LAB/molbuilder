@@ -1539,7 +1539,7 @@ def test_a_warning_from_a_load_is_put_in_front_of_the_user():
     out = _run(
         """
         globalThis.__nextNotices = [
-            { level: "warn",
+            { severity: "warn",
               message: "cell must be right-handed (det > 0); got det = -1." },
         ];
         const { host, viewer } = await mounted();
@@ -1585,9 +1585,9 @@ def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
     out = _run(
         """
         globalThis.__nextNotices = [
-            { level: "warn", about: "cell",
+            { severity: "warn", about: "cell",
               message: "the box does NOT contain the structure along z." },
-            { level: "info",
+            { severity: "info",
               message: "something about the structure as a whole." },
         ];
         const { host, viewer } = await mounted();
