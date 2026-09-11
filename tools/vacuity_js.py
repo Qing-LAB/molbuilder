@@ -54,11 +54,21 @@ def _modules(testfile: str):
         # literal, which resolves nowhere.  Fall back to basename search so
         # those files are measured instead of reported NO-JS-SUBJECT.
         if not any(c.is_file() for c in cands) and "/" not in rel:
-            cands += sorted(static.rglob(rel))
+            # ONLY WHEN IT IS UNAMBIGUOUS.  A bare "page.js" matches several
+            # files under static/, and taking them all is worse than taking
+            # none: test_molview_measurement.py resolved to 82 modules and a
+            # 16-mutant budget spread over them measured nothing.
+            hits = sorted(static.rglob(rel))
+            if len(hits) == 1:
+                cands += hits
         for cand in cands:
             if cand.is_file() and cand not in seen and "vendor/" not in str(cand):
                 seen.add(cand); out.append(cand)
-    return out
+    # A budget cannot be spread over dozens of modules.  Keep the ones this
+    # test talks about MOST -- a module named once in a layering list is not
+    # the subject; the one named twenty times is.
+    out.sort(key=lambda p: -src.count(p.name))
+    return out[:6]
 
 
 def _named_spans(testfile, src):
