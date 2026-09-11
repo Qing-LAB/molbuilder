@@ -326,6 +326,17 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"providers": list(providers)}
 
 
+def _write_0600(path: Path, text: str) -> None:
+    """Create `path` with mode 0600 set AT open() time -- no world-readable
+    window, the same trick `write_secret_file` uses."""
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, text.encode("utf-8"))
+    finally:
+        os.close(fd)
+    os.chmod(path, 0o600)
+
+
 def emit_molbuilder_json(output_path: Path,
                           auth_block: Dict[str, Any],
                           *,
@@ -367,38 +378,53 @@ def emit_molbuilder_json(output_path: Path,
     merged: Dict[str, Any] = dict(existing or {})
     merged["auth"] = auth_block
     rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
-    # Same 0600 trick as write_secret_file: create with mode bits at
-    # open() time so there's no world-readable window.
-    fd = os.open(
-        str(output_path),
-        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-        0o600,
-    )
+
+    # WAS THIS FILE ALREADY UNACCEPTABLE?  Asked BEFORE writing, because the
+    # read-back below validates the whole merged file -- including sections
+    # this wizard only PRESERVED.  A machine whose `molbuilder.json` carries a
+    # bad `envs` entry made `molbuilder auth setup` report "written, but the
+    # server would refuse it -- 'envs' entries must be string -> string":
+    # the wizard blaming itself for a problem that was there when it arrived.
+    # Measured 2026-09-10.
+    from .runtime_config import RuntimeConfigError, read_config
+    already_bad: Optional[str] = None
+    if output_path.exists():
+        try:
+            read_config(output_path)
+        except RuntimeConfigError as exc:
+            already_bad = str(exc)
+        except Exception:                  # noqa: BLE001 -- unreadable is not our finding
+            already_bad = None
+
+    # VALIDATE THE BYTES BEFORE THEY REPLACE ANYTHING.
+    #
+    # The emptiness check that used to live in `build_auth_block` was removed
+    # so the "non-empty providers" rule has ONE home, the server's reader --
+    # which is right.  What was wrong was the ORDER: the file was O_TRUNC'd and
+    # rewritten and only THEN read back, so `providers=[]` left the machine's
+    # config replaced by one the server refuses.  Measured 2026-09-10.
+    #
+    # A sibling temp file keeps the one home AND the old file: it is validated
+    # as bytes on disk, exactly as before, and only a file the server would
+    # accept is moved into place.
+    tmp_path = output_path.with_name(output_path.name + f".new.{os.getpid()}")
+    _write_0600(tmp_path, rendered)
     try:
-        os.write(fd, rendered.encode("utf-8"))
-    finally:
-        os.close(fd)
+        read_config(tmp_path)
+    except RuntimeConfigError as exc:
+        tmp_path.unlink(missing_ok=True)
+        if already_bad is not None:
+            raise RuntimeConfigError(
+                f"{output_path} was ALREADY one the server would refuse, "
+                f"before this wizard ran -- {already_bad}.  Nothing was "
+                f"written; fix that section and run the wizard again."
+            ) from None
+        # `read_config` names the temp file; the person cares about the target.
+        raise RuntimeConfigError(
+            f"not written -- the server would refuse it: "
+            f"{str(exc).replace(str(tmp_path), str(output_path))}"
+        ) from None
+    os.replace(tmp_path, output_path)
     os.chmod(output_path, 0o600)
 
-    # READ IT BACK THROUGH THE VALIDATOR THE SERVER USES.
-    #
-    # `read_config` is the whole of that validator -- JSON parse, top-level
-    # shape, then every section's own reader -- and `web/app.py:254` refuses to
-    # start on anything it rejects.  This wizard wrote a config and, until
-    # 2026-09-09, never asked it: `molbuilder auth setup --output X` could only
-    # be checked by moving X into place and starting the server.
-    #
-    # It validates the FILE, not the dict it came from: that covers the bytes
-    # actually on disk (encoding, the json.dumps round trip) and it is the same
-    # door, so the wizard cannot drift from what the server will accept.  The
-    # file stays written -- a person can look at it and fix it -- and the
-    # refusal names which file and what is wrong.
-    from .runtime_config import RuntimeConfigError, read_config
-    try:
-        read_config(output_path)
-    except RuntimeConfigError as exc:
-        # `read_config` already names the file; do not say it twice.
-        raise RuntimeConfigError(
-            f"written, but the server would refuse it -- {exc}"
-        ) from None
     return output_path

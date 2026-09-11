@@ -144,11 +144,6 @@ def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str
     # so.  Constructing an `Issue` first borrows its validated `severity`, so
     # a typo'd level raises HERE instead of reaching the browser as a notice
     # no stylesheet matches.
-    #
-    # The wire key stays `level`, not `severity`: three browser modules read
-    # `.level`, and the node harness that would check a rename SKIPS in this
-    # environment (`#79`), so the wire rename waits on that decision rather
-    # than going in unverified.
     return _wire(Issue(level, message, where))
 
 
@@ -204,10 +199,14 @@ def _wire(i: "Issue") -> Dict[str, str]:
     would say so.  `molview/ui.js` filters notices by it
     (`n.about === subject`), which is why it is emitted rather than dropped.
 
-    The key is still `level`, not `severity`: three browser modules read
-    `.level` and the node harness that would check a rename SKIPS here
-    (`#79`), so the wire rename waits on that decision rather than going in
-    unverified.
+    The key is ``severity``, one name on both sides since 2026-09-10 (see the
+    module header).  Both halves of this file carried a note saying the rename
+    was still WAITING -- "three browser modules read `.level`" -- while the
+    header three screens up said it had landed, and the code here has always
+    emitted ``severity``.  Measured 2026-09-10: zero reads of `.level` in
+    `molview/ui.js`, `molview/model.js`, `task-handover.js` or
+    `modify/slab-panel.js`, and four of `.severity`.  A file disagreeing with
+    itself about its own wire key is worse than either answer.
     """
     return {"severity": i.severity, "message": i.message,
             "where": i.where, "about": i.where.split(".")[0]}

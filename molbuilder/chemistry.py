@@ -881,16 +881,6 @@ def _metal_hint(element: str) -> MetalHint:
     return MetalHint(element=element, common_spins=spins)
 
 
-def _resolves(label) -> bool:
-    """Does this species label name an element?  Used where an analysis must
-    skip what it cannot read rather than refuse the whole structure."""
-    try:
-        resolve_element(label)
-        return True
-    except KeyError:
-        return False
-
-
 def _count_element(struct: Structure, symbol: str) -> int:
     """Number of atoms of the element ``symbol`` in struct.
 
@@ -939,9 +929,20 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
       3. **No open-shell metals** → ``treatment="closed"``, spin set
          by electron-count parity (0 if even, 1 if odd).
     """
+    # EVERY LABEL MUST RESOLVE, and the line above is what enforces it:
+    # `total_electrons` sums atomic numbers, so a label naming no element
+    # raises KeyError here -- by design, "catches typos before PySCF does the
+    # same".  An `if _resolves(el)` filter stood on the line below until
+    # 2026-09-10 and could never fire: nothing reaches it unless every label
+    # already resolved.  It read as tolerance this function does not have, and
+    # `_resolves`' own docstring ("skip what it cannot read rather than refuse
+    # the whole structure") described an intention no caller implemented.
+    #
+    # Refusing is right here: the answer IS an electron count, and a count
+    # with an unreadable atom left out is not a smaller answer, it is a wrong
+    # one.
     n_e = total_electrons(struct, 0)
-    elements_sorted = sorted({resolve_element(el) for el in struct.elements
-                              if _resolves(el)})
+    elements_sorted = sorted({resolve_element(el) for el in struct.elements})
 
     # Categorize present metals.  Iterate the SORTED element list, NOT the
     # frozensets: a frozenset yields hash-order, which CPython randomizes per
