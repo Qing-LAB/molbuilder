@@ -226,20 +226,62 @@ header h1 {
     gap: var(--space-sm);
     flex-wrap: wrap;
 }
+/* THE TWO BUTTONS KEEP THEIR PLACES, whatever the row has to say.
+ *
+ * Three columns rather than a wrapping flex row: write action, message,
+ * discard action.  The middle column is the only elastic one and it may not
+ * push -- `minmax(0, 1fr)` plus the ellipsis below -- so neither button moves
+ * when "Not saved yet" becomes "saved #1 - Retract -> #0" (user, 2026-09-11:
+ * "should be better aligned and placed without being affected by displayed
+ * message/text").  As a flex row with `flex-wrap: wrap` the message's width
+ * decided whether the discard button fitted, so it changed places as you
+ * worked. */
 .modify-actions--header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+        "save reset"
+        "say  say";
+    align-items: center;
+    column-gap: var(--space-sm);
+    row-gap: var(--space-xs);
     padding: var(--space-sm) 0 var(--space-xs);
     border-bottom: 1px solid var(--border-soft);
     margin-bottom: var(--space-sm);
 }
-/* Under the title the write action is prominent but not full-bleed. */
-.modify-actions--header button.full-btn { width: auto; min-width: 180px; }
+/* The message slot: one column, and it TRUNCATES rather than growing.  The
+ * two spans inside it keep their own owners -- `.muted` and `.status` are
+ * page-shell's, and this says only where they sit (`ui-contract.md` § 5). */
+/* The message sits UNDER the pair, across the full width.  It had a column of
+ * its own between the buttons for one revision and was crushed to 29px --
+ * "Not saved yet" reduced to an ellipsis.  A row of its own costs one line and
+ * lets the sentence be read; wrapping is allowed, because a message that
+ * cannot be read is the same as no message. */
+.modify-actions__say {
+    grid-area: say;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+/* THE TWO ACTIONS ARE ONE PAIR, so they are one size: each fills its own
+ * half-column, which makes them the same width whatever their labels say and
+ * keeps their left and right edges on the card's. `min-width: 0` lets the
+ * pair shrink with the panel instead of forcing the row wider than it. */
+.modify-actions--header button.full-btn {
+    grid-area: save;
+    width: 100%;
+    min-width: 0;
+}
 /* THE DISCARDING ACTION SITS AT THE FAR END of the same row.  "Start empty" has
  * the same scope as Save -- both act on the whole model, which is why it moved
  * out of the Atom tab (user, 2026-09-07) -- but putting them shoulder to
- * shoulder puts a discard one slip away from a write.  `auto` on the start
- * margin takes whatever space the row has left, so the two ends separate
- * themselves without a width being guessed anywhere. */
-.modify-actions__reset { margin-inline-start: auto; }
+ * shoulder puts a discard one slip away from a write.  The grid's third
+ * column holds that end; the `margin-inline-start: auto` that did it while
+ * this was a flex row is gone with the row -- in a grid it would push the
+ * button out of its own column. */
+.modify-actions__reset { grid-area: reset; width: 100%; }
 
 @media (max-width: 785px) {
     .modify-main { padding: 6px; gap: 6px; }

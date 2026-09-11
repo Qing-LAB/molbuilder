@@ -328,9 +328,18 @@
       <button id="save-to-source-btn" class="full-btn" disabled>
         Save to project
       </button>
-      <span id="save-readout" class="muted"></span>
-      <span id="save-status" class="status" role="status"></span>
-      {#- "Start empty" STANDS BESIDE SAVE, not among the Atom ops (user,
+      {#- ONE SLOT FOR WHAT THE ROW HAS TO SAY, so the two buttons keep their
+          places whatever it says.  Both spans sat directly in the flex row
+          until 2026-09-11, between the two buttons: "Not saved yet" and
+          "saved #1 - Retract -> #0" are different widths, so the row re-flowed
+          as you worked and "Start empty" moved -- sometimes onto a second
+          line.  A control that moves when a MESSAGE changes is one you have
+          to re-find before every click. -#}
+      <span class="modify-actions__say">
+        <span id="save-readout" class="muted"></span>
+        <span id="save-status" class="status" role="status"></span>
+      </span>
+      {#- "Clear structure" STANDS BESIDE SAVE, not among the Atom ops (user,
           2026-09-07: "it clears the molbuilder modify content").  Delete acts
           on a selection and belongs to the Atom tab; this acts on the WHOLE
           model -- it takes the structure, its metadata, its cell and the
@@ -340,10 +349,15 @@
           Pushed to the row's far end (.modify-actions__reset) so the write
           action keeps the reading position and the discarding one is not
           adjacent to it. -#}
-      <button id="clear-apply" class="modify-ghost modify-actions__reset"
+      {#- `danger` is form-components' own destructive marking (border + text in
+          `--error`, filling on hover).  Taken rather than coloured here: the
+          tone of a destructive control has ONE owner for every tab
+          (`ui-contract.md` § 5), and this page gets to say where the button
+          sits, never what it looks like. -#}
+      <button id="clear-apply" class="modify-ghost danger modify-actions__reset"
               type="button"
-              title="Start empty: removes the structure, its metadata and its cell, and leaves the axes showing so you can see the viewer is live.">
-        Start empty
+              title="Clear structure: removes the structure, its metadata and its cell, and leaves the axes showing so you can see the viewer is live.">
+        Clear structure
       </button>
     </div>
 

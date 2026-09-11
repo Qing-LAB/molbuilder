@@ -549,11 +549,11 @@ export function init(viewer) {
         const modal = window.molbuilder && window.molbuilder.warningModal;
         if (modal && typeof modal.confirmDiscardUnsaved === "function") {
             const go = await modal.confirmDiscardUnsaved({
-                title: "Start empty?",
+                title: "Clear structure?",
                 body: "This removes the structure, its metadata and its "
                     + "cell, and restarts the timeline at #0 — the saved "
                     + "states before it will no longer be reachable here.",
-                confirmLabel: "Start empty",
+                confirmLabel: "Clear structure",
             });
             if (!go) return;
         }
