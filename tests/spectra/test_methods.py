@@ -395,6 +395,55 @@ class TestRenderMethodsMdWithStruct:
         # 3*3 - 6 = 3 modes for water.
         assert "3 non-translational" in md
 
+    def test_a_linear_molecule_gets_3N_MINUS_5(self):
+        """CO2 has FOUR vibrations, not three.
+
+        A linear molecule has two rotational degrees of freedom, not three --
+        spinning it about its own axis moves nothing -- so 3N-5 vibrations
+        survive the projection, not 3N-6. The paragraph said 3N-6 for
+        everything until 2026-09-11: for the CO2 run that produced this
+        finding it claimed 3 modes while the run's own `spectra.json` listed
+        4, and for any diatomic it claimed 0 while the run listed 1.
+
+        The COMPUTATION was never wrong -- PySCF's `harmonic_analysis`
+        projects "the 6 (or 5 for linear molecules)" itself. Only the prose
+        was, and a Methods paragraph is written to be pasted into a paper.
+        """
+        from molbuilder.spectra import render_methods_md
+        from molbuilder.structure import Structure
+        co2 = Structure(
+            elements  = ["O", "C", "O"],
+            positions = np.array([[-1.163, 0., 0.],
+                                  [ 0.,    0., 0.],
+                                  [ 1.163, 0., 0.]]),
+        )
+        md = render_methods_md(_spectra_cfg(), struct=co2)
+        assert "4 non-translational" in md, (
+            "a linear triatomic has 3N-5 = 4 vibrational modes; the Methods "
+            f"paragraph says otherwise:\n{md}"
+        )
+
+        n2 = Structure(elements=["N", "N"],
+                       positions=np.array([[0., 0., 0.], [1.10, 0., 0.]]))
+        md2 = render_methods_md(_spectra_cfg(), struct=n2)
+        assert "1 non-translational" in md2, (
+            f"a diatomic has exactly one vibration:\n{md2}"
+        )
+
+    def test_the_engine_fragment_names_no_projection_COUNT(self):
+        """The count belongs where the GEOMETRY is, and nowhere else.
+
+        `pyscf_methods_fragment` is handed `cfg` alone -- it cannot tell a
+        linear molecule from a bent one -- so it said "the six
+        translational/rotational eigenvectors" for every system. Two places
+        naming one number is how they came to disagree.
+        """
+        from molbuilder.pyscf.vibration_emitters import pyscf_methods_fragment
+        frag = pyscf_methods_fragment(_spectra_cfg())
+        assert "six" not in frag.lower(), (
+            f"the fragment states a projection count it cannot know:\n{frag}"
+        )
+
     def test_real_structure_with_frozen_atoms(self):
         """A real Structure with its two Au atoms frozen -> they leave
         the free count."""

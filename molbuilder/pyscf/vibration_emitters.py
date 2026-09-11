@@ -1605,10 +1605,16 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
         )
     else:
         parts.append(
+            # NO COUNT HERE.  It said "the six" until 2026-09-11, which is
+            # wrong for every linear molecule (five: a linear system has two
+            # rotational degrees of freedom, not three) -- and this function
+            # is handed `cfg` alone, so it cannot tell.  The arithmetic lives
+            # where the GEOMETRY is, in `spectra.methods._mode_count`; naming
+            # the number twice is how the two came to disagree.
             f"The harmonic Hessian was obtained analytically via "
             f"`{hessian_module}` and mass-weighted, then "
-            f"diagonalized after projection of the six "
-            f"translational/rotational eigenvectors."
+            f"diagonalized after projection of the translational and "
+            f"rotational eigenvectors."
         )
 
     # Raman path: α is analytic (CPHF) at each displaced point; the
