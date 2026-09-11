@@ -137,6 +137,28 @@ def _green(testfile, root, timeout=420):
     return r.returncode == 0, (r.stdout or "")
 
 
+#: "module.js@offset" pairs to skip, comma-separated, from VACUITY_JS_SKIP.
+#:
+#: WHY.  A mutant at a module-wide switch kills every test that touches the
+#: module, so GUARDS on it says only "this file notices the module being
+#: broken" -- a bar nearly anything clears.  Measured: flipping
+#: `const readOnly = opts.mode === "readonly"` at lib/molview/model.js@2489
+#: makes EVERY model read-only (mode is normally undefined), the master copy
+#: freezes, and six separate test files died on their first mutant at that one
+#: offset.  Excluding it asks the question that matters: does this file notice
+#: something its own subject got wrong?
+def _skips():
+    raw = os.environ.get("VACUITY_JS_SKIP", "")
+    out = set()
+    for item in raw.split(","):
+        item = item.strip()
+        if "@" in item:
+            mod, _, off = item.rpartition("@")
+            try: out.add((mod, int(off)))
+            except ValueError: pass
+    return out
+
+
 def vacuity_js(testfile, budget=12):
     mods = _modules(testfile)
     if not mods:
@@ -157,7 +179,8 @@ def vacuity_js(testfile, budget=12):
         if not m or int(m.group(1)) == 0:
             return {"verdict": "ALL-SKIPPED-HERE", "detail": out.strip()[-120:]}
 
-        tried = 0
+        skip = _skips()
+        tried = skipped = 0
         # Aim at what the test names; fall back to the whole module only if
         # nothing it mentions is defined there.
         streams = []
@@ -174,6 +197,10 @@ def vacuity_js(testfile, budget=12):
                     desc, mutated = next(it)
                 except StopIteration:
                     streams.remove((p, it)); continue
+                off = int(desc.rsplit("@", 1)[1]) if "@" in desc else -1
+                if (str(rel), off) in skip or (p.name, off) in skip:
+                    skipped += 1
+                    continue
                 original = target.read_text()
                 target.write_text(mutated)
                 try:
@@ -187,7 +214,7 @@ def vacuity_js(testfile, budget=12):
                 tried += 1
                 if not g[0]:
                     return {"verdict": "GUARDS", "tried": tried,
-                            "first": f"{rel}: {desc}"}
+                            "skipped": skipped, "first": f"{rel}: {desc}"}
                 if tried >= budget:
                     break
         if not tried:
