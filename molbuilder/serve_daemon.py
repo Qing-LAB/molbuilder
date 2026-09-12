@@ -90,6 +90,41 @@ def stacks_path(port: int) -> Path:
 #  the log roll                                                          #
 # --------------------------------------------------------------------- #
 
+def _mkdir_private(d: Path) -> None:
+    """``mkdir -p`` at 0700, and tighten an existing directory.
+
+    ``mode=`` covers the directories this call CREATES; an existing one keeps
+    whatever it had, which is how a 0775 logs directory survived.  So the mode
+    is asserted afterwards too -- best-effort, because a directory somebody
+    else owns is not ours to re-mode and is not a reason to refuse to log.
+    """
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        if (d.stat().st_mode & 0o777) != 0o700:
+            os.chmod(d, 0o700)
+    except OSError:
+        pass
+
+
+def _open_private(path: Path, mode: str):
+    """``open(path, mode)`` for a file that must be 0600 from its first byte.
+
+    The mode rides the descriptor via ``os.open``, so there is no window where
+    the file exists readable with content in it -- the same discipline
+    `auth_setup.write_secret_file` uses, for the same reason.
+    """
+    flags = os.O_WRONLY | os.O_CREAT
+    flags |= os.O_APPEND if "a" in mode else os.O_TRUNC
+    fd = os.open(path, flags, 0o600)
+    try:
+        if (os.fstat(fd).st_mode & 0o777) != 0o600:
+            os.fchmod(fd, 0o600)          # pre-existing loose file
+    except OSError:
+        pass
+    return os.fdopen(fd, "wb")
+
+
+
 class LogRoll:
     """An append-only log with a size cap: on overflow the current file is
     gzipped to ``<name>.1.gz`` (older archives shift up) and at most
@@ -103,8 +138,29 @@ class LogRoll:
         self.path = Path(path)
         self.max_bytes = int(max_bytes)
         self.keep = int(keep)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = open(self.path, "ab")
+        # 0700 ON THE DIRECTORY, 0600 ON THE FILE -- this log is a SECRET
+        # SINK, measured 2026-09-12 at 0664 in a 0775 directory.
+        #
+        # It swallows the child's stderr verbatim, and what the child writes
+        # there on an auth failure is chosen ON PURPOSE to be the thing too
+        # sensitive for the browser: `web/auth_providers/oauth.py` routes a
+        # provider error to `logging.exception` precisely because the `params`
+        # dict "on certain misbehaving providers can include the
+        # client_secret", and says "don't risk leaking that into the
+        # user-visible response".  The response was protected and this file
+        # was not.  A CAS ticket (`cas.py`), an OAuth code, and the `--cert` /
+        # `--key` paths in the child argv land here too.
+        #
+        # Which is the inversion this project already named and fixed one
+        # level over, for the run-report records: "the KEY file was always
+        # 0600 and the DATA it protects was not, which is the wrong way round
+        # on a shared server" (`run-reports.md`).
+        #
+        # Mode on the descriptor at CREATE time, not a chmod afterwards: a
+        # chmod races the first write, and `configuration.md` 2.1b requires
+        # the mode to be right "before there is anything to read".
+        _mkdir_private(self.path.parent)
+        self._fh = _open_private(self.path, "ab")
 
     def write(self, data: bytes) -> None:
         if not data:
@@ -127,9 +183,12 @@ class LogRoll:
                 src.rename(self.path.with_name(self.path.name + f".{i+1}.gz"))
         if self.keep > 0:
             dst = self.path.with_name(self.path.name + ".1.gz")
-            with open(self.path, "rb") as fin, gzip.open(dst, "wb") as fout:
+            # The ARCHIVE holds the same bytes, so it gets the same mode.
+            with open(self.path, "rb") as fin, \
+                    gzip.GzipFile(fileobj=_open_private(dst, "wb"),
+                                  mode="wb") as fout:
                 shutil.copyfileobj(fin, fout)
-        self._fh = open(self.path, "wb")        # truncate and continue
+        self._fh = _open_private(self.path, "wb")   # truncate and continue
 
     def close(self) -> None:
         try:
