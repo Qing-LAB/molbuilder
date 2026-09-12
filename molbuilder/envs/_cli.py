@@ -356,10 +356,12 @@ def cmd_repair(name: str, include_optional: bool,
 
     What it does:
       * Runs the same audit doctor uses on the named recipe's env.
-      * For ``conda-missing``: ``<mgr> install -n <env> <spec> -y``.
-      * For ``pip-missing``: ``<env>/bin/python -m pip install <spec>``
-        (through the same bypass wrapper used elsewhere, so PIP_CACHE_DIR
-        + activate.d hooks apply).
+      * Maps each issue back to its RECORD in the recipe and runs the step
+        the installer would -- `pip_step_for` per pip package (so force
+        flags, sources and declared alternatives all apply), and one
+        batched `conda_step_for` for conda, because each conda command is
+        a whole solve.  It does not build command lines of its own; a
+        second copy of an instruction can only drift from the first.
       * Skips ``*-optional`` issues unless ``--include-optional``.
       * Skips ``conda-version`` / ``conda-build`` issues unless
         ``--include-version-fix`` (those rebuilds can take a long time
@@ -420,25 +422,23 @@ def cmd_repair(name: str, include_optional: bool,
     to_install_pip: list = []
     skipped_optional: list = []
     skipped_version: list = []
+    # BOTH buckets hold ISSUES, not a spec string for one kind and an issue
+    # for the other.  The audit now names the record on conda issues too, so
+    # both halves can map back to it -- which is the rule § 5 states without
+    # an exception.
     for issue in audit.issues:
+        is_conda = issue.kind.startswith("conda-")
+        bucket = to_install_conda if is_conda else to_install_pip
+        base = issue.kind[:-len("-optional")] \
+            if issue.kind.endswith("-optional") else issue.kind
         if issue.kind.endswith("-optional"):
-            if include_optional:
-                (to_install_conda if issue.kind.startswith("conda-")
-                 else to_install_pip).append(
-                    issue.spec if issue.kind.startswith("conda-") else issue)
-            else:
-                skipped_optional.append(issue)
+            (bucket if include_optional else skipped_optional).append(issue)
             continue
-        if issue.kind in ("conda-version", "conda-build"):
-            if include_version_fix:
-                to_install_conda.append(issue.spec)
-            else:
-                skipped_version.append(issue)
+        if base in ("conda-version", "conda-build"):
+            (bucket if include_version_fix else skipped_version).append(issue)
             continue
-        if issue.kind == "conda-missing":
-            to_install_conda.append(issue.spec)
-        elif issue.kind in ("pip-missing", "pip-source"):
-            to_install_pip.append(issue)
+        if base in ("conda-missing", "pip-missing", "pip-source"):
+            bucket.append(issue)
     if not to_install_conda and not to_install_pip:
         if skipped_optional or skipped_version:
             click.echo(
@@ -454,35 +454,39 @@ def cmd_repair(name: str, include_optional: bool,
         sys.exit(0)
     failures: list = []
     successes: list = []
+    conda_by_name = {
+        _doctor._parse_conda_spec(p.spec)[0]: p
+        for p in recipe.conda_packages
+        if _doctor._parse_conda_spec(p.spec) is not None
+    }
     if to_install_conda:
+        names = [i.name for i in to_install_conda]
         click.echo(
             f"[repair]   {len(to_install_conda)} conda package(s) "
-            f"to install: {' '.join(to_install_conda)}", err=True,
+            f"to install: {' '.join(names)}", err=True,
         )
-        argv = [
-            caps.conda_binary, "install", "-n", effective, "-y",
-            *to_install_conda,
-        ]
-        for ch in recipe.channels:
-            argv.extend(["-c", ch])
-        # THE SAME RUNNER AS PIP, but NOT the same path back to the
-        # record.  conda repair batches every missing package into one
-        # ``conda install`` -- that is the cheap call, one solve instead
-        # of N -- so it works from the audit's spec strings and never
-        # looks the `CondaPackage` up again.  The cost is that a conda
-        # package's ``reason`` is not printed here, while pip's is (see
-        # the pip loop below).  The step is still RUN through the one
-        # door, so its outcome is decided by the same rule and reported
-        # in the same words.
-        done = _install.run_step(
-            _install.InstallStep(label="conda install", argv=tuple(argv)),
-            sink=sys.stderr, timeout=1800)
+        # THE SAME RUNNER AND THE SAME PATH BACK TO THE RECORD as pip.
+        # What stays different is the GRANULARITY: every conda command is a
+        # whole solve, so repair batches these into one `conda install`
+        # rather than N.  The operator accepted that second solve by
+        # running `repair`; `install` itself never pays it (there, an
+        # optional package is dropped from the create solve instead -- see
+        # `create_step_for`).
+        for issue in to_install_conda:
+            pkg = conda_by_name.get(issue.name or "")
+            if pkg is not None and pkg.reason:
+                click.echo(f"[repair]     {issue.name}: {pkg.reason}",
+                           err=True)
+        step = _install.conda_step_for(
+            [i.spec for i in to_install_conda], recipe,
+            caps.conda_binary, effective)
+        done = _install.run_step(step, sink=sys.stderr, timeout=1800)
         rc = done.returncode
         if done.outcome.is_success:
-            successes.extend(to_install_conda)
+            successes.extend(names)
             click.echo("[repair]   conda install: OK", err=True)
         else:
-            failures.extend(to_install_conda)
+            failures.extend(names)
             click.echo(f"[repair]   conda install: FAILED (rc={rc})", err=True)
             if rc in (137, -9):
                 # SIGKILL mid-solve: the classic login-node memory cap
@@ -543,9 +547,18 @@ def cmd_repair(name: str, include_optional: bool,
     # Re-audit so the user sees the new state.
     click.echo("[repair]   re-running audit...", err=True)
     audit2 = _doctor.audit_packages(prefix, recipe)
-    remaining = [i for i in audit2.issues
-                 if not i.kind.endswith("-optional")
-                 and i.kind not in ("conda-version", "conda-build")]
+    # A kind the FLAGS opted in stays in `remaining`, so a repair that was
+    # asked to fix a pin and failed cannot exit 0.  It used to be filtered
+    # out unconditionally, and `failures` never reached the exit code, so
+    # `repair --include-version-fix` printed "conda install: FAILED" and
+    # exited 0 -- a CI job gating on it passed.
+    _excluded = set()
+    if not include_optional:
+        _excluded |= {i.kind for i in audit2.issues
+                      if i.kind.endswith("-optional")}
+    if not include_version_fix:
+        _excluded |= {"conda-version", "conda-build"}
+    remaining = [i for i in audit2.issues if i.kind not in _excluded]
     if remaining:
         for issue in remaining[:10]:
             click.echo(

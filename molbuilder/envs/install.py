@@ -442,6 +442,74 @@ def pip_step_for(pkg: PipPackage, conda: str, env_name: str) -> InstallStep:
     )
 
 
+def conda_argv(conda: str, subcommand: str, env_name: str,
+               channels: Sequence[str], specs: Sequence[str]
+               ) -> Tuple[str, ...]:
+    """The one shape of a conda command line.
+
+    ``create`` and ``install`` differ only in the subcommand, so they are one
+    shape.  Writing it out twice is how the channel flags came to sit BEFORE
+    the specs in the planner and AFTER them in `repair`.
+    """
+    argv: List[str] = [conda, subcommand, "-n", env_name, "-y"]
+    for ch in channels:
+        argv.extend(["-c", ch])
+    argv.extend(specs)
+    return tuple(argv)
+
+
+def create_step_for(recipe: Recipe, conda: str,
+                    env_name: str) -> InstallStep:
+    """The step that creates the env, and how it degrades.
+
+    OPTIONALITY MEANS SOMETHING DIFFERENT TO A SOLVER.  pip installs one
+    package at a time, so an optional pip package is its own non-fatal STEP
+    (`pip_step_for`).  conda solves everything at once: an optional conda
+    package cannot be its own step without paying a SECOND solve, and a
+    second solve may legitimately change versions for packages the first one
+    already placed.  So optionality here is expressed as an ATTEMPT -- the
+    full solve first, and if it fails, the same solve without the optional
+    specs.  The env lands `RECOVERED`: created, minus something the recipe
+    said it could live without.
+
+    ONE DEGRADATION STEP, NOT A SEARCH.  With n optional specs, "find the
+    largest subset that still solves" is 2**n solves at minutes each, so the
+    rule is all of them or none of them.  Nothing is lost silently: the
+    audit then names exactly which optional packages are absent, with the
+    recipe's `reason` beside each, and `repair --include-optional` installs
+    them one at a time -- paying the second solve there because the operator
+    asked for it.
+
+    A recipe with no optional conda package gets no fallback, so this is
+    byte-identical to what the planner emitted before.
+    """
+    required = tuple(p.spec for p in recipe.conda_packages if not p.optional)
+    fallbacks: Tuple[Tuple[str, ...], ...] = ()
+    if len(required) != len(recipe.conda_packages):
+        fallbacks = (conda_argv(conda, "create", env_name,
+                                recipe.channels, required),)
+    return InstallStep(
+        label="conda create",
+        argv=conda_argv(conda, "create", env_name,
+                        recipe.channels, recipe.conda_specs),
+        fallbacks=fallbacks,
+    )
+
+
+def conda_step_for(specs: Sequence[str], recipe: Recipe, conda: str,
+                   env_name: str) -> InstallStep:
+    """One batched ``conda install`` for packages already missing.
+
+    `repair`'s half of the conda story.  Batched rather than per-package
+    because each conda command is a whole solve; the operator has already
+    accepted that second solve by running `repair`.
+    """
+    return InstallStep(
+        label="conda install",
+        argv=conda_argv(conda, "install", env_name, recipe.channels, specs),
+    )
+
+
 def verify_step_for(recipe: Recipe, conda: str,
                     env_name: str) -> Optional[InstallStep]:
     """The step that checks the env, or ``None`` if the recipe declares none.
@@ -473,12 +541,7 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     steps: List[InstallStep] = []
 
     # Phase 1: conda create.
-    create_argv: List[str] = [conda, "create", "-n", env_name, "-y"]
-    for ch in recipe.channels:
-        create_argv.extend(["-c", ch])
-    create_argv.extend(recipe.conda_specs)
-    steps.append(InstallStep(label="conda create",
-                             argv=tuple(create_argv)))
+    steps.append(create_step_for(recipe, conda, env_name))
 
     # Phase 2: pip install.
     #
@@ -849,6 +912,41 @@ class _Phase:
         return self.prefix
 
 
+#: `builds.py` keeps its own four-state verdict because it keeps its own
+#: executor (sentinel resume).  This is the ONE place the two vocabularies
+#: meet.  Deriving the outcome from the return code instead -- which the
+#: adapter used to do -- got two of the four wrong: a sentinel-skipped phase
+#: carries `returncode=0` and so reported OK, indistinguishable from having
+#: actually run it; and an abandoned phase carries `None` and so reported
+#: FAILED, inflating one real failure into one per remaining phase.
+_BUILD_STATUS_OUTCOME = {
+    "ok": Outcome.OK,
+    "fail": Outcome.FAILED,
+    "skip": Outcome.SKIPPED,
+}
+
+
+def _adapt_build_step(sresult) -> Optional[InstallStep]:
+    """One build phase's result as an :class:`InstallStep`.
+
+    ``None`` for a phase that was never reached (`status == "not-run"`),
+    matching what the install loop itself does: it returns on the first step
+    that stops the install and never records the rest.  The full per-phase
+    detail, abandoned phases included, stays on ``InstallResult.build_result``
+    for anyone who wants it.
+    """
+    outcome = _BUILD_STATUS_OUTCOME.get(sresult.status)
+    if outcome is None:
+        return None
+    return InstallStep(
+        label=f"build:{sresult.step.component}.{sresult.step.phase}",
+        argv=sresult.step.argv,
+        returncode=sresult.returncode,
+        output=sresult.output,
+        outcome=outcome,
+    )
+
+
 def _undispatched(step: InstallStep, outcome: Outcome,
                   why: str) -> InstallStep:
     """A step decided WITHOUT running it.
@@ -1113,16 +1211,9 @@ def run_install(
                 ok = False
             else:
                 for sresult in build_result.steps:
-                    executed.append(InstallStep(
-                        label=f"build:{sresult.step.component}"
-                              f".{sresult.step.phase}",
-                        argv=sresult.step.argv,
-                        returncode=sresult.returncode,
-                        output=sresult.output,
-                        outcome=Outcome.decide(
-                            ok=(sresult.returncode == 0),
-                            first_attempt=True, fatal=True),
-                    ))
+                    adapted = _adapt_build_step(sresult)
+                    if adapted is not None:
+                        executed.append(adapted)
                 if not build_result.succeeded:
                     ok = False
 
@@ -1152,6 +1243,9 @@ __all__ = [
     # The framework's surface, in the order the contract introduces it
     # (docs/ops/env-framework.md): a record becomes a step, one runner
     # runs it, one rule decides what became of it.
+    "conda_argv",
+    "create_step_for",
+    "conda_step_for",
     "pip_argv",
     "pip_step_for",
     "verify_step_for",

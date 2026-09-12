@@ -16,7 +16,8 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import install
-from molbuilder.envs.recipes import Recipe, recipe_by_name, PipPackage
+from molbuilder.envs.recipes import (CondaPackage, PipPackage, Recipe,
+                                     recipe_by_name)
 
 
 # A recipe that exercises EVERY install phase: conda create + pip
@@ -392,6 +393,144 @@ def test_launch_failure_of_optional_step_also_degrades(monkeypatch):
     assert pip_step.outcome is install.Outcome.DEGRADED
     assert pip_step.returncode is None
     assert "failed to launch" in pip_step.output
+
+
+def test_index_fallback_is_flagless_and_recovers(monkeypatch):
+    """The declared alternative must carry NO force flags, and succeeding on
+    it must report RECOVERED under the argv that actually ran.
+
+    BOTH halves were unenforced until 2026-09-12, and each mutation passed
+    the entire suite:
+
+      * adding `flags=pkg.install_flags()` to the fallback -- the contract
+        warns this is how "an unreachable source during an unrelated install
+        would overwrite a good git tree with a worse one", i.e. silent env
+        corruption;
+      * collapsing RECOVERED into OK -- the state exists precisely so a
+        recovered step is never reported under the command that failed.
+    """
+    pkg = PipPackage("pyscf-properties",
+                     source="git+https://github.com/pyscf/properties.git",
+                     force=True, fallback_to_index=True,
+                     reason="never released to PyPI with the IR module")
+    step = install.pip_step_for(pkg, "/usr/bin/conda", "molbuilder-pySCF")
+
+    # The PRIMARY attempt forces, because an installed version cannot prove
+    # it is the declared build.
+    assert "--force-reinstall" in step.argv
+    assert "--no-deps" in step.argv
+    assert ("pyscf-properties @ git+https://github.com/pyscf/properties.git"
+            in step.argv)
+
+    # The ALTERNATIVE forces nothing.  Its job is to make sure the package
+    # EXISTS, never to replace what is already there.
+    assert len(step.fallbacks) == 1
+    indexed = step.fallbacks[0]
+    assert "--force-reinstall" not in indexed, (
+        "the index fallback must not force -- an unreachable source during "
+        "an unrelated install would overwrite a good tree with a worse one")
+    assert "--no-deps" not in indexed
+    assert "pyscf-properties" in indexed
+
+    # Source unreachable, index fine.
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        _stream_stub_factory(
+                            (1, "Could not resolve host: github.com"),
+                            (0, "Successfully installed pyscf-properties")))
+    done = install.run_step(step, prefix=None)
+    assert done.outcome is install.Outcome.RECOVERED, (
+        "a step that succeeded on its alternative is RECOVERED, not OK")
+    assert done.argv == indexed, (
+        "the step must report the argv that RAN, not the one that failed")
+
+
+def test_bare_strings_normalise_for_both_kinds():
+    """One rule for both package kinds -- a bare name becomes a record.
+
+    The conda half was covered only by accident (every recipe uses bare
+    conda strings, so breaking it errors at import); the pip half was not
+    covered at all, and deleting it passed the whole suite.
+    """
+    r = Recipe(
+        name="synth-normalise", category=None, description="d",
+        channels=("conda-forge",),
+        conda_packages=("numpy", CondaPackage("cupy", optional=True,
+                                              reason="GPU only")),
+        pip_packages=("pubchempy", PipPackage("cupy-cuda13x",
+                                              optional=True)),
+    )
+    # Bare names became records, required by default.
+    assert r.conda_packages[0] == CondaPackage("numpy")
+    assert r.pip_packages[0] == PipPackage("pubchempy")
+    assert r.conda_packages[0].optional is False
+    assert r.pip_packages[0].optional is False
+    # Records written out explicitly pass through untouched.
+    assert r.conda_packages[1].optional is True
+    assert r.conda_packages[1].reason == "GPU only"
+    assert r.pip_packages[1].optional is True
+    # And the derived views hand the plain strings back.
+    assert r.conda_specs == ("numpy", "cupy")
+    assert r.pip_specs == ("pubchempy", "cupy-cuda13x")
+
+
+def test_build_phases_carry_the_verdict_builds_gave_them(monkeypatch):
+    """A sentinel-skipped build phase is SKIPPED, not OK, and an abandoned
+    one is not reported at all.
+
+    The adapter used to derive the outcome from the return code, which got
+    two of `builds.py`'s four states wrong: "skip" carries `returncode=0`
+    so a phase that did NOT run reported `OK (rc=0)` -- the exact confusion
+    `_undispatched` was written to end -- and "not-run" carries `None` so
+    one real ELPA failure was announced as FAILED once per remaining phase.
+    """
+    from molbuilder.envs import builds as B
+
+    recipe = recipe_by_name("molbuilder-siesta-gpu")
+    _bind()
+    monkeypatch.setattr(install.subprocess, "run",
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install, "_env_prefix",
+                        lambda env_name, conda_binary: "/fake/envs/x")
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        lambda *a, **kw: (0, "ok"))
+
+    def mkstep(component, phase):
+        return B.BuildStep(component=component, phase=phase,
+                           argv=("cmake", "--build", "."),
+                           sentinel=Path("/nonexistent"),
+                           log_file=Path("/tmp/x/logs/a.b.log"))
+
+    monkeypatch.setattr(install._builds, "run_build_spec",
+                        lambda *a, **kw: B.BuildResult(
+                            spec=recipe.build_spec,
+                            env_prefix="/fake/envs/x",
+                            fingerprint="deadbeef",
+                            activate_hook_written=False,
+                            deactivate_hook_written=False,
+                            succeeded=False,
+                            steps=(
+                                B.BuildStepResult(step=mkstep("elpa", "clone"),
+                                                  status="skip", returncode=0,
+                                                  output="sentinel present"),
+                                B.BuildStepResult(step=mkstep("elpa", "build"),
+                                                  status="fail", returncode=2,
+                                                  output="boom"),
+                                B.BuildStepResult(step=mkstep("siesta", "build"),
+                                                  status="not-run"),
+                            ),
+                            preflight_errors=(),
+                        ))
+    result = install.run_install(recipe)
+
+    by_label = {s.label: s for s in result.steps}
+    assert by_label["build:elpa.clone"].outcome is install.Outcome.SKIPPED, (
+        "a sentinel-skipped phase must not claim it ran")
+    assert by_label["build:elpa.build"].outcome is install.Outcome.FAILED
+    assert "build:siesta.build" not in by_label, (
+        "a phase that was never reached is not reported, the same way the "
+        "install loop does not record steps after it stops")
+    assert result.succeeded is False, (
+        "builds.py owns its own verdict and the installer must read it")
 
 
 def test_run_install_verify_substring_failure_is_fatal(monkeypatch):

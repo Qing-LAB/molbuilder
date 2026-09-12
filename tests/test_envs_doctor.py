@@ -13,7 +13,8 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import builds as _builds, doctor, install as _install
-from molbuilder.envs.recipes import BUILTIN_RECIPES, PipPackage, Recipe
+from molbuilder.envs.recipes import (BUILTIN_RECIPES, PipPackage, Recipe,
+                                     recipe_by_name)
 
 
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda",
@@ -147,6 +148,67 @@ def test_verify_output_trimmed_to_2k(monkeypatch):
     reports = doctor.report_all()
     siesta = next(r for r in reports if r.recipe.category == "siesta")
     assert len(siesta.verify_output) <= 2048
+
+
+# --------------------------------------------------------------------- #
+#  repair: an issue says what is WRONG, the RECORD says what to do         #
+# --------------------------------------------------------------------- #
+
+
+def test_repair_runs_the_step_the_installer_would(monkeypatch):
+    """`repair` must map each issue back to its record and dispatch the
+    installer's own step -- not a command of its own.
+
+    This is the whole of the contract's section 5, and it had no test:
+    replacing `pip_step_for(pkg, ...)` with a plain
+    `pip install <name>` passed the entire suite.  That regression is
+    invisible AND useless -- pip treats the bare name as already
+    satisfied, so repair would report OK and the re-audit would
+    immediately re-report the same issue.
+    """
+    from click.testing import CliRunner
+    from molbuilder.envs import _cli
+
+    recipe = recipe_by_name("molbuilder-pySCF")
+    pkg = next(p for p in recipe.pip_packages
+               if p.name == "pyscf-properties")
+    _bind(conda_envs=(recipe.name,))
+    monkeypatch.setattr(_install, "_env_prefix",
+                        lambda env_name, conda_binary: "/fake/envs/x")
+
+    # The audit says: present, but from the wrong tree.
+    issue = doctor.PackageAuditIssue(
+        kind="pip-source", name=pkg.name, spec=pkg.spec(),
+        found="(default index)", reason=pkg.reason)
+    monkeypatch.setattr(doctor, "audit_packages",
+                        lambda prefix, rec: doctor.PackageAudit(
+                            checked=True, n_conda_declared=0,
+                            n_pip_declared=1, issues=(issue,)))
+
+    dispatched = []
+
+    def fake_run_step(step, **kw):
+        dispatched.append(step)
+        return step.__class__(label=step.label, argv=step.argv,
+                              returncode=0, output="ok",
+                              outcome=_install.Outcome.OK)
+    monkeypatch.setattr(_install, "run_step", fake_run_step)
+
+    CliRunner().invoke(_cli.cmd_repair, ["molbuilder-pySCF"])
+
+    assert len(dispatched) == 1, "exactly one step should be dispatched"
+    argv = dispatched[0].argv
+    # It is the RECORD's step: the source, and the force flags that ride
+    # with it because an installed version cannot prove it is that build.
+    assert any("git+https://github.com/pyscf/properties.git" in a
+               for a in argv), (
+        f"repair dispatched a command that does not name the recorded "
+        f"source: {argv}")
+    assert "--force-reinstall" in argv
+    assert "--no-deps" in argv
+    # ...and it still carries the declared alternative.
+    assert dispatched[0].fallbacks, (
+        "the step must keep the index fallback the record declares")
 
 
 # --------------------------------------------------------------------- #

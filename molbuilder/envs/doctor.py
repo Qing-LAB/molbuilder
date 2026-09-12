@@ -79,7 +79,7 @@ class PackageAudit:
     truth is the on-disk metadata that the package manager itself
     wrote at install time.
     """
-    checked: bool          # False -> env missing or no python in env
+    checked: bool          # False -> the env prefix is not a directory
     n_conda_declared: int
     n_pip_declared: int
     issues: Tuple[PackageAuditIssue, ...]
@@ -102,9 +102,12 @@ class EnvReport:
         ``True`` when ``effective_name`` appears in
         ``capabilities.conda_envs``.
     verify_ok
-        ``True`` when the verify command exited 0 and (if set) its
-        ``verify_expect_contains`` substring appeared in the combined
-        stdout+stderr.  ``None`` when the env is missing or the
+        ``True`` when the step's own accept rule was satisfied -- see
+        :meth:`molbuilder.envs.install.InstallStep.accepts`, which is the
+        ONE place that rule lives.  Do not restate it here: the copy that
+        stood here said "exited 0 and the substring appeared", which is
+        false for a recipe setting ``verify_ignore_exit_code`` (tleap exits
+        non-zero from a perfectly healthy start).  ``None`` when the env is missing or the
         verify command was not run (e.g., the recipe has no
         ``verify_argv`` set).
     verify_output
@@ -245,7 +248,7 @@ def _read_pip_dists(env_prefix: Path) -> Dict[str, Tuple[str, Optional[str]]]:
                         url = f"{url}@{commit}"
                 except (OSError, ValueError):
                     url = None
-            out[re.sub(r"[-_.]+", "-", name).lower()] = (version, url)
+            out[_normalize_pip_name(name)] = (version, url)
     return out
 
 
@@ -314,42 +317,39 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     subprocess.  Source of truth is the on-disk metadata.
     """
     issues: List[PackageAuditIssue] = []
-    conda_specs = list(recipe.conda_specs)
-    pip_specs = list(recipe.pip_packages)
-    # Build name-sets for optional packages so we can classify
-    # missing ones as info-only (kind suffixed with ``-optional``).
-    # Optional packages typically gate a non-default feature (GPU,
-    # OAuth provider, etc.) -- the env still functions without them.
-    # Optionality is a field on the package now, for both kinds -- no
-    # second list to match names against.  Conda still needs a name-SET
-    # because its specs must be parsed before they can be matched; the
-    # pip loop below reads `pkg.optional` off the record where it stands,
-    # which is why only one of these exists.
-    optional_conda = {
-        _parse_conda_spec(p.spec)[0]
-        for p in recipe.conda_packages
-        if p.optional and _parse_conda_spec(p.spec) is not None
-    }
     if not env_prefix.is_dir():
         return PackageAudit(
             checked=False,
-            n_conda_declared=len(conda_specs),
-            n_pip_declared=len(pip_specs),
+            n_conda_declared=len(recipe.conda_packages),
+            n_pip_declared=len(recipe.pip_packages),
             issues=(),
         )
     # --- conda packages ---
+    #
+    # ITERATE THE RECORDS, like the pip loop below.  This used to walk
+    # `conda_specs` -- strings -- which forced a pre-pass building a
+    # name-SET of the optional ones, parsed every optional spec twice, and
+    # left `name` and `reason` empty on every conda issue.  Empty `name` is
+    # what stopped `repair` from mapping a conda issue back to its record,
+    # and empty `reason` is why `CondaPackage.reason` could never reach a
+    # user.  A name-set matched by name is also the exact mechanism § 2.2
+    # of the contract abolished for being able to miss silently.
     installed_conda = _read_conda_meta(env_prefix)
-    for spec in conda_specs:
-        parsed = _parse_conda_spec(spec)
+    for pkg in recipe.conda_packages:
+        parsed = _parse_conda_spec(pkg.spec)
         if parsed is None:
             # Unrecognised shape -- don't try to audit, don't false-alarm.
             continue
+        spec = pkg.spec
         name, comparator, version_pat, build_pat = parsed
+        # `optional` suffixes EVERY conda kind, not just absence: an
+        # optional package resolving to the wrong build must not fail the
+        # health check for an env the recipe calls usable without it.
+        suffix = "-optional" if pkg.optional else ""
         if name not in installed_conda:
-            kind = ("conda-missing-optional"
-                    if name in optional_conda else "conda-missing")
             issues.append(PackageAuditIssue(
-                kind=kind, spec=spec, found="(not found)",
+                kind=f"conda-missing{suffix}", name=name, spec=spec,
+                found="(not found)", reason=pkg.reason,
             ))
             continue
         installed_version, installed_build = installed_conda[name]
@@ -368,19 +368,21 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                 pat = pat + "*"
             if not fnmatch.fnmatchcase(installed_version, pat):
                 issues.append(PackageAuditIssue(
-                    kind="conda-version", spec=spec,
+                    kind=f"conda-version{suffix}", name=name, spec=spec,
                     found=f"{name}={installed_version}",
+                    reason=pkg.reason,
                 ))
                 continue
         if build_pat and build_pat != "*":
             if not fnmatch.fnmatchcase(installed_build, build_pat):
                 issues.append(PackageAuditIssue(
-                    kind="conda-build", spec=spec,
+                    kind=f"conda-build{suffix}", name=name, spec=spec,
                     found=f"{name}={installed_version}={installed_build}",
+                    reason=pkg.reason,
                 ))
     # --- pip packages ---
     installed_dists = _read_pip_dists(env_prefix)
-    for pkg in pip_specs:
+    for pkg in recipe.pip_packages:
         # Match on IDENTITY only.  dist-info records the project name,
         # never the URL it came from, so a source-bearing package would
         # read as permanently missing if the whole spec were normalized.
@@ -411,8 +413,8 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                 ))
     return PackageAudit(
         checked=True,
-        n_conda_declared=len(conda_specs),
-        n_pip_declared=len(pip_specs),
+        n_conda_declared=len(recipe.conda_packages),
+        n_pip_declared=len(recipe.pip_packages),
         issues=tuple(issues),
     )
 
@@ -436,6 +438,8 @@ def _run_verify(
     env_name: str,
     recipe: Recipe,
     conda_binary: str,
+    *,
+    prefix: Optional[str],
 ) -> Tuple[Optional[bool], str]:
     """Dispatch the recipe's verify command into the env.
 
@@ -445,7 +449,9 @@ def _run_verify(
     text report compact.
 
     Whether the output counts as a pass is NOT decided here -- it is
-    decided by the step's own accept rule, the same one `install` used.
+    decided by the step's own accept rule, the same one `install` used
+    (:meth:`install.InstallStep.accepts`).  ``prefix`` is the caller's
+    already-resolved env prefix, so this does not pay `_env_prefix` again.
     """
     # THE INSTALLER'S STEP, THE INSTALLER'S RUNNER.  This function used
     # to build the verify command itself, bypass ``conda run`` itself,
@@ -463,8 +469,6 @@ def _run_verify(
     step = verify_step_for(recipe, conda_binary, env_name)
     if step is None:
         return None, ""
-    from .install import _env_prefix
-    prefix = _env_prefix(env_name, conda_binary)
     if prefix is None:
         return False, (
             f"verify could not resolve env prefix for `{env_name}`.  "
@@ -527,15 +531,18 @@ def report_all(
                 package_audit=None,
             ))
             continue
-        # Resolve env prefix once -- shared between the verify bypass
-        # and the package audit.
+        # Resolve env prefix ONCE and hand it down -- shared between the
+        # verify dispatch and the package audit.  It used to be resolved
+        # again inside `_run_verify` while this comment claimed otherwise,
+        # paying `_env_prefix` twice per present env; that is the call the
+        # installer budgets for (3-5 `env list` / `info --json` per recipe).
         from .install import _env_prefix
         prefix_str = _env_prefix(effective, caps.conda_binary)
         audit: Optional[PackageAudit] = None
         if prefix_str is not None:
             audit = audit_packages(Path(prefix_str), recipe)
         verify_ok, verify_out = _run_verify(
-            effective, recipe, caps.conda_binary,
+            effective, recipe, caps.conda_binary, prefix=prefix_str,
         )
         out.append(EnvReport(
             recipe=recipe,
