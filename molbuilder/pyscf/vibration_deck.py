@@ -513,8 +513,6 @@ def _vib_ir_only_block(cfg) -> List[str]:
         "            _dp = _as_numpy(_mfp.dip_moment(unit='Debye', verbose=0))",
         "            _dm = _as_numpy(_mfm.dip_moment(unit='Debye', verbose=0))",
         "            DMU_DR[_k, _a, :] = (_dp - _dm) / (2.0 * _h_ang)",
-        "    state['ir_fd_step_ang'] = _h_ang   # a Methods section must",
-        "                                       # state the step it used",
         "else:",
         "    print('=== Stage: IR intensities (analytic dmu/dR, no extra SCFs) ===')",
         "modes_payload = state['modes']",

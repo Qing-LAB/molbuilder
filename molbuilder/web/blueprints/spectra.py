@@ -50,6 +50,7 @@ from molbuilder.sidecars.spectra import (
     parse_spectra_json_dict,
 )
 from molbuilder.spectra.results import SpectraResults, motion_share_by_element
+from ...spectra.methods import with_ir_route
 from molbuilder.structure import Structure
 
 
@@ -118,6 +119,20 @@ def _loaded(results):
     one clause, and the spectrum still opens.
     """
     payload = results.to_dict()
+
+    # THE METHODS PARAGRAPH GAINS THE ONE FACT IT COULD NOT CARRY.  It is
+    # composed in the deck composer, before the job runs, and which
+    # dmu/dR route was taken is only settled inside the job -- so the
+    # stored text is route-neutral by necessity.  Here the results ARE in
+    # hand, so the sentence can be added, from the same home the rest of
+    # the prose comes from.  Computed at load for the reason the element
+    # shares are: every result already on disk gains it on open.
+    if payload.get("methods_text"):
+        payload["methods_text"] = with_ir_route(
+            payload["methods_text"],
+            payload.get("ir_route") or "",
+            payload.get("ir_fd_step_ang"))
+
     elements = (payload.get("equilibrium") or {}).get("elements") or []
     # An empty free-atom list is "not recorded", not "no atom is free" -- a
     # result that never tracked the partition has one eigenvector row per atom,

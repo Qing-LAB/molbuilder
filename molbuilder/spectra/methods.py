@@ -149,6 +149,52 @@ def render_methods_md(
     return body
 
 
+def ir_route_sentence(ir_route: str,
+                      fd_step_ang: Optional[float] = None) -> str:
+    """The one Methods fact that cannot be known when Methods is written.
+
+    `render_methods_md` runs in the deck composer, on the host, BEFORE
+    the job exists -- and which dmu/dR route runs is a property of the
+    env the deck lands in (the analytic one needs
+    ``pyscf.prop.infrared``, which no PyPI release carries).  So the
+    paragraph itself stays route-neutral, which is the only honest thing
+    it can be, and this sentence is added later by whoever holds the
+    RESULTS.
+
+    One home for the wording, called from the load path, so the prose a
+    reader copies into a paper and the provenance the viewer shows can
+    never drift into two different claims.  Returns "" when there is
+    nothing to say.
+    """
+    if ir_route == "analytic":
+        return ("These were evaluated analytically, from the "
+                "coupled-perturbed self-consistent-field response also "
+                "used for the force constants.")
+    if ir_route == "finite-difference":
+        step = (f" (±{fd_step_ang:g} Å per Cartesian coordinate)"
+                if fd_step_ang else "")
+        return f"These were evaluated by central finite differences{step}."
+    return ""
+
+
+def with_ir_route(methods_md: str, ir_route: str,
+                  fd_step_ang: Optional[float] = None) -> str:
+    """``methods_md`` with the route sentence placed in the paragraph.
+
+    Before the bibliography, never after it: a trailing sentence under a
+    reference list reads as a footnote to the references rather than as
+    part of the method.
+    """
+    sentence = ir_route_sentence(ir_route, fd_step_ang)
+    if not sentence or not methods_md:
+        return methods_md
+    marker = "\n**Bibliography**"
+    if marker in methods_md:
+        head, _, tail = methods_md.partition(marker)
+        return f"{head.rstrip()} {sentence}\n{marker}{tail}"
+    return f"{methods_md.rstrip()} {sentence}\n"
+
+
 def extract_citation_keys(text: str) -> List[str]:
     """Return the BibTeX keys cited in ``text``, in order of first
     appearance, deduplicated.
