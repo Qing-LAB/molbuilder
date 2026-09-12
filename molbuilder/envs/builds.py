@@ -28,6 +28,7 @@ engineering doc lives at :doc:`docs/engines/siesta-gpu`.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -750,26 +751,62 @@ def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
     )
 
 
+def _spec_name_and_build(spec: str) -> Tuple[str, str]:
+    """``(name, build)`` from a conda spec or a forbid pattern.
+
+    Globs are PRESERVED -- they are the point.  `doctor._parse_conda_spec` is
+    the parser everywhere else, but its name pattern rejects ``*``, so it
+    cannot read a forbid pattern like ``mkl*``.  The version is not returned
+    because nothing forbids on a version.
+
+    Tolerates a channel prefix (``ch::name``) and a comparator glued to the
+    name (``psutil>=5.9``).
+    """
+    body = spec.split("::")[-1].strip()
+    parts = body.split("=")
+    name = re.split(r"[<>!~]", parts[0], maxsplit=1)[0]
+    build = parts[2] if len(parts) > 2 else ""
+    return name, build
+
+
 def check_no_forbidden_packages(spec: BuildSpec,
                                 conda_specs: Sequence[str]
                                 ) -> Optional[str]:
-    """Return an error if any conda spec matches a forbidden pattern."""
+    """Return an error if any conda spec matches a forbidden pattern.
+
+    Matched the way conda spells a spec -- name, then build if the pattern
+    names one -- with globs honoured in both.  BOTH forms the field's own
+    docstring gives as examples were broken by the `split("=")[0]` plus `==`
+    that stood here, and they broke in opposite directions:
+
+      * ``"mkl*"`` matched nothing, not even ``mkl-devel``, so the documented
+        way to forbid a family silently protected nothing;
+      * ``"fftw=*=mkl_*"`` reduced to ``"fftw"``, which equals the reduction
+        of the recipe's OWN ``"fftw=*=mpi_openmpi_*"`` -- so the documented way
+        to forbid one BUILD variant raised a hard preflight error against a
+        spec it is supposed to allow, aborting the install.
+
+    Latent until now only because the shipped list happens to be bare names.
+    Compared against the recipe's literal package list, not against what the
+    SAT solver ends up installing (which would need a `conda list` after the
+    fact).
+    """
     if not spec.forbidden_packages:
         return None
     for pat in spec.forbidden_packages:
-        # Patterns are conda specs (mkl, mkl-devel, fftw=*=mkl_*).  We
-        # compare against the recipe's literal package list -- not what
-        # the SAT solver ends up installing (which would need a `conda
-        # list` after install).
-        pat_simple = pat.split("=")[0]
+        pat_name, pat_build = _spec_name_and_build(pat)
         for pkg in conda_specs:
-            pkg_simple = pkg.split("=")[0]
-            if pkg_simple == pat_simple:
-                return (
-                    f"recipe declares conda_specs entry `{pkg}` but the "
-                    f"build_spec.forbidden_packages list forbids `{pat}` "
-                    f"to keep the env's OpenMP runtime single."
-                )
+            pkg_name, pkg_build = _spec_name_and_build(pkg)
+            if not fnmatch.fnmatchcase(pkg_name, pat_name):
+                continue
+            # A pattern that names a build forbids only THAT build.
+            if pat_build and not fnmatch.fnmatchcase(pkg_build, pat_build):
+                continue
+            return (
+                f"recipe declares conda_specs entry `{pkg}` but the "
+                f"build_spec.forbidden_packages list forbids `{pat}` "
+                f"to keep the env's OpenMP runtime single."
+            )
     return None
 
 
@@ -1802,6 +1839,31 @@ def run_build_spec(spec: BuildSpec,
     )
 
 
+_TIME_RE = re.compile(r"~?(\d+)(?:\s*-\s*(\d+))?\s*(s|min)\b")
+
+
+def _total_time_estimate(spec: BuildSpec) -> Tuple[int, int]:
+    """``(low, high)`` minutes, summed from the per-phase estimates.
+
+    Parsed out of the same strings the rows above print, so the total cannot
+    drift from its own parts -- which is exactly what the literal it replaced
+    had done.  Sub-minute phases round up into the high end only, because a
+    stack of "~30s" rows should not inflate the optimistic figure.
+    """
+    lo_s = hi_s = 0
+    for comp in spec.components:
+        for phase in PHASES:
+            _, cost = describe_phase(comp.name, phase)
+            m = _TIME_RE.search(cost or "")
+            if not m:
+                continue          # "instant", or a row with no time at all
+            first, second, unit = m.group(1), m.group(2), m.group(3)
+            mult = 60 if unit == "min" else 1
+            lo_s += int(first) * mult
+            hi_s += int(second or first) * mult
+    return max(1, lo_s // 60), max(1, -(-hi_s // 60))
+
+
 def format_install_summary(spec: BuildSpec, probe: ToolchainProbe,
                            rebuild: Optional[str] = None) -> str:
     """Pre-install banner: what will happen + rough cost estimates.
@@ -1844,8 +1906,19 @@ def format_install_summary(spec: BuildSpec, probe: ToolchainProbe,
     lines.append("")
     lines.append(f"  Build concurrency:  -j{probe.jobs}")
     lines.append("  Resume model:       sentinel-based (re-running is safe)")
-    lines.append("  Total est. time:    ~45 min on 8 cores, broadband")
-    lines.append("  Total est. disk:    ~12 GB under $CONDA_PREFIX")
+    # DERIVED, both of them.  These were two literals, and both disagreed
+    # with the thing they summarise: "~45 min" against rows that sum to about
+    # half that, and "~12 GB" against a preflight gate that REFUSES below
+    # `_DEFAULT_DISK_GB_REQUIRED` -- so a person with 20 GB free read the
+    # banner, proceeded, and hit a hard error.  This banner exists so someone
+    # can decide whether to bail out; a number nothing keeps true is worse
+    # than no number.
+    lo, hi = _total_time_estimate(spec)
+    lines.append(f"  Total est. time:    ~{lo}-{hi} min at -j{probe.jobs}, "
+                 f"broadband")
+    lines.append(f"  Total est. disk:    {_DEFAULT_DISK_GB_REQUIRED:.0f} GB "
+                 f"free required under $CONDA_PREFIX "
+                 f"({_DEFAULT_DISK_GB_RECOMMENDED:.0f} GB recommended)")
     lines.append("")
     return "\n".join(lines)
 
