@@ -278,6 +278,8 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                         f"        [{issue.kind}] {issue.spec}  "
                         f"(installed: {issue.found})"
                     )
+                    if issue.reason:
+                        click.echo(f"          why: {issue.reason}")
                 click.echo("    enable:  "
                            + _fix_cmd("repair", rep.recipe.name,
                                       "--include-optional")
@@ -297,6 +299,8 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                         f"        [{issue.kind}] {issue.spec}  "
                         f"(installed: {issue.found})"
                     )
+                    if issue.reason:
+                        click.echo(f"          why: {issue.reason}")
                 if optional_issues:
                     click.echo(
                         f"        ({n_optional} additional optional "
@@ -410,6 +414,9 @@ def cmd_repair(name: str, include_optional: bool,
     # Partition issues by what we'll act on.
     to_install_conda: list = []
     to_install_pip: list = []
+    # pip packages that must be installed on their own terms -- see the
+    # pip-missing branch below.
+    to_install_pip_flagged: list = []
     skipped_optional: list = []
     skipped_version: list = []
     for issue in audit.issues:
@@ -417,6 +424,8 @@ def cmd_repair(name: str, include_optional: bool,
             if include_optional:
                 if issue.kind.startswith("conda-"):
                     to_install_conda.append(issue.spec)
+                elif issue.install_flags:
+                    to_install_pip_flagged.append(issue)
                 else:
                     to_install_pip.append(issue.spec)
             else:
@@ -430,9 +439,16 @@ def cmd_repair(name: str, include_optional: bool,
             continue
         if issue.kind == "conda-missing":
             to_install_conda.append(issue.spec)
-        elif issue.kind == "pip-missing":
-            to_install_pip.append(issue.spec)
-    if not to_install_conda and not to_install_pip:
+        elif issue.kind in ("pip-missing", "pip-source"):
+            # Packages needing their own flags cannot ride in the batch:
+            # a forced reinstall must not be applied to the others, and
+            # a plain install of a force-flagged package would report
+            # success while changing nothing.
+            if issue.install_flags:
+                to_install_pip_flagged.append(issue)
+            else:
+                to_install_pip.append(issue.spec)
+    if not to_install_conda and not to_install_pip and not to_install_pip_flagged:
         if skipped_optional or skipped_version:
             click.echo(
                 f"[repair]   nothing to fix among REQUIRED packages.  "
@@ -508,6 +524,39 @@ def cmd_repair(name: str, include_optional: bool,
         else:
             failures.extend(to_install_pip)
             click.echo(f"[repair]   pip install: FAILED (rc={rc})", err=True)
+    for issue in to_install_pip_flagged:
+        # One call per package: the flags are the package's, not the
+        # batch's.  A force-flagged package is one whose installed
+        # version cannot prove it is the declared build, so repairing it
+        # with a plain install would exit 0 and change nothing.
+        click.echo(
+            f"[repair]   pip package needing its own terms: "
+            f"{issue.spec} {' '.join(issue.install_flags)}", err=True,
+        )
+        if issue.reason:
+            click.echo(f"[repair]     why: {issue.reason}", err=True)
+        raw_argv = (
+            caps.conda_binary, "run", "-n", effective,
+            "--no-capture-output",
+            "python", "-m", "pip", "install",
+            *issue.install_flags, issue.spec,
+        )
+        try:
+            new_argv, _ = _install._bypass_conda_run(raw_argv, prefix_str)
+            rc, _ = _builds.run_streaming(
+                list(new_argv), sink=sys.stderr, timeout=1800,
+            )
+        except ValueError as exc:
+            rc = None
+            click.echo(f"[repair]   pip install {issue.spec}: failed to "
+                       f"set up wrapper ({exc})", err=True)
+        if rc == 0:
+            successes.append(issue.spec)
+            click.echo(f"[repair]   pip install {issue.spec}: OK", err=True)
+        else:
+            failures.append(issue.spec)
+            click.echo(f"[repair]   pip install {issue.spec}: "
+                       f"FAILED (rc={rc})", err=True)
     # Re-audit so the user sees the new state.
     click.echo("[repair]   re-running audit...", err=True)
     audit2 = _doctor.audit_packages(prefix, recipe)

@@ -4,8 +4,12 @@
 phases per recipe:
 
   1. ``conda create -n <env> -c <ch1> [-c <ch2>] ... <pkg1> <pkg2> ...``
-  2. ``conda run -n <env> python -m pip install <pip-pkgs>``
-     (skipped when ``recipe.pip_packages`` is empty)
+  2. pip, from the recipe's :class:`PipPackage` records.  The PLAIN
+     ones (default index, required, no forcing) go in one
+     ``conda run -n <env> python -m pip install <pkgs>``; each package
+     that needs its own terms gets its own step -- a forced reinstall,
+     a non-fatal step for an optional one, or an install from a
+     recorded source with the indexed build as a declared fallback.
   3. Each tuple in ``recipe.extra_steps`` dispatched via
      ``conda run -n <env> <argv>``.
   4. **(source-build recipes only)** ``builds.run_build_spec`` runs
@@ -16,8 +20,11 @@ phases per recipe:
 
 The installer never deletes an existing env; if the env already
 exists, phases 2-4 still run (so installing twice doesn't break --
-``pip install`` and the extra steps are idempotent in practice; the
-build_spec executor has its own sentinel-based resume).  That makes
+``pip install`` and the extra steps are idempotent in practice, with
+one DELIBERATE exception: a ``PipPackage`` marked ``force`` reinstalls
+every time, because its version cannot prove it is the declared build
+and a no-op would leave the wrong one in place; the build_spec
+executor has its own sentinel-based resume).  That makes
 ``install`` safe to re-run when, e.g., the recipe gains a new pip
 dependency or the user wants to rebuild from a new SIESTA tag.
 
@@ -172,9 +179,22 @@ class InstallStep:
     output
         First 2 KiB of combined stdout+stderr; empty for not-run
         steps.
+    fallbacks
+        Alternative argvs, tried in order when ``argv`` fails.  A pip
+        package that declares ``fallback_to_index`` renders as one step
+        whose fallback is the indexed build: prefer the recorded source,
+        accept the index rather than lose the package.  The first
+        success wins and the step counts as OK.
+    fatal
+        When ``False``, a non-zero exit is reported and the install
+        CONTINUES.  Optional packages install this way -- one failing
+        wheel must not take the env down, which is what
+        ``PipPackage.optional`` promises.
     """
     label: str
     argv: Tuple[str, ...]
+    fallbacks: Tuple[Tuple[str, ...], ...] = ()
+    fatal: bool = True
     returncode: Optional[int] = None
     output: str = ""
 
@@ -201,14 +221,42 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     steps.append(InstallStep(label="conda create",
                              argv=tuple(create_argv)))
 
-    # Phase 2: pip install (one combined call if there's anything).
-    if recipe.pip_packages:
-        pip_argv = (
-            conda, "run", "-n", env_name, "--no-capture-output",
-            "python", "-m", "pip", "install",
-            *recipe.pip_packages,
-        )
-        steps.append(InstallStep(label="pip install", argv=pip_argv))
+    # Phase 2: pip install.
+    #
+    # PLAIN packages (default index, no force, required) batch into ONE
+    # call -- the shape and the speed the registry had before sources
+    # existed.  Anything that needs different treatment gets its own
+    # step, because the treatment IS per-package:
+    #
+    #   * ``force``    -> --force-reinstall --no-deps, for a package
+    #                     whose version cannot prove it is current;
+    #   * ``optional`` -> a NON-FATAL step, so one unavailable wheel
+    #                     degrades the env instead of aborting it;
+    #   * ``source``   -> installed from the recorded URL, with the
+    #                     indexed build as a fallback when the record
+    #                     says the base is still required.
+    def _pip_argv(*specs: str) -> Tuple[str, ...]:
+        return (conda, "run", "-n", env_name, "--no-capture-output",
+                "python", "-m", "pip", "install", *specs)
+
+    plain = [p for p in recipe.pip_packages if p.is_plain()]
+    if plain:
+        steps.append(InstallStep(
+            label="pip install",
+            argv=_pip_argv(*(p.spec() for p in plain)),
+        ))
+    for pkg in recipe.pip_packages:
+        if pkg.is_plain():
+            continue
+        fallbacks: Tuple[Tuple[str, ...], ...] = ()
+        if pkg.fallback_to_index:
+            fallbacks = (_pip_argv(*pkg.install_flags(), pkg.index_spec()),)
+        steps.append(InstallStep(
+            label=f"pip install {pkg.name}",
+            argv=_pip_argv(*pkg.install_flags(), pkg.spec()),
+            fallbacks=fallbacks,
+            fatal=not pkg.optional,
+        ))
 
     # Phase 3: extra dispatch-into-env steps.
     for extra in recipe.extra_steps:
@@ -740,14 +788,51 @@ def run_install(
             sys.stderr.flush()
             succeeded = False
             break
+        # A failed step with declared alternatives tries them in order
+        # before it counts as failed: "prefer this source, accept that
+        # one" is a property of the PACKAGE, so the runner honours it
+        # rather than making every recipe hand-roll a retry.
+        if rc != 0 and step.fallbacks:
+            for alt in step.fallbacks:
+                alt_argv = list(alt)
+                if cached_prefix is not None:
+                    # Mirror the primary's bypass so the fallback gets
+                    # the same PIP_CACHE_DIR / activate.d treatment.
+                    try:
+                        _new, _ = _bypass_conda_run(alt, cached_prefix)
+                        alt_argv = list(_new)
+                    except ValueError:
+                        pass
+                sys.stderr.write(
+                    f"[{i}/{total_pre}] {step.label}: primary source "
+                    f"failed (rc={rc}); trying fallback\n"
+                )
+                sys.stderr.flush()
+                rc, combined = _builds.run_streaming(
+                    alt_argv, env=run_env, sink=sys.stderr, timeout=3600,
+                )
+                if rc == 0:
+                    break
         # Keep first 4096 chars for the failure-recap CLI output; the
         # full output was already streamed to the user's terminal.
         trimmed = combined[:4096]
         executed.append(InstallStep(
             label=step.label, argv=step.argv,
+            fallbacks=step.fallbacks, fatal=step.fatal,
             returncode=rc, output=trimmed,
         ))
         if rc != 0:
+            # A non-fatal step reports and the install CONTINUES.  This
+            # is what makes an optional package optional at INSTALL time
+            # and not merely at audit time -- the gap that let one
+            # unavailable GPU wheel abort an otherwise healthy CPU env.
+            if not step.fatal:
+                sys.stderr.write(
+                    f"[{i}/{total_pre}] {step.label}: UNAVAILABLE "
+                    f"(rc={rc}) -- optional, continuing\n"
+                )
+                sys.stderr.flush()
+                continue
             sys.stderr.write(
                 f"[{i}/{total_pre}] {step.label}: FAILED (rc={rc})\n"
             )

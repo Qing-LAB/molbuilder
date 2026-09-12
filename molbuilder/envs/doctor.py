@@ -42,10 +42,28 @@ class PackageAuditIssue:
         string doesn't match the recipe's pattern (e.g., ``mpi_openmpi_*``)
       * ``"pip-missing"`` -- declared in recipe.pip_packages but no
         ``*.dist-info`` found in the env's site-packages
+      * ``"pip-source"`` -- the package IS installed, but it came from
+        somewhere other than the source the recipe records.  The only
+        way to catch a package whose version cannot prove which tree it
+        is (see :func:`_read_pip_dists`).  Informational when the
+        record sets ``fallback_to_index``, because there the indexed
+        build is a declared acceptable outcome and only an optional
+        capability is missing.
+
+    ``spec`` is what an installer must be HANDED to fix the issue --
+    for a pip package with a recorded source that is the direct
+    reference, not the bare name, so ``repair`` fetches from where the
+    recipe says rather than from whatever the default index offers.
+    ``install_flags`` carries the rest of that instruction: a package
+    whose version cannot prove it is current needs forcing, and a
+    ``repair`` that issued a plain install would report success while
+    changing nothing.
     """
     kind: str
-    spec: str        # the recipe's declared spec
+    spec: str        # what to hand an installer to fix this
     found: str       # what's actually installed (or "(not found)")
+    install_flags: Tuple[str, ...] = ()
+    reason: Optional[str] = None   # why the source is unusual, if it is
 
 
 @dataclass(frozen=True)
@@ -166,16 +184,26 @@ def _read_conda_meta(env_prefix: Path) -> Dict[str, Tuple[str, str]]:
     return out
 
 
-def _read_pip_packages(env_prefix: Path) -> Dict[str, str]:
-    """Return ``{normalized_name: version}`` from site-packages dist-info.
+def _read_pip_dists(env_prefix: Path) -> Dict[str, Tuple[str, Optional[str]]]:
+    """Return ``{normalized_name: (version, source_url_or_None)}``.
 
-    Walks every ``lib/python*/site-packages/*.dist-info/METADATA``,
-    extracts ``Name`` + ``Version`` headers.  Normalizes the name to
-    lowercase with ``-``/``_`` collapsed (PEP 503) so recipe specs
-    like ``PeptideBuilder`` match metadata names like
-    ``peptidebuilder``.
+    ONE walk, ONE parse of each ``*.dist-info``.  Version and provenance
+    are read together because they are two fields of the same record and
+    two readers over the same file drift -- the name normalization in
+    particular has to agree or the audit silently stops matching.
+
+    Sources come from ``direct_url.json`` (PEP 610), which ``pip`` writes
+    beside ``METADATA`` whenever a distribution came from a URL rather
+    than an index.  That file is the only on-disk answer to "which tree
+    is this?" for a package whose VERSION cannot say: ``pyscf-properties``
+    declares ``0.1.0`` both on PyPI and on master.  ``None`` means the
+    default index (no direct_url record).
+
+    Name normalization is PEP 503 (lowercase, ``-``/``_``/``.``
+    collapsed) so recipe names like ``PeptideBuilder`` match metadata
+    names like ``peptidebuilder``.
     """
-    out: Dict[str, str] = {}
+    out: Dict[str, Tuple[str, Optional[str]]] = {}
     lib = env_prefix / "lib"
     if not lib.is_dir():
         return out
@@ -200,17 +228,79 @@ def _read_pip_packages(env_prefix: Path) -> Dict[str, str]:
                     version = line.split(":", 1)[1].strip()
                 if name and version:
                     break
-            if name:
-                norm = re.sub(r"[-_.]+", "-", name).lower()
-                out[norm] = version
+            if not name:
+                continue
+            url: Optional[str] = None
+            direct = dist_info / "direct_url.json"
+            if direct.is_file():
+                try:
+                    data = json.loads(direct.read_text(encoding="utf-8"))
+                    url = data.get("url")
+                    commit = (data.get("vcs_info") or {}).get("commit_id")
+                    if url and commit:
+                        url = f"{url}@{commit}"
+                except (OSError, ValueError):
+                    url = None
+            out[re.sub(r"[-_.]+", "-", name).lower()] = (version, url)
     return out
 
 
+def _split_vcs_ref(url: str) -> Tuple[str, Optional[str]]:
+    """Split ``<repo>@<ref>`` into its parts.
+
+    The trailing ``@`` is only a ref when what follows is not a path --
+    ``git+ssh://git@host/o/r.git`` carries an ``@`` as USERINFO, and
+    truncating there would silently compare the wrong thing.
+    """
+    head, sep, tail = url.rpartition("@")
+    if sep and tail and "/" not in tail:
+        return head, tail
+    return url, None
+
+
+def _canon_repo(url: str) -> str:
+    """Repository identity: scheme prefix and ``.git`` suffix removed."""
+    out = url.split("+", 1)[-1].rstrip("/")
+    return out[:-4] if out.endswith(".git") else out
+
+
+def _same_source(declared: str, installed: Optional[str]) -> bool:
+    """Is ``installed`` provenance the one ``declared`` asked for?
+
+    Both sides may carry a ref: a recipe may pin (``...git@<sha>``), and
+    ``direct_url.json`` always records the COMMIT pip resolved.  So:
+
+    * repositories must match, always;
+    * a declared **commit SHA** must match the resolved commit -- pinning
+      a SHA and silently running a different one is the whole failure a
+      pin exists to prevent;
+    * a declared **branch or tag** cannot be checked against a resolved
+      commit, so the repository match is the answer.  Saying so is
+      better than pretending a moving ref is verifiable.
+    """
+    if installed is None:
+        return False
+    decl_url, decl_ref = _split_vcs_ref(declared)
+    inst_url, inst_commit = _split_vcs_ref(installed)
+    if _canon_repo(decl_url) != _canon_repo(inst_url):
+        return False
+    if decl_ref and re.fullmatch(r"[0-9a-f]{7,40}", decl_ref):
+        if inst_commit is None:
+            return False
+        # A short pin matches the long resolved id it prefixes.
+        return (inst_commit.startswith(decl_ref)
+                or decl_ref.startswith(inst_commit))
+    return True
+
+
 def _normalize_pip_name(name: str) -> str:
-    """PEP 503 normalization: lowercase + collapse -/_/."""
-    # Strip extras like ``cupy-cuda13x[ctk]`` -> ``cupy-cuda13x``
-    name = name.split("[")[0].strip()
-    return re.sub(r"[-_.]+", "-", name).lower()
+    """PEP 503 normalization: lowercase + collapse -/_/.
+
+    Takes a bare project name.  Extras and URLs never reach here --
+    ``PipPackage`` keeps them in their own fields and refuses a name
+    carrying either, so there is nothing to strip off first.
+    """
+    return re.sub(r"[-_.]+", "-", name.strip()).lower()
 
 
 def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
@@ -231,8 +321,10 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         for s in recipe.optional_conda_packages
         if _parse_conda_spec(s) is not None
     }
+    # Optionality for pip lives on the record, not in a parallel list.
     optional_pip = {
-        _normalize_pip_name(s) for s in recipe.optional_pip_packages
+        _normalize_pip_name(p.name) for p in recipe.pip_packages
+        if p.optional
     }
     if not env_prefix.is_dir():
         return PackageAudit(
@@ -283,15 +375,37 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                     found=f"{name}={installed_version}={installed_build}",
                 ))
     # --- pip packages ---
-    installed_pip = _read_pip_packages(env_prefix)
-    for spec in pip_specs:
-        norm = _normalize_pip_name(spec)
-        if norm not in installed_pip:
+    installed_dists = _read_pip_dists(env_prefix)
+    for pkg in pip_specs:
+        # Match on IDENTITY only.  dist-info records the project name,
+        # never the URL it came from, so a source-bearing package would
+        # read as permanently missing if the whole spec were normalized.
+        norm = _normalize_pip_name(pkg.name)
+        if norm not in installed_dists:
             kind = ("pip-missing-optional"
-                    if norm in optional_pip else "pip-missing")
+                    if pkg.optional else "pip-missing")
             issues.append(PackageAuditIssue(
-                kind=kind, spec=spec, found="(not found)",
+                kind=kind, spec=pkg.spec(), found="(not found)",
+                install_flags=pkg.install_flags(), reason=pkg.reason,
             ))
+            continue
+        if pkg.source is not None:
+            # Present -- but is it the tree the recipe asked for?  For a
+            # package whose version is identical across sources this is
+            # the ONLY on-disk answer.
+            got = installed_dists[norm][1]
+            if not _same_source(pkg.source, got):
+                issues.append(PackageAuditIssue(
+                    # An index build is an outcome the recipe ACCEPTS
+                    # when it declares a fallback, so it degrades a
+                    # capability rather than breaking the env.
+                    kind=("pip-source-optional"
+                          if pkg.fallback_to_index or pkg.optional
+                          else "pip-source"),
+                    spec=pkg.spec(),
+                    found=(got or "(default index)"),
+                    install_flags=pkg.install_flags(), reason=pkg.reason,
+                ))
     return PackageAudit(
         checked=True,
         n_conda_declared=len(conda_specs),

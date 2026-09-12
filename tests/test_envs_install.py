@@ -16,7 +16,7 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import install
-from molbuilder.envs.recipes import Recipe, recipe_by_name
+from molbuilder.envs.recipes import Recipe, recipe_by_name, PipPackage
 
 
 # A recipe that exercises EVERY install phase: conda create + pip
@@ -28,7 +28,7 @@ _ALL_PHASES_RECIPE = Recipe(
     description="Synthetic recipe: conda + pip + extra + verify.",
     channels=("conda-forge",),
     conda_packages=("python=3.12", "pip"),
-    pip_packages=("some-pip-only-tool",),
+    pip_packages=(PipPackage("some-pip-only-tool"),),
     extra_steps=(("python", "-m", "some_tool", "post-install"),),
     verify_argv=("some-tool", "--version"),
     verify_expect_contains="Version",

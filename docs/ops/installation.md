@@ -184,7 +184,7 @@ second copy of it. Reference:
 |---|---|---|
 | **SIESTA (CPU)** | `molbuilder-siesta` | conda `siesta=5.4.2=mpi_openmpi_*` — the MPI build string is load-bearing (a `nompi_*` build silently runs serial) |
 | **SIESTA (GPU)** | `molbuilder-siesta-gpu` | **built from source** (§6), not a conda package |
-| **PySCF, geomeTRIC** | `molbuilder-pySCF` | conda (`pyscf`, `pyscf-dispersion`, `geometric`) + pip (`pyscf-properties`) |
+| **PySCF, geomeTRIC** | `molbuilder-pySCF` | conda (`pyscf`, `pyscf-dispersion`, `geometric`) + pip `pyscf-properties` from PyPI, then **upgraded from git** for analytic IR — see §3.1 |
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
@@ -194,6 +194,116 @@ second copy of it. Reference:
 
 The **isolation rule** is the whole point: a backend never contaminates the host
 or another backend, so each can pin exactly what it needs.
+
+### 3.1 The one from-git piece — `pyscf-properties` *(2026-09-11)*
+
+Every other package in the registry comes from a channel or an index. This one is
+installed **twice**: from PyPI like everything else, then upgraded from **GitHub**
+for one module PyPI has never carried. The reason is a packaging accident, not a
+preference:
+
+- `pyscf-properties` has exactly **one** PyPI release — the `0.1.0` sdist of
+  **2021-03-15**.
+- `pyscf.prop.infrared`, which computes the **analytic** dipole derivative the
+  vibration deck uses for IR intensities, was written **2022-02-22** — eleven
+  months after that release — and **has never been released**. It exists only on
+  master.
+- `pyscf.prop.polarizability`, which the Raman path requires, is
+  **byte-identical** between the sdist and master. Master is 14 commits ahead in
+  total; six are the IR feature and the rest touch `nmr`/`efg`, which molbuilder
+  never imports. So this is not a version bump that puts Raman at risk.
+
+**The registry records WHERE each pip package comes from.** `pip_packages` is a
+tuple of `PipPackage` records, not spec strings, because a bare string conflates
+three things that only coincide for an indexed package:
+
+| | | breaks when |
+|---|---|---|
+| **identity** | what `dist-info` records — the audit's matching key | the spec is a URL |
+| **source** | which index or URL supplies it | it isn't PyPI |
+| **staleness** | whether a version comparison proves it's current | two trees share a version |
+
+`pyscf-properties` is the first package that splits all three, so it is declared
+as what it is:
+
+```python
+PipPackage("pyscf-properties",
+           source="git+https://github.com/pyscf/properties.git",
+           force=True,              # 0.1.0 means two different trees
+           fallback_to_index=True,  # an unreachable GitHub must not cost us Raman
+           reason="pyscf.prop.infrared was never released …")
+```
+
+Each consumer then does its own job from that one declaration: `install` builds the
+command line, `doctor`'s audit matches on **`name` alone** (so a URL-sourced package
+is never "permanently missing"), and `repair` reinstalls **from the recorded source
+with the recorded flags** instead of issuing a plain install that would exit 0 and
+change nothing.
+
+**No SHA pin.** `pyscf/prop/infrared` has had four commits ever, the last in
+February 2022. The upstream is cold; a pin would buy nothing and would have to be
+chased by hand. `pip` records the resolved commit in `direct_url.json` — which is
+what the audit reads — so what landed stays auditable without one.
+
+**Three traps this creates, all handled by the record:**
+
+1. **The version string cannot tell you which tree you have.** Master and the sdist
+   both declare `0.1.0`. So `force=True`, and the audit compares **provenance**
+   (PEP 610 `direct_url.json`) rather than versions. Do not "simplify" either into
+   a version comparison — both would pass on an env that lacks the feature.
+2. **A plain install is a silent no-op on an existing env.** Because the versions
+   match, `pip install 'pyscf-properties @ git+…'` over the PyPI build reports
+   *"Requirement already satisfied"* and does nothing. `force=True` renders
+   `--force-reinstall --no-deps`, in both install and repair.
+3. **An unreachable GitHub must not cost us the env.** `fallback_to_index=True`
+   makes the install step carry the indexed build as a declared alternative: the
+   runner tries the recorded source, accepts the index, and the step counts as OK.
+   Raman's `polarizability` — byte-identical in the sdist — survives; only the IR
+   speed-up degrades.
+
+Optional pip packages install in their **own non-fatal step** for the same reason.
+Before the record existed, `optional_pip_packages` reached only the *audit*: every
+pip package went into one combined command, so a single unavailable GPU wheel
+aborted the whole env install regardless of how optional the recipe called it.
+
+**A missing `infrared` is a WARNING, not a failure.** The env is degraded, not
+broken: the deck still computes IR by finite-difference dipoles, spending `6N`
+extra SCFs to get there. On a 4-atom test that made the **IR step** ≈35× dearer
+(+81.5 s vs +2.3 s on top of the same Hessian) — the whole run is not 35× slower,
+since the Hessian dominates either way. The physics is the same: the two
+dipole-derivative tensors agree to **0.02%**, and the analytic path reproduces
+Q-Chem's NH₃ intensities to **0.02 km/mol**.
+
+So `doctor` reports it as a degraded capability with its own fix line, and the env
+still audits OK:
+
+```
+==  molbuilder-pySCF  ==
+    state:   present
+    verify:  OK
+    audit:   OK (9/10 ok; 1 optional unavailable -- gated features will be disabled)
+        [pip-source-optional] pyscf-properties @ git+https://github.com/pyscf/properties.git  (installed: (default index))
+          why: pyscf.prop.infrared -- the analytic dipole derivative -- was written 2022-02-22 …
+    enable:  bash scripts/install-env.sh repair molbuilder-pySCF --include-optional
+```
+
+Two independent surfaces catch it, deliberately: the **audit** compares provenance
+on disk, while `verify_argv` imports the module and checks the **callable** — the
+capability the deck actually needs, rather than a proxy for it. On a healthy env
+the verify line reads:
+
+```
+pyscf 2.13.1, geometric 1.1.1, prop: polarizability OK
+  IR: analytic dmu/dR available (pyscf.prop.infrared)
+```
+
+and on one without the module, the same `prop: polarizability OK` followed by a
+warning naming the consequence and the repair command. The probe checks a
+**function, never a version** — a version comparison would pass on an env that
+lacks the feature.
+
+`polarizability` is gated differently — it is **required**, because Raman
+activities have no fallback path at all.
 
 ## 4. The `molbuilder` command
 

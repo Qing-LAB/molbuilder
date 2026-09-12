@@ -572,6 +572,147 @@ class BuildSpec:
 
 
 # --------------------------------------------------------------------- #
+#  Pip package record                                                    #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class PipPackage:
+    """One pip dependency, with **where it comes from** recorded.
+
+    A bare spec string conflates three things that happen to coincide for
+    a package installed from the default index:
+
+    ===============  ==========================================
+    identity         what ``*.dist-info`` records -- the name the
+                     audit must match on
+    source           which index or URL supplies it
+    staleness        whether comparing versions can tell you the
+                     installed copy is the declared one
+    ===============  ==========================================
+
+    They coincide for PyPI packages, which is why the registry got away
+    with plain strings for a long time.  ``pyscf-properties`` is the
+    first that splits them: the identity is ``pyscf-properties``, the
+    source is a git URL, and the version does NOT identify the content
+    (master and the only sdist both declare ``0.1.0``, so ``pip`` reads
+    an install request as already satisfied and does nothing).
+
+    Separating the three lets the three consumers each do their job:
+
+    * ``install`` builds the command line from :meth:`spec` and
+      :meth:`install_flags`;
+    * ``doctor``'s audit matches on :attr:`name` alone, so a URL-sourced
+      package is not permanently "pip-missing";
+    * ``repair`` reinstalls from the RECORDED source with the right
+      flags, instead of issuing a plain install that silently no-ops.
+
+    Attributes
+    ----------
+    name
+        PEP 503 project name, exactly as ``dist-info`` records it.  The
+        audit's only matching key.
+    source
+        ``None`` for the default index.  Otherwise a pip-installable URL
+        (``git+https://...``), rendered as a PEP 508 direct reference so
+        the project name stays in the spec.
+    extras
+        Bracketed extras, e.g. ``"[ctk]"``.  Kept separate from the name
+        so the audit never has to strip them back off.
+    optional
+        The env is usable without it.  Absence audits as informational,
+        AND a failure to install does not abort the install -- optional
+        packages are installed in their own step so one failing wheel
+        cannot take the env down with it.
+    force
+        The installed version does not identify the content, so an
+        install must be forced rather than skipped as satisfied.
+        Implies ``--force-reinstall --no-deps``; ``--no-deps`` keeps the
+        force from cascading into the dependency tree.
+    fallback_to_index
+        When ``source`` is unreachable, install the plain indexed build
+        instead of failing.  For a package whose SOURCE carries an
+        optional extra but whose BASE is required: the fallback keeps
+        the required half while the extra degrades.
+    reason
+        One line saying why the source is unusual.  ``doctor`` prints it,
+        so an operator looking at a surprising provenance finds the
+        answer next to it rather than in a commit message.
+    """
+
+    name: str
+    source: Optional[str] = None
+    extras: str = ""
+    optional: bool = False
+    force: bool = False
+    fallback_to_index: bool = False
+    reason: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.name or any(c.isspace() for c in self.name):
+            raise ValueError(
+                f"PipPackage name must be a bare project name; got "
+                f"{self.name!r}")
+        if "@" in self.name or "[" in self.name:
+            raise ValueError(
+                f"PipPackage {self.name!r}: put a URL in `source` and "
+                f"extras in `extras` -- `name` is the dist-info identity "
+                f"and the audit's only matching key")
+        if self.extras and not (self.extras.startswith("[")
+                                and self.extras.endswith("]")):
+            raise ValueError(
+                f"PipPackage {self.name!r}: extras must be bracketed, "
+                f"e.g. '[ctk]'; got {self.extras!r}")
+        if self.fallback_to_index and self.source is None:
+            raise ValueError(
+                f"PipPackage {self.name!r}: fallback_to_index is "
+                f"meaningless without a `source` to fall back FROM")
+
+    @property
+    def requirement(self) -> str:
+        """``name[extras]`` -- the identity as pip spells it."""
+        return f"{self.name}{self.extras}"
+
+    def spec(self) -> str:
+        """The argument to hand ``pip install``.
+
+        A direct reference keeps the project name in front of the URL
+        (PEP 508 ``name @ url``) so nothing downstream has to parse a
+        URL to learn what package it is.
+        """
+        if self.source is None:
+            return self.requirement
+        return f"{self.requirement} @ {self.source}"
+
+    def index_spec(self) -> str:
+        """The same package, from the default index."""
+        return self.requirement
+
+    def install_flags(self) -> Tuple[str, ...]:
+        """Extra ``pip install`` flags this package needs.
+
+        ``--no-deps`` rides with ``--force-reinstall`` and is NOT
+        optional here: in a molbuilder env the dependencies come from
+        CONDA (``pyscf``, ``numpy``, ``scipy``, ``h5py``), and a bare
+        ``--force-reinstall`` would reinstall those over the conda
+        builds with pip wheels -- corrupting the env to fix one package.
+        The cost of the pairing is that a forced package does not pull
+        its own dependencies; that is correct when conda supplies them,
+        and ``verify_argv`` is what catches it if one ever does not.
+        """
+        return ("--force-reinstall", "--no-deps") if self.force else ()
+
+    def is_plain(self) -> bool:
+        """True when nothing about this package needs its own step.
+
+        Plain packages batch into one ``pip install`` -- the behaviour
+        (and the speed) the registry had before sources existed.
+        """
+        return (self.source is None and not self.force
+                and not self.optional)
+
+
+# --------------------------------------------------------------------- #
 #  Recipe dataclass                                                      #
 # --------------------------------------------------------------------- #
 
@@ -603,11 +744,17 @@ class Recipe:
         Build strings + version pins must match exactly what the
         README documents -- the consistency test catches drift.
     pip_packages
-        Pip-installable packages applied AFTER ``conda create``
-        succeeds, via ``conda run -n <env> python -m pip install ...``.
-        Using ``python -m pip`` (not ``pip`` alone) sidesteps a
-        common Ubuntu pitfall where ``~/.local/bin/pip`` precedes the
-        env's pip on PATH.
+        :class:`PipPackage` records -- NOT spec strings -- applied
+        AFTER ``conda create`` succeeds, via ``conda run -n <env>
+        python -m pip install ...``.  Using ``python -m pip`` (not
+        ``pip`` alone) sidesteps a common Ubuntu pitfall where
+        ``~/.local/bin/pip`` precedes the env's pip on PATH.
+
+        The record carries WHERE the package comes from, which the
+        audit and repair both need and a string cannot say; see
+        :class:`PipPackage` for why identity, source and staleness
+        have to be separate fields.  Plain records batch into one
+        install call; the rest each get their own step.
     extra_steps
         Arbitrary shell-command argv tuples to run AFTER pip installs
         but BEFORE the build_spec (if any).  Used for the playwright
@@ -646,18 +793,21 @@ class Recipe:
     description: str
     channels: Tuple[str, ...]
     conda_packages: Tuple[str, ...]
-    pip_packages: Tuple[str, ...] = ()
-    # Packages whose ABSENCE at audit time is informational rather than
-    # an error.  Use case: GPU-only deps like ``cupy-cuda13x[ctk]`` and
-    # ``gpu4pyscf-*`` -- the recipe install attempts them, but a no-GPU
-    # host (or one where the wheel fails to install) is still a usable
-    # CPU env.  Doctor reports them as "optional unavailable; GPU
-    # features disabled" instead of "FAILED".  Names should match
-    # entries in ``conda_packages`` / ``pip_packages`` (the install
-    # path still tries to install them; only the audit treats them
-    # leniently).
+    pip_packages: Tuple[PipPackage, ...] = ()
+    # Conda packages whose ABSENCE at audit time is informational rather
+    # than an error.  Names should match entries in ``conda_packages``
+    # (the install path still tries to install them; only the audit
+    # treats them leniently).
+    #
+    # PIP HAS NO SUCH LIST: optionality is a field on
+    # :class:`PipPackage`, because for pip it must govern the INSTALL as
+    # well as the audit.  The old ``optional_pip_packages`` only reached
+    # the audit -- every pip package went into one combined command, so
+    # a single failing wheel aborted the whole env install regardless of
+    # how optional the recipe said it was.  ``PipPackage.optional`` puts
+    # the package in its own non-fatal step, which is what the word
+    # promised all along.
     optional_conda_packages: Tuple[str, ...] = ()
-    optional_pip_packages: Tuple[str, ...] = ()
     extra_steps: Tuple[Tuple[str, ...], ...] = ()
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
@@ -690,6 +840,13 @@ class Recipe:
                 raise TypeError(
                     f"Recipe {self.name!r}: every extra_steps argument must "
                     f"be a str; got {step!r}")
+        for pkg in self.pip_packages:
+            if not isinstance(pkg, PipPackage):
+                raise TypeError(
+                    f"Recipe {self.name!r}: pip_packages takes PipPackage "
+                    f"records, not bare strings -- got {pkg!r}.  The record "
+                    f"carries the SOURCE, which the audit and repair both "
+                    f"need; a string only says what, never from where")
 
 
 # --------------------------------------------------------------------- #
@@ -754,7 +911,8 @@ _HOST = Recipe(
         # version we control.
         "git",
     ),
-    pip_packages=("PeptideBuilder", "pubchempy"),
+    pip_packages=(PipPackage("PeptideBuilder"),
+                  PipPackage("pubchempy")),
     verify_argv=("python", "-c",
                  "import ase, sisl, rdkit, flask, click, plotly; "
                  "print('host env OK')"),
@@ -790,24 +948,84 @@ _PYSCF = Recipe(
     # these the ``use_gpu`` form toggle is a no-op (the runtime probe
     # in molbuilder/runtime_info.py would land in its CPU-fallback
     # branch on every run).
+    # WHERE EACH PIP PACKAGE COMES FROM -- see docs/ops/installation.md
+    # § 3.1 for the pyscf-properties account in full.
     pip_packages=(
-        "pyscf-properties",
-        f"cupy-{_CUDA_WHEEL_TAG}[ctk]",
-        f"gpu4pyscf-{_CUDA_WHEEL_TAG}",
+        PipPackage(
+            "pyscf-properties",
+            # NOT PINNED TO A SHA: pyscf/prop/infrared has had four
+            # commits ever, the last in February 2022.  The upstream is
+            # cold, so a pin would buy nothing and would have to be
+            # chased by hand -- and pip records the resolved commit in
+            # the installed direct_url.json, which is what the audit
+            # reads, so what landed stays auditable without one.
+            source="git+https://github.com/pyscf/properties.git",
+            # The installed version cannot tell the two trees apart:
+            # master and the only sdist BOTH declare 0.1.0, so a plain
+            # install reads as already satisfied and does nothing
+            # (measured 2026-09-11 -- the tree stayed PyPI's and
+            # ``infrared`` stayed absent).
+            force=True,
+            # ``polarizability`` (required -- Raman has no fallback path)
+            # is byte-identical in the sdist, so an unreachable GitHub
+            # must NOT cost us the env.  Falling back to the index keeps
+            # Raman; only the analytic-IR speed-up degrades, and
+            # ``verify_argv`` below says so in words.
+            fallback_to_index=True,
+            reason=("pyscf.prop.infrared -- the analytic dipole "
+                    "derivative -- was written 2022-02-22, eleven months "
+                    "after the only PyPI release (0.1.0, 2021-03-15), and "
+                    "has never been released.  Without it IR falls back "
+                    "to finite-difference dipoles: same intensities, 6N "
+                    "extra SCFs per run."),
+        ),
+        PipPackage(f"cupy-{_CUDA_WHEEL_TAG}", extras="[ctk]", optional=True,
+                   reason="GPU only; the env is a full CPU env without it"),
+        PipPackage(f"gpu4pyscf-{_CUDA_WHEEL_TAG}", optional=True,
+                   reason="GPU only; use_gpu=True is a no-op without it"),
     ),
-    # cupy + gpu4pyscf are GPU-only.  On a no-GPU host (or when the wheel
-    # fails to install for any reason) the env is still fully usable for
-    # CPU PySCF -- only the ``use_gpu=True`` form toggle becomes a no-op.
-    # Doctor marks these as "optional unavailable" rather than "FAILED".
-    optional_pip_packages=(
-        f"cupy-{_CUDA_WHEEL_TAG}[ctk]",
-        f"gpu4pyscf-{_CUDA_WHEEL_TAG}",
-    ),
+    # THE SELF-TEST PROBES FUNCTIONS, NOT VERSIONS -- neither prop module
+    # the vibration deck reaches for is discoverable from a version string
+    # (see the pyscf-properties record above: master and the PyPI sdist
+    # both declare 0.1.0).  The two are gated DIFFERENTLY, on purpose:
+    #
+    #   polarizability -> REQUIRED.  Raman activities have no fallback;
+    #                     without it ``compute_raman`` cannot run at all.
+    #   infrared       -> OPTIONAL.  It makes analytic dmu/dR available,
+    #                     which costs ~14% on top of the Hessian instead
+    #                     of the 6N extra SCFs the finite-difference path
+    #                     spends.  When it is absent the deck still
+    #                     computes IR -- the SAME intensities, measured
+    #                     agreement 0.02% -- just slowly.
+    #
+    # So a missing ``infrared`` WARNS and passes: an env without it is
+    # degraded, not broken, and refusing to install over a cost
+    # regression would be a worse answer than saying so out loud.
+    #
+    # This probe and the package audit are deliberately INDEPENDENT and
+    # not redundant.  The audit compares PROVENANCE (which tree is on
+    # disk, from direct_url.json); this imports the module and checks
+    # the CALLABLE -- the capability the deck actually needs.  A tree
+    # from the right repository that nevertheless cannot be imported
+    # passes the audit and fails here, which is the right way round.
     verify_argv=("python", "-c",
                  "import pyscf, geometric; "
+                 "from pyscf.prop import polarizability; "
+                 "import importlib, importlib.util as _u; "
+                 "ir = (importlib.import_module('pyscf.prop.infrared') "
+                 "if _u.find_spec('pyscf.prop.infrared') else None); "
+                 "ok = all(callable(getattr(getattr(ir, m, None), a, None)) "
+                 "for m, a in (('rks', 'Infrared'), ('rhf', 'kernel_dipderiv'))); "
                  "print(f'pyscf {pyscf.__version__}, "
-                 "geometric {geometric.__version__}')"),
-    verify_expect_contains="pyscf ",
+                 "geometric {geometric.__version__}, prop: polarizability OK'); "
+                 "print('  IR: analytic dmu/dR available "
+                 "(pyscf.prop.infrared)' if ok else "
+                 "'  IR: WARNING -- pyscf.prop.infrared missing; the deck "
+                 "falls back to finite-difference dipoles (6N extra SCFs "
+                 "per run, same intensities).  Repair: bash "
+                 "scripts/install-env.sh repair molbuilder-pySCF "
+                 "--include-optional')"),
+    verify_expect_contains="prop: polarizability OK",
 )
 
 
