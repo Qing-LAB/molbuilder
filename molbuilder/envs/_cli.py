@@ -466,8 +466,16 @@ def cmd_repair(name: str, include_optional: bool,
         ]
         for ch in recipe.channels:
             argv.extend(["-c", ch])
-        rc, _ = _builds.run_streaming(argv, sink=sys.stderr, timeout=1800)
-        if rc == 0:
+        # THE SAME RUNNER AS PIP.  conda has no per-package record yet --
+        # its packages are still spec strings -- so this step is built
+        # here rather than by the registry; but it is RUN through the one
+        # door, so its outcome is decided by the same rule and reported
+        # in the same words.
+        done = _install.run_step(
+            _install.InstallStep(label="conda install", argv=tuple(argv)),
+            sink=sys.stderr, timeout=1800)
+        rc = done.returncode
+        if done.outcome.is_success:
             successes.extend(to_install_conda)
             click.echo("[repair]   conda install: OK", err=True)
         else:

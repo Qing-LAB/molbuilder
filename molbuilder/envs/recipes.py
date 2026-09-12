@@ -840,6 +840,32 @@ class Recipe:
                 raise TypeError(
                     f"Recipe {self.name!r}: every extra_steps argument must "
                     f"be a str; got {step!r}")
+        # AN OPTIONAL CONDA PACKAGE MUST BE ONE OF THE PACKAGES.
+        #
+        # conda optionality is expressed by membership in a SECOND list,
+        # matched by name -- so a name that matches nothing is not an
+        # error, it is a package that quietly stays required.  The audit
+        # would then report it missing and `repair` would try to install
+        # it without `--include-optional`, and nothing would say why.
+        #
+        # (pip has no such hazard: optionality is a field on the record,
+        # so it cannot fail to refer to anything.  The check exists
+        # because the two halves are still modelled differently.)
+        if self.optional_conda_packages:
+            from .doctor import _parse_conda_spec as _pcs
+            declared = {
+                _pcs(spec)[0] for spec in self.conda_packages
+                if _pcs(spec) is not None
+            }
+            for spec in self.optional_conda_packages:
+                parsed = _pcs(spec)
+                if parsed is not None and parsed[0] not in declared:
+                    raise ValueError(
+                        f"Recipe {self.name!r}: optional_conda_packages "
+                        f"names {parsed[0]!r}, which is not in "
+                        f"conda_packages -- an optional entry that "
+                        f"matches nothing silently leaves the package "
+                        f"REQUIRED")
         for pkg in self.pip_packages:
             if not isinstance(pkg, PipPackage):
                 raise TypeError(

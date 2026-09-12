@@ -54,10 +54,11 @@ class PackageAuditIssue:
     for a pip package with a recorded source that is the direct
     reference, not the bare name, so ``repair`` fetches from where the
     recipe says rather than from whatever the default index offers.
-    ``install_flags`` carries the rest of that instruction: a package
-    whose version cannot prove it is current needs forcing, and a
-    ``repair`` that issued a plain install would report success while
-    changing nothing.
+    It does NOT carry the install instruction.  It used to -- an
+    ``install_flags`` copied off the record -- back when ``repair`` built
+    its own command line.  Repair maps the issue to its ``PipPackage``
+    by :attr:`name` now and reads the record, so a second copy of the
+    instruction could only drift from the first.
     """
     kind: str
     spec: str        # what to hand an installer to fix this
@@ -68,7 +69,6 @@ class PackageAuditIssue:
     #: flattened copy of the instruction.  Empty for conda issues, which
     #: are still repaired from their spec string.
     name: str = ""
-    install_flags: Tuple[str, ...] = ()
     reason: Optional[str] = None   # why the source is unusual, if it is
 
 
@@ -392,8 +392,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                     if pkg.optional else "pip-missing")
             issues.append(PackageAuditIssue(
                 kind=kind, name=pkg.name, spec=pkg.spec(),
-                found="(not found)",
-                install_flags=pkg.install_flags(), reason=pkg.reason,
+                found="(not found)", reason=pkg.reason,
             ))
             continue
         if pkg.source is not None:
@@ -410,8 +409,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                           if pkg.fallback_to_index or pkg.optional
                           else "pip-source"),
                     name=pkg.name, spec=pkg.spec(),
-                    found=(got or "(default index)"),
-                    install_flags=pkg.install_flags(), reason=pkg.reason,
+                    found=(got or "(default index)"), reason=pkg.reason,
                 ))
     return PackageAudit(
         checked=True,
