@@ -35,7 +35,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..diagnostics import DEFAULT_ENV_NAMES
 from typing import Mapping, Optional, Tuple

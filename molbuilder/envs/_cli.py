@@ -12,7 +12,6 @@ all the rendering lives next to the recipe / doctor / install code.
 from __future__ import annotations
 
 import contextlib
-import os
 import shlex
 import subprocess
 import sys
@@ -699,7 +698,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
     click.echo(f"[clean]   artifact root: {paths.root}", err=True)
     if not paths.root.exists():
         click.echo(
-            f"[clean] artifact root does not exist -- nothing to clean.",
+            "[clean] artifact root does not exist -- nothing to clean.",
             err=True,
         )
         return
@@ -1119,7 +1118,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 _builds.preflight(
                     recipe.build_spec,
                     probe,
-                    [p.spec for p in recipe.conda_packages],
+                    list(recipe.conda_specs),
                     env_prefix=disk_path,
                     check_network=False,  # dry-run avoids network ls-remote
                 )
@@ -1133,8 +1132,8 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     if rebuild:
         click.echo(f"  --rebuild={rebuild}")
     if clean:
-        click.echo(f"  --clean (REMOVE conda env + WIPE artifact dir, "
-                   f"then fresh install)")
+        click.echo("  --clean (REMOVE conda env + WIPE artifact dir, "
+                   "then fresh install)")
 
     # === Step 0: probe + diagnose conda env state up front ===
     # Resolve the conda env's state BEFORE any subprocess work runs.
@@ -1255,12 +1254,12 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             click.echo("  --clean: ENV + ARTIFACTS WILL BE WIPED")
             click.echo("=" * 64)
             if env_exists_pre_clean:
-                click.echo(f"  Conda env to REMOVE:")
+                click.echo("  Conda env to REMOVE:")
                 click.echo(f"    {effective}")
                 if env_prefix:
                     click.echo(f"      (prefix: {env_prefix})")
             if artifact_root:
-                click.echo(f"  Artifact directory to DELETE:")
+                click.echo("  Artifact directory to DELETE:")
                 click.echo(f"    {artifact_root}")
                 try:
                     for entry in sorted(artifact_root.iterdir()):
@@ -1294,7 +1293,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 except subprocess.CalledProcessError as exc:
                     click.echo(f"FAILED to remove conda env: {exc}",
                                err=True)
-                    click.echo(f"  (you may need to run this manually:",
+                    click.echo("  (you may need to run this manually:",
                                err=True)
                     click.echo(
                         f"   conda env remove -n {effective} -y)",
@@ -1430,7 +1429,14 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         for step in result.steps:
             if step.label.startswith("build:"):
                 continue
-            click.echo(f"-- {step.label} (rc={step.returncode})")
+            # The OUTCOME, not just the exit code: a step that never
+            # dispatched has no rc, and "rc=None" told the reader
+            # nothing about whether it was skipped or refused.
+            verdict = (step.outcome.value if step.outcome is not None
+                       else "not run")
+            rc = ("" if step.returncode is None
+                  else f", rc={step.returncode}")
+            click.echo(f"-- {step.label} ({verdict}{rc})")
             if step.output.strip():
                 tail = "\n".join(
                     "    " + ln

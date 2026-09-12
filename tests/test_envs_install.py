@@ -184,6 +184,12 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     assert result.succeeded is True
     create = next(s for s in result.steps if s.label == "conda create")
     assert "already exists" in create.output
+    # SKIPPED, and claiming no exit code.  It used to record
+    # `returncode=0`, which made "I did not do this" indistinguishable
+    # from "I did this and it worked" to every reader of the result.
+    assert create.outcome is install.Outcome.SKIPPED
+    assert create.returncode is None
+    assert create.outcome.is_success is True
     # The synthetic recipe has pip_packages + extra_steps + verify.  Three
     # streaming calls (pip + extra + verify), zero for the skipped create.
     assert len(calls) == 3, (
@@ -307,6 +313,85 @@ def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
     )
     # Two streaming calls expected: conda create + verify.
     assert len(calls) >= 1, "create step must actually run"
+
+
+# A recipe whose only pip package is OPTIONAL, so the failure below is
+# the one `optional` exists to survive.
+_OPTIONAL_PIP_RECIPE = Recipe(
+    name="synth-optional-env",
+    category=None,
+    description="Synthetic recipe: one optional pip package.",
+    channels=("conda-forge",),
+    conda_packages=("python=3.12", "pip"),
+    pip_packages=(
+        PipPackage("some-gpu-wheel", optional=True,
+                   reason="GPU only; the env is a full CPU env without it"),
+    ),
+    verify_argv=("some-tool", "--version"),
+    verify_expect_contains="Version",
+)
+
+
+def test_optional_package_failure_degrades_without_stopping(monkeypatch):
+    """An optional package that cannot be installed must leave the env
+    DEGRADED and the install SUCCEEDING, with every later phase still run.
+
+    This is the promise `PipPackage.optional` makes, and it has been
+    broken in production once already: the runner's launch-failure branch
+    skipped the optional check and aborted an install it should have
+    survived.  Nothing caught that, because every test here drove either
+    a clean run or a required failure -- a mutation making DEGRADED stop
+    the install passed the whole suite.
+    """
+    _bind()
+    monkeypatch.setattr(install.subprocess, "run",
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        _stream_stub_factory(
+                            (0, "solving..."),          # conda create
+                            (1, "No matching distribution found"),
+                            (0, "Version 1.0"),         # verify STILL RUNS
+                        ))
+    result = install.run_install(_OPTIONAL_PIP_RECIPE)
+
+    assert result.succeeded is True, (
+        "one unavailable optional wheel must not take the env down")
+    pip_step = next(s for s in result.steps
+                    if s.label == "pip install some-gpu-wheel")
+    assert pip_step.outcome is install.Outcome.DEGRADED
+    assert pip_step.outcome.stops_the_install is False
+    # DEGRADED is precisely where the two predicates differ: the env did
+    # NOT get what this step was for, and the install still stands.
+    assert pip_step.outcome.is_success is False
+    verify = next(s for s in result.steps if s.label == "verify")
+    assert verify.outcome is install.Outcome.OK, (
+        "the phase after a degraded step must still run")
+
+
+def test_launch_failure_of_optional_step_also_degrades(monkeypatch):
+    """The specific regression: `rc is None` -- the process never
+    launched -- must not be treated as a special case that forgets
+    `fatal`."""
+    _bind()
+    monkeypatch.setattr(install.subprocess, "run",
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        _stream_stub_factory(
+                            (0, "solving..."),
+                            (None, ""),                 # never launched
+                            (0, "Version 1.0"),
+                        ))
+    result = install.run_install(_OPTIONAL_PIP_RECIPE)
+    assert result.succeeded is True
+    pip_step = next(s for s in result.steps
+                    if s.label == "pip install some-gpu-wheel")
+    assert pip_step.outcome is install.Outcome.DEGRADED
+    assert pip_step.returncode is None
+    assert "failed to launch" in pip_step.output
 
 
 def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
@@ -689,6 +774,36 @@ def _run_install_env_sh(args, *, tmp_path, host_env_present=True,
         env=env, capture_output=True, text=True,
         cwd=str(cwd) if cwd is not None else None,
     )
+
+
+def test_shim_bootstrap_dry_run_refuses_to_create_the_host_env(tmp_path):
+    """``--dry-run`` must not perform the one install this script owns.
+
+    The shim creates the host env before handing off, and the Python
+    layer is what honours --dry-run -- so on a fresh machine the flag
+    that promises "do not install" used to trigger a multi-GB conda
+    create and only THEN print a plan.  Planning genuinely needs the env
+    (the planner lives in it), so the answer is to say so, not to
+    install.
+    """
+    r = _run_install_env_sh(["bootstrap", "--dry-run", "--yes"],
+                            tmp_path=tmp_path, host_env_present=False)
+    assert r.returncode == 2, (
+        f"expected a refusal, got rc={r.returncode}\n{r.stdout}\n{r.stderr}")
+    assert "[stub-create]" not in (r.stdout + r.stderr), (
+        "--dry-run created the host env anyway")
+    assert "bootstrap --yes" in r.stderr, (
+        "the refusal must name the command that makes the dry run work")
+
+
+def test_shim_bootstrap_creates_host_env_without_dry_run(tmp_path):
+    """The control for the test above: the same invocation WITHOUT
+    --dry-run still auto-creates, which is bootstrap's whole job."""
+    r = _run_install_env_sh(["bootstrap", "--yes"],
+                            tmp_path=tmp_path, host_env_present=False)
+    assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+    assert "[stub-create]" in (r.stdout + r.stderr), (
+        "bootstrap must create the host env when it is missing")
 
 
 def test_shim_forwards_args_verbatim(tmp_path):

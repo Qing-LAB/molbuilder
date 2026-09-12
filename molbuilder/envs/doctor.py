@@ -18,8 +18,6 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
-import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -316,23 +314,21 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     subprocess.  Source of truth is the on-disk metadata.
     """
     issues: List[PackageAuditIssue] = []
-    conda_specs = [p.spec for p in recipe.conda_packages]
+    conda_specs = list(recipe.conda_specs)
     pip_specs = list(recipe.pip_packages)
     # Build name-sets for optional packages so we can classify
     # missing ones as info-only (kind suffixed with ``-optional``).
     # Optional packages typically gate a non-default feature (GPU,
     # OAuth provider, etc.) -- the env still functions without them.
     # Optionality is a field on the package now, for both kinds -- no
-    # second list to match names against.
+    # second list to match names against.  Conda still needs a name-SET
+    # because its specs must be parsed before they can be matched; the
+    # pip loop below reads `pkg.optional` off the record where it stands,
+    # which is why only one of these exists.
     optional_conda = {
         _parse_conda_spec(p.spec)[0]
         for p in recipe.conda_packages
         if p.optional and _parse_conda_spec(p.spec) is not None
-    }
-    # Optionality for pip lives on the record, not in a parallel list.
-    optional_pip = {
-        _normalize_pip_name(p.name) for p in recipe.pip_packages
-        if p.optional
     }
     if not env_prefix.is_dir():
         return PackageAudit(
@@ -447,15 +443,27 @@ def _run_verify(
     ``None`` when the recipe has no verify command (skipped, neither
     ok nor not ok).  Captured output is trimmed to 2 KiB to keep the
     text report compact.
+
+    Whether the output counts as a pass is NOT decided here -- it is
+    decided by the step's own accept rule, the same one `install` used.
     """
-    if not recipe.verify_argv:
+    # THE INSTALLER'S STEP, THE INSTALLER'S RUNNER.  This function used
+    # to build the verify command itself, bypass ``conda run`` itself,
+    # and re-implement the accept rule (exit code gated by the recipe,
+    # then the substring) -- a fourth copy of a procedure that already
+    # existed, and one that had already drifted to a different output
+    # limit.  `verify_step_for` owns what verifying a recipe MEANS and
+    # `run_step` owns how a command is dispatched, so asking them is the
+    # only way this report can agree with what `install` just did.
+    #
+    # Imported inside the function because install.py imports
+    # `_effective_name` from this module at import time; the cycle is
+    # deliberate and this is the side that defers.
+    from .install import run_step, verify_step_for
+    step = verify_step_for(recipe, conda_binary, env_name)
+    if step is None:
         return None, ""
-    # Bypass ``conda run`` -- on mamba 2.x it generates a temp shell
-    # stub (``/tmp/mamba*``) that uses ``exec --`` which bash rejects
-    # with ``exec: --: invalid option``.  Use the same wrapper-script
-    # bypass as install.py's _bypass_conda_run: resolve env prefix,
-    # set conda activate's env vars manually, source activate.d, exec.
-    from .install import _env_prefix, _bypass_conda_run
+    from .install import _env_prefix
     prefix = _env_prefix(env_name, conda_binary)
     if prefix is None:
         return False, (
@@ -463,32 +471,12 @@ def _run_verify(
             f"Run `{conda_binary} env list` to confirm the env exists; "
             f"if it's there but we can't find it, file an issue."
         )
-    raw_argv = (
-        conda_binary, "run", "-n", env_name,
-        "--no-capture-output", *recipe.verify_argv,
-    )
-    try:
-        new_argv, _ = _bypass_conda_run(raw_argv, prefix)
-    except ValueError:
-        new_argv = raw_argv
-    try:
-        cp = subprocess.run(
-            list(new_argv), capture_output=True, text=True, timeout=60,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        return False, f"verify failed to launch: {exc}"
-    combined = (cp.stdout or "") + (cp.stderr or "")
-    trimmed = combined[:2048]
-    # Exit-code check is gated by the recipe -- some binaries (tleap)
-    # legitimately exit non-zero even after a healthy start, in which
-    # case the substring check IS the verify.
-    if recipe.verify_ignore_exit_code:
-        ok = True
-    else:
-        ok = (cp.returncode == 0)
-    if ok and recipe.verify_expect_contains:
-        ok = recipe.verify_expect_contains in combined
-    return ok, trimmed
+    # `sink=None` keeps the output captured rather than streamed: a
+    # health report is read as a whole, not watched as it runs.
+    done = run_step(step, prefix=prefix, timeout=60)
+    # Trimmed tighter than the installer's excerpt on purpose -- this one
+    # is printed inside a per-env block in a report covering every env.
+    return bool(done.outcome.is_success), (done.output or "")[:2048]
 
 
 def report_all(

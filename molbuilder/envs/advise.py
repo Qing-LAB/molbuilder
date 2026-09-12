@@ -31,7 +31,6 @@ fields rather than raising, so the output is always something useful
 """
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass

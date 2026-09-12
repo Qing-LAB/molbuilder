@@ -296,7 +296,7 @@ def test_gap_7_installation_documents_siesta_version():
 
     pinned = set()
     for rec in BUILTIN_RECIPES:
-        for spec in (getattr(rec, "conda_packages", ()) or ()):
+        for spec in rec.conda_specs:
             m = re.match(r"siesta=([0-9][0-9.]*)=", spec)
             if m:
                 pinned.add(m.group(1))

@@ -693,7 +693,7 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path):
     result = B.run_build_spec(
         spec, env_prefix,
         conda_binary="/bin/false",   # would fail if called
-        conda_packages=pkgs,
+        conda_specs=pkgs,
         skip_network_check=True,
     )
     assert result.succeeded is False

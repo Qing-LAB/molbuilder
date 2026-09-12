@@ -8,13 +8,11 @@ plugging a fake conda binary into capabilities and patching
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
 
 import pytest
 
-from molbuilder import envs
 from molbuilder.diagnostics import Capabilities, set_capabilities
-from molbuilder.envs import doctor
+from molbuilder.envs import builds as _builds, doctor, install as _install
 from molbuilder.envs.recipes import BUILTIN_RECIPES, PipPackage, Recipe
 
 
@@ -68,119 +66,84 @@ def test_report_all_honours_envs_override():
     assert siesta.present is True
 
 
-def test_report_all_skip_verify_does_not_call_subprocess(monkeypatch):
+def test_report_all_skip_verify_dispatches_nothing(monkeypatch):
     _bind(conda_envs=("molbuilder-siesta",))
     called = []
-    monkeypatch.setattr(doctor.subprocess, "run",
-                        lambda *a, **kw: called.append(a) or
-                                         MagicMock(returncode=0,
-                                                   stdout="", stderr=""))
+    monkeypatch.setattr(_builds, "run_streaming",
+                        lambda *a, **kw: called.append(a) or (0, ""))
     doctor.report_all(run_verify=False)
     assert called == [], (
-        "run_verify=False must not invoke subprocess at all"
+        "run_verify=False must not dispatch anything at all"
     )
 
 
 # --------------------------------------------------------------------- #
-#  Verify command dispatch + exit-code semantics                         #
+#  Verify semantics                                                      #
 # --------------------------------------------------------------------- #
+#
+# The accept rule -- is this output a pass? -- lives in ONE place,
+# `InstallStep.accepts`, and both `install` and `doctor` ask it.  So it is
+# tested ONCE, here, as a table; five near-identical tests used to drive
+# the same rule through `report_all` with different stub outputs, back
+# when doctor carried its own copy of it.
+#
+# What still needs its own test is the WIRING: that doctor's verdict
+# really comes from the rule rather than from a local re-derivation.  One
+# case proves that, and it has to be the case where the rule and the
+# naive "rc == 0" answer DISAGREE -- otherwise a doctor that ignored the
+# rule entirely would still pass.
 
 
-def _stub_completed(stdout="", stderr="", returncode=0):
-    cp = MagicMock()
-    cp.stdout = stdout
-    cp.stderr = stderr
-    cp.returncode = returncode
-    return cp
-
-
-def test_verify_ok_when_returncode_zero_and_substring_matches(monkeypatch):
-    _bind(conda_envs=("molbuilder-siesta",))
-    # doctor.py now bypasses ``<mgr> run`` via install._bypass_conda_run
-    # (mamba 2.x ``exec --`` workaround); patch _env_prefix so the
-    # bypass code path runs.
-    import molbuilder.envs.install as _install
-    monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(
-        doctor.subprocess, "run",
-        lambda *a, **kw: _stub_completed(stdout="siesta 5.4.2",
-                                         returncode=0),
+@pytest.mark.parametrize("ignore_rc,expect,rc,output,accepted", [
+    # The ordinary rule: the exit code decides.
+    (False, None, 0, "anything", True),
+    (False, None, 1, "anything", False),
+    # An expected substring is an ADDITIONAL requirement, so a command
+    # that exits 0 while the thing we asked about is absent is a failure.
+    (False, "siesta", 0, "siesta 5.4.2", True),
+    (False, "siesta", 0, "unrelated text", False),
+    (False, "siesta", 1, "siesta 5.4.2", False),
+    # `ignore_exit_code` hands the verdict to the substring ENTIRELY --
+    # tleap exits 1 from a healthy start, so its banner is the signal.
+    (True, "Welcome to LEaP!", 1, "Welcome to LEaP!", True),
+    (True, "Welcome to LEaP!", 0, "no banner here", False),
+    # ...but it never extends to a process that did not run.  Ignoring an
+    # exit code is not ignoring a missing command.
+    (True, "Welcome to LEaP!", None, "", False),
+    (True, None, None, "", False),
+    (False, None, None, "", False),
+])
+def test_accept_rule(ignore_rc, expect, rc, output, accepted):
+    step = _install.InstallStep(
+        label="verify", argv=("true",),
+        ignore_exit_code=ignore_rc, expect_contains=expect,
     )
-    reports = doctor.report_all()
-    siesta = next(r for r in reports if r.recipe.category == "siesta")
-    assert siesta.verify_ok is True
+    assert step.accepts(rc, output) is accepted
 
 
-def test_verify_fails_when_returncode_nonzero(monkeypatch):
-    _bind(conda_envs=("molbuilder-siesta",))
-    import molbuilder.envs.install as _install
-    monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(
-        doctor.subprocess, "run",
-        lambda *a, **kw: _stub_completed(stdout="siesta 5.4.2",
-                                         returncode=1),
-    )
-    reports = doctor.report_all()
-    siesta = next(r for r in reports if r.recipe.category == "siesta")
-    assert siesta.verify_ok is False
-
-
-def test_verify_fails_when_substring_missing(monkeypatch):
-    _bind(conda_envs=("molbuilder-siesta",))
-    import molbuilder.envs.install as _install
-    monkeypatch.setattr(_install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(
-        doctor.subprocess, "run",
-        lambda *a, **kw: _stub_completed(stdout="unrelated text",
-                                         returncode=0),
-    )
-    reports = doctor.report_all()
-    siesta = next(r for r in reports if r.recipe.category == "siesta")
-    assert siesta.verify_ok is False
-
-
-def test_verify_ignore_exit_code_only_checks_substring(monkeypatch):
-    """The MDtools recipe sets verify_ignore_exit_code=True;
-    a non-zero exit must still report OK when the substring is
-    present (mirrors tleap's real behaviour)."""
+def test_doctor_verify_uses_the_accept_rule(monkeypatch):
+    """MDtools sets verify_ignore_exit_code=True, so a non-zero exit with
+    the banner present is a PASS.  A doctor that decided on the exit code
+    itself -- as it did while it carried its own copy of the rule --
+    reports False here."""
     _bind(conda_envs=("molbuilder-MDtools",))
-    import molbuilder.envs.install as _install
     monkeypatch.setattr(_install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(
-        doctor.subprocess, "run",
-        lambda *a, **kw: _stub_completed(stdout="Welcome to LEaP!",
-                                         returncode=1),
-    )
+    monkeypatch.setattr(_builds, "run_streaming",
+                        lambda *a, **kw: (1, "Welcome to LEaP!"))
     reports = doctor.report_all()
     md = next(r for r in reports if r.recipe.category == "mdtools")
     assert md.verify_ok is True
 
 
-def test_verify_ignore_exit_code_still_checks_substring(monkeypatch):
-    """If ignore_exit_code=True, substring is the ONLY signal;
-    missing substring must still fail."""
-    _bind(conda_envs=("molbuilder-MDtools",))
-    monkeypatch.setattr(
-        doctor.subprocess, "run",
-        lambda *a, **kw: _stub_completed(stdout="no banner here",
-                                         returncode=0),
-    )
-    reports = doctor.report_all()
-    md = next(r for r in reports if r.recipe.category == "mdtools")
-    assert md.verify_ok is False
-
-
 def test_verify_output_trimmed_to_2k(monkeypatch):
+    """The installer keeps 4 KiB; this report keeps 2 KiB, because it
+    prints one block per env and there are a dozen envs."""
     _bind(conda_envs=("molbuilder-siesta",))
-    monkeypatch.setattr(
-        doctor.subprocess, "run",
-        lambda *a, **kw: _stub_completed(stdout="x" * 10000,
-                                         returncode=0),
-    )
+    monkeypatch.setattr(_install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
+    monkeypatch.setattr(_builds, "run_streaming",
+                        lambda *a, **kw: (0, "x" * 10000))
     reports = doctor.report_all()
     siesta = next(r for r in reports if r.recipe.category == "siesta")
     assert len(siesta.verify_output) <= 2048

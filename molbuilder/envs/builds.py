@@ -36,7 +36,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, TextIO, Tuple
 
@@ -681,7 +681,7 @@ def check_repo_reachable(repo_url: str, *, timeout: int = 15
     return None
 
 
-def check_env_health(env_prefix: str, conda_packages: Sequence[str]
+def check_env_health(env_prefix: str, conda_specs: Sequence[str]
                      ) -> List[str]:
     """Sanity check the conda env after create: are key binaries present?
 
@@ -710,7 +710,7 @@ def check_env_health(env_prefix: str, conda_packages: Sequence[str]
         "gcc_linux-64": "x86_64-conda-linux-gnu-gcc",
         "gfortran_linux-64": "x86_64-conda-linux-gnu-gfortran",
     }
-    for spec in conda_packages:
+    for spec in conda_specs:
         # spec strings look like "gcc_linux-64=14"; we want the base name.
         base = spec.split("=")[0].split("::")[-1]
         binary = expected_bins.get(base)
@@ -790,7 +790,7 @@ def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
 
 
 def check_no_forbidden_packages(spec: BuildSpec,
-                                conda_packages: Sequence[str]
+                                conda_specs: Sequence[str]
                                 ) -> Optional[str]:
     """Return an error if any conda spec matches a forbidden pattern."""
     if not spec.forbidden_packages:
@@ -801,11 +801,11 @@ def check_no_forbidden_packages(spec: BuildSpec,
         # the SAT solver ends up installing (which would need a `conda
         # list` after install).
         pat_simple = pat.split("=")[0]
-        for pkg in conda_packages:
+        for pkg in conda_specs:
             pkg_simple = pkg.split("=")[0]
             if pkg_simple == pat_simple:
                 return (
-                    f"recipe declares conda_packages entry `{pkg}` but the "
+                    f"recipe declares conda_specs entry `{pkg}` but the "
                     f"build_spec.forbidden_packages list forbids `{pat}` "
                     f"to keep the env's OpenMP runtime single."
                 )
@@ -886,7 +886,7 @@ def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
 
 
 def preflight(spec: BuildSpec, probe: ToolchainProbe,
-              conda_packages: Sequence[str],
+              conda_specs: Sequence[str],
               env_prefix: Optional[str] = None,
               *,
               check_network: bool = True,
@@ -988,7 +988,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         )
     elif spec.cuda_required:
         info.append(
-            f"GPU compute cap    sm_80 (fallback; no GPU detected via nvidia-smi)"
+            "GPU compute cap    sm_80 (fallback; no GPU detected via nvidia-smi)"
         )
         warnings.append(
             "GPU compute capability not detected on this host.  Build will "
@@ -1030,7 +1030,7 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
             emit(executes)
 
     # Forbidden packages (MKL etc.)
-    forbidden = check_no_forbidden_packages(spec, conda_packages)
+    forbidden = check_no_forbidden_packages(spec, conda_specs)
     if forbidden:
         errors.append(forbidden)
 
@@ -1654,7 +1654,7 @@ def run_build_spec(spec: BuildSpec,
                    cuda_cc_override: Optional[str] = None,
                    jobs: Optional[int] = None,
                    rebuild: Optional[str] = None,
-                   conda_packages: Sequence[str] = (),
+                   conda_specs: Sequence[str] = (),
                    skip_preflight: bool = False,
                    skip_network_check: bool = False,
                    on_warnings: Optional[ConfirmWarningsCallback] = None,
@@ -1693,7 +1693,7 @@ def run_build_spec(spec: BuildSpec,
                             jobs=jobs)
     report = PreflightReport(errors=(), warnings=(), info=())
     if not skip_preflight:
-        report = preflight(spec, probe, conda_packages, env_prefix,
+        report = preflight(spec, probe, conda_specs, env_prefix,
                            check_network=not skip_network_check)
 
     if report.errors:
@@ -1904,9 +1904,9 @@ def format_install_summary(spec: BuildSpec, probe: ToolchainProbe,
             lines.append(f"     - {ver_act:<55s} {ver_cost}")
     lines.append("")
     lines.append(f"  Build concurrency:  -j{probe.jobs}")
-    lines.append(f"  Resume model:       sentinel-based (re-running is safe)")
-    lines.append(f"  Total est. time:    ~45 min on 8 cores, broadband")
-    lines.append(f"  Total est. disk:    ~12 GB under $CONDA_PREFIX")
+    lines.append("  Resume model:       sentinel-based (re-running is safe)")
+    lines.append("  Total est. time:    ~45 min on 8 cores, broadband")
+    lines.append("  Total est. disk:    ~12 GB under $CONDA_PREFIX")
     lines.append("")
     return "\n".join(lines)
 

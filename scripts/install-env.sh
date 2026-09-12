@@ -95,6 +95,10 @@ HOST_ENV="${MOLBUILDER_HOST_ENV:-molbuilder}"
 # interactive prompt the script owns skip when this is set.  CI /
 # HPC batch always passes --yes anyway.
 AUTO_YES=0
+# Set by the arg scan below.  The shim has to know about --dry-run for
+# ONE reason: the flag promises not to install, and the host-env create
+# this script owns happens BEFORE the Python layer that honours it.
+MB_DRY_RUN=0
 ORIGINAL_ARGS=("$@")
 
 # ---- usage ---------------------------------------------------------------
@@ -237,7 +241,9 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
       Install every conda-only recipe + run doctor.  Flags:
         --include-source-builds  also build GPU SIESTA (~45 min)
         --no-skip-existing       re-run install on envs already present
-        --dry-run                print the plan; do not install
+        --dry-run                print the plan; do not install.
+                                 Needs the host env to already exist --
+                                 the planner runs inside it.
         --yes / -y               non-interactive (CI / HPC batch)
         --gcc <X.Y>              shim-handled; see ``install`` above.
                                  Relevant here because
@@ -907,11 +913,13 @@ fi
 
 # Scan args for --yes / -y so the env-manager confirm in require_conda
 # (and any other prompt the shim owns) skips when CI / HPC batch is
-# already passing the flag.  We don't strip it -- it forwards verbatim
-# to the Python layer too.
+# already passing the flag, and for --dry-run so the bootstrap branch
+# below can refuse to install.  Neither is stripped -- both forward
+# verbatim to the Python layer too.
 for _a in "$@"; do
     case "${_a}" in
-        --yes|-y) AUTO_YES=1; break ;;
+        --yes|-y)  AUTO_YES=1 ;;
+        --dry-run) MB_DRY_RUN=1 ;;
     esac
 done
 
@@ -926,6 +934,29 @@ case "$1" in
         # verbatim to the Python ``cmd_bootstrap`` handler.
         require_conda
         if ! host_env_exists; then
+            # PLAN AND EXECUTE STAY SEPARATE, here too.  --dry-run says
+            # "do not install", and creating the host env is the single
+            # largest install in this flow (~2 min, several GB).  The
+            # plan cannot be rendered without it -- the planner IS the
+            # Python package that lives in that env -- so the honest
+            # answer is to say so and stop, not to perform the install
+            # the flag just forbade.
+            if [[ "${MB_DRY_RUN}" -eq 1 ]]; then
+                cat >&2 <<EOF
+Error: --dry-run cannot plan before the host env '${HOST_ENV}' exists.
+
+The plan is produced by \`molbuilder envs\` itself, which runs INSIDE that
+env -- so printing it would mean creating the env first, and --dry-run
+says not to install anything.
+
+Create the host env (that step installs the same fixed package list
+every time, and nothing else), then the dry run shows you the rest:
+
+    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes
+    bash ${SCRIPT_DIR}/install-env.sh bootstrap --dry-run
+EOF
+                exit 2
+            fi
             create_host_env
         fi
         dispatch "$@"
