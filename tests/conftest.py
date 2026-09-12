@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import shutil
 from pathlib import Path
 
@@ -264,6 +265,67 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
     return d
 
 
+#: The developer's REAL config directory, resolved once at import -- before
+#: any fixture redirects anything.  `config_dir()` is useless for this: it is
+#: what the redirects move.
+_REAL_CONFIG_DIR = pathlib.Path(
+    os.environ.get("MOLBUILDER_CONFIG_DIR")
+    or os.path.join(os.environ.get("XDG_CONFIG_HOME")
+                    or os.path.join(os.path.expanduser("~"), ".config"),
+                    "molbuilder"))
+
+
+def _config_fingerprint():
+    """Every file under the real config dir, by path and content hash."""
+    import hashlib
+    if not _REAL_CONFIG_DIR.is_dir():
+        return {}
+    out = {}
+    for f in sorted(_REAL_CONFIG_DIR.rglob("*")):
+        if f.is_file():
+            try:
+                out[str(f.relative_to(_REAL_CONFIG_DIR))] = hashlib.md5(
+                    f.read_bytes()).hexdigest()
+            except OSError:
+                out[str(f.relative_to(_REAL_CONFIG_DIR))] = "unreadable"
+    return out
+
+
+@pytest.fixture(scope="session", autouse=True)
+def the_suite_leaves_your_config_alone():
+    """**A canary, because isolation by construction is still a claim.**
+
+    The fixtures below point every door at a temporary directory, and the
+    reasoning for each is written where it lives.  This checks the OUTCOME:
+    the developer's real config directory is fingerprinted before the session
+    and again after, and a difference fails the run naming the files.
+
+    It exists because the construction argument was already believed once and
+    was wrong.  `test_choosing_a_machine_shows_what_a_prep_would_resolve`
+    wrote `molbuilder.json` into the real directory for weeks -- a whole-file
+    REPLACE -- while `config_root_is_never_the_developers` sat directly above
+    it in this file promising that no test may.  The promise was true of the
+    mechanism and false of the suite, and nothing measured the difference.
+
+    Session-scoped, so it costs two directory walks for the whole run.
+    """
+    before = _config_fingerprint()
+    yield
+    after = _config_fingerprint()
+    if before != after:
+        changed = sorted(set(before) ^ set(after)) or sorted(
+            k for k in before if before.get(k) != after.get(k))
+        raise AssertionError(
+            "THE SUITE WROTE INTO YOUR REAL CONFIG DIRECTORY.\n"
+            f"  {_REAL_CONFIG_DIR}\n"
+            f"  changed: {changed}\n"
+            "A test is reaching past the isolation in this file -- most "
+            "likely by setting HOME or XDG_CONFIG_HOME in a fixture of its "
+            "own (which runs after `config_root_is_never_the_developers`) "
+            "and pointing it somewhere real, or by writing an absolute path "
+            "it built itself.  Ask for `config_root` instead.")
+
+
 @pytest.fixture(autouse=True)
 def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     """**No test may read or write the real per-user config directory.**
@@ -302,6 +364,28 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     # [.../_xdg-config]" in an atomic-write test that lists its siblings.
     monkeypatch.setenv("XDG_CONFIG_HOME",
                        str(tmp_path_factory.mktemp("xdg-config")))
+
+    # AND THE LAST FALLBACK, so forgetting is not enough to leak
+    # (2026-09-11).  `config_dir()` resolves $MOLBUILDER_CONFIG_DIR, then
+    # $XDG_CONFIG_HOME/molbuilder, then ~/.config/molbuilder.  Clearing the
+    # first and redirecting the second left the THIRD pointing at the
+    # developer -- and 36 test files delete or override XDG in a fixture of
+    # their own, which runs after this one.  Every one of them also sets
+    # HOME today, so nothing leaked; but that is 36 places each remembering
+    # a rule, and the one that forgets writes into somebody's real
+    # ~/.config/molbuilder.  Which is not hypothetical: a test doing exactly
+    # that REPLACED this developer's `molbuilder.json` (retired 2026-09-11,
+    # `test_task_setup_prep_e2e.py`), and the value then travelled into
+    # `environment.json` through `jobset probe --write` and baked a
+    # nonexistent conda hook into every wrapper.
+    #
+    # Redirecting HOME closes the fallback so the guarantee holds by
+    # construction rather than by 36 correct habits.  A test that sets its
+    # own HOME still wins -- its fixture runs after this one -- which is the
+    # same deference the XDG line above keeps.
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))   # the Windows spelling
 
 
 @pytest.fixture(autouse=True)
