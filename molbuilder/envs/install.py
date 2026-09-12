@@ -428,6 +428,19 @@ def _rejection_output(step: InstallStep, rc: Optional[int],
     return out
 
 
+def conda_run_argv(conda: str, env_name: str, *cmd: str) -> Tuple[str, ...]:
+    """``<mgr> run -n <env> --no-capture-output <cmd...>`` -- the one spelling.
+
+    It was written out four times: `pip_argv`, `verify_step_for`, the planner's
+    extra-steps loop, and `_dispatch.run_in_env`.  Three of those are dispatched
+    through `run_step`, which rewrites the argv to dodge mamba 1.x's broken
+    ``run`` stub (see `_bypass_conda_run`); the fourth was not, so the one
+    spelling that never got the workaround was also the only one nobody could
+    see was missing it.
+    """
+    return (conda, "run", "-n", env_name, "--no-capture-output", *cmd)
+
+
 def pip_argv(conda: str, env_name: str, *specs: str,
              flags: Sequence[str] = ()) -> Tuple[str, ...]:
     """The one shape of a pip command dispatched into an env.
@@ -440,8 +453,8 @@ def pip_argv(conda: str, env_name: str, *specs: str,
     drifted: repair knew nothing about a package's alternatives, so a
     fix that taught the installer about fallbacks left repair behind.
     """
-    return (conda, "run", "-n", env_name, "--no-capture-output",
-            "python", "-m", "pip", "install", *flags, *specs)
+    return conda_run_argv(conda, env_name,
+                          "python", "-m", "pip", "install", *flags, *specs)
 
 
 def pip_step_for(pkg: PipPackage, conda: str, env_name: str) -> InstallStep:
@@ -561,8 +574,7 @@ def verify_step_for(recipe: Recipe, conda: str,
     return InstallStep(
         label="verify",
         role=StepRole.VERIFY,
-        argv=(conda, "run", "-n", env_name, "--no-capture-output",
-              *recipe.verify_argv),
+        argv=conda_run_argv(conda, env_name, *recipe.verify_argv),
         ignore_exit_code=recipe.verify_ignore_exit_code,
         expect_contains=recipe.verify_expect_contains,
     )
@@ -600,8 +612,7 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
 
     # Phase 3: extra dispatch-into-env steps.
     for extra in recipe.extra_steps:
-        argv = (conda, "run", "-n", env_name, "--no-capture-output",
-                *extra)
+        argv = conda_run_argv(conda, env_name, *extra)
         steps.append(InstallStep(label="extra", role=StepRole.EXTRA,
                                  argv=argv))
 
@@ -1293,6 +1304,7 @@ __all__ = [
     # (docs/ops/env-framework.md): a record becomes a step, one runner
     # runs it, one rule decides what became of it.
     "conda_argv",
+    "conda_run_argv",
     "create_step_for",
     "conda_step_for",
     "pip_argv",

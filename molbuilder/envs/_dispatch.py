@@ -27,6 +27,8 @@ import subprocess
 from typing import Sequence, Optional
 
 from ..diagnostics import get_capabilities
+# `install` owns the argv shape; this module is a thin dispatch layer on top.
+from .install import conda_run_argv
 
 
 def run_in_env(env_name: str,
@@ -53,9 +55,23 @@ def run_in_env(env_name: str,
             f"molbuilder.json (an absolute path), or install/activate "
             f"one before invoking molbuilder."
         )
-    full = [caps.conda_binary, "run", "-n", env_name,
-            "--no-capture-output", *argv]
-    return subprocess.run(full, **popen_kwargs)
+    # ONE SPELLING of the prefix, shared with the install path.
+    #
+    # KNOWN GAP, deliberately not closed here: the three install-path spellings
+    # are dispatched through `run_step`, which rewrites the argv to dodge mamba
+    # 1.x's broken ``run`` stub (``exec -- "$@"``, which bash rejects with
+    # ``exec: --: invalid option``).  This call site is not, so on a mamba-1.x
+    # host `run_tool("tleap", ...)` fails on a shell error about the wrapper
+    # rather than anything to do with AmberTools.
+    #
+    # The rewrite needs the env prefix, and `_env_prefix` costs up to four
+    # conda subprocesses -- too much to pay on every tool call, which is a hot
+    # path (once per structure build) where an install step is a once-per-env
+    # event.  Closing it properly means either caching the prefix on
+    # `Capabilities` or retrying on that specific stderr; both are more than a
+    # dispatch layer should decide.  Recorded rather than half-fixed.
+    full = conda_run_argv(caps.conda_binary, env_name, *argv)
+    return subprocess.run(list(full), **popen_kwargs)
 
 
 def run_tool(tool: str,
