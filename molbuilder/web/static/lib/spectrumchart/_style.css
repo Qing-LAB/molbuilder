@@ -25,6 +25,26 @@
     --spectrumchart-imaginary: #d98c7a;   /* not at rest (§ 6.4) */
     --spectrumchart-hovered:   #b9c8dc;   /* the mode a click would pick right now */
 
+    /* --- the mirror, and the rug ---
+       Two lanes, each tied to its own y-axis by COLOUR: with two axes and
+       two curves on one frame, colour is the only thing that says which
+       belongs to which, so the axis title, its ticks and its curve all
+       take the same value.  Chosen to read apart at low saturation rather
+       than to compete -- the selection colour still has to win over both. */
+    --spectrumchart-lane-up:   #7aa6d2;   /* upper half-plane (Raman today) */
+    --spectrumchart-lane-down: #d2a06a;   /* lower half-plane (IR today)    */
+
+    /* The rug's four classes.  These are the ONLY place a mode active in
+       neither channel is visible, so "silent" must be legible rather than
+       hidden -- dim enough to recede, bright enough to count.  "partial"
+       means a channel was never computed, which is a different statement
+       from silence and must not look like it. */
+    --spectrumchart-rug-both:    #9e86d4;
+    --spectrumchart-rug-ir:      #d2a06a;
+    --spectrumchart-rug-raman:   #7aa6d2;
+    --spectrumchart-rug-silent:  #646b77;
+    --spectrumchart-rug-partial: #3f4653;
+
     --spectrumchart-hairline:  1px;
     --spectrumchart-radius:    6px;
     --spectrumchart-pad:       8px;

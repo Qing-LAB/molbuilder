@@ -113,19 +113,44 @@ plain for the right column. */
 .results-meta dd { margin: 0; }
 /* ---- Spectrum chart ---- */
 
+/* A control and its explanation are ONE block; the blocks sit side by
+   side while they fit and stack when they do not.  `auto-fit` rather
+   than a fixed column count, because the inspector is also the narrow
+   pane on /results -- two 20rem columns there would be two cramped
+   columns rather than one readable one. */
 .spectrum-controls {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
     gap: var(--space-md);
-    align-items: center;
-    flex-wrap: wrap;
+    align-items: start;
     margin: var(--space-xs) 0 var(--space-sm);
     font-size: var(--text-sm);
 }
+.spectrum-control {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    min-width: 0;          /* a grid item may shrink below its content */
+}
 .spectrum-controls .inline-label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: var(--space-sm);
     color: var(--text-secondary);
+    /* The words naming a control never wrap -- a label broken across
+       three lines was the defect this layout replaced. */
+    white-space: nowrap;
+}
+.spectrum-controls input[type="range"] {
+    flex: 1;
+    min-width: 6rem;
+    accent-color: var(--accent, #7aa6d2);
+}
+.spectrum-controls output {
+    min-width: 3.2em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
 }
 .spectrum-controls input[type="number"] {
     width: 5.5em;
@@ -138,8 +163,8 @@ plain for the right column. */
     color: var(--text-secondary);
     opacity: 0.75;
     font-size: var(--text-xs);
-    flex: 1;
-    min-width: 200px;
+    /* No `flex: 1` any more: the hint sits UNDER its control rather
+       than competing with the next control for the same row. */
 }
 
 /* ---- The spectrum,

@@ -306,7 +306,7 @@ def test_the_status_line_says_a_load_was_added(
 def test_start_empty_then_load_is_how_you_replace(
         page, flask_server, two_files):
     """Replacing did not disappear -- it became a separate gesture, and this is
-    it.  "Start empty" now stands beside "Save to project" precisely because it
+    it.  "Clear structure" now stands beside "Save to project" precisely because it
     is the whole-model action that append made load-bearing.
     """
     water, pair = two_files
@@ -316,14 +316,14 @@ def test_start_empty_then_load_is_how_you_replace(
 
     # The confirm is the app's own modal, not window.confirm (viewer.js).
     page.locator("#clear-apply").click()
-    page.locator("button:has-text('Start empty')").last.click()
+    page.locator("button:has-text('Clear structure')").last.click()
     page.wait_for_function(
         "() => (document.getElementById('edit-status')?.textContent || '')"
         ".includes('Cleared')", timeout=_ACT_MS)
 
     _load(page, pair)
     assert _atom_count(page) == 2, (
-        "loading after Start empty did not replace -- it added to a canvas "
+        "loading after Clear structure did not replace -- it added to a canvas "
         "that should have been empty")
 
 

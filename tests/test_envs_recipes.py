@@ -133,13 +133,14 @@ def test_cuda_wheel_tag_derived_from_cuda_version():
     # (the recipe is what ``molbuilder envs install`` runs).
     for r in BUILTIN_RECIPES:
         if r.name == "molbuilder-pySCF":
-            assert f"cupy-{_CUDA_WHEEL_TAG}[ctk]" in r.pip_packages, (
+            specs = [p.spec() for p in r.pip_packages]
+            assert f"cupy-{_CUDA_WHEEL_TAG}[ctk]" in specs, (
                 f"PySCF recipe missing cupy-{_CUDA_WHEEL_TAG}[ctk] "
-                f"in pip_packages (got: {r.pip_packages!r})"
+                f"in pip_packages (got: {specs!r})"
             )
-            assert f"gpu4pyscf-{_CUDA_WHEEL_TAG}" in r.pip_packages, (
+            assert f"gpu4pyscf-{_CUDA_WHEEL_TAG}" in specs, (
                 f"PySCF recipe missing gpu4pyscf-{_CUDA_WHEEL_TAG} "
-                f"in pip_packages (got: {r.pip_packages!r})"
+                f"in pip_packages (got: {specs!r})"
             )
             return
     pytest.fail("molbuilder-pySCF recipe not found in registry")

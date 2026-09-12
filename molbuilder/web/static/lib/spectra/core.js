@@ -89,6 +89,12 @@
         // path-based watch-path loader (els.loadPathBtn) below.
         resultsSummary: null,
         resultsMeta:    null,
+        methodsBlock:   null,
+        methodsText:    null,
+        methodsCopy:    null,
+        methodsNote:    null,
+        displayFloor:   null,
+        displayFloorOut: null,
         modesTbody:     null,
         // Selection sync + ES panel additions (§ 9.2.2 / § 9.2.4):
         modesFilter:    null,
@@ -901,12 +907,20 @@
          * Frozen atoms REACH THE CALCULATION THIS WAY: they ride the
          * structure's own files, not a form field (plan § 2). */
         const _out = _viewer ? _viewer.data.exportFile() : null;
+        /* The engine is a FORM VALUE, not a literal.  It used to be
+         * hardcoded here, which made a real choice look like a constant
+         * and left a second engine nowhere to be selected.  Read from
+         * the params the user actually submitted; the literal survives
+         * only as the fallback for a form that has not rendered the
+         * field (an older cached schema), so a stale page still sends
+         * something the server accepts rather than `undefined`. */
+        const _params = collectParams();
         await mb.taskHandover.send({
             projects:    mb.projects,
             say:         say,
             structure:   (_out && _out.structure) ? _out.structure : null,
-            engine:      "pyscf",
-            params:      collectParams(),
+            engine:      _params.engine || "pyscf",
+            params:      _params,
             calculation: "vibration",
         });
     }
@@ -1282,6 +1296,54 @@
      *  FILE".  Every write below carries it, so a late answer cannot be
      *  painted under a name it does not belong to (`results.md` § 4).
      */
+    // Copy the Methods paragraph to the clipboard.  The clipboard API
+    // is unavailable on an insecure origin and can be refused by policy,
+    // so the failure path selects the text instead of leaving the user
+    // with a button that silently does nothing.
+    /* The floor is a VIEW control: it redraws and touches nothing else,
+     * which is why it can be dragged live.  The number is echoed beside
+     * the slider because a bare range input tells the user where the
+     * handle is, never what it means. */
+    function onDisplayFloor() {
+        const pct = Number(els.displayFloor && els.displayFloor.value);
+        if (!Number.isFinite(pct)) return;
+        if (els.displayFloorOut) {
+            els.displayFloorOut.textContent =
+                (Math.round(pct * 10) / 10) + "%";
+        }
+        _withChart((h) => h.setDisplayFloor(pct));
+    }
+
+    function copyMethodsText() {
+        const text = (els.methodsText && els.methodsText.textContent) || "";
+        if (!text) return;
+        const note = (msg, cls) => {
+            if (!els.methodsNote) return;
+            els.methodsNote.textContent = msg;
+            els.methodsNote.className = "status " + cls;
+            window.setTimeout(() => {
+                if (els.methodsNote) els.methodsNote.textContent = "";
+            }, 4000);
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => note("copied", "ok"))
+                .catch(() => { selectMethodsText(); note("select and copy", "warn"); });
+        } else {
+            selectMethodsText();
+            note("select and copy (clipboard needs a secure origin)", "warn");
+        }
+    }
+
+    function selectMethodsText() {
+        if (!els.methodsText || !window.getSelection) return;
+        const range = document.createRange();
+        range.selectNodeContents(els.methodsText);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
     function renderResults(results, path) {
         if (!results) {
             els.resultsSummary.hidden = true;
@@ -1339,6 +1401,29 @@
             : (rt.gpu_requested === true
                 ? `OFF — ${rt.gpu_name || "GPU requested but fell back to CPU"}`
                 : (rt.gpu_used === false ? "OFF" : "—"));
+        // PRESENT WHAT THE RUN ACTUALLY DID, never what the config asked
+        // for.  The two dmu/dR routes cost wildly different amounts --
+        // analytic rides on the Hessian's own CPHF solve, the sweep
+        // spends 6N extra SCFs -- so a reader comparing two runs needs
+        // to see which one they got.  An older sidecar predates the
+        // field: that is an absence of record, reported as such rather
+        // than guessed either way.
+        function _irRouteLabel(r) {
+            if (!r.config || !r.config.compute_ir) return "not requested";
+            switch (r.ir_route) {
+                case "analytic":
+                    return "computed — analytic \u2202\u03bc/\u2202R "
+                         + "(no extra SCFs)";
+                case "finite-difference":
+                    return "computed — finite-difference dipoles";
+                case "none":
+                case "":
+                case undefined:
+                    return "computed — route not recorded";
+                default:
+                    return "computed — " + r.ir_route;
+            }
+        }
         const meta = [
             ["Engine",            results.engine + " " + (results.engine_version || "?")],
             ["Atoms (total)",     results.n_atoms_total],
@@ -1353,9 +1438,21 @@
             ["Host",               rt.hostname || "—"],
             ["Relaxation",                _relaxSummary(results)],
             ["Frequencies (Hessian)",     results.phase_frequencies],
+            ["IR intensities",            _irRouteLabel(results)],
             ["Raman activities",           results.phase_raman],
             ["Per-mode orbital energies",  results.phase_es],
         ];
+        // The Methods paragraph is composed during the run and grows as
+        // phases complete, so it is rendered from whatever is present
+        // rather than gated on the run being finished.  Empty means the
+        // composer has not written anything yet -- show nothing, never
+        // an empty box that reads like a missing result.
+        if (els.methodsBlock) {
+            const md = (results.methods_text || "").trim();
+            els.methodsBlock.hidden = !md;
+            if (md && els.methodsText) els.methodsText.textContent = md;
+        }
+
         els.resultsMeta.innerHTML = meta
             .map(([k, v]) => "<dt>" + escapeHtml(String(k)) + "</dt>"
                            + "<dd>" + escapeHtml(String(v)) + "</dd>")
@@ -1590,6 +1687,8 @@
             Number(m.frequency_cm1).toFixed(1),
             m.raman_activity_a4_amu != null
                 ? Number(m.raman_activity_a4_amu).toFixed(2) : "",
+            m.ir_intensity_km_mol != null
+                ? Number(m.ir_intensity_km_mol).toFixed(2) : "",
             m.has_imag ? "imag" : "",
             es ? "es" : "",
         ];
@@ -1609,6 +1708,7 @@
             case "index_1based":          return m.index_1based;
             case "frequency_cm1":         return m.frequency_cm1;
             case "raman_activity_a4_amu": return m.raman_activity_a4_amu;
+            case "ir_intensity_km_mol":   return m.ir_intensity_km_mol;
             case "has_imag":              return m.has_imag ? 1 : 0;
             case "has_es":                return m.electronic_structure ? 1 : 0;
             case "homo_eq_ev":            return _homoEq(m);
@@ -1662,6 +1762,14 @@
         const raman = (m.raman_activity_a4_amu == null)
             ? "—"
             : Number(m.raman_activity_a4_amu).toFixed(2);
+        /* "—" IS NOT ZERO.  A null means the run did not compute this
+         * channel (`compute_ir` is off by default); 0.00 means it did and the
+         * mode is silent there.  CO2 needs both readings in one table: its
+         * symmetric stretch is 0.00 km/mol by symmetry, while a Raman-only
+         * run leaves every IR cell "—". */
+        const ir = (m.ir_intensity_km_mol == null)
+            ? "—"
+            : Number(m.ir_intensity_km_mol).toFixed(2);
         const tr = document.createElement("tr");
         tr.dataset.mode = String(m.index_1based);
         if (m.has_imag) tr.className = "mode-imag";
@@ -1674,6 +1782,7 @@
         addCell(String(m.index_1based));
         addCell(Number(m.frequency_cm1).toFixed(1));
         addCell(raman);
+        addCell(ir);
         addCell(m.has_imag ? "✓" : "");
         addCell(m.electronic_structure ? "✓" : "");
         /* ALWAYS FOUR CELLS, because the header always has four.  This was
@@ -2917,13 +3026,51 @@
         if (chartReady) chartReady.then(handle => { if (handle) fn(handle); });
     }
 
+    /* The two channels the chart draws, declared once.  Raman up on the
+     * left axis, IR down on the right: both peak at the same frequencies,
+     * so one half-plane would make them collide, and absorption drawn
+     * downward reads the way absorption does. */
+    /* THE IR AXIS IS AN ABSORPTION INDICATOR ON AN ARBITRARY SCALE, and
+     * that is the honest label rather than a compromise.
+     *
+     * An IR spectrum is read as absorption, not as the km/mol a
+     * calculation reports.  A TRUE absorbance or transmittance axis is
+     * Beer-Lambert -- it needs a concentration and a path length, which
+     * a computed gas-phase spectrum does not have, so any calibrated
+     * axis here would encode a sample nobody measured.  "Arbitrary
+     * units" is the convention that says exactly this, and it is what
+     * every uncalibrated computed spectrum in the literature carries:
+     * the band POSITIONS and their RELATIVE heights are the result; the
+     * absolute scale is not claimed.
+     *
+     * So the lane is normalised to its own strongest band and the axis
+     * says arb. units.  The measured km/mol is untouched and still
+     * appears in the readout, the modes table and the CSV export --
+     * nothing about the number is lost, only the pretence that the
+     * height means a transmittance. */
+    const CHART_CHANNELS = [
+        { key: "raman", label: "Raman activity",  unit: "Å⁴/amu", direction: "up" },
+        { key: "ir",    label: "IR absorption",   unit: "arb. units",
+          direction: "down", relative: true },
+    ];
+
     function _chartModes(modes) {
-        // The tab's record, in the four fields the chart takes (§ 6.1).
+        // The tab's record in the shape the chart takes: one value per
+        // CHANNEL, plus the activity class decided server-side.  `cls` is
+        // read, never computed here -- the threshold that separates a
+        // band from numerical residue lives in spectra/activity.py, and a
+        // second copy of it in the viewer could not be tested against a
+        // real run.
         return (modes || []).map(m => ({
             index:     m.index_1based,
             freq:      m.frequency_cm1,
-            activity:  Number.isFinite(m.raman_activity_a4_amu)
-                ? m.raman_activity_a4_amu : null,
+            values: {
+                raman: Number.isFinite(m.raman_activity_a4_amu)
+                    ? m.raman_activity_a4_amu : null,
+                ir: Number.isFinite(m.ir_intensity_km_mol)
+                    ? m.ir_intensity_km_mol : null,
+            },
+            cls:       m.activity_class || "partial",
             imaginary: !!m.has_imag,
         }));
     }
@@ -3059,6 +3206,9 @@
         if (!chartReady) {
             chartReady = import("/static/lib/spectrumchart/index.js")
                 .then(({ mount }) => mount(els.spectrumChart, {
+                    // Declared at mount because they decide the LAYOUT --
+                    // how many axes, which half-plane each occupies.
+                    channels: CHART_CHANNELS,
                     // A click enters the tab and comes back as setSelected;
                     // the chart never highlights on its own.
                     onSelect: (index) => selectMode(index),
@@ -3135,6 +3285,12 @@
         // dropped for the same reason as xyz* above.
         els.resultsSummary = $("results-summary");
         els.resultsMeta    = $("results-summary-list");
+        els.methodsBlock   = $("methods-block");
+        els.methodsText    = $("methods-text");
+        els.methodsCopy    = $("methods-copy");
+        els.methodsNote    = $("methods-copy-note");
+        els.displayFloor   = $("display-floor");
+        els.displayFloorOut = $("display-floor-out");
         els.modesTbody     = $("modes-tbody");
         els.spectrumChart  = $("spectrum-chart");
         // Mode-table interactions + ES panel.
@@ -3223,6 +3379,20 @@
             _on(els.watchStopBtn, "click", function () { stopWatch("Stopped."); });
             // FWHM-controlled broadening re-renders the chart in
             // place.
+            /* THE METHODS COPY BUTTON AND THE DISPLAY FLOOR ARE
+             * INSPECT-SIDE.  Both were wired inside the generate-only
+             * block until 2026-09-11, which gates on `formContainer` --
+             * present only on /spectra.  Both controls live in the
+             * RESULTS panel, so on the one page that has them neither
+             * was connected: the slider moved and nothing redrew, and
+             * the copy button did nothing at all.  No test caught it;
+             * clicking it did. */
+            _on(els.methodsCopy, "click", copyMethodsText);
+            if (els.displayFloor) {
+                _on(els.displayFloor, "input", onDisplayFloor);
+                onDisplayFloor();   // adopt whatever the markup starts at
+            }
+
             if (els.broadeningFwhm) {
                 _on(els.broadeningFwhm, "input", onBroadeningChange);
                 // Read initial value from the input so an

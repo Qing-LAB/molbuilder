@@ -137,6 +137,46 @@ button > code {
  * .methods-modal*) left with their markup at P2/P3 --
  * the tab describes and hands over; it renders no script. */
 
+/* ---- Methods text (results panel) ----
+ *
+ * The run composes a citable Methods paragraph into the sidecar.  It
+ * had no surface between P3 (when the old modal went with the Generate
+ * lane) and 2026-09-11; it lives in the RESULTS panel now, because that
+ * is where the finished numbers it describes are.  Collapsed by
+ * default -- reference material, not a thing you re-read every visit.
+ *
+ * Monospace and pre-wrap: the text carries [CitationKey] markers and a
+ * bibliography list whose line structure is meaningful, and a user is
+ * about to paste it somewhere that will keep those line breaks. */
+.methods-block { margin: 1rem 0 0.5rem; }
+.methods-block > summary { cursor: pointer; }
+.methods-hint { font-weight: 400; opacity: 0.7; }
+.methods-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+}
+.methods-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    max-height: 22rem;
+    overflow-y: auto;
+    padding: 0.75rem;
+    margin: 0;
+    border: 1px solid var(--border, #d0d0d0);
+    border-radius: 4px;
+    background: var(--surface-sunken, rgba(0, 0, 0, 0.03));
+}
+.methods-foot {
+    margin: 0.4rem 0 0;
+    font-size: 0.8rem;
+    opacity: 0.75;
+}
+
 /* Selector compatibility: a locked es-* value field gets faded so
  * the user sees which knob is active. */
 .is-locked { opacity: 0.45; }

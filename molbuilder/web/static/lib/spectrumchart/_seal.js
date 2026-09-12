@@ -82,11 +82,33 @@ function paletteOf(win, frame) {
         pending: read("--spectrumchart-pending"),
         imaginary: read("--spectrumchart-imaginary"),
         hovered: read("--spectrumchart-hovered"),
+        /* One colour per lane and one per activity class.  A mirror plot
+         * is only readable if each axis is tied to its own curve by
+         * colour, and the rug is only readable if its classes differ. */
+        laneUp: read("--spectrumchart-lane-up"),
+        laneDown: read("--spectrumchart-lane-down"),
+        rugBoth: read("--spectrumchart-rug-both"),
+        rugIr: read("--spectrumchart-rug-ir"),
+        rugRaman: read("--spectrumchart-rug-raman"),
+        rugSilent: read("--spectrumchart-rug-silent"),
+        rugPartial: read("--spectrumchart-rug-partial"),
     };
 }
 
 /* A mark's STATE arrives from above; what that state looks like is decided
  * here and nowhere else. The layer above never names a colour. */
+const rugColourFor = (cls, palette) => (
+    cls === "both" ? palette.rugBoth
+        : cls === "ir-only" ? palette.rugIr
+            : cls === "raman-only" ? palette.rugRaman
+                : cls === "silent" ? palette.rugSilent
+                    : palette.rugPartial
+);
+
+const laneColourFor = (direction, palette) => (
+    direction === "down" ? palette.laneDown : palette.laneUp
+);
+
 const colourFor = (state, palette) => (
     state === "chosen" ? palette.chosen
         : state === "hovered" ? palette.hovered
@@ -141,7 +163,11 @@ export async function openSurface(host) {
          * the left, the pointer's readout on the right (§ 6.2). At the 12px this
          * used to be, both sat in the margin's edge and were clipped -- which is
          * why the pending note had never once been seen. */
-        margin: { l: 52, r: 12, t: 30, b: 40 },
+        /* Both axes are on the LEFT now, so the right edge is bare
+         * again.  (It briefly needed 56px for a right-hand axis, whose
+         * ticks rendered "60" as "6C" at 12px -- kept as the reason the
+         * number is a decision rather than a default.) */
+        margin: { l: 58, r: 14, t: 30, b: 40 },
         showlegend: false,
         /* No hover labels from the library. The chart carries its own readout,
          * which names the nearest mode wherever the pointer is (§ 6.3.1) -- a
@@ -153,67 +179,230 @@ export async function openSurface(host) {
             gridcolor: palette.grid,
             zeroline: false,
         },
-        yaxis: {
-            title: { text: picture.yTitle || "" },
-            gridcolor: palette.grid,
-            zeroline: false,
-            rangemode: "tozero",
-        },
+        ...axesFor(picture),
         annotations: annotationsFor(picture.note, picture.readout),
     });
 
+    /* TWO PANELS, ONE FREQUENCY AXIS.
+     *
+     * Both channels peak at the same frequencies, so they cannot share a
+     * half-plane -- but they do not need to share a FRAME either.  Each
+     * lane gets its own stacked panel with its own axis on the LEFT,
+     * against one shared x underneath: the quantities are incommensurate
+     * (Å⁴/amu against a normalised absorption scale), and two left axes
+     * read as two measurements of one sample, where a left/right pair
+     * reads as one plot with a trick in it.
+     *
+     * The panels are stacked in lane order, so a lane declared "down"
+     * sits below -- the direction still decides position, it is just no
+     * longer a sign on the numbers.
+     *
+     * Plotly's domain runs bottom-to-top, so the FIRST lane takes the
+     * upper band and the last takes the lower one. */
+    const PANEL_GAP = 0.10;
+
+    const domainsFor = (n) => {
+        if (n <= 1) return [[0, 1]];
+        const each = (1 - PANEL_GAP * (n - 1)) / n;
+        const out = [];
+        for (let i = 0; i < n; i += 1) {
+            const top = 1 - i * (each + PANEL_GAP);
+            out.push([Math.max(0, top - each), top]);
+        }
+        return out;
+    };
+
+    const axisKeyFor = (i) => (i === 0 ? "yaxis" : `yaxis${i + 1}`);
+    const axisRefFor = (i) => (i === 0 ? "y" : `y${i + 1}`);
+
+    const axisRange = (lane) => {
+        const vals = (lane.sticks.y || []).map(Math.abs).filter(Number.isFinite);
+        const curve = (lane.curve && lane.curve.y) || [];
+        const peak = Math.max(0, ...vals, ...curve.map(Math.abs));
+        return peak > 0 ? peak * 1.08 : 1;
+    };
+
+    const axesFor = (picture) => {
+        const lanes = picture.lanes || [];
+        const domains = domainsFor(Math.max(1, lanes.length));
+        const out = {};
+        lanes.forEach((lane, i) => {
+            out[axisKeyFor(i)] = {
+                title: { text: lane.title,
+                         font: { color: laneColourFor(lane.direction, palette) } },
+                domain: domains[i],
+                gridcolor: palette.grid,
+                zeroline: false,
+                rangemode: "tozero",
+                range: [0, axisRange(lane)],
+                tickfont: { color: laneColourFor(lane.direction, palette) },
+            };
+        });
+        /* One x-axis, anchored under the LAST panel and shared by the
+         * rest: the whole point of stacking is that a frequency lines up
+         * vertically across every channel. */
+        out.xaxis = {
+            title: { text: picture.xTitle || "" },
+            gridcolor: palette.grid,
+            zeroline: false,
+            anchor: axisRefFor(Math.max(0, lanes.length - 1)),
+        };
+        lanes.forEach((_, i) => {
+            if (i < lanes.length - 1) {
+                out[axisKeyFor(i)].matches = undefined;
+            }
+        });
+        return out;
+    };
+
+    /* Which trace holds the selectable sticks; set by `tracesFor`,
+     * read by `recolour`, which must reach the same one. */
+    let stickTraceIndex = 0;
+
     const tracesFor = (picture) => {
-        const sticks = picture.sticks || { x: [], y: [], state: [] };
+        const lanes = picture.lanes || [];
         const traces = [];
-        if (picture.curve) {
+        /* Trace order is FIXED, because `recolour` reaches back into the
+         * sticks by index and a layout that reordered them would recolour
+         * the wrong thing.  Per lane: curve, then sticks, then the marks
+         * for modes with no height.  The rug goes last, on top. */
+        let firstSticks = -1;
+
+        lanes.forEach((lane, laneIndex) => {
+            /* Each lane draws in its own panel, upright.  The mirror's
+             * sign is gone with the mirror: a channel is placed by which
+             * panel it is in, not by pointing its numbers downward, and
+             * an axis that reads 0 upward is one less thing between a
+             * reader and the value. */
+            const axis = axisRefFor(laneIndex);
+            const sign = 1;
+            const laneColour = laneColourFor(lane.direction, palette);
+
+            if (lane.curve) {
+                traces.push({
+                    type: "scatter",
+                    mode: "lines",
+                    x: lane.curve.x,
+                    y: lane.curve.y.map((v) => v * sign),
+                    yaxis: axis,
+                    line: { color: laneColour, width: 1.5 },
+                    /* A filled envelope is what lets two channels overlap
+                     * and still be read apart -- the plan's "transparency
+                     * fill".  Against the axis, not against each other,
+                     * because they live in opposite half-planes. */
+                    fill: "tozeroy",
+                    fillcolor: withAlpha(laneColour, 0.16),
+                    hoverinfo: "skip",
+                });
+            }
+
+            const pending = [];
+            const drawn = { x: [], y: [], width: [], colour: [] };
+            lane.sticks.x.forEach((x, i) => {
+                if (lane.sticks.state[i] === "pending") { pending.push(x); return; }
+                drawn.x.push(x);
+                drawn.y.push(lane.sticks.y[i] * sign);
+                drawn.width.push(lane.sticks.width[i]);
+                /* The FIRST lane keeps the selection colours -- it is the
+                 * one `recolour` can reach, and the one the mode table is
+                 * ordered by.  A second lane is drawn in its channel's own
+                 * colour so the mirror stays legible; selection is shown
+                 * once, not twice. */
+                drawn.colour.push(firstSticks < 0
+                    ? colourFor(lane.sticks.state[i], palette)
+                    : laneColour);
+            });
+
+            if (firstSticks < 0) firstSticks = traces.length;
             traces.push({
-                type: "scatter",
-                mode: "lines",
-                x: picture.curve.x,
-                y: picture.curve.y,
-                line: { color: palette.curve, width: 1.5 },
+                type: "bar",
+                x: drawn.x,
+                y: drawn.y,
+                width: drawn.width,
+                yaxis: axis,
+                marker: { color: drawn.colour },
                 hoverinfo: "skip",
             });
-        }
-        /* A mode whose strength was never computed has no height to draw, and a
-         * bar of height zero is a mode that vanished. What "not computed" LOOKS
-         * like is this layer's to decide (§ 8.4), so it is drawn as a mark on the
-         * axis instead of a bar of nothing. */
-        const pending = [];
-        const drawn = { x: [], y: [], width: [], colour: [] };
-        sticks.x.forEach((x, i) => {
-            if (sticks.state[i] === "pending") { pending.push(x); return; }
-            drawn.x.push(x);
-            drawn.y.push(sticks.y[i]);
-            drawn.width.push(sticks.width[i]);
-            drawn.colour.push(colourFor(sticks.state[i], palette));
+
+            if (pending.length) {
+                traces.push({
+                    type: "scatter",
+                    mode: "markers",
+                    x: pending,
+                    y: pending.map(() => 0),
+                    yaxis: axis,
+                    marker: { color: palette.pending, symbol: "x", size: 7 },
+                    hoverinfo: "skip",
+                });
+            }
         });
 
-        traces.push({
-            type: "bar",
-            x: drawn.x,
-            y: drawn.y,
-            width: drawn.width,
-            marker: { color: drawn.colour },
-            hoverinfo: "skip",
-        });
-
-        if (pending.length) {
-            traces.push({
+        /* EVERY MODE, POSITION ONLY.  Ticks on the zero line, one per
+         * mode, coloured by activity class -- the only place a mode
+         * active in NEITHER channel can honestly appear, since it has no
+         * height to draw in either.  Height is fixed, never scaled: a
+         * silent mode given a height would be a lie in either direction. */
+        const rug = picture.rug;
+        /* THE RUG REPEATS IN EVERY PANEL.  A mode active in neither
+         * channel belongs to the whole measurement, not to one of its
+         * halves -- and a reader comparing the panels has to see the
+         * same frequency marked in both, or the rug would look like a
+         * property of whichever panel happened to carry it. */
+        const rugPanels = Math.max(1, lanes.length);
+        if (rug && rug.x && rug.x.length) {
+            for (let panel = 0; panel < rugPanels; panel += 1) traces.push({
                 type: "scatter",
                 mode: "markers",
-                x: pending,
-                y: pending.map(() => 0),
-                marker: { color: palette.pending, symbol: "x", size: 7 },
+                x: rug.x,
+                y: rug.x.map(() => 0),
+                yaxis: axisRefFor(panel),
+                /* PER-POINT COLOUR GOES ON `marker.color`, NOT
+                 * `marker.line.color`.  An open symbol is stroked, so
+                 * `marker.line` looks like the right home -- but Plotly
+                 * ignores a per-point ARRAY there and falls back to the
+                 * trace's automatic colour, which painted all four CO2
+                 * ticks the same violet while the data underneath was
+                 * correct.  Caught in the browser; no test asserts a
+                 * rendered stroke. */
+                marker: {
+                    symbol: "line-ns-open",
+                    size: 11,
+                    color: (rug.cls || []).map((c) => rugColourFor(c, palette)),
+                    line: {
+                        width: 2,
+                        color: (rug.cls || []).map((c) => rugColourFor(c, palette)),
+                    },
+                },
                 hoverinfo: "skip",
             });
         }
+        stickTraceIndex = firstSticks < 0 ? 0 : firstSticks;
         return traces;
     };
 
-    // Which trace the sticks are in depends on whether a curve is drawn, and
-    // `recolour` has to reach the same one `draw` built.
-    let stickTraceIndex = 0;
+    /* Plotly takes a fill colour as its own value, not as an opacity on
+     * the line, so the lane's colour has to be re-expressed with alpha.
+     * Handles the three forms a CSS custom property actually arrives in. */
+    const withAlpha = (colour, alpha) => {
+        const c = String(colour || "").trim();
+        let m = c.match(/^#([0-9a-f]{6})$/i);
+        if (m) {
+            const n = parseInt(m[1], 16);
+            return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+        }
+        m = c.match(/^#([0-9a-f]{3})$/i);
+        if (m) {
+            const [r, g, b] = m[1].split("").map((h) => parseInt(h + h, 16));
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        m = c.match(/^rgba?\(([^)]+)\)$/i);
+        if (m) {
+            const parts = m[1].split(",").map((v) => v.trim());
+            return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+        }
+        return c;   // a named colour or something exotic: leave it opaque
+    };
+
     let lastReadout = null;
     let readoutIndex = 0;   // where the readout sits: after the note, when there is one
     let disposed = false;
@@ -314,8 +503,10 @@ export async function openSurface(host) {
     return {
         draw(picture) {
             if (disposed) return;
+            // `tracesFor` records which trace holds the selectable
+            // sticks as it builds them -- with lanes, a rug and optional
+            // curves the position is no longer guessable from outside.
             const traces = tracesFor(picture);
-            stickTraceIndex = picture.curve ? 1 : 0;   // after the curve, before the pending marks
             readoutIndex = picture.note ? 1 : 0;
             lastReadout = picture.readout || "";
             Plotly.react(surface, traces, layoutFor(picture), {

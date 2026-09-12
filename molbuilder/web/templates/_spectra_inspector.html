@@ -106,24 +106,72 @@
       </header>
       <dl id="results-summary-list" class="results-meta"></dl>
 
+      <!-- Methods text.  The run already composes a citable Methods
+           paragraph into the sidecar (`methods_text` + the bibliography
+           keys it actually cited); before this it had no surface at all,
+           so the one artifact a user needs for a paper was the one
+           thing the viewer would not show them.  Collapsed by default:
+           it is reference material, not something you read every time
+           you open a result. -->
+      <details id="methods-block" class="methods-block" hidden>
+        <summary class="subsection-h">Methods text <span class="methods-hint">— for your paper</span></summary>
+        <div class="methods-actions">
+          <button type="button" id="methods-copy" class="btn btn-small">Copy</button>
+          <span id="methods-copy-note" class="status muted" role="status" aria-live="polite"></span>
+        </div>
+        <pre id="methods-text" class="methods-text"></pre>
+        <p class="methods-foot">Citation keys resolve against
+           <code>docs/science/references.bib</code>.</p>
+      </details>
+
       <h3 class="subsection-h">Spectrum</h3>
-      <!-- Spectrum-controls row: Lorentzian-broadening FWHM input.
-           Sits above the chart so the user can tune the broadening
-           while looking at the line shape; defaults to a moderate
-           20 cm⁻¹ that suits typical Raman line widths. -->
+      <!-- Spectrum controls.  Each control is a BLOCK carrying its own
+           label and its own hint, and the blocks lay out side by side
+           when there is room.  They were four siblings in one flex row
+           until 2026-09-11, where the two hints each claimed `flex: 1`
+           and squeezed the labels between them until "Hide bands below"
+           broke across three lines.  A control and its explanation are
+           one thing; the layout says so now. -->
       <div class="spectrum-controls">
-        <label class="inline-label">
-          <span>Lorentzian FWHM</span>
-          <input id="broadening-fwhm" type="number"
-                 min="1" max="500" step="1" value="20">
-          <span class="unit">cm⁻¹</span>
-        </label>
-        <span class="hint">
-          Sum-of-Lorentzians overlay on the sticks.  Increase to
-          smooth narrow lines into the broader envelope expected
-          in solution / room-temperature Raman; decrease for
-          sharper gas-phase spectra.  Set to 0 to hide the overlay.
-        </span>
+        <div class="spectrum-control">
+          <label class="inline-label">
+            <span>Lorentzian FWHM</span>
+            <input id="broadening-fwhm" type="number"
+                   min="1" max="500" step="1" value="20">
+            <span class="unit">cm⁻¹</span>
+          </label>
+          <span class="hint">
+            Sum-of-Lorentzians overlay on the sticks.  Increase to
+            smooth narrow lines into the broader envelope expected
+            in solution / room-temperature Raman; decrease for
+            sharper gas-phase spectra.  Set to 0 to hide the overlay.
+          </span>
+        </div>
+
+        <!-- DISPLAY FLOOR.  Relative, because one control serves two
+             incommensurate units: Raman activity is Å⁴/amu and IR
+             absorption is drawn on an arbitrary scale, so no single
+             absolute number means the same thing in both, while
+             "above X% of the strongest peak in its own channel" does.
+
+             It decides only what is DRAWN -- nothing is recomputed and
+             nothing is discarded, which is what makes it free to drag.
+             Not to be confused with the Raman-activity threshold in the
+             Spectrum tab, which decides what is COMPUTED (two SCFs per
+             mode) and is absolute and expensive. -->
+        <div class="spectrum-control">
+          <label class="inline-label">
+            <span>Hide bands below</span>
+            <input id="display-floor" type="range"
+                   min="0" max="25" step="0.5" value="0">
+            <output id="display-floor-out" for="display-floor">0%</output>
+          </label>
+          <span class="hint">
+            Of the strongest peak <em>in each channel</em>.  The ticks on
+            the axis are never filtered — they carry every mode, which is
+            the one place a mode active in neither channel can appear.
+          </span>
+        </div>
       </div>
       <!-- Plotly: stem-style frequency vs Raman activity, optionally
            with a broadened envelope overlay.  Click a stick to
@@ -194,6 +242,15 @@
                 <th data-col="index_1based"          data-numeric="1">#</th>
                 <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
                 <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
+                {#- IR SITS BESIDE RAMAN because they are two readings of ONE
+                    mode, not two spectra: one Hessian, two property
+                    derivatives on the same eigenvectors.  The run has written
+                    `ir_intensity_km_mol` per mode since the IR add-on landed
+                    and this table never showed it -- the viewer read the field
+                    in exactly one place, a change-detection fingerprint, so a
+                    person who ticked "Compute IR intensities" got correct
+                    physics they could only see by opening the JSON (W21). -#}
+                <th data-col="ir_intensity_km_mol"   data-numeric="1">IR (km/mol)</th>
                 <th data-col="has_imag">imag?</th>
                 <th data-col="has_es">ES?</th>
                 <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>

@@ -103,10 +103,36 @@ globalThis.__host = function (values) {
 
 PICTURE = """
 const picture = {
-    sticks: { x: [100, 200, 300], y: [1, 2, 3], width: [2, 2, 2],
-              state: ["plain", "chosen", "imaginary"] },
-    curve: { x: [90, 100, 110], y: [0.1, 1.0, 0.1] },
-    xTitle: "frequency (cm-1)", yTitle: "strength",
+    lanes: [{
+        key: "raman", direction: "up", title: "strength", known: true,
+        sticks: { x: [100, 200, 300], y: [1, 2, 3], width: [2, 2, 2],
+                  state: ["plain", "chosen", "imaginary"] },
+        curve: { x: [90, 100, 110], y: [0.1, 1.0, 0.1] },
+    }],
+    rug: { x: [100, 200, 300],
+           cls: ["raman-only", "both", "silent"],
+           index: [1, 2, 3] },
+    xTitle: "frequency (cm-1)",
+};
+"""
+
+#: The same picture with BOTH half-planes occupied -- what the mirror
+#: actually ships.  Kept separate so the single-lane tests keep asserting
+#: the single-lane shape.
+PICTURE_MIRRORED = """
+const picture = {
+    lanes: [
+      { key: "raman", direction: "up", title: "Raman (A4/amu)", known: true,
+        sticks: { x: [100, 200], y: [1, 2], width: [2, 2],
+                  state: ["plain", "chosen"] },
+        curve: { x: [90, 100], y: [0.1, 1.0] } },
+      { key: "ir", direction: "down", title: "IR (km/mol)", known: true,
+        sticks: { x: [100, 200], y: [30, 0], width: [2, 2],
+                  state: ["plain", "plain"] },
+        curve: { x: [90, 100], y: [3.0, 30.0] } },
+    ],
+    rug: { x: [100, 200], cls: ["both", "raman-only"], index: [1, 2] },
+    xTitle: "frequency (cm-1)",
 };
 """
 
@@ -185,7 +211,9 @@ class TestTheDoors:
         calls = seal("surface.draw(picture);\nconsole.log(JSON.stringify(__calls));")
         assert [c["call"] for c in calls] == ["react"]
         traces = calls[0]["traces"]
-        assert [t["type"] for t in traces] == ["scatter", "bar"]
+        assert [t["type"] for t in traces] == ["scatter", "bar", "scatter"], (
+            "curve, sticks, then the rug -- every mode's position, last so "
+            "it draws on top")
         assert traces[1]["x"] == [100, 200, 300]
 
     def test_a_click_comes_up_with_its_frequency_and_the_scale(self):

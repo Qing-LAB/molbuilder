@@ -48,11 +48,21 @@ export function bandHalfWidth(broadening) {
  * every mode contributes a peak of height one and the curve is a frequency
  * distribution. No imaginary mode is ever in the sum, in either picture.
  */
-function summedPeaks(modes) {
+/* WHICH NUMBER IS THIS CURVE'S HEIGHT is the caller's to say.
+ *
+ * One Hessian yields several property derivatives on one set of
+ * eigenvectors, so "the activity" is not a property of a mode -- it is a
+ * property of a mode IN A CHANNEL.  Taking the height as a parameter is
+ * what lets one envelope serve Raman, IR and whatever is added next
+ * (the plan's spectral density) without this file learning their names
+ * or their units. */
+const defaultHeight = (m) => m.activity;
+
+function summedPeaks(modes, heightOf = defaultHeight) {
     const real = modes.filter((m) => !m.imaginary);
-    const withActivity = real.filter((m) => isFiniteNumber(m.activity));
+    const withActivity = real.filter((m) => isFiniteNumber(heightOf(m)));
     if (withActivity.length > 0) {
-        return withActivity.map((m) => ({ freq: m.freq, height: m.activity }));
+        return withActivity.map((m) => ({ freq: m.freq, height: heightOf(m) }));
     }
     return real.map((m) => ({ freq: m.freq, height: 1 }));
 }
@@ -80,11 +90,11 @@ const lorentzianAt = (x, peaks, gamma) => {
  * width, and the grid runs out until the curve is under TAIL_FRACTION of the
  * tallest peak. A width of zero means bare sticks — no curve at all.
  */
-export function envelope(modes, broadening) {
+export function envelope(modes, broadening, heightOf = defaultHeight) {
     if (!Array.isArray(modes) || modes.length === 0) return null;
     if (!isFiniteNumber(broadening) || broadening <= 0) return null;
 
-    const peaks = summedPeaks(modes);
+    const peaks = summedPeaks(modes, heightOf);
     if (peaks.length === 0) return null;
 
     const gamma = broadening / 2;

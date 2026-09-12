@@ -582,6 +582,11 @@ the host's, and is expressed in CSS rather than passed here.
 setModes(list)               a different result: redraw, refit the axes (§ 5.1)
 setSelected(index | null)    recolour one mark — nothing else moves
 setBroadening(width)         how wide to draw each line, in cm⁻¹ — and therefore
+setDisplayFloor(pct)            hide bands below this percentage of the
+                                strongest peak IN EACH CHANNEL — relative,
+                                because one control serves two incommensurate
+                                units.  Changes what is DRAWN and nothing
+                                else; the rug is never filtered
                              how wide it is to click (§ 6.3)
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
@@ -675,14 +680,45 @@ nothing in it is a colour or a mode:
 
 ```js
 picture = {
-    sticks: { x: [...], y: [...], width: [...],  // where and how tall each is drawn
-              state: ["plain" | "chosen" | "hovered" | "pending" | "imaginary", …] },
-    curve:  { x: [...], y: [...] } | null,       // null when there is no curve
-    xTitle, yTitle,                               // the words on the axes
+    lanes: [{                                     // one per channel, in order
+        key, direction: "up" | "down",            // which half-plane it occupies
+        title,                                    // the words on ITS axis, unit included
+        known,                                    // whether this channel has numbers yet
+        sticks: { x: [...], y: [...], width: [...],
+                  state: ["plain" | "chosen" | "hovered" | "pending" | "imaginary", …] },
+        curve:  { x: [...], y: [...] } | null,    // null when there is no curve
+    }, …],
+    rug: { x: [...], cls: [...], index: [...] }   // EVERY mode, position only
+          | null,
+    xTitle,                                       // the words on the shared axis
     note,                                         // one line inside the plot, or nothing
     readout,                                      // the mode nearest the pointer
 }
 ```
+
+**Why lanes, and not one `sticks`** *(2026-09-11, plan W21)*. One Hessian
+yields several property derivatives on one set of eigenvectors, so activity is
+an attribute of a mode **in a channel** — never "the activity of a mode". A
+picture with a single `sticks` could therefore draw only one of the quantities a
+run computes, and the y-title had to name it, which is how a module that was
+otherwise quantity-agnostic came to carry the string `"Raman activity
+(Å⁴/amu)"`. Channels are declared at `mount`; each mode carries
+`values[key]`; this layer still learns nothing about what Raman or IR are, which
+is what leaves room for the next one.
+
+`direction` is the only thing a lane says about layout. Both channels peak at
+the same frequencies, so sharing one half-plane makes them collide — and
+absorption drawn downward reads the way absorption does. The seal gives each
+lane its own y-axis, because the quantities are incommensurate and forcing them
+onto one scale would make the taller **unit** look like the stronger physics.
+
+**The rug is position and nothing else.** A mode active in neither channel has
+no height in either, so the sticks cannot show it at all — and giving it one
+would be a lie in whichever direction it pointed. Ticks on the zero line are
+the only honest place it can appear, and they never vary in height. `cls` is
+the activity classification **decided server-side** (`spectra/activity.py`):
+the line between a band and numerical residue is a judgement about a whole run,
+and a second copy of it here could not be tested against one.
 
 **Nothing in the picture says where a click may land**, and that is deliberate:
 the bands are not drawn and not handed down. § 8.4 says where they are used
@@ -691,8 +727,8 @@ instead.
 **A state is a word, never a colour** — the layer above says a mark is *chosen*
 and the seal decides what chosen looks like (§ 5.1's cheap door hands down the
 same words and nothing else). **And every word the user reads comes down in the
-picture too**: the axis titles, the unit beside a hovered value, the "not
-computed" line. The seal writes none of them, because "cm⁻¹" is a fact about
+picture too**: each lane's axis title with its unit, the units beside a hovered
+value, the "not computed" line. The seal writes none of them, because "cm⁻¹" is a fact about
 spectroscopy and this layer knows none.
 
 It answers **no** question about what is drawn, and it does not know what a mode

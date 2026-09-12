@@ -86,10 +86,15 @@ globalThis.__click = function (host, atCm1) {
 };
 """
 
+# A mode carries one value PER CHANNEL, not "the activity": one Hessian
+# yields several property derivatives on one set of eigenvectors, so
+# activity is an attribute of a mode in a channel.  These tests declare no
+# channels at mount, so the chart draws its single generic lane, keyed
+# "activity" -- which is what a caller with only one quantity still means.
 MODES = [
-    {"index": 1, "freq": 100.0, "activity": 4.0, "imaginary": False},
-    {"index": 2, "freq": 500.0, "activity": 9.0, "imaginary": False},
-    {"index": 3, "freq": 900.0, "activity": 2.0, "imaginary": False},
+    {"index": 1, "freq": 100.0, "values": {"activity": 4.0}, "imaginary": False},
+    {"index": 2, "freq": 500.0, "values": {"activity": 9.0}, "imaginary": False},
+    {"index": 3, "freq": 900.0, "values": {"activity": 2.0}, "imaginary": False},
 ]
 
 
@@ -164,7 +169,8 @@ def test_a_box_that_changes_size_redraws_while_the_window_sits_still():
 def test_the_handle_is_the_doors_and_nothing_else():
     """§ 4 — no hidden way in; § 8.3 — nothing is read back."""
     got = drive("console.log(JSON.stringify(Object.keys(chart).sort()));")
-    assert got == ["dispose", "ok", "refit", "setBroadening", "setModes", "setSelected"]
+    assert got == ["dispose", "ok", "refit", "setBroadening", "setDisplayFloor",
+                   "setModes", "setSelected"]
 
 
 def test_selecting_recolours_and_does_not_redraw():
@@ -175,6 +181,20 @@ def test_selecting_recolours_and_does_not_redraw():
         "console.log(JSON.stringify(__calls.map(c => c.call)));"
     )
     assert got == ["restyle"]
+
+
+def _stick_colours(react):
+    """The selectable sticks' colours, found rather than assumed.
+
+    They used to be the last trace; with a rug drawn on top of every mode
+    they are not, and an index would silently read the rug's marker.  The
+    sticks are the bar trace that carries a per-point colour list.
+    """
+    for t in react["traces"]:
+        if t.get("type") == "bar" and isinstance(
+                (t.get("marker") or {}).get("color"), list):
+            return t["marker"]["color"]
+    raise AssertionError(f"no stick trace in {react['traces']!r}")
 
 
 def test_the_chosen_mode_is_the_one_the_caller_named():
@@ -191,7 +211,7 @@ def test_the_selection_is_recorded_before_any_modes_exist():
         "chart.setSelected(3);\nchart.setModes(MODES);\n"
         "console.log(JSON.stringify(__calls));"
     )
-    colours = last_react(calls)["traces"][-1]["marker"]["color"]
+    colours = _stick_colours(last_react(calls))
     assert colours == ["#3333ff", "#3333ff", "#00ff00"]
 
 
@@ -271,7 +291,8 @@ def test_with_no_strengths_anywhere_every_stick_is_the_same_height():
 def test_a_mode_with_no_strength_is_marked_not_drawn_at_zero():
     """§ 6.2 — not computed can never be read as a strength of zero."""
     calls = drive(
-        "chart.setModes([{ index: 1, freq: 100, activity: 4 }, { index: 2, freq: 500 }]);\n"
+        "chart.setModes([{ index: 1, freq: 100, values: { activity: 4 } },\n"
+        "                 { index: 2, freq: 500 }]);\n"
         "console.log(JSON.stringify(__calls));"
     )
     react = last_react(calls)
@@ -289,8 +310,8 @@ def test_an_imaginary_mode_is_drawn_marked_and_clickable():
         "chart.setModes(MODES);\nchart.setBroadening(20);\n__click(host, 100);\n"
         "console.log(JSON.stringify({ calls: __calls, picked }));",
         modes=[
-            {"index": 1, "freq": 100.0, "activity": 4.0, "imaginary": True},
-            {"index": 2, "freq": 500.0, "activity": 9.0, "imaginary": False},
+            {"index": 1, "freq": 100.0, "values": {"activity": 4.0}, "imaginary": True},
+            {"index": 2, "freq": 500.0, "values": {"activity": 9.0}, "imaginary": False},
         ],
     )
     react = last_react(calls["calls"])
@@ -329,8 +350,8 @@ def test_the_index_reported_is_the_one_that_was_handed_in():
         "chart.setModes(MODES);\nchart.setBroadening(20);\n__click(host, 900);\n"
         "console.log(JSON.stringify(picked));",
         modes=[
-            {"index": 41, "freq": 900.0, "activity": 1.0, "imaginary": False},
-            {"index": 7, "freq": 100.0, "activity": 1.0, "imaginary": False},
+            {"index": 41, "freq": 900.0, "values": {"activity": 1.0}, "imaginary": False},
+            {"index": 7, "freq": 100.0, "values": {"activity": 1.0}, "imaginary": False},
         ],
     )
     assert got == [41]
@@ -501,8 +522,11 @@ def test_the_mode_nearest_the_pointer_is_named_at_every_position():
     # Three moves, two lines: 300 is a gap where mode 1 is still the nearest, so
     # the words do not change and nothing is redrawn to repeat them.
     assert got == [
-        "mode 1  ·  100.0 cm⁻¹  ·  4.00 Å⁴/amu",
-        "mode 3  ·  900.0 cm⁻¹  ·  2.00 Å⁴/amu",
+        # No channels declared at mount, so the lane has no unit to name
+        # -- the number stands alone.  A caller that declares units (the
+        # Spectrum tab does) gets them here.
+        "mode 1  ·  100.0 cm⁻¹  ·  4.00",
+        "mode 3  ·  900.0 cm⁻¹  ·  2.00",
     ]
 
 
