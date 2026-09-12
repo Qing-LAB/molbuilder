@@ -289,8 +289,11 @@ class ModeData:
     Unselected modes have ``electronic_structure = None`` -- the UI
     renders an empty cell + "—" in the mode-list ES columns.
 
-    IR intensity is reserved for the future 1c (IR add-on) work;
-    always ``None`` in v1 emitted scripts.
+    ``ir_intensity_km_mol`` is ``None`` when IR was not requested, and a
+    number (0.00 included -- a mode can be genuinely IR-inactive) when it
+    was.  How that number was obtained is recorded once for the run in
+    :attr:`SpectraResults.ir_route`, not per mode, because one route
+    produces the whole tensor.
     """
 
     index_1based:         int
@@ -561,6 +564,23 @@ class SpectraResults:
     # (validated at __post_init__).  L1 (Setup) has no flag of its
     # own -- the presence of a valid SpectraResults IS the
     # Setup-complete signal.
+    #: How dmu/dR was obtained, for the run as a whole:
+    #:   "analytic"          -- pyscf.prop.infrared, off the Hessian's own
+    #:                          CPHF solution, no extra SCFs;
+    #:   "finite-difference" -- the 6N-SCF dipole sweep, either because
+    #:                          Raman's displacement loop was running
+    #:                          anyway (so the dipole read was free) or
+    #:                          because the analytic module is absent;
+    #:   "none"              -- IR was not requested.
+    #: Older sidecars predate the field and parse as "" -- absence of a
+    #: record, which the viewer must not render as a claim either way.
+    ir_route:                  str = ""
+    #: The finite-difference step actually used for dmu/dR, in Angstrom,
+    #: when (and only when) that route ran.  Carried because a Methods
+    #: section quoting a finite-difference derivative has to state its
+    #: step to be reproducible; ``None`` on the analytic route, which
+    #: has no step to state.
+    ir_fd_step_ang:            Optional[float] = None
     phase_frequencies:         str = PHASE_EMPTY
     phase_raman:               str = PHASE_EMPTY
     phase_es:                  str = PHASE_EMPTY
@@ -738,6 +758,28 @@ class SpectraResults:
                         f"size {w}; expected {es_window} to match earlier modes"
                     )
 
+    def _modes_with_activity(self) -> List[Dict[str, Any]]:
+        """Mode dicts, each carrying its activity classification.
+
+        Computed here rather than stored on :class:`ModeData` because
+        the decision needs the whole run: a mode is active when it
+        clears a fraction of the STRONGEST band in its own channel, and
+        one mode does not know the others.  Recomputed on every
+        serialisation so a sidecar written before the classification
+        existed gains it on read -- no re-run required.
+        """
+        from .activity import classify_modes
+        rows = [m.to_dict() for m in self.modes]
+        if not rows:
+            return rows
+        flags = classify_modes(
+            [m.ir_intensity_km_mol for m in self.modes],
+            [m.raman_activity_a4_amu for m in self.modes],
+        )
+        for row, flag in zip(rows, flags):
+            row.update(flag)
+        return rows
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "schema_version":       int(self.schema_version),
@@ -763,7 +805,14 @@ class SpectraResults:
                    if self.equilibrium_positions_ang is not None else {}),
             },
 
-            "modes":                [m.to_dict() for m in self.modes],
+            # Activity classification rides WITH the modes, decided
+            # once in `spectra.activity` against the whole run.  It is
+            # a whole-run judgement -- "active" means "above a fraction
+            # of the strongest band in this channel" -- so it cannot be
+            # a property of a mode in isolation, and it must not be
+            # re-derived as an epsilon in the viewer (plan W21: one
+            # home, stored, never a magic epsilon downstream).
+            "modes":                self._modes_with_activity(),
             "selected_mode_idxs_1based": [int(i) for i in self.selected_mode_idxs_1based],
 
             "config":               dict(self.config),
@@ -775,6 +824,9 @@ class SpectraResults:
             "phase_relaxation":     str(self.phase_relaxation),
             "relaxation":           dict(self.relaxation),
             "thermo":               dict(self.thermo),
+            "ir_route":             str(self.ir_route),
+            "ir_fd_step_ang":       (None if self.ir_fd_step_ang is None
+                                     else float(self.ir_fd_step_ang)),
             "phase_raman":          str(self.phase_raman),
             "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
@@ -839,6 +891,9 @@ class SpectraResults:
             phase_relaxation     = str(d.get("phase_relaxation", PHASE_EMPTY)),
             relaxation           = dict(d.get("relaxation") or {}),
             thermo               = dict(d.get("thermo") or {}),
+            ir_route             = str(d.get("ir_route", "")),
+            ir_fd_step_ang       = (None if d.get("ir_fd_step_ang") is None
+                                    else float(d["ir_fd_step_ang"])),
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = dict(d.get("engine_metadata", {})),

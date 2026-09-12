@@ -227,6 +227,38 @@ class PySCFConfig:
         ),
     })
 
+    # ---------------- Engine ----------------
+    #
+    # NAMED, not implied.  Until now "which program runs this" was a
+    # string literal in the browser (`engine: "pyscf"` in the tab's send
+    # payload), which made a real choice look like a constant and gave a
+    # second engine nowhere to land.  Declaring it here puts it on the
+    # form, into the task payload, and into the results sidecar through
+    # the same door every other parameter uses.
+    #
+    # One choice today.  That is the point: a single-option selector
+    # says "this is a choice that has one answer right now", where a
+    # hidden constant said "there is no choice".  A second engine adds
+    # its own config class declaring its own identity -- SIESTA's
+    # spectra path would carry engine="siesta" -- so this field is each
+    # engine's statement of what it is, not a global registry.
+    engine: str = field(default="pyscf", metadata={
+        "category": ("method",),
+        "section": "Engine",
+        "workflow_group": "profile",
+        "label":   "Calculation engine",
+        "tier":    "basic",
+        "choices": ("pyscf",),
+        "engine_key":  '(molbuilder: selects the deck composer + backend env)',
+        "help": ("which program runs the vibrational calculation.  PySCF "
+                 "is the only engine wired to the Spectra tab today -- it "
+                 "supplies the analytic Hessian, the normal modes, and "
+                 "(via pyscf.prop) the IR and Raman intensities, and runs "
+                 "in the managed `molbuilder-pySCF` env.  The field exists "
+                 "so the choice is visible and so a second engine has a "
+                 "place to be selected rather than inferred."),
+    })
+
     # ---------------- Method (main run) ----------------
     method: str = field(default="RKS", metadata={
         "category": ("method",),
@@ -1002,7 +1034,7 @@ class PySCFConfig:
         "item_kind": "deck",
         "expands": ('finite-difference polarizability loop',),
         "engine_key": '(molbuilder: finite-diff polarizability path)',
-        "help": 'compute Raman scattering intensity for every mode.  Cost: roughly 6 x (number of free atoms) extra response calculations (one polarizability per +/- finite-difference displacement in each Cartesian direction) -- the expensive optional.  Turn off if you only want frequencies or IR (IR is far cheaper; the two are independent toggles over one shared displacement loop).',
+        "help": 'compute Raman scattering intensity for every mode.  THE EXPENSIVE OPTIONAL, and the one that sets the run\'s cost: roughly 6 x (number of free atoms) extra SCFs, each followed by a polarizability response calculation (one per +/- finite-difference displacement in each Cartesian direction).  Turn it off if you only want frequencies, or frequencies plus IR -- IR without Raman takes an analytic route that needs no displacement loop at all.  Turning it ON makes IR free, because the dipole can be read at each displacement the Raman loop is already computing.',
     })
     compute_ir: bool = field(default=False, metadata={
         "category": ("procedure",),
@@ -1011,9 +1043,9 @@ class PySCFConfig:
         "label": 'Compute IR intensities',
         "tier": "basic",
         "item_kind": "deck",
-        "expands": ('finite-difference dipole loop',),
-        "engine_key": '(molbuilder: finite-diff dipole-moment derivative path)',
-        "help": "compute IR absorption intensities (km/mol) from finite-difference dipole-moment derivatives.  Independent of Raman since 2026-08-20 (one Hessian, one mode set, one shared displacement loop computing whichever properties are ticked) -- and far cheaper: a dipole read per displacement versus Raman's response calculation.  VALIDATED at the band level 2026-08-20 (the vibration E2E holds water at B3LYP/def2-SVP to its literature windows: bend ~55 km/mol > asym ~27 > sym ~5, pattern and magnitudes both); an external cross-code digit match would harden it further and is welcome, not owed.",
+        "expands": ('analytic dipole derivatives (or a finite-difference dipole loop)',),
+        "engine_key": '(molbuilder: pyscf.prop.infrared, else finite-diff dipoles)',
+        "help": "compute IR absorption intensities (km/mol) from the dipole-moment derivative dmu/dR.  COST DEPENDS ON WHAT ELSE YOU TICKED.  With Raman OFF this is nearly free: the derivative comes from the same coupled-perturbed response the Hessian already solves, measured at about +14% on top of the Hessian.  With Raman ON it is free outright -- Raman's displacement loop is running anyway and the dipole is read at each point.  The slow path exists only as a fallback: if the managed env lacks `pyscf.prop.infrared` (it has never been released to PyPI; `envs doctor` says so and `envs repair --include-optional` installs it), the deck finite-differences the dipole instead -- the SAME intensities, at 6N extra SCFs.  Which route ran is recorded in the results and shown in the viewer's run summary.  VALIDATED: the analytic route reproduces Q-Chem's NH3 intensities to 0.02 km/mol, and the two routes' derivative tensors agree to 0.02%.",
     })
     displacement_amplitude_ang: float = field(default=0.02, metadata={
         "category": ("accuracy",),

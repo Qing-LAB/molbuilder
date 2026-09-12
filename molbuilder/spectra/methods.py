@@ -230,9 +230,29 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
                         "eigenvectors using the standard normal-"
                         "coordinate framework [Wilson1955].")
 
+    # IR.  DELIBERATELY ROUTE-NEUTRAL.  Methods text is composed at
+    # EMIT time (deck composer, results=None), and which dmu/dR route
+    # runs is only settled inside the job -- the analytic one needs
+    # `pyscf.prop.infrared`, a property of the env the deck lands in.
+    # A sentence here claiming "analytic" would therefore be a claim
+    # this code cannot keep, which is the one thing a Methods section
+    # must never contain.  Both routes compute the same derivative and
+    # project it the same way, so the sentence describes THAT, and the
+    # route actually taken is reported beside the results
+    # (`SpectraResults.ir_route`, shown in the viewer's run summary).
+    # When this text is ever re-rendered WITH results in hand, this is
+    # the clause that gains the route.
+    ir_clause = ""
+    if cfg.compute_ir:
+        ir_clause = (" Infrared intensities (km mol⁻¹) were obtained "
+                     "from dipole-moment derivatives with respect to "
+                     "the nuclear Cartesian coordinates "
+                     "[Komornicki1979], projected onto the "
+                     "mass-weighted normal coordinates [Wilson1955].")
+
     para = (f"Harmonic vibrational analysis was performed at the "
             f"{fxc}/{basis}{fxc_cite} level{disp_clause}.{atom_clause}"
-            f"{raman_clause}")
+            f"{ir_clause}{raman_clause}")
 
     # Post-run: append the actual frequency span if we have it.
     if results is not None and results.modes:

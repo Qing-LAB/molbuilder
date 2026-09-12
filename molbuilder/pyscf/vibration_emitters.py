@@ -376,6 +376,139 @@ def homo_index(mo_occ) -> int:
     return int(_np.max(filled))
 
 
+#: Spliced into the deck by `_emit_dipole_derivative_rule`, for the reason
+#: `docs/web/spectra.md` § 9b.2 states: a derivation with a BRANCH ships as
+#: source so one implementation runs and the tests exercise the one that runs.
+#: The branch here is unavoidable and RUNTIME, not emit-time -- the deck is
+#: generated on the host and executed inside `molbuilder-pySCF`, so whether the
+#: analytic route exists is a property of the env it lands in, not of the
+#: machine that wrote it.
+def dipole_derivatives(mf, free_atom_idxs, want_ir):
+    """The Hessian, and -- when asked and available -- dmu/dR with it.
+
+    Returns ``(hessian, dmu_dr, route)``:
+
+    * ``hessian`` -- Hartree/Bohr^2, shape (n_atoms, n_atoms, 3, 3).  The
+      SAME Hessian the no-IR path produces -- asking for IR must not
+      move the frequencies.  That is established by CONSTRUCTION, not
+      by sampling: ``Hessian.kernel()`` is ``hess_elec + hess_nuc``
+      plus a dispersion term when the functional has one, and the two
+      corrections below make this path compute that same sum with the
+      same object.  Verified to ~1e-12 with and without dispersion;
+    * ``dmu_dr``  -- Debye/Angstrom, shape (n_free, 3, 3) indexed
+      (free atom, Cartesian displacement, dipole component), or ``None``
+      when the caller must fall back to finite differences;
+    * ``route``   -- ``"analytic"``, ``"finite-difference"`` or
+      ``"none"``, recorded in the results so a reader can tell which
+      one produced the numbers.
+
+    WHY THE ANALYTIC ROUTE IS NEARLY FREE.  An analytic Hessian's
+    dominant cost is solving the CPHF equations for nuclear
+    displacement, and dmu/dR is those same solutions contracted with
+    dipole integrals.  ``pyscf.prop.infrared`` computes the Hessian as
+    a by-product of that contraction, so asking it for both costs one
+    CPHF solve, not two -- measured +14% over the Hessian alone, versus
+    +486% for the 6N extra SCFs a finite-difference dipole sweep needs
+    (NH3/PBE0/6-31G, 2026-09-11).  The gap widens with atom count: the
+    sweep grows as 6N full SCFs, this does not.
+
+    WHY IT CAN BE ABSENT.  ``pyscf.prop.infrared`` has never been
+    released to PyPI -- it exists only on the project's master branch
+    (see `docs/ops/installation.md` § 3.1).  An env installed from the
+    index has no analytic route, and that is a supported state: the
+    finite-difference path produces the SAME intensities (the two
+    dmu/dR tensors agree to 0.02%), just slowly.  So absence returns
+    ``None`` rather than raising.
+
+    The unit conversion is the one thing a reader cannot check by
+    eye: upstream returns d(mu)/d(R) in atomic units per Bohr, and the
+    deck's projection wants Debye per Angstrom.
+    """
+    import numpy as _np
+
+    # (Debye per atomic unit of dipole) / (Angstrom per Bohr)
+    #   2.541746473 / 0.52917721092 = 4.803204...
+    # which is the elementary charge expressed in D/A -- the nuclear
+    # term de[a] = Z_a * I is a point charge, so the factor must be e.
+    _AU_BOHR_TO_DEBYE_ANG = 2.541746473 / 0.52917721092
+
+    def _infrared_class(infrared, mf_):
+        """Upstream splits by reference, and so must we.
+
+        Unrestricted references carry a 2-D occupancy; a Kohn-Sham
+        object carries ``xc``.  Density fitting is NOT a split -- a
+        DF-RKS goes through the rks class and agrees with the non-DF
+        answer to 0.004 km/mol (measured 2026-09-11), unlike the
+        polarizability module, which has no DF implementation at all.
+        """
+        occ = _np.asarray(mf_.mo_occ)
+        unrestricted = occ.ndim == 2
+        is_ks = hasattr(mf_, "xc")
+        if unrestricted:
+            return infrared.uks.Infrared if is_ks else infrared.uhf.Infrared
+        return infrared.rks.Infrared if is_ks else infrared.rhf.Infrared
+
+    if want_ir:
+        try:
+            from pyscf.prop import infrared as _infrared
+            _cls = _infrared_class(_infrared, mf)
+            _mf_ir = _cls(mf)
+            # HAND IT THE SCF'S OWN HESSIAN OBJECT.  Upstream's
+            # ``hess_cls`` is hardcoded to the NON-DF class, so on a
+            # density-fitted SCF -- molbuilder's default -- it builds a
+            # non-DF Hessian of a DF density.  That is a real mismatch,
+            # not a rounding artifact: measured 7.2e-5 Hartree/Bohr^2
+            # against the SCF's own Hessian, shifting frequencies by
+            # 0.11 cm^-1.  Small, but it would mean asking for IR
+            # silently changed the frequencies, which is not a trade a
+            # user agreed to.  Injecting ``mf.Hessian()`` makes
+            # ``proc_hessian_`` solve CPHF with the SCF's own machinery:
+            # the Hessian then matches the no-IR path to 3.6e-12 -- and
+            # it is FASTER, because there is still only one solve
+            # (14.8 s versus 14.4 s for the Hessian alone).
+            _hobj = mf.Hessian()
+            _mf_ir.mf_hess = _hobj
+            _mf_ir.kernel_dipderiv()          # Hessian + dmu/dR, one CPHF solve
+            _hess = _np.asarray(_mf_ir.mf_hess.de)
+            # RESTORE THE DISPERSION TERM.  ``Hessian.kernel()`` is
+            #     hess_elec + hess_nuc + get_dispersion() if base.do_disp()
+            # while upstream's ``proc_hessian_`` computes only the first
+            # two and overwrites ``.de`` with them.  The paths therefore
+            # differ by EXACTLY the dispersion Hessian -- an omission,
+            # not a rounding difference, and invisible on any functional
+            # that carries no dispersion correction.  Measured on
+            # B3LYP-D3BJ: 7.2e-4 Hartree/Bohr^2, a 3.7 cm^-1 shift on
+            # every frequency; adding the term back reproduces
+            # ``kernel()`` to 5.7e-12.  molbuilder ships
+            # ``pyscf-dispersion``, so -D functionals are ordinary here.
+            if mf.do_disp():
+                _hess = _hess + _np.asarray(_hobj.get_dispersion())
+            _de = _np.asarray(_mf_ir.de)[list(free_atom_idxs)]
+            return _hess, _de * _AU_BOHR_TO_DEBYE_ANG, "analytic"
+        except ImportError:
+            print("  pyscf.prop.infrared not installed -- IR falls back to "
+                  "finite-difference dipoles (same intensities, 6N extra "
+                  "SCFs).  Install it: bash scripts/install-env.sh repair "
+                  "molbuilder-pySCF --include-optional")
+        except Exception as _exc:          # noqa: BLE001 -- see below
+            # Deliberately broad, and deliberately LOUD.  The analytic
+            # route is an optimisation over a working fallback, so no
+            # failure of it may cost the user their run -- but a silent
+            # swallow would hide a real defect behind a slow success,
+            # so the reason is printed and lands in the job log.
+            print(f"  analytic dmu/dR unavailable ({type(_exc).__name__}: "
+                  f"{_exc}) -- falling back to finite-difference dipoles")
+    return (_np.asarray(mf.Hessian().kernel()), None,
+            "finite-difference" if want_ir else "none")
+
+
+def _emit_dipole_derivative_rule() -> List[str]:
+    """The Hessian + dmu/dR rule, spliced from :func:`dipole_derivatives`."""
+    import inspect
+    src = inspect.getsource(dipole_derivatives)
+    return [ln.rstrip() for ln in src.splitlines()]
+
+
 def _emit_homo_rule() -> List[str]:
     """The HOMO rule, spliced from :func:`homo_index` rather than retyped."""
     import inspect
@@ -742,6 +875,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     # summed -- and a second copy of a branch is a second thing to get wrong.
     # `homo_index` above is the one implementation and the one the tests call.
     out.extend(_emit_homo_rule())
+    out.append("")
+    out.extend(_emit_dipole_derivative_rule())
     out.append("HOMO_IDX = homo_index(_as_numpy(mf.mo_occ))")
     out.append("")
     out.append("state['equilibrium'] = {")
@@ -858,11 +993,25 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("#                              the only path when gpu4pyscf does")
     out.append("#                              not cover Hessian for this SCF type.")
     out.append("if _GPU_HAS_HESSIAN or not _USING_GPU:")
-    out.append("    HESS = _as_numpy(mf.Hessian().kernel())")
+    out.append("    _mf_for_hess = mf")
     out.append("else:")
     out.append("    print('  rebuilding mf on CPU for the Hessian step')")
-    out.append("    _mf_cpu_for_hess = _build_mf_at(COORDS_EQ_ANG, force_cpu=True)")
-    out.append("    HESS = _as_numpy(_mf_cpu_for_hess.Hessian().kernel())")
+    out.append("    _mf_for_hess = _build_mf_at(COORDS_EQ_ANG, force_cpu=True)")
+    out.append("")
+    out.append("# The Hessian and -- when IR is the ONLY intensity asked for --")
+    out.append("# dmu/dR come from the same CPHF solve.  When Raman IS on, its")
+    out.append("# displacement loop runs regardless and reads the dipole at each")
+    out.append("# point for free, so the analytic route would buy nothing: the")
+    out.append("# 6N SCFs are already being spent on dalpha/dR.  That is the whole")
+    out.append("# rule for which route runs.")
+    out.append("_WANT_ANALYTIC_IR = COMPUTE_IR and not COMPUTE_RAMAN")
+    out.append("_HESS_RAW, DMU_DR, IR_ROUTE = dipole_derivatives(")
+    out.append("    _mf_for_hess, FREE_ATOM_IDXS, _WANT_ANALYTIC_IR)")
+    out.append("HESS = _as_numpy(_HESS_RAW)")
+    out.append("if COMPUTE_IR and not _WANT_ANALYTIC_IR:")
+    out.append("    IR_ROUTE = 'finite-difference'   # the Raman loop supplies it")
+    out.append("state['ir_route'] = IR_ROUTE")
+    out.append("print(f'  IR dipole-derivative route: {IR_ROUTE}')")
     out.append("# HESS shape: (n_atoms, n_atoms, 3, 3) in Hartree / Bohr².")
     out.append("")
     out.append("# ------------------------------------------------------------")

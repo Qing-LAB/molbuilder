@@ -960,6 +960,27 @@ enable point-group symmetry; faster but rarely matches builder-output geometry e
 
 A symmetric molecule can run 2-10x faster with this on, because PySCF skips the integrals symmetry makes redundant. It is unforgiving of numerical drift, though: builder output rarely places atoms on the symmetry elements to the precision PySCF checks, and a near miss is refused rather than approximated. Leave it off unless you know the geometry is exact."""
 
+[item.engine]
+kind = "engine"
+category = ["method"]
+engines = ["pyscf"]
+calculations = ["vibration"]
+anchor = "pyscf"
+engine_key = "(molbuilder: selects the deck composer + the backend env)"
+type = "enum"
+choices = ["pyscf"]
+value = "pyscf"
+default = "pyscf"
+group = "profile"
+label = "Calculation engine"
+tier = "basic"
+help = """
+which program runs the vibrational calculation.
+
+PySCF is the only engine wired to the Spectrum tab today: it supplies the analytic Hessian, the normal modes, and -- through pyscf.prop -- the IR and Raman intensities, and it runs in the managed `molbuilder-pySCF` env.
+
+ONE CHOICE TODAY, AND THAT IS THE POINT.  Until now the engine was a string literal in the browser's send payload, which made a real choice look like a constant and left a second engine nowhere to land.  Naming it here puts it on the form, in the task payload, and in the results sidecar through the same door every other parameter uses."""
+
 [item.method]
 kind = "engine"
 category = ["method"]
@@ -1485,15 +1506,19 @@ group = "profile"
 label = "Compute Raman activities"
 tier = "basic"
 help = """
-compute Raman scattering intensity for every mode.  Cost: roughly 6 x (number of free atoms) extra response calculations (one polarizability per +/- finite-difference displacement in each Cartesian direction) -- the expensive optional.  Turn off if you only want frequencies or IR (IR is far cheaper; the two are independent toggles over one shared displacement loop)."""
+compute Raman scattering intensity for every mode.
+
+THE EXPENSIVE OPTIONAL, and the one that sets the run's cost: roughly 6 x (number of free atoms) extra SCFs, each followed by a polarizability response calculation -- one per +/- finite-difference displacement in each Cartesian direction.
+
+Turn it off if you only want frequencies, or frequencies plus IR: IR without Raman takes an analytic route that needs no displacement loop at all.  Turning it ON makes IR free, because the dipole can be read at each displacement the Raman loop is already computing."""
 
 [item.compute_ir]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["finite-difference dipole loop"]
+expands = ["analytic dipole derivatives (or a finite-difference dipole loop)"]
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: finite-diff dipole-moment derivative path)"
+engine_key = "(molbuilder: pyscf.prop.infrared, else finite-diff dipoles)"
 type = "bool"
 value = false
 default = false
@@ -1501,7 +1526,13 @@ group = "profile"
 label = "Compute IR intensities"
 tier = "basic"
 help = """
-compute IR absorption intensities (km/mol) from finite-difference dipole-moment derivatives.  Independent of Raman since 2026-08-20 (one Hessian, one mode set, one shared displacement loop computing whichever properties are ticked) -- and far cheaper: a dipole read per displacement versus Raman's response calculation.  VALIDATED at the band level 2026-08-20 (the vibration E2E holds water at B3LYP/def2-SVP to its literature windows: bend ~55 km/mol > asym ~27 > sym ~5, pattern and magnitudes both); an external cross-code digit match would harden it further and is welcome, not owed."""
+compute IR absorption intensities (km/mol) from the dipole-moment derivative dmu/dR.
+
+COST DEPENDS ON WHAT ELSE YOU TICKED.  With Raman OFF this is nearly free: the derivative comes from the very coupled-perturbed response the Hessian already solves, measured at about +14% on top of the Hessian.  With Raman ON it is free outright -- Raman's displacement loop runs anyway, and the dipole is read at each point it already computes.
+
+The slow path is a fallback, not the design: if the env lacks `pyscf.prop.infrared` (never released to PyPI -- `envs doctor` reports it and `envs repair --include-optional` installs it), the deck finite-differences the dipole instead.  Same intensities, 6N extra SCFs.  Which route actually ran is recorded in the results and shown in the viewer's run summary.
+
+VALIDATED: the analytic route reproduces Q-Chem's published NH3 intensities to 0.02 km/mol, and the two routes' derivative tensors agree to 0.02%.  Band-level validation stands from 2026-08-20 (water at B3LYP/def2-SVP in its literature windows: bend ~55 km/mol > asym ~27 > sym ~5)."""
 
 [item.displacement_amplitude_ang]
 kind = "deck"

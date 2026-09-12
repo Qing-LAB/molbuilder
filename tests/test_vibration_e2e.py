@@ -19,6 +19,8 @@ import json
 import os
 from pathlib import Path
 
+import subprocess
+
 import pytest
 
 CONDA_SH = Path.home() / "miniconda3/etc/profile.d/conda.sh"
@@ -138,6 +140,15 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     assert 0.5 < sym < 15.0, f"sym stretch {sym} outside water's window"
     assert 10.0 < asym < 60.0, f"asym stretch {asym} outside water's window"
     assert bend > asym > sym, "water's IR ordering is bend > asym > sym"
+    # WHICH ROUTE produced dmu/dR is recorded, because the two cost
+    # wildly different amounts and a reader looking at a slow run
+    # deserves to know which one they got.  Without this assertion the
+    # test passes identically whether the analytic path fired or
+    # silently never did -- and "silently never did" is a 6N-SCF
+    # regression that looks like success.
+    assert d["ir_route"] in ("analytic", "finite-difference"), (
+        f"IR ran but recorded no route: {d.get('ir_route')!r}")
+
     # Raman was NOT requested: its phase closes as complete-with-nothing.
     assert d["phase_raman"] == "complete"
     assert all(m["raman_activity_a4_amu"] in (None, 0.0) for m in modes)
@@ -190,3 +201,62 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     assert all(m["raman_activity_a4_amu"] is not None for m in modes)
     assert all(m["ir_intensity_km_mol"] is not None for m in modes)
     assert d["thermo"]["grid"]["temperatures_K"], "thermo grid missing"
+
+
+def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
+    """The analytic route must return the Hessian the NO-IR path returns.
+
+    ``pyscf.prop.infrared`` computes a Hessian on its way to dmu/dR, and
+    two of its choices differ from ``Hessian.kernel()``:
+
+      * ``proc_hessian_`` is ``hess_elec + hess_nuc`` and STOPS.
+        ``kernel()`` adds ``get_dispersion()`` when the functional has a
+        dispersion correction -- measured on B3LYP-D3BJ as 7.2e-4
+        Hartree/Bohr^2, a 3.7 cm^-1 shift on every frequency.
+      * upstream hardcodes ``hess_cls`` to the NON-DF Hessian class, so
+        on a density-fitted SCF -- molbuilder's default -- it builds a
+        non-DF Hessian of a DF density (0.11 cm^-1).
+
+    Both are invisible on a functional without dispersion, which is how
+    the first version of this shipped.  So the grid below crosses
+    dispersion WITH density fitting: ticking the IR box is a request for
+    an extra column, never for different frequencies.
+
+    Runs inside ``molbuilder-pySCF`` like everything else in this file --
+    pyscf lives only there.
+    """
+    script = tmp_path / "hess_identity.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})\n"
+        "import numpy as np\n"
+        "from pyscf import gto, dft\n"
+        "from molbuilder.pyscf.vibration_emitters import dipole_derivatives\n"
+        "mol = gto.Mole(atom='N 0 0 0; H 0.8 0 0; H 0 1 0; H 0 0 1.2',\n"
+        "               basis='6-31G', verbose=0).build()\n"
+        "for xc in ('PBE0', 'B3LYP-D3BJ'):\n"
+        "    for df in (True, False):\n"
+        "        mf = dft.RKS(mol, xc=xc)\n"
+        "        if df: mf = mf.density_fit()\n"
+        "        mf.run()\n"
+        "        ref = np.asarray(mf.Hessian().kernel())\n"
+        "        h, dmu, route = dipole_derivatives(mf, [0,1,2,3], True)\n"
+        "        print('RESULT', xc, df, route,\n"
+        "              float(np.max(np.abs(h - ref))),\n"
+        "              None if dmu is None else list(dmu.shape))\n",
+        encoding="utf-8")
+    out = subprocess.run(
+        ["bash", "-lc",
+         f"source {CONDA_SH} && conda activate molbuilder-pySCF "
+         f"&& python {script}"],
+        capture_output=True, text=True, timeout=1800)
+    rows = [ln.split() for ln in out.stdout.splitlines()
+            if ln.startswith("RESULT")]
+    assert rows, f"probe produced nothing:\n{out.stdout}\n{out.stderr[-2000:]}"
+    for _, xc, df, route, drift, *shape in rows:
+        if route != "analytic":
+            pytest.skip("pyscf.prop.infrared not installed in this env")
+        assert float(drift) < 1e-8, (
+            f"{xc} density_fit={df}: asking for IR moved the Hessian by "
+            f"{float(drift):.2e} Hartree/Bohr^2")
+    assert len(rows) == 4, "every functional x density-fitting combination"

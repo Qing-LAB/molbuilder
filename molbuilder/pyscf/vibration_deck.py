@@ -472,34 +472,51 @@ def _vib_thermo_block() -> List[str]:
 
 
 def _vib_ir_only_block(cfg) -> List[str]:
-    """IR without Raman — the decoupling the 2026-08-20 ruling asked for:
-    a dipole read per ± displacement over the free Cartesians (far cheaper
-    than Raman's response calculations), then the LIFTED per-mode IR
-    projection verbatim, so the two paths' formula cannot differ."""
+    """IR without Raman -- the decoupling the 2026-08-20 ruling asked for.
+
+    TWO ROUTES TO THE SAME TENSOR, chosen at RUN time because the choice
+    depends on the env the deck lands in, not the machine that wrote it:
+
+    * ``dipole_derivatives`` already filled ``DMU_DR`` analytically, off
+      the Hessian's own CPHF solution -- see the spliced rule in
+      ``vibration_emitters``.  Nothing to do here but project.
+    * It could not (``pyscf.prop.infrared`` is absent, or the reference
+      is one it does not cover), so the dipole is finite-differenced
+      over the free Cartesians: 6N extra SCFs for the same numbers.
+
+    Either way the LIFTED per-mode projection runs verbatim, so the two
+    paths cannot disagree about the formula -- only about how dmu/dR was
+    obtained, which ``state['ir_route']`` records for the reader.
+    """
     out = [
         "",
         "# ============================================================",
-        "#  Phase 3-IR: IR intensities (dipole finite differences)",
+        "#  Phase 3-IR: IR intensities",
         "# ============================================================",
-        "print('=== Stage: IR intensities (dipole FD) ===')",
         "state['phase_raman'] = 'complete'   # not requested; nothing owed",
-        "_h_ang = RAMAN_FD_STEP_ANG   # ONE step for both dmu/dR paths",
-        "DMU_DR = np.zeros((N_FREE, 3, 3))",
-        "for _k, _atom in enumerate(FREE_ATOM_IDXS):",
-        "    for _a in range(3):",
-        "        _cp = np.array(COORDS_EQ_ANG, dtype=float)",
-        "        _cm = np.array(COORDS_EQ_ANG, dtype=float)",
-        "        _cp[_atom, _a] += _h_ang",
-        "        _cm[_atom, _a] -= _h_ang",
-        "        # _build_mf_at CONVERGES the SCF before returning (and",
-        "        # halts if it cannot) -- a second kernel() here re-ran the",
-        "        # whole SCF per displaced point, doubling the loop's cost",
-        "        # for identical numbers.",
-        "        _mfp = _build_mf_at(_cp)",
-        "        _mfm = _build_mf_at(_cm)",
-        "        _dp = _as_numpy(_mfp.dip_moment(unit='Debye', verbose=0))",
-        "        _dm = _as_numpy(_mfm.dip_moment(unit='Debye', verbose=0))",
-        "        DMU_DR[_k, _a, :] = (_dp - _dm) / (2.0 * _h_ang)",
+        "if DMU_DR is None:",
+        "    print('=== Stage: IR intensities (dipole finite differences) ===')",
+        "    _h_ang = RAMAN_FD_STEP_ANG   # ONE step for both dmu/dR paths",
+        "    DMU_DR = np.zeros((N_FREE, 3, 3))",
+        "    for _k, _atom in enumerate(FREE_ATOM_IDXS):",
+        "        for _a in range(3):",
+        "            _cp = np.array(COORDS_EQ_ANG, dtype=float)",
+        "            _cm = np.array(COORDS_EQ_ANG, dtype=float)",
+        "            _cp[_atom, _a] += _h_ang",
+        "            _cm[_atom, _a] -= _h_ang",
+        "            # _build_mf_at CONVERGES the SCF before returning (and",
+        "            # halts if it cannot) -- a second kernel() here re-ran",
+        "            # the whole SCF per displaced point, doubling the",
+        "            # loop's cost for identical numbers.",
+        "            _mfp = _build_mf_at(_cp)",
+        "            _mfm = _build_mf_at(_cm)",
+        "            _dp = _as_numpy(_mfp.dip_moment(unit='Debye', verbose=0))",
+        "            _dm = _as_numpy(_mfm.dip_moment(unit='Debye', verbose=0))",
+        "            DMU_DR[_k, _a, :] = (_dp - _dm) / (2.0 * _h_ang)",
+        "    state['ir_fd_step_ang'] = _h_ang   # a Methods section must",
+        "                                       # state the step it used",
+        "else:",
+        "    print('=== Stage: IR intensities (analytic dmu/dR, no extra SCFs) ===')",
         "modes_payload = state['modes']",
     ]
     # The projection emits ITS OWN per-mode loop (reading
