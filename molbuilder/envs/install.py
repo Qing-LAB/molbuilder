@@ -355,7 +355,7 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     create_argv: List[str] = [conda, "create", "-n", env_name, "-y"]
     for ch in recipe.channels:
         create_argv.extend(["-c", ch])
-    create_argv.extend(recipe.conda_packages)
+    create_argv.extend(p.spec for p in recipe.conda_packages)
     steps.append(InstallStep(label="conda create",
                              argv=tuple(create_argv)))
 
@@ -943,7 +943,7 @@ def run_install(
                 recipe.build_spec, prefix,
                 conda_binary=caps.conda_binary,
                 rebuild=rebuild,
-                conda_packages=recipe.conda_packages,
+                conda_packages=[p.spec for p in recipe.conda_packages],
                 skip_network_check=build_skip_network_check,
                 on_warnings=build_on_warnings,
                 on_progress=build_on_progress,

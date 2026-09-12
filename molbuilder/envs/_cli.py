@@ -1115,7 +1115,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 _builds.preflight(
                     recipe.build_spec,
                     probe,
-                    recipe.conda_packages,
+                    [p.spec for p in recipe.conda_packages],
                     env_prefix=disk_path,
                     check_network=False,  # dry-run avoids network ls-remote
                 )

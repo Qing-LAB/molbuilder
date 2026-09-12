@@ -99,7 +99,7 @@ def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
         f"conda resolve 14.4, whose gfortran miscompiles SIESTA's "
         f"kpoint_t.F90 into wrong k-points with no error "
         f"(ops/installation.md § 6)")
-    pkgs = " ".join(recipe.conda_packages)
+    pkgs = " ".join(recipe.conda_specs)
     for tool in ("gcc", "gxx", "gfortran"):
         want = f"{tool}_linux-64={_GCC_VERSION}"
         assert want in pkgs, (
@@ -109,13 +109,13 @@ def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
 
 def test_pins_python_3_12(recipe):
     """Matches the host env + every other recipe."""
-    assert "python=3.12" in recipe.conda_packages
+    assert "python=3.12" in recipe.conda_specs
 
 
 def test_pins_cmake_geq_3_30(recipe):
     """CMake 3.30+ is required by SIESTA 5.4.2's CMakeLists."""
-    assert any("cmake" in p for p in recipe.conda_packages)
-    cmake_specs = [p for p in recipe.conda_packages if p.startswith("cmake")]
+    assert any("cmake" in p for p in recipe.conda_specs)
+    cmake_specs = [p for p in recipe.conda_specs if p.startswith("cmake")]
     assert any(">=3.30" in p for p in cmake_specs), (
         f"cmake spec should pin >=3.30: {cmake_specs!r}"
     )
@@ -125,10 +125,10 @@ def test_uses_openblas_not_mkl(recipe):
     """Locked decision: stays single-OpenMP-runtime (libgomp).  MKL
     brings libiomp5 which collides at runtime.  See
     docs/ops/installation.md § 6"""
-    pkgs_lower = [p.lower() for p in recipe.conda_packages]
+    pkgs_lower = [p.lower() for p in recipe.conda_specs]
     assert any("openblas" in p for p in pkgs_lower)
     assert not any("mkl" in p for p in pkgs_lower), (
-        f"recipe contains MKL spec(s): {[p for p in recipe.conda_packages if 'mkl' in p.lower()]}"
+        f"recipe contains MKL spec(s): {[p for p in recipe.conda_specs if 'mkl' in p.lower()]}"
     )
 
 
@@ -136,8 +136,8 @@ def test_mpi_packages_pinned_to_openmpi_variant(recipe):
     """fftw / hdf5 / netcdf-fortran must use the openmpi variant to
     match the env's OpenMPI; mismatched variants segfault at runtime."""
     for required in ("fftw", "hdf5", "netcdf-fortran"):
-        matches = [p for p in recipe.conda_packages if p.startswith(required)]
-        assert matches, f"no {required} pin in recipe.conda_packages"
+        matches = [p for p in recipe.conda_specs if p.startswith(required)]
+        assert matches, f"no {required} pin in recipe.conda_specs"
         for spec in matches:
             assert "mpi_openmpi_" in spec, (
                 f"{spec!r} should use the mpi_openmpi_* build variant "
@@ -147,7 +147,7 @@ def test_mpi_packages_pinned_to_openmpi_variant(recipe):
 
 def test_libxc_present(recipe):
     """SIESTA links libxc for the wider functional library."""
-    assert "libxc" in recipe.conda_packages
+    assert "libxc" in recipe.conda_specs
 
 
 def test_no_forbidden_packages_in_conda_packages(recipe):
@@ -156,7 +156,7 @@ def test_no_forbidden_packages_in_conda_packages(recipe):
     assert recipe.build_spec is not None
     for forbidden in recipe.build_spec.forbidden_packages:
         forbidden_simple = forbidden.split("=")[0]
-        for pkg in recipe.conda_packages:
+        for pkg in recipe.conda_specs:
             pkg_simple = pkg.split("=")[0]
             assert pkg_simple != forbidden_simple, (
                 f"conda_packages contains forbidden pkg `{pkg}` "
@@ -251,13 +251,13 @@ def test_cuda_toolkit_in_conda_packages(recipe):
     the env via conda-forge packages (mirroring molbuilder-pySCF).
     The recipe must declare cuda-nvcc + cuda-cudart-dev + a pinned
     cuda-version; without them the env has no CUDA toolkit at all."""
-    pkgs = " ".join(recipe.conda_packages)
+    pkgs = " ".join(recipe.conda_specs)
     assert "cuda-version=" in pkgs, (
         "recipe must pin cuda-version (mirrors molbuilder-pySCF "
         "convention); got: " + pkgs
     )
     for required in ("cuda-nvcc", "cuda-cudart-dev"):
-        assert required in recipe.conda_packages, (
+        assert required in recipe.conda_specs, (
             f"recipe must include {required!r} in conda_packages "
             f"to ship the CUDA toolkit in-env"
         )
@@ -627,7 +627,7 @@ def test_sysroot_is_pinned_not_merely_declared(recipe):
     installed.  While the spec was bare, no static assertion could have
     caught this, which is why the live-solve test below exists as well.
     """
-    specs = [p for p in recipe.conda_packages
+    specs = [p for p in recipe.conda_specs
              if p.split("=")[0] == "sysroot_linux-64"]
     assert specs, "recipe no longer declares sysroot_linux-64 at all"
     assert len(specs) == 1, f"sysroot declared more than once: {specs}"
@@ -646,7 +646,7 @@ def test_the_sysroot_pin_is_at_or_below_the_conda_forge_floor(recipe):
     newer raise it via MOLBUILDER_SYSROOT, not by editing this default.
     """
     from molbuilder.envs.abi import parse_version
-    spec = next(p for p in recipe.conda_packages
+    spec = next(p for p in recipe.conda_specs
                 if p.split("=")[0] == "sysroot_linux-64")
     assert parse_version(spec.split("=", 1)[1]) <= (2, 17)
 
@@ -655,7 +655,7 @@ def test_kernel_headers_is_not_double_pinned(recipe):
     """sysroot pins kernel-headers exactly (2.17 -> 3.10.0), so a second
     pin here would be a redundant fact with its own way of going stale.
     One decision, one place."""
-    specs = [p for p in recipe.conda_packages
+    specs = [p for p in recipe.conda_specs
              if p.split("=")[0] == "kernel-headers_linux-64"]
     assert specs == ["kernel-headers_linux-64"], (
         f"kernel-headers should follow sysroot, not carry its own pin: {specs}"
@@ -671,7 +671,7 @@ def test_readline_is_declared_not_inherited(recipe):
     which glibc provides).  It was reaching the env only because
     ``python`` happens to pull it in transitively.
     """
-    assert "readline" in recipe.conda_packages
+    assert "readline" in recipe.conda_specs
 
 
 def test_the_lua_build_step_is_the_one_carrying_the_search_paths(recipe):

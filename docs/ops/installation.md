@@ -35,6 +35,11 @@ Each environment is defined by a **recipe** — a frozen data record in
 and (for the GPU env) a from-source build plan. That registry is the single source
 of truth; the `molbuilder envs` command reads it.
 
+> **This page is the guide — what to type and what it does for you.** How the
+> machinery underneath works (the registry's shape, the install state machine,
+> the audit and repair) is
+> [`env-framework.md`](?doc=ops/env-framework.md).
+
 
 ## The package manager — one recorded fact, one door *(2026-08-21)*
 

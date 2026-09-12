@@ -264,6 +264,10 @@
      "path": "ops/installation.md"
     },
     {
+     "path": "ops/env-framework.md",
+     "label": "The env framework"
+    },
+    {
      "path": "ops/deployment.md"
     },
     {

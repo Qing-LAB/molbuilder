@@ -3,7 +3,7 @@
 WHY THIS FILE IS SEPARATE (and slow, and network-bound):
 
     Every other recipe test is a string assertion over
-    ``recipe.conda_packages``.  Those are fast, deterministic, and
+    ``recipe.conda_specs``.  Those are fast, deterministic, and
     structurally blind to the failure that motivated this module: in
     2026-09 the recipe's declared specs did not change at all, and the
     package the solver installed for them did.  conda-forge moved the
@@ -93,12 +93,12 @@ def solved():
     if manager is None:
         pytest.skip("no conda/mamba available to solve with")
     recipe = recipe_by_name("molbuilder-siesta-gpu")
-    return _dry_run_solve(manager, recipe.conda_packages)
+    return _dry_run_solve(manager, recipe.conda_specs)
 
 
 def _declared_pin(name):
     recipe = recipe_by_name("molbuilder-siesta-gpu")
-    for spec in recipe.conda_packages:
+    for spec in recipe.conda_specs:
         if spec.split("=")[0] == name and "=" in spec:
             return parse_version(spec.split("=", 1)[1])
     return None

@@ -438,7 +438,7 @@ def test_check_forbidden_silent_on_clean_packages(siesta_gpu_spec):
     """The siesta-gpu recipe's own conda_packages list passes."""
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     err = B.check_no_forbidden_packages(siesta_gpu_spec,
-                                        recipe.conda_packages)
+                                        recipe.conda_specs)
     assert err is None
 
 
@@ -509,7 +509,7 @@ def test_preflight_report_separates_errors_warnings_info(tmp_path,
     """The three buckets do different things: errors halt, warnings
     confirm, info shows.  They must never blur."""
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
-    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_packages
+    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     # Fake env: has a conda-meta dir but no nvcc, so the env-side
     # toolkit error fires.  Also fake nvidia-smi away so the host-side
     # error fires.
@@ -581,7 +581,7 @@ def test_preflight_reports_both_sides_of_the_abi_contract(tmp_path,
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.17")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_packages, str(tmp_path),
+                         recipe.conda_specs, str(tmp_path),
                          check_network=False)
     info = "\n".join(report.info)
     assert "Host glibc" in info
@@ -598,7 +598,7 @@ def test_preflight_errors_when_the_sysroot_outranks_the_host_glibc(
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.39")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_packages, str(tmp_path),
+                         recipe.conda_specs, str(tmp_path),
                          check_network=False)
     codes = {f.code for f in report.findings}
     assert "abi.sysroot-exceeds-host-glibc" in codes
@@ -614,7 +614,7 @@ def test_preflight_is_silent_on_the_pinned_default(tmp_path, monkeypatch):
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.17")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_packages, str(tmp_path),
+                         recipe.conda_specs, str(tmp_path),
                          check_network=False)
     assert [f for f in report.findings if f.code.startswith("abi.")] == []
 
@@ -664,7 +664,7 @@ def test_preflight_surfaces_stale_dirs_as_warning(tmp_path, monkeypatch):
     """When stale dirs are detected, preflight returns a warning
     (not an error), and the message tells the user how to clean up."""
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
-    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_packages
+    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     env_prefix = str(tmp_path / "env")
     paths = B.resolve_paths(spec, env_prefix)
     (paths.root / "elsi").mkdir(parents=True)
@@ -686,7 +686,7 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path):
     succeeded=False with NO subprocess invoked (no sentinels written,
     no build dir created)."""
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
-    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_packages
+    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     env_prefix = str(tmp_path / "env")
     os.makedirs(env_prefix)
     # No CUDA on the fake env -> preflight errors

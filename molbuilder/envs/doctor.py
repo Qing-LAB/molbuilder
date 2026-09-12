@@ -316,16 +316,18 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     subprocess.  Source of truth is the on-disk metadata.
     """
     issues: List[PackageAuditIssue] = []
-    conda_specs = list(recipe.conda_packages)
+    conda_specs = [p.spec for p in recipe.conda_packages]
     pip_specs = list(recipe.pip_packages)
     # Build name-sets for optional packages so we can classify
     # missing ones as info-only (kind suffixed with ``-optional``).
     # Optional packages typically gate a non-default feature (GPU,
     # OAuth provider, etc.) -- the env still functions without them.
+    # Optionality is a field on the package now, for both kinds -- no
+    # second list to match names against.
     optional_conda = {
-        _parse_conda_spec(s)[0]
-        for s in recipe.optional_conda_packages
-        if _parse_conda_spec(s) is not None
+        _parse_conda_spec(p.spec)[0]
+        for p in recipe.conda_packages
+        if p.optional and _parse_conda_spec(p.spec) is not None
     }
     # Optionality for pip lives on the record, not in a parallel list.
     optional_pip = {

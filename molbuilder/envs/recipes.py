@@ -577,6 +577,32 @@ class BuildSpec:
 
 
 @dataclass(frozen=True)
+class CondaPackage:
+    """One conda dependency, and whether the env needs it.
+
+    conda's own grammar carries the version and build pin
+    (``siesta=5.4.2=mpi_openmpi_*``), so the spec stays a string and the
+    audit parses it -- unlike pip, where the URL had to be lifted out
+    because a spec string could not hold identity and source apart.
+
+    What it does NOT stay is a bare string in a list beside a SECOND
+    list of names that are optional.  Optionality was expressed by
+    membership, matched by name, so an entry matching nothing quietly
+    left its package required; and a reader had to hold two lists in
+    their head to answer one question about one package.
+    """
+
+    spec: str
+    optional: bool = False
+    reason: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.spec or any(c.isspace() for c in self.spec):
+            raise ValueError(
+                f"CondaPackage spec must be one conda spec; got {self.spec!r}")
+
+
+@dataclass(frozen=True)
 class PipPackage:
     """One pip dependency, with **where it comes from** recorded.
 
@@ -792,22 +818,13 @@ class Recipe:
     category: Optional[str]
     description: str
     channels: Tuple[str, ...]
-    conda_packages: Tuple[str, ...]
+    conda_packages: Tuple["CondaPackage", ...]
     pip_packages: Tuple[PipPackage, ...] = ()
-    # Conda packages whose ABSENCE at audit time is informational rather
-    # than an error.  Names should match entries in ``conda_packages``
-    # (the install path still tries to install them; only the audit
-    # treats them leniently).
-    #
-    # PIP HAS NO SUCH LIST: optionality is a field on
-    # :class:`PipPackage`, because for pip it must govern the INSTALL as
-    # well as the audit.  The old ``optional_pip_packages`` only reached
-    # the audit -- every pip package went into one combined command, so
-    # a single failing wheel aborted the whole env install regardless of
-    # how optional the recipe said it was.  ``PipPackage.optional`` puts
-    # the package in its own non-fatal step, which is what the word
-    # promised all along.
-    optional_conda_packages: Tuple[str, ...] = ()
+    # There is no parallel `optional_*` list for either kind any more.
+    # Optionality is a FIELD on the package, because a fact about one
+    # package belongs to that package -- and because membership in a
+    # second list, matched by name, silently left a mistyped entry
+    # required.
     extra_steps: Tuple[Tuple[str, ...], ...] = ()
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
@@ -815,8 +832,30 @@ class Recipe:
     verify_ignore_exit_code: bool = False
     system_preconditions: Tuple[str, ...] = ()
 
+    @property
+    def conda_specs(self) -> Tuple[str, ...]:
+        """Just the spec strings, as conda spells them.
+
+        The packages are records; conda's command line, its solver and
+        the audit's pin parsing all want the string.  Named once here so
+        every caller stops writing the same comprehension.
+        """
+        return tuple(p.spec for p in self.conda_packages)
+
+    @property
+    def pip_specs(self) -> Tuple[str, ...]:
+        """Just the pip install arguments, in declaration order."""
+        return tuple(p.spec() for p in self.pip_packages)
+
     def __post_init__(self) -> None:
         """A recipe that cannot install is not a recipe.
+
+        ONE RULE FOR BOTH PACKAGE KINDS: a bare string is the ordinary
+        case and is normalised to a record here; a record is written out
+        only when the package needs something a name cannot say --
+        optionality, a source, a forced reinstall.  Most of a recipe
+        stays a readable list of names, and the entries that are special
+        LOOK special.
 
         Three tests asserted this at the registry: non-empty required fields,
         and that `extra_steps` is a tuple OF TUPLES.  Nothing type-checks
@@ -826,6 +865,12 @@ class Recipe:
         `(("python","-m","x"),)`, which the installer runs as one command per
         character.  Malformed raises where it is written now.
         """
+        object.__setattr__(self, "conda_packages", tuple(
+            p if isinstance(p, CondaPackage) else CondaPackage(p)
+            for p in self.conda_packages))
+        object.__setattr__(self, "pip_packages", tuple(
+            p if isinstance(p, PipPackage) else PipPackage(p)
+            for p in self.pip_packages))
         for fld in ("name", "description", "channels", "conda_packages"):
             if not getattr(self, fld):
                 raise ValueError(
@@ -840,39 +885,7 @@ class Recipe:
                 raise TypeError(
                     f"Recipe {self.name!r}: every extra_steps argument must "
                     f"be a str; got {step!r}")
-        # AN OPTIONAL CONDA PACKAGE MUST BE ONE OF THE PACKAGES.
-        #
-        # conda optionality is expressed by membership in a SECOND list,
-        # matched by name -- so a name that matches nothing is not an
-        # error, it is a package that quietly stays required.  The audit
-        # would then report it missing and `repair` would try to install
-        # it without `--include-optional`, and nothing would say why.
-        #
-        # (pip has no such hazard: optionality is a field on the record,
-        # so it cannot fail to refer to anything.  The check exists
-        # because the two halves are still modelled differently.)
-        if self.optional_conda_packages:
-            from .doctor import _parse_conda_spec as _pcs
-            declared = {
-                _pcs(spec)[0] for spec in self.conda_packages
-                if _pcs(spec) is not None
-            }
-            for spec in self.optional_conda_packages:
-                parsed = _pcs(spec)
-                if parsed is not None and parsed[0] not in declared:
-                    raise ValueError(
-                        f"Recipe {self.name!r}: optional_conda_packages "
-                        f"names {parsed[0]!r}, which is not in "
-                        f"conda_packages -- an optional entry that "
-                        f"matches nothing silently leaves the package "
-                        f"REQUIRED")
-        for pkg in self.pip_packages:
-            if not isinstance(pkg, PipPackage):
-                raise TypeError(
-                    f"Recipe {self.name!r}: pip_packages takes PipPackage "
-                    f"records, not bare strings -- got {pkg!r}.  The record "
-                    f"carries the SOURCE, which the audit and repair both "
-                    f"need; a string only says what, never from where")
+
 
 
 # --------------------------------------------------------------------- #

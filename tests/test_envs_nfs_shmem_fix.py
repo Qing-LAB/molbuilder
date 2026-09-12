@@ -76,5 +76,5 @@ def test_host_env_includes_psutil():
 
     Pin: ``psutil`` must appear in the host recipe's conda_packages.
     """
-    pkgs = " ".join(_host_recipe().conda_packages)
+    pkgs = " ".join(_host_recipe().conda_specs)
     assert "psutil" in pkgs

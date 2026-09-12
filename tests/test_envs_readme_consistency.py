@@ -141,7 +141,8 @@ def test_install_env_sh_host_conda_packages_match_recipe():
     bash_pkgs = _parse_bash_array(sh_text, "HOST_CONDA_PACKAGES")
 
     host = recipe_by_name("molbuilder")
-    py_pkgs = list(host.conda_packages)
+    # The shell array lists conda SPECS; the registry lists records.
+    py_pkgs = list(host.conda_specs)
 
     assert bash_pkgs == py_pkgs, (
         f"install-env.sh::HOST_CONDA_PACKAGES drifted from "
@@ -166,7 +167,7 @@ def test_install_env_sh_host_pip_packages_match_recipe():
     host = recipe_by_name("molbuilder")
     # The shell array lists install specs; the registry lists records.
     # Compare what each would hand pip.
-    py_pkgs = [p.spec() for p in (host.pip_packages or ())]
+    py_pkgs = list(host.pip_specs)
 
     assert bash_pkgs == py_pkgs, (
         f"install-env.sh::HOST_PIP_PACKAGES drifted from "
