@@ -128,9 +128,13 @@ discover:
 │                                  fills it (you, a command, or a probe)
 ├── environment.json               this machine, probed
 ├── environments/                  0700 -- records for machines you prep FOR
-└── secrets/                       0700 -- + a README: the mode rule, what
-    └── README                     belongs here, and the two secrets that
-                                   cannot (they have one fixed home each)
+│   └── README                     that the probe runs on the TARGET and the
+│                                  record is copied here -- the mistake this
+│                                  directory invites
+└── secrets/                       0700
+    └── README                     the mode rule, mock notify channels for
+                                   all three kinds, and the FOUR secrets that
+                                   cannot live here (one fixed home each)
 ```
 
 Two things are **asked**, because install time is the one moment the answer is

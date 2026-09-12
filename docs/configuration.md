@@ -380,7 +380,8 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `task.1st.json` | the Task-setup tab | calculation | a partial description in flight; **removed** when the real one is saved |
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
 | `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries. A calculation may carry its own tuned copy, and that copy wins |
-| `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), and the two secrets that **cannot** live there because they have one fixed home each (§ 2.1e) |
+| `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), mock `notify` channel examples for all three kinds, and the **four** secrets that cannot live there because they have one fixed home each: `secret_key` (§ 2.1e), `google_client_secret`, `notify`, `notify_keys` |
+| `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), the `--set` fallback when molbuilder cannot be installed there, and that this machine's own record is `../environment.json` and not in that directory |
 
 **What `molbuilder envs init-config` seeds** *(and `bootstrap` runs it)*: the
 config directory at `0700`, `molbuilder.json` at `0600` **as a template** —

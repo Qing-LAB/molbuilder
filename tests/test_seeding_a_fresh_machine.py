@@ -305,6 +305,53 @@ def test_no_declared_projects_root_leaves_the_default_and_says_so(fresh):
     assert "default" in projects_root_with_source().source
 
 
+def test_the_environments_readme_says_the_probe_runs_on_the_target(fresh):
+    """The directory's whole trap is that a probe run HERE would faithfully
+    measure this box and file it under the cluster's name."""
+    initconfig.init_config("conda activate", probe=False)
+    readme = (fresh / "environments" / "README").read_text(encoding="utf-8")
+
+    assert "THE PROBE RUNS ON THE TARGET, NOT HERE" in readme, (
+        "the one thing a person gets wrong needs the heading, not a mention")
+    assert "jobset probe --write --name" in readme, "the actual command"
+    assert "jobset machines" in readme, (
+        "the only step that answers 'did the copy land and parse'")
+    assert "../environment.json" in readme, (
+        "this machine's own record is NOT in here and must say so")
+
+
+def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
+    """The notify examples must be the real shape, or they teach a wrong one.
+
+    Parsed by `monitor.load_channels` itself -- the same reader the monitor
+    uses -- so a drift in the channel format fails here rather than silently
+    leaving a README that documents a format nothing accepts.
+    """
+    import json
+    import re
+    import tempfile
+    from molbuilder.monitor import load_channels
+
+    initconfig.init_config("conda activate", probe=False)
+    readme = (fresh / "secrets" / "README").read_text(encoding="utf-8")
+    block = re.search(r"(\{\n        \"channels\".*?\n      \})", readme, re.S)
+    assert block, "the mock channel block should be in the README"
+    doc = json.loads(block.group(1))
+    with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                     delete=False) as fh:
+        json.dump(doc, fh)
+        path = fh.name
+    got = load_channels(path)
+
+    assert set(got) == {"local", "team-slack", "team-discord"}, (
+        f"the loader did not accept the documented shape: {sorted(got)}")
+    # The two shapes differ in WHERE the credential is, which is the point
+    # the README makes -- so the examples must actually differ that way.
+    assert got["local"].get("key"), "a molbuilder listener signs with a key"
+    assert not got["team-slack"].get("key"), (
+        "Slack's credential is in the URL -- a key would misteach that")
+
+
 def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
     """0700, with a README that does not tell a lie.
 
@@ -319,8 +366,12 @@ def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
     assert oct(d.stat().st_mode)[-3:] == "700", "it sits beside the session key"
     readme = (d / "README").read_text(encoding="utf-8")
     assert "0600" in readme, "the mode rule is the point"
-    for fixed in ("secret_key", "google_client_secret"):
-        assert fixed in readme, f"{fixed} cannot live here and must say so"
+    # The `../` form is the point: it says the file is one level UP, not here.
+    # Asserting the bare name would pass on "notify_keys" alone.
+    for fixed in ("../secret_key", "../google_client_secret",
+                  "../notify ", "../notify_keys"):
+        assert fixed in readme, (
+            f"{fixed.strip()} has one fixed home and the README must say so")
     assert "may be empty" in readme, (
         "an empty secrets/ is normal and should not read as half-done")
 
