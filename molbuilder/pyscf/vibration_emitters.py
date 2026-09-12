@@ -115,9 +115,12 @@ def _emit_header_docstring(struct: Structure,
                            methods_md: str) -> List[str]:
     """Triple-quoted Methods + Outputs + Dependencies block.
 
-    The Methods paragraph is the same prose the UI surfaces in
-    the Methods-preview modal (spec § 9.4 / § 11.2), so a reader
-    sees identical content in the file, the form, and the JSON.
+    The Methods paragraph is the same prose the Results panel
+    surfaces in its "Methods text" block, so a reader sees identical
+    content in the file, the viewer and the JSON.  ONE DIFFERENCE, and
+    it is deliberate: the viewer's copy gains a sentence naming which
+    dmu/dR route the run took (`spectra.methods.with_ir_route`), which
+    cannot be known here because the deck is written before it runs.
     ``methods_md`` is computed once in the deck composer
     (:func:`molbuilder.pyscf.vibration_deck.vibration_spec`)
     and threaded through here + ``_emit_constants``.
@@ -149,9 +152,16 @@ def _emit_header_docstring(struct: Structure,
     out.append("")
     if cfg.compute_ir:
         out.append("*** IR INTENSITIES -- BAND-LEVEL VALIDATED ***")
-        out.append("    `ir_intensity_km_mol` values in the JSON are computed")
-        out.append("    from finite-difference dipole derivatives + the")
-        out.append("    Gaussian/ORCA 42.2561 km/mol per (D/Å)²/amu prefactor.")
+        out.append("    `ir_intensity_km_mol` values in the JSON are the")
+        out.append("    dipole-moment derivative projected onto each mode,")
+        out.append("    times the Gaussian/ORCA 42.2561 km/mol per")
+        out.append("    (D/Å)²/amu prefactor.  HOW dmu/dR was obtained is")
+        out.append("    decided at RUN time and recorded in the JSON as")
+        out.append("    `ir_route` -- analytic, off the Hessian's own CPHF")
+        out.append("    solution, or central finite differences.  This")
+        out.append("    header cannot say which: the deck is written before")
+        out.append("    it runs, and the analytic route needs a module that")
+        out.append("    no PyPI release of pyscf-properties carries.")
         out.append("    Band-level validation 2026-08-20: water at")
         out.append("    B3LYP/def2-SVP lands in the literature windows with")
         # Both pointers must NAME a document that exists.  A prior wording
@@ -314,7 +324,7 @@ def _emit_constants(struct: Structure,
     )
     out.append("CONFIG = " + _cfg_repr)
     out.append("")
-    out.append("# Methods-preview text (verbatim what the UI showed at render).")
+    out.append("# Methods text, verbatim as composed at render time.")
     # Build the triple-quoted string carefully; escape any """ inside.
     escaped = methods_md.replace('"""', "'''")
     out.append("METHODS_TEXT = \"\"\"" + escaped + "\"\"\"")

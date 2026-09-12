@@ -96,8 +96,16 @@ def render_methods_md(
     Returns
     -------
     str
-        Markdown ready to drop into a manuscript draft, the
-        Methods-preview modal, or the script's header docstring.
+        Markdown ready to drop into a manuscript draft.  Two surfaces
+        carry it: the deck's own header docstring, and the Results
+        panel's "Methods text" block (the preview MODAL this used to
+        name left with the Generate lane at P3, and the paragraph had
+        no surface at all between then and 2026-09-11).
+
+        INCOMPLETE BY DESIGN on the pre-run path.  Which dmu/dR route a
+        run took cannot be known here -- it is settled inside the job --
+        so :func:`with_ir_route` adds that sentence later, from the load
+        path, where the results are in hand.
         Use :func:`extract_citation_keys` on the result to obtain
         the bibliography-key list.
     """

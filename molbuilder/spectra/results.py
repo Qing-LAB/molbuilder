@@ -514,8 +514,11 @@ class SpectraResults:
         UI which modes WILL get ES data so it can show progress
         ("3 of 10 modes done").
       * ``True`` after the final phase -- ``methods_text`` and
-        ``bibliography_keys`` are populated; the UI renders the
-        Methods-preview button.
+        ``bibliography_keys`` are populated; the Results panel shows
+        its "Methods text" block.  (It said "the Methods-preview
+        button" until 2026-09-11: that modal left with the Generate
+        lane at P3, and the paragraph had no surface at all in
+        between.)
 
     Run identity is captured by ``structure_hash`` (SHA-256 of the
     canonical XYZ of the input structure) so the parser can refuse

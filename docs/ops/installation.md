@@ -198,9 +198,8 @@ or another backend, so each can pin exactly what it needs.
 ### 3.1 The one from-git piece — `pyscf-properties` *(2026-09-11)*
 
 Every other package in the registry comes from a channel or an index. This one is
-installed **twice**: from PyPI like everything else, then upgraded from **GitHub**
-for one module PyPI has never carried. The reason is a packaging accident, not a
-preference:
+fetched from **GitHub**, with the index as a declared fallback, for one module
+PyPI has never carried. The reason is a packaging accident, not a preference:
 
 - `pyscf-properties` has exactly **one** PyPI release — the `0.1.0` sdist of
   **2021-03-15**.

@@ -61,11 +61,21 @@ flowchart TD
 > moves. What this section describes is what the tab does now.
 
 
-The chart plots **frequency (cm⁻¹) on the x-axis against Raman activity
-(Å⁴/amu) on the y-axis**, one vertical stick per vibrational mode. A slider
+The chart plots **frequency (cm⁻¹) on a shared x-axis against every channel the
+run computed** — one stacked panel each, its own y-axis on the left, one
+vertical stick per vibrational mode *(two panels since 2026-09-11; it was Raman
+alone before, which is why the y-title used to be a constant)*. A slider
 broadens each stick into a smooth **Lorentzian** peak (a single FWHM control,
 default 20 cm⁻¹) so overlapping modes read as one band — the broadened envelope
 is drawn over the sticks.
+
+Below the sticks, **a rug of ticks carries every mode**, coloured by whether it
+is active in one channel, both, or neither; a mode dark to **both** techniques
+also gets a dotted line across the full height of every panel, because being
+invisible to spectroscopy is not the same as not vibrating. A **display floor**
+hides bands below a percentage of the strongest peak *in each channel* — the
+rug is never filtered. The chart's own contract is
+[`spectrumchart.md`](?doc=web/spectrumchart.md).
 
 **Picking a mode does not mean hitting the line.** Each mode carries an invisible
 band, as wide as the broadening you set (with a floor of 8 cm⁻¹ so bare sticks
@@ -99,7 +109,7 @@ a 3D canvas and a chart both take their size from a box, and a box in a hidden
 tab has none — so opening a tab re-fits the viewer and re-sizes the chart.
 
 The **Modes table** is a table of every vibrational mode — its number,
-frequency, Raman activity, whether it's imaginary, and whether it carries
+frequency, Raman activity, IR intensity, whether it's imaginary, and whether it carries
 excited-state data — that you can **sort and filter**, export to CSV, and click a
 row to select a mode. When the run also computed **excited states**, four more
 columns appear (HOMO, LUMO, gap, and the gap's shift). Those columns are always
