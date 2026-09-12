@@ -149,10 +149,10 @@
          * timeline point like any other edit.
          *
          * REPLACING IS STILL REACHABLE and it is now a separate gesture:
-         * "Start empty", then load.  Which is why the dirty-canvas warning
+         * "Clear structure", then load.  Which is why the dirty-canvas warning
          * that used to stand here is gone -- nothing is discarded any more, so
          * there was nothing left for it to ask about.  The one place that
-         * question still belongs is Start empty, which asks it.
+         * question still belongs is Clear structure, which asks it.
          */
         function _append() {
             return _model().applyOp("append", {

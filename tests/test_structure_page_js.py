@@ -257,7 +257,7 @@ class TestLoadGateNonEmptyCanvas:
     after a confirm, and a cancel leaving it alone.  Nothing is discarded now,
     so there is nothing to confirm and no cancel to make -- the modal is not
     consulted in either case below.  Replacing rather than adding is a separate
-    gesture: Start empty, then load.
+    gesture: Clear structure, then load.
     """
 
     def test_a_loaded_canvas_is_appended_to(self):

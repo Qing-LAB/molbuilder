@@ -274,7 +274,7 @@ header h1 {
     width: 100%;
     min-width: 0;
 }
-/* THE DISCARDING ACTION SITS AT THE FAR END of the same row.  "Start empty" has
+/* THE DISCARDING ACTION SITS AT THE FAR END of the same row.  "Clear structure" has
  * the same scope as Save -- both act on the whole model, which is why it moved
  * out of the Atom tab (user, 2026-09-07) -- but putting them shoulder to
  * shoulder puts a discard one slip away from a write.  The grid's third
