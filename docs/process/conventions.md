@@ -208,10 +208,19 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 - `test_layering.py` — the import-direction + full-classification gate.
 - `parse/test_scripts.py`, `parse/test_audit_gaps.py` — the parse-layer purity gates.
 - `test_negative_body_assert_lint.py` — the status-guarded-assert meta-lint.
-- `test_docs_structure.py` — the docs migration/structure rules.
-- `test_cli.py` (+ `test_cli_run.py`, `test_cli_runtime_info.py`,
-  `test_cli_siesta_stages.py`, `test_cli_tls.py`) — every subcommand's `--help`,
-  routing, and the dataclass→flag bridge.
+- `test_cli.py` (+ `test_cli_runtime_info.py`, `test_cli_tls.py`) — every
+  subcommand's `--help`, routing, and the dataclass→flag bridge.
+
+> **Three names left this list on 2026-09-12, having been deleted on
+> 2026-09-10** in the sweep that retired 18 files asserting the shape of the
+> repository rather than a result: `test_docs_structure.py` (the docs
+> migration/structure rules), `test_cli_run.py` and
+> `test_cli_siesta_stages.py`. A test map naming a file that is not there is
+> worse than a short one — it is the reason somebody believes a rule is guarded.
+> **The docs structure rules in § 1–2 of this page are now held by review
+> alone**, which is the deliberate consequence of that sweep and not an
+> oversight; see [`testing.md`](?doc=process/testing.md) § *a stated contract
+> also fails usefully*.
 
 > **Migration note.** The legacy `cli.md` was stale in several places, corrected
 > here against code: `validate` uses `--engine` (not `--config`), defaults to

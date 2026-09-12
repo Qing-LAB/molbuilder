@@ -8,9 +8,22 @@ it's testable without prompting.
 
 Privacy contract:
   * Secrets (Flask session key, OAuth client secret) are written to
-    files with mode 0600 in ``$HOME/.config/molbuilder/``.  Their
-    contents are NEVER printed, NEVER returned through the API, and
-    NEVER land in molbuilder.json (only file PATHS land there).
+    files with mode 0600 in the config directory -- wherever
+    :func:`molbuilder.config_dir.config_dir` resolves it, NOT a hardcoded
+    ``$HOME/.config`` (``MOLBUILDER_CONFIG_DIR`` and ``XDG_CONFIG_HOME``
+    both move it, which is how a person keeps secrets off an NFS $HOME).
+    Their contents are NEVER printed, NEVER returned through the API, and
+    nothing THIS MODULE writes into molbuilder.json is a secret literal --
+    it emits ``client_secret_file``, a path, every time.
+
+    That is a property of the wizard and not of the file format, which the
+    sentence here claimed until 2026-09-12.  ``molbuilder.json`` *may*
+    legally carry a literal ``client_secret``: ``runtime_config``'s
+    ``_validate_secret_pair`` accepts exactly one of the two and says
+    ``client_secret_file`` is merely *preferred*, and
+    ``web/auth_providers/oauth.py`` reads a literal when it is there.  A
+    reader who took this bullet as a guarantee about the file would be
+    wrong about a config somebody hand-wrote.
   * The system user account name -- ``getpass.getuser()`` -- is the
     single source of identity.  No other identifier is hardcoded
     anywhere in molbuilder; the wizard derives the ASU CAS

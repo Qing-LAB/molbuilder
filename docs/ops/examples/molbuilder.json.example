@@ -12,7 +12,7 @@
     "mdtools": "molbuilder-MDtools",
     "tests": "molbuilder-tests"
   },
-  "_comment_auth": "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.  The referenced secret FILES (~/.molbuilder/secret.key, ~/.molbuilder/<provider>_client_secret) are created once per host -- see docs/ops/deployment.md \u00a7 5.1 for the mkdir/chmod/generation recipe; molbuilder.json itself carries paths only, never secret bytes.",
+  "_comment_auth": "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.  The referenced secret FILES are created once per host -- see docs/ops/deployment.md \u00a7 5.1 for the mkdir/chmod/generation recipe.  They live in the CONFIG DIRECTORY named above, not in a ~/.molbuilder/ (that directory is retired -- configuration.md \u00a7 2.1c).  Google's has one fixed home, ~/.config/molbuilder/google_client_secret, because `molbuilder auth-setup` writes it there; the others are wherever your 'client_secret_file' says, and ~/.config/molbuilder/secrets/ is the suggested home (that directory ships a README).  THE SESSION KEY IS NOT HERE AND CANNOT BE: it has one home, <config dir>/secret_key, the server creates it on first run, and a 'secret_key_file' key is REFUSED (configuration.md \u00a7 2.1e).  molbuilder.json carries paths only, never secret bytes.",
   "auth": {
     "_comment_trust_proxy": "ProxyFix opt-in.  Leave at false (the default) for direct-TLS deploys (`molbuilder serve --cert --key` with NO reverse proxy in front).  Set to true ONLY when an actual proxy (Caddy / nginx / Traefik / Cloudflare) sits in front of molbuilder and scrubs client-supplied X-Forwarded-* headers before adding its own -- otherwise an attacker can spoof those headers and influence the redirect URIs molbuilder hands to OAuth / CAS providers.",
     "trust_proxy": false,
@@ -24,7 +24,7 @@
         "label": "Sign in with Google",
         "kind": "google",
         "client_id": "1234567890-abcdefghijklmnop.apps.googleusercontent.com",
-        "client_secret_file": "~/.molbuilder/google_client_secret",
+        "client_secret_file": "~/.config/molbuilder/google_client_secret",
         "hosted_domain": [],
         "allowed_users": [
           "user1@example.edu",
@@ -54,7 +54,7 @@
         "label": "Sign in with GitHub",
         "kind": "github",
         "client_id": "Iv1.abcdefghijklmnop",
-        "client_secret_file": "~/.molbuilder/github_client_secret",
+        "client_secret_file": "~/.config/molbuilder/secrets/github_client_secret",
         "allowed_organizations": [],
         "allowed_users": [
           "user1@example.edu"
@@ -66,7 +66,7 @@
         "label": "Sign in with Microsoft",
         "kind": "microsoft",
         "client_id": "abc12345-de67-89f0-1234-56789abcdef0",
-        "client_secret_file": "~/.molbuilder/microsoft_client_secret",
+        "client_secret_file": "~/.config/molbuilder/secrets/microsoft_client_secret",
         "tenant_id": "common",
         "allowed_users": [
           "user1@example.edu"
@@ -78,7 +78,7 @@
         "label": "Sign in with ORCID",
         "kind": "orcid",
         "client_id": "APP-1234567890ABCDEF",
-        "client_secret_file": "~/.molbuilder/orcid_client_secret",
+        "client_secret_file": "~/.config/molbuilder/secrets/orcid_client_secret",
         "allowed_users": [
           "user1@example.edu",
           "0000-0001-2345-6789"

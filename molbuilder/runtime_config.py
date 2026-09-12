@@ -820,19 +820,36 @@ def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:
 
         "admin": { "emails": ["operator@asu.edu"] }
 
-    **Absent or empty means NOBODY**, and that is the whole point of the shape:
-    the state you get by writing no config is the safe one.  Two subsystems ask
-    this question -- who may read and clear the rate limiter's block list, and
-    who may restart the server everyone is using -- and they get the same
-    answer.
+    **Absent or empty means NOBODY IS NAMED HERE** -- which is not the same as
+    nobody being an admin, and this docstring said the second thing until
+    2026-09-12.  What the two subsystems do with an empty set is
+    `access-control.md` § 5's decision, not this function's:
 
-    IT LIVED UNDER ``rate_limit.admin_emails`` UNTIL 2026-08-03, where an empty
-    list meant "any signed-in user".  That was defensible for reading a block
-    list and wrong for stopping a shared process, so the restart route had to
-    INVERT it for itself: one value, two opposite readings, depending on which
-    subsystem asked.  Worse, it was reached through the limiter's own object,
-    so turning the limiter off silently changed who was an admin -- a
-    connection nothing in the names would suggest.
+    * the rate limiter's block list treats *named nobody* as **anyone who can
+      sign in** (`web/admin.is_admin_request`, whose last line is
+      ``email in admins if admins else True``).  That is not an open door,
+      because reaching a session at all requires being in a provider's
+      ``allowed_users``, which is a REQUIRED field -- an operator has already
+      written every person down by hand.
+    * restarting the server requires a name: ``POST /api/admin/reload`` is **not
+      registered at all** unless this set is non-empty (§ 6), so the capability
+      is missing rather than inherited by omission, and a misconfiguration reads
+      as *the button is absent* instead of *anyone can restart it*.
+
+    So both subsystems get the same SET and apply it differently, on purpose.
+    The claim this docstring used to make -- one answer, empty means nobody
+    everywhere -- describes a design that was considered and is not what
+    shipped.  It was also the more reassuring of the two readings, which is the
+    wrong direction for a comment about a privilege to be wrong in.
+
+    IT LIVED UNDER ``rate_limit.admin_emails`` UNTIL 2026-08-03.  What moved was
+    the key's HOME, and one real defect travelled with it: the value was reached
+    through the rate limiter's own object, so turning the limiter off silently
+    changed who was an admin -- a connection nothing in the names would suggest.
+    The empty-set reading is not what was wrong and did not change; § 5 argues
+    for it, because a second list repeating the allow-list is two lists to keep
+    in step for one question, and on a single-operator server it is the same
+    address written twice.
 
     Emails are lowercased and blanks dropped, matching how the auth layer
     stores ``session["user"]["email"]``, so membership is case-stable.

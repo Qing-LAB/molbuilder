@@ -718,8 +718,10 @@ def test_the_web_and_the_cli_issue_through_one_door(client, tmp_path):
     keys = notify_keys_path()
     assert keys.exists(), "the web issuer wrote no key file to join"
 
-    out = CliRunner().invoke(cmd_notify_token,
-                             ["bob", "--keys-file", str(keys)])
+    # No --keys-file: it was removed 2026-09-12, and this call passed the
+    # DEFAULT path through it anyway -- the fixture already moves the config
+    # directory, which is what keeps this off the real key file.
+    out = CliRunner().invoke(cmd_notify_token, ["bob"])
     assert out.exit_code == 0, out.output
 
     assert f"/api/{web['route']}" in out.output, (

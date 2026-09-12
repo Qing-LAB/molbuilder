@@ -169,10 +169,22 @@ package, a `MOLBUILDER_PREACTIVATE_CMDS` hook that no longer exists. **Each of
 those was one grep from being retired, and stayed for months, because the test
 never named the thing it was protecting.**
 
-A stated contract also fails usefully. When the contract moves, the citation
-goes stale and `tests/test_docs_structure.py` and `tests/test_no_retired_doc_paths.py`
-say so — the test announces its own obsolescence instead of quietly pinning a
-retired design.
+A stated contract also fails usefully: when the contract moves, the citation
+goes stale and the test announces its own obsolescence instead of quietly
+pinning a retired design.
+
+> **Both guards that used to make that automatic are gone** —
+> `tests/test_docs_structure.py` and `tests/test_no_retired_doc_paths.py` were
+> retired together on 2026-09-10, in the sweep that cut 18 files asserting the
+> shape of the repository rather than a result. That was the right cut by this
+> page's own rule: *a doc path still resolves* is a static-review finding, not a
+> test. Be clear about what it costs, though, because it is not nothing — **a
+> retired guard moves the work to review, it does not delete the work**, and
+> twice now the review did not happen. On 2026-09-12 `molbuilder.json.example`
+> was still sending people to the retired `~/.molbuilder/` for their secrets,
+> and **26 `tests/test_*.py` files cited across these documents no longer
+> exist** — including the two named in this very paragraph until it was
+> rewritten. Both were found by reading, months late.
 
 **The four questions a header should let a reader answer without reading the
 body:** what breaks if this goes; who owns the rule; has it ever actually

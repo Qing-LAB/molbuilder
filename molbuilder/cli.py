@@ -1899,9 +1899,6 @@ def _supervise_forever() -> int:
               help="the server as the JOB will reach it, e.g. "
                    "https://host:8888.  The route segment is appended for "
                    "you; used only to print the file to save on the cluster.")
-@click.option("--keys-file", type=click.Path(dir_okay=False), default=None,
-              help="the server's key file.  Default: `notify_keys` in "
-                   "molbuilder's config directory.")
 @click.option("--route", default=None,
               help="reuse an existing route segment instead of generating "
                    "one.  Pass the value already in molbuilder.json when "
@@ -1914,7 +1911,7 @@ def _supervise_forever() -> int:
 @click.option("--replace", is_flag=True,
               help="reissue for a user who already has one.  The old key "
                    "stops working immediately.")
-def cmd_notify_token(user, host, keys_file, route, channel, replace):
+def cmd_notify_token(user, host, route, channel, replace):
     """Issue a signing key so one person's jobs can report progress.
 
     Two files, two machines, one secret:
@@ -1964,7 +1961,15 @@ def cmd_notify_token(user, host, keys_file, route, channel, replace):
             f"{channel!r} is not a channel name. Letters, digits, '-' and "
             f"'_' -- it is written into a description and rendered into the "
             f"monitor's command line.")
-    path = Path(keys_file) if keys_file else notify_keys_path()
+    # NO --keys-file.  The key file has ONE home and the server reads only
+    # that one (`web/app.py` asks `read_notify_keys()` with no path), so a flag
+    # naming another was a way to write a key nowhere that works, get "success",
+    # and learn nothing until reports stopped arriving -- the same two-spellings
+    # failure `configuration.md` 2.1e records for the session key.  Removed
+    # 2026-09-12; it had no production caller, and `auth_setup.default_secret_dir`
+    # had already dropped its `home=` for the same reason on 2026-08-31.  A test
+    # that wants another root sets MOLBUILDER_CONFIG_DIR, like everything else.
+    path = notify_keys_path()
     # ONE DOOR (`auth_setup.issue_notify_key`), shared with the This-machine
     # tab.  Issuing written twice would be free to generate a second route
     # segment from the same file and silence everyone already set up.

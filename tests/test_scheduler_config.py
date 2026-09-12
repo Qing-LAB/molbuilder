@@ -277,8 +277,10 @@ def test_server_template_activation_is_a_legal_form():
 
 def test_example_templates_cite_only_existing_docs():
     """Every docs/... path named inside the example templates must exist
-    (the templates live under docs/, outside test_no_retired_doc_paths'
-    scan roots -- this closes that gap for them)."""
+    It used to close a gap in `test_no_retired_doc_paths` (the templates live
+    under docs/, outside that test's scan roots).  THAT TEST WAS RETIRED
+    2026-09-10, so this is no longer the narrow supplement it describes itself
+    as -- it is the only automated check on either template's citations."""
     import re
     repo = Path(__file__).resolve().parents[1]
     bad = []

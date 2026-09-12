@@ -680,6 +680,25 @@ follow-up). Workaround: create the host env by hand with micromamba, then use
 - `test_envs_abi.py` — the build-time/run-time ABI contract (§ 6.2): version
   ordering, the host/env scope split, the rule table, and the compile-and-run
   check. Asserts on finding *codes*, never on message prose.
+- `test_envs_install.py` — plan GENERATION and the execution shape: which steps
+  a recipe produces, in what order, with what argv. No real conda.
+- `test_envs_install_plan_executes.py` — every step of every registered plan,
+  generated **and** executed against a fake conda. It exists because two bugs
+  shipped in one day where each piece was tested and the whole was not.
+- `test_envs_builds.py` — the source-build executor around the build itself:
+  spec validation, sentinel resume, toolchain-fingerprint determinism, template
+  substitution, preflight, `--rebuild`, the `activate.d` hook. Never runs a real
+  35-45 min CUDA build.
+- `test_envs_doctor.py` — the doctor's report shape and its present/missing
+  logic, with a fake conda binary rather than real subprocesses.
+- `test_envs_doctor_hints.py` — the rule that **every problem the doctor reports
+  ends with the exact command that fixes it**, in the one spelling that works
+  from a bare shell.
+- `test_envs_validate.py` — the verdict `envs validate` reaches (the part a
+  person acts on). The probes themselves need a built GPU env and ~30 minutes,
+  so they are not exercised here.
+- `test_envs.py` — subprocess dispatch into an env: `run_in_env` argv
+  construction and the no-conda error path.
 - `test_envs_solve_drift.py` — the only test that runs a **real solve** and
   compares the result against what the recipe intends. Slow, network-bound, and
   self-skipping; it is what catches conda-forge moving a default underneath a
