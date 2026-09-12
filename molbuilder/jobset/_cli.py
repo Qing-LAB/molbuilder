@@ -148,10 +148,20 @@ def jobset_group() -> None:
 
 
 def _echo_config_root() -> None:
-    """The ONE line every jobset verb opens with -- where ``molbuilder.json``
-    resolves from before anything else runs (user, 2026-08-23: *"this gives
-    the user some root information of the starting point of config
-    information"*).
+    """The TWO lines every jobset verb opens with -- where ``molbuilder.json``
+    resolves from, and where the projects tree is, before anything else runs
+    (user, 2026-08-23: *"this gives the user some root information of the
+    starting point of config information"*; extended to the tree 2026-09-12:
+    *"where we are looking for the project dir should always be displayed in
+    molbuilder execution such that user will not need to be implicitly believe
+    where it is"*).
+
+    The tree line names its SOURCE, not just its path, because four things can
+    answer (an explicit argument, ``$MOLBUILDER_PROJECTS``, ``paths.projects``,
+    the default) and a bare path cannot say which did.  It prints
+    unconditionally, including when the default wins: silence-when-default
+    would still leave a person believing rather than knowing, which is the
+    thing the instruction rules out.
 
     Not the full ``config:`` provenance block -- that already exists
     (`config_provenance`/`format_provenance`, on ``prep``/``launch``) and
@@ -181,6 +191,8 @@ def _echo_config_root() -> None:
     for warning in (machine_config_shadow(), machine_config_mode_warning()):
         if warning:
             _click.echo(warning, err=True)
+    from ..projects import projects_root_with_source
+    _click.echo(projects_root_with_source().describe())
 
 
 #: The calculation folder, spelled the same way on every verb.

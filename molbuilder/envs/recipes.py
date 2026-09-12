@@ -906,15 +906,17 @@ _HOST = Recipe(
         # ModuleNotFoundError.  Declared in pyproject.toml's runtime
         # deps; mirrored here so the conda-create path also picks it up.
         "psutil>=5.9",
-        # NUMA control tool.  Used by the host-side advisor
-        # (``molbuilder envs advise siesta-gpu``) to detect whether
-        # NUMA pinning is possible: its can_numa_pin property only
-        # returns True when ``numactl`` is on PATH.  Without it the
-        # advisor would honestly report "numa-pin: OFF (numactl not
-        # installed)" even on dual-socket boxes where pinning would
-        # help.  Tiny package (~200 KB); installed by default so the
-        # advisor's reading matches what the GPU env's wrapper will
-        # actually do at runtime.
+        # NUMA control tool.  The CONSUMER is the generated GPU wrapper:
+        # `runwrap._gpu_runtime_defaults_block` pins ranks to the
+        # GPU-proximate socket only when `numactl` is on PATH, and
+        # silently widens the budget to the whole box when it is not.
+        # Tiny (~200 KB) and installed by default so that decision is
+        # made on hardware grounds rather than on what happens to be
+        # installed.
+        #
+        # Its stated reason used to be `molbuilder envs advise`, which was
+        # deleted 2026-09-12 as pre-jobset residue.  The package is not
+        # orphaned -- only that justification was.
         "numactl",
         # Git is required by the checkpoint subsystem
         # (docs/execution/running-a-job.md § 6).

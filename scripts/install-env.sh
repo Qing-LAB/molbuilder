@@ -211,7 +211,6 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   overwrites.  See docs/ops/installation.md section 2.1
   install <recipe>   install (or repair) one recipe
   repair <recipe>    install packages doctor's audit reported missing
-  advise <recipe>    recommend mpi_np / omp / mps for this host
   validate <recipe>  run post-install correctness probes
   clean <recipe>     delete build-only dirs to free disk; keeps the
                      installed binaries, so SIESTA still runs after

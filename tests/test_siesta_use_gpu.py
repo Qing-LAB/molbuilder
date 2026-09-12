@@ -601,7 +601,14 @@ def test_gpu_resources_summary_unified_in_launch_banner(
     assert "GPU resources : GPU mode (ELPA-CUDA, no NCCL)" in wrapper_text
     assert "chosen $_mpi_np ranks × $_omp_threads threads" in wrapper_text
     assert "GPU0 NUMA=" in wrapper_text
-    assert "molbuilder envs advise siesta-gpu" in wrapper_text
+    # The tune line names the OVERRIDE KNOBS and points at the measurement.
+    # It named `molbuilder envs advise siesta-gpu` until 2026-09-12; that
+    # command guessed what `jobset prep bench` measures, and probed whichever
+    # host it ran on rather than the compute node the job lands on.
+    assert "MOLBUILDER_MPI_NP" in wrapper_text
+    assert "jobset prep bench" in wrapper_text
+    assert "envs advise" not in wrapper_text, (
+        "the deleted advisor must not be suggested to a person mid-run")
     # the contradictory pre-resolution probe advisory is GONE
     assert "molbuilder: chosen $_gpu_mpi_np_default ranks" not in wrapper_text
     assert "molbuilder: GPU mode (ELPA-CUDA, no NCCL)" not in wrapper_text

@@ -2173,6 +2173,12 @@ def _harden_tls_accept_loop() -> None:
 def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
               supervise):
     """Run the server in THIS terminal -- the development mode."""
+    # WHERE THE TREE IS, before anything starts.  The server is the surface a
+    # person puts calculations INTO, so it must not be the one surface that
+    # leaves them guessing which tree they are filling (user, 2026-09-12).
+    # Echoed in the parent, before the supervisor fork, so it appears once.
+    from .projects import projects_root_with_source
+    click.echo(f"molbuilder serve: {projects_root_with_source().describe()}")
     # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH.  ``from .web.app import
     # create_app`` used to sit here, one line into the function and well before
     # the fork below -- so the supervisor imported the entire web app, Flask
@@ -2290,6 +2296,8 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
         child += ["--no-auth"]
     click.echo(f"molbuilder serve: starting in the background on port "
                f"{port}")
+    from .projects import projects_root_with_source
+    click.echo(f"  {projects_root_with_source().describe()}")
     click.echo(f"  log:     {log_path(port)}  (cap {log_max_mb} MB, "
                f"keep {log_keep} archives)")
     click.echo(f"  pidfile: {pid_path(port)}")

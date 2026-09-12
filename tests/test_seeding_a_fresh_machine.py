@@ -20,6 +20,7 @@ just as happily against a module that wrote its file to the wrong directory.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import os
 import stat
 
@@ -254,6 +255,84 @@ def _auth_setup(*args):
     return CliRunner().invoke(cli, ["auth-setup", *args])
 
 
+def test_the_seeded_template_loads_and_names_every_section(fresh):
+    """The template must be a LOADABLE file, not a commented-out example.
+
+    The point of seeding every section as an empty stub is that a person fills
+    one in rather than inventing the key name.  That only works if the file
+    with all the stubs present actually reads -- and one section cannot be a
+    stub: an empty `auth` is REFUSED ("must be a non-empty list of provider
+    entries"), which is why it is comment-only.
+    """
+    from molbuilder.runtime_config import read_config
+    initconfig.init_config("conda activate", probe=False)
+    cfg = read_config(fresh / CONFIG_FILENAME)      # refuses -> raises
+    doc = json.loads((fresh / CONFIG_FILENAME).read_text())
+
+    assert "auth" not in doc, (
+        "an empty `auth` is refused, so it must be comment-only")
+    # Every other live section is present for someone to fill in.
+    for section in ("execution", "script_generation", "scheduler", "paths",
+                    "tls", "admin", "rate_limit", "envs", "checkpoint"):
+        assert section in doc, f"{section} should be a fillable stub"
+    # And the one value with no default is filled.
+    assert cfg["script_generation"]["activation"] == "conda activate"
+
+
+def test_a_declared_projects_root_is_written_and_reported(fresh):
+    """`paths.projects` is written when declared, and the resolver then names
+    the config as its source -- which is what every surface prints."""
+    from molbuilder.projects import projects_root_with_source
+    initconfig.init_config("conda activate", probe=False,
+                           projects=Path("/scratch/someone/mb"))
+
+    doc = json.loads((fresh / CONFIG_FILENAME).read_text())
+    assert doc["paths"]["projects"] == "/scratch/someone/mb"
+    resolved = projects_root_with_source()
+    assert resolved.path == Path("/scratch/someone/mb")
+    assert "paths.projects" in resolved.source, (
+        f"the source must name the config, not just the path: {resolved}")
+
+
+def test_no_declared_projects_root_leaves_the_default_and_says_so(fresh):
+    """The default is the right answer on a workstation -- but the source must
+    say it IS the default, so nobody has to believe it."""
+    from molbuilder.projects import projects_root_with_source
+    initconfig.init_config("conda activate", probe=False)
+
+    doc = json.loads((fresh / CONFIG_FILENAME).read_text())
+    assert doc["paths"] == {}, "left empty, not guessed at"
+    assert "default" in projects_root_with_source().source
+
+
+def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
+    """0700, with a README that does not tell a lie.
+
+    Two secrets have ONE fixed home each directly in the config dir and the
+    config deliberately cannot name them, so a README pointing a person at
+    `secrets/` for those would be actively wrong.
+    """
+    initconfig.init_config("conda activate", probe=False)
+    d = fresh / "secrets"
+
+    assert d.is_dir()
+    assert oct(d.stat().st_mode)[-3:] == "700", "it sits beside the session key"
+    readme = (d / "README").read_text(encoding="utf-8")
+    assert "0600" in readme, "the mode rule is the point"
+    for fixed in ("secret_key", "google_client_secret"):
+        assert fixed in readme, f"{fixed} cannot live here and must say so"
+    assert "may be empty" in readme, (
+        "an empty secrets/ is normal and should not read as half-done")
+
+
+def test_environments_is_not_looser_than_its_parent(fresh):
+    """It sits inside a 0700 directory holding secrets; 0775 on a child of
+    that is the same mistake one level down (it was the umask default until
+    2026-09-12)."""
+    initconfig.init_config("conda activate", probe=False)
+    assert oct((fresh / "environments").stat().st_mode)[-3:] == "700"
+
+
 def test_the_sign_in_wizard_runs_on_a_seeded_config(fresh):
     """Seed, then wire up sign-in -- and keep both halves."""
     initconfig.init_config("conda activate", probe=False)
@@ -264,7 +343,16 @@ def test_the_sign_in_wizard_runs_on_a_seeded_config(fresh):
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
     assert doc["auth"]["providers"], "the wizard wrote its block"
     assert require_activation() == "conda activate", "and did not eat ours"
-    assert "_comment_signin" in doc, "the guidance keys survive the merge"
+    # THE RULE, not one key's name.  This asserted `_comment_signin`
+    # specifically and broke when the seeded template was rewritten
+    # 2026-09-12 -- the subject was always "the wizard preserves the guidance",
+    # so assert that: every `_`-prefixed key the seed wrote is still there.
+    seeded_comments = {k for k in initconfig.seed_document("conda activate")
+                       if k.startswith("_")}
+    assert seeded_comments, "the seed writes guidance keys"
+    assert seeded_comments <= set(doc), (
+        f"the wizard dropped guidance keys: "
+        f"{sorted(seeded_comments - set(doc))}")
 
 
 def test_an_existing_auth_block_is_still_not_replaced_silently(fresh):

@@ -1369,7 +1369,7 @@ def _siesta_scf_timing_func() -> str:
     )
 
 
-def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
+def _gpu_runtime_defaults_block() -> str:
     """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
 
     Encodes the GPU-mode placement policy for our ELPA-CUDA build
@@ -1418,10 +1418,11 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     through the full wrapper banner.  A second line surfaces the
     derived "chosen X ranks × Y threads = Z of phys_cores" arithmetic
     and the GPU-NUMA proximity so the user can decide whether to
-    override or run ``molbuilder envs advise siesta-gpu`` for a guided
+    override.  (A ``molbuilder envs advise`` guided pick stood here until
+    2026-09-12; it guessed what `jobset prep bench` MEASURES, on the login
+    node rather than the compute node, and is gone.)
     pick.
     """
-    n_atoms_lit = "" if n_atoms is None else str(int(n_atoms))
     return (
         "# --- GPU mode: ELPA-CUDA defaults (no NCCL in our build) ---\n"
         "# Policy researched 2026-06-15; sources cited in runwrap.py.\n"
@@ -1492,7 +1493,10 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '        _gpu_mpi_np_default=1\n'
         '    fi\n'
         'fi\n'
-        # NO ATOM-COUNT CLAMP (user ruling, 2026-09-03).  A clamp stood
+        # NO ATOM-COUNT CLAMP (user ruling, 2026-09-03).  The `n_atoms`
+        # PARAMETER went with it on 2026-09-12 -- it survived the ruling,
+        # feeding only an `n_atoms_lit` literal that nothing interpolated, so
+        # this function took an argument it could not act on.  A clamp stood
         # here mirroring the CPU path's, on the theory that
         # ``mpi_np > n_atoms`` causes the ``propor IMAX=0`` abort.  That
         # theory is wrong -- the abort came from a psml problem, not from
@@ -2630,7 +2634,7 @@ def render_run_wrapper(script_path: Path, *,
             # provenance for any trial, and a CPU sweep is the case that
             # most needs it (`plan.md` E4).
             _phys_cores_probe_block()
-            + (_gpu_runtime_defaults_block(n_atoms) if gpu_mode else "")
+            + (_gpu_runtime_defaults_block() if gpu_mode else "")
             + siesta_args_block
             # GPU load-balance: derive ranks-per-GPU from the resolved
             # rank count so MPS gates on real sharing + the per-rank
@@ -3009,9 +3013,15 @@ def render_run_wrapper(script_path: Path, *,
                 'chosen $_mpi_np ranks × $_omp_threads threads '
                 '($(( _mpi_np * _omp_threads )) cores); mps=$_mps_str_now; '
                 'ranks/GPU=${_ranks_per_gpu:-?}; GPU0 NUMA=$_gpu_numa"\n'
-                'echo "                # tune: molbuilder envs advise '
-                'siesta-gpu | MOLBUILDER_MPI_NP / MOLBUILDER_OMP_NUM_THREADS '
-                '/ -np / -omp / --mps / --no-mps"\n'
+                # TUNE BY MEASURING, not by asking for a guess.  This
+                # named `molbuilder envs advise siesta-gpu` until 2026-09-12;
+                # that command guessed the answer `jobset prep bench`
+                # MEASURES, and probed whichever host it ran on -- the login
+                # node on a cluster, which is the machine the job will not
+                # run on.  The override knobs stay; the guess is gone.
+                'echo "                # tune: MOLBUILDER_MPI_NP / '
+                'MOLBUILDER_OMP_NUM_THREADS / -np / -omp / --mps / --no-mps "'
+                '"(measure instead: molbuilder jobset prep bench <stage>)"\n'
                 # IMPORTANT: keep the command on its own line so the
                 # user can copy-paste it directly into a shell.  An
                 # earlier banner shape put ``(sm%, mem%, ...)`` after

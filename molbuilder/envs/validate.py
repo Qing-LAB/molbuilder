@@ -4,28 +4,31 @@ Where :mod:`molbuilder.envs.doctor` answers "is the env present and
 does the binary launch?", this module answers the next question:
 **"does the env actually compute correctly?"**
 
-For ``molbuilder-siesta-gpu`` -- the only recipe with a validator
-today -- this runs four probes (~2 min wall-clock) that catch the
-failure modes ``siesta --version`` cannot:
+For ``molbuilder-siesta-gpu`` -- the only recipe with a validator today --
+this runs the probes in :data:`_RECIPE_PROBES`, which is the list; each row
+carries a measured runtime hint, and that table is what the CLI prints.  This
+docstring deliberately does not restate the rows: it said "four probes (~2 min
+wall-clock)" while the table ran SIX, including ELPA's ``make check`` that the
+same docstring claimed was excluded pending a ``--deep`` flag that does not
+exist.  A person was told ~2 minutes and got ~30.
 
-  1. binary-link sanity      siesta/tbtrans/phtrans present + version OK
-  2. CUDA stack              nvidia-smi + libcuda.so.1 ctypes load
-  3. ELPA GPU codepath       greps for the silent-CPU-fallback warning
-                             (the load-bearing one -- catches the
-                             single failure mode none of the others can)
-  4. SIESTA ctest -L simple  the upstream "binary runs SCF" set (~110s)
+**The suite is NOT a smoke check.**  Four probes are ours and cost ~9 s in
+total (binary links, CUDA stack, MPS, ELPA GPU codepath); two are UPSTREAM
+TEST SUITES -- SIESTA's ``ctest -L simple`` (~2 min) and ELPA's ``make check``
+(~15-30 min) -- and they are the whole of the runtime.  Whether running other
+projects' test suites belongs here at all is an open question
+(``docs/plans/plan.md``); what is settled is that the cost must not be
+misstated.
 
-The load-bearing probe is #3: ``nvidia-smi`` can report a perfectly
-healthy GPU while ELPA silently runs on the CPU (elpa#15, same A100 +
-``--enable-nvidia-sm80-gpu`` configuration we ship).  None of the
-other probes catches that.
+The load-bearing probe is ``elpa gpu codepath``: ``nvidia-smi`` can report a
+perfectly healthy GPU while ELPA silently runs on the CPU (elpa#15, same A100
++ ``--enable-nvidia-sm80-gpu`` configuration we ship).  No other probe catches
+that, and two live engine docs name it as the canary
+(``engines/siesta.md`` § 7.1, ``engines/overview.md``).
 
-Excluded from the default suite:
-  * ``elpa make check``: comprehensive test suite (~300+ validators,
-    15-30 min wall-clock).  Wrong size for an interactive probe -- it's
-    test coverage, not a smoke check.  Will live behind a future
-    ``validate --deep`` flag for when you actually want to wait.
-  * ``deviceQuery``: not in conda CUDA packages, redundant with #2.
+Deliberately not probed:
+  * ``deviceQuery``: not in conda CUDA packages, redundant with the CUDA-stack
+    probe.
   * CPU-vs-GPU energy cross-check at ~1e-4 eV: too loose (real ELPA2
     GPU agreement is ~1e-6 eV total; arXiv 2002.10991).  Future deep mode.
 """

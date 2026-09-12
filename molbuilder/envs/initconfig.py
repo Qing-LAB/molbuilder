@@ -103,7 +103,8 @@ def conda_hook(conda_binary: Optional[str]) -> Optional[str]:
 
 
 def seed_document(activation: str,
-                  preamble: Optional[str] = None) -> "dict":
+                  preamble: Optional[str] = None,
+                  projects: Optional[Path] = None) -> "dict":
     """The contents of a freshly seeded ``molbuilder.json``.
 
     **Minimal on purpose.**  Only ``script_generation`` -- the one section with
@@ -121,41 +122,123 @@ def seed_document(activation: str,
     *"A second copy is a copy that drifts."*
     """
     doc = {
-        "_comment_top":
-            "molbuilder's server-wide configuration, seeded by "
-            "`molbuilder envs init-config`.  Every section is optional and "
-            "unknown top-level keys are REFUSED (a `_` prefix marks a "
-            "comment).  See docs execution/running-a-job.md section 5 for "
-            "the full list of sections.",
-        "_comment_script_generation":
-            "How a generated wrapper enters its conda env.  `activation` is "
-            "\"conda activate\" or \"source activate\" and has NO default -- "
-            "unset, EVERY wrapper refuses to render.  `preamble` is arbitrary "
-            "shell run before activation (the `module load` lines on a "
-            "cluster, or sourcing conda's hook on a workstation).  "
-            "running-a-job.md section 5.2.",
-        "_comment_signin":
-            "Sign-in, TLS, the admin list and the rate limiter are sections "
-            "of this same file.  `molbuilder auth-setup` writes the `auth` "
-            "block for you (CAS or Google) and preserves everything else "
-            "here -- run `molbuilder auth-setup --help`.  For the OTHER "
-            "providers (GitHub, Microsoft, ORCID), TLS and the admin list, "
-            "the fully worked template with every key explained is "
-            "docs/ops/examples/molbuilder.json.example in the molbuilder "
-            "repo; ops/access-control.md and ops/deployment.md section 5 are "
-            "the reference.  Secrets are separate 0600 files in this "
-            "directory -- this file carries their PATHS, never their bytes.",
-        "_comment_scheduler":
-            "Deliberately absent.  Partition, QOS and node topology are FACTS "
-            "about a machine, not preferences: `molbuilder jobset probe "
-            "--write` measures them into environment.json beside this file, "
-            "and `--name <cluster>` writes environments/<cluster>.json for a "
-            "machine you prep FOR but are not ON.  configuration.md M-1.",
+        "_README": [
+            "molbuilder's server-wide configuration for THIS machine.",
+            "Seeded by `molbuilder envs init-config` (which `bootstrap` runs).",
+            "",
+            "HOW TO READ THIS FILE.  Every section is OPTIONAL and starts",
+            "empty; fill in only what you need.  A key starting with `_` is a",
+            "comment and is ignored.  An UNKNOWN top-level key is REFUSED, so",
+            "a typo is named rather than silently doing nothing.",
+            "",
+            "WHO FILLS WHAT.",
+            "  YOU        preferences: execution, paths, admin, rate_limit,",
+            "             tls, envs, checkpoint, scheduler.directives",
+            "  A COMMAND  `molbuilder auth-setup` writes the `auth` block",
+            "  NOT HERE   machine FACTS -- cores, GPUs, scheduler kind, the",
+            "             queues you can actually reach -- are PROBED into",
+            "             environment.json beside this file by",
+            "             `molbuilder jobset probe --write`.  Never",
+            "             hand-write them: configuration.md M-1 is the rule",
+            "             (fact vs preference).",
+            "",
+            "Secrets are SEPARATE 0600 files; this file carries their PATHS,",
+            "never their bytes.  See secrets/README beside this file.",
+            "",
+            "Full reference: docs/configuration.md section 4.",
+        ],
+        "_script_generation": [
+            "How a generated wrapper enters its conda env.  THE ONE REQUIRED",
+            "VALUE.  `activation` is \"conda activate\" or \"source activate\"",
+            "and has NO default -- unset, EVERY wrapper refuses to render.  It",
+            "was asked at install time, which is why it is filled in below.",
+            "`preamble` is shell run BEFORE activation: the `module load`",
+            "lines on a cluster, or sourcing conda's hook on a workstation.",
+            "-> docs/execution/running-a-job.md section 5.2",
+        ],
         "script_generation": {"activation": activation},
+        "_execution": [
+            "Defaults every calculation on this machine inherits -- the ask,",
+            "before any per-job override.  Also settable per project in a",
+            "`.molbuilder.json`, which wins.",
+        ],
+        "execution": {},
+        "_scheduler": [
+            "WHAT YOU WANT from the scheduler -- not what it IS.",
+            "",
+            "The facts (scheduler kind, node topology, and the",
+            "(partition, qos) domains you can actually reach) are PROBED:",
+            "    molbuilder jobset probe --write",
+            "writes them to environment.json beside this file.  For a cluster",
+            "you prep FOR but are not ON, add --name <cluster> and it lands",
+            "in environments/<cluster>.json.",
+            "",
+            "What stays yours here is WHICH of the probed domains to use:",
+            "    \"scheduler\": {\"directives\": {\"partition\": \"...\",",
+            "                                  \"qos\": \"...\"}}",
+            "`scheduler.routing` is retired and REFUSED -- it was the",
+            "declarative form of what is now probed.",
+            "-> docs/execution/scheduler.md",
+        ],
+        "scheduler": {},
+        "_paths": [
+            "Where molbuilder keeps things that are not its own code.",
+            "`projects` is the project tree.  Every surface resolves it",
+            "through one door, so setting it here moves the tree for all of",
+            "them at once -- sidebar, CLI verbs, workspace store,",
+            "pseudopotentials.  Where it resolves from is PRINTED by every",
+            "jobset verb, by `envs doctor` and by `serve`, so you never have",
+            "to infer it.",
+            "`logs`, `run`, `reports` override the XDG state directories, so a",
+            "small $HOME can keep its secrets while logs go to scratch.",
+            "A relative value resolves against the molbuilder root.",
+        ],
+        "paths": {},
+        "_auth": [
+            "SIGN-IN -- the one section you should NOT hand-write.",
+            "    molbuilder auth-setup        (CAS or Google; --help for more)",
+            "writes this block and preserves everything else in this file.  It",
+            "is ABSENT above on purpose: an empty `auth` is refused, because",
+            "the block must name at least one provider.  For GitHub /",
+            "Microsoft / ORCID see docs/ops/examples/molbuilder.json.example",
+            "and ops/access-control.md.",
+        ],
+        "_tls": [
+            "HTTPS for the server -- paths to the cert and key, never bytes:",
+            "    \"tls\": {\"cert\": \"...fullchain.pem\",",
+            "             \"key\":  \"...privkey.pem\"}",
+            "secrets/ beside this file is the suggested home for the key.",
+            "Top-level \"cert\"/\"key\" are retired and REFUSED by name.",
+            "-> docs/ops/deployment.md section 5",
+        ],
+        "tls": {},
+        "_admin": ["Who may administer this installation.",
+                   "-> docs/ops/access-control.md"],
+        "admin": {},
+        "_rate_limit": ["Request throttling for the web surface.",
+                        "-> docs/ops/access-control.md"],
+        "rate_limit": {},
+        "_envs": [
+            "This machine's conda setup, when it is not the default:",
+            "`manager` pins the env-manager binary by absolute path when it is",
+            "not on PATH, and the per-backend env NAMES if yours differ.",
+            "-> docs/ops/installation.md",
+        ],
+        "envs": {},
+        "_checkpoint": ["Run-checkpoint behaviour.",
+                        "-> docs/execution/checkpointing.md"],
+        "checkpoint": {},
+        "_retired": [
+            "REFUSED by name if you port an older file here, each with what",
+            "to do instead: `notify_keys_file`, `notify_route` (retired",
+            "2026-08-31), `secret_key_file`, `scheduler.routing`, and",
+            "top-level `cert`/`key`.",
+        ],
     }
     if preamble:
-        doc["script_generation"] = {"preamble": preamble,
-                                    "activation": activation}
+        doc["script_generation"]["preamble"] = preamble
+    if projects is not None:
+        doc["paths"] = {"projects": str(projects)}
     return doc
 
 
@@ -203,15 +286,67 @@ def ensure_dirs() -> List[Step]:
     if envs.is_dir():
         steps.append(Step(envs, "kept"))
     else:
-        envs.mkdir(parents=True, exist_ok=True)
+        # 0700 like its parent.  It sits inside a directory that holds the
+        # session key and the OAuth client secret, and a looser mode on a
+        # child of that is the same mistake one level down.  (It was created
+        # at the umask default until 2026-09-12, so 0775 on most systems.)
+        envs.mkdir(parents=True, exist_ok=True, mode=0o700)
         steps.append(Step(envs, "created",
-                          "drop a colleague's `probe --name <cluster>` "
-                          "record here"))
+                          "mode 0700; drop a colleague's "
+                          "`probe --name <cluster>` record here"))
+    steps.extend(_seed_secrets_dir())
+    return steps
+
+
+#: What ``secrets/README`` says.  It is a FILE rather than a docstring because
+#: the person who needs it is looking at the directory, not at the source --
+#: and because a conda-only install has no checkout to read docs from.
+_SECRETS_README = 'molbuilder — secrets\n====================\n\nThis directory is for secret FILES that `molbuilder.json` points at by PATH.\nIt is created mode 0700 (owner only), and everything you put in it should be\n0600.  Nothing here is ever printed: `config_provenance` logs only the\nsections flagged safe, and any section holding a secret — or a path to one —\nis excluded by construction.\n\nWHY THE MODES MATTER\n    0700 on this directory, 0600 on each file.  `molbuilder.json` is itself\n    checked for 0600 and WARNS (never refuses — refusing would lock you out\n    of your own server).  A world-readable directory around 0600 files is the\n    same mistake one level up, so this directory is tight from the start.\n\n    Check, any time:\n        ls -l ~/.config/molbuilder ~/.config/molbuilder/secrets\n        chmod 700 ~/.config/molbuilder/secrets\n        chmod 600 ~/.config/molbuilder/secrets/*\n\nWHAT YOU PUT HERE\n    Files referenced by a PATH in molbuilder.json.  The path is yours to\n    choose, so this directory is the suggested home rather than a required\n    one:\n\n      the TLS private key (and cert, if it is not system-managed)\n          "tls": {"cert": "~/.config/molbuilder/secrets/fullchain.pem",\n                  "key":  "~/.config/molbuilder/secrets/privkey.pem"}\n\n      an OAuth provider\'s client secret, for providers whose wizard takes a\n      file path (CAS, GitHub, Microsoft, ORCID)\n          written by `molbuilder auth-setup`; it records the path it used\n\nTWO FILES THAT CANNOT LIVE HERE\n    These have ONE home each, directly in the config directory, and\n    molbuilder.json is deliberately unable to name them — one resolver for\n    the reader and the writer means they cannot disagree about which file\n    they mean:\n\n      ../secret_key             the session key.  Created on FIRST SERVER RUN\n                                at 0600.  Do not create it by hand; deleting\n                                it logs everyone out and a new one appears.\n                                (`secret_key_file` in config is REFUSED.)\n\n      ../google_client_secret   the Google OAuth client secret, written by\n                                `molbuilder auth-setup`.\n\n    So this directory may be empty on a working installation.  That is normal:\n    a workstation with no HTTPS and no sign-in needs nothing here.\n\nIF YOU BACK THIS UP\n    Back up the whole config directory, not just this folder — and treat the\n    copy with the same care.  `secret_key` is the one file whose loss is\n    harmless (sessions end, a new key is generated); a leaked OAuth client\n    secret or TLS key is not.\n\nReference: docs/configuration.md § 2.1b (the mode rule), § 2.1e (the session\nkey\'s one home), docs/ops/access-control.md (what sign-in exposes).\n'
+
+
+def _seed_secrets_dir() -> List[Step]:
+    """``secrets/`` and the README that says how to treat it.
+
+    The directory is a SUGGESTED home, not a required one: what goes in it are
+    files ``molbuilder.json`` names by PATH (the TLS key, a provider's
+    client-secret file), and a path is the operator's to choose.  What makes it
+    worth creating anyway is the README -- the mode rule, and the two files
+    that CANNOT live here.
+
+    ``secret_key`` and ``google_client_secret`` each resolve through one
+    function in `config_dir` and sit directly in the config directory;
+    `configuration.md` § 2.1e is explicit that the config cannot name the
+    session key.  A README telling a person to put them here would be actively
+    wrong, so it tells them the opposite.
+
+    An EMPTY ``secrets/`` is the normal state on a workstation with no HTTPS
+    and no sign-in.  The README says so, because an empty directory otherwise
+    reads as something half-done.
+    """
+    steps: List[Step] = []
+    root = config_dir()
+    _ensure_root()
+    d = root / "secrets"
+    if d.is_dir():
+        steps.append(Step(d, "kept"))
+    else:
+        d.mkdir(parents=True, exist_ok=True, mode=0o700)
+        steps.append(Step(d, "created",
+                          "mode 0700 -- 0600 on everything you put in it"))
+    readme = d / "README"
+    if readme.exists():
+        steps.append(Step(readme, "kept"))
+    else:
+        readme.write_text(_SECRETS_README, encoding="utf-8")
+        steps.append(Step(readme, "created",
+                          "the mode rule, and the two secrets that cannot "
+                          "live here"))
     return steps
 
 
 def seed_machine_config(activation: str,
-                        preamble: Optional[str] = None) -> Step:
+                        preamble: Optional[str] = None,
+                        projects: Optional[Path] = None) -> Step:
     """Write ``molbuilder.json`` if it is absent; otherwise report it kept.
 
     An existing file is never merged into.  Merging would mean this module
@@ -238,7 +373,7 @@ def seed_machine_config(activation: str,
     # Touching it 0600 first makes the writer's own preserve-the-mode branch
     # do the work.
     path.touch(mode=0o600)
-    write_json(path, seed_document(activation, preamble))
+    write_json(path, seed_document(activation, preamble, projects))
     note = f'script_generation.activation = "{activation}"'
     if preamble:
         note += f"; preamble = {preamble!r}"
@@ -311,7 +446,8 @@ def seed_environment_record() -> Step:
 
 def init_config(activation: str,
                 preamble: Optional[str] = None,
-                probe: bool = True) -> List[Step]:
+                probe: bool = True,
+                projects: Optional[Path] = None) -> List[Step]:
     """Seed the whole directory.  Idempotent; returns what it did.
 
     ``probe=False`` skips the record for the case where the machine being
@@ -319,9 +455,15 @@ def init_config(activation: str,
     container image baked once and copied.  The config still gets seeded,
     because ``activation`` is a property of how the image enters conda and
     travels with it.
+
+    ``projects`` writes ``paths.projects``.  ``None`` leaves the section empty
+    and the default applies -- which is the right answer on a workstation and
+    the wrong one on a cluster home with a quota, so the CLI ASKS rather than
+    assuming either (user, 2026-09-12).  Declared, never detected: the same
+    rule ``activation`` follows, for the same reason.
     """
     steps = list(ensure_dirs())
-    steps.append(seed_machine_config(activation, preamble))
+    steps.append(seed_machine_config(activation, preamble, projects))
     if probe:
         steps.append(seed_environment_record())
     return steps

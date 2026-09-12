@@ -24,7 +24,6 @@ import click
 from ..config_dir import config_dir
 from ..diagnostics import get_capabilities, reset_capabilities
 from ..runtime_config import ACTIVATION_FORMS
-from . import advise as _advise
 from . import builds as _builds
 from . import doctor as _doctor
 from . import initconfig
@@ -814,6 +813,11 @@ def cmd_doctor(no_verify: bool) -> None:
     # 2026-08-21).  A recorded-but-unusable manager is a defect line
     # with its remedy, and the run stops here rather than reporting
     # env states probed through nothing.
+    # WHERE THE TREE IS.  Printed whether or not a manager was found: a
+    # person reading a doctor report is locating their installation, and the
+    # tree is half of it (user, 2026-09-12).
+    from ..projects import projects_root_with_source
+    click.echo(f"[doctor] {projects_root_with_source().describe()}")
     if caps.conda_binary:
         click.echo(f"[doctor] package manager: {caps.conda_binary}  "
                    f"(from {caps.conda_binary_source})", err=True)
@@ -862,44 +866,6 @@ def _render_validation(report: "_validate.ValidationReport",
     click.echo(f"{n_pass}/{n_total} checks passed -- env not production-ready",
                err=True)
     return 1
-
-
-@envs_group.command("advise",
-                    short_help="recommend mpi_np/omp/mps for a recipe + this host")
-@click.argument("name")
-@click.option("--n-atoms", type=int, default=None,
-              help="atom count for the eigenproblem (caps mpi_np "
-                   "in the recommendation, same rule the runtime uses).")
-@click.option("--n-orbitals", type=int, default=None,
-              help="orbital count (used to estimate VRAM/rank).  If "
-                   "omitted, the VRAM column shows 'n/a'.")
-def cmd_advise(name: str,
-               n_atoms: Optional[int],
-               n_orbitals: Optional[int]) -> None:
-    """Print a per-host preset table for one recipe.
-
-    Today only ``siesta-gpu`` has a real advisor; other names return
-    a "no advisor" notice.  The advisor probes the host (lscpu /
-    nvidia-smi / nvidia-cuda-mps-control) and prints three presets
-    side-by-side -- `default` (ELPA 2024.05 throughput optimum),
-    `memory` (fewer ranks, more OMP), and `fallback` (single rank,
-    no MPS).  The recommended preset for the detected host is echoed
-    as ready-to-paste ``MOLBUILDER_*`` env-var exports.
-    """
-    if name not in ("siesta-gpu", "molbuilder-siesta-gpu"):
-        click.echo(
-            f"`{name}` has no advisor wired.  Today only `siesta-gpu` "
-            f"is supported (it's the only recipe whose performance "
-            f"depends on host topology).",
-            err=True,
-        )
-        sys.exit(0)
-    probe = _advise.probe_host()
-    presets = _advise.recommend(probe, n_atoms=n_atoms, n_orbitals=n_orbitals)
-    click.echo(_advise.format_report(
-        probe, presets,
-        n_atoms=n_atoms, n_orbitals=n_orbitals,
-    ))
 
 
 @envs_group.command("validate",
@@ -1762,7 +1728,8 @@ def _render_init_config(steps: "Iterable") -> None:
 
 
 def _seed_config(activation: "Optional[str]", auto_yes: bool,
-                 probe: bool, conda_binary: "Optional[str]") -> None:
+                 probe: bool, conda_binary: "Optional[str]",
+                 projects: "Optional[str]" = None) -> None:
     """Ask (unless told), seed, report.  Shared by the command and bootstrap."""
     recommended, preamble = _recommended_activation(conda_binary)
     if activation is None:
@@ -1786,12 +1753,56 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
         # needs no such thing, so carrying the line there would be a preamble
         # that sources a file for no reason.
         preamble = None
-    _render_init_config(initconfig.init_config(activation, preamble, probe))
+    projects = _ask_projects_root(auto_yes, projects)
+    _render_init_config(initconfig.init_config(activation, preamble, probe,
+                                              projects))
+
+
+def _ask_projects_root(auto_yes: bool,
+                       declared: "Optional[str]") -> "Optional[Path]":
+    """Where the project tree goes -- asked, like activation, never detected.
+
+    ``None`` means "leave `paths.projects` empty and take the default", which
+    is the right answer on a workstation.  It is the WRONG answer on a cluster
+    home with a quota or where the checkout is read-only, and install time is
+    the one moment a person is thinking about it -- so this asks instead of
+    silently choosing (user, 2026-09-12).
+
+    Writability is REPORTED, not enforced: a path on a filesystem that is not
+    mounted yet is a legitimate thing to declare.
+    """
+    from pathlib import Path as _Path
+    from ..projects import projects_root_with_source
+    if declared:
+        return _Path(declared).expanduser()
+    default = projects_root_with_source()
+    if auto_yes:
+        # Still PRINT it.  Taking the default silently is how a person ends up
+        # believing the tree is somewhere it is not.
+        click.echo(f"  {default.describe()}")
+        return None
+    import os as _os
+    probe_at = default.path if default.path.exists() else default.path.parent
+    writable = "writable" if _os.access(probe_at, _os.W_OK) else "NOT writable"
+    click.echo("")
+    click.echo("Where should the project tree live?")
+    click.echo("  Calculations, decks and results go here.")
+    click.echo(f"  default: {default.path}   ({writable})")
+    click.echo("  Somewhere else is usual on a cluster -- a home with a "
+               "quota, or scratch.")
+    if not click.confirm("Keep the default", default=True):
+        given = click.prompt("  Path for the project tree", type=str)
+        return _Path(given).expanduser()
+    return None
 
 
 @envs_group.command(
     "init-config",
     short_help="seed the per-user config directory (molbuilder.json + record)")
+@click.option("--projects", default=None, metavar="PATH",
+              help="where the project tree lives -- written to "
+                   "molbuilder.json as `paths.projects`.  Omit to be asked; "
+                   "with --yes, omit to take the default (which is printed).")
 @click.option("--activation", type=click.Choice(sorted(ACTIVATION_FORMS)),
               default=None,
               help="declare how this machine enters a conda env, instead of "
@@ -1807,18 +1818,30 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
               help="take the recommended activation without asking.  The "
                    "value chosen is printed either way.")
 def cmd_init_config(activation: "Optional[str]", probe: bool,
-                    auto_yes: bool) -> None:
+                    auto_yes: bool, projects: "Optional[str]") -> None:
     """Create the config directory and seed what a fresh machine cannot infer.
 
     \b
-      <config dir>/                 0700 -- it holds secrets
-      <config dir>/molbuilder.json  script_generation.activation
-      <config dir>/environments/    records for machines you prep FOR
-      <config dir>/environment.json this machine, probed
+      <config dir>/                  0700 -- it holds secrets
+      <config dir>/molbuilder.json   0600 -- a TEMPLATE: every section
+                                     present and empty, each with a comment
+                                     saying who fills it (you, a command, or
+                                     a probe).  `script_generation.activation`
+                                     is filled in, because it has no default.
+      <config dir>/secrets/          0700 + a README: the mode rule, what
+                                     belongs here, and the two secrets that
+                                     cannot (they have one fixed home each)
+      <config dir>/environments/     0700 -- records for machines you prep FOR
+      <config dir>/environment.json  this machine, probed
+
+    Two things are ASKED, never detected, because install time is the one
+    moment the answer is known: how this machine enters a conda env, and where
+    the project tree lives.  `--yes` takes both defaults and PRINTS them.
 
     **Idempotent, and never overwrites.**  A file that already exists is
     reported and left exactly as it is; re-running prints what is there.  Run
     automatically at the end of ``bootstrap``.
     """
     click.echo(f"config directory: {config_dir()}")
-    _seed_config(activation, auto_yes, probe, get_capabilities().conda_binary)
+    _seed_config(activation, auto_yes, probe,
+                 get_capabilities().conda_binary, projects)

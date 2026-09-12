@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import List, Mapping, Optional, Tuple
+from typing import List, Mapping, NamedTuple, Optional, Tuple
 
 _log = logging.getLogger(__name__)
 
@@ -164,13 +164,49 @@ def projects_root(base: Optional[Path] = None) -> Path:
     home with a quota, a scratch filesystem, a shared tree.
 
     Does NOT create the directory.  Read-only path resolution.
+
+    Returns the path alone.  :func:`projects_root_with_source` is the same
+    resolution reporting WHICH of the four steps answered -- use that wherever
+    the answer is shown to a person, because "the default" and "your config
+    says so" are different facts about the same path.
+    """
+    return projects_root_with_source(base).path
+
+
+class ProjectsRoot(NamedTuple):
+    """Where the projects tree is, and which declaration put it there.
+
+    The second half exists because four things can answer, and a bare path
+    cannot say which did.  `configuration.md` § 2.2 already requires that
+    *"which file actually took effect is displayed, never inferred"* for the
+    config files; the tree is the same question one level over, and the user's
+    2026-09-12 instruction is the same rule: the location must be shown so
+    nobody has to believe where it is.
+
+    ``source`` is a phrase for a person, not a token to branch on.
+    """
+
+    path: Path
+    source: str
+
+    def describe(self) -> str:
+        """One line, the same words on every surface that shows it."""
+        return f"projects  {self.path}   ({self.source})"
+
+
+def projects_root_with_source(base: Optional[Path] = None) -> ProjectsRoot:
+    """:func:`projects_root`'s resolution, carrying which step answered.
+
+    One resolver, so a surface that PRINTS the tree and a surface that USES it
+    can never disagree -- which is the whole point of the one door.
     """
     if base is not None:
-        return base / PROJECTS_ROOT_NAME
+        return ProjectsRoot(base / PROJECTS_ROOT_NAME, "explicit argument")
     import os
     env = os.environ.get(PROJECTS_ROOT_ENV)
     if env:
-        return Path(env).expanduser()
+        return ProjectsRoot(Path(env).expanduser(),
+                            f"${PROJECTS_ROOT_ENV}")
     # Lazy: runtime_config is not needed to answer 1 or 2, and importing it
     # at module scope would tie the tree API to the config reader.
     from . import repo_root
@@ -188,8 +224,10 @@ def projects_root(base: Optional[Path] = None) -> Path:
         configured = (get_paths() or {}).get("projects")
     if configured:
         p = Path(configured).expanduser()
-        return p if p.is_absolute() else repo_root() / p
-    return repo_root() / PROJECTS_ROOT_NAME
+        return ProjectsRoot(p if p.is_absolute() else repo_root() / p,
+                            "molbuilder.json -> paths.projects")
+    return ProjectsRoot(repo_root() / PROJECTS_ROOT_NAME,
+                        "default -- no paths.projects set")
 
 
 class OutsideRoot(ValueError):

@@ -114,7 +114,7 @@ python -m molbuilder serve      # the web UI on 127.0.0.1:8000
 
 Once the host env exists, **`molbuilder envs` is the same surface** the shim used —
 `list`, `install <name>`, `bootstrap`, `doctor`, `validate`, `clean`, `repair`,
-`advise`, `init-config`.
+`init-config`.
 
 ### 2.1 What `bootstrap` seeds — the config directory *(2026-09-08)*
 
