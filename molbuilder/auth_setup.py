@@ -90,13 +90,27 @@ def write_secret_file(path: Path, contents: str) -> None:
     an empty secret (defense against accidentally truncating a real
     one with a placeholder).
 
-    **The mode is set on the descriptor before the first byte**, so there
-    is no window where the content exists at looser permissions.  This
-    docstring claimed that property from the start and the code did not
-    have it: the ``0o600`` argument to ``os.open`` applies to a newly
-    created inode only, so overwriting an existing loose file wrote the
-    secret at the OLD mode and tightened it afterwards.  Measured and fixed
-    2026-08-27 -- see the comment below.
+    **Atomic and private, which took two tries.**  Through
+    :func:`molbuilder.persist.write_bytes` with ``mode=0o600`` -- the one
+    writer this package puts bytes through (`configuration.md` § 2.3).  It
+    stages a ``mkstemp`` temp, which is owner-only from the moment it exists,
+    and ``os.replace``s it over the target.  So:
+
+    * there is **no window at a looser mode**, because no other mode is ever
+      set on the inode the secret lands in;
+    * a failed write -- full disk, crash, kill -- **leaves the previous secret
+      in place**.  This was the defect: until 2026-09-12 this function opened
+      the target ``O_TRUNC``, so an interrupted write destroyed it.  For
+      ``notify_keys`` that is every key ever issued.  R10 (2026-08-12) had
+      aligned what it called *"the last in-place ``O_TRUNC`` write"* with the
+      atomic writer; this was another one, and it could not be aligned then
+      because ``write_bytes`` widened the mode to 0644 on the way past;
+    * a symlink planted at the path is **replaced, not followed**, so the
+      earlier ``O_NOFOLLOW`` guard is no longer what carries that.
+
+    The previous attempt (2026-08-27) got the first point only: it opened the
+    target and ``fchmod``ed the descriptor before the first byte, which fixes
+    the mode of an inode that already exists and cannot make the write atomic.
     """
     if not contents:
         raise ValueError(
@@ -112,25 +126,12 @@ def write_secret_file(path: Path, contents: str) -> None:
         os.chmod(parent, 0o700)
     except OSError:
         pass
-    # The mode argument to os.open applies to a NEWLY CREATED inode only.
-    # Overwriting a file that already exists with looser permissions left
-    # it loose -- and the sequence was open, WRITE, close, chmod, so the
-    # secret was on disk at the old mode for the length of the write.
-    # Measured 2026-08-27 on a 0644 file: the bytes landed at 0644 and were
-    # tightened afterwards.  A small window, but a real one, and every
-    # secret this module writes went through it.
-    #
-    # fchmod on the open descriptor closes it: the mode is right before any
-    # content exists.  O_NOFOLLOW refuses a symlink planted at the path --
-    # the parent is 0700 so only the owner could plant one, but "the owner
-    # would not" is not a mechanism.
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(str(path), flags, 0o600)
-    try:
-        os.fchmod(fd, 0o600)              # BEFORE the first byte
-        os.write(fd, contents.encode("utf-8"))
-    finally:
-        os.close(fd)
+    # ONE WRITER, and 0600 is a parameter of it rather than a second writer
+    # (`configuration.md` § 2.3).  The temp mkstemp makes is owner-only before
+    # it has a name, so the mode is never wrong; os.replace is atomic, so the
+    # old secret is either fully replaced or fully intact.
+    from .persist import write_bytes
+    write_bytes(path, contents.encode("utf-8"), mode=0o600)
 
 
 #: A user id, as the LISTENER will accept it.  It becomes a log filename on

@@ -27,7 +27,8 @@ writes this file?"* was answered in five documents and completely in none.
 | this document owns | it does not own |
 |---|---|
 | **which files are configuration**, and the one name each is called by | the keys inside any one of them |
-| **who writes each file** — a person, a probe, a producing verb, or the engine's own package | what the writer does internally |
+| **who writes each file** — a person, a probe, a producing verb, or the engine's own package | what the writer does internally, beyond the two properties in the next row |
+| **the mode and the durability of every file listed here** — `0600`/`0700`, and that a write is atomic (§ 2.1b, § 2.3) | the bytes, the order of keys, the error text |
 | **the scopes**, and which file wins when two of them speak | the merge algorithm, which is `running-a-job.md` § 5 |
 | **the machine-facts rules** (§ 5) — the split between what is probed and what is chosen | the topology fields themselves, which are `scheduler/record.py`'s |
 | **what is refused where**, and why refusal beats silence | the error text, which belongs to the validator |
@@ -363,6 +364,118 @@ The two `environment` rows are listed in precedence order, so the record that
 won is the first one marked found — here the calculation's, which is why the
 menu reads `general` rather than the machine record's own.
 
+### 2.3 How a file molbuilder writes is written — atomically, and privately when it carries a credential
+
+*(Built 2026-09-12, measured while inventorying every secret this package
+touches. This row of § 0's table was added with it: the mode rule in § 2.1b had
+already taken this ground, for one file.)*
+
+**Two properties, and they are separate questions.** A file molbuilder writes
+must survive being interrupted; a file carrying a credential must never be
+readable by anyone but its owner, not even for the length of a write.
+
+| property | means | what breaks without it |
+|---|---|---|
+| **atomic** | a reader never sees half a file, and a failed write leaves the PREVIOUS content in place | a crash, a full disk or a kill mid-write destroys what was there. For `notify_keys` that is every key ever issued |
+| **private** | `0600` from the moment the inode exists — not fixed up afterwards | the bytes sit on disk readable by every account on the box for the length of the write |
+
+**This package had one function for each, and neither had both.**
+
+| writer | atomic | private |
+|---|---|---|
+| `persist.write_bytes` — *"THE atomic writer"*, adopted package-wide at U8 | **yes** | **no, deliberately** — its own docstring: *"`mkstemp` creates 0600, which is not what a shared artifact should end up as"*, so it widens to `0644` |
+| `auth_setup.write_secret_file` | **no** — in-place `O_WRONLY|O_CREAT|O_TRUNC` on the target itself | **yes** |
+
+And **every secret this package writes went through the second one** — the
+session key, the Google client secret, `notify_keys`, `notify` — while the
+non-secret `molbuilder.json` got the atomic one. That is the wrong way round: it
+is the same inversion [`run-reports.md`](?doc=execution/run-reports.md) records
+one level down, where *the key file was `0600` and the data it protects was not*.
+
+**Why a rule that should have caught it did not.** R10 (2026-08-12) aligned what
+it called *"the last in-place `O_TRUNC` write"* with the atomic writer, for
+exactly this reason — *"a crash mid-write left a truncated config for every later
+read to refuse."* It was not the last. `write_secret_file` is one, and it could
+not be aligned, because going through `write_bytes` meant **losing `0600`**. The
+two rules were in tension, the tension was never written down, and the writer
+that needed both kept the weaker half.
+
+> **THE RULE — privacy is a PARAMETER of the one writer, never a second
+> writer.** `persist.write_bytes(target, data, mode=…)` replaces a whole file
+> this package means to keep, and **a credential is not a reason to write one's
+> own**: that is how the package ended up with two writers neither of which was
+> both safe. Two shapes legitimately sit outside it — staging for validation,
+> and appending — and each is named below with the reason; **nothing else may**,
+> and a new one is the finding, not the fix. `mode=None` — the
+> default, and every caller that existed before this section — keeps a shared
+> artifact's mode. `mode=0o600` is how a credential is written, and it is
+> strictly the **stronger** path rather than a compromise: `mkstemp` creates the
+> temp at `0600`, so there is no moment at any other mode at all, and the target
+> is never opened for writing.
+
+**How the API is used.** A caller never picks a writing strategy. It picks the
+door for the kind of file it has, and the door knows:
+
+| to write | call | which is |
+|---|---|---|
+| a secret, whole | `auth_setup.write_secret_file(path, text)` | parent at `0700`, then `write_bytes(…, mode=0o600)` |
+| `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` |
+| `molbuilder.json`, from the auth wizard | `auth_setup.emit_molbuilder_json` | stage privately, **validate the bytes on disk**, then replace |
+| anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
+| a log, **appended** | `serve_daemon._open_private` | the one case temp-and-rename cannot serve |
+
+**Two shapes that are not `write_bytes` calls, and both are deliberate.**
+
+The auth wizard *stages, validates, then replaces*: it writes a private temp,
+reads that temp back through `read_config`, and replaces the target only if the
+server would accept it. `write_bytes` cannot express this, because it replaces
+immediately — there is no moment in it where the new bytes exist on disk and the
+old file is still there to keep. The order matters for a reason that was measured
+(2026-09-10): the file used to be rewritten and validated *afterwards*, so
+`providers=[]` left the machine with a config the server refuses. It has both
+properties § 2.3 asks for; what it does not share is the implementation, which is
+the right trade for a writer whose whole job is the validation step.
+
+**An append is the other, and it is a real exception**, not an oversight: a
+log is added to rather than replaced, so there is no previous content to
+preserve and temp-and-rename would discard the file on every line. Its mode
+therefore goes on the descriptor at create time instead — `0600` in a `0700`
+directory, fixed 2026-09-12 after the server log was measured at `0664` while
+carrying a provider's `client_secret` (`web/auth_providers/oauth.py` routes one
+there deliberately, to keep it out of the user-visible response). Same
+principle, different mechanism, because the file has a different shape.
+
+and **the path is always asked for, never assembled**: the directory from
+`config_dir` (§ 2.1c), the filename from whichever module owns that file's
+format (A11). § 3.1 is the whole tree with the resolving function beside each
+entry.
+
+**There is no `retrieve_secret("name")` door, and there must not be one.** A
+single name-keyed registry of secrets has to re-spell filenames their format
+owners own — which is the change that was tried and reverted inside one day on
+2026-08-31 (`config_dir.py` records it) and that
+`test_config_dir_has_one_home.py::TestNoModuleNamesOneOfThoseFilesItself`
+refuses: that test asserts each of these filenames appears in **exactly** the
+module entitled to spell it. The door a caller wants already exists and is
+already path-free — it is the owning module's own resolver, and for the four
+secrets that is `config_dir.session_key()`,
+`config_dir.google_client_secret()`, `monitor.default_notify_path()` and
+`monitor.notify_keys_path()` (§ 3.1 lists every file's). Measured 2026-09-12:
+**no module outside an owner joins a secret filename to a directory**, so the
+property a unified resolver would have been built to guarantee is one the code
+already has.
+
+**Three gains over careful in-place writing**, and they are the general reasons
+to prefer temp-and-rename:
+
+1. **the previous secret survives a failed write** — a full disk, a crash, a kill
+2. **no loose window, rather than a short one** — the old code `fchmod`ed an inode that already existed; this one's inode is `0600` before it has a name
+3. **a planted symlink is replaced, not followed** — `os.replace` acts on the symlink itself, so `O_NOFOLLOW` stops being load-bearing
+
+**What this does not fix**, because it is a different defect: atomicity makes one
+write all-or-nothing, and does nothing about two writers losing each other's
+change. § 8 carries that row.
+
 ---
 
 ## 3. The map — every configuration file
@@ -383,7 +496,68 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), mock `notify` channel examples for all three kinds, and the **four** secrets that cannot live there because they have one fixed home each: `secret_key` (§ 2.1e), `google_client_secret`, `notify`, `notify_keys` |
 | `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), the `--set` fallback when molbuilder cannot be installed there, and that this machine's own record is `../environment.json` and not in that directory |
 
-**What `molbuilder envs init-config` seeds** *(and `bootstrap` runs it)*: the
+### 3.1 The tree — where all of it actually sits
+
+One picture, because *"the config directory"* is three roots and a person
+configuring this should not have to assemble them from five sections. **Beside
+every entry is the function that resolves it**, which is the whole of the access
+rule: molbuilder asks for a path and is given one; nothing joins a directory to a
+filename except the module that owns that filename (§ 2.1c for the directory,
+A11 for the name).
+
+```text
+$MOLBUILDER_CONFIG_DIR, else $XDG_CONFIG_HOME/molbuilder, else ~/.config/molbuilder
+│                                      0700   config_dir.config_dir()
+├── molbuilder.json        what you want              0600   runtime_config.machine_config_path()
+├── environment.json       what THIS machine is              scheduler/record.machine_scope_path()
+├── secret_key             the session key            0600   config_dir.session_key()
+├── google_client_secret   Google's OAuth secret      0600   config_dir.google_client_secret()
+├── notify                 run-report channels        0600   monitor.default_notify_path()
+├── notify_keys            run-report signing keys    0600   monitor.notify_keys_path()
+├── environments/          one record per OTHER machine  0700
+│   ├── README                  written by `envs init-config`
+│   └── <name>.json             probed ON that machine, copied here
+└── secrets/               files molbuilder.json names by PATH   0700
+    ├── README                  written by `envs init-config`
+    └── …                       a TLS key/cert, a provider's client secret —
+                                your names, because your config names them
+
+$XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
+│                                             config_dir.state_dir()
+├── logs/                  diagnostics — delete when fixed  0700   config_dir.logs_dir()
+│   ├── serve-<port>.log        everything the server prints 0600   config_dir.serve_log()
+│   └── serve-<port>.stacks.log thread stacks on SIGUSR1     0600   config_dir.serve_stacks_log()
+└── reports/               per-run measurements — KEPT              config_dir.reports_dir()
+
+$XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
+│                                             config_dir.runtime_dir()
+└── serve-<port>.pid       the address stop/restart act on          config_dir.serve_pidfile()
+```
+
+**Three roots, not one, and the split is what each kind of file deserves.**
+Configuration is edited and backed up; state grows and is deleted; a runtime
+directory is *erased when the session ends*, which is right for a pidfile and
+wrong for anything meant to outlive a logout. A person who wants config and state
+together points `paths` at one place (§ 2.1d) — the runtime one stays separate,
+because `$XDG_RUNTIME_DIR` is the only one the OS cleans up.
+
+**The four files `molbuilder.json` cannot name** are `secret_key`,
+`google_client_secret`, `notify` and `notify_keys`. Each has one fixed home so a
+reader and a writer cannot mean different files — § 2.1e is the worked example of
+what happens otherwise, and `secret_key_file` / `notify_keys_file` are **refused**
+in config rather than ignored. Everything under `secrets/` is the opposite case
+by design: `molbuilder.json` names those by path, so the name is yours and the
+directory is a suggestion.
+
+**`secrets/` may be empty on a working installation** and often is — a
+workstation with no HTTPS and no sign-in needs nothing in it. An empty
+`environments/` likewise means you only ever run locally.
+
+### 3.2 What a first install seeds
+
+`molbuilder envs init-config` writes it, and `envs bootstrap` runs that at the
+end — so a first install arrives with a usable starting point rather than an
+empty directory. It seeds the
 config directory at `0700`, `molbuilder.json` at `0600` **as a template** —
 every section that can be empty present and empty, each with a `_`-prefixed
 comment saying who fills it (you, a command, or a probe) — plus `secrets/` and
@@ -393,10 +567,13 @@ known: `script_generation.activation` (it has no default) and `paths.projects`
 (its default is inside the checkout, which is often not where you want it).
 `--yes` takes both defaults **and prints them**.
 
-**One producer, two surfaces.** `<label>.template.toml` is written by
+### 3.3 One producer, two surfaces
+
+`<label>.template.toml` is written by
 `describe.py` and by the web's build blueprint through **the same function**,
 `template.template_with_values`. That is what makes *"the web writes the same
-bytes as the CLI"* a checkable claim rather than an intention.
+bytes as the CLI"* a checkable claim rather than an intention — the same shape as
+§ 2.3's one writer, applied to a produced file instead of a configured one.
 
 ---
 
@@ -726,4 +903,5 @@ document that owns each.
 |---|---|---|
 | One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | open |
 | ~~`verbose_comments` and `write_molwatch_log` are items in the catalogue for neither engine~~ — **withdrawn 2026-08-17: this was my misreading.** All three (`max_memory_mb` too) *are* catalogue items; they declare **no `engines` list**, so a per-engine query misses them while a plain lookup finds them. That is correct for what they are — a machine fact and two emitter switches, none of them engine-specific | — | **closed.** The rule they follow is *an item with no `engines` applies to every engine*, and [`engines/template.md`](?doc=engines/template.md) states it twice — in § 5's key table and in § 6.3's writer rule. This row claimed no document said it, which was the second half of the same misreading |
+| **A secret file's read-modify-write has no lock.** § 2.3 made each write atomic; it does not stop two writers losing each other's change. `auth_setup.issue_notify_key` and the *run reports* settings page both read `notify_keys` / `notify`, mutate their copy, and write it back — two `notify-token` runs, or two browser tabs each saving a channel, and the second replace silently discards the first's | this document, § 2.3 | **open — awaiting a decision.** Atomicity is a defect fixed against a written rule (R10); locking is a design addition no rule yet requires, so it is proposed rather than built |
 | `resolve_environment(overrides=…)` — **`jobset probe` is the caller** (`jobset/_cli.py`) and passes no `overrides`, so a machine fact cannot be declared through the verb yet. The missing sliver is the flag surface (`--set key=value`, a scheduler override), not the door or its caller — misread once (2026-08-19) as "the function has no caller" | this document, § 5 M-5 | open by design — the door and its caller exist; the flags are not built |

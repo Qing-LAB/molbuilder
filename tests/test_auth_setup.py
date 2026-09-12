@@ -89,6 +89,32 @@ def test_write_secret_file_overwrites_world_readable_file(tmp_path):
     assert p.read_text() == "new"
 
 
+def test_write_secret_file_failure_leaves_the_previous_secret_intact(tmp_path):
+    """A write that fails must not destroy what was there (§ 2.3).
+
+    Until 2026-09-12 this function opened the target `O_TRUNC` and only THEN
+    produced the bytes, so anything that went wrong after the open left an
+    EMPTY secret file -- for `notify_keys`, every key the operator had ever
+    issued.  Through the atomic writer the old content is either fully
+    replaced or fully untouched.
+
+    The trigger is a lone surrogate, which `str.encode("utf-8")` refuses.  It
+    needs no fake and no monkeypatching: it stands in for every way the bytes
+    can fail to land once the decision to write has been made, and it lands on
+    the same side of the truncation as a full disk or a kill does.
+    """
+    p = tmp_path / "notify_keys"
+    p.write_text('{"route": "abc", "keys": {"me": "real-key"}}')
+    os.chmod(p, 0o600)
+    with pytest.raises(UnicodeEncodeError):
+        _as.write_secret_file(p, "\ud800")
+    assert p.read_text() == '{"route": "abc", "keys": {"me": "real-key"}}'
+    assert stat.S_IMODE(p.stat().st_mode) == 0o600
+    # No temp litter beside it either -- a half-written file next to a secret
+    # is a second copy of that secret at whatever mode it got.
+    assert [x.name for x in tmp_path.iterdir()] == ["notify_keys"]
+
+
 def test_write_secret_file_rejects_empty():
     with pytest.raises(ValueError, match="empty secret"):
         _as.write_secret_file(Path("/tmp/whatever"), "")

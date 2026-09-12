@@ -141,6 +141,35 @@ def test_write_json_preserves_the_targets_mode(tmp_path):
     assert (p.stat().st_mode & 0o777) == 0o600
 
 
+def test_write_bytes_mode_forces_owner_only_instead_of_widening(tmp_path):
+    """`mode=0o600` is how a CREDENTIAL is written (`configuration.md` § 2.3).
+
+    The default widens to 0644 because a shared artifact should not inherit
+    mkstemp's 0600 -- and that widening is exactly what kept secrets OUT of
+    this writer until the parameter existed, leaving them on a non-atomic one.
+    Both halves are asserted here, on a fresh file and over a loose one, so
+    neither can be dropped without a failure.
+    """
+    import molbuilder.persist as persist
+    fresh = tmp_path / "key"
+    persist.write_bytes(fresh, b"s3cret", mode=0o600)
+    assert (fresh.stat().st_mode & 0o777) == 0o600
+    assert fresh.read_bytes() == b"s3cret"
+
+    # A file that ARRIVED loose is not inherited from -- `mode` wins over the
+    # target's own, which the default path would have kept.
+    loose = tmp_path / "arrived-0644"
+    loose.write_bytes(b"old")
+    os.chmod(loose, 0o644)
+    persist.write_bytes(loose, b"new", mode=0o600)
+    assert (loose.stat().st_mode & 0o777) == 0o600
+
+    # And the default still widens, which is the other half of the rule.
+    shared = tmp_path / "artifact.json"
+    persist.write_bytes(shared, b"{}")
+    assert (shared.stat().st_mode & 0o777) == 0o644
+
+
 def test_write_json_fails_clean_on_an_unserialisable_object(tmp_path):
     """Serialisation happens BEFORE the temp exists: the target is
     untouched and no litter is left."""

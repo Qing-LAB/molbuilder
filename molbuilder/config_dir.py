@@ -170,7 +170,12 @@ def runtime_dir() -> Path:
 #:
 #: (Pulling `environment.json` and `notify` in here was tried and reverted the
 #: same day -- it took a name away from its format owner, which is the rule
-#: A11 exists to hold, and `test_architecture_rules` said so.)
+#: A11 exists to hold, and
+#: `test_config_dir_has_one_home.py::TestNoModuleNamesOneOfThoseFilesItself`
+#: said so -- it asserts each filename below appears in exactly the one
+#: module entitled to spell it, so a registry here fails on the spelling
+#: alone.  `configuration.md` § 2.3 records why a `retrieve_secret(name)`
+#: door is the same proposal and meets the same test.)
 SESSION_KEY_FILENAME = "secret_key"
 GOOGLE_CLIENT_SECRET_FILENAME = "google_client_secret"
 

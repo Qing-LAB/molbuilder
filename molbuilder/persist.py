@@ -79,7 +79,8 @@ def read_json(path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None) -> Path:
+def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
+                mode: Optional[int] = None) -> Path:
     """Write via a **unique** temp + ``os.replace`` — the checkpoint's shape
     (`checkpoint._atomic_write_bytes` carried it first and now delegates
     here), adopted package-wide at U8 (2026-08-12).
@@ -100,17 +101,28 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None) -> Path:
     litter cannot be committed into history.
 
     ``mkstemp`` creates 0600, which is not what a shared artifact should end
-    up as, so the mode is the target's own if it already exists and 0644 if
-    it does not — what an ordinary create under a normal umask gives.
+    up as, so BY DEFAULT the mode is the target's own if it already exists and
+    0644 if it does not — what an ordinary create under a normal umask gives.
+
+    **``mode`` is how a CREDENTIAL is written** (`configuration.md` § 2.3).
+    Pass ``0o600`` and the widening above is skipped: ``mkstemp`` already made
+    the file owner-only, so there is no moment at any other mode at all, the
+    target is never opened for writing — a crash cannot leave a truncated
+    secret — and a symlink planted at the path is REPLACED rather than
+    followed.  Until 2026-09-12 this package had an atomic writer that widened
+    and a private writer (``auth_setup.write_secret_file``) that truncated the
+    target in place, and every secret went through the second one; § 2.3 has
+    the measurement.
     """
     target = Path(target)
     parent = Path(tmp_dir) if tmp_dir is not None else target.parent
     if not parent.is_dir():
         parent = target.parent
-    try:
-        mode = target.stat().st_mode & 0o777
-    except OSError:
-        mode = 0o644
+    if mode is None:
+        try:
+            mode = target.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o644
     fd, tmp_name = tempfile.mkstemp(dir=str(parent),
                                     prefix=target.name + ".", suffix=".tmp")
     tmp = Path(tmp_name)
