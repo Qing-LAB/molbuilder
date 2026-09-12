@@ -101,6 +101,28 @@ molbuilder.json.bak*
 # folder can be unpacked.)
 .molbuilder.json
 
+# ...and EVERYTHING ELSE THAT LIVES BESIDE IT.  The block above ignores the
+# config FILE; it was written before the config directory grew the rest of
+# these, and a basename pattern only covers the name it spells.
+#
+# WHY THIS MATTERS EVEN THOUGH THE CONFIG DIRECTORY IS NORMALLY OUTSIDE THE
+# CHECKOUT: its location is an override.  `MOLBUILDER_CONFIG_DIR` names the
+# root outright (configuration.md § 2.1c) and `XDG_CONFIG_HOME` moves it too,
+# so a person can legitimately point it at a path inside the repo -- and then
+# `git add -A` would stage a session key, an OAuth client secret and a webhook
+# URL.  Verified 2026-09-12: before these lines, `git check-ignore` said every
+# one of them was trackable.
+#
+# Each has ONE fixed home in the config directory, so the basename is the
+# right pattern; none of these names is tracked anywhere in the repo.
+secret_key
+google_client_secret
+notify
+notify_keys
+secrets/
+environments/
+environment.json
+
 projects/*
 *.parse.log
 
