@@ -465,20 +465,31 @@ workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
 There are **no server environment-variable knobs** — in particular
 `MOLBUILDER_LOG` appears in a code comment but is *not* wired, so don't rely on it.
 
-Two ready-made files ship beside this doc, in `ops/examples/`:
+**No config file ships in this repository, deliberately** *(2026-09-12)*.
+Until then two did — a `molbuilder.json.example` and a `molbuilder.asu-sol.json`
+carrying one cluster's real partition, QOS and GPU settings. Both are deleted: a
+configuration file is **yours**, and a repository that keeps a copy is keeping
+somebody's machine in version control. Two things made it concrete rather than
+tidy-minded — the example was a *second* template for a job
+`molbuilder envs init-config` already does by generating one, so one of the two
+was always the stale one (on 2026-09-12 it was still sending people to the
+retired `~/.molbuilder/` for their secrets); and the site preset advertised a
+`--mem` estimator from a module that does not exist, so it promised protection
+from the exact OOM it would let you hit.
 
-| File | What it is |
-|---|---|
-| `molbuilder.json.example` | The server template — `tls` / `envs` / `auth` / `script_generation`, each annotated with inline `_comment_*` keys. Copy it to the **config directory** and edit (`configuration.md` § 2.1c) — a copy in a launch directory is not read. **`script_generation.activation` is required before the web UI (or CLI) can install any `.run.sh` wrapper** — a config predating that section is exactly the "the `.fdf` saved but no `.run.sh` appeared" symptom. Pinned by `tests/test_scheduler_config.py` (parses through the live reader; load-bearing sections present; cited docs exist) so it stays synced with the code. |
-| `molbuilder.asu-sol.json` | A real site preset (ASU Sol: SLURM `public` partition, A100 GPUs). The shape a working HPC config takes. Pinned by `tests/test_scheduler_config.py` so it stays valid against the live reader. |
+**Where the template comes from now:** `molbuilder envs init-config` writes it,
+and `envs bootstrap` runs that at the end of a first install. It seeds every
+section that can be empty, each with a `_`-prefixed comment block saying who
+fills it in — you, a command, or a probe — and it *asks* the two values only you
+know (the activation form, and where the projects tree lives). A generated
+template cannot drift from the reader, because the same package writes both.
 
-```bash
-# The config directory is where the server reads it from -- a copy in the
-# launch directory is NOT read (configuration.md § 2.1a).
-mkdir -p "${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}"
-cp docs/ops/examples/molbuilder.json.example \
-   "${MOLBUILDER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}/molbuilder.json"
-```
+**Your site's own values come from your site.** Partition and QOS names from
+`sinfo` / `sacctmgr`, GPU types from the node definitions, queue limits from
+whoever runs the cluster — not from a preset in here. For ASU Sol specifically
+those numbers and the reasoning behind them are in
+[`execution/asu-sol.md`](?doc=execution/asu-sol.md), which is documentation about
+a machine rather than a file you copy over your own config.
 
 ### 5.1 The config directory — secrets live outside the repo
 

@@ -220,10 +220,11 @@ and node topology are *facts about a machine*, not preferences
 every other key**, so running it after `bootstrap` keeps the seeded
 `script_generation` — it refuses only when an `auth` block is already there, and
 `--force` replaces that one section. For the other providers (GitHub, Microsoft,
-ORCID), TLS and the admin list, the fully worked template with every key
-explained is **`docs/ops/examples/molbuilder.json.example`** — copy the sections
-you need out of it; the seeded file names that path rather than carrying a
-second copy of it. Reference:
+ORCID), TLS and the admin list, the keys are documented where the rules live —
+there is **no example config file in this repository** to copy from, and that is
+deliberate (`ops/deployment.md` § 5: a config file is yours, and a second
+hand-maintained template only drifts from the one `init-config` generates).
+Reference:
 [`ops/access-control.md`](?doc=ops/access-control.md) and
 [`ops/deployment.md`](?doc=ops/deployment.md) § 5.
 

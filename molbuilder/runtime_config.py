@@ -1699,8 +1699,9 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f".sbatch generator refuses to emit a header that won't "
                 f"allocate.\n"
                 f"\n"
-                f"Fix: add to molbuilder.json (see the asu-sol preset in "
-                f"docs/ops/examples/molbuilder.asu-sol.json):\n"
+                f"Fix: add to molbuilder.json -- the shape is below, and "
+                f"your site's own partition/qos names come from "
+                f"`sinfo`/`sacctmgr` there, not from a preset:\n"
                 f'    {{\n'
                 f'      "scheduler": {{\n'
                 f'        "kind": "slurm",\n'

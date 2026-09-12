@@ -23,12 +23,36 @@ import subprocess
 
 import pytest
 
-CONDA_SH = Path.home() / "miniconda3/etc/profile.d/conda.sh"
-ENV_DIR = Path.home() / "miniconda3/envs/molbuilder-pySCF"
+def _conda_hook() -> Path:
+    """conda's activation hook, from the manager the PACKAGE detects.
+
+    Was ``Path.home() / "miniconda3/etc/profile.d/conda.sh"`` until
+    2026-09-12 -- one developer's install layout, hard-coded.  A test pinned
+    to that runs on exactly one machine and SILENTLY SKIPS everywhere else,
+    which is worse than no test: it reads as coverage from the outside.
+    ``diagnostics.detect()`` is how the product itself finds the manager
+    (conda / mamba / micromamba, any prefix), so this follows it instead.
+    """
+    from molbuilder import diagnostics
+    binary = diagnostics.detect().conda_binary
+    if not binary:
+        return Path("/nonexistent/conda.sh")
+    # <root>/condabin/conda or <root>/bin/conda -> <root>/etc/profile.d/
+    return Path(binary).parent.parent / "etc" / "profile.d" / "conda.sh"
+
+
+def _env_present(name: str) -> bool:
+    """Through ``Capabilities.env_available`` -- the door that knows the
+    manager's own env list, rather than guessing a directory under $HOME."""
+    from molbuilder import diagnostics
+    return diagnostics.detect().env_available(name)
+
+
+CONDA_SH = _conda_hook()
 
 pytestmark = pytest.mark.skipif(
-    not (CONDA_SH.is_file() and ENV_DIR.is_dir()),
-    reason="needs the molbuilder-pySCF env + conda hook on this machine")
+    not (CONDA_SH.is_file() and _env_present("molbuilder-pySCF")),
+    reason="needs the molbuilder-pySCF env + a detectable conda hook")
 
 WATER = "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n"
 

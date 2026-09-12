@@ -196,17 +196,9 @@ rules above apply to every step in full:
    commit, always.
 7. Repoint inbound references — other docs, code comments, tests — to the
    new path in the **same commit** (grep-verified, per file; no blind
-   rewrite). **Nothing enforces this any more**, and that is deliberate:
-   `tests/test_no_retired_doc_paths.py` used to check that every `docs/**.md`
-   path an active source cites exists on disk, and it was retired on 2026-09-10
-   with 17 other files that asserted the shape of the repository rather than a
-   result — *"a static-review finding wearing a test's clothes"*. So a move that
-   strands references now fails **nothing**: grep-verify it in the same commit.
-   (It cost exactly that on 2026-09-12 — `molbuilder.json.example` still told
-   people to put secrets in the retired `~/.molbuilder/`, found by reading, not
-   by a red bar. The one narrow survivor is
-   `test_scheduler_config.py::test_example_templates_cite_only_existing_docs`,
-   which covers the two example templates only.)
+   rewrite). **Nothing enforces this, by choice** — the guard that did was
+   retired on 2026-09-10 with 17 other files that asserted the shape of the
+   repository rather than a result. So grep-verify a move in the same commit.
 
 *(This protocol ran the 2026-07 migration, whose migration-specific steps —
 wave ordering, the freeze, keep-and-mark, the per-file ledger — are recorded

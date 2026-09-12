@@ -214,83 +214,26 @@ def test_scheduler_not_object_rejected(sandbox):
         get_scheduler()
 
 
-# --------------------------------------------------------------------- #
-#  The committed asu-sol template parses through the real reader        #
-# --------------------------------------------------------------------- #
-
-
-def test_committed_asu_sol_example_parses(sandbox):
-    """The committed molbuilder.asu-sol.json example must stay valid against
-    the live reader (it carries _comment_* keys -- they must pass through).
-
-    The example ships beside the doc that explains it:
-    docs/ops/deployment.md § 5 (Configuration)."""
-    repo_root = Path(__file__).resolve().parent.parent
-    example = repo_root / "docs" / "ops" / "examples" / "molbuilder.asu-sol.json"
-    raw = json.loads(example.read_text())
-    _write_server(sandbox, raw)
-    sched = get_scheduler()
-    assert sched is not None
-    assert sched["directives"]["partition"] == "public"
-    assert sched["gpu"]["default_type"] == "a100"
-    # The two the hand-copy above drifted on, pinned against the real file so
-    # the drift cannot recur silently.  Both carry money: the preset's own
-    # `_comment_gpu` prices `exclusive: true` at ~276 CHE/h against ~69 for a
-    # right-sized job that backfills.
-    assert sched["gpu"]["exclusive"] is False
-    assert sched["defaults"]["cpus_per_task"] == 8
-
-
-# --------------------------------------------------------------------- #
-#  The committed server template stays synced with the live reader      #
-# --------------------------------------------------------------------- #
+# ── FOUR TESTS STOOD HERE AND WENT WITH THEIR SUBJECT (2026-09-12) ──────
 #
-# User rule (2026-07-29): the example .json templates are documentation
-# that MUST move with the code in the same commit.  The dev-workstation
-# missing-.run.sh regression was exactly this class of drift in reverse:
-# a live config predating the (templated) script_generation section.
-
-_EXAMPLES = Path(__file__).resolve().parents[1] / "docs" / "ops" / "examples"
-
-
-def test_server_template_parses_and_covers_the_load_bearing_sections():
-    from molbuilder.runtime_config import read_config
-    cfg = read_config(_EXAMPLES / "molbuilder.json.example")
-    # `secret_key_file` was in this set until 2026-08-31.  The session key has
-    # one home and the config cannot name it (`configuration.md` § 2.1e), so a
-    # template still demonstrating the key would be a template the loader
-    # REFUSES -- which is what it had become.
-    missing = {"tls", "envs", "auth", "script_generation"} - set(cfg)
-    assert not missing, (
-        f"molbuilder.json.example no longer demonstrates: {sorted(missing)} "
-        "-- the template must move with the reader in the same commit")
-
-
-def test_server_template_activation_is_a_legal_form():
-    from molbuilder.runtime_config import read_config
-    cfg = read_config(_EXAMPLES / "molbuilder.json.example")
-    activation = (cfg.get("script_generation") or {}).get("activation")
-    assert activation in ("source activate", "conda activate"), (
-        f"script_generation.activation in the template is {activation!r}; "
-        "the generator accepts only the two documented forms")
-
-
-def test_example_templates_cite_only_existing_docs():
-    """Every docs/... path named inside the example templates must exist
-    It used to close a gap in `test_no_retired_doc_paths` (the templates live
-    under docs/, outside that test's scan roots).  THAT TEST WAS RETIRED
-    2026-09-10, so this is no longer the narrow supplement it describes itself
-    as -- it is the only automated check on either template's citations."""
-    import re
-    repo = Path(__file__).resolve().parents[1]
-    bad = []
-    for name in ("molbuilder.json.example", "molbuilder.asu-sol.json"):
-        text = (_EXAMPLES / name).read_text(encoding="utf-8")
-        for m in re.finditer(r"docs/[A-Za-z0-9_\-./]+\.md", text):
-            if not (repo / m.group(0)).is_file():
-                bad.append(f"{name}: {m.group(0)}")
-    assert not bad, f"example templates cite missing docs: {bad}"
-
+# `test_committed_asu_sol_example_parses`,
+# `test_server_template_parses_and_covers_the_load_bearing_sections`,
+# `test_server_template_activation_is_a_legal_form` and
+# `test_example_templates_cite_only_existing_docs` all read
+# `docs/ops/examples/*.json`.  Those two files are deleted: a config file is
+# USER-OWNED CONTENT, and the repository had no business carrying one lab's
+# cluster settings (`molbuilder.asu-sol.json`) or a second, hand-maintained
+# copy of a template `envs init-config` already GENERATES
+# (`molbuilder.json.example`).
+#
+# The drift these tests guarded was real and is the reason they existed -- the
+# header above this block recorded the rule, "the example .json templates are
+# documentation that MUST move with the code in the same commit".  What the
+# rule could not fix is that two templates for one job means one of them is
+# always the stale one; on 2026-09-12 the example was still sending people to
+# the retired `~/.molbuilder/` for their secrets, months after the code moved.
+# The generated template cannot drift from the code, because the code writes
+# it -- `tests/test_seeding_a_fresh_machine.py` covers what it produces.
 
 # ``test_routing_rows_keep_the_operators_own_columns`` stood here until
 # 2026-08-17 (N4).  It pinned R10 (review-4 G5): `get_routing` rebuilt each row

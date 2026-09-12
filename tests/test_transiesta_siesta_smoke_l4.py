@@ -37,9 +37,25 @@ import numpy as np
 import pytest
 
 
-_SIESTA_BIN = (
-    Path.home() / "miniconda3" / "envs" / "molbuilder-siesta" / "bin" / "siesta"
-)
+def _siesta_bin() -> Path:
+    """The SIESTA binary inside the molbuilder-siesta env, located through the
+    manager the PACKAGE detects.
+
+    Was ``Path.home() / "miniconda3/envs/molbuilder-siesta/bin/siesta"`` until
+    2026-09-12 -- one developer's install layout.  A test pinned to a $HOME
+    path runs on one machine and SILENTLY SKIPS everywhere else, which reads
+    as coverage without being any.  `diagnostics.detect()` finds conda /
+    mamba / micromamba at whatever prefix, which is what the product does.
+    """
+    from molbuilder import diagnostics
+    caps = diagnostics.detect()
+    if not (caps.conda_binary and caps.env_available("molbuilder-siesta")):
+        return Path("/nonexistent/siesta")
+    root = Path(caps.conda_binary).parent.parent
+    return root / "envs" / "molbuilder-siesta" / "bin" / "siesta"
+
+
+_SIESTA_BIN = _siesta_bin()
 _PSML_DIR = Path(__file__).parent.parent / "projects" / "pseudopotential"
 _AU_BDT_XYZ = Path(__file__).parent / "data" / "au_bdt_au.xyz"
 _AU_BDT_SIDECAR = Path(__file__).parent / "data" / "au_bdt_au.molstruct.json"
