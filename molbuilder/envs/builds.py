@@ -177,6 +177,13 @@ _LEAKAGE_ENV_PREFIXES: Tuple[str, ...] = (
 )
 
 
+#: What every streamed line is prefixed with, so a subprocess's output is
+#: visibly nested under the step that produced it.  It was a `run_streaming`
+#: parameter that no caller in the tree ever overrode -- a knob reads as a
+#: policy surface, and this is one value.
+_STREAM_INDENT = "    "
+
+
 def run_streaming(
     argv: Sequence[str],
     *,
@@ -184,7 +191,6 @@ def run_streaming(
     env: Optional[Mapping[str, str]] = None,
     log_file: Optional[Path] = None,
     sink: Optional[TextIO] = None,
-    indent: str = "    ",
     timeout: Optional[int] = None,
 ) -> Tuple[Optional[int], str]:
     """Run a subprocess streaming stdout+stderr to ``sink`` in real time.
@@ -260,7 +266,7 @@ def run_streaming(
         for line in proc.stdout:
             captured_lines.append(line)
             try:
-                out_sink.write(indent + line)
+                out_sink.write(_STREAM_INDENT + line)
                 out_sink.flush()
             except OSError:
                 # If the sink dies (closed pipe, etc.) keep accumulating;
@@ -277,7 +283,7 @@ def run_streaming(
             tail = f"\n[killed after {timeout}s timeout]\n"
             captured_lines.append(tail)
             try:
-                out_sink.write(indent + tail)
+                out_sink.write(_STREAM_INDENT + tail)
                 out_sink.flush()
             except OSError:
                 pass
@@ -444,7 +450,7 @@ def _detect_cuda_version(cuda_home: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _detect_compute_cap(override: Optional[str] = None) -> Optional[str]:
+def _detect_compute_cap() -> Optional[str]:
     """Detect the host GPU's compute capability via ``nvidia-smi``.
 
     Returns the capability as a dotted string (``"8.0"``) or ``None``
@@ -462,8 +468,6 @@ def _detect_compute_cap(override: Optional[str] = None) -> Optional[str]:
     env_cc = os.environ.get("MOLBUILDER_CUDA_CC", "").strip()
     if env_cc:
         return env_cc
-    if override:
-        return override
     smi = shutil.which("nvidia-smi")
     if not smi:
         return None
@@ -543,24 +547,19 @@ def describe_phase(component: str, phase: str) -> Tuple[str, str]:
     )
 
 
-def probe_toolchain(env_prefix: str, *,
-                    cuda_cc_override: Optional[str] = None,
-                    jobs: Optional[int] = None) -> ToolchainProbe:
+def probe_toolchain(env_prefix: str) -> ToolchainProbe:
     """Build a :class:`ToolchainProbe` from a live conda env + host.
 
     Parameters
     ----------
     env_prefix
         Absolute path to the conda env (``$CONDA_PREFIX``).
-    cuda_cc_override
-        Forced compute capability (``"8.0"`` style), used by
-        :data:`MOLBUILDER_CUDA_CC` to override auto-detection.
     jobs
         Explicit build concurrency.  ``None`` uses :func:`_default_jobs`.
     """
     cuda_home = _detect_cuda_home(env_prefix, {})
     cuda_version = _detect_cuda_version(cuda_home) if cuda_home else None
-    cuda_cc = _detect_compute_cap(cuda_cc_override)
+    cuda_cc = _detect_compute_cap()
     gcc = _detect_gcc_version(env_prefix)
     ompi = _detect_openmpi_version(env_prefix)
     return ToolchainProbe(
@@ -570,7 +569,7 @@ def probe_toolchain(env_prefix: str, *,
         cuda_compute_cap=cuda_cc,
         gcc_version=gcc,
         openmpi_version=ompi,
-        jobs=jobs if jobs is not None else _default_jobs(),
+        jobs=_default_jobs(),
     )
 
 
@@ -579,16 +578,12 @@ def probe_toolchain(env_prefix: str, *,
 # --------------------------------------------------------------------- #
 
 
-def detect_gpu_name(override_cc: Optional[str] = None) -> Optional[str]:
+def detect_gpu_name() -> Optional[str]:
     """Read the GPU's product name from ``nvidia-smi``.
 
     Used purely for friendlier preflight output (e.g. "NVIDIA A100").
-    Returns ``None`` if no GPU is reachable.  The override is purely
-    informational here -- if the user forced a CC there may not be a
-    matching GPU at all.
+    Returns ``None`` if no GPU is reachable.
     """
-    if override_cc:
-        return None
     smi = shutil.which("nvidia-smi")
     if not smi:
         return None
@@ -689,50 +684,6 @@ def check_repo_reachable(repo_url: str, *, timeout: int = 15
         msg = err[-1] if err else "(no stderr)"
         return f"git ls-remote {repo_url} returned rc={cp.returncode}: {msg}"
     return None
-
-
-def check_env_health(env_prefix: str, conda_specs: Sequence[str]
-                     ) -> List[str]:
-    """Sanity check the conda env after create: are key binaries present?
-
-    Catches partial-conda-failure cases (SAT solver lied; package install
-    silently failed) by checking that toolchain entries we explicitly
-    listed actually landed.  Returns a list of issue strings; empty
-    means OK.
-    """
-    issues: List[str] = []
-    env_bin = Path(env_prefix) / "bin"
-    if not env_bin.exists():
-        issues.append(
-            f"$CONDA_PREFIX/bin missing at {env_bin}; conda env did not "
-            f"populate correctly."
-        )
-        return issues
-    # Tooling binaries we depend on for the build phase.  Listed conda
-    # specs -> expected binary names in $CONDA_PREFIX/bin.
-    expected_bins = {
-        "cmake": "cmake",
-        "ninja": "ninja",
-        "git": "git",
-        "openmpi": "mpirun",
-        # gcc_linux-64 installs as the prefixed name; absence here
-        # signals the conda solve picked a different gcc variant.
-        "gcc_linux-64": "x86_64-conda-linux-gnu-gcc",
-        "gfortran_linux-64": "x86_64-conda-linux-gnu-gfortran",
-    }
-    for spec in conda_specs:
-        # spec strings look like "gcc_linux-64=14"; we want the base name.
-        base = spec.split("=")[0].split("::")[-1]
-        binary = expected_bins.get(base)
-        if binary is None:
-            continue
-        if not (env_bin / binary).exists():
-            issues.append(
-                f"conda env at {env_prefix} declares `{spec}` but "
-                f"{binary!r} is absent from $CONDA_PREFIX/bin -- the "
-                f"conda solve may have silently skipped it."
-            )
-    return issues
 
 
 # --------------------------------------------------------------------- #
@@ -1237,18 +1188,6 @@ def compute_fingerprint(spec: BuildSpec, probe: ToolchainProbe,
     return hashlib.sha256(blob).hexdigest()
 
 
-def read_sentinel_fingerprint(sentinel_path: Path) -> Optional[str]:
-    """Read the fingerprint hash recorded in a sentinel file."""
-    if not sentinel_path.exists():
-        return None
-    try:
-        data = json.loads(sentinel_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    fp = data.get("fingerprint")
-    return fp if isinstance(fp, str) else None
-
-
 def write_sentinel(sentinel_path: Path, fingerprint: str, *,
                    now: Optional[Callable[[], float]] = None) -> None:
     """Write a sentinel file recording the toolchain fingerprint."""
@@ -1262,23 +1201,11 @@ def write_sentinel(sentinel_path: Path, fingerprint: str, *,
                              encoding="utf-8")
 
 
-def sentinel_valid(sentinel_path: Path, fingerprint: str) -> bool:
-    """Backwards-compat shim.  Sentinels are now plain existence markers
-    (the artifact-presence probe at install start is the trust source);
-    callers should prefer ``sentinel_path.exists()`` directly.  This
-    helper still exists so external tooling that imports it doesn't
-    break, and so the recorded fingerprint can be used as forensic
-    metadata when ``compute_fingerprint`` is recomputed for debugging.
-    """
-    return sentinel_path.exists()
-
-
 def component_install_valid(
     spec: BuildSpec,
     paths: BuildPaths,
     comp: BuildComponent,
     probe: ToolchainProbe,
-    conda_binary: str,
 ) -> bool:
     """Probe whether one component is already installed and working.
 
@@ -1568,7 +1495,6 @@ def plan_build_spec(spec: BuildSpec,
 def _run_build_phase(step: BuildStep,
                *,
                env_prefix: str,
-               conda_binary: str,
                timeout: int = 7200) -> BuildStepResult:
     """Run ONE build phase with live output, under an activate-equivalent
     bash wrapper (not ``conda run`` -- see the comment below).
@@ -1675,15 +1601,11 @@ def run_build_spec(spec: BuildSpec,
                    env_prefix: str,
                    *,
                    conda_binary: str,
-                   cuda_cc_override: Optional[str] = None,
-                   jobs: Optional[int] = None,
                    rebuild: Optional[str] = None,
                    conda_specs: Sequence[str] = (),
-                   skip_preflight: bool = False,
                    skip_network_check: bool = False,
                    on_warnings: Optional[ConfirmWarningsCallback] = None,
                    on_progress: Optional[ProgressCallback] = None,
-                   now: Optional[Callable[[], float]] = None,
                    ) -> BuildResult:
     """Execute a :class:`BuildSpec` against a live conda env.
 
@@ -1694,10 +1616,6 @@ def run_build_spec(spec: BuildSpec,
         ``"all"`` -> wipe every component, then run.
         ``<component-name>`` -> wipe that component + everything
         downstream of it (later components in dependency order).
-    skip_preflight
-        Bypass the CUDA / gcc / forbidden-package / disk / network
-        pre-flight checks.  Used by tests; production calls leave
-        this ``False``.
     skip_network_check
         Skip the ``git ls-remote`` reachability check (CI sometimes
         blocks outbound).  Other preflight checks still run.
@@ -1713,12 +1631,9 @@ def run_build_spec(spec: BuildSpec,
         execution.  Used by the CLI to render per-step progress; tests
         pass a recording callable.
     """
-    probe = probe_toolchain(env_prefix, cuda_cc_override=cuda_cc_override,
-                            jobs=jobs)
-    report = PreflightReport(errors=(), warnings=(), info=())
-    if not skip_preflight:
-        report = preflight(spec, probe, conda_specs, env_prefix,
-                           check_network=not skip_network_check)
+    probe = probe_toolchain(env_prefix)
+    report = preflight(spec, probe, conda_specs, env_prefix,
+                       check_network=not skip_network_check)
 
     if report.errors:
         # Pre-flight failure short-circuits.  No filesystem mutations.
@@ -1807,11 +1722,11 @@ def run_build_spec(spec: BuildSpec,
     #    is fast and resume-friendly.  If they're also broken, the user
     #    can pass ``--rebuild=<component>`` to wipe the whole component.
     for comp in spec.components:
-        if component_install_valid(spec, paths, comp, probe, conda_binary):
+        if component_install_valid(spec, paths, comp, probe):
             for phase in PHASES:
                 sentinel = paths.sentinel(comp.name, phase)
                 if not sentinel.exists():
-                    write_sentinel(sentinel, fingerprint, now=now)
+                    write_sentinel(sentinel, fingerprint)
         else:
             for phase in ("install", "verify"):
                 sentinel = paths.sentinel(comp.name, phase)
@@ -1858,7 +1773,7 @@ def run_build_spec(spec: BuildSpec,
         if result.status != "ok":
             failed = True
             continue
-        write_sentinel(step.sentinel, fingerprint, now=now)
+        write_sentinel(step.sentinel, fingerprint)
 
     activate_written = False
     deactivate_written = False
@@ -1974,14 +1889,11 @@ __all__ = [
     "check_no_forbidden_packages",
     "check_disk",
     "check_repo_reachable",
-    "check_env_health",
     "disk_free_gb",
     "detect_gpu_name",
     "resolve_paths",
     "compute_fingerprint",
-    "read_sentinel_fingerprint",
     "write_sentinel",
-    "sentinel_valid",
     "component_install_valid",
     "downstream_components",
     "plan_build_spec",

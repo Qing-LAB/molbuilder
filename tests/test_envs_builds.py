@@ -231,40 +231,32 @@ def test_fingerprint_changes_with_openmpi_version(tiny_spec, fake_probe):
 # --------------------------------------------------------------------- #
 
 
-def test_sentinel_roundtrip(tmp_path):
-    """A sentinel that's present marks the phase as done -- the recorded
-    fingerprint is forensic metadata only, not a gating check.  Per the
-    2026-06-15 artifact-presence redesign: editing a SIESTA flag must
-    not invalidate ELPA's sentinel just because the global fingerprint
-    shifts.  The install-start ``component_install_valid`` probe is
-    the trust source for "is this component already installed"."""
-    sentinel = tmp_path / "x.done"
-    # Fixed clock so the timestamp doesn't depend on wall time.
-    B.write_sentinel(sentinel, "fp-1", now=lambda: 1700000000.0)
-    assert sentinel.exists()
-    # Fingerprint string is recorded for debugging but ignored by the
-    # shim -- callers should prefer ``sentinel.exists()`` directly.
-    assert B.read_sentinel_fingerprint(sentinel) == "fp-1"
-    assert B.sentinel_valid(sentinel, "any-string") is True
+def test_a_sentinel_is_a_presence_marker_not_a_payload(tmp_path):
+    """Three tests stood here, driving one rule through three fixtures: a
+    present sentinel means done, an absent one means not-done, and a corrupt
+    one still means done.  That rule is `sentinel.exists()`, which is what
+    the phase loop calls.
 
+    Per the 2026-06-15 artifact-presence redesign the recorded fingerprint is
+    forensic metadata, NOT a gating check -- editing a SIESTA flag must not
+    invalidate ELPA's sentinel because the global fingerprint shifted.  The
+    two readers that existed only to assert that (`read_sentinel_fingerprint`
+    and a `sentinel_valid` shim that ignored its own second argument) had no
+    production caller and are gone; `component_install_valid` is the trust
+    source for "is this component already installed".
+    """
+    written = tmp_path / "x.done"
+    B.write_sentinel(written, "fp-1", now=lambda: 1700000000.0)
+    corrupt = tmp_path / "corrupt.done"
+    corrupt.write_text("not-json-at-all", encoding="utf-8")
+    absent = tmp_path / "missing.done"
 
-def test_sentinel_absent_is_invalid(tmp_path):
-    """A nonexistent sentinel marks the phase as not-done."""
-    sentinel = tmp_path / "missing.done"
-    assert B.sentinel_valid(sentinel, "any") is False
-
-
-def test_sentinel_corrupt_still_counts_as_present(tmp_path):
-    """A corrupt sentinel file still trips the "present" check -- under
-    the artifact-presence model a sentinel is a marker, not a payload.
-    If the underlying install is actually broken, the install-start
-    verify probe catches that and the marker gets re-written cleanly."""
-    sentinel = tmp_path / "corrupt.done"
-    sentinel.write_text("not-json-at-all", encoding="utf-8")
-    # Fingerprint isn't readable from a corrupt file, but the sentinel
-    # itself exists -- and that's the only thing the phase loop checks.
-    assert B.read_sentinel_fingerprint(sentinel) is None
-    assert B.sentinel_valid(sentinel, "any") is True
+    assert written.exists()
+    assert corrupt.exists(), "a corrupt marker is still a marker"
+    assert not absent.exists()
+    # The fingerprint is recorded, so it is there for a human reading the
+    # file -- it just gates nothing.
+    assert "fp-1" in written.read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------- #

@@ -481,8 +481,7 @@ def check_toolchain_executes(env_prefix: str,
 
     Returns ``None`` when the toolchain works, or when there is no
     compiler to test (a dry run, or an env that has not been created
-    yet -- missing packages are :func:`check_env_health`'s job, not
-    ours).
+    yet -- missing packages are `doctor.audit_packages`' job, not ours).
 
     Parameters
     ----------

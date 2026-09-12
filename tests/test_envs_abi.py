@@ -235,7 +235,7 @@ exit 1
 
 def test_no_compiler_in_env_is_silent(tmp_path):
     """A dry run, or an env that has not been created yet.  Missing
-    packages are check_env_health's job, not ours."""
+    packages are doctor.audit_packages' job, not ours."""
     assert A.check_toolchain_executes(tmp_path) is None
 
 

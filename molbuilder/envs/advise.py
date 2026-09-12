@@ -95,7 +95,12 @@ class HostProbe:
         if self.gpu_name:
             vram = (f"{self.gpu_vram_mb / 1024:.1f} GB"
                     if self.gpu_vram_mb else "?")
-            cc = self.gpu_compute_cap or "?"
+            # nvidia-smi reports compute_cap DOTTED ("8.9"); the sm_ form
+            # drops the dot.  This printed `sm_8.9`, which is not a value
+            # any CUDA_ARCHITECTURES or ELPA flag accepts -- and a reader's
+            # first instinct is to paste it into one.  Same rule as
+            # `builds.ToolchainProbe.cuda_cc_sm`.
+            cc = ((self.gpu_compute_cap or "").replace(".", "") or "?")
             numa = (f"NUMA={self.gpu_numa}"
                     if self.gpu_numa is not None else "NUMA=unknown")
             lines.append(
