@@ -12,7 +12,7 @@ import pytest
 
 from molbuilder.spectra.activity import (
     CLASS_BOTH, CLASS_IR_ONLY, CLASS_PARTIAL, CLASS_RAMAN_ONLY,
-    CLASS_SILENT, channel_activity, classify_modes,
+    CLASS_SILENT, adaptive_cut, channel_activity, classify_modes,
 )
 
 
@@ -121,3 +121,101 @@ def test_mismatched_channel_lengths_raise():
     would silently drop the tail of a run."""
     with pytest.raises(ValueError, match="channel lengths disagree"):
         classify_modes([1.0, 2.0], [1.0])
+
+
+# --------------------------------------------------------------------- #
+#  The cut is found in the data, not asserted                            #
+# --------------------------------------------------------------------- #
+
+def test_symmetry_breaking_leakage_is_not_a_band():
+    """The defect a fixed 1e-6 floor shipped, and the case that found it.
+
+    Ethylene built through the UI is an RDKit geometry relaxed to a
+    finite gradient tolerance, so it is not exactly D2h.  Its two
+    IR-active C-H stretches leak into Raman at 3.3e-06 and 1.5e-06 of
+    the Raman peak -- above a 1e-6 line, so both were labelled active in
+    BOTH channels, which centrosymmetry forbids outright.
+
+    The numbers below are that run's.  What separates them is not their
+    size but the GAP: three clear decades between the weakest real band
+    (6.5e-03) and the strongest leak (3.3e-06).
+    """
+    raman = [212.9, 143.1, 37.31, 10.57, 1.721, 1.381,     # allowed
+             7.07e-4, 3.25e-4,                             # leakage
+             2.4e-7, 1.2e-7, 8.4e-7, 3.2e-8]               # residue
+    active = channel_activity(raman, present_floor=1e-3)
+    assert sum(bool(a) for a in active) == 6, (
+        "only the six genuinely Raman-active modes may come back active; "
+        "symmetry-breaking leakage is not a band")
+
+
+def test_the_same_molecule_classifies_the_same_on_a_worse_geometry():
+    """The property a fixed threshold could not hold.
+
+    Where the residue sits depends on the CALCULATION -- geometry,
+    basis, grid, convergence.  Whether a mode is allowed depends on the
+    SYMMETRY.  A rule that reads the separation rather than the level
+    therefore gives one answer for one molecule, and that is the whole
+    argument for finding the cut in the data.
+
+    Same six bands, residue two orders apart.
+    """
+    bands = [212.9, 143.1, 37.31, 10.57, 1.721, 1.381]
+    clean = channel_activity(bands + [2.4e-7, 1.2e-7, 8.4e-7,
+                                      3.2e-8, 6.8e-7, 3.1e-7],
+                             present_floor=1e-3)
+    noisy = channel_activity(bands + [7.07e-4, 3.25e-4, 2.4e-7,
+                                      1.2e-7, 8.4e-7, 3.2e-8],
+                             present_floor=1e-3)
+    assert sum(bool(a) for a in clean) == sum(bool(a) for a in noisy) == 6
+
+
+def test_a_channel_with_nothing_to_separate_is_left_alone():
+    """Water: three modes, all allowed, widest gap 0.7 decades.
+
+    A cut would have to invent a boundary, and the weakest of three real
+    bands would be the one it threw away.  "Everything is active" is the
+    right answer and the rule has to be able to reach it.
+    """
+    assert adaptive_cut([1.0, 0.479, 0.0886]) is None
+    assert all(channel_activity([76.91, 36.82, 6.817],
+                                present_floor=1e-3))
+
+
+def test_a_gap_too_high_up_is_not_the_residue_boundary():
+    """The way a widest-gap rule can be fooled, and the guard for it.
+
+    A molecule with no forbidden modes but a wide dynamic range has its
+    widest gap BETWEEN TWO REAL BANDS.  Cutting there would call a
+    genuine band forbidden, so a cut above a thousandth of the peak is
+    refused and the fixed floor is used instead.
+    """
+    assert adaptive_cut([1.0, 1e-4, 8e-5, 7e-5]) is None   # gap at 1e-2
+    assert sum(bool(a) for a in
+               channel_activity([1.0, 1e-4, 8e-5, 7e-5],
+                                present_floor=0.0)) == 4
+
+
+def test_a_narrow_gap_low_down_is_still_not_a_separation():
+    """Isolates the minimum-width rule, which nothing else reaches.
+
+    The water case above is refused by the OTHER guard -- its gap sits
+    high, so the cut would land above a thousandth of the peak.  This
+    one is built so the widest gap is genuinely low (a cut at ~1.3e-04,
+    comfortably inside the permitted region) but only 1.8 decades wide.
+
+    That is a continuum of weak bands, not two clusters: the intensities
+    step down steadily with nothing that reads as a boundary.  Splitting
+    it anywhere would discard real bands, so the rule must decline on
+    WIDTH alone.
+    """
+    # The last value sits just ABOVE the fallback floor (1e-6), so the
+    # fallback keeps every mode -- the point here is the refusal to
+    # split, not where the fallback happens to land.
+    ratios = [1.0, 10 ** -1.5, 10 ** -3.0, 10 ** -4.8, 10 ** -5.9]
+    assert adaptive_cut(ratios) is None, (
+        "a 1.8-decade gap is a slope, not a separation")
+    # ...so every mode survives, on the fixed floor.
+    assert sum(bool(a) for a in
+               channel_activity([r * 50.0 for r in ratios],
+                                present_floor=0.0)) == 5

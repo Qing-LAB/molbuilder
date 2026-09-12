@@ -34,13 +34,44 @@ differently.  Every function here keeps the two apart.
 """
 from __future__ import annotations
 
+import math
 from typing import Dict, List, Optional, Sequence
 
-#: Fraction of the strongest band in the same channel, below which a
-#: mode counts as inactive.  1e-6 sits far above the residue measured on
-#: CO2 (ratios of order 1e-10) and far below any band a spectroscopist
-#: would call weak -- a 1-in-a-million band is not a band.
+#: THE FALLBACK cut, used only when the data will not separate itself.
+#:
+#: It was the primary rule until 2026-09-11, and a real run showed why a
+#: constant cannot be: on ethylene built through the UI -- an RDKit
+#: geometry relaxed to a finite gradient tolerance, so not exactly
+#: D2h -- symmetry-breaking leakage reached 1.5e-6 and 3.3e-6 of the
+#: Raman peak, crossing a 1e-6 line and labelling two honestly IR-only
+#: C-H stretches as active in both channels.  The SAME molecule on an
+#: exactly symmetric geometry leaked at 1e-7 and classified correctly.
+#: One ruler cannot serve both, because where the residue sits depends
+#: on the geometry, the basis, the grid and the convergence tolerance --
+#: properties of the calculation, not of the chemistry.
 ACTIVITY_REL_FLOOR = 1e-6
+
+#: HOW WIDE A GAP HAS TO BE before it counts as a separation.
+#:
+#: Allowed and forbidden modes do not merely differ, they cluster: on
+#: every real run measured, the two groups sit ORDERS apart with nothing
+#: in between (CO2 8.6-9.2 decades, ethylene 3.3-7.0).  Below two
+#: decades there is no bimodality to find and splitting would be
+#: inventing a boundary -- which is what protects a molecule whose modes
+#: are all allowed.  Water's widest gap is 0.7 decades, and the right
+#: answer there is "everything is active", not "the weakest one isn't".
+MIN_GAP_DECADES = 2.0
+
+#: AND WHERE A SPLIT MAY LAND.
+#:
+#: The widest gap is usually the one between bands and residue, but not
+#: always: a molecule with no forbidden modes and a wide dynamic range
+#: could have its widest gap sit BETWEEN TWO REAL BANDS, and cutting
+#: there would call a genuine band forbidden.  Nothing above a thousandth
+#: of the strongest band is residue, so a cut above this is refused and
+#: the fallback is used instead.  Every cut derived from a real run so
+#: far lands in 2.6e-06 .. 1.5e-04, well inside it.
+MAX_CUT_FRACTION = 1e-3
 
 #: DOES THIS CHANNEL CONTAIN A BAND AT ALL?
 #:
@@ -75,6 +106,47 @@ CLASSES = (CLASS_BOTH, CLASS_IR_ONLY, CLASS_RAMAN_ONLY,
            CLASS_SILENT, CLASS_PARTIAL)
 
 
+def adaptive_cut(
+    ratios: Sequence[float],
+    *,
+    min_gap_decades: float = MIN_GAP_DECADES,
+    max_cut_fraction: float = MAX_CUT_FRACTION,
+) -> Optional[float]:
+    """Where this channel separates itself, or ``None`` if it does not.
+
+    ``ratios`` are intensities divided by the channel's strongest band,
+    so they run from 1.0 downward.  Allowed and forbidden modes cluster
+    ORDERS apart, so the boundary is simply the widest gap between
+    consecutive values in log space, cut at its midpoint.
+
+    Asking the data beats asserting a constant because the residue's
+    position is a property of the CALCULATION -- geometry, basis, grid,
+    convergence -- while the separation is a property of the SYMMETRY,
+    which is what we actually want to read.  Measured across four real
+    runs the derived cut ranged 2.6e-06 .. 1.5e-04, a sixtyfold spread
+    no single constant sits correctly inside; yet the same rule gave
+    ethylene the SAME classification on an idealised geometry and on an
+    RDKit one whose residue was two orders larger.
+
+    ``None`` when no gap is wide enough (nothing to separate -- every
+    mode is allowed), or when the widest gap sits too high to be the
+    band/residue boundary.  Both refusals fall back to the fixed floor.
+    """
+    finite = [r for r in ratios if r > 0.0]
+    if len(finite) < 2:
+        return None
+    logs = sorted((math.log10(r) for r in finite), reverse=True)
+    widest, at = 0.0, None
+    for i in range(len(logs) - 1):
+        gap = logs[i] - logs[i + 1]
+        if gap > widest:
+            widest, at = gap, i
+    if at is None or widest < min_gap_decades:
+        return None
+    cut = 10.0 ** ((logs[at] + logs[at + 1]) / 2.0)
+    return cut if cut <= max_cut_fraction else None
+
+
 def channel_activity(
     values: Sequence[Optional[float]],
     *,
@@ -102,7 +174,11 @@ def channel_activity(
         # molecule with NO allowed transitions into one where every mode
         # is allowed.
         return [None if v is None else False for v in values]
-    cut = rel_floor * peak
+    # ASK THE DATA FIRST.  The fixed floor is what we fall back to when
+    # the channel will not separate itself -- see `adaptive_cut`.
+    ratios = [abs(v) / peak for v in computed]
+    fraction = adaptive_cut(ratios)
+    cut = (fraction if fraction is not None else rel_floor) * peak
     return [None if v is None else bool(abs(v) > cut) for v in values]
 
 
