@@ -199,7 +199,7 @@ Every adjacent pair is a data dependency, not a convention.
 | **data files → write** | a refusal must arrive before a folder is half-built |
 | **structure → parameters** | forced by the language when the deck is a program that executes top to bottom, as PySCF's is; the same convention when it is a keyword list, as SIESTA's is |
 | **write → promises** | the promise is made by the text that was just written |
-| **write → step 4** | the wrapper reads the finished deck for the environment and the rank clamp |
+| **write → step 4** | the wrapper reads the finished deck for the environment and the rank count |
 | **declare → step 4** | the wrapper's header carries the job's own resources |
 | 4 → 5 | the tree links to what was rendered |
 
@@ -1013,7 +1013,7 @@ MD.MaxForceTol    0.01 eV/Ang      MD.UseSaveXV      .true.
 ```
 
 **Step 4** renders `bdt-e2e_01_coarse.run.sh` from the *finished* deck, reading it
-for which environment to activate and what to clamp ranks to. **Step 5** builds
+for which environment to activate and how many ranks to ask for. **Step 5** builds
 the tree and links into it:
 
 ```

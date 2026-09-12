@@ -330,7 +330,11 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
                                       // `bench-<name>`, because inventing a
                                       // seq would be guessing at the one
                                       // number that must never be guessed.
-      "resources": {                  // ALL NINE fields are always written
+      "resources": {                  // EVERY field is always written; the
+                                      // count lives in job-contracts.md
+                                      // § 6.2 and nowhere else (it was
+                                      // stated as seven here and as nine
+                                      // in this comment, against fifteen)
                                       // (§ 4.1 and job-contracts § 6.2, U19:
                                       // seven scheduler asks plus the two
                                       // no-flag riders, continue_retries and

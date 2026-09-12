@@ -878,7 +878,7 @@ states it at three resolutions.
 
 Two of its rules bear directly on § 6.1 above. **Step 4 follows step 3 as a data
 dependency, not a convention**: the wrapper reads the rendered deck for the
-environment and the rank clamp, and a wrapper written first gets both wrong
+environment and the rank count, and a wrapper written first gets both wrong
 *silently, because both wrong answers are also the defaults*. **Step 5 links; it
 never copies and never renders**: everything under the tree points at what steps
 3 and 4 wrote at the root.

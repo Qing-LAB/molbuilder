@@ -618,7 +618,9 @@ flowchart TB
   it?"* cannot arise — the template holds a value for every one.
 - **Track B is the only place an unstated value exists**, and step 3b is what
   answers it — from the **selected domain**'s widest node, else the target's
-  topology, clamped to the atom count. Never from the box running `prep`, and
+  topology. **Nothing lowers it** — the atom-count clamp was removed on the
+  2026-09-03 ruling (`running-a-job.md` § 3 owns that rule and records why).
+  Never from the box running `prep`, and
   **never invented**: a record that carries no core count is a refusal, not a
   fallback, because a number taken from the wrong machine looks exactly like
   a right one.
@@ -1174,14 +1176,17 @@ and every one of them was decided by floor 1 on the machine it was decided on:
 | this run's **allocation** | 8 ranks | 16 ranks · 1 GPU | **you**, as an input to `prep` (§ 2.3.1b, M4) |
 | `BlockSize` in the deck | 32 | 16 | floor 3, at step 3 — the ceiling is *orbitals ÷ ranks*, so **more ranks means a smaller block** ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
 | `Diag.Algorithm` | ScaLAPACK | ELPA-1STAGE | you, but only the cluster has the GPU build |
-| the env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` | floor 5, at step 4 — *derived from the solver* |
+| the env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` | floor 5, at step 4 — *derived from the **GPU request***: `use_gpu` on the allocation, else `Diag.ELPA.GPU` in the deck. **Not** from `Diag.Algorithm` — `job-contracts.md` § 6.2 owns this, and `runwrap` stopped reading the solver for it in 2026-08 |
 | `.sbatch` | not written | written | floor 5, from `scheduler` being present |
 | **the template, `task.json`** | **byte-identical** | **byte-identical** | — |
 
 **Read the second and fourth rows together and § 4.1's forced ordering falls
-out.** The ranks decide the block size, and the solver decides the environment —
-so the machine must be resolved before the deck, and the deck before the
-wrapper. That is why `prep` exists at all instead of the browser finishing the
+out.** The ranks decide the block size, and the **GPU request** decides the
+environment — so the machine must be resolved before the deck, and the deck
+before the wrapper. (The SOLVER decides neither: the packaged SIESTA runs ELPA
+on CPU perfectly well, so `Diag.Algorithm` is a deck keyword like any other.
+`runwrap` read it to route until 2026-08-13 on a premise that turned out false,
+and records the deletion where it happened.) That is why `prep` exists at all instead of the browser finishing the
 job.
 
 ### 9.3 The two shapes are the same on both

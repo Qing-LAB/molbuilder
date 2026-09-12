@@ -1342,7 +1342,8 @@ reads the target's own width, and refuses when the target has no record:**
 
 The policy itself is [`running-a-job.md`](?doc=execution/running-a-job.md)
 § 3's, stated once there: SIESTA is launched as MPI over all physical cores
-clamped to the atom count (OMP stays 1); a deck that asks for the GPU gets
+(OMP stays 1, and nothing clamps the count — `running-a-job.md` § 3); a deck
+that asks for the GPU gets
 the ELPA-CUDA placement defaults; **PySCF has no rank count** — its wrapper
 resolves the OMP thread count at run time (`-omp` flag → `OMP_NUM_THREADS`
 → the scheduler's allocation → this node's physical cores). The engine's
