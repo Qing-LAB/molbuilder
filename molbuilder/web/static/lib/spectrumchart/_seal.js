@@ -159,14 +159,16 @@ export async function openSurface(host) {
         paper_bgcolor: palette.bg,
         plot_bgcolor: palette.bg,
         font: { color: palette.ink, size: 11 },
-        /* Room above the plot for the two lines that live there: the note on
-         * the left, the pointer's readout on the right (§ 6.2). At the 12px this
-         * used to be, both sat in the margin's edge and were clipped -- which is
-         * why the pending note had never once been seen. */
-        /* Both axes are on the LEFT now, so the right edge is bare
-         * again.  (It briefly needed 56px for a right-hand axis, whose
-         * ticks rendered "60" as "6C" at 12px -- kept as the reason the
-         * number is a decision rather than a default.) */
+        /* `t` is room above the plot for the two lines that live there:
+         * the note on the left, the pointer's readout on the right
+         * (§ 6.2).  At the 12px it used to be, both sat in the margin's
+         * edge and were clipped -- which is why the pending note had
+         * never once been seen.
+         *
+         * `r` is bare, because both axes are on the LEFT.  It briefly
+         * needed 56px for a right-hand axis, whose ticks rendered "60"
+         * as "6C" at 12px -- kept as the reason this number is a
+         * decision rather than a default. */
         margin: { l: 58, r: 14, t: 30, b: 40 },
         showlegend: false,
         /* No hover labels from the library. The chart carries its own readout,
@@ -174,11 +176,11 @@ export async function openSurface(host) {
          * tooltip that appears only when you are exactly on a stick would say
          * less, and would need the aim the bands exist to make unnecessary. */
         hovermode: false,
-        xaxis: {
-            title: { text: picture.xTitle || "" },
-            gridcolor: palette.grid,
-            zeroline: false,
-        },
+        /* Every axis comes from `axesFor` -- including x, which it must
+         * own because the anchor depends on how many panels there are.
+         * A second `xaxis` literal here was dead for exactly that
+         * reason: the spread below overrode it silently, so editing it
+         * changed nothing. */
         ...axesFor(picture),
         shapes: darkModeLines(picture),
         annotations: annotationsFor(picture.note, picture.readout),

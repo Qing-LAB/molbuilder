@@ -170,50 +170,56 @@ export async function mount(host, options = {}) {
             (c) => laneKnown(c.key)
                 && modes.some((m) => !m.imaginary && valueIn(m, c.key) === null));
 
-        /* THE "NO HEIGHTS" PICTURE BELONGS TO ONE LANE, NOT EVERY LANE.
-         *
-         * With nothing computed there is no height to draw, and § 6.2's
-         * answer is a row of equal sticks saying "these modes exist".
-         * Drawn once that is a mode list; drawn in BOTH half-planes it is
-         * the same list mirrored, which reads as two spectra that happen
-         * to agree exactly -- the most misleading thing the chart could
-         * put on screen.  So the placeholder is the first lane's alone,
-         * and the others stay empty until they have numbers. */
-        /* Below the floor, a stick is drawn at ZERO height rather than
-         * removed.  Two reasons, and the second is the load-bearing one:
-         *   * the user asked for it hidden, so vanishing IS the intent
-         *     -- unlike a mode whose strength was never computed, which
-         *     § 6.2 refuses to draw at zero because that would read as a
-         *     measured zero;
-         *   * `recolour` restyles the stick trace by POSITION, so a
-         *     trace whose points came and went with the slider would
-         *     colour the wrong modes on the next hover. */
-        const floorFor = (key) => {
-            if (!(floorPct > 0)) return 0;
-            const peak = Math.max(0, ...modes
-                .filter((m) => !m.imaginary)
-                .map((m) => Math.abs(valueIn(m, key) ?? 0)));
-            return peak * (floorPct / 100);
-        };
+        /* The strongest REAL band in a channel, which two different
+         * things need: the display floor is a fraction of it, and a
+         * relative lane divides by it.  Computed once per lane -- it was
+         * written out twice, identically, which is one edit away from
+         * two lanes disagreeing about their own peak. */
+        const peakIn = (key) => Math.max(0, ...modes
+            .filter((m) => !m.imaginary)
+            .map((m) => Math.abs(valueIn(m, key) ?? 0)));
 
         const lanes = channels.map((c, i) => {
             const known = laneKnown(c.key);
-            const cut = floorFor(c.key);
-            /* A relative lane divides by its own peak on the way to the
-             * screen only.  `valueIn` keeps returning the measured
-             * number, so the floor, the readout and the table all stay
-             * in the units the run actually produced. */
-            const lanePeak = Math.max(0, ...modes
-                .filter((m) => !m.imaginary)
-                .map((m) => Math.abs(valueIn(m, c.key) ?? 0)));
-            const toScreen = (v) => (
-                c.relative && lanePeak > 0 ? (v / lanePeak) * 100 : v);
+            const lanePeak = peakIn(c.key);
+
+            /* BELOW THE FLOOR, a stick is drawn at ZERO height rather
+             * than removed.  Two reasons, and the second is the
+             * load-bearing one:
+             *   * the user asked for it hidden, so vanishing IS the
+             *     intent -- unlike a mode whose strength was never
+             *     computed, which § 6.2 refuses to draw at zero because
+             *     that would read as a measured zero;
+             *   * `recolour` restyles the stick trace by POSITION, so a
+             *     trace whose points came and went with the slider would
+             *     colour the wrong modes on the next hover. */
+            const cut = floorPct > 0 ? lanePeak * (floorPct / 100) : 0;
             const shown = (m) => {
                 const v = valueIn(m, c.key);
                 return v !== null && Math.abs(v) >= cut;
             };
+
+            /* A relative lane divides by its own peak on the way to the
+             * SCREEN only.  `valueIn` keeps returning the measured
+             * number, so the floor, the readout and the table all stay
+             * in the units the run actually produced. */
+            const toScreen = (v) => (
+                c.relative && lanePeak > 0 ? (v / lanePeak) * 100 : v);
+
+            /* THE "NO HEIGHTS" PICTURE BELONGS TO ONE LANE, NOT EVERY
+             * LANE.  With nothing computed there is no height to draw,
+             * and § 6.2's answer is a row of equal sticks saying "these
+             * modes exist".  Drawn once that is a mode list; drawn in
+             * every panel it is the same list repeated, which reads as
+             * two spectra that happen to agree exactly -- the most
+             * misleading thing the chart could put on screen.
+             *
+             * `blank` is about having nothing to DRAW.  It is not the
+             * `silent` activity class, which is a statement about the
+             * physics of a mode; one word for both would be two ideas
+             * wearing one name. */
             const placeholder = !anyKnown && i === 0;
-            const silent = !anyKnown && i !== 0;
+            const blank = !anyKnown && i !== 0;
             return {
                 key: c.key,
                 direction: c.direction,
@@ -229,7 +235,7 @@ export async function mount(host, options = {}) {
                     ? `${c.label} (${c.unit})`.replace(" ()", "")
                     : (anyKnown ? `${c.label} — not computed` : "modes"),
                 known,
-                sticks: silent
+                sticks: blank
                     ? { x: [], y: [], width: [], state: [] }
                     : {
                         x: modes.map((m) => m.freq),
@@ -246,7 +252,7 @@ export async function mount(host, options = {}) {
                  * so a filtered band must not keep contributing to it --
                  * otherwise raising the floor would empty the sticks
                  * while the curve stayed exactly where it was. */
-                curve: silent
+                curve: blank
                     ? null
                     : envelope(modes, broadening,
                                (m) => (shown(m)

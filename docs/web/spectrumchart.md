@@ -282,10 +282,11 @@ Everything the chart draws comes from a list of these, and nothing else:
 
 ```js
 mode = {
-    index:     22,          // required — the caller's own number for this mode
-    freq:      1131.8,      // required — cm⁻¹, may be negative
-    activity:  12.86,       // optional — Å⁴/amu; null or absent = not computed
-    imaginary: false,       // optional — default false
+    index:     22,                          // required — the caller's own number
+    freq:      1131.8,                      // required — cm⁻¹, may be negative
+    values:    { raman: 12.86, ir: null },  // optional — one per CHANNEL
+    cls:       "raman-only",                // optional — the activity class
+    imaginary: false,                       // optional — default false
 }
 ```
 
@@ -293,8 +294,23 @@ mode = {
 |---|---|---|---|---|
 | `index` | **yes** | — | *(the record is refused)* | missing, not a finite number, or repeated within the list |
 | `freq` | **yes** | cm⁻¹ | *(the record is refused)* | missing, or not a finite number |
-| `activity` | no | Å⁴/amu | **not computed yet** — drawn as pending, never as zero (§ 6.2) | present but not a finite number |
+| `values[<channel key>]` | no | the channel's own | **not computed yet** — drawn as pending, never as zero (§ 6.2) | present but not a finite number |
+| `cls` | no | — | `"partial"` | never — an unknown string draws as `partial` |
 | `imaginary` | no | — | `false` | never — it is read as yes-or-no, so anything that is not `false`, `0`, `null` or missing counts as yes |
+
+**A mode has heights, not a height** *(2026-09-11)*. It was a single
+`activity` until then, which is why the y-title could be the hardcoded string
+`"Raman activity (Å⁴/amu)"`: with one quantity there was nothing to choose
+between. One Hessian yields several property derivatives on one set of
+eigenvectors, so activity is an attribute of a mode **in a channel**, and the
+keys in `values` are the `key`s the caller declared at `mount` (§ 8.2). A key
+no channel declared is ignored; a channel with no value for a mode draws that
+mode as pending in **its own lane only**.
+
+`cls` is the mode's activity class — `both`, `ir-only`, `raman-only`, `silent`
+or `partial` — **decided server-side** and passed through, never computed here
+(§ 8.4). It colours the rug, and a `silent` mode additionally gets a line
+across the full height of every panel.
 
 *A finite number* above means an ordinary number — not text, not `NaN`, not
 infinity. A caller that hands over `"1131.8"` where a frequency belongs has a bug
@@ -558,6 +574,7 @@ mount(host, options) -> Promise<handle>
 | What is passed | What it is | Required | Default |
 |---|---|---|---|
 | `host` | the element the chart lives in. The **host sizes it** (§ 5.4); the module never writes a width or a height onto it | yes | — |
+| `options.channels` | the channels this chart draws, in order: `[{ key, label, unit, direction, relative? }]`. `direction` is `"up"` or `"down"` and decides which stacked panel a channel occupies — nothing else about layout. `relative: true` normalises that lane's drawn heights to its own strongest band, for a channel whose conventional axis is not the unit it was computed in; what the axis is CALLED still comes from `unit`, because this module names no quantity | no | one generic lane keyed `activity` — what a caller with a single quantity still means |
 | `options.onSelect` | `(index) => void`, called when a **user** clicks a mode. Never called by anything the tab does (§ 8.3) | no | nothing is reported |
 | `options.modes` | the first mode list, exactly as `setModes` takes it | no | empty — an empty chart, not an error |
 | `options.selected` | the first selection, exactly as `setSelected` takes it | no | none chosen |
