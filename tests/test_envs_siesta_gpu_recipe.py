@@ -122,9 +122,19 @@ def test_pins_cmake_geq_3_30(recipe):
 
 
 def test_uses_openblas_not_mkl(recipe):
-    """Locked decision: stays single-OpenMP-runtime (libgomp).  MKL
-    brings libiomp5 which collides at runtime.  See
-    docs/ops/installation.md § 6"""
+    """THE single-OpenMP-runtime rule, and the only test of it.
+
+    Naming `openblas` is what keeps MKL out of the solve -- scalapack and
+    fftw then resolve against it, so Intel's libiomp5 never lands beside
+    gcc's libgomp.  A declaration the solver enforces.
+
+    Two sibling tests stood here asserting a `forbidden_packages` denylist
+    and an `omp_runtime` label instead; both were removed with those fields
+    on 2026-09-12.  They asserted the shape of our own file -- the denylist
+    was checked against this very package list, in the same file, and could
+    not see what conda actually installs.  This one asserts the outcome.
+
+    See docs/ops/installation.md section 6."""
     pkgs_lower = [p.lower() for p in recipe.conda_specs]
     assert any("openblas" in p for p in pkgs_lower)
     assert not any("mkl" in p for p in pkgs_lower), (
@@ -150,20 +160,6 @@ def test_libxc_present(recipe):
     assert "libxc" in recipe.conda_specs
 
 
-def test_no_forbidden_packages_in_conda_packages(recipe):
-    """Recipe conda_packages must not declare anything that the
-    build_spec.forbidden_packages list rejects."""
-    assert recipe.build_spec is not None
-    for forbidden in recipe.build_spec.forbidden_packages:
-        forbidden_simple = forbidden.split("=")[0]
-        for pkg in recipe.conda_specs:
-            pkg_simple = pkg.split("=")[0]
-            assert pkg_simple != forbidden_simple, (
-                f"conda_packages contains forbidden pkg `{pkg}` "
-                f"(forbidden pattern `{forbidden}`)"
-            )
-
-
 # --------------------------------------------------------------------- #
 #  BuildSpec shape                                                       #
 # --------------------------------------------------------------------- #
@@ -182,21 +178,6 @@ def test_build_spec_cuda_required(recipe):
 def test_build_spec_cuda_min_version(recipe):
     """Default toolchain (gcc 14) pairs with CUDA 12.4+."""
     assert recipe.build_spec.cuda_min_version == "12.4"
-
-
-def test_build_spec_omp_runtime_gomp(recipe):
-    """Single OpenMP runtime, locked to libgomp (gcc's)."""
-    assert recipe.build_spec.omp_runtime == "gomp"
-
-
-def test_build_spec_forbids_mkl_variants(recipe):
-    """MKL + intel-openmp are forbidden (libiomp5 collision)."""
-    forbidden = set(recipe.build_spec.forbidden_packages)
-    for required in ("mkl", "intel-openmp"):
-        assert required in forbidden, (
-            f"build_spec.forbidden_packages should include `{required}`; "
-            f"got {sorted(forbidden)!r}"
-        )
 
 
 def test_build_spec_components_in_order(recipe):

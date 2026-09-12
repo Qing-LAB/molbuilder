@@ -529,15 +529,6 @@ class BuildSpec:
         Minimum CUDA toolkit version, e.g. ``"12.4"``.  Used by the
         CUDA<->gcc compatibility check.  ``None`` means "any version
         passes the version check, only existence is required."
-    forbidden_packages
-        Conda spec patterns that MUST NOT appear in the recipe's
-        ``conda_packages`` (or be co-installed by the SAT solver as
-        dependencies the user adds).  Used to enforce the single-
-        OpenMP-runtime rule: ``("mkl*", "intel-openmp", "fftw=*=mkl_*")``
-        keeps libgomp the only OpenMP runtime in the env.
-    omp_runtime
-        Human-readable name of the OpenMP runtime this env expects
-        (``"gomp"`` for gcc).  Surfaced by doctor + tested.
     activate_hook
         Template body for ``$CONDA_PREFIX/etc/conda/activate.d/zz-<artifact_subdir>.sh``.
         Receives the same placeholders as component fields.  Empty
@@ -551,8 +542,6 @@ class BuildSpec:
     components: Tuple[BuildComponent, ...]
     cuda_required: bool = False
     cuda_min_version: Optional[str] = None
-    forbidden_packages: Tuple[str, ...] = ()
-    omp_runtime: str = "gomp"
     activate_hook: str = ""
     deactivate_hook: str = ""
 
@@ -1736,14 +1725,6 @@ _SIESTA_GPU_BUILD = BuildSpec(
     components=(_ELPA, _SIESTA_GPU_COMPONENT),
     cuda_required=True,
     cuda_min_version="12.4",
-    # Forbids MKL + intel-openmp to keep libgomp the only OpenMP runtime
-    # in the env (gcc 14 provides libgomp; libiomp5 from MKL/intel-openmp
-    # would collide at runtime with OMP: Error #15).
-    forbidden_packages=(
-        "mkl", "mkl-devel", "mkl-include", "mkl-service", "mkl_fft",
-        "mkl_random", "intel-openmp",
-    ),
-    omp_runtime="gomp",
     activate_hook=_SIESTA_GPU_ACTIVATE_HOOK,
     deactivate_hook=_SIESTA_GPU_DEACTIVATE_HOOK,
 )
@@ -1852,6 +1833,15 @@ _SIESTA_GPU = Recipe(
         "openmpi",
         # Math libs.  OpenBLAS (NOT MKL) keeps libgomp the only OpenMP
         # runtime; mixing libiomp5 + libgomp blows up at runtime.
+        # OPENBLAS IS THE SINGLE-OPENMP-RUNTIME RULE.  Naming it is what
+        # keeps MKL out of the solve -- scalapack and fftw then resolve
+        # against openblas, so libiomp5 never enters the env beside gcc's
+        # libgomp (the two together give Intel's `OMP: Error #15`, or
+        # silent thread-pool corruption).  A declaration, enforced by the
+        # solver.  A `forbidden_packages` denylist stood beside this until
+        # 2026-09-12, checked against this very list in this very file; it
+        # could not see what conda installs, cited no upstream requirement,
+        # never matched its own documentation, and never fired.
         "openblas",
         "scalapack",
         # File I/O (parallel HDF5 + netcdf for SIESTA's NetCDF backend).

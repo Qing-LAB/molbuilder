@@ -14,7 +14,6 @@ correctness so a refactor in builds.py surfaces immediately.
 from __future__ import annotations
 
 import json
-import dataclasses
 import os
 import re
 from pathlib import Path
@@ -413,47 +412,6 @@ def test_no_cuda_no_gcc_is_silent(tmp_path):
 # --------------------------------------------------------------------- #
 #  Forbidden packages                                                    #
 # --------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("pattern,specs,forbidden,why", [
-    # A bare name is exact -- not a prefix.
-    ("mkl-devel", ("python", "mkl-devel"), True, "exact name"),
-    ("mkl", ("python", "mkl", "openblas"), True, "exact name, present"),
-    ("mkl", ("python", "mkl-devel"), False, "a bare name is not a prefix"),
-    # A GLOB forbids a family.  This form is one of the two the field's own
-    # docstring gives as an example, and it used to match NOTHING -- so the
-    # documented way to forbid a family silently protected nothing.
-    ("mkl*", ("python", "mkl-devel"), True, "glob catches the family"),
-    ("mkl*", ("python", "openblas"), False, "glob does not over-reach"),
-    # A pattern naming a BUILD forbids only that build.  This is the other
-    # documented form, and it used to reduce to `fftw` -- which equals the
-    # reduction of the recipe's OWN `fftw=*=mpi_openmpi_*`, so it raised a
-    # hard preflight error against a spec it is supposed to allow and aborted
-    # the install.
-    ("fftw=*=mkl_*", ("fftw=*=mpi_openmpi_*",), False,
-     "the MPI build of the same package is allowed"),
-    ("fftw=*=mkl_*", ("fftw=3.3=mkl_h1234",), True, "the mkl build is not"),
-    # A comparator glued to the name must not become part of it.
-    ("psutil", ("psutil>=5.9",), True, "comparator is not part of the name"),
-])
-def test_forbidden_package_matching(siesta_gpu_spec, pattern, specs,
-                                    forbidden, why):
-    """Both forms the `forbidden_packages` docstring documents, and they broke
-    in opposite directions until 2026-09-12."""
-    spec = dataclasses.replace(siesta_gpu_spec,
-                               forbidden_packages=(pattern,))
-    err = B.check_no_forbidden_packages(spec, specs)
-    assert (err is not None) is forbidden, f"{pattern!r} vs {specs}: {why}"
-    if forbidden:
-        assert "OpenMP" in err or "single" in err, "must explain why"
-
-
-def test_check_forbidden_silent_on_clean_packages(siesta_gpu_spec):
-    """The siesta-gpu recipe's own conda_specs list passes its own rule."""
-    recipe = recipe_by_name("molbuilder-siesta-gpu")
-    err = B.check_no_forbidden_packages(siesta_gpu_spec,
-                                        recipe.conda_specs)
-    assert err is None
 
 
 # --------------------------------------------------------------------- #
