@@ -249,7 +249,7 @@ class PySCFConfig:
         "label":   "Calculation engine",
         "tier":    "basic",
         "choices": ("pyscf",),
-        "engine_key":  '(molbuilder: selects the deck composer + backend env)',
+        "engine_key":  '(molbuilder: selects the deck composer + the backend env)',
         "help": ("which program runs the vibrational calculation.  PySCF "
                  "is the only engine wired to the Spectra tab today -- it "
                  "supplies the analytic Hessian, the normal modes, and "

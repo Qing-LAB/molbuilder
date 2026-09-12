@@ -2997,10 +2997,13 @@
 
     // ----- Spectrum chart (Plotly) -----------------------------
     //
-    // Draws frequency (cm⁻¹) vs Raman activity (Å⁴/amu) as a
-    // stem-style bar plot.  Imaginary modes (frequency < 0) get a
-    // distinct red colour + a separate trace so a saddle-point
-    // geometry is visually obvious without consulting the table.
+    // Draws frequency (cm⁻¹) against EVERY channel the run computed --
+    // one stacked panel each, sharing the frequency axis (the chart's
+    // own contract, docs/web/spectrumchart.md).  It was Raman alone
+    // until 2026-09-11, which is what the hardcoded y-title recorded.
+    // Imaginary modes (frequency < 0) get a distinct red colour + a
+    // separate trace so a saddle-point geometry is visually obvious
+    // without consulting the table.
     // Modes whose Raman activity isn't computed (cfg.compute_raman
     // = False on the producing run) are shown at activity 0 with a
     // grey marker so the user sees the mode density but understands

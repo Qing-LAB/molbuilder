@@ -12,14 +12,27 @@ where it is made.  The rule must not be re-invented as an epsilon in the
 viewer: two epsilons drift, and the one in the viewer cannot be tested
 against a real run.
 
-**Two questions, two rules.**  Which modes are active WITHIN a channel
-is decided relatively -- a fraction of the strongest band in that same
-channel -- because the channels carry incommensurate units (Å⁴/amu for
-Raman, km/mol for IR) and no single epsilon can mean the same thing in
-both.  The CO2 numbers sit ten orders of magnitude apart, so that
-fraction is not a close call.
+**Two questions, and the first is answered by looking.**
 
-Whether the channel contains a band AT ALL cannot be answered that way:
+WHICH MODES ARE ACTIVE within a channel is decided by finding the
+boundary in the data, not by asserting one.  Allowed and forbidden modes
+do not merely differ, they CLUSTER -- orders apart with nothing in
+between -- so the cut is the widest gap between consecutive intensities
+in log space (``adaptive_cut``).  That is the primary rule, because
+where the residue sits is a property of the CALCULATION (geometry,
+basis, grid, convergence) while what we want to read is a property of
+the SYMMETRY: measured across four real runs the derived cut ranged
+2.6e-06 to 1.5e-04, and the same rule classified ethylene identically on
+two geometries whose residue differed by two orders.
+
+``ACTIVITY_REL_FLOOR`` is the FALLBACK for when the channel will not
+separate itself -- no gap wide enough to trust, or the widest gap sitting
+too high to be the band/residue boundary.  It is relative for the reason
+any cut here must be: the channels carry incommensurate units (Å⁴/amu
+for Raman, km/mol for IR) and no single epsilon can mean the same thing
+in both.
+
+WHETHER THE CHANNEL CONTAINS A BAND AT ALL cannot be answered by either:
 with only residue to look at, the largest residue becomes the reference
 and every mode is promoted.  That question needs an absolute,
 unit-bearing floor, and it is the only place one appears -- see
@@ -158,12 +171,20 @@ def channel_activity(
     ``values`` is that channel's intensity for every mode, in mode
     order, with ``None`` where it was not computed.  Returns a list of
     the same length: ``None`` where the input was ``None``, else whether
-    the value clears ``rel_floor`` times the channel's strongest band.
+    the value clears this channel's cut.
 
-    A channel whose every computed value is zero (or whose only entries
-    are ``None``) yields no actives -- there is no peak to be a fraction
-    of, and calling the largest residue "the strongest band" would
-    promote noise to signal on exactly the runs where nothing happened.
+    WHERE THE CUT COMES FROM, in order: the widest gap in the data
+    (``adaptive_cut``), and only if the channel will not separate itself,
+    ``rel_floor`` times the strongest band.  A caller reading
+    ``rel_floor`` as "the threshold" has the fallback, not the rule.
+
+    A channel whose every computed value is at or below ``present_floor``
+    yields no actives -- there is no band to be a fraction of, and
+    calling the largest residue "the strongest band" would promote noise
+    to signal on exactly the runs where nothing happened.  Note the
+    DEFAULT is 0.0, which only catches an all-zero channel; the
+    unit-bearing floors live on :func:`classify_modes`, which is the
+    entry point that knows which channel is which.
     """
     computed = [v for v in values if v is not None]
     peak = max((abs(v) for v in computed), default=0.0)

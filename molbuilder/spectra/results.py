@@ -299,10 +299,12 @@ class ModeData:
     index_1based:         int
     frequency_cm1:        float
 
-    # Activities / intensities are optional because:
-    #  * raman_activity_a4_amu is None when cfg.compute_raman = False
-    #    (diagnostic / Hessian-only run);
-    #  * ir_intensity_km_mol is always None in v1.
+    # Activities / intensities are optional because either channel may
+    # simply not have been asked for -- `compute_raman` off for a
+    # frequencies-only run, `compute_ir` off for a Raman-only one.  None
+    # is "not computed" and is NEVER the same statement as 0.0, which is
+    # a measured absence; `spectra.activity` keeps the two apart and the
+    # viewer colours them differently.
     raman_activity_a4_amu: Optional[float]
     ir_intensity_km_mol:   Optional[float]
 
