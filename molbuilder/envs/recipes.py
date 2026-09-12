@@ -911,8 +911,22 @@ _HOST = Recipe(
         # version we control.
         "git",
     ),
-    pip_packages=(PipPackage("PeptideBuilder"),
-                  PipPackage("pubchempy")),
+    # OPTIONAL, and the bootstrap shim already said so.
+    #
+    # `scripts/install-env.sh` has always treated these two as extras --
+    # "UI-only conveniences; the env is usable without them" -- warning
+    # and continuing when pip fails.  The record said the opposite, so
+    # the SAME failure aborted the install when it came through
+    # `molbuilder envs install` and was survived when it came through
+    # the shim.  Two halves of one install path disagreeing about one
+    # package is the drift the record exists to prevent, so the record
+    # now states what the shim does.
+    pip_packages=(
+        PipPackage("PeptideBuilder", optional=True,
+                   reason="UI only -- the peptide builder in the Molbuilder tab"),
+        PipPackage("pubchempy", optional=True,
+                   reason="UI only -- PubChem name lookup in the Molbuilder tab"),
+    ),
     verify_argv=("python", "-c",
                  "import ase, sisl, rdkit, flask, click, plotly; "
                  "print('host env OK')"),

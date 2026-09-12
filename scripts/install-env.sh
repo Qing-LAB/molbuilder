@@ -521,6 +521,18 @@ HOST_CONDA_PACKAGES=(
     # version, not the system's.
     git
 )
+# PLAIN NAMES ONLY, and that is a real constraint rather than a habit.
+# A `PipPackage` can carry a source, a force flag and a fallback; a bash
+# array can carry a name.  So a host package that ever needs one of
+# those cannot be expressed here -- and the drift-guard test will say so
+# by comparing this list against `spec()`, which stops matching the
+# moment a record grows a URL.  Treat that failure as the decision it
+# is: either the package does not belong in the bootstrap list, or the
+# shim needs to learn to read the record.
+#
+# These two are OPTIONAL (`optional=True` in the recipe, matching the
+# warn-and-continue below): UI-only conveniences, and the env is usable
+# without them.
 HOST_PIP_PACKAGES=(
     PeptideBuilder pubchempy
 )
