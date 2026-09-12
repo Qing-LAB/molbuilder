@@ -180,8 +180,47 @@ export async function openSurface(host) {
             zeroline: false,
         },
         ...axesFor(picture),
+        shapes: darkModeLines(picture),
         annotations: annotationsFor(picture.note, picture.readout),
     });
+
+    /* A MODE WITH NO INTENSITY STILL EXISTS.
+     *
+     * Spectroscopically dark is not motionless: a mode forbidden in both
+     * channels is a real vibration of the molecule, and drawing it only
+     * as a tick on the axis says the opposite -- that it is a footnote
+     * to the spectra rather than one of the modes they are spectra OF.
+     *
+     * So it gets a thin line across the FULL HEIGHT of every panel.
+     * Full height is what makes it honest: a line that spans the axis
+     * asserts a FREQUENCY and no intensity at all, where any finite bar
+     * height would be a claim about a quantity that is zero.
+     *
+     * Drawn `below` the traces, so it marks the position without ever
+     * competing with a band for the reader's eye. */
+    const darkModeLines = (picture) => {
+        const rug = picture.rug;
+        const lanes = picture.lanes || [];
+        if (!rug || !rug.x || !rug.x.length) return [];
+        const dark = rug.x.filter((_, i) => (rug.cls || [])[i] === "silent");
+        if (!dark.length) return [];
+        const panels = Math.max(1, lanes.length);
+        const out = [];
+        for (let panel = 0; panel < panels; panel += 1) {
+            const ref = axisRefFor(panel);
+            for (const x of dark) {
+                out.push({
+                    type: "line",
+                    layer: "below",
+                    xref: "x",
+                    yref: `${ref} domain`,
+                    x0: x, x1: x, y0: 0, y1: 1,
+                    line: { color: palette.rugSilent, width: 1, dash: "dot" },
+                });
+            }
+        }
+        return out;
+    };
 
     /* TWO PANELS, ONE FREQUENCY AXIS.
      *

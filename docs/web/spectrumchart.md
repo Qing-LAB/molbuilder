@@ -714,11 +714,21 @@ onto one scale would make the taller **unit** look like the stronger physics.
 
 **The rug is position and nothing else.** A mode active in neither channel has
 no height in either, so the sticks cannot show it at all — and giving it one
-would be a lie in whichever direction it pointed. Ticks on the zero line are
-the only honest place it can appear, and they never vary in height. `cls` is
-the activity classification **decided server-side** (`spectra/activity.py`):
-the line between a band and numerical residue is a judgement about a whole run,
-and a second copy of it here could not be tested against one.
+would be a lie in whichever direction it pointed. Ticks on the zero line carry
+every mode and never vary in height. `cls` is the activity classification
+**decided server-side** (`spectra/activity.py`): the line between a band and
+numerical residue is a judgement about a whole run, and a second copy of it
+here could not be tested against one.
+
+**A spectroscopically dark mode gets a line across the full height of every
+panel** *(2026-09-11)*. Being invisible to both techniques does not mean the
+molecule is still there — it is a real vibration, and a tick on the axis said
+the opposite: that it was a footnote to the spectra rather than one of the
+modes they are spectra *of*. Full height is what makes the mark honest, because
+a line spanning the axis asserts a FREQUENCY and no intensity at all, where any
+finite bar height would be a claim about a quantity that is zero. Drawn as a
+layout shape `below` the traces, so it marks the position without competing
+with a band.
 
 **Nothing in the picture says where a click may land**, and that is deliberate:
 the bands are not drawn and not handed down. § 8.4 says where they are used
