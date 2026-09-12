@@ -42,8 +42,19 @@
     --spectrumchart-rug-both:    #9e86d4;
     --spectrumchart-rug-ir:      #d2a06a;
     --spectrumchart-rug-raman:   #7aa6d2;
-    --spectrumchart-rug-silent:  #646b77;
-    --spectrumchart-rug-partial: #3f4653;
+    /* MEASURED against the chart's own background, 2026-09-11.  The
+       channel colours land at 5.2-6.9:1; these two were at 3.01:1 and
+       1.70:1 -- the silent tick sitting exactly ON the 3:1 floor for a
+       non-text UI component, and `partial` below it.  Both are raised
+       to clear it while staying visibly dimmer than a channel colour,
+       which is the ordering the rug reads by.
+
+       `partial` mattered more than its faintness suggested: it means a
+       channel was never computed, so on a frequencies-only or
+       Raman-only run EVERY tick takes it, and the whole rug was
+       near-invisible exactly when it is the only thing on the axis. */
+    --spectrumchart-rug-silent:  #7b8290;   /* 4.18:1 */
+    --spectrumchart-rug-partial: #646b77;   /* 3.01:1 */
 
     --spectrumchart-hairline:  1px;
     --spectrumchart-radius:    6px;
