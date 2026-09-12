@@ -189,7 +189,7 @@ second copy of it. Reference:
 |---|---|---|
 | **SIESTA (CPU)** | `molbuilder-siesta` | conda `siesta=5.4.2=mpi_openmpi_*` — the MPI build string is load-bearing (a `nompi_*` build silently runs serial) |
 | **SIESTA (GPU)** | `molbuilder-siesta-gpu` | **built from source** (§6), not a conda package |
-| **PySCF, geomeTRIC** | `molbuilder-pySCF` | conda (`pyscf`, `pyscf-dispersion`, `geometric`) + pip `pyscf-properties` from PyPI, then **upgraded from git** for analytic IR — see §3.1 |
+| **PySCF, geomeTRIC** | `molbuilder-pySCF` | conda (`pyscf`, `pyscf-dispersion`, `geometric`) + pip `pyscf-properties` **from git**, with the index as a declared fallback, for analytic IR — see §3.1 |
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
@@ -218,8 +218,10 @@ PyPI has never carried. The reason is a packaging accident, not a preference:
   never imports. So this is not a version bump that puts Raman at risk.
 
 **The registry records WHERE each pip package comes from.** `pip_packages` is a
-tuple of `PipPackage` records, not spec strings, because a bare string conflates
-three things that only coincide for an indexed package:
+tuple of `PipPackage` records — a bare name normalises into one, and a record is
+written out when the package needs a source, a force flag or optionality,
+because a bare string conflates three things that only coincide for an indexed
+package:
 
 | | | breaks when |
 |---|---|---|
@@ -261,14 +263,20 @@ what the audit reads — so what landed stays auditable without one.
    `--force-reinstall --no-deps`, in both install and repair.
 3. **An unreachable GitHub must not cost us the env.** `fallback_to_index=True`
    makes the install step carry the indexed build as a declared alternative: the
-   runner tries the recorded source, accepts the index, and the step counts as OK.
+   runner tries the recorded source, and if that fails accepts the index -- the
+   step is then **RECOVERED**, not OK, and the report names the alternative that
+   ran. That distinction is the point: it is how you tell a clean install from a
+   degraded-source one, and `doctor` then reports the provenance as
+   `pip-source-optional`.
    Raman's `polarizability` — byte-identical in the sdist — survives; only the IR
    speed-up degrades.
 
-Optional pip packages install in their **own non-fatal step** for the same reason.
-Before the record existed, `optional_pip_packages` reached only the *audit*: every
-pip package went into one combined command, so a single unavailable GPU wheel
-aborted the whole env install regardless of how optional the recipe called it.
+Optional pip packages install in their **own non-fatal step**; optional *conda*
+packages degrade differently, because conda solves everything at once. The
+generic rule and its reasons live in
+[`env-framework.md`](?doc=ops/env-framework.md) § 4.3 — one home, so the two
+pages cannot drift the way this one had (it taught "counts as OK" for a
+fallback that is RECOVERED).
 
 **A missing `infrared` is a WARNING, not a failure.** The env is degraded, not
 broken: the deck still computes IR by finite-difference dipoles, spending `6N`

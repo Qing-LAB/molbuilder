@@ -216,7 +216,8 @@ class InstallStep:
         package that declares ``fallback_to_index`` renders as one step
         whose fallback is the indexed build: prefer the recorded source,
         accept the index rather than lose the package.  The first
-        success wins and the step counts as OK.
+        success wins and the step is RECOVERED -- reported under the argv
+        that actually ran, never under the one that failed.
     fatal
         When ``False``, a non-zero exit is reported and the install
         CONTINUES.  Optional packages install this way -- one failing
@@ -786,7 +787,21 @@ class EnvState:
             return "GHOST"
         if self.dir_exists and not self.has_conda_meta:
             return "BROKEN"
-        return "UNKNOWN"
+        # UNREACHABLE over all eight combinations of the three observations,
+        # and that exhaustivity is load-bearing rather than tidy: a label
+        # nothing recognises answers False to BOTH `can_resume` and
+        # `needs_cleanup`, and the installer reads that pair as "go ahead and
+        # create" -- the worst answer for an env that is already wreckage.
+        # `describe()` has no branch for one either.  So if a FOURTH
+        # observation is ever added, fail here instead of inventing a state
+        # that silently routes to the dangerous default.
+        raise AssertionError(  # pragma: no cover
+            f"unclassifiable env state for {self.name!r}: "
+            f"listed={self.listed_in_registry} dir={self.dir_exists} "
+            f"conda_meta={self.has_conda_meta} -- every combination of these "
+            f"three should map to one of FRESH / PRESENT / ORPHAN / GHOST / "
+            f"BROKEN; a new observation needs a new branch here AND in "
+            f"can_resume, needs_cleanup and describe()")
 
     @property
     def can_resume(self) -> bool:
