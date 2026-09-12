@@ -472,9 +472,11 @@ to prefer temp-and-rename:
 2. **no loose window, rather than a short one** — the old code `fchmod`ed an inode that already existed; this one's inode is `0600` before it has a name
 3. **a planted symlink is replaced, not followed** — `os.replace` acts on the symlink itself, so `O_NOFOLLOW` stops being load-bearing
 
-**What this does not fix**, because it is a different defect: atomicity makes one
-write all-or-nothing, and does nothing about two writers losing each other's
-change. § 8 carries that row.
+**What this is not about.** It protects a write from being INTERRUPTED — a
+crash, a full disk, a Ctrl-C — which needs only one person at one keyboard.
+It is not about two programs writing at once, and nothing here should grow to
+be: molbuilder is single-user software, and a second simultaneous writer is not
+a situation it has.
 
 ---
 
@@ -903,5 +905,4 @@ document that owns each.
 |---|---|---|
 | One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | open |
 | ~~`verbose_comments` and `write_molwatch_log` are items in the catalogue for neither engine~~ — **withdrawn 2026-08-17: this was my misreading.** All three (`max_memory_mb` too) *are* catalogue items; they declare **no `engines` list**, so a per-engine query misses them while a plain lookup finds them. That is correct for what they are — a machine fact and two emitter switches, none of them engine-specific | — | **closed.** The rule they follow is *an item with no `engines` applies to every engine*, and [`engines/template.md`](?doc=engines/template.md) states it twice — in § 5's key table and in § 6.3's writer rule. This row claimed no document said it, which was the second half of the same misreading |
-| **A secret file's read-modify-write has no lock.** § 2.3 made each write atomic; it does not stop two writers losing each other's change. `auth_setup.issue_notify_key` and the *run reports* settings page both read `notify_keys` / `notify`, mutate their copy, and write it back — two `notify-token` runs, or two browser tabs each saving a channel, and the second replace silently discards the first's | this document, § 2.3 | **open — awaiting a decision.** Atomicity is a defect fixed against a written rule (R10); locking is a design addition no rule yet requires, so it is proposed rather than built |
 | `resolve_environment(overrides=…)` — **`jobset probe` is the caller** (`jobset/_cli.py`) and passes no `overrides`, so a machine fact cannot be declared through the verb yet. The missing sliver is the flag surface (`--set key=value`, a scheduler override), not the door or its caller — misread once (2026-08-19) as "the function has no caller" | this document, § 5 M-5 | open by design — the door and its caller exist; the flags are not built |
