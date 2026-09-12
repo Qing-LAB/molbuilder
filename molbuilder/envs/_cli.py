@@ -853,15 +853,24 @@ def _render_validation(report: "_validate.ValidationReport",
     click.echo(f"Validating {report.recipe_name}:")
     longest = max(len(p.name) for p in report.probes)
     for probe in report.probes:
-        tag = "PASS" if probe.passed else "FAIL"
+        # NOTE over FAIL for an advisory probe.  MPS being absent does not
+        # make the env unusable -- the probe's own docstring says so -- and
+        # printing FAIL beside a verdict that ignores it is two statements
+        # about one fact.
+        tag = "PASS" if probe.passed else ("NOTE" if probe.advisory
+                                           else "FAIL")
         click.echo(f"  [{tag}] {probe.name.ljust(longest)}  {probe.detail}")
         if not probe.passed and show_output_on_fail and probe.output:
             for line in probe.output.splitlines()[-20:]:
                 click.echo(f"        {line}")
     n_pass = sum(1 for p in report.probes if p.passed)
     n_total = len(report.probes)
+    advisories = [p for p in report.probes if p.advisory and not p.passed]
     if report.all_passed:
-        click.echo(f"all {n_total} checks passed")
+        note = (f" ({len(advisories)} advisory: "
+                f"{', '.join(p.name for p in advisories)})"
+                if advisories else "")
+        click.echo(f"all {n_total} checks passed{note}")
         return 0
     click.echo(f"{n_pass}/{n_total} checks passed -- env not production-ready",
                err=True)

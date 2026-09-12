@@ -12,13 +12,28 @@ wall-clock)" while the table ran SIX, including ELPA's ``make check`` that the
 same docstring claimed was excluded pending a ``--deep`` flag that does not
 exist.  A person was told ~2 minutes and got ~30.
 
-**The suite is NOT a smoke check.**  Four probes are ours and cost ~9 s in
-total (binary links, CUDA stack, MPS, ELPA GPU codepath); two are UPSTREAM
-TEST SUITES -- SIESTA's ``ctest -L simple`` (~2 min) and ELPA's ``make check``
-(~15-30 min) -- and they are the whole of the runtime.  Whether running other
-projects' test suites belongs here at all is an open question
-(``docs/plans/plan.md``); what is settled is that the cost must not be
-misstated.
+**The suite is NOT a smoke check, and the long probes are NOT optional.**
+Four probes are ours and cost ~9 s in total (binary links, CUDA stack, MPS,
+ELPA GPU codepath).  Two are UPSTREAM TEST SUITES -- SIESTA's
+``ctest -L simple`` (~2 min) and ELPA's ``make check`` (~15-30 min) -- and they
+are the whole of the runtime.
+
+WHY THEY RUN ANYWAY (settled 2026-09-12).  Running another project's test
+suite is pointless for a PACKAGED dependency: whoever built the conda package
+already ran it, and the package manager's job is to deliver that verified
+artifact.  **This env is not that.**  `molbuilder-siesta-gpu` is COMPILED FROM
+SOURCE here, against this host's CUDA, this gcc and this MPI -- a combination
+nobody upstream has tested and nobody but us ever will.  Upstream's own suite
+is therefore not redundant coverage; it is the only evidence that the binary
+this machine just produced computes correctly.  Declining it trades ~30
+minutes once against a wrong-answer class that surfaces as bad science months
+later.
+
+So there is deliberately NO ``--quick``, no skip list and no interactive
+decline.  One was drafted and withdrawn: both suites are already at their
+cheapest upstream setting (ELPA's own ``CHECK_LEVEL=fast``, SIESTA's
+``-L simple -E verify`` subset), so nothing is left to trim -- all a knob
+could offer is not knowing, which is what a source build cannot afford.
 
 The load-bearing probe is ``elpa gpu codepath``: ``nvidia-smi`` can report a
 perfectly healthy GPU while ELPA silently runs on the CPU (elpa#15, same A100
@@ -66,6 +81,13 @@ class ProbeResult:
         when the underlying command failed, the criterion didn't match,
         or the prerequisites for running it are missing (in which case
         ``detail`` says so explicitly).
+    advisory
+        ``True`` for a probe whose failure does not make the env unusable --
+        today only the MPS daemon, whose own docstring says "env still WORKS
+        without MPS".  It used to return ``passed=False`` and, because the
+        verdict required EVERY probe to pass, turned a CPU-fine GPU-fine
+        workstation whose distro split out `nvidia-cuda-mps` into "env not
+        production-ready".
     detail
         One-line human summary suitable for table display.
     output
@@ -76,6 +98,7 @@ class ProbeResult:
     passed: bool
     detail: str
     output: str = ""
+    advisory: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,7 +109,15 @@ class ValidationReport:
 
     @property
     def all_passed(self) -> bool:
-        return all(p.passed for p in self.probes) and len(self.probes) > 0
+        """Every probe passed, or failed only advisorily.
+
+        There is no skip state, deliberately -- see the module docstring on
+        why the suite is not optional.  `advisory` is the one exemption, and
+        it is a property of the PROBE (MPS is absent or it is not), never of
+        what the operator felt like running.
+        """
+        return bool(self.probes) and all(
+            p.passed or p.advisory for p in self.probes)
 
 
 # --------------------------------------------------------------------- #
@@ -408,7 +439,7 @@ def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
     if mps_ctrl is None:
         return ProbeResult(
             name="mps daemon",
-            passed=False,
+            passed=False, advisory=True,
             detail=("nvidia-cuda-mps-control not found on host PATH "
                     "-- multi-rank GPU runs will lose concurrency "
                     "(wrapper auto-caps to mpi_np=2); install via "
@@ -424,7 +455,7 @@ def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
         # mark as fail but report the rc for diagnostics.
         return ProbeResult(
             name="mps daemon",
-            passed=False,
+            passed=False, advisory=True,
             detail=f"nvidia-cuda-mps-control -V exited rc={rc}",
             output=_trim(out),
         )
@@ -538,10 +569,6 @@ _RECIPE_PROBES = {
 }
 
 
-def has_validator(recipe_name: str) -> bool:
-    return recipe_name in _RECIPE_PROBES
-
-
 def validate_recipe(recipe_name: str, env_prefix: str,
                     *, quiet: bool = False) -> ValidationReport:
     """Run the validator suite for ``recipe_name`` against an installed
@@ -596,6 +623,5 @@ def validate_recipe(recipe_name: str, env_prefix: str,
 __all__ = [
     "ProbeResult",
     "ValidationReport",
-    "has_validator",
     "validate_recipe",
 ]
