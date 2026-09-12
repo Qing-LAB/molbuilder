@@ -181,8 +181,8 @@ def issue_notify_key(user: str, *, path: Optional[Path] = None,
     the file in a form anyone can use, and that is deliberate
     (`this-machine.md` § 2).
     """
-    from .monitor import (notify_keys_document, notify_keys_path,
-                          read_notify_keys)
+    from .monitor import (is_route_segment, notify_keys_document,
+                          notify_keys_path, read_notify_keys)
     if not NOTIFY_USER_RE.fullmatch(user or ""):
         raise NotifyKeyError(
             f"{user!r} is not usable as a user id here. It becomes a log "
@@ -204,6 +204,20 @@ def issue_notify_key(user: str, *, path: Optional[Path] = None,
     # less honest about what it does (`access-control.md` § 8 rule 7).
     seg = route or existing_route \
         or secrets.token_urlsafe(12).replace("-", "").replace("_", "")
+    # NEVER WRITE A ROUTE THE READER WOULD REFUSE.  `monitor.read_notify_keys`
+    # returns `(None, {})` for a segment failing its rule -- not just the bad
+    # route, the WHOLE FILE -- so writing one unchecked destroys every key
+    # already issued and takes the listener with it.  Measured 2026-09-12:
+    # `--route a/b` was accepted and reported success, after which the server
+    # had no route and no keys, silently, because a notifier swallows
+    # failures.  The check is `monitor`'s own door, not a second regex here:
+    # the two ends must not be free to disagree about what a segment is.
+    if not is_route_segment(seg):
+        raise NotifyKeyError(
+            f"{seg!r} is not a usable route segment -- letters, digits, '-' "
+            f"and '_' only (max 128), because it becomes one path component "
+            f"of the URL the job posts to.  Nothing was written; the keys "
+            f"already in {path} are untouched.")
     write_secret_file(path, notify_keys_document(seg, existing))
     return token, seg, existing_route
 

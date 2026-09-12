@@ -181,6 +181,15 @@ def seed_document(activation: str,
             "-> docs/execution/scheduler.md",
         ],
         "scheduler": {},
+        # THE USER READS THIS BLOCK, so it says what to do and not what we
+        # learned.  It invited `logs`, `run` and `reports` until 2026-09-12 --
+        # keys retired on 2026-08-31 and REFUSED since, so a person with a
+        # quota'd $HOME who followed the advice in their own seeded config made
+        # every later read of it raise.  The file molbuilder generates was
+        # telling them how to brick it.  `configuration.md` 2.1d owns the rule
+        # (the `serve` supervisor is L1 and the config reader L2, so a
+        # config-derived answer was unreachable); `runtime_config._read_paths`
+        # states it at the reader.  Three places said it, one was right.
         "_paths": [
             "Where molbuilder keeps things that are not its own code.",
             "`projects` is the project tree.  Every surface resolves it",
@@ -189,9 +198,11 @@ def seed_document(activation: str,
             "pseudopotentials.  Where it resolves from is PRINTED by every",
             "jobset verb, by `envs doctor` and by `serve`, so you never have",
             "to infer it.",
-            "`logs`, `run`, `reports` override the XDG state directories, so a",
-            "small $HOME can keep its secrets while logs go to scratch.",
-            "A relative value resolves against the molbuilder root.",
+            "`projects` is the ONLY key here; a relative value resolves",
+            "against the molbuilder root.  To put logs, pidfiles and",
+            "reports somewhere other than ~/.local/state (a small $HOME,",
+            "a large scratch), set XDG_STATE_HOME and XDG_RUNTIME_DIR --",
+            "they are not keys in this file (configuration.md 2.1d).",
         ],
         "paths": {},
         "_auth": [

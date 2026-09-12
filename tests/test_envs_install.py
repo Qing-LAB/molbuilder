@@ -645,6 +645,49 @@ def test_bootstrap_dry_run_lists_recipes_without_installing(monkeypatch):
     assert "dry-run" in result.output.lower()
 
 
+def test_bootstrap_that_could_not_seed_the_config_exits_nonzero(monkeypatch):
+    """A bootstrap that installed everything and seeded NOTHING is not a
+    success, and the exit code is the only part a script reads.
+
+    The seeding failure is deliberately non-fatal on the spot -- a read-only
+    $HOME must not throw away forty minutes of built envs, nor take the doctor
+    report with it.  But until 2026-09-12 it was not RECORDED either: the
+    except block printed a warning and the exit code came from doctor alone, so
+    `bootstrap` returned 0 having created no config directory at all.  Every
+    later verb then refuses for want of `script_generation.activation`.
+
+    The realistic trigger is the form the guide shows: `bootstrap` without
+    `--yes` has two questions to ask, and with no tty on stdin (nohup, CI, a
+    batch step) click aborts on the first.
+    """
+    _bind()
+    from molbuilder.envs import _cli
+    install_stub, _calls = _make_install_stub()
+    monkeypatch.setattr(_cli._install, "run_install", install_stub)
+    # Doctor is HEALTHY -- that is the whole point: its exit code must not be
+    # what speaks for a bootstrap that failed to seed.
+    monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
+    monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
+
+    def _refuse(*a, **kw):
+        raise OSError("Read-only file system: '/config/molbuilder.json'")
+    monkeypatch.setattr(_cli, "_seed_config", _refuse)
+
+    from molbuilder import diagnostics as _diag_mod
+    monkeypatch.setattr(_diag_mod, "detect",
+                        lambda: Capabilities(
+                            runtime_config={}, conda_binary="/c/bin",
+                            conda_envs=frozenset()))
+
+    result = _make_runner().invoke(_cli.envs_group, ["bootstrap", "--yes"])
+    assert result.exit_code != 0, (
+        "bootstrap seeded no config directory and still reported success; "
+        f"exit_code={result.exit_code}\n{result.output}")
+    assert "could not seed the config directory" in result.output, (
+        "the reason must still be printed -- a non-zero exit with no stated "
+        f"cause is its own defect:\n{result.output}")
+
+
 def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch):
     """Default invocation (no --include-source-builds): iterate
     BUILTIN_RECIPES and call run_install for each conda-only recipe.

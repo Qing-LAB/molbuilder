@@ -816,7 +816,7 @@ def read_notify_keys(path=None):
     if not isinstance(route, str):
         return None, {}
     route = route.strip().strip("/")      # whitespace first, then the slashes
-    if not _ROUTE_RE.fullmatch(route):
+    if not is_route_segment(route):
         return None, {}
     if not isinstance(keys, dict):
         return None, {}
@@ -907,6 +907,26 @@ def _notify_say(msg: str, log: Optional[Path] = None) -> None:
         _append(Path(log), line)
     else:
         print(f"[monitor] {msg}", flush=True)
+
+
+def is_route_segment(route) -> bool:
+    """Is this a usable run-report route segment?  One home for the rule.
+
+    **It has to be asked at BOTH ends, and until 2026-09-12 it was asked at
+    one.**  :func:`read_notify_keys` applied `_ROUTE_RE` on the way IN and
+    returned ``(None, {})`` for anything failing it -- correct, and invisible:
+    `auth_setup.issue_notify_key` validated the *user* and never the *route*,
+    so ``notify-token --route a/b`` was accepted, written, and reported as a
+    success, after which the reader refused the whole file.  Measured: one
+    working key plus one bad ``--route`` leaves the server with no route and
+    NO KEYS AT ALL -- every key already issued stops working, and silently,
+    because a notifier swallows failures by design.
+
+    Beside :func:`is_channel_name` and for the same reason: this module ships
+    to a compute node as a standalone stdlib-only file, so it owns the rules
+    for the exchange it defines and nobody restates them.
+    """
+    return bool(isinstance(route, str) and _ROUTE_RE.fullmatch(route))
 
 
 def is_channel_name(name: str) -> bool:
@@ -1845,6 +1865,7 @@ __all__ = [
     "channel_kind",
     "NOTIFY_FILENAME",
     "default_notify_path",
+    "is_route_segment",
     "NOTIFY_TIMEOUT_S",
     "Notifier",
     "main",

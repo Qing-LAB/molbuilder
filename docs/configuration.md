@@ -539,9 +539,12 @@ $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 **Three roots, not one, and the split is what each kind of file deserves.**
 Configuration is edited and backed up; state grows and is deleted; a runtime
 directory is *erased when the session ends*, which is right for a pidfile and
-wrong for anything meant to outlive a logout. A person who wants config and state
-together points `paths` at one place (§ 2.1d) — the runtime one stays separate,
-because `$XDG_RUNTIME_DIR` is the only one the OS cleans up.
+wrong for anything meant to outlive a logout. A person who wants them
+somewhere else moves them with `$XDG_STATE_HOME` / `$XDG_RUNTIME_DIR` — **not
+with a key in `molbuilder.json`**, which § 2.1d explains and which a
+`paths.logs` / `paths.run` / `paths.reports` is refused for. (This sentence said
+*"points `paths` at one place"* until 2026-09-12, restating advice retired on
+2026-08-31.)
 
 **The four files `molbuilder.json` cannot name** are `secret_key`,
 `google_client_secret`, `notify` and `notify_keys`. Each has one fixed home so a

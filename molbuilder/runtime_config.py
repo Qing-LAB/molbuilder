@@ -605,13 +605,20 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     A relative value is resolved against the molbuilder root, so the
     setting means the same thing whatever directory you run from.
 
-    ``logs``, ``run`` and ``reports`` name where OPERATIONAL STATE goes,
-    overriding the XDG directories `config_dir.state_dir` and
-    `config_dir.runtime_dir` default to (`archive/2026-09-01-config-access-plan.md` § 3.2).
-    They are read through :func:`logs_dir`, :func:`run_dir` and
-    :func:`reports_dir`, which is also where the defaults live -- so a person
-    with a small ``$HOME`` and a large scratch puts the logs on scratch
-    without moving their secrets.
+    ``projects`` IS THE ONLY KEY.  ``logs``, ``run`` and ``reports`` were
+    added on 2026-08-31 and retired the same day, and a config naming one is
+    **refused** -- `_OPERATIONAL_PATHS_MOVED` carries the message, and
+    `configuration.md` § 2.1d carries the reasoning: the `serve` supervisor is
+    L1 and this reader is L2, so the supervisor could never reach a
+    config-derived answer, leaving two answers to one question.
+    ``$XDG_STATE_HOME`` and ``$XDG_RUNTIME_DIR`` move those directories, and
+    they answer before any config is read -- which is what a log has to do
+    when the thing that failed is the config parse.
+
+    This docstring described all four as live until 2026-09-12, as did the
+    comment block `envs init-config` writes into the user's own
+    ``molbuilder.json``.  A person with a small ``$HOME`` who followed either
+    one set ``paths.logs`` and then every read of their config raised.
 
     **Added here rather than in a section of their own** (2026-08-31), because
     this section already answers *"where does molbuilder keep things that are

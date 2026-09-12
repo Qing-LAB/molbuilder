@@ -691,6 +691,39 @@ def test_a_user_id_that_could_not_be_a_log_filename_is_refused(client):
     assert r.status_code in (400, 404, 405)
 
 
+def test_a_route_the_reader_would_refuse_is_refused_at_the_WRITE_door(client):
+    """A bad `--route` must not cost the keys that already work.
+
+    `monitor.read_notify_keys` refuses a segment failing its rule by returning
+    `(None, {})` -- not the bad route, the WHOLE FILE -- so a route written
+    without that check destroys every key already issued and unregisters the
+    listener.  Silently, because a notifier swallows failures by design.
+
+    Measured before the fix (2026-09-12): one working key, then
+    `issue_notify_key(..., route="a/b")`, and the reader saw no route and ZERO
+    keys.  The assertions below are the two halves that matter -- the write is
+    refused, AND the file is left exactly as it was.
+    """
+    from molbuilder.auth_setup import issue_notify_key, NotifyKeyError
+    from molbuilder.monitor import read_notify_keys
+
+    c, _dest = client
+    assert c.post("/api/notify/listener/keys/alice").get_json()["ok"]
+    route_before, keys_before = read_notify_keys()
+    assert route_before and "alice" in keys_before
+
+    # `""` is deliberately absent: it is falsy, so it means "not specified"
+    # and joins the route already in the file, which is correct.
+    for bad in ("a/b", "has space", "x" * 129, "semi;colon", "../etc"):
+        with pytest.raises(NotifyKeyError):
+            issue_notify_key("bob", route=bad)
+
+    route_after, keys_after = read_notify_keys()
+    assert (route_after, keys_after) == (route_before, keys_before), (
+        "a refused route changed the file -- alice's key is what this "
+        "protects, and the reader returns (None, {}) for the whole file")
+
+
 def test_the_web_and_the_cli_issue_through_one_door(client, tmp_path):
     """Issue on the tab, then on the command line: the SECOND one joins.
 

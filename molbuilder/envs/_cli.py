@@ -1633,6 +1633,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo("=" * 70)
     click.echo(f"config directory: {config_dir()}")
     click.echo("=" * 70)
+    seed_failed = False
     try:
         _seed_config(None, auto_yes, True, caps.conda_binary, projects)
     except Exception as exc:                                  # noqa: BLE001
@@ -1647,6 +1648,17 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         # string is passed deliberately and the join drops nothing else.
         click.echo(f"  ! fix that, then run: "
                    f"{_fix_cmd('init-config', '').rstrip()}", err=True)
+        # AND IT COUNTS AGAINST THE EXIT CODE (2026-09-12).  Not fatal on the
+        # spot -- that rule is right, a read-only $HOME should not throw away
+        # forty minutes of built envs or take the doctor report with it -- but
+        # it was not recorded either, so the exit came from doctor alone and
+        # bootstrap reported SUCCESS having created no config directory at all.
+        # The realistic trigger is the documented form: `bootstrap` without
+        # `--yes` has two questions to ask, and with no tty on stdin (nohup,
+        # CI, a batch step) click aborts on the first one.  Every later verb
+        # then refuses for want of `script_generation.activation`, and the exit
+        # code said the install was fine.
+        seed_failed = True
 
     # Refresh capabilities so doctor sees newly-created envs.
     from .. import diagnostics as _diag
@@ -1688,8 +1700,10 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo("bash scripts/install-env.sh --help")
     click.echo("")
 
-    if 'failures' in dir() and failures:
-        # Already had install failures -- exit non-zero to signal CI.
+    if ('failures' in dir() and failures) or seed_failed:
+        # An install failed, or the config directory was not seeded.  Either
+        # way this bootstrap did not finish its job, and the exit code is the
+        # only part of the report a script can read.
         sys.exit(1)
     sys.exit(exit_code)
 

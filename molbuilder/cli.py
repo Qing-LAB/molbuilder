@@ -1901,9 +1901,12 @@ def _supervise_forever() -> int:
                    "you; used only to print the file to save on the cluster.")
 @click.option("--route", default=None,
               help="reuse an existing route segment instead of generating "
-                   "one.  Pass the value already in molbuilder.json when "
-                   "issuing a key for a SECOND user -- a new segment would "
-                   "move the route and silence everyone else.")
+                   "one.  Rarely needed: a second key READS the segment out "
+                   "of the key file and joins it automatically.  Letters, "
+                   "digits, '-' and '_' only -- it is one path component of "
+                   "the URL the job posts to.  (Said 'pass the value already "
+                   "in molbuilder.json' until 2026-09-12; `notify_route` in "
+                   "config has been retired and refused since 2026-08-31.)")
 @click.option("--channel", default="molbuilder",
               help="the name this listener is called on the cluster.  It is "
                    "what a description ticks, so re-issuing under the same "
