@@ -1,6 +1,6 @@
 """Idempotent installer for the conda envs described by recipes.
 
-``molbuilder envs install <name>`` is a thin wrapper around four
+``molbuilder envs install <name>`` is a thin wrapper around five
 phases per recipe:
 
   1. ``conda create -n <env> -c <ch1> [-c <ch2>] ... <pkg1> <pkg2> ...``
@@ -37,9 +37,7 @@ besides :mod:`molbuilder.envs.builds`.
 """
 from __future__ import annotations
 
-import os
 import shlex
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, replace
@@ -157,7 +155,7 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
     # setup we want.  System ``/bin/bash`` is universally present;
     # we don't depend on the env's bash being installed yet.
     return (("bash", "-c", wrapper), {})
-from .recipes import Recipe
+from .recipes import PipPackage, Recipe
 
 
 @dataclass(frozen=True)
@@ -178,7 +176,7 @@ class InstallStep:
         (either because it was a dry run, or because an earlier step
         failed and we short-circuited).
     output
-        First 2 KiB of combined stdout+stderr; empty for not-run
+        First 4 KiB of combined stdout+stderr; empty for not-run
         steps.
     fallbacks
         Alternative argvs, tried in order when ``argv`` fails.  A pip
@@ -320,7 +318,7 @@ def pip_argv(conda: str, env_name: str, *specs: str,
             "python", "-m", "pip", "install", *flags, *specs)
 
 
-def pip_step_for(pkg: "PipPackage", conda: str, env_name: str) -> InstallStep:
+def pip_step_for(pkg: PipPackage, conda: str, env_name: str) -> InstallStep:
     """The step that installs ONE package, on its own terms.
 
     Everything that makes a package special is read off the record here
@@ -835,19 +833,13 @@ def run_install(
                 sys.stderr.flush()
                 succeeded = False
                 break
-        # Bypass ``<mgr> run`` for post-create steps: pip / extra /
-        # verify.  mamba 1.x's ``run`` generates a shell stub that
-        # uses ``exec --`` (rejected by bash).  Going through our
-        # own bash wrapper that sources activate.d is universally
-        # compatible (mamba 1.x + 2.x + conda) AND handles
-        # source-built recipes (siesta-gpu binaries live in
-        # ``<env>/opt/...`` not ``<env>/bin``).  ``conda create``
-        # uses no inner shell stub so it stays as-is.  If env
-        # prefix can't be resolved, FAIL LOUD -- the silent
-        # fallback to the original argv would hit the exec bug
-        # and give a confusing error.
-        run_argv: List[str] = list(step.argv)
-        run_env: Optional[Dict[str, str]] = None
+        # RESOLVE THE PREFIX, which is all this loop owes `run_step`.
+        # The ``<mgr> run`` bypass itself belongs to the runner (see
+        # `run_step`, which applies it to every attempt, primary or
+        # alternative); this loop used to compute it too and throw the
+        # result away.  If the prefix can't be resolved, FAIL LOUD --
+        # dispatching the unbypassed argv would hit mamba 1.x's
+        # ``exec --`` stub bug and give an error about the wrong thing.
         if step.label != "conda create":
             # Use the cached prefix from the top of run_install.  If it
             # was missing then (env didn't exist), re-resolve now that
@@ -883,11 +875,6 @@ def run_install(
                 sys.stderr.flush()
                 succeeded = False
                 break
-            try:
-                new_argv, _ = _bypass_conda_run(step.argv, prefix)
-                run_argv = list(new_argv)
-            except ValueError:
-                pass
         sys.stderr.write(
             f"[{i}/{total_pre}] {step.label}: starting "
             f"(streaming output below; this may take 5-15 min for "
@@ -898,8 +885,7 @@ def run_install(
         # ONE DOOR, and the outcome decides what happens next -- no
         # nested conditions over return codes, alternatives and
         # optionality, which is where branches kept going missing.
-        done = run_step(step, env=run_env, prefix=cached_prefix,
-                        sink=sys.stderr)
+        done = run_step(step, prefix=cached_prefix, sink=sys.stderr)
         executed.append(done)
 
         if done.outcome is Outcome.OK:

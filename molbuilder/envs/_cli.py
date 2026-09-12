@@ -466,9 +466,13 @@ def cmd_repair(name: str, include_optional: bool,
         ]
         for ch in recipe.channels:
             argv.extend(["-c", ch])
-        # THE SAME RUNNER AS PIP.  conda has no per-package record yet --
-        # its packages are still spec strings -- so this step is built
-        # here rather than by the registry; but it is RUN through the one
+        # THE SAME RUNNER AS PIP, but NOT the same path back to the
+        # record.  conda repair batches every missing package into one
+        # ``conda install`` -- that is the cheap call, one solve instead
+        # of N -- so it works from the audit's spec strings and never
+        # looks the `CondaPackage` up again.  The cost is that a conda
+        # package's ``reason`` is not printed here, while pip's is (see
+        # the pip loop below).  The step is still RUN through the one
         # door, so its outcome is decided by the same rule and reported
         # in the same words.
         done = _install.run_step(
