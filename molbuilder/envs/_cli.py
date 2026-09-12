@@ -413,21 +413,20 @@ def cmd_repair(name: str, include_optional: bool,
     audit = _doctor.audit_packages(prefix, recipe)
     # Partition issues by what we'll act on.
     to_install_conda: list = []
+    # ONE list of pip issues, not two.  There used to be a "flagged"
+    # bucket for packages needing their own flags, which existed only
+    # because repair built its own command line and had to decide what
+    # could share one.  The RECORD decides that now, so the split has
+    # nothing left to sort.
     to_install_pip: list = []
-    # pip packages that must be installed on their own terms -- see the
-    # pip-missing branch below.
-    to_install_pip_flagged: list = []
     skipped_optional: list = []
     skipped_version: list = []
     for issue in audit.issues:
         if issue.kind.endswith("-optional"):
             if include_optional:
-                if issue.kind.startswith("conda-"):
-                    to_install_conda.append(issue.spec)
-                elif issue.install_flags:
-                    to_install_pip_flagged.append(issue)
-                else:
-                    to_install_pip.append(issue.spec)
+                (to_install_conda if issue.kind.startswith("conda-")
+                 else to_install_pip).append(
+                    issue.spec if issue.kind.startswith("conda-") else issue)
             else:
                 skipped_optional.append(issue)
             continue
@@ -440,15 +439,8 @@ def cmd_repair(name: str, include_optional: bool,
         if issue.kind == "conda-missing":
             to_install_conda.append(issue.spec)
         elif issue.kind in ("pip-missing", "pip-source"):
-            # Packages needing their own flags cannot ride in the batch:
-            # a forced reinstall must not be applied to the others, and
-            # a plain install of a force-flagged package would report
-            # success while changing nothing.
-            if issue.install_flags:
-                to_install_pip_flagged.append(issue)
-            else:
-                to_install_pip.append(issue.spec)
-    if not to_install_conda and not to_install_pip and not to_install_pip_flagged:
+            to_install_pip.append(issue)
+    if not to_install_conda and not to_install_pip:
         if skipped_optional or skipped_version:
             click.echo(
                 f"[repair]   nothing to fix among REQUIRED packages.  "
@@ -497,66 +489,46 @@ def cmd_repair(name: str, include_optional: bool,
                     "[repair]   then, in that shell, the same "
                     "`python -m molbuilder envs repair ...` again.",
                     err=True)
+    # PIP REPAIR GOES THROUGH THE INSTALLER'S OWN DOOR.
+    #
+    # It used to hand-build its own `python -m pip install ...` -- twice,
+    # once batched and once per flagged package -- which is how it came
+    # to know nothing about a package's declared alternatives while the
+    # installer did.  Now each package is turned into a step by
+    # `pip_step_for` and run by `run_step`, so force flags, optionality
+    # and fallbacks are read off ONE record by ONE runner, and repair
+    # cannot drift from install again.
+    #
+    # The audit reports issues; the RECORD says how to fix them, so the
+    # issue is mapped back to its package by name rather than carrying a
+    # flattened copy of the instruction.
+    by_name = {p.name: p for p in recipe.pip_packages}
     if to_install_pip:
+        wanted = list(to_install_pip)
         click.echo(
-            f"[repair]   {len(to_install_pip)} pip package(s) "
-            f"to install: {' '.join(to_install_pip)}", err=True,
-        )
-        # Reuse install.py's pip-step pattern via the bypass wrapper so
-        # PIP_CACHE_DIR + activate.d sourcing apply consistently.
-        raw_argv = (
-            caps.conda_binary, "run", "-n", effective,
-            "--no-capture-output",
-            "python", "-m", "pip", "install", *to_install_pip,
-        )
-        try:
-            new_argv, _ = _install._bypass_conda_run(raw_argv, prefix_str)
-            rc, _ = _builds.run_streaming(
-                list(new_argv), sink=sys.stderr, timeout=1800,
-            )
-        except ValueError as exc:
-            rc = None
-            click.echo(f"[repair]   pip install: failed to set up "
-                       f"wrapper ({exc})", err=True)
-        if rc == 0:
-            successes.extend(to_install_pip)
-            click.echo("[repair]   pip install: OK", err=True)
-        else:
-            failures.extend(to_install_pip)
-            click.echo(f"[repair]   pip install: FAILED (rc={rc})", err=True)
-    for issue in to_install_pip_flagged:
-        # One call per package: the flags are the package's, not the
-        # batch's.  A force-flagged package is one whose installed
-        # version cannot prove it is the declared build, so repairing it
-        # with a plain install would exit 0 and change nothing.
-        click.echo(
-            f"[repair]   pip package needing its own terms: "
-            f"{issue.spec} {' '.join(issue.install_flags)}", err=True,
-        )
-        if issue.reason:
-            click.echo(f"[repair]     why: {issue.reason}", err=True)
-        raw_argv = (
-            caps.conda_binary, "run", "-n", effective,
-            "--no-capture-output",
-            "python", "-m", "pip", "install",
-            *issue.install_flags, issue.spec,
-        )
-        try:
-            new_argv, _ = _install._bypass_conda_run(raw_argv, prefix_str)
-            rc, _ = _builds.run_streaming(
-                list(new_argv), sink=sys.stderr, timeout=1800,
-            )
-        except ValueError as exc:
-            rc = None
-            click.echo(f"[repair]   pip install {issue.spec}: failed to "
-                       f"set up wrapper ({exc})", err=True)
-        if rc == 0:
-            successes.append(issue.spec)
-            click.echo(f"[repair]   pip install {issue.spec}: OK", err=True)
-        else:
-            failures.append(issue.spec)
-            click.echo(f"[repair]   pip install {issue.spec}: "
-                       f"FAILED (rc={rc})", err=True)
+            f"[repair]   {len(wanted)} pip package(s) to install: "
+            f"{' '.join(i.name or i.spec for i in wanted)}", err=True)
+        for issue in wanted:
+            pkg = by_name.get(issue.name or "")
+            if pkg is None:
+                click.echo(f"[repair]   {issue.spec}: no record in the "
+                           f"recipe; skipping", err=True)
+                continue
+            if pkg.reason:
+                click.echo(f"[repair]     why: {pkg.reason}", err=True)
+            step = _install.pip_step_for(pkg, caps.conda_binary, effective)
+            done = _install.run_step(step, prefix=prefix_str,
+                                     sink=sys.stderr, timeout=1800)
+            if done.outcome.is_success:
+                successes.append(pkg.name)
+                note = ("" if done.outcome is _install.Outcome.OK
+                        else " (via the declared alternative)")
+                click.echo(f"[repair]   {pkg.name}: OK{note}", err=True)
+            else:
+                failures.append(pkg.name)
+                click.echo(f"[repair]   {pkg.name}: FAILED "
+                           f"(rc={done.returncode})", err=True)
+
     # Re-audit so the user sees the new state.
     click.echo("[repair]   re-running audit...", err=True)
     audit2 = _doctor.audit_packages(prefix, recipe)
@@ -1091,8 +1063,17 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         click.echo(f"# dry-run plan for `{recipe.name}` "
                    f"(effective env: `{effective}`)")
         for step in plan:
-            click.echo(f"# -- {step.label} --")
+            # A dry run that hides a command which may actually run is a
+            # dry run that lied.  A step can carry ALTERNATIVES (tried in
+            # order when the first fails) and can be NON-FATAL (the
+            # install continues without it), and both change what the
+            # reader is agreeing to -- so both are printed.
+            optional = "" if step.fatal else "   [optional -- failure does not stop the install]"
+            click.echo(f"# -- {step.label} --{optional}")
             click.echo(_shell_join(step.argv))
+            for alt in step.fallbacks:
+                click.echo("# ...or, if that source is unreachable:")
+                click.echo(_shell_join(alt))
         if recipe.build_spec is not None:
             click.echo("")
             # If env exists, probe it.  Otherwise probe with $HOME

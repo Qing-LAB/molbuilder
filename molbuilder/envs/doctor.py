@@ -62,6 +62,12 @@ class PackageAuditIssue:
     kind: str
     spec: str        # what to hand an installer to fix this
     found: str       # what's actually installed (or "(not found)")
+    #: The package's own name, so a caller can find the RECORD that says
+    #: how to fix it.  An issue carries what is WRONG; the recipe says
+    #: what to do about it, and repair reads the second rather than a
+    #: flattened copy of the instruction.  Empty for conda issues, which
+    #: are still repaired from their spec string.
+    name: str = ""
     install_flags: Tuple[str, ...] = ()
     reason: Optional[str] = None   # why the source is unusual, if it is
 
@@ -385,7 +391,8 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
             kind = ("pip-missing-optional"
                     if pkg.optional else "pip-missing")
             issues.append(PackageAuditIssue(
-                kind=kind, spec=pkg.spec(), found="(not found)",
+                kind=kind, name=pkg.name, spec=pkg.spec(),
+                found="(not found)",
                 install_flags=pkg.install_flags(), reason=pkg.reason,
             ))
             continue
@@ -402,7 +409,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                     kind=("pip-source-optional"
                           if pkg.fallback_to_index or pkg.optional
                           else "pip-source"),
-                    spec=pkg.spec(),
+                    name=pkg.name, spec=pkg.spec(),
                     found=(got or "(default index)"),
                     install_flags=pkg.install_flags(), reason=pkg.reason,
                 ))

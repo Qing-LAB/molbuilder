@@ -42,7 +42,8 @@ import shlex
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -197,6 +198,8 @@ class InstallStep:
     fatal: bool = True
     returncode: Optional[int] = None
     output: str = ""
+    #: Set once the step has been run through :func:`run_step`.
+    outcome: Optional["Outcome"] = None
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,141 @@ class InstallResult:
     steps: Tuple[InstallStep, ...]
     succeeded: bool
     build_result: Optional["_builds.BuildResult"] = None
+
+
+class Outcome(str, Enum):
+    """What became of one step.  Five states, and they are exhaustive.
+
+    The runner used to decide this with nested conditions -- is the
+    return code zero, is it None because the process never launched, are
+    there alternatives, is the step optional -- and every time that
+    tangle was edited a branch went missing.  Twice: a launch failure
+    skipped the optional check and aborted an install it should have
+    survived, and a recovered step was recorded under the command that
+    had failed.
+
+    Naming the states makes those omissions impossible to write.  There
+    is one transition rule and it fits in a sentence: try each argv in
+    turn; the first success is OK (or RECOVERED if it was not the first
+    attempt); if none succeed the step is DEGRADED when optional and
+    FAILED when not.
+    """
+
+    OK = "ok"                 #: ran, exit 0, first attempt
+    RECOVERED = "recovered"   #: a declared alternative succeeded
+    DEGRADED = "degraded"     #: every attempt failed; the step is optional
+    FAILED = "failed"         #: every attempt failed; the step is required
+    SKIPPED = "skipped"       #: deliberately not attempted
+
+    @property
+    def is_success(self) -> bool:
+        """Did the env end up with what this step was for?"""
+        return self in (Outcome.OK, Outcome.RECOVERED, Outcome.SKIPPED)
+
+    @property
+    def stops_the_install(self) -> bool:
+        return self is Outcome.FAILED
+
+
+def run_step(
+    step: InstallStep,
+    *,
+    env: Optional[Dict[str, str]] = None,
+    prefix: Optional[str] = None,
+    sink=None,
+    timeout: int = 3600,
+) -> InstallStep:
+    """Run one step to a settled :class:`Outcome`.
+
+    THE ONE DOOR every dispatched command goes through -- the installer
+    and ``repair`` both, so neither can learn about alternatives or
+    optionality without the other.  They were separate procedures until
+    2026-09-11, and had already drifted: repair issued a bare pip
+    command that knew nothing of a package's fallbacks or its flags.
+
+    Returns a copy of ``step`` carrying the outcome, the argv that
+    ACTUALLY ran (not the one that was tried first), its exit code and
+    its trimmed output.
+    """
+    attempts = [tuple(step.argv), *(tuple(a) for a in step.fallbacks)]
+    rc: Optional[int] = None
+    combined = ""
+    ran = attempts[0]
+
+    for n, argv in enumerate(attempts):
+        run_argv = list(argv)
+        if prefix:
+            # Same PIP_CACHE_DIR / activate.d treatment for every
+            # attempt, primary or alternative.
+            try:
+                bypassed, _ = _bypass_conda_run(argv, prefix)
+                run_argv = list(bypassed)
+            except ValueError:
+                pass
+        if n and sink is not None:
+            sink.write(f"    {step.label}: previous source failed "
+                       f"({'could not launch' if rc is None else f'rc={rc}'}); "
+                       f"trying the declared alternative\n")
+            sink.flush()
+        rc, combined = _builds.run_streaming(
+            run_argv, env=env, sink=sink, timeout=timeout)
+        ran = argv
+        if rc == 0:
+            return replace(
+                step, argv=ran, returncode=0,
+                output=(combined or "")[:4096],
+                outcome=Outcome.OK if n == 0 else Outcome.RECOVERED)
+
+    # `rc is None` -- the process never launched -- is not a special
+    # case here.  It is simply "not zero", which is the whole reason the
+    # branch that used to treat it specially could forget `fatal`.
+    return replace(
+        step, argv=ran, returncode=rc,
+        output=(combined or "step failed to launch")[:4096],
+        outcome=Outcome.DEGRADED if not step.fatal else Outcome.FAILED)
+
+
+def pip_argv(conda: str, env_name: str, *specs: str,
+             flags: Sequence[str] = ()) -> Tuple[str, ...]:
+    """The one shape of a pip command dispatched into an env.
+
+    ``python -m pip`` rather than ``pip`` sidesteps the common Ubuntu
+    pitfall where ``~/.local/bin/pip`` precedes the env's own on PATH.
+
+    It lives here because it had been WRITTEN OUT three times -- once in
+    the planner and twice in `repair` -- and the copies had already
+    drifted: repair knew nothing about a package's alternatives, so a
+    fix that taught the installer about fallbacks left repair behind.
+    """
+    return (conda, "run", "-n", env_name, "--no-capture-output",
+            "python", "-m", "pip", "install", *flags, *specs)
+
+
+def pip_step_for(pkg: "PipPackage", conda: str, env_name: str) -> InstallStep:
+    """The step that installs ONE package, on its own terms.
+
+    Everything that makes a package special is read off the record here
+    and nowhere else, so `install` and `repair` cannot disagree about
+    what installing it means:
+
+    * ``force``             -> ``--force-reinstall --no-deps``;
+    * ``optional``          -> a non-fatal step;
+    * ``fallback_to_index`` -> the indexed build as a declared
+      alternative, FLAGLESS.  Its job is to make sure the package
+      exists, never to replace what is already there -- with the force
+      flag an unreachable source during an unrelated install would
+      overwrite a good tree with a worse one.
+    """
+    fallbacks: Tuple[Tuple[str, ...], ...] = ()
+    if pkg.fallback_to_index:
+        fallbacks = (pip_argv(conda, env_name, pkg.index_spec()),)
+    return InstallStep(
+        label=f"pip install {pkg.name}",
+        argv=pip_argv(conda, env_name, pkg.spec(),
+                      flags=pkg.install_flags()),
+        fallbacks=fallbacks,
+        fatal=not pkg.optional,
+    )
 
 
 def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
@@ -235,28 +373,14 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     #   * ``source``   -> installed from the recorded URL, with the
     #                     indexed build as a fallback when the record
     #                     says the base is still required.
-    def _pip_argv(*specs: str) -> Tuple[str, ...]:
-        return (conda, "run", "-n", env_name, "--no-capture-output",
-                "python", "-m", "pip", "install", *specs)
-
     plain = [p for p in recipe.pip_packages if p.is_plain()]
     if plain:
         steps.append(InstallStep(
             label="pip install",
-            argv=_pip_argv(*(p.spec() for p in plain)),
+            argv=pip_argv(conda, env_name, *(p.spec() for p in plain)),
         ))
-    for pkg in recipe.pip_packages:
-        if pkg.is_plain():
-            continue
-        fallbacks: Tuple[Tuple[str, ...], ...] = ()
-        if pkg.fallback_to_index:
-            fallbacks = (_pip_argv(*pkg.install_flags(), pkg.index_spec()),)
-        steps.append(InstallStep(
-            label=f"pip install {pkg.name}",
-            argv=_pip_argv(*pkg.install_flags(), pkg.spec()),
-            fallbacks=fallbacks,
-            fatal=not pkg.optional,
-        ))
+    steps.extend(pip_step_for(pkg, conda, env_name)
+                 for pkg in recipe.pip_packages if not pkg.is_plain())
 
     # Phase 3: extra dispatch-into-env steps.
     for extra in recipe.extra_steps:
@@ -770,94 +894,34 @@ def run_install(
             f"conda create with large package sets)\n"
         )
         sys.stderr.flush()
-        rc, combined = _builds.run_streaming(
-            run_argv,
-            env=run_env,
-            sink=sys.stderr,
-            timeout=3600,
-        )
-        # WHICH COMMAND ACTUALLY RAN, so the recap names it.  After a
-        # fallback succeeds, recording the PRIMARY argv would show the
-        # reader the command that failed and let them conclude it worked.
-        ran_argv = tuple(step.argv)
 
-        # A step with declared alternatives tries them in order before it
-        # counts as failed: "prefer this source, accept that one" is a
-        # property of the PACKAGE, so the runner honours it rather than
-        # making every recipe hand-roll a retry.
-        #
-        # FAILING TO LAUNCH COUNTS AS FAILING.  `rc is None` is the
-        # spawn itself going wrong, and it used to skip both the
-        # fallbacks and the `fatal` check below -- so an OPTIONAL package
-        # whose command could not start aborted the whole install, which
-        # is the precise bug `fatal` exists to prevent.
-        if rc != 0 and step.fallbacks:
-            for alt in step.fallbacks:
-                alt_argv = list(alt)
-                if cached_prefix is not None:
-                    # Mirror the primary's bypass so the fallback gets
-                    # the same PIP_CACHE_DIR / activate.d treatment.
-                    try:
-                        _new, _ = _bypass_conda_run(alt, cached_prefix)
-                        alt_argv = list(_new)
-                    except ValueError:
-                        pass
-                sys.stderr.write(
-                    f"[{i}/{total_pre}] {step.label}: primary source "
-                    f"failed ({'could not launch' if rc is None else f'rc={rc}'}); "
-                    f"trying fallback\n"
-                )
-                sys.stderr.flush()
-                rc, combined = _builds.run_streaming(
-                    alt_argv, env=run_env, sink=sys.stderr, timeout=3600,
-                )
-                ran_argv = tuple(alt)
-                if rc == 0:
-                    break
-        # Keep first 4096 chars for the failure-recap CLI output; the
-        # full output was already streamed to the user's terminal.
-        trimmed = (combined or "step failed to launch")[:4096]
-        executed.append(InstallStep(
-            label=step.label, argv=ran_argv,
-            fallbacks=step.fallbacks, fatal=step.fatal,
-            returncode=rc, output=trimmed,
-        ))
-        if rc is None:
-            if not step.fatal:
-                sys.stderr.write(
-                    f"[{i}/{total_pre}] {step.label}: UNAVAILABLE "
-                    f"(could not launch) -- optional, continuing\n"
-                )
-                sys.stderr.flush()
-                continue
+        # ONE DOOR, and the outcome decides what happens next -- no
+        # nested conditions over return codes, alternatives and
+        # optionality, which is where branches kept going missing.
+        done = run_step(step, env=run_env, prefix=cached_prefix,
+                        sink=sys.stderr)
+        executed.append(done)
+
+        if done.outcome is Outcome.OK:
+            sys.stderr.write(f"[{i}/{total_pre}] {step.label}: OK\n")
+        elif done.outcome is Outcome.RECOVERED:
             sys.stderr.write(
-                f"[{i}/{total_pre}] {step.label}: FAILED to launch\n"
-            )
-            sys.stderr.flush()
-            succeeded = False
-            break
-        if rc != 0:
-            # A non-fatal step reports and the install CONTINUES.  This
-            # is what makes an optional package optional at INSTALL time
-            # and not merely at audit time -- the gap that let one
-            # unavailable GPU wheel abort an otherwise healthy CPU env.
-            if not step.fatal:
-                sys.stderr.write(
-                    f"[{i}/{total_pre}] {step.label}: UNAVAILABLE "
-                    f"(rc={rc}) -- optional, continuing\n"
-                )
-                sys.stderr.flush()
-                continue
+                f"[{i}/{total_pre}] {step.label}: OK via the declared "
+                f"alternative\n")
+        elif done.outcome is Outcome.DEGRADED:
             sys.stderr.write(
-                f"[{i}/{total_pre}] {step.label}: FAILED (rc={rc})\n"
-            )
-            sys.stderr.flush()
-            succeeded = False
-            break
-        sys.stderr.write(
-            f"[{i}/{total_pre}] {step.label}: OK\n"
-        )
+                f"[{i}/{total_pre}] {step.label}: UNAVAILABLE "
+                f"({'could not launch' if done.returncode is None else f'rc={done.returncode}'})"
+                f" -- optional, continuing\n")
+        else:
+            sys.stderr.write(
+                f"[{i}/{total_pre}] {step.label}: FAILED "
+                f"({'could not launch' if done.returncode is None else f'rc={done.returncode}'})\n")
         sys.stderr.flush()
+
+        if done.outcome.stops_the_install:
+            succeeded = False
+            break
 
     # Build-spec phase: only if recipe declares one AND nothing failed
     # before it.  The build executor has its own sentinel resume; we
