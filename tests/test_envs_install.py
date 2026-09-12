@@ -945,6 +945,25 @@ def test_shim_bootstrap_creates_host_env_without_dry_run(tmp_path):
         "bootstrap must create the host env when it is missing")
 
 
+def test_shim_help_needs_no_tty(tmp_path):
+    """``<subcommand> --help`` must reach the Python CLI without a TTY.
+
+    The usage text points at `<subcommand> --help` as THE flag reference --
+    deliberately, so Python stays the single source of truth instead of the
+    shim carrying a second copy that drifts.  That pointer is only true if
+    asking for help does not stop at the env-manager confirmation: it used
+    to, and in any non-TTY (CI, a pipe, an editor shell) exited 2 with "no
+    TTY for confirmation" instead of printing anything.
+    """
+    r = _run_install_env_sh(["repair", "--help"], tmp_path=tmp_path)
+    assert r.returncode == 0, (
+        f"--help must not need a TTY or a --yes: rc={r.returncode}\n"
+        f"{r.stdout}\n{r.stderr}")
+    assert "no TTY for confirmation" not in r.stderr
+    assert "[stub-dispatch]" in (r.stdout + r.stderr), (
+        "--help must be forwarded to the Python CLI, which owns the flags")
+
+
 def test_shim_forwards_args_verbatim(tmp_path):
     """The shim forwards ``$@`` 1:1 to ``molbuilder envs ...``.
 

@@ -35,8 +35,13 @@
 #
 # BASE-SYSTEM ASSUMPTION:
 #
-#   The system provides ``conda`` OR ``mamba``.  No other tools
-#   required.  The script does not install conda for you -- that
+#   The system provides ``conda``, ``mamba`` OR ``micromamba`` -- the
+#   same three the Python probe accepts, in the same order.  micromamba
+#   is often the only manager available on HPC clusters where the user
+#   cannot install Miniconda, and this script used to probe only the
+#   first two by name: on such a host it exited 2 with "no env manager
+#   found" while ``python -m molbuilder envs doctor`` found one fine.
+#   No other tools required.  The script does not install conda for you -- that
 #   is the OS / cluster admin's job (Miniforge / Miniconda).
 #
 #   Detection is robust: PATH first, then activation-hook env vars
@@ -72,8 +77,10 @@
 #
 # EXIT CODES:
 #   0 = OK
-#   1 = step failed inside the Python layer
-#   2 = usage error / no conda manager / host env missing for non-bootstrap
+#   1 = a step failed -- inside the Python layer, or the shim's own host-env
+#       python resolution
+#   2 = usage error / no conda manager / user declined the manager prompt /
+#       host env missing for non-bootstrap / --dry-run before the host env
 
 set -euo pipefail
 
@@ -182,72 +189,61 @@ conda run -n molbuilder python -c "import playwright; print('playwright ok')"
 
 Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
 
-  bash scripts/install-env.sh list
-      Show every recipe + whether the env exists.
+  THE FLAG REFERENCE IS PYTHON'S, NOT THIS FILE'S.  For any subcommand:
 
-  bash scripts/install-env.sh doctor
-      Health report: which envs exist, which verify, which need help.
+      bash scripts/install-env.sh <subcommand> --help
 
-  bash scripts/install-env.sh init-config [flags]
-      Seed the per-user config directory -- molbuilder.json (with
-      script_generation.activation, which has NO default and without
-      which every generated wrapper refuses to render), the
-      environments/ directory, and this machine's probed
-      environment.json.  Run automatically at the end of bootstrap.
-      Never overwrites: a file that exists is reported and left as
-      it is, so re-running is a no-op that prints what is there.
-        --activation "conda activate" | "source activate"
-                                 declare it instead of being asked
-        --no-probe               seed the config, write no record
-                                 (build host / baked image)
-        --yes / -y               take the recommendation, printed
-      See docs/ops/installation.md section 2.1.
+  (That needs the host env, because the help text comes from the Python
+  CLI that lives in it -- so after `bootstrap` it always works.)
 
-  bash scripts/install-env.sh install <recipe> [flags]
-      Install (or repair) one recipe.  Flags forwarded to Python:
-        --dry-run                print the install plan; do not run
-        --check                  report present/verify; do not install
-        --rebuild=<component>    source-build recipes only (e.g.
-                                 --rebuild=siesta, --rebuild=elpa,
-                                 --rebuild=all on molbuilder-siesta-gpu)
-        --clean                  wipe conda env + artifact dir, then
-                                 reinstall (source-build recipes only)
-        --yes / -y               proceed without confirmation prompts
-        --skip-network-check     for firewalled hosts
-      Handled by this shim (not forwarded):
-        --gcc <X.Y>              pin the source-build toolchain, e.g.
-                                 --gcc 14.3.  Same as MOLBUILDER_GCC.
-                                 Only affects a FRESH solve -- an env
-                                 that already exists keeps the compiler
-                                 it was built with, so pair it with
-                                 --clean to change one:
-                                   ... install <recipe> --clean --gcc 14.3
+  That is deliberate.  This text used to re-specify every flag, and it
+  drifted in four places at once -- it was missing `repair` entirely, and
+  missing --force-resume and --include-version-fix, both of which the
+  Python layer PRINTS as the command to run when it wants you to fix
+  something.  A second copy of a flag surface that nothing can keep in
+  sync is worse than no copy.
 
-  bash scripts/install-env.sh advise <recipe>
-      Recommend mpi_np / omp / mps for the recipe + this host.
+  list            show every recipe + whether the env exists
+  doctor          health report: which envs exist, verify, need help
+  init-config     seed the per-user config directory (molbuilder.json,
+                  environments/, this machine's environment.json); run
+                  automatically at the end of bootstrap, never
+                  overwrites.  See docs/ops/installation.md section 2.1
+  install <recipe>   install (or repair) one recipe
+  repair <recipe>    install packages doctor's audit reported missing
+  advise <recipe>    recommend mpi_np / omp / mps for this host
+  validate <recipe>  run post-install correctness probes
+  clean <recipe>     delete build-only dirs to free disk; keeps the
+                     installed binaries, so SIESTA still runs after
+  bootstrap       install every conda-only recipe + run doctor
 
-  bash scripts/install-env.sh validate <recipe>
-      Run post-install correctness probes.
+THE ONE FLAG THIS SCRIPT OWNS (Python's --help does not list it):
 
-  bash scripts/install-env.sh clean <recipe> [flags]
-      Delete build-only dirs (cmake build trees, ccache, src/, pip
-      cache) from a source-build env to free disk.  Keeps installed
-      binaries (elpa/, siesta/) -- SIESTA still runs after.  Flags:
-        --dry-run                show what would be deleted + sizes
-        --keep-src               keep src/ (for ``--rebuild=`` later)
-        --yes / -y               skip the confirmation prompt
+  --gcc <X.Y>     pin the source-build toolchain, e.g. --gcc 14.3.
+                  Equivalent to exporting MOLBUILDER_GCC, except that
+                  the flag shape-checks the value (a wildcard like
+                  '14.*' must go through the variable).
+                  Consumed here, never forwarded: recipes.py reads
+                  MOLBUILDER_GCC at IMPORT time, so a Python-side
+                  option would arrive after the value it must change
+                  was already frozen.
+                  Only affects a FRESH solve -- an env that already
+                  exists keeps the compiler it was built with, so pair
+                  it with --clean to change one:
+                      ... install <recipe> --clean --gcc 14.3
+                  Valid on install and on bootstrap (the latter because
+                  --include-source-builds compiles SIESTA).
 
-  bash scripts/install-env.sh bootstrap [flags]
-      Install every conda-only recipe + run doctor.  Flags:
-        --include-source-builds  also build GPU SIESTA (~45 min)
-        --no-skip-existing       re-run install on envs already present
-        --dry-run                print the plan; do not install.
-                                 Needs the host env to already exist --
-                                 the planner runs inside it.
-        --yes / -y               non-interactive (CI / HPC batch)
-        --gcc <X.Y>              shim-handled; see ``install`` above.
-                                 Relevant here because
-                                 --include-source-builds compiles SIESTA.
+TWO FLAGS THIS SCRIPT READS AND ALSO FORWARDS:
+
+  --yes / -y      skips this script's own env-manager confirmation as
+                  well as Python's prompts.
+  --dry-run       on `bootstrap`, this script REFUSES rather than
+                  creating the host env: the flag promises not to
+                  install, and the host-env create happens before the
+                  Python layer that honours it.  Planning needs that env
+                  (the planner runs inside it), so run `bootstrap --yes`
+                  once first.
 
 Two equivalent entry points (use whichever you prefer):
 
@@ -372,7 +368,7 @@ detect_env_mgr() {
     #    on PATH -- ``command -v`` would return the function body
     #    string and downstream calls would fail with bizarre errors.
     local _p
-    for candidate in mamba conda; do
+    for candidate in mamba micromamba conda; do
         _p="$(type -P "${candidate}" 2>/dev/null || true)"
         if [[ -n "${_p}" && -x "${_p}" ]]; then
             ENV_MGR="${_p}"
@@ -404,7 +400,7 @@ detect_env_mgr() {
         local p="${CONDA_PREFIX}"
         local _i
         for _i in 1 2 3 4 5 6; do
-            for mgr in mamba conda; do
+            for mgr in mamba micromamba conda; do
                 if [[ -x "${p}/bin/${mgr}" ]]; then
                     ENV_MGR="${p}/bin/${mgr}"
                     _record_probe "CONDA_PREFIX walk: found ${ENV_MGR}"
@@ -420,7 +416,7 @@ detect_env_mgr() {
     #    very common "``conda`` is a shell function in .bashrc but
     #    ``~/miniconda3/bin/`` isn't on PATH for sub-shells" setup.
     for prefix in "${_CONDA_PREFIX_CANDIDATES[@]}"; do
-        for mgr in mamba conda; do
+        for mgr in mamba micromamba conda; do
             if [[ -x "${prefix}/bin/${mgr}" ]]; then
                 ENV_MGR="${prefix}/bin/${mgr}"
                 _record_probe "disk: found ${ENV_MGR}"
@@ -437,8 +433,8 @@ require_conda() {
         cat >&2 <<EOF
 Error: no conda-compatible env manager found.
 
-molbuilder expects ``conda`` or ``mamba`` to be installed on the
-system already.  Installing one is the OS / cluster admin's job,
+molbuilder expects \`conda\`, \`mamba\` or \`micromamba\` to be installed
+on the system already.  Installing one is the OS / cluster admin's job,
 not this script's.
 
 What the script checked, in order:
@@ -492,10 +488,13 @@ EOF
             case "${_ans}" in
                 ""|y|Y|yes|YES|Yes) ;;
                 *)
+                    # exit 2, not 0: this is a refusal, and 0 is documented
+                    # as OK.  A batch wrapper checking $? treated an abort
+                    # as a successful install and never installed anything.
                     echo "[molbuilder] aborted by user." >&2
                     echo "[molbuilder] tip: set CONDA_EXE or MAMBA_EXE to pin the env manager:" >&2
                     echo "    CONDA_EXE=/path/to/conda bash $0 ${ORIGINAL_ARGS[*]:-bootstrap --yes}" >&2
-                    exit 0
+                    exit 2
                     ;;
             esac
         fi
@@ -545,14 +544,22 @@ HOST_PIP_PACKAGES=(
 
 host_env_exists() {
     # Parse ``<mgr> env list`` robustly across conda / mamba (2 header
-    # lines starting with ``#``) and micromamba (3 header lines: a
-    # column header + a ─-rule separator).  Filter:
-    #   * skip blank lines (NF == 0)
-    #   * skip column-header / separator lines
-    #   * print column 1 (the env name)
+    # lines starting with ``#``) and micromamba (3 header lines: a column
+    # header + a ─-rule separator): skip blank lines and header/separator
+    # lines, then compare column 1 (the env name).
+    #
+    # ONE awk, no pipe into grep.  ``grep -q`` exits on its first match, and
+    # under ``set -o pipefail`` the pipeline then reports awk's SIGPIPE (141)
+    # as its own status -- which reads as "env missing" for an env that is
+    # right there.  The name is also DATA, not a pattern: ``grep -x
+    # "${HOST_ENV}"`` treated a user's MOLBUILDER_HOST_ENV as a regex, so
+    # `mb.dev` matched an env called `mbxdev` and the shim would then
+    # dispatch into the wrong env's python.
     "${ENV_MGR}" env list 2>/dev/null \
-            | awk 'NF && $1 !~ /^(#|─|Name$)/ {print $1}' \
-            | grep -qx "${HOST_ENV}"
+        | awk -v name="${HOST_ENV}" '
+            NF && $1 !~ /^(#|─|Name$)/ && $1 == name { found = 1 }
+            END { exit(found ? 0 : 1) }
+        '
 }
 
 resolve_host_env_channels() {
@@ -601,9 +608,15 @@ resolve_host_env_channels() {
                 || true  # printf can fail on weird input; don't abort
         fi
     fi
+    # Take the QUOTED channel name, not the last field.  conda prints
+    #     --add channels 'conda-forge'   # highest priority
+    # so ``print $NF`` returned the word "priority" from the trailing
+    # comment -- the banner below read "respecting user's .condarc
+    # channels: priority priority", which is the one line an HPC user
+    # checks to confirm their site mirror was honoured.  The DECISION was
+    # always right (non-empty -> pass no -c); only the message was junk.
     _configured="$(echo "${_raw}" \
-                  | awk '/--add channels/ {print $NF}' \
-                  | tr -d "'\"" \
+                  | awk -F"'" '/--add channels/ {print $2}' \
                   | tr '\n' ' ')"
     if [[ -n "${_configured// /}" ]]; then
         echo "[molbuilder] respecting user's .condarc channels:" \
@@ -694,7 +707,14 @@ _resolve_env_python() {
 create_host_env() {
     resolve_host_env_channels
     echo "[molbuilder] creating host env '${HOST_ENV}' (~2 min)" >&2
-    "${ENV_MGR}" create -n "${HOST_ENV}" "${HOST_ENV_CHANNEL_ARGS[@]}" \
+    # ``${a[@]+"${a[@]}"}`` -- the same empty-array guard the arg parser
+    # below explains.  This array is DELIBERATELY empty whenever .condarc
+    # has channels (the common path), so on a bash < 4.4 login node -- which
+    # the guard below says some HPC sites still ship -- the bare expansion
+    # aborted `create_host_env` under ``set -u``: bootstrap failing at the
+    # one step this script exists to perform.
+    "${ENV_MGR}" create -n "${HOST_ENV}" \
+        ${HOST_ENV_CHANNEL_ARGS[@]+"${HOST_ENV_CHANNEL_ARGS[@]}"} \
         --yes "${HOST_CONDA_PACKAGES[@]}"
     if [[ ${#HOST_PIP_PACKAGES[@]} -gt 0 ]]; then
         # Call the env's python directly instead of ``mamba run``.
@@ -893,9 +913,15 @@ set -- ${_MB_ARGS[@]+"${_MB_ARGS[@]}"}
 # the user or their environment moved off it, which is worth seeing --
 # including when MOLBUILDER_GCC came from the environment rather than
 # the flag, since that is the case nobody remembers setting.
+# The VALUE is not compared against a hardcoded default here: the recipe
+# derives it per SIESTA tag (`_GCC_PIN_BY_SIESTA_REF`), so a literal in bash
+# would go stale the day that table gains a row -- and the old line printed
+# "toolchain override: ...=14.3 (recipe default is 14.3)" for the very
+# invocation this file documents.  Say only what bash can know: a value was
+# supplied from outside.  Python prints what it resolved.
 if [[ -n "${MOLBUILDER_GCC:-}" ]]; then
-    echo "[molbuilder] toolchain override: gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" \
-         "(recipe default is 14.3)" >&2
+    echo "[molbuilder] toolchain pinned from the environment:" \
+         "gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" >&2
 fi
 
 if [[ $# -eq 0 ]]; then
@@ -920,6 +946,12 @@ for _a in "$@"; do
     case "${_a}" in
         --yes|-y)  AUTO_YES=1 ;;
         --dry-run) MB_DRY_RUN=1 ;;
+        # Asking for help is not an action that needs confirming.  Without
+        # this, ``install-env.sh <subcommand> --help`` stopped at the
+        # env-manager prompt -- and in any non-TTY (CI, a pipe, an editor's
+        # shell) exited 2 with "no TTY for confirmation" instead of printing
+        # the help this file now points people at.
+        --help|-h) AUTO_YES=1 ;;
     esac
 done
 
