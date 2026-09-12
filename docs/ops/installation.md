@@ -116,6 +116,46 @@ Once the host env exists, **`molbuilder envs` is the same surface** the shim use
 `list`, `install <name>`, `bootstrap`, `doctor`, `validate`, `clean`, `repair`,
 `init-config`.
 
+
+**What `bootstrap` leaves you with.** `init-config` runs at the end of it, and
+seeds a config directory you can start from rather than one you have to
+discover:
+
+```
+~/.config/molbuilder/              0700 -- it holds secrets
+├── molbuilder.json                0600 -- a TEMPLATE: every section present
+│                                  and empty, each with a comment saying who
+│                                  fills it (you, a command, or a probe)
+├── environment.json               this machine, probed
+├── environments/                  0700 -- records for machines you prep FOR
+└── secrets/                       0700 -- + a README: the mode rule, what
+    └── README                     belongs here, and the two secrets that
+                                   cannot (they have one fixed home each)
+```
+
+Two things are **asked**, because install time is the one moment the answer is
+known and every later surface can only report that nobody said:
+
+* **how this machine enters a conda env** — `script_generation.activation` has
+  no default, and unset it makes *every* generated wrapper refuse to render.
+* **where the project tree lives** — its default is inside the checkout, which
+  is often not what you want on a cluster (a home with a quota, or scratch).
+  Declared, it is written as `paths.projects`.
+
+`--yes` takes both defaults and **prints** them. `--projects PATH` declares the
+tree non-interactively. Nothing is ever overwritten: a file that exists is
+reported and left alone, so re-running is a no-op that shows you what is there.
+
+**Where the tree is, you are always told.** Four things can answer — an explicit
+argument, `$MOLBUILDER_PROJECTS`, `paths.projects`, the default — so every
+`jobset` verb, `serve` and `envs doctor` print the path **and which of them
+supplied it**:
+
+```
+projects  /scratch/qqing/mb-projects   (molbuilder.json -> paths.projects)
+projects  /home/qqing/molbuilder/projects   (default -- no paths.projects set)
+```
+
 ### 2.1 What `bootstrap` seeds — the config directory *(2026-09-08)*
 
 `bootstrap` finishes by running **`molbuilder envs init-config`**, which creates

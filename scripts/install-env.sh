@@ -205,8 +205,14 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
 
   list            show every recipe + whether the env exists
   doctor          health report: which envs exist, verify, need help
-  init-config     seed the per-user config directory (molbuilder.json,
-                  environments/, this machine's environment.json); run
+  init-config     seed the per-user config directory: molbuilder.json as a
+                  TEMPLATE (every section present and empty, each commented
+                  with who fills it), secrets/ + its README, environments/,
+                  and this machine's environment.json.  ASKS two things --
+                  how this machine enters a conda env, and where the project
+                  tree lives -- because install time is the one moment the
+                  answer is known.  --yes takes both defaults and prints
+                  them; --projects PATH declares the tree.  Run
                   automatically at the end of bootstrap, never
                   overwrites.  See docs/ops/installation.md section 2.1
   install <recipe>   install (or repair) one recipe

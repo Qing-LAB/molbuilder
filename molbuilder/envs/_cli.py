@@ -1482,11 +1482,17 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                    "up front.  When --include-source-builds is passed, "
                    "the user is asked to confirm before each source "
                    "build starts unless --yes is also given.")
+@click.option("--projects", default=None, metavar="PATH",
+              help="where the project tree lives -- written to\n"
+                   "molbuilder.json as `paths.projects`.  Omit to be\n"
+                   "asked; with --yes, omit to take the default\n"
+                   "(which is printed).")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="proceed without interactive confirmation.  Required "
                    "for headless / CI / HPC-batch use.")
 def cmd_bootstrap(dry_run: bool, skip_existing: bool,
-                  include_source_builds: bool, auto_yes: bool) -> None:
+                  include_source_builds: bool, auto_yes: bool,
+                  projects: "Optional[str]") -> None:
     """Install every registered recipe, then run ``doctor`` for the
     summary.
 
@@ -1628,7 +1634,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo(f"config directory: {config_dir()}")
     click.echo("=" * 70)
     try:
-        _seed_config(None, auto_yes, True, caps.conda_binary)
+        _seed_config(None, auto_yes, True, caps.conda_binary, projects)
     except Exception as exc:                                  # noqa: BLE001
         # REPORTED, NOT FATAL -- the same rule the installs above follow
         # ("Failures are recorded but bootstrap continues so the user gets a

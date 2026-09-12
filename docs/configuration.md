@@ -380,6 +380,17 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `task.1st.json` | the Task-setup tab | calculation | a partial description in flight; **removed** when the real one is saved |
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
 | `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries. A calculation may carry its own tuned copy, and that copy wins |
+| `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), and the two secrets that **cannot** live there because they have one fixed home each (§ 2.1e) |
+
+**What `molbuilder envs init-config` seeds** *(and `bootstrap` runs it)*: the
+config directory at `0700`, `molbuilder.json` at `0600` **as a template** —
+every section that can be empty present and empty, each with a `_`-prefixed
+comment saying who fills it (you, a command, or a probe) — plus `secrets/` and
+`environments/` at `0700`, and `environment.json` from the probe. Two values are
+**asked**, never detected, because install time is the one moment the answer is
+known: `script_generation.activation` (it has no default) and `paths.projects`
+(its default is inside the checkout, which is often not where you want it).
+`--yes` takes both defaults **and prints them**.
 
 **One producer, two surfaces.** `<label>.template.toml` is written by
 `describe.py` and by the web's build blueprint through **the same function**,
