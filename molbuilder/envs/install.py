@@ -776,22 +776,21 @@ def run_install(
             sink=sys.stderr,
             timeout=3600,
         )
-        if rc is None:
-            executed.append(InstallStep(
-                label=step.label, argv=step.argv,
-                returncode=None,
-                output=combined or "step failed to launch",
-            ))
-            sys.stderr.write(
-                f"[{i}/{total_pre}] {step.label}: FAILED to launch\n"
-            )
-            sys.stderr.flush()
-            succeeded = False
-            break
-        # A failed step with declared alternatives tries them in order
-        # before it counts as failed: "prefer this source, accept that
-        # one" is a property of the PACKAGE, so the runner honours it
-        # rather than making every recipe hand-roll a retry.
+        # WHICH COMMAND ACTUALLY RAN, so the recap names it.  After a
+        # fallback succeeds, recording the PRIMARY argv would show the
+        # reader the command that failed and let them conclude it worked.
+        ran_argv = tuple(step.argv)
+
+        # A step with declared alternatives tries them in order before it
+        # counts as failed: "prefer this source, accept that one" is a
+        # property of the PACKAGE, so the runner honours it rather than
+        # making every recipe hand-roll a retry.
+        #
+        # FAILING TO LAUNCH COUNTS AS FAILING.  `rc is None` is the
+        # spawn itself going wrong, and it used to skip both the
+        # fallbacks and the `fatal` check below -- so an OPTIONAL package
+        # whose command could not start aborted the whole install, which
+        # is the precise bug `fatal` exists to prevent.
         if rc != 0 and step.fallbacks:
             for alt in step.fallbacks:
                 alt_argv = list(alt)
@@ -805,22 +804,38 @@ def run_install(
                         pass
                 sys.stderr.write(
                     f"[{i}/{total_pre}] {step.label}: primary source "
-                    f"failed (rc={rc}); trying fallback\n"
+                    f"failed ({'could not launch' if rc is None else f'rc={rc}'}); "
+                    f"trying fallback\n"
                 )
                 sys.stderr.flush()
                 rc, combined = _builds.run_streaming(
                     alt_argv, env=run_env, sink=sys.stderr, timeout=3600,
                 )
+                ran_argv = tuple(alt)
                 if rc == 0:
                     break
         # Keep first 4096 chars for the failure-recap CLI output; the
         # full output was already streamed to the user's terminal.
-        trimmed = combined[:4096]
+        trimmed = (combined or "step failed to launch")[:4096]
         executed.append(InstallStep(
-            label=step.label, argv=step.argv,
+            label=step.label, argv=ran_argv,
             fallbacks=step.fallbacks, fatal=step.fatal,
             returncode=rc, output=trimmed,
         ))
+        if rc is None:
+            if not step.fatal:
+                sys.stderr.write(
+                    f"[{i}/{total_pre}] {step.label}: UNAVAILABLE "
+                    f"(could not launch) -- optional, continuing\n"
+                )
+                sys.stderr.flush()
+                continue
+            sys.stderr.write(
+                f"[{i}/{total_pre}] {step.label}: FAILED to launch\n"
+            )
+            sys.stderr.flush()
+            succeeded = False
+            break
         if rc != 0:
             # A non-fatal step reports and the install CONTINUES.  This
             # is what makes an optional package optional at INSTALL time
