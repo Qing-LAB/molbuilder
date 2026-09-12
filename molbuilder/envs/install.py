@@ -158,6 +158,30 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
 from .recipes import PipPackage, Recipe
 
 
+class StepRole(str, Enum):
+    """What a step is FOR.
+
+    The runner's branches key on THIS, never on ``label``.  They used to key
+    on the label -- ``== "conda create"`` decided whether the env-state
+    machine ran at all, and ``== "verify"`` decided which phase a step
+    belonged to -- while ``label``'s own docstring called it the CLI's
+    per-step header text.  Renaming a label for clarity silently disabled the
+    create-skip logic, and the install would then attempt `conda create` on
+    an existing env every run.
+
+    It is also residue of the shape the migration replaced: when each phase
+    was a hand-written block, the phase was implicit in code POSITION; one
+    loop has to ask what kind of step it is holding, and the only thing
+    available to ask was a display string.
+    """
+
+    CREATE = "create"      #: the env itself -- the one step needing no prefix
+    PACKAGES = "packages"  #: a conda or pip install
+    EXTRA = "extra"        #: a recipe-declared dispatch into the env
+    VERIFY = "verify"      #: runs after any source build
+    BUILD = "build"        #: adapted from `builds.py`'s own executor
+
+
 #: How much of a step's combined output is kept.  The streamed copy
 #: already reached the user's terminal; this is the excerpt the CLI
 #: recaps and the web report stores, so it is an excerpt on purpose.
@@ -171,9 +195,12 @@ class InstallStep:
     Attributes
     ----------
     label
-        Short tag (``"conda create"``, ``"pip install"``,
-        ``"extra"``, ``"verify"``).  Used by the CLI for the per-
-        step header line.
+        Short human tag (``"conda create"``, ``"pip install numpy"``,
+        ``"extra"``, ``"verify"``), used for the per-step header line and
+        the recap.  DISPLAY ONLY -- nothing branches on it; see
+        :class:`StepRole`, which is what the runner asks.
+    role
+        What the step is for.  The runner and the CLI branch on this.
     argv
         Full command argv as it would be invoked.  For dry runs the
         CLI prints this verbatim.
@@ -206,6 +233,7 @@ class InstallStep:
     """
     label: str
     argv: Tuple[str, ...]
+    role: StepRole = StepRole.PACKAGES
     fallbacks: Tuple[Tuple[str, ...], ...] = ()
     fatal: bool = True
     ignore_exit_code: bool = False
@@ -490,6 +518,7 @@ def create_step_for(recipe: Recipe, conda: str,
                                 recipe.channels, required),)
     return InstallStep(
         label="conda create",
+        role=StepRole.CREATE,
         argv=conda_argv(conda, "create", env_name,
                         recipe.channels, recipe.conda_specs),
         fallbacks=fallbacks,
@@ -506,6 +535,7 @@ def conda_step_for(specs: Sequence[str], recipe: Recipe, conda: str,
     """
     return InstallStep(
         label="conda install",
+        role=StepRole.PACKAGES,
         argv=conda_argv(conda, "install", env_name, recipe.channels, specs),
     )
 
@@ -529,6 +559,7 @@ def verify_step_for(recipe: Recipe, conda: str,
         return None
     return InstallStep(
         label="verify",
+        role=StepRole.VERIFY,
         argv=(conda, "run", "-n", env_name, "--no-capture-output",
               *recipe.verify_argv),
         ignore_exit_code=recipe.verify_ignore_exit_code,
@@ -570,7 +601,8 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     for extra in recipe.extra_steps:
         argv = (conda, "run", "-n", env_name, "--no-capture-output",
                 *extra)
-        steps.append(InstallStep(label="extra", argv=argv))
+        steps.append(InstallStep(label="extra", role=StepRole.EXTRA,
+                                 argv=argv))
 
     # Phase 4: verify (only if the recipe declares one).
     verify = verify_step_for(recipe, conda, env_name)
@@ -880,7 +912,7 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
 
 
 @dataclass
-class _Phase:
+class _Dispatcher:
     """Where a recipe's steps get dispatched.
 
     Holds the one expensive thing -- the env prefix, which costs three to
@@ -940,6 +972,7 @@ def _adapt_build_step(sresult) -> Optional[InstallStep]:
         return None
     return InstallStep(
         label=f"build:{sresult.step.component}.{sresult.step.phase}",
+        role=StepRole.BUILD,
         argv=sresult.step.argv,
         returncode=sresult.returncode,
         output=sresult.output,
@@ -988,7 +1021,7 @@ def _report(tag: str, done: InstallStep) -> None:
     sys.stderr.flush()
 
 
-def _create_decision(step: InstallStep, phase: _Phase, *,
+def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
                      skip_if_present: bool,
                      force_resume: bool) -> Optional[InstallStep]:
     """Whether ``conda create`` needs to run, as an outcome.
@@ -1007,7 +1040,7 @@ def _create_decision(step: InstallStep, phase: _Phase, *,
     """
     if not skip_if_present:
         return None
-    state = probe_env_state(phase.env_name, phase.conda_binary)
+    state = probe_env_state(dispatcher.env_name, dispatcher.conda_binary)
     # ``--force-resume``: the operator knows the env is usable even
     # though the probe says GHOST / ORPHAN / BROKEN -- typically mid
     # source-build, where the directory exists but conda-meta has not
@@ -1017,18 +1050,18 @@ def _create_decision(step: InstallStep, phase: _Phase, *,
                else f"--force-resume; state was {state.state_label}")
         return _undispatched(
             step, Outcome.SKIPPED,
-            f"env `{phase.env_name}` {why}; skipping create")
+            f"env `{dispatcher.env_name}` {why}; skipping create")
     if state.needs_cleanup:
         return _undispatched(
             step, Outcome.FAILED,
-            f"env `{phase.env_name}` is in state {state.state_label} "
+            f"env `{dispatcher.env_name}` is in state {state.state_label} "
             f"-- re-run with --clean to wipe before installing.")
     return None
 
 
-def _run_phase(
+def _run_steps(
     steps: Sequence[InstallStep],
-    phase: _Phase,
+    dispatcher: _Dispatcher,
     *,
     tag: str,
     executed: List[InstallStep],
@@ -1049,9 +1082,9 @@ def _run_phase(
     total = len(steps)
     for i, step in enumerate(steps, start=1):
         where = f"{tag} {i}/{total}"
-        if step.label == "conda create":
+        if step.role is StepRole.CREATE:
             decided = _create_decision(
-                step, phase, skip_if_present=skip_create_if_present,
+                step, dispatcher, skip_if_present=skip_create_if_present,
                 force_resume=force_resume)
             if decided is not None:
                 executed.append(decided)
@@ -1059,15 +1092,15 @@ def _run_phase(
                 if decided.outcome.stops_the_install:
                     return False
                 continue
-        elif phase.ensure_prefix() is None:
+        elif dispatcher.ensure_prefix() is None:
             # FAIL LOUD.  Dispatching the unbypassed argv would hit mamba
             # 1.x's ``exec --`` stub bug, and the user would be reading an
             # error about the wrong thing entirely.
             executed.append(_undispatched(
                 step, Outcome.FAILED,
-                f"could not resolve env prefix for `{phase.env_name}` "
+                f"could not resolve env prefix for `{dispatcher.env_name}` "
                 f"-- not dispatching {step.label}.  Run "
-                f"`{phase.conda_binary} env list` to confirm the env is "
+                f"`{dispatcher.conda_binary} env list` to confirm the env is "
                 f"there; if it is and we cannot find it, file an issue "
                 f"with that output."))
             _report(where, executed[-1])
@@ -1077,7 +1110,7 @@ def _run_phase(
         # ONE DOOR, and the outcome decides what happens next -- no
         # nested conditions over return codes, alternatives and
         # optionality, which is where branches kept going missing.
-        done = run_step(step, prefix=phase.prefix, sink=sys.stderr)
+        done = run_step(step, prefix=dispatcher.prefix, sink=sys.stderr)
         executed.append(done)
         _report(where, done)
         if done.outcome.stops_the_install:
@@ -1159,7 +1192,7 @@ def run_install(
     # 2026-06-15 "env already exists; conda may have failed silently"
     # regression.  See the conda-create branch below for the live probe.
     executed: List[InstallStep] = []
-    phase = _Phase(env_name=effective, conda_binary=caps.conda_binary,
+    dispatcher = _Dispatcher(env_name=effective, conda_binary=caps.conda_binary,
                    prefix=cached_prefix)
 
     # Reorder: conda-create + pip + extra_steps + (build_spec) + verify.
@@ -1169,10 +1202,10 @@ def run_install(
     # used to re-implement the prefix resolution, the `conda run` bypass,
     # the launch-failure branch and the output trim, and to leave every
     # verify step carrying no outcome at all.
-    verify_steps = [s for s in planned if s.label == "verify"]
-    pre_verify = [s for s in planned if s.label != "verify"]
+    verify_steps = [s for s in planned if s.role is StepRole.VERIFY]
+    pre_verify = [s for s in planned if s.role is not StepRole.VERIFY]
 
-    ok = _run_phase(pre_verify, phase, tag="install", executed=executed,
+    ok = _run_steps(pre_verify, dispatcher, tag="install", executed=executed,
                     skip_create_if_present=skip_create_if_present,
                     force_resume=force_resume)
 
@@ -1183,9 +1216,9 @@ def run_install(
     # outcome is decided by the same rule as everything else.
     build_result: Optional[_builds.BuildResult] = None
     if ok and recipe.build_spec is not None:
-        if phase.ensure_prefix() is None:
+        if dispatcher.ensure_prefix() is None:
             executed.append(_undispatched(
-                InstallStep(label="build",
+                InstallStep(label="build", role=StepRole.BUILD,
                             argv=("internal", "resolve-env-prefix")),
                 Outcome.FAILED,
                 f"could not resolve $CONDA_PREFIX for env {effective!r}; "
@@ -1194,7 +1227,7 @@ def run_install(
             ok = False
         else:
             build_result = _builds.run_build_spec(
-                recipe.build_spec, phase.prefix,
+                recipe.build_spec, dispatcher.prefix,
                 conda_binary=caps.conda_binary,
                 rebuild=rebuild,
                 conda_specs=list(recipe.conda_specs),
@@ -1205,6 +1238,7 @@ def run_install(
             if build_result.preflight_errors:
                 executed.append(_undispatched(
                     InstallStep(label="build:preflight",
+                                role=StepRole.BUILD,
                                 argv=("preflight",)),
                     Outcome.FAILED,
                     "\n".join(build_result.preflight_errors)))
@@ -1218,7 +1252,7 @@ def run_install(
                     ok = False
 
     if ok and verify_steps:
-        _run_phase(verify_steps, phase, tag="verify", executed=executed)
+        _run_steps(verify_steps, dispatcher, tag="verify", executed=executed)
 
     # DERIVED, not tracked alongside.  A separate `succeeded` bool was
     # what let the word printed to the user disagree with the verdict --
@@ -1250,6 +1284,7 @@ __all__ = [
     "pip_step_for",
     "verify_step_for",
     "InstallStep",
+    "StepRole",
     "Outcome",
     "run_step",
     "OUTPUT_LIMIT",

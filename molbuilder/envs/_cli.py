@@ -1440,7 +1440,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # The block above already printed preflight_errors loudly, so
         # the recap still skips it (avoiding duplication).
         for step in result.steps:
-            if step.label.startswith("build:"):
+            if step.role is _install.StepRole.BUILD:
                 continue
             # The OUTCOME, not just the exit code: a step that never
             # dispatched has no rc, and "rc=None" told the reader

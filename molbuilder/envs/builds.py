@@ -448,10 +448,20 @@ def _detect_compute_cap(override: Optional[str] = None) -> Optional[str]:
     """Detect the host GPU's compute capability via ``nvidia-smi``.
 
     Returns the capability as a dotted string (``"8.0"``) or ``None``
-    if no GPU is reachable.  Honours an explicit override (used by
-    :data:`MOLBUILDER_CUDA_CC` to force a build target even on the
-    wrong host).
+    if no GPU is reachable.
+
+    ``MOLBUILDER_CUDA_CC`` forces a build target even on a host with no
+    visible GPU -- which is what the preflight message tells the user to set
+    when detection fails, and what `install-env.sh` documents.  It was read
+    NOWHERE until 2026-09-12: the only path that could carry it was a
+    `cuda_cc_override` parameter no caller ever passed, so a user on a
+    Hopper/Ada host set it, was not told otherwise, and still got an sm_80
+    binary.  Read here, beside `_default_jobs`'s own override, so every
+    caller gets it.
     """
+    env_cc = os.environ.get("MOLBUILDER_CUDA_CC", "").strip()
+    if env_cc:
+        return env_cc
     if override:
         return override
     smi = shutil.which("nvidia-smi")
@@ -846,6 +856,22 @@ class PreflightReport:
     findings: Tuple[Finding, ...] = ()
 
 
+#: Everything that legitimately lives directly under the artifact root,
+#: besides one directory per component.  ONE list, so the creator and the
+#: auditor cannot disagree: the three scratch dirs are created by
+#: `_run_build_phase`'s wrapper (which pins TMPDIR / CCACHE_DIR /
+#: XDG_CACHE_HOME under the artifact root so a single `conda env remove`
+#: cleans everything up) and were missing from the expected set -- so EVERY
+#: resume of a source build reported them as "stale entries from a prior
+#: failed install", and the remedy that warning prints, `--rebuild=all`,
+#: deletes the ccache that makes a rebuild cheap.
+_ARTIFACT_ROOT_ENTRIES = frozenset({
+    "src", "build", "logs", ".sentinels", ".toolchain-fingerprint",
+    # created by the build wrapper -- see `_run_build_phase`
+    ".tmp", ".ccache", ".cache",
+})
+
+
 def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
     """Return names of artifact dirs that are not in the current spec.
 
@@ -869,10 +895,7 @@ def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
     paths = resolve_paths(spec, env_prefix)
     if not paths.root.exists():
         return []
-    expected = {c.name for c in spec.components} | {
-        "src", "build", "logs", ".sentinels",
-        ".toolchain-fingerprint",
-    }
+    expected = {c.name for c in spec.components} | _ARTIFACT_ROOT_ENTRIES
     stale: List[str] = []
     try:
         for entry in sorted(paths.root.iterdir()):
@@ -1542,12 +1565,13 @@ def plan_build_spec(spec: BuildSpec,
     return paths, fingerprint, steps
 
 
-def _run_phase(step: BuildStep,
+def _run_build_phase(step: BuildStep,
                *,
                env_prefix: str,
                conda_binary: str,
                timeout: int = 7200) -> BuildStepResult:
-    """Run one phase under ``conda run -n <env>`` with live output.
+    """Run ONE build phase with live output, under an activate-equivalent
+    bash wrapper (not ``conda run`` -- see the comment below).
 
     Output streams to stderr line-by-line so the user can see the
     build's progress (cmake compile lines, ninja step counts, git
@@ -1630,7 +1654,7 @@ def _run_phase(step: BuildStep,
     )
     if rc is None and not combined:
         # run_streaming returned launch failure with no captured output;
-        # _run_phase still has to surface something to the caller.
+        # _run_build_phase still has to surface something to the caller.
         combined = "failed to launch (no output)"
     trimmed = combined[-4096:]  # tail -- cmake compile errors tend to be terminal
     status = "ok" if rc == 0 else "fail"
@@ -1825,7 +1849,7 @@ def run_build_spec(spec: BuildSpec,
             if src_dir.exists():
                 shutil.rmtree(src_dir, ignore_errors=True)
             src_dir.parent.mkdir(parents=True, exist_ok=True)
-        result = _run_phase(step,
+        result = _run_build_phase(step,
                             env_prefix=env_prefix,
                             conda_binary=conda_binary)
         executed.append(result)
