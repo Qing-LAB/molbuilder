@@ -12,13 +12,15 @@ activation, two copies of that wrapper had drifted four ways, and the one
 dispatch that did NOT have the rewrite (`_dispatch.run_in_env`, the tool router)
 simply failed on the machines the rewrite existed for.
 
-This machine has only conda, so mamba 1.x -- the reason the wrapper exists -- is
-reproduced here by a fake manager that emits its signature.
+conda, mamba and micromamba take the same command in the same shape, so there
+is one way in and nothing per-manager to simulate.  molbuilder used to carry a
+re-implementation of `conda activate` as a fallback for one bug in mamba 1.x;
+that is deleted -- a manager whose `run` does not work is one to replace, and
+the failure now says so and names `envs.manager`.
 """
 from __future__ import annotations
 
 import os
-import stat
 
 import pytest
 
@@ -26,19 +28,12 @@ from molbuilder.envs import builds as B
 
 
 @pytest.fixture(autouse=True)
-def _forget_the_measurement():
-    """The broken-manager measurement is per PROCESS, so a test that provokes
-    it would otherwise decide the next test's dispatch."""
+def _forget_the_broken_manager():
+    """The fallback is remembered per PROCESS, so a test that provokes it would
+    otherwise decide the next test's dispatch."""
     B.reset_manager_run_measurement()
     yield
     B.reset_manager_run_measurement()
-
-
-def _fake_manager(tmp_path, name, body):
-    p = tmp_path / name
-    p.write_text("#!/bin/sh\n" + body)
-    p.chmod(p.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    return str(p)
 
 
 def _prefix(tmp_path):
@@ -92,103 +87,65 @@ def test_the_env_is_addressed_by_the_prefix_the_registry_gave_us(
     assert launched[0][2:4] == ("--prefix", str(out_of_tree)), launched[0]
 
 
-def test_the_manager_s_own_command_is_not_wrapped(tmp_path, monkeypatch):
+def test_the_manager_s_own_command_goes_through_untouched(tmp_path,
+                                                          monkeypatch):
     """`conda create` / `conda install -n ...` ARE the manager's command: there
-    is no env to enter yet and nothing to carry.  Wrapping `argv[5:]` of a
-    create command would produce a plausible shell string that runs the wrong
-    thing, so the wrapper refuses them outright."""
+    is no env to enter yet, so nothing is re-addressed and nothing is added."""
     launched = []
     monkeypatch.setattr(B, "run_streaming",
-                        lambda argv, **kw: (launched.append(tuple(argv)), (0, ""))[1])
+                        lambda argv, **kw: (launched.append(tuple(argv)),
+                                            (0, ""))[1])
     create = ("/m", "create", "-n", "someenv", "-y", "python=3.12", "pip")
 
     B.dispatch_into_env(create, _prefix(tmp_path))
 
     assert launched[0] == create
-    with pytest.raises(ValueError):
-        B.activation_wrapper(create, _prefix(tmp_path))
 
 
-# --------------------------------------------------------------------------- #
-#  M4 -- a manager's bug is measured, then worked around                      #
-# --------------------------------------------------------------------------- #
-
-def test_a_mamba_1x_run_stub_is_measured_and_the_step_still_succeeds(
-        tmp_path, capsys):
-    """THE CLUSTER CASE, reproduced.  mamba 1.x's `run` writes a stub that does
-    ``exec -- "$@"``; bash rejects `--` and the dispatch dies on line 5 of
-    mamba's own file, BEFORE the inner command starts -- which is what makes
-    retrying safe rather than a second half-install.
-
-    No mamba on this machine (conda 26.7.1 only), so the manager is faked at
-    exactly that failure.  The step must still run, through the activation
-    fallback, and the real python must be what answers.
-    """
-    broken = _fake_manager(
-        tmp_path, "mamba",
-        'echo "/tmp/mamba-stub.sh: line 5: exec: --: invalid option" >&2\n'
-        "exit 126\n")
-    prefix = _prefix(tmp_path)
-    argv = B.conda_run_argv(broken, "someenv",
-                            "python", "-c", "print('the step ran')")
-
-    rc, out = B.dispatch_into_env(argv, prefix, sink=None)
-
-    assert rc == 0, f"the step did not survive a broken manager `run`:\n{out}"
-    assert "the step ran" in out, out
-    assert B.manager_run_unusable() is True, (
-        "the failure was worked around but not remembered, so every later step "
-        "pays the same wasted launch")
-
-
-def test_once_measured_the_broken_manager_is_not_tried_again(
+def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
         tmp_path, monkeypatch):
-    """One wasted launch per process, not per step."""
+    """mamba 1.x's `run` writes a shell stub containing ``exec -- "$@"``, and
+    bash refuses `--`, so the command never starts.  2.x fixed that line;
+    everything else about the two is identical.
+
+    The fallback is unconditional protection, so molbuilder does not need to
+    know or care which version it is talking to -- and this test does not
+    either.  It hands the door that failure once and checks it switched.
+
+    No fake binary: the door's dependency is `run_streaming`, so saying "this
+    is what came back" is the whole setup.  There used to be a shell script
+    per case, a PATH and a log to read the answer out of, for this.
+    """
     attempts = []
 
     def fake_stream(argv, **kw):
         attempts.append(tuple(argv))
-        if "bash" not in argv[0]:
-            return (126, "sh: line 5: exec: --: invalid option")
-        return (0, "ok")
+        if argv[0] == "bash":
+            return (0, "the step ran")
+        return (126, "mamba-stub.sh: line 5: exec: --: invalid option")
 
     monkeypatch.setattr(B, "run_streaming", fake_stream)
-    prefix = _prefix(tmp_path)
     argv = B.conda_run_argv("/m/mamba", "someenv", "python", "-V")
 
-    B.dispatch_into_env(argv, prefix)
-    first = len(attempts)
-    B.dispatch_into_env(argv, prefix)
+    rc, out = B.dispatch_into_env(argv, _prefix(tmp_path))
 
-    assert first == 2, f"expected native-then-wrapper, got {attempts}"
-    assert len(attempts) == 3, (
-        f"the second step retried the manager that was already measured "
-        f"broken: {attempts}")
-    assert attempts[-1][0] == "bash"
+    assert (rc, out) == (0, "the step ran")
+    assert attempts[0][:2] == ("/m/mamba", "run"), attempts
+    assert attempts[1][0] == "bash", "it did not fall back"
+    assert B.manager_run_unusable() is True, (
+        "measured but not remembered -- every later step pays the same "
+        "wasted launch")
 
+    # and a step that fails for its OWN reasons is not retried: a pip install
+    # that ran and failed must not run a second time.
+    B.reset_manager_run_measurement()
+    attempts.clear()
+    monkeypatch.setattr(B, "run_streaming",
+                        lambda argv, **kw: (attempts.append(tuple(argv)),
+                                            (1, "ERROR: no such package"))[1])
+    B.dispatch_into_env(argv, _prefix(tmp_path))
+    assert len(attempts) == 1, attempts
 
-def test_a_real_failure_is_not_mistaken_for_the_stub_bug(tmp_path, monkeypatch):
-    """A step that genuinely fails must NOT be retried through the wrapper --
-    that would run a failed pip install twice and call the manager broken."""
-    attempts = []
-
-    def fake_stream(argv, **kw):
-        attempts.append(tuple(argv))
-        return (1, "ERROR: Could not find a version that satisfies nosuchpkg")
-
-    monkeypatch.setattr(B, "run_streaming", fake_stream)
-    rc, _out = B.dispatch_into_env(
-        B.conda_run_argv("/m", "someenv", "python", "-m", "pip", "install", "x"),
-        _prefix(tmp_path))
-
-    assert rc == 1
-    assert len(attempts) == 1, f"a real failure was retried: {attempts}"
-    assert B.manager_run_unusable() is False
-
-
-# --------------------------------------------------------------------------- #
-#  The environment a step runs in                                             #
-# --------------------------------------------------------------------------- #
 
 def test_every_step_gets_the_clean_slate_only_builds_used_to_get(
         tmp_path, monkeypatch):
@@ -247,61 +204,3 @@ def test_run_step_hands_that_environment_to_the_door(tmp_path, monkeypatch):
 #  S17 -- the tool router gets the same answer                                #
 # --------------------------------------------------------------------------- #
 
-def test_the_tool_router_survives_a_broken_manager_too(tmp_path, monkeypatch):
-    """S17, closed.  `run_in_env` dispatched `<mgr> run` with no workaround,
-    and its own comment recorded why: the workaround needed a prefix, and
-    resolving one costs up to four manager subprocesses -- too much on a path
-    walked once per structure build.  So on a mamba-1.x host `run_tool("tleap",
-    ...)` died with a shell error about mamba's generated file, naming nothing
-    to do with AmberTools.
-
-    Measuring instead of predicting resolves that trade: the prefix is resolved
-    only AFTER the stub has actually been seen, so a working manager still pays
-    exactly one subprocess and the broken one pays the resolution once.
-    """
-    from molbuilder.diagnostics import Capabilities, set_capabilities
-    from molbuilder.envs import _dispatch, install as I
-
-    broken = _fake_manager(
-        tmp_path, "mamba",
-        'echo "/tmp/stub.sh: line 5: exec: --: invalid option" >&2\nexit 126\n')
-    prefix = _prefix(tmp_path)
-    set_capabilities(Capabilities(runtime_config={}, conda_binary=broken,
-                                 conda_envs=frozenset({"molbuilder-MDtools"})))
-    monkeypatch.setattr(I, "_env_prefix", lambda name, binary: prefix)
-
-    done = _dispatch.run_in_env(
-        "molbuilder-MDtools",
-        ["python", "-c", "print('tleap would have run')"],
-        capture_output=True, text=True, timeout=120)
-
-    assert done.returncode == 0, (
-        f"the tool call died on the manager's stub:\n{done.stdout}{done.stderr}")
-    assert "tleap would have run" in done.stdout
-
-
-def test_the_tool_router_does_not_retry_an_ordinary_tool_failure(
-        tmp_path, monkeypatch):
-    """A tool that exits non-zero for its own reasons is reported, not run
-    twice -- a retried `tleap` would redo whatever the first one did."""
-    from molbuilder.diagnostics import Capabilities, set_capabilities
-    from molbuilder.envs import _dispatch
-
-    calls = []
-    mgr = _fake_manager(tmp_path, "conda", 'echo "tleap: bad input" >&2\nexit 1\n')
-    set_capabilities(Capabilities(runtime_config={}, conda_binary=mgr,
-                                 conda_envs=frozenset({"molbuilder-MDtools"})))
-    real_run = _dispatch.subprocess.run
-
-    def counting(argv, **kw):
-        calls.append(tuple(argv))
-        return real_run(argv, **kw)
-
-    monkeypatch.setattr(_dispatch.subprocess, "run", counting)
-
-    done = _dispatch.run_in_env("molbuilder-MDtools", ["tleap"],
-                                capture_output=True, text=True, timeout=120)
-
-    assert done.returncode == 1
-    assert len(calls) == 1, f"an ordinary failure was retried: {calls}"
-    assert B.manager_run_unusable() is False
