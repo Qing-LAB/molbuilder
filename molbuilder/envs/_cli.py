@@ -881,26 +881,32 @@ def _render_validation(report: "_validate.ValidationReport",
     click.echo(f"Validating {report.recipe_name}:")
     longest = max(len(p.name) for p in report.probes)
     for probe in report.probes:
-        # NOTE over FAIL for an advisory probe.  MPS being absent does not
-        # make the env unusable -- the probe's own docstring says so -- and
-        # printing FAIL beside a verdict that ignores it is two statements
-        # about one fact.
-        tag = "PASS" if probe.passed else ("NOTE" if probe.advisory
-                                           else "FAIL")
-        click.echo(f"  [{tag}] {probe.name.ljust(longest)}  {probe.detail}")
+        # `probe.tag` -- the same word the live line printed while this ran.
+        # NOTE over FAIL for an advisory probe: MPS being absent does not make
+        # the env unusable, and printing FAIL beside a verdict that ignores it
+        # is two statements about one fact.
+        click.echo(f"  [{probe.tag}] {probe.name.ljust(longest)}  "
+                   f"{probe.detail}")
         if not probe.passed and show_output_on_fail and probe.output:
             for line in probe.output.splitlines()[-20:]:
                 click.echo(f"        {line}")
-    n_pass = sum(1 for p in report.probes if p.passed)
-    n_total = len(report.probes)
+    # COUNTED THE WAY THE VERDICT COUNTS (E7).  `all_passed` ignores an
+    # advisory that did not pass; this counted it as a failure, so one real
+    # failure beside an absent MPS printed "4/6 checks passed" -- two rules for
+    # one question, and the number was the one nobody had checked.
+    required = [p for p in report.probes if not p.advisory]
+    n_pass = sum(1 for p in required if p.passed)
+    n_total = len(required)
     advisories = [p for p in report.probes if p.advisory and not p.passed]
     if report.all_passed:
         note = (f" ({len(advisories)} advisory: "
                 f"{', '.join(p.name for p in advisories)})"
                 if advisories else "")
-        click.echo(f"all {n_total} checks passed{note}")
+        click.echo(f"all {n_total} required checks passed{note}")
         return 0
-    click.echo(f"{n_pass}/{n_total} checks passed -- env not production-ready",
+    click.echo(f"{n_pass}/{n_total} required checks passed -- env not "
+               f"production-ready{(' (' + str(len(advisories)) + ' advisory)')
+                                  if advisories else ''}",
                err=True)
     return 1
 
@@ -1611,7 +1617,11 @@ def _install_one(recipe, effective: str, caps, *,
             # The OUTCOME, not just the exit code: a step that never
             # dispatched has no rc, and "rc=None" told the reader
             # nothing about whether it was skipped or refused.
-            verdict = (step.outcome.value if step.outcome is not None
+            # `word`, the same string the live line prints -- see
+            # `Outcome.word`.  This said `.value` ("degraded") while the live
+            # line said "UNAVAILABLE -- optional, continuing" about the same
+            # step: one run, two vocabularies (H5).
+            verdict = (step.outcome.word if step.outcome is not None
                        else "not run")
             rc = ("" if step.returncode is None
                   else f", rc={step.returncode}")

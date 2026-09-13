@@ -109,7 +109,7 @@ def test_the_gate_and_the_state_machine_now_agree(tmp_path, monkeypatch):
 
     assert caps.env_available("mb-gpu") is True, (
         "the gate still cannot see an env the state machine calls PRESENT")
-    assert state.state_label == "PRESENT", state.describe()
+    assert state.state is I.EnvPresence.PRESENT, state.describe()
     assert caps.env_prefix("mb-gpu") == state.prefix == str(out_of_tree)
 
 
@@ -247,6 +247,6 @@ def test_the_probe_sees_an_out_of_tree_env_on_EITHER_kind_of_manager(tmp_path):
         mgr = _registry(tmp_path, [root, out_of_tree],
                         base=root, details=details)
         state = I.probe_env_state("mb-gpu", mgr)
-        assert state.state_label == "PRESENT", (
+        assert state.state is I.EnvPresence.PRESENT, (
             f"envs_details={details}: {state.describe()}")
         assert state.prefix == str(out_of_tree)

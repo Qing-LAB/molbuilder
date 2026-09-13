@@ -100,6 +100,20 @@ class ProbeResult:
     output: str = ""
     advisory: bool = False
 
+    @property
+    def tag(self) -> str:
+        """PASS / NOTE / FAIL -- the ONE word this probe is reported under.
+
+        There were two rules.  The live line said ``FAIL`` for an advisory
+        probe and the table beneath it said ``[NOTE]`` for the same probe --
+        and the table's own comment forbids exactly that: *"printing FAIL
+        beside a verdict that ignores it is two statements about one fact"*
+        (H11).  It lives on the result, so the two readers cannot disagree.
+        """
+        if self.passed:
+            return "PASS"
+        return "NOTE" if self.advisory else "FAIL"
+
 
 @dataclass(frozen=True)
 class ValidationReport:
@@ -607,7 +621,7 @@ def validate_recipe(recipe_name: str, env_prefix: str,
         elapsed = time.monotonic() - start
         results.append(result)
         if not quiet:
-            tag = "PASS" if result.passed else "FAIL"
+            tag = result.tag
             sys.stderr.write(
                 f"[{i}/{total}] {slug}: {tag} ({elapsed:.1f}s) "
                 f"-- {result.detail}\n"

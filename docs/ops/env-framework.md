@@ -99,6 +99,13 @@ closed set of answers. Keeping them apart is the point: one is about the env
 
 ### 2.1 `EnvState` — is this env installable-into?
 
+**The five are an enum (`EnvPresence`), and the label is derived from it**
+*(2026-09-13)*. They were a display string that `can_resume` compared with
+`==`, so renaming one for clarity would have turned it False — the same shape
+`StepRole` exists to remove, on the other machine, with the same consequence:
+the installer reads *"not resumable, not wreckage"* as "go ahead and create".
+
+
 Three cheap observations, combined into five states by `probe_env_state`. It is
 a pure read, taken before any subprocess work, so a half-broken env is
 diagnosed in a second instead of failing ten minutes into a `conda create`.
@@ -165,6 +172,11 @@ optional check and aborted an install it should have survived, and a recovered
 step was reported under the command that had failed.
 
 Two predicates read these states, and they answer **different questions**:
+
+**One vocabulary for the five, on the state** *(2026-09-13)*: `Outcome.word` is
+what both the live line and the recap print, with `Outcome.note` adding the
+*why* where there is room. They used to disagree — `UNAVAILABLE -- optional,
+continuing` live, `degraded` in the recap of the same step.
 
 | | asks about | answer for `DEGRADED` |
 |---|---|---|

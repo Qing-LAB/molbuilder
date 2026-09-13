@@ -237,6 +237,28 @@ class Outcome(str, Enum):
         """
         return self is Outcome.FAILED
 
+    @property
+    def word(self) -> str:
+        """The ONE name this outcome is printed under.
+
+        There were two.  The live line said ``UNAVAILABLE -- optional,
+        continuing`` while the recap of the same step said ``degraded``, and
+        ``OK via the declared alternative`` was ``recovered`` a few lines
+        later -- one run, two vocabularies, and a reader comparing them has to
+        work out that they are the same fact (H5).  The word lives on the
+        state, so a surface cannot invent a second one.
+        """
+        return self.name
+
+    @property
+    def note(self) -> str:
+        """Why this outcome is not simply OK -- for the live line, which has
+        room for it.  Empty where the word says everything."""
+        return {
+            Outcome.RECOVERED: "via the declared alternative",
+            Outcome.DEGRADED: "optional, continuing",
+        }.get(self, "")
+
 
 def run_step(
     step: InstallStep,
@@ -681,6 +703,17 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
 # --------------------------------------------------------------------- #
 
 
+class EnvPresence(str, Enum):
+    """Is this env installable-into?  Five states, exhaustive over the three
+    observations `probe_env_state` makes (`env-framework.md` § 2.1)."""
+
+    FRESH = "FRESH"        #: not registered, no directory -- create it
+    PRESENT = "PRESENT"    #: registered, and the directory it names is an env
+    ORPHAN = "ORPHAN"      #: a directory the registry does not know about
+    GHOST = "GHOST"        #: a registry entry whose directory is gone
+    BROKEN = "BROKEN"      #: a directory that is not an env
+
+
 @dataclass(frozen=True)
 class EnvState:
     """Result of probing the conda env's current state.
@@ -721,22 +754,30 @@ class EnvState:
     manager: Optional[str] = None
 
     @property
-    def state_label(self) -> str:
-        """One-word classification."""
+    def state(self) -> "EnvPresence":
+        """Which of the five states this env is in -- the classification, made
+        ONCE and answered as an enum.
+
+        It used to be a display STRING, and `can_resume` compared that string
+        to ``"PRESENT"``: renaming a label for clarity would have turned it
+        False, which the code itself calls *"the worst answer for an env that
+        is already wreckage"*, and four sites branched on it (H7).  Same shape
+        `StepRole` was introduced to remove, on the other state machine.
+        """
         reg = self.listed_in_registry
         dir_ok = self.dir_exists and self.has_conda_meta
         if not reg and not self.dir_exists:
-            return "FRESH"
+            return EnvPresence.FRESH
         if reg and dir_ok:
-            return "PRESENT"
+            return EnvPresence.PRESENT
         if not reg and dir_ok:
-            return "ORPHAN"
+            return EnvPresence.ORPHAN
         if reg and not self.dir_exists:
-            return "GHOST"
+            return EnvPresence.GHOST
         if self.dir_exists and not self.has_conda_meta:
-            return "BROKEN"
+            return EnvPresence.BROKEN
         # UNREACHABLE over all eight combinations of the three observations,
-        # and that exhaustivity is load-bearing rather than tidy: a label
+        # and that exhaustivity is load-bearing rather than tidy: a state
         # nothing recognises answers False to BOTH `can_resume` and
         # `needs_cleanup`, and the installer reads that pair as "go ahead and
         # create" -- the worst answer for an env that is already wreckage.
@@ -752,18 +793,24 @@ class EnvState:
             f"can_resume, needs_cleanup and describe()")
 
     @property
+    def state_label(self) -> str:
+        """The state's name, for display.  Derived, so it cannot disagree."""
+        return self.state.value
+
+    @property
     def can_resume(self) -> bool:
         """``conda create`` can be skipped and downstream phases run."""
-        return self.state_label == "PRESENT"
+        return self.state is EnvPresence.PRESENT
 
     @property
     def needs_cleanup(self) -> bool:
         """User should run ``--clean`` or manually fix before installing."""
-        return self.state_label in ("ORPHAN", "GHOST", "BROKEN")
+        return self.state in (EnvPresence.ORPHAN, EnvPresence.GHOST,
+                              EnvPresence.BROKEN)
 
     def describe(self) -> str:
         """Multi-line human description of the state + recommendation."""
-        s = self.state_label
+        s = self.state
         lines = [
             f"  Env name:           {self.name}",
             f"  Registry lists it:  {'yes' if self.listed_in_registry else 'no'}",
@@ -772,22 +819,22 @@ class EnvState:
         ]
         if self.prefix:
             lines.append(f"  Prefix path:        {self.prefix}")
-        lines.append(f"  State:              {s}")
-        if s == "FRESH":
+        lines.append(f"  State:              {s.value}")
+        if s is EnvPresence.FRESH:
             lines.append("  → conda create will run (fresh install).")
-        elif s == "PRESENT":
+        elif s is EnvPresence.PRESENT:
             lines.append("  → conda create will be SKIPPED; install resumes from this env.")
-        elif s == "ORPHAN":
+        elif s is EnvPresence.ORPHAN:
             lines.append("  → ORPHAN: directory exists but conda's registry doesn't")
             lines.append("    track it.  conda create will refuse with `prefix already")
             lines.append("    exists`.  RECOMMENDED: re-run with --clean to wipe the")
             lines.append("    directory and start fresh.")
-        elif s == "GHOST":
+        elif s is EnvPresence.GHOST:
             lines.append("  → GHOST: the registry lists this env but the directory")
             lines.append("    it names is gone.  Fix manually with:")
             lines.append(f"      {self.remove_cmd()}")
             lines.append("    or re-run with --clean which will do the same thing.")
-        elif s == "BROKEN":
+        elif s is EnvPresence.BROKEN:
             lines.append("  → BROKEN: directory exists but is missing conda-meta/, so")
             lines.append("    it's not a real conda env.  Almost certainly residue from")
             lines.append("    a previous failed install.  RECOMMENDED: re-run with")
@@ -1027,20 +1074,12 @@ def _undispatched(step: InstallStep, outcome: Outcome,
 #: The word the user sees for each outcome.  ONE mapping, so a step can
 #: never be announced in a word that contradicts its verdict: two
 #: failures used to print "SKIPPED" while aborting the install.
-_OUTCOME_WORD = {
-    Outcome.OK: "OK",
-    Outcome.RECOVERED: "OK via the declared alternative",
-    Outcome.DEGRADED: "UNAVAILABLE -- optional, continuing",
-    Outcome.FAILED: "FAILED",
-    Outcome.SKIPPED: "SKIPPED",
-}
-
-
 def _report(tag: str, done: InstallStep) -> None:
     """Announce one finished step on stderr."""
     rc = "" if done.returncode is None else f" (rc={done.returncode})"
+    note = f" -- {done.outcome.note}" if done.outcome.note else ""
     sys.stderr.write(f"[{tag}] {done.label}: "
-                     f"{_OUTCOME_WORD[done.outcome]}{rc}\n")
+                     f"{done.outcome.word}{note}{rc}\n")
     # A step that never dispatched streamed nothing, so its reason has
     # only been recorded -- say it here or the user sees a bare verdict.
     if done.returncode is None and done.outcome is not Outcome.OK:

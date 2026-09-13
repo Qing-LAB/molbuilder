@@ -988,7 +988,7 @@ def test_an_env_outside_envs_dirs_is_PRESENT_not_GHOST(monkeypatch, tmp_path):
     monkeypatch.setattr(install.subprocess, "run", fake_run)
     state = install.probe_env_state("mb-out-of-tree", "/fake/conda")
 
-    assert state.state_label == "PRESENT", (
+    assert state.state is install.EnvPresence.PRESENT, (
         f"a healthy env outside envs_dirs reported {state.state_label}; "
         f"prefix={state.prefix}")
     assert state.can_resume is True
@@ -1017,7 +1017,7 @@ def test_a_registry_entry_whose_directory_is_gone_is_still_GHOST(
     monkeypatch.setattr(install.subprocess, "run", fake_run)
     state = install.probe_env_state("was-here", "/fake/conda")
 
-    assert state.state_label == "GHOST", state.describe()
+    assert state.state is install.EnvPresence.GHOST, state.describe()
     assert state.needs_cleanup is True
     assert state.can_resume is False
     # M3: the remedy it prints names the detected manager.
@@ -1069,6 +1069,44 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
     # M3: the manual route names the DETECTED manager, not a literal `conda`.
     assert "/fake/conda env remove -n molbuilder -y" in result.output, \
         result.output
+
+
+def test_an_advisory_probe_is_one_word_and_out_of_the_count(capsys):
+    """H11 and E7, which are one confusion seen from two sides.
+
+    An advisory probe is one the env is usable without -- MPS being absent is
+    the example.  The live line called it FAIL while the table beneath called
+    it NOTE (two words for one fact), and the summary counted it as a failure
+    while the VERDICT ignored it -- so a run with one real failure beside an
+    absent MPS printed "4/6 checks passed" and a reader could not reconcile
+    the number with the outcome.
+
+    One word, from the result; one counting rule, the verdict's.
+    """
+    from molbuilder.envs import _cli
+    from molbuilder.envs.validate import ProbeResult, ValidationReport
+
+    report = ValidationReport(
+        recipe_name="molbuilder-siesta-gpu", env_prefix="/prefix",
+        probes=(
+            ProbeResult(name="ctest", passed=True, detail="12 passed"),
+            ProbeResult(name="elpa", passed=True, detail="ok"),
+            ProbeResult(name="gpu-fallback", passed=False,
+                        detail="ran on CPU"),
+            ProbeResult(name="mps", passed=False, detail="no MPS daemon",
+                        advisory=True),
+        ))
+
+    assert [p.tag for p in report.probes] == ["PASS", "PASS", "FAIL", "NOTE"]
+
+    code = _cli._render_validation(report, show_output_on_fail=False)
+    out = capsys.readouterr()
+    printed = out.out + out.err
+
+    assert code == 1, "a real failure must fail the command"
+    assert "2/3 required checks passed" in printed, printed
+    assert "1 advisory" in printed, printed
+    assert "[NOTE] mps" in printed.replace("  ", " ") or "[NOTE]" in printed
 
 
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
