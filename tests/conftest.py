@@ -291,6 +291,83 @@ def _config_fingerprint():
     return out
 
 
+#: The repository this suite lives in -- resolved once, before any fixture
+#: moves a working directory.
+_REPO = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _worktree_fingerprint():
+    """`git status --porcelain` for the repo, as the suite sees it.
+
+    Cheap (one git call) and it catches the whole class: a test that writes
+    into the checkout, and -- the reason this exists -- a test that reaches a
+    real ``git checkout --force`` or ``git clean -fdq``.  `checkpoint.py`
+    issues both, always with an explicit `cwd`, so they are contained as long
+    as every test builds its checkpoint under `tmp_path`.  "As long as" is a
+    claim; this measures it.
+    """
+    import subprocess as _sp
+    try:
+        cp = _sp.run(["git", "status", "--porcelain"], cwd=str(_REPO),
+                     capture_output=True, text=True, timeout=60)
+    except (OSError, _sp.SubprocessError):
+        return None
+    return cp.stdout if cp.returncode == 0 else None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def the_suite_leaves_your_checkout_alone():
+    """No test may change the working tree it is running from.
+
+    `checkpoint.py` runs `git checkout --force --detach` and `git clean -fdq`
+    against a checkpoint's own directory.  A test that pointed one at the repo
+    -- or a stub that stopped applying while it did -- would discard
+    uncommitted work, which is the one loss nothing else here can undo.
+    """
+    before = _worktree_fingerprint()
+    yield
+    after = _worktree_fingerprint()
+    if before is not None and after is not None and before != after:
+        raise AssertionError(
+            "THE SUITE CHANGED THE GIT WORKING TREE.\n"
+            f"  before:\n{before}\n  after:\n{after}\n"
+            "A test wrote into the checkout, or reached a real `git checkout "
+            "--force` / `git clean -fdq`.  Checkpoints belong under "
+            "`tmp_path`.")
+
+
+@pytest.fixture(autouse=True)
+def the_suite_cannot_submit_a_job(tmp_path_factory, monkeypatch):
+    """A scheduler this suite can reach is a job this suite can submit.
+
+    Nothing here may queue work: the tests that exercise submission stub
+    `subprocess.run`, and a stub covers the one function the code calls today
+    -- `jobset/submit.py` also uses `Popen`, which the same stub does not
+    touch.  On this workstation `sbatch` does not exist so the difference is
+    invisible; on a login node it is a real job in a real queue, against the
+    rule that submission is manual, one at a time.
+
+    So the suite gets its own `sbatch` / `srun` / `salloc` FIRST on PATH, and
+    they refuse.  A test that means to check what molbuilder would submit
+    reads what these wrote down; a test that reaches one by accident fails
+    where it stands.
+    """
+    import stat as _stat
+
+    refusing = tmp_path_factory.getbasetemp() / "no-scheduler"
+    if not refusing.is_dir():
+        refusing.mkdir(parents=True, exist_ok=True)
+        for name in ("sbatch", "srun", "salloc"):
+            f = refusing / name
+            f.write_text(
+                "#!/bin/sh\n"
+                f'echo "the test suite must never run {name}: '
+                'a job would be queued for real" >&2\n'
+                "exit 97\n")
+            f.chmod(f.stat().st_mode | _stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{refusing}{os.pathsep}{os.environ['PATH']}")
+
+
 def _env_fingerprint():
     """What every conda env on this machine CONTAINS, cheaply.
 
