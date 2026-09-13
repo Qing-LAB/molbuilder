@@ -13,7 +13,7 @@ The package exposes three things:
 """
 from __future__ import annotations
 
-from ._dispatch import run_in_env, run_tool
+from ._dispatch import route, run_in_env, run_tool
 from .recipes import (
     BUILTIN_RECIPES,
     Recipe,
@@ -24,6 +24,7 @@ from .recipes import (
 __all__ = [
     "run_in_env",
     "run_tool",
+    "route",
     "Recipe",
     "BUILTIN_RECIPES",
     "recipe_by_name",

@@ -134,6 +134,25 @@ def run_tool(tool: str,
     Keyword args (``capture_output``, ``text``, ``cwd``, ``timeout``,
     ``env``, ...) flow through to ``subprocess.run`` unchanged.
     """
+    routed = route(tool, env=env)
+    if routed is None:
+        return subprocess.run([tool, *argv], **popen_kwargs)
+    return run_in_env(routed, [tool, *argv], **popen_kwargs)
+
+
+def route(tool: str, *, env: Optional[str] = None) -> Optional[str]:
+    """WHICH ENV should run `tool` -- the decision, with nothing dispatched.
+
+    Returns the env name, or ``None`` meaning *"run it from host PATH"*.
+    Raises :class:`FileNotFoundError` when neither is possible, naming every
+    candidate that was tried.
+
+    Split out of :func:`run_tool` on 2026-09-13.  The policy -- routed env
+    beats host PATH, an explicit env beats both -- is the thing worth being
+    sure of, and while it was tangled with the dispatch the only way to ask
+    was to run something: the tests built a fake manager, fake tools, a PATH
+    and a log file to read back one decision.  Now they ask.
+    """
     caps = get_capabilities()
 
     # (1) explicit env override
@@ -144,16 +163,18 @@ def run_tool(tool: str,
                 f"(asked for `{tool}`).  Available envs: "
                 f"{sorted(caps.conda_envs)}."
             )
-        return run_in_env(env, [tool, *argv], **popen_kwargs)
+        return env
 
-    # (2) routed env, if registered and available
+    # (2) routed env, if registered and available.  IT WINS OVER HOST PATH,
+    # which is what stops a stray system AmberTools in /usr/local/bin from
+    # silently shadowing the curated env the person prepared.
     routed = caps.routed_env(tool)
     if routed is not None:
-        return run_in_env(routed, [tool, *argv], **popen_kwargs)
+        return routed
 
     # (3) host PATH
     if shutil.which(tool):
-        return subprocess.run([tool, *argv], **popen_kwargs)
+        return None
 
     # (4) not reachable -- pick the most informative error
     routed_name = caps.env_for_tool(tool)
@@ -171,4 +192,4 @@ def run_tool(tool: str,
     )
 
 
-__all__ = ["run_in_env", "run_tool"]
+__all__ = ["route", "run_in_env", "run_tool"]
