@@ -461,6 +461,60 @@ def verify_step_for(recipe: Recipe, conda: str,
     )
 
 
+def pip_steps_for(recipe: Recipe, conda: str,
+                  env_name: str) -> List[InstallStep]:
+    """Every pip step for a recipe -- ONE translator, as § 4.2 already says.
+
+    The batch and the per-package steps were built inline in the planner, so
+    *what a plain pip install means* lived in one place and *what a special one
+    means* in another, and § 4.2's pseudocode named a `pip_steps_for` that did
+    not exist.  A future per-step policy would have had to be written twice.
+    """
+    plain = [p for p in recipe.pip_packages if p.is_plain()]
+    steps: List[InstallStep] = []
+    if plain:
+        steps.append(InstallStep(
+            label="pip install",
+            argv=pip_argv(conda, env_name, *(p.spec() for p in plain)),
+        ))
+    steps.extend(pip_step_for(pkg, conda, env_name)
+                 for pkg in recipe.pip_packages if not pkg.is_plain())
+    return steps
+
+
+def extra_steps_for(recipe: Recipe, conda: str,
+                    env_name: str) -> List[InstallStep]:
+    """What an ``extra_steps`` entry MEANS -- one place, per § 4.2.
+
+    It had no translator at all: the planner built the step, so there was
+    nowhere to say what an extra step is.
+    """
+    return [InstallStep(label="extra", role=StepRole.EXTRA,
+                        argv=conda_run_argv(conda, env_name, *extra))
+            for extra in recipe.extra_steps]
+
+
+def remove_step_for(env_name: str, conda: str) -> InstallStep:
+    """Removing an env is a STEP, like everything else the installer does.
+
+    `env-framework.md` § 5.4 records it as a defect rather than an exception:
+    `--clean`'s wipe was a bare `subprocess.run`, so it carried no `Outcome`
+    and no line in the result the verdict is derived from (§ 5.3) -- and it was
+    an edge path for one GPU recipe until it was opened to every recipe, which
+    promoted a private dispatch to the door `installation.md` calls *"the one
+    door"* for wiping any env.
+
+    ``--prefix`` is not used here: `conda env remove` addresses by name, and
+    the caller has already refused the case where that name is the env we are
+    running from (`installation.md` M5).
+    """
+    return InstallStep(
+        label=f"remove env {env_name}",
+        role=StepRole.CREATE,
+        argv=(conda, "env", "remove", "-n", env_name, "-y"),
+    )
+
+
 def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     """Build the step list without running anything."""
     steps: List[InstallStep] = []
@@ -482,20 +536,10 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     #   * ``source``   -> installed from the recorded URL, with the
     #                     indexed build as a fallback when the record
     #                     says the base is still required.
-    plain = [p for p in recipe.pip_packages if p.is_plain()]
-    if plain:
-        steps.append(InstallStep(
-            label="pip install",
-            argv=pip_argv(conda, env_name, *(p.spec() for p in plain)),
-        ))
-    steps.extend(pip_step_for(pkg, conda, env_name)
-                 for pkg in recipe.pip_packages if not pkg.is_plain())
+    steps.extend(pip_steps_for(recipe, conda, env_name))
 
     # Phase 3: extra dispatch-into-env steps.
-    for extra in recipe.extra_steps:
-        argv = conda_run_argv(conda, env_name, *extra)
-        steps.append(InstallStep(label="extra", role=StepRole.EXTRA,
-                                 argv=argv))
+    steps.extend(extra_steps_for(recipe, conda, env_name))
 
     # Phase 4: verify (only if the recipe declares one).
     verify = verify_step_for(recipe, conda, env_name)
@@ -1275,6 +1319,9 @@ __all__ = [
     # runs it, one rule decides what became of it.
     "conda_argv",
     "conda_run_argv",
+    "pip_steps_for",
+    "extra_steps_for",
+    "remove_step_for",
     "create_step_for",
     "conda_step_for",
     "pip_argv",

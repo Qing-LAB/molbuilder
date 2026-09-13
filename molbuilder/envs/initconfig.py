@@ -576,6 +576,16 @@ def init_config(activation: str,
     assuming either (user, 2026-09-12).  Declared, never detected: the same
     rule ``activation`` follows, for the same reason.
     """
+    # THE BLOCKERS FIRST.  `seeding_blockers()` holds the exact sentence for an
+    # unwritable config root -- and `bootstrap` prints `init-config` as the
+    # remedy -- while this function answered the same condition with a raw
+    # `PermissionError` traceback from `mkdir`.  That is the *"a remedy the
+    # program prints that it then refuses to run"* class this migration exists
+    # to close, arrived at from the inside (D1).
+    blockers = seeding_blockers()
+    if blockers:
+        raise RuntimeError("\n".join(blockers))
+
     steps = list(ensure_dirs())
     steps.append(seed_machine_config(activation, preamble, projects))
     if probe:

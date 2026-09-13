@@ -608,6 +608,23 @@ def _make_install_stub(succeeded_per_call=None):
     return _fake, calls
 
 
+def _spy_run_step(recorder):
+    """Record every step the CLI dispatches, and answer OK.
+
+    `run_step` is THE door (env-framework.md § 5), so recording there records
+    everything the installer does -- including the `--clean` wipe since D3.
+    """
+    from dataclasses import replace
+
+    from molbuilder.envs.install import Outcome
+
+    def _spy(step, **kw):
+        recorder.append([str(a) for a in step.argv])
+        return replace(step, returncode=0, output="", outcome=Outcome.OK)
+
+    return _spy
+
+
 def _make_runner():
     """CliRunner is brought in via Click."""
     from click.testing import CliRunner
@@ -793,14 +810,11 @@ def test_clean_removes_the_env_for_a_CONDA_ONLY_recipe(monkeypatch, tmp_path):
 
     ran: list = []
 
-    class _Done:
-        returncode = 0
-
-    def _fake_run(argv, **kw):
-        ran.append(list(argv))
-        return _Done()
-
-    monkeypatch.setattr(_cli.subprocess, "run", _fake_run)
+    # THE DOOR, not a private dispatch: since D3 the wipe is an `InstallStep`
+    # through `run_step`, so that is where a test watches for it.  This used to
+    # spy on `_cli.subprocess.run`, which the surface no longer has -- and a
+    # spy on a door nothing uses is a test that passes for nothing.
+    monkeypatch.setattr(_cli._install, "run_step", _spy_run_step(ran))
     monkeypatch.setattr(_cli._install, "_env_prefix",
                         lambda name, binary: str(tmp_path / "prefix"))
     # `probe_env_state` runs its OWN conda subprocesses; with a fake binary it
@@ -821,7 +835,7 @@ def test_clean_removes_the_env_for_a_CONDA_ONLY_recipe(monkeypatch, tmp_path):
     removals = [a for a in ran if "remove" in a]
     assert removals, (
         f"--clean on a conda-only recipe ran no env removal; it was accepted "
-        f"and wiped nothing.\nsubprocess calls: {ran}\n{result.output}")
+        f"and wiped nothing.\nsteps dispatched: {ran}\n{result.output}")
     assert removals[0][:4] == ["/fake/conda", "env", "remove", "-n"], removals[0]
     assert "molbuilder-pySCF" in removals[0]
 
@@ -925,15 +939,7 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
     from molbuilder.envs.install import EnvState
 
     ran: list = []
-
-    class _Done:
-        returncode = 0
-
-    def _fake_run(argv, **kw):
-        ran.append(list(argv))
-        return _Done()
-
-    monkeypatch.setattr(_cli.subprocess, "run", _fake_run)
+    monkeypatch.setattr(_cli._install, "run_step", _spy_run_step(ran))
     # The real condition, not a contrived one: the host env's prefix IS this
     # interpreter's prefix.  `_env_prefix` and the probe both answer with it.
     monkeypatch.setattr(_cli._install, "_env_prefix",

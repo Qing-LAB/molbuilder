@@ -233,10 +233,9 @@ def test_after_clean_the_stale_reading_is_DROPPED_and_create_still_runs(
 
     monkeypatch.setattr(_cli._install, "probe_env_state", sequenced)
     monkeypatch.setattr(I, "probe_env_state", sequenced)
-    monkeypatch.setattr(_cli.subprocess, "run",
-                        lambda argv, **kw: type(
-                            "R", (), {"returncode": 0, "stdout": "",
-                                      "stderr": ""})())
+    # No separate stub for the wipe: since D3 it is an `InstallStep` like the
+    # rest, so the `dispatch_into_env` recorder below sees it too -- which is
+    # the point of putting it through the one door.
     monkeypatch.setattr(_cli._install, "_env_prefix",
                         lambda name, binary: str(tmp_path / "prefix"))
     dispatched: list = []
@@ -256,6 +255,10 @@ def test_after_clean_the_stale_reading_is_DROPPED_and_create_still_runs(
     # The verb, not the binary: `--clean` calls `reset_capabilities()` and the
     # snapshot is then re-detected from the real machine, so the manager path in
     # the argv is this box's own.  That re-detection is the point of the reset.
+    # D3: the wipe is in the SAME record as the create, because both are steps.
+    assert any(len(a) > 2 and a[1] == "env" and a[2] == "remove"
+               for a in dispatched), (
+        f"the `--clean` wipe did not go through the one door:\n{dispatched}")
     assert any(len(a) > 1 and a[1] == "create" for a in dispatched), (
         f"`conda create` was skipped after --clean removed the env:\n"
         f"{dispatched}\n{result.output}")

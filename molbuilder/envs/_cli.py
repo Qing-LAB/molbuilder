@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import contextlib
 import shlex
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -1441,30 +1440,31 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                     click.echo("aborted by user (--clean declined)")
                     sys.exit(0)
 
-            # Step 1: remove conda env.
+            # Step 1: remove the conda env -- THROUGH `run_step`, like every
+            # other thing the installer does (D3).  It was a bare
+            # `subprocess.run`, so the wipe carried no `InstallStep`, no
+            # `Outcome` and no line in the result the verdict is derived from
+            # (`env-framework.md` § 5.3) -- and that was tolerable while it was
+            # an edge path for one GPU recipe, then `--clean` was opened to
+            # every recipe and a private dispatch became the door
+            # `installation.md` calls "the one door" for wiping any env.
             if env_exists_pre_clean:
                 click.echo(f"removing conda env: {effective}")
-                try:
-                    subprocess.run(
-                        [caps.conda_binary, "env", "remove",
-                         "-n", effective, "-y"],
-                        check=True,
-                    )
+                step = _install.remove_step_for(effective, caps.conda_binary)
+                done = _install.run_step(step, sink=sys.stderr)
+                if done.outcome.is_success:
                     click.echo(f"removed conda env {effective}")
-                except subprocess.CalledProcessError as exc:
-                    click.echo(f"FAILED to remove conda env: {exc}",
-                               err=True)
+                else:
+                    click.echo(
+                        f"FAILED to remove conda env "
+                        f"({done.outcome.value}, rc={done.returncode})",
+                        err=True)
                     click.echo("  (you may need to run this manually:",
                                err=True)
-                    # `caps.conda_binary`, not a literal "conda" -- the
-                    # call above already uses it because the user may have
-                    # only mamba or micromamba, and a printed remedy naming a
-                    # binary they do not have is no remedy.
-                    click.echo(
-                        f"   {caps.conda_binary} env remove "
-                        f"-n {effective} -y)",
-                        err=True,
-                    )
+                    # The step's OWN argv, so the printed remedy cannot differ
+                    # from what was attempted -- and it names the detected
+                    # manager because the step was built with it.
+                    click.echo(f"   {_shell_join(done.argv)})", err=True)
                     sys.exit(1)
 
             # Step 2: wipe artifact dir if it survived (usually it was
@@ -1499,8 +1499,13 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # Best-effort probe BEFORE conda create has run: env may not
         # exist yet, in which case the probe returns mostly None.  We
         # use it only for the build-job count + cost summary.
+        # A PREFIX, which is what `probe_toolchain` documents and requires
+        # (D8).  It was handed an env NAME, so the summary shown immediately
+        # before a source build's `Proceed?` reported gcc / OpenMPI / CUDA as
+        # undetected on a perfectly healthy env.  The snapshot knows the prefix
+        # since 2026-09-12, so this costs nothing.
         probe_for_summary = _builds.probe_toolchain(
-            "/" if not caps.env_available(effective) else effective,
+            caps.env_prefix(effective) or "/",
         )
         click.echo("")
         click.echo(_builds.format_install_summary(
@@ -2040,8 +2045,16 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
         # that sources a file for no reason.
         preamble = None
     projects = _ask_projects_root(auto_yes, projects)
-    _render_init_config(initconfig.init_config(activation, preamble, probe,
-                                              projects))
+    try:
+        _render_init_config(initconfig.init_config(activation, preamble, probe,
+                                                  projects))
+    except RuntimeError as exc:
+        # The blockers, as a sentence rather than a traceback (D1).  One catch,
+        # because this is the one place `init_config` is called -- `bootstrap`
+        # reaches it through here too, and its own `except Exception` then
+        # records the failure and carries on, which is the behaviour a
+        # forty-minute install needs.
+        raise click.ClickException(str(exc)) from None
 
 
 def _ask_projects_root(auto_yes: bool,

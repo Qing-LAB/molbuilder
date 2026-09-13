@@ -157,6 +157,35 @@ def test_the_directory_and_the_config_are_not_world_readable(fresh):
     assert stat.S_IMODE((fresh / CONFIG_FILENAME).stat().st_mode) == 0o600
 
 
+def test_an_unwritable_root_is_refused_with_the_sentence_that_names_the_fix(
+        tmp_path, monkeypatch):
+    """D1 -- the *"a remedy the program prints that it then refuses to run"*
+    class, from the inside.
+
+    `bootstrap` prints `init-config` as the remedy, and `seeding_blockers()`
+    has held the exact sentence for an unwritable config root since it was
+    written -- while `init_config` answered the same condition with a raw
+    `PermissionError` traceback out of `mkdir`, which names a system call
+    rather than the thing to change.
+    """
+    import stat as _stat
+
+    parent = tmp_path / "readonly"
+    parent.mkdir()
+    parent.chmod(0o500)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(parent / "cfg"))
+
+    with pytest.raises(RuntimeError) as excinfo:
+        initconfig.init_config("conda activate", probe=False)
+
+    message = str(excinfo.value)
+    assert "not writable" in message, message
+    assert "MOLBUILDER_CONFIG_DIR" in message, (
+        "the refusal must name the way out", message)
+    assert not (parent / "cfg").exists(), "it wrote despite refusing"
+    parent.chmod(0o700)          # so tmp_path can be cleaned up
+
+
 def test_a_preamble_is_never_written_for_a_hook_that_is_not_there(tmp_path):
     """Checked on disk, not derived and hoped for.
 
