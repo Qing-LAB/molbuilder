@@ -419,49 +419,67 @@ def test_no_cuda_no_gcc_is_silent(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_check_disk_warns_below_recommended(tmp_path, monkeypatch):
-    """Disk between required + recommended thresholds returns a
-    warning, not a hard error."""
+def test_check_disk_reminds_and_never_refuses(tmp_path, monkeypatch):
+    """There is no threshold any more, and no error -- only a reminder.
+
+    Three tests stood here, pinning `required_gb=30` / `recommended_gb=50`.
+    Those constants are gone: their only documentation was the word "Rough",
+    nothing measured them, and the 30 was promoted to a HARD ERROR that refused
+    builds (user, 2026-09-12: *"it is hard to gauge... So I wouldn't really
+    bother that.  We just remind user that you need to make sure you have enough
+    free space."*).  One test replaces three, because one rule replaced two
+    thresholds.
+
+    The reference is this machine's own largest env, doubled -- a scale, not a
+    requirement.  Below it: remind, and say plainly that it is a reference.
+    Above it: silence.  With no reference at all: remind anyway, because "make
+    sure you have room" is true with or without a figure.
+    """
     class FakeUsage:
         def __init__(self, free_gb):
-            self.total = 100 * 1024 ** 3
-            self.used = (100 - free_gb) * 1024 ** 3
+            self.total = 10_000 * 1024 ** 3
+            self.used = 0
             self.free = int(free_gb * 1024 ** 3)
-    monkeypatch.setattr("shutil.disk_usage",
-                        lambda p: FakeUsage(40))  # 40 GB
-    free, msg = B.check_disk(str(tmp_path), required_gb=30, recommended_gb=50)
-    assert free == pytest.approx(40, abs=0.1)
-    assert msg is not None
-    assert "recommended" in msg.lower()
 
-
-def test_check_disk_errors_below_required(tmp_path, monkeypatch):
-    """Disk below required threshold returns an error string."""
-    class FakeUsage:
-        def __init__(self, free_gb):
-            self.total = 100 * 1024 ** 3
-            self.used = (100 - free_gb) * 1024 ** 3
-            self.free = int(free_gb * 1024 ** 3)
-    monkeypatch.setattr("shutil.disk_usage",
-                        lambda p: FakeUsage(5))  # 5 GB
-    free, msg = B.check_disk(str(tmp_path), required_gb=30, recommended_gb=50)
-    assert msg is not None
-    assert "30" in msg  # mentions the required threshold
-    assert "5" in msg or "free" in msg.lower()
-
-
-def test_check_disk_silent_when_comfortable(tmp_path, monkeypatch):
-    """Disk above recommended threshold returns (free_gb, None)."""
-    class FakeUsage:
-        def __init__(self, free_gb):
-            self.total = 100 * 1024 ** 3
-            self.used = (100 - free_gb) * 1024 ** 3
-            self.free = int(free_gb * 1024 ** 3)
-    monkeypatch.setattr("shutil.disk_usage",
-                        lambda p: FakeUsage(200))
-    free, msg = B.check_disk(str(tmp_path), required_gb=30, recommended_gb=50)
+    # Plenty of room against a 4 GB reference (-> ~8 GB suggested): quiet.
+    monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage(500))
+    free, msg = B.check_disk(str(tmp_path), reference_gb=4.0)
+    assert free == pytest.approx(500, abs=0.1)
     assert msg is None
-    assert free == pytest.approx(200, abs=0.1)
+
+    # Tight against the same reference: a reminder, naming both numbers and
+    # disclaiming itself.  And NOT an error -- there is no error to return.
+    monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage(5))
+    free, msg = B.check_disk(str(tmp_path), reference_gb=4.0)
+    assert msg is not None
+    assert "4.0 GB" in msg and "8 GB" in msg, msg
+    assert "NOT a requirement" in msg, msg
+
+    # No reference to offer: still reminds, just without a figure.
+    free, msg = B.check_disk(str(tmp_path), reference_gb=None)
+    assert msg is not None and "make sure you have enough space" in msg, msg
+
+
+def test_disk_is_never_a_preflight_ERROR(tmp_path, monkeypatch, tiny_spec):
+    """Low disk must not stop a build.  It did, below a hard-coded 30 GB.
+
+    The whole-report assertion matters more than the message: `preflight` puts
+    strings in `errors` (hard stop) or `warnings` (confirmable), and the defect
+    was the bucket, not the wording.
+    """
+    class FakeUsage:
+        def __init__(self):
+            self.total = 10_000 * 1024 ** 3
+            self.used = 0
+            self.free = 1 * 1024 ** 3          # 1 GB -- would have refused
+    monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage())
+    env_prefix = tmp_path / "envs" / "env"
+    env_prefix.mkdir(parents=True)
+    probe = B.probe_toolchain(str(env_prefix))
+    report = B.preflight(tiny_spec, probe, (), str(env_prefix),
+                         check_network=False)
+    assert not any("free" in e or "GB" in e for e in report.errors), (
+        f"disk put a hard stop in errors: {report.errors}")
 
 
 def test_check_disk_handles_missing_path():
@@ -653,7 +671,7 @@ def test_preflight_surfaces_stale_dirs_as_warning(tmp_path, monkeypatch):
     assert "--rebuild=all" in warn_text
 
 
-def test_run_build_short_circuits_on_preflight_error(tmp_path):
+def test_run_build_short_circuits_on_preflight_error(tmp_path, monkeypatch):
     """When preflight raises errors, run_build_spec returns
     succeeded=False with NO subprocess invoked (no sentinels written,
     no build dir created)."""
@@ -661,7 +679,18 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path):
     pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     env_prefix = str(tmp_path / "env")
     os.makedirs(env_prefix)
-    # No CUDA on the fake env -> preflight errors
+    # THE ERROR IS INJECTED, not hoped for.  This test said "No CUDA on the fake
+    # env -> preflight errors" and that was not what stopped it: measured
+    # 2026-09-12, the gpu spec on a fake prefix yields NO preflight errors --
+    # missing CUDA and a missing driver are warnings.  What actually fired was
+    # the disk gate, because /tmp on this machine has ~10 GB free and the gate
+    # refused below a hard-coded 30.  So the test passed for a reason having
+    # nothing to do with its name, on a machine-specific accident -- and when
+    # that gate was removed it began running a REAL autotools configure in
+    # tmp_path.  Worse, its false short-circuit is what hid the
+    # `_run_build_phase(conda_binary=...)` TypeError for four commits.
+    monkeypatch.setattr(B, "preflight", lambda *a, **k: B.PreflightReport(
+        errors=("injected: preflight refused",), warnings=(), info=()))
     result = B.run_build_spec(
         spec, env_prefix,
         conda_binary="/bin/false",   # would fail if called
@@ -673,6 +702,45 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path):
     assert result.steps == ()        # no phases executed
     # No artifact dirs created (preflight aborted before paths)
     assert not (Path(env_prefix) / "opt" / "siesta-gpu-stack").exists()
+
+
+def test_run_build_actually_REACHES_a_phase(tmp_path, monkeypatch):
+    """Execution must get past the phase call.  It could not, for four commits.
+
+    `5ef047a0` deleted `conda_binary` from `_run_build_phase` as dead -- it is,
+    the wrapper activates the prefix with bash -- and left `run_build_spec`
+    still passing it, so every source build raised
+    `TypeError: _run_build_phase() got an unexpected keyword argument
+    'conda_binary'` at its first phase.
+
+    NOTHING CAUGHT IT because no test ever reached that line: the only one that
+    tried asserted a preflight short-circuit, and preflight obliged -- on a
+    missing CUDA toolkit, or on the hard-coded 30 GB disk gate.  Removing that
+    gate on 2026-09-12 is what exposed the crash.  So this test exists to cross
+    the line itself, with a phase that cannot fail for any other reason: an
+    empty argv, and a report with no errors.
+    """
+    a = BuildComponent(
+        name="a", repo_url="https://example.com/a.git", ref="v1",
+        configure_argv=(), build_argv=(), install_argv=(),
+    )
+    spec = BuildSpec(artifact_subdir="tiny", components=(a,),
+                     cuda_required=False)
+    env_prefix = str(tmp_path / "env")
+    os.makedirs(env_prefix)
+    monkeypatch.setattr(B, "preflight", lambda *a, **k: B.PreflightReport(
+        errors=(), warnings=(), info=()))
+
+    result = B.run_build_spec(
+        spec, env_prefix,
+        conda_binary="/bin/false",
+        skip_network_check=True,
+    )
+    # Whether the fake phases pass is not the point; that the executor got to
+    # them without a TypeError is.
+    assert result.steps, (
+        "no phase was executed at all -- the executor did not reach "
+        f"_run_build_phase.  preflight_errors={result.preflight_errors}")
 
 
 def test_run_build_calls_on_warnings_callback(tmp_path, monkeypatch):

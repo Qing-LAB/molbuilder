@@ -33,6 +33,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -94,10 +95,35 @@ _PHASE_ESTIMATES: Mapping[Tuple[str, str], Tuple[str, str]] = {
 }
 
 
-# Rough disk required under $CONDA_PREFIX, in GB.  Doctor + preflight
-# warn the user before committing.
-_DEFAULT_DISK_GB_REQUIRED = 30.0
-_DEFAULT_DISK_GB_RECOMMENDED = 50.0
+# HOW MUCH DISK A SOURCE BUILD NEEDS IS NOT OURS TO COMPUTE
+# (user, 2026-09-12: *"it is hard to gauge because, a, the package might change
+# depends on when you start to install, and, b, when you try to compile the
+# downloaded size and everything to be bigger than the actual installation.  So
+# I wouldn't really bother that.  We just remind user that you need to make sure
+# you have enough free space."*)
+#
+# THERE WERE TWO CONSTANTS HERE, 30.0 and 50.0 GB, and the only thing ever
+# written about them was the word "Rough".  No measurement, no derivation, and
+# the 30 was promoted to a HARD ERROR that refused the build -- so a person with
+# 20 GB free was stopped by a number nobody had checked.  A third literal,
+# "~12 GB", lived in the shim's help and in bootstrap's next-steps banner and
+# disagreed with the gate by a factor of two and a half.
+#
+# They cannot be made right, because the quantity is not stable: the package set
+# a solve returns depends on when you run it, and a compile's peak -- tarballs,
+# a git clone, object files, ninja running -jN at once -- is larger than
+# anything that survives in the finished env.  So molbuilder states the free
+# space it measured, offers a REFERENCE taken from this machine's own envs, and
+# reminds.  It does not refuse.
+#
+# The reference is deliberately crude and labelled as such: the largest
+# molbuilder env already on this machine, doubled.  It is a scale, not a
+# requirement -- an existing env is a real measurement of "what one of these
+# costs here", and doubling is the headroom a build tree plus a parallel
+# compile wants.  Measured on the development workstation 2026-09-12:
+# molbuilder-pySCF and molbuilder-MDtools are 3.5 GB each, the packaged CPU
+# SIESTA env 395 MB, the host env 842 MB.
+_REFERENCE_HEADROOM_FACTOR = 2.0
 
 
 # --------------------------------------------------------------------- #
@@ -605,37 +631,90 @@ def disk_free_gb(path: str) -> Optional[float]:
     return usage.free / (1024 ** 3)
 
 
-def check_disk(path: str, *,
-               required_gb: float = _DEFAULT_DISK_GB_REQUIRED,
-               recommended_gb: float = _DEFAULT_DISK_GB_RECOMMENDED
-               ) -> Tuple[Optional[float], Optional[str]]:
-    """Return ``(free_gb, error_or_warning)``.
+def env_size_reference_gb(envs_dir: str) -> Optional[float]:
+    """A scale for "what one of these costs", measured on THIS machine.
 
-    The string second element is ``None`` if disk is comfortable, an
-    error string when below ``required_gb``, or a warning string when
-    above required but below ``recommended_gb``.  The caller decides
-    whether to abort on the error (preflight) or just print the
-    warning.
+    The largest immediate subdirectory of ``envs_dir``, in GB, or ``None`` when
+    there is nothing to measure (no envs yet, or the directory is unreadable).
+    Measured with ``du``-equivalent walking, skipping symlinks so conda's hard/
+    soft-linked package cache is not counted twice.
+
+    Crude on purpose.  It answers "roughly how big does a molbuilder env get
+    here" from real bytes on this filesystem, which is the only honest input
+    available -- see the note on `_REFERENCE_HEADROOM_FACTOR` for why the exact
+    requirement is not computable.
+
+    **It sums apparent file sizes, so content conda hard-linked from its package
+    cache is counted in full.**  That reads HIGH against ``du``, which counts a
+    shared block once: measured on the development workstation 2026-09-12,
+    ``du -sh`` reported 3.5 GB for the largest env and this function 6.5 GB.
+    High is the right direction for a headroom reference and the difference is
+    well inside the factor-of-two slack, so it is not worth the stat-by-inode
+    bookkeeping to be exact about a number that is explicitly a scale.
+    """
+    root = Path(envs_dir)
+    try:
+        children = [c for c in root.iterdir() if c.is_dir()
+                    and not c.is_symlink()]
+    except OSError:
+        return None
+    best = 0
+    for child in children:
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(child,
+                                                    followlinks=False):
+            for name in filenames:
+                fp = os.path.join(dirpath, name)
+                try:
+                    st = os.lstat(fp)
+                except OSError:
+                    continue
+                if stat.S_ISLNK(st.st_mode):
+                    continue
+                total += st.st_size
+        best = max(best, total)
+    return (best / (1024 ** 3)) if best else None
+
+
+def check_disk(path: str, *, reference_gb: Optional[float] = None
+               ) -> Tuple[Optional[float], Optional[str]]:
+    """Return ``(free_gb, reminder_or_None)``.
+
+    **Never an error, and there is no threshold.**  It reports what it measured
+    and, when a reference is available, what that suggests -- then the person
+    decides.  It refused below a hard-coded 30 GB until 2026-09-12; see the note
+    on `_REFERENCE_HEADROOM_FACTOR` for why that number could not be defended
+    and why no replacement is coming.
+
+    ``reference_gb`` is the scale from :func:`env_size_reference_gb`.  Without
+    one the reminder still goes out, just without a figure beside it -- "make
+    sure you have room" is true whether or not we can put a number on it.
     """
     free = disk_free_gb(path)
     if free is None:
         return None, (
-            f"Could not stat {path!r} for disk usage; check that the "
-            f"path exists + is reachable."
+            f"Could not stat {path!r} for disk usage, so free space is "
+            f"unknown -- check the path exists and is reachable, and make "
+            f"sure there is room for a source build before committing."
         )
-    if free < required_gb:
+    if reference_gb:
+        suggested = reference_gb * _REFERENCE_HEADROOM_FACTOR
+        if free >= suggested:
+            return free, None
         return free, (
-            f"Only {free:.1f} GB free at {path}; need at least "
-            f"{required_gb:.0f} GB for the source-build stack "
-            f"(clones + build tree + install)."
+            f"{free:.1f} GB free at {path}.  For scale, the largest conda env "
+            f"already on this machine is {reference_gb:.1f} GB, so about "
+            f"{suggested:.0f} GB would give a source build comfortable room "
+            f"for the clone, the build tree and a parallel compile -- all of "
+            f"which peak well above what the finished env keeps.  That is a "
+            f"reference from your own machine, NOT a requirement molbuilder "
+            f"computed: make sure you have enough space."
         )
-    if free < recommended_gb:
-        return free, (
-            f"Only {free:.1f} GB free at {path}; recommended "
-            f"{recommended_gb:.0f} GB for headroom during cmake "
-            f"compile (large object files + ninja parallelism)."
-        )
-    return free, None
+    return free, (
+        f"{free:.1f} GB free at {path}.  A source build needs room for the "
+        f"download, the build tree and a parallel compile, which peak above "
+        f"what the finished env keeps -- make sure you have enough space."
+    )
 
 
 def check_url_reachable(url: str, *, timeout: int = 15) -> Optional[str]:
@@ -841,8 +920,6 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
               env_prefix: Optional[str] = None,
               *,
               check_network: bool = True,
-              required_disk_gb: float = _DEFAULT_DISK_GB_REQUIRED,
-              recommended_disk_gb: float = _DEFAULT_DISK_GB_RECOMMENDED,
               ) -> PreflightReport:
     """Run every preflight check and return a structured report.
 
@@ -984,16 +1061,22 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
 
     # Disk
     if env_prefix:
-        free, disk_msg = check_disk(env_prefix,
-                                    required_gb=required_disk_gb,
-                                    recommended_gb=recommended_disk_gb)
+        # A REMINDER, NEVER AN ERROR.  This appended to `errors` below a
+        # hard-coded 30 GB until 2026-09-12, refusing the build on a number
+        # nobody had measured.  How much a source build needs is not
+        # computable here (see `_REFERENCE_HEADROOM_FACTOR`), so molbuilder
+        # reports what it measured, offers this machine's own envs as a scale,
+        # and leaves the decision where it belongs.
+        reference = env_size_reference_gb(str(Path(env_prefix).parent))
+        free, disk_msg = check_disk(env_prefix, reference_gb=reference)
         if free is not None:
             info.append(f"Disk free          {free:>5.1f} GB  at {env_prefix}")
+        if reference:
+            info.append(
+                f"Largest env here   {reference:>5.1f} GB  "
+                f"(a scale, not a requirement)")
         if disk_msg:
-            if free is None or free < required_disk_gb:
-                errors.append(disk_msg)
-            else:
-                warnings.append(disk_msg)
+            warnings.append(disk_msg)
 
     # Concurrency
     info.append(
@@ -1737,9 +1820,17 @@ def run_build_spec(spec: BuildSpec,
             if src_dir.exists():
                 shutil.rmtree(src_dir, ignore_errors=True)
             src_dir.parent.mkdir(parents=True, exist_ok=True)
-        result = _run_build_phase(step,
-                            env_prefix=env_prefix,
-                            conda_binary=conda_binary)
+        # NO `conda_binary=` HERE.  `5ef047a0` removed that parameter from
+        # `_run_build_phase` as dead -- correctly, the wrapper activates the
+        # prefix with bash and never shells out to the manager -- but left this
+        # call passing it, so EVERY source build died with
+        # `TypeError: _run_build_phase() got an unexpected keyword argument
+        # 'conda_binary'` at its first phase.  Three commits shipped on top of
+        # it.  Nothing caught it because the only test reaching this line
+        # expected preflight to short-circuit first, and it did: a hard-coded
+        # 30 GB disk gate (removed 2026-09-12) or the missing-CUDA error stopped
+        # execution before any phase ran.  Deleting the gate is what exposed it.
+        result = _run_build_phase(step, env_prefix=env_prefix)
         executed.append(result)
         if on_progress is not None:
             on_progress(result.status, step, result)
@@ -1842,19 +1933,27 @@ def format_install_summary(spec: BuildSpec, probe: ToolchainProbe,
     lines.append("")
     lines.append(f"  Build concurrency:  -j{probe.jobs}")
     lines.append("  Resume model:       sentinel-based (re-running is safe)")
-    # DERIVED, both of them.  These were two literals, and both disagreed
-    # with the thing they summarise: "~45 min" against rows that sum to about
-    # half that, and "~12 GB" against a preflight gate that REFUSES below
-    # `_DEFAULT_DISK_GB_REQUIRED` -- so a person with 20 GB free read the
-    # banner, proceeded, and hit a hard error.  This banner exists so someone
-    # can decide whether to bail out; a number nothing keeps true is worse
-    # than no number.
+    # TIME IS DERIVED; DISK IS NOT STATED AS A TOTAL AT ALL.
+    #
+    # Both were literals once, and both were wrong about the thing they
+    # summarised: "~45 min" against rows that sum to about half that, and
+    # "~12 GB" against a preflight that refused below 30.  Summing the rows
+    # fixed the first for good.  The second had no honest version -- the
+    # quantity is not stable (see `_REFERENCE_HEADROOM_FACTOR`) -- so this line
+    # no longer claims a total.  The preflight reports measured free space and
+    # this machine's own env sizes as a scale; a banner that invents a
+    # requirement is the thing being removed, not replaced.
     lo, hi = _total_time_estimate(spec)
     lines.append(f"  Total est. time:    ~{lo}-{hi} min at -j{probe.jobs}, "
                  f"broadband")
-    lines.append(f"  Total est. disk:    {_DEFAULT_DISK_GB_REQUIRED:.0f} GB "
-                 f"free required under $CONDA_PREFIX "
-                 f"({_DEFAULT_DISK_GB_RECOMMENDED:.0f} GB recommended)")
+    lines.append("  Disk:               the clone, the build tree and a "
+                 "parallel compile all")
+    lines.append("                      peak above what the finished env "
+                 "keeps -- make sure")
+    lines.append("                      you have room.  Preflight prints "
+                 "your free space and")
+    lines.append("                      the size of the largest env you "
+                 "already have.")
     lines.append("")
     return "\n".join(lines)
 
@@ -1898,6 +1997,7 @@ __all__ = [
     "check_disk",
     "check_repo_reachable",
     "disk_free_gb",
+    "env_size_reference_gb",
     "detect_gpu_name",
     "resolve_paths",
     "compute_fingerprint",

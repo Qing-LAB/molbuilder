@@ -125,7 +125,8 @@ COMMON TASKS (copy-paste any of these):
 # 1. First-time setup -- creates host env + every conda backend:
 bash scripts/install-env.sh bootstrap --yes
 
-# 2. Install GPU SIESTA (source-built, ~45 min, ~12 GB disk).
+# 2. Install GPU SIESTA (source-built; tens of minutes, and it
+#    needs room -- preflight prints your free space first).
 #    HOST ENV MUST ALREADY EXIST (run #1 first if it doesn't):
 bash scripts/install-env.sh install molbuilder-siesta-gpu --yes
 

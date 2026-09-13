@@ -1340,7 +1340,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
 
     # For source-build recipes, surface the install summary + ask for
     # confirmation BEFORE any subprocess runs.  The 45-min commitment
-    # + 12 GB disk footprint warrants the speedbump.
+    # + the disk footprint warrants the speedbump.
     if recipe.build_spec is not None and not auto_yes:
         # Best-effort probe BEFORE conda create has run: env may not
         # exist yet, in which case the probe returns mostly None.  We
@@ -1721,8 +1721,14 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo("=" * 70)
     if not include_source_builds:
         click.echo("")
-        click.echo("# Install GPU SIESTA (source-built, ~45 min, ~12 GB disk;")
-        click.echo("# host env from this bootstrap is the prerequisite):")
+        # NO INVENTED FIGURES.  This said "~45 min, ~12 GB disk"; the phase
+        # rows sum to 21-29 min and the 12 GB was a third guess that
+        # disagreed with the 30 GB gate it was printed beside.  The install's
+        # own preflight derives the time and measures the disk.
+        click.echo("# Install GPU SIESTA (built from source -- its preflight")
+        click.echo("# prints the time estimate and your free space before")
+        click.echo("# committing; the host env from this bootstrap is the")
+        click.echo("# prerequisite):")
         click.echo(
             _fix_cmd("install", "molbuilder-siesta-gpu", "--yes")
         )

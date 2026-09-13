@@ -427,10 +427,19 @@ isn't available as a conda package. `bash scripts/install-env.sh install molbuil
   TranSiesta + ELPA + libxc + NetCDF all on. Its ELSI and the four ESL libraries
   are SIESTA's own submodules — compiled in place, not separate steps.
 
-The build is resumable (sentinels + a toolchain fingerprint) and needs ~30 GB of
-free space under the env prefix. An **NVIDIA driver is optional** — the binary
-builds and runs CPU-only without a GPU; you only need `nvidia-smi` to actually use
-the GPU at run time.
+The build is resumable (sentinels + a toolchain fingerprint). **Make sure you
+have enough free disk before starting**, and note that molbuilder does not
+state a figure for it — the amount is not stable enough to be worth one. The
+package set a solve returns depends on when you run it, and the peak is during
+the compile (tarballs, a git clone, object files, a parallel `ninja`), well above
+anything the finished env keeps. So preflight **measures** instead: it prints the
+free space it found and the size of the largest conda env you already have, as a
+scale. It warns and lets you decide; it does not refuse. It did refuse below a
+hard-coded 30 GB until 2026-09-12 — a number whose only documentation was the
+word *"Rough"*, which had stopped builds that would have been fine.
+
+An **NVIDIA driver is optional** — the binary builds and runs CPU-only without a
+GPU; you only need `nvidia-smi` to actually use the GPU at run time.
 
 ### 6.1 Toolchain version — why 14.3, and how to change it
 
