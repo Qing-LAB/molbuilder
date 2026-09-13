@@ -27,8 +27,13 @@ import subprocess
 from typing import Sequence, Optional
 
 from ..diagnostics import get_capabilities
-# `install` owns the argv shape; this module is a thin dispatch layer on top.
-from .install import conda_run_argv
+# The run spelling, the signature of a broken manager `run`, the activation
+# fallback and the once-per-process measurement all live with the install
+# door (`builds`); this module shares them rather than keeping a second
+# opinion.  What differs here is only the subprocess STYLE: a tool call wants
+# a CompletedProcess with captured output, not a streamed transcript.
+from . import builds as _builds
+from .builds import conda_run_argv
 
 
 def run_in_env(env_name: str,
@@ -55,23 +60,58 @@ def run_in_env(env_name: str,
             f"molbuilder.json (an absolute path), or install/activate "
             f"one before invoking molbuilder."
         )
-    # ONE SPELLING of the prefix, shared with the install path.
+    # ONE SPELLING of the run command line, shared with the install path.
     #
-    # KNOWN GAP, deliberately not closed here: the three install-path spellings
-    # are dispatched through `run_step`, which rewrites the argv to dodge mamba
-    # 1.x's broken ``run`` stub (``exec -- "$@"``, which bash rejects with
-    # ``exec: --: invalid option``).  This call site is not, so on a mamba-1.x
-    # host `run_tool("tleap", ...)` fails on a shell error about the wrapper
-    # rather than anything to do with AmberTools.
-    #
-    # The rewrite needs the env prefix, and `_env_prefix` costs up to four
-    # conda subprocesses -- too much to pay on every tool call, which is a hot
-    # path (once per structure build) where an install step is a once-per-env
-    # event.  Closing it properly means either caching the prefix on
-    # `Capabilities` or retrying on that specific stderr; both are more than a
-    # dispatch layer should decide.  Recorded rather than half-fixed.
+    # S17, closed 2026-09-12.  A manager whose `run` is broken -- mamba 1.x,
+    # whose stub does ``exec -- "$@"`` whereupon bash rejects ``--`` -- used to
+    # make this the one dispatch with no workaround: `run_tool("tleap", ...)`
+    # died on a shell error about mamba's own file, naming nothing to do with
+    # AmberTools.  The fix is the same RETRY the install door uses, and it keeps
+    # this hot path (once per structure build) at exactly one subprocess on a
+    # working manager: the prefix `activation_wrapper` needs is resolved only
+    # after the stub has actually been seen, on the machines that have it.
     full = conda_run_argv(caps.conda_binary, env_name, *argv)
-    return subprocess.run(list(full), **popen_kwargs)
+    if _builds.manager_run_unusable():
+        wrapped = _wrap_for_broken_manager(full, env_name, caps.conda_binary)
+        if wrapped is not None:
+            return subprocess.run(list(wrapped), **popen_kwargs)
+    done = subprocess.run(list(full), **popen_kwargs)
+    if not _shows_broken_manager_run(done):
+        return done
+    _builds._MANAGER_RUN_UNUSABLE["seen"] = True
+    wrapped = _wrap_for_broken_manager(full, env_name, caps.conda_binary)
+    if wrapped is None:
+        return done  # nothing better to offer; the original failure stands
+    return subprocess.run(list(wrapped), **popen_kwargs)
+
+
+def _shows_broken_manager_run(done: subprocess.CompletedProcess) -> bool:
+    """Did this call fail with the broken-`run`-stub signature?
+
+    Either stream, str or bytes, and ``None`` when the caller did not capture --
+    in which case there is nothing to read and the answer is no.
+    """
+    if done.returncode == 0:
+        return False
+    sig = _builds.MANAGER_RUN_STUB_SIGNATURE
+    for stream in (done.stdout, done.stderr):
+        if isinstance(stream, bytes):
+            if sig.encode() in stream:
+                return True
+        elif isinstance(stream, str) and sig in stream:
+            return True
+    return False
+
+
+def _wrap_for_broken_manager(full, env_name: str, conda_binary: str):
+    """The activation fallback for this argv, or ``None`` if the prefix is
+    unknown -- in which case there is no wrapper to build and the caller keeps
+    the manager's own failure."""
+    from .install import _env_prefix  # imported here: `install` is above us
+    prefix = _env_prefix(env_name, conda_binary)
+    if prefix is None:
+        return None
+    return _builds.activation_wrapper(full, prefix)
 
 
 def run_tool(tool: str,

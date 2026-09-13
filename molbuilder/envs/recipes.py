@@ -1141,7 +1141,7 @@ _MDTOOLS = Recipe(
     # ``bash -c`` (no -l) -- we don't need a LOGIN shell here.  -l would
     # source ~/.bash_profile / ~/.profile and pull in user-shell state
     # that can shadow the env's tools (module loads, PATH munging, etc.)
-    # The env's bin/ is on PATH via _bypass_conda_run's env overrides,
+    # The env's bin/ is on PATH because the manager activates the env,
     # which is the only setup tleap needs.
     verify_argv=("bash", "-c", "tleap -f /dev/null < /dev/null"),
     verify_expect_contains="LEaP",
@@ -1909,7 +1909,7 @@ _SIESTA_GPU = Recipe(
     ),),
     verify_argv=(
         "bash", "-c",
-        # _bypass_conda_run puts <env>/bin on PATH for the verify call;
+        # the manager's activation puts <env>/bin on PATH for verify;
         # the activate.d hook's PATH munging is duplicated by our
         # env_overrides so siesta is reachable.  ``--version`` exits 0
         # with the version banner.

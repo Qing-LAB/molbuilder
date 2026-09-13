@@ -256,7 +256,7 @@ def plan_install(recipe):               # pure: builds steps, runs nothing
 
 def run_step(step, prefix):             # THE ONE DOOR
     for n, argv in enumerate((step.argv, *step.fallbacks)):
-        rc, output = dispatch(bypass_conda_run(argv, prefix))
+        rc, output = dispatch_into_env(argv, prefix, env=env_for_step(prefix))
         if step.accepts(rc, output):              # the step's own criteria
             return step.decided(Outcome.decide(ok=True,
                                                first_attempt=(n == 0),
@@ -357,7 +357,7 @@ one step. **Every step goes through it** — every install phase, `repair`, and
 dispatch again. They had: `repair` issued bare pip commands that knew nothing of
 a package's alternatives, the verify phase kept its own loop, and `doctor` kept a
 third copy. Each copy re-derived the same four things — prefix resolution, the
-`conda run` bypass, the launch-failure branch, the output trim — and `doctor`'s
+way into the env, the launch-failure branch, the output trim — and `doctor`'s
 had already drifted to a different output limit.
 
 A record becomes a step in exactly one place per kind — `create_step_for` for
@@ -458,13 +458,22 @@ hooks, which source-built recipes depend on (siesta-gpu puts binaries under
 reimplementation of someone else's product, and it is wrong by construction on
 any manager whose activation does something we did not copy.
 
-**A manager's bug rides on the step.** mamba 1.x's `run` emits a stub whose
-`exec --` bash rejects. That is not a reason to take the manager out of the
-loop everywhere — it is a **declared alternative** (§ 4.3's row shape), fired
-when that failure's signature appears, landing `RECOVERED` so the result names
-the machines that needed it. The same fields that express *"this package may come
-from an index instead"* express *"this manager's run may need the wrapper"*; no
-branch in the runner, and one copy rather than two.
+**A manager's bug is MEASURED, and it is not a step outcome.** mamba 1.x's `run`
+emits a stub whose `exec --` bash rejects. Two things follow, and the second
+corrects how this section first stated it:
+
+* **Measured, not predicted.** The first dispatch that fails with that
+  signature switches the process to `activation_wrapper` and says so once. A
+  version check would mean tracking someone else's release history; the stub
+  announces itself, and it dies *before* the inner command starts, which is what
+  makes the retry safe rather than a second half-install. One wasted launch per
+  process on a broken manager, none at all on a working one.
+* **Not `RECOVERED`.** A declared alternative on a step means *this package may
+  come from another source* (§ 4.3), and an `Outcome` describes what became of a
+  package. A broken manager is a property of the **machine**: reporting every
+  step on a mamba-1.x cluster as `RECOVERED` would state something false about
+  every package in the recipe. So the fallback lives inside the one door, is
+  reported once, and the step's outcome is whatever the step's own criteria say.
 
 **Environment, not activation.** What a step legitimately needs beyond activation
 — `TMPDIR` and `PIP_CACHE_DIR` kept inside the prefix so `env remove` really
@@ -472,16 +481,37 @@ cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
 `CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — goes through `run_step`'s `env`
 parameter. That is what that parameter is for.
 
+**What this does NOT cover: a generated job script.** `runwrap.py` writes the
+activation line into a wrapper **verbatim from `script_generation.activation`**
+and must keep doing so. That script runs on a machine this process cannot probe
+-- a cluster node, after `module load`, possibly minutes or days later -- so the
+only correct source is what the operator declared
+([`configuration.md`](?doc=configuration.md) § 4, `script_generation`). M1 is
+about the env manager **on this machine, now**; the wrapper's activation is a
+user-owned fact, and detecting it here would be the same error in the other
+direction.
+
 **A prefix is asked for, never derived**, and a printed remedy names the
 detected manager and never proposes destroying the env the process is running
 from: [`installation.md`](?doc=ops/installation.md) § *"One door for RUNNING"*
 M2, M3, M5.
 
-> ⚠ **Not true of the tree yet** *(2026-09-12)*: the wrapper is applied to
-> **every** step whenever a prefix is known (`install.py:383-390`) and
-> `builds.py:1550-1648` is a second, drifted copy, so no machine currently uses
-> its manager's own `run` and nothing passes `env=`. Tracked as **H3** in
-> [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
+**Where it lives.** `dispatch_into_env`, `activation_wrapper`, `env_for_step`
+and the run speller are in `builds.py`, beside `run_streaming` and
+`build_subprocess_env` — the lowest layer, because **three** callers must enter
+an env identically: the step runner (`install.run_step`), the build executor
+(`builds._run_build_phase`) and the tool router (`_dispatch.run_in_env`). The
+third had no workaround at all while the workaround lived in the first, which is
+how `run_tool` came to be the one dispatch that simply failed on the machines the
+workaround existed for. One place writes the command line (`_run_argv`) and there
+are two public addresses — `conda_run_argv` by name, for the planner, which has
+no prefix because `plan_install` runs nothing; `conda_run_prefix_argv` by prefix,
+for a caller that already has one and must not re-derive a name from a directory
+to use it.
+
+*Measured 2026-09-12 on conda 26.7.1:* `envs doctor` verifies all four present
+envs through the manager's own `run`, with no generated shell anywhere — the
+`[bypass]` lines every run used to print are gone.
 
 ## 6. The audit
 

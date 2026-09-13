@@ -1633,18 +1633,20 @@ def test_rebuild_elsi_remaps_to_siesta_in_python():
     assert "unknown" not in result.output.lower(), result.output
 
 
-def test_bypass_wrapper_survives_a_command_containing_shell_metacharacters():
-    """The diagnostic echo must not break the command it reports.
+def test_activation_wrapper_survives_a_command_containing_shell_metacharacters():
+    """The generated shell must not break the command it carries.
 
-    `_bypass_conda_run` logged the inner command with
-    ``echo "[bypass] cmd={shlex.quote(...)}"``.  shlex.quote emits
-    SINGLE quotes, which are inert inside a DOUBLE-quoted echo -- so a
-    command whose own text contained a double quote closed the echo
-    early and the remainder was parsed as shell.  The first step with
-    one (the siesta-gpu toolchain shims, whose body has
-    ``B="$CONDA_PREFIX/bin"`` and a ``link() {`` function) died with
-    ``syntax error near unexpected token '('`` -- raised by the
-    DIAGNOSTIC line, about a command that was perfectly valid.
+    The wrapper builds one bash string around the step's own command, so every
+    quoting decision in it is load-bearing.  It has been got wrong before: the
+    diagnostic line it used to emit logged the inner command with
+    ``echo "[bypass] cmd={shlex.quote(...)}"``, and shlex.quote emits SINGLE
+    quotes, inert inside a DOUBLE-quoted echo -- so a command whose own text
+    contained a double quote closed the echo early and the remainder was parsed
+    as shell.  The first step with one (the siesta-gpu toolchain shims, whose
+    body has ``B="$CONDA_PREFIX/bin"`` and a ``link() {`` function) died with
+    ``syntax error near unexpected token '('``, raised by the DIAGNOSTIC line,
+    about a command that was perfectly valid.  Those echoes are gone with the
+    wrapper's demotion to a fallback; the quoting they exposed is still here.
 
     Everything a real step throws at it: double quotes, parentheses, a
     function definition, ``$(( ))`` arithmetic, single quotes, and a
@@ -1653,14 +1655,14 @@ def test_bypass_wrapper_survives_a_command_containing_shell_metacharacters():
     import shlex
     import subprocess
 
-    from molbuilder.envs.install import _bypass_conda_run
+    from molbuilder.envs.builds import activation_wrapper
 
     nasty = ('set -e; B="$X/bin"; f() { echo "a(b)"; }; n=$((1+1)); '
              "g='single'; h=\"embedded 'single' inside double\"; "
              'printf "%s\\n" "$B$n$g$h"')
     argv = ("conda", "run", "-n", "someenv", "--no-capture-output",
             "bash", "-c", nasty)
-    new_argv, _ = _bypass_conda_run(argv, "/tmp/does-not-matter")
+    new_argv = activation_wrapper(argv, "/tmp/does-not-matter")
 
     wrapper = new_argv[-1]
     cp = subprocess.run(["bash", "-n", "-c", wrapper],
@@ -1672,8 +1674,8 @@ def test_bypass_wrapper_survives_a_command_containing_shell_metacharacters():
     # `bash -n` and shlex disagreeing would mean we got lucky, not right.
     shlex.split(wrapper)          # raises ValueError if a quote dangles
 
-    # The reported command carries the inner script verbatim, so the log
-    # line is copy-pasteable rather than merely suggestive.
+    # The wrapper carries the inner script verbatim -- it is exec'd, so any
+    # re-quoting of it would change what runs.
     assert 'f() { echo "a(b)"; }' in wrapper
 
 

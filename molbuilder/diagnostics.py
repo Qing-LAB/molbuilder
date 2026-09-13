@@ -243,12 +243,16 @@ def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
     NOT interchangeable on mamba 1.x.  mamba 1.x's ``run`` generates
     a shell stub that uses ``exec --`` which bash rejects with
     ``exec: --: invalid option`` -- every pip / extra-step / verify
-    / build step fails.  ``molbuilder.envs.install._bypass_conda_run``
-    and ``builds._run_one_step`` therefore bypass ``<mgr> run``
-    entirely and call the env's binaries directly (setting PATH +
-    LD_LIBRARY_PATH + CONDA_PREFIX as ``conda activate`` would).
-    Don't reintroduce ``<mgr> run`` in this codebase without first
-    verifying the install path works on mamba 1.x.
+    / build step would fail.  That is handled where commands are
+    dispatched, not here and not by avoiding ``run``:
+    ``molbuilder.envs.builds.dispatch_into_env`` uses the manager's own
+    ``run`` (which activates the env, ``activate.d`` hooks included --
+    measured on conda 26.7.1), MEASURES that signature if it appears, and
+    then switches this process to its ``activation_wrapper``.  So this
+    probe's job stops at naming the manager: whether that manager's
+    ``run`` works is a question the one door answers by trying it, rather
+    than one this function has to predict from a version number
+    (`installation.md` M1, M4).
     """
     for candidate in ("mamba", "micromamba", "conda"):
         path = shutil.which(candidate)

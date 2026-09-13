@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -359,6 +360,236 @@ def build_subprocess_env(base_env: Optional[Mapping[str, str]] = None
         if k not in _LEAKAGE_ENV_VARS
         and not any(k.startswith(p) for p in _LEAKAGE_ENV_PREFIXES)
     }
+
+
+# --------------------------------------------------------------------- #
+#  Entering an env -- THE ONE DOOR                                       #
+# --------------------------------------------------------------------- #
+#
+# `installation.md` M1-M4 and `env-framework.md` 5.6.  The manager activates;
+# molbuilder does not.  These live here rather than in `install.py` because
+# `run_streaming` and `build_subprocess_env` are here and three layers sit
+# above them and all three must enter an env the same way: the step runner
+# (`install.run_step`), the build executor (`_run_build_phase`, below) and the
+# tool router (`_dispatch.run_in_env`).  The third had no workaround at all
+# until now -- recorded as S17 -- because the workaround lived in the first.
+
+#: How much of a command's output is kept on a step or a build phase.  ONE
+#: value: `_run_build_phase` had its own bare ``combined[-4096:]`` literal, in
+#: the module whose results are adapted into `InstallStep`s -- so a build step's
+#: output obeyed a different constant from every other step's, which is the H9
+#: finding.  It lives here because this is the layer that produces the output.
+OUTPUT_LIMIT = 4096
+
+#: What mamba 1.x's `run` stub produces.  Its generated shell does
+#: ``exec -- "$@"`` and bash rejects ``--``, so the dispatch dies on line 5 of
+#: mamba's own file -- BEFORE the inner command starts, which is what makes
+#: retrying through the wrapper safe rather than a second half-install.
+MANAGER_RUN_STUB_SIGNATURE = "exec: --: invalid option"
+
+#: Measured once per process: this machine's manager cannot run `run`.  A fact
+#: about the machine, so it does not belong on a step (env-framework 4.2 is
+#: about situations a RECIPE describes) and it is not re-measured per step.
+_MANAGER_RUN_UNUSABLE = {"seen": False}
+
+
+def manager_run_unusable() -> bool:
+    """Has this manager's ``run`` been measured as broken in this process?"""
+    return _MANAGER_RUN_UNUSABLE["seen"]
+
+
+def reset_manager_run_measurement() -> None:
+    """Forget the measurement.  For tests, and for nothing else."""
+    _MANAGER_RUN_UNUSABLE["seen"] = False
+
+
+def _run_argv(conda: str, address: Tuple[str, str],
+              cmd: Sequence[str]) -> Tuple[str, ...]:
+    """ONE place writes the ``<mgr> run`` command line (env-framework 5).
+
+    It was written out four times: `pip_argv`, `verify_step_for`, the planner's
+    extra-steps loop, and `_dispatch.run_in_env`.  It sits beside the dispatch
+    it feeds so that a caller cannot reach the spelling without reaching the
+    door (which is how the fourth site ended up without the workaround).
+    """
+    return (conda, "run", address[0], address[1], "--no-capture-output",
+            *(str(c) for c in cmd))
+
+
+def conda_run_argv(conda: str, env_name: str, *cmd: str) -> Tuple[str, ...]:
+    """Enter an env BY NAME -- what the planner spells, before any prefix is
+    resolved (`plan_install` is pure and runs nothing, so a name is all it has).
+    `dispatch_into_env` re-addresses it at the prefix when one is known."""
+    return _run_argv(conda, ("-n", env_name), cmd)
+
+
+def conda_run_prefix_argv(conda: str, env_prefix: str,
+                          *cmd: str) -> Tuple[str, ...]:
+    """Enter an env BY PREFIX -- for a caller that already has one and must not
+    re-derive a name from the directory to address it (M2)."""
+    return _run_argv(conda, ("--prefix", env_prefix), cmd)
+
+
+def _is_run_argv(argv: Sequence[str]) -> bool:
+    """Is this a ``<mgr> run ...`` argv, as `conda_run_argv` spells it?"""
+    return len(argv) >= 4 and str(argv[1]) == "run"
+
+
+def addressed_by_prefix(argv: Sequence[str], prefix: str) -> Tuple[str, ...]:
+    """Re-address a ``<mgr> run -n NAME`` argv at the PREFIX we resolved.
+
+    `installation.md` M2, and the reason is not taste: conda resolves ``-n``
+    against ``envs_dirs`` ONLY (`conda/base/context.py`'s
+    ``locate_prefix_by_name`` raises ``EnvironmentNameNotFound`` otherwise), so
+    an env created with ``--prefix`` somewhere else -- a scratch filesystem, a
+    module-provided root -- cannot be entered by name at all.  The prefix came
+    from the manager's own registry, so this narrows the address to the thing
+    that always works; it does not invent a path.
+    """
+    out = list(argv)
+    for i, tok in enumerate(out):
+        if str(tok) == "-n" and i + 1 < len(out):
+            out[i] = "--prefix"
+            out[i + 1] = prefix
+            break
+    return tuple(str(a) for a in out)
+
+
+def _inner_command(argv: Sequence[str]) -> Tuple[str, ...]:
+    """The command a ``<mgr> run`` argv is carrying.
+
+    ``install.py`` spells ``-n NAME``, ``_run_build_phase`` spells
+    ``--prefix P --``; both are accepted because both are this module's own
+    `conda_run_argv` output, re-addressed or not.
+    """
+    if not _is_run_argv(argv):
+        # Not a `run` argv at all -- `conda create`, `conda install -n ...`.
+        # Those ARE the manager's own command; there is no env to enter and no
+        # inner command to carry.  `dispatch_into_env` checks this before it
+        # gets here; the check is repeated because a wrapper built around
+        # `argv[5:]` of a create command would be a plausible-looking shell
+        # string that runs the wrong thing.
+        raise ValueError(f"not a `<mgr> run` argv: {tuple(argv)!r}")
+    start = 5
+    if start < len(argv) and str(argv[start]) == "--":
+        start += 1
+    cmd = tuple(str(a) for a in argv[start:])
+    if not cmd:
+        raise ValueError(f"no inner command in {tuple(argv)!r}")
+    return cmd
+
+
+def activation_wrapper(argv: Sequence[str], env_prefix: str) -> Tuple[str, ...]:
+    """THE FALLBACK -- a bash wrapper that does what the manager would.
+
+    Used only when this manager's ``run`` has been measured unusable
+    (`MANAGER_RUN_STUB_SIGNATURE`).  It sets what ``<mgr> run`` sets -- the
+    prefix, the env name, PATH -- and sources the env's
+    ``etc/conda/activate.d/*.sh``, which is what a source-built recipe depends
+    on (siesta-gpu installs binaries under ``<prefix>/opt/...`` and only its
+    hook puts them on PATH).  Measured 2026-09-12 on conda 26.7.1: the
+    manager's own ``run`` does all of this, hooks included, which is why this
+    is the exception and not the route.
+
+    **Environment policy is NOT here.**  TMPDIR, the pip cache, ccache, host
+    leakage -- those are the caller's ``env`` dict, identical on both paths, so
+    the fallback cannot drift from the route it stands in for.  That drift is
+    exactly what made two copies of this wrapper disagree four ways.
+    """
+    cmd = _inner_command(argv)
+    env_q = shlex.quote(env_prefix)
+    activate_d = shlex.quote(f"{env_prefix}/etc/conda/activate.d")
+    cmd_q = " ".join(shlex.quote(a) for a in cmd)
+    wrapper = (
+        f"export CONDA_PREFIX={env_q}; "
+        f"export CONDA_DEFAULT_ENV={shlex.quote(Path(env_prefix).name)}; "
+        f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
+        f"if [ -d {activate_d} ]; then "
+        f'for _f in {activate_d}/*.sh; do [ -f "$_f" ] && . "$_f"; done; '
+        f"fi; "
+        f"exec {cmd_q}"
+    )
+    # `bash -c`, not `-l`: the user's login files are not wanted -- the
+    # activate.d sourcing above is the only env setup intended.
+    return ("bash", "-c", wrapper)
+
+
+def env_for_step(env_prefix: Optional[str],
+                 base_env: Optional[Mapping[str, str]] = None
+                 ) -> Dict[str, str]:
+    """The environment a step runs in -- clean slate plus the env's own temp.
+
+    Two things, and both used to live inside a shell string that only the
+    install path had:
+
+    * **host leakage stripped** (`build_subprocess_env`).  Until 2026-09-12 no
+      pip step got this: `run_step`'s ``env`` parameter existed and no caller
+      passed it, so every pip install ran with the user's ``CPATH`` /
+      ``CFLAGS`` / ``CUDA_HOME`` / ``OMPI_*`` visible -- the exact leakage
+      `builds.py` strips two functions away.
+    * **temp and cache under the prefix**, so that removing the env really
+      does clean up after an install and a small ``/tmp`` on a cluster cannot
+      fail a wheel build.
+    """
+    env = build_subprocess_env(base_env)
+    if env_prefix:
+        tmp = f"{env_prefix}/var/tmp"
+        pip_cache = f"{env_prefix}/var/cache/pip"
+        for d in (tmp, pip_cache):
+            try:
+                os.makedirs(d, exist_ok=True)
+            except OSError:
+                pass  # an unwritable prefix is the step's failure to report
+        env["TMPDIR"] = tmp
+        env["PIP_CACHE_DIR"] = pip_cache
+    return env
+
+
+def dispatch_into_env(argv: Sequence[str],
+                      env_prefix: Optional[str],
+                      *,
+                      env: Optional[Mapping[str, str]] = None,
+                      sink: Optional[TextIO] = None,
+                      log_file: Optional[Path] = None,
+                      timeout: Optional[int] = None,
+                      ) -> Tuple[Optional[int], str]:
+    """Launch one argv inside an env.  THE ONE DOOR (M1).
+
+    The manager's own ``run`` is the route.  A manager whose ``run`` is broken
+    -- mamba 1.x, still common on clusters -- is MEASURED, not guessed from a
+    version number: the first attempt that fails with
+    `MANAGER_RUN_STUB_SIGNATURE` switches this process to
+    `activation_wrapper` and says so once.  The stub dies before the inner
+    command starts, so that retry cannot half-run anything.
+
+    Not a step outcome.  A broken manager is a property of the machine, and
+    reporting every step on such a machine as ``RECOVERED`` would say the
+    PACKAGE came from an alternative source, which is a different fact.
+    """
+    argv = tuple(str(a) for a in argv)
+    if env_prefix is None or not _is_run_argv(argv):
+        # Nothing to enter: `conda create`, `conda install -n ...`, or a bare
+        # command.  The manager is the whole command here.
+        return run_streaming(argv, env=env, sink=sink, log_file=log_file,
+                             timeout=timeout)
+
+    if not _MANAGER_RUN_UNUSABLE["seen"]:
+        rc, out = run_streaming(addressed_by_prefix(argv, env_prefix),
+                                env=env, sink=sink, log_file=log_file,
+                                timeout=timeout)
+        if MANAGER_RUN_STUB_SIGNATURE not in (out or ""):
+            return rc, out
+        _MANAGER_RUN_UNUSABLE["seen"] = True
+        if sink is not None:
+            sink.write(
+                f"    note: this manager's `run` is unusable on this machine "
+                f"({MANAGER_RUN_STUB_SIGNATURE!r}; mamba 1.x).  Entering the "
+                f"env through its activation hooks instead, for the rest of "
+                f"this run.\n")
+            sink.flush()
+
+    return run_streaming(activation_wrapper(argv, env_prefix), env=env,
+                         sink=sink, log_file=log_file, timeout=timeout)
 
 
 # Phases that wipe their build directory when re-run (everything from
@@ -1551,86 +1782,61 @@ def plan_build_spec(spec: BuildSpec,
 def _run_build_phase(step: BuildStep,
                *,
                env_prefix: str,
+               conda_binary: str,
                timeout: int = 7200) -> BuildStepResult:
-    """Run ONE build phase with live output, under an activate-equivalent
-    bash wrapper (not ``conda run`` -- see the comment below).
+    """Run ONE build phase with live output, inside the env.
 
-    Output streams to stderr line-by-line so the user can see the
-    build's progress (cmake compile lines, ninja step counts, git
-    clone receiving-objects updates) instead of staring at a silent
-    "[1/15] elpa.clone: ..." for 15 minutes.  The full transcript is
-    still written to ``step.log_file`` for post-hoc inspection.
+    Output streams to stderr line-by-line so the user can see the build's
+    progress (cmake compile lines, ninja step counts, git clone
+    receiving-objects updates) instead of staring at a silent
+    "[1/15] elpa.clone: ..." for 15 minutes.  The full transcript is still
+    written to ``step.log_file`` for post-hoc inspection.
+
+    **It enters the env through `dispatch_into_env`, like every other step**
+    (`installation.md` M1).  Until 2026-09-12 it held its own copy of the
+    activation wrapper and the two copies had drifted four ways -- and the copy
+    here was the only one passing `build_subprocess_env()`, so the installer's
+    pip steps ran with exactly the host leakage this module exists to strip.
+    What a build needs BEYOND activation is stated below as a dict, not as a
+    shell string, so the route and the fallback cannot differ.
     """
     step.log_file.parent.mkdir(parents=True, exist_ok=True)
-    # Bypass ``<mgr> run`` and call build tools through a bash
-    # wrapper that sets ``conda activate``'s env vars and sources
-    # the env's activate.d/*.sh hooks.  Three problems this solves:
-    #
-    #   (1) mamba 1.x's ``run`` generates ``exec --`` which bash
-    #       rejects -- the entire build phase fails on line 5 of
-    #       mamba's stub.  Fixed in mamba 2.x but still common.
-    #   (2) ``conda activate`` is what cmake/ninja/make would
-    #       normally see for PATH + LD_LIBRARY_PATH + CONDA_PREFIX
-    #       + CONDA_DEFAULT_ENV.  We replicate it inline.
-    #   (3) Earlier components of the build (ELPA installs to
-    #       ``<env>/opt/<artifact>/elpa``) register their own
-    #       activate.d hook so the next component (SIESTA) sees
-    #       libelpa on the link path.  Sourcing activate.d makes
-    #       that work without re-emitting the per-component
-    #       LD_LIBRARY_PATH glue in this Python.
-    import shlex as _shlex
-    cmd_q = " ".join(_shlex.quote(str(a)) for a in step.argv)
-    env_q = _shlex.quote(env_prefix)
-    env_name = _shlex.quote(Path(env_prefix).name)
-    activate_d = _shlex.quote(f"{env_prefix}/etc/conda/activate.d")
-    # HPC strictness: every temp + cache dir the build tools touch
-    # must live under the artifact root (which is under
-    # $CONDA_PREFIX/opt/<artifact_subdir>).  Otherwise cmake's
-    # temp probes go to /tmp (size-limited on most clusters),
-    # ccache (if gcc is wrapped) writes to ~/.ccache (escapes env),
-    # python tooling like meson scribbles in ~/.cache.  Pinning
-    # them here means the env is the single dir an admin needs to
-    # clean up.  Derive the artifact root from the step's log path
-    # (every log file is ``<root>/logs/<comp>.<phase>.log`` per the
-    # ``paths`` layout in plan_build_spec).
-    paths_root = _shlex.quote(str(step.log_file.parent.parent))
-    wrapper = (
-        f"export CONDA_PREFIX={env_q}; "
-        f"export CONDA_DEFAULT_ENV={env_name}; "
-        f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
-        f'export LD_LIBRARY_PATH={env_q}/lib"${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"; '
-        f"mkdir -p {paths_root}/.tmp {paths_root}/.ccache "
-        f"{paths_root}/.cache/pip; "
-        f"export TMPDIR={paths_root}/.tmp; "
-        f"export TMP={paths_root}/.tmp; "
-        f"export TEMP={paths_root}/.tmp; "
-        f"export CCACHE_DIR={paths_root}/.ccache; "
-        f"export PIP_CACHE_DIR={paths_root}/.cache/pip; "
-        f"export XDG_CACHE_HOME={paths_root}/.cache; "
-        # cmake / ccache / pip are fine on NFS (latency-tolerant), but
-        # the siesta-gpu build's ``.verify`` phase invokes ``siesta
-        # --version`` which initialises OpenMPI -- and OpenMPI walks
-        # $TMPDIR to place its shared-memory pool, which is the ONE
-        # thing that MUST NOT live on NFS.  Pin MPI's shmem dir
-        # specifically at /tmp (node-local on every HPC node, tmpfs
-        # on personal Linux) so the verify-phase MPI init doesn't
-        # warn about NFS-mounted shmem.  /tmp is small but the
-        # verify call exits in milliseconds -- no real shmem traffic.
-        f"export OMPI_MCA_orte_tmpdir_base=/tmp; "
-        f"if [ -d {activate_d} ]; then "
-        f'for _f in {activate_d}/*.sh; do '
-        f'[ -f "$_f" ] && . "$_f"; '
-        f"done; "
-        f"fi; "
-        f"exec {cmd_q}"
-    )
-    rc, combined = run_streaming(
-        ("bash", "-c", wrapper),
-        # Strip leakage vectors (CPATH / CFLAGS / MPI_HOME / OMPI_*
-        # / ...) so user-shell vars can't pull system MPI/CUDA into
-        # the build.  PATH / LD_LIBRARY_PATH / CONDA_PREFIX are set
-        # explicitly by the wrapper above on top of this slate.
-        env=build_subprocess_env(),
+    # HPC strictness: every temp + cache dir the build tools touch must live
+    # under the artifact root (itself under ``<prefix>/opt/<artifact_subdir>``),
+    # so the env is the single directory an admin has to clean up.  Otherwise
+    # cmake's temp probes go to /tmp (size-limited on most clusters), ccache
+    # writes to ~/.ccache and meson scribbles in ~/.cache -- all outside the
+    # env.  Derived from the step's log path, which is
+    # ``<root>/logs/<comp>.<phase>.log`` per ``plan_build_spec``.
+    paths_root = step.log_file.parent.parent
+    tmp = paths_root / ".tmp"
+    ccache = paths_root / ".ccache"
+    cache = paths_root / ".cache"
+    for d in (tmp, ccache, cache / "pip"):
+        d.mkdir(parents=True, exist_ok=True)
+    env = env_for_step(env_prefix)
+    env.update({
+        "TMPDIR": str(tmp), "TMP": str(tmp), "TEMP": str(tmp),
+        "CCACHE_DIR": str(ccache),
+        "PIP_CACHE_DIR": str(cache / "pip"),
+        "XDG_CACHE_HOME": str(cache),
+        # A freshly built binary may carry no RPATH to the env's own libs, and
+        # `<mgr> run` does not set LD_LIBRARY_PATH (measured on conda 26.7.1).
+        # conda's position is that packages use RPATH; a source build is
+        # exactly the case where that does not hold yet.
+        "LD_LIBRARY_PATH": f"{env_prefix}/lib",
+        # cmake / ccache / pip tolerate NFS; OpenMPI does not.  The verify
+        # phase runs ``siesta --version``, which initialises OpenMPI, and MPI
+        # walks $TMPDIR for its shared-memory pool -- the one thing that must
+        # not live on NFS.  /tmp is node-local on every HPC node and tmpfs on a
+        # workstation, and the verify call exits in milliseconds, so there is
+        # no real shmem traffic to size for.
+        "OMPI_MCA_orte_tmpdir_base": "/tmp",
+    })
+    rc, combined = dispatch_into_env(
+        conda_run_prefix_argv(conda_binary, env_prefix, *step.argv),
+        env_prefix,
+        env=env,
         log_file=step.log_file,
         timeout=timeout,
     )
@@ -1638,7 +1844,7 @@ def _run_build_phase(step: BuildStep,
         # run_streaming returned launch failure with no captured output;
         # _run_build_phase still has to surface something to the caller.
         combined = "failed to launch (no output)"
-    trimmed = combined[-4096:]  # tail -- cmake compile errors tend to be terminal
+    trimmed = combined[-OUTPUT_LIMIT:]  # cmake errors tend to be terminal
     status = "ok" if rc == 0 else "fail"
     return BuildStepResult(
         step=step,
@@ -1830,7 +2036,8 @@ def run_build_spec(spec: BuildSpec,
         # expected preflight to short-circuit first, and it did: a hard-coded
         # 30 GB disk gate (removed 2026-09-12) or the missing-CUDA error stopped
         # execution before any phase ran.  Deleting the gate is what exposed it.
-        result = _run_build_phase(step, env_prefix=env_prefix)
+        result = _run_build_phase(step, env_prefix=env_prefix,
+                                  conda_binary=conda_binary)
         executed.append(result)
         if on_progress is not None:
             on_progress(result.status, step, result)

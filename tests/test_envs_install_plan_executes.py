@@ -3,7 +3,8 @@
 Why this file exists.  Two bugs shipped in one day because the *pieces*
 were tested and the *whole* was not:
 
-  * `_bypass_conda_run` logged the inner command with
+  * the activation wrapper (then `_bypass_conda_run`) logged the inner
+    command with
     ``echo "...{shlex.quote(x)}"`` -- single quotes inside a
     double-quoted echo.  Any command containing a double quote closed
     the echo early and the rest was parsed as shell.  The first step
@@ -29,6 +30,7 @@ import subprocess
 import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
+from molbuilder.envs import builds as _B
 from molbuilder.envs import install as I
 from molbuilder.envs import recipes as R
 
@@ -50,19 +52,23 @@ def _all_steps():
             yield name, st.label, tuple(st.argv)
 
 
-def _bypassed(argv):
-    """The generated bash for ``argv``, or None when not bypassed."""
+def _wrapped(argv):
+    """The generated bash for ``argv``, or None when there is none.
+
+    The wrapper is the FALLBACK path now (`installation.md` M4 -- a manager
+    whose `run` is broken), not the route every machine takes.  It is still
+    generated shell, so it still gets read, lexed and executed here.
+    """
     try:
-        new, _ = I._bypass_conda_run(argv, "/opt/envs/fake-prefix")
+        return _B.activation_wrapper(argv, "/opt/envs/fake-prefix")[-1]
     except ValueError:
-        return None          # conda create: plain argv, no shell wrapper
-    return new[-1]
+        return None          # conda create: the manager's own command
 
 
 def test_every_generated_step_is_valid_bash():
     n = 0
     for name, label, argv in _all_steps():
-        sh = _bypassed(argv)
+        sh = _wrapped(argv)
         if sh is None:
             continue
         cp = subprocess.run(["bash", "-n", "-c", sh],
@@ -109,7 +115,7 @@ def test_the_toolchain_shim_step_actually_creates_the_links(tmp_path):
     assert recipe.extra_steps, "siesta-gpu must carry the shim step"
     argv = ("/usr/bin/conda", "run", "-n", "x", "--no-capture-output",
             *recipe.extra_steps[0])
-    new_argv, _ = I._bypass_conda_run(argv, str(prefix))
+    new_argv = _B.activation_wrapper(argv, str(prefix))
     cp = subprocess.run(list(new_argv), capture_output=True, text=True,
                         timeout=120)
     assert cp.returncode == 0, f"shim step failed:\n{cp.stderr}"
@@ -142,7 +148,7 @@ def test_the_verify_step_runs_and_only_warns_about_a_foreign_gcc(tmp_path):
     recipe = R.recipe_by_name("molbuilder-siesta-gpu")
     argv = ("/usr/bin/conda", "run", "-n", "x", "--no-capture-output",
             *recipe.verify_argv)
-    new_argv, _ = I._bypass_conda_run(argv, str(prefix))
+    new_argv = _B.activation_wrapper(argv, str(prefix))
     cp = subprocess.run(list(new_argv), capture_output=True, text=True,
                         timeout=120)
     assert cp.returncode == 0, (

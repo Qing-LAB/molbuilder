@@ -48,114 +48,10 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities
 from . import builds as _builds
+from .builds import conda_run_argv
 from .doctor import _effective_name
 
 
-def _bypass_conda_run(argv: Sequence[str], env_prefix: str
-                      ) -> Tuple[Tuple[str, ...], Dict[str, str]]:
-    """Rewrite ``conda run -n NAME --no-capture-output CMD...`` into a
-    direct call that bypasses ``conda run``'s shell stub.
-
-    Why: mamba 1.x's ``run`` implementation generates a stub that
-    uses ``exec -- "$@"``; bash's ``exec`` builtin rejects ``--``
-    with ``line 5: exec: --: invalid option`` and the whole step
-    dies before the inner command starts.  Fixed in mamba 2.x, but
-    a lot of HPC sites still ship 1.x.  The same bug bit the bash
-    install-env.sh shim and was fixed there by calling the env's
-    binary directly; we mirror the cure here.
-
-    Implementation: build a bash wrapper that sets the same
-    environment ``conda activate <env>`` would (PATH,
-    LD_LIBRARY_PATH, CONDA_PREFIX, CONDA_DEFAULT_ENV) AND sources
-    every ``<env>/etc/conda/activate.d/*.sh`` script, then execs
-    the inner command.  Sourcing activate.d is load-bearing for
-    source-built recipes (siesta-gpu installs binaries to
-    ``<env>/opt/siesta-gpu-stack/siesta/bin``, NOT ``<env>/bin``;
-    only the activate.d hook adds that path) plus any conda
-    package that registers post-activate env mutations
-    (cuda-version, openmpi, etc.).
-
-    Returns ``(new_argv, env_overrides)``.  The wrapper handles
-    env setup internally; ``env_overrides`` is therefore an empty
-    dict and exists only to preserve the existing caller contract.
-    """
-    # Expected shape (from _plan):
-    #     argv[0] = conda binary
-    #     argv[1] = "run"
-    #     argv[2] = "-n"             OR    "--prefix"
-    #     argv[3] = <env name>       OR    <env prefix path>
-    #     argv[4] = "--no-capture-output"
-    #     argv[5:] = the actual command
-    # builds.py uses --prefix + "--" separator, install.py uses -n.
-    if len(argv) < 6 or argv[1] != "run":
-        raise ValueError(f"_bypass_conda_run: unexpected shape {argv!r}")
-    start = 5
-    if start < len(argv) and argv[start] == "--":
-        start += 1
-    cmd: Tuple[str, ...] = tuple(str(a) for a in argv[start:])
-    if not cmd:
-        raise ValueError(f"_bypass_conda_run: empty inner cmd in {argv!r}")
-    env_q = shlex.quote(env_prefix)
-    env_name = shlex.quote(Path(env_prefix).name)
-    activate_d = shlex.quote(f"{env_prefix}/etc/conda/activate.d")
-    cmd_q = " ".join(shlex.quote(a) for a in cmd)
-    # HPC strictness: constrain temp + cache dirs to the env prefix.
-    # Many strict systems have small /tmp, restricted /var, or
-    # per-user write quotas on $HOME.  Keeping pip's wheel cache,
-    # tar/cmake/make's temp files, and ccache's compilation cache
-    # under the env prefix means a single ``conda env remove`` truly
-    # cleans up after this install -- nothing dangles in $HOME.
-    # Wrapper diagnostics: echo every load-bearing detail to stderr
-    # BEFORE the exec.  We cannot debug what we cannot see -- a
-    # silent ``exec: --: invalid option`` failure with no other
-    # context (which is what the user just hit) wastes everyone's
-    # time.  Each line tagged ``[bypass]`` so it's filterable.
-    # The debug echoes report the command EXACTLY as it will be exec'd,
-    # and each echo argument is quoted as ONE shell word.
-    #
-    # This used to build ``echo "[bypass] cmd={shlex.quote(...)}"`` --
-    # shlex.quote emits SINGLE quotes, dropped inside a DOUBLE-quoted
-    # echo, so a command containing a double quote closed the echo early
-    # and the remainder was parsed as shell.  The first step whose text
-    # had one (the toolchain-shim step, whose body contains
-    # ``B="$CONDA_PREFIX/bin"`` and a ``link() {`` function) died with
-    # ``syntax error near unexpected token '('`` -- in the DIAGNOSTIC
-    # line, while the command it was reporting was perfectly valid.
-    # Quoting for the wrong context turned a debugging aid into the
-    # failure it was meant to explain.
-    #
-    # ``cmd_q`` rather than a bare join: the logged line is then
-    # copy-pasteable, and argv boundaries survive.
-    debug_cmd_repr = cmd_q
-    wrapper = (
-        f'echo {shlex.quote(f"[bypass] env_prefix={env_prefix}")} >&2; '
-        f'echo {shlex.quote(f"[bypass] cmd={debug_cmd_repr}")} >&2; '
-        f"export CONDA_PREFIX={env_q}; "
-        f"export CONDA_DEFAULT_ENV={env_name}; "
-        f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
-        f'export LD_LIBRARY_PATH={env_q}/lib"${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"; '
-        f"mkdir -p {env_q}/var/tmp {env_q}/var/cache/pip; "
-        f"export TMPDIR={env_q}/var/tmp; "
-        f"export PIP_CACHE_DIR={env_q}/var/cache/pip; "
-        f"if [ -d {activate_d} ]; then "
-        f'echo {shlex.quote(f"[bypass] sourcing activate.d/*.sh in {activate_d}")} >&2; '
-        f'for _f in {activate_d}/*.sh; do '
-        f'[ -f "$_f" ] || continue; '
-        f'echo "[bypass]   . $_f" >&2; '
-        f'. "$_f"; '
-        f"done; "
-        f"else "
-        f'echo "[bypass] (no activate.d directory)" >&2; '
-        f"fi; "
-        f'echo "[bypass] final PATH=$PATH" >&2; '
-        f'echo {shlex.quote(f"[bypass] exec: {debug_cmd_repr}")} >&2; '
-        f"exec {cmd_q}"
-    )
-    # ``bash -c`` (no -l): we don't want the user's login files
-    # sourced -- the activate.d sourcing above is the only env
-    # setup we want.  System ``/bin/bash`` is universally present;
-    # we don't depend on the env's bash being installed yet.
-    return (("bash", "-c", wrapper), {})
 from .recipes import PipPackage, Recipe
 
 
@@ -186,7 +82,9 @@ class StepRole(str, Enum):
 #: How much of a step's combined output is kept.  The streamed copy
 #: already reached the user's terminal; this is the excerpt the CLI
 #: recaps and the web report stores, so it is an excerpt on purpose.
-OUTPUT_LIMIT = 4096
+# One home, in the layer that produces the output (`builds.OUTPUT_LIMIT`).
+# Re-exported here because `InstallStep.output` is documented against it.
+OUTPUT_LIMIT = _builds.OUTPUT_LIMIT
 
 
 @dataclass(frozen=True)
@@ -344,7 +242,6 @@ class Outcome(str, Enum):
 def run_step(
     step: InstallStep,
     *,
-    env: Optional[Dict[str, str]] = None,
     prefix: Optional[str] = None,
     sink=None,
     timeout: int = 3600,
@@ -365,24 +262,21 @@ def run_step(
     rc: Optional[int] = None
     combined = ""
     ran = attempts[0]
+    # The environment every attempt runs in, primary or alternative: host
+    # leakage stripped, temp and pip cache inside the prefix.  It used to be
+    # `run_step`'s `env` parameter, which no caller ever passed -- so no pip
+    # step was ever sanitised -- and the temp dirs were set inside a shell
+    # string that only existed on the workaround path.
+    step_env = _builds.env_for_step(prefix)
 
     for n, argv in enumerate(attempts):
-        run_argv = list(argv)
-        if prefix:
-            # Same PIP_CACHE_DIR / activate.d treatment for every
-            # attempt, primary or alternative.
-            try:
-                bypassed, _ = _bypass_conda_run(argv, prefix)
-                run_argv = list(bypassed)
-            except ValueError:
-                pass
         if n and sink is not None:
             sink.write(f"    {step.label}: previous source was not "
                        f"accepted ({_why_rejected(step, rc, combined)}); "
                        f"trying the declared alternative\n")
             sink.flush()
-        rc, combined = _builds.run_streaming(
-            run_argv, env=env, sink=sink, timeout=timeout)
+        rc, combined = _builds.dispatch_into_env(
+            argv, prefix, env=step_env, sink=sink, timeout=timeout)
         ran = argv
         if step.accepts(rc, combined or ""):
             return replace(
@@ -427,19 +321,6 @@ def _rejection_output(step: InstallStep, rc: Optional[int],
         out += (f"\n(missing expected substring "
                 f"`{step.expect_contains}`)")
     return out
-
-
-def conda_run_argv(conda: str, env_name: str, *cmd: str) -> Tuple[str, ...]:
-    """``<mgr> run -n <env> --no-capture-output <cmd...>`` -- the one spelling.
-
-    It was written out four times: `pip_argv`, `verify_step_for`, the planner's
-    extra-steps loop, and `_dispatch.run_in_env`.  Three of those are dispatched
-    through `run_step`, which rewrites the argv to dodge mamba 1.x's broken
-    ``run`` stub (see `_bypass_conda_run`); the fourth was not, so the one
-    spelling that never got the workaround was also the only one nobody could
-    see was missing it.
-    """
-    return (conda, "run", "-n", env_name, "--no-capture-output", *cmd)
 
 
 def pip_argv(conda: str, env_name: str, *specs: str,
@@ -656,11 +537,10 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
     """Return ``$CONDA_PREFIX`` for the named env, or ``None`` if not found.
 
     Four-tier resolution mirrors ``install-env.sh``'s bash
-    ``_resolve_env_python``.  Multiple fallbacks because a single
-    failure here cascades into the verify step running through
-    ``<mgr> run`` (the buggy path we're trying to bypass) -- the
-    user then sees ``exec: --: invalid option`` and the install
-    "succeeds" but actually fails:
+    ``_resolve_env_python``.  The prefix is what every step is addressed by
+    (`installation.md` M2) and what the activation fallback needs, so a failure
+    here means a step that cannot be dispatched at all -- which is reported as
+    such rather than guessed around:
 
     1. ``<mgr> env list --json`` -- the canonical registry.
        Match by basename so envs in custom envs_dirs are caught.
@@ -1030,8 +910,8 @@ class _Dispatcher:
     five ``<mgr> env list`` / ``info --json`` calls to resolve -- so every
     phase of a recipe shares one resolution instead of re-probing.
     ``conda create`` is the only step that needs no prefix; there is no
-    env yet.  Everything after it is dispatched through the activate.d-
-    sourcing bypass, which does.
+    env yet.  Everything after it is addressed by the prefix
+    (`installation.md` M2), which is why resolving it once matters.
     """
 
     env_name: str
@@ -1204,9 +1084,10 @@ def _run_steps(
                     return False
                 continue
         elif dispatcher.ensure_prefix() is None:
-            # FAIL LOUD.  Dispatching the unbypassed argv would hit mamba
-            # 1.x's ``exec --`` stub bug, and the user would be reading an
-            # error about the wrong thing entirely.
+            # FAIL LOUD.  Without a prefix the step cannot be addressed at
+            # the env at all (M2), and a `-n` dispatch would then be resolved
+            # against envs_dirs -- a different env, or an error about the wrong
+            # thing entirely.
             executed.append(_undispatched(
                 step, Outcome.FAILED,
                 f"could not resolve env prefix for `{dispatcher.env_name}` "
