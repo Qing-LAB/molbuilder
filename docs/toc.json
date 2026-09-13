@@ -29,6 +29,10 @@
     {
      "path": "plans/plan.md",
      "label": "The plan (one file)"
+    },
+    {
+     "path": "plans/2026-09-12-env-config-handover.md",
+     "label": "Hand-over: envs + config (2026-09-12)"
     }
    ]
   },

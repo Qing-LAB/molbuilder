@@ -101,6 +101,14 @@ naming the `bash scripts/install-env.sh` invocation that repairs it
 `repair --include-optional` to turn on gated features) — so the report is
 the instruction and this page is background, not a required detour.
 
+**Non-interactive use** *(2026-09-12)*. `doctor`, `list`, `validate` and `repair`
+need **no flag and no terminal** — run them from CI, a batch step or `nohup` as
+they are. Only `bootstrap` and `install` confirm the env manager, and both take
+`--yes`. (Those four verbs define no `--yes`; until 2026-09-12 the shim demanded
+one from every verb and so could not run a health check unattended at all —
+`env-framework.md` § 8 has the rule.) `bootstrap` without `--yes` has two
+questions to ask and will say so up front when there is no terminal to ask in.
+
 Then you're ready:
 
 ```bash

@@ -1,0 +1,447 @@
+# Hand-over — the env-installer / config-and-secrets session of 2026-09-12
+
+**Role:** Plan · **Domain:** ops / envs / configuration
+
+## 0. THE TARGET — the design this work is converging on
+
+**Read this first. Everything after it is distance from here.** The session this
+document audits produced a list of defects, and a defect list with no target is
+just patching: each item gets answered where it was noticed instead of where the
+invariant lives, which is exactly how the § 2 list grew as long as it did.
+
+Both frameworks have the same shape: **one home per decision · the data carries
+the situation · one door executes · the verdict is derived.**
+
+### 0.1 The env installer — two state machines, one runner
+
+From [`env-framework.md`](?doc=ops/env-framework.md) § 2-§ 7, whose diagram is the
+authority:
+
+```
+recipes.py ── Recipe ──┬── CondaPackage(spec, optional, reason)
+  (the registry)       └── PipPackage(name, source, extras, optional,
+   § 3                                force, fallback_to_index, reason)
+          ┌─────────────────────────┴──────────────────┐
+   create_step_for · pip_step_for · verify_step_for   audit_packages
+     conda_argv       pip_argv                        (reads disk only)
+        (record -> InstallStep; the ONLY translators)        │     § 6
+                    │                                       │
+              plan_install        ── steps, no side effects  │
+                    ▼                                       ▼
+                 run_step  ◄───────── repair § 7 ◄───── doctor verify § 6
+              (the one door)
+                    │
+              Outcome.decide    ── the one transition rule
+                    │
+          OK · RECOVERED · DEGRADED · FAILED · SKIPPED        § 5.1
+```
+
+The target as checkable invariants:
+
+| | invariant | owner |
+|---|---|---|
+| **T1** | **Two state machines, and nothing else decides success.** `EnvState` before we touch an env, `Outcome` after each step, `Outcome.decide` the only transition rule. No status string, no boolean, no second notion of success beside the five outcomes | § 2, § 5.1 |
+| **T2** | **The registry is the only place that says what an env is.** Recipes are data; a fact about a package lives ON that package — no parallel `optional_*` list | § 3, § 3.2 |
+| **T3** | **Every situation is a FIELD on a record, never a branch in the runner.** The runner has no per-phase special case | § 4.2, § 5.2 |
+| **T4** | **One door runs every step — `run_step`.** Exactly two things sit outside it and the document names both: `validate.py`'s post-install probes, and `builds.run_build_spec`. A third is a finding, not a fix | § 5, § 5.4, § 5.5 |
+| **T5** | **One translator per record kind, one speller per command line.** `create_step_for` · `pip_step_for` · `verify_step_for` · `conda_step_for`; `pip_argv` · `conda_argv`. Nothing else builds an argv | § 5 |
+| **T6** | **The verdict is DERIVED from the steps**, never tracked beside them | § 5.3 |
+| **T7** | **The audit reads disk, never the network**, and answers on identity *and* provenance; **repair re-reads the RECORD**, never a flattened copy of an instruction | § 6, § 7 |
+| **T8** | **One speller for a remedy the program prints.** `_fix_cmd` is the launcher form; a printed fix names the *effective* env and the *detected* manager, and resolves through `recipe_by_name` | § 8 + `installation.md` § 9's rule |
+
+### 0.2 Config and secrets — one resolver, one name, one writer
+
+From [`configuration.md`](?doc=configuration.md) § 2.1c, § 2.3, § 3.1 and
+[`architecture.md`](?doc=execution/architecture.md) § 7:
+
+| | invariant | owner |
+|---|---|---|
+| **T9** | **Directories come from `config_dir`; a file's NAME belongs to its format owner.** `config_dir` spells only the files no format owns. Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder writes | **A11** |
+| **T10** | **One writer puts bytes at a path it means to keep — `persist.write_bytes` — and privacy is a PARAMETER of it.** A credential is not a reason to write your own. Two shapes may sit outside it (stage-then-validate, and append) and each must be named where the rule is stated | § 2.3 |
+| **T11** | **Modes are set at creation and asserted on arrival.** The config root `0700`, a credential `0600`; a directory or file that ARRIVES loose is tightened or reported, because no writer controls how it arrived | § 2.1b |
+| **T12** | **A path is asked for, never assembled**, and every surface that resolves one PRINTS where it resolved from | § 3.1, § 2.2 |
+| **T13** | **A retired key is refused, never ignored**, and no live text advertises one | § 2.1a, § 2.1e |
+
+### 0.3 What to do with a finding
+
+**Restore the invariant, do not answer the instance.** For every item in § 2 the
+question is *which T does this break, and where does that T live* — then fix it
+there and sweep the restatements. § 2.G maps the items onto T1-T13 and collapses
+them into the structural moves; working from that map is the difference between
+closing this list and re-growing it.
+
+Three items name a **missing** invariant rather than a broken one (no rule covers
+them): **A0** (nothing forbids deleting the env the process runs from), **A4**
+(nothing asserts the mode of a directory another verb created), **D13** (the host
+env's name has no persistent home). Those need a rule written before code.
+
+---
+
+## 0.4 What this document is, and why it exists
+
+16 commits landed on 2026-09-12 (`4392964c^..8cb36f1f`, 48 files) across the
+environment installer, config-and-secret handling, and their contracts. **Three
+independent reviews then audited that work**, with instructions to falsify the
+commit messages rather than confirm them. This file is the result: what is
+genuinely done, and what is not.
+
+**It exists because the session's own reports were not trustworthy.** Several
+commit messages claim a sweep that stopped short, and four documentation
+statements written that day are false — two of them in text that `envs
+init-config` ships into a user's config directory. Treat a commit message from
+that day as a hypothesis and this file as the corrected record.
+
+**Every row below carries its evidence and how it was checked:**
+
+| mark | means |
+|---|---|
+| **RAN** | reproduced by running something; the command or observation is given |
+| **READ** | established by reading code at the cited `file:line`; not executed |
+
+**Order of reading: § 0 the target, then § 1 what is already true, then § 2 the
+distance.** § 1 exists to stop the next session re-deriving settled work, which is
+this project's recorded failure mode; § 0 exists so § 2 is not worked through as a
+list of patches.
+
+## 1. DONE — verified, do not redo
+
+Audited by replaying each commit's behavioural claim against the tree. **14 of 16
+claims verified outright, 2 partial** (the partials are §§ 2.C and 2.D7).
+
+| what | evidence | mark |
+|---|---|---|
+| `auth_setup.write_secret_file` is atomic **and** `0600`; a failed write leaves the previous secret byte-identical; a planted symlink is replaced, not followed | new file `0600`, parent forced `0700`, pre-existing `0644` → `0600`; lone-surrogate write raised and the original survived with no temp litter | **RAN** |
+| `notify-token --route a/b` is refused and the existing keys survive | exit 2 "Nothing was written"; file byte-identical; writer and reader share `monitor.is_route_segment` | **RAN** |
+| `bootstrap` exits non-zero when it cannot seed the config directory | writable+`--yes` → 0; unwritable root → 1; no-tty without `--yes` → 1 | **RAN** |
+| `bootstrap` warns about an unwritable root **and** about having no terminal, **before** the first install | warning at output index 315 vs first `[1/N]` banner at 1309 — order asserted, not presence | **RAN** |
+| `bootstrap --dry-run` writes nothing and runs no doctor pass when every env is present | config dir never created, no prompt, exit 0 | **RAN** |
+| `bootstrap --help` does not create the host env when it is absent | stubbed shim: `--help` → no marker, exit 0; same harness with `--yes` → create reached | **RAN** |
+| Read-only shim verbs (`doctor`/`list`/`validate`/`repair`) run with stdin closed and no flag | no "no TTY", no "No such option '--yes'"; gate is `_verb_changes_envs` (`scripts/install-env.sh:455`) | **RAN** |
+| `install <conda-only> --clean` really removes the env, and the banner no longer promises artifacts that do not exist | captured argv `['…/conda','env','remove','-n','molbuilder-pySCF','-y']` | **RAN** |
+| `get_scheduler()` returns `None` for the config `init-config` seeds | seeded file carries `"scheduler": {}` → `None`; falsy non-objects still raise (the hole did not widen) | **RAN** |
+| `MOLBUILDER_HOST_ENV` is honoured by the Python layer; bootstrap plans no second host env | `envs list` shows the override; `install molbuilder --dry-run` emits `conda create -n mb-dev-zzz` | **RAN** |
+| `machine_config_warnings()` is reached by `serve foreground` and `serve start`, before anything starts | marker-and-raise substitution hit on both paths | **RAN** |
+| `service_validate_url` is neither required nor written, and `cas.py` never mentions it | wizard output has no such key; validator accepts its absence | **RAN** |
+| `_run_build_phase` is called correctly — the TypeError that broke **every source build** for four commits is gone, and execution reaches a phase | signature matches the call at `builds.py:1833`; unmonkeypatched `run_build_spec` reached the phase | **RAN** |
+| The serve log is `0600` in a `0700` directory **on the supervisor's path**, rotation included, and tightens a pre-existing loose dir/file without losing history. ⚠ **Narrowed 2026-09-12 after the residue sweep** — this row said it without the qualifier, and `serve status` creates the same log through its own bare `mkdir` + `open(..., "ab")` (`cli.py:2415`), landing `0664` in `0775` when it is the first writer. See **I5** | `.1.gz` / `.2.gz` both `0600`; `status`-first measured `0664`/`0775` | **RAN** |
+| No recipe prints a fix command naming an unregistered recipe | 7 literal hits scanned; all resolve through `recipe_by_name` | **RAN** |
+| `docs/ops/examples/` is gone and nothing points at it; no config file ships in the repo | — | **RAN** |
+| `jobset probe --write` writes `environment.json`, `--name sol` writes `environments/sol.json`, `--name this` is refused | — | **RAN** |
+| Every path and resolver drawn in `configuration.md` § 3.1 resolves as drawn (all 14) | — | **RAN** |
+| `importorskip("pyscf.gto")` in all three files; host env no longer carries `pyscf-properties` and `envs doctor` reports 20/20 | — | **RAN** |
+
+## 2. NOT DONE — the work list
+
+Ordered by what it costs a person. **Nothing here has been started.**
+
+### A. Defects introduced on 2026-09-12
+
+| id | what | evidence | mark |
+|---|---|---|---|
+| **A0** | ⚠ **`envs install molbuilder --clean` DELETES THE ENV THE PROCESS IS RUNNING FROM, and `doctor` prints that command as its remedy.** Opening `--clean` to conda-only recipes (`_cli.py:1105`, `:1301`) put the **host** recipe in scope — it is conda-only (`recipes.py:890`, `category=None`) — and there is **no self-removal guard anywhere** in `_cli.py`. `_render_doctor` (`_cli.py:241-245`) prints `install <name> --clean --yes` for **any** env whose verify failed, the host included; with `--yes` there is no prompt (`_cli.py:1351`). The shim dispatches as `<prefix>/bin/python -m molbuilder` **without activating** (`install-env.sh:809-851`), so conda's own "cannot remove current environment" guard never fires: the removal proceeds, then a fresh `conda create` is planned from an interpreter whose prefix no longer exists. A failure between remove and create leaves the machine with **no host env and no molbuilder**. The new test for this change uses `molbuilder-pySCF`; the host — the one self-destructive case — is untested. **Fix:** refuse when the resolved prefix is `sys.prefix` (or `CONDA_PREFIX`), naming the manual two-step instead | `recipes.py` host is `build_spec=None`; `_env_prefix('molbuilder')` == `sys.prefix` == `/home/qqing/miniconda3/envs/molbuilder`; no guard in `_cli.py` | **RAN** |
+| **A4** | **`jobset probe --write` creates the config directory world-readable** — `jobset/_cli.py:3665` `mkdir(parents=True, exist_ok=True)` with no mode. Measured `drwxrwxr-x`, and a later `envs init-config` reports it *"kept"* and **does not tighten it** (`initconfig._ensure_root` only sets the mode on a directory it creates). `runtime_config.CONFIG_DIR_MODE = 0o700` was added the same day and is **referenced by nothing**. `machine_config_mode_warning` checks the file, never the directory. So every secret later placed there — `secret_key`, `google_client_secret`, `notify_keys`, and the `tls.key` the new `secrets/README` invites — is `0600` inside a directory anyone on a shared login node can list and traverse. And `jobset probe --write` is the **first command** the `environments/README` seeded that day tells the user to run on the target. Sibling: `serve_daemon.py:305` creates `run/` at the umask default three lines from `_mkdir_private` | `drwxrwxr-x` after probe, unchanged after `init-config`; `CONFIG_DIR_MODE` grep: no consumer | **RAN** |
+| **A1** | `LogRoll._rotate` **leaks the archive's file descriptor.** `gzip.open` owned its fd; `gzip.GzipFile(fileobj=_open_private(...))` does not close `fileobj`, so the `.gz` flushes only when CPython's GC collects the writer, and any run under `-W error` fails. `serve_daemon.py:187-190`. **Fix:** `with _open_private(dst,"wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb") as fout:` | `ResourceWarning: unclosed file <_io.BufferedWriter name=3>` | **RAN** |
+| **A2** | **`serve-<port>.stacks.log` is created world-readable** — `cli.py:2261-2263` does a bare `mkdir` + `open(_sp,"a")`, giving `0775`/`0664`, in the directory the same session tightened. `configuration.md` § 3.1 (written that day) states `0600`, and § 2.3's table names `serve_daemon._open_private` as the door for an appended log. Under `--no-supervise`/`--debug` no `LogRoll` runs, so nothing tightens the directory either | measured dir `0o775`, file `0o664` with real stack output | **RAN** |
+| **A3** | A new build test reaches its phase by cloning `https://example.com/a.git` — a network call in a unit test. `tests/test_envs_builds.py` (`test_run_build_actually_REACHES_a_phase`) | `repo_url="https://example.com/a.git"` | **RAN** |
+
+### B. Documentation written that day which is false
+
+These matter more than ordinary drift: **B1 and B5 ship into the user's config
+directory**, and B2 is a rule stated as absolute in the contract that owns it.
+
+| id | what | evidence | mark |
+|---|---|---|---|
+| **B1** | **"The four files `molbuilder.json` cannot name"** — it is **three**. `google_client_secret` has a *default* home that `auth.providers[].client_secret_file` overrides, and `oauth.py:104-110` reads whatever the config says. Asserted in four places, one of them the seeded `secrets/README`: `configuration.md` § 3.1, § 3's table row, `installation.md`'s tree, `initconfig.py:391` | a config naming `/elsewhere/not-the-fixed-home` is accepted and the path kept | **RAN** |
+| **B2** | § 2.3 says two shapes sit outside the one writer and **"nothing else may"**, and that **"every secret this package writes went through"** `write_secret_file`. Both false: `web/auth.py:524-530` creates the session key itself with `os.open(..., O_EXCL, 0o600)` — and that is the *normal* first-run path. Three further whole-file writers of files these documents map are unnamed: the stacks log (A2), the pidfile (`serve_daemon.py:306`), and the two seeded READMEs (`initconfig.py:384`) | patched `persist.write_bytes`; `_install_secret_key` never called it | **RAN** |
+| **B3** | § 3.1 states the config root is `0700`. `config_dir()` never creates it; `runtime_config.write_config_scope` creates it with no mode (`runtime_config.py:2185`) and `initconfig._ensure_root` never tightens one that already exists | against a non-existent root: dir `0o775` | **RAN** |
+| **B4** | § 0's new ownership row claims this page owns "the mode and the durability of **every** file listed here". Several listed files have no stated mode and are created with none: `environment.json` (0644 via `write_json`), `reports/`, the runtime root, `serve-<port>.pid`; the two READMEs measure `0664` and are written non-atomically | — | **RAN** |
+| **B5** | The seeded `secrets/README` says the web UI **and** `molbuilder notify-token` "both write this file" of the `notify` channels. `notify-token` writes only `notify_keys` and *prints* the cluster-side JSON (`cli.py:1975`). `getting-started.md`'s table, written the same day, says it correctly — so the two disagree and the wrong one is in the user's config directory | — | **RAN** |
+| **B6** | `conventions.md`'s new note says three test files were deleted on 2026-09-10; two of them (`test_cli_run.py`, `test_cli_siesta_stages.py`) went on **2026-08-11** in `c773d5ac`, for a different reason. The same note claims §§ 1-2 held docs-structure rules; they do not — what they do hold, unswept, are two now-false "*is* enforced" claims (lines 39, 60) | `git log --diff-filter=D` | **RAN** |
+| **B8** | Two further live `paths.logs` restatements beyond D5: `config_dir.py:113-118` tells the reader *"`molbuilder.json`'s `paths` block names this directory, and `molbuilder.runtime_config.logs_dir` is where that override is applied"* — advice that bricks a config, citing a function that **does not exist** (grep: no definition) — and `envs/_cli.py:41`. The first is in the module that owns the directory | `hasattr(runtime_config,'logs_dir')` → False | **RAN** |
+| **B7** | § 2.3 retires the "mode on the descriptor before the first byte" mechanism, and three live places still teach it: `configuration.md` § 2.1b (same document), `run-reports.md:270`, `runtime_config.py:1292`, `notify_setup.py:126`. Related: § 2.3's own door for `molbuilder.json` — `write_config_scope` — is the "chmod afterwards" shape it disparages (`write_bytes` → 0644 → `os.chmod` 0600) | `write_bytes` on a new target lands `0644` | **RAN** |
+
+### C. An instruction that was not implemented
+
+> **The user, 2026-09-12:** *"it is hard to gauge because, a, the package might
+> change depends on when you start to install, and, b, when you try to compile
+> the downloaded size and everything to be bigger than the actual installation.
+> So I wouldn't really bother that. We just remind user that you need to make
+> sure you have enough free space... that's not really our job to get it."*
+
+| id | what | evidence | mark |
+|---|---|---|---|
+| **C1** | `check_disk`'s docstring says **"Never an error, and there is no threshold"** and the code below it is `if free >= suggested: return free, None` — a threshold. The message lands in `warnings` (`builds.py:1079`), which `_build_callbacks` turns into **"Proceed despite warnings?"** — so the hard 30 GB gate was replaced by a derived gate. The derivation is inflated (reports 6.5 GB where `du` says 3.2, then ×2 → warns below ~13 GB for an env costing 3.2) and costs a full filesystem walk of every env. **Fix:** always `info.append` the free space, always print the one-line reminder, no `suggested`, no `warnings` bucket, no `os.walk` | docstring vs `builds.py:679-718`; walk measured 2.8 s warm for 6 envs | **RAN** |
+| **C2** | The deleted constant **survives as recipe data**: `recipes.py:1966` declares `"~30 GB free disk space under $CONDA_PREFIX"` as a GPU system precondition, and `tests/test_envs_siesta_gpu_recipe.py:380` **asserts** a disk figure is present. Mitigated only by `system_preconditions` having no renderer (no consumer outside `recipes.py` and that test) | grep: no consumer | **RAN** |
+
+### D. Sweeps that stopped at the first instance
+
+This is the session's dominant failure shape: **the instance was fixed and the
+sibling left**, four times with the rule written down beside the code that does
+not follow it.
+
+| id | what | evidence | mark |
+|---|---|---|---|
+| **D1** | **`envs init-config` answers an unwritable config root with a raw `PermissionError` traceback** — while `seeding_blockers()`, added that day, holds the exact sentence for it, and `bootstrap` prints `init-config` as the remedy. Same *"a remedy the program prints that it then refuses to run"* class the session claims to have closed. **Fix:** `initconfig.init_config()` calls `seeding_blockers()` first and raises with those lines | traceback at `initconfig.py:324` | **RAN** |
+| **D2** | `run_build_spec`'s `conda_binary` is a **required** keyword argument with **zero** references in its body; `install.py:1257` still passes it and three tests pin it with `conda_binary="/bin/false"  # would fail if called`. Finishing `5ef047a0` is what A-list item A1 of the previous round was about — a parameter kept "for the signature" is how the TypeError survived three commits | AST scan of the function body: 0 uses | **RAN** |
+| **D3** | `--clean`'s env removal is a bare `subprocess.run` (`_cli.py:1361-1382`), outside `run_step` and `conda_argv`, against `env-framework.md` § 5 (*"Every step goes through `run_step`"*, *"One place writes each command line"*). The session **promoted it from one recipe to five** and `installation.md:519` now calls it "the one door". **Fix:** `remove_step_for(env_name, conda)` beside `create_step_for`, dispatched through `run_step`, so the wipe carries an `Outcome` | — | **READ** |
+| **D4** | The printed-remedy sweep stopped within four lines of itself: `_cli.py:913` bypasses `_fix_cmd`; **`_cli.py:1234` prints the *recipe* name where every neighbouring line uses `effective`** — so with `MOLBUILDER_HOST_ENV` (made live that day) or an `envs.<category>` override the hard stop names an env that does not exist; `install.py:851` prints a literal `conda`; `recipes.py:1939` hand-copies `_fix_cmd`'s output because the speller lives in the surface. **Fix:** move the speller below both (`envs/hints.py`), and carry the binary on `EnvState` | `_cli.py:1234` vs `:1207` | **RAN** |
+| **D5** | A **fourth** `paths.logs` restatement at `serve_daemon.py:57` — *"So `paths.logs` moves molbuilder's application logs"* — for a key that is refused. The commit said *"Three places said it, one was right."* There were four, and the fourth is in a file that commit edited | — | **RAN** |
+| **D6** | `machine_config_warnings()` was created as the one home for the pair, and `jobset/_cli.py:182-193` — the loop its docstring calls *"the shape being named rather than invented"* — still spells the pair itself. So the function has two callers and the loop it was extracted from is not one of them; a third warning added later would reach `serve` and not the jobset verbs. See also **D12** | — | **READ** |
+| **D7** | **`bootstrap` remains a lossy copy of `install`'s orchestration.** The callbacks were extracted, but `run_build_spec` invokes `on_warnings` only `if report.warnings` (`builds.py:1706`), so on a clean preflight **nothing is asked** — while `--include-source-builds`' help still promises *"the user is asked to confirm before each source build starts unless `--yes` is also given"*. Bootstrap also never calls `format_install_summary` and skips the env-state probe + ORPHAN/GHOST/BROKEN hard stop `install` runs. **Fix:** one `_install_one(recipe, caps, *, auto_yes, …)` door both verbs call — probe, summary, confirm, tee, run | `builds.py:1706`; help at `_cli.py:1532` | **READ** |
+| **D8** | `_cli.py:1411` passes an env **name** to `probe_toolchain(env_prefix)`, which documents and requires an absolute `$CONDA_PREFIX` (`builds.py:576-589`). So the install summary shown immediately before a source build's `Proceed?` reports gcc / OpenMPI / CUDA as undetected on a healthy env. Pre-existing, but in the surface D7 is about | — | **RAN** |
+| **D11** | `runtime_config.write_config_scope` is the one in-package caller that should pass the new `mode=` and does not: `write_bytes` widens the temp to `0644` **with the content in it**, then `os.chmod` fixes it up — the exact sequence `write_bytes`' own docstring says `mode=` exists to make impossible. Its docstring already claims the property ("at mode 0600"). Its `mkdir` at `:2188` also ignores `CONFIG_DIR_MODE`. **Latent, not live:** grep finds no production caller. One-line fix: `write_bytes(target, …, mode=CONFIG_FILE_MODE)`, drop the chmod | `os.chmod` spy: `requested=0o644` then `requested=0o600` | **RAN** |
+| **D12** | `auth-setup` is the second surface `machine_config_warnings`' docstring names as a non-caller, and it still is one — so the command that writes provider credentials and `client_secret_file` paths into `molbuilder.json` says nothing when that file arrived `0644`, while printing `Wrote … (mode 0600)`. Same file, same rule: `notify-token --keys-file` was removed that day because *"a flag naming another was a way to write a key nowhere that works"*; **`auth-setup --output` is that flag** for the machine config, and the clobber guard at `cli.py:1605` advertises it as the way past | — | **READ** |
+| **D13** | The `MOLBUILDER_HOST_ENV` fix **holds only while the variable is exported.** The shim never records it, so: install with it set, later `conda activate mb-dev` and run `python -m molbuilder envs …` → the host recipe reports against `molbuilder` again, and `install molbuilder` from there creates the second host env the fix was for. The routed half has a persistent home (`envs.<category>`); the host half has none — and `"envs": {"host": "mb-dev"}` **validates and is silently ignored**, because `_effective_name` consults `env_for_category` only when `category is not None`. The seeded `_envs` comment advertises that block for env names | `envs list` with and without the variable | **RAN** |
+| **D14** | A **second** private writer survives twenty lines below the one that was unified: `auth_setup._write_0600` (`:358-367`) is still `os.open(O_TRUNC, 0o600)` + `chmod`, and `emit_molbuilder_json` hand-rolls a `.new.<pid>` temp + `os.replace` instead of the shared writer — and that name lacks `mkstemp`'s `O_EXCL`. The next change to how a private file is written reaches one of the two | — | **READ** |
+| **D9** | A third spelling of the tty predicate: `envs/_cli.py:1899` duplicates `cli._stdin_is_a_terminal` citing A7. A7 forbids depending on the surface, not a floor-1 home. `jobset/ask.py:346` does the bare unguarded `sys.stdin.isatty()` the guarded form exists to prevent | — | **READ** |
+| **D10** | `MOLBUILDER_HOST_ENV` became a Python-level override with **no contract entry** (`configuration.md` § 2.1c owns the other `MOLBUILDER_*` variables) and a third spelling in `scripts/capture-readme-screenshots.py:121`. The host is now the one env whose name is overridable only by a variable and not by `envs.<category>`, an asymmetry nothing records. Also `_effective_name` lives in `doctor.py` while `env_for_category` lives on `diagnostics.Capabilities`, which is the home for "what env does this recipe mean" | — | **READ** |
+
+### E. Pre-existing, found during the audit — not caused that day
+
+| id | what | evidence | mark |
+|---|---|---|---|
+| **E1** | Two suite failures, **cause identified and not this session's**: both come from `3aaec645` (2026-09-11), which added `PySCFConfig.engine` at `config/pyscf.py:245`. Today's range touches none of `config/pyscf.py`, `template.py`, `pyscf/`, or either test. **`test_pyscf_has_no_vocabulary_gaps_left`** — the field's `engine_key` is parenthesised (`'(molbuilder: selects the deck composer + the backend env)'`) so it reads as a *note*, not a keyword, and the field declares no `metadata['item_kind']`; the error names the fix. **`test_every_shown_parameter_changes_the_deck_or_is_openly_pending`** — the field has `choices=("pyscf",)`, a one-option selector, so `_probe_value` cannot produce a value distinct from the default and the anti-silent-skip assertion fires; the fix belongs in the test's `_PROBES`/`STILL_OPEN`, not in the deck, since a one-choice field cannot change a deck by construction | `git log` over the range for those paths is empty | **RAN** |
+| **E2** | `configuration.md` § 8's drift row says `jobset probe`'s `--set` / scheduler flag surface "is not built". **It is**: `probe --help` lists `--set KEY=VALUE` and `--scheduler`, `_cli.py:3484-3503` passes them to `resolve_environment(overrides=…)`, and the `environments/README` seeded that day teaches the flag. **The row should be closed** | `probe --help` | **RAN** |
+| **E3** | `generator.md` § 6.1 and `script-preparation.md` say the wrapper reads the rendered deck for the **rank count**. `runwrap.py:2231` says a rank count comes from a record "and nowhere else"; the deck is read for the GPU keyword and an advisory notice. Contradicts `architecture.md` § 9.2 | — | **READ** |
+| **E4** | `job-system.md`'s `resources` example lists **7** keys and a retained sentence says "seven"; `Resources` has **15** and `to_dict()` returns all 15. A comment added that day states 15 beside the wrong block instead of correcting it | 15 re-derived | **RAN** |
+| **E5** | `envs install --help` still ends "**Source-build recipes only.**" for `--clean` (`_cli.py:1012-1024`), the opposite of both the new behaviour and `installation.md` | `envs install --help` | **RAN** |
+| **E6** | `envs init-config --help` says "the **two** secrets that cannot live here"; the README it describes says four (and the true number is three — B1) | — | **READ** |
+| **E7** | `_render_validation` (`_cli.py:866-876`) excludes advisories from the verdict but not from `n_pass`, so one real failure beside an absent MPS prints `4/6 checks passed` | — | **READ** |
+| **E8** | `docs/README.md:5`/`:128` still say the doc-structure rules are "Enforced by `tests/test_docs_structure.py`", and ~14 rows in `architecture.md` (§ 2.1, A1/A4/A7/A8/A11, § 8.2) name `tests/test_architecture_rules.py`. Both files were deleted 2026-09-10 in a deliberate sweep, so **those rules are held by review alone** and the documents claim otherwise. A1/A4/A7/A8/A11 are "the rules that must never break" | `git log --diff-filter=D` | **RAN** |
+
+### F. Needs the user, not more scanning
+
+| id | question |
+|---|---|
+| **F1** | **E8 is a policy call.** Either the 2026-09-10 sweep was right and `architecture.md` § 7's "checked by" column must say *review* for A1/A4/A7/A8/A11 (and its opening *"a rule nobody checks is a wish"* revisited), or those five rules need their checker back. Not a defect — a decision. |
+| **F2** | A PyPI-sourced `pyscf-properties` sat in the **host** env from 2026-09-11 21:39. It is the measurement `recipes.py` and `installation.md` § 3.1 cite for why `force=True` is needed (*"the tree stayed PyPI's and `infrared` stayed absent"*). It was removed on 2026-09-12, along with the two empty directories pip left, which were what made `import pyscf` succeed in that env. **Restore it if the artifact should stand in place.** The pySCF env itself was never touched and is correct: `direct_url.json` records git commit `4eee5a43` and `pyscf.prop.infrared` imports. |
+| **F3** | ⚠ **THE SUITE CANNOT CURRENTLY BE RUN TO COMPLETION, and this is the first thing to fix.** `pytest tests/ --ignore-glob=*_e2e.py` collects **9081**. Two independent runs ended with a `done` record and exit 1 after **4947** and **5804** tests — roughly half — having reported only 4 failures. So ~4000 tests are not being executed and nothing says so: `testrun.py status` prints `done (exit 1)` and a pass count that looks like a result. **`testrun.py` does not pass `-p no:randomly`**, so order is shuffled and the last-recorded test identifies nothing. The shape fits a test that terminates the process (`os._exit`, a segfault, or a `sys.exit` outside a runner) rather than failing. **How to find it:** run with `-p no:randomly` for a reproducible order, then bisect by directory, or compare the collected node-id set against the executed one from `.test-progress/none2e.jsonl`. Until this is closed, **no claim about suite state in this document or any commit message is supportable** — including "268 passed" style figures, which are targeted subsets and were all genuinely green. |
+| **F3a** | Known failures inside the runs that did execute, **all pre-existing** (see E1 for the 2026-09-11 cause): `test_pyscf_convergence_knobs.py::test_memory_is_one_item_across_both_engines`, `test_template_declarations.py::test_pyscf_has_no_vocabulary_gaps_left`, `test_vibration_form_honesty.py::test_every_shown_parameter_changes_the_deck_or_is_openly_pending` — one root cause, the `engine` field's missing `metadata['item_kind']`; and `test_results_blueprint.py::TestPartialSpectraInspectorEndpoint::test_partial_has_no_undocumented_ids` — six undocumented DOM ids (`display-floor`, `methods-block`, …), a separate and unexamined issue. |
+
+### H. Residue of the pre-state-machine design — the installer
+
+**This is the section § 2 was missing.** A–F came from auditing the 2026-09-12
+diff; these came from sweeping `molbuilder/envs/`, the shim and `diagnostics.py`
+against T1–T8 with no reference to any recent change. They are **not** today's
+defects — they are what the migration left behind, which is why the T column
+matters more than the date.
+
+| id | breaks | what | mark |
+|---|---|---|---|
+| **H1** | **T1, T4** | ⚠ **A healthy env is labelled `GHOST`, and the program then tells the operator to delete it.** `probe_env_state` sets `dir_exists` from `info.envs_dirs/<name>` **only** (`install.py:900-909`) and never tests the prefix the registry just handed it — while the very same object carries that prefix (`prefix = prefix_from_registry or prefix_from_fs`, `:914`). So an env whose parent is not an `envs/` directory (`conda create -p /scratch/...`) reports `GHOST` with a correct prefix inside it, `install` hard-stops at `_cli.py:1209`, and `describe()` prints *"the directory is gone. Fix manually with: `conda env remove -n <name> -y`"*. `_env_prefix` resolves the same env correctly through four tiers (`:654-746`) — two rules for one question, which is the § 5 lesson still live inside the probe. § 2.1 defines GHOST as *"a registry entry with no directory"*, which is not what the code measures | **RAN** |
+| **H2** | **T1** | **Three readers of the conda registry give three answers**, and one of them is a second mechanism for the question `EnvState` owns. `diagnostics._list_conda_envs` (`:272-302`) filters on the parent directory being literally named `envs`; `install._env_prefix` resolves four ways; `probe_env_state` a fifth. `caps.env_available()` — not `EnvState` — is what gates `repair`, `clean`, `validate`, `bootstrap --skip-existing`, the `--clean` pre-check and `doctor`'s `present`. For the env in H1: `repair` says *"env does not exist. Install it first"*, `install` resolves its prefix, `doctor` says `MISSING` | **RAN** |
+| **H3** | **T4, T5** | **Two hand-written copies of the `conda run` bypass, already drifted four ways** — `install._bypass_conda_run` (`:53-157`) and `builds._run_build_phase`'s wrapper (`:1550-1648`). The consequential divergence: **`run_step` never sanitises the environment.** `run_streaming(run_argv, env=env, …)` takes `run_step`'s `env` parameter, which **no caller passes** (`install.py:383`), while `builds.py` passes `build_subprocess_env()` at two sites to strip `CPATH`/`CFLAGS`/`LIBRARY_PATH`/`CUDA_HOME`/`OMPI_*`. So every pip step and every `extra_steps` dispatch runs with exactly the host leakage `builds.py` exists to prevent. § 5.5 exempts builds' *executor* (sentinel resume), not a second copy of the rewrite | **RAN** |
+| **H4** | **T3, T5** | **Two `InstallStep`s are hand-built in the planner**, bypassing one-translator-per-kind: the batched plain-pip step (`install.py:604-609`) and the `extra` step (`:613-617`). § 4.2's pseudocode names `pip_steps_for` and `extra_steps_for` — **neither exists**. So *what a plain pip install means* lives in two places and *what an extra step means* lives in no translator at all; any future per-step policy has to be written twice | **READ** |
+| **H5** | **T1, T6** | **Two vocabularies for the five outcomes inside one run's output.** `_OUTCOME_WORD` (`install.py:1024`) prints `UNAVAILABLE -- optional, continuing` live; the CLI recap prints `(degraded)` for the same step (`_cli.py:1478`, `step.outcome.value`). `RECOVERED` is *"OK via the declared alternative"* live and `recovered` in the recap. `_OUTCOME_WORD`'s own comment claims it is the ONE mapping | **READ** |
+| **H6** | **T3** | **The CLI re-derives the create decision the state machine owns, and pays for a second live probe.** `cmd_install` (`_cli.py:1200-1242`) re-implements the wreckage branch and the resume branch — the latter as a **string compare**, `state.state_label == "PRESENT"`, where `state.can_resume` is the accessor — then `run_install` probes again inside `_create_decision`. Instrumented: the same two JSON documents are read twice back to back per install, three times from the CLI | **RAN** |
+| **H7** | **T1** | **`EnvState`'s five states are a display string, branched on with `==` in four places** (`install.py:787-815`, `:820`, `:825`, `:829-857`, `_cli.py:1212`, `:1239`). This is the shape `StepRole` was introduced to remove — its own comment: *"renaming a label for clarity silently disabled the create-skip."* A rename of `"PRESENT"` silently turns `can_resume` False, which the code calls *"the worst answer for an env that is already wreckage"* | **READ** |
+| **H8** | — | **Dead parameters, returns and branches**, each established against every call site in `molbuilder/` **and** `tests/`: `run_step(env=…)` never passed (and is the hole in H3); `_bypass_conda_run`'s second return value always `{}` and discarded by its one caller, kept to *"preserve the existing caller contract"* with no party to it; `_run_steps(skip_create_if_present=False)` never passed, its docstring saying *"set False only in tests"* and no test doing so; `validate_recipe(quiet=…)` never passed; `_cli.py:431-440`'s `base` kind-stripping a no-op branch; `Outcome.decide(first_attempt=True)` ignored whenever `ok=False`; `envs/__init__.py:21-22` re-exporting `subprocess`/`shutil` as *"back-compat"* for six test monkeypatches and no product code — against the repo's no-back-compat rule | **READ** |
+| **H9** | **T5** | **A fourth output-trim spelling**: `builds.py:1641` `combined[-4096:]`, a bare literal duplicating `install.OUTPUT_LIMIT` — in the module whose results are adapted into `InstallStep`s, so a build step's `output` obeys a different constant from every other step's | **READ** |
+| **H10** | — | **Three spellings of "derive the install root from the manager binary"**: `install.py:734-742`, `install-env.sh:721-725`, `initconfig.py:99`. The third is the loosest (`/usr/bin/conda` → `/usr`) and feeds the activation preamble written into the user's config. No rule covers this; § 8 covers only the duplicated package lists | **READ** |
+| **H11** | **T6** | `validate`'s live marker and its table disagree: `validate.py:610` streams `FAIL` for an advisory probe, `_cli.py:860` then prints `[NOTE]`. The CLI's own comment forbids exactly this — *"printing FAIL beside a verdict that ignores it is two statements about one fact"*. Distinct from **E7**, which is about the count | **READ** |
+| **H12** | — | **Obsolete statements of the old design sitting on the new one**: `install.py:19` still says verify *"re-uses `molbuilder.envs.doctor`"* — the dependency reversed at the migration (`doctor.py:489` imports from `install`); and `skip_create_if_present`'s docstring (`:1162-1168`) promises a skip *"reported as a no-op (returncode 0…)"*, which § 5.1 names as the defect that was fixed | **READ** |
+
+**The shape of H1–H12, stated once:** the migration built the new doors and left
+the old derivations standing beside them. Four items are one question answered in
+two or more places (H1, H2, H3, H6), three are a string where the design says
+state (H5, H7, H11), and the rest are what those leave behind. **H1 and H3 have
+real consequences today** — a delete-this recommendation for a working env, and
+every pip step running with host toolchain leakage.
+
+### I. Residue of the pre-consolidation design — config and secrets
+
+Swept against T9–T13, independently of any diff. **A11 is the rule most of these
+break, and its own text is part of the problem** — see I4.
+
+| id | breaks | what | mark |
+|---|---|---|---|
+| **I1** | **T9** | `jobset probe --write` **climbs a parent chain to the config root and then re-assembles the filename by hand**: `target = … machine_scope_path().parent`, `fname = f"{name}.json" if name else FILENAME` (`jobset/_cli.py:3645-3646`). `machine_scope_path()` already *is* `<config dir>/environment.json`; this takes it apart and puts it back, importing the bare `FILENAME` to do so. Two spellings of one path inside one expression — so moving the machine record moves the reader and leaves this writer behind. **A4's mode defect sits on the same two lines** | **READ** (resolution **RAN**) |
+| **I2** | **T9, T12** | `config_provenance` spells the calculation-scope record path itself (`runtime_config.py:1416-1419`, `Path(project_dir) / ENV_FILENAME`) — in the one function whose whole job is to tell a reader which file answered. The owner's door is `scheduler/record.calculation_record()`, whose docstring says it exists because *"the join lived at three sites … two of them are places a reader is TOLD a path"*. This is the fourth. **Structural cause:** `scheduler/__init__.py` re-exports `FILENAME` but **not** `calculation_record`, so the façade offers the filename and hides the door | **READ** |
+| **I3** | **T9, T12** | ⚠ **A user-facing remedy hard-codes a path a resolver owns.** `jobset/prep.py:1189` says *"copy the record it writes into `~/.config/molbuilder/environments/` here"*. Measured with `MOLBUILDER_CONFIG_DIR` set: the resolver answers `<that dir>/environments`, the message says `~/.config/...`. So on exactly the machine the variable exists for, following the instruction puts the record where `prep` does not look — and `prep` refuses again with the same message. **This is the identical defect `notify-token --keys-file` was deleted for on the same day**; the sweep missed this site | **RAN** |
+| **I4** | **T9** | `environments_dir()` reaches the config root by `.parent` (`scheduler/record.py:803`), which A11 forbids in those words. `config_dir.config_dir() / "environments"` is the one-line form. **And A11's own elaboration licenses the climb**: `architecture.md:895-897` still says *"a per-user config path is `environment.machine_scope_path`'s"*, naming a pre-consolidation owner. **Fix the rule text first** — otherwise the next climb is written against the rule as it reads today | **READ** |
+| **I5** | **T10, T11** | `serve status` writes the serve log through its own door — bare `mkdir` + `open(log_path(port), "ab")` (`cli.py:2415-2416`) — so when `status` is the first writer the log lands **`0664` in `0775`**, and that file is the measured `client_secret` sink. A later supervisor start tightens both, so the window is "until one runs". Distinct from **A2**, which is the *stacks* log. This is why the § 1 DONE row above is now qualified | **RAN** |
+| **I6** | **T13** | `task.py:239-240` states the **two-thirds** config-dir rule — `$XDG_CONFIG_HOME/molbuilder/notify`, else `~/.config/molbuilder/notify` — omitting `MOLBUILDER_CONFIG_DIR`. `cli.py:2030` documents that exact omission as having silently written a key where the monitor does not look | **READ** |
+| **I7** | **T10** | Whole-file writes outside the one writer, none holding a credential but each able to leave a truncated file: `cli.py:1823` (`runtime-info` JSON that a later parse reads), `projects.py:457,463` (project READMEs), `monitor.py:1560`. § 2.3's own table routes *"anything else, whole"* through `persist.write_json` | **READ** |
+| **I8** | — | **Dead and duplicate doors.** `serve_daemon.log_dir()` has **zero** callers anywhere (`:65-71`). `auth_setup.default_secret_dir()` is now `return config_dir()` with no production caller — a third public name for one directory, kept alive by the tests that assert it. `auth_setup.secret_key_path()` / `google_client_secret_path()` are aliases of the `config_dir` doors, and § 3.1 names one spelling while § 2.1e names the other. `runtime_config.read_effective_config` has no production caller while `architecture.md` advertises it as a door | **READ** |
+| **I9** | — | **Dead operations and imports.** `auth_setup.py:459` chmods after `os.replace` of a temp already created `0600` — `os.replace` carries the inode, so it can never change anything, and it reads as the loose-window fix-up § 2.3 retires. `notify.py:204`'s `read_keys(path)` stringifies a resolved path into app config, reads it back and `expanduser`s it, three lines after `read_notify_keys()` answers path-free. Unused imports: `auth_setup` `base64` and **`DIRNAME`** (the one module outside `config_dir` importing the root's name component, and it does not use it), `serve_daemon` `sys`, `record` `re`, `runtime_config` `machine_for`, `web/auth` `request`/`url_for` | **RAN** (pyflakes) |
+| **I10** | — | `oauth.py:87-91` and `:104-110` each independently `expanduser` and resolve `client_secret_file` — two interpreters of one value, where a disagreement shows as a hot-reload that never fires. No rule covers it (the file is user-named) | **READ** |
+
+**What I1–I4 have in common, and why it is the first thing to fix here:** four
+sites reach a path by taking another path apart, and **A11's own elaboration still
+describes the pre-consolidation owner**, so a reader following the rule as written
+is led to do it. `config_dir` is the root's one home and each file's owner exposes
+its own door — **correct A11's text in `architecture.md`, then sweep I1, I2, I4**,
+and export `calculation_record` from the `scheduler` façade so the door is as
+reachable as the filename.
+
+### G. Checked and clean — do not re-scan these
+
+Recorded so the focused session does not spend itself here. All **RAN** unless noted.
+
+- **`repair` against a `PipPackage`** (`env-framework.md` § 7): honours `source`, `force`, `optional` and `fallback_to_index` from the one record, via `pip_step_for` → `run_step`. `has_validator` is gone with no callers.
+- **`get_scheduler`'s empty-block change**: only `{}` changed meaning. `[]`, `"slurm"`, `0`, `False` are still rejected earlier by `_normalise`'s type check, and no caller depended on the old raise (`runwrap.py:4442`, `jobset/submit.py:890`, `jobset/_cli.py:1134`, `web/blueprints/build.py:1535`).
+- **The web surfaces**: `notify_setup.py` validates through `monitor.is_channel_name` / `_KINDS` and never builds a route, so the new write-door check covers its issuer too; `web/app.py:372-378` reads with no path, which is what justified removing `--keys-file`; `build.py` needs nothing.
+- **`jobset/` and `scheduler/`**: nothing reads `paths.logs`/`run`/`reports`; `write_environment` goes through `persist.write_json`.
+- **Other `persist.write_bytes` callers**: `checkpoint._atomic_write_bytes` and `write_json` correctly want the preserve-or-0644 default. The only caller that should pass `mode=` is **D11**.
+- **`configuration.md` § 3.1's 14 paths and resolvers**: every one resolves as drawn.
+- **From the config/secrets sweep:** no filename literal appears outside its owner as a code-level join (the one `$cfg/notify` construction is shell text for the far machine and carries the full three-branch rule); **no live reader of any retired key** (`secret_key_file`, `notify_keys_file`, `notify_route`, `paths.logs|run|reports`); `notify` has one format owner and one writer, `notify_keys` one reader and one writer shared by CLI and web; `record.write_environment` goes through `persist.write_json`; `write_bytes`'s `mode=` path is correct (mkstemp 0600 → chmod → replace); no secret reaches a log from the notifier path; one admin list with one meaning; no second per-user root anywhere.
+- **From the installer residue sweep:** `pip_argv`/`conda_argv`/`conda_run_argv` are the only argv spellers and nothing in `envs/` concatenates a command line; `repair`'s two halves both map back to the record and dispatch through `run_step`; `audit_packages` is disk-only and iterates records for both kinds; there is **no** parallel `optional_*` list anywhere; `PackageAuditIssue` carries no install instruction; `succeeded` is derived from the steps and every recorded step carries an `Outcome`; `InstallStep.accepts` is the single accept rule; `plan_install` is pure; `create_step_for`'s degradation is one fallback, not a search; the shim consumes only `--gcc` and its host arrays match `_HOST`; `abi.py` holds no step-like dispatch.
+- **`write_secret_file`'s atomicity and symlink behaviour**: a planted symlink is replaced, not followed; a failed write leaves the previous bytes and mode intact with no temp litter.
+
+## 3. THE MIGRATION — finishing the design, in phases
+
+**Scope of this plan: `install-env.sh` + the `envs` verbs (install / bootstrap /
+doctor / repair / validate / clean / init-config), deployment, and how config and
+secrets are PLACED and VALIDATED.** Items outside that — § 5 — are recorded and
+deliberately not in the phases.
+
+### 3.0 The end state, stated so it can be checked
+
+When this migration is finished, all nine of these are true of the tree, not just
+of the documents:
+
+| | the end state (and the § 0 invariant it realises) | today |
+|---|---|---|
+| **Z1** (T3) | **One orchestration door.** `install` and `bootstrap` differ only in which recipes they are given. Probe, summary, confirm, log, run — one function. No verb has a branch the other lacks | two verbs, four divergences (**D7**) |
+| **Z2** (T4, T6) | **Everything the installer does is a step with an `Outcome`.** Including the `--clean` wipe. Nothing dispatches a subprocess outside `run_step` except the two things § 5.4/§ 5.5 name | the wipe is a bare `subprocess.run` (**D3**) |
+| **Z3** (T1) | **One answer to "does this env exist, and where".** `EnvState` owns it; `env_available` and the three registry readers collapse into it; no caller re-derives a prefix or a create decision | three readers, three answers (**H2**, **H1**, **H6**) |
+| **Z4** (T1, T6) | **The state and the outcome are enums, and one mapping prints each.** No `== "PRESENT"`, no second vocabulary between the live line and the recap | strings, branched on in four places (**H7**, **H5**, **H11**) |
+| **Z5** (T9, T12, T8) | **Every path is asked for.** No module joins a directory to a filename it does not own; nothing climbs `.parent` to a root; **every remedy the program prints names a resolved path and the detected manager** | four climbs, three wrong remedies (**I1-I4**, **D4**) |
+| **Z6** (T10) | **One writer puts bytes at a path, and privacy is its parameter.** The only exceptions are the two § 2.3 names, and § 2.3 names all of them | five unnamed writers (**B2**, **I5**, **I7**, **D11**, **D14**) |
+| **Z7** (T11) | **Modes are asserted on arrival, not only set at creation** — and the assertion is driven by the documented tree, so the document cannot drift from it. See § 3.4 | no directory check at all (**A4**, **A2**, **I5**, **B3**) |
+| **Z8** (new rule) | **No remedy the program prints can destroy working state.** Refusing to delete the env you are running from, and never calling a healthy env `GHOST` | two live destructive remedies (**A0**, **H1**) |
+| **Z9** (new rule) | **The suite runs to completion**, and `testrun.py` cannot report a pass count for a run that stopped early | ~4000 tests silently unrun (**F3**) |
+
+### 3.1 Phase 0 — make the work verifiable, and disarm what destroys state
+
+Nothing below can be shown safe until the suite completes, and two remedies the
+program prints today cost the user their install.
+
+**Closes F3, A0, H1.** → **Z9, Z8**
+
+1. **F3 first.** Run with `-p no:randomly` for a reproducible order; compare the
+   collected node-id set against the executed set in `.test-progress/none2e.jsonl`
+   to name the boundary; bisect by directory. The shape fits a test terminating the
+   process, not failing. Then make `testrun.py` refuse to print a pass count when
+   executed < collected — a runner that reports a partial run as `done` is the
+   defect behind every suite claim in this document.
+2. **A0** — `--clean` refuses when the resolved prefix is `sys.prefix`, naming the
+   manual two-step. Test the **host** recipe, which is the case the existing test
+   does not cover.
+3. **H1** — `probe_env_state` tests the prefix the registry handed it before
+   calling the directory gone. A fixture with an env outside an `envs/` dir is the
+   test; `GHOST` must mean what § 2.1 says it means.
+
+### 3.2 Phase 1 — one answer to "where does it live"
+
+The config-placement half. **Correct the rule before the sites**, because A11 as
+written today names a pre-consolidation owner and so licenses the climbs.
+
+**Closes I4, I1, I2, I3, I6, D4, and the façade gap.** → **Z5**
+
+1. **I4** — fix A11's elaboration in `architecture.md` to name `config_dir` as the
+   root's one home and each format owner as its filename's.
+2. Export `calculation_record` from `scheduler/__init__.py`. A façade that offers
+   `FILENAME` and hides the door is why **I2** exists.
+3. Sweep the climbs: **I1** (`jobset probe --write`), **I2**
+   (`config_provenance`), **I4** (`environments_dir`).
+4. **I3, I6, D4** — every printed path resolved, every printed command naming the
+   `effective` env and `caps.conda_binary`. `_fix_cmd` moves below the surface so
+   `recipes.py` can call it instead of hand-copying its output.
+
+### 3.3 Phase 2 — one answer to "does this env exist"
+
+**Closes H2, H6, and the second probe.** → **Z3**
+
+`EnvState` becomes the only answer. `caps.env_available` either delegates to it or
+goes; the six gates that call it (`repair`, `clean`, `validate`,
+`bootstrap --skip-existing`, the `--clean` pre-check, `doctor`'s `present`) ask the
+machine. `cmd_install` stops re-deriving the create decision, and the probe runs
+once per install.
+
+### 3.4 Phase 3 — placement VALIDATED, from the document itself
+
+This is the piece the design does not have yet, and it is what stops §§ A, B and I
+from regrowing. **Make `configuration.md` § 3.1's tree executable.**
+
+**Closes A2, A4, I5, I7, B2, B3, B4, B7, D11, D14.** → **Z6, Z7**
+
+1. **One table in code** — path resolver, expected mode, who creates it, whether it
+   holds a credential — for every entry in the § 3.1 tree.
+2. **One checker over that table**, used three ways: `envs doctor` reports it; the
+   surfaces that create directories tighten through it; a test asserts the table
+   covers every file the tree draws. The § 3.1 tree stops being prose a reviewer
+   must re-verify, which is how **B3**, **B4** and my own narrowed DONE row happened.
+3. Route the unnamed writers through `persist.write_bytes` (**I7**, **D11**), or
+   name them in § 2.3 with a reason (**B2**'s `O_EXCL` create, the pidfile, the
+   seeded READMEs, the appends), and fix the modes (**A2**, **A4**, **I5**).
+4. Correct the false statements that ship to users (**B1**, **B5**) and the count
+   in the three other places.
+
+### 3.5 Phase 4 — one orchestration door
+
+**Closes D7, D3, D1, D2, H3, H4.** → **Z1, Z2**
+
+1. `_install_one(recipe, caps, *, auto_yes, …)` — probe, summary, confirm, tee,
+   run. Both verbs call it; `bootstrap` stops being a lossy copy.
+2. `remove_step_for(env_name, conda)` through `run_step`, so the wipe carries an
+   `Outcome` and the printed manual form is `_shell_join(step.argv)` (**D3**).
+3. **H3** — decide whether install steps run sanitised, then make the door do it.
+   The dead `run_step(env=)` is the unmade decision; `build_subprocess_env()` is
+   the existing answer.
+4. **H4** — write the two translators § 4.2 already names (`pip_steps_for`,
+   `extra_steps_for`); **D2** — drop `run_build_spec`'s dead `conda_binary` and the
+   three tests pinning it; **D1** — `init_config` raises through
+   `seeding_blockers()` instead of a `PermissionError`.
+
+### 3.6 Phase 5 — the state machines stop being strings
+
+**Closes H7, H5, H11, and finding E7.** → **Z4**
+
+`EnvState` and the outcome words become enums with one mapping each, so the live
+line and the recap cannot disagree and a renamed label cannot silently disable the
+create-skip.
+
+### 3.7 Phase 6 — the user's instruction, and the cheap sweep
+
+**Closes C1, C2, D5, D6, D12, D13, H8-H10, H12, I8, I9, B6, E5, E6.**
+
+1. **C1, C2** — disk: report free space, print the reminder, no threshold, no
+   `warnings` bucket, no filesystem walk; and sweep the `~30 GB` out of
+   `recipes.py` with the test pinning it.
+2. **D13** — give the host env's name a persistent home, or remove the override.
+   `"envs": {"host": …}` validating and being ignored is the worst of the three.
+3. Delete what nothing calls; collapse the duplicate literals; correct the
+   docstrings that still describe the pre-migration direction.
+
+### 3.8 Phase 7 — the two decisions
+
+**F1** (A-rule "checked by" columns vs the retired guards) and **F2** (whether the
+2026-09-11 measurement artifact is restored). Neither is a defect; both need the
+user.
+
+## 4. Method note for whoever picks this up
+
+The three audits were told to **falsify** the commit messages, not confirm them,
+and that is what made them useful — 14 claims held, and the ones that did not
+were all overstatements of scope rather than outright wrong behaviour. Two habits
+produced nearly every item in § 2:
+
+- **Fixing the instance, not the rule.** D1-D10 are all one shape. The project's
+  own rule is *fix the RULE in the document that owns the concept, then sweep the
+  restatements* — §§ B and D are what happens when the restatement sweep is
+  skipped and a commit message claims it anyway.
+- **Writing the rule down while the code beside it disagrees.** B2, C1, D5 and
+  B7 each state a property in a docstring that the adjacent code does not have.
+  A docstring is not a mechanism.
+
+
+## 5. Recorded, and OUT OF SCOPE for this migration
+
+Not install, deployment or config. Listed so they are not lost and not worked on
+here: **E1** (the `engine` field's missing `item_kind`, one cause behind three
+suite failures, from 2026-09-11) · **E3** (`generator.md` / `script-preparation.md`
+on the wrapper's rank count) · **E4** (`job-system.md`'s `resources` block listing
+7 of 15) · **I10** (`oauth.py`'s two interpreters of `client_secret_file`) ·
+`test_results_blueprint`'s six undocumented DOM ids (**F3a**) · **S17** in
+`plan.md` (`run_tool` and the mamba-1.x bypass).

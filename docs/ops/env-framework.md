@@ -405,6 +405,19 @@ the two answers differ, and that difference is the whole point of `optional`.
 
 ### 5.4 What is deliberately outside the door
 
+> **⚠ A THIRD THING IS CURRENTLY OUTSIDE THE DOOR, AND IT IS A DEFECT, NOT AN
+> EXCEPTION** *(recorded 2026-09-12)*. `install --clean`'s env removal is a bare
+> `subprocess.run([conda, "env", "remove", ...])` in `envs/_cli.py`, so the wipe
+> carries no `InstallStep`, no `Outcome`, and no line in the result the verdict is
+> derived from (§ 5.3). It was an edge path for one GPU recipe until 2026-09-12,
+> when `--clean` was opened to every recipe — which promoted a private dispatch to
+> the door `installation.md` calls *"the one door"* for wiping any of the five
+> envs. The fix is `remove_step_for(env_name, conda)` beside `create_step_for`,
+> dispatched through `run_step`. Tracked as **D3** in
+> [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
+> Until it lands, read *"every step goes through `run_step`"* in § 5 as the target,
+> not as a statement about today's tree.
+
 `validate.py`'s post-install probes (SIESTA's `ctest`, ELPA's `make check`)
 dispatch on their own. They are not install steps and do not become them: they
 answer "is this build scientifically sane", they need a working directory and
@@ -492,8 +505,26 @@ cannot know — `--gcc`, which it consumes because `recipes.py` reads
 points at `<subcommand> --help` for the rest. It used to re-specify every flag
 and had drifted in four places, including two flags the Python layer *prints as
 the command to run*: a second copy of a surface nothing can keep in sync is
-worse than no copy. (Which is why `--help` implies `--yes`: otherwise the
-pointer stops at the env-manager prompt and, with no TTY, prints nothing.)
+worse than no copy.
+
+**The env-manager confirmation is asked only by the verbs that CHANGE an env**
+*(2026-09-12)*. `require_conda` prompts *"use this env manager?"* — which exists
+for the case where an old `~/anaconda3` is picked over the Miniforge you meant —
+and that only matters when something is about to be created with it. It used to be
+asked by every verb, and with no TTY the shim exited 2 telling the person to
+*"pass `--yes`"* — a flag `doctor`, `list`, `validate` and `repair` **do not
+define**, so the remedy it printed was rejected by click. The canonical entry point
+could not run a health check in CI at all. `_verb_changes_envs` now names the two
+that confirm (`bootstrap`, `install`); both accept `--yes`, so the message stays
+true wherever it is still reached, and a read-only verb needs no flag.
+
+**`--help` never installs.** It implies `--yes` — otherwise the pointer above stops
+at that prompt and, with no TTY, prints nothing — but suppressing the prompt was
+not enough on its own: the `bootstrap` arm then ran on and performed the multi-GB
+host-env create, with the confirmation deliberately silenced, before any help text
+appeared. A separate `MB_WANT_HELP` now stops that arm when the host env is absent
+and says why per-verb help needs it (the help comes from molbuilder itself, which
+lives in that env).
 
 It duplicates the host package lists, and **a bash array can hold a name
 and nothing else**. A host package that ever needs a source or a force flag
