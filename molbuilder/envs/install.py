@@ -38,13 +38,12 @@ besides :mod:`molbuilder.envs.builds`.
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities
 from . import builds as _builds
@@ -536,14 +535,19 @@ def plan_install(
 def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
     """Return ``$CONDA_PREFIX`` for the named env, or ``None`` if not found.
 
-    Four-tier resolution mirrors ``install-env.sh``'s bash
-    ``_resolve_env_python``.  The prefix is what every step is addressed by
-    (`installation.md` M2) and what the activation fallback needs, so a failure
-    here means a step that cannot be dispatched at all -- which is reported as
-    such rather than guessed around:
+    The prefix is what every step is addressed by (`installation.md` M2) and
+    what the activation fallback needs, so a failure here means a step that
+    cannot be dispatched at all -- which is reported as such rather than
+    guessed around:
 
-    1. ``<mgr> env list --json`` -- the canonical registry.
-       Match by basename so envs in custom envs_dirs are caught.
+    0. **The startup snapshot**, when it knows this env.  `<mgr> env list
+       --json` costs 1.2 s on a warm workstation and `doctor` asks this question
+       once per recipe, so five redundant registry reads per report was the
+       measured cost of not looking at the reading already taken.  A snapshot
+       that does not know the env is not evidence of absence -- an env created
+       mid-process is absent from it -- so the live tiers still run.
+    1. ``<mgr> env list --json`` -- the canonical registry, read fresh.
+       One reader, `diagnostics.conda_env_prefixes`.
     2. ``<mgr> info --json``'s ``envs`` array (FULL prefix paths).
        Distinct from envs_dirs (the search list) -- ``envs`` holds
        the actual prefixes the env manager has recorded, which
@@ -561,23 +565,15 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
        being asked is from a different install root.
     """
     import json as _json
-    # Strategy 1: registry.  ``Path(prefix).name == env_name`` so
-    # envs at custom locations still match if the basename is right.
-    try:
-        cp = subprocess.run(
-            [conda_binary, "env", "list", "--json"],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        cp = None
-    if cp is not None and cp.returncode == 0:
-        try:
-            envs = _json.loads(cp.stdout).get("envs", [])
-        except (ValueError, KeyError):
-            envs = []
-        for prefix in envs:
-            if Path(prefix).name == env_name:
-                return prefix
+    # Strategy 0: the reading already taken.
+    known = get_capabilities().env_prefix(env_name)
+    if known:
+        return known
+    # Strategy 1: the registry, fresh, through the one reader.
+    from ..diagnostics import conda_env_prefixes
+    fresh = conda_env_prefixes(conda_binary).get(env_name)
+    if fresh:
+        return fresh
     # Strategies 2 + 3: info --json.
     try:
         info_cp = subprocess.run(
@@ -820,24 +816,13 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     """
     import json as _json
 
-    # Check 1: conda env list (the registry)
-    listed = False
-    prefix_from_registry: Optional[str] = None
-    try:
-        cp = subprocess.run(
-            [conda_binary, "env", "list", "--json"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if cp.returncode == 0:
-            envs = _json.loads(cp.stdout).get("envs", [])
-            for prefix in envs:
-                if Path(prefix).name == env_name:
-                    listed = True
-                    prefix_from_registry = prefix
-                    break
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
-            ValueError, KeyError):
-        pass
+    # Check 1: the registry, through the ONE reader (H2).  Read FRESH, not off
+    # the startup snapshot: this probe runs during an install, where an env was
+    # created or removed seconds ago and the snapshot is exactly wrong.
+    from ..diagnostics import conda_env_prefixes
+    prefix_from_registry: Optional[str] = conda_env_prefixes(
+        conda_binary).get(env_name)
+    listed = prefix_from_registry is not None
 
     # Checks 2 + 3: the directory, and its conda-meta/.
     #
@@ -1014,7 +999,9 @@ def _report(tag: str, done: InstallStep) -> None:
 
 def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
                      skip_if_present: bool,
-                     force_resume: bool) -> Optional[InstallStep]:
+                     force_resume: bool,
+                     state: Optional[EnvState] = None
+                     ) -> Optional[InstallStep]:
     """Whether ``conda create`` needs to run, as an outcome.
 
     Three answers, and all three are now states rather than a fabricated
@@ -1026,12 +1013,20 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
         exists" and the state probe has already classified why);
       * otherwise           -> ``None``, meaning dispatch it.
 
-    The probe is live (:func:`probe_env_state`) rather than read off the
-    cached capabilities, which go stale right after ``--clean``.
+    ``state`` is the reading the CALLER already took, when it took one: the CLI
+    probes this env before it prints anything, and `run_install` then probed it
+    again one call later -- the same two JSON documents read twice back to back,
+    measured at three reads per install from the CLI (H6).  A caller that has
+    CHANGED the machine since its reading passes nothing, which is what
+    ``--clean`` does after removing the env: the stale reading there says PRESENT
+    about an env that is gone, and skipping create on it would install into
+    nothing.  Never read off the capabilities snapshot, which goes stale for the
+    same reason and is not even this recipe's question.
     """
     if not skip_if_present:
         return None
-    state = probe_env_state(dispatcher.env_name, dispatcher.conda_binary)
+    if state is None:
+        state = probe_env_state(dispatcher.env_name, dispatcher.conda_binary)
     # ``--force-resume``: the operator knows the env is usable even
     # though the probe says GHOST / ORPHAN / BROKEN -- typically mid
     # source-build, where the directory exists but conda-meta has not
@@ -1058,6 +1053,7 @@ def _run_steps(
     executed: List[InstallStep],
     skip_create_if_present: bool = False,
     force_resume: bool = False,
+    env_state: Optional[EnvState] = None,
 ) -> bool:
     """Run one phase's steps through the one door.
 
@@ -1076,7 +1072,7 @@ def _run_steps(
         if step.role is StepRole.CREATE:
             decided = _create_decision(
                 step, dispatcher, skip_if_present=skip_create_if_present,
-                force_resume=force_resume)
+                force_resume=force_resume, state=env_state)
             if decided is not None:
                 executed.append(decided)
                 _report(where, decided)
@@ -1120,6 +1116,7 @@ def run_install(
     build_on_progress: Optional["_builds.ProgressCallback"] = None,
     build_skip_network_check: bool = False,
     force_resume: bool = False,
+    env_state: Optional[EnvState] = None,
 ) -> InstallResult:
     """Execute the install plan, stopping at the first failed step.
 
@@ -1147,6 +1144,11 @@ def run_install(
         render per-phase progress.
     build_skip_network_check
         Skip the per-component ``git ls-remote`` reachability check.
+    env_state
+        A reading of this env's state the caller already took, passed in so the
+        same two registry documents are not read twice in a row (H6).  Omit it
+        -- or pass ``None`` -- whenever the machine may have changed since, which
+        is what ``--clean`` does after removing the env.
     """
     caps = caps if caps is not None else get_capabilities()
     if caps.conda_binary is None:
@@ -1176,13 +1178,15 @@ def run_install(
             f"[install] env prefix: {cached_prefix}\n"
         )
         sys.stderr.flush()
-    # NOTE: we DELIBERATELY do not pre-compute ``env_exists`` from caps
-    # here.  The conda-create skip decision below uses ``probe_env_state``
-    # live -- the cached caps view can be stale (notably right after
-    # --clean, when ``get_capabilities()`` returns the bound snapshot
-    # rather than re-detecting), and trusting it caused the
-    # 2026-06-15 "env already exists; conda may have failed silently"
-    # regression.  See the conda-create branch below for the live probe.
+    # NOTE: ``env_exists`` is still never pre-computed from caps.  The
+    # capabilities snapshot can be stale -- notably right after --clean, when
+    # ``get_capabilities()`` returns the bound snapshot rather than
+    # re-detecting -- and trusting it caused the 2026-06-15 "env already exists;
+    # conda may have failed silently" regression.  ``env_state`` is a different
+    # thing: a reading of THIS env that the caller took itself and has not
+    # invalidated since, which is why the CLI stops paying for a second
+    # identical probe one call later (H6).  A caller that changed the machine
+    # passes nothing and the probe runs here.
     executed: List[InstallStep] = []
     dispatcher = _Dispatcher(env_name=effective, conda_binary=caps.conda_binary,
                    prefix=cached_prefix)
@@ -1199,7 +1203,7 @@ def run_install(
 
     ok = _run_steps(pre_verify, dispatcher, tag="install", executed=executed,
                     skip_create_if_present=skip_create_if_present,
-                    force_resume=force_resume)
+                    force_resume=force_resume, env_state=env_state)
 
     # Build-spec phase: only if the recipe declares one AND nothing
     # failed before it.  `builds.run_build_spec` keeps its own executor

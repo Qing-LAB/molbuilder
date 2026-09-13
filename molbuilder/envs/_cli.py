@@ -1231,6 +1231,9 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     click.echo("Conda env state check:")
     state = _install.probe_env_state(effective, caps.conda_binary)
     click.echo(state.describe())
+    # Handed to `run_install` so the probe is paid for ONCE (H6).  Set to None
+    # by anything below that changes this env -- see `--clean`.
+    env_state_for_install: Optional[_install.EnvState] = state
 
     if clean and state.is_the_running_env():
         # `installation.md` M5.  `--clean` removes the env and then installs
@@ -1298,7 +1301,11 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             "    " + _fix_cmd("install", name, "--yes")
         )
         sys.exit(2)
-    if state.state_label == "PRESENT" and not clean:
+    # `can_resume`, not a string compare on the label.  `StepRole` exists
+    # because four sites keyed control flow on a display label and renaming one
+    # for clarity silently disabled the create-skip; this was the same shape, on
+    # the other state machine, in the surface.  The accessor is the question.
+    if state.can_resume and not clean:
         click.echo("")
         click.echo("Install will RESUME on this env (conda create skipped,")
         click.echo("sentinel-protected build phases short-circuit when valid).")
@@ -1458,8 +1465,15 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             # snapshot when one exists; without ``reset_capabilities()``
             # first, this is a no-op and the install proceeds with a
             # stale ``conda_envs`` that still lists the removed env.
+            # The env is gone, so every reading taken before this line is now
+            # wrong -- including the state probed at Step 0.  `reset_capabilities`
+            # says so for the snapshot; `env_state_for_install = None` says so
+            # for the probe, and `run_install` then takes a fresh one.  Skipping
+            # `conda create` on a stale "PRESENT" here is the 2026-06-15
+            # regression, from the other direction.
             reset_capabilities()
             caps = get_capabilities()
+            env_state_for_install = None
             click.echo("")
 
     # For source-build recipes, surface the install summary + ask for
@@ -1503,6 +1517,12 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             build_on_progress=on_progress,
             build_skip_network_check=skip_network_check,
             force_resume=force_resume,
+            # The reading taken at Step 0, handed over instead of paid for
+            # twice (H6) -- and DROPPED when `--clean` has since removed the
+            # env, because a stale "PRESENT" would skip the create that has to
+            # run.  `env_state_for_install` is None exactly when this process
+            # changed the machine after probing it.
+            env_state=env_state_for_install,
         )
 
         # If the build_spec executor short-circuited on preflight errors,

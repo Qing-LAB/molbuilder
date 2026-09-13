@@ -182,12 +182,25 @@ def test_tool_available_unreachable(monkeypatch):
 # --------------------------------------------------------------------- #
 
 
-def _stub_conda_env_list(envs_list: List[str]):
-    """Return a fake subprocess.run that mimics ``conda env list --json``."""
+def _stub_conda_env_list(envs_list: List[str], base: str = None):
+    """Return a fake subprocess.run that mimics ``conda env list --json``.
+
+    ``base`` adds the ``envs_details`` block a real manager returns, flagging
+    that prefix as its installation.  Without it the stub is a manager that
+    reports only ``envs`` -- and then nothing can say which prefix is an
+    installation, so none is excluded.
+    """
     def fake_run(argv, *args, **kwargs):
         cp = MagicMock(spec=subprocess.CompletedProcess)
         cp.returncode = 0
-        cp.stdout = json.dumps({"envs": envs_list})
+        payload: Dict[str, Any] = {"envs": envs_list}
+        if base is not None:
+            payload["envs_details"] = {
+                p: {"name": ("base" if p == base else p.rsplit("/", 1)[-1]),
+                    "base": p == base}
+                for p in envs_list
+            }
+        cp.stdout = json.dumps(payload)
         cp.stderr = ""
         return cp
     return fake_run
@@ -203,28 +216,46 @@ def test_detect_assembles_capabilities(monkeypatch):
                              "/home/u/miniconda3",
                              "/home/u/miniconda3/envs/molbuilder-MDtools",
                              "/home/u/miniconda3/envs/some-other",
-                         ]))
+                         ], base="/home/u/miniconda3"))
     caps = detect()
     assert caps.conda_binary == "/usr/bin/conda"
-    # Conda installation root (no /envs/ parent) is filtered out;
+    # The installation root is excluded by the manager's own `base` flag;
     # only true named envs make it into the snapshot.
-    assert caps.conda_envs == frozenset({"molbuilder-MDtools", "some-other"})
+    # `{name: prefix}` since 2026-09-12: the snapshot carries WHERE each env is,
+    # so `install._env_prefix` stops paying a 1.2 s registry read per recipe.
+    # Membership -- which is what every gate asks -- reads a mapping unchanged.
+    assert caps.conda_envs == {
+        "molbuilder-MDtools": "/home/u/miniconda3/envs/molbuilder-MDtools",
+        "some-other":         "/home/u/miniconda3/envs/some-other",
+    }
     assert caps.runtime_config == {"envs": {"siesta": "my-siesta"}}
 
 
 def test_detect_filters_out_conda_root_installation(monkeypatch):
-    """Base installation paths don't have ``/envs/`` as parent and
-    aren't addressable via ``conda run -n``."""
+    """A base installation is not an env of ours, and its prefix's basename
+    (``miniconda3``) is not a name conda knows at all -- the base env is called
+    ``base``, so keying it by basename would INVENT a name.
+
+    **Asserted through the mechanism that delivers it** *(2026-09-12)*: the
+    manager's own ``envs_details`` block flags its installation.  This used to be
+    a path rule -- "keep only prefixes whose parent is called `envs`" -- which
+    excluded the base AND every env created with ``--prefix`` elsewhere, so a
+    real env went missing and `probe_env_state` then called it FRESH, whereupon
+    ``conda create`` would make a second env beside it.  A manager that reports
+    no details is covered in
+    `test_envs_one_answer_about_an_env.py`: nothing is excluded there, because
+    nothing in that document says which prefix is an installation."""
     monkeypatch.setattr(diagnostics, "read_config", lambda: {})
     monkeypatch.setattr(diagnostics.shutil, "which",
                          lambda t: "/usr/bin/conda" if t == "conda" else None)
     monkeypatch.setattr(diagnostics.subprocess, "run",
-                         _stub_conda_env_list([
-                             "/home/u/miniconda3",         # base; filter out
-                             "/opt/anaconda3",             # base; filter out
-                         ]))
+                         _stub_conda_env_list(
+                             ["/home/u/miniconda3", "/opt/anaconda3"],
+                             base="/home/u/miniconda3"))
     caps = detect()
-    assert caps.conda_envs == frozenset()
+    # The flagged installation is gone; the other prefix is an env as far as
+    # this document says -- which is the manager's statement, not a guess here.
+    assert caps.conda_envs == {"anaconda3": "/opt/anaconda3"}
 
 
 def test_detect_no_conda_gives_empty_envs(monkeypatch):
@@ -233,7 +264,7 @@ def test_detect_no_conda_gives_empty_envs(monkeypatch):
     monkeypatch.delenv("CONDA_EXE", raising=False)
     caps = detect()
     assert caps.conda_binary is None
-    assert caps.conda_envs   == frozenset()
+    assert caps.conda_envs   == {}
 
 
 def test_detect_conda_failure_yields_empty_envs(monkeypatch):
@@ -250,7 +281,7 @@ def test_detect_conda_failure_yields_empty_envs(monkeypatch):
     monkeypatch.setattr(diagnostics.subprocess, "run", failing_run)
     caps = detect()
     assert caps.conda_binary == "/usr/bin/conda"
-    assert caps.conda_envs   == frozenset()
+    assert caps.conda_envs   == {}
 
 
 # --------------------------------------------------------------------- #

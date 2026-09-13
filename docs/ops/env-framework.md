@@ -111,6 +111,21 @@ diagnosed in a second instead of failing ten minutes into a `conda create`.
 | yes | no | — | **GHOST** | `FAILED` — a registry entry with no directory |
 | — | yes | no | **BROKEN** | `FAILED` — a directory that is not an env |
 
+**One reader of the registry, and it answers with prefixes** *(2026-09-12)*.
+`diagnostics.conda_env_prefixes` is the only place `<mgr> env list --json` is
+parsed, and it returns `{name: prefix}` — **with the manager's own names**, taken
+from that document's `envs_details`, which also flags the base installation so it
+is excluded by the manager's verdict rather than by a path pattern. A manager
+that reports no such details has everything it lists taken at face value: an env
+the registry names and this map omits reads as FRESH, and FRESH builds a second
+env beside the real one. There were three: this probe, the
+capabilities snapshot and `install._env_prefix`, and they disagreed — the
+snapshot kept only envs whose parent directory was literally called `envs`, so
+`caps.env_available` answered **no** about an env this probe called **PRESENT**,
+and `repair` said *"env does not exist. Install it first"* about a healthy one.
+The reading the snapshot already took is also what `_env_prefix` consults first:
+the read costs ~1.2 s and `doctor` was paying it once per recipe.
+
 **"The directory" means the prefix the registry named**, not
 `<envs_dirs>/<name>`. An env created with `--prefix` outside any of conda's
 `envs_dirs` is listed by the registry *with* a perfectly good directory; probing

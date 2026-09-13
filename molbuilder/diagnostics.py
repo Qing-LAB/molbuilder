@@ -36,9 +36,10 @@ import json
 import os
 import shutil
 import subprocess
+import collections.abc as _abc
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .runtime_config import get_envs, read_config
 from .projects import projects_root
@@ -98,7 +99,11 @@ class Capabilities:
     conda_binary
         Absolute path to the ``conda`` CLI, or ``None`` if not reachable.
     conda_envs
-        Frozen set of named conda env names that exist on this machine.
+        ``{name: prefix}`` for every conda env on this machine -- the one
+        reading of the registry, taken once at startup.  Membership is the
+        common question (``name in caps.conda_envs``), and the prefix is there
+        so that `install._env_prefix` does not pay the 1.2 s registry read
+        again per recipe.
     """
 
     runtime_config: Mapping[str, Any] = field(default_factory=dict)
@@ -109,7 +114,7 @@ class Capabilities:
     #: fallback happened: a recorded fact that is wrong is a defect to
     #: surface, not a hint to second-guess).
     conda_binary_source: Optional[str] = None
-    conda_envs:     frozenset         = frozenset()
+    conda_envs:     Mapping[str, str] = field(default_factory=dict)
 
     # ----- env-name resolution (consults config + defaults) --------- #
 
@@ -139,6 +144,28 @@ class Capabilities:
     def env_available(self, env_name: str) -> bool:
         """Whether the named conda env exists on this machine."""
         return env_name in self.conda_envs
+
+    def env_prefix(self, env_name: str) -> Optional[str]:
+        """Where that env is, from the startup reading -- or ``None``.
+
+        ``None`` means *"this snapshot does not know"*, which is not the same as
+        *"it does not exist"*: an env created after the snapshot was taken (an
+        install, mid-process) is absent here and found by `install._env_prefix`'s
+        fresh read.  `reset_capabilities()` is how a caller that just changed the
+        machine says so.
+
+        It also answers ``None`` for a snapshot whose ``conda_envs`` is a plain
+        set of names.  `detect` always builds the mapping, but a test binding a
+        synthetic snapshot usually cares only whether an env EXISTS, and a
+        membership-only container can answer *whether* and never *where*.
+        ``None`` is the honest answer there rather than an error, and the live
+        resolution then runs -- which is what such a test is exercising anyway.
+        """
+        envs = self.conda_envs
+        if not isinstance(envs, _abc.Mapping):
+            return None
+        value = envs.get(env_name)
+        return str(value) if value else None
 
     def routed_env(self, tool: str) -> Optional[str]:
         """Env name the tool routes to **and** which exists, else ``None``.
@@ -273,17 +300,46 @@ def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
     return None, None
 
 
-def _list_conda_envs(conda: str) -> frozenset:
-    """Run ``conda env list --json``, return *named* env basenames.
+def conda_env_prefixes(conda: str) -> Dict[str, str]:
+    """``{name: prefix}`` for every env the manager's registry lists.
 
-    Conda reports envs by full path; we extract basenames for ``-n``
-    addressability.  The base installation root (e.g.
-    ``/home/u/miniconda3``) is filtered out -- its parent dir isn't
-    ``envs/`` and it isn't addressable via ``conda run -n``.
+    THE ONE READER of the registry.  It answers with the PREFIX, not just the
+    name, because the prefix is what a command is addressed by
+    (`installation.md` M2) and because answering with names alone is what made
+    three readers of one document necessary.
 
-    Returns an empty frozenset on any failure (timeout, non-zero exit,
-    malformed JSON) -- callers query the result by membership, so
-    "no envs" is a clean answer, not an exception to handle.
+    **The manager names its own envs.**  ``env list --json`` carries
+    ``envs_details`` -- ``{prefix: {"name": ..., "base": true/false, ...}}`` --
+    so the name comes from the manager and the base installation is excluded by
+    its own ``base`` flag.  That matters beyond tidiness: the base env's name is
+    ``base``, and its prefix's basename (``miniconda3``, ``anaconda3``) is not a
+    name at all.  Keying it by basename would invent one.
+
+    **The previous rule was "keep only envs whose parent directory is called
+    `envs`"**, which excluded the base installation (the point) and every env
+    created with ``--prefix`` somewhere else (not the point).  Those are listed
+    by the registry and perfectly usable -- since 2026-09-12 a step is addressed
+    by prefix, not by ``-n`` -- yet `caps.env_available` said **no** about an env
+    `probe_env_state` reported **PRESENT**, and `repair` then said *"env does not
+    exist.  Install it first"* about a healthy env.
+
+    **A manager that reports no ``envs_details`` gets every listed prefix keyed
+    by basename, with nothing excluded.**  That is deliberate and it is the
+    safer of two wrong answers: keeping the old ``envs``-parent filter there
+    hides an env created with ``--prefix``, and an env the registry lists but
+    this map does not report reads as FRESH to `probe_env_state` -- whereupon
+    ``conda create -n <name>`` makes a SECOND env beside the real one.  Measured:
+    that filter broke three tests of the state machine the moment the probe
+    started asking this function.  An installation root listed under its
+    directory's basename is, by contrast, a name nothing ever asks about.
+
+    Asking `info --json` for ``root_prefix`` would settle the degenerate case
+    outright and costs a second subprocess -- measured 1.8 s against this read's
+    1.2 s, on the startup path of every command -- so it is not paid here.
+
+    Returns ``{}`` on any failure (timeout, non-zero exit, malformed JSON):
+    callers ask by membership, so "no envs" is a clean answer rather than an
+    exception each of them has to handle.
     """
     try:
         cp = subprocess.run(
@@ -291,19 +347,31 @@ def _list_conda_envs(conda: str) -> frozenset:
             capture_output=True, text=True, timeout=10,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return frozenset()
+        return {}
     if cp.returncode != 0:
-        return frozenset()
+        return {}
     try:
         data = json.loads(cp.stdout)
     except json.JSONDecodeError:
-        return frozenset()
-    out = set()
-    for p in data.get("envs", []):
-        # Named envs live under <something>/envs/<name>.
-        if os.path.basename(os.path.dirname(p)) == "envs":
-            out.add(os.path.basename(p))
-    return frozenset(out)
+        return {}
+    details = data.get("envs_details")
+    if isinstance(details, dict) and details:
+        out: Dict[str, str] = {}
+        for prefix, info in details.items():
+            if not isinstance(info, dict) or info.get("base"):
+                continue
+            # `name` when the manager has one; the basename otherwise, which is
+            # the handle `envs.<category>` uses for an env it was pointed at by
+            # prefix.
+            name = info.get("name") or os.path.basename(str(prefix))
+            if name:
+                out[str(name)] = str(prefix)
+        return out
+    # No `envs_details`: this document does not say which prefix is an
+    # installation root, so nothing is guessed at -- see the docstring for why
+    # listing one is the lesser error.
+    return {os.path.basename(str(p)): str(p)
+            for p in data.get("envs", []) or [] if p}
 
 
 def detect() -> Capabilities:
@@ -330,12 +398,12 @@ def detect() -> Capabilities:
                 f"probe)")
     else:
         conda, source = _find_conda_binary()
-    envs_set = _list_conda_envs(conda) if conda else frozenset()
+    envs_map = conda_env_prefixes(conda) if conda else {}
     return Capabilities(
         runtime_config = cfg,
         conda_binary   = conda,
         conda_binary_source = source,
-        conda_envs     = envs_set,
+        conda_envs     = envs_map,
     )
 
 

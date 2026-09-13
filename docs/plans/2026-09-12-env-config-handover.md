@@ -231,11 +231,11 @@ matters more than the date.
 | id | breaks | what | mark |
 |---|---|---|---|
 | **H1** | **T1, T4** | ✅ **CLOSED (Phase 0).** ⚠ **A healthy env was labelled `GHOST`, and the program then tells the operator to delete it.** `probe_env_state` sets `dir_exists` from `info.envs_dirs/<name>` **only** (`install.py:900-909`) and never tests the prefix the registry just handed it — while the very same object carries that prefix (`prefix = prefix_from_registry or prefix_from_fs`, `:914`). So an env whose parent is not an `envs/` directory (`conda create -p /scratch/...`) reports `GHOST` with a correct prefix inside it, `install` hard-stops at `_cli.py:1209`, and `describe()` prints *"the directory is gone. Fix manually with: `conda env remove -n <name> -y`"*. `_env_prefix` resolves the same env correctly through four tiers (`:654-746`) — two rules for one question, which is the § 5 lesson still live inside the probe. § 2.1 defines GHOST as *"a registry entry with no directory"*, which is not what the code measured. **Fixed:** the directory and `conda-meta/` checks are taken on the prefix the registry named; the `envs_dirs` search answers only the opposite question (a directory no registry entry mentions — ORPHAN, BROKEN) and is consulted only then. One subprocess instead of two, because the prefix is no longer derived at all. § 2.1 now states which path *"the directory"* means. Both halves tested, both mutation-verified | **RAN** |
-| **H2** | **T1** | **Three readers of the conda registry give three answers**, and one of them is a second mechanism for the question `EnvState` owns. `diagnostics._list_conda_envs` (`:272-302`) filters on the parent directory being literally named `envs`; `install._env_prefix` resolves four ways; `probe_env_state` a fifth. `caps.env_available()` — not `EnvState` — is what gates `repair`, `clean`, `validate`, `bootstrap --skip-existing`, the `--clean` pre-check and `doctor`'s `present`. For the env in H1: `repair` says *"env does not exist. Install it first"*, `install` resolves its prefix, `doctor` says `MISSING` | **RAN** |
+| **H2** | **T1** | ✅ **CLOSED (Phase 2).** **Three readers of the conda registry gave three answers**, and one of them is a second mechanism for the question `EnvState` owns. `diagnostics._list_conda_envs` (`:272-302`) filters on the parent directory being literally named `envs`; `install._env_prefix` resolves four ways; `probe_env_state` a fifth. `caps.env_available()` — not `EnvState` — is what gates `repair`, `clean`, `validate`, `bootstrap --skip-existing`, the `--clean` pre-check and `doctor`'s `present`. For the env in H1: `repair` said *"env does not exist. Install it first"*, `install` resolved its prefix, `doctor` said `MISSING`. **Fixed:** `diagnostics.conda_env_prefixes` is the one reader and answers `{name: prefix}`; the installation root is dropped by a relationship in the same document instead of the `envs/`-parent filter that also hid every `--prefix` env; `Capabilities.conda_envs` *is* that mapping, so the six gates and the state machine now answer from one reading. Measured on this machine: six envs with prefixes, root excluded | **RAN** |
 | **H3** | **T4, T5** | ✅ **CLOSED (Phase 1a).** **Two hand-written copies of the `conda run` bypass, drifted four ways** — `install._bypass_conda_run` (`:53-157`) and `builds._run_build_phase`'s wrapper (`:1550-1648`). The consequential divergence: **`run_step` never sanitises the environment.** `run_streaming(run_argv, env=env, …)` takes `run_step`'s `env` parameter, which **no caller passes** (`install.py:383`), while `builds.py` passes `build_subprocess_env()` at two sites to strip `CPATH`/`CFLAGS`/`LIBRARY_PATH`/`CUDA_HOME`/`OMPI_*`. So every pip step and every `extra_steps` dispatch runs with exactly the host leakage `builds.py` exists to prevent. § 5.5 exempts builds' *executor* (sentinel resume), not a second copy of the rewrite. **Fixed:** one door, `builds.dispatch_into_env` — the manager's own `run` is the route, the wrapper is the measured fallback, and environment policy (host-leak stripping, TMPDIR, the pip cache) is a Python dict both paths share so they cannot drift. Three callers now enter an env identically, including the tool router that never had the workaround (**S17**). Measured: `envs doctor` verifies four envs with no generated shell at all | **RAN** |
 | **H4** | **T3, T5** | **Two `InstallStep`s are hand-built in the planner**, bypassing one-translator-per-kind: the batched plain-pip step (`install.py:604-609`) and the `extra` step (`:613-617`). § 4.2's pseudocode names `pip_steps_for` and `extra_steps_for` — **neither exists**. So *what a plain pip install means* lives in two places and *what an extra step means* lives in no translator at all; any future per-step policy has to be written twice | **READ** |
 | **H5** | **T1, T6** | **Two vocabularies for the five outcomes inside one run's output.** `_OUTCOME_WORD` (`install.py:1024`) prints `UNAVAILABLE -- optional, continuing` live; the CLI recap prints `(degraded)` for the same step (`_cli.py:1478`, `step.outcome.value`). `RECOVERED` is *"OK via the declared alternative"* live and `recovered` in the recap. `_OUTCOME_WORD`'s own comment claims it is the ONE mapping | **READ** |
-| **H6** | **T3** | **The CLI re-derives the create decision the state machine owns, and pays for a second live probe.** `cmd_install` (`_cli.py:1200-1242`) re-implements the wreckage branch and the resume branch — the latter as a **string compare**, `state.state_label == "PRESENT"`, where `state.can_resume` is the accessor — then `run_install` probes again inside `_create_decision`. Instrumented: the same two JSON documents are read twice back to back per install, three times from the CLI | **RAN** |
+| **H6** | **T3** | ✅ **CLOSED (Phase 2).** **The CLI re-derived the create decision the state machine owns, and paid for a second live probe.** `cmd_install` (`_cli.py:1200-1242`) re-implements the wreckage branch and the resume branch — the latter as a **string compare**, `state.state_label == "PRESENT"`, where `state.can_resume` is the accessor — then `run_install` probes again inside `_create_decision`. Instrumented: the same two JSON documents were read twice back to back per install, three times from the CLI. **Fixed:** the CLI hands `run_install` the state it probed (`env_state=`), reads `state.can_resume` instead of comparing the label, and **drops** the reading after `--clean` has removed the env — a stale `PRESENT` there would skip the `conda create` that must run, which is the 2026-06-15 regression from the other side and has its own test. `_env_prefix` consults the snapshot first, so `doctor` stops paying a 1.2 s registry read per recipe | **RAN** |
 | **H7** | **T1** | **`EnvState`'s five states are a display string, branched on with `==` in four places** (`install.py:787-815`, `:820`, `:825`, `:829-857`, `_cli.py:1212`, `:1239`). This is the shape `StepRole` was introduced to remove — its own comment: *"renaming a label for clarity silently disabled the create-skip."* A rename of `"PRESENT"` silently turns `can_resume` False, which the code calls *"the worst answer for an env that is already wreckage"* | **READ** |
 | **H8** | — | **Dead parameters, returns and branches**, each established against every call site in `molbuilder/` **and** `tests/`. ✅ **Two closed (Phase 1a):** `run_step(env=…)`, never passed and the hole in H3 — deleted, and the door computes the step's environment instead; and `_bypass_conda_run`'s always-`{}` second return value, gone with the function, its *"preserve the existing caller contract"* having had no party to it. **Still open:** `_run_steps(skip_create_if_present=False)` never passed, its docstring saying *"set False only in tests"* and no test doing so; `validate_recipe(quiet=…)` never passed; `_cli.py:431-440`'s `base` kind-stripping a no-op branch; `Outcome.decide(first_attempt=True)` ignored whenever `ok=False`; `envs/__init__.py:21-22` re-exporting `subprocess`/`shutil` as *"back-compat"* for six test monkeypatches and no product code — against the repo's no-back-compat rule | **READ** |
 | **H13** | **T14** | ✅ **CLOSED (Phase 1a).** **`<mgr> run -n <name>` cannot address an env that lives outside `envs_dirs`** — conda's own `locate_prefix_by_name` (`conda/base/context.py:2239-2258`) searches `envs_dirs` and raises `EnvironmentNameNotFound` otherwise. So the M1 primary form has to address an env by the **prefix the registry gave us** (`run --prefix <prefix>`), which is what `builds.py` already does while `install.py` uses `-n`; **Fixed:** the door re-addresses a name-spelled argv at the prefix it was handed (`addressed_by_prefix`), and a caller that already has a prefix spells it directly (`conda_run_prefix_argv`) instead of deriving a name from the directory. One place still writes the command line | **READ** (conda source) |
@@ -307,7 +307,7 @@ of the documents:
 |---|---|---|
 | **Z1** (T3) | **One orchestration door.** `install` and `bootstrap` differ only in which recipes they are given. Probe, summary, confirm, log, run — one function. No verb has a branch the other lacks | two verbs, four divergences (**D7**) |
 | **Z2** (T4, T6) | **Everything the installer does is a step with an `Outcome`.** Including the `--clean` wipe. Nothing dispatches a subprocess outside `run_step` except the two things § 5.4/§ 5.5 name | the wipe is a bare `subprocess.run` (**D3**) |
-| **Z3** (T1) | **One answer to "does this env exist, and where".** `EnvState` owns it; `env_available` and the three registry readers collapse into it; no caller re-derives a prefix or a create decision | three readers, three answers (**H2**, **H1**, **H6**) |
+| **Z3** (T1) | **One answer to "does this env exist, and where".** `EnvState` owns it; `env_available` and the three registry readers collapse into it; no caller re-derives a prefix or a create decision | ✅ **reached (Phases 0 + 2)** — one reader answering `{name: prefix}`, the snapshot carrying it, the probe measuring the named prefix, and the create decision handed down rather than re-derived |
 | **Z4** (T1, T6) | **The state and the outcome are enums, and one mapping prints each.** No `== "PRESENT"`, no second vocabulary between the live line and the recap | strings, branched on in four places (**H7**, **H5**, **H11**) |
 | **Z5** (T9, T12, T8) | **Every path is asked for.** No module joins a directory to a filename it does not own; nothing climbs `.parent` to a root; **every remedy the program prints names a resolved path and the detected manager** | four climbs, three wrong remedies (**I1-I4**, **D4**) |
 | **Z6** (T10) | **One writer puts bytes at a path, and privacy is its parameter.** The only exceptions are the two § 2.3 names, and § 2.3 names all of them | five unnamed writers (**B2**, **I5**, **I7**, **D11**, **D14**) |
@@ -373,15 +373,55 @@ owns the mechanism.
    `effective` env and `caps.conda_binary`. `_fix_cmd` moves below the surface so
    `recipes.py` can call it instead of hand-copying its output.
 
-### 3.3 Phase 2 — one answer to "does this env exist"
+### 3.3 Phase 2 — ✅ DONE *(2026-09-12)* — one answer to "does this env exist, and where"
 
 **Closes H2, H6, and the second probe.** → **Z3**
 
-`EnvState` becomes the only answer. `caps.env_available` either delegates to it or
-goes; the six gates that call it (`repair`, `clean`, `validate`,
-`bootstrap --skip-existing`, the `--clean` pre-check, `doctor`'s `present`) ask the
-machine. `cmd_install` stops re-deriving the create decision, and the probe runs
-once per install.
+**The design, settled 2026-09-12 before any code** (measured costs, because they
+decide the shape: `<mgr> env list --json` is **1.22 s** on this machine and
+`info --json` **1.82 s** — these are not cheap reads, and `doctor` pays
+`_env_prefix` once per recipe):
+
+1. **One registry reader, and it answers with PREFIXES** —
+   `diagnostics.conda_env_prefixes(conda) -> {name: prefix}`, replacing
+   `_list_conda_envs`, which answered with names only and filtered on *"the
+   parent directory is literally called `envs`"*. That filter is why
+   `env_available` says **no** for an env `probe_env_state` reports **PRESENT**
+   (H1/H2's disagreement): an env created with `--prefix` elsewhere is listed by
+   the registry and invisible to the six gates.
+   **Correction to this plan, 2026-09-12 while building it:** the design above
+   proposed identifying the installation root by a relationship in the document
+   (another prefix under `<p>/envs/`), and a test of `detect` showed why that is
+   not enough — a registry listing *only* roots has no relationship to read, and
+   those roots came back as envs named `miniconda3` and `anaconda3`. Measuring
+   the real output answered it properly: `env list --json` carries
+   **`envs_details`**, `{prefix: {"name", "base", …}}`, so **the manager names its
+   own envs and flags its own base**. That is M2 rather than a heuristic, and it
+   also stops the basename being invented as a name — the base env is called
+   `base`, and `miniconda3` is not a name conda knows. A manager that reports no
+   `envs_details` gets **every** listed prefix, nothing excluded — a second
+   correction, and the tests made it: keeping the old filter on that path broke
+   three tests of the state machine, because an env the registry lists but the
+   map omits reads as **FRESH**, whereupon `conda create -n <name>` makes a
+   SECOND env beside the real one. An installation root listed under its
+   directory's basename is by contrast a name nothing asks about.
+2. **`Capabilities.conda_envs` becomes that mapping**, plus an `env_prefix(name)`
+   accessor. Every current consumer uses `in`, `sorted()` or iteration, all of
+   which read a dict exactly as they read a frozenset, so the change is in what
+   the snapshot KNOWS, not in what callers do.
+3. **`_env_prefix` asks the snapshot first**, then a fresh registry read (an env
+   may have been created mid-process), then the tiers it has. `doctor`'s
+   per-recipe resolution becomes a dict lookup — five recipes × ~1.2 s of
+   redundant registry reads, gone.
+4. **`probe_env_state`'s registry half uses the same reader**, so the third
+   spelling goes with the second.
+5. **H6**: `cmd_install` hands the state it already probed to `run_install`
+   instead of having `_create_decision` probe again, and reads `state.can_resume`
+   rather than comparing `state.state_label == "PRESENT"`.
+
+The six gates (`repair`, `clean`, `validate`, `bootstrap --skip-existing`, the
+`--clean` pre-check, `doctor`'s `present`) are then answered from the same reading
+the state machine uses, without touching the gates themselves.
 
 ### 3.4 Phase 3 — placement VALIDATED, from the document itself
 
