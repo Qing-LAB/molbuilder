@@ -930,8 +930,13 @@ def check_disk(path: str, *, reference_gb: Optional[float] = None
         )
     if reference_gb:
         suggested = reference_gb * _REFERENCE_HEADROOM_FACTOR
-        if free >= suggested:
-            return free, None
+        # NO THRESHOLD.  This used to return `None` above `suggested`, which is
+        # a threshold however it is worded -- and the message it did return
+        # went into `warnings`, so a derived number gated the install behind
+        # "Proceed despite warnings?".  The user's instruction (2026-09-12):
+        # *"I wouldn't really bother that.  We just remind user that you need
+        # to make sure you have enough free space... that's not really our job
+        # to get it."*  So: always report, never gate.
         return free, (
             f"{free:.1f} GB free at {path}.  For scale, the largest conda env "
             f"already on this machine is {reference_gb:.1f} GB, so about "
@@ -1307,7 +1312,10 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
                 f"Largest env here   {reference:>5.1f} GB  "
                 f"(a scale, not a requirement)")
         if disk_msg:
-            warnings.append(disk_msg)
+            # INFO, not a warning: `_build_callbacks` turns warnings into
+            # "Proceed despite warnings?", and a reminder that always fires is
+            # not a question worth asking.  It is a line to read.
+            info.append(disk_msg)
 
     # Concurrency
     info.append(

@@ -431,9 +431,11 @@ def test_check_disk_reminds_and_never_refuses(tmp_path, monkeypatch):
     thresholds.
 
     The reference is this machine's own largest env, doubled -- a scale, not a
-    requirement.  Below it: remind, and say plainly that it is a reference.
-    Above it: silence.  With no reference at all: remind anyway, because "make
-    sure you have room" is true with or without a figure.
+    requirement.  **It reminds either way**: a rule that speaks only below a
+    number IS a threshold, whatever the docstring says, and this one's
+    docstring said "there is no threshold" while the line under it returned
+    `None` above the reference.  With no reference at all it still reminds,
+    because "make sure you have room" is true with or without a figure.
     """
     class FakeUsage:
         def __init__(self, free_gb):
@@ -441,14 +443,15 @@ def test_check_disk_reminds_and_never_refuses(tmp_path, monkeypatch):
             self.used = 0
             self.free = int(free_gb * 1024 ** 3)
 
-    # Plenty of room against a 4 GB reference (-> ~8 GB suggested): quiet.
+    # Plenty of room against a 4 GB reference: it still says what it measured.
     monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage(500))
     free, msg = B.check_disk(str(tmp_path), reference_gb=4.0)
     assert free == pytest.approx(500, abs=0.1)
-    assert msg is None
+    assert msg is not None, "silence above a number is a threshold"
+    assert "500.0 GB free" in msg, msg
 
-    # Tight against the same reference: a reminder, naming both numbers and
-    # disclaiming itself.  And NOT an error -- there is no error to return.
+    # Tight against the same reference: the same reminder, naming both numbers
+    # and disclaiming itself.  And NOT an error -- there is no error to return.
     monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage(5))
     free, msg = B.check_disk(str(tmp_path), reference_gb=4.0)
     assert msg is not None
@@ -458,6 +461,34 @@ def test_check_disk_reminds_and_never_refuses(tmp_path, monkeypatch):
     # No reference to offer: still reminds, just without a figure.
     free, msg = B.check_disk(str(tmp_path), reference_gb=None)
     assert msg is not None and "make sure you have enough space" in msg, msg
+
+
+def test_disk_is_never_a_preflight_WARNING_either(tmp_path, monkeypatch,
+                                                 tiny_spec):
+    """A reminder that always fires must not be a question.
+
+    `_build_callbacks` turns `warnings` into *"Proceed despite warnings?"*, so
+    landing the disk reminder there meant a derived number gated the install --
+    the hard 30 GB gate deleted on 2026-09-12, re-grown as a prompt.  It is
+    `info`: a line to read, not a decision to make.
+    """
+    class FakeUsage:
+        def __init__(self, free_gb=2.0):
+            self.total = 10_000 * 1024 ** 3
+            self.used = 0
+            self.free = int(free_gb * 1024 ** 3)
+
+    monkeypatch.setattr("shutil.disk_usage", lambda p: FakeUsage())
+    env_prefix = tmp_path / "envs" / "env"
+    env_prefix.mkdir(parents=True)
+    probe = B.probe_toolchain(str(env_prefix))
+    report = B.preflight(tiny_spec, probe, (), str(env_prefix),
+                         check_network=False)
+
+    joined = " ".join(report.warnings) + " ".join(report.errors)
+    assert "GB free" not in joined, (
+        f"the disk reminder is gating the install:\n{report.warnings}")
+    assert any("GB free" in line for line in report.info), report.info
 
 
 def test_disk_is_never_a_preflight_ERROR(tmp_path, monkeypatch, tiny_spec):

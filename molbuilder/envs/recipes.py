@@ -1967,7 +1967,17 @@ _SIESTA_GPU = Recipe(
         "(elpa.mpcdf.mpg.de) + the SIESTA git clone "
         "(gitlab.com/siesta-project), which recursively pulls "
         "libfdf, libpsml, xmlf90, libgridxc, ELSI submodules",
-        "~30 GB free disk space under $CONDA_PREFIX",
+        # NO FIGURE.  This said "~30 GB", the number the disk GATE used before
+        # it was deleted on 2026-09-12 as undefendable -- how much a source
+        # build needs depends on what the packages are that week and on how
+        # much the compile peaks above what the finished env keeps, neither of
+        # which molbuilder can know.  `preflight` reports the free space it
+        # measured and this machine's own largest env as a scale; the
+        # requirement is the operator's call (user, 2026-09-12).
+        "Free disk space under $CONDA_PREFIX for the clone, the build tree "
+        "and a parallel compile -- all of which peak well above what the "
+        "finished env keeps.  `envs install` reports what is free and how "
+        "big your existing envs are; make sure there is room",
     ),
 )
 
