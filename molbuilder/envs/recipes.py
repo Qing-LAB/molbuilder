@@ -38,6 +38,7 @@ import subprocess
 from dataclasses import dataclass
 
 from ..diagnostics import DEFAULT_ENV_NAMES
+from . import hints as _hints
 from typing import Mapping, Optional, Tuple
 
 
@@ -1936,14 +1937,17 @@ _SIESTA_GPU = Recipe(
         # canonical names only, so the remedy printed by the one warning that
         # tells you your GPU env lacks its toolchain shims was itself a usage
         # error ("unknown recipe `siesta-gpu`", exit 2).  Measured 2026-09-12.
-        # The launcher spelling is `_fix_cmd`'s (`bash scripts/install-env.sh
-        # ...`), written out rather than imported: this module is recipe DATA
-        # and may not depend on the CLI that formats hints.
-        '  *) echo "[molbuilder] WARNING: bare gcc resolves to'
+        # The launcher spelling is IMPORTED now (`hints.fix_cmd`, floor 1).
+        # It used to be written out here, on the grounds that this module is
+        # recipe DATA and may not depend on the CLI that formats hints -- true
+        # of the CLI, and the reason the speller moved below both rather than
+        # being copied.  The copy is exactly how this line came to name
+        # `siesta-gpu`, which `recipe_by_name` does not accept.
+        f'  *) echo "[molbuilder] WARNING: bare gcc resolves to'
         ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
         ' that call gcc directly (flook/lua) would use the HOST'
-        ' toolchain.  The bare-name shims are created by: bash'
-        ' scripts/install-env.sh install molbuilder-siesta-gpu" >&2 ;; '
+        ' toolchain.  The bare-name shims are created by: '
+        f'{_hints.fix_cmd("install", "molbuilder-siesta-gpu")}" >&2 ;; '
         'esac; '
         "siesta --version",
     ),

@@ -1413,10 +1413,16 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # scopes join `sources`, because "which file supplied this" is the question
     # this function exists to answer and environment.json now answers part of
     # it (`configuration.md` § 5, M-3).
-    from .scheduler import FILENAME as ENV_FILENAME
-    from .scheduler import machine_for, machine_scope_path
+    # Both scopes come from the record's OWN resolvers.  The calculation scope
+    # used to be `Path(project_dir) / FILENAME` right here -- in the one
+    # function whose whole job is to tell a reader which file answered, and
+    # `calculation_record`'s docstring already said it exists because that join
+    # "lived at three sites, two of them places a reader is TOLD a path".  This
+    # was the fourth, and it was written against a façade that exported
+    # `FILENAME` and hid the door (A11, I2).
+    from .scheduler import calculation_record, machine_for, machine_scope_path
     env_machine = machine_scope_path()
-    env_scopes = ([(Path(project_dir) / ENV_FILENAME, "calculation")]
+    env_scopes = ([(calculation_record(project_dir), "calculation")]
                   if project_dir is not None else [])
     env_scopes.append((env_machine, "machine"))
     for path, via in env_scopes:

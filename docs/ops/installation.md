@@ -100,13 +100,25 @@ verified, no generated shell) and, for the mamba-1.x stub this machine cannot
 produce, by a fake manager that emits exactly its signature
 (`tests/test_envs_enters_the_env_through_the_manager.py`).
 
-> ⚠ **M2 is not finished** *(2026-09-12)*. Three places still derive an install
-> root from the manager binary's own path: `install-env.sh`'s
-> `_resolve_env_python` (last resort), `install._env_prefix` (last tier), and
-> `initconfig`'s activation preamble — the last writes its guess into the user's
-> `molbuilder.json`. Two remedies are still literal `conda` (`envs install
-> --help`'s `--clean` text, and a hand-copied line in `recipes.py`). Tracked as
-> **H10** and **D4** in
+**M3 holds as of 2026-09-12.** The remedy speller moved below the surfaces
+(`envs/hints.py`), so `recipes.py` imports it instead of hand-copying its output
+— which is how that line came to name a recipe `recipe_by_name` rejects — the
+`--clean` help names the detected manager rather than `conda`, and `EnvState` /
+`EnvReport` carry the manager so a report can spell a removal line at all.
+
+**M2's config-writing site is fixed too**: `initconfig.conda_hook` asks
+`<mgr> info --json` for `root_prefix` instead of taking the binary's
+grandparent, because the line it produces is written into the user's
+`molbuilder.json` and a wrong one fails in a job on a cluster, not here. The
+manager a cluster module puts on PATH is a shell wrapper whose own location says
+nothing about the installation, which is exactly what a derivation cannot see.
+
+> ⚠ **Two derivations remain** *(2026-09-12)*, both as a LAST resort behind a
+> correct first tier that asks the manager: `install-env.sh`'s
+> `_resolve_env_python` (strategy 3) and `install._env_prefix` (tier 4). They
+> are reached only when the registry and `info --json` have both failed to
+> answer, so they mislead rather than decide — and that is still a guess with
+> the manager standing right there. Tracked as **H10** in
 > [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
 
 **Cluster note (ASU Sol):** the module's `mamba` is a shell wrapper,

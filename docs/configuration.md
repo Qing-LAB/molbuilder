@@ -111,7 +111,7 @@ named.
 |---|---|---|
 | `molbuilder.json` (machine) | 1. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file.** There is no search: the branches above choose a DIRECTORY, and the file is the one in it. A `./molbuilder.json` in the working directory is not read (§ 2.1a) |
 | `.molbuilder.json` (project) | `<project-dir>/.molbuilder.json` | **deep-merged** over the machine file, project wins — *the one merge in this document*. Objects recurse, scalars and arrays replace |
-| `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<machine scope>/environments/<name>.json`<br>3. `$XDG_CONFIG_HOME/molbuilder/environment.json`, else `~/.config/molbuilder/environment.json`<br>4. a fresh probe — **only when the caller asked for one** | **whole record**, first found wins (M-3). No field merge |
+| `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` — the config directory is § 2.1c's three branches, **`MOLBUILDER_CONFIG_DIR` included**; this row stated only the last two until 2026-09-12<br>4. a fresh probe — **only when the caller asked for one** | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
 | `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` in the package | first found wins — a calculation's tuned copy replaces the shipped one |
 | `<label>.template.toml`, `task.json` | the calculation folder, and nowhere else | there is nothing to combine — one calculation, one description |
@@ -134,10 +134,12 @@ counterpart has a different name (`.molbuilder.json`, with the dot).
 and I did not realize which one was the effective one … I prefer consistency
 rather than all based on implicit rules.")*
 
-**The home is the per-user config directory** — `$XDG_CONFIG_HOME/molbuilder/`
-if that variable is set, else `~/.config/molbuilder/`. That is where
-`auth-setup` writes, where `environment.json` already lives, and what every
-instruction should name.
+**The home is the per-user config directory** — § 2.1c's three branches,
+`$MOLBUILDER_CONFIG_DIR` first. That is where `auth-setup` writes, where
+`environment.json` already lives, and what every instruction should name. (This
+paragraph gave only the last two branches until 2026-09-12; § 2.1c is the rule
+and restating two thirds of it here is how a reader comes to put a file where
+nothing looks.)
 
 **`./molbuilder.json` is NOT READ** *(landed 2026-08-31)*. It was step 1 of a
 first-found-wins search until then, which is the state this section was written
@@ -516,9 +518,9 @@ $MOLBUILDER_CONFIG_DIR, else $XDG_CONFIG_HOME/molbuilder, else ~/.config/molbuil
 ├── google_client_secret   Google's OAuth secret      0600   config_dir.google_client_secret()
 ├── notify                 run-report channels        0600   monitor.default_notify_path()
 ├── notify_keys            run-report signing keys    0600   monitor.notify_keys_path()
-├── environments/          one record per OTHER machine  0700
+├── environments/          one record per OTHER machine  0700   scheduler/record.environments_dir()
 │   ├── README                  written by `envs init-config`
-│   └── <name>.json             probed ON that machine, copied here
+│   └── <name>.json             probed ON that machine, copied here   scheduler/record.named_environment_path()
 └── secrets/               files molbuilder.json names by PATH   0700
     ├── README                  written by `envs init-config`
     └── …                       a TLS key/cert, a provider's client secret —

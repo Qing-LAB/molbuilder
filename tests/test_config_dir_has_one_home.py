@@ -385,3 +385,86 @@ class TestNoModuleNamesOneOfThoseFilesItself:
             f"{offenders}.  Ask `config_dir` for the file instead "
             f"(archive/2026-09-01-config-access-plan.md § 5)")
 
+
+
+class TestAFilesResolverIsNotAWayToReachTheRoot:
+    """A11, corrected 2026-09-12.
+
+    Its elaboration used to say *"a per-user config path is
+    `environment.machine_scope_path`'s"* -- naming ONE FILE's resolver as the
+    owner of the root -- so a reader following the rule as written was sent to
+    `machine_scope_path().parent`, and two sites went there.
+
+    `test_every_door_moves_with_the_one_variable` above cannot catch that: a
+    climb off a resolver that itself follows the variable gives the RIGHT answer
+    today.  What it gets wrong is WHOSE answer it is.
+    """
+
+    def test_moving_the_machine_record_does_not_move_the_directory_beside_it(
+            self, monkeypatch, tmp_path):
+        """The drift, made visible.  `environments_dir()` reached the config
+        root through `environment.json`'s resolver, so it followed that FILE
+        rather than the root: move the machine record and the named-target
+        directory moved with it, silently, on whichever machine did that."""
+        from molbuilder.scheduler import record as R
+        before = R.environments_dir()
+
+        monkeypatch.setattr(
+            R, "machine_scope_path",
+            lambda: tmp_path / "somewhere" / "else" / "environment.json")
+
+        assert R.environments_dir() == before, (
+            "the named-target directory moved because the machine record "
+            "moved; it is the config ROOT's child, not that file's sibling")
+        assert R.named_environment_path("sol") == before / "sol.json"
+
+    def test_the_provenance_display_reports_the_record_s_OWN_door(
+            self, monkeypatch, tmp_path):
+        """`config_provenance` spelled `Path(project_dir) / FILENAME` itself --
+        in the one function whose whole job is to tell a reader which file
+        answered, and against a façade that exported `FILENAME` while hiding
+        `calculation_record`.  A reader is TOLD this path, so it has to be the
+        path the reader would be read from."""
+        import molbuilder.scheduler as S
+        from molbuilder import runtime_config as RC
+
+        marker = tmp_path / "bundle" / "a-different-shape.json"
+        # Patched on the FAÇADE, which is where the display asks for it -- and
+        # the façade is the structural half of this finding: it exported
+        # `FILENAME` and did not export `calculation_record`, so it offered the
+        # filename and hid the door.
+        monkeypatch.setattr(S, "calculation_record", lambda d: marker)
+
+        report = RC.config_provenance(project_dir=str(tmp_path / "bundle"))
+        reported = [r["path"] for r in report["sources"]
+                    if r.get("scope") == "environment"
+                    and r.get("via") == "calculation"]
+
+        assert reported == [str(marker)], (
+            f"the display spells the record's path itself: {reported}")
+
+
+def test_a_printed_remedy_names_the_resolved_directory(monkeypatch, tmp_path):
+    """I3.  `prep` refused a remote target whose record states no activation and
+    told the person to *"copy the record into `~/.config/molbuilder/environments/`
+    here"* -- a literal, on the machine where `MOLBUILDER_CONFIG_DIR` is the
+    whole point of the variable.  Following it put the record where `prep` does
+    not look, and `prep` then refused again with the same message.
+
+    This is the defect `notify-token --keys-file` was DELETED for on the same
+    day; the sweep missed this site.
+    """
+    import pytest as _pytest
+
+    root = tmp_path / "named"
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
+    from molbuilder.jobset.prep import PrepError, _require_remote_activation
+    from molbuilder.scheduler.record import Environment
+
+    with _pytest.raises(PrepError) as excinfo:
+        _require_remote_activation("sol", Environment(scheduler="slurm"))
+
+    message = str(excinfo.value)
+    assert str(root / "environments") in message, message
+    assert "~/.config/molbuilder" not in message, (
+        "the remedy still hard-codes the default root:\n" + message)

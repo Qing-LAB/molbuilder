@@ -3627,8 +3627,14 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # A named target is a record ABOUT another machine, kept beside this
     # machine's rather than replacing it (P2): a workstation holds both its own
     # capability and the cluster's, and `prep --target NAME` says which.
+    # WHICH FILE, asked for -- not a directory plus a re-spelled name.  This
+    # used to read `target = machine_scope_path().parent` / `fname =
+    # f"{name}.json" if name else FILENAME`: the record's own resolver taken
+    # apart to get a directory, and its filename typed again beside it, with
+    # the bare `FILENAME` imported into a surface to do it (A11, I1).  Moving
+    # either file would have moved the reader and left this writer behind.
     if name:
-        from ..scheduler import environments_dir
+        from ..scheduler import named_environment_path
         from ..scheduler.record import LOCAL_TARGET
         if name == LOCAL_TARGET:
             # RESERVED: `--target this` means the box you are on, so a
@@ -3640,10 +3646,15 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                 f"could never be prepped for.  Give it the machine's own "
                 f"name (`--name sol`); this machine's own record needs no "
                 f"--name at all.")
-        target = Path(out) if out else environments_dir()
+        record = named_environment_path(name)
     else:
-        target = Path(out) if out else machine_scope_path().parent
-    fname = f"{name}.json" if name else FILENAME
+        record = machine_scope_path()
+    if out:
+        # `--out DIR` is the one case a caller names the directory, so the
+        # filename still comes from the resolver rather than from here.
+        record = Path(out) / record.name
+    target = record.parent
+    fname = record.name
     if not do_write:
         click.echo(f"\n(dry run -- nothing written. Re-run with --write to "
                    f"record this in {target / fname}.)")

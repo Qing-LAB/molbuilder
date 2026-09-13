@@ -168,13 +168,51 @@ def test_a_preamble_is_never_written_for_a_hook_that_is_not_there(tmp_path):
     assert initconfig.conda_hook(None) is None
     assert initconfig.conda_hook(str(tmp_path / "bin" / "micromamba")) is None
 
-    real = tmp_path / "conda" / "bin" / "conda"
-    real.parent.mkdir(parents=True)
-    real.touch()
-    hook = tmp_path / "conda" / "etc" / "profile.d" / "conda.sh"
+    root = tmp_path / "conda"
+    hook = root / "etc" / "profile.d" / "conda.sh"
     hook.parent.mkdir(parents=True)
     hook.touch()
-    assert initconfig.conda_hook(str(real)) == f"source {hook}"
+    assert initconfig.conda_hook(
+        str(_manager_answering(tmp_path / "conda" / "bin" / "conda", root))
+    ) == f"source {hook}"
+
+
+def test_the_root_is_the_manager_s_ANSWER_not_its_binary_s_grandparent(tmp_path):
+    """`installation.md` M2, and ASU Sol is the case.
+
+    The root used to be `Path(conda_binary).resolve().parent.parent`, which
+    happens to be right for ``<root>/bin/conda`` and ``<root>/condabin/conda``
+    and is wrong for everything else -- a distro ``/usr/bin/conda`` derives
+    ``/usr``, and the manager a cluster module puts on PATH is a shell WRAPPER
+    whose own location says nothing about where the installation is.  The value
+    this computes is written into the user's `molbuilder.json`, so the guess does
+    not fail here: it fails in a job, on a cluster, weeks later.
+
+    Here the wrapper and the installation are deliberately in different places,
+    which is what a derivation cannot see and an answer can.
+    """
+    installation = tmp_path / "packages" / "apps" / "mamba" / "2.6.2"
+    hook = installation / "etc" / "profile.d" / "conda.sh"
+    hook.parent.mkdir(parents=True)
+    hook.touch()
+    wrapper = _manager_answering(tmp_path / "usr" / "local" / "bin" / "mamba",
+                                installation)
+
+    assert initconfig.conda_hook(str(wrapper)) == f"source {hook}", (
+        "the hook was looked for beside the wrapper instead of inside the "
+        "installation the manager names")
+
+
+def _manager_answering(path, root_prefix):
+    """A manager binary that answers `info --json` with `root_prefix`, which is
+    the only thing `conda_hook` asks it."""
+    import json
+    import stat as _stat
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({"root_prefix": str(root_prefix)})
+    path.write_text("#!/bin/sh\necho '" + payload + "'\n")
+    path.chmod(path.stat().st_mode | _stat.S_IXUSR)
+    return path
 
 
 def test_source_activate_carries_no_conda_hook_preamble(fresh):

@@ -793,14 +793,34 @@ def calculation_record(bundle_dir) -> Path:
 
 
 def environments_dir() -> Path:
-    """Where NAMED target records live — ``<machine scope>/environments/``.
+    """Where NAMED target records live — ``<config dir>/environments/``.
 
     One record describes one machine, and the machine you are preparing for is
     not always the machine you are on.  A benchmark prepped on a workstation
     for a cluster was silently measured against the workstation, because there
     was exactly one record and it was this box's.
+
+    **From `config_dir`, not from `machine_scope_path().parent`** (A11, whose
+    elaboration was corrected on 2026-09-12 and used to name this file's
+    resolver as the config root's owner).  A file's resolver answers *"where is
+    this file"*; climbing off it to reach the directory is the same two-spellings
+    drift as re-typing a path, and it means moving `environment.json` silently
+    moves this directory too.
     """
-    return machine_scope_path().parent / "environments"
+    from ..config_dir import config_dir
+    return config_dir() / "environments"
+
+
+def named_environment_path(name: str) -> Path:
+    """The record for the target called `name` — the ONE join for that file.
+
+    `jobset probe --write --name sol` used to build the directory and re-spell
+    ``f"{name}.json"`` at the call site, importing the bare `FILENAME` for the
+    unnamed case beside it: two spellings of one path inside one expression, in
+    a surface.  A reader and a writer that disagree here look at different
+    files and both report success.
+    """
+    return environments_dir() / f"{name}.json"
 
 
 def named_environments() -> Dict[str, Path]:

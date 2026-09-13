@@ -1175,6 +1175,7 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
     would be told no by the next command.  Prepping for the box you are
     sitting at is the most ordinary thing this tool does, and it was blocked
     from the browser's Prep button by a check meant for a cluster."""
+    from ..scheduler import environments_dir
     from ..scheduler.record import LOCAL_TARGET
     if (target and target != LOCAL_TARGET
             and not (getattr(environment, "script_generation", None) or {}
@@ -1185,8 +1186,9 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
             f"machine's activation -- a path that need not exist there.\n"
             f"  Fix: on {target}, run\n"
             f"      molbuilder jobset probe --write --name {target}\n"
-            f"  then copy the record it writes into "
-            f"~/.config/molbuilder/environments/ here, and prep again.\n"
+            f"  then copy the record it writes into\n"
+            f"      {environments_dir()}\n"
+            f"  here, and prep again.\n"
             f"  (The probe records the machine's own script_generation "
             f"since 2026-08-24; a record written before that carries none.)")
 

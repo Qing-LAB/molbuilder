@@ -892,9 +892,20 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > disagree on some machine that is not this one. The roots have one owner
 > each — the install root is the package's own self-knowledge
 > (`molbuilder.repo_root`), the user's tree is `projects.py`'s
-> (`projects_root` / `find_projects_root`), and a per-user config path is
-> `environment.machine_scope_path`'s. Three roots, three owners, no fourth
-> way to reach any of them.
+> (`projects_root` / `find_projects_root`), and the per-user config root is
+> **`config_dir.config_dir()`**'s. Three roots, three owners, no fourth way to
+> reach any of them.
+>
+> **A FILE's resolver is not a way to reach its ROOT** *(corrected
+> 2026-09-12)*. Every file under the config root is named by its own format
+> owner, which exposes a resolver for it — `configuration.md` § 3.1 lists all
+> fourteen. Those resolvers answer *"where is this file"*, and taking
+> `.parent` off one of them to get the directory is precisely the climb this
+> rule forbids; it is no better for being a climb off a door instead of a path
+> string. This paragraph used to say the per-user config path was
+> `environment.machine_scope_path`'s, which named a single file's resolver as
+> the owner of the root — so a reader following A11 as written was *sent* to
+> `machine_scope_path().parent`, and two sites did exactly that.
 >
 > *(`envs/builds.py` climbs a parent chain too — to the **nvcc toolchain's**
 > root, which is not ours to own. A11 is about molbuilder's own roots.)*

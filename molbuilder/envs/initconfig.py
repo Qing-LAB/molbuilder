@@ -90,17 +90,50 @@ def conda_hook(conda_binary: Optional[str]) -> Optional[str]:
     binary it needs to derive it.
 
     Returns ``None`` for micromamba, which ships no ``conda.sh`` at all, and
-    whenever the derived file is not actually on disk.  A preamble that names
+    whenever the hook file is not actually on disk.  A preamble that names
     a file that does not exist is worse than no preamble: it fails later, on
     the cluster, inside a job.  **Checked, not assumed.**
+
+    **The root comes from the MANAGER, not from its binary's path**
+    (`installation.md` M2).  This used to be
+    ``Path(conda_binary).resolve().parent.parent`` -- which is the install root
+    for ``<root>/bin/conda`` and for ``<root>/condabin/conda``, is ``/usr`` for a
+    distro-packaged ``/usr/bin/conda``, and says nothing at all when the thing on
+    PATH is the shell wrapper a cluster module provides.  `<mgr> info --json`
+    answers with ``root_prefix`` outright, and the value this function returns is
+    WRITTEN INTO THE USER'S ``molbuilder.json`` -- so a guess here does not fail
+    here: it fails in a job, on a cluster, weeks later.
     """
     if not conda_binary:
         return None
-    root = Path(conda_binary).resolve().parent.parent
+    root = _manager_root(conda_binary)
+    if root is None:
+        return None
     hook = root / "etc" / "profile.d" / "conda.sh"
     if not hook.is_file():
         return None
     return f"source {hook}"
+
+
+def _manager_root(conda_binary: str) -> Optional[Path]:
+    """Ask the manager where it is installed.  ``None`` if it will not say.
+
+    No fallback to a path derivation, on purpose: the caller's answer is written
+    into a config file, and *"I could not determine this"* is a better thing to
+    write than a plausible guess -- `conda_hook` then returns ``None`` and
+    `init-config` seeds no preamble, which is a state the seeded file explains.
+    """
+    import json as _json
+    import subprocess as _subprocess
+    try:
+        cp = _subprocess.run([conda_binary, "info", "--json"],
+                             capture_output=True, text=True, timeout=30)
+        if cp.returncode != 0:
+            return None
+        root = _json.loads(cp.stdout).get("root_prefix")
+    except (OSError, ValueError, _subprocess.SubprocessError):
+        return None
+    return Path(root) if root else None
 
 
 def seed_document(activation: str,

@@ -25,6 +25,7 @@ from ..config_dir import config_dir
 from ..diagnostics import get_capabilities, reset_capabilities
 from ..runtime_config import ACTIVATION_FORMS
 from . import builds as _builds
+from . import hints as _hints
 from . import doctor as _doctor
 from . import initconfig
 from . import install as _install
@@ -179,19 +180,11 @@ def cmd_list() -> None:
 # --------------------------------------------------------------------- #
 
 
-def _fix_cmd(action: str, recipe_name: str, *flags: str) -> str:
-    """The ONE spelling of an env fix command -- the shell launcher form.
-
-    ``bash scripts/install-env.sh <verb> ...`` works from a bare shell (it
-    finds conda, requires the host env, and dispatches), which is exactly
-    the situation a person with a broken env is in -- and it is the form
-    every hint in this file already taught.  ``doctor`` alone said
-    ``molbuilder envs install`` (user, 2026-08-20: a detected problem must
-    carry its exact fix command; two spellings of the same fix is how a
-    reader ends up touring the docs instead).
-    """
-    return " ".join(["bash scripts/install-env.sh", action,
-                     recipe_name, *flags])
+#: The remedy speller moved to `hints.py` (floor 1) so that `recipes.py` can
+#: reach it: a recipe may not depend on the CLI (A7), so it had hand-copied this
+#: output into a shell string and the copy had drifted.  Bound here under its
+#: old name because every hint in this file reads it.
+_fix_cmd = _hints.fix_cmd
 
 
 def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
@@ -254,10 +247,10 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                            "it is not active:")
                 click.echo("                " + _install.remove_env_cmd(
                     rep.manager, rep.effective_name))
-                click.echo("                bash scripts/install-env.sh "
-                           + ("bootstrap --yes)"
-                              if rep.recipe.category is None
-                              else f"install {rep.recipe.name} --yes)"))
+                click.echo("                " + (
+                    f"{_hints.LAUNCHER} bootstrap --yes)"
+                    if rep.recipe.category is None
+                    else _fix_cmd("install", rep.recipe.name, "--yes") + ")"))
             else:
                 click.echo("             (if repair finds nothing to fix, "
                            "rebuild from the recipe: "
@@ -1030,18 +1023,21 @@ def _build_callbacks(recipe, auto_yes: bool):
                    "every component.  Default behaviour resumes from the "
                    "sentinel set.")
 @click.option("--clean", is_flag=True,
-              help="WIPE the conda env AND the source-build artifact "
-                   "directory, then do a fresh install.  Removes the "
-                   "conda env via ``conda env remove -n <name> -y`` "
-                   "(every package is gone -- gcc, cmake, openmpi, "
-                   "cuda toolkit, etc.) and deletes "
+              help="WIPE the conda env -- and, for a source-build recipe, "
+                   "its artifact directory too -- then do a fresh install.  "
+                   "Removes the env through the DETECTED manager "
+                   "(``<mgr> env remove -n <name> -y``; every package is "
+                   "gone -- gcc, cmake, openmpi, cuda toolkit, etc.) and, "
+                   "for a source build, deletes "
                    "$CONDA_PREFIX/opt/<artifact_subdir>/ (source clones, "
                    "build trees, installed siesta/transiesta/tbtrans "
                    "binaries, logs, sentinels).  Use this for a "
                    "guaranteed-clean start after a failed install, a "
-                   "recipe upgrade, or when in doubt.  Source-build "
-                   "recipes only.  Destructive: requires explicit "
-                   "confirmation unless --yes is also passed.")
+                   "recipe upgrade, or when in doubt.  EVERY recipe, not "
+                   "only source builds -- it is the one wipe-and-reinstall "
+                   "door.  Refused for the env molbuilder is running from.  "
+                   "Destructive: requires explicit confirmation unless "
+                   "--yes is also passed.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="proceed without asking for confirmation.  Required "
                    "for non-interactive runs (CI, headless installs).  "
@@ -1263,7 +1259,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                    f"# or just open a new shell")
         click.echo(f"    {state.remove_cmd()}")
         if recipe.category is None:
-            click.echo("    bash scripts/install-env.sh bootstrap --yes")
+            click.echo(f"    {_hints.LAUNCHER} bootstrap --yes")
         else:
             click.echo("    " + _fix_cmd("install", name, "--yes"))
         click.echo("")
@@ -1858,10 +1854,10 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo(_fix_cmd("repair", "<recipe-name>"))
     click.echo("")
     click.echo("# Re-verify env health after any change:")
-    click.echo("bash scripts/install-env.sh doctor")
+    click.echo(f"{_hints.LAUNCHER} doctor")
     click.echo("")
     click.echo("# Full --help:")
-    click.echo("bash scripts/install-env.sh --help")
+    click.echo(f"{_hints.LAUNCHER} --help")
     click.echo("")
 
     if ('failures' in dir() and failures) or seed_failed:

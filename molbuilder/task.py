@@ -235,9 +235,15 @@ class Notify:
     """**WHEN this calculation should say something** — and deliberately
     nothing about *where*.
 
-    The destination and its credential live on the machine that runs the job
-    (``$XDG_CONFIG_HOME/molbuilder/notify``, else
-    ``~/.config/molbuilder/notify``; mode 0600) and never here.  This file travels:
+    The destination and its credential live on the machine that runs the job --
+    in the config directory, at ``notify``, mode 0600 -- and never here.  The
+    path is `monitor.default_notify_path()`'s to answer, and this docstring used
+    to state two thirds of the rule itself (``$XDG_CONFIG_HOME/molbuilder/notify``
+    else ``~/.config/molbuilder/notify``), omitting ``MOLBUILDER_CONFIG_DIR``.
+    `cli.py` records that exact omission having silently written a key where the
+    monitor does not look, so the two-thirds version is not a harmless
+    simplification: a reader follows it and puts the file somewhere nothing
+    reads (`configuration.md` § 2.1c).  This file travels:
     to a cluster, into a citation's composed copy, to whoever you hand the calculation
     to.  **A policy is safe to carry; a token is not**, and the split is what
     lets the rest of the record stay shareable.
