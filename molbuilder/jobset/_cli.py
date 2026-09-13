@@ -3673,7 +3673,13 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                 return
     else:
         env = _probe_consent_merge(before, env, yes=yes)
-    target.mkdir(parents=True, exist_ok=True)
+    # 0700, through the one creator.  This was a bare `mkdir` with no mode, and
+    # `jobset probe --write` is the FIRST command the seeded `environments/
+    # README` tells a person to run on a target -- so the config directory that
+    # every later secret lands in was created world-readable, and `envs
+    # init-config` then reported it "kept" (A4).
+    from ..config_dir import ensure_private_dir
+    ensure_private_dir(target)
     path = write_environment(env, target / fname)
     if name:
         click.echo(f"wrote {path}\n"

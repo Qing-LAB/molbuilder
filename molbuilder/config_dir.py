@@ -39,6 +39,7 @@ override hangs, and nothing here has to move first.
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 
 __all__ = [
@@ -46,10 +47,20 @@ __all__ = [
     # own filename; nobody else joins at all.
     "config_dir", "state_dir", "runtime_dir", "logs_dir", "reports_dir",
     # The files with no format to own them -- spelled here and nowhere else.
-    "session_key", "google_client_secret",
+    "session_key", "google_client_secret", "secrets_dir",
     "serve_pidfile", "serve_log", "serve_stacks_log",
     "CONFIG_DIR_ENV", "DIRNAME",
+    # Making one of those directories, privately.
+    "PRIVATE_DIR_MODE", "CREDENTIAL_FILE_MODE", "ensure_private_dir",
 ]
+
+#: A directory that holds credentials, or sits around files that do: a listable
+#: directory names a file even when the file itself is shut
+#: (`configuration.md` § 2.1b).
+PRIVATE_DIR_MODE = 0o700
+
+#: A file carrying a credential: owner reads and writes, nobody else.
+CREDENTIAL_FILE_MODE = 0o600
 
 #: The directory name under the XDG config root.  One string, because it is
 #: the half of the path that is not the XDG convention.
@@ -179,6 +190,9 @@ def runtime_dir() -> Path:
 SESSION_KEY_FILENAME = "secret_key"
 GOOGLE_CLIENT_SECRET_FILENAME = "google_client_secret"
 
+#: The directory for files `molbuilder.json` names by path.
+SECRETS_DIRNAME = "secrets"
+
 
 def session_key() -> Path:
     """The Flask session-signing key.
@@ -194,6 +208,18 @@ def session_key() -> Path:
 def google_client_secret() -> Path:
     """The Google OAuth client secret."""
     return config_dir() / GOOGLE_CLIENT_SECRET_FILENAME
+
+
+def secrets_dir() -> Path:
+    """Files ``molbuilder.json`` names by PATH -- a TLS key, a client secret.
+
+    The suggested home rather than a required one: the config names those files,
+    so the name is the operator's.  The DIRECTORY still has one owner, which is
+    why this function exists -- `envs init-config` used to join ``root /
+    "secrets"`` itself, the only place in the tree naming that directory, and a
+    directory nobody owns is a directory the audit below cannot check (A11).
+    """
+    return config_dir() / SECRETS_DIRNAME
 
 
 def logs_dir() -> Path:
@@ -223,3 +249,43 @@ def serve_log(port: int) -> Path:
 def serve_stacks_log(port: int) -> Path:
     """Thread stacks, appended on ``SIGUSR1`` and before any forced child kill."""
     return logs_dir() / f"serve-{port}.stacks.log"
+
+
+def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,
+                       tighten: bool = False) -> Path:
+    """``mkdir -p`` at ``mode`` -- the ONE creator for a directory in this tree.
+
+    It lives here, in the module that owns the directories, because the
+    SUPERVISOR needs it too: `serve_daemon` is L1 and imports nothing of the
+    application it restarts, so a creator one layer up would have left it with a
+    private copy -- which is what it had, and the copy is why two creators
+    disagreed about the case below.  Pure stdlib, which is also what lets this
+    module keep travelling beside a job.
+
+    The umask can only REMOVE bits from a requested mode, never add them, so
+    ``0700`` is a ceiling rather than a suggestion.  (Verified, because the
+    opposite is the intuitive reading and it is wrong.)
+
+    **``tighten`` is off by default, and that is a decision rather than an
+    oversight.** ``mode=`` covers only what this call CREATES; a directory that
+    is already there keeps whatever it had.  Re-moding it is right for a
+    directory this program owns and is about to write a credential into -- the
+    supervisor's log directory, measured at ``0775`` around a log carrying a
+    provider's ``client_secret``.  It is wrong for the config root: on a
+    cluster ``XDG_CONFIG_HOME=/scratch/$USER`` is how a person keeps tokens off
+    an NFS ``$HOME``, and silently re-moding what they set up is the program
+    deciding for them.  Seeding seeds; `envs doctor` reports what arrived loose
+    (`placement.findings`).
+
+    Best-effort on the tightening: a directory somebody else owns is not ours to
+    re-mode, and refusing to log would be the worse outcome.
+    """
+    d = Path(d)
+    d.mkdir(parents=True, exist_ok=True, mode=mode)
+    if tighten:
+        try:
+            if stat.S_IMODE(d.stat().st_mode) != mode:
+                os.chmod(d, mode)
+        except OSError:
+            pass
+    return d

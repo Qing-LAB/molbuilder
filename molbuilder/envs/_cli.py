@@ -844,6 +844,22 @@ def cmd_doctor(no_verify: bool) -> None:
                    "(on ASU Sol: `module load mamba` in the shell that "
                    "runs molbuilder).", err=True)
         sys.exit(1)
+    # WHAT ARRIVED LOOSE.  `doctor` is where a permissions audit belongs --
+    # `initconfig._ensure_root`'s docstring said so before there was one to
+    # point at -- and this is the surface a person is already looking at when
+    # they ask "is my installation right".  Seeding seeds; this polices, by
+    # reporting: the fix is one `chmod` and the line carries it
+    # (`configuration.md` § 2.1a's reasoning -- a warning, never a refusal).
+    from ..placement import findings as _placement_findings
+    loose = _placement_findings()
+    if loose:
+        click.echo("")
+        click.echo(f"[doctor] {len(loose)} path(s) in the configured tree "
+                   f"are looser than they should be:")
+        for line in loose:
+            for i, part in enumerate(line.splitlines()):
+                click.echo(("  - " if i == 0 else "    ") + part.strip())
+
     reports = _doctor.report_all(caps, run_verify=not no_verify)
     sys.exit(_render_doctor(reports))
 

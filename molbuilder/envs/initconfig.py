@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ..config_dir import config_dir
+from ..config_dir import config_dir, ensure_private_dir, secrets_dir
 
 __all__ = [
     "Step", "conda_hook", "seed_document", "seeding_blockers",
@@ -342,10 +342,10 @@ def seeding_blockers() -> List[str]:
 def _ensure_root() -> bool:
     """Make the config directory if it is not there.  ``True`` if it made it.
 
-    ``mode=`` on mkdir needs no chmod after it: the umask can only REMOVE bits
-    from a requested mode, never add them, so 0700 is a ceiling rather than a
-    suggestion.  (Verified, because the opposite is the intuitive reading and
-    it is wrong.)
+    Through `config_dir.ensure_private_dir`, which is the ONE creator for a
+    directory in this tree and states the mode once (2026-09-13).  It does not
+    tighten a directory that is already there, which is this function's own
+    rule: seeding seeds, `envs doctor` reports what arrived loose.
 
     Private, and shared by both doors, because ``seed_machine_config`` is
     reachable on its own -- a public function that works only if you happened
@@ -354,7 +354,7 @@ def _ensure_root() -> bool:
     root = config_dir()
     if root.is_dir():
         return False
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    ensure_private_dir(root)
     return True
 
 
@@ -387,7 +387,7 @@ def ensure_dirs() -> List[Step]:
         # session key and the OAuth client secret, and a looser mode on a
         # child of that is the same mistake one level down.  (It was created
         # at the umask default until 2026-09-12, so 0775 on most systems.)
-        envs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        ensure_private_dir(envs)
         steps.append(Step(envs, "created",
                           "mode 0700; drop a colleague's "
                           "`probe --name <cluster>` record here"))
@@ -444,13 +444,12 @@ def _seed_secrets_dir() -> List[Step]:
     reads as something half-done.
     """
     steps: List[Step] = []
-    root = config_dir()
     _ensure_root()
-    d = root / "secrets"
+    d = secrets_dir()
     if d.is_dir():
         steps.append(Step(d, "kept"))
     else:
-        d.mkdir(parents=True, exist_ok=True, mode=0o700)
+        ensure_private_dir(d)
         steps.append(Step(d, "created",
                           "mode 0700 -- 0600 on everything you put in it"))
     steps.extend(_readme(d, _SECRETS_README,

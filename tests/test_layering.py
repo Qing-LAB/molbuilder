@@ -216,6 +216,18 @@ _L2_MODULES = {
                          # per-engine parsers + ScriptSourceTextParser.)
     "projects",          # filesystem layout / naming rules
     "runtime_config",    # molbuilder.json reader
+    "placement",         # WHERE every configured file sits and what mode it
+                         # must have (configuration.md 3.1 as a table, with one
+                         # creator and one audit over it).  L2: it imports
+                         # `config_dir` (L1) at module scope and asks the format
+                         # owners -- `monitor`, `runtime_config`,
+                         # `scheduler.record` -- for their own paths lazily,
+                         # because those import `config_dir` themselves.
+                         # HARD CONSTRAINT: nothing that SHIPS BESIDE A JOB may
+                         # import it (`runwrap.MONITOR_COMPANIONS` is
+                         # `mb_monitor.py` + `config_dir.py`, run by the job's
+                         # own python in an env with no molbuilder).  That is
+                         # why the table is not in `config_dir`.
     "pseudos",           # PSML header parser + coverage check -- L2 because
                          # resolve_psml_lib anchors relative paths on the
                          # projects/ convention (imports projects, L2).  Its
@@ -540,3 +552,70 @@ def test_the_scheduler_package_exports_no_private_names():
         f"the scheduler package re-exports private names {private} -- either "
         f"they are public and should lose the underscore, or the caller "
         f"should import them from the module that defines them.")
+
+
+# --------------------------------------------------------------------------- #
+#  What ships beside a job must run with no molbuilder at all                 #
+# --------------------------------------------------------------------------- #
+
+def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path):
+    """The premise the whole monitor rests on, reproduced rather than asserted.
+
+    `runwrap.MONITOR_COMPANIONS` travels to the machine that runs the job and is
+    executed by **the job's own python**, inside a backend env where molbuilder
+    is not installed and numpy is not either.  So every module in that set has
+    to import with the package absent -- `monitor` keeps its molbuilder imports
+    inside functions, with a flat fallback (``from config_dir import
+    config_dir``), and `config_dir` imports nothing of ours at all.
+
+    The layering table above cannot see this.  It would let `config_dir` import
+    `persist` -- both L1, perfectly legal, and fatal here, because only these
+    two files travel.  And the failure is SILENT: `runwrap` records the last
+    time it happened (`config_dir.py` added to one stager and not the other), and
+    what it cost was *every production run's monitor dying at import with stderr
+    to /dev/null* -- no [MACHINE] line, no status, no util.csv, no reports.
+
+    It is also the reason `placement` is its own module rather than a table
+    inside `config_dir`: it asks `monitor` and `runtime_config` for their paths,
+    and either import would have travelled into this directory.
+    """
+    import subprocess
+    import sys
+
+    from molbuilder.runwrap import (MONITOR_COMPANIONS, _config_dir_source,
+                                    _monitor_source)
+
+    sources = {"mb_monitor.py": _monitor_source(),
+               "config_dir.py": _config_dir_source()}
+    assert set(sources) == set(MONITOR_COMPANIONS), (
+        "a third file started travelling and this test does not stage it: "
+        f"{sorted(set(MONITOR_COMPANIONS) - set(sources))}")
+    for name, text in sources.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+
+    # The condition has to be real, or this test proves nothing: from that
+    # directory, with no PYTHONPATH, `molbuilder` must genuinely be unimportable
+    # (it is deliberately not pip-installed -- it runs as `python -m molbuilder`
+    # from the repo root).
+    control = subprocess.run([sys.executable, "-c", "import molbuilder"],
+                             cwd=tmp_path, env=env, capture_output=True,
+                             text=True, timeout=120)
+    assert control.returncode != 0, (
+        "molbuilder is importable from the staging directory, so this test "
+        "cannot reproduce a compute node.  Is it pip-installed?")
+
+    probe = (
+        "import mb_monitor\n"
+        # and the flat fallback must actually resolve, not merely not raise
+        "p = mb_monitor.default_notify_path()\n"
+        "assert p.name == 'notify', p\n"
+        "print('ok', p)\n"
+    )
+    done = subprocess.run([sys.executable, "-c", probe], cwd=tmp_path, env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, (
+        "a file that ships beside a job cannot be imported without molbuilder:\n"
+        f"{done.stdout}{done.stderr}")
+    assert done.stdout.startswith("ok "), done.stdout

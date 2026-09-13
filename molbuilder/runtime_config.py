@@ -48,7 +48,6 @@ no hidden state.
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -1279,7 +1278,28 @@ def machine_config_warnings() -> List[str]:
     named rather than invented.
     """
     return [w for w in (machine_config_shadow(), machine_config_mode_warning())
-            if w]
+            if w] + placement_warnings()
+
+
+def placement_warnings() -> List[str]:
+    """What in the configured tree arrived looser than it should be.
+
+    `placement.findings` is the whole of it -- one table, one audit, read here
+    and by `envs doctor`.  It sits beside the pair above because a surface
+    adopts the lot by calling `machine_config_warnings`, which is the shape
+    that got the mode warning to `serve` in the first place.
+
+    `machine_config_mode_warning` stays separate and first: it is about THE
+    file this module owns, it phrases its own sentence, and it is what
+    `config_provenance` reports.  This adds the directory around it, the
+    secrets beside it and the logs it is read into -- the directory being the
+    one A4 measured world-readable while the file inside it was 0600.
+    """
+    try:
+        from .placement import findings
+    except ImportError:        # pragma: no cover - a partial install
+        return []
+    return list(findings())
 
 
 def machine_config_mode_warning() -> Optional[str]:
@@ -1420,7 +1440,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # "lived at three sites, two of them places a reader is TOLD a path".  This
     # was the fourth, and it was written against a façade that exported
     # `FILENAME` and hid the door (A11, I2).
-    from .scheduler import calculation_record, machine_for, machine_scope_path
+    from .scheduler import calculation_record, machine_scope_path
     env_machine = machine_scope_path()
     env_scopes = ([(calculation_record(project_dir), "calculation")]
                   if project_dir is not None else [])
@@ -2188,15 +2208,25 @@ def write_config_scope(
         # The PATCH was invalid; surface the error untouched.
         raise
 
-    target.parent.mkdir(parents=True, exist_ok=True)
+    # 0700 through the one creator when this call is what makes the directory
+    # -- a bare `mkdir` here left the config root at the umask default around
+    # every secret later written into it (A4's sibling; it ignored
+    # `CONFIG_DIR_MODE`, declared two hundred lines up and referenced by
+    # nothing).  It does not TIGHTEN one that is already there: a writer is not
+    # the place that polices what the operator set up (`envs doctor` is).
+    from .config_dir import ensure_private_dir
+    ensure_private_dir(target.parent, mode=CONFIG_DIR_MODE)
     rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
     # Through the ONE atomic writer (U8's shape; R10 aligned this last
     # in-place O_TRUNC write with it -- a crash mid-write left a
-    # truncated config for every later read to refuse).  chmod after:
-    # a config may carry secret-file paths and deploy context.
+    # truncated config for every later read to refuse).
+    #
+    # `mode=` rather than a chmod afterwards (D11): `write_bytes` widened the
+    # temp to 0644 WITH THE CONTENT IN IT and the chmod then closed it, which
+    # is the loose window `write_bytes`' own `mode=` parameter exists to make
+    # impossible -- and this is the one in-package caller that should pass it.
     from .persist import write_bytes
-    write_bytes(target, rendered.encode("utf-8"))
-    os.chmod(target, 0o600)
+    write_bytes(target, rendered.encode("utf-8"), mode=CONFIG_FILE_MODE)
     return target
 
 

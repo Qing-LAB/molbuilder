@@ -27,7 +27,6 @@ import os
 import shutil
 import signal
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -91,23 +90,33 @@ def stacks_path(port: int) -> Path:
 # --------------------------------------------------------------------- #
 
 def _mkdir_private(d: Path) -> None:
-    """``mkdir -p`` at 0700, and tighten an existing directory.
+    """``mkdir -p`` at 0700 for a directory THIS PROGRAM owns, tightening one
+    that arrived loose.
 
-    ``mode=`` covers the directories this call CREATES; an existing one keeps
-    whatever it had, which is how a 0775 logs directory survived.  So the mode
-    is asserted afterwards too -- best-effort, because a directory somebody
-    else owns is not ours to re-mode and is not a reason to refuse to log.
+    The making is `config_dir.ensure_private_dir`'s, which is the one creator
+    for a directory in this tree; it sits in `config_dir` rather than one layer
+    up precisely so the supervisor can reach it (this module is L1 and imports
+    nothing of the application it restarts).
+
+    ``tighten=True`` here and nowhere in the seeding path: the log directory is
+    ours, we are about to write a log into it that carries a provider's
+    ``client_secret``, and it was measured at 0775.  A directory the OPERATOR
+    made -- the config root on a cluster, often pointed at scratch -- is not
+    ours to re-mode; `envs doctor` reports that one instead.
     """
-    d.mkdir(parents=True, exist_ok=True, mode=0o700)
-    try:
-        if (d.stat().st_mode & 0o777) != 0o700:
-            os.chmod(d, 0o700)
-    except OSError:
-        pass
+    from .config_dir import ensure_private_dir
+    ensure_private_dir(d, tighten=True)
 
 
-def _open_private(path: Path, mode: str):
+def open_private(path: Path, mode: str):
     """``open(path, mode)`` for a file that must be 0600 from its first byte.
+
+    PUBLIC, because `configuration.md` § 2.3's writer table already names it as
+    the door for an appended log -- the one shape temp-and-rename cannot serve.
+    It was private while two other surfaces appended to the same logs with a
+    bare `open(..., "a")`, landing 0664 on a file that carries a provider's
+    `client_secret` (A2, I5): a door nobody outside the module can reach is a
+    door the neighbours route around.
 
     The mode rides the descriptor via ``os.open``, so there is no window where
     the file exists readable with content in it -- the same discipline
@@ -160,7 +169,7 @@ class LogRoll:
         # chmod races the first write, and `configuration.md` 2.1b requires
         # the mode to be right "before there is anything to read".
         _mkdir_private(self.path.parent)
-        self._fh = _open_private(self.path, "ab")
+        self._fh = open_private(self.path, "ab")
 
     def write(self, data: bytes) -> None:
         if not data:
@@ -184,11 +193,26 @@ class LogRoll:
         if self.keep > 0:
             dst = self.path.with_name(self.path.name + ".1.gz")
             # The ARCHIVE holds the same bytes, so it gets the same mode.
+            # `raw` is held by name and closed by its own `with`, rather than
+            # being handed to `GzipFile` and forgotten: THIS FILE owns the
+            # descriptor it opened, and `gzip.GzipFile` documents that it does
+            # not close a `fileobj` it was given.
+            #
+            # A1 claimed the old form left the archive unflushed until GC and
+            # failed under `-W error`.  MEASURED 2026-09-13 on CPython 3.14 and
+            # NOT REPRODUCIBLE: both forms write the archive immediately (24
+            # bytes on disk the instant the rotation returns) and neither leaks
+            # a descriptor (`/proc/self/fd` unchanged across a rotation).  A
+            # ResourceWarning is still emitted for this object under
+            # `simplefilter("always")` -- traced to it by tracemalloc, with no
+            # descriptor leaking -- and that is recorded as unexplained rather
+            # than claimed as fixed.  The explicit form stays because ownership
+            # should not depend on another library's finalizer.
             with open(self.path, "rb") as fin, \
-                    gzip.GzipFile(fileobj=_open_private(dst, "wb"),
-                                  mode="wb") as fout:
+                    open_private(dst, "wb") as raw, \
+                    gzip.GzipFile(fileobj=raw, mode="wb") as fout:
                 shutil.copyfileobj(fin, fout)
-        self._fh = _open_private(self.path, "wb")   # truncate and continue
+        self._fh = open_private(self.path, "wb")   # truncate and continue
 
     def close(self) -> None:
         try:
@@ -302,7 +326,11 @@ def supervise(port: int, child_argv: List[str], *,
     ``max_restarts`` exists for bounded tests; production passes None.
     """
     roll = LogRoll(log_path(port), max_bytes=log_max_bytes, keep=log_keep)
-    run_dir().mkdir(parents=True, exist_ok=True)
+    # 0700, like every other directory this program makes.  It was a bare
+    # `mkdir` at the default umask, three lines from `_mkdir_private` -- and
+    # when $XDG_RUNTIME_DIR is absent this falls back INSIDE the state root,
+    # where 0775 is what you get.
+    _mkdir_private(run_dir())
     pid_path(port).write_text(f"{os.getpid()}\n")
 
     state = {"child": None, "hup": False, "term": False}

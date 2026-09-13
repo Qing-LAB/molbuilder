@@ -2257,10 +2257,17 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     try:
         import faulthandler
         import signal as _signal
-        from .serve_daemon import stacks_path
+        from .config_dir import ensure_private_dir
+        from .serve_daemon import open_private, stacks_path
         _sp = stacks_path(port)
-        _sp.parent.mkdir(parents=True, exist_ok=True)
-        globals()["_STACKS_FH"] = open(_sp, "a")
+        # 0700 around it and 0600 on it, through the same doors the supervisor
+        # uses.  A bare `mkdir` + `open(_sp, "a")` here landed 0775/0664 on a
+        # file that holds thread stacks of a process carrying a provider's
+        # `client_secret` -- and `configuration.md` § 3.1 said 0600 while this
+        # line made it otherwise (A2).  Under --no-supervise/--debug no LogRoll
+        # runs, so nothing tightened the directory either.
+        ensure_private_dir(_sp.parent, tighten=True)
+        globals()["_STACKS_FH"] = open_private(_sp, "a")
         faulthandler.register(_signal.SIGUSR1, file=globals()["_STACKS_FH"],
                               all_threads=True)
     except (OSError, ValueError, AttributeError):
@@ -2412,8 +2419,14 @@ def cmd_serve_status(port):
     # this line at worst, never a daemon byte.
     import time as _time
     try:
-        log_path(port).parent.mkdir(parents=True, exist_ok=True)
-        with open(log_path(port), "ab") as fh:
+        from .config_dir import ensure_private_dir
+        from .serve_daemon import open_private
+        # The same doors the daemon uses.  When `status` is the FIRST writer --
+        # a box where the server has never started -- a bare mkdir + append
+        # created the log 0664 in a 0775 directory, and a later supervisor start
+        # tightened both, so the window was "until one runs" (I5).
+        ensure_private_dir(log_path(port).parent, tighten=True)
+        with open_private(log_path(port), "a") as fh:
             fh.write((f"[serve-status] "
                       f"{_time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
                       f"DETECTED: process up (pid {pid}) but /api/health "

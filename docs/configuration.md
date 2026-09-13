@@ -424,7 +424,8 @@ door for the kind of file it has, and the door knows:
 | `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` |
 | `molbuilder.json`, from the auth wizard | `auth_setup.emit_molbuilder_json` | stage privately, **validate the bytes on disk**, then replace |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
-| a log, **appended** | `serve_daemon._open_private` | the one case temp-and-rename cannot serve |
+| a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
+| anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job and may import nothing of ours — see below |
 
 **Two shapes that are not `write_bytes` calls, and both are deliberate.**
 
@@ -437,6 +438,19 @@ old file is still there to keep. The order matters for a reason that was measure
 `providers=[]` left the machine with a config the server refuses. It has both
 properties § 2.3 asks for; what it does not share is the implementation, which is
 the right trade for a writer whose whole job is the validation step.
+
+**A third shape is outside it for a reason that is not about writing at all:
+`monitor.py` SHIPS BESIDE A JOB** *(stated here 2026-09-13)*. It travels to the
+machine that runs the job as `mb_monitor.py` and is executed by **the job's own
+python**, in a backend env where molbuilder is not installed
+(`runwrap.MONITOR_COMPANIONS`, `execution/running-a-job.md` § 2.0a). So its
+writes — the `util.csv` header and its rows — use `pathlib` and nothing of ours:
+importing `persist` here would make the monitor die at import on every node, with
+stderr going to `/dev/null`, which costs the run's status, its utilisation trace
+and its reports and says nothing. `config_dir.py` travels with it under the same
+rule and imports nothing of ours either. **Do not route these through the one
+writer.** They are the one place in this document where a truncated file is the
+cheaper risk, and the trade is deliberate.
 
 **An append is the other, and it is a real exception**, not an oversight: a
 log is added to rather than replaced, so there is no previous content to
@@ -537,6 +551,19 @@ $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 │                                             config_dir.runtime_dir()
 └── serve-<port>.pid       the address stop/restart act on          config_dir.serve_pidfile()
 ```
+
+**The modes above are not prose: they are `molbuilder/placement.py`'s table**
+*(2026-09-13)*. One row per entry drawn here — the OWNER's resolver, the expected
+mode, whether it holds a credential, and why — with
+`config_dir.ensure_private_dir` as the one creator and `placement.findings()` as
+the audit that `envs doctor` prints and `machine_config_warnings` returns. **The
+table is the authority and this tree cites it**, because three statements on this
+page were measured false on 2026-09-12 while a reader had no way to check them:
+the config root was said to be `0700` and nothing created it that way, the serve
+log was said to be `0600` and `serve status` made it `0664`, and § 0's ownership
+row claimed every file here had a stated mode when several had none. Where a row
+says nothing about a mode, the table says so outright (`mode=None` — not
+policed), which is a statement rather than a gap.
 
 **Three roots, not one, and the split is what each kind of file deserves.**
 Configuration is edited and backed up; state grows and is deleted; a runtime
