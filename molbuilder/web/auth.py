@@ -521,7 +521,8 @@ def _install_secret_key(app) -> None:
     # with restrictive permissions.  0700 on the directory, because a listable
     # directory names the file even when the file itself is shut
     # (`configuration.md` § 2.1b).
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    from ..config_dir import ensure_private_dir
+    ensure_private_dir(path.parent)
     key_bytes = secrets.token_bytes(32)
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:

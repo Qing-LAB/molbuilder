@@ -193,21 +193,14 @@ class LogRoll:
         if self.keep > 0:
             dst = self.path.with_name(self.path.name + ".1.gz")
             # The ARCHIVE holds the same bytes, so it gets the same mode.
-            # `raw` is held by name and closed by its own `with`, rather than
-            # being handed to `GzipFile` and forgotten: THIS FILE owns the
-            # descriptor it opened, and `gzip.GzipFile` documents that it does
-            # not close a `fileobj` it was given.
-            #
-            # A1 claimed the old form left the archive unflushed until GC and
-            # failed under `-W error`.  MEASURED 2026-09-13 on CPython 3.14 and
-            # NOT REPRODUCIBLE: both forms write the archive immediately (24
-            # bytes on disk the instant the rotation returns) and neither leaks
-            # a descriptor (`/proc/self/fd` unchanged across a rotation).  A
-            # ResourceWarning is still emitted for this object under
-            # `simplefilter("always")` -- traced to it by tracemalloc, with no
-            # descriptor leaking -- and that is recorded as unexplained rather
-            # than claimed as fixed.  The explicit form stays because ownership
-            # should not depend on another library's finalizer.
+            # WE CLOSE WHAT WE OPENED.  `gzip.GzipFile` borrows a `fileobj`
+            # and documents that it never closes one -- it closes only a file
+            # it opened itself.  Handing it ours and walking away left the
+            # handle with no owner, waiting on the garbage collector, which is
+            # CPython's refcounting rather than a promise.
+            # (A1 also claimed the archive stayed unflushed until then.  That
+            # part is not reproducible on CPython 3.14 -- but the ownership was
+            # wrong either way, which is why this changed.)
             with open(self.path, "rb") as fin, \
                     open_private(dst, "wb") as raw, \
                     gzip.GzipFile(fileobj=raw, mode="wb") as fout:

@@ -194,7 +194,7 @@ discover:
 │                                  directory invites
 └── secrets/                       0700
     └── README                     the mode rule, mock notify channels for
-                                   all three kinds, and the FOUR secrets that
+                                   all three kinds, and the THREE secrets that
                                    cannot live here (one fixed home each)
 ```
 

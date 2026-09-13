@@ -1820,7 +1820,10 @@ def cmd_runtime_info(input_path, out_path, pretty):
         out_path = str(in_path.with_suffix("")) + ".runtime_info.json"
 
     out = Path(out_path)
-    out.write_text(payload + "\n", encoding="utf-8")
+    # Through the one writer: a later parse reads this file, and a half-written
+    # one is a parse error pointing at the wrong thing (I7).
+    from .persist import write_bytes
+    write_bytes(out, (payload + "\n").encode("utf-8"))
     click.echo(f"wrote {out}", err=True)
 
 

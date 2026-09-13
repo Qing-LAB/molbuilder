@@ -36,15 +36,15 @@ Privacy contract:
 """
 from __future__ import annotations
 
-import base64
 import json
 import os
+import tempfile
 import re
 import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .config_dir import DIRNAME, config_dir
+from .config_dir import config_dir
 
 
 # --------------------------------------------------------------------- #
@@ -357,17 +357,6 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"providers": list(providers)}
 
 
-def _write_0600(path: Path, text: str) -> None:
-    """Create `path` with mode 0600 set AT open() time -- no world-readable
-    window, the same trick `write_secret_file` uses."""
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, text.encode("utf-8"))
-    finally:
-        os.close(fd)
-    os.chmod(path, 0o600)
-
-
 def emit_molbuilder_json(output_path: Path,
                           auth_block: Dict[str, Any],
                           *,
@@ -438,8 +427,15 @@ def emit_molbuilder_json(output_path: Path,
     # A sibling temp file keeps the one home AND the old file: it is validated
     # as bytes on disk, exactly as before, and only a file the server would
     # accept is moved into place.
-    tmp_path = output_path.with_name(output_path.name + f".new.{os.getpid()}")
-    _write_0600(tmp_path, rendered)
+    # `mkstemp` rather than a hand-built `.new.<pid>` name and a second private
+    # writer (D14): it creates the file 0600 before it has a name, and it is
+    # unique by construction where a pid-suffixed name is only probably unique.
+    # The module had TWO private writers doing one job; this was the second.
+    fd, tmp_name = tempfile.mkstemp(dir=str(output_path.parent),
+                                    prefix=output_path.name + ".new.")
+    tmp_path = Path(tmp_name)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(rendered)
     try:
         read_config(tmp_path)
     except RuntimeConfigError as exc:
@@ -455,7 +451,9 @@ def emit_molbuilder_json(output_path: Path,
             f"not written -- the server would refuse it: "
             f"{str(exc).replace(str(tmp_path), str(output_path))}"
         ) from None
+    # No chmod after: `os.replace` carries the INODE, and the temp has been
+    # 0600 since before it had a name.  The chmod that stood here could never
+    # change anything, and read as the loose-window fix-up § 2.3 retires.
     os.replace(tmp_path, output_path)
-    os.chmod(output_path, 0o600)
 
     return output_path

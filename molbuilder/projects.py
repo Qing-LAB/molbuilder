@@ -454,6 +454,10 @@ def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
     pre-existed).  See :func:`create_project_skeleton` for the
     rollback-on-failure wrapper.
     """
+    # Plain writes, deliberately (`configuration.md` § 2.3's list): every one of
+    # these lands in a directory THIS CALL just made, and
+    # `create_project_skeleton` removes the lot if anything fails.  There is no
+    # previous content to protect and no credential in them.
     (proj / "README.md").write_text(_project_root_readme(project_name))
     for topic in CANONICAL_TOPICS:
         sub = proj / topic

@@ -2115,7 +2115,7 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
                                      a probe).  `script_generation.activation`
                                      is filled in, because it has no default.
       <config dir>/secrets/          0700 + a README: the mode rule, what
-                                     belongs here, and the two secrets that
+                                     belongs here, and the three secrets that
                                      cannot (they have one fixed home each)
       <config dir>/environments/     0700 -- records for machines you prep FOR
       <config dir>/environment.json  this machine, probed

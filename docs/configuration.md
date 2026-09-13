@@ -28,7 +28,7 @@ writes this file?"* was answered in five documents and completely in none.
 |---|---|
 | **which files are configuration**, and the one name each is called by | the keys inside any one of them |
 | **who writes each file** — a person, a probe, a producing verb, or the engine's own package | what the writer does internally, beyond the two properties in the next row |
-| **the mode and the durability of every file listed here** — `0600`/`0700`, and that a write is atomic (§ 2.1b, § 2.3) | the bytes, the order of keys, the error text |
+| **the mode and the durability of every file listed here** — `0600`/`0700`, and that a write is atomic (§ 2.1b, § 2.3). The modes are `placement.py`'s table since 2026-09-13, one row per file, and a file with no mode requirement says so there (`mode=None`) rather than being silently absent — which is what made this row an overstatement | the bytes, the order of keys, the error text |
 | **the scopes**, and which file wins when two of them speak | the merge algorithm, which is `running-a-job.md` § 5 |
 | **the machine-facts rules** (§ 5) — the split between what is probed and what is chosen | the topology fields themselves, which are `scheduler/record.py`'s |
 | **what is refused where**, and why refusal beats silence | the error text, which belongs to the validator |
@@ -193,10 +193,12 @@ a real exposure, not a tidiness question.
 | the per-user config directory | **`0700`** | a listable directory names the file even when the file itself is shut |
 
 **Writing it this way was already done; checking it was not.** `auth_setup`
-creates the file with `os.open(..., 0o600)` and `fchmod`s the descriptor
-*before the first byte* — the mode is right before there is anything to read,
-rather than being fixed afterwards by a `chmod` that races the write. That care
-is worth keeping and is not what this section adds.
+writes it through `mkstemp`, which creates the temp `0600` *before it has a
+name* (§ 2.3) — the mode is right before there is anything to read, rather than
+being fixed afterwards by a `chmod` that races the write. (This paragraph named
+`os.open` + `fchmod` until 2026-09-13, an implementation that has since been
+replaced; the property it describes is unchanged.) That care is worth keeping
+and is not what this section adds.
 
 What it adds is that **an existing file's mode is checked on the way in**. A
 file arrives loose in ways no writer controls: copied from another machine,
@@ -406,9 +408,11 @@ that needed both kept the weaker half.
 > writer.** `persist.write_bytes(target, data, mode=…)` replaces a whole file
 > this package means to keep, and **a credential is not a reason to write one's
 > own**: that is how the package ended up with two writers neither of which was
-> both safe. Two shapes legitimately sit outside it — staging for validation,
-> and appending — and each is named below with the reason; **nothing else may**,
-> and a new one is the finding, not the fix. `mode=None` — the
+> both safe. A handful of shapes legitimately sit outside it — **each named
+> below with its reason, and that list is the rule**. A write that is not on it
+> is the finding, not the fix. *(This said "two shapes ... nothing else may"
+> until 2026-09-13, when five were measured. An exception with a reason is a
+> rule; an unnamed one is drift, and "nothing else may" was simply untrue.)* `mode=None` — the
 > default, and every caller that existed before this section — keeps a shared
 > artifact's mode. `mode=0o600` is how a credential is written, and it is
 > strictly the **stronger** path rather than a compromise: `mkstemp` creates the
@@ -427,7 +431,21 @@ door for the kind of file it has, and the door knows:
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
 | anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job and may import nothing of ours — see below |
 
-**Two shapes that are not `write_bytes` calls, and both are deliberate.**
+**The shapes that are not `write_bytes` calls, and why each one is not.**
+*(The list was two long and said "nothing else may"; three more existed, which is
+how that sentence came to be false — B2. Naming them is the fix: an exception
+with a reason is a rule, an unnamed one is drift.)*
+
+| outside the one writer | why |
+|---|---|
+| the auth wizard's stage-then-validate | below |
+| an appended log (`serve_daemon.open_private`) | below |
+| **the session key's first creation** (`web/auth.py`) | `os.open(..., O_EXCL, 0600)`. The operation is *create if absent*, not *replace*: the one writer replaces by design, and replacing this file logs every signed-in person out. `O_EXCL` is what makes "only if it is not already there" the file system's decision rather than ours |
+| **the supervisor's pidfile** | a few bytes rewritten at every start, holding an address rather than a secret, read by the next `stop`/`restart`. A truncated one is replaced on the next start; there is nothing in it to preserve |
+| **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made, never overwritten — a person may have added notes — so there is no previous content to protect, and none of them carries a credential |
+| **anything the monitor writes on a compute node** | it ships beside the job and may import nothing of ours — see below |
+
+**Two of those need the longer reason.**
 
 The auth wizard *stages, validates, then replaces*: it writes a private temp,
 reads that temp back through `read_config`, and replaces the target only if the
@@ -474,6 +492,7 @@ owners own — which is the change that was tried and reverted inside one day on
 refuses: that test asserts each of these filenames appears in **exactly** the
 module entitled to spell it. The door a caller wants already exists and is
 already path-free — it is the owning module's own resolver, and for the four
+per-user secret files
 secrets that is `config_dir.session_key()`,
 `config_dir.google_client_secret()`, `monitor.default_notify_path()` and
 `monitor.notify_keys_path()` (§ 3.1 lists every file's). Measured 2026-09-12:
@@ -511,7 +530,7 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `task.1st.json` | the Task-setup tab | calculation | a partial description in flight; **removed** when the real one is saved |
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
 | `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries. A calculation may carry its own tuned copy, and that copy wins |
-| `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), mock `notify` channel examples for all three kinds, and the **four** secrets that cannot live there because they have one fixed home each: `secret_key` (§ 2.1e), `google_client_secret`, `notify`, `notify_keys` |
+| `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), mock `notify` channel examples for all three kinds, and the **three** secrets that cannot live there because they have one fixed home each: `secret_key` (§ 2.1e), `notify`, `notify_keys` |
 | `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), the `--set` fallback when molbuilder cannot be installed there, and that this machine's own record is `../environment.json` and not in that directory |
 
 ### 3.1 The tree — where all of it actually sits
@@ -575,13 +594,19 @@ with a key in `molbuilder.json`**, which § 2.1d explains and which a
 *"points `paths` at one place"* until 2026-09-12, restating advice retired on
 2026-08-31.)
 
-**The four files `molbuilder.json` cannot name** are `secret_key`,
-`google_client_secret`, `notify` and `notify_keys`. Each has one fixed home so a
+**The three files `molbuilder.json` cannot name** are `secret_key`, `notify`
+and `notify_keys`. Each has one fixed home so a
 reader and a writer cannot mean different files — § 2.1e is the worked example of
 what happens otherwise, and `secret_key_file` / `notify_keys_file` are **refused**
 in config rather than ignored. Everything under `secrets/` is the opposite case
 by design: `molbuilder.json` names those by path, so the name is yours and the
 directory is a suggestion.
+
+**`google_client_secret` was listed as a fourth until 2026-09-13, and it is not
+one.** It is the DEFAULT home for Google's client secret; a provider entry may
+say `auth.providers[].client_secret_file` and `oauth.py` reads whatever the
+config names. So it is a file `molbuilder.json` CAN name — the same category as
+everything under `secrets/`, with a default home for convenience.
 
 **`secrets/` may be empty on a working installation** and often is — a
 workstation with no HTTPS and no sign-in needs nothing in it. An empty
