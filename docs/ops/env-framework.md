@@ -22,6 +22,7 @@ packages) and must not be confused with this one.
 | **Every situation is a FIELD on a record**, never a branch in the runner | § 4.2 |
 | **Optionality means different things to a solver and to a per-package installer** — a non-fatal step for pip, a degraded attempt for conda | § 4.3 |
 | **One door runs every step** — `run_step` — so no phase can grow its own dispatch again | § 5 |
+| **A step enters the env through the MANAGER's own mechanism**, and a manager's bug is a declared fallback rather than the default path | § 5.6 |
 | **Five outcomes, one transition rule**, and every step in a result carries one | § 5.1 |
 | **A step's success criteria ride on the STEP**, so the runner has no per-phase special cases | § 5.2 |
 | **The verdict is DERIVED from the steps**, never tracked beside them | § 5.3 |
@@ -109,6 +110,15 @@ diagnosed in a second instead of failing ten minutes into a `conda create`.
 | no | yes | yes | **ORPHAN** | `FAILED` — conda would refuse; name `--clean` |
 | yes | no | — | **GHOST** | `FAILED` — a registry entry with no directory |
 | — | yes | no | **BROKEN** | `FAILED` — a directory that is not an env |
+
+**"The directory" means the prefix the registry named**, not
+`<envs_dirs>/<name>`. An env created with `--prefix` outside any of conda's
+`envs_dirs` is listed by the registry *with* a perfectly good directory; probing
+only the search path calls it GHOST and then prints a removal command for a
+healthy env — M2 and M5 of [`installation.md`](?doc=ops/installation.md)
+§ *"One door for RUNNING"* in one defect. ⚠ That is what the probe does today;
+tracked as **H1** in
+[`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
 
 The five are **exhaustive over all eight combinations** of three booleans,
 which is why the installer needs no default branch — and that exhaustivity is
@@ -432,6 +442,46 @@ does is **adapt** its results — each build phase becomes a step whose outcome
 comes from `Outcome.decide`, so build steps stop arriving with no outcome at
 all — while `builds.py` keeps its own verdict, which the installer reads rather
 than re-derives.
+
+### 5.6 How a step enters the env *(2026-09-12)*
+
+`run_step` decides *whether* a step is accepted; this is about *how* its argv
+reaches the env's packages — and the rule is that molbuilder does not answer
+that question itself.
+
+**The manager activates.** `conda_run_argv` is the one spelling —
+`<mgr> run -n <env> --no-capture-output …` — and the detected binary
+performs the activation its own envs expect, including `etc/conda/activate.d`
+hooks, which source-built recipes depend on (siesta-gpu puts binaries under
+`<prefix>/opt/…/bin`, not `<prefix>/bin`). Re-creating that by exporting `PATH`,
+`LD_LIBRARY_PATH` and `CONDA_PREFIX` and globbing the hook scripts is a
+reimplementation of someone else's product, and it is wrong by construction on
+any manager whose activation does something we did not copy.
+
+**A manager's bug rides on the step.** mamba 1.x's `run` emits a stub whose
+`exec --` bash rejects. That is not a reason to take the manager out of the
+loop everywhere — it is a **declared alternative** (§ 4.3's row shape), fired
+when that failure's signature appears, landing `RECOVERED` so the result names
+the machines that needed it. The same fields that express *"this package may come
+from an index instead"* express *"this manager's run may need the wrapper"*; no
+branch in the runner, and one copy rather than two.
+
+**Environment, not activation.** What a step legitimately needs beyond activation
+— `TMPDIR` and `PIP_CACHE_DIR` kept inside the prefix so `env remove` really
+cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
+`CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — goes through `run_step`'s `env`
+parameter. That is what that parameter is for.
+
+**A prefix is asked for, never derived**, and a printed remedy names the
+detected manager and never proposes destroying the env the process is running
+from: [`installation.md`](?doc=ops/installation.md) § *"One door for RUNNING"*
+M2, M3, M5.
+
+> ⚠ **Not true of the tree yet** *(2026-09-12)*: the wrapper is applied to
+> **every** step whenever a prefix is known (`install.py:383-390`) and
+> `builds.py:1550-1648` is a second, drifted copy, so no machine currently uses
+> its manager's own `run` and nothing passes `env=`. Tracked as **H3** in
+> [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
 
 ## 6. The audit
 

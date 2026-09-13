@@ -89,6 +89,31 @@ def test_a_failed_verify_offers_repair_then_the_rebuild(capsys):
     assert _fix_cmd("install", NAME, "--clean", "--yes") in out
 
 
+def test_a_failed_verify_on_the_RUNNING_env_does_not_offer_clean(capsys):
+    """`installation.md` M5 -- a printed remedy may not destroy working state.
+
+    `--clean --yes` on the env molbuilder runs from removes the prefix holding
+    the interpreter that is mid-install; the removal succeeds and the
+    reinstall cannot.  So for THAT env the report offers repair and the
+    three-step rebuild from outside, and never the one-liner.
+
+    The hint rule still holds: the rebuild is named, with the DETECTED manager
+    (M3), not replaced by a pointer to the docs.
+    """
+    import sys as _sys
+
+    rep = _report(verify_ok=False, verify_output="boom",
+                  prefix=_sys.prefix, manager="/opt/mgr/bin/micromamba")
+    code, out = _render(capsys, rep)
+
+    assert code == 1
+    assert "next:    " + _fix_cmd("repair", NAME) in out, out
+    assert _fix_cmd("install", NAME, "--clean", "--yes") not in out, (
+        "doctor still hands over the command that deletes the env it is "
+        f"reporting on:\n{out}")
+    assert f"/opt/mgr/bin/micromamba env remove -n {NAME} -y" in out, out
+
+
 def test_the_closing_line_points_at_the_hints_not_the_docs(capsys):
     rep = _report(verify_ok=False, verify_output="")
     _code, out = _render(capsys, rep)

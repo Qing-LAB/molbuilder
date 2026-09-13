@@ -68,6 +68,38 @@ that probes for a manager by name.  Every consumer reads
 **and its provenance** as their first line, so "which manager did it
 use" is never a mystery to reconstruct from a stack trace.
 
+### One door for RUNNING, not only for finding *(2026-09-12)*
+
+*(User: "different machine could have different setups. It might not be conda at
+all. It could be mamba... use the detected activation method and the correct way
+to execute the script rather than directly hacking to the directory.")*
+
+Detecting the manager was half the rule. **How a command gets INTO an env is the
+same question**, and the answer is the same: ask the thing that knows.
+
+| | the rule | what the violation looks like |
+|---|---|---|
+| **M1** | **The manager activates; molbuilder does not.** A step enters an env as `<mgr> run -n <env> …` — the detected binary's own mechanism, which performs the activation the env's own packages expect, `activate.d` hooks included | exporting `PATH` / `LD_LIBRARY_PATH` / `CONDA_PREFIX` by hand and sourcing `<prefix>/etc/conda/activate.d/*.sh` from a generated shell wrapper |
+| **M2** | **A path inside an env is ASKED FOR, never derived.** The prefix comes from the manager — `env list --json`, `info --json` | `<manager root>/envs/<name>`, `~/.conda/envs/<name>`, `Path(binary).parent.parent/etc/profile.d/conda.sh`. The binary's path says where the **manager** is installed; it does not say where that manager keeps envs, and on exactly the machines `envs.manager` exists for, the two differ |
+| **M3** | **A remedy names the DETECTED manager** — `caps.conda_binary` | a literal `conda env remove …` printed on a machine that has only micromamba: a remedy the person cannot run |
+| **M4** | **A manager's bug is a DECLARED FALLBACK, not the default path.** It rides on the step as a field, is taken only when that bug's signature appears, and the outcome records it (`RECOVERED`), so the result says which machines needed it | making the workaround unconditional: every other machine loses the manager's real activation, the bug becomes invisible, and the hand-written copy drifts — twice, here |
+| **M5** | **A remedy the program prints may not destroy working state.** A fix command must be runnable *and* must not be ruinous: nothing may propose removing the env the process is running from | `doctor` printing `install molbuilder --clean --yes` for the host env |
+
+**Why M4 is stated as a fallback rather than a version check.** mamba 1.x's `run`
+generates a shell stub whose `exec --` bash rejects, and that is a real failure on
+real clusters — but "which versions are broken" is a fact about someone else's
+software that we would have to keep current, whereas *"the stub failed, here is the
+alternative"* is a fact we measure on the spot. The env framework already has the
+mechanism: a declared alternative on the step
+([`env-framework.md`](?doc=ops/env-framework.md) § 5.6).
+
+> ⚠ **The tree does not satisfy M1, M2 or M3 yet** *(2026-09-12)*. `run_step`
+> rewrites **every** step into a hand-written activation wrapper whenever a prefix
+> is known, `builds.py` holds a second drifted copy, three places derive an install
+> root from the manager binary, and two printed remedies are literal `conda`. Read
+> this section as the target; the distance is **H3, H10, D4, A0** in
+> [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
+
 **Cluster note (ASU Sol):** the module's `mamba` is a shell wrapper,
 and login nodes kill memory-heavy solves — `rc=137` from `repair` means
 the login node's cap killed the dependency resolution, and the repair

@@ -37,6 +37,7 @@ besides :mod:`molbuilder.envs.builds`.
 """
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import sys
@@ -776,12 +777,19 @@ class EnvState:
     prefix : Optional[str]
         Absolute path to the env if it was resolved by either the
         registry or the filesystem; ``None`` for a fresh install.
+    manager : Optional[str]
+        The DETECTED env-manager binary this state was probed with, carried
+        so that a remedy this state prints can name it
+        (`installation.md` M3).  A state that knows the env exists but
+        cannot name the manager that manages it can only print a literal
+        ``conda``, which is no remedy on a machine that has micromamba.
     """
     name: str
     listed_in_registry: bool
     dir_exists: bool
     has_conda_meta: bool
     prefix: Optional[str]
+    manager: Optional[str] = None
 
     @property
     def state_label(self) -> str:
@@ -846,9 +854,9 @@ class EnvState:
             lines.append("    exists`.  RECOMMENDED: re-run with --clean to wipe the")
             lines.append("    directory and start fresh.")
         elif s == "GHOST":
-            lines.append("  → GHOST: conda's registry lists this env but the directory")
-            lines.append("    is gone.  Fix manually with:")
-            lines.append(f"      conda env remove -n {self.name} -y")
+            lines.append("  → GHOST: the registry lists this env but the directory")
+            lines.append("    it names is gone.  Fix manually with:")
+            lines.append(f"      {self.remove_cmd()}")
             lines.append("    or re-run with --clean which will do the same thing.")
         elif s == "BROKEN":
             lines.append("  → BROKEN: directory exists but is missing conda-meta/, so")
@@ -857,15 +865,78 @@ class EnvState:
             lines.append("    --clean to wipe the directory and start fresh.")
         return "\n".join(lines)
 
+    def remove_cmd(self) -> str:
+        """The manual removal line for this env.  See :func:`remove_env_cmd`."""
+        return remove_env_cmd(self.manager, self.name)
+
+    def is_the_running_env(self) -> bool:
+        """True when this env is the one the current interpreter runs from.
+
+        One home for the question -- :func:`runs_from_prefix` -- because
+        ``doctor`` asks it about a prefix it resolved itself and has no
+        ``EnvState`` to hand.
+        """
+        return runs_from_prefix(self.prefix)
+
+
+def remove_env_cmd(manager: Optional[str], env_name: str) -> str:
+    """The ONE spelling of "remove this env by hand".
+
+    `installation.md` M3: a remedy naming a literal ``conda`` is a command the
+    person may not have -- the detected binary is what goes in the line.  When
+    no manager was detected the line says so instead of guessing one, because a
+    wrong command is worse than an honest gap.
+
+    It lives beside :func:`runs_from_prefix` because the two are always used
+    together: the places that must not offer ``--clean`` are exactly the places
+    that have to print this instead.
+    """
+    if not manager:
+        return (f"<your env manager> env remove -n {env_name} -y"
+                f"   (no manager detected)")
+    return f"{manager} env remove -n {env_name} -y"
+
+
+def runs_from_prefix(prefix: Optional[str]) -> bool:
+    """Is `prefix` the env THIS interpreter is running from?
+
+    The one answer to that question, asked by `--clean` before it removes an
+    env and by ``doctor`` before it recommends that someone do so
+    (`installation.md` M5: a remedy the program prints may not destroy
+    working state).
+
+    Both facts are GIVEN rather than derived (M2): the prefix came from the
+    manager's own registry, and ``sys.prefix`` is the interpreter reporting
+    where it lives.  Nothing here assumes a manager layout or an
+    ``envs_dirs``, and ``CONDA_PREFIX`` is deliberately NOT consulted -- the
+    shim dispatches the host env's python without activating, so that
+    variable can name a different env entirely, or nothing at all.
+    """
+    if not prefix:
+        return False
+    try:
+        return os.path.realpath(prefix) == os.path.realpath(sys.prefix)
+    except OSError:  # pragma: no cover - realpath on a hostile path
+        return False
+
 
 def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     """Probe the conda env's current state.  Pure read; no side effects.
 
-    Runs THREE independent checks (registry, conda-info envs_dirs,
-    filesystem) and combines the results into an :class:`EnvState`.
-    Cheap -- two ``conda`` subprocesses, ~100 ms each on a warm
+    Runs THREE independent checks (registry, the env's directory, its
+    ``conda-meta/``) and combines the results into an :class:`EnvState`.
+    Cheap -- one or two manager subprocesses, ~100 ms each on a warm
     system, much less than the cost of a single failed
     ``conda create``.
+
+    **The directory checks are measured on the prefix the REGISTRY named**
+    (`installation.md` M2: a path inside an env is asked for, never derived).
+    The ``envs_dirs`` search is the fallback for the opposite case -- a
+    directory that no registry entry mentions, which is what ORPHAN and BROKEN
+    are -- so it is only consulted when the registry does not list the env.
+    Measuring the search path *instead* of the named prefix is what made an env
+    created with ``--prefix`` outside ``envs_dirs`` report GHOST while carrying
+    a healthy prefix, and GHOST prints a removal command.
     """
     import json as _json
 
@@ -888,28 +959,41 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
             ValueError, KeyError):
         pass
 
-    # Checks 2 + 3: filesystem (conda's envs_dirs)
+    # Checks 2 + 3: the directory, and its conda-meta/.
+    #
+    # Measured on ONE path, and which path comes from check 1: the prefix the
+    # registry named when it named one, the envs_dirs search only when it did
+    # not.  Those are the two different questions the five states are made of
+    # -- "the env the manager knows about, is it still on disk" (PRESENT vs
+    # GHOST) and "is there a directory the manager does NOT know about"
+    # (ORPHAN, BROKEN) -- and answering the first by searching the second's
+    # haystack is what reported GHOST for a healthy out-of-envs_dirs env.
     dir_exists = False
     has_conda_meta = False
     prefix_from_fs: Optional[str] = None
-    try:
-        info_cp = subprocess.run(
-            [conda_binary, "info", "--json"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if info_cp.returncode == 0:
-            info = _json.loads(info_cp.stdout)
-            for envs_dir in info.get("envs_dirs", []):
-                candidate = Path(envs_dir) / env_name
-                if candidate.is_dir():
-                    dir_exists = True
-                    prefix_from_fs = str(candidate)
-                    if (candidate / "conda-meta").is_dir():
-                        has_conda_meta = True
-                    break
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
-            ValueError, KeyError):
-        pass
+    if prefix_from_registry is not None:
+        target = Path(prefix_from_registry)
+        dir_exists = target.is_dir()
+        has_conda_meta = (target / "conda-meta").is_dir()
+    else:
+        try:
+            info_cp = subprocess.run(
+                [conda_binary, "info", "--json"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if info_cp.returncode == 0:
+                info = _json.loads(info_cp.stdout)
+                for envs_dir in info.get("envs_dirs", []):
+                    candidate = Path(envs_dir) / env_name
+                    if candidate.is_dir():
+                        dir_exists = True
+                        prefix_from_fs = str(candidate)
+                        if (candidate / "conda-meta").is_dir():
+                            has_conda_meta = True
+                        break
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
+                ValueError, KeyError):
+            pass
 
     prefix = prefix_from_registry or prefix_from_fs
     return EnvState(
@@ -918,6 +1002,7 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
         dir_exists=dir_exists,
         has_conda_meta=has_conda_meta,
         prefix=prefix,
+        manager=conda_binary,
     )
 
 

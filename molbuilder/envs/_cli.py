@@ -239,10 +239,30 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 click.echo(indented)
             click.echo("    next:    "
                        + _fix_cmd("repair", rep.recipe.name))
-            click.echo("             (if repair finds nothing to fix, "
-                       "rebuild from the recipe: "
-                       + _fix_cmd("install", rep.recipe.name,
-                                  "--clean", "--yes") + ")")
+            if _install.runs_from_prefix(rep.prefix):
+                # `installation.md` M5: a printed remedy may not destroy
+                # working state.  `--clean` on THIS env removes the prefix
+                # this interpreter is running from, and `--yes` means no
+                # prompt stands between the copy-paste and a machine with no
+                # molbuilder at all.  The rebuild is still NAMED -- the rule
+                # this report exists for is that a detected problem carries
+                # its exact command (user, 2026-08-20) -- but as the
+                # three-step that works: from outside the env.
+                click.echo("             (molbuilder runs FROM this env, so "
+                           "--clean is not offered here.")
+                click.echo("              To rebuild it, from a shell where "
+                           "it is not active:")
+                click.echo("                " + _install.remove_env_cmd(
+                    rep.manager, rep.effective_name))
+                click.echo("                bash scripts/install-env.sh "
+                           + ("bootstrap --yes)"
+                              if rep.recipe.category is None
+                              else f"install {rep.recipe.name} --yes)"))
+            else:
+                click.echo("             (if repair finds nothing to fix, "
+                           "rebuild from the recipe: "
+                           + _fix_cmd("install", rep.recipe.name,
+                                      "--clean", "--yes") + ")")
         # Package audit (real check, not just verify smoke test).
         # Required-missing -> FAILED + exits 1; optional-missing
         # (e.g. GPU-only cupy + gpu4pyscf) -> info-only, env still
@@ -1197,6 +1217,15 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             click.echo("  --clean (REMOVE conda env + WIPE artifact dir, "
                        "then fresh install)")
 
+    if caps.conda_binary is None:
+        # The guard `repair` and `clean` already have.  Without it the probe
+        # below calls subprocess.run([None, ...]) and the person gets a
+        # TypeError instead of the one sentence that names the fix.
+        raise click.UsageError(
+            "conda/mamba not found; cannot install.  See "
+            "docs/ops/installation.md."
+        )
+
     # === Step 0: probe + diagnose conda env state up front ===
     # Resolve the conda env's state BEFORE any subprocess work runs.
     # Catches all the edge cases (orphan dirs from prior failed
@@ -1206,6 +1235,40 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     click.echo("Conda env state check:")
     state = _install.probe_env_state(effective, caps.conda_binary)
     click.echo(state.describe())
+
+    if clean and state.is_the_running_env():
+        # `installation.md` M5.  `--clean` removes the env and then installs
+        # into it again; when that env is the one this interpreter runs from,
+        # the removal succeeds and the `conda create` after it runs from a
+        # prefix that no longer exists.  A failure between the two leaves the
+        # machine with no host env and no molbuilder.  The shim dispatches
+        # `<prefix>/bin/python -m molbuilder` without activating, so conda's
+        # own "cannot remove current environment" guard never fires -- this is
+        # the only thing standing there.
+        mgr = Path(caps.conda_binary).name
+        click.echo("")
+        click.echo("=" * 64)
+        click.echo("  REFUSED: --clean would remove the env molbuilder is "
+                   "RUNNING FROM")
+        click.echo("=" * 64)
+        click.echo(f"  env:    {effective}")
+        click.echo(f"  prefix: {state.prefix}")
+        click.echo("")
+        click.echo("  The removal would succeed and the reinstall after it "
+                   "would not:")
+        click.echo("  this process's own interpreter lives in that prefix.")
+        click.echo("")
+        click.echo("  Do it from OUTSIDE the env instead:")
+        click.echo(f"    {mgr} deactivate          "
+                   f"# or just open a new shell")
+        click.echo(f"    {state.remove_cmd()}")
+        if recipe.category is None:
+            click.echo("    bash scripts/install-env.sh bootstrap --yes")
+        else:
+            click.echo("    " + _fix_cmd("install", name, "--yes"))
+        click.echo("")
+        click.echo("  Nothing was removed.")
+        sys.exit(2)
     if state.needs_cleanup and not clean and not force_resume:
         click.echo("")
         click.echo("HARD STOP: env is in a state that conda create cannot")
@@ -1231,7 +1294,10 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # Use the detected env-manager binary, not a hardcoded ``mamba``.
         # User might have only conda installed; ``mamba env remove``
         # would fail with "mamba: command not found" in that case.
-        click.echo(f"    {caps.conda_binary} env remove -n {name} -y")
+        # `effective`, not `name`: with MOLBUILDER_HOST_ENV or an
+        # `envs.<category>` override the recipe name is not the env name, and
+        # every neighbouring line here already uses the effective one.
+        click.echo(f"    {caps.conda_binary} env remove -n {effective} -y")
         click.echo(
             "    " + _fix_cmd("install", name, "--yes")
         )

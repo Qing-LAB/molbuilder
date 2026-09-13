@@ -113,22 +113,105 @@ def _read_events(path):
     return out
 
 
+def _writer_is_alive(start_rec):
+    """Is the process that wrote this `start` record still running?
+
+    Without this a file whose run was killed reads as ``running`` for ever --
+    `.test-progress/all.jsonl` sat that way for a day.  Unknown (a file from
+    before `pid` was recorded) counts as alive, because claiming a live run is
+    dead is the worse error.
+    """
+    pid = start_rec.get("pid")
+    if not isinstance(pid, int):
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # alive, owned by someone else
+    except OSError:
+        return True
+    return True
+
+
 def _summarise(batch, path):
+    """What the progress file actually supports saying.
+
+    **A count is only a result when the file is one complete run.**  This
+    function used to count whatever records were present and label the batch
+    ``done`` if a ``done`` record existed anywhere, which on 2026-09-12
+    reported the TAIL of a finished run -- a file a second pytest had truncated
+    under it -- as a run that stopped after 4947 of 9081 tests.  Nothing in the
+    output said the file was unreadable, so the number was believed and ~4000
+    tests were recorded as "not executing" when they had all run.
+
+    Three states replace that, and none of them prints a pass count:
+
+    ``unusable``     no ``start`` record (the file was truncated under a run
+                     that was still writing), or no ``collected`` record, so
+                     there is nothing to compare ``ran`` against.
+    ``interleaved``  records from more than one run inside one generation.
+    ``partial``      a ``done`` record, but fewer tests ran than were
+                     collected -- a real early stop, which IS worth knowing
+                     and is exactly what must not be called ``done``.
+
+    Only records from the LAST ``start`` are considered: a new run appends a
+    generation rather than destroying the old one, so the newest is the one
+    being asked about.
+    """
     ev = _read_events(path)
     if not ev:
         return {"batch": batch, "state": "no-data", "path": path}
-    start = next((e["time"] for e in ev if e["event"] == "start"), None)
-    collected = next((e["n"] for e in ev if e["event"] == "collected"), None)
-    done = next((e for e in ev if e["event"] == "done"), None)
-    tests = [e for e in ev if e["event"] == "test"]
-    last_t = max((e["time"] for e in ev), default=start)
+
+    starts = [i for i, e in enumerate(ev) if e["event"] == "start"]
+    if not starts:
+        return {"batch": batch, "state": "unusable", "path": path,
+                "why": "no `start` record -- the file was truncated under a "
+                       "run that was still writing it, so what is left is a "
+                       "fragment, not a run"}
+    gen = ev[starts[-1]:]
+    run_id = gen[0].get("run")
+    strays = {e.get("run") for e in gen} - {run_id}
+    start_t = gen[0]["time"]
+    collected = next((e["n"] for e in gen if e["event"] == "collected"), None)
+    done = next((e for e in gen if e["event"] == "done"), None)
+    tests = [e for e in gen if e["event"] == "test"]
+    last_t = max((e["time"] for e in gen), default=start_t)
     counts = {"passed": 0, "failed": 0, "skipped": 0}
     for e in tests:
         counts[e["outcome"]] = counts.get(e["outcome"], 0) + 1
     ran = len(tests)
+
+    if strays:
+        state = "interleaved"
+        why = (f"records from {len(strays) + 1} runs share this generation "
+               f"({ran} test records cannot be attributed)")
+    elif collected is None:
+        state = "unusable"
+        why = ("no `collected` record -- collection never finished, so there "
+               "is no total to compare against")
+    elif done and ran < collected:
+        state = "partial"
+        why = (f"the run stopped after {ran} of {collected} collected tests "
+               f"(exit {done['exitstatus']}); this is NOT a suite result")
+    elif done:
+        state = "done"
+        why = None
+    elif _writer_is_alive(gen[0]):
+        state = "running"
+        why = None
+    else:
+        state = "abandoned"
+        why = (f"no `done` record and the run's process is gone -- it was "
+               f"killed or crashed after {ran} tests; the counts below are "
+               f"a fragment")
+
     return {
         "batch": batch,
-        "state": "done" if done else "running",
+        "state": state,
+        "why": why,
+        "run": run_id,
         "exitstatus": done["exitstatus"] if done else None,
         "collected": collected,
         "ran": ran,
@@ -136,7 +219,7 @@ def _summarise(batch, path):
         "passed": counts["passed"],
         "failed": counts["failed"],
         "skipped": counts["skipped"],
-        "elapsed": round((last_t - start), 1) if start else None,
+        "elapsed": round((last_t - start_t), 1),
         "failed_ids": [(e["nodeid"], e.get("reason", "")) for e in tests
                        if e["outcome"] == "failed"],
         "path": path,
@@ -200,27 +283,54 @@ def cmd_run(args):
 
 
 def cmd_status(args):
+    """Print each batch's state.  Non-zero when any batch cannot be trusted.
+
+    A number that reads like a result is printed ONLY for ``done``; everything
+    else leads with what is wrong with the file, because the failure this guards
+    against was a believable-looking count.
+    """
     batches = [args.batch] if args.batch else _known_batches()
     if not batches:
         print("no progress files under .test-progress/ yet")
         return 0
+    untrustworthy = False
     for b in batches:
         s = _summarise(b, _progress_path(b))
         if s["state"] == "no-data":
             print(f"[{b}] no data")
             continue
-        head = (f"[{b}] {s['state']}"
+        if s["state"] in ("unusable", "interleaved", "abandoned"):
+            untrustworthy = True
+            print(f"[{b}] {s['state'].upper()} -- not a suite result")
+            print(f"      {s['why']}")
+            if s["state"] == "abandoned":
+                print(f"      ran {s['ran']}/{s['collected']}  "
+                      f"pass {s['passed']}  FAIL {s['failed']}  "
+                      f"skip {s['skipped']}")
+            print(f"      {s['path']}")
+            if args.fails and s.get("failed_ids"):
+                print(f"      ({len(s['failed_ids'])} failure records are "
+                      f"still real; ids below)")
+                for nid, reason in s["failed_ids"]:
+                    print(f"    FAIL {nid}")
+                    if reason:
+                        print(f"         -> {reason}")
+            continue
+        head = (f"[{b}] {s['state'].upper() if s['state'] == 'partial' else s['state']}"
                 + (f" (exit {s['exitstatus']})" if s['exitstatus'] is not None else "")
                 + f" | {s['ran']}/{s['collected']} ran"
                 + f" | pass {s['passed']}  FAIL {s['failed']}  skip {s['skipped']}"
                 + f" | {s['elapsed']}s")
         print(head)
+        if s["state"] == "partial":
+            untrustworthy = True
+            print(f"      {s['why']}")
         if args.fails and s["failed_ids"]:
             for nid, reason in s["failed_ids"]:
                 print(f"    FAIL {nid}")
                 if reason:
                     print(f"         -> {reason}")
-    return 0
+    return 1 if untrustworthy else 0
 
 
 def cmd_failed(args):

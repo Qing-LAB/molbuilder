@@ -826,6 +826,144 @@ def test_clean_removes_the_env_for_a_CONDA_ONLY_recipe(monkeypatch, tmp_path):
     assert "molbuilder-pySCF" in removals[0]
 
 
+def test_an_env_outside_envs_dirs_is_PRESENT_not_GHOST(monkeypatch, tmp_path):
+    """GHOST must mean what `env-framework.md` § 2.1 says: a registry entry
+    whose directory is gone.
+
+    The probe used to measure `dir_exists` by searching conda's `envs_dirs`
+    for `<dir>/<name>`, ignoring the prefix the registry had just handed it two
+    lines above.  An env created with `--prefix` outside any of those
+    directories -- `/scratch`, a project tree, a module-provided root -- is
+    listed by the registry with a perfectly healthy directory, and the probe
+    called it GHOST anyway.  GHOST then hard-stops `install` and prints
+    `env remove` as the fix: the program recommending the destruction of a
+    working env (`installation.md` M2 and M5 in one defect).
+
+    Asking the manager where the env is, instead of guessing from a search
+    path, is also one subprocess instead of two -- asserted here, because the
+    saving is the point: the prefix is not derived at all any more.
+    """
+    out_of_tree = tmp_path / "scratch" / "mb-out-of-tree"
+    (out_of_tree / "conda-meta").mkdir(parents=True)
+    seen: list = []
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv)
+        seen.append(argv_list[1:3])
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{out_of_tree}"]}}')
+        if argv_list[1:2] == ["info"]:
+            # envs_dirs deliberately does NOT contain the env.
+            return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path / "envs"}"]}}')
+        return _stub(0, stdout="")
+
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    state = install.probe_env_state("mb-out-of-tree", "/fake/conda")
+
+    assert state.state_label == "PRESENT", (
+        f"a healthy env outside envs_dirs reported {state.state_label}; "
+        f"prefix={state.prefix}")
+    assert state.can_resume is True
+    assert state.needs_cleanup is False
+    assert state.prefix == str(out_of_tree)
+    assert ["info"] not in [c[:1] for c in seen], (
+        f"the registry answered with the prefix; `info --json` was still "
+        f"paid for: {seen}")
+
+
+def test_a_registry_entry_whose_directory_is_gone_is_still_GHOST(
+        monkeypatch, tmp_path):
+    """The other half: measuring the named prefix must not make GHOST
+    unreachable.  A registry entry pointing at a directory that is not there
+    is exactly what GHOST is for, and `install` must still hard-stop on it."""
+    gone = tmp_path / "scratch" / "was-here"
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv)
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{gone}"]}}')
+        if argv_list[1:2] == ["info"]:
+            return _stub(0, stdout='{"envs_dirs": []}')
+        return _stub(0, stdout="")
+
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    state = install.probe_env_state("was-here", "/fake/conda")
+
+    assert state.state_label == "GHOST", state.describe()
+    assert state.needs_cleanup is True
+    assert state.can_resume is False
+    # M3: the remedy it prints names the detected manager.
+    assert state.remove_cmd() == "/fake/conda env remove -n was-here -y"
+
+
+def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
+        monkeypatch, tmp_path):
+    """The self-destruct `--clean` opened up, and nothing stood in its way.
+
+    Opening `--clean` to conda-only recipes put the HOST recipe in scope -- it
+    is conda-only -- and the host env is the env this interpreter runs from.
+    `doctor` prints `install <name> --clean --yes` for any env whose verify
+    failed, the host included, and `--yes` means no prompt stands between that
+    copy-paste and a machine with no molbuilder: the removal succeeds, then
+    `conda create` runs from a prefix that no longer exists, and a failure
+    between the two leaves nothing installed.  conda's own "cannot remove
+    current environment" guard never fires because the shim dispatches
+    `<prefix>/bin/python` WITHOUT activating.
+
+    `installation.md` M5 -- a remedy the program prints may not destroy working
+    state.  The test asserts the SUBPROCESS was never dispatched, not just a
+    non-zero exit: the sibling test above exists because an accepted `--clean`
+    that wiped nothing printed "install OK".
+
+    The companion half is that `doctor` stops offering the command at all --
+    `test_envs_doctor_hints.py`.
+    """
+    import sys as _sys
+
+    _bind(conda_envs=("molbuilder",), conda_binary="/fake/conda")
+    from molbuilder.envs import _cli
+    from molbuilder.envs.install import EnvState
+
+    ran: list = []
+
+    class _Done:
+        returncode = 0
+
+    def _fake_run(argv, **kw):
+        ran.append(list(argv))
+        return _Done()
+
+    monkeypatch.setattr(_cli.subprocess, "run", _fake_run)
+    # The real condition, not a contrived one: the host env's prefix IS this
+    # interpreter's prefix.  `_env_prefix` and the probe both answer with it.
+    monkeypatch.setattr(_cli._install, "_env_prefix",
+                        lambda name, binary: _sys.prefix)
+    monkeypatch.setattr(
+        _cli._install, "probe_env_state",
+        lambda name, binary: EnvState(
+            name=name, listed_in_registry=True, dir_exists=True,
+            has_conda_meta=True, prefix=_sys.prefix, manager=binary))
+    install_stub, calls = _make_install_stub()
+    monkeypatch.setattr(_cli._install, "run_install", install_stub)
+
+    result = _make_runner().invoke(
+        _cli.envs_group, ["install", "molbuilder", "--clean", "--yes"])
+
+    removals = [a for a in ran if "remove" in a]
+    assert not removals, (
+        "`--clean --yes` on the env molbuilder runs from dispatched an env "
+        f"removal:\n{removals}\n{result.output}")
+    assert result.exit_code == 2, (
+        f"refusal must be an error, not a warning it then ignores "
+        f"(exit {result.exit_code})\n{result.output}")
+    assert not calls, (
+        f"the install ran anyway after the refusal: {calls}\n{result.output}")
+    assert "RUNNING FROM" in result.output, result.output
+    # M3: the manual route names the DETECTED manager, not a literal `conda`.
+    assert "/fake/conda env remove -n molbuilder -y" in result.output, \
+        result.output
+
+
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
     """A remedy in product code has to be runnable.
 

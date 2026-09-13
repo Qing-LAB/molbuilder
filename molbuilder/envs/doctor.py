@@ -120,6 +120,16 @@ class EnvReport:
         Real package-presence audit: every package in recipe.conda_packages
         AND recipe.pip_packages checked against the env's conda-meta/
         + site-packages/*.dist-info.  ``None`` when the env is missing.
+    prefix
+        The env prefix this report was taken against, as resolved once for
+        the verify dispatch and the audit.  Carried rather than discarded so
+        the REPORT can answer questions about the env it describes -- notably
+        whether a remedy would remove the env this process runs from
+        (`installation.md` M5).  ``None`` when no prefix was resolved
+        (missing env, or fast mode).
+    manager
+        The detected env-manager binary the report was taken with, so a remedy
+        the report prints can name it (`installation.md` M3).
     """
     recipe: Recipe
     effective_name: str
@@ -127,6 +137,8 @@ class EnvReport:
     verify_ok: Optional[bool]
     verify_output: str
     package_audit: Optional[PackageAudit] = None
+    prefix: Optional[str] = None
+    manager: Optional[str] = None
 
 
 # Conda spec parser -- matches the subset our recipes use:
@@ -572,6 +584,8 @@ def report_all(
             verify_ok=verify_ok,
             verify_output=verify_out,
             package_audit=audit,
+            prefix=prefix_str,
+            manager=caps.conda_binary,
         ))
     return out
 
