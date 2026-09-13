@@ -284,8 +284,27 @@ def _validate_orcid(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
 
 
 def _validate_cas(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
-    _require_str(entry, "login_url",            idx)
-    _require_str(entry, "service_validate_url", idx)
+    _require_str(entry, "login_url", idx)
+    # `service_validate_url` IS NO LONGER REQUIRED, and was never read
+    # (2026-09-12).  `web/auth_providers/cas.py` builds the client from
+    # `login_url` alone -- `_server_root_from_login_url` strips the trailing
+    # `/login` to get the CAS root -- and python-cas appends its own suffix
+    # (`p3/serviceValidate` for v3).  Its `CASClientBase` takes no parameter for
+    # an explicit validate endpoint at all, so there was nothing to pass it to:
+    # the schema demanded a value, `auth-setup` wrote one, and the client
+    # ignored it.  Repo-wide grep found two writers and zero readers.
+    #
+    # ACCEPTED AND IGNORED rather than refused, which is the opposite of this
+    # file's usual answer to a retired key -- because this one was written into
+    # working configs BY OUR OWN WIZARD, and refusing it would break sign-in on
+    # every machine that ran `auth-setup`, to no benefit.  The "silently
+    # dropped looks effective" objection is answered by it no longer being
+    # required and no longer being written: new configs will not carry it.
+    #
+    # The real limitation this exposes is worth stating plainly: a CAS site
+    # whose validate endpoint is NOT `<login root>/p3/serviceValidate` is not
+    # supported today.  Honouring one means overriding python-cas's `url_suffix`,
+    # which is a change to the sign-in path and wants a live CAS to test against.
 
     version = entry.get("version", 3)
     # ``type(version) is int`` excludes bool (subclass of int) and
@@ -1239,6 +1258,30 @@ CONFIG_FILE_MODE = 0o600
 CONFIG_DIR_MODE = 0o700
 
 
+def machine_config_warnings() -> List[str]:
+    """Everything worth saying about the machine config on the way in.
+
+    The shadow warning (a `molbuilder.json` in the launch directory that is NOT
+    read) and the mode warning (an existing file looser than `0600`), in that
+    order, skipping the ones with nothing to say.
+
+    **The pair exists because both were only reached from `jobset`.** Measured
+    2026-09-12: `machine_config_mode_warning` had exactly two callers, the jobset
+    verbs and `config_provenance`, and neither `serve` nor `auth-setup` was one.
+    So a `molbuilder.json` copied from another machine at `0644` -- the arriving-
+    loose case § 2.1b exists for, which no writer can control -- sat
+    world-readable on a shared login node with its `tls.key` path and provider
+    credentials inside, and the server that read it said nothing. Same for a
+    stray cwd copy the person was editing in vain.
+
+    One function so a surface adopts BOTH by calling one thing; the two halves
+    were already one `for` loop in `jobset/_cli.py`, which is the shape being
+    named rather than invented.
+    """
+    return [w for w in (machine_config_shadow(), machine_config_mode_warning())
+            if w]
+
+
 def machine_config_mode_warning() -> Optional[str]:
     """A warning when the machine config is readable by anyone but its owner.
 
@@ -1891,7 +1934,24 @@ def get_scheduler(
         project_path = _project_config_file(project_dir)
         project_raw = _read_project(Path(project_dir)).get("scheduler")
 
-    if server_raw is None and project_raw is None:
+    # AN EMPTY BLOCK IS UNSET, not a malformed one (2026-09-12).  This tested
+    # `is None`, so the `"scheduler": {}` that `envs init-config` SEEDS into
+    # every fresh molbuilder.json fell through to strict validation, which
+    # assumes `kind: slurm` and then demands a partition:
+    #
+    #   molbuilder.json: 'scheduler.directives.partition' is required for a
+    #   slurm site but is missing/empty.
+    #
+    # On a laptop, from a config molbuilder wrote and nobody edited.  Measured
+    # 2026-09-12 by feeding `seed_document()`'s own output back to this
+    # function.  `tls: {}` and `envs: {}` already collapse to unset; this is the
+    # one section where present-and-empty meant "validate me as a site".
+    #
+    # Empty reading as unset is also the right answer for a person who CLEARS
+    # the block: the docstring above promises None "when neither scope defines a
+    # scheduler block", and an empty object defines nothing.  The result is
+    # emit-only-`.run.sh`, which is exactly what no scheduler config should mean.
+    if not server_raw and not project_raw:
         return None
 
     merged: Dict[str, Any] = {}
@@ -2138,6 +2198,7 @@ __all__ = [
     "CONFIG_FILENAME",
     "PROJECT_CONFIG_FILENAME",
     "RuntimeConfigError",
+    "machine_config_warnings",
     "read_config",
     "read_effective_config",
     "write_config_scope",

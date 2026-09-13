@@ -602,6 +602,21 @@ has no channel that could carry it there without showing it to you.
 `serve` **reads** these values. It never generates them and never rotates
 them, and that is the lifecycle rule that matters here.
 
+> **But the FIRST key needs a restart before it works**, and nothing said so
+> until 2026-09-12. The listener's route is registered once, when the app is
+> built (`web/app.py` reads `notify_keys` and registers the blueprint only if it
+> names a route and holds keys); nothing re-reads the file afterwards. So on a
+> server that was already running when you issued the very first key, the route
+> does not exist yet — every report gets a `404`, and the notifier **swallows it
+> by design**, so the job succeeds and the reports are simply absent with nothing
+> anywhere saying why. `notify-token` prints *"the file above IS the switch"*,
+> which is true of the file and not yet of the running process.
+>
+> **Restart the server after issuing the first key.** Later keys need no
+> restart: they join the route already registered. The web *This machine* tab
+> knows the difference and shows it — `configured` versus `live` — which is the
+> one surface where the gap is visible.
+
 The session key is the contrast: it lives on one machine, so `serve` generates
 it on first run, and losing it only asks people to sign in again. A notify key
 has a counterpart on a cluster molbuilder cannot reach. If `serve` minted a

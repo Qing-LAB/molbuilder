@@ -645,6 +645,93 @@ def test_bootstrap_dry_run_lists_recipes_without_installing(monkeypatch):
     assert "dry-run" in result.output.lower()
 
 
+def test_dry_run_writes_nothing_when_every_env_is_present(monkeypatch,
+                                                          tmp_path):
+    """`--dry-run` was honoured only when there was something to install.
+
+    With every env already present, control took the other branch and fell
+    through to `_seed_config` -- which PROMPTS and CREATES the config directory,
+    molbuilder.json, environment.json, secrets/ and environments/.  A dry run
+    that asks questions and writes files, against a flag whose help says "do not
+    install anything" and `env-framework.md` 480's *"--dry-run means nothing gets
+    installed, including by the shim"*.  It also spent the full verify+audit pass
+    on every env.
+    """
+    from molbuilder.envs import _cli
+    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    cfg = tmp_path / "cfg"
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+    # Every env present -> --skip-existing empties the plan.
+    _bind(conda_envs=tuple(r.name for r in BUILTIN_RECIPES))
+    from molbuilder import diagnostics as _diag_mod
+    monkeypatch.setattr(_diag_mod, "detect", lambda: Capabilities(
+        runtime_config={}, conda_binary="/c/bin",
+        conda_envs=frozenset(r.name for r in BUILTIN_RECIPES)))
+
+    def _boom(*a, **k):
+        raise AssertionError("a --dry-run must not seed the config directory")
+    monkeypatch.setattr(_cli, "_seed_config", _boom)
+    doctor_ran = []
+    monkeypatch.setattr(_cli._doctor, "report_all",
+                        lambda caps, **kw: doctor_ran.append(1) or [])
+
+    result = _make_runner().invoke(
+        _cli.envs_group, ["bootstrap", "--dry-run", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert not cfg.exists(), f"--dry-run created {cfg}"
+    assert not doctor_ran, "a dry run spent the full doctor pass"
+    assert "dry-run" in result.output.lower(), result.output
+
+
+def test_bootstrap_gives_a_source_build_the_same_eyes_as_install(monkeypatch):
+    """`bootstrap --include-source-builds` showed no preflight at all.
+
+    It called `run_install(recipe, caps=caps)` with neither build callback, and
+    `run_build_spec` reads `on_warnings=None` as "proceed silently" --
+    `format_preflight_report` is only ever called FROM that callback, so the
+    report was not merely unconfirmed, it was never rendered: no missing-driver
+    notice, no compute-capability fallback, no free-space reminder, no per-phase
+    progress.  Its own help promised the opposite: *"the user is asked to confirm
+    before each source build starts unless --yes is also given."*
+    """
+    from molbuilder.envs import _cli
+    seen = {}
+
+    def _fake_run_install(recipe, **kw):
+        seen[recipe.name] = (kw.get("build_on_warnings"),
+                             kw.get("build_on_progress"))
+        r = MagicMock()
+        r.succeeded = True
+        r.recipe = recipe
+        return r
+
+    _bind()
+    monkeypatch.setattr(_cli._install, "run_install", _fake_run_install)
+    monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
+    monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
+    monkeypatch.setattr(_cli, "_seed_config", lambda *a, **k: None)
+    from molbuilder import diagnostics as _diag_mod
+    monkeypatch.setattr(_diag_mod, "detect", lambda: Capabilities(
+        runtime_config={}, conda_binary="/c/bin", conda_envs=frozenset()))
+
+    _make_runner().invoke(
+        _cli.envs_group,
+        ["bootstrap", "--yes", "--include-source-builds"])
+
+    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    source_builds = [r.name for r in BUILTIN_RECIPES
+                     if r.build_spec is not None]
+    assert source_builds, "no source-build recipe to check"
+    for name in source_builds:
+        assert name in seen, f"{name} was not installed: {sorted(seen)}"
+        on_warnings, on_progress = seen[name]
+        assert on_warnings is not None, (
+            f"{name} built with no preflight callback -- every warning "
+            f"auto-accepted and the report never printed")
+        assert on_progress is not None, (
+            f"{name} built with no progress callback -- no per-phase output")
+
+
 def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
     """`install-env.sh list` must work with nothing on stdin.
 
@@ -752,7 +839,7 @@ def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
     than how any hint is spelled.
     """
     import re
-    from molbuilder.envs.recipes import BUILTIN_RECIPES, recipe_by_name
+    from molbuilder.envs.recipes import BUILTIN_RECIPES
 
     registered = {r.name for r in BUILTIN_RECIPES}
     bad = []

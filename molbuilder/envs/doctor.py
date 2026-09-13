@@ -15,6 +15,7 @@ effects live in :mod:`molbuilder.envs.install`.
 """
 from __future__ import annotations
 
+import os
 import fnmatch
 import json
 import re
@@ -419,19 +420,39 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     )
 
 
+#: The host env's name override.  `install-env.sh` owns the other half of this
+#: contract -- it creates and dispatches into the env this names -- so the
+#: spelling lives in exactly these two files and the shim's help documents it.
+HOST_ENV_ENV = "MOLBUILDER_HOST_ENV"
+
+
 def _effective_name(recipe: Recipe, caps: Capabilities) -> str:
     """The env name that ``conda run -n ...`` will hit.
 
     For routed recipes (``category`` set), this honours the
-    ``molbuilder.json`` ``envs.<category>`` override.  For the host
-    recipe (``category is None``), the recipe's default name is the
-    answer -- there's no override slot for host today.
+    ``molbuilder.json`` ``envs.<category>`` override.  For the host recipe
+    (``category is None``) it honours ``$MOLBUILDER_HOST_ENV``.
+
+    **The host override was shim-only until 2026-09-12**, and that asymmetry
+    cost an env.  `install-env.sh` reads ``MOLBUILDER_HOST_ENV`` (line 98),
+    creates that env, probes it, dispatches into it, and ADVERTISES it in its
+    own help and in its host-env-missing error.  Nothing under ``molbuilder/``
+    read it (grep: zero hits), and this docstring said "there's no override slot
+    for host today".  So ``MOLBUILDER_HOST_ENV=mb-dev install-env.sh bootstrap
+    --yes`` created ``mb-dev`` in the shim and then a SECOND full host env named
+    ``molbuilder`` from the Python plan -- after which `list` and `doctor`
+    reported the host recipe against ``molbuilder``, leaving the env the user was
+    actually running in invisible to the health report.
+
+    Read at CALL time, not captured at import, like `config_dir.config_dir` and
+    for the same reason: a test (or an operator) that moves it moves every
+    caller together.
     """
     if recipe.category is not None:
         # env_for_category falls back to DEFAULT_ENV_NAMES when no
         # override is present, so this is always a non-None string.
         return caps.env_for_category(recipe.category) or recipe.name
-    return recipe.name
+    return os.environ.get(HOST_ENV_ENV) or recipe.name
 
 
 def _run_verify(

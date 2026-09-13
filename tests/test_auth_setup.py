@@ -132,7 +132,9 @@ def test_asu_cas_entry_shape_round_trips_validator():
     assert entry["kind"] == "cas"
     assert entry["allowed_users"] == ["jdoe@asu.edu"]
     assert entry["login_url"].startswith("https://")
-    assert entry["service_validate_url"].startswith("https://")
+    # The wizard must NOT write `service_validate_url`: nothing reads it, and a
+    # key in a config the client cannot consult is a lie about what it does.
+    assert "service_validate_url" not in entry
     assert entry["email_domain"] == "asu.edu"
 
 

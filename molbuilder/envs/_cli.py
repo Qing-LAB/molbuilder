@@ -905,7 +905,8 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
         )
     caps = get_capabilities()
     # Need the env to exist and its prefix to be resolvable.
-    effective = caps.env_for_category(recipe.category) or recipe.name
+    # Through the one door, so the host override applies here too.
+    effective = _doctor._effective_name(recipe, caps)
     if effective not in caps.conda_envs:
         click.echo(
             f"env `{effective}` is not present.  Install it first:\n"
@@ -932,6 +933,67 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
 
 def _shell_join(argv: Iterable[str]) -> str:
     return " ".join(shlex.quote(a) for a in argv)
+
+
+def _build_callbacks(recipe, auto_yes: bool):
+    """The preflight + progress callbacks a source build needs.  ``(on_warnings,
+    on_progress)``.
+
+    **Shared because `bootstrap` did not have them** (2026-09-12).  These were
+    defined inline in `cmd_install`, and `cmd_bootstrap` called
+    ``run_install(recipe, caps=caps)`` with neither -- so
+    ``bootstrap --include-source-builds`` asked its one "Proceed with bootstrap
+    of N env(s)?" and then committed to a CUDA build with **every preflight
+    warning auto-accepted and never printed**: no missing-driver notice, no
+    compute-capability fallback, no stale-artifact warning, no free-space
+    reminder, and no per-phase progress.  `builds.run_build_spec` treats
+    ``on_warnings=None`` as "proceed silently", and `format_preflight_report` is
+    only ever called FROM this callback -- so with no callback the report is not
+    merely unconfirmed, it is never rendered.  `installation.md` presents
+    ``bootstrap --include-source-builds`` as the equivalent shortcut to
+    ``install molbuilder-siesta-gpu``, which showed all of it.
+
+    Its own help promised the confirmation too: *"the user is asked to confirm
+    before each source build starts unless --yes is also given."*  Nothing asked.
+    """
+    state = {"i": 0, "total": 0}
+    if recipe.build_spec is not None:
+        state["total"] = sum(
+            5 if c.verify_argv else 4 for c in recipe.build_spec.components
+        )
+
+    def on_warnings(report: "_builds.PreflightReport") -> bool:
+        click.echo("")
+        click.echo(_builds.format_preflight_report(report))
+        click.echo("")
+        if auto_yes:
+            return True
+        return click.confirm("Proceed despite warnings?", default=True)
+
+    def on_progress(event: str, step: "_builds.BuildStep",
+                    _result) -> None:
+        if event == "start":
+            state["i"] += 1
+            click.echo(_builds.format_progress_event(
+                event, step, state["i"], state["total"],
+            ))
+        elif event == "skip":
+            state["i"] += 1
+            click.echo(_builds.format_progress_event(
+                event, step, state["i"], state["total"],
+            ))
+        elif event in ("ok", "fail"):
+            click.echo(_builds.format_progress_event(
+                event, step, state["i"], state["total"],
+            ))
+            if event == "fail" and _result is not None and _result.output:
+                tail = "\n".join(
+                    "    " + ln
+                    for ln in _result.output.strip().splitlines()[-12:]
+                )
+                click.echo(tail)
+
+    return on_warnings, on_progress
 
 
 @envs_group.command("install",
@@ -1361,47 +1423,9 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             sys.exit(0)
         click.echo("")
 
-    # Hook the build executor's progress into the CLI's output.
-    # State holds the running step count + total so the callback can
-    # render "[N/total]" headers without a closure variable race.
-    state = {"i": 0, "total": 0}
-
-    def on_warnings(report: "_builds.PreflightReport") -> bool:
-        click.echo("")
-        click.echo(_builds.format_preflight_report(report))
-        click.echo("")
-        if auto_yes:
-            return True
-        return click.confirm("Proceed despite warnings?", default=True)
-
-    def on_progress(event: str, step: "_builds.BuildStep",
-                    _result) -> None:
-        if event == "start":
-            state["i"] += 1
-            click.echo(_builds.format_progress_event(
-                event, step, state["i"], state["total"],
-            ))
-        elif event == "skip":
-            state["i"] += 1
-            click.echo(_builds.format_progress_event(
-                event, step, state["i"], state["total"],
-            ))
-        elif event in ("ok", "fail"):
-            click.echo(_builds.format_progress_event(
-                event, step, state["i"], state["total"],
-            ))
-            if event == "fail" and _result is not None and _result.output:
-                tail = "\n".join(
-                    "    " + ln
-                    for ln in _result.output.strip().splitlines()[-12:]
-                )
-                click.echo(tail)
-
-    # Pre-count total steps so the progress callback can render N/total.
-    if recipe.build_spec is not None:
-        state["total"] = sum(
-            5 if c.verify_argv else 4 for c in recipe.build_spec.components
-        )
+    # THROUGH THE SHARED FACTORY, so `bootstrap` gets the same eyes on a source
+    # build that `install` does -- see `_build_callbacks`.
+    on_warnings, on_progress = _build_callbacks(recipe, auto_yes)
 
     # Persist the full install transcript so the user can grep / diff /
     # share it later without re-running the build (which can take 30-45
@@ -1584,7 +1608,9 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         before = len(plan)
         new_plan: list = []
         for r in plan:
-            env_name = caps.env_for_category(r.category) or r.name
+            # Through the one door: an inline copy here is what let
+            # bootstrap plan a second host env (see _effective_name).
+            env_name = _doctor._effective_name(r, caps)
             present = caps.env_available(env_name)
             click.echo(
                 f"[bootstrap]   {env_name:<30}  "
@@ -1610,6 +1636,26 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         _warn_about_seeding_now(auto_yes)
 
     if not plan:
+        if dry_run:
+            # A DRY RUN WITH NOTHING TO INSTALL STILL HAS TO DO NOTHING.
+            # `--dry-run` was honoured only inside the `else:` below, so on a
+            # machine where every env is already present control fell through
+            # to `_seed_config` -- which PROMPTS for the activation form and the
+            # projects root, and CREATES the config directory, molbuilder.json,
+            # environment.json, secrets/ and environments/.  A dry run that asks
+            # questions and writes files, against a flag whose own help says
+            # "do not install anything" and `env-framework.md` 480's "--dry-run
+            # means nothing gets installed, including by the shim".  It also
+            # spent the full verify+audit pass on every env.
+            click.echo("All registered envs are already present.")
+            click.echo("(dry-run: nothing installed, nothing written, no "
+                       "doctor pass.)")
+            click.echo("")
+            click.echo("Without --dry-run this run would:")
+            click.echo(f"  - seed the config directory at {config_dir()} "
+                       f"(if it is not already there)")
+            click.echo("  - run doctor over every env to verify it")
+            return
         click.echo("All registered envs are already present.  "
                    "Running doctor to verify.")
     else:
@@ -1638,7 +1684,16 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             log_path = _resolve_install_log_path(recipe.name)
             with _tee_console_to(log_path):
                 try:
-                    result = _install.run_install(recipe, caps=caps)
+                    # THE SAME EYES `install` GETS.  Passing neither
+                    # callback meant a source build inside bootstrap ran with
+                    # every preflight warning auto-accepted and the report
+                    # never rendered -- see `_build_callbacks`.
+                    _bw, _bp = _build_callbacks(recipe, auto_yes)
+                    result = _install.run_install(
+                        recipe, caps=caps,
+                        build_on_warnings=_bw,
+                        build_on_progress=_bp,
+                    )
                 except RuntimeError as e:
                     click.echo(f"  ERROR: {e}", err=True)
                     failures.append(

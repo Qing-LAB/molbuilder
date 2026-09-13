@@ -680,12 +680,17 @@ either way (Windows reaches WSL files at `\\wsl$\Ubuntu\home\<user>\…`), so a
 
 ## 8. Notes for locked-down clusters
 
-The Python layer (`molbuilder envs …`) works with **conda, mamba, or micromamba**.
-The one exception is the initial `scripts/install-env.sh bootstrap` shim, which
-creates the host env before any Python is available and currently probes only
-**conda / mamba** — a micromamba-only host can't run `bootstrap` today (a recorded
-follow-up). Workaround: create the host env by hand with micromamba, then use
-`python -m molbuilder envs …` for the rest.
+**conda, mamba and micromamba all work, at both layers** — the Python layer
+(`molbuilder envs …`) and the `scripts/install-env.sh` shim that creates the host
+env before any Python exists. The shim probes `mamba` → `micromamba` → `conda` at
+every tier: `PATH`, a `$CONDA_PREFIX` walk, and the common install roots on disk;
+its own header documents the three and its error text names all three.
+
+> **This section said micromamba could not run `bootstrap`** and offered a
+> hand-built host env as the workaround, until 2026-09-12. The shim had supported
+> it all along, so the advice sent micromamba users around the one path that
+> keeps the host env's package list in step with `recipes.py` — the parity the
+> drift guard in `tests/test_envs_readme_consistency.py` exists to hold.
 
 ## 9. Test map
 

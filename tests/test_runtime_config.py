@@ -57,6 +57,38 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
 # --------------------------------------------------------------------- #
 
 
+def test_the_config_molbuilder_SEEDS_does_not_raise_on_a_laptop(monkeypatch,
+                                                               tmp_path):
+    """A fresh `molbuilder.json` must not make `get_scheduler()` raise.
+
+    `envs init-config` seeds `"scheduler": {}` -- deliberately, because
+    `configuration.md` 3.2 promises every section that can be empty is present
+    and empty.  `get_scheduler` tested `is None`, so `{}` fell through to strict
+    validation, which assumes `kind: slurm` and demands a partition:
+
+        molbuilder.json: 'scheduler.directives.partition' is required for a
+        slurm site but is missing/empty.
+
+    On a workstation, from a config molbuilder wrote and nobody edited.
+    `tls: {}` and `envs: {}` already collapsed to unset; this was the one
+    section where present-and-empty meant "validate me as a site".
+
+    Fed the REAL seeded document rather than a hand-written `{}`, so the test
+    tracks what the seeder actually emits -- if it ever stops seeding an empty
+    scheduler block, this still passes for the right reason.
+    """
+    from molbuilder.envs.initconfig import seed_document
+    from molbuilder.runtime_config import get_scheduler
+
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+    doc = seed_document("conda activate", "", None)
+    (tmp_path / CONFIG_FILENAME).write_text(json.dumps(doc, indent=2))
+
+    assert get_scheduler() is None, (
+        "an empty scheduler block must read as unset -- the signal to emit "
+        "only .run.sh -- not as a malformed slurm site")
+
+
 def test_missing_file_returns_empty_dict(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     assert read_config() == {}

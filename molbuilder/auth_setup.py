@@ -270,7 +270,10 @@ def build_asu_cas_entry(asurite: str,
         "kind":                 "cas",
         "label":                label,
         "login_url":            _ASU_CAS_LOGIN_URL,
-        "service_validate_url": _ASU_CAS_VALIDATE_URL,
+        # NO `service_validate_url`.  It was written here and read nowhere --
+        # python-cas derives the validate endpoint from the login URL's root and
+        # takes no parameter for an explicit one.  Writing a key the client
+        # cannot consult told the operator a lie about what their config did.
         "version":              3,
         "email_domain":         _ASU_EMAIL_DOMAIN,
         "allowed_users":        [f"{asurite}@{_ASU_EMAIL_DOMAIN}"],

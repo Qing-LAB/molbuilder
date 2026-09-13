@@ -165,7 +165,12 @@ def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
     ``conda run -n molbuilder-pySCF python -m pytest -k geometric``.
     """
     pytest.importorskip("geometric")
-    pytest.importorskip("pyscf")
+    # `pyscf`, not `pyscf.gto`, let a HALF-INSTALLED pyscf through:
+    # `pyscf-properties` ships pyscf/prop and pyscf/pbc with no top-level
+    # module, so `import pyscf` succeeds on a namespace package and this
+    # guard did not guard.  Found 2026-09-12 on a host env carrying that
+    # package.  Ask for the submodule the test actually imports.
+    pytest.importorskip("pyscf.gto")
     from geometric.optimize import OptParams
 
     # --- All 5 convergence_* kwargs forwarded into OptParams.

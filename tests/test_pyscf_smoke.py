@@ -48,7 +48,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytest.importorskip("pyscf")
+# ASK FOR THE SUBMODULE, not the package.  `importorskip("pyscf")` let a
+# HALF-INSTALLED pyscf through: `pyscf-properties` ships `pyscf/prop` and
+# `pyscf/pbc` with no top-level module, so `import pyscf` succeeds on a
+# namespace package and this guard did not guard -- the skip never fired and
+# the next line failed instead.  Found 2026-09-12 on a host env carrying that
+# package.
+pytest.importorskip("pyscf.gto")
 
 from molbuilder.config.pyscf import PySCFConfig  # noqa: E402
 from molbuilder.pyscf.input import render_script  # noqa: E402

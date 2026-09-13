@@ -43,7 +43,12 @@ import pytest
 def test_emitter_writes_flat_lines_for_flat_input(tmp_path):
     """Legacy single-stage input emits bare ``# convergence.<leaf>:``
     lines without a stage prefix."""
-    pytest.importorskip("pyscf")
+    # `pyscf`, not `pyscf.gto`, let a HALF-INSTALLED pyscf through:
+    # `pyscf-properties` ships pyscf/prop and pyscf/pbc with no top-level
+    # module, so `import pyscf` succeeds on a namespace package and this
+    # guard did not guard.  Found 2026-09-12 on a host env carrying that
+    # package.  Ask for the submodule the test actually imports.
+    pytest.importorskip("pyscf.gto")
     from molbuilder.trajectory_log.emitter import MolwatchEmitter
     from pyscf import gto
     mol = gto.M(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")
@@ -68,7 +73,12 @@ def test_emitter_writes_flat_lines_for_flat_input(tmp_path):
 def test_emitter_writes_nested_lines_for_nested_input(tmp_path):
     """Staged input emits ``# convergence.<stage>.<leaf>:`` lines
     per stage."""
-    pytest.importorskip("pyscf")
+    # `pyscf`, not `pyscf.gto`, let a HALF-INSTALLED pyscf through:
+    # `pyscf-properties` ships pyscf/prop and pyscf/pbc with no top-level
+    # module, so `import pyscf` succeeds on a namespace package and this
+    # guard did not guard.  Found 2026-09-12 on a host env carrying that
+    # package.  Ask for the submodule the test actually imports.
+    pytest.importorskip("pyscf.gto")
     from molbuilder.trajectory_log.emitter import MolwatchEmitter
     from pyscf import gto
     mol = gto.M(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")

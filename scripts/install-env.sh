@@ -96,6 +96,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 HOST_ENV="${MOLBUILDER_HOST_ENV:-molbuilder}"
+MB_WANT_HELP=0
 
 # AUTO_YES is set by the main case below when any arg is ``--yes``
 # / ``-y``.  The env-manager confirmation prompt and any other
@@ -981,7 +982,16 @@ for _a in "$@"; do
         # env-manager prompt -- and in any non-TTY (CI, a pipe, an editor's
         # shell) exited 2 with "no TTY for confirmation" instead of printing
         # the help this file now points people at.
-        --help|-h) AUTO_YES=1 ;;
+        #
+        # MB_WANT_HELP is separate, and it is what stops ``bootstrap --help``
+        # from INSTALLING.  AUTO_YES alone suppressed the confirmation and then
+        # the ``bootstrap)`` arm ran on -- so on a fresh machine, asking for
+        # help performed a multi-GB ``conda create``, with the prompt
+        # deliberately silenced, before any help text appeared.  This file's own
+        # --dry-run rationale is that "the honest answer is to say so and stop,
+        # not to perform the install the flag just forbade"; --help had the
+        # opposite treatment.
+        --help|-h) AUTO_YES=1; MB_WANT_HELP=1 ;;
     esac
 done
 
@@ -995,6 +1005,25 @@ case "$1" in
         # (--yes, --include-source-builds, --dry-run, ...) forward
         # verbatim to the Python ``cmd_bootstrap`` handler.
         require_conda "$1"
+        # HELP NEVER INSTALLS.  Per-verb help comes from the Python layer, which
+        # lives in the host env -- so when that env is absent there is nothing
+        # to ask, and creating it to answer a question about flags is the
+        # opposite of what was asked.
+        if [[ "${MB_WANT_HELP}" -eq 1 ]] && ! host_env_exists; then
+            usage
+            cat >&2 <<EOF
+
+Note: the per-subcommand help for 'bootstrap' comes from molbuilder itself,
+which runs inside the host env '${HOST_ENV}' -- and that env does not exist
+yet.  Creating it to print help would be the install you did not ask for.
+
+Create it, then ask again for the full flag list:
+
+    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes
+    bash ${SCRIPT_DIR}/install-env.sh bootstrap --help
+EOF
+            exit 0
+        fi
         if ! host_env_exists; then
             # PLAN AND EXECUTE STAY SEPARATE, here too.  --dry-run says
             # "do not install", and creating the host env is the single

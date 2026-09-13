@@ -183,8 +183,12 @@ MALFORMED_AUTH = [
     ("microsoft-tenant-a-number", _wrap(_ms(tenant_id=42)),                  "tenant_id"),
 
     # ---- CAS -- `deployment.md` § 3 --------------------------------------
+    # `service_validate_url` left this list 2026-09-12: it is no longer
+    # required, because nothing ever read it -- python-cas derives the validate
+    # endpoint from the login URL's root and takes no parameter for an explicit
+    # one.  `login_url` IS required and still checked here.
     *[(f"cas-missing-{k}", _wrap(_without(_cas_entry(), k)), k)
-      for k in ("login_url", "service_validate_url")],
+      for k in ("login_url",)],
     *[(f"cas-version-{b!r}", _wrap(_cas_entry(version=b)), "version")
       for b in (0, 4, "3", 3.0, None)],
     # An OPTIONAL key present but empty is a hand edit half-undone: the key is

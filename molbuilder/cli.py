@@ -1992,6 +1992,26 @@ def cmd_notify_token(user, host, route, channel, replace):
                 "switch --")
     click.echo( "                             it carries the route, and the "
                 "server reads it.")
+    # AND WHEN IT READS IT: once, at startup.  `web/app.py` registers the
+    # listener blueprint only if the file already names a route and holds keys,
+    # and nothing re-reads it afterwards -- so the FIRST key issued against a
+    # running server does not work until that server restarts.  Every report
+    # gets a 404 and the notifier swallows it by design, which means the job
+    # succeeds and the reports are simply absent.  Said here because this is the
+    # moment the person can act on it; `run-reports.md` 4.4 carries the rule.
+    if not existing_route:
+        click.echo("")
+        click.echo( "  RESTART THE SERVER        : this is the first key, so "
+                    "the route did not exist")
+        click.echo( "                             when the running server "
+                    "started.  Until it is")
+        click.echo( "                             restarted every report gets "
+                    "a 404 -- and a notifier")
+        click.echo( "                             is silent on failure, so you "
+                    "would see no error,")
+        click.echo( "                             just no reports.")
+        click.echo( "                                 molbuilder serve restart "
+                    "--port <port>")
     if route and existing_route and route != existing_route:
         click.echo(f"\n  MOVED the route from {existing_route} to {seg} "
                    f"because you passed --route.")
@@ -2187,6 +2207,18 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     # Echoed in the parent, before the supervisor fork, so it appears once.
     from .projects import projects_root_with_source
     click.echo(f"molbuilder serve: {projects_root_with_source().describe()}")
+    # AND WHAT IS WRONG WITH THE CONFIG IT JUST READ.  `serve` was not a caller
+    # of either warning until 2026-09-12 -- only the jobset verbs and
+    # `config_provenance` were -- so a `molbuilder.json` that ARRIVED loose
+    # (copied from another machine, restored from a backup, unpacked without
+    # modes) stayed world-readable with its `tls.key` path and provider
+    # credentials in it, and the server that read it said nothing.  § 2.1b exists
+    # for exactly the cases no writer can control.  To stderr, so it reaches a
+    # person without entering piped output.
+    from .runtime_config import machine_config_warnings
+    for _warning in machine_config_warnings():
+        click.echo(_warning, err=True)
+
     # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH.  ``from .web.app import
     # create_app`` used to sit here, one line into the function and well before
     # the fork below -- so the supervisor imported the entire web app, Flask
@@ -2286,6 +2318,13 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     which is what makes every bit of this per-user."""
     from .serve_daemon import (daemonize, log_path, pid_path, pid_state,
                                read_pid, supervise)
+    # SAID HERE TOO, because this verb detaches.  `foreground` prints these
+    # where the person is watching; `start` hands the terminal back, and its
+    # child's stderr goes into the log -- so a warning emitted only by the child
+    # is one nobody reads until they go looking for why sign-in broke.
+    from .runtime_config import machine_config_warnings
+    for _warning in machine_config_warnings():
+        click.echo(_warning, err=True)
     state = pid_state(read_pid(port))
     if state == "ours":
         raise click.ClickException(
