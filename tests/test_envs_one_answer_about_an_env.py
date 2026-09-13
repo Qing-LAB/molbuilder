@@ -198,70 +198,14 @@ def test_the_install_probes_this_env_once_not_three_times(monkeypatch, tmp_path)
         "create was dispatched for an env the probe called PRESENT")
 
 
-def test_after_clean_the_stale_reading_is_DROPPED_and_create_still_runs(
-        monkeypatch, tmp_path):
-    """The other direction, and the dangerous one.  Handing a reading down is
-    only safe while it is still true: `--clean` removes the env AFTER the probe,
-    so a state saying PRESENT would skip the `conda create` that must now run --
-    which is the 2026-06-15 "env already exists; conda may have failed silently"
-    regression, arrived at from the opposite side.
-    """
-    from molbuilder.envs import _cli
-
-    set_capabilities(Capabilities(
-        runtime_config={}, conda_binary="/fake/mgr",
-        conda_envs={"molbuilder-pySCF": str(tmp_path / "prefix")}))
-
-    states = iter([
-        # Step 0: the env is there.
-        I.EnvState(name="molbuilder-pySCF", listed_in_registry=True,
-                   dir_exists=True, has_conda_meta=True,
-                   prefix=str(tmp_path / "prefix"), manager="/fake/mgr"),
-        # After the wipe: it is not.
-        I.EnvState(name="molbuilder-pySCF", listed_in_registry=False,
-                   dir_exists=False, has_conda_meta=False, prefix=None,
-                   manager="/fake/mgr"),
-    ])
-    probes: list = []
-
-    def sequenced(name, binary):
-        probes.append(name)
-        try:
-            return next(states)
-        except StopIteration:  # pragma: no cover - a third probe is the defect
-            raise AssertionError("probed more times than the test allows")
-
-    monkeypatch.setattr(_cli._install, "probe_env_state", sequenced)
-    monkeypatch.setattr(I, "probe_env_state", sequenced)
-    # No separate stub for the wipe: since D3 it is an `InstallStep` like the
-    # rest, so the `dispatch_into_env` recorder below sees it too -- which is
-    # the point of putting it through the one door.
-    monkeypatch.setattr(_cli._install, "_env_prefix",
-                        lambda name, binary: str(tmp_path / "prefix"))
-    dispatched: list = []
-    monkeypatch.setattr(I._builds, "dispatch_into_env",
-                        lambda argv, prefix, **kw: (dispatched.append(
-                            tuple(argv)), (0, _VERIFY_OK))[1])
-
-    from click.testing import CliRunner
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    result = CliRunner().invoke(
-        _cli.envs_group,
-        ["install", "molbuilder-pySCF", "--clean", "--yes"])
-
-    assert result.exit_code == 0, result.output
-    assert len(probes) == 2, (
-        f"after a wipe the state must be re-read, not reused: {probes}")
-    # The verb, not the binary: `--clean` calls `reset_capabilities()` and the
-    # snapshot is then re-detected from the real machine, so the manager path in
-    # the argv is this box's own.  That re-detection is the point of the reset.
-    # D3: the wipe is in the SAME record as the create, because both are steps.
-    assert any(len(a) > 2 and a[1] == "env" and a[2] == "remove"
-               for a in dispatched), (
-        f"the `--clean` wipe did not go through the one door:\n{dispatched}")
-    assert any(len(a) > 1 and a[1] == "create" for a in dispatched), (
-        f"`conda create` was skipped after --clean removed the env:\n"
-        f"{dispatched}\n{result.output}")
+# RETIRED 2026-09-13: `test_after_clean_the_stale_reading_is_DROPPED_and_
+# create_still_runs` stood here.  It asserted the same fact as
+# `test_envs_install.py::test_clean_wipes_the_env_and_then_creates_it_again` --
+# that a wipe is followed by a real `conda create` -- but through three
+# monkeypatched internals, and with `conda env remove` behind them.  The
+# replacement drives the same path against a manager that writes down what it
+# was asked to do, with nothing patched, so it cannot remove anything even when
+# the code is wrong.  Two tests for one fact, and this was the weaker one.
 
 
 def test_a_manager_that_reports_no_details_hides_nothing(tmp_path):

@@ -608,23 +608,6 @@ def _make_install_stub(succeeded_per_call=None):
     return _fake, calls
 
 
-def _spy_run_step(recorder):
-    """Record every step the CLI dispatches, and answer OK.
-
-    `run_step` is THE door (env-framework.md § 5), so recording there records
-    everything the installer does -- including the `--clean` wipe since D3.
-    """
-    from dataclasses import replace
-
-    from molbuilder.envs.install import Outcome
-
-    def _spy(step, **kw):
-        recorder.append([str(a) for a in step.argv])
-        return replace(step, returncode=0, output="", outcome=Outcome.OK)
-
-    return _spy
-
-
 def _make_runner():
     """CliRunner is brought in via Click."""
     from click.testing import CliRunner
@@ -788,56 +771,117 @@ def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
         f"{combined}")
 
 
-def test_clean_removes_the_env_for_a_CONDA_ONLY_recipe(monkeypatch, tmp_path):
-    """`--clean` is the one wipe-and-reinstall door, for every recipe.
+def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",)):
+    """A manager binary that RECORDS what it was asked to do, in a file.
 
-    `installation.md` 508: *"There is no `envs remove` subcommand -- `install
-    --clean` is the one door, so the wipe and the reinstall cannot get out of
-    step."*  doctor's failed-verify hint and the ORPHAN/GHOST/BROKEN hard stop
-    both print `install <name> --clean --yes` as the copy-paste fix.  It was
-    refused for conda-only recipes, which is four of the five registered envs --
-    so for those the remedy the program hands you was a usage error and no wipe
-    door existed at all.
+    A real executable, in a temp directory, answering the four things the
+    installer asks of a manager and appending every argv to `<tmp>/manager.log`.
 
-    Two halves had to go, and the second is why this test checks the SUBPROCESS
-    and not the exit code: with only the UsageError removed, `--clean` was
-    accepted, wiped nothing, ran an ordinary idempotent install and printed
-    "install OK".  Measured on a real env -- its mtime never changed.  A test
-    asserting "no error" would have passed on that.
+    **Why this rather than monkeypatching `subprocess.run`.**  A stub intercepts
+    the one function the code happens to call today.  When `--clean`'s wipe
+    moved from a bare `subprocess.run` to `run_step` (D3), every such stub
+    silently stopped applying -- and what sits behind these particular tests is
+    ``conda env remove``.  A test guarding a destructive command must not be
+    able to RUN one if the code moves; here the worst case is that a ten-line
+    shell script runs in a temp directory.  It also exercises the real path --
+    probe, wipe, create, steps -- instead of the path the stub imagined.
     """
-    _bind(conda_envs=("molbuilder-pySCF",), conda_binary="/fake/conda")
+    import json as _json
+    import stat as _stat
+
+    prefix_of = (dict(present) if isinstance(present, dict)
+                 else {name: str(tmp_path / "envs" / name) for name in present})
+    for p in prefix_of.values():
+        (Path(p) / "conda-meta").mkdir(parents=True, exist_ok=True)
+    listing = _json.dumps({
+        "envs": list(prefix_of.values()),
+        "envs_details": {p: {"name": n, "base": False}
+                         for n, p in prefix_of.items()},
+    })
+    log = tmp_path / "manager.log"
+    mgr = tmp_path / "conda"
+    gone = tmp_path / "removed"
+    mgr.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> {log}\n'
+        'case "$1 $2" in\n'
+        # A manager that has been told to remove an env stops listing it.  A
+        # fake that keeps answering "still there" makes the create look
+        # correctly skipped, which is the very defect this test is about.
+        f'  "env remove") : > {gone} ;;\n'
+        f'  "env list") if [ -f {gone} ]; then echo \'{{"envs": []}}\';'
+        f' else echo \'{listing}\'; fi ;;\n'
+        f'  "create "*) rm -f {gone} ;;\n'
+        '  "info --json") echo \'{"envs_dirs": []}\' ;;\n'
+        # a verify step runs through `<mgr> run ...`; answer with what the
+        # pySCF recipe requires of its own output so the install can succeed.
+        '  "run "*) echo "pyscf 2.13, geometric 1.1, prop: polarizability OK" ;;\n'
+        'esac\n'
+        "exit 0\n")
+    mgr.chmod(mgr.stat().st_mode | _stat.S_IXUSR)
+
+    # RECORDED, not just bound.  `--clean` calls `reset_capabilities()` after
+    # the wipe, and the re-detection that follows would otherwise find the
+    # DEVELOPER'S REAL conda -- so the destructive half runs against the fake
+    # and everything after it runs for real.  That is not hypothetical: it
+    # reinstalled a package into a real env on 2026-09-13 while this very test
+    # was being written.  `envs.manager` in an isolated config directory is the
+    # documented way to pin the manager (`installation.md`), so the re-detection
+    # finds the fake too.
+    cfg = tmp_path / "cfg"
+    cfg.mkdir(parents=True, exist_ok=True)
+    (cfg / "molbuilder.json").write_text(
+        _json.dumps({"envs": {"manager": str(mgr)}}))
+    return str(mgr), log
+
+
+def _asked(log):
+    """Everything the manager was asked to do, one line per invocation."""
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def test_clean_wipes_the_env_and_then_creates_it_again(monkeypatch, tmp_path):
+    """`--clean` is the one wipe-and-reinstall door, for every recipe -- and
+    the wipe and the create cannot get out of step, because that is the whole
+    reason there is no separate `envs remove` verb (`installation.md`).
+
+    TWO defects live here, one from each direction:
+
+      * `--clean` was refused for conda-only recipes -- four of the five
+        registered envs -- so the remedy `doctor` hands you was a usage error.
+        Removing the refusal was not enough: the wipe was ALSO gated on
+        `build_spec`, so `--clean` was accepted, wiped nothing, and printed
+        "install OK", which is worse than the error it replaced.
+      * and after the wipe, `conda create` must actually run.  Reusing the
+        env-state read taken BEFORE the removal says PRESENT about an env that
+        is gone and skips the create -- the 2026-06-15 regression, from the
+        other side (H6).
+
+    Both are one question -- what did the manager get asked to do, in what
+    order -- so this is one test, against a manager that writes that down.
+    """
+    mgr, log = _recording_manager(tmp_path)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    from molbuilder.diagnostics import detect, set_capabilities
     from molbuilder.envs import _cli
-
-    ran: list = []
-
-    # THE DOOR, not a private dispatch: since D3 the wipe is an `InstallStep`
-    # through `run_step`, so that is where a test watches for it.  This used to
-    # spy on `_cli.subprocess.run`, which the surface no longer has -- and a
-    # spy on a door nothing uses is a test that passes for nothing.
-    monkeypatch.setattr(_cli._install, "run_step", _spy_run_step(ran))
-    monkeypatch.setattr(_cli._install, "_env_prefix",
-                        lambda name, binary: str(tmp_path / "prefix"))
-    # `probe_env_state` runs its OWN conda subprocesses; with a fake binary it
-    # would be the thing that fails, not the wipe under test.
-    from molbuilder.envs.install import EnvState
-    monkeypatch.setattr(
-        _cli._install, "probe_env_state",
-        lambda name, binary: EnvState(
-            name=name, listed_in_registry=True, dir_exists=True,
-            has_conda_meta=True, prefix=str(tmp_path / "prefix")))
-    install_stub, _calls = _make_install_stub()
-    monkeypatch.setattr(_cli._install, "run_install", install_stub)
-
+    set_capabilities(detect())          # detects the RECORDED fake
     result = _make_runner().invoke(
-        _cli.envs_group,
-        ["install", "molbuilder-pySCF", "--clean", "--yes"])
+        _cli.envs_group, ["install", "molbuilder-pySCF", "--clean", "--yes"])
 
-    removals = [a for a in ran if "remove" in a]
-    assert removals, (
-        f"--clean on a conda-only recipe ran no env removal; it was accepted "
-        f"and wiped nothing.\nsteps dispatched: {ran}\n{result.output}")
-    assert removals[0][:4] == ["/fake/conda", "env", "remove", "-n"], removals[0]
-    assert "molbuilder-pySCF" in removals[0]
+    asked = _asked(log)
+    removes = [i for i, line in enumerate(asked) if line.startswith("env remove")]
+    creates = [i for i, line in enumerate(asked) if line.startswith("create")]
+
+    assert result.exit_code == 0, result.output + "\n" + "\n".join(asked)
+    assert removes, (
+        "`--clean` on a conda-only recipe asked the manager to remove nothing; "
+        f"it was accepted and wiped nothing.\nasked: {asked}\n{result.output}")
+    assert "molbuilder-pySCF" in asked[removes[0]]
+    assert creates, (
+        f"nothing was created after the wipe.\nasked: {asked}\n{result.output}")
+    assert removes[0] < creates[0], (
+        f"the create came before the wipe:\n{asked}")
 
 
 def test_an_env_outside_envs_dirs_is_PRESENT_not_GHOST(monkeypatch, tmp_path):
@@ -924,50 +968,38 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
     current environment" guard never fires because the shim dispatches
     `<prefix>/bin/python` WITHOUT activating.
 
-    `installation.md` M5 -- a remedy the program prints may not destroy working
-    state.  The test asserts the SUBPROCESS was never dispatched, not just a
-    non-zero exit: the sibling test above exists because an accepted `--clean`
-    that wiped nothing printed "install OK".
-
-    The companion half is that `doctor` stops offering the command at all --
-    `test_envs_doctor_hints.py`.
+    **Nothing is monkeypatched here, on purpose.**  What sits behind this test
+    is `conda env remove` on the env the developer is running in, so it must not
+    be able to run one if the code moves -- which is exactly what happened to
+    the stub this replaced.  The manager is a ten-line script in a temp
+    directory that WRITES DOWN what it was asked to do; the test then reads
+    that list.  It reports the env at this interpreter's own prefix, which is
+    the real condition the guard tests for.
     """
     import sys as _sys
 
-    _bind(conda_envs=("molbuilder",), conda_binary="/fake/conda")
+    mgr, log = _recording_manager(tmp_path, present={"molbuilder": _sys.prefix})
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    from molbuilder.diagnostics import detect, set_capabilities
     from molbuilder.envs import _cli
-    from molbuilder.envs.install import EnvState
-
-    ran: list = []
-    monkeypatch.setattr(_cli._install, "run_step", _spy_run_step(ran))
-    # The real condition, not a contrived one: the host env's prefix IS this
-    # interpreter's prefix.  `_env_prefix` and the probe both answer with it.
-    monkeypatch.setattr(_cli._install, "_env_prefix",
-                        lambda name, binary: _sys.prefix)
-    monkeypatch.setattr(
-        _cli._install, "probe_env_state",
-        lambda name, binary: EnvState(
-            name=name, listed_in_registry=True, dir_exists=True,
-            has_conda_meta=True, prefix=_sys.prefix, manager=binary))
-    install_stub, calls = _make_install_stub()
-    monkeypatch.setattr(_cli._install, "run_install", install_stub)
+    set_capabilities(detect())
 
     result = _make_runner().invoke(
         _cli.envs_group, ["install", "molbuilder", "--clean", "--yes"])
 
-    removals = [a for a in ran if "remove" in a]
-    assert not removals, (
-        "`--clean --yes` on the env molbuilder runs from dispatched an env "
-        f"removal:\n{removals}\n{result.output}")
+    asked = _asked(log)
+    assert not [line for line in asked if line.startswith("env remove")], (
+        "`--clean --yes` on the env molbuilder runs from asked the manager to "
+        f"remove it:\n{asked}\n{result.output}")
+    assert not [line for line in asked if line.startswith("create")], (
+        f"it went on to install as well:\n{asked}\n{result.output}")
     assert result.exit_code == 2, (
         f"refusal must be an error, not a warning it then ignores "
         f"(exit {result.exit_code})\n{result.output}")
-    assert not calls, (
-        f"the install ran anyway after the refusal: {calls}\n{result.output}")
     assert "RUNNING FROM" in result.output, result.output
     # M3: the manual route names the DETECTED manager, not a literal `conda`.
-    assert "/fake/conda env remove -n molbuilder -y" in result.output, \
-        result.output
+    assert f"{mgr} env remove -n molbuilder -y" in result.output, result.output
 
 
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
