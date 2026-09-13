@@ -377,7 +377,10 @@ def _env_fingerprint():
     No hashing -- these directories hold tens of thousands of files.
     """
     import molbuilder.diagnostics as _diag
-    caps = _diag.detect()
+    # The bound snapshot when a test has one (that is what makes this
+    # checkable without a fake manager binary), a fresh probe otherwise --
+    # which is the case at both ends of a session, where it matters.
+    caps = _diag.get_capabilities() if _diag._snapshot else _diag.detect()
     if not caps.conda_binary:
         return {}
     # `caps.conda_envs` IS the {name: prefix} map since 2026-09-12, so this

@@ -553,12 +553,18 @@ def plan_install(
     recipe: Recipe,
     *,
     caps: Optional[Capabilities] = None,
+    clean: bool = False,
 ) -> Tuple[str, List[InstallStep]]:
     """Return ``(effective_name, steps)`` for the recipe.
 
-    Pure planner -- does not run anything.  Useful for ``--dry-run``
-    + for tests that assert on the command shape without subprocess
-    side effects.
+    Pure planner -- does not run anything.  So ``--dry-run`` prints exactly
+    what would happen, and a test can read the sequence without a subprocess,
+    a fake binary or a temporary environment.
+
+    ``clean`` puts the env removal at the FRONT of the plan, where it belongs:
+    the wipe is a step (§ 5.4), and a step the surface dispatched on the side
+    was a step ``--dry-run`` could not show and a reader could not check the
+    order of.  Now the order IS the plan.
 
     Raises
     ------
@@ -573,7 +579,10 @@ def plan_install(
             "`molbuilder envs install`."
         )
     effective = _effective_name(recipe, caps)
-    return effective, _plan(recipe, effective, caps.conda_binary)
+    steps = _plan(recipe, effective, caps.conda_binary)
+    if clean:
+        steps.insert(0, remove_step_for(effective, caps.conda_binary))
+    return effective, steps
 
 
 def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
@@ -1160,6 +1169,7 @@ def run_install(
     build_skip_network_check: bool = False,
     force_resume: bool = False,
     env_state: Optional[EnvState] = None,
+    clean: bool = False,
 ) -> InstallResult:
     """Execute the install plan, stopping at the first failed step.
 
@@ -1182,9 +1192,11 @@ def run_install(
         Skip the per-component ``git ls-remote`` reachability check.
     env_state
         A reading of this env's state the caller already took, passed in so the
-        same two registry documents are not read twice in a row (H6).  Omit it
-        -- or pass ``None`` -- whenever the machine may have changed since, which
-        is what ``--clean`` does after removing the env.
+        same two registry documents are not read twice in a row (H6).  Ignored
+        when ``clean`` is set, because this run is about to delete that env.
+    clean
+        Remove the env first: `remove_step_for` goes at the front of the plan
+        and runs through the one door like every other step.
     """
     caps = caps if caps is not None else get_capabilities()
     if caps.conda_binary is None:
@@ -1194,6 +1206,14 @@ def run_install(
         )
     effective = _effective_name(recipe, caps)
     planned = _plan(recipe, effective, caps.conda_binary)
+    if clean:
+        # The wipe is the FIRST step, in the plan, not a dispatch the surface
+        # does on the side (§ 5.4).  And a state read BEFORE it is then a
+        # reading of an env this run is about to delete: `PRESENT` would skip
+        # the `conda create` that has to follow, which is the 2026-06-15
+        # regression.  So the create decision is made fresh, after the removal.
+        planned.insert(0, remove_step_for(effective, caps.conda_binary))
+        env_state = None
 
     sys.stderr.write(
         f"[install] recipe `{recipe.name}` -> env `{effective}`\n"

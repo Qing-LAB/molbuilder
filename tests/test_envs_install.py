@@ -37,10 +37,20 @@ _ALL_PHASES_RECIPE = Recipe(
 
 
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
+    """Bind a synthetic snapshot.
+
+    `conda_envs` may be a mapping of ``{name: prefix}`` -- which is what the
+    real snapshot carries since 2026-09-12 -- or a bare sequence of names for
+    the tests that only ask whether an env exists.  Wrapping a mapping in
+    `frozenset` threw the prefixes away, and `_env_prefix` then fell through to
+    a live registry read against a fake manager path.
+    """
+    envs_arg = (dict(conda_envs) if isinstance(conda_envs, dict)
+                else {name: f"/prefix/{name}" for name in conda_envs})
     set_capabilities(Capabilities(
         runtime_config={},
         conda_binary=conda_binary,
-        conda_envs=frozenset(conda_envs),
+        conda_envs=envs_arg,
     ))
 
 
@@ -622,6 +632,27 @@ def _fake_result(recipe, ok=True):
     return result
 
 
+def _dispatch_log(monkeypatch, output=""):
+    """Record what goes through THE ONE DOOR, and answer success.
+
+    `builds.dispatch_into_env` is the single place a command enters an env
+    (env-framework.md § 5.6), so recording there records everything the
+    installer does -- the `--clean` wipe included, since that is a step now.
+    One substitution, of the function the design names, and the assertions read
+    the sequence the product itself produces.
+    """
+    from molbuilder.envs import builds as _b
+
+    seen = []
+
+    def _door(argv, prefix, **kw):
+        seen.append([str(a) for a in argv])
+        return (0, output)
+
+    monkeypatch.setattr(_b, "dispatch_into_env", _door)
+    return seen
+
+
 def _make_runner():
     """CliRunner is brought in via Click."""
     from click.testing import CliRunner
@@ -782,119 +813,49 @@ def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
         f"{combined}")
 
 
-def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",),
-                       orphan=None):
-    """A manager binary that RECORDS what it was asked to do, in a file.
-
-    A real executable, in a temp directory, answering the four things the
-    installer asks of a manager and appending every argv to `<tmp>/manager.log`.
-
-    **Why this rather than monkeypatching `subprocess.run`.**  A stub intercepts
-    the one function the code happens to call today.  When `--clean`'s wipe
-    moved from a bare `subprocess.run` to `run_step` (D3), every such stub
-    silently stopped applying -- and what sits behind these particular tests is
-    ``conda env remove``.  A test guarding a destructive command must not be
-    able to RUN one if the code moves; here the worst case is that a ten-line
-    shell script runs in a temp directory.  It also exercises the real path --
-    probe, wipe, create, steps -- instead of the path the stub imagined.
-    """
-    import json as _json
-    import stat as _stat
-
-    prefix_of = (dict(present) if isinstance(present, dict)
-                 else {name: str(tmp_path / "envs" / name) for name in present})
-    for p in prefix_of.values():
-        (Path(p) / "conda-meta").mkdir(parents=True, exist_ok=True)
-    listing = _json.dumps({
-        "envs": list(prefix_of.values()),
-        "envs_details": {p: {"name": n, "base": False}
-                         for n, p in prefix_of.items()},
-    })
-    # `orphan` is a directory on disk that the REGISTRY does not know about --
-    # conda would refuse to create over it.  It reaches the probe through
-    # `info --json`'s envs_dirs, which is the only place an unregistered
-    # directory can be found.
-    envs_dirs = [str(tmp_path / "envs")] if orphan else []
-    if orphan:
-        (tmp_path / "envs" / orphan / "conda-meta").mkdir(parents=True,
-                                                          exist_ok=True)
-    log = tmp_path / "manager.log"
-    mgr = tmp_path / "conda"
-    gone = tmp_path / "removed"
-    mgr.write_text(
-        "#!/bin/sh\n"
-        f'echo "$@" >> {log}\n'
-        'case "$1 $2" in\n'
-        # A manager that has been told to remove an env stops listing it.  A
-        # fake that keeps answering "still there" makes the create look
-        # correctly skipped, which is the very defect this test is about.
-        f'  "env remove") : > {gone} ;;\n'
-        f'  "env list") if [ -f {gone} ]; then echo \'{{"envs": []}}\';'
-        f' else echo \'{listing}\'; fi ;;\n'
-        f'  "create "*) rm -f {gone} ;;\n'
-        f'  "info --json") echo \'{{"envs_dirs": {_json.dumps(envs_dirs)}}}\' ;;\n'
-        # a verify step runs through `<mgr> run ...`; answer with what the
-        # pySCF recipe requires of its own output so the install can succeed.
-        '  "run "*) echo "pyscf 2.13, geometric 1.1, prop: polarizability OK" ;;\n'
-        'esac\n'
-        "exit 0\n")
-    mgr.chmod(mgr.stat().st_mode | _stat.S_IXUSR)
-
-    # RECORDED, not just bound.  `--clean` calls `reset_capabilities()` after
-    # the wipe, and the re-detection that follows would otherwise find the
-    # DEVELOPER'S REAL conda -- so the destructive half runs against the fake
-    # and everything after it runs for real.  That is not hypothetical: it
-    # reinstalled a package into a real env on 2026-09-13 while this very test
-    # was being written.  `envs.manager` in an isolated config directory is the
-    # documented way to pin the manager (`installation.md`), so the re-detection
-    # finds the fake too.
-    cfg = tmp_path / "cfg"
-    cfg.mkdir(parents=True, exist_ok=True)
-    (cfg / "molbuilder.json").write_text(
-        _json.dumps({"envs": {"manager": str(mgr)}}))
-    return str(mgr), log
+# `_recording_manager` and `_asked` stood here until 2026-09-13: a fake manager
+# binary in a temp directory, recorded as `envs.manager`, with a log file.  It
+# was the right shape for the question it was first asked -- "did the wipe reach
+# a real `conda env remove`" -- while the wipe was a private dispatch.  Once the
+# wipe became a step in the plan, the plan and the result answer the same
+# question with nothing built: `plan_install` is pure, and every step carries an
+# outcome.  A sandbox that size is for testing a system; this is one order in
+# one list.
 
 
-def _asked(log):
-    """Everything the manager was asked to do, one line per invocation."""
-    return log.read_text().splitlines() if log.exists() else []
-
-
-def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(
-        monkeypatch, tmp_path):
+def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(monkeypatch):
     """D7 -- `bootstrap` was a LOSSY COPY of `install`'s orchestration.
 
     It ran no env-state probe, so it never met the ORPHAN / GHOST / BROKEN hard
     stop: handed a directory conda's registry does not know about, it drove a
     `conda create` straight at it, which conda refuses with *"prefix already
-    exists"* after the person has waited for the solve.  `install` had
-    diagnosed that in a second, before touching anything, since the state
-    machine was written.
+    exists"* after the person has waited for the solve.  `install` diagnosed
+    that in a second, before touching anything, since the state machine was
+    written.
 
-    Both verbs go through `_install_one` now, so the stop is one behaviour
-    rather than one verb's.  Asserted against a manager that writes down what
-    it was asked: the wrecked recipe must produce NO `create`.
+    A state in, an event sequence out: `EnvState` says ORPHAN, and the door
+    must see no `create`.  Both are the installer's own vocabulary -- there is
+    nothing here to fake but the reading itself.
     """
-    wrecked = "molbuilder-pySCF"
-    mgr, log = _recording_manager(tmp_path, present=(), orphan=wrecked)
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    from molbuilder.diagnostics import detect, set_capabilities
+    _bind(conda_envs={})
     from molbuilder.envs import _cli
-    set_capabilities(detect())
+    seen = _dispatch_log(monkeypatch)
+    monkeypatch.setattr(
+        _cli._install, "probe_env_state",
+        lambda name, binary: install.EnvState(
+            name=name, listed_in_registry=False,     # the registry does not
+            dir_exists=True, has_conda_meta=True,    # know this directory
+            prefix=f"/prefix/{name}", manager=binary))
     monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
     monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
     monkeypatch.setattr(_cli, "_seed_config", lambda *a, **k: None)
 
-    result = _make_runner().invoke(
-        _cli.envs_group, ["bootstrap", "--yes"])
+    result = _make_runner().invoke(_cli.envs_group, ["bootstrap", "--yes"])
 
-    asked = _asked(log)
-    creates = [line for line in asked
-               if line.startswith("create") and wrecked in line]
+    creates = [a for a in seen if len(a) > 1 and a[1] == "create"]
     assert not creates, (
         f"bootstrap drove a `conda create` at an env conda's registry does "
-        f"not know about:\n{asked}\n{result.output}")
+        f"not know about:\n{seen}\n{result.output}")
     assert "ORPHAN" in result.output, result.output
     assert "refused" in result.output.lower(), (
         "the report must say which recipe was refused and why:\n"
@@ -904,76 +865,93 @@ def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(
 def test_the_environment_canary_notices_a_change(monkeypatch, tmp_path):
     """The safety net in `conftest.py` has to work, or it is worse than none.
 
-    Driven entirely against a fake manager and a temp "env": fingerprint, add a
-    package directory the way pip would, fingerprint again.  It exists because
-    the canary's own failure mode is silence.
+    Asked through the snapshot -- `{name: prefix}` is what the fingerprint
+    reads -- so this needs no manager and no real env: point it at a directory,
+    add a package the way pip would, and ask again.
     """
     import sys as _sys
 
     fake_env = tmp_path / "envs" / "pretend"
-    mgr, _log = _recording_manager(tmp_path, present={"pretend": str(fake_env)})
-    (fake_env / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    site = fake_env / "lib" / "python3.12" / "site-packages"
+    site.mkdir(parents=True)
+    _bind(conda_envs={"pretend": str(fake_env)}, conda_binary="/fake/conda")
 
-    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent))
     import conftest
 
-    from molbuilder.diagnostics import reset_capabilities
-    reset_capabilities()
     before = conftest._env_fingerprint()
     assert "pretend" in before, before
 
-    (fake_env / "lib" / "python3.12" / "site-packages"
-     / "something-1.0.dist-info").mkdir()
-    reset_capabilities()
+    (site / "something-1.0.dist-info").mkdir()
     after = conftest._env_fingerprint()
 
     assert after != before, (
         "a package appeared in an env and the canary saw nothing")
 
 
-def test_clean_wipes_the_env_and_then_creates_it_again(monkeypatch, tmp_path):
-    """`--clean` is the one wipe-and-reinstall door, for every recipe -- and
-    the wipe and the create cannot get out of step, because that is the whole
-    reason there is no separate `envs remove` verb (`installation.md`).
+def test_the_clean_plan_removes_the_env_before_it_creates_one():
+    """`--clean` is the one wipe-and-reinstall door, and the wipe and the
+    create cannot get out of step -- which is why there is no separate `envs
+    remove` verb at all.
 
-    TWO defects live here, one from each direction:
+    Read off the PLAN, which runs nothing: `plan_install` is pure, so the order
+    is a property of the plan rather than something you have to execute to
+    find out.  The wipe used to be dispatched by the CLI on the side, which is
+    why this could not be asked before -- and why `--dry-run` could not show it.
 
-      * `--clean` was refused for conda-only recipes -- four of the five
-        registered envs -- so the remedy `doctor` hands you was a usage error.
-        Removing the refusal was not enough: the wipe was ALSO gated on
-        `build_spec`, so `--clean` was accepted, wiped nothing, and printed
-        "install OK", which is worse than the error it replaced.
-      * and after the wipe, `conda create` must actually run.  Reusing the
-        env-state read taken BEFORE the removal says PRESENT about an env that
-        is gone and skips the create -- the 2026-06-15 regression, from the
-        other side (H6).
-
-    Both are one question -- what did the manager get asked to do, in what
-    order -- so this is one test, against a manager that writes that down.
+    Two defects met here, one from each direction: `--clean` was refused for
+    conda-only recipes (four of the five registered envs, so the remedy
+    `doctor` prints was a usage error), and when the refusal was lifted the
+    wipe was still gated on `build_spec` -- accepted, wiped nothing, printed
+    "install OK".
     """
-    mgr, log = _recording_manager(tmp_path)
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    from molbuilder.diagnostics import detect, set_capabilities
-    from molbuilder.envs import _cli
-    set_capabilities(detect())          # detects the RECORDED fake
-    result = _make_runner().invoke(
-        _cli.envs_group, ["install", "molbuilder-pySCF", "--clean", "--yes"])
+    _bind(conda_envs={"molbuilder-pySCF": "/prefix/molbuilder-pySCF"})
+    recipe = recipe_by_name("molbuilder-pySCF")
 
-    asked = _asked(log)
-    removes = [i for i, line in enumerate(asked) if line.startswith("env remove")]
-    creates = [i for i, line in enumerate(asked) if line.startswith("create")]
+    _name, plain = install.plan_install(recipe)
+    _name, wiped = install.plan_install(recipe, clean=True)
 
-    assert result.exit_code == 0, result.output + "\n" + "\n".join(asked)
-    assert removes, (
-        "`--clean` on a conda-only recipe asked the manager to remove nothing; "
-        f"it was accepted and wiped nothing.\nasked: {asked}\n{result.output}")
-    assert "molbuilder-pySCF" in asked[removes[0]]
-    assert creates, (
-        f"nothing was created after the wipe.\nasked: {asked}\n{result.output}")
-    assert removes[0] < creates[0], (
-        f"the create came before the wipe:\n{asked}")
+    assert [s.label for s in plain][0] == "conda create"
+    labels = [s.label for s in wiped]
+    assert labels[0] == "remove env molbuilder-pySCF", labels
+    assert labels[1] == "conda create", labels
+    assert labels[1:] == [s.label for s in plain], (
+        "--clean changed more than the wipe", labels)
+
+
+def test_the_clean_run_reports_the_wipe_as_a_step_with_an_outcome(monkeypatch):
+    """The event sequence, from the result the installer returns.
+
+    Every step carries an `Outcome` (§ 5.1) and the verdict is derived from
+    them (§ 5.3) -- so a wipe outside that list was a thing the installer did
+    and did not account for.  Now it is one line of the recap like the rest.
+    """
+    _bind(conda_envs={"molbuilder-pySCF": "/prefix/molbuilder-pySCF"})
+    recipe = recipe_by_name("molbuilder-pySCF")
+    seen = _dispatch_log(monkeypatch, output=_VERIFY_OUTPUT)
+    monkeypatch.setattr(install, "probe_env_state",
+                        lambda name, binary: install.EnvState(
+                            name=name, listed_in_registry=False,
+                            dir_exists=False, has_conda_meta=False,
+                            prefix=None, manager=binary))
+
+    result = install.run_install(recipe, clean=True)
+
+    labels = [s.label for s in result.steps]
+    assert labels[0] == "remove env molbuilder-pySCF", labels
+    assert "conda create" in labels, labels
+    assert all(s.outcome is not None for s in result.steps), (
+        "a step with no outcome is a step the verdict cannot account for")
+    assert result.succeeded, [(s.label, s.outcome) for s in result.steps]
+    # and the door saw the removal, in that order, before the create
+    verbs = [a[1] for a in seen if len(a) > 1]
+    assert verbs.index("env") < verbs.index("create"), seen
+
+
+#: What molbuilder-pySCF's verify step requires of its own output.
+_VERIFY_OUTPUT = ("pyscf 2.13, geometric 1.1, prop: polarizability OK\n"
+                  "  IR: analytic dmu/dR available (pyscf.prop.infrared)")
 
 
 def test_an_env_outside_envs_dirs_is_PRESENT_not_GHOST(monkeypatch, tmp_path):
@@ -1060,38 +1038,37 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
     current environment" guard never fires because the shim dispatches
     `<prefix>/bin/python` WITHOUT activating.
 
-    **Nothing is monkeypatched here, on purpose.**  What sits behind this test
-    is `conda env remove` on the env the developer is running in, so it must not
-    be able to run one if the code moves -- which is exactly what happened to
-    the stub this replaced.  The manager is a ten-line script in a temp
-    directory that WRITES DOWN what it was asked to do; the test then reads
-    that list.  It reports the env at this interpreter's own prefix, which is
-    the real condition the guard tests for.
+    The assertion is the EVENT SEQUENCE: nothing reached the door at all.  That
+    is the whole claim -- a refusal is a refusal only if nothing was
+    dispatched -- and the door is where every dispatch goes, so an empty record
+    is the proof.
     """
     import sys as _sys
 
-    mgr, log = _recording_manager(tmp_path, present={"molbuilder": _sys.prefix})
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    # The real condition: the host env's prefix IS this interpreter's prefix.
+    _bind(conda_envs={"molbuilder": _sys.prefix}, conda_binary="/fake/conda")
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    from molbuilder.diagnostics import detect, set_capabilities
     from molbuilder.envs import _cli
-    set_capabilities(detect())
+    seen = _dispatch_log(monkeypatch)
+    monkeypatch.setattr(
+        _cli._install, "probe_env_state",
+        lambda name, binary: install.EnvState(
+            name=name, listed_in_registry=True, dir_exists=True,
+            has_conda_meta=True, prefix=_sys.prefix, manager=binary))
 
     result = _make_runner().invoke(
         _cli.envs_group, ["install", "molbuilder", "--clean", "--yes"])
 
-    asked = _asked(log)
-    assert not [line for line in asked if line.startswith("env remove")], (
-        "`--clean --yes` on the env molbuilder runs from asked the manager to "
-        f"remove it:\n{asked}\n{result.output}")
-    assert not [line for line in asked if line.startswith("create")], (
-        f"it went on to install as well:\n{asked}\n{result.output}")
+    assert seen == [], (
+        f"`--clean --yes` on the env molbuilder runs from dispatched "
+        f"something:\n{seen}\n{result.output}")
     assert result.exit_code == 2, (
         f"refusal must be an error, not a warning it then ignores "
         f"(exit {result.exit_code})\n{result.output}")
     assert "RUNNING FROM" in result.output, result.output
     # M3: the manual route names the DETECTED manager, not a literal `conda`.
-    assert f"{mgr} env remove -n molbuilder -y" in result.output, result.output
+    assert "/fake/conda env remove -n molbuilder -y" in result.output, \
+        result.output
 
 
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():

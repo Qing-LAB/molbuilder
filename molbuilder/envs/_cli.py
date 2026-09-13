@@ -1155,7 +1155,11 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         sys.exit(_render_doctor(reports))
 
     try:
-        effective, plan = _install.plan_install(recipe, caps=caps)
+        # `clean=clean`: the wipe is a step in the plan, so a dry run shows
+        # it.  It could not before -- the surface dispatched it -- and
+        # `--clean --dry-run` therefore printed a plan that omitted the most
+        # destructive thing the command would do.
+        effective, plan = _install.plan_install(recipe, caps=caps, clean=clean)
     except RuntimeError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
@@ -1490,34 +1494,14 @@ def _install_one(recipe, effective: str, caps, *,
                     click.echo("aborted by user (--clean declined)")
                     raise _Aborted()
 
-            # Step 1: remove the conda env -- THROUGH `run_step`, like every
-            # other thing the installer does (D3).  It was a bare
-            # `subprocess.run`, so the wipe carried no `InstallStep`, no
-            # `Outcome` and no line in the result the verdict is derived from
-            # (`env-framework.md` § 5.3) -- and that was tolerable while it was
-            # an edge path for one GPU recipe, then `--clean` was opened to
-            # every recipe and a private dispatch became the door
-            # `installation.md` calls "the one door" for wiping any env.
-            if env_exists_pre_clean:
-                click.echo(f"removing conda env: {effective}")
-                step = _install.remove_step_for(effective, caps.conda_binary)
-                done = _install.run_step(step, sink=sys.stderr)
-                if done.outcome.is_success:
-                    click.echo(f"removed conda env {effective}")
-                else:
-                    click.echo(
-                        f"FAILED to remove conda env "
-                        f"({done.outcome.value}, rc={done.returncode})",
-                        err=True)
-                    click.echo("  (you may need to run this manually:",
-                               err=True)
-                    # The step's OWN argv, so the printed remedy cannot differ
-                    # from what was attempted -- and it names the detected
-                    # manager because the step was built with it.
-                    click.echo(f"   {_shell_join(done.argv)})", err=True)
-                    raise _CannotInstall("the env could not be removed")
+            # THE WIPE IS IN THE PLAN, not dispatched here (§ 5.4).  This
+            # surface asks the question -- it does not run the command: the
+            # removal is `remove_step_for` at the front of `plan_install`, so
+            # it goes through the one door, carries an `Outcome`, appears in
+            # the recap, and `--dry-run` can show it.  A step the surface ran
+            # on the side was a step nothing could see the order of.
 
-            # Step 2: wipe artifact dir if it survived (usually it was
+            # The artifact dir, if it survived (usually it was
             # inside the env's prefix and went with step 1, but for
             # defensiveness).
             if artifact_root and artifact_root.exists():
@@ -1589,11 +1573,10 @@ def _install_one(recipe, effective: str, caps, *,
             build_skip_network_check=skip_network_check,
             force_resume=force_resume,
             # The reading taken at Step 0, handed over instead of paid for
-            # twice (H6) -- and DROPPED when `--clean` has since removed the
-            # env, because a stale "PRESENT" would skip the create that has to
-            # run.  `env_state_for_install` is None exactly when this process
-            # changed the machine after probing it.
+            # twice (H6).  `run_install` ignores it when `clean` is set, for
+            # the reason stated there: this run is about to delete that env.
             env_state=env_state_for_install,
+            clean=clean,
         )
 
         # If the build_spec executor short-circuited on preflight errors,
