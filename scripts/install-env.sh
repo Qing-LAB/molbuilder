@@ -433,6 +433,30 @@ detect_env_mgr() {
     return 1
 }
 
+# Does this verb CREATE or CHANGE an env with the chosen manager?
+#
+# Only those care which conda was picked -- that is what the confirmation below
+# is for ("you have an old ~/anaconda3 beside the Miniforge you meant").  For a
+# verb that only READS (doctor, list, validate) or that installs packages into
+# an env that already exists and is non-interactive by its own design (repair),
+# the prompt was pure friction -- and worse than friction in a non-TTY, where
+# `require_conda` exited 2 with "pass --yes to skip" and those four verbs
+# DEFINE NO --yes OPTION, so the remedy it printed was rejected by click
+# (measured 2026-09-12: `install-env.sh doctor </dev/null` -> "no TTY for
+# confirmation"; `doctor --yes` -> "Error: No such option '--yes'").  The
+# canonical entry point could not run a health check in CI at all, while
+# `cmd_doctor` advertised itself as being for exactly that.
+#
+# Read-only verbs now proceed with the detected manager and NO flag, which is
+# what a CI health check should need.  `bootstrap` and `install` still confirm,
+# and both accept --yes, so the message below stays true wherever it is reached.
+_verb_changes_envs() {
+    case "${1:-}" in
+        bootstrap|install) return 0 ;;
+        *)                 return 1 ;;
+    esac
+}
+
 require_conda() {
     if ! detect_env_mgr; then
         cat >&2 <<EOF
@@ -463,7 +487,7 @@ EOF
     fi
     if [[ -z "${_ENV_MGR_BANNERED:-}" ]]; then
         echo "[molbuilder] env manager detected: ${ENV_MGR}" >&2
-        if [[ "${AUTO_YES}" -eq 0 ]]; then
+        if [[ "${AUTO_YES}" -eq 0 ]] && _verb_changes_envs "${1:-}"; then
             # User-facing confirmation.  Lets the user catch the case
             # where the script picked a different mamba/conda than
             # they intended (e.g. an old Anaconda install lingering
@@ -969,7 +993,7 @@ case "$1" in
         # The one auto-create path.  Any flags after ``bootstrap``
         # (--yes, --include-source-builds, --dry-run, ...) forward
         # verbatim to the Python ``cmd_bootstrap`` handler.
-        require_conda
+        require_conda "$1"
         if ! host_env_exists; then
             # PLAN AND EXECUTE STAY SEPARATE, here too.  --dry-run says
             # "do not install", and creating the host env is the single
@@ -1004,7 +1028,7 @@ EOF
         # wants ``bootstrap``, not a silently-created skeleton env
         # that then errors halfway through their non-bootstrap
         # invocation.
-        require_conda
+        require_conda "$1"
         if ! host_env_exists; then
             cat >&2 <<EOF
 Error: host env '${HOST_ENV}' does not exist.

@@ -393,7 +393,7 @@ yourself.
 
 The `molbuilder-siesta-gpu` env is the only one **compiled from source**, because
 a CUDA-accelerated SIESTA (with the ELPA GPU eigensolver, TranSiesta, and TBtrans)
-isn't available as a conda package. `molbuilder envs install siesta-gpu`
+isn't available as a conda package. `bash scripts/install-env.sh install molbuilder-siesta-gpu`
 (or `bootstrap --include-source-builds`) automates the whole thing:
 
 - the **toolchain comes from conda** — gcc/gfortran **14.3** (a deliberate
@@ -410,7 +410,8 @@ isn't available as a conda package. `molbuilder envs install siesta-gpu`
   does not. The shim step's own exit code is the gate on a fresh install; the
   `verify` step additionally **warns** when a bare `gcc` resolves outside the
   env, which is what you see on an env built before this existed — re-run
-  `molbuilder envs install siesta-gpu` to pick the links up. It warns rather
+  `bash scripts/install-env.sh install molbuilder-siesta-gpu` to pick the links
+  up. It warns rather
   than fails because such an env still builds and runs SIESTA; the risk is
   latent, not present. Pointing bare `gcc` at the conda toolchain exposes a
   second half of the same problem: that compiler's header search covers its own
@@ -483,7 +484,7 @@ ever unavailable:
 
 ```bash
 bash scripts/install-env.sh install molbuilder-siesta-gpu --gcc 13 --yes
-MOLBUILDER_GCC=13 molbuilder envs install siesta-gpu     # equivalent
+MOLBUILDER_GCC=13 bash scripts/install-env.sh install molbuilder-siesta-gpu   # equivalent
 ```
 
 `--gcc` is handled by the shim itself rather than forwarded, because the recipe
@@ -508,6 +509,14 @@ bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
 
 There is no `envs remove` subcommand — `install --clean` is the one door, so the
 wipe and the reinstall cannot get out of step.
+
+**It works for every recipe** *(since 2026-09-12)*. It was refused for the
+conda-only ones — four of the five — so this sentence was a promise the code did
+not keep, while doctor's failed-verify hint and its `ORPHAN`/`GHOST`/`BROKEN` hard
+stop both printed `install <name> --clean --yes` as the copy-paste fix. For a
+conda-only recipe the wipe is just *remove the env*; only a source build also has
+an artifact directory to delete, and the confirmation names whichever applies
+rather than promising both.
 
 **One environment fix worth knowing:** on NFS-mounted homes, OpenMPI's
 shared-memory files can land on the network and slow every `mpirun`. The GPU env's

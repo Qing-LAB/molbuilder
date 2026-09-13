@@ -1931,11 +1931,19 @@ _SIESTA_GPU = Recipe(
         # siesta-gpu`" and would have EXECUTED that, recursively, from
         # inside an install.  Caught reading the generated bash in full
         # rather than the Python that generates it.
+        # AND THE RECIPE NAME MUST BE THE REGISTERED ONE.  This said
+        # `siesta-gpu`, which `recipe_by_name` does not match -- it takes
+        # canonical names only, so the remedy printed by the one warning that
+        # tells you your GPU env lacks its toolchain shims was itself a usage
+        # error ("unknown recipe `siesta-gpu`", exit 2).  Measured 2026-09-12.
+        # The launcher spelling is `_fix_cmd`'s (`bash scripts/install-env.sh
+        # ...`), written out rather than imported: this module is recipe DATA
+        # and may not depend on the CLI that formats hints.
         '  *) echo "[molbuilder] WARNING: bare gcc resolves to'
         ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
         ' that call gcc directly (flook/lua) would use the HOST'
-        ' toolchain.  Re-run: molbuilder envs install siesta-gpu --'
-        ' that creates the bare-name shims." >&2 ;; '
+        ' toolchain.  The bare-name shims are created by: bash'
+        ' scripts/install-env.sh install molbuilder-siesta-gpu" >&2 ;; '
         'esac; '
         "siesta --version",
     ),

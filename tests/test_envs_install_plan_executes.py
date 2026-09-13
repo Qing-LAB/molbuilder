@@ -149,5 +149,14 @@ def test_the_verify_step_runs_and_only_warns_about_a_foreign_gcc(tmp_path):
         f"verify must not fail an env without shims:\n{cp.stderr}")
     assert recipe.verify_expect_contains in cp.stdout
     assert "WARNING: bare gcc resolves to" in cp.stderr
-    # ...and the remedy is printed, not executed.
-    assert "molbuilder envs install siesta-gpu" in cp.stderr
+    # ...and the remedy is printed, not executed, and NAMES A REGISTERED
+    # RECIPE.  This asserted `molbuilder envs install siesta-gpu` until
+    # 2026-09-12 -- the literal the code emitted, and a command that errors:
+    # `recipe_by_name` takes canonical names only, so the one warning telling
+    # you the GPU env lacks its toolchain shims handed you "unknown recipe
+    # 'siesta-gpu'", exit 2.  A test pinning the emitted string cannot see
+    # that; this pins the two things that make a remedy usable.
+    assert f"install {recipe.name}" in cp.stderr, cp.stderr
+    assert "`" not in cp.stderr, (
+        "a backtick in the warning would be command substitution inside the "
+        f"double-quoted echo -- the remedy would EXECUTE:\n{cp.stderr}")

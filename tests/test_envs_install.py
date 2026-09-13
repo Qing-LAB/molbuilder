@@ -645,6 +645,130 @@ def test_bootstrap_dry_run_lists_recipes_without_installing(monkeypatch):
     assert "dry-run" in result.output.lower()
 
 
+def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
+    """`install-env.sh list` must work with nothing on stdin.
+
+    `require_conda` asked "use this env manager?" for EVERY verb, and with no
+    terminal it exited 2 with *"pass --yes to skip"* -- while `list`, `doctor`,
+    `validate` and `repair` define no `--yes` option, so the remedy it printed
+    was rejected by click ("Error: No such option '--yes'").  The canonical
+    entry point could not run a health check in CI at all, and `cmd_doctor`'s
+    docstring advertises itself as being for exactly that.
+
+    Only `bootstrap` and `install` create or change an env with the chosen
+    manager, so only they confirm it -- and both accept `--yes`, so the message
+    stays true wherever it is still reached.
+
+    A real invocation, because the defect is only visible WITHOUT a terminal and
+    no amount of reading the bash proves the exit code.  Self-skipping, and
+    gated on the manager the PACKAGE detects rather than a hard-coded path.
+    """
+    import subprocess as _sp
+    from pathlib import Path as _P
+    from molbuilder import diagnostics
+
+    caps = diagnostics.detect()
+    if not (caps.conda_binary and caps.env_available("molbuilder")):
+        pytest.skip("needs a detectable conda and the `molbuilder` host env")
+
+    script = _P(__file__).resolve().parents[1] / "scripts" / "install-env.sh"
+    proc = _sp.run(["bash", str(script), "list"],
+                   stdin=_sp.DEVNULL, capture_output=True, text=True,
+                   timeout=180)
+    combined = proc.stdout + proc.stderr
+    assert "no TTY for confirmation" not in combined, (
+        "a read-only verb still demands a terminal; in CI this is exit 2 and "
+        f"the --yes it suggests is not an option on `list`:\n{combined}")
+    assert proc.returncode == 0, (
+        f"`install-env.sh list` exited {proc.returncode} with no stdin:\n"
+        f"{combined}")
+
+
+def test_clean_removes_the_env_for_a_CONDA_ONLY_recipe(monkeypatch, tmp_path):
+    """`--clean` is the one wipe-and-reinstall door, for every recipe.
+
+    `installation.md` 508: *"There is no `envs remove` subcommand -- `install
+    --clean` is the one door, so the wipe and the reinstall cannot get out of
+    step."*  doctor's failed-verify hint and the ORPHAN/GHOST/BROKEN hard stop
+    both print `install <name> --clean --yes` as the copy-paste fix.  It was
+    refused for conda-only recipes, which is four of the five registered envs --
+    so for those the remedy the program hands you was a usage error and no wipe
+    door existed at all.
+
+    Two halves had to go, and the second is why this test checks the SUBPROCESS
+    and not the exit code: with only the UsageError removed, `--clean` was
+    accepted, wiped nothing, ran an ordinary idempotent install and printed
+    "install OK".  Measured on a real env -- its mtime never changed.  A test
+    asserting "no error" would have passed on that.
+    """
+    _bind(conda_envs=("molbuilder-pySCF",), conda_binary="/fake/conda")
+    from molbuilder.envs import _cli
+
+    ran: list = []
+
+    class _Done:
+        returncode = 0
+
+    def _fake_run(argv, **kw):
+        ran.append(list(argv))
+        return _Done()
+
+    monkeypatch.setattr(_cli.subprocess, "run", _fake_run)
+    monkeypatch.setattr(_cli._install, "_env_prefix",
+                        lambda name, binary: str(tmp_path / "prefix"))
+    # `probe_env_state` runs its OWN conda subprocesses; with a fake binary it
+    # would be the thing that fails, not the wipe under test.
+    from molbuilder.envs.install import EnvState
+    monkeypatch.setattr(
+        _cli._install, "probe_env_state",
+        lambda name, binary: EnvState(
+            name=name, listed_in_registry=True, dir_exists=True,
+            has_conda_meta=True, prefix=str(tmp_path / "prefix")))
+    install_stub, _calls = _make_install_stub()
+    monkeypatch.setattr(_cli._install, "run_install", install_stub)
+
+    result = _make_runner().invoke(
+        _cli.envs_group,
+        ["install", "molbuilder-pySCF", "--clean", "--yes"])
+
+    removals = [a for a in ran if "remove" in a]
+    assert removals, (
+        f"--clean on a conda-only recipe ran no env removal; it was accepted "
+        f"and wiped nothing.\nsubprocess calls: {ran}\n{result.output}")
+    assert removals[0][:4] == ["/fake/conda", "env", "remove", "-n"], removals[0]
+    assert "molbuilder-pySCF" in removals[0]
+
+
+def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
+    """A remedy in product code has to be runnable.
+
+    The GPU recipe's verify step warns when bare `gcc` resolves outside the env
+    and told the user to `molbuilder envs install siesta-gpu` -- which
+    `recipe_by_name` does not match, because it takes canonical names only.  So
+    the one warning that says your GPU env is missing its toolchain shims handed
+    you `unknown recipe 'siesta-gpu'`, exit 2.  Measured 2026-09-12.
+
+    Checks the RESULT -- the names a recipe's own shell actually prints -- rather
+    than how any hint is spelled.
+    """
+    import re
+    from molbuilder.envs.recipes import BUILTIN_RECIPES, recipe_by_name
+
+    registered = {r.name for r in BUILTIN_RECIPES}
+    bad = []
+    for recipe in BUILTIN_RECIPES:
+        blob = " ".join(recipe.verify_argv or ())
+        for m in re.finditer(r"install\s+([A-Za-z0-9][A-Za-z0-9._-]*)", blob):
+            cited = m.group(1)
+            if cited.startswith("-"):
+                continue
+            if cited not in registered:
+                bad.append(f"{recipe.name} prints `install {cited}`")
+    assert not bad, (
+        "a recipe prints a fix command naming an unregistered recipe, so "
+        f"copy-pasting it errors: {bad}.  Registered: {sorted(registered)}")
+
+
 def test_bootstrap_warns_about_a_readonly_config_root_BEFORE_installing(
         monkeypatch, tmp_path):
     """A read-only config root is known at minute 0; say so then.

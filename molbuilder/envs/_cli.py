@@ -1040,11 +1040,20 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 f"--rebuild={rebuild!r} unknown; choices: {', '.join(valid)}"
             )
 
-    if clean and recipe.build_spec is None:
-        raise click.UsageError(
-            f"--clean only applies to source-build recipes; "
-            f"`{name}` is a conda-only recipe."
-        )
+    # --clean WORKS FOR EVERY RECIPE (2026-09-12).  It refused conda-only ones
+    # until now, which left four of the five registered envs with no
+    # wipe-and-reinstall door at all -- while `installation.md` 508 says
+    # "there is no `envs remove` subcommand -- `install --clean` is the one
+    # door, so the wipe and the reinstall cannot get out of step", and while
+    # doctor's own failed-verify hint and the ORPHAN/GHOST/BROKEN hard stop
+    # both printed `install <name> --clean --yes` as the copy-paste fix.
+    # Measured: `install molbuilder-pySCF --clean --yes` -> "Error: --clean
+    # only applies to source-build recipes", exit 2.  The remedy the program
+    # hands you was a usage error for everything except the GPU build.
+    #
+    # Nothing needed adding to make it work: step 1 of the wipe IS "remove the
+    # conda env", which is the whole job for a conda-only recipe, and step 2
+    # is skipped because `artifact_root` is None when there is no build_spec.
 
     caps = get_capabilities()
 
@@ -1120,8 +1129,11 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     if rebuild:
         click.echo(f"  --rebuild={rebuild}")
     if clean:
-        click.echo("  --clean (REMOVE conda env + WIPE artifact dir, "
-                   "then fresh install)")
+        if recipe.build_spec is None:
+            click.echo("  --clean (REMOVE the conda env, then fresh install)")
+        else:
+            click.echo("  --clean (REMOVE conda env + WIPE artifact dir, "
+                       "then fresh install)")
 
     # === Step 0: probe + diagnose conda env state up front ===
     # Resolve the conda env's state BEFORE any subprocess work runs.
@@ -1224,14 +1236,24 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     #      ``$CONDA_PREFIX/opt/<artifact_subdir>/`` if it survives.
     #      Usually step 1 takes the dir with it (it lived inside the
     #      env's prefix), so this is belt-and-suspenders.
-    if clean and recipe.build_spec is not None:
+    if clean:
+        # NOT `and recipe.build_spec is not None` (fixed 2026-09-12).  That gate
+        # was the second half of the same defect as the removed UsageError
+        # above: with the refusal gone but this still closed, `--clean` on a
+        # conda-only recipe was ACCEPTED, wiped nothing, ran an ordinary
+        # idempotent install and printed "install OK" -- which is worse than the
+        # error it replaced, because it claims the wipe happened.  Measured on
+        # molbuilder-pySCF: the env's mtime never changed.
         env_exists_pre_clean = caps.env_available(effective)
         env_prefix = (
             _install._env_prefix(effective, caps.conda_binary)
             if env_exists_pre_clean else None
         )
+        # Only a source build HAS an artifact directory; for a conda-only
+        # recipe removing the env is the whole wipe, and `artifact_root` stays
+        # None so the step-2 rmtree below is skipped.
         artifact_root = None
-        if env_prefix:
+        if env_prefix and recipe.build_spec is not None:
             paths = _builds.resolve_paths(recipe.build_spec, env_prefix)
             if paths.root.exists():
                 artifact_root = paths.root
@@ -1239,7 +1261,9 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         if env_exists_pre_clean or artifact_root:
             click.echo("")
             click.echo("=" * 64)
-            click.echo("  --clean: ENV + ARTIFACTS WILL BE WIPED")
+            click.echo(
+                "  --clean: ENV + ARTIFACTS WILL BE WIPED"
+                if artifact_root else "  --clean: THE ENV WILL BE REMOVED")
             click.echo("=" * 64)
             if env_exists_pre_clean:
                 click.echo("  Conda env to REMOVE:")
@@ -1255,11 +1279,13 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 except OSError:
                     pass
             click.echo("")
-            click.echo("  This wipes the conda env (every package -- gcc,")
-            click.echo("  cmake, openmpi, cuda toolkit, etc.) AND any")
-            click.echo("  source-built artifacts (siesta/transiesta/tbtrans")
-            click.echo("  binaries, build trees, logs, sentinels).  A fresh")
-            click.echo("  install runs after, equivalent to first-time setup.")
+            click.echo("  This wipes the conda env -- every package in it.")
+            if artifact_root:
+                click.echo("  It also deletes the source-built artifacts")
+                click.echo("  (siesta/transiesta/tbtrans binaries, build")
+                click.echo("  trees, logs, sentinels).")
+            click.echo("  A fresh install runs after, equivalent to")
+            click.echo("  first-time setup.")
             click.echo("")
             if not auto_yes:
                 if not click.confirm(
@@ -1283,8 +1309,13 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                                err=True)
                     click.echo("  (you may need to run this manually:",
                                err=True)
+                    # `caps.conda_binary`, not a literal "conda" -- the
+                    # call above already uses it because the user may have
+                    # only mamba or micromamba, and a printed remedy naming a
+                    # binary they do not have is no remedy.
                     click.echo(
-                        f"   conda env remove -n {effective} -y)",
+                        f"   {caps.conda_binary} env remove "
+                        f"-n {effective} -y)",
                         err=True,
                     )
                     sys.exit(1)
