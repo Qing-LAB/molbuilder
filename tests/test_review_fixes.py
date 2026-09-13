@@ -34,7 +34,7 @@ from molbuilder.chemistry import (
 def test_s1_t1_element_strip_propagates_to_species():
     """If a Structure ever lands in the FDF generator with an element
     like ' C', species detection must NOT see two distinct species."""
-    from molbuilder.siesta import _detect_species
+    from molbuilder.siesta.input import _detect_species
     species = _detect_species(["C", "C", "H", "O"])
     import ase.data
     assert species == sorted(species, key=lambda s: ase.data.atomic_numbers[s])

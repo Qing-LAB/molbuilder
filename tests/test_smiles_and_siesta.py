@@ -75,7 +75,7 @@ def test_block_size_auto_pick_rule():
     cannot be stated; the conservative ladder capped at 8 applies
     (single-rank runs ignore BlockSize anyway).  Unchanged by U18
     (2026-08-12) -- the contract derivation requires mpi_np."""
-    from molbuilder.siesta import _auto_block_size
+    from molbuilder.siesta.input import _auto_block_size
     # Known thresholds: each step at a power-of-2 boundary.
     assert _auto_block_size(2)  == 1
     assert _auto_block_size(3)  == 1
@@ -106,7 +106,7 @@ def test_block_size_honours_orbital_rank_constraint():
     records (job-contracts.md § 3.2/§ 3.3; atoms-based cap retired
     U18, 2026-08-12).  The 256 ceiling is the top of the
     BENCH-MARKS legal override window (range=[16,256])."""
-    from molbuilder.siesta import _auto_block_size
+    from molbuilder.siesta.input import _auto_block_size
 
     # The 2026-05-28 hemeC-dithiol geometry: 81 atoms x 15 ranks ->
     # 810 orb-est / 15 = 54, largest pow2 <= 54 is 32.  (Its propor

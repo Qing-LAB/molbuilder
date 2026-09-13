@@ -840,6 +840,37 @@ def _asked(log):
     return log.read_text().splitlines() if log.exists() else []
 
 
+def test_the_environment_canary_notices_a_change(monkeypatch, tmp_path):
+    """The safety net in `conftest.py` has to work, or it is worse than none.
+
+    Driven entirely against a fake manager and a temp "env": fingerprint, add a
+    package directory the way pip would, fingerprint again.  It exists because
+    the canary's own failure mode is silence.
+    """
+    import sys as _sys
+
+    fake_env = tmp_path / "envs" / "pretend"
+    mgr, _log = _recording_manager(tmp_path, present={"pretend": str(fake_env)})
+    (fake_env / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import conftest
+
+    from molbuilder.diagnostics import reset_capabilities
+    reset_capabilities()
+    before = conftest._env_fingerprint()
+    assert "pretend" in before, before
+
+    (fake_env / "lib" / "python3.12" / "site-packages"
+     / "something-1.0.dist-info").mkdir()
+    reset_capabilities()
+    after = conftest._env_fingerprint()
+
+    assert after != before, (
+        "a package appeared in an env and the canary saw nothing")
+
+
 def test_clean_wipes_the_env_and_then_creates_it_again(monkeypatch, tmp_path):
     """`--clean` is the one wipe-and-reinstall door, for every recipe -- and
     the wipe and the create cannot get out of step, because that is the whole

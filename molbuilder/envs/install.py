@@ -1154,7 +1154,6 @@ def run_install(
     recipe: Recipe,
     *,
     caps: Optional[Capabilities] = None,
-    skip_create_if_present: bool = True,
     rebuild: Optional[str] = None,
     build_on_warnings: Optional["_builds.ConfirmWarningsCallback"] = None,
     build_on_progress: Optional["_builds.ProgressCallback"] = None,
@@ -1166,13 +1165,6 @@ def run_install(
 
     Parameters
     ----------
-    skip_create_if_present
-        When ``True`` (default) and the env already exists, the
-        ``conda create`` step is reported as a no-op (returncode 0,
-        output ``"env already exists; skipping create"``) and the
-        remaining phases run normally.  This is what makes ``install``
-        idempotent: re-running picks up new pip deps without trying
-        to re-create the env.  Set ``False`` only in tests.
     rebuild
         For recipes carrying a ``build_spec``, forwarded to
         :func:`builds.run_build_spec`.  ``None`` or ``"none"`` resumes
@@ -1246,7 +1238,12 @@ def run_install(
     pre_verify = [s for s in planned if s.role is not StepRole.VERIFY]
 
     ok = _run_steps(pre_verify, dispatcher, tag="install", executed=executed,
-                    skip_create_if_present=skip_create_if_present,
+                    # Always: an existing env is resumed into, which is what
+                    # makes `install` idempotent.  This was a parameter whose
+                    # docstring said "set False only in tests" and which no
+                    # test ever set -- production shaped by a test that does
+                    # not exist (H8).
+                    skip_create_if_present=True,
                     force_resume=force_resume, env_state=env_state)
 
     # Build-spec phase: only if the recipe declares one AND nothing

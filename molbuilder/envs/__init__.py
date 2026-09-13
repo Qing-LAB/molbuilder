@@ -10,16 +10,8 @@ The package exposes three things:
   * The doctor / install helpers that drive the CLI subcommands --
     see :mod:`molbuilder.envs.doctor` + :mod:`molbuilder.envs.install`.
 
-``import subprocess`` lives at module scope so existing tests that
-patch ``molbuilder.envs.subprocess.run`` keep working unchanged
-(the attribute resolves to the same stdlib ``subprocess`` object
-that ``_dispatch`` imports, so monkeypatching either name has the
-same effect).
 """
 from __future__ import annotations
-
-import shutil      # re-exported for test monkeypatching; see module docstring
-import subprocess  # re-exported for test monkeypatching; see module docstring
 
 from ._dispatch import run_in_env, run_tool
 from .recipes import (

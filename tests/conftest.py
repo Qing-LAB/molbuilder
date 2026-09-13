@@ -291,6 +291,73 @@ def _config_fingerprint():
     return out
 
 
+def _env_fingerprint():
+    """What every conda env on this machine CONTAINS, cheaply.
+
+    Per env: the mtime and entry count of ``conda-meta/`` (conda's own record
+    of what is installed) and of ``site-packages/`` (pip's).  An install, an
+    uninstall or a removal changes one of those; reading a package does not.
+    No hashing -- these directories hold tens of thousands of files.
+    """
+    import molbuilder.diagnostics as _diag
+    caps = _diag.detect()
+    if not caps.conda_binary:
+        return {}
+    # `caps.conda_envs` IS the {name: prefix} map since 2026-09-12, so this
+    # reads the registry once rather than twice -- the manager is slow (1.2 s
+    # per call on a warm workstation) and this runs at both ends of a session.
+    out = {}
+    for name, prefix in dict(caps.conda_envs).items():
+        sig = []
+        for sub in ("conda-meta", "lib"):
+            d = pathlib.Path(prefix) / sub
+            try:
+                if sub == "lib":                       # .../lib/python*/site-packages
+                    d = next(iter(sorted(d.glob("python*/site-packages"))), None)
+                    if d is None:
+                        continue
+                st = d.stat()
+                sig.append((sub, int(st.st_mtime), len(list(d.iterdir()))))
+            except OSError:
+                sig.append((sub, "unreadable"))
+        out[name] = tuple(sig)
+    return out
+
+
+@pytest.fixture(scope="session", autouse=True)
+def the_suite_leaves_your_environments_alone():
+    """**The same canary, for the conda envs -- and it exists because the
+    construction argument failed here too.**
+
+    On 2026-09-13 a test faked the env manager for `--clean`'s removal but not
+    for what follows it: `--clean` calls `reset_capabilities()`, the
+    re-detection found the REAL conda, and the install continued for real --
+    force-reinstalling a package into `molbuilder-pySCF`.  Nothing noticed.
+    The config directory has had a canary since the same lesson was learned
+    there; the environments, which are far more expensive to rebuild, had none.
+
+    A test must never install into, or remove, a real environment.  When this
+    fires, the fix is never to relax it: it is that some test reached the real
+    manager instead of a fake (`test_envs_install._recording_manager` is the
+    pattern -- a script in a temp directory, RECORDED as `envs.manager` so the
+    re-detection finds it too).
+    """
+    before = _env_fingerprint()
+    yield
+    after = _env_fingerprint()
+    if before != after:
+        changed = sorted(set(before) ^ set(after)) or sorted(
+            k for k in before if before.get(k) != after.get(k))
+        raise AssertionError(
+            "THE SUITE CHANGED A REAL CONDA ENVIRONMENT.\n"
+            f"  changed: {changed}\n"
+            "Some test reached the real env manager -- most likely by faking "
+            "it for part of a path and not the rest, or by binding a fake on "
+            "`Capabilities` where the code re-detects.  Record the fake as "
+            "`envs.manager` in an isolated config dir instead; see "
+            "`tests/test_envs_install._recording_manager`.")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def the_suite_leaves_your_config_alone():
     """**A canary, because isolation by construction is still a claim.**

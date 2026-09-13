@@ -15,19 +15,10 @@ from .input import (
     find_psml,
     render_fdf,
 )
-# Internal helpers exposed for tests.  Not part of the public API.
-# Drop _wrap_into_cell -- nobody imports it anymore (was used by an
-# older test that's since been rewritten).  Listed in __all__ so
-# pyflakes / mypy don't flag the imports as dead -- the test module
-# `from molbuilder.siesta import _detect_species` is the real caller.
-from .input import _auto_block_size, _detect_species
-
 __all__ = [
     "SiestaConfig",
     "convert",
     "copy_pseudopotentials",
     "find_psml",
     "render_fdf",
-    "_auto_block_size",
-    "_detect_species",
 ]
