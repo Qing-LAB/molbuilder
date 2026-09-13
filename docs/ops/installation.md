@@ -105,7 +105,7 @@ Then you're ready:
 
 ```bash
 conda activate molbuilder
-python -m molbuilder serve      # the web UI on 127.0.0.1:8000
+python -m molbuilder serve start      # the web UI on 127.0.0.1:8000
 ```
 
 > **molbuilder is run with `python -m molbuilder`, not pip-installed** into the host
@@ -382,7 +382,7 @@ bash scripts/install-env.sh bootstrap --yes
 #   then runs `molbuilder envs doctor`
 conda activate molbuilder
 python -m molbuilder envs list      # confirm the four envs are healthy
-python -m molbuilder serve          # open http://127.0.0.1:8000
+python -m molbuilder serve start    # open http://127.0.0.1:8000
 ```
 
 A SIESTA job you launch from the UI now runs via `conda run -n molbuilder-siesta`;

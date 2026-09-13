@@ -122,7 +122,7 @@ bash scripts/install-env.sh bootstrap --yes
 
 # Start the local web application.
 conda activate molbuilder
-python -m molbuilder serve
+python -m molbuilder serve start
 ```
 
 Open <http://127.0.0.1:8000>. The app opens on the **Molbuilder** workspace.
@@ -173,8 +173,8 @@ flowchart TD
     P["Shared deployment<br/>reverse proxy + TLS + optional SSO"] --> S
 ```
 
-- **Local workstation:** `python -m molbuilder serve` binds to loopback by
-  default. This is the simplest and safest starting point.
+- **Local workstation:** `python -m molbuilder serve start` binds to loopback
+  by default. This is the simplest and safest starting point.
 - **Lab network:** a non-loopback bind requires TLS. TLS encrypts traffic, but
   it does not add user authentication by itself.
 - **Shared or internet-facing service:** put molbuilder behind a reverse proxy,

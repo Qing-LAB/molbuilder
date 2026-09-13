@@ -28,11 +28,12 @@ step to the document that owns its details.
 | file | machine | what it is | written by |
 |---|---|---|---|
 | the clone + conda envs | each machine | the program and its engines | you + `envs bootstrap` (§ 1) |
-| `molbuilder.json` | each machine | what **you want** from this machine: run directly or submit, default queue, where the projects tree lives | you, by hand (§ 2) |
-| `~/.config/molbuilder/environment.json` | each machine | what this machine **is** — cores, GPUs, scheduler, queues | `jobset probe --write` (§ 3) |
+| `molbuilder.json` | each machine | what **you want** from this machine: run directly or submit, default queue, where the projects tree lives | **`envs bootstrap` writes it** (§ 1); you edit it (§ 2) |
+| `~/.config/molbuilder/environment.json` | each machine | what this machine **is** — cores, GPUs, scheduler, queues | **`envs bootstrap` writes it** (§ 1); refresh with `jobset probe --write`, no `--name` (§ 3) |
 | `~/.config/molbuilder/environments/<name>.json` | your workstation | another machine's record, so you can describe work *for* it from here | probe there, copy here (§ 4) |
 | TLS cert/key + `auth` section | the machine that serves | HTTPS and sign-in — **only** when others reach your server | you (§ 5) |
-| `~/.config/molbuilder/notify` | the machine that runs jobs | where run reports go, and the signing key | `molbuilder notify-token` + the Task-setup card (§ 6) |
+| `~/.config/molbuilder/notify_keys` | the machine that **serves** | the signing keys and the route. **This file is the switch** — the listener exists because it does | `molbuilder notify-token` (§ 6) |
+| `~/.config/molbuilder/notify` | the machine that **runs jobs** | the named channels the monitor posts to | you, on that machine, from what `notify-token` prints (§ 6) |
 
 Everything else — templates, task files, decks, results — is made by the
 workflow itself, inside the projects tree.
@@ -61,38 +62,65 @@ pip-installed.
 
 ## 2. `molbuilder.json` — what you want from this machine
 
-One small hand-written file, in the config directory —
-`$MOLBUILDER_CONFIG_DIR` if you set it, else
-`$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` ([`deployment.md` § 5](?doc=ops/deployment.md)).
-The two shapes you will actually write:
+**§ 1 already wrote this file.** `envs bootstrap` runs `envs init-config` at the
+end, which creates it in the config directory —
+`$MOLBUILDER_CONFIG_DIR` if you set it, else `$XDG_CONFIG_HOME/molbuilder/`, else
+`~/.config/molbuilder/` ([`deployment.md` § 5](?doc=ops/deployment.md)) — with
+every section that can be empty present and empty, each carrying an
+`_`-prefixed comment block saying who fills it in: you, a command, or a probe.
 
-**A workstation** (jobs run right here):
+> **Edit it; do not replace it.** This section showed a two-key file to write
+> from scratch until 2026-09-12, and following that literally **deleted
+> `script_generation.activation`**, which `bootstrap` had just asked you for and
+> which has no default — after which every wrapper refuses to render and you get
+> the *"the `.fdf` saved but no `.run.sh` appeared"* symptom that seeding exists
+> to prevent.
+
+**The one key you are likely to change** is how work leaves this machine. On a
+workstation, jobs run right here:
 
 ```jsonc
-{ "execution": { "mode": "direct" } }
+"execution": { "mode": "direct" }
 ```
 
-**A cluster login node** (jobs go to the scheduler):
+On a cluster login node they go to the scheduler — and the queue name is your
+site's, from `sinfo` / `sacctmgr`, not a value to copy:
 
 ```jsonc
-{ "execution": { "mode": "submit", "domain": "public" } }
+"execution": { "mode": "submit", "domain": "<your-queue>" }
 ```
+
+Open the file and read the comment blocks; they name the command or the probe
+that fills each remaining section, so there is nothing to guess at.
 
 `domain` is your default queue — a *preference*, so it lives here and never
 in a probe's record ([`configuration.md` § 5](?doc=configuration.md), M-1).
-If your calculations should live somewhere other than the clone's
-`projects/`, add `"paths": {"projects": "/scratch/you/projects"}` — every
-surface follows it at once (`workflow.md` § 6.2).
+Where your calculations live is the other thing `bootstrap` **asked** you, for
+the same reason: its default is inside the clone, which is often not where you
+want it. To change it later, edit `"paths": {"projects": …}` — every surface
+follows it at once (`workflow.md` § 6.2), and each one prints where it resolved
+from, so you never have to infer it.
 
 ---
 
 ## 3. The machine record — what this machine is
 
-On **each** machine, once (and again whenever the cluster changes):
+**§ 1 already probed this machine too.** Re-run it whenever the machine changes
+— a new GPU, a scheduler reconfigured, queues added:
 
 ```bash
-molbuilder jobset probe --write --name <name>    # e.g. --name sol
+molbuilder jobset probe --write          # THIS machine -> environment.json
 ```
+
+> **No `--name` for the machine you are on.** `--name` is how you record a
+> machine you are *not* on (§ 4): it writes
+> `environments/<name>.json` instead, so on this machine it would leave
+> `environment.json` untouched and stale while looking like a refresh — and the
+> named record it creates then makes every `prep` without `--target` refuse,
+> because two machines could be meant. This section said
+> `probe --write --name <name>` until 2026-09-12. `jobset probe` itself refuses
+> the one reserved name and says so: *"this machine's own record needs no
+> `--name` at all."*
 
 On a cluster login node this reads the scheduler itself — every reachable
 queue, each queue's machines, walls, memory, per-job policy caps. On a
@@ -114,7 +142,14 @@ workstation:  copy that file to the same path here
 
 Now `prep --target sol` (and the Task-setup tab's machine card) can answer
 with the cluster's real numbers, and a calculation folder travels there
-**unchanged** — the folder never names a machine (`workflow.md` § 3). The
+**unchanged** — the folder never names a machine (`workflow.md` § 3).
+
+> **From here on `prep` wants `--target`.** The moment one named record exists,
+> a bare `prep` refuses rather than guess which machine you meant — `--target
+> sol` for the cluster, `--target this` for the box you are on (`this` is
+> reserved for exactly that). The refusal lists the choices, so it costs one
+> re-run and never a wrong answer. § 7's road below shows the commands without
+> it; add it once you have copied a record in. The
 full story of records, `--target`, and what refuses when a record is stale:
 [`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md).
 
