@@ -645,6 +645,70 @@ def test_bootstrap_dry_run_lists_recipes_without_installing(monkeypatch):
     assert "dry-run" in result.output.lower()
 
 
+def test_bootstrap_warns_about_a_readonly_config_root_BEFORE_installing(
+        monkeypatch, tmp_path):
+    """A read-only config root is known at minute 0; say so then.
+
+    Seeding runs after every install, and that order is right -- it must not
+    discard built envs.  But its preconditions were only tested there, so a
+    read-only $HOME surfaced after forty minutes of conda work.  The warning now
+    comes before the first install, and crucially before the Proceed prompt, so
+    an interactive user can decline (user: *"if it's read only, then we should
+    give the warning early rather than wait at the very end"*).
+
+    The assertion that matters is ORDERING -- the warning must appear ahead of
+    the first recipe banner in the output, not merely appear.
+    """
+    _bind()
+    from molbuilder.envs import _cli
+    import os as _os
+
+    ro = tmp_path / "ro"
+    ro.mkdir()
+    _os.chmod(ro, 0o500)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(ro / "cfg"))
+
+    install_stub, calls = _make_install_stub()
+    monkeypatch.setattr(_cli._install, "run_install", install_stub)
+    monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
+    monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
+    from molbuilder import diagnostics as _diag_mod
+    monkeypatch.setattr(_diag_mod, "detect",
+                        lambda: Capabilities(
+                            runtime_config={}, conda_binary="/c/bin",
+                            conda_envs=frozenset()))
+    try:
+        result = _make_runner().invoke(_cli.envs_group, ["bootstrap", "--yes"])
+        out = result.output
+        assert "will NOT be seeded" in out, (
+            f"no early warning about the read-only config root:\n{out}")
+        assert "is not writable" in out, f"the reason is not named:\n{out}"
+        assert calls, "the envs must still install -- this is a warning"
+        # `[1/N] <recipe>` is the banner bootstrap prints as each install
+        # starts -- a recipe NAME is no good as a marker here, because
+        # "molbuilder" also appears in the env-manager line and in every
+        # `bash scripts/install-env.sh ...` hint.
+        assert "[1/" in out, f"no install banner to order against:\n{out}"
+        assert out.index("will NOT be seeded") < out.index("[1/"), (
+            "the warning came AFTER the installs started, which is the whole "
+            f"defect:\n{out}")
+    finally:
+        _os.chmod(ro, 0o700)
+
+
+def test_bootstrap_without_yes_and_without_a_terminal_says_so_up_front(
+        monkeypatch):
+    """The documented form is `bootstrap` with no `--yes`, which has two
+    questions to ask.  Under nohup / CI / a batch step there is nobody to ask,
+    so the seeding aborts at the end -- knowable at the start."""
+    _bind()
+    from molbuilder.envs import _cli
+    monkeypatch.setattr(_cli, "_stdin_can_answer", lambda: False)
+    assert _cli._warn_about_seeding_now(auto_yes=False) is True
+    # ...and --yes is exactly the answer, so it must NOT warn then.
+    assert _cli._warn_about_seeding_now(auto_yes=True) is False
+
+
 def test_bootstrap_that_could_not_seed_the_config_exits_nonzero(monkeypatch):
     """A bootstrap that installed everything and seeded NOTHING is not a
     success, and the exit code is the only part a script reads.

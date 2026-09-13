@@ -46,6 +46,7 @@ DIRECTORY and the CONFIG; the record it delegates.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -53,7 +54,7 @@ from typing import List, Optional
 from ..config_dir import config_dir
 
 __all__ = [
-    "Step", "conda_hook", "seed_document",
+    "Step", "conda_hook", "seed_document", "seeding_blockers",
     "ensure_dirs", "seed_machine_config", "seed_environment_record",
     "init_config",
 ]
@@ -251,6 +252,58 @@ def seed_document(activation: str,
     if projects is not None:
         doc["paths"] = {"projects": str(projects)}
     return doc
+
+
+def seeding_blockers() -> List[str]:
+    """Why seeding would fail, answerable BEFORE anything slow runs.
+
+    **Asked first because it is asked last.**  `envs bootstrap` seeds the config
+    directory at the END, after up to forty minutes of conda installs, and a
+    failure there is deliberately not fatal -- built envs are worth keeping.  The
+    cost of that ordering is that a read-only or unreachable config root is
+    discovered once the expensive work is already done, and the person is told
+    to fix it and run `init-config` themselves.  Every reason in this list is a
+    fact about the filesystem that was equally true before the first install, so
+    bootstrap now asks at the start and says so while the user can still decide.
+
+    Returns human-readable lines, each naming the path and what to do; empty
+    means nothing here will stop the seeding.  **Warnings, not refusals** -- the
+    envs are still worth installing, and `config_dir` is movable
+    (`MOLBUILDER_CONFIG_DIR`), which is usually the right fix on a cluster where
+    $HOME is read-only or over quota.
+
+    This checks only what this module OWNS: whether the directory it writes can
+    be written.  Whether the two install-time questions can be ASKED is the
+    CLI's to know -- it owns the prompting -- and it is the other half of the
+    same late surprise.
+    """
+    root = config_dir()
+    blockers: List[str] = []
+    if root.exists() and not root.is_dir():
+        blockers.append(
+            f"{root} exists and is NOT a directory, so the config directory "
+            f"cannot be created there.  Move that file aside, or point "
+            f"MOLBUILDER_CONFIG_DIR somewhere else.")
+        return blockers
+    if root.is_dir():
+        if not os.access(root, os.W_OK):
+            blockers.append(
+                f"{root} is not writable, so molbuilder.json cannot be "
+                f"seeded there.  Fix its permissions, or set "
+                f"MOLBUILDER_CONFIG_DIR to a directory you own.")
+        return blockers
+    # Not there yet: the question is whether we could MAKE it, which is a
+    # property of the nearest ancestor that does exist.
+    for parent in root.parents:
+        if parent.exists():
+            if not os.access(parent, os.W_OK):
+                blockers.append(
+                    f"{root} does not exist and cannot be created: "
+                    f"{parent} is not writable.  Set MOLBUILDER_CONFIG_DIR to "
+                    f"a directory you own (on HPC, scratch is the usual "
+                    f"answer -- it also keeps secrets off an NFS $HOME).")
+            break
+    return blockers
 
 
 def _ensure_root() -> bool:

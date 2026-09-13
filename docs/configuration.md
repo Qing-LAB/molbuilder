@@ -572,6 +572,22 @@ known: `script_generation.activation` (it has no default) and `paths.projects`
 (its default is inside the checkout, which is often not where you want it).
 `--yes` takes both defaults **and prints them**.
 
+**Seeding runs at the END of `bootstrap`, and its preconditions are checked at
+the START** *(2026-09-12)*. Running it last is right: a failure there must not
+throw away forty minutes of built environments, so it is reported and never
+fatal. But the two things that make it fail are already true before the first
+install — the config root is unwritable (or is a file), or there is no terminal
+to ask the two questions in and `--yes` was not passed — so both are stated up
+front, ahead of the `Proceed?` prompt, where declining still costs nothing.
+`initconfig.seeding_blockers()` answers the first (it owns the directory it
+writes); the CLI answers the second (it owns the prompting).
+
+**And a bootstrap that seeded nothing exits non-zero.** It reported success until
+2026-09-12, because the failure was printed but never counted and the exit code
+came from the doctor pass alone — so a CI or `nohup` run that installed five
+environments and created no config at all looked clean, and every later verb then
+refused for want of `script_generation.activation`.
+
 ### 3.3 One producer, two surfaces
 
 `<label>.template.toml` is written by

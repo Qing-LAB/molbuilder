@@ -1572,6 +1572,12 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
                 err=True,
             )
 
+    # BEFORE ANYTHING SLOW: the seeding at the end has preconditions, and they
+    # are true or false already.  Printed here so a 40-minute install is not
+    # the thing that discovers a read-only config root.
+    if not dry_run:
+        _warn_about_seeding_now(auto_yes)
+
     if not plan:
         click.echo("All registered envs are already present.  "
                    "Running doctor to verify.")
@@ -1754,6 +1760,67 @@ def _render_init_config(steps: "Iterable") -> None:
         click.echo(f"  {mark} {step.path}")
         if step.note:
             click.echo(f"      {step.note}")
+
+
+def _warn_about_seeding_now(auto_yes: bool) -> bool:
+    """Say at the START what would only be discovered at the END.
+
+    The config directory is seeded after every install, and that ordering is
+    right -- a failure there must not discard forty minutes of built envs.  What
+    was wrong is that its preconditions were only TESTED there: a read-only
+    $HOME, or a bootstrap with no terminal to ask its two questions in, was
+    reported after the expensive work, with a note to fix it and re-run
+    `init-config` by hand.  Both facts are knowable before the first install, so
+    they are stated here, while an interactive user can still say no at the
+    Proceed prompt (user, 2026-09-12: *"if it's read only, then we should give
+    the warning early rather than wait at the very end"*).
+
+    A WARNING AND NOT A REFUSAL: the envs are worth installing either way, and
+    the honest response to "your config root is read-only" is to let the person
+    decide, not to refuse to install anything.  The seeding still runs at the
+    end, and still sets the exit code if it fails.
+
+    ``True`` when something was printed.
+    """
+    from .initconfig import seeding_blockers
+    problems = list(seeding_blockers())
+    if not auto_yes and not _stdin_can_answer():
+        # The OTHER half, and the one that actually bites: the documented form
+        # is `bootstrap` without `--yes`, which has two questions to ask, and
+        # under nohup / CI / a batch step click aborts on the first.
+        problems.append(
+            "there is no terminal to ask the two install-time questions in "
+            "(how this machine enters a conda env, and where the projects "
+            "tree lives), so the seeding at the end will abort.  Pass --yes "
+            "to take the detected defaults, or run this from a terminal.")
+    if not problems:
+        return False
+    click.echo("", err=True)
+    click.echo("=" * 70, err=True)
+    click.echo("! the config directory will NOT be seeded at the end:",
+               err=True)
+    for line in problems:
+        click.echo(f"    - {line}", err=True)
+    click.echo("  The envs below still install, and doctor still runs.  This "
+               "is said now rather than after the installs so you can decide.",
+               err=True)
+    click.echo("=" * 70, err=True)
+    return True
+
+
+def _stdin_can_answer() -> bool:
+    """Is somebody there to answer a prompt?
+
+    The same guarded ``isatty`` as `cli._stdin_is_a_terminal`, written again
+    rather than imported: that one lives in the top-level CLI and this package
+    may not depend upwards (A7).  The guard is not decoration -- a detached or
+    closed stdin raises rather than returning False.
+    """
+    import sys as _sys
+    try:
+        return _sys.stdin.isatty()
+    except (AttributeError, ValueError):        # detached or closed
+        return False
 
 
 def _seed_config(activation: "Optional[str]", auto_yes: bool,
