@@ -430,7 +430,12 @@ the two answers differ, and that difference is the whole point of `optional`.
 
 ### 5.4 What is deliberately outside the door
 
-> **⚠ A THIRD THING IS CURRENTLY OUTSIDE THE DOOR, AND IT IS A DEFECT, NOT AN
+> ✅ **CLOSED 2026-09-13.** The wipe is `remove_step_for` dispatched through
+> `run_step`, so it carries an `Outcome` and a line in the result; `envs/_cli.py`
+> no longer imports `subprocess` at all. The paragraph below is kept as the
+> record of what was wrong.
+>
+> **⚠ A THIRD THING WAS OUTSIDE THE DOOR, AND IT WAS A DEFECT, NOT AN
 > EXCEPTION** *(recorded 2026-09-12)*. `install --clean`'s env removal is a bare
 > `subprocess.run([conda, "env", "remove", ...])` in `envs/_cli.py`, so the wipe
 > carries no `InstallStep`, no `Outcome`, and no line in the result the verdict is

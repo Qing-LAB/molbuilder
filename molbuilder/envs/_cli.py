@@ -1237,6 +1237,55 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             "docs/ops/installation.md."
         )
 
+
+    # THROUGH THE ONE DOOR, which `bootstrap` also calls (D7).
+    try:
+        result = _install_one(
+            recipe, effective, caps,
+            auto_yes=auto_yes, clean=clean, rebuild=rebuild,
+            force_resume=force_resume,
+            skip_network_check=skip_network_check, name=name)
+    except _Aborted:
+        sys.exit(0)
+    except _CannotInstall:
+        # The door has already printed the diagnosis and the remedy; 2 is the
+        # "nothing was dispatched" code the hard stop has always used.
+        sys.exit(2)
+    if not result.succeeded:
+        sys.exit(1)
+
+
+class _CannotInstall(Exception):
+    """This env cannot be installed into as it stands, and nothing was
+    dispatched.  `install` exits 2; `bootstrap` records it and carries on."""
+
+
+class _Aborted(Exception):
+    """The person said no at a confirmation.  Not a failure."""
+
+
+def _install_one(recipe, effective: str, caps, *,
+                 auto_yes: bool = False,
+                 clean: bool = False,
+                 rebuild: "Optional[str]" = None,
+                 force_resume: bool = False,
+                 skip_network_check: bool = False,
+                 name: "Optional[str]" = None):
+    """Install ONE recipe: probe, diagnose, wipe if asked, summarise, confirm,
+    tee, run, recap.  Returns the `InstallResult`.
+
+    **THE ONE ORCHESTRATION DOOR** (Z1).  `install` and `bootstrap` differ only
+    in which recipes they hand it.  They used to be two implementations of this
+    sequence and they had drifted: `bootstrap` ran no env-state probe, so it
+    never hit the ORPHAN / GHOST / BROKEN hard stop and would drive a `conda
+    create` at wreckage; it never printed the install summary; and it asked for
+    no per-recipe confirmation before a 45-minute source build (D7).
+
+    It RAISES rather than exiting, because the two verbs answer differently: a
+    refusal ends `install` with exit 2, and is one line of a `bootstrap` report
+    that still has four more envs to build.
+    """
+    name = name if name is not None else recipe.name
     # === Step 0: probe + diagnose conda env state up front ===
     # Resolve the conda env's state BEFORE any subprocess work runs.
     # Catches all the edge cases (orphan dirs from prior failed
@@ -1282,7 +1331,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             click.echo("    " + _fix_cmd("install", name, "--yes"))
         click.echo("")
         click.echo("  Nothing was removed.")
-        sys.exit(2)
+        raise _CannotInstall("--clean refused: that is the env we run from")
     if state.needs_cleanup and not clean and not force_resume:
         click.echo("")
         click.echo("HARD STOP: env is in a state that conda create cannot")
@@ -1315,7 +1364,8 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         click.echo(
             "    " + _fix_cmd("install", name, "--yes")
         )
-        sys.exit(2)
+        raise _CannotInstall(
+            f"env is {state.state_label}; conda create cannot recover it")
     # `can_resume`, not a string compare on the label.  `StepRole` exists
     # because four sites keyed control flow on a display label and renaming one
     # for clarity silently disabled the create-skip; this was the same shape, on
@@ -1438,7 +1488,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                         "Proceed with wipe?", default=False,
                 ):
                     click.echo("aborted by user (--clean declined)")
-                    sys.exit(0)
+                    raise _Aborted()
 
             # Step 1: remove the conda env -- THROUGH `run_step`, like every
             # other thing the installer does (D3).  It was a bare
@@ -1465,7 +1515,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                     # from what was attempted -- and it names the detected
                     # manager because the step was built with it.
                     click.echo(f"   {_shell_join(done.argv)})", err=True)
-                    sys.exit(1)
+                    raise _CannotInstall("the env could not be removed")
 
             # Step 2: wipe artifact dir if it survived (usually it was
             # inside the env's prefix and went with step 1, but for
@@ -1517,7 +1567,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             click.echo("")
         if not click.confirm("Proceed?", default=True):
             click.echo("aborted by user.")
-            sys.exit(0)
+            raise _Aborted()
         click.echo("")
 
     # THROUGH THE SHARED FACTORY, so `bootstrap` gets the same eyes on a source
@@ -1612,8 +1662,9 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     # Echo the log path AGAIN after the tee block closes so it lands
     # in the user's terminal even if scrollback ate the leading line.
     click.echo(f"install log saved: {log_path}")
-    if not result.succeeded:
-        sys.exit(1)
+    return result
+
+
 
 
 # --------------------------------------------------------------------- #
@@ -1784,28 +1835,33 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             click.echo("=" * 70)
             click.echo(f"[{i}/{len(plan)}] {recipe.name}")
             click.echo("=" * 70)
-            log_path = _resolve_install_log_path(recipe.name)
-            with _tee_console_to(log_path):
-                try:
-                    # THE SAME EYES `install` GETS.  Passing neither
-                    # callback meant a source build inside bootstrap ran with
-                    # every preflight warning auto-accepted and the report
-                    # never rendered -- see `_build_callbacks`.
-                    _bw, _bp = _build_callbacks(recipe, auto_yes)
-                    result = _install.run_install(
-                        recipe, caps=caps,
-                        build_on_warnings=_bw,
-                        build_on_progress=_bp,
-                    )
-                except RuntimeError as e:
-                    click.echo(f"  ERROR: {e}", err=True)
-                    failures.append(
-                        (recipe.name, "run_install raised", str(e)))
-                    continue
-            click.echo(f"  log: {log_path}")
+            # THE SAME DOOR `install` USES (D7).  This was a lossy copy of
+            # it: no env-state probe, so no ORPHAN / GHOST / BROKEN hard stop
+            # and a `conda create` driven at wreckage; no install summary; and
+            # no per-recipe confirmation before a 45-minute source build.  What
+            # it did have -- the tee, the log, the build callbacks -- the door
+            # has too, because they came from here.
+            try:
+                result = _install_one(
+                    recipe, _doctor._effective_name(recipe, caps), caps,
+                    auto_yes=auto_yes)
+            except _Aborted:
+                failures.append((recipe.name, "declined",
+                                 "you said no at a confirmation"))
+                continue
+            except _CannotInstall as exc:
+                # A refusal ends `install`; here it is one line of a report
+                # that still has other envs to build.
+                failures.append((recipe.name, "refused", str(exc)))
+                continue
+            except RuntimeError as e:
+                click.echo(f"  ERROR: {e}", err=True)
+                failures.append(
+                    (recipe.name, "run_install raised", str(e)))
+                continue
             if not result.succeeded:
                 failures.append((recipe.name, "install step failed",
-                                 f"see {log_path}"))
+                                 "see the log path above"))
 
         # Final summary banner.
         click.echo("")

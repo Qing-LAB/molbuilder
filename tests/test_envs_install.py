@@ -600,12 +600,26 @@ def _make_install_stub(succeeded_per_call=None):
             ok = next(iterator)
         except StopIteration:
             ok = True
-        result = MagicMock()
-        result.succeeded = ok
-        result.recipe = recipe
-        return result
+        return _fake_result(recipe, ok)
 
     return _fake, calls
+
+
+def _fake_result(recipe, ok=True):
+    """An `InstallResult` as the installer really returns one.
+
+    A bare `MagicMock` invents a truthy attribute for anything asked of it, so
+    `if result.build_result.activate_hook_written:` came out TRUE for a
+    conda-only recipe and the recap then dereferenced a `build_spec` that is
+    None -- an AttributeError that aborted a whole `bootstrap` run and looked
+    like a product bug.  A fake has to look like the thing it stands for.
+    """
+    result = MagicMock()
+    result.succeeded = ok
+    result.recipe = recipe
+    result.build_result = None
+    result.steps = []
+    return result
 
 
 def _make_runner():
@@ -700,10 +714,7 @@ def test_bootstrap_gives_a_source_build_the_same_eyes_as_install(monkeypatch):
     def _fake_run_install(recipe, **kw):
         seen[recipe.name] = (kw.get("build_on_warnings"),
                              kw.get("build_on_progress"))
-        r = MagicMock()
-        r.succeeded = True
-        r.recipe = recipe
-        return r
+        return _fake_result(recipe)
 
     _bind()
     monkeypatch.setattr(_cli._install, "run_install", _fake_run_install)
@@ -771,7 +782,8 @@ def test_the_shim_runs_a_readonly_verb_with_no_terminal_and_no_flag():
         f"{combined}")
 
 
-def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",)):
+def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",),
+                       orphan=None):
     """A manager binary that RECORDS what it was asked to do, in a file.
 
     A real executable, in a temp directory, answering the four things the
@@ -798,6 +810,14 @@ def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",)):
         "envs_details": {p: {"name": n, "base": False}
                          for n, p in prefix_of.items()},
     })
+    # `orphan` is a directory on disk that the REGISTRY does not know about --
+    # conda would refuse to create over it.  It reaches the probe through
+    # `info --json`'s envs_dirs, which is the only place an unregistered
+    # directory can be found.
+    envs_dirs = [str(tmp_path / "envs")] if orphan else []
+    if orphan:
+        (tmp_path / "envs" / orphan / "conda-meta").mkdir(parents=True,
+                                                          exist_ok=True)
     log = tmp_path / "manager.log"
     mgr = tmp_path / "conda"
     gone = tmp_path / "removed"
@@ -812,7 +832,7 @@ def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",)):
         f'  "env list") if [ -f {gone} ]; then echo \'{{"envs": []}}\';'
         f' else echo \'{listing}\'; fi ;;\n'
         f'  "create "*) rm -f {gone} ;;\n'
-        '  "info --json") echo \'{"envs_dirs": []}\' ;;\n'
+        f'  "info --json") echo \'{{"envs_dirs": {_json.dumps(envs_dirs)}}}\' ;;\n'
         # a verify step runs through `<mgr> run ...`; answer with what the
         # pySCF recipe requires of its own output so the install can succeed.
         '  "run "*) echo "pyscf 2.13, geometric 1.1, prop: polarizability OK" ;;\n'
@@ -838,6 +858,47 @@ def _recording_manager(tmp_path, *, present=("molbuilder-pySCF",)):
 def _asked(log):
     """Everything the manager was asked to do, one line per invocation."""
     return log.read_text().splitlines() if log.exists() else []
+
+
+def test_bootstrap_hard_stops_on_a_wrecked_env_like_install_does(
+        monkeypatch, tmp_path):
+    """D7 -- `bootstrap` was a LOSSY COPY of `install`'s orchestration.
+
+    It ran no env-state probe, so it never met the ORPHAN / GHOST / BROKEN hard
+    stop: handed a directory conda's registry does not know about, it drove a
+    `conda create` straight at it, which conda refuses with *"prefix already
+    exists"* after the person has waited for the solve.  `install` had
+    diagnosed that in a second, before touching anything, since the state
+    machine was written.
+
+    Both verbs go through `_install_one` now, so the stop is one behaviour
+    rather than one verb's.  Asserted against a manager that writes down what
+    it was asked: the wrecked recipe must produce NO `create`.
+    """
+    wrecked = "molbuilder-pySCF"
+    mgr, log = _recording_manager(tmp_path, present=(), orphan=wrecked)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    from molbuilder.diagnostics import detect, set_capabilities
+    from molbuilder.envs import _cli
+    set_capabilities(detect())
+    monkeypatch.setattr(_cli._doctor, "report_all", lambda caps, **kw: [])
+    monkeypatch.setattr(_cli, "_render_doctor", lambda reports: 0)
+    monkeypatch.setattr(_cli, "_seed_config", lambda *a, **k: None)
+
+    result = _make_runner().invoke(
+        _cli.envs_group, ["bootstrap", "--yes"])
+
+    asked = _asked(log)
+    creates = [line for line in asked
+               if line.startswith("create") and wrecked in line]
+    assert not creates, (
+        f"bootstrap drove a `conda create` at an env conda's registry does "
+        f"not know about:\n{asked}\n{result.output}")
+    assert "ORPHAN" in result.output, result.output
+    assert "refused" in result.output.lower(), (
+        "the report must say which recipe was refused and why:\n"
+        + result.output)
 
 
 def test_the_environment_canary_notices_a_change(monkeypatch, tmp_path):
