@@ -1,14 +1,19 @@
 """Auth-setup wizard helpers.
 
-Pure functions for generating molbuilder.json's ``auth`` block + the
-out-of-band secret files (Flask session key, OAuth client secret).
-The Click-driven CLI wrapper lives in ``molbuilder.cli`` as
+Pure functions for building molbuilder.json's ``auth`` block, and the
+one secret writer (`write_secret_file`) for the files that block names by
+path.  The Click-driven CLI wrapper lives in ``molbuilder.cli`` as
 ``cmd_auth_setup``; everything personal-data-handling lives here so
-it's testable without prompting.
+it's testable without prompting.  The FILE is written by
+`runtime_config.write_config_scope`, the one door for it -- this module
+had a writer of its own, and a session-key generator the server never
+used (it has its own creator, `web/auth._install_secret_key`), until
+2026-09-13.
 
 Privacy contract:
-  * Secrets (Flask session key, OAuth client secret) are written to
-    files with mode 0600 in the config directory -- wherever
+  * The OAuth client secret (and every secret `write_secret_file` is
+    handed) is written to a file with mode 0600 in the config directory
+    -- wherever
     :func:`molbuilder.config_dir.config_dir` resolves it, NOT a hardcoded
     ``$HOME/.config`` (``MOLBUILDER_CONFIG_DIR`` and ``XDG_CONFIG_HOME``
     both move it, which is how a person keeps secrets off an NFS $HOME).
@@ -30,15 +35,12 @@ Privacy contract:
     ``allowed_users`` entry as ``<user>@asu.edu`` and the Google
     ``allowed_users`` entry from an interactive prompt (no assumption
     that the Google account == system user).
-  * molbuilder.json itself is written mode 0600 too: it carries no
-    secret literals, but it carries the secret-file PATHS, which is
-    enough for an attacker with read-only access to those paths.
+  * molbuilder.json itself is written mode 0600 too (by its door): it
+    carries no secret literals, but it carries the secret-file PATHS,
+    which is enough for an attacker with read-only access to those paths.
 """
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 import re
 import secrets
 from pathlib import Path
@@ -73,15 +75,6 @@ from .config_dir import ensure_private_dir
 # --------------------------------------------------------------------- #
 
 
-def generate_session_secret() -> str:
-    """Return a fresh 32-byte URL-safe Flask session key.
-
-    Using ``secrets.token_urlsafe(32)`` (NOT ``os.urandom`` directly)
-    because it returns the value as base64-urlsafe text -- safe to
-    write straight to a file without binary-mode handling, safe to
-    paste into a JSON string if the user prefers literal secrets.
-    """
-    return secrets.token_urlsafe(32)
 
 
 def write_secret_file(path: Path, contents: str) -> None:
@@ -333,118 +326,14 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     **It carried ``secret_key_file`` until 2026-08-31**, and writing that key
     is what made the session key configurable.  It now has one home,
-    :func:`molbuilder.config_dir.session_key`, where the server looks and this
-    wizard writes -- so the two cannot name different files, which they did
-    (`configuration.md` § 2.1e).
+    :func:`molbuilder.config_dir.session_key`, where the server looks and
+    creates it -- the wizard does not touch it (`configuration.md` § 2.1e).
     """
     # NO EMPTINESS CHECK HERE.  It raised `ValueError("at least one provider
     # is required")` until 2026-09-09 -- a SECOND implementation of
     # `runtime_config._read_auth`'s "non-empty list" rule, with a different
     # message and a different exception type, and nothing checking the two
-    # agreed.  `emit_molbuilder_json` now reads its own output back through
-    # `read_config`, so the rule has one home and the wizard reports it in the
-    # server's own words.
+    # agreed.  The block is written through `write_config_scope`, which
+    # validates the merge with the server's own validator, so the rule has one
+    # home and the wizard reports it in the server's own words.
     return {"providers": list(providers)}
-
-
-def emit_molbuilder_json(output_path: Path,
-                          auth_block: Dict[str, Any],
-                          *,
-                          force: bool = False,
-                          existing: Optional[Dict[str, Any]] = None,
-                          ) -> Path:
-    """Write the machine ``molbuilder.json`` carrying the ``auth_block``.
-
-    WHERE it goes is the caller's to decide and the CLI asks
-    :func:`runtime_config.machine_config_path` -- the same helper the reader
-    uses -- so the wizard writes the file the server will actually read.
-
-    If ``existing`` is provided, the auth block REPLACES any prior
-    auth section but every other top-level key is preserved (so an
-    install that already has e.g. ``envs`` or ``tls`` sections stays
-    intact).  When ``existing`` is None and ``output_path`` exists on
-    disk, refuses to write unless ``force=True`` -- avoids silently
-    clobbering a hand-written config.
-
-    File mode is 0600: molbuilder.json carries secret-file PATHS, not
-    secret literals, but a path pointing at a 0600 secret is itself
-    sensitive (knowing the path is half the attack).
-    """
-    output_path = Path(output_path)
-    # The per-user config directory may not exist yet.  0700, matching the
-    # secret directory this file's paths point INTO: the config names those
-    # files, and knowing the path is half the attack (see the mode note above).
-    #
-    # It happened to work before only because the wizard writes the session
-    # key first, which creates the directory as a side effect -- correctness
-    # resting on call order, one reordering away from a FileNotFoundError on
-    # a fresh machine.  Through the ONE creator, which creates at 0700 and
-    # leaves an existing directory as the operator set it.
-    ensure_private_dir(output_path.parent)
-    if existing is None and output_path.exists() and not force:
-        raise FileExistsError(
-            f"{output_path} already exists.  Re-run with --force to "
-            f"overwrite, or pass --output PATH to write somewhere else."
-        )
-    merged: Dict[str, Any] = dict(existing or {})
-    merged["auth"] = auth_block
-    rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
-
-    # WAS THIS FILE ALREADY UNACCEPTABLE?  Asked BEFORE writing, because the
-    # read-back below validates the whole merged file -- including sections
-    # this wizard only PRESERVED.  A machine whose `molbuilder.json` carries a
-    # bad `envs` entry made `molbuilder auth setup` report "written, but the
-    # server would refuse it -- 'envs' entries must be string -> string":
-    # the wizard blaming itself for a problem that was there when it arrived.
-    # Measured 2026-09-10.
-    from .runtime_config import RuntimeConfigError, read_config
-    already_bad: Optional[str] = None
-    if output_path.exists():
-        try:
-            read_config(output_path)
-        except RuntimeConfigError as exc:
-            already_bad = str(exc)
-        except Exception:                  # noqa: BLE001 -- unreadable is not our finding
-            already_bad = None
-
-    # VALIDATE THE BYTES BEFORE THEY REPLACE ANYTHING.
-    #
-    # The emptiness check that used to live in `build_auth_block` was removed
-    # so the "non-empty providers" rule has ONE home, the server's reader --
-    # which is right.  What was wrong was the ORDER: the file was O_TRUNC'd and
-    # rewritten and only THEN read back, so `providers=[]` left the machine's
-    # config replaced by one the server refuses.  Measured 2026-09-10.
-    #
-    # A sibling temp file keeps the one home AND the old file: it is validated
-    # as bytes on disk, exactly as before, and only a file the server would
-    # accept is moved into place.
-    # `mkstemp` rather than a hand-built `.new.<pid>` name and a second private
-    # writer (D14): it creates the file 0600 before it has a name, and it is
-    # unique by construction where a pid-suffixed name is only probably unique.
-    # The module had TWO private writers doing one job; this was the second.
-    fd, tmp_name = tempfile.mkstemp(dir=str(output_path.parent),
-                                    prefix=output_path.name + ".new.")
-    tmp_path = Path(tmp_name)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(rendered)
-    try:
-        read_config(tmp_path)
-    except RuntimeConfigError as exc:
-        tmp_path.unlink(missing_ok=True)
-        if already_bad is not None:
-            raise RuntimeConfigError(
-                f"{output_path} was ALREADY one the server would refuse, "
-                f"before this wizard ran -- {already_bad}.  Nothing was "
-                f"written; fix that section and run the wizard again."
-            ) from None
-        # `read_config` names the temp file; the person cares about the target.
-        raise RuntimeConfigError(
-            f"not written -- the server would refuse it: "
-            f"{str(exc).replace(str(tmp_path), str(output_path))}"
-        ) from None
-    # No chmod after: `os.replace` carries the INODE, and the temp has been
-    # 0600 since before it had a name.  The chmod that stood here could never
-    # change anything, and read as the loose-window fix-up § 2.3 retires.
-    os.replace(tmp_path, output_path)
-
-    return output_path

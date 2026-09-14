@@ -381,6 +381,23 @@ def test_write_preserves_existing_unrelated_keys(sandbox):
     assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 
+def test_a_file_that_was_already_refused_is_named_not_the_patch(sandbox):
+    """The merge fails validation because the patch is bad -- or because the
+    file already was.  The message says which: a person sent to fix "the
+    patch" for a section it never touched fixes the wrong thing.  (The auth
+    wizard blamed itself for a bad `envs` entry, measured 2026-09-10; the
+    diagnosis lived in its private writer until 2026-09-13.)"""
+    (sandbox / "molbuilder.json").write_text(json.dumps({"envs": {"siesta": 5}}))
+    with pytest.raises(RuntimeConfigError, match="ALREADY") as e:
+        write_config_scope(project_dir=None, patch={
+            "script_generation": {"preamble": "module load mamba"},
+        })
+    assert "envs" in str(e.value)
+    # ...and nothing was written.
+    assert json.loads((sandbox / "molbuilder.json").read_text()) == {
+        "envs": {"siesta": 5}}
+
+
 def test_write_validates_before_writing(sandbox):
     """A patch with an invalid value is rejected -- the file is NOT
     written.  Otherwise the next read_effective_config call would fail

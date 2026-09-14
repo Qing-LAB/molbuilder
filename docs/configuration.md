@@ -318,10 +318,13 @@ module builds a per-user path itself.
 *(Built 2026-08-31. Cited by `runtime_config._SECRET_KEY_MOVED`,
 `web.auth._install_secret_key` and `auth_setup.build_auth_block`.)*
 
-**The key is `<config dir>/secret_key`.** It is created there on first run, at
-mode `0600`, and both the server and `molbuilder auth-setup` resolve it through
-`auth_setup.secret_key_path()` — one function, so the reader and the writer
-cannot name different files.
+**The key is `<config dir>/secret_key`.** The server creates it there on its
+first start, at mode `0600`, and reads it from then on — one resolver
+(`config_dir.session_key()`) and one creator (`web/auth._install_secret_key`),
+so the reader and the writer cannot name different files. `molbuilder
+auth-setup` does not touch it: until 2026-09-13 it regenerated the key on every
+run, logging every signed-in person out, with a different encoding from the
+server's own.
 
 **`secret_key_file` is retired**, and a config still carrying it is **refused**:
 
@@ -438,8 +441,7 @@ door for the kind of file it has, and the door knows:
 | to write | call | which is |
 |---|---|---|
 | a secret, whole | `auth_setup.write_secret_file(path, text)` | parent at `0700`, then `write_bytes(…, mode=0o600)` |
-| `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` |
-| `molbuilder.json`, from the auth wizard | `auth_setup.emit_molbuilder_json` | stage privately, **validate the bytes on disk**, then replace |
+| `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
 | anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job and may import nothing of ours — see below |
@@ -451,26 +453,21 @@ with a reason is a rule, an unnamed one is drift.)*
 
 | outside the one writer | why |
 |---|---|
-| the auth wizard's stage-then-validate | below |
 | an appended log (`serve_daemon.open_private`) | below |
 | **the session key's first creation** (`web/auth.py`) | `os.open(..., O_EXCL, 0600)`. The operation is *create if absent*, not *replace*: the one writer replaces by design, and replacing this file logs every signed-in person out. `O_EXCL` is what makes "only if it is not already there" the file system's decision rather than ours |
 | **the supervisor's pidfile** | a few bytes rewritten at every start, holding an address rather than a secret, read by the next `stop`/`restart`. A truncated one is replaced on the next start; there is nothing in it to preserve |
 | **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made, never overwritten — a person may have added notes — so there is no previous content to protect, and none of them carries a credential |
 | **anything the monitor writes on a compute node** | it ships beside the job and may import nothing of ours — see below |
 
-**Two of those need the longer reason.**
+**One of those needs the longer reason.** *(Two did until 2026-09-13: the
+auth wizard staged a temp, validated the bytes on disk and replaced — a second
+writer of `molbuilder.json` kept for the validation step, which the one door
+already had: `write_config_scope` validates the merge before a byte lands. What
+the door lacked was the wizard's one private finding — that a file can be
+refused for a section the patch never touched — and that now lives in the door,
+where every caller gets it.)*
 
-The auth wizard *stages, validates, then replaces*: it writes a private temp,
-reads that temp back through `read_config`, and replaces the target only if the
-server would accept it. `write_bytes` cannot express this, because it replaces
-immediately — there is no moment in it where the new bytes exist on disk and the
-old file is still there to keep. The order matters for a reason that was measured
-(2026-09-10): the file used to be rewritten and validated *afterwards*, so
-`providers=[]` left the machine with a config the server refuses. It has both
-properties § 2.3 asks for; what it does not share is the implementation, which is
-the right trade for a writer whose whole job is the validation step.
-
-**A third shape is outside it for a reason that is not about writing at all:
+**The other shape is outside it for a reason that is not about writing at all:
 `monitor.py` SHIPS BESIDE A JOB** *(stated here 2026-09-13)*. It travels to the
 machine that runs the job as `mb_monitor.py` and is executed by **the job's own
 python**, in a backend env where molbuilder is not installed

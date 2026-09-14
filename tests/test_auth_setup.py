@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import stat
 from pathlib import Path
 from unittest.mock import patch
@@ -44,16 +43,6 @@ from molbuilder.runtime_config import _validate_provider
 # `test_config_dir_has_one_home.py` owns both facts against the real door:
 # `TestTheRootCanBeNamedOutright::test_it_is_used_exactly_as_given` for the
 # override, `test_empty_is_not_set` for the XDG fallback.  The alias is gone.
-
-
-def test_generate_session_secret_is_unique_and_long():
-    a, b = _as.generate_session_secret(), _as.generate_session_secret()
-    assert a != b
-    # token_urlsafe(32) yields ~43 chars; permit a small floor in case
-    # the implementation changes to a slightly different length.
-    assert len(a) >= 32
-    # URL-safe base64 alphabet only.
-    assert re.fullmatch(r"[A-Za-z0-9_\-]+", a)
 
 
 # --------------------------------------------------------------------- #
@@ -170,58 +159,6 @@ def test_google_entry_rejects_empty_allowlist(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  build_auth_block + emit_molbuilder_json                              #
-# --------------------------------------------------------------------- #
-
-
-def test_emit_molbuilder_json_writes_0600(tmp_path):
-    entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block(providers=[entry])
-    out = tmp_path / "molbuilder.json"
-    _as.emit_molbuilder_json(out, block)
-    assert stat.S_IMODE(out.stat().st_mode) == 0o600
-    data = json.loads(out.read_text())
-    assert data["auth"]["providers"][0]["kind"] == "cas"
-
-
-def test_emit_preserves_other_top_level_keys(tmp_path):
-    entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block([entry])
-    out = tmp_path / "molbuilder.json"
-    existing = {"envs": {"siesta": "molbuilder-siesta"}, "tls": {"cert": "/x"}}
-    _as.emit_molbuilder_json(out, block, existing=existing)
-    data = json.loads(out.read_text())
-    # auth replaced; envs + tls survive.
-    assert data["envs"] == {"siesta": "molbuilder-siesta"}
-    assert data["tls"] == {"cert": "/x"}
-    assert data["auth"]["providers"][0]["kind"] == "cas"
-
-
-def test_emit_refuses_to_clobber_without_force(tmp_path):
-    entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block([entry])
-    out = tmp_path / "molbuilder.json"
-    out.write_text('{"keep": "me"}')
-    with pytest.raises(FileExistsError, match="--force"):
-        _as.emit_molbuilder_json(out, block, force=False)
-    # File untouched.
-    assert json.loads(out.read_text()) == {"keep": "me"}
-
-
-def test_emit_force_overrides_clobber_guard(tmp_path):
-    entry = _as.build_asu_cas_entry("jdoe")
-    block = _as.build_auth_block([entry])
-    out = tmp_path / "molbuilder.json"
-    out.write_text('{"orphan": "x"}')
-    _as.emit_molbuilder_json(out, block, force=True)
-    data = json.loads(out.read_text())
-    assert "auth" in data
-    # ``force`` without ``existing`` means we DON'T preserve old keys;
-    # the orphan got cleared.  Documented in the docstring.
-    assert "orphan" not in data
-
-
-# --------------------------------------------------------------------- #
 #  CLI: end-to-end shape for the ASU-only path                          #
 # --------------------------------------------------------------------- #
 
@@ -236,14 +173,24 @@ def isolated_home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_cli_asu_only_writes_config_and_secret(isolated_home):
-    out = isolated_home / "molbuilder.json"
-    runner = CliRunner()
-    r = runner.invoke(cli, [
-        "auth-setup",
-        "--provider", "asu",
-        "--asurite", "jdoe",
-        "--output", str(out),
+def _machine_file(home):
+    """The one file the server reads, under the isolated home."""
+    p = home / ".config" / "molbuilder" / "molbuilder.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def test_cli_asu_only_writes_the_config_and_keeps_the_session_key(
+        isolated_home):
+    """The session key is the server's.  The wizard regenerated it on every
+    run until 2026-09-13 -- every signed-in person logged out by a command
+    that called itself idempotent -- so the key a server already made must
+    come out of the wizard byte for byte as it went in."""
+    out = _machine_file(isolated_home)
+    sk = out.parent / "secret_key"
+    sk.write_bytes(b"the-server-made-this-key-on-first-start")
+    r = CliRunner().invoke(cli, [
+        "auth-setup", "--provider", "asu", "--asurite", "jdoe",
     ], catch_exceptions=False)
     assert r.exit_code == 0, r.output
     # molbuilder.json is mode 0600 and carries the CAS entry.
@@ -252,11 +199,7 @@ def test_cli_asu_only_writes_config_and_secret(isolated_home):
     assert data["auth"]["providers"][0]["kind"] == "cas"
     assert data["auth"]["providers"][0]["allowed_users"] == \
         ["jdoe@asu.edu"]
-    # Secret file exists, 0600, non-empty.
-    sk = isolated_home / ".config" / "molbuilder" / "secret_key"
-    assert sk.exists()
-    assert stat.S_IMODE(sk.stat().st_mode) == 0o600
-    assert sk.read_text().strip()
+    assert sk.read_bytes() == b"the-server-made-this-key-on-first-start"
 
 
 class TestTheWizardWritesWhereTheReaderReads:
@@ -356,37 +299,6 @@ class TestTheWizardWritesWhereTheReaderReads:
         assert after["script_generation"]["activation"] == "conda activate", (
             "the wizard replaced the file instead of merging into it")
 
-    def test_output_still_wins(self, isolated_home, monkeypatch, tmp_path):
-        """Naming a path is answering the question, so nothing overrides it."""
-        monkeypatch.chdir(tmp_path)
-        target = tmp_path / "chosen" / "conf.json"
-        r = self._run(("--output", str(target)))
-        assert r.exit_code == 0, r.output
-        assert target.is_file()
-
-    def test_the_per_user_directory_is_created_if_absent(
-            self, isolated_home, monkeypatch, tmp_path):
-        """`emit_molbuilder_json` used to assume its directory existed, and got
-        away with it only because the wizard writes the session key first --
-        correctness resting on call order.  Asserted directly on the emitter,
-        so a reordering upstream cannot hide it.
-
-        The block is a REAL one (2026-09-09): the emitter now reads its own
-        output back through `read_config`, so `{"providers": []}` -- which this
-        test used as a throwaway payload -- is refused as the server would
-        refuse it.  The payload was always incidental to what this test is
-        about; it just had nothing stopping it being invalid before."""
-        import molbuilder.auth_setup as _as
-        target = tmp_path / "brand" / "new" / "molbuilder.json"
-        block = _as.build_auth_block([_as.build_google_entry(
-            client_id="x.apps.googleusercontent.com",
-            client_secret_file=tmp_path / "secret",
-            allowed_users=["me@asu.edu"])])
-        _as.emit_molbuilder_json(target, block)
-        assert target.is_file()
-        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
-
-
 def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
     """When --asurite is not passed, the wizard prompts with the
     system user as the default.  Pressing Enter accepts that default.
@@ -395,12 +307,11 @@ def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
     account name; no other source.
     """
     monkeypatch.setattr("getpass.getuser", lambda: "alice")
-    out = isolated_home / "molbuilder.json"
+    out = _machine_file(isolated_home)
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
-        "--output", str(out),
     ], input="\n", catch_exceptions=False)
     assert r.exit_code == 0, r.output
     data = json.loads(out.read_text())
@@ -421,19 +332,23 @@ def test_cli_refuses_to_clobber_without_force(isolated_home):
     molbuilder.json; `envs bootstrap` now seeds one, so the old rule would
     have refused this wizard on every fresh install.
     """
-    out = isolated_home / "molbuilder.json"
-    out.write_text('{"auth": {"providers": [{"id": "old", "kind": "cas"}]}}')
+    out = _machine_file(isolated_home)
+    # A REAL block: the wizard reads the file through the server's reader
+    # now, and a provider entry the server would refuse stops it for that
+    # reason, not this one.
+    out.write_text(json.dumps(
+        {"auth": _as.build_auth_block([_as.build_asu_cas_entry("old")])}))
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
         "--asurite", "jdoe",
-        "--output", str(out),
     ], catch_exceptions=False)
     assert r.exit_code != 0
-    assert "auth" in r.output
+    assert "auth providers" in r.output
     # File untouched.
-    assert json.loads(out.read_text())["auth"]["providers"][0]["id"] == "old"
+    assert json.loads(out.read_text())["auth"]["providers"][0][
+        "allowed_users"] == ["old@asu.edu"]
 
 
 def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
@@ -442,14 +357,13 @@ def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
     A seeded molbuilder.json carries `script_generation` and no `auth`; there
     is nothing to clobber, so the wizard writes its block and leaves the rest.
     """
-    out = isolated_home / "molbuilder.json"
+    out = _machine_file(isolated_home)
     out.write_text('{"script_generation": {"activation": "conda activate"}}')
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
         "--asurite", "jdoe",
-        "--output", str(out),
     ], catch_exceptions=False)
     assert r.exit_code == 0, r.output
     data = json.loads(out.read_text())
@@ -457,23 +371,30 @@ def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
     assert data["script_generation"]["activation"] == "conda activate"
 
 
-def test_cli_force_overwrites_existing(isolated_home):
-    out = isolated_home / "molbuilder.json"
-    out.write_text('{"envs": {"siesta": "molbuilder-siesta"}}')
+def test_cli_force_replaces_the_providers_and_nothing_else(isolated_home):
+    """--force replaces the providers LIST.  The wizard's own writer replaced
+    `auth` wholesale until 2026-09-13, so re-running it to add a provider
+    dropped `auth.trust_proxy`; through the door the write is a merge."""
+    out = _machine_file(isolated_home)
+    out.write_text(json.dumps({
+        "envs": {"siesta": "molbuilder-siesta"},
+        "auth": {**_as.build_auth_block([_as.build_asu_cas_entry("old")]),
+                 "trust_proxy": True},
+    }))
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
         "--asurite", "jdoe",
-        "--output", str(out),
         "--force",
     ], catch_exceptions=False)
     assert r.exit_code == 0, r.output
     data = json.loads(out.read_text())
-    # envs survived.
     assert data["envs"]["siesta"] == "molbuilder-siesta"
-    # auth was added.
-    assert data["auth"]["providers"][0]["kind"] == "cas"
+    assert data["auth"]["trust_proxy"] is True, (
+        "a sibling key in `auth` was dropped by the providers replacement")
+    assert [p["allowed_users"] for p in data["auth"]["providers"]] == [
+        ["jdoe@asu.edu"]]
 
 
 # --------------------------------------------------------------------- #
@@ -483,32 +404,22 @@ def test_cli_force_overwrites_existing(isolated_home):
 
 def test_cli_secrets_never_appear_in_emitted_json(isolated_home,
                                                     monkeypatch):
-    """End-to-end check that no Google client_secret OR Flask session
-    key ever lands inside molbuilder.json.  Mocks getpass.getpass +
-    secrets.token_urlsafe so we know exactly what literals to look
-    for, then asserts they're nowhere in the file."""
+    """End-to-end check that the Google client_secret never lands inside
+    molbuilder.json.  Mocks getpass.getpass so we know exactly what literal
+    to look for, then asserts it is nowhere in the file."""
     sentinel_secret = "SUPER_SECRET_CLIENT_VALUE_123"
-    sentinel_session = "FAKE_SESSION_KEY_456"
     monkeypatch.setattr("getpass.getpass", lambda prompt="": sentinel_secret)
-    monkeypatch.setattr(
-        "molbuilder.auth_setup.generate_session_secret",
-        lambda: sentinel_session,
-    )
-    out = isolated_home / "molbuilder.json"
+    out = _machine_file(isolated_home)
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "google",
         "--google-email", "alice@gmail.com",
-        "--output", str(out),
     ], input="client-id-789\n", catch_exceptions=False)
     assert r.exit_code == 0, r.output
     rendered = out.read_text()
     assert sentinel_secret not in rendered, (
         "client_secret leaked into molbuilder.json"
-    )
-    assert sentinel_session not in rendered, (
-        "Flask session key leaked into molbuilder.json"
     )
     # Sanity: the secret IS in the secret file, intact.
     google_sk = (isolated_home / ".config" / "molbuilder"
@@ -520,7 +431,7 @@ def test_cli_secrets_never_appear_in_emitted_json(isolated_home,
 def test_cli_google_requires_at_least_one_allowed_email(isolated_home,
                                                           monkeypatch):
     monkeypatch.setattr("getpass.getpass", lambda prompt="": "any")
-    out = isolated_home / "molbuilder.json"
+    out = _machine_file(isolated_home)
     runner = CliRunner()
     # --provider google with NO --google-email AND no interactive
     # email lines should fail.  Send empty Enter on every email prompt
@@ -529,7 +440,6 @@ def test_cli_google_requires_at_least_one_allowed_email(isolated_home,
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "google",
-        "--output", str(out),
     ], input="client-id\n", catch_exceptions=True)
     # The wizard either re-prompts forever (in interactive shells) or
     # aborts on EOF (in CliRunner).  Either way: molbuilder.json must

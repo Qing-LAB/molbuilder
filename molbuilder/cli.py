@@ -1440,27 +1440,6 @@ def _check_tls_readable(cert, key) -> None:
     )
 
 
-def _read_config_object(path):
-    """The config file at ``path`` as a dict, or ``None`` when it is not one.
-
-    **A top-level value that is not an object is UNREADABLE, not empty.**
-    `molbuilder.json` is an object by definition, and `runtime_config`
-    refuses anything else by name -- but that refusal guards the CONFIG
-    DIRECTORY's copy, and ``--output`` names a file that never passes it.
-    So both readers here have to answer the question themselves, and they
-    must answer it the same way: one of them treated a JSON list as a
-    mapping and called ``.get`` on it (a traceback, 2026-09-08), the other
-    handed it to ``dict()`` (a traceback, under --force, for longer than
-    that).  One reader now, and ``None`` is the single "cannot use this".
-    """
-    import json as _json
-    try:
-        doc = _json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return doc if isinstance(doc, dict) else None
-
-
 @cli.command("auth-setup",
               short_help="generate molbuilder.json's auth block for "
                          "ASU CAS and/or Google OAuth (interactive)")
@@ -1479,20 +1458,11 @@ def _read_config_object(path):
               help="restrict Google sign-in to Workspace accounts in "
                    "DOMAIN (e.g. 'asu.edu').  May be passed multiple "
                    "times.  Default: no restriction.")
-@click.option("--output", type=click.Path(dir_okay=False), default=None,
-              help="where to write the molbuilder.json.  Default: THE ONE "
-                   "FILE THE SERVER READS -- "
-                   "``$MOLBUILDER_CONFIG_DIR/molbuilder.json`` if that "
-                   "variable is set, else "
-                   "``$XDG_CONFIG_HOME/molbuilder/molbuilder.json``, else "
-                   "``~/.config/molbuilder/molbuilder.json``.  A "
-                   "``./molbuilder.json`` in the launch directory is NOT "
-                   "read.")
 @click.option("--force", is_flag=True,
-              help="overwrite an existing molbuilder.json's auth block.  "
-                   "Other top-level sections (envs, tls, ...) survive.")
-def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
-                    output, force):
+              help="replace the auth providers molbuilder.json already "
+                   "carries.  Everything else -- in `auth` and outside it "
+                   "-- survives: the write is a merge.")
+def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     """Interactive wizard to wire up sign-in for ``molbuilder serve``.
 
     Generates a ``molbuilder.json`` carrying one or both of:
@@ -1509,33 +1479,31 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
         identifier is assumed anywhere in molbuilder; the username
         you log in to the server with is the username CAS will
         authenticate against.
-      * The Flask session signing key is generated locally with
-        ``secrets.token_urlsafe(32)`` and written to a 0600 file at
-        ``<config dir>/secret_key`` -- its ONE home, which the server
-        resolves through the same function.  It is NEVER printed, NEVER
-        logged, and molbuilder.json does not name it at all: the key has
-        one home rather than a configurable path (§ 2.1e).
       * The Google OAuth client secret is prompted via ``getpass``
         (hidden input, no echo, no shell history) and written to
-        ``<config dir>/google_client_secret`` with mode 0600.
-        Same path-not-literal rule applies.
+        ``<config dir>/google_client_secret`` with mode 0600;
+        molbuilder.json names that file by PATH, never the literal.
       * molbuilder.json itself is written mode 0600.
 
-    Re-running with the same arguments is idempotent EXCEPT for the
-    Flask session key + Google client secret, which are re-generated /
-    re-prompted each run.  Use ``--force`` to acknowledge replacing an
-    existing molbuilder.json's auth block.
+    The session key is NOT this wizard's.  The server creates
+    ``<config dir>/secret_key`` on its first start and reads it from then
+    on (§ 2.1e).  Until 2026-09-13 this wizard regenerated it on every run
+    -- every signed-in person logged out by a command whose docstring said
+    "idempotent" -- and with a different encoding from the server's own
+    creator.
 
-    Where the file lives: the machine config has ONE location, the
-    config directory.  **This wizard writes the file the server would
-    read**, by asking the reader's own resolver rather than writing
-    wherever it happened to be launched -- so the auth block cannot land
-    in a file nothing consults.  A ``./molbuilder.json`` in the launch
-    directory is not read, and is left alone.  Pass --output to
-    name a path outright.
+    Re-running is idempotent except for the Google client secret, which is
+    re-prompted each run.  ``--force`` replaces the providers list and
+    nothing else: the write is a merge through
+    ``runtime_config.write_config_scope``, the one door for this file
+    (§ 2.3), so ``auth.trust_proxy`` and every other section survive.
+
+    Where the file lives: the machine config has ONE location, the config
+    directory, and the door resolves it -- so the auth block cannot land in
+    a file nothing consults.  A ``./molbuilder.json`` in the launch
+    directory is not read, and is left alone.
     """
     import getpass
-    from pathlib import Path as _Path
 
     from . import auth_setup as _as
     from .runtime_config import _validate_provider as _validate
@@ -1570,55 +1538,43 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
 
     # 2. Resolve target paths -----------------------------------------
     #
-    # THE WIZARD WRITES THE FILE THE READER WILL READ.  `machine_config_path`
-    # is the reader's own resolver, so asking it is what keeps the two from
-    # disagreeing -- which they did, when this defaulted to the cwd.
-    #
-    # It defaulted to `./molbuilder.json` until 2026-08-30, which put the
-    # config wherever the wizard happened to be launched from: for anyone
-    # running it inside a checkout, the git root.  That was wrong twice over.
-    # The same command already writes both SECRETS into the per-user config
-    # directory, so one command split its output across two conventions.  And
-    # a bare cwd default cannot be right in general: on a machine that already
-    # has `./molbuilder.json` somewhere else, writing a fresh XDG file would
-    # produce a config the reader never looks at, and the wizard would report
-    # success while sign-in stayed off.
-    from .runtime_config import machine_config_path as _machine_config_path
-    output_path = (_Path(output).resolve() if output
-                   else _machine_config_path()[0])
-    from .config_dir import google_client_secret, session_key
-    session_key_path = session_key()
+    # THE WIZARD WRITES THE FILE THE READER WILL READ, through the reader's
+    # own door: `write_config_scope` asks `machine_config_path` for the one
+    # location, merges over what is there, validates the merge and writes
+    # it 0600.  Until 2026-09-13 this command had a writer of its own
+    # (`auth_setup.emit_molbuilder_json`), a third reader of the format, an
+    # `--output` naming a file the server never reads, and a merge that
+    # REPLACED `auth` wholesale -- so re-running it to add a provider
+    # dropped `auth.trust_proxy`.  (And it defaulted to `./molbuilder.json`
+    # until 2026-08-30: the git root, for anyone inside a checkout.)
+    from .runtime_config import machine_config_path, write_config_scope
+    output_path = machine_config_path()[0]
+    from .config_dir import google_client_secret
     google_secret_file = google_client_secret()
 
     # 3. Bail early on clobber unless --force --------------------------
     #
-    # WHAT IS WORTH GUARDING IS AN AUTH BLOCK, NOT A FILE.  Step 7 MERGES:
-    # `emit_molbuilder_json` replaces the `auth` section and preserves every
-    # other top-level key -- its docstring says so, promising that "an install
-    # that already has e.g. ``envs`` or ``tls`` sections stays intact".  This
-    # guard refused before reading, so that merge was reachable only with
-    # --force and the promise described a path nobody could take.
-    #
-    # It was harmless while a fresh machine had no molbuilder.json.  Since
-    # 2026-09-08 `envs init-config` seeds one at install time (activation plus
-    # the comment keys), so the guard would refuse the sign-in wizard on
-    # exactly the fresh installs it exists to serve.  A seeded file carries no
-    # `auth`; there is nothing there to clobber.
-    why = None
-    if output_path.exists():
-        prior = _read_config_object(output_path)
-        if prior is None:
-            # Unreadable is not the same as absent -- refuse rather than
-            # overwrite a file whose contents we could not see, and say
-            # THAT, because "it already has an auth block" would send
-            # someone looking for one that is not there.
-            why = "cannot be read as a JSON object"
-        elif prior.get("auth"):
-            why = "already carries an `auth` block"
-    if why and not force:
+    # WHAT IS WORTH GUARDING IS A PROVIDERS LIST, NOT A FILE: the write is a
+    # merge, so a seeded molbuilder.json (`envs init-config`, 2026-09-08 --
+    # activation plus the comment keys) has nothing in it to clobber.  Read
+    # through the server's reader: a file the server would refuse stops the
+    # wizard HERE, before it asks for a secret, and there is no --force past
+    # that -- overwriting a config a person could not read is how a
+    # hand-edit's typo used to erase the auth providers and TLS paths (R10).
+    try:
+        prior = read_config()
+    except RuntimeConfigError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        click.echo("Nothing written; fix that (or move the file aside) and "
+                   "run the wizard again.", err=True)
+        sys.exit(2)
+    prior_auth = prior.get("auth")
+    if (isinstance(prior_auth, dict) and prior_auth.get("providers")
+            and not force):
         click.echo(
-            f"Error: {output_path} {why}.  Re-run with --force to replace "
-            f"it, or pass --output PATH.",
+            f"Error: {output_path} already carries auth providers.  Re-run "
+            f"with --force to replace them; everything else in the file, "
+            f"and in `auth`, survives.",
             err=True,
         )
         sys.exit(2)
@@ -1704,53 +1660,25 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
             err=True,
         )
 
-    # 6. Flask session signing key ------------------------------------
-    session_secret = _as.generate_session_secret()
-    _as.write_secret_file(session_key_path, session_secret)
-    # Wipe the in-memory copy promptly; the file is the source of truth.
-    del session_secret
-    click.echo(
-        f"  + Flask session key generated; stored at {session_key_path}",
-        err=True,
-    )
-
-    # 7. Merge auth block into existing molbuilder.json (if any) -------
-    existing = None
-    if output_path.exists():
-        existing = _read_config_object(output_path)
-        if existing is None:
-            click.echo(
-                f"Warning: could not read existing {output_path} as a JSON "
-                f"object.  --force is set, replacing it whole.",
-                err=True,
-            )
+    # 6. Merge the auth block into the machine config ------------------
     auth_block = _as.build_auth_block(providers=providers)
-    _as.emit_molbuilder_json(
-        output_path, auth_block,
-        force=force, existing=existing,
-    )
+    try:
+        write_config_scope(None, {"auth": auth_block})
+    except RuntimeConfigError as exc:
+        click.echo(f"Error: not written -- {exc}", err=True)
+        sys.exit(2)
 
     click.echo("", err=True)
     click.echo(f"Wrote {output_path} (mode 0600)", err=True)
     click.echo("", err=True)
     click.echo("Next steps:", err=True)
-    # WHERE THE FILE LANDED DECIDES WHETHER `cd` IS ADVICE OR A TRAP: a cwd
-    # config is found by launch directory, a per-user one from anywhere.  The
-    # `cd` was printed unconditionally, so a per-user file would have come
-    # with an instruction to cd into ~/.config/molbuilder and serve from
-    # there -- which works, and teaches the wrong model.
-    if output_path.parent == _Path.cwd():
-        # A cwd config is found by LAUNCH DIRECTORY, so saying where to start
-        # the server from is the instruction, not a nicety.
-        click.echo(f"  cd {output_path.parent}", err=True)
-    else:
-        click.echo(
-            "  (this file is read from anywhere -- it is the per-user "
-            "config, not a directory you have to start the server in)",
-            err=True,
-        )
     click.echo(
         "  python -m molbuilder serve start --port 8888 --host 127.0.0.1",
+        err=True,
+    )
+    click.echo(
+        "  (the session key is the server's: created at "
+        "<config dir>/secret_key on its first start and kept from then on)",
         err=True,
     )
     if want_google:

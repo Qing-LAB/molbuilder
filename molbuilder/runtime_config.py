@@ -2175,10 +2175,10 @@ def write_config_scope(
     existing file REFUSES rather than being overwritten (R10,
     2026-08-12 -- the documented 'log nothing, overwrite' destroyed
     whatever a hand-edit broke).  Files are written atomically
-    (persist.write_bytes) at mode 0600, matching
-    :mod:`molbuilder.auth_setup`'s precedent -- a config file may carry
+    (persist.write_bytes) at mode 0600 -- a config file may carry
     secret-file PATHS, deploy context, or per-cluster setup commands
-    that aren't meant for casual inspection.
+    that aren't meant for casual inspection.  THE ONE WRITER of this
+    file: the auth wizard had its own until 2026-09-13.
 
     Returns the resolved target path.
     """
@@ -2226,7 +2226,21 @@ def write_config_scope(
     try:
         _normalise(merged)
     except RuntimeConfigError:
-        # The PATCH was invalid; surface the error untouched.
+        # WHOSE FAULT?  The merge fails when the patch is bad -- or when the
+        # file was already one the server would refuse before this write (a
+        # bad `envs` entry, measured 2026-09-10 through the auth wizard,
+        # which then blamed itself).  Ask the existing file alone: a person
+        # sent to fix "the patch" for a section it never touched fixes the
+        # wrong thing.  This diagnosis lived in the wizard's private writer
+        # until 2026-09-13; here every caller gets it.
+        if existing:
+            try:
+                _normalise(existing)
+            except RuntimeConfigError as was:
+                raise RuntimeConfigError(
+                    f"{target} was ALREADY one the server would refuse, "
+                    f"before this write -- {was}.  Nothing was written; fix "
+                    f"that section and retry.") from None
         raise
 
     # 0700 through the one creator when this call is what makes the directory
