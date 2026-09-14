@@ -144,17 +144,10 @@ def test_memory_is_the_jobs_own_not_the_nodes(sol):
     assert gb == round(1736704 / 1073741824.0, 2)
 
 
-def test_the_kernels_own_peak_file_is_the_one_read(sol):
-    """v1 maintains a running peak, so `peak_rss_gb` stops being the largest
-    value a 10-second sampler happened to catch.
-
-    Asserted against the measured Sol bytes. Note they are ~2.8 MB and GB is
-    kept to two decimals, so both peak and current round to 0.0 here -- the
-    reading is exact, the DISPLAY resolution is 10 MB. That is deliberate and
-    ample for a calculation whose memory is counted in GB, and the separate
-    test below is the one that checks peak and current can differ.
-    """
-    assert M._read_mem_peak_gb() == round(2805760 / 1073741824.0, 2)
+# RETIRED 2026-09-14 (review D): `test_the_kernels_own_peak_file_is_the_one_read`
+# asserted the Sol bytes, which its own docstring admits round to 0.0 for BOTH
+# peak and current -- so a reader that returned `memory.current` passed it.
+# `test_the_peak_is_not_a_copy_of_current` below is the test that can fail.
 
 
 def test_the_peak_is_not_a_copy_of_current(tmp_path, monkeypatch):

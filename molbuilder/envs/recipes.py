@@ -1728,6 +1728,18 @@ _SIESTA_GPU_BUILD = BuildSpec(
     artifact_subdir="siesta-gpu-stack",
     components=(_ELPA, _SIESTA_GPU_COMPONENT),
     cuda_required=True,
+    # WHAT THE BUILD NEEDS, not what the host compiler pairs with.  This is a
+    # floor on the CUDA toolkit for ELPA + SIESTA; `check_cuda_gcc_compat` is
+    # a SEPARATE check for whether nvcc accepts the chosen gcc, and it names
+    # `MOLBUILDER_GCC=13` when it does not.  Moved to 12.8 on 2026-09-14 on
+    # the reasoning that 12.4 "does not pair with the default gcc 14.3" --
+    # wrong twice over: the pairing check already covers that, and the move
+    # refused CUDA 12.4 + gcc 13, which the table allows.  Reverted the same
+    # day (user: the gcc pin is about SIESTA 5.4.2's kpoint_t.F90 miscompile
+    # under 14.4, and this floor should track what ELPA requires).
+    #
+    # The 12.4 itself came in with the original design commit (d8106e6b) and
+    # has NOT been checked against ELPA 2024.05.001's own documented minimum.
     cuda_min_version="12.4",
     activate_hook=_SIESTA_GPU_ACTIVATE_HOOK,
     deactivate_hook=_SIESTA_GPU_DEACTIVATE_HOOK,

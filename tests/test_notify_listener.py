@@ -306,7 +306,11 @@ def test_a_wrong_signature_answers_EXACTLY_like_an_unconfigured_server(
     client, _ = store
     bad = _post(client, sig="0" * 64)
 
+    # A SERVER WITH NO KEY FILE.  `HOME` alone left MOLBUILDER_CONFIG_DIR
+    # pointing at the configured fixture's own `cfg/`, so the "off" server was
+    # the same configured server (review D, 2026-09-14).
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "empty-cfg"))
     off = create_app(config={"rate_limit": {"enabled": False}}).test_client()
     absent = off.post(PATH, data="{}",
                       headers={"Content-Type": "application/json"})
@@ -408,36 +412,51 @@ def test_the_sender_never_states_who_it_is(store):
     assert not (reports / "someone-else.jsonl").exists()
 
 
-def test_every_key_is_tried_with_no_early_exit(store, tmp_path):
-    """Returning on the first match would make the time taken depend on a
-    key's position in the file. The loop is short and the cost is nothing;
-    the property is worth holding by construction."""
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/notify.py").read_text()
-    fn = src[src.index("def _resolve_user"):src.index("def _logger_for")]
-    assert "return" not in fn.split("found = None")[1].split("return found")[0], \
-        "_resolve_user gained an early return"
+# RETIRED 2026-09-14 (review D): `test_every_key_is_tried_with_no_early_exit`
+# sliced this blueprint's SOURCE between two markers and asserted the text held
+# no `return` -- a pin on how a loop is spelled, not on what it answers.  Its
+# own docstring called the property one to hold "by construction".
 
 
 # --------------------------------------------------------------------- #
 #  rule 4: the limiter must hear about a probe                           #
 # --------------------------------------------------------------------- #
 
-def test_a_failure_is_counted_by_the_limiter(store):
+def test_a_failure_is_counted_by_the_limiter(tmp_path, monkeypatch):
     """`auth.py`'s gate marks its own 401 as *not evidence* — an expired
     session is an ordinary visitor. **That reasoning does not carry here**:
-    nobody reaches this route by accident. 404 is still 4xx, so switching
-    from 401 costs nothing (`rate_limit.record_response` takes any
-    `400 <= status < 500`)."""
-    client, _ = store
-    with client.application.test_request_context():
-        from flask import g
-        _post(client, sig="0" * 64)
-        assert not getattr(g, "molbuilder_auth_challenge", False)
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/notify.py").read_text()
-    assert "molbuilder_auth_challenge" not in src.split('"""', 2)[2], \
-        "the notify route exempts its own failure from the limiter"
+    nobody reaches this route by accident. 404 is still 4xx, so it feeds the
+    404-storm signal like any other refusal.
+
+    THROUGH THE LIMITER, not through its bookkeeping: this read
+    `g.molbuilder_auth_challenge` inside a request context the TEST opened,
+    while the post ran in the client's own -- so the flag it read was never
+    the one the route could set -- and then grepped the blueprint's source
+    (review D, 2026-09-14).  Here the limiter is switched on with a
+    threshold of three, and the fourth bad probe is refused by IT."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    cfg = tmp_path / "cfg"
+    cfg.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+    (cfg / "notify_keys").write_text(
+        json.dumps({"route": ROUTE, "keys": {USER: KEY}}))
+    from molbuilder.web.blueprints import notify as N
+    N._loggers.clear()
+    N._recent.clear()
+    client = create_app(config={"rate_limit": {
+        "enabled": True, "threshold_404": 3, "window_404_s": 60,
+        # The test client is loopback, and loopback is allowlisted by
+        # default -- so with the shipped list the limiter counts nothing
+        # here and this test could not fail.
+        "allowlist": [],
+    }}).test_client()
+
+    codes = [_post(client, sig="0" * 64).status_code for _ in range(4)]
+
+    assert codes[:3] == [404, 404, 404], codes
+    assert codes[3] == 429, (
+        f"three refused probes did not reach the limiter: {codes}")
 
 
 @pytest.mark.parametrize("ts,why", [
@@ -628,32 +647,50 @@ def test_the_monitor_does_not_send_the_key_itself(store):
 #  the key file itself                                                   #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("body", ["", "not json", "[]", '{"u": 5}', "{}"])
+def _app_with_key_file(tmp_path, monkeypatch, text):
+    """A server whose key file holds exactly ``text``.
+
+    AT THE FILE'S ONE HOME.  These two tests handed `notify_keys_file` and
+    `notify_route` to `create_app` until 2026-09-14 -- keys it has not read
+    since 2026-08-31 (`web/app.py` registers the listener from
+    `read_notify_keys()` alone), so the 404 they asserted came from a route
+    that was never registered and would have been the same for a server that
+    accepted everything (review D).
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    cfg = tmp_path / "cfg"
+    cfg.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+    (cfg / "notify_keys").write_text(text)
+    from molbuilder.web.blueprints import notify as N
+    N._loggers.clear()
+    N._recent.clear()
+    return create_app(config={"rate_limit": {"enabled": False}}).test_client()
+
+
+@pytest.mark.parametrize("body", ["", "not json", "[]", '{"u": 5}', "{}",
+                                  json.dumps({"route": ROUTE})])
 def test_a_broken_key_file_accepts_nothing(tmp_path, monkeypatch, body):
     """A misconfiguration must remove a capability, never grant one
     (rule 1). An unreadable key file means an empty key set, and an empty
     set verifies nothing."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    keys = tmp_path / "notify_keys"
-    keys.write_text(body)
-    app = create_app(config={"rate_limit": {"enabled": False},
-                             "notify_keys_file": str(keys),
-                             "notify_route": ROUTE})
-    assert _post(app.test_client()).status_code == 404
+    client = _app_with_key_file(tmp_path, monkeypatch, body)
+    assert _post(client).status_code == 404
 
 
 def test_a_user_id_that_would_escape_the_log_directory_is_refused(
         tmp_path, monkeypatch):
     """The id becomes a FILENAME. A path separator would write outside the
-    log root, and *"the operator would not do that"* is not a mechanism."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    keys = tmp_path / "notify_keys"
-    keys.write_text(json.dumps({"../../escaped": KEY}))
-    app = create_app(config={"rate_limit": {"enabled": False},
-                             "notify_keys_file": str(keys),
-                             "notify_route": ROUTE})
-    assert _post(app.test_client()).status_code == 404
+    log root, and *"the operator would not do that"* is not a mechanism.
+
+    The file is written in the CURRENT shape (a route plus a keys object), so
+    the listener really is registered and the refusal is the id's."""
+    client = _app_with_key_file(tmp_path, monkeypatch, json.dumps(
+        {"route": ROUTE, "keys": {"../../escaped": KEY}}))
+    assert _post(client, key=KEY).status_code == 404
     assert not (tmp_path / "escaped.jsonl").exists()
+    assert not list(tmp_path.glob("**/escaped.jsonl"))
 
 
 def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(

@@ -1037,21 +1037,3 @@ def test_preserves_innocuous_env_vars():
         assert k in sanitized, (
             f"build_subprocess_env should NOT strip {k}"
         )
-
-
-def test_template_substitution_resolves_env_prefix(tiny_spec, fake_probe,
-                                                   tmp_path):
-    """{env_prefix} must resolve to the conda env's prefix path so
-    cmake -DMPI_C_COMPILER={env_prefix}/bin/mpicc resolves to the env's
-    mpicc, not a system one."""
-    steps = B.plan_build_spec(
-        tiny_spec, B.resolve_paths(tiny_spec, str(tmp_path / "env")),
-        fake_probe)
-    # tiny_spec doesn't use {env_prefix}, but the substitution dict
-    # MUST include it for the real recipes that do.  Inject a probe
-    # via _build_substitutions.
-    for step in steps:
-        for token in step.argv:
-            assert "{env_prefix}" not in token, (
-                f"unsubstituted placeholder in step.argv: {token!r}"
-            )

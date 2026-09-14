@@ -385,19 +385,10 @@ def test_no_declared_projects_root_leaves_the_default_and_says_so(fresh):
     assert "default" in projects_root_with_source().source
 
 
-def test_the_environments_readme_says_the_probe_runs_on_the_target(fresh):
-    """The directory's whole trap is that a probe run HERE would faithfully
-    measure this box and file it under the cluster's name."""
-    initconfig.init_config("conda activate", probe=False)
-    readme = (fresh / "environments" / "README").read_text(encoding="utf-8")
-
-    assert "THE PROBE RUNS ON THE TARGET, NOT HERE" in readme, (
-        "the one thing a person gets wrong needs the heading, not a mention")
-    assert "jobset probe --write --name" in readme, "the actual command"
-    assert "jobset machines" in readme, (
-        "the only step that answers 'did the copy land and parse'")
-    assert "../environment.json" in readme, (
-        "this machine's own record is NOT in here and must say so")
+# RETIRED 2026-09-14 (review D): `test_the_environments_readme_says_the_probe
+# _runs_on_the_target` grepped a README this program writes for a phrase.  The
+# README that earns a test is the one below, whose mock channels are handed to
+# the real reader.
 
 
 def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):

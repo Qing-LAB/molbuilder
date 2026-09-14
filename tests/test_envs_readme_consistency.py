@@ -1,27 +1,22 @@
 """What the bootstrap inlines in bash must equal the Python recipe.
 
-**The real subject is the duplication that cannot be removed.**
-`install-env.sh` needs the host env's package list FROM BASH, before the host
-env exists -- so it cannot dispatch into Python to read `recipes.py`, and it
-inlines `HOST_CONDA_PACKAGES` / `HOST_PIP_PACKAGES` as bash arrays.  Two
-sources of truth for one list, structurally, with no way to collapse them.
-Those two tests compare the arrays against the recipe exactly, and they are
-why this file exists: drift there installs a different host env than the one
-molbuilder believes it is running in.
+**The subject is a duplication that cannot be removed.** `install-env.sh` needs
+the host env's package list FROM BASH, before the host env exists -- so it
+cannot dispatch into Python to read `recipes.py`, and it inlines
+`HOST_CONDA_PACKAGES` / `HOST_PIP_PACKAGES` as bash arrays.  Two sources of
+truth for one list, structurally, with no way to collapse them.  The two tests
+here compare the arrays against the recipe exactly, and they are why this file
+exists: drift there installs a different host env than the one molbuilder
+believes it is running in.  `env-framework.md` § 8 names this check.
 
-Two weaker checks ride along: every `Recipe.name` appears as a heading in
-`docs/ops/installation.md`, and every `verify_expect_contains` substring is
-mentioned there -- so a recipe a reader cannot find, or a verify step whose
-expected output is an invention, shows up.
-
-**Corrected 2026-09-10.**  This docstring claimed a third check -- "every
-load-bearing token (e.g. ``siesta=5.4.2=mpi_openmpi_*``) referenced by a
-recipe appears in the README" -- and no test in the file implements it.
-Measured: editing that exact pin in installation.md to 5.4.1 leaves all four
-tests green.  The claim is the reason the file was kept in the 2026-09-10
-retirement pass, so it mattered that it was false; the pin is guarded by
-nothing, and `project_siesta_env_capabilities` / the gcc-14.4 note are where
-that version actually lives.
+**Two weaker ones were retired 2026-09-14** (review D): every `Recipe.name`
+appears as a heading in `docs/ops/installation.md`, and every
+`verify_expect_contains` substring is mentioned there.  Both grepped a document
+for a string.  A mention is not a result -- `doctor` running the verify is what
+proves the substring, and a recipe a reader cannot find is a documentation
+question, not a test.  (A third check this docstring claimed was measured false
+on 2026-09-10 and never existed: editing `siesta=5.4.2=mpi_openmpi_*` in
+installation.md left every test green.)
 """
 from __future__ import annotations
 
@@ -29,7 +24,6 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.envs.recipes import BUILTIN_RECIPES
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -40,40 +34,6 @@ README = REPO / "docs" / "ops" / "installation.md"
 @pytest.fixture(scope="module")
 def readme_text() -> str:
     return README.read_text(encoding="utf-8")
-
-
-def test_every_recipe_name_appears_in_readme(readme_text):
-    """Every Recipe.name must appear verbatim in the README so a
-    user reading the doc can find the recipe's install block."""
-    missing = []
-    for r in BUILTIN_RECIPES:
-        if r.name not in readme_text:
-            missing.append(r.name)
-    assert not missing, (
-        f"Recipe names not mentioned in installation.md: {missing}. "
-        f"Either add the recipe's section to the README or remove "
-        f"the recipe from BUILTIN_RECIPES."
-    )
-
-
-def test_verify_substrings_appear_in_readme(readme_text):
-    """For every recipe with a verify_expect_contains string, that
-    substring must appear in the README's verify block too -- pins
-    that the registry's verify isn't divorced from what a user
-    reading the doc would expect to see."""
-    for r in BUILTIN_RECIPES:
-        if not r.verify_expect_contains:
-            continue
-        # Host env's "host env OK" is our verify-line string, not
-        # a README claim; exempt.
-        if r.name == "molbuilder":
-            continue
-        assert r.verify_expect_contains in readme_text, (
-            f"Recipe `{r.name}` checks for substring "
-            f"`{r.verify_expect_contains}` in verify output but "
-            f"installation.md never mentions it.  Either fix the "
-            f"README's verify block or the recipe's expected substring."
-        )
 
 
 # --------------------------------------------------------------------- #

@@ -231,18 +231,13 @@ class TestTheModeIsCheckedOnTheWayIn:
         assert "2.1b" in msg, "and where the rule lives"
 
 
-class TestItIsAWarningAndNotARefusalEither:
-
-    def test_a_loose_file_is_still_read(self, isolated):
-        from molbuilder.runtime_config import machine_config_path
-        _work, home = isolated
-        home.parent.mkdir(parents=True, exist_ok=True)
-        f = home
-        f.write_text("{}")
-        f.chmod(0o644)
-        assert machine_config_path() == f.resolve(), (
-            "refusing would lock a person out over something they can fix in "
-            "one command -- which the message names")
+# RETIRED 2026-09-14 (review D): `test_a_loose_file_is_still_read` asked
+# `machine_config_path()`, which never opens the file and never looks at its
+# mode -- so a mode check that REFUSED would have left it green.  What it
+# meant to pin ("a loose file is warned about, not refused") is
+# `TestTheModeIsCheckedOnTheWayIn`: those tests read a file at 0644 and get a
+# message back, which is the warning-not-refusal in the only form that can
+# fail.
 
 
 class TestBothWarningsTravelTogether:

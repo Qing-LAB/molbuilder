@@ -175,9 +175,19 @@ def test_build_spec_cuda_required(recipe):
     assert recipe.build_spec.cuda_required is True
 
 
-def test_build_spec_cuda_min_version(recipe):
-    """Default toolchain (gcc 14) pairs with CUDA 12.4+."""
-    assert recipe.build_spec.cuda_min_version == "12.4"
+# NO TEST ON `cuda_min_version` HERE, and that is deliberate (2026-09-14).
+# Two stood here in one day and both asserted something false.  The first
+# pinned `"12.4"` with the reason *"default toolchain (gcc 14) pairs with CUDA
+# 12.4+"* -- which the pairing table contradicts.  The second asserted that the
+# floor must pair with the recipe's own gcc, which conflates two SEPARATE
+# preflight checks: the floor is what ELPA + SIESTA need, and
+# `check_cuda_gcc_compat` is whether nvcc accepts the chosen gcc (it names
+# `MOLBUILDER_GCC=13` when it does not).  Asserting the conflation refused
+# CUDA 12.4 + gcc 13, a combination the table allows.
+#
+# A test earns a place here when somebody checks ELPA 2024.05.001's own
+# documented CUDA minimum; until then the number is the original design
+# commit's and re-typing it proves nothing.
 
 
 def test_build_spec_components_in_order(recipe):
