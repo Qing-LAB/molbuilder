@@ -103,7 +103,7 @@ def test_the_manager_s_own_command_goes_through_untouched(tmp_path,
 
 
 def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, capsys):
     """mamba 1.x's `run` writes a shell stub containing ``exec -- "$@"``, and
     bash refuses `--`, so the command never starts.  2.x fixed that line;
     everything else about the two is identical.
@@ -135,6 +135,9 @@ def test_a_broken_manager_run_falls_back_and_the_step_still_runs(
     assert B.manager_run_unusable() is True, (
         "measured but not remembered -- every later step pays the same "
         "wasted launch")
+    # M4: the switch is REPORTED, to whoever asked -- this dispatch passed no
+    # sink, and until 2026-09-14 that meant silence (review A-1.3).
+    assert "unusable on this machine" in capsys.readouterr().err
 
     # and a step that fails for its OWN reasons is not retried: a pip install
     # that ran and failed must not run a second time.
@@ -198,6 +201,52 @@ def test_run_step_hands_that_environment_to_the_door(tmp_path, monkeypatch):
     assert "CFLAGS" not in seen["env"], (
         "a pip step still runs with the user's compiler flags visible")
     assert seen["env"]["TMPDIR"].startswith(prefix)
+
+
+def test_a_package_install_into_an_env_is_addressed_at_its_directory(
+        tmp_path, monkeypatch):
+    """`repair` installs into an env conda may not be able to find by name --
+    one created with `--prefix` outside envs_dirs (the contract's supported
+    case).  conda resolves `-n` against envs_dirs only (its own
+    `locate_prefix_by_name`), so the door re-addresses `install -n` the way it
+    re-addresses `run -n` (review B-L2, 2026-09-14).  Asserted through
+    `run_step`, the way `repair` asks."""
+    from molbuilder.envs import install as I
+    from molbuilder.envs.recipes import recipe_by_name
+
+    launched = []
+
+    def fake_stream(argv, **kw):
+        launched.append(tuple(argv))
+        return (0, "done")
+
+    monkeypatch.setattr(B, "run_streaming", fake_stream)
+    prefix = "/scratch/me/molbuilder-pySCF"
+    step = I.conda_step_for(["numpy"], recipe_by_name("molbuilder-pySCF"),
+                            "/opt/mgr/bin/conda", "molbuilder-pySCF")
+    done = I.run_step(step, prefix=prefix)
+    assert done.outcome is I.Outcome.OK
+    (argv,) = launched
+    assert argv[1] == "install" and "-n" not in argv, argv
+    assert argv[2:4] == ("--prefix", prefix), argv
+
+    # ...and so is the removal `--clean` dispatches.
+    launched.clear()
+    I.run_step(I.remove_step_for("molbuilder-pySCF", "/opt/mgr/bin/conda"),
+               prefix=prefix)
+    (argv,) = launched
+    assert argv[1:5] == ("env", "remove", "--prefix", prefix), argv
+
+    # ...while an inner command's own `-n` is not the address and is left
+    # alone: a scan for the first `-n` rewrote `mpirun -n 2` inside a
+    # prefix-addressed `run` (review A-1.2, measured 2026-09-14).
+    launched.clear()
+    B.dispatch_into_env(
+        B.conda_run_prefix_argv("/opt/mgr/bin/conda", prefix,
+                                "mpirun", "-n", "2", "siesta", "--version"),
+        prefix)
+    (argv,) = launched
+    assert argv[5:8] == ("mpirun", "-n", "2"), argv
 
 
 # --------------------------------------------------------------------------- #

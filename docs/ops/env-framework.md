@@ -138,8 +138,8 @@ the read costs ~1.2 s and `doctor` was paying it once per recipe.
 `envs_dirs` is listed by the registry *with* a perfectly good directory; probing
 only the search path calls it GHOST and then prints a removal command for a
 healthy env — M2 and M5 of [`installation.md`](?doc=ops/installation.md)
-§ *"One door for RUNNING"* in one defect. ⚠ That is what the probe does today;
-tracked as **H1** in
+§ *"One door for RUNNING"* in one defect. ✅ Closed 2026-09-12 (the probe measures the
+registry's own prefix); recorded as **H1** in
 [`plans/2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).
 
 The five are **exhaustive over all eight combinations** of three booleans,
@@ -510,8 +510,10 @@ corrects how this section first stated it:
 **Environment, not activation.** What a step legitimately needs beyond activation
 — `TMPDIR` and `PIP_CACHE_DIR` kept inside the prefix so `env remove` really
 cleans up, and `builds.build_subprocess_env()`'s stripping of host `CPATH` /
-`CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — goes through `run_step`'s `env`
-parameter. That is what that parameter is for.
+`CFLAGS` / `CUDA_HOME` / `OMPI_*` leakage — is computed by `builds.env_for_step`
+inside `run_step` (and by `builds._build_env` for a build phase). A step does not
+choose its environment; `run_step` had an `env` parameter no caller passed, and it
+is gone.
 
 **What this does NOT cover: a generated job script.** `runwrap.py` writes the
 activation line into a wrapper **verbatim from `script_generation.activation`**

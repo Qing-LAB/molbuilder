@@ -426,8 +426,10 @@ class BuildComponent:
     * ``{install}``   -> ``$CONDA_PREFIX/opt/<artifact_subdir>/<name>``
     * ``{dep_elpa}``  -> ``$CONDA_PREFIX/opt/<artifact_subdir>/elpa``
                          (and similarly for any other component name)
-    * ``{cuda_cc}``   -> e.g. ``"sm_80"`` (auto-detected at install time)
-    * ``{cuda_home}`` -> system CUDA root, e.g. ``/usr/local/cuda``
+    * ``{cuda_cc_sm}`` / ``{cuda_cc_numeric}`` -> ``"sm_80"`` / ``"80"``
+      (detected at install time, or ``MOLBUILDER_CUDA_CC``)
+    * ``{cuda_home}`` -> the env's own CUDA toolkit (``{env_prefix}``);
+      host CUDA is not consulted
     * ``{jobs}``      -> build concurrency (``min(nproc, 8)`` default)
 
     Attributes
@@ -1746,7 +1748,7 @@ _SIESTA_GPU = Recipe(
     # consulted by the build.
     conda_packages=(
         # Toolchain.  gcc_linux-64=<N> compiler family pinned via
-        # MOLBUILDER_GCC (default 14; use 13 for CUDA 12.0-12.7, 11
+        # MOLBUILDER_GCC (default 14.3; use 13 for CUDA 12.0-12.7, 11
         # for CUDA 11.x).
         "python=3.12",
         f"gcc_linux-64={_GCC_VERSION}",

@@ -63,6 +63,8 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from enum import Enum
+
+from . import hints as _hints
 from pathlib import Path
 from typing import List, Mapping, Optional, Sequence, Tuple
 
@@ -374,8 +376,9 @@ ABI_RULES: Tuple[AbiRule, ...] = (
         severity=Severity.ERROR,
         remedy=(
             "Rebuild the env with a sysroot at or below the host's glibc: "
-            "`MOLBUILDER_SYSROOT=2.17 molbuilder envs install <recipe> "
-            "--clean`.  2.17 is conda-forge's portability floor and is "
+            f"`MOLBUILDER_SYSROOT=2.17 "
+            f"{_hints.fix_cmd('install', '<recipe>', '--clean')}`.  "
+            "2.17 is conda-forge's portability floor and is "
             "what every prebuilt package in the env already targets."
         ),
     ),

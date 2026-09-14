@@ -113,7 +113,8 @@ grandparent, because the line it produces is written into the user's
 manager a cluster module puts on PATH is a shell wrapper whose own location says
 nothing about the installation, which is exactly what a derivation cannot see.
 
-> ⚠ **Two derivations remain** *(2026-09-12)*, both as a LAST resort behind a
+> ✅ **Closed 2026-09-13 (H10): both derivations are gone.** *(What stood here on
+> 2026-09-12:)* Two derivations remain, both as a LAST resort behind a
 > correct first tier that asks the manager: `install-env.sh`'s
 > `_resolve_env_python` (strategy 3) and `install._env_prefix` (tier 4). They
 > are reached only when the registry and `info --json` have both failed to
@@ -488,7 +489,7 @@ isn't available as a conda package. `bash scripts/install-env.sh install molbuil
   TranSiesta + ELPA + libxc + NetCDF all on. Its ELSI and the four ESL libraries
   are SIESTA's own submodules — compiled in place, not separate steps.
 
-The build is resumable (sentinels + a toolchain fingerprint). **Make sure you
+The build is resumable (a sentinel per finished phase, and a component whose installed binary still answers is skipped whole). **Make sure you
 have enough free disk before starting**, and note that molbuilder does not
 state a figure for it — the amount is not stable enough to be worth one. The
 package set a solve returns depends on when you run it, and the peak is during

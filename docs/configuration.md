@@ -192,8 +192,8 @@ a real exposure, not a tidiness question.
 | `molbuilder.json` (either location) | **`0600`** | owner reads and writes; nobody else has any business with it |
 | the per-user config directory | **`0700`** | a listable directory names the file even when the file itself is shut |
 
-**Writing it this way was already done; checking it was not.** `auth_setup`
-writes it through `mkstemp`, which creates the temp `0600` *before it has a
+**Writing it this way was already done; checking it was not.** `write_config_scope`
+writes it through `write_bytes(mode=0600)`, whose temp is `0600` *before it has a
 name* (§ 2.3) — the mode is right before there is anything to read, rather than
 being fixed afterwards by a `chmod` that races the write. (This paragraph named
 `os.open` + `fchmod` until 2026-09-13, an implementation that has since been

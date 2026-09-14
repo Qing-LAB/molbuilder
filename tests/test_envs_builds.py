@@ -381,23 +381,6 @@ def test_detect_cuda_home_prefers_env_over_system(tmp_path, monkeypatch):
     )
 
 
-def test_detect_cuda_home_falls_back_to_system_when_env_empty(
-        tmp_path, monkeypatch):
-    """When the env doesn't have nvcc (pre-conda-create or partial
-    install), the detector falls back to $CUDA_HOME / /usr/local/cuda."""
-    env = tmp_path / "empty-env"
-    env.mkdir()
-    # Set $CUDA_HOME to a path with nvcc
-    fallback = tmp_path / "fallback-cuda"
-    (fallback / "bin").mkdir(parents=True)
-    (fallback / "bin" / "nvcc").write_text("#!/bin/sh\n")
-    (fallback / "bin" / "nvcc").chmod(0o755)
-    monkeypatch.setenv("CUDA_HOME", str(fallback))
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # remove any host nvcc
-    result = B._detect_cuda_home(str(env), {})
-    assert result == str(fallback)
-
-
 def test_no_cuda_no_gcc_is_silent(tmp_path):
     """When CUDA or gcc is undetected, this check returns None.
     The presence-required gate is handled elsewhere (preflight)."""

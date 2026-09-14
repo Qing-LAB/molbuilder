@@ -23,8 +23,9 @@ phases per recipe:
      until 2026-09-13, which is the direction the dependency ran
      before the migration.
 
-The installer never deletes an existing env; if the env already
-exists, phases 2-4 still run (so installing twice doesn't break --
+The installer deletes an env only when asked (``--clean``, a REMOVE step
+at the front of the plan); otherwise, if the env already exists, phases
+2-4 still run (so installing twice doesn't break --
 ``pip install`` and the extra steps are idempotent in practice, with
 one DELIBERATE exception: a ``PipPackage`` marked ``force`` reinstalls
 every time, because its version cannot prove it is the declared build
@@ -51,6 +52,7 @@ from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities, reset_capabilities
 from . import builds as _builds
+from . import hints as _hints
 from .builds import conda_run_argv
 
 
@@ -292,7 +294,8 @@ def run_step(
     # `run_step`'s `env` parameter, which no caller ever passed -- so no pip
     # step was ever sanitised -- and the temp dirs were set inside a shell
     # string that only existed on the workaround path.
-    step_env = _builds.env_for_step(prefix)
+    step_env = _builds.env_for_step(
+        prefix, make_dirs=step.role is not StepRole.VERIFY)
 
     for n, argv in enumerate(attempts):
         if n and sink is not None:
@@ -520,8 +523,7 @@ def extra_steps_for(recipe: Recipe, conda: str,
             for extra in recipe.extra_steps]
 
 
-def remove_step_for(env_name: str, conda: str, *,
-                    prefix: Optional[str] = None) -> InstallStep:
+def remove_step_for(env_name: str, conda: str) -> InstallStep:
     """Removing an env is a STEP, like everything else the installer does.
 
     `env-framework.md` § 5.4 records it as a defect rather than an exception:
@@ -531,13 +533,17 @@ def remove_step_for(env_name: str, conda: str, *,
     promoted a private dispatch to the door `installation.md` calls *"the one
     door"* for wiping any env.
 
-    Addressed by name, with the directory as the FALLBACK when the caller
-    knows one: an ORPHAN -- a directory the registry does not list -- is
-    exactly the env ``--clean`` is recommended for, and ``env remove -n``
-    finds nothing to remove there (K-L9, 2026-09-13).  ``prefix`` is the
-    probe's reading (`EnvState.prefix`); the pure plan has none and stays by
-    name.  The caller has already refused the case where the name is the env
-    we are running from (`installation.md` M5).
+    Addressed by name in the PLAN; the door re-addresses it at the
+    directory the probe read (`builds.addressed_by_prefix`, M2) when the
+    runner hands one over.  Measured on conda 26.7.1 (2026-09-14): ``env
+    remove -n`` exits 1 for an env that is not there, and ``--prefix`` is
+    refused for a directory without ``conda-meta/history`` -- so the runner
+    SKIPS this step when nothing is on disk, and the surface refuses
+    ``--clean`` outright for a directory the manager will not own (ORPHAN,
+    BROKEN), naming ``rm -rf``.  A ``--prefix`` FALLBACK stood here for one
+    day (K-L9) on the premise that an orphan could be removed that way; it
+    cannot.  The caller has already refused the case where the name is the
+    env we are running from (`installation.md` M5).
 
     **Its own role, and that is the fix** (2026-09-13).  It carried
     ``StepRole.CREATE`` -- the one role the runner exempts from needing a
@@ -553,8 +559,6 @@ def remove_step_for(env_name: str, conda: str, *,
         label=f"remove env {env_name}",
         role=StepRole.REMOVE,
         argv=(conda, "env", "remove", "-n", env_name, "-y"),
-        fallbacks=(((conda, "env", "remove", "--prefix", prefix, "-y"),)
-                   if prefix else ()),
     )
 
 
@@ -619,7 +623,7 @@ def plan_install(
     if caps.conda_binary is None:
         raise RuntimeError(
             "conda CLI not found; install conda before invoking "
-            "`molbuilder envs install`."
+            "`" + _hints.fix_cmd("install", "<recipe>") + "`."
         )
     effective = effective_name(recipe, caps)
     steps = _plan(recipe, effective, caps.conda_binary)
@@ -827,8 +831,10 @@ class EnvState:
         elif s is EnvPresence.ORPHAN:
             lines.append("  → ORPHAN: directory exists but conda's registry doesn't")
             lines.append("    track it.  conda create will refuse with `prefix already")
-            lines.append("    exists`.  RECOMMENDED: re-run with --clean to wipe the")
-            lines.append("    directory and start fresh.")
+            lines.append("    exists`, and the manager will not remove a directory it")
+            lines.append("    does not recognise either (measured: `env remove` needs")
+            lines.append("    conda-meta/history).  Remove it yourself, then re-run:")
+            lines.append(f"      rm -rf {self.prefix}")
         elif s is EnvPresence.GHOST:
             lines.append("  → GHOST: the registry lists this env but the directory")
             lines.append("    it names is gone.  Fix manually with:")
@@ -844,7 +850,8 @@ class EnvState:
 
     def remove_cmd(self) -> str:
         """The manual removal line for this env.  See :func:`remove_env_cmd`."""
-        return remove_env_cmd(self.manager, self.name)
+        return remove_env_cmd(self.manager, self.name,
+                              self.prefix if self.dir_exists else None)
 
     def is_the_running_env(self) -> bool:
         """True when this env is the one the current interpreter runs from.
@@ -856,7 +863,8 @@ class EnvState:
         return runs_from_prefix(self.prefix)
 
 
-def remove_env_cmd(manager: Optional[str], env_name: str) -> str:
+def remove_env_cmd(manager: Optional[str], env_name: str,
+                   prefix: Optional[str] = None) -> str:
     """The ONE spelling of "remove this env by hand".
 
     `installation.md` M3: a remedy naming a literal ``conda`` is a command the
@@ -868,10 +876,11 @@ def remove_env_cmd(manager: Optional[str], env_name: str) -> str:
     together: the places that must not offer ``--clean`` are exactly the places
     that have to print this instead.
     """
+    address = f"--prefix {prefix}" if prefix else f"-n {env_name}"
     if not manager:
-        return (f"<your env manager> env remove -n {env_name} -y"
+        return (f"<your env manager> env remove {address} -y"
                 f"   (no manager detected)")
-    return f"{manager} env remove -n {env_name} -y"
+    return f"{manager} env remove {address} -y"
 
 
 def runs_from_prefix(prefix: Optional[str]) -> bool:
@@ -1134,6 +1143,7 @@ def _run_steps(
     executed: List[InstallStep],
     force_resume: bool = False,
     env_state: Optional[EnvState] = None,
+    removal_state: Optional[EnvState] = None,
 ) -> bool:
     """Run one phase's steps through the one door.
 
@@ -1160,9 +1170,21 @@ def _run_steps(
                     return False
                 continue
         elif step.role is StepRole.REMOVE:
-            # Unconditional, and addressed by name: the point is that the env
-            # exists, so there is nothing to decide and no prefix to require.
-            pass
+            # ONE decision: is there a directory to remove?  The manager
+            # refuses `env remove` for an env that is not there (exit 1,
+            # measured on conda 26.7.1), so `--clean` on a fresh machine --
+            # or the re-run after a `--clean` whose create then failed --
+            # died at step 1 (review B-L1).  The reading is the surface's
+            # (handed over), or taken here.
+            reading = removal_state or probe_env_state(
+                dispatcher.env_name, dispatcher.conda_binary)
+            if not reading.dir_exists:
+                decided = _undispatched(
+                    step, Outcome.SKIPPED,
+                    "nothing to remove: no directory on disk")
+                executed.append(decided)
+                _report(where, decided)
+                continue
         elif dispatcher.ensure_prefix() is None:
             # FAIL LOUD.  Without a prefix the step cannot be addressed at
             # the env at all (M2), and a `-n` dispatch would then be resolved
@@ -1184,9 +1206,10 @@ def _run_steps(
         # optionality, which is where branches kept going missing.
         done = run_step(
             step,
-            # A removal gets no prefix: it would only be used to make temp
-            # directories inside the env about to be deleted.
-            prefix=None if step.role is StepRole.REMOVE else dispatcher.prefix,
+            # A removal is addressed at the directory the probe read (M2);
+            # every other step at the dispatcher's.
+            prefix=(reading.prefix if step.role is StepRole.REMOVE
+                    else dispatcher.prefix),
             sink=sys.stderr)
         executed.append(done)
         _report(where, done)
@@ -1250,23 +1273,22 @@ def run_install(
     if caps.conda_binary is None:
         raise RuntimeError(
             "conda CLI not found; install conda before invoking "
-            "`molbuilder envs install`."
+            "`" + _hints.fix_cmd("install", "<recipe>") + "`."
         )
     effective = effective_name(recipe, caps)
-    planned = _plan(recipe, effective, caps.conda_binary)
+    _same_name, planned = plan_install(recipe, caps=caps, clean=clean)
+    assert _same_name == effective
+    removal_state: Optional[EnvState] = None
     if clean:
-        # The wipe is the FIRST step, in the plan, not a dispatch the surface
-        # does on the side (§ 5.4).  And a state read BEFORE it is then a
-        # reading of an env this run is about to delete: `PRESENT` would skip
-        # the `conda create` that has to follow, which is the 2026-06-15
-        # regression.  So the create decision is made fresh, after the removal.
-        planned.insert(0, remove_step_for(
-            effective, caps.conda_binary,
-            # the probe's directory, for an env the registry does not list
-            prefix=(env_state.prefix
-                    if env_state is not None and env_state.dir_exists
-                    and not env_state.listed_in_registry else None)))
-        env_state = None
+        # The wipe is the FIRST step, in the plan (`plan_install` puts it
+        # there; this function inserted its own until 2026-09-14, so the plan
+        # `--dry-run` printed and the plan that ran could differ -- review
+        # A-3.1).  A state read BEFORE it is a reading of an env this run is
+        # about to delete: `PRESENT` would skip the `conda create` that has
+        # to follow (the 2026-06-15 regression), so the create decision is
+        # made fresh after the removal, and the pre-removal reading goes to
+        # the removal alone.
+        removal_state, env_state = env_state, None
 
     sys.stderr.write(
         f"[install] recipe `{recipe.name}` -> env `{effective}`\n"
@@ -1312,7 +1334,8 @@ def run_install(
     pre_verify = [s for s in planned if s.role is not StepRole.VERIFY]
 
     ok = _run_steps(pre_verify, dispatcher, tag="install", executed=executed,
-                    force_resume=force_resume, env_state=env_state)
+                    force_resume=force_resume, env_state=env_state,
+                    removal_state=removal_state)
 
     # Build-spec phase: only if the recipe declares one AND nothing
     # failed before it.  `builds.run_build_spec` keeps its own executor

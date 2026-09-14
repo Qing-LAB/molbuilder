@@ -38,7 +38,10 @@ def _audit(*issues):
 
 
 def _issue(kind, spec="somepkg=1.0"):
-    return PackageAuditIssue(kind=kind, spec=spec, found="(not found)")
+    # `optional` is a field the audit sets; a hand-built issue sets it the
+    # way the audit does.
+    return PackageAuditIssue(kind=kind, spec=spec, found="(not found)",
+                             optional=kind.endswith("-optional"))
 
 
 def _render(capsys, rep):

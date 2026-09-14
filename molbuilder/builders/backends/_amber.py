@@ -123,9 +123,12 @@ quit
             ) from exc
         # tleap returns 0 even on some errors; check the actual output instead.
         if not os.path.isfile(pdb_path):
+            # One transcript: through the env door stdout and stderr come
+            # back as one stream, so a separate "stderr" heading would always
+            # be empty and read as "tleap said nothing there".
             raise RuntimeError(
                 "tleap ran but produced no PDB.  Output was:\n"
-                f"{result.stdout}\n--- stderr ---\n{result.stderr}"
+                f"{result.stdout}{result.stderr}"
             )
 
         with open(pdb_path) as fh:

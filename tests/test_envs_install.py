@@ -985,6 +985,12 @@ def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
     verbs = [argv[1] for argv, _p in seen]
     assert "env" in verbs, f"the removal was never dispatched: {seen}"
     assert verbs.index("env") < verbs.index("create"), seen
+    # ...and HANDED the directory the registry gave, for the door to address
+    # it by (M2; review B-L2, 2026-09-14) -- the door is faked here, so what
+    # it was handed is what can be seen; the re-addressing itself is asserted
+    # through the real door in test_envs_enters_the_env_through_the_manager.
+    _removal, handed = next((a, p) for a, p in seen if a[1] == "env")
+    assert handed == old, seen
     entered = [(argv, p) for argv, p in seen if argv[1] == "run"]
     assert entered, seen
     assert all(p == new for _argv, p in entered), (
@@ -992,48 +998,39 @@ def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
         + "\n".join(f"  {p}: {' '.join(a)}" for a, p in entered))
 
 
-def test_the_clean_run_removes_an_ORPHAN_by_its_directory(monkeypatch):
-    """An ORPHAN -- a directory conda's registry does not list -- is the state
-    `describe()` recommends `--clean` for, and `env remove -n` finds nothing
-    to remove there.  The removal step carries the probe's directory as its
-    fallback: the plan stays by name, and the surface's reading is what
-    reaches `--prefix` (K-L9).  Asserted through `run_install` with the
-    reading handed over the way `envs install` hands it."""
+def test_the_clean_run_on_a_fresh_machine_skips_the_removal_and_creates(
+        monkeypatch):
+    """`env remove -n` exits 1 for an env that is not there (measured on
+    conda 26.7.1, 2026-09-14) -- so `--clean` on a fresh machine, or the
+    re-run after a `--clean` whose create then failed, died at step 1.  The
+    removal is SKIPPED when nothing is on disk, and the create runs."""
     from molbuilder import diagnostics as _diag
-    orphan, new = "/prefix/orphan-pySCF", "/prefix/new-pySCF"
+    new = "/prefix/new-pySCF"
     _bind(conda_envs={}, conda_binary="/fake/conda")
     recipe = recipe_by_name("molbuilder-pySCF")
     seen: list = []
 
     def _door(argv, prefix, **kw):
-        argv = [str(a) for a in argv]
-        seen.append((argv, prefix))
-        if argv[1:3] == ["env", "remove"] and "-n" in argv:
-            # what conda says about a name its registry does not hold
-            return (1, "EnvironmentLocationNotFound: Not a conda environment")
+        seen.append(([str(a) for a in argv], prefix))
         return (0, _VERIFY_OUTPUT)
 
     monkeypatch.setattr(install._builds, "dispatch_into_env", _door)
-    reading = install.EnvState(name="molbuilder-pySCF", listed_in_registry=False,
-                               dir_exists=True, has_conda_meta=True,
-                               prefix=orphan, manager="/fake/conda")
-    monkeypatch.setattr(install, "probe_env_state",
-                        lambda name, binary: install.EnvState(
-                            name=name, listed_in_registry=False,
-                            dir_exists=False, has_conda_meta=False,
-                            prefix=None, manager=binary))
-    monkeypatch.setattr(_diag, "detect", lambda: Capabilities(
-        runtime_config={}, conda_binary="/fake/conda",
-        conda_envs={"molbuilder-pySCF": new}))
+    fresh = install.EnvState(name="molbuilder-pySCF", listed_in_registry=False,
+                             dir_exists=False, has_conda_meta=False,
+                             prefix=None, manager="/fake/conda")
+    monkeypatch.setattr(install, "probe_env_state", lambda name, binary: fresh)
+    # After the create the manager knows the env; with a fake manager the
+    # resolver is told directly.
+    monkeypatch.setattr(install, "_env_prefix", lambda name, binary: new)
 
-    result = install.run_install(recipe, clean=True, env_state=reading)
+    result = install.run_install(recipe, clean=True, env_state=fresh)
 
     removal = result.steps[0]
     assert removal.label == "remove env molbuilder-pySCF"
-    assert removal.outcome is install.Outcome.RECOVERED, removal.outcome
-    removals = [argv for argv, _p in seen if argv[1:3] == ["env", "remove"]]
-    assert len(removals) == 2 and removals[0][3] == "-n", removals
-    assert removals[1][3:5] == ["--prefix", orphan], removals
+    assert removal.outcome is install.Outcome.SKIPPED, removal.outcome
+    assert not any(argv[1] == "env" for argv, _p in seen), (
+        "a removal was dispatched with nothing on disk to remove")
+    assert any(argv[1] == "create" for argv, _p in seen), "the create did not run"
     assert result.succeeded, [(s.label, s.outcome) for s in result.steps]
 
 
@@ -1155,7 +1152,7 @@ def test_clean_REFUSES_to_remove_the_env_molbuilder_IS_RUNNING_FROM(
         f"(exit {result.exit_code})\n{result.output}")
     assert "RUNNING FROM" in result.output, result.output
     # M3: the manual route names the DETECTED manager, not a literal `conda`.
-    assert "/fake/conda env remove -n molbuilder -y" in result.output, \
+    assert f"/fake/conda env remove --prefix {_sys.prefix} -y" in result.output, \
         result.output
 
 

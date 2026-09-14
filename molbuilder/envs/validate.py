@@ -584,12 +584,12 @@ _RECIPE_PROBES = {
 
 
 def validate_recipe(recipe_name: str, env_prefix: str,
-                    *, quiet: bool = False) -> ValidationReport:
+) -> ValidationReport:
     """Run the validator suite for ``recipe_name`` against an installed
     env at ``env_prefix``.  Returns a :class:`ValidationReport` even on
     partial failure so the CLI can render every probe's result.
 
-    Unless ``quiet=True``, prints per-probe start/done markers to
+    Prints per-probe start/done markers to
     ``sys.stderr`` so the user sees forward progress while the longer
     probes (ctest, make check) run.  The slow probes additionally
     stream their subprocess output live -- see
@@ -613,20 +613,17 @@ def validate_recipe(recipe_name: str, env_prefix: str,
     total = len(probes)
     results: List[ProbeResult] = []
     for i, (slug, probe, hint) in enumerate(probes, start=1):
-        if not quiet:
-            sys.stderr.write(f"[{i}/{total}] {slug}: starting ({hint})\n")
-            sys.stderr.flush()
+        sys.stderr.write(f"[{i}/{total}] {slug}: starting ({hint})\n")
+        sys.stderr.flush()
         start = time.monotonic()
         result = probe(env_prefix, recipe)
         elapsed = time.monotonic() - start
         results.append(result)
-        if not quiet:
-            tag = result.tag
-            sys.stderr.write(
-                f"[{i}/{total}] {slug}: {tag} ({elapsed:.1f}s) "
-                f"-- {result.detail}\n"
-            )
-            sys.stderr.flush()
+        sys.stderr.write(
+            f"[{i}/{total}] {slug}: {result.tag} ({elapsed:.1f}s) "
+            f"-- {result.detail}\n"
+        )
+        sys.stderr.flush()
     return ValidationReport(
         recipe_name=recipe_name,
         env_prefix=env_prefix,

@@ -69,6 +69,11 @@ class PackageAuditIssue:
     #: are still repaired from their spec string.
     name: str = ""
     reason: Optional[str] = None   # why the source is unusual, if it is
+    #: The recipe calls the env usable without this package.  A FIELD, so a
+    #: reader asks it; three surfaces parsed the ``-optional`` suffix off
+    #: ``kind`` until 2026-09-14 (review B-R1).  The suffix stays on ``kind``
+    #: for the eye.
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -361,7 +366,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         suffix = "-optional" if pkg.optional else ""
         if name not in installed_conda:
             issues.append(PackageAuditIssue(
-                kind=f"conda-missing{suffix}", name=name, spec=spec,
+                kind=f"conda-missing{suffix}", name=name, spec=spec, optional=pkg.optional,
                 found="(not found)", reason=pkg.reason,
             ))
             continue
@@ -381,7 +386,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                 pat = pat + "*"
             if not fnmatch.fnmatchcase(installed_version, pat):
                 issues.append(PackageAuditIssue(
-                    kind=f"conda-version{suffix}", name=name, spec=spec,
+                    kind=f"conda-version{suffix}", name=name, spec=spec, optional=pkg.optional,
                     found=f"{name}={installed_version}",
                     reason=pkg.reason,
                 ))
@@ -389,7 +394,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         if build_pat and build_pat != "*":
             if not fnmatch.fnmatchcase(installed_build, build_pat):
                 issues.append(PackageAuditIssue(
-                    kind=f"conda-build{suffix}", name=name, spec=spec,
+                    kind=f"conda-build{suffix}", name=name, spec=spec, optional=pkg.optional,
                     found=f"{name}={installed_version}={installed_build}",
                     reason=pkg.reason,
                 ))
@@ -406,6 +411,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
             issues.append(PackageAuditIssue(
                 kind=kind, name=pkg.name, spec=pkg.spec(),
                 found="(not found)", reason=pkg.reason,
+                optional=pkg.optional,
             ))
             continue
         if pkg.source is not None:
@@ -423,6 +429,7 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                           else "pip-source"),
                     name=pkg.name, spec=pkg.spec(),
                     found=(got or "(default index)"), reason=pkg.reason,
+                    optional=bool(pkg.fallback_to_index or pkg.optional),
                 ))
     return PackageAudit(
         checked=True,

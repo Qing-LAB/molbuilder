@@ -48,6 +48,7 @@ from .abi import (
     Severity,
     check_toolchain_executes,
 )
+from . import hints as _hints
 from .recipes import BuildComponent, BuildSpec
 
 
@@ -449,8 +450,24 @@ def _is_run_argv(argv: Sequence[str]) -> bool:
     return len(argv) >= 4 and str(argv[1]) == "run"
 
 
+def _is_addressable(argv: Sequence[str]) -> bool:
+    """Does this argv name an EXISTING env by ``-n`` -- ``run``, ``install``,
+    ``env remove``?  Those are re-addressed at the prefix (M2).  ``create``
+    is not: there is no directory yet, and the name is what the manager
+    will file the new env under."""
+    verbs = [str(a) for a in argv[1:3]]
+    return (len(argv) >= 4
+            and (verbs[0] in ("run", "install") or verbs == ["env", "remove"]))
+
+
 def addressed_by_prefix(argv: Sequence[str], prefix: str) -> Tuple[str, ...]:
-    """Re-address a ``<mgr> run -n NAME`` argv at the PREFIX we resolved.
+    """Re-address a ``<mgr> ... -n NAME`` argv at the PREFIX we resolved.
+
+    ``run``, ``install`` and ``env remove`` alike (see `_is_addressable`):
+    until 2026-09-14 only ``run`` was re-addressed, so `repair`'s ``conda
+    install -n`` and ``--clean``'s ``env remove -n`` failed on a healthy env
+    created with ``--prefix`` outside ``envs_dirs`` -- the case the contract
+    names as supported (review B-L2).
 
     `installation.md` M2, and the reason is not taste: conda resolves ``-n``
     against ``envs_dirs`` ONLY (`conda/base/context.py`'s
@@ -460,13 +477,18 @@ def addressed_by_prefix(argv: Sequence[str], prefix: str) -> Tuple[str, ...]:
     from the manager's own registry, so this narrows the address to the thing
     that always works; it does not invent a path.
     """
-    out = list(argv)
-    for i, tok in enumerate(out):
-        if str(tok) == "-n" and i + 1 < len(out):
-            out[i] = "--prefix"
-            out[i + 1] = prefix
-            break
-    return tuple(str(a) for a in out)
+    out = [str(a) for a in argv]
+    # POSITIONAL, never a scan: the address sits right after the verb
+    # (``run``/``install``: index 2; ``env remove``: index 3), and an argv
+    # already addressed by ``--prefix`` is left alone.  A scan for the first
+    # ``-n`` walked into the INNER command of a prefix-addressed `run` and
+    # rewrote ``mpirun -n 2`` to ``mpirun --prefix ...`` (review A-1.2,
+    # measured 2026-09-14).
+    at = 3 if out[1:3] == ["env", "remove"] else 2
+    if len(out) > at + 1 and out[at] == "-n":
+        out[at] = "--prefix"
+        out[at + 1] = prefix
+    return tuple(out)
 
 
 def _inner_command(argv: Sequence[str]) -> Tuple[str, ...]:
@@ -526,8 +548,8 @@ def activation_wrapper(argv: Sequence[str], env_prefix: str) -> Tuple[str, ...]:
 
 
 def env_for_step(env_prefix: Optional[str],
-                 base_env: Optional[Mapping[str, str]] = None
-                 ) -> Dict[str, str]:
+                 base_env: Optional[Mapping[str, str]] = None,
+                 *, make_dirs: bool = True) -> Dict[str, str]:
     """The environment a step runs in -- clean slate plus the env's own temp.
 
     Two things, and both used to live inside a shell string that only the
@@ -546,7 +568,10 @@ def env_for_step(env_prefix: Optional[str],
     if env_prefix:
         tmp = f"{env_prefix}/var/tmp"
         pip_cache = f"{env_prefix}/var/cache/pip"
-        for d in (tmp, pip_cache):
+        # ``make_dirs=False`` for a step that only READS the env -- `doctor`'s
+        # verify went through here and created ``var/tmp`` in every env it
+        # audited (review B-Y2, 2026-09-14).
+        for d in ((tmp, pip_cache) if make_dirs else ()):
             try:
                 os.makedirs(d, exist_ok=True)
             except OSError:
@@ -579,26 +604,32 @@ def dispatch_into_env(argv: Sequence[str],
     PACKAGE came from an alternative source, which is a different fact.
     """
     argv = tuple(str(a) for a in argv)
+    if env_prefix is not None and _is_addressable(argv):
+        # M2: the directory the manager gave us, not the name it may not
+        # find (conda resolves ``-n`` against ``envs_dirs`` only).
+        argv = addressed_by_prefix(argv, env_prefix)
     if env_prefix is None or not _is_run_argv(argv):
-        # Nothing to enter: `conda create`, `conda install -n ...`, or a bare
-        # command.  The manager is the whole command here.
+        # Nothing to enter: `conda create`, `conda install --prefix ...`,
+        # `env remove`, or a bare command.  The manager is the whole command.
         return run_streaming(argv, cwd=cwd, env=env, sink=sink,
                              log_file=log_file, timeout=timeout)
 
     if not _MANAGER_RUN_UNUSABLE["seen"]:
-        rc, out = run_streaming(addressed_by_prefix(argv, env_prefix),
-                                cwd=cwd, env=env, sink=sink,
+        rc, out = run_streaming(argv, cwd=cwd, env=env, sink=sink,
                                 log_file=log_file, timeout=timeout)
         if MANAGER_RUN_STUB_SIGNATURE not in (out or ""):
             return rc, out
         _MANAGER_RUN_UNUSABLE["seen"] = True
-        if sink is not None:
-            sink.write(
-                f"    note: this manager's `run` is unusable on this machine "
-                f"({MANAGER_RUN_STUB_SIGNATURE!r}; mamba 1.x).  Entering the "
-                f"env through its activation hooks instead, for the rest of "
-                f"this run.\n")
-            sink.flush()
+        # SAID ONCE, TO STDERR, whoever asked: M4 promises the switch is
+        # reported, and a quiet dispatch (`doctor`'s verify, the presence
+        # gate, a tool call) passed no sink and so never said it (review
+        # A-1.3, 2026-09-14).  Once per process, because the flag is.
+        sys.stderr.write(
+            f"    note: this manager's `run` is unusable on this machine "
+            f"({MANAGER_RUN_STUB_SIGNATURE!r}; mamba 1.x).  Entering the "
+            f"env through its activation hooks instead, for the rest of "
+            f"this run.\n")
+        sys.stderr.flush()
 
     return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,
                          env=env, sink=sink, log_file=log_file,
@@ -677,15 +708,11 @@ def _detect_cuda_home(env_prefix: Optional[str],
     """
     if env_prefix and Path(env_prefix, "bin", "nvcc").exists():
         return env_prefix
-    cuda_home = env_overrides.get("CUDA_HOME") or os.environ.get("CUDA_HOME")
-    if cuda_home and Path(cuda_home, "bin", "nvcc").exists():
-        return cuda_home
-    for candidate in ("/usr/local/cuda", "/opt/cuda"):
-        if Path(candidate, "bin", "nvcc").exists():
-            return candidate
-    nvcc = shutil.which("nvcc")
-    if nvcc:
-        return str(Path(nvcc).resolve().parent.parent)
+    # NOTHING FROM THE HOST.  The build runs under `build_subprocess_env`,
+    # which strips $CUDA_HOME and PATH's nvcc, and the recipe says host CUDA
+    # is not consulted -- so a host toolkit reported here was one the build
+    # would never see, and it hid the "env has no nvcc" error behind a
+    # gcc-pairing message about the wrong toolkit (review B-L8).
     return None
 
 
@@ -824,8 +851,6 @@ def probe_toolchain(env_prefix: str) -> ToolchainProbe:
     ----------
     env_prefix
         Absolute path to the conda env (``$CONDA_PREFIX``).
-    jobs
-        Explicit build concurrency.  ``None`` uses :func:`_default_jobs`.
     """
     cuda_home = _detect_cuda_home(env_prefix, {})
     cuda_version = _detect_cuda_version(cuda_home) if cuda_home else None
@@ -1066,17 +1091,22 @@ def check_cuda_gcc_compat(probe: ToolchainProbe) -> Optional[str]:
         if cuda >= thr:
             if gcc <= max_gcc:
                 return None
-            recommended = max_gcc
+            # The CUDA that pairs with the gcc the env HAS, from the same
+            # table -- this said "12.4+" with a table whose 12.4 row still
+            # needed gcc 13 (review B-L7).
+            newer = [t for t, mg in _GCC_FOR_CUDA if mg >= gcc]
             return (
                 f"CUDA {cuda_str} pairs with gcc <= {max_gcc}, but the env "
                 f"has gcc {gcc}.  Re-install with "
-                f"`MOLBUILDER_GCC={recommended} molbuilder envs install ...` "
-                f"to pin the recipe's gcc_linux-64 packages to "
-                f"version {recommended}, or upgrade CUDA to 12.4+."
+                f"`MOLBUILDER_GCC={max_gcc} "
+                f"{_hints.fix_cmd('install', '<recipe>', '--clean')}` to pin "
+                f"the recipe's gcc_linux-64 packages to version {max_gcc}"
+                + (f", or install CUDA {min(newer)}+." if newer else ".")
             )
     return (
         f"CUDA {cuda_str} is older than 11.0 and is not supported by this "
-        f"recipe.  Install CUDA 12.4+ for gcc 14 (default), or use "
+        f"recipe.  Install CUDA {_GCC_FOR_CUDA[0][0]}+ (the recipe's "
+        f"default pairs it with gcc {_GCC_FOR_CUDA[0][1]}), or use "
         f"`MOLBUILDER_GCC=11` with CUDA 11.x."
     )
 
@@ -1172,6 +1202,7 @@ def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
 def preflight(spec: BuildSpec, probe: ToolchainProbe,
               env_prefix: Optional[str] = None,
               *,
+              envs_dirs: Sequence[str] = (),
               check_network: bool = True,
               ) -> PreflightReport:
     """Run every preflight check and return a structured report.
@@ -1248,9 +1279,9 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
             if env_prefix and Path(env_prefix).exists() and (Path(env_prefix) / "conda-meta").exists():
                 errors.append(
                     f"conda env at {env_prefix} has no nvcc.  The recipe "
-                    f"declares cuda-nvcc but the SAT solver may have "
-                    f"dropped it; re-run with `--rebuild=all` after "
-                    f"`conda env remove`."
+                    f"declares cuda-nvcc but the solver may have dropped "
+                    f"it; start over: "
+                    f"{_hints.fix_cmd('install', '<recipe>', '--clean', '--yes')}"
                 )
         elif spec.cuda_min_version:
             ct = _cuda_tuple(probe.cuda_version)
@@ -1318,7 +1349,13 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         # computable here (see `_REFERENCE_HEADROOM_FACTOR`), so molbuilder
         # reports what it measured, offers this machine's own envs as a scale,
         # and leaves the decision where it belongs.
-        reference = env_size_reference_gb(str(Path(env_prefix).parent))
+        # The scale walks every env beside this one, so only where the
+        # neighbours ARE envs -- one of the manager's ``envs_dirs``.  An env
+        # created with ``--prefix /scratch/<user>/x`` made this a walk of the
+        # person's whole scratch on a login node (review B-L6, 2026-09-14).
+        parent = Path(env_prefix).parent
+        reference = (env_size_reference_gb(str(parent))
+                     if any(parent == Path(d) for d in envs_dirs) else None)
         free, disk_msg = check_disk(env_prefix, reference_gb=reference)
         if free is not None:
             info.append(f"Disk free          {free:>5.1f} GB  at {env_prefix}")
@@ -1861,7 +1898,7 @@ def _run_build_phase(step: BuildStep,
     )
 
 
-ProgressEvent = str  # "start" | "skip" | "ok" | "fail" | "wipe"
+ProgressEvent = str  # "start" | "skip" | "ok" | "fail"
 ProgressCallback = Callable[[ProgressEvent, "BuildStep", Optional["BuildStepResult"]], None]
 ConfirmWarningsCallback = Callable[["PreflightReport"], bool]
 
@@ -1900,7 +1937,9 @@ def run_build_spec(spec: BuildSpec,
         pass a recording callable.
     """
     probe = probe_toolchain(env_prefix)
+    from ..diagnostics import manager_info
     report = preflight(spec, probe, env_prefix,
+                       envs_dirs=manager_info(conda_binary).get("envs_dirs") or (),
                        check_network=not skip_network_check)
 
     if report.errors:

@@ -266,10 +266,9 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
         if rep.package_audit is not None and rep.package_audit.checked:
             pa = rep.package_audit
             n_total = pa.n_conda_declared + pa.n_pip_declared
-            required_issues = [i for i in pa.issues
-                               if not i.kind.endswith("-optional")]
+            required_issues = [i for i in pa.issues if not i.optional]
             optional_issues = [i for i in pa.issues
-                               if i.kind.endswith("-optional")]
+                               if i.optional]
             n_required = len(required_issues)
             n_optional = len(optional_issues)
             n_ok = n_total - n_required - n_optional
@@ -445,8 +444,8 @@ def cmd_repair(name: str, include_optional: bool,
         is_conda = issue.kind.startswith("conda-")
         bucket = to_install_conda if is_conda else to_install_pip
         base = issue.kind[:-len("-optional")] \
-            if issue.kind.endswith("-optional") else issue.kind
-        if issue.kind.endswith("-optional"):
+            if issue.optional else issue.kind
+        if issue.optional:
             (bucket if include_optional else skipped_optional).append(issue)
             continue
         if base in ("conda-version", "conda-build"):
@@ -495,7 +494,8 @@ def cmd_repair(name: str, include_optional: bool,
         step = _install.conda_step_for(
             [i.spec for i in to_install_conda], recipe,
             caps.conda_binary, effective)
-        done = _install.run_step(step, sink=sys.stderr, timeout=1800)
+        done = _install.run_step(step, prefix=prefix_str, sink=sys.stderr,
+                                 timeout=1800)
         rc = done.returncode
         if done.outcome.is_success:
             successes.extend(names)
@@ -570,7 +570,7 @@ def cmd_repair(name: str, include_optional: bool,
     _excluded = set()
     if not include_optional:
         _excluded |= {i.kind for i in audit2.issues
-                      if i.kind.endswith("-optional")}
+                      if i.optional}
     if not include_version_fix:
         _excluded |= {"conda-version", "conda-build"}
     remaining = [i for i in audit2.issues if i.kind not in _excluded]
@@ -928,7 +928,7 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     # Need the env to exist and its prefix to be resolvable.
     # Through the one door, so the host override applies here too.
     effective = effective_name(recipe, caps)
-    if effective not in caps.conda_envs:
+    if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` is not present.  Install it first:\n"
             f"  molbuilder envs install {name}",
@@ -1087,6 +1087,13 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     everything downstream of it, or ``--rebuild=all`` to rebuild
     everything from scratch.
     """
+    if clean and force_resume:
+        # `--clean` removes the env; `--force-resume` skips the create that
+        # has to follow the removal -- together they leave every later step
+        # with no env to address (review B-L9).
+        raise click.UsageError("--clean and --force-resume contradict each "
+                               "other: the wipe needs the create that "
+                               "--force-resume skips.")
     if dry_run and check:
         raise click.UsageError("--dry-run and --check are mutually exclusive")
 
@@ -1334,6 +1341,24 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo("")
         click.echo("  Nothing was removed.")
         raise _CannotInstall("--clean refused: that is the env we run from")
+    # A directory the manager will not own -- ORPHAN, BROKEN -- cannot be
+    # wiped by `--clean` either: `env remove` refuses both addresses for a
+    # directory without conda-meta/history (measured on conda 26.7.1,
+    # 2026-09-14).  The one remedy is the person's `rm -rf`, and this stop
+    # printed `--clean --yes` as the fix (review B-L1).
+    unremovable = state.state in (_install.EnvPresence.ORPHAN,
+                                  _install.EnvPresence.BROKEN)
+    if unremovable and clean:
+        click.echo("")
+        click.echo(f"--clean refused: {state.state_label} -- the manager will "
+                   f"not remove a directory it does not recognise.")
+        click.echo("Remove it yourself, then re-run:")
+        click.echo("")
+        click.echo(f"    rm -rf {state.prefix}")
+        click.echo("    " + _fix_cmd("install", name, "--yes"))
+        click.echo("")
+        raise _CannotInstall("--clean refused: the manager will not remove "
+                             "that directory")
     if state.needs_cleanup and not clean and not force_resume:
         click.echo("")
         click.echo("HARD STOP: env is in a state that conda create cannot")
@@ -1423,7 +1448,8 @@ def _install_one(recipe, effective: str, caps, *,
     # BEFORE the removal it existed to account for, so it accounted for
     # nothing (K-L1).  What it asks about comes from the probe above.
     if clean:
-        env_exists_pre_clean = state.listed_in_registry
+        # ASK whenever a directory is about to go, listed or not (review B-L3).
+        env_exists_pre_clean = state.dir_exists
         env_prefix = state.prefix if state.dir_exists else None
 
         if env_exists_pre_clean or artifact_root:
@@ -1657,6 +1683,15 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     # seconds.  Print before EACH probe so the user can see exactly
     # what we're waiting on, not a silent multi-minute hang.
     click.echo(f"[bootstrap] env manager: {caps.conda_binary}", err=True)
+    if caps.conda_binary is None:
+        # The guard `install` has (review B-L4): without it the probe below
+        # runs `subprocess.run([None, ...])` and the person gets a TypeError
+        # instead of the one sentence that names the fix.
+        raise click.UsageError(
+            "no env manager was found: "
+            f"{caps.conda_binary_source or 'none on PATH, no $MAMBA_EXE/$CONDA_EXE'}.  "
+            "Record this machine's manager once as `envs.manager` in "
+            "molbuilder.json (an absolute path), or activate one first.")
     click.echo(
         f"[bootstrap] registered recipes: "
         f"{len(conda_only)} conda-only + {len(source_builds)} source-build",
@@ -1822,7 +1857,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         # `_fix_cmd` takes a recipe name; this verb has none, so the empty
         # string is passed deliberately and the join drops nothing else.
         click.echo(f"  ! fix that, then run: "
-                   f"{_fix_cmd('init-config', '').rstrip()}", err=True)
+                   f"{_fix_cmd('init-config')}", err=True)
         # AND IT COUNTS AGAINST THE EXIT CODE (2026-09-12).  Not fatal on the
         # spot -- that rule is right, a read-only $HOME should not throw away
         # forty minutes of built envs or take the doctor report with it -- but

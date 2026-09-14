@@ -321,7 +321,17 @@ def manager_info(conda: str) -> Dict[str, Any]:
         info = json.loads(cp.stdout)
     except ValueError:
         return {}
-    return info if isinstance(info, dict) else {}
+    if not isinstance(info, dict):
+        return {}
+    # libmamba's dialect (micromamba, mamba >= 2) spells the same facts with
+    # spaces: "envs directories", "base environment".  Read both, answer in
+    # conda's names, so a caller never has to know which manager answered
+    # (review B-L5; the libmamba names are from its docs, not measured here).
+    if "envs_dirs" not in info and "envs directories" in info:
+        info["envs_dirs"] = info["envs directories"]
+    if "root_prefix" not in info and "base environment" in info:
+        info["root_prefix"] = info["base environment"]
+    return info
 
 
 def conda_env_prefixes(conda: str) -> Dict[str, str]:
