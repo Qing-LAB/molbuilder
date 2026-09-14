@@ -142,7 +142,7 @@ the floor plan had no room for.
 > | | what it controls | who enforces it | the values |
 > |---|---|---|---|
 > | **import depth** | which file may `import` which | `tests/test_layering.py`, mechanically | `L1` · `L2` · `L3` |
-> | **floor** (this document) | which *role* owns a decision | `tests/test_architecture_rules.py` | 1 names … 7 surfaces |
+> | **floor** (this document) | which *role* owns a decision | review — `tests/test_architecture_rules.py` held it until `082ba979` | 1 names … 7 surfaces |
 >
 > They overlap without matching. `persist` is import-depth **L1** and sits on
 > **floor 1** with the other plain facts (§ 2.1 row 1 lists it; the floor
@@ -791,19 +791,29 @@ week refining a geometry you would have rejected in a minute.
 
 Each is written so it can be **checked**, because a rule nobody checks is a wish.
 
+> **Five of them are wishes right now, and this table said otherwise until
+> 2026-09-13.** A1, A4, A7, A8 and A11 named `tests/test_architecture_rules.py`
+> in the *checked by* column. That file was deleted on 2026-09-10 in
+> `082ba979`, with 17 others, for asserting the shape of the repository rather
+> than a result — when one went red the code was not wrong, the layout had
+> moved. The property each row states is unchanged and still worth stating: it
+> is what a checker WOULD assert, and what a reviewer reads the diff for. What
+> is gone is the red bar. Whether these five get a checker back is an open
+> decision, not an oversight.
+
 | | rule | checked by |
 |---|---|---|
-| **A1** | **one speller for the stage token.** `<NN>_<name>` is assembled in `identity` and nowhere else | `test_architecture_rules` — the set of modules that spell `<NN>_<name>` must BE `{identity.py}` |
+| **A1** | **one speller for the stage token.** `<NN>_<name>` is assembled in `identity` and nowhere else | **review** (see the note under this table) — the set of modules that spell `<NN>_<name>` must BE `{identity.py}` |
 | **A2** | **one layout per calculation**, and nothing guesses which | `test_jobset` — every consumer's layout comes from `Shape.named(task.shape)` |
 | **A3** | **a deck and its launch travel together** | `test_jobset` — the rank count in the deck equals the one it is started at, or it is refused first |
-| **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | `test_architecture_rules` — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
+| **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | **review** (see the note under this table) — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
-| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | `test_architecture_rules`, whose floor map must match § 2.1's table |
-| **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | `test_architecture_rules` — a generator door's parameter names, intersected with the fields of every object it already takes, must be empty |
+| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | **review** (see the note under this table), whose floor map must match § 2.1's table |
+| **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | **review** (see the note under this table) — a generator door's parameter names, intersected with the fields of every object it already takes, must be empty |
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
-| **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | `test_architecture_rules` — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
+| **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | **review** (see the note under this table) — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
 | **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing | `test_bench_grid_card` — the browser's prep door must call `prep_run_inputs` and must call none of the pieces it is made of |
 | **A14** | **one composer for a run file's name.** `<label>[_<stage>][-run<N>]<role>` is built by `runfiles` and read back by `runfiles.parse`. No call site concatenates a name, spells a role, or invents a counter keyword — see `job-contracts.md` § 2.2a for which door to call | `test_runfile_names` — the generator over the product of its segments: round trip, what each segment refuses, and that every name the catalogue can produce is matched by its globs |
 | **A13** | **a run shows its end point.** Every launch parameter the run will be executed with is displayed with its value and its source, resolved by the emitter — never re-derived by the surface, and never left blank when blank resolves to a number | `test_task_setup_tab` — the run card renders an emitted value for every launch parameter, including the ones the description does not state |
@@ -999,9 +1009,11 @@ before:
 | **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
 | **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `execution` and `script_generation` — never anything near a secret |
 
-*(That the § 8.2 table and the registry name the same sections is checked —
+*(That the § 8.2 table and the registry name the same sections was checked by
 `test_architecture_rules::test_every_config_section_is_documented_and_every_documented_one_exists`,
-an equality both ways, reading `_SECTIONS` directly since U7.)*
+an equality both ways, reading `_SECTIONS` directly since U7. That file was
+retired in `082ba979`; the equality is now a review step, like the five rules
+in § 7.)*
 
 **Read the first four rows as one thing.** They are the whole of what a
 calculation needs from config, and they arrive at exactly two moments:

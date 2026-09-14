@@ -35,8 +35,10 @@ These are gated — a violation fails `pytest` (and therefore the pre-commit hoo
 - **The full test suite gates every commit.** The pre-commit config runs `pytest -m
   "not slow"` — and it deliberately does **not** exclude `e2e` as a class (the
   comment in the config says so outright: gate on the tests that catch production
-  bugs); it only `--ignore`s one chromium-heavy file. The migration's own doc rules
-  ride the same gate via `tests/test_docs_structure.py`.
+  bugs); it only `--ignore`s one chromium-heavy file. **No doc rule rides that
+  gate**: `tests/test_docs_structure.py` was retired in `082ba979`, with the 60
+  others that asserted where things live rather than what they do. The rules
+  below are review standards, and the diff is what catches drift in them.
 - **HTTP negative-body assertions must be status-guarded** — an AST meta-lint over
   the whole test suite (`tests/test_negative_body_assert_lint.py`) so a test can't
   assert "the body doesn't contain X" without first pinning the status code.
@@ -57,7 +59,11 @@ carry the header today). It's a good habit and the review standard, but it is no
 a build gate — don't mistake it for one. (Fixing that — either an AST/text guard
 like `test_layering.py`, or softening the "mandatory" wording — is a recorded
 follow-up.) Note this is *not* the same as the **docs** provenance header
-(`**Role:**`/`**Domain:**`), which *is* enforced, by `test_docs_structure.py`.
+(`**Role:**`/`**Domain:**`) — which is **also advisory now**. It was enforced by
+`test_docs_structure.py` until `082ba979` retired that file for asserting the
+shape of the repository rather than a result: when such a test went red the docs
+were not wrong, the layout had moved. So the contrast this paragraph draws is
+gone, and both headers stand on review.
 
 ### Versioning — what counts as a breaking change
 

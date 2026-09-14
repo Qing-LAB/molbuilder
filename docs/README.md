@@ -1,8 +1,10 @@
 # molbuilder — documentation
 
 **This is the ONE index.** Every document under `docs/` is listed here, one
-line each. If a doc is not listed here it does not exist (test-enforced:
-`tests/test_docs_structure.py`).
+line each. If a doc is not listed here it does not exist. **That is a review
+rule, not a gate** — `tests/test_docs_structure.py` pinned it until `082ba979`
+retired it along with the other tests that asserted the shape of the repository
+rather than a result.
 
 > **New here?** Start at
 > [`ops/getting-started.md`](?doc=ops/getting-started.md) — from a fresh
@@ -25,7 +27,7 @@ they are glossed here rather than only where they are defined.
 
 | word | what it means here | who enforces it |
 |---|---|---|
-| **floor** | **which ROLE owns a decision.** Numbered 1 (names & plain facts) to 7 (surfaces). *A floor may call down and return up; it may never reach across.* | `tests/test_architecture_rules.py` |
+| **floor** | **which ROLE owns a decision.** Numbered 1 (names & plain facts) to 7 (surfaces). *A floor may call down and return up; it may never reach across.* | review — `tests/test_architecture_rules.py` held it until `082ba979` |
 | **layer** / `L1`–`L3` | **import depth** — which file may `import` which. A different axis. | `tests/test_layering.py`, mechanically |
 
 **They overlap without matching**, which is exactly why two words are needed:
@@ -125,8 +127,10 @@ header, inside the domain.
   link between docs points its target at `?doc=` followed by the
   docs-root-relative path — e.g. [`model/structure.md`](?doc=model/structure.md).
   Index links follow the same form.
-  Enforced by `tests/test_docs_structure.py`. (A doc that has not migrated yet
-  is named in inline code, not linked — no target exists to point at.)
+  (A doc that has not migrated yet is named in inline code, not linked — no
+  target exists to point at.) This said "Enforced by
+  `tests/test_docs_structure.py`" until 2026-09-13; that file was retired in
+  `082ba979`, so the link form stands on review like the rest of this page.
   **No `#` heading-anchor links** (browser-verified 2026-07-26): the renderer
   forces `target="_blank"` on every in-doc link *and* does not honor `#` anchors,
   so an anchor link opens a stray blank tab and never scrolls. For a same-doc
