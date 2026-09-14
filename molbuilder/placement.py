@@ -71,7 +71,8 @@ def places() -> Tuple[Place, ...]:
     """
     from .monitor import default_notify_path, notify_keys_path
     from .runtime_config import machine_config_path
-    from .scheduler.record import environments_dir, machine_scope_path
+    from .scheduler.record import (FILENAME as ENVIRONMENT_FILENAME,
+                                   environments_dir, machine_scope_path)
 
     return (
         Place("the config directory", config_dir, True, PRIVATE_DIR_MODE, True,
@@ -81,7 +82,10 @@ def places() -> Tuple[Place, ...]:
         Place("molbuilder.json", lambda: machine_config_path()[0], False,
               CREDENTIAL_FILE_MODE, True,
               "it carries tls.key's path and the auth.providers block"),
-        Place("environment.json", machine_scope_path, False, None, False,
+        # The NAME from its owner, not a literal: this row re-spelled
+        # `environment.json` until 2026-09-13 -- caught by running the retired
+        # A11 speller check against the tree, three days after its retirement.
+        Place(ENVIRONMENT_FILENAME, machine_scope_path, False, None, False,
               "what the machine IS -- cores, GPUs, queues.  No credential, and "
               "nothing in the tree states a mode for it"),
         Place("the session key", session_key, False, CREDENTIAL_FILE_MODE, True,

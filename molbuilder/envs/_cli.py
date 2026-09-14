@@ -1364,13 +1364,15 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo("")
         click.echo("Or the manual equivalent:")
         click.echo("")
-        # Use the detected env-manager binary, not a hardcoded ``mamba``.
-        # User might have only conda installed; ``mamba env remove``
-        # would fail with "mamba: command not found" in that case.
         # `effective`, not `name`: with MOLBUILDER_HOST_ENV or an
         # `envs.<category>` override the recipe name is not the env name, and
-        # every neighbouring line here already uses the effective one.
-        click.echo(f"    {caps.conda_binary} env remove -n {effective} -y")
+        # every neighbouring line here already uses the effective one.  The
+        # LINE comes from the one speller (`remove_env_cmd`, M3): this site
+        # spelled it by hand until 2026-09-13, with its own copy of M3's
+        # reasoning above it -- and would have printed "None env remove ..."
+        # on a machine with no detected manager, which the speller refuses to.
+        click.echo("    " + _install.remove_env_cmd(caps.conda_binary,
+                                                    effective))
         click.echo(
             "    " + _fix_cmd("install", name, "--yes")
         )

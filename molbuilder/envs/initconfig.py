@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ..config_dir import config_dir, ensure_private_dir, secrets_dir
+from ..config_dir import config_dir, ensure_private_dir, secrets_dir, CREDENTIAL_FILE_MODE
 
 __all__ = [
     "Step", "conda_hook", "seed_document", "seeding_blockers",
@@ -486,16 +486,13 @@ def seed_machine_config(activation: str,
     if path.exists():
         return Step(path, "kept", _activation_note())
     _ensure_root()
-    # THE MODE IS CLAIMED BEFORE THE CONTENT LANDS.  `persist.write_bytes`
-    # PRESERVES an existing target's mode and gives a NEW one 0644, so
-    # writing first and chmod-ing after leaves the file briefly readable by
-    # everyone with its contents already in it.  `auth_setup` engineered
-    # against exactly that window -- *"create with mode bits at open() time
-    # so there's no world-readable window"* -- and this is the same file.
-    # Touching it 0600 first makes the writer's own preserve-the-mode branch
-    # do the work.
-    path.touch(mode=0o600)
-    write_json(path, seed_document(activation, preamble, projects))
+    # 0600 FROM THE FIRST BYTE, as a parameter of the one writer
+    # (configuration.md § 2.3).  Until 2026-09-13 this `touch`-ed the path
+    # 0600 and then called a plain `write_json` -- a workaround for the writer
+    # not taking `mode=`, which made its preserve-the-mode branch do the job
+    # sideways and needed nine lines of comment to explain.
+    write_json(path, seed_document(activation, preamble, projects),
+               mode=CREDENTIAL_FILE_MODE)
     note = f'script_generation.activation = "{activation}"'
     if preamble:
         note += f"; preamble = {preamble!r}"

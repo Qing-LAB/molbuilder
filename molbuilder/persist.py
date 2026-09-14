@@ -150,13 +150,23 @@ def json_text(obj: Any) -> str:
     return json.dumps(obj, indent=2) + "\n"
 
 
-def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None) -> Path:
+def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None,
+               mode: Optional[int] = None) -> Path:
     """Write ``obj`` as pretty JSON (:func:`json_text`), atomically and
     collision-safely via :func:`write_bytes`.  Serialisation happens
     BEFORE the temp file exists, so an unserialisable object fails
-    clean — no temp created, the target untouched.  Returns the path."""
+    clean — no temp created, the target untouched.  Returns the path.
+
+    ``mode`` is :func:`write_bytes`'s own: how a JSON file that carries a
+    credential is written ``0600`` from its first byte (`configuration.md`
+    § 2.3, *"privacy is a PARAMETER of the one writer"*).  This function did
+    not take it until 2026-09-13, and the one caller that needed it -- the
+    seeded ``molbuilder.json`` -- worked around the gap by ``touch``-ing the
+    target ``0600`` first so the preserve-the-mode branch would do the job
+    sideways.  A parameter the rule names has to exist on every door.
+    """
     data = json_text(obj).encode("utf-8")
-    return write_bytes(path, data, tmp_dir=tmp_dir)
+    return write_bytes(path, data, tmp_dir=tmp_dir, mode=mode)
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "read_json",

@@ -326,6 +326,36 @@ Recorded so the focused session does not spend itself here. All **RAN** unless n
 - **From the installer residue sweep:** `pip_argv`/`conda_argv`/`conda_run_argv` are the only argv spellers and nothing in `envs/` concatenates a command line; `repair`'s two halves both map back to the record and dispatch through `run_step`; `audit_packages` is disk-only and iterates records for both kinds; there is **no** parallel `optional_*` list anywhere; `PackageAuditIssue` carries no install instruction; `succeeded` is derived from the steps and every recorded step carries an `Outcome`; `InstallStep.accepts` is the single accept rule; `plan_install` is pure; `create_step_for`'s degradation is one fallback, not a search; the shim consumes only `--gcc` and its host arrays match `_HOST`; `abi.py` holds no step-like dispatch.
 - **`write_secret_file`'s atomicity and symlink behaviour**: a planted symlink is replaced, not followed; a failed write leaves the previous bytes and mode intact with no temp litter.
 
+### J. Doors audited for hand-rolled parallels *(2026-09-13)*
+
+*(User: "check the other APIs -- if it's not used but was designed as a uniform
+door, or not used effectively, that a handcrafted code was used in parallel that
+achieves the similar thing." Every door the three contracts name was counted and
+every hand-rolled shape grepped: subprocess into an env, registry reads, atomic
+writes, mode setting, per-user roots, env removal, warnings, envelopes, raw
+return codes. Clean: `run -n` is spelled only in `builds.py`; `env list` has one
+reader; no per-user root is computed outside `config_dir`; `read_notify_keys`,
+`_envelope`, `emit_molbuilder_json`, `Outcome.decide` have exactly their
+intended callers. What was not clean:)*
+
+| | door | what stood beside it | status |
+|---|---|---|---|
+| **J1** | `builds.dispatch_into_env` -- env-framework § 5.6 / M1 say all three dispatches go through it, naming `_dispatch.run_in_env` as the third | `run_in_env` never calls it: re-spells the whole mamba-1.x fallback (the seen-gate, the stub check, three `subprocess.run`s) and flips the door's PRIVATE state by hand (`_builds._MANAGER_RUN_UNUSABLE["seen"] = True`). Cause: the door returns `(rc, output)`; the router's one caller (`_amber.py`, `tleap`) needs a `CompletedProcess` with `cwd`/`timeout`. A real need answered by a copy instead of by the door growing the shape. | **OPEN -- design.** Factor the DECISION (which argv, given the measured state; whether a result flips it) out of the RUN so both call the same two things. |
+| **J2** | `runtime_config.write_config_scope` -- § 2.3's designated writer for `molbuilder.json` / `.molbuilder.json` | **Zero production callers.** `scheduler/probe.py:16` still says `probe --write` merges "via write_config_scope"; N4 moved that output to `environment.json` via `write_environment` and the docstring never followed. | **OPEN -- decision.** Delete (a door nobody sees is where the next copy comes from -- exactly `read_effective_config`'s history), or keep for a writer that does not exist yet. Fix probe.py's docstring either way. |
+| **J2a** | `persist.write_json` -- "privacy is a PARAMETER of the one writer" | `write_bytes` had `mode=`; `write_json` never did, so `initconfig.seed_machine_config` did `touch(mode=0o600)` then a plain write, with nine lines of comment explaining the trick. | ✅ **CLOSED.** `write_json(mode=)` threads through; the seed passes `CREDENTIAL_FILE_MODE`. Mutant (drop the passthrough) fails `test_the_directory_and_the_config_are_not_world_readable`. |
+| **J3** | one reader per manager document (Z3's pattern: `conda_env_prefixes` for `env list --json`) | `info --json` has THREE readers spelling the subprocess + `json.loads` + try/except each: `install._env_prefix`, `install.probe_env_state`, `initconfig._manager_root`; and the `envs_dirs` orphan walk is spelled twice inside `install.py`. | **OPEN -- small design.** `diagnostics.manager_info(binary) -> dict` beside `conda_env_prefixes`; one `_orphan_prefix` in install. |
+| **J4** | `config_dir.ensure_private_dir` -- "the ONE creator" | Two hand-rolled creators in `auth_setup`: `emit_molbuilder_json`'s `mkdir(mode=0o700)` (identical semantics), and `write_secret_file`'s `mkdir` + `os.chmod(parent, 0o700)` -- which RE-MODES THE CONFIG ROOT on every secret write, against the decision `ensure_private_dir`'s docstring records and `write_config_scope` honours. | ✅ **CLOSED.** Both through `ensure_private_dir(parent)`. Measured: a pre-existing 0755 root stays 0755 after a secret write and `placement.findings` reports it; a fresh root is created 0700; the secret is 0600. **Behaviour change**: the wizard no longer chmods your config directory -- `envs doctor` tells you instead. |
+| **J5** | `install.remove_env_cmd` -- "The ONE spelling" (M3) | `envs/_cli.py:1373` spelled the line by hand with its own copy of M3's reasoning (and would print `None env remove …` with no manager detected). `builds.py:1236` prints a literal `` `conda env remove` `` inside `preflight`, which has no manager in scope. | ✅ first site **CLOSED** (through the speller). **OPEN**: the `preflight` message -- name the program's own `--clean` route, or hand `preflight` the manager. |
+| **J6** | `scheduler/record.FILENAME` -- the one home for `environment.json` | `placement.py:84` re-spelled it as a literal, in code written this session. Found by running the retired `test_architecture_rules.py` against today's tree (62 pass, this the one real failure). | ✅ **CLOSED.** `FILENAME as ENVIRONMENT_FILENAME`. |
+| **J7** | the placement table -- the contract for expected modes | `web/blueprints/notify.py:172-173` declares its own `REPORT_MODE = 0o600` / `REPORT_DIR_MODE = 0o700` and `os.chmod`s after creating (the retired fix-up-after shape), while the table's `reports/` row says mode **None**, "no credential". | **OPEN -- which side is right?** If the reports are private, the table row is wrong and the code should say `ensure_private_dir(root, tighten=True)`; if not, the code is enforcing a mode no contract states. |
+
+*Noted, not acted on (out of this migration's scope, but by § 2.3's letter "a
+write not on the list is the finding"): ~10 `os.replace` / `mkstemp` sites in
+sidecars, `web/blueprints/files.py`, `docs.py`, `watch.py`, `checkpoint.py`;
+`envs/_cli.py:127` opens the install log `"w"` at the default mode;
+`cli.py:2061` prints the config-dir rule as a bash expression for the far
+machine (a second spelling, with a stated reason).*
+
 ## 3. THE MIGRATION — finishing the design, in phases
 
 **Scope of this plan: `install-env.sh` + the `envs` verbs (install / bootstrap /

@@ -44,6 +44,8 @@ import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .config_dir import ensure_private_dir
+
 
 
 # --------------------------------------------------------------------- #
@@ -116,15 +118,17 @@ def write_secret_file(path: Path, contents: str) -> None:
             "write_secret_file: refusing to write an empty secret."
         )
     path = Path(path)
-    parent = path.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    # Tighten parent dir perms too -- 0700 keeps the directory listing
-    # private from other users on shared boxes.  No-op if already
-    # tighter.  Some umasks make mkdir create 0755; force it.
-    try:
-        os.chmod(parent, 0o700)
-    except OSError:
-        pass
+    # The parent through the ONE creator: made at 0700 when this call is what
+    # makes it, and otherwise left as the operator set it.  Until 2026-09-13
+    # this did its own `mkdir` and then `os.chmod(parent, 0o700)` -- which,
+    # for the session key, the notify keys and the Google secret, is the
+    # CONFIG ROOT: re-moded on every secret write, against the decision
+    # `ensure_private_dir` records (on a cluster `XDG_CONFIG_HOME=/scratch/
+    # $USER` is how a person keeps tokens off NFS `$HOME`, and silently
+    # re-moding what they set up is the program deciding for them).
+    # `write_config_scope` already honoured that; this writer contradicted
+    # it.  Seeding seeds; `envs doctor` reports what is loose.
+    ensure_private_dir(path.parent)
     # ONE WRITER, and 0600 is a parameter of it rather than a second writer
     # (`configuration.md` § 2.3).  The temp mkstemp makes is owner-only before
     # it has a name, so the mode is never wrong; os.replace is atomic, so the
@@ -374,8 +378,9 @@ def emit_molbuilder_json(output_path: Path,
     # It happened to work before only because the wizard writes the session
     # key first, which creates the directory as a side effect -- correctness
     # resting on call order, one reordering away from a FileNotFoundError on
-    # a fresh machine.
-    output_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    # a fresh machine.  Through the ONE creator, which creates at 0700 and
+    # leaves an existing directory as the operator set it.
+    ensure_private_dir(output_path.parent)
     if existing is None and output_path.exists() and not force:
         raise FileExistsError(
             f"{output_path} already exists.  Re-run with --force to "
