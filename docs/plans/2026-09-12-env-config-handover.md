@@ -356,6 +356,79 @@ sidecars, `web/blueprints/files.py`, `docs.py`, `watch.py`, `checkpoint.py`;
 `cli.py:2061` prints the config-dir rule as a bash expression for the far
 machine (a second spelling, with a stated reason).*
 
+### K. Static read of the whole set, end to end *(2026-09-13)*
+
+*(User: "this is the time you fully read all code of this whole set and identify
+logic, layer and redundancy ... tests are the last net, never the proof."  Every
+file in scope was read in full -- `config_dir`, `persist`, `placement`,
+`runtime_config`, `diagnostics`, `serve_daemon`, `auth_setup`, `scheduler/record`,
+`envs/{builds,install,_dispatch,doctor,hints,recipes,_cli,initconfig,validate,abi}`,
+`cli.py`'s config verbs, `web/auth`, the two notify blueprints, `monitor`, and the
+shim.  Findings are from the code; where a test is mentioned it is to say whether
+the net caught it.  Grouped by kind, ranked within each group.)*
+
+#### K-L. Logic -- the behaviour is wrong today
+
+| | finding | fix shape | decision? |
+|---|---|---|---|
+| **L1** | ✅ **CLOSED 2026-09-13.**  `StepRole.REMOVE`; the installer voids the snapshot and its prefix after the removal; the surface only asks; the test drives a PRESENT env with a fake manager whose state follows the commands it received, and asserts the steps after the create are addressed at the NEW directory.  Mutants: role back to CREATE fails "the removal was never dispatched"; reset removed fails "addressed at the OLD directory".  **`install --clean` on an env that exists does not remove it.** `remove_step_for` gives the removal `role=StepRole.CREATE` (`install.py:540`) to skip the prefix requirement; `_run_steps` sends every CREATE-role step through `_create_decision` (`:1151-1160`); a PRESENT env answers SKIPPED "already exists; skipping create" (`:1114-1119`).  The removal is skipped, the create is skipped for the same reason, and the run is a plain re-install that prints "remove env X: SKIPPED".  Two more halves: `run_install` resolves the prefix BEFORE the plan runs (`:1257`) and `_Dispatcher.ensure_prefix` never invalidates it, so even a successful removal would leave every later step addressed at the old directory; and the surface's `reset_capabilities()` (`_cli.py:1532`) runs before the removal it exists to account for.  The surface also `rmtree`s the artifact directory on the side (`:1515-1518`), so for the GPU env `--clean` deletes the built binaries and keeps the conda env -- while its help promises "every package is gone".  The one test on this path (`test_envs_install.py:933`) fakes the env FRESH, the state the defect cannot fire in. | a `StepRole.REMOVE` that bypasses the prefix requirement without the create decision; after it succeeds, `run_install` calls `reset_capabilities()` and clears `dispatcher.prefix`; delete the surface's early reset and side `rmtree`; retarget the test's fake to PRESENT and mutation-test it | a defect against env-framework § 5.4 and the `--clean` contract -- fix on your go, because it is the destructive path |
+| **L2** | **Run-report files lose their mode on rotation.** `notify.py:279-290`: `RotatingFileHandler` opens the file at the umask mode in its constructor, one `os.chmod(0o600)` runs after, and on rollover the handler creates the next file at the umask mode with nothing re-tightening it.  The comment says "tighten it here AND after"; there is no after.  And the placement table's `reports/` row says mode None ("no credential") while this code enforces 0700/0600 -- contract and code disagree about what these files are. | decide the row (I would say private: they name the user and carry results); the handler's `_open` goes through `serve_daemon.open_private`, which is the door § 2.3 names for an appended log | yes -- the table row |
+| **L3** | **`install --dry-run` on a machine without the env walks every directory beside your home.** `_cli.py:1197` sets `disk_path = ~` when the env is absent and passes it as `env_prefix` to `preflight` (`:1222`), whose `env_size_reference_gb(Path(env_prefix).parent)` then `os.walk`s every sibling of `$HOME` -- all of `/home` on a shared login node. | pass no prefix; report free space at `~` through `check_disk` directly | no |
+| **L4** | **The source-build presence gate runs the built binary outside the env.** `component_install_valid` runs `{install}/bin/siesta --version` bare (`builds.py:1532`) while `_run_build_phase` runs the same command through the door with `LD_LIBRARY_PATH=<prefix>/lib` and the MPI tmpdir (`:1825-1850`).  The cmake `INSTALL_RPATH` (`recipes.py:1584`) probably makes the bare run work; the point is one command measured under two conditions, and M1. | route it through `dispatch_into_env` with `env_for_step` | yes -- it changes what "installed and working" is measured under |
+| **L5** | **`serve foreground` prints the config warnings twice.** `cli.py:2221-2237` run in the parent and again in the re-exec'd child (`SUPERVISED_ENV=1`); the comment says "so it appears once". | guard on `SUPERVISED_ENV` | no |
+| **L6** | **`auth-setup` overwrites the session key on every run, and gives `cd` advice for a file it says is unread.** `:1708-1709` regenerates `secret_key` (every session dies; the docstring calls this "idempotent EXCEPT") while `web/auth._install_secret_key` already creates one when absent -- with a different encoding (`token_bytes` vs `token_urlsafe`).  `:1742-1745` prints `cd <dir>` when the output landed in cwd, a location the same docstring says is NOT read.  `--output` is the `--keys-file` class this file retired at `:1984-1991`. | the wizard stops touching the session key; `--output` and the cwd branch go; the write goes through `write_config_scope` (D1) | with D1 |
+| **L7** | **Every `molbuilder` invocation runs `nvidia-smi`.** `recipes.py:346-376` probes the driver at import; `cli.py:38` imports the envs group, which imports recipes, at module level -- so `--help` shells out with a 2 s timeout. | resolve `_CUDA_VERSION` when a recipe is asked for, not when the module loads | small design |
+| **L9** | **`--clean` cannot remove an ORPHAN, and the ORPHAN hard-stop prints `--clean` as the remedy.**  `remove_step_for` addresses by `-n` (`install.py`), and an ORPHAN is by definition a directory conda's registry does not list -- `env remove -n` finds nothing.  Removing it needs `--prefix <dir>`, which only the probe knows (`prefix_from_fs`) and the pure plan cannot.  Found while fixing L1; not fixed there.  Shape: the removal step carries the probed directory as a declared alternative (`--prefix`), the way a pip step carries its index fallback. | a REMOVE step with a `--prefix` fallback when the probe found a directory the registry does not list | small design |
+| **L8** | `/run/user/1000/molbuilder` is 0775 on this machine.  `supervise()` tightens it (`serve_daemon.py:321`); the running daemon predates that fix.  Machine state, not code: a `serve restart` clears the doctor line. | -- | no |
+
+#### K-Y. Layering
+
+| | finding | fix shape |
+|---|---|---|
+| **Y1** | `_effective_name` -- name resolution from config and an env var -- lives in `doctor.py` (the audit) and is imported by `install.py` at module level (`:56`), which is why `doctor` defers its own imports of `install` (`:515-518`, "the cycle is deliberate"). | move it beside `Capabilities.env_for_category`; the cycle disappears |
+| **Y2** | `placement` and `runtime_config` import each other lazily (`placement.py:73`, `runtime_config.py:1323`).  `machine_config_warnings` is an audit sum. | let it live in `placement`; `runtime_config` then imports nothing upward |
+| **Y3** | `scheduler/record.py` claims "stdlib-only ... ships to the target" (`:23-28`) and `diagnostics.local_facts` is placed where it is BECAUSE of that claim (`:482-486`) -- but the shipping list is `("mb_monitor.py", "config_dir.py")`, and `record.py` imports `..persist`, `..config_dir`, `.quantities`, `.admit`.  A constraint two modules reason from that nothing exercises. | drop the claim or make it true; decision |
+| **Y4** | `known_machines()` composes user-facing summary strings (`?? not understood`) inside the record module (`record.py:833-962`). | note |
+| **Y5** | J1 (`_dispatch.run_in_env`), sharpened: it also addresses the env BY NAME (`conda_run_argv`, `:73`) while the door re-addresses at the prefix (M2). | J1 |
+
+#### K-D. Redundancy -- two homes for one thing
+
+| | finding |
+|---|---|
+| **D1** | J2, sharpened.  `read_config(path)` is `json.loads` -> `_normalise` -> prefix the path (`runtime_config.py:109-151`), so `emit_molbuilder_json`'s "validate the bytes on disk" is the same validation `write_config_scope` runs in memory (`:2233`).  The wizard's merge REPLACES `auth` wholesale, so re-running it to add a provider drops `auth.trust_proxy`; the door's deep-merge keeps it.  The door's one gap -- it blames the patch when the existing file was already invalid (`:2229-2236`) -- is exactly what the wizard solved privately.  `cli._read_config_object` (`:1443`) is a third reader of the format, and `auth-setup` reads the same file three times in one run (`:1609`, `:1720`, `auth_setup.py:404`). |
+| **D2** | Three pairs of mode constants for two values: `CONFIG_FILE_MODE`/`CONFIG_DIR_MODE` (`runtime_config.py:1266`), `CREDENTIAL_FILE_MODE`/`PRIVATE_DIR_MODE` (`config_dir.py:66`), `REPORT_MODE`/`REPORT_DIR_MODE` (`notify.py:172`).  The writer of `molbuilder.json` uses one pair; the audit checks the same file with another. |
+| **D3** | `serve_daemon.run_dir` / `pid_path` / `log_path` / `stacks_path` are four one-line pass-throughs to `config_dir` doors (`:42-80`) -- I8's shape; `_mkdir_private` (`:87`) is a third name for `ensure_private_dir(tighten=True)`. |
+| **D4** | Inside `runtime_config`: `_read_server_wide` is `read_config()` (`:1513`); `_read_scope` is `read_config(path)` with a pre-check the callee already makes (`:1189`); `_read_section` and `_require_object_section` both do "section as dict or raise" (`:154`, `:549`); `get_paths` re-validates an already-validated section inside a `try/except` that re-raises (`:1946`); `get_checkpoint*` and `get_script_generation` re-run validators on normalised output (`:1023`, `:1643`); `get_scheduler`'s two `elif ... _validate_scheduler(raw)` branches are unreachable (`:2010-2016`) -- the same dead guard removed from `get_execution` the day before. |
+| **D5** | `machine_config_path()` returns `(path, "config-dir")` and the second element has been a constant since the cwd step was deleted; 14 callers index `[0]`. |
+| **D6** | J3: `info --json` has three readers and the `envs_dirs` orphan walk is spelled twice in `install.py`.  Six private "run a command and capture" wrappers across `builds`, `validate`, `abi`, `record`, `diagnostics`, `initconfig`, each slightly different. |
+| **D7** | The env prefix is resolved up to four times per install: `probe_env_state` puts it in `state.prefix`, then `_cli.py:1395`, `:1457` and `run_install:1257` each ask `_env_prefix` again. |
+| **D8** | Two temp-dir policies per build phase: `env_for_step` creates `<prefix>/var/tmp` and `var/cache/pip` (`builds.py:535-544`, mkdir on every phase) and `_run_build_phase` then overrides both (`:1826-1830`). |
+| **D9** | `resolve_paths` is called five times inside one `run_build_spec`, one result named `_paths_unused` (`:1971`). |
+| **D10** | `cmd_clean._du` vs `builds.env_size_reference_gb`; `_stdin_can_answer` copied from `cli._stdin_is_a_terminal` "because A7" (`_cli.py:2057`) -- the one function should move down, not be copied; `cmd_bootstrap` spells `initialize()` as `detect()` + `set_capabilities()` (`:1911`); `hints.fix_cmd` needs three call-site workarounds for a verb with no recipe (`_cli.py:250`, `:1339`, `:1896`). |
+| **D11** | `read_notify_keys(path=)`, `issue_notify_key(path=)`, `load_channels(path=)`: `cli.py:1992-1998` resolves `notify_keys_path()` and passes it to a function that would resolve the same default -- the resolved-then-passed shape removed for `MB_NOTIFY_KEYS_FILE` the day before. |
+
+#### K-X. Dead
+
+| | finding |
+|---|---|
+| **X1** | `preflight(conda_specs)` is never read; the "Forbidden packages" comment (`builds.py:1296`) has no code under it; the parameter is threaded through `run_build_spec` and `run_install` for nothing. |
+| **X2** | The toolchain fingerprint is computed with a `git rev-parse` per component, written to `.toolchain-fingerprint` and into every sentinel, and read by nothing -- `run_build_spec` checks `sentinel.exists()` only (`:2012`).  `cmd_clean` tells the user it is "used by --clean / --force-resume" (`_cli.py:685`); it is not. |
+| **X3** | `BuildStep.cwd` is always None and never passed; `render_activate_hook(spec, paths, probe)` ignores two of three arguments; `_inner_command`'s `--` branch (`builds.py:474`) handles a shape nothing produces -- the comment says `_run_build_phase` spells it, and `_run_argv` (`:415`) does not. |
+| **X4** | `run_install:1340-1342` overrides a verdict the adapted FAILED steps already decide. |
+| **X5** | `cmd_bootstrap:1955` tests `'failures' in dir()` for a local defined in one branch. |
+
+#### K-S. Statements that make someone do the wrong thing
+
+| | where | says | truth |
+|---|---|---|---|
+| **S1** | `config_dir.py:130-135` | `paths.logs` is applied by `runtime_config.logs_dir` | the key is refused; that function does not exist |
+| **S2** | `runtime_config.py:30-32` | flat `cert`/`key` are "honoured (folded into tls)" | refused by name (`:772-776`) |
+| **S3** | `install-env.sh:93-94` | `./molbuilder.json` overrides "are read from CWD" | retired 2026-08-31 |
+| **S4** | `install-env.sh:255-272` | entry points (a) and (b) are equivalent except `--gcc` | (b) has no disk probe for the manager (`_find_conda_binary` vs `detect_env_mgr` step 4): a shell where conda is only a function finds a manager through the shim and none through `python -m molbuilder` |
+| **S5** | `builds.py:23-24` | "the only module that runs subprocesses" | seven others do |
+| **S6** | `runtime_config.py:1336-1338` | the config is written by an `fchmod`-before-first-byte writer | that writer is gone; `write_bytes(mode=)` is |
+| **S7** | `install.py:981`, `:1252-1256` | resolving a prefix costs "3-5 registry calls" | usually zero since the snapshot strategy |
+
 ## 3. THE MIGRATION — finishing the design, in phases
 
 **Scope of this plan: `install-env.sh` + the `envs` verbs (install / bootstrap /

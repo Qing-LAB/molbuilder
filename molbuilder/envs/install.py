@@ -50,7 +50,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
-from ..diagnostics import Capabilities, get_capabilities
+from ..diagnostics import Capabilities, get_capabilities, reset_capabilities
 from . import builds as _builds
 from .builds import conda_run_argv
 from .doctor import _effective_name
@@ -76,7 +76,8 @@ class StepRole(str, Enum):
     available to ask was a display string.
     """
 
-    CREATE = "create"      #: the env itself -- the one step needing no prefix
+    CREATE = "create"      #: the env itself -- needs no prefix, there is none yet
+    REMOVE = "remove"      #: the env itself, taken away -- needs no prefix either
     PACKAGES = "packages"  #: a conda or pip install
     EXTRA = "extra"        #: a recipe-declared dispatch into the env
     VERIFY = "verify"      #: runs after any source build
@@ -534,10 +535,20 @@ def remove_step_for(env_name: str, conda: str) -> InstallStep:
     ``--prefix`` is not used here: `conda env remove` addresses by name, and
     the caller has already refused the case where that name is the env we are
     running from (`installation.md` M5).
+
+    **Its own role, and that is the fix** (2026-09-13).  It carried
+    ``StepRole.CREATE`` -- the one role the runner exempts from needing a
+    prefix -- and every CREATE-role step goes through `_create_decision`
+    first, which answers *"already exists; skipping create"* for any env that
+    is PRESENT.  So the removal was skipped for exactly the envs it exists to
+    remove, the create after it was skipped for the same reason, and
+    ``--clean`` was a plain re-install that printed a wipe banner.  The one
+    test on the path faked the env absent, the single state the skip cannot
+    fire in.
     """
     return InstallStep(
         label=f"remove env {env_name}",
-        role=StepRole.CREATE,
+        role=StepRole.REMOVE,
         argv=(conda, "env", "remove", "-n", env_name, "-y"),
     )
 
@@ -978,9 +989,9 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
 class _Dispatcher:
     """Where a recipe's steps get dispatched.
 
-    Holds the one expensive thing -- the env prefix, which costs three to
-    five ``<mgr> env list`` / ``info --json`` calls to resolve -- so every
-    phase of a recipe shares one resolution instead of re-probing.
+    Holds the env prefix -- read off the startup snapshot when it knows the
+    env, a registry read when it does not -- so every phase of a recipe
+    shares one resolution instead of asking again.
     ``conda create`` is the only step that needs no prefix; there is no
     env yet.  Everything after it is addressed by the prefix
     (`installation.md` M2), which is why resolving it once matters.
@@ -1158,6 +1169,10 @@ def _run_steps(
                 if decided.outcome.stops_the_install:
                     return False
                 continue
+        elif step.role is StepRole.REMOVE:
+            # Unconditional, and addressed by name: the point is that the env
+            # exists, so there is nothing to decide and no prefix to require.
+            pass
         elif dispatcher.ensure_prefix() is None:
             # FAIL LOUD.  Without a prefix the step cannot be addressed at
             # the env at all (M2), and a `-n` dispatch would then be resolved
@@ -1177,11 +1192,28 @@ def _run_steps(
         # ONE DOOR, and the outcome decides what happens next -- no
         # nested conditions over return codes, alternatives and
         # optionality, which is where branches kept going missing.
-        done = run_step(step, prefix=dispatcher.prefix, sink=sys.stderr)
+        done = run_step(
+            step,
+            # A removal gets no prefix: it would only be used to make temp
+            # directories inside the env about to be deleted.
+            prefix=None if step.role is StepRole.REMOVE else dispatcher.prefix,
+            sink=sys.stderr)
         executed.append(done)
         _report(where, done)
         if done.outcome.stops_the_install:
             return False
+        if step.role is StepRole.REMOVE:
+            # THE MACHINE CHANGED, and every reading taken before this line is
+            # void: the directory the dispatcher held no longer exists, and the
+            # process snapshot still lists it -- `_env_prefix` reads that
+            # snapshot FIRST, so left alone it would hand the next step the
+            # old directory.  Cleared here, by the installer, because the
+            # installer is what changed the machine; the surface used to reset
+            # the snapshot itself, BEFORE the removal ran, which accounted for
+            # nothing.  `conda create` next puts the env wherever the manager
+            # decides, and `ensure_prefix` then asks afresh.
+            dispatcher.prefix = None
+            reset_capabilities()
     return True
 
 
@@ -1249,12 +1281,13 @@ def run_install(
     )
     sys.stderr.flush()
 
-    # Cache the env prefix once -- recomputing per step would call
-    # ``<mgr> env list / info --json`` 3-5 times PER RECIPE on mamba 2.x,
-    # which can stretch a multi-recipe bootstrap into several minutes
-    # of silent probing.  We re-resolve only AFTER conda create runs
-    # (in case the env is brand new).
-    cached_prefix: Optional[str] = _env_prefix(effective, caps.conda_binary)
+    # The prefix, resolved once for the whole run -- from the startup snapshot
+    # when it knows this env, a registry read when it does not -- and handed
+    # to every step through the dispatcher.  NOT for a `--clean` run: that
+    # prefix names the env the first step removes, and `ensure_prefix` asks
+    # afresh after `conda create` has made the new one.
+    cached_prefix: Optional[str] = (
+        None if clean else _env_prefix(effective, caps.conda_binary))
     if cached_prefix is not None:
         sys.stderr.write(
             f"[install] env prefix: {cached_prefix}\n"

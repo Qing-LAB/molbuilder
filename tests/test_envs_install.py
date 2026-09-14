@@ -920,33 +920,71 @@ def test_the_clean_plan_removes_the_env_before_it_creates_one():
         "--clean changed more than the wipe", labels)
 
 
-def test_the_clean_run_reports_the_wipe_as_a_step_with_an_outcome(monkeypatch):
-    """The event sequence, from the result the installer returns.
+def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
+        monkeypatch):
+    """`--clean` against the one state it exists for: an env that IS there.
 
-    Every step carries an `Outcome` (§ 5.1) and the verdict is derived from
-    them (§ 5.3) -- so a wipe outside that list was a thing the installer did
-    and did not account for.  Now it is one line of the recap like the rest.
+    Until 2026-09-13 this test faked the env ABSENT, and the removal step
+    carried the CREATE role -- so the runner asked "does it already exist?"
+    first and answered SKIPPED for every present env.  `--clean` never removed
+    anything, and the test could not see it because it never gave the skip a
+    chance to fire (K-L1).
+
+    Three facts, from the sequence the installer itself produces: the removal
+    is dispatched, before the create; every step carries an outcome and the
+    run succeeds; and every step AFTER the create is addressed at the
+    directory the manager put the NEW env in -- not the one the old env had,
+    which the startup snapshot still lists until the installer voids it.
     """
-    _bind(conda_envs={"molbuilder-pySCF": "/prefix/molbuilder-pySCF"})
+    from molbuilder import diagnostics as _diag
+    old, new = "/prefix/old-pySCF", "/prefix/new-pySCF"
+    _bind(conda_envs={"molbuilder-pySCF": old}, conda_binary="/fake/conda")
     recipe = recipe_by_name("molbuilder-pySCF")
-    seen = _dispatch_log(monkeypatch, output=_VERIFY_OUTPUT)
-    monkeypatch.setattr(install, "probe_env_state",
-                        lambda name, binary: install.EnvState(
-                            name=name, listed_in_registry=False,
-                            dir_exists=False, has_conda_meta=False,
-                            prefix=None, manager=binary))
+    seen: list = []
+
+    def _door(argv, prefix, **kw):
+        seen.append(([str(a) for a in argv], prefix))
+        return (0, _VERIFY_OUTPUT)
+
+    monkeypatch.setattr(install._builds, "dispatch_into_env", _door)
+
+    def _probe(name, binary):
+        # The fake manager's state follows the commands it was given: the env
+        # is there until an `env remove` has gone through the door, and gone
+        # after.  A probe that answered PRESENT forever would make the create
+        # after the removal look like a resume -- which is what the first
+        # version of this test did.
+        removed = any(argv[1] == "env" for argv, _p in seen)
+        if removed:
+            return install.EnvState(name=name, listed_in_registry=False,
+                                    dir_exists=False, has_conda_meta=False,
+                                    prefix=None, manager=binary)
+        return install.EnvState(name=name, listed_in_registry=True,
+                                dir_exists=True, has_conda_meta=True,
+                                prefix=old, manager=binary)
+
+    monkeypatch.setattr(install, "probe_env_state", _probe)
+    # What a fresh reading of the machine says once the env has been
+    # re-created: the manager put it somewhere else.
+    monkeypatch.setattr(_diag, "detect", lambda: Capabilities(
+        runtime_config={}, conda_binary="/fake/conda",
+        conda_envs={"molbuilder-pySCF": new}))
 
     result = install.run_install(recipe, clean=True)
 
     labels = [s.label for s in result.steps]
     assert labels[0] == "remove env molbuilder-pySCF", labels
-    assert "conda create" in labels, labels
     assert all(s.outcome is not None for s in result.steps), (
         "a step with no outcome is a step the verdict cannot account for")
     assert result.succeeded, [(s.label, s.outcome) for s in result.steps]
-    # and the door saw the removal, in that order, before the create
-    verbs = [a[1] for a in seen if len(a) > 1]
+    verbs = [argv[1] for argv, _p in seen]
+    assert "env" in verbs, f"the removal was never dispatched: {seen}"
     assert verbs.index("env") < verbs.index("create"), seen
+    entered = [(argv, p) for argv, p in seen if argv[1] == "run"]
+    assert entered, seen
+    assert all(p == new for _argv, p in entered), (
+        "a step after the create was addressed at the OLD directory:\n"
+        + "\n".join(f"  {p}: {' '.join(a)}" for a, p in entered))
 
 
 #: What molbuilder-pySCF's verify step requires of its own output.

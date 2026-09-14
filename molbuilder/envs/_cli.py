@@ -21,7 +21,7 @@ from typing import Iterable, Optional, TextIO
 import click
 
 from ..config_dir import config_dir
-from ..diagnostics import get_capabilities, reset_capabilities
+from ..diagnostics import get_capabilities
 from ..runtime_config import ACTIVATION_FORMS
 from . import builds as _builds
 from . import hints as _hints
@@ -1390,81 +1390,49 @@ def _install_one(recipe, effective: str, caps, *,
     # For source-build recipes, detect existing artifact state up
     # front so the user knows whether this is a fresh install, a
     # resume, or a wipe.
-    if recipe.build_spec is not None:
-        env_prefix_for_state = (
-            _install._env_prefix(effective, caps.conda_binary)
-            if caps.env_available(effective) else None
-        )
-        if env_prefix_for_state:
-            paths_for_state = _builds.resolve_paths(
-                recipe.build_spec, env_prefix_for_state,
-            )
-            if paths_for_state.root.exists():
-                stale = _builds.detect_stale_artifact_dirs(
-                    recipe.build_spec, env_prefix_for_state,
-                )
-                click.echo("")
-                click.echo("Existing artifact directory detected:")
-                click.echo(f"  {paths_for_state.root}")
-                if clean:
-                    click.echo(
-                        "  → --clean will WIPE this directory (sources, "
-                        "build trees, installed binaries, logs, "
-                        "sentinels) before starting."
-                    )
-                elif rebuild == "all":
-                    click.echo(
-                        "  → --rebuild=all will wipe per-component "
-                        "install + build dirs (keeping src/ clones)."
-                    )
-                else:
-                    click.echo(
-                        "  → resuming: each component is probed at "
-                        "install start (install dir + verify); ones "
-                        "that pass are SKIPPED end-to-end.  Pass "
-                        "--clean to wipe everything, or "
-                        "--rebuild=<component> to force one component "
-                        "+ everything downstream to rebuild."
-                    )
-                if stale:
-                    click.echo(
-                        f"  ⚠ stale entries (from a prior recipe "
-                        f"version or failed install): {', '.join(stale)}"
-                    )
+    # THE PROBE ALREADY RESOLVED THE PREFIX (`state.prefix`).  This asked
+    # `_env_prefix` again here, a third time in the `--clean` block below and
+    # a fourth inside `run_install` -- for one install (K-D7).
+    artifact_root = None
+    if recipe.build_spec is not None and state.dir_exists and state.prefix:
+        paths_for_state = _builds.resolve_paths(recipe.build_spec, state.prefix)
+        if paths_for_state.root.exists():
+            artifact_root = paths_for_state.root
+    if artifact_root is not None:
+        stale = _builds.detect_stale_artifact_dirs(recipe.build_spec,
+                                                   state.prefix)
+        click.echo("")
+        click.echo("Existing artifact directory detected:")
+        click.echo(f"  {artifact_root}")
+        if clean:
+            click.echo("  → --clean removes the env, and this directory "
+                       "goes with it (sources, build trees, installed "
+                       "binaries, logs, sentinels).")
+        elif rebuild == "all":
+            click.echo("  → --rebuild=all will wipe per-component "
+                       "install + build dirs (keeping src/ clones).")
+        else:
+            click.echo("  → resuming: each component is probed at "
+                       "install start (install dir + verify); ones "
+                       "that pass are SKIPPED end-to-end.  Pass "
+                       "--clean to wipe everything, or "
+                       "--rebuild=<component> to force one component "
+                       "+ everything downstream to rebuild.")
+        if stale:
+            click.echo(f"  ⚠ stale entries (from a prior recipe "
+                       f"version or failed install): {', '.join(stale)}")
 
-    # Execute --clean BEFORE running run_install -- this is destructive,
-    # so we ask for explicit confirmation independent of the post-summary
-    # confirmation.  --clean does TWO things:
-    #
-    #   1. Remove the conda env entirely (``conda env remove -n <name>
-    #      --all -y``) if it exists.  The downstream install then runs
-    #      ``conda create`` to make a fresh env -- equivalent to the
-    #      first-install state.
-    #   2. Wipe the source-build artifact dir at
-    #      ``$CONDA_PREFIX/opt/<artifact_subdir>/`` if it survives.
-    #      Usually step 1 takes the dir with it (it lived inside the
-    #      env's prefix), so this is belt-and-suspenders.
+    # --clean ASKS here and does nothing else.  The removal is a step at the
+    # front of the plan (`remove_step_for`), through the one door, with an
+    # outcome and a line in the recap; the artifact directory sits inside the
+    # env and goes with it.  This surface used to ALSO `rmtree` that directory
+    # itself and `reset_capabilities()` before `run_install` ran -- the first
+    # a second wipe on the side (env-framework 5.4), the second a reset taken
+    # BEFORE the removal it existed to account for, so it accounted for
+    # nothing (K-L1).  What it asks about comes from the probe above.
     if clean:
-        # NOT `and recipe.build_spec is not None` (fixed 2026-09-12).  That gate
-        # was the second half of the same defect as the removed UsageError
-        # above: with the refusal gone but this still closed, `--clean` on a
-        # conda-only recipe was ACCEPTED, wiped nothing, ran an ordinary
-        # idempotent install and printed "install OK" -- which is worse than the
-        # error it replaced, because it claims the wipe happened.  Measured on
-        # molbuilder-pySCF: the env's mtime never changed.
-        env_exists_pre_clean = caps.env_available(effective)
-        env_prefix = (
-            _install._env_prefix(effective, caps.conda_binary)
-            if env_exists_pre_clean else None
-        )
-        # Only a source build HAS an artifact directory; for a conda-only
-        # recipe removing the env is the whole wipe, and `artifact_root` stays
-        # None so the step-2 rmtree below is skipped.
-        artifact_root = None
-        if env_prefix and recipe.build_spec is not None:
-            paths = _builds.resolve_paths(recipe.build_spec, env_prefix)
-            if paths.root.exists():
-                artifact_root = paths.root
+        env_exists_pre_clean = state.listed_in_registry
+        env_prefix = state.prefix if state.dir_exists else None
 
         if env_exists_pre_clean or artifact_root:
             click.echo("")
@@ -1501,37 +1469,6 @@ def _install_one(recipe, effective: str, caps, *,
                 ):
                     click.echo("aborted by user (--clean declined)")
                     raise _Aborted()
-
-            # THE WIPE IS IN THE PLAN, not dispatched here (§ 5.4).  This
-            # surface asks the question -- it does not run the command: the
-            # removal is `remove_step_for` at the front of `plan_install`, so
-            # it goes through the one door, carries an `Outcome`, appears in
-            # the recap, and `--dry-run` can show it.  A step the surface ran
-            # on the side was a step nothing could see the order of.
-
-            # The artifact dir, if it survived (usually it was
-            # inside the env's prefix and went with step 1, but for
-            # defensiveness).
-            if artifact_root and artifact_root.exists():
-                import shutil as _shutil
-                _shutil.rmtree(artifact_root)
-                click.echo(f"wiped {artifact_root}")
-
-            # Refresh capabilities so the downstream install knows
-            # the env is gone (conda create will run fresh).  IMPORTANT:
-            # ``get_capabilities()`` returns the previously-bound
-            # snapshot when one exists; without ``reset_capabilities()``
-            # first, this is a no-op and the install proceeds with a
-            # stale ``conda_envs`` that still lists the removed env.
-            # The env is gone, so every reading taken before this line is now
-            # wrong -- including the state probed at Step 0.  `reset_capabilities`
-            # says so for the snapshot; `env_state_for_install = None` says so
-            # for the probe, and `run_install` then takes a fresh one.  Skipping
-            # `conda create` on a stale "PRESENT" here is the 2026-06-15
-            # regression, from the other direction.
-            reset_capabilities()
-            caps = get_capabilities()
-            env_state_for_install = None
             click.echo("")
 
     # For source-build recipes, surface the install summary + ask for
