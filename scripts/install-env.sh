@@ -90,8 +90,8 @@ set -euo pipefail
 # host env's site-packages does not contain ``molbuilder``).  So
 # ``python -m molbuilder`` needs the repo on PYTHONPATH.  Resolving
 # the repo root from the script's own location lets us call the
-# shim from any CWD; the user's CWD is preserved so ./molbuilder.json
-# overrides (which are read from CWD) still apply.
+# shim from any CWD; the user's CWD is preserved.  (A ./molbuilder.json
+# is NOT read -- retired 2026-08-31; the machine config has one home.)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
@@ -267,9 +267,14 @@ Two equivalent entry points (use whichever you prefer):
   and PYTHONPATH must point at the repo root.  The shim sets
   PYTHONPATH for you, which is why it Just Works from any CWD.)
 
-  Equivalent EXCEPT for ``--gcc``, which only the shim understands
-  (it must be set before Python imports the recipes).  On path (b),
-  export MOLBUILDER_GCC=<X.Y> before the command instead.
+  Equivalent EXCEPT for two things.  ``--gcc`` only the shim understands
+  (it must be set before Python imports the recipes); on path (b), export
+  MOLBUILDER_GCC=<X.Y> before the command instead.  And the shim looks
+  harder for the manager: besides PATH and $MAMBA_EXE/$CONDA_EXE it walks
+  up from $CONDA_PREFIX and checks the common install prefixes on disk
+  (detect_env_mgr steps 3-4), so a shell where conda is only a function
+  finds a manager through the shim and none through path (b) -- there,
+  record it once as `envs.manager` in molbuilder.json.
 
 Environment variables:
   MOLBUILDER_HOST_ENV            host env name (default: molbuilder).

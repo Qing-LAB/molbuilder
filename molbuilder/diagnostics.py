@@ -300,6 +300,30 @@ def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
     return None, None
 
 
+def manager_info(conda: str) -> Dict[str, Any]:
+    """``<mgr> info --json`` as a dict, or ``{}`` when the manager will not say.
+
+    THE ONE READER of that document.  Three callers parsed it themselves
+    until 2026-09-13 -- the prefix resolver (for ``envs`` and ``envs_dirs``),
+    the state probe (``envs_dirs`` again) and `init-config` (``root_prefix``)
+    -- each with its own timeout and its own list of failures to swallow
+    (K-D6).  An empty dict is every failure: the callers ask ``.get`` and
+    read "the manager does not know".
+    """
+    try:
+        cp = subprocess.run([conda, "info", "--json"],
+                            capture_output=True, text=True, timeout=30)
+    except (subprocess.SubprocessError, OSError):
+        return {}
+    if cp.returncode != 0:
+        return {}
+    try:
+        info = json.loads(cp.stdout)
+    except ValueError:
+        return {}
+    return info if isinstance(info, dict) else {}
+
+
 def conda_env_prefixes(conda: str) -> Dict[str, str]:
     """``{name: prefix}`` for every env the manager's registry lists.
 

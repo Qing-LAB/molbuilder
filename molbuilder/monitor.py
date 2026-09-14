@@ -796,7 +796,7 @@ def notify_keys_path():
 _ROUTE_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
-def read_notify_keys(path=None):
+def read_notify_keys():
     """``(route, {user: key})`` from the operator's 0600 file.
 
     ``(None, {})`` when the file is absent, unreadable, malformed, or carries
@@ -804,7 +804,7 @@ def read_notify_keys(path=None):
     listener is not registered, and no keys means it accepts nothing.  A
     misconfiguration here removes a capability; it never grants one.
     """
-    p = Path(path) if path else notify_keys_path()
+    p = notify_keys_path()
     try:
         obj = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):

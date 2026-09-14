@@ -43,20 +43,18 @@ besides :mod:`molbuilder.envs.builds`.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities, reset_capabilities
 from . import builds as _builds
 from .builds import conda_run_argv
-from .doctor import _effective_name
 
 
-from .recipes import PipPackage, Recipe
+from .recipes import effective_name, PipPackage, Recipe
 
 
 class StepRole(str, Enum):
@@ -522,7 +520,8 @@ def extra_steps_for(recipe: Recipe, conda: str,
             for extra in recipe.extra_steps]
 
 
-def remove_step_for(env_name: str, conda: str) -> InstallStep:
+def remove_step_for(env_name: str, conda: str, *,
+                    prefix: Optional[str] = None) -> InstallStep:
     """Removing an env is a STEP, like everything else the installer does.
 
     `env-framework.md` § 5.4 records it as a defect rather than an exception:
@@ -532,9 +531,13 @@ def remove_step_for(env_name: str, conda: str) -> InstallStep:
     promoted a private dispatch to the door `installation.md` calls *"the one
     door"* for wiping any env.
 
-    ``--prefix`` is not used here: `conda env remove` addresses by name, and
-    the caller has already refused the case where that name is the env we are
-    running from (`installation.md` M5).
+    Addressed by name, with the directory as the FALLBACK when the caller
+    knows one: an ORPHAN -- a directory the registry does not list -- is
+    exactly the env ``--clean`` is recommended for, and ``env remove -n``
+    finds nothing to remove there (K-L9, 2026-09-13).  ``prefix`` is the
+    probe's reading (`EnvState.prefix`); the pure plan has none and stays by
+    name.  The caller has already refused the case where the name is the env
+    we are running from (`installation.md` M5).
 
     **Its own role, and that is the fix** (2026-09-13).  It carried
     ``StepRole.CREATE`` -- the one role the runner exempts from needing a
@@ -550,6 +553,8 @@ def remove_step_for(env_name: str, conda: str) -> InstallStep:
         label=f"remove env {env_name}",
         role=StepRole.REMOVE,
         argv=(conda, "env", "remove", "-n", env_name, "-y"),
+        fallbacks=(((conda, "env", "remove", "--prefix", prefix, "-y"),)
+                   if prefix else ()),
     )
 
 
@@ -616,11 +621,23 @@ def plan_install(
             "conda CLI not found; install conda before invoking "
             "`molbuilder envs install`."
         )
-    effective = _effective_name(recipe, caps)
+    effective = effective_name(recipe, caps)
     steps = _plan(recipe, effective, caps.conda_binary)
     if clean:
         steps.insert(0, remove_step_for(effective, caps.conda_binary))
     return effective, steps
+
+
+def _prefix_under_envs_dirs(info: Mapping[str, Any],
+                            env_name: str) -> Optional[Path]:
+    """The directory ``<envs_dir>/<name>`` that exists, from the manager's
+    own search list -- or ``None``.  The one walk; the prefix resolver and
+    the state probe each spelled it until 2026-09-13 (K-D6)."""
+    for envs_dir in info.get("envs_dirs", []) or []:
+        candidate = Path(envs_dir) / env_name
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
@@ -651,40 +668,25 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
        failed mid-flight leaving an orphan dir) but the directory IS
        on disk under a known envs_dir.
     """
-    import json as _json
     # Strategy 0: the reading already taken.
     known = get_capabilities().env_prefix(env_name)
     if known:
         return known
     # Strategy 1: the registry, fresh, through the one reader.
-    from ..diagnostics import conda_env_prefixes
+    from ..diagnostics import conda_env_prefixes, manager_info
     fresh = conda_env_prefixes(conda_binary).get(env_name)
     if fresh:
         return fresh
-    # Strategies 2 + 3: info --json.
-    try:
-        info_cp = subprocess.run(
-            [conda_binary, "info", "--json"],
-            capture_output=True, text=True, timeout=30,
-        )
-        info: dict = {}
-        if info_cp.returncode == 0:
-            try:
-                info = _json.loads(info_cp.stdout) or {}
-            except ValueError:
-                info = {}
-        # Strategy 2: envs (full paths, not the search list).
-        for prefix in info.get("envs", []) or []:
-            if Path(prefix).name == env_name and Path(prefix).is_dir():
-                return prefix
-        # Strategy 3: envs_dirs (search list) -- look for the env
-        # under each configured envs_dir.
-        for envs_dir in info.get("envs_dirs", []) or []:
-            candidate = Path(envs_dir) / env_name
-            if candidate.is_dir():
-                return str(candidate)
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
+    # Strategies 2 + 3: info --json, read once.
+    info = manager_info(conda_binary)
+    # Strategy 2: envs (full paths, not the search list).
+    for prefix in info.get("envs", []) or []:
+        if Path(prefix).name == env_name and Path(prefix).is_dir():
+            return prefix
+    # Strategy 3: envs_dirs (search list).
+    found = _prefix_under_envs_dirs(info, env_name)
+    if found is not None:
+        return str(found)
     # NO FIFTH STRATEGY, and that is the change (H10).  What stood here
     # derived `<manager root>/envs/<name>` from the binary's own path and
     # guessed at `~/.conda/envs` besides -- `installation.md` M2: the binary's
@@ -834,9 +836,10 @@ class EnvState:
             lines.append("    or re-run with --clean which will do the same thing.")
         elif s is EnvPresence.BROKEN:
             lines.append("  → BROKEN: directory exists but is missing conda-meta/, so")
-            lines.append("    it's not a real conda env.  Almost certainly residue from")
-            lines.append("    a previous failed install.  RECOMMENDED: re-run with")
-            lines.append("    --clean to wipe the directory and start fresh.")
+            lines.append("    it's not a real conda env -- residue from a failed")
+            lines.append("    install, which the manager will not remove for you.")
+            lines.append("    Remove the directory yourself, then re-run:")
+            lines.append(f"      rm -rf {self.prefix}")
         return "\n".join(lines)
 
     def remove_cmd(self) -> str:
@@ -912,7 +915,6 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     created with ``--prefix`` outside ``envs_dirs`` report GHOST while carrying
     a healthy prefix, and GHOST prints a removal command.
     """
-    import json as _json
 
     # Check 1: the registry, through the ONE reader (H2).  Read FRESH, not off
     # the startup snapshot: this probe runs during an install, where an env was
@@ -939,24 +941,12 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
         dir_exists = target.is_dir()
         has_conda_meta = (target / "conda-meta").is_dir()
     else:
-        try:
-            info_cp = subprocess.run(
-                [conda_binary, "info", "--json"],
-                capture_output=True, text=True, timeout=30,
-            )
-            if info_cp.returncode == 0:
-                info = _json.loads(info_cp.stdout)
-                for envs_dir in info.get("envs_dirs", []):
-                    candidate = Path(envs_dir) / env_name
-                    if candidate.is_dir():
-                        dir_exists = True
-                        prefix_from_fs = str(candidate)
-                        if (candidate / "conda-meta").is_dir():
-                            has_conda_meta = True
-                        break
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
-                ValueError, KeyError):
-            pass
+        from ..diagnostics import manager_info
+        candidate = _prefix_under_envs_dirs(manager_info(conda_binary), env_name)
+        if candidate is not None:
+            dir_exists = True
+            prefix_from_fs = str(candidate)
+            has_conda_meta = (candidate / "conda-meta").is_dir()
 
     prefix = prefix_from_registry or prefix_from_fs
     return EnvState(
@@ -1262,7 +1252,7 @@ def run_install(
             "conda CLI not found; install conda before invoking "
             "`molbuilder envs install`."
         )
-    effective = _effective_name(recipe, caps)
+    effective = effective_name(recipe, caps)
     planned = _plan(recipe, effective, caps.conda_binary)
     if clean:
         # The wipe is the FIRST step, in the plan, not a dispatch the surface
@@ -1270,7 +1260,12 @@ def run_install(
         # reading of an env this run is about to delete: `PRESENT` would skip
         # the `conda create` that has to follow, which is the 2026-06-15
         # regression.  So the create decision is made fresh, after the removal.
-        planned.insert(0, remove_step_for(effective, caps.conda_binary))
+        planned.insert(0, remove_step_for(
+            effective, caps.conda_binary,
+            # the probe's directory, for an env the registry does not list
+            prefix=(env_state.prefix
+                    if env_state is not None and env_state.dir_exists
+                    and not env_state.listed_in_registry else None)))
         env_state = None
 
     sys.stderr.write(

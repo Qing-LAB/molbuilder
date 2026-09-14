@@ -29,7 +29,7 @@ from . import doctor as _doctor
 from . import initconfig
 from . import install as _install
 from . import validate as _validate
-from .recipes import BUILTIN_RECIPES, recipe_by_name
+from .recipes import BUILTIN_RECIPES, effective_name, recipe_by_name
 
 
 # --------------------------------------------------------------------- #
@@ -247,7 +247,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 click.echo("                " + _install.remove_env_cmd(
                     rep.manager, rep.effective_name))
                 click.echo("                " + (
-                    f"{_hints.LAUNCHER} bootstrap --yes)"
+                    _fix_cmd("bootstrap", "--yes") + ")"
                     if rep.recipe.category is None
                     else _fix_cmd("install", rep.recipe.name, "--yes") + ")"))
             else:
@@ -398,7 +398,7 @@ def cmd_repair(name: str, include_optional: bool,
             "conda/mamba not found; cannot run repair.  See "
             "docs/ops/installation.md."
         )
-    effective = _doctor._effective_name(recipe, caps)
+    effective = effective_name(recipe, caps)
     if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` does not exist.  Install it first:",
@@ -641,7 +641,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
         raise click.UsageError(
             "conda/mamba not found; cannot resolve env prefix."
         )
-    effective = _doctor._effective_name(recipe, caps)
+    effective = effective_name(recipe, caps)
     if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` does not exist -- nothing to clean.",
@@ -692,22 +692,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
             "INSTALLED binary -- runtime needs this",
         ))
 
-    def _du(p: Path) -> int:
-        """Bytes used by a directory tree.  Returns 0 for missing /
-        unreadable paths instead of raising."""
-        if not p.exists():
-            return 0
-        total = 0
-        try:
-            for entry in p.rglob("*"):
-                try:
-                    if entry.is_file() and not entry.is_symlink():
-                        total += entry.stat().st_size
-                except OSError:
-                    continue
-        except OSError:
-            pass
-        return total
+    _du = _builds.tree_bytes
 
     def _human(n: int) -> str:
         for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
@@ -938,7 +923,7 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     caps = get_capabilities()
     # Need the env to exist and its prefix to be resolvable.
     # Through the one door, so the host override applies here too.
-    effective = _doctor._effective_name(recipe, caps)
+    effective = effective_name(recipe, caps)
     if effective not in caps.conda_envs:
         click.echo(
             f"env `{effective}` is not present.  Install it first:\n"
@@ -1223,10 +1208,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 # means walking every directory beside the path, and with `~`
                 # that was all of /home (K-L3).
                 import os as _os
-                free, reminder = _builds.check_disk(_os.path.expanduser("~"))
-                if free is not None:
-                    click.echo(f"Disk free          {free:>5.1f} GB  at ~ "
-                               f"(the env's own filesystem once it exists)")
+                _free, reminder = _builds.check_disk(_os.path.expanduser("~"))
                 if reminder:
                     click.echo(reminder)
             click.echo("")
@@ -1342,7 +1324,7 @@ def _install_one(recipe, effective: str, caps, *,
                    f"# or just open a new shell")
         click.echo(f"    {state.remove_cmd()}")
         if recipe.category is None:
-            click.echo(f"    {_hints.LAUNCHER} bootstrap --yes")
+            click.echo("    " + _fix_cmd("bootstrap", "--yes"))
         else:
             click.echo("    " + _fix_cmd("install", name, "--yes"))
         click.echo("")
@@ -1656,6 +1638,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     At the end runs ``molbuilder envs doctor`` so the user sees the
     health of every env in one report.
     """
+    failures: list = []      # recipes whose install did not finish
     caps = get_capabilities()
 
     # Pick recipes to install.  Order: conda-only first (cheap, fast),
@@ -1701,8 +1684,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         new_plan: list = []
         for r in plan:
             # Through the one door: an inline copy here is what let
-            # bootstrap plan a second host env (see _effective_name).
-            env_name = _doctor._effective_name(r, caps)
+            # bootstrap plan a second host env (see `effective_name`).
+            env_name = effective_name(r, caps)
             present = caps.env_available(env_name)
             click.echo(
                 f"[bootstrap]   {env_name:<30}  "
@@ -1767,7 +1750,6 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         # Run installs sequentially.  Failures are recorded but
         # bootstrap continues so the user gets a full report at the
         # end.
-        failures: list = []
         for i, recipe in enumerate(plan, 1):
             click.echo("")
             click.echo("=" * 70)
@@ -1781,7 +1763,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             # has too, because they came from here.
             try:
                 result = _install_one(
-                    recipe, _doctor._effective_name(recipe, caps), caps,
+                    recipe, effective_name(recipe, caps), caps,
                     auto_yes=auto_yes)
             except _Aborted:
                 failures.append((recipe.name, "declined",
@@ -1851,8 +1833,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
 
     # Refresh capabilities so doctor sees newly-created envs.
     from .. import diagnostics as _diag
-    caps_after = _diag.detect()
-    _diag.set_capabilities(caps_after)
+    caps_after = _diag.initialize()
     click.echo("")
     click.echo("=" * 70)
     click.echo("doctor (post-bootstrap smoke check):")
@@ -1889,13 +1870,13 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo(_fix_cmd("repair", "<recipe-name>"))
     click.echo("")
     click.echo("# Re-verify env health after any change:")
-    click.echo(f"{_hints.LAUNCHER} doctor")
+    click.echo(_fix_cmd("doctor"))
     click.echo("")
     click.echo("# Full --help:")
     click.echo(f"{_hints.LAUNCHER} --help")
     click.echo("")
 
-    if ('failures' in dir() and failures) or seed_failed:
+    if failures or seed_failed:
         # An install failed, or the config directory was not seeded.  Either
         # way this bootstrap did not finish its job, and the exit code is the
         # only part of the report a script can read.
@@ -1973,7 +1954,7 @@ def _warn_about_seeding_now(auto_yes: bool) -> bool:
     """
     from .initconfig import seeding_blockers
     problems = list(seeding_blockers())
-    if not auto_yes and not _stdin_can_answer():
+    if not auto_yes and not _hints.stdin_can_answer():
         # The OTHER half, and the one that actually bites: the documented form
         # is `bootstrap` without `--yes`, which has two questions to ask, and
         # under nohup / CI / a batch step click aborts on the first.
@@ -1995,21 +1976,6 @@ def _warn_about_seeding_now(auto_yes: bool) -> bool:
                err=True)
     click.echo("=" * 70, err=True)
     return True
-
-
-def _stdin_can_answer() -> bool:
-    """Is somebody there to answer a prompt?
-
-    The same guarded ``isatty`` as `cli._stdin_is_a_terminal`, written again
-    rather than imported: that one lives in the top-level CLI and this package
-    may not depend upwards (A7).  The guard is not decoration -- a detached or
-    closed stdin raises rather than returning False.
-    """
-    import sys as _sys
-    try:
-        return _sys.stdin.isatty()
-    except (AttributeError, ValueError):        # detached or closed
-        return False
 
 
 def _seed_config(activation: "Optional[str]", auto_yes: bool,

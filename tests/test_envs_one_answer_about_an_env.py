@@ -137,7 +137,7 @@ def test_env_prefix_uses_the_snapshot_and_runs_no_subprocess(monkeypatch):
     def _no(*a, **k):
         raise AssertionError("a subprocess was launched for a known env")
 
-    monkeypatch.setattr(I.subprocess, "run", _no)
+    monkeypatch.setattr(D.subprocess, "run", _no)
 
     assert I._env_prefix("molbuilder-pySCF", "/fake/mgr") \
         == "/opt/envs/molbuilder-pySCF"

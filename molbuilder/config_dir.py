@@ -132,11 +132,12 @@ def state_dir() -> Path:
     ``~/.var/app/`` is flatpak's, and the latter is not in the spec at all.
 
     **Separate from the config root on purpose.**  Configuration is edited and
-    backed up; logs grow and are deleted.  A person may still put both in one
-    place -- ``molbuilder.json``'s ``paths`` block names this directory, and
-    :func:`molbuilder.runtime_config.logs_dir` is where that override is
-    applied.  It cannot be applied HERE: this module is the bootstrap that
-    finds ``molbuilder.json``, so it must answer before any config is read.
+    backed up; logs grow and are deleted.  A person who wants both in one
+    place sets ``XDG_STATE_HOME``; there is no config key for it and cannot
+    be: this module is the bootstrap that finds ``molbuilder.json``, so it
+    must answer before any config is read (``paths.logs`` is refused by
+    `runtime_config._read_paths` for exactly that reason -- this docstring
+    said the opposite until 2026-09-13).
     """
     xdg = os.environ.get("XDG_STATE_HOME")
     return (Path(xdg) if xdg else Path.home() / ".local" / "state") / DIRNAME

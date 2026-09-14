@@ -24,6 +24,26 @@ from __future__ import annotations
 LAUNCHER = "bash scripts/install-env.sh"
 
 
-def fix_cmd(action: str, recipe_name: str, *flags: str) -> str:
-    """The ONE spelling of an env fix command."""
-    return " ".join([LAUNCHER, action, recipe_name, *flags])
+def fix_cmd(action: str, *args: str) -> str:
+    """The ONE spelling of an env command: the launcher, the verb, then the
+    recipe and flags.  ``recipe_name`` was a required second parameter until
+    2026-09-13, so the verbs that take none (``bootstrap``, ``doctor``) were
+    spelled by hand at three sites (K-D10)."""
+    return " ".join([LAUNCHER, action, *args])
+
+
+def stdin_can_answer() -> bool:
+    """Is somebody there to answer a prompt?
+
+    A guarded ``isatty``: a detached or closed stdin raises rather than
+    returning False.  Here, at the bottom of the CLI surface, because the
+    top-level CLI and the envs verbs both ask it -- it was written twice
+    (`cli._stdin_is_a_terminal`, `envs._cli._stdin_can_answer`) "because
+    this package may not depend upwards", when the answer was to put the
+    one copy where both can reach it (K-D10).
+    """
+    import sys
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):        # detached or closed
+        return False

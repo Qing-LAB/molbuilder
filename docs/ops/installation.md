@@ -557,6 +557,13 @@ bash scripts/install-env.sh install molbuilder-siesta-gpu --gcc 13 --yes
 MOLBUILDER_GCC=13 bash scripts/install-env.sh install molbuilder-siesta-gpu   # equivalent
 ```
 
+**CUDA target architecture.** The GPU kernels are compiled for the compute
+capability `nvidia-smi` reports on the machine you install from; with no GPU
+there (a login node) the build targets `sm_80` (A100, A30). To compile for
+another card set `MOLBUILDER_CUDA_CC=<x.y>` before the install — `9.0` for
+H100, `8.9` for L40/Ada, `7.0` for V100. GPU use is an option the benchmark
+decides later, not the env's premise; this knob is there if it is needed.
+
 `--gcc` is handled by the shim itself rather than forwarded, because the recipe
 reads `MOLBUILDER_GCC` when it is imported — a Python-side option would arrive
 too late. It takes a plain version (`14`, `14.3`, `14.3.0`); for a wildcard, set

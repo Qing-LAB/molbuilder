@@ -141,7 +141,7 @@ class NotifyKeyError(ValueError):
     """A key could not be issued, with a reason a person can act on."""
 
 
-def issue_notify_key(user: str, *, path: Optional[Path] = None,
+def issue_notify_key(user: str, *,
                      route: Optional[str] = None,
                      replace: bool = False):
     """Issue one run-report signing key.  ``(key, segment, previous)``.
@@ -171,10 +171,10 @@ def issue_notify_key(user: str, *, path: Optional[Path] = None,
             f"{user!r} is not usable as a user id here. It becomes a log "
             f"FILENAME on the server, so it is limited to letters, digits "
             f"and . _ @ + - (max 128).")
-    path = Path(path) if path else notify_keys_path()
+    path = notify_keys_path()
     # THE ROUTE COMES OUT OF THE FILE IT WENT INTO, so a second key joins the
     # first by default and there is nothing for the caller to remember.
-    existing_route, existing = read_notify_keys(path)
+    existing_route, existing = read_notify_keys()
     if user in existing and not replace:
         raise NotifyKeyError(
             f"{user!r} already has a key in {path}. Re-issue with `replace` "

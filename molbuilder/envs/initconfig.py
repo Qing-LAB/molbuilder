@@ -123,16 +123,8 @@ def _manager_root(conda_binary: str) -> Optional[Path]:
     write than a plausible guess -- `conda_hook` then returns ``None`` and
     `init-config` seeds no preamble, which is a state the seeded file explains.
     """
-    import json as _json
-    import subprocess as _subprocess
-    try:
-        cp = _subprocess.run([conda_binary, "info", "--json"],
-                             capture_output=True, text=True, timeout=30)
-        if cp.returncode != 0:
-            return None
-        root = _json.loads(cp.stdout).get("root_prefix")
-    except (OSError, ValueError, _subprocess.SubprocessError):
-        return None
+    from ..diagnostics import manager_info
+    root = manager_info(conda_binary).get("root_prefix")
     return Path(root) if root else None
 
 

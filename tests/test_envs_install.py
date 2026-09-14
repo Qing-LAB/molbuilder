@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from molbuilder import diagnostics as _diag
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import install
 from molbuilder.envs.recipes import (CondaPackage, PipPackage, Recipe,
@@ -105,6 +106,11 @@ def test_plan_raises_without_conda_binary():
 # --------------------------------------------------------------------- #
 
 
+# The manager is faked at `diagnostics.subprocess.run`: both readers of the
+# manager's documents -- `conda_env_prefixes` (env list --json) and
+# `manager_info` (info --json) -- live there since 2026-09-13.  Faking
+# `install.subprocess` intercepted only the second, and only until that reader
+# moved.
 def _stub(returncode=0, stdout="", stderr=""):
     cp = MagicMock()
     cp.returncode = returncode
@@ -127,7 +133,7 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     recipe = recipe_by_name("molbuilder-siesta")
     # subprocess.run is used by the env-state probe (cheap conda info /
     # env list queries) -- return empty JSON so the probe sees "FRESH".
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     # The verify step now requires the env prefix to be resolvable so
     # the bypass code path can fire.  Patch ``_env_prefix`` to return
@@ -150,7 +156,7 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
 def test_run_install_short_circuits_on_create_failure(monkeypatch):
     _bind()
     recipe = recipe_by_name("molbuilder-siesta")
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     calls = []
     def fake_stream(*a, **kw):
@@ -185,7 +191,7 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
         if argv_list[1:2] == ["info"]:
             return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
         return _stub(0, stdout="")
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
     calls = []
     def fake_stream(*a, **kw):
         calls.append(a)
@@ -248,7 +254,7 @@ def test_run_install_blocks_when_env_state_is_broken(monkeypatch, tmp_path):
         if argv_list[1:2] == ["info"]:
             return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
         return _stub(0, stdout="")
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
 
     calls = []
     def fake_stream(*a, **kw):
@@ -307,7 +313,7 @@ def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
         # called inside probe_env_state -- return the same "nothing
         # to see" payload for both.
         return _stub(0, stdout='{"envs": [], "envs_dirs": []}')
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
 
     calls = []
     def fake_stream(*a, **kw):
@@ -355,7 +361,7 @@ def test_optional_package_failure_degrades_without_stopping(monkeypatch):
     the install passed the whole suite.
     """
     _bind()
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
@@ -386,7 +392,7 @@ def test_launch_failure_of_optional_step_also_degrades(monkeypatch):
     launched -- must not be treated as a special case that forgets
     `fatal`."""
     _bind()
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
@@ -497,7 +503,7 @@ def test_build_phases_carry_the_verdict_builds_gave_them(monkeypatch):
 
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _bind()
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: "/fake/envs/x")
@@ -548,7 +554,7 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
     binary is in the env but not the right binary."""
     _bind()
     recipe = recipe_by_name("molbuilder-siesta")
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
@@ -566,7 +572,7 @@ def test_run_install_verify_ignore_exit_respects_substring(monkeypatch):
     matches -> succeed.  Mirrors the production verify."""
     _bind()
     recipe = recipe_by_name("molbuilder-MDtools")
-    monkeypatch.setattr(install.subprocess, "run",
+    monkeypatch.setattr(_diag.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
@@ -986,6 +992,51 @@ def test_the_clean_run_removes_a_PRESENT_env_and_installs_into_the_new_one(
         + "\n".join(f"  {p}: {' '.join(a)}" for a, p in entered))
 
 
+def test_the_clean_run_removes_an_ORPHAN_by_its_directory(monkeypatch):
+    """An ORPHAN -- a directory conda's registry does not list -- is the state
+    `describe()` recommends `--clean` for, and `env remove -n` finds nothing
+    to remove there.  The removal step carries the probe's directory as its
+    fallback: the plan stays by name, and the surface's reading is what
+    reaches `--prefix` (K-L9).  Asserted through `run_install` with the
+    reading handed over the way `envs install` hands it."""
+    from molbuilder import diagnostics as _diag
+    orphan, new = "/prefix/orphan-pySCF", "/prefix/new-pySCF"
+    _bind(conda_envs={}, conda_binary="/fake/conda")
+    recipe = recipe_by_name("molbuilder-pySCF")
+    seen: list = []
+
+    def _door(argv, prefix, **kw):
+        argv = [str(a) for a in argv]
+        seen.append((argv, prefix))
+        if argv[1:3] == ["env", "remove"] and "-n" in argv:
+            # what conda says about a name its registry does not hold
+            return (1, "EnvironmentLocationNotFound: Not a conda environment")
+        return (0, _VERIFY_OUTPUT)
+
+    monkeypatch.setattr(install._builds, "dispatch_into_env", _door)
+    reading = install.EnvState(name="molbuilder-pySCF", listed_in_registry=False,
+                               dir_exists=True, has_conda_meta=True,
+                               prefix=orphan, manager="/fake/conda")
+    monkeypatch.setattr(install, "probe_env_state",
+                        lambda name, binary: install.EnvState(
+                            name=name, listed_in_registry=False,
+                            dir_exists=False, has_conda_meta=False,
+                            prefix=None, manager=binary))
+    monkeypatch.setattr(_diag, "detect", lambda: Capabilities(
+        runtime_config={}, conda_binary="/fake/conda",
+        conda_envs={"molbuilder-pySCF": new}))
+
+    result = install.run_install(recipe, clean=True, env_state=reading)
+
+    removal = result.steps[0]
+    assert removal.label == "remove env molbuilder-pySCF"
+    assert removal.outcome is install.Outcome.RECOVERED, removal.outcome
+    removals = [argv for argv, _p in seen if argv[1:3] == ["env", "remove"]]
+    assert len(removals) == 2 and removals[0][3] == "-n", removals
+    assert removals[1][3:5] == ["--prefix", orphan], removals
+    assert result.succeeded, [(s.label, s.outcome) for s in result.steps]
+
+
 #: What molbuilder-pySCF's verify step requires of its own output.
 _VERIFY_OUTPUT = ("pyscf 2.13, geometric 1.1, prop: polarizability OK\n"
                   "  IR: analytic dmu/dR available (pyscf.prop.infrared)")
@@ -1022,7 +1073,7 @@ def test_an_env_outside_envs_dirs_is_PRESENT_not_GHOST(monkeypatch, tmp_path):
             return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path / "envs"}"]}}')
         return _stub(0, stdout="")
 
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
     state = install.probe_env_state("mb-out-of-tree", "/fake/conda")
 
     assert state.state is install.EnvPresence.PRESENT, (
@@ -1051,7 +1102,7 @@ def test_a_registry_entry_whose_directory_is_gone_is_still_GHOST(
             return _stub(0, stdout='{"envs_dirs": []}')
         return _stub(0, stdout="")
 
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
     state = install.probe_env_state("was-here", "/fake/conda")
 
     assert state.state is install.EnvPresence.GHOST, state.describe()
@@ -1169,18 +1220,18 @@ def test_the_host_env_name_has_a_persistent_home(monkeypatch, tmp_path):
     monkeypatch.delenv("MOLBUILDER_HOST_ENV", raising=False)
 
     from molbuilder.diagnostics import detect
-    from molbuilder.envs.doctor import _effective_name
+    from molbuilder.envs.recipes import effective_name
 
     host = recipe_by_name("molbuilder")
-    assert _effective_name(host, detect()) == "mb-dev"
+    assert effective_name(host, detect()) == "mb-dev"
 
     # and the variable still wins for one invocation
     monkeypatch.setenv("MOLBUILDER_HOST_ENV", "mb-other")
-    assert _effective_name(host, detect()) == "mb-other"
+    assert effective_name(host, detect()) == "mb-other"
 
     # a routed recipe is unaffected by either
     siesta = recipe_by_name("molbuilder-siesta")
-    assert _effective_name(siesta, detect()) == "molbuilder-siesta"
+    assert effective_name(siesta, detect()) == "molbuilder-siesta"
 
 
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
@@ -1271,7 +1322,7 @@ def test_bootstrap_without_yes_and_without_a_terminal_says_so_up_front(
     so the seeding aborts at the end -- knowable at the start."""
     _bind()
     from molbuilder.envs import _cli
-    monkeypatch.setattr(_cli, "_stdin_can_answer", lambda: False)
+    monkeypatch.setattr(_cli._hints, "stdin_can_answer", lambda: False)
     assert _cli._warn_about_seeding_now(auto_yes=False) is True
     # ...and --yes is exactly the answer, so it must NOT warn then.
     assert _cli._warn_about_seeding_now(auto_yes=True) is False

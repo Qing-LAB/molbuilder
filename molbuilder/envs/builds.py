@@ -902,22 +902,25 @@ def env_size_reference_gb(envs_dir: str) -> Optional[float]:
                     and not c.is_symlink()]
     except OSError:
         return None
-    best = 0
-    for child in children:
-        total = 0
-        for dirpath, dirnames, filenames in os.walk(child,
-                                                    followlinks=False):
-            for name in filenames:
-                fp = os.path.join(dirpath, name)
-                try:
-                    st = os.lstat(fp)
-                except OSError:
-                    continue
-                if stat.S_ISLNK(st.st_mode):
-                    continue
-                total += st.st_size
-        best = max(best, total)
+    best = max((tree_bytes(child) for child in children), default=0)
     return (best / (1024 ** 3)) if best else None
+
+
+def tree_bytes(root: Path) -> int:
+    """Apparent bytes of every regular file under ``root``, symlinks skipped;
+    ``0`` for a missing or unreadable tree.  The one walk -- `envs clean`
+    kept its own ``rglob`` copy until 2026-09-13 (K-D10)."""
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
+        for name in filenames:
+            try:
+                st = os.lstat(os.path.join(dirpath, name))
+            except OSError:
+                continue
+            if stat.S_ISLNK(st.st_mode):
+                continue
+            total += st.st_size
+    return total
 
 
 def check_disk(path: str, *, reference_gb: Optional[float] = None
@@ -2186,6 +2189,7 @@ __all__ = [
     "env_size_reference_gb",
     "detect_gpu_name",
     "resolve_paths",
+    "tree_bytes",
     "write_sentinel",
     "component_install_valid",
     "downstream_components",

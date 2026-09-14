@@ -1917,13 +1917,12 @@ def cmd_notify_token(user, host, route, channel, replace):
     # 2026-09-12; it had no production caller, and `auth_setup.default_secret_dir`
     # had already dropped its `home=` for the same reason on 2026-08-31.  A test
     # that wants another root sets MOLBUILDER_CONFIG_DIR, like everything else.
-    path = notify_keys_path()
     # ONE DOOR (`auth_setup.issue_notify_key`), shared with the This-machine
     # tab.  Issuing written twice would be free to generate a second route
     # segment from the same file and silence everyone already set up.
     try:
         token, seg, existing_route = _as.issue_notify_key(
-            user, path=path, route=route, replace=replace)
+            user, route=route, replace=replace)
     except _as.NotifyKeyError as exc:
         raise click.UsageError(str(exc))
     base = (host or "https://YOUR-SERVER:8888").rstrip("/")
@@ -1932,7 +1931,7 @@ def cmd_notify_token(user, host, route, channel, replace):
         indent=2)
 
     click.echo(f"\nIssued a run-report signing key for {user}.\n")
-    click.echo(f"  server side, written now : {path}  (0600)")
+    click.echo(f"  server side, written now : {notify_keys_path()}  (0600)")
     click.echo( "  molbuilder.json needs    : nothing.  The file above IS the "
                 "switch --")
     click.echo( "                             it carries the route, and the "
@@ -2449,24 +2448,6 @@ def _resolve_repo_path(path: Optional[str]) -> str:
     return str(p)
 
 
-def _stdin_is_a_terminal() -> bool:
-    """Is there somebody present to answer a question?
-
-    A5's warning is a question, and a question needs an answerer.  With no
-    terminal there is nobody, and neither answer may be assumed -- so the
-    restore stops and prints how to say yes.
-
-    A named function rather than an inline ``sys.stdin.isatty()`` because it is
-    the branch that decides whether a folder can be overwritten, and a test
-    harness replaces ``sys.stdin`` wholesale -- leaving the interactive half
-    unreachable, which is how it came to be documented but never written.
-    """
-    try:
-        return sys.stdin.isatty()
-    except (AttributeError, ValueError):        # detached or closed
-        return False
-
-
 def _repo_or_exit(path):
     from molbuilder.checkpoint import Repo
     repo = Repo(_resolve_repo_path(path))
@@ -2714,7 +2695,8 @@ def cmd_checkpoint_restore(state, force, path):
         # answer, so it does not re-hash the working tree to re-ask a question
         # this branch has already had answered.
         click.echo(str(e), err=True)
-        if not _stdin_is_a_terminal():
+        from .envs.hints import stdin_can_answer
+        if not stdin_can_answer():
             # No terminal, no --force: nothing may be assumed either way.
             sys.exit(2)
         if not click.confirm("\nGo ahead and lose it?", default=False):
