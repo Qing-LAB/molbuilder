@@ -1109,6 +1109,43 @@ def test_an_advisory_probe_is_one_word_and_out_of_the_count(capsys):
     assert "[NOTE] mps" in printed.replace("  ", " ") or "[NOTE]" in printed
 
 
+def test_the_host_env_name_has_a_persistent_home(monkeypatch, tmp_path):
+    """D13 -- `"envs": {"host": "mb-dev"}` validated and was ignored.
+
+    The `envs` block takes any string->string pair, so writing it was accepted;
+    nothing read it, because the name was resolved from the config only for
+    RECIPES WITH A CATEGORY and the host recipe has none.  So the host env's
+    name lived only in `$MOLBUILDER_HOST_ENV`: export it, install, open a new
+    shell without it, and `doctor` reports the host recipe against `molbuilder`
+    again -- while `install molbuilder` from there builds the second host env
+    the override existed to avoid.
+
+    Same rule as every other env now: the config is the home, the variable is
+    an override for one invocation.
+    """
+    import json
+
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "molbuilder.json").write_text(json.dumps({"envs": {"host": "mb-dev"}}))
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+    monkeypatch.delenv("MOLBUILDER_HOST_ENV", raising=False)
+
+    from molbuilder.diagnostics import detect
+    from molbuilder.envs.doctor import _effective_name
+
+    host = recipe_by_name("molbuilder")
+    assert _effective_name(host, detect()) == "mb-dev"
+
+    # and the variable still wins for one invocation
+    monkeypatch.setenv("MOLBUILDER_HOST_ENV", "mb-other")
+    assert _effective_name(host, detect()) == "mb-other"
+
+    # a routed recipe is unaffected by either
+    siesta = recipe_by_name("molbuilder-siesta")
+    assert _effective_name(siesta, detect()) == "molbuilder-siesta"
+
+
 def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
     """A remedy in product code has to be runnable.
 

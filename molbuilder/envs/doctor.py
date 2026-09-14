@@ -437,13 +437,28 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
 #: spelling lives in exactly these two files and the shim's help documents it.
 HOST_ENV_ENV = "MOLBUILDER_HOST_ENV"
 
+#: The host recipe carries no `category` (it is not routed to by a tool), so
+#: this is the key its name lives under in `molbuilder.json`'s `envs` block --
+#: the persistent home the variable above only overrides.
+HOST_CATEGORY = "host"
+
 
 def _effective_name(recipe: Recipe, caps: Capabilities) -> str:
     """The env name that ``conda run -n ...`` will hit.
 
-    For routed recipes (``category`` set), this honours the
-    ``molbuilder.json`` ``envs.<category>`` override.  For the host recipe
-    (``category is None``) it honours ``$MOLBUILDER_HOST_ENV``.
+    Every recipe's name comes from the same place: ``envs.<category>`` in
+    ``molbuilder.json``, falling back to the recipe's own name.  The host
+    recipe carries no category, so its key is ``envs.host`` -- and
+    ``$MOLBUILDER_HOST_ENV`` overrides that for one invocation.
+
+    **``envs.host`` was accepted and ignored until 2026-09-13** (D13).  The
+    `envs` block takes any string->string pair, so writing it validated; nothing
+    read it, because this function consulted the config only when `category` was
+    set.  So the host env's name had no persistent home at all: the override
+    held only while the variable was exported, and a later shell without it
+    reported the host recipe against `molbuilder` again -- and `install
+    molbuilder` from there would build the second host env the override existed
+    to avoid.
 
     **The host override was shim-only until 2026-09-12**, and that asymmetry
     cost an env.  `install-env.sh` reads ``MOLBUILDER_HOST_ENV`` (line 98),
@@ -464,7 +479,9 @@ def _effective_name(recipe: Recipe, caps: Capabilities) -> str:
         # env_for_category falls back to DEFAULT_ENV_NAMES when no
         # override is present, so this is always a non-None string.
         return caps.env_for_category(recipe.category) or recipe.name
-    return os.environ.get(HOST_ENV_ENV) or recipe.name
+    return (os.environ.get(HOST_ENV_ENV)
+            or caps.env_for_category(HOST_CATEGORY)
+            or recipe.name)
 
 
 def _run_verify(

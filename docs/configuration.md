@@ -245,6 +245,19 @@ filesystem root.
 `tests/test_config_dir_has_one_home.py` pins all of it, including that no other
 module reads either variable itself.
 
+**The other `MOLBUILDER_*` variable: `MOLBUILDER_HOST_ENV`** *(recorded here
+2026-09-13; it had no contract entry, which is D10)*. It names the HOST env for
+one invocation — the env `molbuilder` itself runs from — and exists for
+developing against a second host env without disturbing the first. Both
+`scripts/install-env.sh` and the Python layer read it.
+
+**Its persistent home is `envs.host` in `molbuilder.json`**, the same place
+every other env's name lives, and the variable overrides that for one command.
+Until 2026-09-13 there was no home: `envs.host` was accepted by the validator
+and read by nothing, so the name survived only as long as the variable was
+exported — and a later shell without it reported the host recipe against
+`molbuilder` while `install` would have built a second host env.
+
 **Who creates it.** Nobody had to, and that was the gap: every reader treats an
 absent file as *unset*, so a machine on which the directory had never been made
 was indistinguishable from one deliberately left unconfigured — and
