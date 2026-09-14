@@ -1232,16 +1232,26 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         else:
             info.append(finding.render())
 
-    # NVIDIA driver (host).  Kernel-module-coupled; can't be a conda
-    # package.  Used at build time for compute-cap detection and at
-    # runtime for the GPU-acceleration path.  Missing driver is a
-    # WARNING, not an error: ELPA built with ``--enable-nvidia-gpu``
-    # still runs correctly on CPU-only hosts (the GPU path is selected
-    # at runtime via ``Diag.ELPA.GPU``; with no GPU available ELPA's
-    # CPU kernels are used).  This lets users on a no-GPU node install
-    # ``molbuilder-siesta-gpu`` purely for ELPA's CPU eigensolver
-    # support, without having to install + maintain a parallel non-
-    # GPU SIESTA env.
+    # NVIDIA driver (host).  Kernel-module-coupled, so it cannot be a conda
+    # package -- and it is NOT NEEDED TO BUILD.  A missing driver is a
+    # WARNING and never an error, because nothing about compiling this stack
+    # depends on one:
+    #
+    #   * the CUDA TOOLKIT comes from conda, inside the env (the recipe
+    #     declares `cuda-nvcc` and friends); the host's CUDA, if any, is not
+    #     read.  See `_detect_cuda_home`.
+    #   * **ELPA is a diagonalization library with CPU kernels**, not a CUDA
+    #     application.  It is built with `--enable-nvidia-gpu` so the GPU
+    #     path EXISTS, and a run selects it (`Diag.ELPA.GPU`) only where
+    #     there is a GPU to select.  On a CPU-only host the same binary uses
+    #     ELPA's CPU eigensolver, which is a reason to install this env even
+    #     there.
+    #   * the driver matters at RUN time, on the machine that runs the job,
+    #     and only for actually using the GPU.  That is a note for the
+    #     operator (`Recipe.system_preconditions`), not a gate on an install.
+    #
+    # The only driver-side fact the BUILD uses is the compute capability, and
+    # it has a fallback (sm_80) plus `MOLBUILDER_CUDA_CC` -- see below.
     driver_ver = detect_nvidia_driver()
     if driver_ver:
         info.append(f"NVIDIA driver      {driver_ver:<10s}  (host; provides nvidia-smi)")
@@ -1283,14 +1293,14 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
                     f"it; start over: "
                     f"{_hints.fix_cmd('install', '<recipe>', '--clean', '--yes')}"
                 )
-        elif spec.cuda_min_version:
-            ct = _cuda_tuple(probe.cuda_version)
-            mt = _cuda_tuple(spec.cuda_min_version)
-            if ct is not None and mt is not None and ct < mt:
-                errors.append(
-                    f"CUDA toolkit version {probe.cuda_version} is older "
-                    f"than the recipe's minimum {spec.cuda_min_version}."
-                )
+        # NO VERSION FLOOR HERE, and that is deliberate (2026-09-14).  The
+        # toolkit comes from conda INTO THE ENV and this project pins it
+        # (`recipes.py`'s `cuda-version=`), so a floor gated a number we set
+        # ourselves.  The one it held (12.4) was never ELPA's requirement:
+        # ELPA 2024.05.001 documents no minimum CUDA, and the only version
+        # its changelog names is a workaround FOR versions below 12.1.  What
+        # genuinely constrains the pair is whether nvcc accepts the chosen
+        # gcc, and `check_cuda_gcc_compat` below asks exactly that.
 
     # GPU + compute capability
     if probe.cuda_compute_cap:

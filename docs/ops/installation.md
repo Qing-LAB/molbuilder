@@ -453,6 +453,24 @@ yourself.
 
 ## 6. Appendix — building the GPU SIESTA (optional)
 
+> ### What this env needs, and what it does not *(stated plainly 2026-09-14)*
+>
+> | | |
+> |---|---|
+> | **A GPU, to build** | **No.** The build completes on a machine with no NVIDIA hardware at all. |
+> | **An NVIDIA driver, to build** | **No.** A missing driver is a warning, never an error. |
+> | **CUDA installed on the host** | **No, and it is never read.** The CUDA toolkit is a conda package and lives inside `$CONDA_PREFIX`. |
+> | **A minimum CUDA version** | **None is declared.** The toolkit version is the recipe's own pin (`cuda-version=`, default `13.*`), so there is nothing to check it against. ELPA documents no minimum either — the only CUDA version in its changelog is a workaround *for* versions below 12.1. |
+> | **A driver, to RUN on the GPU** | **Yes** — on the machine that runs the job, and only for the GPU path. That is why it is listed as an *optional* system precondition, which `install --dry-run` prints. |
+> | **gcc pinned to 14.3** | **Yes, and not because of CUDA** — SIESTA 5.4.2's `Src/kpoint_t.F90` miscompiles under gcc 14.4. The pin is keyed by SIESTA tag (§ 6.1). CUDA↔gcc pairing is a *separate* check. |
+>
+> **ELPA is not a CUDA application.** It is a dense-eigensolver library whose
+> CPU kernels are worth having on their own; molbuilder builds it with
+> `--enable-nvidia-gpu` so the GPU path *exists*, and a run selects it
+> (`Diag.ELPA.GPU`) only where there is a GPU to select. The same binary uses
+> ELPA's CPU eigensolver on a laptop. Installing this env on a machine without
+> a GPU is a reasonable thing to do.
+
 The `molbuilder-siesta-gpu` env is the only one **compiled from source**, because
 a CUDA-accelerated SIESTA (with the ELPA GPU eigensolver, TranSiesta, and TBtrans)
 isn't available as a conda package. `bash scripts/install-env.sh install molbuilder-siesta-gpu`
@@ -571,9 +589,19 @@ too late. It takes a plain version (`14`, `14.3`, `14.3.0`); for a wildcard, set
 `MOLBUILDER_GCC='14.*'` directly. On the Python entry point, export the variable
 before the command.
 
-CUDA constrains the choice independently: **CUDA 12.0–12.7 wants gcc ≤ 13** and
-**CUDA 11.x wants gcc ≤ 11**. The installer checks this pairing and fails fast
-with the value to use.
+CUDA constrains the choice independently — *this is about nvcc accepting a host
+compiler, and nothing else*: **CUDA 12.0–12.7 wants gcc ≤ 13**, **CUDA 11.x wants
+gcc ≤ 11**, and gcc 14 wants **CUDA ≥ 12.8**. The installer checks this pairing
+and fails fast with the value to use. It is checked against the toolkit **in the
+env**, which this recipe pins (`cuda-version=`, default `13.*`), so with the
+shipped defaults the pairing holds and there is nothing to do. It bites only if
+you move one of the two: setting `MOLBUILDER_CUDA_VERSION=12.4` with the default
+gcc 14.3 is refused, and the message names `MOLBUILDER_GCC=13` as the fix.
+
+There is **no minimum-CUDA gate**. One was declared until 2026-09-14 (`12.4`) and
+it was never a requirement of anything: not of ELPA, which documents no minimum,
+and not of SIESTA — it was a fossil of an early belief about the gcc pairing, and
+it duplicated a number this recipe sets itself.
 
 **A version change only affects a fresh solve.** An env that already exists keeps
 the compiler it was built with, so re-running `install` on a machine that already

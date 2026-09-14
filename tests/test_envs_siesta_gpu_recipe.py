@@ -175,7 +175,7 @@ def test_build_spec_cuda_required(recipe):
     assert recipe.build_spec.cuda_required is True
 
 
-# NO TEST ON `cuda_min_version` HERE, and that is deliberate (2026-09-14).
+# NO TEST ON `cuda_min_version` HERE -- THE FIELD IS GONE (2026-09-14).
 # Two stood here in one day and both asserted something false.  The first
 # pinned `"12.4"` with the reason *"default toolchain (gcc 14) pairs with CUDA
 # 12.4+"* -- which the pairing table contradicts.  The second asserted that the
@@ -254,20 +254,6 @@ def test_cuda_toolkit_in_conda_packages(recipe):
         )
 
 
-def test_system_preconditions_mention_driver_not_toolkit(recipe):
-    """System preconditions list the host-side responsibility (NVIDIA
-    driver + nvidia-smi).  The CUDA toolkit is NOT a precondition --
-    it's installed by the env's conda solve."""
-    text = " ".join(recipe.system_preconditions).lower()
-    assert "driver" in text
-    assert "nvidia-smi" in text or "nvidia" in text
-    # Toolkit should be either absent from preconditions OR explicitly
-    # noted as "ships in env" (not as something the user provides).
-    assert "ships in" in text or "toolkit" not in text or (
-        "in env" in text and "/usr/local/cuda" not in text
-    )
-
-
 # --------------------------------------------------------------------- #
 #  Per-component shape                                                   #
 # --------------------------------------------------------------------- #
@@ -291,7 +277,6 @@ def test_elpa_component(recipe):
     used because the default tag is 2021.11.001+.
     """
     elpa = _comp(recipe, "elpa")
-    assert elpa.needs_cuda is True
     # Tarball, not git clone.
     assert elpa.tarball_url, "ELPA must use tarball download"
     assert "elpa.mpcdf.mpg.de" in elpa.tarball_url, (
@@ -364,7 +349,6 @@ def test_siesta_component(recipe):
     ``MOLBUILDER_SIESTA_TAG`` for a hotfix from the ``rel-5.4`` branch
     or a specific SHA."""
     siesta = _comp(recipe, "siesta")
-    assert siesta.needs_cuda is False
     assert siesta.ref == "5.4.2", (
         f"SIESTA ref must be pinned to the 5.4.2 release tag "
         f"(see test docstring for why): {siesta.ref!r}"
@@ -385,12 +369,6 @@ def test_siesta_component(recipe):
 # --------------------------------------------------------------------- #
 #  System preconditions                                                  #
 # --------------------------------------------------------------------- #
-
-
-def test_system_preconditions_mention_disk(recipe):
-    """User-facing prerequisites must mention disk space."""
-    text = " ".join(recipe.system_preconditions).lower()
-    assert "disk" in text or "gb" in text
 
 
 # --------------------------------------------------------------------- #

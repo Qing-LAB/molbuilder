@@ -65,7 +65,6 @@ def tiny_spec() -> BuildSpec:
                         "-DCMAKE_INSTALL_PREFIX={install}"),
         build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
         install_argv=("cmake", "--install", "{build}"),
-        needs_cuda=False,
     )
     b = BuildComponent(
         name="b",
@@ -75,7 +74,6 @@ def tiny_spec() -> BuildSpec:
                         "-DA_DIR={dep_a}"),
         build_argv=("cmake", "--build", "{build}"),
         install_argv=("cmake", "--install", "{build}"),
-        needs_cuda=False,
     )
     return BuildSpec(
         artifact_subdir="tiny-stack",

@@ -8,11 +8,9 @@ Pinned contracts:
   * project-scope lookup: ``<project_dir>/.molbuilder.json``.
   * deep-merge rules: scalars + arrays = project replaces, objects =
     recurse; project wins on conflict.
-  * ``script_generation.preactivate`` CONCATENATES server-wide ++
+  * ``script_generation.preamble`` CONCATENATES server-wide ++
     project (per § 3.6, not the generic replace rule) -- pinned in
     ``test_preactivate_concatenates_across_scopes``.
-  * ``script_generation.autodetect_conda`` and ``preactivate_format``
-    follow the standard replace rule.
   * ``write_config_scope`` produces files mode 0600 and preserves
     keys outside the patch.
 """
@@ -276,48 +274,37 @@ def test_invalid_activation_value_rejected(sandbox):
         read_effective_config()
 
 
-def test_legacy_preactivate_key_warns_and_aliases_to_preamble(sandbox):
-    """Per docs/execution/running-a-job.md § 5: the legacy key ``preactivate`` is
-    treated as ``preamble`` for one release with a deprecation
-    warning."""
-    import warnings
+@pytest.mark.parametrize("key", ["preactivate", "preactivate_format",
+                                  "autodetect_conda"])
+def test_a_retired_script_generation_key_is_refused_by_name(sandbox, key):
+    """`preactivate` was accepted as an alias for `preamble`, and the other
+    two warned-and-dropped, until 2026-09-14 (user: *"clean up old names, we
+    need explicit consistent setup"*).
+
+    Every other retired key in this file is refused by name -- the § 2.1a
+    rule: a key read and silently transformed, or read and dropped, looks
+    effective while nobody can tell from the file which spelling took
+    effect.  These three were the exception; they are not any more, and the
+    refusal names the key and says what to do with it.
+    """
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preactivate": "module load mamba",
-            "activation":  "source activate",
-        },
+        "script_generation": {key: "module load mamba"},
     }))
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        sg = get_script_generation()
-    assert sg["preamble"] == "module load mamba"
-    assert any("preactivate" in str(w.message) and
-                "preamble" in str(w.message)
-                for w in caught), [str(w.message) for w in caught]
+    with pytest.raises(RuntimeConfigError, match=key) as e:
+        read_effective_config()
+    assert "no longer configured" in str(e.value)
+    assert str(sandbox / "molbuilder.json") in str(e.value), \
+        "the refusal must name the file to go and edit"
 
 
-def test_dropped_keys_warn_but_dont_fail(sandbox):
-    """Per docs/execution/running-a-job.md § 5: ``autodetect_conda`` /
-    ``preactivate_format`` are silently ignored (with a warning)."""
-    import warnings
+def test_the_new_spelling_is_what_works(sandbox):
+    """The other half: `preamble` is read, so the refusal above is about the
+    spelling and not about the setting."""
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble":           "module load mamba",
-            "activation":         "source activate",
-            "autodetect_conda":   True,
-            "preactivate_format": "shell",
-        },
+        "script_generation": {"preamble": "module load mamba"},
     }))
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        sg = get_script_generation()
-    assert sg["preamble"] == "module load mamba"
-    assert "autodetect_conda" not in sg
-    warned = [str(w.message) for w in caught]
-    assert any("autodetect_conda" in m for m in warned)
-    assert any("preactivate_format" in m for m in warned)
-
-
+    assert read_effective_config()["script_generation"]["preamble"] == \
+        "module load mamba"
 # --------------------------------------------------------------------- #
 #  write_config_scope                                                    #
 # --------------------------------------------------------------------- #
@@ -353,13 +340,16 @@ def test_write_server_wide_creates_xdg_when_cwd_absent(xdg_branch):
 def test_write_project_scope_creates_hidden_file(sandbox):
     proj = sandbox / "myproject"
     proj.mkdir()
+    # A LIVE key: this wrote `autodetect_conda` until 2026-09-14 and passed
+    # because the writer tolerated a retired key.  It is refused now, so the
+    # test would have been asserting the tolerance rather than the write.
     target = write_config_scope(project_dir=proj, patch={
-        "script_generation": {"autodetect_conda": True},
+        "script_generation": {"preamble": "module load mamba"},
     })
     assert target == proj / ".molbuilder.json"
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["autodetect_conda"] is True
+    assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 
 def test_write_preserves_existing_unrelated_keys(sandbox):

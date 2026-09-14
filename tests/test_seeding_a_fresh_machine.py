@@ -400,19 +400,19 @@ def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
     """
     import json
     import re
-    import tempfile
-    from molbuilder.monitor import load_channels
+    from molbuilder.monitor import default_notify_path, load_channels
 
     initconfig.init_config("conda activate", probe=False)
     readme = (fresh / "secrets" / "README").read_text(encoding="utf-8")
     block = re.search(r"(\{\n        \"channels\".*?\n      \})", readme, re.S)
     assert block, "the mock channel block should be in the README"
     doc = json.loads(block.group(1))
-    with tempfile.NamedTemporaryFile("w", suffix=".json",
-                                     delete=False) as fh:
-        json.dump(doc, fh)
-        path = fh.name
-    got = load_channels(path)
+    # AT THE FILE'S ONE HOME: `load_channels` took a `path=` until
+    # 2026-09-14 and this handed it a temp file.  `fresh` is the config
+    # directory, so the documented example is read exactly where a real one
+    # would be.
+    default_notify_path().write_text(json.dumps(doc), encoding="utf-8")
+    got = load_channels()
 
     assert set(got) == {"local", "team-slack", "team-discord"}, (
         f"the loader did not accept the documented shape: {sorted(got)}")

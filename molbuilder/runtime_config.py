@@ -1096,22 +1096,46 @@ _SCRIPT_GENERATION_DEFAULTS: Dict[str, Any] = {
     "activation": None,  # explicit-only; no smuggled default
 }
 
-# Keys silently dropped at read time (formerly load-bearing; now no-ops
-# per the v2 rewrite of docs/execution/running-a-job.md § 5).  A one-time WARNING is logged
-# when seen so the operator knows to clean up their config.
-_DROPPED_KEYS = ("preactivate_format", "autodetect_conda")
-# Keys aliased to the new schema for one release (warning emitted).
-_RENAMED_KEYS = {"preactivate": "preamble"}
+#: Retired `script_generation` keys, REFUSED BY NAME -- the same treatment
+#: `secret_key_file`, `scheduler.routing` and the flat `cert`/`key` get, and
+#: for the same reason (§ 2.1a): a key that is read and silently transformed,
+#: or read and dropped, looks effective while nobody can tell from the file
+#: which spelling took effect.
+#:
+#: `preactivate` was accepted as an alias for `preamble` "for one release" and
+#: the other two warned-and-dropped, from the v2 rewrite of
+#: `running-a-job.md` § 5 until 2026-09-14, when the exception was closed
+#: (user: *"clean up old names, we need explicit consistent setup"*).
+_SCRIPT_GENERATION_RETIRED = {
+    "preactivate": (
+        "{path}: 'script_generation.preactivate' is no longer configured.  "
+        "It is now 'preamble' -- the same value, the same meaning: arbitrary "
+        "shell run before activation (the `module load` lines).  Rename the "
+        "key; nothing else changes.  (It was accepted as an alias until "
+        "2026-09-14.  Refused rather than aliased because two spellings for "
+        "one setting is how a file comes to disagree with itself about which "
+        "one is in effect -- docs/configuration.md § 2.1a.)"),
+    "preactivate_format": (
+        "{path}: 'script_generation.preactivate_format' is no longer "
+        "configured and has no replacement.  The preamble is emitted "
+        "verbatim; there is no format to choose.  Delete the line."),
+    "autodetect_conda": (
+        "{path}: 'script_generation.autodetect_conda' is no longer "
+        "configured and has no replacement.  How this machine enters a conda "
+        "env is DECLARED, never detected -- 'script_generation.activation', "
+        "which `molbuilder envs init-config` asks about and writes "
+        "(docs/execution/running-a-job.md § 5.2).  Delete the line."),
+}
 
 
 def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """Validate one scope's ``script_generation`` section.
 
     Returns a normalised copy with defaults filled in.  Raises
-    :class:`RuntimeConfigError` on shape errors.  Emits a warning to
-    stderr for legacy keys (renamed or dropped) but accepts the file.
+    :class:`RuntimeConfigError` on a shape error, and on a RETIRED key by
+    name (`_SCRIPT_GENERATION_RETIRED`) -- it warned and carried on until
+    2026-09-14.
     """
-    import warnings as _warnings
     if not isinstance(raw, Mapping):
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: 'script_generation' must be an "
@@ -1128,36 +1152,10 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"{type(v).__name__}."
             )
         out["preamble"] = v
-    # preactivate (legacy alias) -- warn + accept
-    for legacy, current in _RENAMED_KEYS.items():
-        if legacy in raw:
-            _warnings.warn(
-                f"{CONFIG_FILENAME}: 'script_generation.{legacy}' is "
-                f"renamed to '{current}' (docs/execution/running-a-job.md § 5).  "
-                f"Treating as '{current}' for backward compatibility; "
-                f"please update your config.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            v = raw[legacy]
-            if not isinstance(v, str):
-                raise RuntimeConfigError(
-                    f"{CONFIG_FILENAME}: 'script_generation.{legacy}' "
-                    f"must be a string; got {type(v).__name__}."
-                )
-            # Honour the renamed value only if the NEW key wasn't also set.
-            if current not in raw:
-                out[current] = v
-    # Dropped keys -- warn + silently ignore (no behaviour attached).
-    for dropped in _DROPPED_KEYS:
-        if dropped in raw:
-            _warnings.warn(
-                f"{CONFIG_FILENAME}: 'script_generation.{dropped}' is "
-                f"no longer used and will be ignored "
-                f"(docs/execution/running-a-job.md § 5).  Please remove it.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+    # Retired keys -- REFUSED, each with its own sentence.
+    for retired, message in _SCRIPT_GENERATION_RETIRED.items():
+        if retired in raw:
+            raise RuntimeConfigError(message.format(path=CONFIG_FILENAME))
     # activation -- no default; ``None`` is the "not set" sentinel.
     # Only reject genuine bad values, not the sentinel (so this
     # validator is idempotent -- the read pipeline normalises the

@@ -454,13 +454,12 @@ class BuildComponent:
         Optional template argv for a post-install smoke check.  Empty
         tuple means "skip" (executor still records a verify.done
         sentinel so resume logic works).
-    needs_cuda
-        When ``True``, this component participates in the CUDA-version
-        compatibility pre-flight, whose report records the detected
-        CUDA toolkit version.  ELPA needs ``True`` (the
-        only component that itself emits CUDA kernels); SIESTA proxies
-        all GPU work through ELPA and doesn't need its own CUDA
-        config.
+    (There is no ``needs_cuda``.  It was a per-component flag nothing read,
+    and its docstring said ELPA "needs CUDA" -- a misconception, corrected
+    2026-09-14: **ELPA is a diagonalization library with CPU kernels**, used
+    for its CPU eigensolver as much as its GPU one.  Nothing about building
+    it is gated on CUDA; it is simply built with the NVIDIA path ON so the
+    GPU is available to a run that asks for it and has one.)
     clone_recurse_submodules
         When ``True``, ``git clone`` runs with
         ``--recurse-submodules --shallow-submodules`` so the
@@ -503,7 +502,6 @@ class BuildComponent:
     build_argv: Tuple[str, ...]
     install_argv: Tuple[str, ...]
     verify_argv: Tuple[str, ...] = ()
-    needs_cuda: bool = False
     clone_recurse_submodules: bool = False
     clone_shallow: bool = True
     tarball_url: str = ""
@@ -525,12 +523,32 @@ class BuildSpec:
         Components in dependency order (earlier ones install before
         later ones configure).  An empty tuple is rejected.
     cuda_required
-        When ``True``, the executor's pre-flight fails if ``nvcc`` /
-        the CUDA toolkit is not findable on the host.
-    cuda_min_version
-        Minimum CUDA toolkit version, e.g. ``"12.4"``.  Used by the
-        CUDA<->gcc compatibility check.  ``None`` means "any version
-        passes the version check, only existence is required."
+        When ``True``, this build compiles CUDA kernels, so the ENV must
+        carry a CUDA toolkit -- and it does, because the recipe declares
+        ``cuda-nvcc`` and friends as conda packages.  The pre-flight fails
+        only when the env exists and ``nvcc`` is NOT in it, which means the
+        solver dropped a package the recipe asked for.
+
+        **The HOST is never consulted, and none of this needs a GPU.**
+        CUDA arrives inside ``$CONDA_PREFIX``; a system CUDA installation is
+        not read, not required, and not used.  A driver is not required
+        either: the build completes on a machine with no NVIDIA hardware at
+        all, and the binary runs CPU-only there.  The driver matters at RUN
+        time, on the machine that runs the job, and only for actually using
+        the GPU path -- which is why a missing driver is a preflight WARNING
+        and never an error, and why it is listed under
+        ``Recipe.system_preconditions`` as optional.
+    (There is no ``cuda_min_version``.  Retired 2026-09-14: it declared a
+    floor on the CUDA TOOLKIT, which arrives from conda inside the env and is
+    pinned by this file (``cuda-version=``), so it gated a number we set
+    ourselves.  The number it held (12.4) was never ELPA's requirement --
+    ELPA 2024.05.001 documents no minimum, and the only CUDA version its
+    changelog names is a workaround FOR versions below 12.1 -- it was a
+    fossil of an early belief that gcc 14 pairs with CUDA 12.4+, which the
+    pairing table later corrected to 12.8.  Whether nvcc accepts the chosen
+    gcc is `builds.check_cuda_gcc_compat`'s question, and it is asked
+    separately.)
+
     activate_hook
         Template body for ``$CONDA_PREFIX/etc/conda/activate.d/zz-<artifact_subdir>.sh``.
         Receives the same placeholders as component fields.  Empty
@@ -543,7 +561,6 @@ class BuildSpec:
     artifact_subdir: str
     components: Tuple[BuildComponent, ...]
     cuda_required: bool = False
-    cuda_min_version: Optional[str] = None
     activate_hook: str = ""
     deactivate_hook: str = ""
 
@@ -1536,7 +1553,6 @@ _ELPA = BuildComponent(
     # produce libelpa.so instead.  Our SIESTA cmake step also looks for
     # the _openmp variant via pkg-config (elpa_openmp.pc).
     verify_argv=("test", "-f", "{install}/lib/libelpa_openmp.so"),
-    needs_cuda=True,
     clone_recurse_submodules=False,
 )
 
@@ -1715,7 +1731,6 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
     ),
     install_argv=("cmake", "--install", "{build}"),
     verify_argv=("{install}/bin/siesta", "--version"),
-    needs_cuda=False,
     # Submodule recursion brings libfdf + libpsml + xmlf90 + libgridxc
     # + ELSI + libxc as External/ subdirectories; SIESTA's cmake
     # picks them up via FIND_METHOD=source step.  This is the path
@@ -1740,7 +1755,6 @@ _SIESTA_GPU_BUILD = BuildSpec(
     #
     # The 12.4 itself came in with the original design commit (d8106e6b) and
     # has NOT been checked against ELPA 2024.05.001's own documented minimum.
-    cuda_min_version="12.4",
     activate_hook=_SIESTA_GPU_ACTIVATE_HOOK,
     deactivate_hook=_SIESTA_GPU_DEACTIVATE_HOOK,
 )

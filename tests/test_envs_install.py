@@ -674,6 +674,32 @@ def _home_is_not_the_developers(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
 
 
+def test_the_dry_run_says_what_the_machine_must_provide(monkeypatch):
+    """`Recipe.system_preconditions` is accurate and was rendered NOWHERE
+    until 2026-09-14 -- the one place it belongs is where somebody is
+    deciding whether to start a 25-minute source build.
+
+    And it must say what is OPTIONAL.  The NVIDIA driver is not needed to
+    build: CUDA comes from conda into the env, ELPA is a diagonalization
+    library whose CPU kernels work without a GPU, and the driver matters at
+    RUN time for the GPU path only.  A preconditions list that read as
+    "you need a driver" would turn people away from an env that installs
+    and runs fine on their laptop.
+    """
+    from molbuilder.envs import _cli as envs_cli
+    _bind(conda_binary="/fake/conda")
+    result = _make_runner().invoke(
+        envs_cli.envs_group, ["install", "molbuilder-siesta-gpu", "--dry-run"],
+        catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert "This machine has to provide:" in result.output, result.output
+    driver = [l for l in result.output.splitlines() if "NVIDIA driver" in l]
+    assert driver, result.output
+    assert "OPTIONAL" in " ".join(driver), (
+        "the driver line must say it is optional: it is not needed to "
+        f"build.\n{result.output}")
+
+
 def test_bootstrap_dry_run_lists_recipes_without_installing(monkeypatch):
     """Dry-run path: shows the plan, runs zero installs, returns OK."""
     _bind()

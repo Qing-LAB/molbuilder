@@ -751,9 +751,15 @@ machine enters a conda env and writes the answer here, at the one moment it is
 both known and being discussed ([`ops/installation.md`](?doc=ops/installation.md)
 § 2.1). It is still *declared*, never detected; the installer asks, and prints
 what it wrote. `preamble` is arbitrary shell run before activation (the
-`module load` lines). (Legacy `preactivate` is accepted as an alias for
-`preamble` for one release; `preactivate_format` / `autodetect_conda` are
-dropped with a warning.)
+`module load` lines). **Three retired keys are refused by name**, each with
+its own sentence — `preactivate` (renamed to `preamble`; the same value, the
+same meaning), and `preactivate_format` / `autodetect_conda`, which have no
+replacement: the preamble is emitted verbatim, and how a machine enters a
+conda env is *declared* in `activation`, never detected. They were aliased
+and warned-about respectively until 2026-09-14; refusing them is
+[`configuration.md`](?doc=configuration.md) § 2.1a's rule — a key read and
+silently transformed looks effective while nobody can tell from the file
+which spelling won.
 
 ### 5.3 `scheduler` — the SLURM header source
 

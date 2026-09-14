@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import os
-import pathlib
 
 import pytest
 
@@ -203,18 +202,27 @@ def test_a_stall_reports_whatever_the_policy_says(tmp_path):
 #  the destination -- the user's file, never the description              #
 # --------------------------------------------------------------------- #
 
-def _file(tmp_path, channels):
+def _file(tmp_path, monkeypatch, channels):
+    """The channel file AT ITS ONE HOME.
+
+    `load_channels` took a `path=` until 2026-09-14; it does not, because a
+    file holding webhook URLs (for Slack and Discord the URL IS the
+    credential) is reached through one resolver and nowhere else -- the same
+    rule the notify key file already followed.  A test points the config
+    directory, like everything else in the suite.
+    """
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     f = tmp_path / "notify"
     f.write_text(json.dumps({"channels": channels}))
     return f
 
 
-def test_a_configured_channel_is_read(tmp_path):
+def test_a_configured_channel_is_read(tmp_path, monkeypatch):
     """A third party's shape: the credential is in the URL or a header,
     because Slack and Discord have nowhere else to keep one."""
-    f = _file(tmp_path, {"slack": {"url": "https://example/hook",
+    _file(tmp_path, monkeypatch, {"slack": {"url": "https://example/hook",
                                    "headers": {"Authorization": "Bearer t"}}})
-    assert M.load_channels(str(f)) == {
+    assert M.load_channels() == {
         "slack": {"url": "https://example/hook", "key": None, "kind": None,
                   "headers": {"Authorization": "Bearer t"}}}
 
@@ -280,26 +288,26 @@ def test_the_two_chat_destinations_show_the_SAME_fields():
     assert "#%06X" % d["color"] == a["color"]
 
 
-def test_a_declared_kind_survives_the_loader(tmp_path):
+def test_a_declared_kind_survives_the_loader(tmp_path, monkeypatch):
     """`kind` says WHICH WIRE FORMAT the destination reads, and the loader
     dropped it on the floor until 2026-09-02 -- so a channel that declared
     `"discord"` was still shaped from its host, and one behind a proxy could
     not be told apart at all (`run-reports.md` § 4.1b)."""
-    f = _file(tmp_path, {"relay": {"url": "https://relay.example/hook",
+    _file(tmp_path, monkeypatch, {"relay": {"url": "https://relay.example/hook",
                                    "kind": "discord"}})
-    got = M.load_channels(str(f))["relay"]
+    got = M.load_channels()["relay"]
     assert got["kind"] == "discord"
     assert M.channel_kind(got) == "discord"
 
 
-def test_a_misspelled_kind_falls_back_to_the_host_and_says_so(tmp_path, capsys):
+def test_a_misspelled_kind_falls_back_to_the_host_and_says_so(tmp_path, capsys, monkeypatch):
     """Named and wrong is not absent.  A typo silently taking the host's
     default would send a Slack-shaped body to Discord and earn a 400 nobody
     could trace back to a spelling -- and one bad field must not cost the
     channel (§ "one bad channel does not cost the others")."""
-    f = _file(tmp_path, {"chat": {"url": "https://discord.com/api/webhooks/1/t",
+    _file(tmp_path, monkeypatch, {"chat": {"url": "https://discord.com/api/webhooks/1/t",
                                   "kind": "discrod"}})
-    got = M.load_channels(str(f))["chat"]
+    got = M.load_channels()["chat"]
     assert got["kind"] is None
     assert M.channel_kind(got) == "discord"          # the host still answers
     # `... or True` STOOD HERE, which made this assertion unfailable and left
@@ -316,28 +324,28 @@ def test_a_misspelled_kind_falls_back_to_the_host_and_says_so(tmp_path, capsys):
         "warning from a refusal")
 
 
-def test_a_molbuilder_channel_carries_a_signing_key(tmp_path):
+def test_a_molbuilder_channel_carries_a_signing_key(tmp_path, monkeypatch):
     """Our own listener's shape: a plain url and a `key` that signs the
     body and never travels (`run-reports.md` § 4.1)."""
-    f = _file(tmp_path, {"lab": {"url": "https://qlab/api/x7Kq",
+    _file(tmp_path, monkeypatch, {"lab": {"url": "https://qlab/api/x7Kq",
                                  "key": "s3cr3t"}})
-    assert M.load_channels(str(f)) == {
+    assert M.load_channels() == {
         "lab": {"url": "https://qlab/api/x7Kq", "key": "s3cr3t",
                 "kind": None, "headers": {}}}
 
 
-def test_several_channels_are_all_read(tmp_path):
+def test_several_channels_are_all_read(tmp_path, monkeypatch):
     """The point of naming them: one run can reach a Slack AND a listener.
 
     The single destination this replaced could not, so pointing it at Slack
     silently replaced whatever was there (`run-reports.md` § 1).
     """
-    f = _file(tmp_path, {"slack": {"url": "https://example/hook"},
+    _file(tmp_path, monkeypatch, {"slack": {"url": "https://example/hook"},
                          "lab": {"url": "https://qlab/api/x", "key": "k"}})
-    assert sorted(M.load_channels(str(f))) == ["lab", "slack"]
+    assert sorted(M.load_channels()) == ["lab", "slack"]
 
 
-def test_one_bad_channel_does_not_cost_the_others(tmp_path):
+def test_one_bad_channel_does_not_cost_the_others(tmp_path, monkeypatch):
     """A file with three channels and a typo in one reports on two.
 
     Refusing the file whole would turn one mistake into total silence, which
@@ -345,25 +353,25 @@ def test_one_bad_channel_does_not_cost_the_others(tmp_path):
     CHANGED when the file became a map: a non-string key used to refuse the
     only destination there was, because there was nothing else to keep.
     """
-    f = _file(tmp_path, {"good": {"url": "https://qlab/api/x", "key": "k"},
+    _file(tmp_path, monkeypatch, {"good": {"url": "https://qlab/api/x", "key": "k"},
                          "badkey": {"url": "https://qlab/api/y", "key": 12345},
                          "nourl": {"key": "k"},
                          "bad name": {"url": "https://qlab/api/z"}})
-    assert list(M.load_channels(str(f))) == ["good"]
+    assert list(M.load_channels()) == ["good"]
 
 
-def test_a_key_that_is_not_a_string_skips_that_channel(tmp_path):
+def test_a_key_that_is_not_a_string_skips_that_channel(tmp_path, monkeypatch):
     """Not "ignore the key and send unsigned" -- an unsigned report is one
     the listener will drop, and it would drop it in SILENCE."""
-    f = _file(tmp_path, {"lab": {"url": "https://qlab/api/x7Kq",
+    _file(tmp_path, monkeypatch, {"lab": {"url": "https://qlab/api/x7Kq",
                                  "key": 12345}})
-    assert M.load_channels(str(f)) == {}
+    assert M.load_channels() == {}
 
 
-def test_no_file_means_no_notifier_and_no_complaint(tmp_path):
+def test_no_file_means_no_notifier_and_no_complaint(tmp_path, monkeypatch):
     """Absent is not an error -- it is the feature being off, which is the
     default state for everybody who has not set it up."""
-    assert M.load_channels(str(tmp_path / "nothing-here")) == {}
+    assert M.load_channels() == {}
 
 
 @pytest.mark.parametrize("body,why", [
@@ -372,24 +380,26 @@ def test_no_file_means_no_notifier_and_no_complaint(tmp_path):
     ('["not", "an object"]',       "not an object"),
     ('{}',                         "no channels key"),
 ])
-def test_a_broken_file_degrades_rather_than_raises(tmp_path, body, why):
+def test_a_broken_file_degrades_rather_than_raises(tmp_path, body, why, monkeypatch):
     """This is a MONITOR.  Refusing to watch a job because a notification
     could not be configured would be the tail wagging the dog: the run is
     the thing, and it is already going."""
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     f = tmp_path / "notify"
     f.write_text(body)
-    assert M.load_channels(str(f)) == {}, why
+    assert M.load_channels() == {}, why
 
 
-def test_the_old_single_destination_file_is_named_not_just_skipped(tmp_path):
+def test_the_old_single_destination_file_is_named_not_just_skipped(tmp_path, monkeypatch):
     """`{"url": ...}` is a valid JSON object, so a silent skip would be
     indistinguishable from never having set anything up -- which is the
     exact failure the setup surface exists to stop.  It says which."""
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     f = tmp_path / "notify"
     f.write_text(json.dumps({"url": "https://hooks.slack.com/services/T/B/X"}))
     log = tmp_path / "m.log"
     log.write_text("")
-    assert M.load_channels(str(f), log=log) == {}
+    assert M.load_channels(log=log) == {}
     text = log.read_text()
     assert "old single-destination file" in text
     assert "channels" in text, "it must say what the shape is now"
@@ -469,7 +479,7 @@ def test_a_missing_channel_is_said_in_the_monitor_log(tmp_path, monkeypatch):
     """Returned by `channels_for` is not enough: it has to reach the file a
     person actually opens."""
     monkeypatch.delenv("MB_NOTIFY_URL", raising=False)
-    f = _file(tmp_path, {"here": {"url": "https://example/hook"}})
+    f = _file(tmp_path, monkeypatch, {"here": {"url": "https://example/hook"}})
     monkeypatch.setattr(M, "default_notify_path", lambda: f)
     M.clear_notifiers()
     log = tmp_path / "m.log"
@@ -556,7 +566,7 @@ def test_a_relaxation_with_the_trigger_OFF_reports_no_steps(tmp_path):
 #  found by reading, not by testing                                      #
 # --------------------------------------------------------------------- #
 
-def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path):
+def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path, monkeypatch):
     """The wrapper backgrounds this process as ``>/dev/null 2>&1 &``.
 
     So anything printed goes nowhere.  A user whose notify file has a typo
@@ -567,26 +577,28 @@ def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path):
     Found by reading the diff, not by any test: every assertion about this
     path checked the RETURN value, which was correct all along.
     """
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     dest = tmp_path / "notify"
     dest.write_text("{not json")
     log = tmp_path / "m.log"
     log.write_text("")
 
-    assert M.load_channels(str(dest), log=log) == {}
+    assert M.load_channels(log=log) == {}
     text = log.read_text()
     assert "not valid JSON" in text
     assert str(dest) in text, "the message must name the file to go and fix"
 
 
-def test_the_users_secret_is_never_echoed_into_the_log(tmp_path):
+def test_the_users_secret_is_never_echoed_into_the_log(tmp_path, monkeypatch):
     """The log is written into the run directory, which travels.  A
     complaint about a bad destination must not quote the destination."""
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     dest = tmp_path / "notify"
     dest.write_text('{"channels": {"s": {"url": '
                     '"https://hooks.slack.com/services/T/B/SECRET"}}')
     log = tmp_path / "m.log"
     log.write_text("")
-    M.load_channels(str(dest), log=log)
+    M.load_channels(log=log)
     assert "SECRET" not in log.read_text()
     assert "hooks.slack.com" not in log.read_text()
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import shlex
 import sys
+import textwrap as _textwrap
 import time
 from pathlib import Path
 from typing import Iterable, Optional, TextIO
@@ -1197,6 +1198,20 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             click.echo(_builds.format_install_summary(
                 recipe.build_spec, probe, rebuild=rebuild,
             ))
+            # WHAT THE MACHINE HAS TO PROVIDE, said where somebody is
+            # deciding whether to start.  `Recipe.system_preconditions` was
+            # accurate and rendered NOWHERE until 2026-09-14; its own text
+            # says which entries are optional (the NVIDIA driver is, for the
+            # GPU path at run time -- it is not needed to build).
+            if recipe.system_preconditions:
+                click.echo("")
+                click.echo("This machine has to provide:")
+                for line in recipe.system_preconditions:
+                    wrapped = _textwrap.fill(
+                        " ".join(line.split()), width=72,
+                        initial_indent="  * ", subsequent_indent="    ")
+                    click.echo(wrapped)
+                click.echo("")
             if env_for_probe is None:
                 click.echo("Detection note (env not yet created):")
                 click.echo("  * gcc / OpenMPI / env health checks run after "

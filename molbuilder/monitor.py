@@ -1097,8 +1097,7 @@ def webhook_request(dest: Dict[str, Any],
     return body, head
 
 
-def load_channels(path: Optional[str] = None,
-                  log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """The named webhook channels, or ``{}`` when none are set up.
 
     The file is ``{"channels": {name: {"url": ..., "key"?: ...,
@@ -1134,7 +1133,14 @@ def load_channels(path: Optional[str] = None,
         _notify_say(msg, log)
 
     try:
-        p = Path(os.path.expanduser(path)) if path else default_notify_path()
+        # ONE RESOLVER, no `path=` (2026-09-14).  For Slack and Discord the
+        # URL in this file IS the credential, so it is reached the way every
+        # other credential in this tree is: through the door that owns it.
+        # A `path=` had no production caller and an `expanduser` the resolver
+        # never applies -- the same shape retired from `read_notify_keys` and
+        # `issue_notify_key`, and for the same reason: a second way to name a
+        # file with one home is how a file gets written where nothing reads it.
+        p = default_notify_path()
     except ImportError:
         # The shipped monitor could not find `config_dir.py` beside it, so
         # WHERE the channels live cannot be answered.  Absent is off
