@@ -303,6 +303,24 @@ def test_results_are_not_world_readable(store):
     assert stat.S_IMODE(reports.stat().st_mode) == 0o700
 
 
+def test_the_file_after_a_rotation_is_as_private_as_the_first(store,
+                                                              monkeypatch):
+    """The handler opens a new file on every rollover, at the umask.  One
+    chmod after construction covered the first file only, so from the second
+    file on the results were group-readable again (K-L2)."""
+    import stat
+    from molbuilder.web.blueprints import notify as N
+    monkeypatch.setattr(N, "LOG_BYTES", 120)      # a rollover every report
+    client, reports = store
+    for _ in range(3):
+        _post(client)
+    current = reports / f"{USER}.jsonl"
+    rotated = reports / f"{USER}.jsonl.1"
+    assert rotated.exists(), "no rollover happened; the test measures nothing"
+    for f in (current, rotated):
+        assert stat.S_IMODE(f.stat().st_mode) == 0o600, f
+
+
 def test_the_wrong_segment_is_a_plain_404(store):
     client, log_root = store
     assert _post(client, path="/api/notify").status_code == 404

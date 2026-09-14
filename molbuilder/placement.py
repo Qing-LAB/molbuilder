@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from .config_dir import (CREDENTIAL_FILE_MODE, PRIVATE_DIR_MODE, config_dir,
+from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, config_dir,
                          google_client_secret, logs_dir, reports_dir,
                          runtime_dir, secrets_dir, session_key, state_dir)
 
@@ -80,7 +80,7 @@ def places() -> Tuple[Place, ...]:
               "notify keys, and a listable directory names a file even when "
               "the file itself is shut"),
         Place("molbuilder.json", lambda: machine_config_path()[0], False,
-              CREDENTIAL_FILE_MODE, True,
+              PRIVATE_FILE_MODE, True,
               "it carries tls.key's path and the auth.providers block"),
         # The NAME from its owner, not a literal: this row re-spelled
         # `environment.json` until 2026-09-13 -- caught by running the retired
@@ -88,16 +88,16 @@ def places() -> Tuple[Place, ...]:
         Place(ENVIRONMENT_FILENAME, machine_scope_path, False, None, False,
               "what the machine IS -- cores, GPUs, queues.  No credential, and "
               "nothing in the tree states a mode for it"),
-        Place("the session key", session_key, False, CREDENTIAL_FILE_MODE, True,
+        Place("the session key", session_key, False, PRIVATE_FILE_MODE, True,
               "anyone who can read it can forge a session"),
         Place("the Google client secret", google_client_secret, False,
-              CREDENTIAL_FILE_MODE, True, "a provider credential"),
+              PRIVATE_FILE_MODE, True, "a provider credential"),
         Place("the notify channels file", default_notify_path, False,
-              CREDENTIAL_FILE_MODE, True,
+              PRIVATE_FILE_MODE, True,
               "for Slack and Discord the URL IS the credential, so this file "
               "is private even when it looks like it holds no key"),
         Place("the notify signing keys", notify_keys_path, False,
-              CREDENTIAL_FILE_MODE, True, "they sign run reports as you"),
+              PRIVATE_FILE_MODE, True, "they sign run reports as you"),
         Place("environments/", environments_dir, True, PRIVATE_DIR_MODE, False,
               "it sits inside the config root and inherits its discipline"),
         Place("secrets/", secrets_dir, True, PRIVATE_DIR_MODE, True,
@@ -108,10 +108,20 @@ def places() -> Tuple[Place, ...]:
         Place("logs/", logs_dir, True, PRIVATE_DIR_MODE, True,
               "the serve log carries a provider's client_secret, routed there "
               "deliberately to keep it out of a user-visible response"),
-        Place("a serve log", logs_dir, False, CREDENTIAL_FILE_MODE, True,
+        Place("a serve log", logs_dir, False, PRIVATE_FILE_MODE, True,
               "measured 2026-09-12 carrying a client_secret", "serve-*.log"),
-        Place("reports/", reports_dir, True, None, False,
-              "per-run measurements, kept and grepped; no credential"),
+        # PRIVATE, though no credential is in it: these are what your
+        # calculations did, and the key that signs a report was 0600 while the
+        # report itself inherited the umask -- "the wrong way round on a
+        # shared server" (2026-08-27).  This row said `None` until 2026-09-13
+        # while the writer enforced 0700/0600 (K-L2): contract and code
+        # disagreed about what these files are.
+        Place("reports/", reports_dir, True, PRIVATE_DIR_MODE, False,
+              "per-run measurements, kept and grepped -- yours, on a server "
+              "other people can log in to"),
+        Place("a run-report record", reports_dir, False, PRIVATE_FILE_MODE,
+              False, "what your calculations did, one line per report",
+              "*.jsonl*"),
         Place("the runtime directory", runtime_dir, True, PRIVATE_DIR_MODE,
               False,
               "ours, and when $XDG_RUNTIME_DIR is absent it falls back inside "

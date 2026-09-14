@@ -577,7 +577,8 @@ $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 ├── logs/                  diagnostics — delete when fixed  0700   config_dir.logs_dir()
 │   ├── serve-<port>.log        everything the server prints 0600   config_dir.serve_log()
 │   └── serve-<port>.stacks.log thread stacks on SIGUSR1     0600   config_dir.serve_stacks_log()
-└── reports/               per-run measurements — KEPT              config_dir.reports_dir()
+└── reports/               per-run measurements — KEPT      0700   config_dir.reports_dir()
+    └── <user>.jsonl            one line per report, rotated  0600
 
 $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 │                                             config_dir.runtime_dir()

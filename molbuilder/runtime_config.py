@@ -52,7 +52,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
-from .config_dir import config_dir
+from .config_dir import PRIVATE_FILE_MODE, config_dir
 
 if TYPE_CHECKING:                      # pragma: no cover - typing only
     # `get_routing` is annotated `List["Domain"]` and imports the real class
@@ -1261,12 +1261,6 @@ def machine_config_shadow() -> Optional[str]:
     ])
 
 
-#: The only modes a file holding credentials may carry, and the directory that
-#: names it (`configuration.md` § 2.1b).  `0600` and `0700`: owner only.
-CONFIG_FILE_MODE = 0o600
-CONFIG_DIR_MODE = 0o700
-
-
 def machine_config_warnings() -> List[str]:
     """Everything worth saying about the machine config on the way in.
 
@@ -1353,7 +1347,7 @@ def machine_config_mode_warning() -> Optional[str]:
         mode = path.stat().st_mode & 0o777
     except OSError:
         return None
-    loose = mode & ~CONFIG_FILE_MODE
+    loose = mode & ~PRIVATE_FILE_MODE
     if not loose:
         return None
     who = []
@@ -1365,7 +1359,7 @@ def machine_config_mode_warning() -> Optional[str]:
     return (f"{path} is mode {mode:04o}, so {reach} can read it. It holds "
             f"private-key paths and provider credentials "
             f"(configuration.md § 2.1b).\n"
-            f"  Fix it with: chmod {CONFIG_FILE_MODE:04o} {path}")
+            f"  Fix it with: chmod {PRIVATE_FILE_MODE:04o} {path}")
 
 
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
@@ -2237,12 +2231,11 @@ def write_config_scope(
 
     # 0700 through the one creator when this call is what makes the directory
     # -- a bare `mkdir` here left the config root at the umask default around
-    # every secret later written into it (A4's sibling; it ignored
-    # `CONFIG_DIR_MODE`, declared two hundred lines up and referenced by
-    # nothing).  It does not TIGHTEN one that is already there: a writer is not
-    # the place that polices what the operator set up (`envs doctor` is).
+    # every secret later written into it (A4's sibling).  It does not TIGHTEN
+    # one that is already there: a writer is not the place that polices what
+    # the operator set up (`envs doctor` is).
     from .config_dir import ensure_private_dir
-    ensure_private_dir(target.parent, mode=CONFIG_DIR_MODE)
+    ensure_private_dir(target.parent)
     rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
     # Through the ONE atomic writer (U8's shape; R10 aligned this last
     # in-place O_TRUNC write with it -- a crash mid-write left a
@@ -2253,7 +2246,7 @@ def write_config_scope(
     # is the loose window `write_bytes`' own `mode=` parameter exists to make
     # impossible -- and this is the one in-package caller that should pass it.
     from .persist import write_bytes
-    write_bytes(target, rendered.encode("utf-8"), mode=CONFIG_FILE_MODE)
+    write_bytes(target, rendered.encode("utf-8"), mode=PRIVATE_FILE_MODE)
     return target
 
 

@@ -2443,7 +2443,7 @@ def cmd_serve_status(port):
         # created the log 0664 in a 0775 directory, and a later supervisor start
         # tightened both, so the window was "until one runs" (I5).
         ensure_private_dir(log_path(port).parent, tighten=True)
-        with open_private(log_path(port), "a") as fh:
+        with open_private(log_path(port), "ab") as fh:
             fh.write((f"[serve-status] "
                       f"{_time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
                       f"DETECTED: process up (pid {pid}) but /api/health "

@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ..config_dir import config_dir, ensure_private_dir, secrets_dir, CREDENTIAL_FILE_MODE
+from ..config_dir import config_dir, ensure_private_dir, secrets_dir, PRIVATE_FILE_MODE
 
 __all__ = [
     "Step", "conda_hook", "seed_document", "seeding_blockers",
@@ -492,7 +492,7 @@ def seed_machine_config(activation: str,
     # not taking `mode=`, which made its preserve-the-mode branch do the job
     # sideways and needed nine lines of comment to explain.
     write_json(path, seed_document(activation, preamble, projects),
-               mode=CREDENTIAL_FILE_MODE)
+               mode=PRIVATE_FILE_MODE)
     note = f'script_generation.activation = "{activation}"'
     if preamble:
         note += f"; preamble = {preamble!r}"

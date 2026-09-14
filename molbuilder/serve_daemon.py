@@ -116,6 +116,12 @@ def open_private(path: Path, mode: str):
     The mode rides the descriptor via ``os.open``, so there is no window where
     the file exists readable with content in it -- the same discipline
     `auth_setup.write_secret_file` uses, for the same reason.
+
+    ``mode`` is `open`'s: ``"a"`` / ``"w"`` give a text file (UTF-8),
+    ``"ab"`` / ``"wb"`` bytes.  It returned bytes whatever was asked until
+    2026-09-13, so a caller writing text had to know to say ``"a"`` and
+    then ``.encode()`` -- and a `logging` handler, which writes text, could
+    not use it at all.
     """
     flags = os.O_WRONLY | os.O_CREAT
     flags |= os.O_APPEND if "a" in mode else os.O_TRUNC
@@ -125,7 +131,9 @@ def open_private(path: Path, mode: str):
             os.fchmod(fd, 0o600)          # pre-existing loose file
     except OSError:
         pass
-    return os.fdopen(fd, "wb")
+    if "b" in mode:
+        return os.fdopen(fd, mode)
+    return os.fdopen(fd, mode, encoding="utf-8")
 
 
 

@@ -57,7 +57,7 @@ __all__ = [
     "serve_pidfile", "serve_log", "serve_stacks_log",
     "CONFIG_DIR_ENV", "DIRNAME",
     # Making one of those directories, privately.
-    "PRIVATE_DIR_MODE", "CREDENTIAL_FILE_MODE", "ensure_private_dir",
+    "PRIVATE_DIR_MODE", "PRIVATE_FILE_MODE", "ensure_private_dir",
 ]
 
 #: A directory that holds credentials, or sits around files that do: a listable
@@ -65,8 +65,14 @@ __all__ = [
 #: (`configuration.md` § 2.1b).
 PRIVATE_DIR_MODE = 0o700
 
-#: A file carrying a credential: owner reads and writes, nobody else.
-CREDENTIAL_FILE_MODE = 0o600
+#: A file that is yours alone: owner reads and writes, nobody else.  A
+#: credential, and also a record of what your calculations did -- on a shared
+#: server the DATA a key protects deserves the mode the key has.
+#: (Three pairs of names carried these two numbers until 2026-09-13 --
+#: `CONFIG_*_MODE` in `runtime_config`, `REPORT_*_MODE` in the notify
+#: blueprint -- so the writer of `molbuilder.json` used one pair and the
+#: audit checked the same file with another.  K-D2.)
+PRIVATE_FILE_MODE = 0o600
 
 #: The directory name under the XDG config root.  One string, because it is
 #: the half of the path that is not the XDG convention.
