@@ -20,12 +20,17 @@ this runs.
      target: a workstation or an interactive allocation);
   3. declared -> caller-supplied overrides / defaults.
 
-**Stdlib-only** (subprocess + json + dataclasses): this module is meant to
-also ship to the target and run in the backend env, which has no
-molbuilder/numpy (the self-contained rule, § 2).  The pure parsers
-(``_parse_*``) take text and are unit-tested; the ``detect_*`` wrappers
-add the (guarded) subprocess calls.  Any command that is missing or fails
-degrades to ``None`` fields -- never an exception.
+The pure parsers (``_parse_*``) take text and are unit-tested without a
+scheduler; the ``detect_*`` wrappers add the (guarded) subprocess calls.
+Any command that is missing or fails degrades to ``None`` fields -- never
+an exception.
+
+This module is NOT shipped beside a job.  The files that travel are
+`runwrap.MONITOR_COMPANIONS` (``mb_monitor.py``, ``config_dir.py``); this
+one imports `..persist`, `..config_dir`, `.quantities` and `.admit` where
+it needs them.  Its docstring claimed "stdlib-only ... meant to also ship
+to the target" until 2026-09-13, and `diagnostics.local_facts` placed
+itself by that claim (K-Y3).  The RECORD is JSON and reads anywhere.
 """
 
 from __future__ import annotations

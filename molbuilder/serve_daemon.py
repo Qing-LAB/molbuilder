@@ -31,6 +31,13 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+# `config_dir` is the bootstrap that owns these paths and the one creator of a
+# private directory; it is stdlib-only and answers before any config is read,
+# which is what lets the supervisor -- L1, importing nothing of the application
+# it restarts -- reach it.  Four one-line pass-throughs (`run_dir`, `pid_path`,
+# `log_path`, `stacks_path`) and a private `_mkdir_private` stood between this
+# module and those doors until 2026-09-13 (K-D3, I8's shape).
+from .config_dir import ensure_private_dir, runtime_dir, serve_log, serve_pidfile
 from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 
 
@@ -39,69 +46,9 @@ from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 #  that depends on the environment is a question, asked when asked)      #
 # --------------------------------------------------------------------- #
 
-def run_dir() -> Path:
-    """Where the supervisor's pidfile goes -- ``config_dir.runtime_dir()``.
-
-    **The XDG default, NOT `molbuilder.json`'s `paths` block**, and the
-    layering says why: this module is L1 and `runtime_config` is L2, so
-    reading the config here would invert the dependency.  That constraint and
-    the bootstrap rule are the same fact seen twice.
-
-    The supervisor must be able to write its log BEFORE any config is read --
-    including when reading it is what failed.  A supervisor that had to read
-    `molbuilder.json` to find out where to report a malformed
-    `molbuilder.json` would have nowhere to report it, which is the one log
-    nobody can afford to lose (`configuration.md` § 2.1d).
-
-    That is also why there is no config key for this.  `$XDG_STATE_HOME` and
-    `$XDG_RUNTIME_DIR` are what move these directories, and they answer
-    before any config is read; a `paths.logs` / `paths.run` / `paths.reports`
-    in `molbuilder.json` is REFUSED, by `runtime_config._read_paths`.  (This
-    docstring told the opposite story -- "so `paths.logs` moves molbuilder's
-    application logs" -- until 2026-09-13, three restatements after the key
-    was retired.)
-    """
-    from .config_dir import runtime_dir
-    return runtime_dir()
-
-
-def pid_path(port: int) -> Path:
-    from .config_dir import serve_pidfile
-    return serve_pidfile(port)
-
-
-def log_path(port: int) -> Path:
-    from .config_dir import serve_log
-    return serve_log(port)
-
-
-def stacks_path(port: int) -> Path:
-    from .config_dir import serve_stacks_log
-    return serve_stacks_log(port)
-
-
 # --------------------------------------------------------------------- #
 #  the log roll                                                          #
 # --------------------------------------------------------------------- #
-
-def _mkdir_private(d: Path) -> None:
-    """``mkdir -p`` at 0700 for a directory THIS PROGRAM owns, tightening one
-    that arrived loose.
-
-    The making is `config_dir.ensure_private_dir`'s, which is the one creator
-    for a directory in this tree; it sits in `config_dir` rather than one layer
-    up precisely so the supervisor can reach it (this module is L1 and imports
-    nothing of the application it restarts).
-
-    ``tighten=True`` here and nowhere in the seeding path: the log directory is
-    ours, we are about to write a log into it that carries a provider's
-    ``client_secret``, and it was measured at 0775.  A directory the OPERATOR
-    made -- the config root on a cluster, often pointed at scratch -- is not
-    ours to re-mode; `envs doctor` reports that one instead.
-    """
-    from .config_dir import ensure_private_dir
-    ensure_private_dir(d, tighten=True)
-
 
 def open_private(path: Path, mode: str):
     """``open(path, mode)`` for a file that must be 0600 from its first byte.
@@ -166,7 +113,13 @@ class LogRoll:
         # Mode on the descriptor at CREATE time, not a chmod afterwards: a
         # chmod races the first write, and `configuration.md` 2.1b requires
         # the mode to be right "before there is anything to read".
-        _mkdir_private(self.path.parent)
+        # ``tighten=True`` here and nowhere in the seeding path: the log
+        # directory is ours, we are about to write a log into it that carries a
+        # provider's ``client_secret``, and it was measured at 0775.  A
+        # directory the OPERATOR made -- the config root on a cluster, often
+        # pointed at scratch -- is not ours to re-mode; `envs doctor` reports
+        # that one instead.
+        ensure_private_dir(self.path.parent, tighten=True)
         self._fh = open_private(self.path, "ab")
 
     def write(self, data: bytes) -> None:
@@ -218,7 +171,7 @@ class LogRoll:
 
 def read_pid(port: int) -> Optional[int]:
     try:
-        return int(pid_path(port).read_text().strip())
+        return int(serve_pidfile(port).read_text().strip())
     except (OSError, ValueError):
         return None
 
@@ -316,13 +269,23 @@ def supervise(port: int, child_argv: List[str], *,
     the child down and exits cleanly, removing the pidfile.
     ``max_restarts`` exists for bounded tests; production passes None.
     """
-    roll = LogRoll(log_path(port), max_bytes=log_max_bytes, keep=log_keep)
-    # 0700, like every other directory this program makes.  It was a bare
-    # `mkdir` at the default umask, three lines from `_mkdir_private` -- and
-    # when $XDG_RUNTIME_DIR is absent this falls back INSIDE the state root,
-    # where 0775 is what you get.
-    _mkdir_private(run_dir())
-    pid_path(port).write_text(f"{os.getpid()}\n")
+    roll = LogRoll(serve_log(port), max_bytes=log_max_bytes, keep=log_keep)
+    # THE XDG DEFAULTS, NOT `molbuilder.json`'s `paths` block -- and there is
+    # no config key for these, deliberately.  The supervisor must be able to
+    # write its log BEFORE any config is read, including when reading it is
+    # what failed: a supervisor that had to read `molbuilder.json` to find out
+    # where to report a malformed `molbuilder.json` would have nowhere to
+    # report it, which is the one log nobody can afford to lose
+    # (`configuration.md` § 2.1d).  `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR`
+    # move these directories and answer before any config is read; a
+    # `paths.logs` / `paths.run` in `molbuilder.json` is REFUSED by
+    # `runtime_config._read_paths`.
+    #
+    # 0700, like every other directory this program makes: when
+    # $XDG_RUNTIME_DIR is absent this falls back INSIDE the state root, where
+    # the default umask gives 0775.
+    ensure_private_dir(runtime_dir(), tighten=True)
+    serve_pidfile(port).write_text(f"{os.getpid()}\n")
 
     state = {"child": None, "hup": False, "term": False}
 
@@ -387,7 +350,7 @@ def supervise(port: int, child_argv: List[str], *,
                 return code
     finally:
         try:
-            pid_path(port).unlink()
+            serve_pidfile(port).unlink()
         except OSError:
             pass
         roll.close()
@@ -407,12 +370,12 @@ def signal_supervisor(port: int, sig: int) -> Tuple[bool, str]:
     if state == "dead":
         if pid is not None:
             try:
-                pid_path(port).unlink()      # stale file: say so, clean up
+                serve_pidfile(port).unlink()      # stale file: say so, clean up
             except OSError:
                 pass
             return False, (f"stale pidfile: pid {pid} is gone "
-                           f"(removed {pid_path(port)})")
-        return False, f"not running (no pidfile at {pid_path(port)})"
+                           f"(removed {serve_pidfile(port)})")
+        return False, f"not running (no pidfile at {serve_pidfile(port)})"
     if state == "foreign":
         return False, (f"refusing: pid {pid} is not your molbuilder serve "
                        f"-- the pidfile is stale and the pid was recycled")

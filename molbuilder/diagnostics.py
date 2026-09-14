@@ -504,10 +504,10 @@ def local_facts(env: "Any") -> "Tuple[Any, Optional[str]]":
     running this, which is the machine those envs live on.
 
     Here rather than in ``scheduler/record.py`` because it reads live config
-    and enumerates envs: the scheduler package is L1 and **stdlib-only by
-    contract** (a record is read on the target inside a backend env with no
-    molbuilder installed), and this module is where "what is true of this
-    machine" already lives.  It was inline in ``jobset probe`` until
+    (`runtime_config`, a layer above the scheduler package) and enumerates
+    envs, and this module is where "what is true of this machine" already
+    lives.  (Until 2026-09-13 this sentence also cited a "stdlib-only,
+    ships to the target" contract of `record.py` that did not hold -- K-Y3.)  It was inline in ``jobset probe`` until
     2026-09-08, when ``envs init-config`` became a second caller -- and a
     second copy is a copy that drifts (`configuration.md` line 42).
     """

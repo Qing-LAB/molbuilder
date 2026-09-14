@@ -89,14 +89,17 @@ def test_signalling_a_stale_pidfile_reports_and_cleans_never_signals(
     # writing a pidfile into the live location if it had not.
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
-    sd.run_dir().mkdir(parents=True, exist_ok=True)
-    sd.pid_path(7777).write_text("999999999\n")
+    # The pidfile's one door is `config_dir.serve_pidfile` -- the daemon asks
+    # it directly since 2026-09-13, and so does this test.
+    from molbuilder.config_dir import serve_pidfile
+    serve_pidfile(7777).parent.mkdir(parents=True, exist_ok=True)
+    serve_pidfile(7777).write_text("999999999\n")
     sent = []
     monkeypatch.setattr(os, "kill", lambda *a: sent.append(a))
     ok, msg = sd.signal_supervisor(7777, signal.SIGTERM)
     assert not ok and "stale" in msg
     assert sent == [], "a stale pid was SIGNALLED"
-    assert not sd.pid_path(7777).exists(), "the stale file must be cleaned"
+    assert not serve_pidfile(7777).exists(), "the stale file must be cleaned"
 
 
 # ---------------------------------------------------- the respawn policy

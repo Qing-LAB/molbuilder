@@ -2158,10 +2158,13 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     # modes) stayed world-readable with its `tls.key` path and provider
     # credentials in it, and the server that read it said nothing.  § 2.1b exists
     # for exactly the cases no writer can control.  To stderr, so it reaches a
-    # person without entering piped output.
-    from .placement import machine_config_warnings
-    for _warning in machine_config_warnings():
-        click.echo(_warning, err=True)
+    # person without entering piped output.  ONCE: this function runs in the
+    # supervisor and again in the child it re-execs (SUPERVISED_ENV=1), and
+    # printed the warnings both times until 2026-09-13 (K-L5).
+    if os.environ.get(SUPERVISED_ENV) != "1":
+        from .placement import machine_config_warnings
+        for _warning in machine_config_warnings():
+            click.echo(_warning, err=True)
 
     # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH.  ``from .web.app import
     # create_app`` used to sit here, one line into the function and well before
@@ -2201,9 +2204,9 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     try:
         import faulthandler
         import signal as _signal
-        from .config_dir import ensure_private_dir
-        from .serve_daemon import open_private, stacks_path
-        _sp = stacks_path(port)
+        from .config_dir import ensure_private_dir, serve_stacks_log
+        from .serve_daemon import open_private
+        _sp = serve_stacks_log(port)
         # 0700 around it and 0600 on it, through the same doors the supervisor
         # uses.  A bare `mkdir` + `open(_sp, "a")` here landed 0775/0664 on a
         # file that holds thread stacks of a process carrying a provider's
@@ -2267,8 +2270,8 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     """Detach, then run the same supervisor+child pair ``foreground``
     runs.  `deployment.md` 1.0a: pidfile and logs under YOUR OWN home,
     which is what makes every bit of this per-user."""
-    from .serve_daemon import (daemonize, log_path, pid_path, pid_state,
-                               read_pid, supervise)
+    from .config_dir import serve_log, serve_pidfile
+    from .serve_daemon import daemonize, pid_state, read_pid, supervise
     # SAID HERE TOO, because this verb detaches.  `foreground` prints these
     # where the person is watching; `start` hands the terminal back, and its
     # child's stderr goes into the log -- so a warning emitted only by the child
@@ -2296,9 +2299,9 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
                f"{port}")
     from .projects import projects_root_with_source
     click.echo(f"  {projects_root_with_source().describe()}")
-    click.echo(f"  log:     {log_path(port)}  (cap {log_max_mb} MB, "
+    click.echo(f"  log:     {serve_log(port)}  (cap {log_max_mb} MB, "
                f"keep {log_keep} archives)")
-    click.echo(f"  pidfile: {pid_path(port)}")
+    click.echo(f"  pidfile: {serve_pidfile(port)}")
     click.echo("  then:    molbuilder serve status")
     daemonize()
     # from here we are the detached supervisor; nothing prints to the
@@ -2314,22 +2317,23 @@ def cmd_serve_status(port):
     """Two questions, answered separately (`deployment.md` 1.0b): the
     2026-08-28 wedge was a server that was UP and not ANSWERING, and a
     status that conflates the two calls that healthy."""
-    from .serve_daemon import log_path, pid_path, pid_state, read_pid
+    from .config_dir import serve_log, serve_pidfile
+    from .serve_daemon import pid_state, read_pid
     pid = read_pid(port)
     state = pid_state(pid)
     if state == "dead":
         if pid is not None:
-            click.echo(f"not running -- stale pidfile at {pid_path(port)} "
+            click.echo(f"not running -- stale pidfile at {serve_pidfile(port)} "
                        f"(pid {pid} is gone)")
         else:
-            click.echo(f"not running (no pidfile at {pid_path(port)})")
+            click.echo(f"not running (no pidfile at {serve_pidfile(port)})")
         raise SystemExit(3)
     if state == "foreign":
         click.echo(f"pidfile names pid {pid}, which is NOT your molbuilder "
                    f"serve -- stale file, recycled pid.  Nothing to act on.")
         raise SystemExit(3)
     click.echo(f"process:   up (supervisor pid {pid})")
-    click.echo(f"log:       {log_path(port)}")
+    click.echo(f"log:       {serve_log(port)}")
     # the second question: does it ANSWER.  Loopback, either scheme; a
     # cert made for the public name fails verification on 127.0.0.1, and
     # this asks about liveness, not identity -- so verification is off
@@ -2369,8 +2373,8 @@ def cmd_serve_status(port):
         # a box where the server has never started -- a bare mkdir + append
         # created the log 0664 in a 0775 directory, and a later supervisor start
         # tightened both, so the window was "until one runs" (I5).
-        ensure_private_dir(log_path(port).parent, tighten=True)
-        with open_private(log_path(port), "ab") as fh:
+        ensure_private_dir(serve_log(port).parent, tighten=True)
+        with open_private(serve_log(port), "ab") as fh:
             fh.write((f"[serve-status] "
                       f"{_time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
                       f"DETECTED: process up (pid {pid}) but /api/health "
