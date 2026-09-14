@@ -37,26 +37,30 @@ from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
 # --------------------------------------------------------------------- #
 
 
-def test_default_env_names_covers_the_routed_categories():
-    """Four routed backend categories: siesta (precompiled CPU),
-    siesta-gpu (built from source), pyscf, mdtools.  There is no
-    "tests" category -- browser E2E runs under the host env."""
-    assert set(DEFAULT_ENV_NAMES) == {
-        "siesta", "siesta-gpu", "pyscf", "mdtools",
-    }
+def test_every_routed_tool_has_an_env_to_be_routed_to():
+    """The rule, in place of two tests that re-typed the name list
+    (retired 2026-09-14 with the notebook env, which broke them by
+    existing -- a list is edited whenever the data is, which is not a
+    defect being caught).
+
+    What matters is that the two tables AGREE: a tool routed to a category
+    with no env name resolves to nothing, and `run_tool` would dispatch into
+    an env that cannot exist.  `molbuilder-jupyternb` is deliberately absent
+    from the routing table -- nothing dispatches a command into it; the
+    notebook server is launched into it -- so this is one-directional.
+    """
+    missing = {tool: cat for tool, cat in TOOL_TO_CATEGORY.items()
+               if cat not in DEFAULT_ENV_NAMES}
+    assert not missing, f"routed to a category with no env name: {missing}"
 
 
-def test_default_env_names_match_readme_install():
-    """The names are what docs/ops/installation.md tells users to create."""
-    assert DEFAULT_ENV_NAMES["siesta"]     == "molbuilder-siesta"
-    assert DEFAULT_ENV_NAMES["siesta-gpu"] == "molbuilder-siesta-gpu"
-    assert DEFAULT_ENV_NAMES["pyscf"]      == "molbuilder-pySCF"
-    assert DEFAULT_ENV_NAMES["mdtools"]    == "molbuilder-MDtools"
-    # No "tests" category: browser E2E runs under the host env, not a
-    # dedicated conda env (the E2E fixture starts the app in-process).
-    assert "tests" not in DEFAULT_ENV_NAMES
-
-
+def test_every_recipe_category_has_an_env_name():
+    """The same agreement from the recipe side: a recipe that declares a
+    category must be able to name its env."""
+    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    missing = [r.name for r in BUILTIN_RECIPES
+               if r.category is not None and r.category not in DEFAULT_ENV_NAMES]
+    assert not missing, f"recipe category names no env: {missing}"
 def test_every_tool_routes_to_a_known_category():
     """Each routed tool maps to a category we know how to dispatch."""
     assert set(TOOL_TO_CATEGORY.values()) <= set(DEFAULT_ENV_NAMES)

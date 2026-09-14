@@ -28,7 +28,18 @@ flowchart TD
   HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · (gpu4pyscf)"]
   HOST -->|"conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
   HOST -->|"conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
+  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab only — no science stack"]
+  NB -.->|"kernelspec on JUPYTER_PATH"| HOST
+  NB -.->|"kernelspec on JUPYTER_PATH"| PY
 ```
+
+The dotted edges are the notebook tab, and two of them run the other way on
+purpose: `molbuilder-jupyternb` holds **JupyterLab and nothing else**, and the
+kernels you pick in a notebook are the *other* envs — each registers its own
+kernelspec into its own prefix, and the notebook server is pointed at them. A
+second copy of ase/rdkit/pyscf inside the notebook env would be a second thing
+to keep in step, and the day it drifted a notebook would stop reproducing what
+a calculation does. See [`web/jupyter.md`](?doc=web/jupyter.md) § 7.
 
 Each environment is defined by a **recipe** — a frozen data record in
 `molbuilder/envs/recipes.py` listing its channels, conda packages, pip packages,
@@ -300,6 +311,7 @@ Reference:
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab` — **the server only**. Kernels come from the host and pySCF envs, which carry `ipykernel` and register a kernelspec into their own prefix |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **pyberny** | `molbuilder-pySCF` | **manual / optional** — unmaintained; the conda recipe omits it |
 | **X3DNA (3DNA)** | host-external | **manual** — restricted licence; you extract it and export `X3DNA` + `PATH` yourself |

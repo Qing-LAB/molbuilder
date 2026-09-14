@@ -555,6 +555,7 @@ HOST_CONDA_PACKAGES=(
     authlib python-cas
     pytest pyflakes
     "psutil>=5.9"
+    ipykernel
     numactl
     # run-checkpoints subsystem (docs/execution/running-a-job.md § 6):
     # git provided by every molbuilder env so the wrapper bootstrap

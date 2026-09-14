@@ -61,6 +61,11 @@ DEFAULT_ENV_NAMES: Mapping[str, str] = {
     "siesta-gpu": "molbuilder-siesta-gpu",
     "pyscf":      "molbuilder-pySCF",
     "mdtools":    "molbuilder-MDtools",
+    # Holds JupyterLab and nothing else -- the KERNELS are the other envs
+    # (`recipes.py`'s `_JUPYTER`).  No tool routes to it: nothing dispatches
+    # a command into this env, the notebook SERVER is launched into it by
+    # `molbuilder.jupyter`, so it is absent from TOOL_TO_CATEGORY below.
+    "jupyter":    "molbuilder-jupyternb",
 }
 
 # Executable name -> category.  Drives ``env_for_tool``.  Tools not

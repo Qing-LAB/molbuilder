@@ -925,6 +925,12 @@ _HOST = Recipe(
         # ModuleNotFoundError.  Declared in pyproject.toml's runtime
         # deps; mirrored here so the conda-create path also picks it up.
         "psutil>=5.9",
+        # ipykernel: so this env can offer itself as a NOTEBOOK KERNEL.  The
+        # notebook server lives in `molbuilder-jupyternb` and holds no
+        # science stack; a notebook that can `import molbuilder` is running
+        # on THIS env's python.  See `_JUPYTER` for why the kernel lives here
+        # rather than the stack living there.
+        "ipykernel",
         # NUMA control tool.  The CONSUMER is the generated GPU wrapper:
         # `runwrap._gpu_runtime_defaults_block` pins ranks to the
         # GPU-proximate socket only when `numactl` is on PATH, and
@@ -976,6 +982,17 @@ _HOST = Recipe(
         PipPackage("pubchempy", optional=True,
                    reason="UI only -- PubChem name lookup in the Molbuilder tab"),
     ),
+    # THIS ENV AS A NOTEBOOK KERNEL (`docs/web/jupyter.md` § 7).
+    # `--sys-prefix` writes the kernelspec into THIS env's own
+    # `share/jupyter/kernels/`, so nothing lands in `~/.local/share/jupyter`
+    # and `conda env remove` takes the kernel with the env.  The notebook
+    # server finds it because `molbuilder.jupyter` puts this prefix on
+    # `JUPYTER_PATH`; no env ever writes into another.
+    extra_steps=((
+        "python", "-m", "ipykernel", "install", "--sys-prefix",
+        "--name", "molbuilder-host",
+        "--display-name", "molbuilder (host env)",
+    ),),
     verify_argv=("python", "-c",
                  "import ase, sisl, rdkit, flask, click, plotly; "
                  "print('host env OK')"),
@@ -992,6 +1009,10 @@ _PYSCF = Recipe(
     conda_packages=(
         "python=3.12", "pip",
         "pyscf", "pyscf-dispersion", "geometric",
+        # ipykernel: this env as a NOTEBOOK KERNEL.  A notebook exploring a
+        # spectrum or a geometry optimisation wants THIS python -- the one
+        # the deck runs on -- not a second pyscf beside it.  See `_JUPYTER`.
+        "ipykernel",
         # NUMA control tool (mirrors molbuilder-siesta-gpu).  PySCF
         # uses threaded BLAS that benefits from socket-local pinning
         # on dual-socket boxes -- ``numactl --cpunodebind`` wraps the
@@ -1089,6 +1110,17 @@ _PYSCF = Recipe(
                  "scripts/install-env.sh repair molbuilder-pySCF "
                  "--include-optional')"),
     verify_expect_contains="prop: polarizability OK",
+    # THIS ENV AS A NOTEBOOK KERNEL (`docs/web/jupyter.md` § 7).
+    # `--sys-prefix` writes the kernelspec into THIS env's own
+    # `share/jupyter/kernels/`, so nothing lands in `~/.local/share/jupyter`
+    # and `conda env remove` takes the kernel with the env.  The notebook
+    # server finds it because `molbuilder.jupyter` puts this prefix on
+    # `JUPYTER_PATH`; no env ever writes into another.
+    extra_steps=((
+        "python", "-m", "ipykernel", "install", "--sys-prefix",
+        "--name", "molbuilder-pyscf",
+        "--display-name", "molbuilder (pySCF)",
+    ),),
 )
 
 
@@ -2009,8 +2041,78 @@ _SIESTA_GPU = Recipe(
 )
 
 
+# --------------------------------------------------------------------- #
+#  molbuilder-jupyternb: JupyterLab, and NOT the science stack            #
+# --------------------------------------------------------------------- #
+#
+# Companion doc: docs/web/jupyter.md.
+#
+# **WHAT IS IN HERE: the notebook SERVER.  What is not: any kernel.**
+#
+# A notebook you cannot `import molbuilder` from is a toy, so the obvious
+# move is to install the science stack here too -- and that is the move this
+# recipe refuses.  It would be a SECOND copy of ase / sisl / rdkit / pyscf to
+# keep in step with the first, and the moment the two drift a notebook stops
+# reproducing what a calculation does, silently.  The per-backend isolation
+# rule (`installation.md` § 1) exists for exactly that.
+#
+# So the kernels are the OTHER envs.  Each env that wants to be one installs
+# `ipykernel` and registers its own kernelspec INTO ITS OWN PREFIX
+# (`python -m ipykernel install --sys-prefix`, an extra step of that recipe),
+# and `molbuilder.jupyter` points `JUPYTER_PATH` at those prefixes when it
+# starts the server.  Three properties follow, and each is why it is done
+# this way rather than with `--user`:
+#
+#   * **nothing is written outside an env.**  No `~/.local/share/jupyter`,
+#     so `conda env remove` really does clean up -- the same rule the
+#     artifact root follows (`$CONDA_PREFIX/opt/...`).
+#   * **no env writes into another.**  A kernelspec that pointed one env's
+#     python at another env's prefix would be the cross-env reach the door
+#     rules forbid; here each env speaks only for itself.
+#   * **a kernel appears when its env is installed, and goes when it is
+#     removed**, with no third place to keep in step.
+#
+# If the notebook tab shows NO kernels, that is the honest state of a machine
+# whose host env predates this: re-run `install molbuilder --yes` and the
+# kernelspec lands.
+_JUPYTER = Recipe(
+    name=DEFAULT_ENV_NAMES["jupyter"],
+    category="jupyter",
+    description="JupyterLab for the notebook tab (the kernels are the "
+                "other envs).",
+    channels=("conda-forge",),
+    conda_packages=(
+        "python=3.12",
+        # jupyterlab brings jupyter-server, the extension machinery and the
+        # `jupyter` dispatcher; that is the whole payload of this env.
+        "jupyterlab",
+        # git: uniform across every env -- see the _HOST recipe for why it is
+        # everywhere.  A notebook that inspects a calculation folder wants it.
+        "git",
+    ),
+    verify_argv=("bash", "-c",
+                 "set -e; jupyter lab --version; "
+                 "python -c \"import jupyter_server; "
+                 "print('jupyternb OK')\""),
+    verify_expect_contains="jupyternb OK",
+    system_preconditions=(
+        "A browser that can reach this machine over HTTPS.  The notebook "
+        "tab is an IFRAME and the app page is served over TLS, so a "
+        "plain-http notebook server is blocked by the browser as mixed "
+        "content -- `molbuilder jupyter` reuses the cert and key `serve` "
+        "was given, and refuses to start without them "
+        "(docs/web/jupyter.md 2).",
+        "A free TCP port at <serve port> + 1 on this machine, bound to "
+        "loopback unless you say otherwise.  A live kernel is arbitrary "
+        "code execution as the account running the server, which is why "
+        "starting and stopping it is an admin action "
+        "(docs/ops/access-control.md 6).",
+    ),
+)
+
+
 BUILTIN_RECIPES: Tuple[Recipe, ...] = (
-    _HOST, _PYSCF, _SIESTA, _MDTOOLS, _SIESTA_GPU,
+    _HOST, _PYSCF, _SIESTA, _MDTOOLS, _SIESTA_GPU, _JUPYTER,
 )
 
 
