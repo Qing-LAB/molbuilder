@@ -324,7 +324,7 @@ def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
     help promised -- did not exist.  A person had to retype the whole command
     with a flag to answer a question they had just been asked.
     """
-    import molbuilder.cli as cli_mod
+    import molbuilder.envs.hints as hints
     mb("init")
     (calc / "job.XV").write_text("saved\n")
     mb("save", "-m", "stage 1")
@@ -332,8 +332,9 @@ def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
     (calc / "job.XV").write_text("unsaved\n")
 
     # The runner replaces sys.stdin wholesale, so the terminal check is the
-    # seam -- not stdin itself.
-    monkeypatch.setattr(cli_mod, "_stdin_is_a_terminal", lambda: True)
+    # seam -- not stdin itself.  It lives in `envs.hints` since 2026-09-13,
+    # the one copy below both the CLI and the envs verbs.
+    monkeypatch.setattr(hints, "stdin_can_answer", lambda: True)
     result = CliRunner().invoke(
         cli, ["checkpoint", "restore", first, "-p", str(calc)], input="y\n")
     assert result.exit_code == 0, result.output
@@ -343,14 +344,14 @@ def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
 def test_answering_no_changes_nothing(mb, calc, monkeypatch):
     """The answer is honoured in both directions -- that is what makes it a
     question rather than a formality."""
-    import molbuilder.cli as cli_mod
+    import molbuilder.envs.hints as hints
     mb("init")
     (calc / "job.XV").write_text("saved\n")
     mb("save", "-m", "stage 1")
     first = _ids(mb("list").output)[0]
     (calc / "job.XV").write_text("unsaved\n")
 
-    monkeypatch.setattr(cli_mod, "_stdin_is_a_terminal", lambda: True)
+    monkeypatch.setattr(hints, "stdin_can_answer", lambda: True)
     result = CliRunner().invoke(
         cli, ["checkpoint", "restore", first, "-p", str(calc)], input="n\n")
     assert result.exit_code != 0

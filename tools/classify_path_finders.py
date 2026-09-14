@@ -187,9 +187,6 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
          "list.  The question is also the mirror of `warm_files_present`: "
          "files keyed by SOME OTHER id, which needs the suffix list to tell an "
          "orphaned restart file from an unrelated one"),
-    ("molbuilder/envs/_cli.py", "_du", "*"):
-        ("foreign - not a name we compose",
-         "a byte count over a conda env: matches everything, names nothing"),
     ("molbuilder/envs/abi.py", "installed_package_version", "{name}-*.json"):
         ("foreign - not a name we compose",
          "conda-meta's own naming, read to learn a package's version"),

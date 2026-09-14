@@ -656,7 +656,8 @@ def test_a_user_id_that_would_escape_the_log_directory_is_refused(
     assert not (tmp_path / "escaped.jsonl").exists()
 
 
-def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(tmp_path):
+def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(
+        tmp_path, monkeypatch):
     """A value with a slash in it would silently mean a different path than
     the one written down — and the destination's url is built from it, so the
     two ends would disagree about where reports go.
@@ -665,14 +666,16 @@ def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(tmp_path):
     config key, and now guards the file that carries the route.
     """
     from molbuilder.monitor import read_notify_keys
+    # The key file has ONE home, so the test puts its file there rather than
+    # handing the reader a path (the reader stopped taking one, 2026-09-13).
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+    p = tmp_path / "notify_keys"
     for bad in ("a/b", "", "has space", "x" * 200, "a.b", 42, None):
-        p = tmp_path / "notify_keys"
         p.write_text(json.dumps({"route": bad, "keys": {USER: KEY}}))
-        route, keys = read_notify_keys(p)
+        route, keys = read_notify_keys()
         assert route is None and keys == {}, f"{bad!r} was accepted as a route"
     # ...and one that is fine, so it cannot pass by refusing everything.
-    p = tmp_path / "notify_keys"
     p.write_text(json.dumps({"route": "  /x7Kq/  ", "keys": {USER: KEY}}))
-    route, keys = read_notify_keys(p)
+    route, keys = read_notify_keys()
     assert route == "x7Kq", "surrounding slashes are trimmed"
     assert keys == {USER: KEY}
