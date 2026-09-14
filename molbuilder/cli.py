@@ -614,7 +614,6 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
             && molbuilder jobset init --structure P/structure/run.xyz --bundle P/optimization/calc --shape flat
     """
-    import json
     from .validation import validate, validate_geometry
 
     with _resolve_input_path(input_path) as resolved:
@@ -1587,8 +1586,9 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     from .runtime_config import machine_config_path as _machine_config_path
     output_path = (_Path(output).resolve() if output
                    else _machine_config_path()[0])
-    session_key_path = _as.secret_key_path()
-    google_secret_file = _as.google_client_secret_path()
+    from .config_dir import google_client_secret, session_key
+    session_key_path = session_key()
+    google_secret_file = google_client_secret()
 
     # 3. Bail early on clobber unless --force --------------------------
     #
@@ -1629,7 +1629,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
         sys_user = getpass.getuser()
         if asurite is None:
             asurite = click.prompt(
-                f"ASURITE (ASU username) for the CAS allowlist",
+                "ASURITE (ASU username) for the CAS allowlist",
                 default=sys_user,
             )
         entry = _as.build_asu_cas_entry(asurite)
@@ -1745,12 +1745,12 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
         click.echo(f"  cd {output_path.parent}", err=True)
     else:
         click.echo(
-            f"  (this file is read from anywhere -- it is the per-user "
-            f"config, not a directory you have to start the server in)",
+            "  (this file is read from anywhere -- it is the per-user "
+            "config, not a directory you have to start the server in)",
             err=True,
         )
     click.echo(
-        f"  python -m molbuilder serve start --port 8888 --host 127.0.0.1",
+        "  python -m molbuilder serve start --port 8888 --host 127.0.0.1",
         err=True,
     )
     if want_google:
@@ -1799,7 +1799,6 @@ def cmd_runtime_info(input_path, out_path, pretty):
         molbuilder runtime-info job.out --out /tmp/x.json --no-pretty
         # -> compact single-line JSON to a specific path
     """
-    import json
     from .parse import detect as detect_parser, ParseError
 
     with _resolve_input_path(input_path) as resolved:
@@ -2373,7 +2372,7 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     click.echo(f"  log:     {log_path(port)}  (cap {log_max_mb} MB, "
                f"keep {log_keep} archives)")
     click.echo(f"  pidfile: {pid_path(port)}")
-    click.echo(f"  then:    molbuilder serve status")
+    click.echo("  then:    molbuilder serve status")
     daemonize()
     # from here we are the detached supervisor; nothing prints to the
     # terminal again -- the roll owns every later byte
@@ -2862,7 +2861,6 @@ def cmd_watch_parse(input_path, frames_only, pretty):
         molbuilder watch parse run.molwatch.log | jq '.frames[-1]'
         molbuilder watch parse - < run.out --frames-only | grep error
     """
-    import json
     from .parse import detect as detect_parser, ParseError
     from .parse.engines._helpers import trajectory_to_legacy_dict
 
@@ -2919,7 +2917,6 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
     polling: no evidence either way is not evidence of ending.
     Ctrl-C also exits cleanly.
     """
-    import json
     import time
     from .parse import detect as detect_parser, ParseError
     from .parse.engines._helpers import trajectory_to_legacy_dict

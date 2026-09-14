@@ -369,11 +369,15 @@ def create_app(*, config=None) -> Flask:
     #
     # The safe state is unchanged and still the one you get by doing nothing
     # (`access-control.md` § 8 rule 1): no file, no route in it, no listener.
-    from ..monitor import read_notify_keys, notify_keys_path
+    from ..monitor import read_notify_keys
     _notify_route, _notify_keys = read_notify_keys()
     if _notify_route and _notify_keys:
         from .blueprints.notify import bp as notify_bp
-        app.config["MB_NOTIFY_KEYS_FILE"] = str(notify_keys_path())
+        # NO `MB_NOTIFY_KEYS_FILE`.  It carried `str(notify_keys_path())` to
+        # `notify.read_keys`, which expanduser'd it and asked
+        # `read_notify_keys` again -- the same answer this line already has,
+        # routed through Flask config to be re-derived (I9).  The blueprint
+        # asks path-free now, so the file has one resolver on both ends.
         app.config["MB_NOTIFY_ROUTE"] = _notify_route
         app.register_blueprint(notify_bp)
 

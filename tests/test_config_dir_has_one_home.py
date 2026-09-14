@@ -31,12 +31,16 @@ def moved(monkeypatch, tmp_path):
 
 
 def _all_four():
-    from molbuilder.auth_setup import default_secret_dir, secret_key_path
+    # Asked of `config_dir` itself.  These went through
+    # `auth_setup.secret_key_path` / `default_secret_dir` until 2026-09-13 --
+    # pass-throughs that were this module's point made backwards: a second
+    # public name for a door `config_dir` owns (I8).
+    from molbuilder.config_dir import config_dir, session_key
     from molbuilder.runtime_config import _machine_config_file
     from molbuilder.scheduler import environments_dir, machine_scope_path
     return {
-        "secret_key":     secret_key_path(),
-        "secret_dir":     default_secret_dir(),
+        "secret_key":     session_key(),
+        "secret_dir":     config_dir(),
         "environment":    machine_scope_path(),
         "environments":   environments_dir(),
         "molbuilder.json": _machine_config_file(),

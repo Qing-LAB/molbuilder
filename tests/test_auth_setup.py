@@ -36,21 +36,14 @@ from molbuilder.runtime_config import _validate_provider
 # --------------------------------------------------------------------- #
 
 
-def test_default_secret_dir_follows_the_one_override(tmp_path, monkeypatch):
-    """A root is named the way every other caller names one.
-
-    This asserted a ``home=`` parameter until 2026-08-31.  It had no
-    production caller and rebuilt `config_dir`'s rule itself, so it was a
-    second override for a directory that already has an environment one.
-    """
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "named"))
-    assert _as.default_secret_dir() == tmp_path / "named"
-
-
-def test_default_secret_dir_honors_xdg(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    d = _as.default_secret_dir()
-    assert d == tmp_path / "xdg" / "molbuilder"
+# RETIRED 2026-09-13 (I8): `test_default_secret_dir_follows_the_one_override`
+# and `test_default_secret_dir_honors_xdg` stood here.  Both asserted
+# `config_dir()`'s behaviour through `auth_setup.default_secret_dir`, a
+# one-line pass-through with no production caller -- so the alias existed
+# because these tests asserted it, and they asserted `config_dir` through it.
+# `test_config_dir_has_one_home.py` owns both facts against the real door:
+# `TestTheRootCanBeNamedOutright::test_it_is_used_exactly_as_given` for the
+# override, `test_empty_is_not_set` for the XDG fallback.  The alias is gone.
 
 
 def test_generate_session_secret_is_unique_and_long():
@@ -236,7 +229,7 @@ def test_emit_force_overrides_clobber_guard(tmp_path):
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     """$HOME pointed at tmp_path so the wizard writes secrets in a
-    sandbox.  Clears XDG_CONFIG_HOME so default_secret_dir falls back
+    sandbox.  Clears XDG_CONFIG_HOME so `config_dir()` falls back
     to $HOME/.config."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)

@@ -44,7 +44,6 @@ import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .config_dir import config_dir
 
 
 # --------------------------------------------------------------------- #
@@ -52,32 +51,19 @@ from .config_dir import config_dir
 # --------------------------------------------------------------------- #
 
 
-def default_secret_dir() -> Path:
-    """The config directory, where this installation's secrets live.
-
-    :func:`molbuilder.config_dir.config_dir` outright -- ``MOLBUILDER_CONFIG_DIR``
-    if set, else ``$XDG_CONFIG_HOME/molbuilder``, else ``~/.config/molbuilder``
-    (`configuration.md` § 2.1c).
-
-    **The ``home=`` parameter is gone** (2026-08-31).  It was an escape hatch
-    for callers naming a root outright, it had no production caller, and it
-    rebuilt the ``.config/<name>`` rule itself -- the one place `config_dir`'s
-    convention was still spelled a second time.  A second override for a
-    directory that already has an environment one is exactly the duplication
-    this module's own history is about; a test that wants a different root
-    sets the variable, like everything else.
-    """
-    return config_dir()
-
-
-def secret_key_path() -> Path:
-    from .config_dir import session_key
-    return session_key()
-
-
-def google_client_secret_path() -> Path:
-    from .config_dir import google_client_secret
-    return google_client_secret()
+# NO PATH HELPERS HERE, and that is the change (I8, 2026-09-13).  Three stood
+# here -- `default_secret_dir()` returning `config_dir()`, `secret_key_path()`
+# returning `config_dir.session_key()`, `google_client_secret_path()`
+# returning `config_dir.google_client_secret()`.  Each was a one-line
+# pass-through, and each was a SECOND PUBLIC NAME for a door `config_dir`
+# already owns: § 3.1 spelled one and § 2.1e the other for the same file.
+# `default_secret_dir` had no production caller at all, only tests.
+#
+# A11: one home per filename.  A module that re-exports another module's
+# resolver has not given the file a home, it has given it two names -- which
+# is the shape `config_dir.py` was created to end, and this module's own
+# docstring is quoted in that file as one of the three that had to agree by
+# comment.  Callers ask `config_dir` directly now.
 
 
 # --------------------------------------------------------------------- #
@@ -343,7 +329,7 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     **It carried ``secret_key_file`` until 2026-08-31**, and writing that key
     is what made the session key configurable.  It now has one home,
-    :func:`secret_key_path`, which is where the server looks and where this
+    :func:`molbuilder.config_dir.session_key`, where the server looks and this
     wizard writes -- so the two cannot name different files, which they did
     (`configuration.md` § 2.1e).
     """

@@ -207,8 +207,7 @@ def _safe_next_target(raw_target) -> str:
 
 
 def _register_login_routes(app) -> None:
-    from flask import (current_app, redirect, render_template, request,
-                       session, url_for)
+    from flask import current_app, redirect, render_template, session
 
     @app.route("/login", endpoint="auth_login")
     def auth_login():
@@ -491,7 +490,7 @@ def _install_secret_key(app) -> None:
     """Load Flask's session-signing key, generating it on first run.
 
     **The key has ONE home** -- ``<config dir>/secret_key``, asked of
-    ``auth_setup.secret_key_path()`` (`configuration.md` § 2.1e).  It took a
+    ``config_dir.session_key()`` (`configuration.md` § 2.1e).  It took a
     ``secret_key_file`` argument until 2026-08-31, and a configurable location
     for a single file is how it came to live in two places: the config pointed
     at ``~/.molbuilder/secret.key`` while the wizard wrote
@@ -503,8 +502,8 @@ def _install_secret_key(app) -> None:
     configurable -- and it degraded silently into sessions that died on every
     restart, behind a warning in a log nobody reads.
     """
-    from ..auth_setup import secret_key_path
-    path = secret_key_path()
+    from ..config_dir import session_key
+    path = session_key()
     if path.exists():
         key_bytes = path.read_bytes()
         if len(key_bytes) < 16:

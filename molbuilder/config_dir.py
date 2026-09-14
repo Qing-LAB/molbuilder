@@ -16,6 +16,12 @@ They agreed, and two of them said so in prose -- one docstring reads
 in three modules".  The directory that filename sits in never got the same
 treatment.  This is it.
 
+*(``auth_setup.default_secret_dir`` is named above as it was.  It survived
+this module as a one-line ``return config_dir()`` -- the duplication gone,
+the second NAME still there -- along with ``auth_setup.secret_key_path`` and
+``google_client_secret_path``, pass-throughs to the two doors below.  All
+three were deleted 2026-09-13; callers ask here.)*
+
 **L1: pure stdlib, no molbuilder deps -- any layer may use it.**  That line
 is copied deliberately from ``persist.py``, which is the precedent: the same
 shape (one rule, several callers, one of them ``scheduler/record.py``) and

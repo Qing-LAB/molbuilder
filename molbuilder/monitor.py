@@ -1055,7 +1055,6 @@ def webhook_request(dest: Dict[str, Any],
     the path could pass while the path failed.
     """
     kind = channel_kind(dest)
-    text = str(report.get("text") or "")
     head = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
 
     if kind in ("slack", "discord"):

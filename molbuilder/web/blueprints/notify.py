@@ -201,20 +201,28 @@ def log_root() -> Path:
     return reports_dir()
 
 
-def read_keys(path: str) -> Dict[str, str]:
+def read_keys() -> Dict[str, str]:
     """``{user: signing-key}`` from the operator's 0600 file, or ``{}``.
 
-    Through `monitor.read_notify_keys`, which owns the file's shape (A11) --
-    the same call `app.py` makes to decide whether this blueprint exists at
-    all, so the route that was registered and the keys that are checked can
-    only ever come from one reading of one file.
+    Through `monitor.read_notify_keys`, which owns the file's shape AND its
+    location (A11) -- the same call `app.py` makes to decide whether this
+    blueprint exists at all, so the route that was registered and the keys
+    that are checked can only ever come from one reading of one file.
+
+    **Asked path-free**, which is the change (I9).  This took a `path`, and
+    the only caller passed `app.config["MB_NOTIFY_KEYS_FILE"]` -- which
+    `app.py` had set to `str(notify_keys_path())` three lines after calling
+    `read_notify_keys()` with no path at all.  So one value was resolved,
+    stringified into app config, read back, `expanduser`d and resolved again:
+    two interpreters of one path, with a round-trip through Flask config
+    between them, for a file that has exactly one home.
 
     Absent, unreadable or malformed all give ``{}`` -- and ``{}`` means the
     route accepts nothing, which is the safe reading.  A misconfiguration
     here removes a capability; it never grants one.
     """
     from ...monitor import read_notify_keys
-    _route, keys = read_notify_keys(os.path.expanduser(path))
+    _route, keys = read_notify_keys()
     return keys
 
 
@@ -367,7 +375,7 @@ def api_notify(route: str):
     if not skew <= MAX_SKEW_S:
         _deny()
 
-    keys = read_keys(current_app.config["MB_NOTIFY_KEYS_FILE"])
+    keys = read_keys()
     user = _resolve_user(sig, ts, body, keys)
     if user is None or not _SAFE_USER.fullmatch(user):
         # NOT marked as an auth challenge: see the module docstring.  A bad

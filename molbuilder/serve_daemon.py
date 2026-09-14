@@ -65,15 +65,6 @@ def run_dir() -> Path:
     return runtime_dir()
 
 
-def log_dir() -> Path:
-    """The supervisor's log directory -- ``config_dir.state_dir()/logs``.
-
-    Same reasoning as :func:`run_dir`: L1, and writable before config.
-    """
-    from .config_dir import logs_dir
-    return logs_dir()
-
-
 def pid_path(port: int) -> Path:
     from .config_dir import serve_pidfile
     return serve_pidfile(port)

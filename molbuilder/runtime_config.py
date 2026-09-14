@@ -50,9 +50,19 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .config_dir import config_dir
+
+if TYPE_CHECKING:                      # pragma: no cover - typing only
+    # `get_routing` is annotated `List["Domain"]` and imports the real class
+    # inside its body, because a module-level import would close a cycle:
+    # `scheduler.record` imports `config_dir`, as this module does.  The name
+    # had no binding at all until now, so every static reader called it
+    # undefined; this is the binding they read.  It is NOT evaluated at run
+    # time, so `typing.get_type_hints(get_routing)` still raises -- that is
+    # the known cost of the idiom, and nothing calls it.
+    from .scheduler.record import Domain
 
 
 #: A11: the module that owns the FORMAT owns the NAME.  This one validates
