@@ -16,7 +16,12 @@ phases per recipe:
      the recipe's :class:`BuildSpec`: clone + cmake + install for each
      component, with sentinel-resume.  Activate.d / deactivate.d
      hooks are rendered into the env's ``etc/conda/`` tree.
-  5. Verify (re-uses :mod:`molbuilder.envs.doctor`).
+  5. Verify -- an ordinary step like the other four, built by
+     :func:`verify_step_for` and run through the same door.  That
+     function lives HERE and :mod:`molbuilder.envs.doctor` imports it;
+     this line claimed the reverse ("re-uses molbuilder.envs.doctor")
+     until 2026-09-13, which is the direction the dependency ran
+     before the migration.
 
 The installer never deletes an existing env; if the env already
 exists, phases 2-4 still run (so installing twice doesn't break --
@@ -1072,14 +1077,17 @@ def _report(tag: str, done: InstallStep) -> None:
 
 
 def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
-                     skip_if_present: bool,
                      force_resume: bool,
                      state: Optional[EnvState] = None
                      ) -> Optional[InstallStep]:
     """Whether ``conda create`` needs to run, as an outcome.
 
-    Three answers, and all three are now states rather than a fabricated
-    exit code plus a separate bool:
+    Asked unconditionally: an existing env is always resumed into, which is
+    what makes `install` idempotent.  A `skip_if_present` parameter stood here
+    until 2026-09-13, defaulting to False, whose docstring said "set False
+    only in tests" -- no test ever set it, and the one production caller that
+    could reach a CREATE step passed True (H8).  Three answers, and all three
+    are now states rather than a fabricated exit code plus a separate bool:
 
       * the env is usable   -> ``SKIPPED``, claiming no exit code;
       * the env is wreckage -> ``FAILED``, carrying ``--clean`` as the
@@ -1097,8 +1105,6 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
     nothing.  Never read off the capabilities snapshot, which goes stale for the
     same reason and is not even this recipe's question.
     """
-    if not skip_if_present:
-        return None
     if state is None:
         state = probe_env_state(dispatcher.env_name, dispatcher.conda_binary)
     # ``--force-resume``: the operator knows the env is usable even
@@ -1125,7 +1131,6 @@ def _run_steps(
     *,
     tag: str,
     executed: List[InstallStep],
-    skip_create_if_present: bool = False,
     force_resume: bool = False,
     env_state: Optional[EnvState] = None,
 ) -> bool:
@@ -1145,7 +1150,7 @@ def _run_steps(
         where = f"{tag} {i}/{total}"
         if step.role is StepRole.CREATE:
             decided = _create_decision(
-                step, dispatcher, skip_if_present=skip_create_if_present,
+                step, dispatcher,
                 force_resume=force_resume, state=env_state)
             if decided is not None:
                 executed.append(decided)
@@ -1279,12 +1284,6 @@ def run_install(
     pre_verify = [s for s in planned if s.role is not StepRole.VERIFY]
 
     ok = _run_steps(pre_verify, dispatcher, tag="install", executed=executed,
-                    # Always: an existing env is resumed into, which is what
-                    # makes `install` idempotent.  This was a parameter whose
-                    # docstring said "set False only in tests" and which no
-                    # test ever set -- production shaped by a test that does
-                    # not exist (H8).
-                    skip_create_if_present=True,
                     force_resume=force_resume, env_state=env_state)
 
     # Build-spec phase: only if the recipe declares one AND nothing

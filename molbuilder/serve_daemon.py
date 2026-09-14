@@ -48,14 +48,18 @@ def run_dir() -> Path:
     the bootstrap rule are the same fact seen twice.
 
     The supervisor must be able to write its log BEFORE any config is read --
-    including when reading it is what failed.  A supervisor that consulted
-    `paths.logs` to find out where to report a malformed `molbuilder.json`
-    would have nowhere to report it, which is the one log nobody can afford to
-    lose (`configuration.md` § 2.1d).
+    including when reading it is what failed.  A supervisor that had to read
+    `molbuilder.json` to find out where to report a malformed
+    `molbuilder.json` would have nowhere to report it, which is the one log
+    nobody can afford to lose (`configuration.md` § 2.1d).
 
-    So `paths.logs` moves molbuilder's application logs; the supervisor's own
-    follow the state directory.  Both move together when the person moves
-    `$XDG_STATE_HOME`, which is the case the split is for.
+    That is also why there is no config key for this.  `$XDG_STATE_HOME` and
+    `$XDG_RUNTIME_DIR` are what move these directories, and they answer
+    before any config is read; a `paths.logs` / `paths.run` / `paths.reports`
+    in `molbuilder.json` is REFUSED, by `runtime_config._read_paths`.  (This
+    docstring told the opposite story -- "so `paths.logs` moves molbuilder's
+    application logs" -- until 2026-09-13, three restatements after the key
+    was retired.)
     """
     from .config_dir import runtime_dir
     return runtime_dir()

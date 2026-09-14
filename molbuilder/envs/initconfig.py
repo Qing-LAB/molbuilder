@@ -430,14 +430,22 @@ def _seed_secrets_dir() -> List[Step]:
     The directory is a SUGGESTED home, not a required one: what goes in it are
     files ``molbuilder.json`` names by PATH (the TLS key, a provider's
     client-secret file), and a path is the operator's to choose.  What makes it
-    worth creating anyway is the README -- the mode rule, and the two files
+    worth creating anyway is the README -- the mode rule, and the THREE files
     that CANNOT live here.
 
-    ``secret_key`` and ``google_client_secret`` each resolve through one
-    function in `config_dir` and sit directly in the config directory;
-    `configuration.md` § 2.1e is explicit that the config cannot name the
-    session key.  A README telling a person to put them here would be actively
-    wrong, so it tells them the opposite.
+    Those three are ``secret_key``, ``notify`` and ``notify_keys``
+    (`configuration.md` § 3.1): each resolves through one function in
+    `config_dir` and sits directly in the config directory, so a reader and a
+    writer cannot mean different files, and naming one in config is REFUSED
+    rather than ignored.  A README telling a person to put them here would be
+    actively wrong, so it tells them the opposite.
+
+    ``google_client_secret`` is NOT one of them, and this docstring said it
+    was -- as one of "two" -- until 2026-09-13, while the README it describes
+    had already been corrected and spells out why: that file is the DEFAULT
+    home for Google's client secret, and `auth.providers[].client_secret_file`
+    may point elsewhere, which is accepted.  A file config MAY name is the
+    opposite of a file config CANNOT name.
 
     An EMPTY ``secrets/`` is the normal state on a workstation with no HTTPS
     and no sign-in.  The README says so, because an empty directory otherwise

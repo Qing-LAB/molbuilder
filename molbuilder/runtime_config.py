@@ -1261,8 +1261,8 @@ def machine_config_warnings() -> List[str]:
     """Everything worth saying about the machine config on the way in.
 
     The shadow warning (a `molbuilder.json` in the launch directory that is NOT
-    read) and the mode warning (an existing file looser than `0600`), in that
-    order, skipping the ones with nothing to say.
+    read), then every place in the configured tree that arrived looser than it
+    should be, skipping the ones with nothing to say.
 
     **The pair exists because both were only reached from `jobset`.** Measured
     2026-09-12: `machine_config_mode_warning` had exactly two callers, the jobset
@@ -1276,9 +1276,16 @@ def machine_config_warnings() -> List[str]:
     One function so a surface adopts BOTH by calling one thing; the two halves
     were already one `for` loop in `jobset/_cli.py`, which is the shape being
     named rather than invented.
+
+    **Every surface that reads this file now calls THIS**, as of 2026-09-13:
+    `serve` and `serve restart`, `auth-setup`, and the jobset group callback --
+    which was the loop above and went on calling the two halves itself, so
+    `placement_warnings` (added here later) reached `serve` and not `jobset`.
+    A function extracted from a site that keeps its copy has not replaced
+    anything; it has forked it.
     """
-    return [w for w in (machine_config_shadow(), machine_config_mode_warning())
-            if w] + placement_warnings()
+    shadow = machine_config_shadow()
+    return ([shadow] if shadow else []) + placement_warnings()
 
 
 def placement_warnings() -> List[str]:
@@ -1289,11 +1296,18 @@ def placement_warnings() -> List[str]:
     adopts the lot by calling `machine_config_warnings`, which is the shape
     that got the mode warning to `serve` in the first place.
 
-    `machine_config_mode_warning` stays separate and first: it is about THE
-    file this module owns, it phrases its own sentence, and it is what
-    `config_provenance` reports.  This adds the directory around it, the
-    secrets beside it and the logs it is read into -- the directory being the
-    one A4 measured world-readable while the file inside it was 0600.
+    `molbuilder.json` IS ONE OF ITS ROWS, and that is why the sum above no
+    longer adds `machine_config_mode_warning` beside it.  Both say the same
+    thing about the same file in different words, so `serve` printed the mode
+    of `molbuilder.json` twice, with two sentences and the identical `chmod
+    0600` under each -- measured 2026-09-13 driving the jobset callback
+    against a 0644 config.  A11: one home per filename, and the table is the
+    one that knows every path in the tree.
+
+    `machine_config_mode_warning` is not dead -- `config_provenance` still
+    reports it, and should: that is a line about THIS file's provenance, not
+    an audit of the tree, and it phrases § 2.1b's consequence in prose rather
+    than naming an expected mode.  Two readers, one each.
     """
     try:
         from .placement import findings

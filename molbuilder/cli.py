@@ -1541,6 +1541,21 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
     from . import auth_setup as _as
     from .runtime_config import _validate_provider as _validate
 
+    # 0. Say what is already wrong about this machine's config ---------
+    #
+    # BEFORE THE WIZARD ASKS ANYTHING, because all three warnings are about
+    # the file it is about to write into and the directory it will write it
+    # in.  This command is the one that puts provider credentials and
+    # `client_secret_file` paths into `molbuilder.json`, and it printed
+    # `(mode 0600)` about its own write while saying nothing about a file that
+    # ARRIVED `0644` or a `./molbuilder.json` it is documented to leave alone
+    # (D12).  `serve` and the jobset verbs already call this; the function's
+    # own docstring named THIS command as the surface that did not.  To
+    # stderr, so it reaches a person without entering piped output.
+    from .runtime_config import machine_config_warnings
+    for _warning in machine_config_warnings():
+        click.echo(_warning, err=True)
+
     # 1. Pick providers ------------------------------------------------
     if provider is None:
         click.echo("Pick provider(s):", err=True)

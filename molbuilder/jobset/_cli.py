@@ -179,8 +179,7 @@ def _echo_config_root() -> None:
     """
     import click as _click
     from ..runtime_config import (CONFIG_FILENAME, machine_config_path,
-                                  machine_config_mode_warning,
-                                  machine_config_shadow)
+                                  machine_config_warnings)
     path, via = machine_config_path()
     state = "found" if path.is_file() else "not found -- defaults in effect"
     _click.echo(f"{CONFIG_FILENAME}: {path} ({state}, via {via})")
@@ -188,9 +187,13 @@ def _echo_config_root() -> None:
     # above already names the resolved path; this says what that path is
     # standing in front of, which is the half a reader cannot infer.  To
     # stderr, so it reaches a person without entering piped output.
-    for warning in (machine_config_shadow(), machine_config_mode_warning()):
-        if warning:
-            _click.echo(warning, err=True)
+    #
+    # THROUGH THE ONE FUNCTION.  This loop was where the pair was FOUND, and
+    # `machine_config_warnings` was extracted from it -- and then this site
+    # kept calling the two halves itself, so the placement findings added to
+    # that function later reached `serve` and not the jobset verbs (D6).
+    for warning in machine_config_warnings():
+        _click.echo(warning, err=True)
     from ..projects import projects_root_with_source
     _click.echo(projects_root_with_source().describe())
 

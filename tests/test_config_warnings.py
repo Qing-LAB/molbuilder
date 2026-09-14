@@ -249,3 +249,46 @@ class TestBothWarningsTravelTogether:
         err = capsys.readouterr().err
         assert "NOT READ" in err, "the stray-file warning"
         assert "chmod 0600" in err, "and the mode warning, about the real one"
+
+
+class TestOneFindingIsSaidOnce:
+    """`machine_config_warnings` is a SUM, and a sum can double-count.
+
+    It used to add `machine_config_mode_warning` beside `placement_warnings`,
+    and `molbuilder.json` is one of the placement table's own rows -- so every
+    surface that called it printed that file's mode twice, in two different
+    sentences, with the identical `chmod 0600` under each.  Measured
+    2026-09-13 by driving the jobset banner against a 0644 config; it had been
+    doing that in `serve` since the table was added.
+
+    `architecture.md` A11 is the rule (one home per filename) and the table is
+    what knows every path in the tree, so the table owns it.  The prose
+    sentence is not dead -- `config_provenance` still reports it, which is a
+    line about this file's provenance rather than an audit of the tree.
+    """
+
+    def test_a_loose_config_is_reported_once(self, isolated):
+        from molbuilder.runtime_config import machine_config_warnings
+        _work, cfg = isolated
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text("{}")
+        cfg.chmod(0o644)
+
+        about_the_file = [w for w in machine_config_warnings()
+                          if f"chmod 0600 {cfg}" in w]
+
+        assert len(about_the_file) == 1, (
+            "one file, one finding, one remedy -- got:\n  "
+            + "\n  ".join(about_the_file))
+
+    def test_provenance_still_has_its_own_sentence(self, isolated):
+        """Removing it from the sum must not remove it from the one reader
+        that is not an audit of the tree."""
+        from molbuilder.runtime_config import config_provenance
+        _work, cfg = isolated
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text("{}")
+        cfg.chmod(0o644)
+
+        assert config_provenance()["mode_warning"], (
+            "config_provenance reports this file's mode and still must")
