@@ -634,10 +634,6 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
        prior ``conda env remove`` was interrupted, ``conda create``
        failed mid-flight leaving an orphan dir) but the directory IS
        on disk under a known envs_dir.
-    4. Direct disk probe of common envs_dir locations -- mamba's
-       ``~/.conda/envs`` is the load-bearing fallback here because
-       it's the default mamba writes to even when the conda binary
-       being asked is from a different install root.
     """
     import json as _json
     # Strategy 0: the reading already taken.
@@ -673,28 +669,14 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
                 return str(candidate)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
-    # Strategy 4: disk probe.  mamba init's default envs_dir is
-    # ``~/.conda/envs``, even when the conda binary lives elsewhere
-    # (e.g. ``conda_binary = ~/miniconda3/condabin/conda`` and envs
-    # end up under ``~/.conda/envs`` because mamba's defaults differ
-    # from conda's).  Plus the conda binary's own install-root envs
-    # dir as a secondary guess.
-    home = Path.home()
-    candidates = [home / ".conda" / "envs" / env_name]
-    # Derive ``<install root>/envs/<name>`` from the conda binary's
-    # path -- strip ``/condabin/...`` OR ``/bin/...`` to get root.
-    conda_path = Path(conda_binary)
-    for marker in ("condabin", "bin"):
-        try:
-            idx = conda_path.parts.index(marker)
-        except ValueError:
-            continue
-        root = Path(*conda_path.parts[:idx])
-        candidates.append(root / "envs" / env_name)
-        break
-    for cand in candidates:
-        if cand.is_dir():
-            return str(cand)
+    # NO FIFTH STRATEGY, and that is the change (H10).  What stood here
+    # derived `<manager root>/envs/<name>` from the binary's own path and
+    # guessed at `~/.conda/envs` besides -- `installation.md` M2: the binary's
+    # location says where the MANAGER is installed, not where it keeps envs,
+    # and on the machines `envs.manager` exists for the two differ.  Every
+    # strategy above asks the manager (its registry, its `envs`, its own
+    # `envs_dirs`), so reaching here means the manager does not know this env.
+    # `None` says so; a guess would answer with a path nothing created.
     return None
 
 

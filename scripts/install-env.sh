@@ -661,26 +661,45 @@ resolve_host_env_channels() {
     HOST_ENV_CHANNEL_ARGS=(-c conda-forge)
 }
 
+_env_python_not_found() {
+    # The ONE place that says what the resolver tried and what to do about it.
+    # Both callers used to spell this themselves, and they had drifted: one
+    # still advertised a third strategy that no longer exists, and the other
+    # led with ``env remove -n <host env> -y``.
+    #
+    # That remedy is the reason this is one function and not two messages.
+    # _resolve_env_python fails when the MANAGER could not answer, which is
+    # not the same as the env being broken -- a registry the manager cannot
+    # read right now fails identically -- so a printed ``env remove -y`` can
+    # destroy a healthy env on a wrong diagnosis (installation.md M5).  What
+    # is printed first is therefore the LOOK, and the reinstall is named only
+    # as what to do once the user has confirmed the env really is broken.
+    local _what="$1"
+    echo "Error: cannot find python in env '${HOST_ENV}'${_what}." >&2
+    echo "Asked ${ENV_MGR} two ways, neither answered:" >&2
+    echo "  1. ${ENV_MGR} env list  (match by name)" >&2
+    echo "  2. ${ENV_MGR} info --json -> envs[]" >&2
+    echo "" >&2
+    echo "Look first -- this also fails when the manager itself cannot read" >&2
+    echo "its registry, and the env is fine:" >&2
+    echo "    ${ENV_MGR} env list" >&2
+    echo "If '${HOST_ENV}' is not listed, or is listed at a path whose" >&2
+    echo "bin/python is genuinely missing, reinstall it:" >&2
+    echo "    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+}
+
 _resolve_env_python() {
-    # Resolve the env's python binary.  Three strategies, in order:
+    # Resolve the env's python binary.  Two strategies, and BOTH of them
+    # ask the manager where the env is (installation.md M2):
     #
     #   1. Parse ``<mgr> env list`` -- the same registry call
     #      ``host_env_exists`` already uses.  Picks up the named env
-    #      regardless of where conda stores it (custom ``envs_dirs``,
-    #      mamba ``--prefix`` installs, etc.).
+    #      regardless of where the manager stores it (custom ``envs_dirs``,
+    #      ``--prefix`` installs, a module-provided root).
     #   2. Parse ``<mgr> info --json``'s ``envs`` array (FULL env
     #      paths, not the ``envs_dirs`` search list).  Catches cases
     #      where ``env list`` output got mangled by mamba 2.x's
     #      different table layout.
-    #   3. Derive from ENV_MGR's own path.  Handles both the
-    #      ``<root>/bin/conda`` layout (Miniforge, Miniconda) AND
-    #      the ``<root>/condabin/conda`` layout (which is what
-    #      ``conda init`` adds to PATH on most systems).
-    #
-    # ``<root>/condabin`` is the load-bearing detail that the prior
-    # version missed: ``${ENV_MGR%/bin/*}`` only strips ``/bin/X``,
-    # so a condabin/conda ENV_MGR fell through unchanged and the
-    # fallback python path was junk.
     local _name="$1"
     local _prefix
     # Strategy 1: env list.  Last column is the prefix path; name is
@@ -706,32 +725,14 @@ _resolve_env_python() {
         echo "${_prefix}/bin/python"
         return 0
     fi
-    # Strategy 3: derive from ENV_MGR's path AND probe mamba's
-    # default envs_dir (``$HOME/.conda/envs``).  Most users never
-    # change ``envs_dirs`` in .condarc, but mamba's default differs
-    # from conda's:
-    #   * conda init  -> envs live at ``<conda root>/envs/<name>``
-    #   * mamba init  -> envs live at ``~/.conda/envs/<name>``
-    # If the user runs ``mamba create -n molbuilder`` after mamba
-    # init, the env lands at ``~/.conda/envs/molbuilder`` even
-    # though the env manager binary is at ``<conda root>/bin/mamba``.
-    # Both layouts checked.  Strategy 1 (env list) catches both
-    # already; this is just a fallback for the case where env list
-    # output got mangled or the registry got out of sync.
-    local _root="${ENV_MGR%/condabin/*}"
-    if [[ "${_root}" == "${ENV_MGR}" ]]; then
-        _root="${ENV_MGR%/bin/*}"
-    fi
-    local _candidate
-    for _candidate in \
-        "${_root}/envs/${_name}/bin/python" \
-        "${HOME}/.conda/envs/${_name}/bin/python" \
-    ; do
-        if [[ -x "${_candidate}" ]]; then
-            echo "${_candidate}"
-            return 0
-        fi
-    done
+    # NO THIRD STRATEGY.  What stood here derived
+    # ``<manager root>/envs/<name>/bin/python`` from ENV_MGR's own path, and
+    # guessed at ``$HOME/.conda/envs`` besides.  The binary's location says
+    # where the MANAGER is installed, not where it keeps envs -- and on the
+    # machines that matters for (a module-provided mamba, a wrapper on PATH)
+    # the two are nowhere near each other (docs/ops/installation.md, M2).
+    # Both strategies above ask the manager, in two different ways; if neither
+    # answers, the env genuinely is not there and the caller says so.
     return 1
 }
 
@@ -760,13 +761,7 @@ create_host_env() {
         # overrides apply unchanged.
         local _py
         if ! _py="$(_resolve_env_python "${HOST_ENV}")"; then
-            echo "Error: cannot find python in env '${HOST_ENV}' after create." >&2
-            echo "Probed three ways, none worked:" >&2
-            echo "  1. ${ENV_MGR} env list  (match by name)" >&2
-            echo "  2. ${ENV_MGR} info --json -> envs[]" >&2
-            echo "  3. <ENV_MGR's install root>/envs/${HOST_ENV}/bin/python" >&2
-            echo "Run '${ENV_MGR} env list' yourself to see what env paths" >&2
-            echo "are registered; if molbuilder is there, file an issue." >&2
+            _env_python_not_found " after create"
             exit 1
         fi
         echo "[molbuilder] pip-installing host-env extras: ${HOST_PIP_PACKAGES[*]}" >&2
@@ -809,16 +804,7 @@ create_host_env() {
 dispatch() {
     local _py
     if ! _py="$(_resolve_env_python "${HOST_ENV}")"; then
-        echo "Error: cannot find python in env '${HOST_ENV}'." >&2
-        echo "Probed three ways, none worked:" >&2
-        echo "  1. ${ENV_MGR} env list  (match by name)" >&2
-        echo "  2. ${ENV_MGR} info --json -> envs[]" >&2
-        echo "  3. <ENV_MGR's install root>/envs/${HOST_ENV}/bin/python" >&2
-        echo "Confirm the env is healthy with '${ENV_MGR} env list' --" >&2
-        echo "if molbuilder is listed but the path's python is missing," >&2
-        echo "remove + reinstall the env:" >&2
-        echo "    ${ENV_MGR} env remove -n ${HOST_ENV} -y" >&2
-        echo "    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+        _env_python_not_found ""
         exit 1
     fi
     # HAND THE RESOLVED MANAGER DOWN.  ``detect_env_mgr`` probes four

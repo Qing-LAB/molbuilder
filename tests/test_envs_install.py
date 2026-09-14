@@ -1466,18 +1466,30 @@ _INSTALL_ENV_SH = _REPO_ROOT / "scripts" / "install-env.sh"
 
 def _make_stub_mamba(bin_dir, *, host_env_present=True,
                      configured_channels=()):
-    """Create a stub ``mamba`` binary at ``bin_dir/mamba`` PLUS a
-    stub env-python at the path the shim's _resolve_env_python
-    fallback derives (``<dirname(dirname(bin_dir))>/envs/molbuilder/
-    bin/python``).
+    """Create a stub ``mamba`` binary at ``bin_dir/mamba`` PLUS the
+    env-python it REPORTS, out of tree at ``<bin_dir.parent>/scratch/
+    molbuilder/bin/python``.
+
+    Out of tree on purpose.  The env is nowhere near the manager binary --
+    no rule of thumb about install roots reaches it -- so the shim resolves
+    it only by asking the manager where it is (`installation.md` M2), which
+    is the arrangement every module-provided mamba on an HPC login node
+    actually has.
 
     The stubs fake:
       * ``mamba env list`` -> output that either includes or omits
-        the host env (controlled by ``host_env_present``).
+        the host env (controlled by ``host_env_present``), naming the
+        prefix the same way a real manager does -- and listing it from
+        then on once ``create`` has run, which is the one behaviour that
+        makes "create, then resolve" work.  The stub used to report the
+        env absent forever, and the shim found a python regardless by
+        deriving one from the manager's own path; with that derivation
+        gone (`installation.md` M2) a stub that does not honour its own
+        create is simply a broken manager.
       * ``mamba config --get channels`` -> ``--add channels '<name>'``
         lines per configured channel (empty tuple = fresh conda).
-      * ``mamba info --json`` -> empty (forces _resolve_env_python's
-        fallback path; simpler than emitting valid JSON for awk).
+      * ``mamba info --json`` -> empty, so ``env list`` is the only
+        answer; resolving anyway proves one reading suffices.
       * ``mamba create`` -> echo ``[stub-create] $*``.
       * The env's python -> echo ``[stub-dispatch] python $*`` and
         ``[stub-env] PYTHONPATH=$PYTHONPATH ...`` so tests can assert
@@ -1487,16 +1499,20 @@ def _make_stub_mamba(bin_dir, *, host_env_present=True,
     """
     bin_dir.mkdir(parents=True, exist_ok=True)
     mamba = bin_dir / "mamba"
+    env_prefix = bin_dir.parent / "scratch" / "molbuilder"
     env_list_lines = ["# conda environments:", "#", "base    /root"]
     if host_env_present:
-        env_list_lines.append("molbuilder    /root/molbuilder")
+        env_list_lines.append(f"molbuilder    {env_prefix}")
     env_list_output = "\n".join(env_list_lines) + "\n"
+    created_marker = bin_dir.parent / ".stub-created"
+    created_line = f"molbuilder    {env_prefix}"
     config_lines = [f"--add channels '{ch}'" for ch in configured_channels]
     config_output = ("\n".join(config_lines) + "\n") if config_lines else ""
     mamba.write_text(
         "#!/usr/bin/env bash\n"
         'if [[ "$1" == "env" && "$2" == "list" ]]; then\n'
         f"  cat <<'EOF'\n{env_list_output}EOF\n"
+        f'  if [[ -e "{created_marker}" ]]; then echo "{created_line}"; fi\n'
         "  exit 0\n"
         "fi\n"
         'if [[ "$1" == "config" && "$2" == "--get" && "$3" == "channels" ]]; then\n'
@@ -1508,18 +1524,19 @@ def _make_stub_mamba(bin_dir, *, host_env_present=True,
         "fi\n"
         'if [[ "$1" == "create" ]]; then\n'
         '  echo "[stub-create] $*"\n'
+        f'  : > "{created_marker}"\n'
         "  exit 0\n"
         "fi\n"
         'echo "[stub-mamba] $*"\n'
         "exit 0\n"
     )
     mamba.chmod(0o755)
-    # The shim's _resolve_env_python fallback derives the env's
-    # python from ``${ENV_MGR%/bin/*}/envs/<name>/bin/python``.
-    # ENV_MGR is bin_dir/mamba, so the install-root strip lands at
-    # bin_dir.parent; the python goes at
-    # ``<bin_dir.parent>/envs/molbuilder/bin/python``.
-    env_python_dir = bin_dir.parent / "envs" / "molbuilder" / "bin"
+    # The python goes where the stub manager just said the env is, which
+    # is what a real manager guarantees and the only thing the shim relies
+    # on.  Put it there even when host_env_present is False: the shim is
+    # then meant to create the env first, and a test that wants to see the
+    # create must not fail one step earlier for want of a python.
+    env_python_dir = env_prefix / "bin"
     env_python_dir.mkdir(parents=True, exist_ok=True)
     env_python = env_python_dir / "python"
     env_python.write_text(
