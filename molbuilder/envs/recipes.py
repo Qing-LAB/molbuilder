@@ -789,6 +789,21 @@ class Recipe:
         :class:`PipPackage` for why identity, source and staleness
         have to be separate fields.  Plain records batch into one
         install call; the rest each get their own step.
+    opt_in
+        **Why this env is NOT part of the default stack**, or ``None`` when
+        it is.  A string, because a bare ``True`` would leave every surface
+        inventing its own wording for *"why am I not getting this one"* --
+        `bootstrap` prints it beside the exact install command, `list` marks
+        the row, and `doctor` says it where a missing env would otherwise read
+        as a gap.
+
+        It replaced ``build_spec is not None`` as bootstrap's test on
+        2026-09-14.  That was a PROXY -- it meant "expensive, so ask first"
+        and happened to be true of the only opt-in env there was -- and the
+        notebook env is the case that separates them: cheap, conda-only, and
+        still not something to install on every machine because somebody
+        bootstrapped it.  The reason a recipe is opt-in is now stated rather
+        than inferred from its shape.
     extra_steps
         Arbitrary shell-command argv tuples to run AFTER pip installs
         but BEFORE the build_spec (if any).  Used for the playwright
@@ -833,6 +848,7 @@ class Recipe:
     # package belongs to that package -- and because membership in a
     # second list, matched by name, silently left a mistyped entry
     # required.
+    opt_in: Optional[str] = None
     extra_steps: Tuple[Tuple[str, ...], ...] = ()
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
@@ -1794,6 +1810,8 @@ _SIESTA_GPU_BUILD = BuildSpec(
 
 _SIESTA_GPU = Recipe(
     name=DEFAULT_ENV_NAMES["siesta-gpu"],
+    # NOT in the default stack: it compiles ELPA and SIESTA from source.
+    opt_in="built from source -- 25-45 min and a compiler toolchain",
     category="siesta-gpu",
     description="SIESTA + TranSiesta + TBtrans built from source with "
                 "CUDA-enabled ELPA (5.4.2 matches the precompiled CPU env).",
@@ -2090,6 +2108,10 @@ _JUPYTER = Recipe(
     category="jupyter",
     description="JupyterLab for the notebook tab (the kernels are the "
                 "other envs).",
+    # NOT in the default stack, and not because it is expensive -- it is a
+    # feature you choose.  A machine that will never open the notebook tab
+    # should not carry a notebook server because somebody ran `bootstrap`.
+    opt_in="optional -- the notebook tab",
     channels=("conda-forge",),
     conda_packages=(
         "python=3.12",

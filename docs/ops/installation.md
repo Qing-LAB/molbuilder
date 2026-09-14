@@ -311,7 +311,7 @@ Reference:
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
-| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab` — **the server only**. Kernels come from the host and pySCF envs, which carry `ipykernel` and register a kernelspec into their own prefix |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab` — **the server only**. Kernels come from the host and pySCF envs, which carry `ipykernel` and register a kernelspec into their own prefix. **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **pyberny** | `molbuilder-pySCF` | **manual / optional** — unmaintained; the conda recipe omits it |
 | **X3DNA (3DNA)** | host-external | **manual** — restricted licence; you extract it and export `X3DNA` + `PATH` yourself |

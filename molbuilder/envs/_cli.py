@@ -173,9 +173,12 @@ def cmd_list() -> None:
     width = max(len(r.effective_name) for r in reports)
     for rep in reports:
         marker = "OK " if rep.present else "-- "
+        # An opt-in env that is absent is NOT a gap, and the row must not
+        # read like one beside four that are.
+        tag = "  [opt-in]" if rep.recipe.opt_in else ""
         click.echo(
             f"{marker} {rep.effective_name:<{width}}  "
-            f"{rep.recipe.description}"
+            f"{rep.recipe.description}{tag}"
         )
 
 
@@ -216,7 +219,14 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 f"via molbuilder.json)"
             )
         if not rep.present:
-            click.echo("    state:   MISSING")
+            # MISSING is a gap for the default stack and the ordinary state
+            # for an opt-in env.  Saying which is the difference between a
+            # report that reads as four things to fix and one that reads as
+            # four things that are fine and two you have not asked for.
+            if rep.recipe.opt_in:
+                click.echo(f"    state:   not installed ({rep.recipe.opt_in})")
+            else:
+                click.echo("    state:   MISSING")
             click.echo("    next:    "
                        + _fix_cmd("install", rep.recipe.name, "--yes"))
             continue
@@ -334,10 +344,25 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 # offered must actually fix what was just listed.
                 _flags = (("--include-version-fix",) if _has_version
                           else ())
-                click.echo("    next:    "
-                           + _fix_cmd("repair", rep.recipe.name, *_flags))
+                if rep.recipe.extra_steps:
+                    # `repair` CANNOT finish this env.  It closes what the
+                    # package audit reports -- `conda_step_for` /
+                    # `pip_step_for` -- and does not re-run `extra_steps`, so
+                    # for a recipe that has them it would install the package
+                    # and leave the step that makes it useful undone.  The
+                    # host env's `ipykernel` is the case: repaired, it is
+                    # present and there is still no notebook kernel, because
+                    # the kernelspec is written by an extra step.  `install`
+                    # runs the whole plan and skips what is already done.
+                    click.echo("    next:    "
+                               + _fix_cmd("install", rep.recipe.name, "--yes"))
+                    click.echo("             (this recipe has post-install "
+                               "steps, which `repair` does not re-run)")
+                else:
+                    click.echo("    next:    "
+                               + _fix_cmd("repair", rep.recipe.name, *_flags))
 
-                if _has_version and not _has_missing:
+                if _has_version and not _has_missing and not rep.recipe.extra_steps:
                     click.echo("             (only version/build pins "
                                "differ; --include-version-fix is what "
                                "makes repair rebuild those)")
@@ -1686,10 +1711,14 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     failures: list = []      # recipes whose install did not finish
     caps = get_capabilities()
 
-    # Pick recipes to install.  Order: conda-only first (cheap, fast),
-    # then source-builds last (slow) only when opted in.
-    conda_only   = [r for r in BUILTIN_RECIPES if r.build_spec is None]
-    source_builds = [r for r in BUILTIN_RECIPES if r.build_spec is not None]
+    # WHAT BOOTSTRAP INSTALLS: the default stack, and nothing a recipe says
+    # is opt-in.  This tested `build_spec is None` until 2026-09-14 -- a proxy
+    # that meant "expensive, so ask first" and happened to hold for the only
+    # opt-in env there was.  `Recipe.opt_in` states the reason instead, so a
+    # cheap env can be opt-in too (the notebook tab is).
+    default_set  = [r for r in BUILTIN_RECIPES if r.opt_in is None]
+    opt_in_set   = [r for r in BUILTIN_RECIPES if r.opt_in is not None]
+    source_builds = [r for r in opt_in_set if r.build_spec is not None]
 
     # Progress visibility: the steps from here through ``run_install``
     # do multiple ``<mgr> env list`` / ``<mgr> info --json`` probes (env
@@ -1709,22 +1738,29 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             "molbuilder.json (an absolute path), or activate one first.")
     click.echo(
         f"[bootstrap] registered recipes: "
-        f"{len(conda_only)} conda-only + {len(source_builds)} source-build",
+        f"{len(default_set)} in the default stack + "
+        f"{len(opt_in_set)} opt-in",
         err=True,
     )
 
-    plan: list = list(conda_only)
+    plan: list = list(default_set)
     if include_source_builds:
         plan.extend(source_builds)
-    else:
-        # Tell the user explicitly what's being skipped.
-        if source_builds:
-            names = ", ".join(r.name for r in source_builds)
-            click.echo(
-                f"(skipping source-build recipes: {names}; "
-                f"pass --include-source-builds to opt in)",
-                err=True,
-            )
+    # SAY WHAT IS NOT BEING INSTALLED, why, and the command that installs it.
+    # An env left out silently reads as an env that does not exist.
+    skipped = [r for r in opt_in_set if r not in plan]
+    if skipped:
+        click.echo("", err=True)
+        click.echo(f"[bootstrap] NOT installing {len(skipped)} opt-in "
+                   f"env(s) -- each is installed explicitly:", err=True)
+        for r in skipped:
+            click.echo(f"    {r.name}", err=True)
+            click.echo(f"        {r.opt_in}", err=True)
+            hint = _fix_cmd("install", r.name, "--yes")
+            if r.build_spec is not None:
+                hint += "   (or `bootstrap --include-source-builds`)"
+            click.echo(f"        {hint}", err=True)
+        click.echo("", err=True)
 
     if not plan:
         click.echo("(no recipes registered)")
@@ -1776,7 +1812,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             # "do not install anything" and `env-framework.md` 480's "--dry-run
             # means nothing gets installed, including by the shim".  It also
             # spent the full verify+audit pass on every env.
-            click.echo("All registered envs are already present.")
+            click.echo("Every env in the default stack is already present.")
             click.echo("(dry-run: nothing installed, nothing written, no "
                        "doctor pass.)")
             click.echo("")
@@ -1785,7 +1821,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
                        f"(if it is not already there)")
             click.echo("  - run doctor over every env to verify it")
             return
-        click.echo("All registered envs are already present.  "
+        click.echo("Every env in the default stack is already present.  "
                    "Running doctor to verify.")
     else:
         # Per-recipe banner.

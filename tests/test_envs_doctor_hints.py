@@ -21,8 +21,18 @@ from molbuilder.envs.doctor import (EnvReport, PackageAudit,
                                     PackageAuditIssue)
 from molbuilder.envs.recipes import BUILTIN_RECIPES
 
-RECIPE = BUILTIN_RECIPES[0]
+# CHOSEN BY THE PROPERTY UNDER TEST, not by index.  These tests are about
+# the REPAIR hint, and `doctor` offers `repair` only for a recipe with no
+# post-install steps -- `repair` does not re-run `extra_steps`, so for a
+# recipe that has them it would install the package and leave the step that
+# makes it useful undone.  `BUILTIN_RECIPES[0]` was the host env, which grew
+# an extra step on 2026-09-14 and quietly moved these tests onto the other
+# branch.
+RECIPE = next(r for r in BUILTIN_RECIPES if not r.extra_steps)
 NAME = RECIPE.name
+
+#: One that DOES have post-install steps, for the other branch.
+RECIPE_WITH_STEPS = next(r for r in BUILTIN_RECIPES if r.extra_steps)
 
 
 def _report(**kw):
@@ -66,6 +76,25 @@ def test_required_missing_packages_carry_the_repair_command(capsys):
     code, out = _render(capsys, rep)
     assert code == 1
     assert "next:    " + _fix_cmd("repair", NAME) in out
+
+
+def test_a_recipe_with_post_install_steps_is_sent_to_install_not_repair(
+        capsys):
+    """`repair` closes what the package AUDIT reports and nothing else.  For a
+    recipe whose plan has post-install steps, that leaves the env half-done --
+    the host env's `ipykernel` is the case: repaired, the package is present
+    and there is still no notebook kernel, because the kernelspec is written
+    by an extra step.  So the hint names `install`, which runs the whole plan
+    and skips what is already done, and says why.
+    """
+    rep = _report(recipe=RECIPE_WITH_STEPS,
+                  effective_name=RECIPE_WITH_STEPS.name,
+                  package_audit=_audit(_issue("conda-missing")))
+    code, out = _render(capsys, rep)
+    assert code == 1
+    assert _fix_cmd("install", RECIPE_WITH_STEPS.name, "--yes") in out
+    assert "post-install steps" in out
+    assert _fix_cmd("repair", RECIPE_WITH_STEPS.name) not in out
 
 
 def test_a_version_only_failure_hints_the_flag_that_actually_fixes_it(
