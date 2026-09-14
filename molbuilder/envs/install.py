@@ -1340,7 +1340,6 @@ def run_install(
                 recipe.build_spec, dispatcher.prefix,
                 conda_binary=caps.conda_binary,
                 rebuild=rebuild,
-                conda_specs=list(recipe.conda_specs),
                 skip_network_check=build_skip_network_check,
                 on_warnings=build_on_warnings,
                 on_progress=build_on_progress,
@@ -1369,10 +1368,11 @@ def run_install(
     # two failures announced themselves as "SKIPPED".  `stops_the_install`
     # and not `is_success` is the right predicate: a DEGRADED optional
     # package is honestly absent without the install having failed.
+    # The build's verdict is IN the steps: a failed phase is an adapted FAILED
+    # step, and preflight errors or a declined warning are an undispatched
+    # one -- so the override that stood here ("builds.py owns its own verdict")
+    # could never change the answer.
     succeeded = not any(s.outcome.stops_the_install for s in executed)
-    if build_result is not None and not build_result.succeeded:
-        # builds.py owns its own verdict; do not re-derive it from steps.
-        succeeded = False
 
     return InstallResult(
         recipe=recipe,

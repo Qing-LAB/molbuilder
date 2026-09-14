@@ -266,7 +266,7 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
     start = time.monotonic()
     rc, out = _builds.run_streaming(
         [ctest, "-E", "verify", "-L", "simple", "--output-on-failure"],
-        cwd=build_dir,
+        cwd=build_dir, sink=sys.stderr,
         timeout=120,
     )
     elapsed = time.monotonic() - start
@@ -323,7 +323,7 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
     # research-summary estimate.
     rc, out = _builds.run_streaming(
         [make, "-j1", "check", "CHECK_LEVEL=fast", "-k"],
-        cwd=build_dir,
+        cwd=build_dir, sink=sys.stderr,
         env=dict(os.environ, MAKEFLAGS="-j1"),
         timeout=1800,
     )

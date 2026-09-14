@@ -204,3 +204,27 @@ def test_run_step_hands_that_environment_to_the_door(tmp_path, monkeypatch):
 #  S17 -- the tool router gets the same answer                                #
 # --------------------------------------------------------------------------- #
 
+
+
+# --------------------------------------------------------------------------- #
+#  What the door does with the output                                         #
+# --------------------------------------------------------------------------- #
+
+def test_no_sink_means_captured_only(capsys):
+    """`run_streaming(sink=None)` hands the output back and shows nothing;
+    a caller with a person watching passes the stream it wants.
+
+    Until 2026-09-13 ``None`` meant ``sys.stderr``, so the one caller that
+    said nothing -- `doctor`'s verify probe, whose comment promised "captured
+    rather than streamed" -- had the probe's output land in the middle of the
+    report.
+    """
+    import sys
+
+    rc, out = B.run_streaming(["echo", "quiet-line"])
+    assert rc == 0 and "quiet-line" in out
+    assert "quiet-line" not in capsys.readouterr().err
+
+    rc, out = B.run_streaming(["echo", "shown-line"], sink=sys.stderr)
+    assert rc == 0 and "shown-line" in out
+    assert "shown-line" in capsys.readouterr().err

@@ -610,8 +610,8 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
     ``$CONDA_PREFIX/opt/<artifact_subdir>/``.  The build phase needs
     them; at runtime they are dead weight (typically 3-5 GB combined).
     This command identifies + removes the build-only set, leaving the
-    installed binaries (``elpa/``, ``siesta/``), sentinels, logs, and
-    toolchain fingerprint intact.
+    installed binaries (``elpa/``, ``siesta/``), sentinels and logs
+    intact.
 
     Safe to re-run: skipped dirs that don't exist anymore are a no-op.
     Safe to interrupt: each dir is independent; partial deletion leaves
@@ -681,9 +681,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
     kept = [
         ("logs/", paths.logs, "install logs (useful for debugging)"),
         (".sentinels/", paths.sentinels,
-         "resume markers (small; --force-resume reads them)"),
-        (".toolchain-fingerprint", paths.fingerprint_file,
-         "toolchain hash (used by --clean / --force-resume)"),
+         "resume markers (small; a phase with one is skipped)"),
     ]
     # Per-component install dirs (elpa/, siesta/) -- the load-bearing
     # artifacts the activate hook publishes on PATH + LD_LIBRARY_PATH.
@@ -1192,17 +1190,13 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             # show up as "(detected after conda create)".  This
             # avoids the misleading "env's gcc 11.4" line that would
             # otherwise just be the system gcc.
-            import os as _os
-            env_for_probe = None
-            disk_path = _os.path.expanduser("~")
-            if caps.env_available(effective):
-                # We have an env -- find its prefix for an honest probe.
-                from . import install as _install_mod
-                env_for_probe = _install_mod._env_prefix(
-                    effective, caps.conda_binary,
-                )
-                if env_for_probe:
-                    disk_path = env_for_probe
+            # The prefix is on the snapshot when the env exists; NONE when it
+            # does not.  This handed `~` to `preflight` as the env prefix on a
+            # fresh machine, and the free-space reference then walked every
+            # directory beside your home -- all of /home on a shared login
+            # node (K-L3).  Where the manager will put a new env is not
+            # knowable here, so no directory is measured on its behalf.
+            env_for_probe = caps.env_prefix(effective)
             probe = _builds.probe_toolchain(env_for_probe or "/nonexistent")
             click.echo(_builds.format_install_summary(
                 recipe.build_spec, probe, rebuild=rebuild,
@@ -1211,18 +1205,30 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 click.echo("Detection note (env not yet created):")
                 click.echo("  * gcc / OpenMPI / env health checks run after "
                            "`conda create` completes;")
-                click.echo("  * host-side probes (CUDA, GPU compute cap, "
-                           "disk) are accurate now.")
+                click.echo("  * host-side probes (CUDA, GPU compute cap) "
+                           "are accurate now.")
                 click.echo("")
             click.echo(_builds.format_preflight_report(
                 _builds.preflight(
                     recipe.build_spec,
                     probe,
-                    list(recipe.conda_specs),
-                    env_prefix=disk_path,
+                    env_prefix=env_for_probe,
                     check_network=False,  # dry-run avoids network ls-remote
                 )
             ))
+            if env_for_probe is None:
+                # Where the manager will put the env is not knowable yet, so
+                # the one number worth showing is the home filesystem's --
+                # measured directly, with no reference scale: computing one
+                # means walking every directory beside the path, and with `~`
+                # that was all of /home (K-L3).
+                import os as _os
+                free, reminder = _builds.check_disk(_os.path.expanduser("~"))
+                if free is not None:
+                    click.echo(f"Disk free          {free:>5.1f} GB  at ~ "
+                               f"(the env's own filesystem once it exists)")
+                if reminder:
+                    click.echo(reminder)
             click.echo("")
             click.echo("(--dry-run: no subprocess executed.  Remove "
                        "--dry-run to proceed.)")

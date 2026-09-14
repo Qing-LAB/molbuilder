@@ -3,9 +3,8 @@
 The executor never runs a real ELPA/ELSI/SIESTA build in tests --
 that takes 35-45 min and needs CUDA + a GPU.  These tests exercise the
 deterministic machinery around it: BuildSpec validation, sentinel
-resume, toolchain fingerprint determinism, template substitution,
-preflight reporting, --rebuild semantics, and the activate.d hook
-content.
+resume, template substitution, preflight reporting, --rebuild semantics,
+and the activate.d hook content.
 
 L4 (integration) coverage of the actual build run lives elsewhere and
 is opt-in (needs hours + a GPU).  This file pins the unit-level
@@ -15,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 
 import pytest
@@ -43,7 +41,7 @@ def siesta_gpu_spec() -> BuildSpec:
 
 @pytest.fixture
 def fake_probe(tmp_path) -> B.ToolchainProbe:
-    """A deterministic ToolchainProbe for fingerprint / template tests."""
+    """A deterministic ToolchainProbe for the template tests."""
     return B.ToolchainProbe(
         env_prefix=str(tmp_path / "env"),
         cuda_home="/usr/local/cuda",
@@ -168,94 +166,99 @@ def test_downstream_components_walks_chain(siesta_gpu_spec):
 
 
 # --------------------------------------------------------------------- #
-#  Toolchain fingerprint                                                 #
-# --------------------------------------------------------------------- #
-
-
-def test_fingerprint_is_deterministic(tiny_spec, fake_probe):
-    """Same (spec, probe, refs) -> same hash, every time."""
-    refs = {"a": "sha-aaa", "b": "sha-bbb"}
-    fp1 = B.compute_fingerprint(tiny_spec, fake_probe, refs)
-    fp2 = B.compute_fingerprint(tiny_spec, fake_probe, refs)
-    assert fp1 == fp2
-    # 64-hex sha256 form
-    assert re.fullmatch(r"[0-9a-f]{64}", fp1)
-
-
-def test_fingerprint_changes_with_cuda_version(tiny_spec, fake_probe):
-    """A CUDA toolkit upgrade must invalidate sentinels."""
-    refs = {"a": "sha-aaa", "b": "sha-bbb"}
-    fp_a = B.compute_fingerprint(tiny_spec, fake_probe, refs)
-    probe_new = B.ToolchainProbe(
-        **{**fake_probe.__dict__, "cuda_version": "12.6.0"}
-    )
-    fp_b = B.compute_fingerprint(tiny_spec, probe_new, refs)
-    assert fp_a != fp_b
-
-
-def test_fingerprint_changes_with_gcc_version(tiny_spec, fake_probe):
-    """A gcc upgrade must invalidate sentinels."""
-    refs = {"a": "sha-aaa", "b": "sha-bbb"}
-    fp_a = B.compute_fingerprint(tiny_spec, fake_probe, refs)
-    probe_new = B.ToolchainProbe(
-        **{**fake_probe.__dict__, "gcc_version": "14.3.0"}
-    )
-    fp_b = B.compute_fingerprint(tiny_spec, probe_new, refs)
-    assert fp_a != fp_b
-
-
-def test_fingerprint_changes_with_resolved_ref(tiny_spec, fake_probe):
-    """A new SIESTA tag (or any component ref) must invalidate sentinels."""
-    refs_a = {"a": "sha-aaa", "b": "sha-bbb"}
-    refs_b = {"a": "sha-aaa", "b": "sha-CHANGED"}
-    fp_a = B.compute_fingerprint(tiny_spec, fake_probe, refs_a)
-    fp_b = B.compute_fingerprint(tiny_spec, fake_probe, refs_b)
-    assert fp_a != fp_b
-
-
-def test_fingerprint_changes_with_openmpi_version(tiny_spec, fake_probe):
-    """An OpenMPI bump must invalidate sentinels (ABI not stable
-    across minor versions)."""
-    refs = {"a": "sha-aaa", "b": "sha-bbb"}
-    fp_a = B.compute_fingerprint(tiny_spec, fake_probe, refs)
-    probe_new = B.ToolchainProbe(
-        **{**fake_probe.__dict__, "openmpi_version": "4.1.6"}
-    )
-    fp_b = B.compute_fingerprint(tiny_spec, probe_new, refs)
-    assert fp_a != fp_b
-
-
-# --------------------------------------------------------------------- #
 #  Sentinel round-trip                                                   #
 # --------------------------------------------------------------------- #
 
 
-def test_a_sentinel_is_a_presence_marker_not_a_payload(tmp_path):
-    """Three tests stood here, driving one rule through three fixtures: a
-    present sentinel means done, an absent one means not-done, and a corrupt
-    one still means done.  That rule is `sentinel.exists()`, which is what
-    the phase loop calls.
+def _one_component_spec(verify_argv=()):
+    a = BuildComponent(
+        name="a", repo_url="https://example.com/a.git", ref="v1",
+        configure_argv=("cmake", "-S", "{src}", "-B", "{build}"),
+        build_argv=("cmake", "--build", "{build}"),
+        install_argv=("cmake", "--install", "{build}"),
+        verify_argv=verify_argv,
+    )
+    return BuildSpec(artifact_subdir="tiny", components=(a,),
+                     cuda_required=False)
 
-    Per the 2026-06-15 artifact-presence redesign the recorded fingerprint is
-    forensic metadata, NOT a gating check -- editing a SIESTA flag must not
-    invalidate ELPA's sentinel because the global fingerprint shifted.  The
-    two readers that existed only to assert that (`read_sentinel_fingerprint`
-    and a `sentinel_valid` shim that ignored its own second argument) had no
-    production caller and are gone; `component_install_valid` is the trust
-    source for "is this component already installed".
+
+def _quiet_preflight(monkeypatch):
+    monkeypatch.setattr(B, "preflight", lambda *a, **k: B.PreflightReport(
+        errors=(), warnings=(), info=()))
+
+
+def test_a_resume_skips_the_phases_whose_sentinel_exists(tmp_path, monkeypatch):
+    """A sentinel's EXISTENCE is the whole record: the phase that left one is
+    not run again, the phases without one are.  Asserted through
+    `run_build_spec`, with the door faked -- a test that wrote a sentinel and
+    read it back stood here and never reached the loop that honours it.
+
+    The file used to carry a toolchain hash and a timestamp; nothing read
+    either, so the executor's rule and the test's are the same one:
+    `sentinel.exists()`.
     """
-    written = tmp_path / "x.done"
-    B.write_sentinel(written, "fp-1", now=lambda: 1700000000.0)
-    corrupt = tmp_path / "corrupt.done"
-    corrupt.write_text("not-json-at-all", encoding="utf-8")
-    absent = tmp_path / "missing.done"
+    spec = _one_component_spec()
+    env_prefix = str(tmp_path / "env")
+    os.makedirs(env_prefix)
+    paths = B.resolve_paths(spec, env_prefix)
+    done_before = paths.sentinel("a", "configure")
+    done_before.parent.mkdir(parents=True)
+    done_before.touch()
+    _quiet_preflight(monkeypatch)
+    entered = []
 
-    assert written.exists()
-    assert corrupt.exists(), "a corrupt marker is still a marker"
-    assert not absent.exists()
-    # The fingerprint is recorded, so it is there for a human reading the
-    # file -- it just gates nothing.
-    assert "fp-1" in written.read_text(encoding="utf-8")
+    def fake_door(argv, prefix, **kw):
+        entered.append(tuple(argv))
+        return (0, "")
+
+    monkeypatch.setattr(B, "dispatch_into_env", fake_door)
+
+    result = B.run_build_spec(spec, env_prefix, conda_binary="/m",
+                              skip_network_check=True)
+
+    by_phase = {r.step.phase: r.status for r in result.steps}
+    assert by_phase["configure"] == "skip"
+    assert {by_phase[p] for p in ("clone", "build", "install")} == {"ok"}
+    assert not any("-S" in argv for argv in entered), (
+        "the configure phase ran although its sentinel was present")
+    # ...and every phase that ran left its own marker for the next resume.
+    for phase in ("clone", "build", "install"):
+        assert paths.sentinel("a", phase).exists(), phase
+
+
+def test_the_presence_gate_asks_the_installed_binary_through_the_door(
+        tmp_path, monkeypatch):
+    """A component whose installed binary answers its verify command is done,
+    whatever its sentinels say -- and it is asked THROUGH THE DOOR, under the
+    same environment the verify phase runs in (M1, K-L4).
+
+    The verify command here is ``false``: run bare, as the gate did until
+    2026-09-13, it fails and the phases run; answered by the door, the
+    component is skipped whole.  So a gate that stops going through the door
+    turns this test red by itself.
+    """
+    spec = _one_component_spec(verify_argv=("false",))
+    env_prefix = str(tmp_path / "env")
+    os.makedirs(env_prefix)
+    paths = B.resolve_paths(spec, env_prefix)
+    paths.component_install("a").mkdir(parents=True)
+    _quiet_preflight(monkeypatch)
+    entered = []
+
+    def fake_door(argv, prefix, **kw):
+        entered.append((tuple(argv), prefix))
+        return (0, "")
+
+    monkeypatch.setattr(B, "dispatch_into_env", fake_door)
+
+    result = B.run_build_spec(spec, env_prefix, conda_binary="/m",
+                              skip_network_check=True)
+
+    assert {r.status for r in result.steps} == {"skip"}, [
+        (r.step.phase, r.status) for r in result.steps]
+    (argv, prefix), = entered
+    assert prefix == env_prefix
+    assert argv == B.conda_run_prefix_argv("/m", env_prefix, "false")
 
 
 # --------------------------------------------------------------------- #
@@ -266,10 +269,8 @@ def test_a_sentinel_is_a_presence_marker_not_a_payload(tmp_path):
 def test_template_substitution_in_plan(tiny_spec, fake_probe, tmp_path):
     """Plan step argv must have ``{src}`` / ``{build}`` / ``{install}`` /
     ``{dep_a}`` / ``{jobs}`` resolved to real paths + integers."""
-    refs = {"a": "ref-a", "b": "ref-b"}
-    paths, fingerprint, steps = B.plan_build_spec(
-        tiny_spec, str(tmp_path / "env"), fake_probe, refs,
-    )
+    paths = B.resolve_paths(tiny_spec, str(tmp_path / "env"))
+    steps = B.plan_build_spec(tiny_spec, paths, fake_probe)
     # Find b's configure step and ensure {dep_a} is resolved
     cfg = [s for s in steps if s.component == "b" and s.phase == "configure"]
     assert len(cfg) == 1
@@ -288,8 +289,7 @@ def test_activate_hook_uses_literal_conda_prefix(siesta_gpu_spec, fake_probe):
     pass-through (no template substitution).  It uses literal
     ``$CONDA_PREFIX`` so the hook stays valid if the env is moved.
     No ``/usr/local/cuda`` paths -- the toolkit ships in the env's lib."""
-    paths = B.resolve_paths(siesta_gpu_spec, "/tmp/env")
-    rendered = B.render_activate_hook(siesta_gpu_spec, paths, fake_probe)
+    rendered = B.render_activate_hook(siesta_gpu_spec)
     # Literal $CONDA_PREFIX, not the install-time-resolved /tmp/env path
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"' in rendered
     assert '"$CONDA_PREFIX/lib"' in rendered
@@ -310,8 +310,8 @@ def test_template_substitution_rejects_unknown_placeholder(
     )
     spec = BuildSpec(artifact_subdir="bs", components=(bad,))
     with pytest.raises(ValueError, match="unknown placeholder"):
-        B.plan_build_spec(spec, str(tmp_path / "env"), fake_probe,
-                          {"bad": "v"})
+        B.plan_build_spec(spec, B.resolve_paths(spec, str(tmp_path / "env")),
+                          fake_probe)
 
 
 # --------------------------------------------------------------------- #
@@ -482,7 +482,7 @@ def test_disk_is_never_a_preflight_WARNING_either(tmp_path, monkeypatch,
     env_prefix = tmp_path / "envs" / "env"
     env_prefix.mkdir(parents=True)
     probe = B.probe_toolchain(str(env_prefix))
-    report = B.preflight(tiny_spec, probe, (), str(env_prefix),
+    report = B.preflight(tiny_spec, probe, str(env_prefix),
                          check_network=False)
 
     joined = " ".join(report.warnings) + " ".join(report.errors)
@@ -507,7 +507,7 @@ def test_disk_is_never_a_preflight_ERROR(tmp_path, monkeypatch, tiny_spec):
     env_prefix = tmp_path / "envs" / "env"
     env_prefix.mkdir(parents=True)
     probe = B.probe_toolchain(str(env_prefix))
-    report = B.preflight(tiny_spec, probe, (), str(env_prefix),
+    report = B.preflight(tiny_spec, probe, str(env_prefix),
                          check_network=False)
     assert not any("free" in e or "GB" in e for e in report.errors), (
         f"disk put a hard stop in errors: {report.errors}")
@@ -530,7 +530,6 @@ def test_preflight_report_separates_errors_warnings_info(tmp_path,
     """The three buckets do different things: errors halt, warnings
     confirm, info shows.  They must never blur."""
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
-    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     # Fake env: has a conda-meta dir but no nvcc, so the env-side
     # toolkit error fires.  Also fake nvidia-smi away so the host-side
     # error fires.
@@ -543,7 +542,7 @@ def test_preflight_report_separates_errors_warnings_info(tmp_path,
         cuda_version=None, cuda_compute_cap=None,
         gcc_version="14.2.0", openmpi_version="5.0.5", jobs=8,
     )
-    report = B.preflight(spec, probe, pkgs, str(tmp_path),
+    report = B.preflight(spec, probe, str(tmp_path),
                          check_network=False)
     assert isinstance(report, B.PreflightReport)
     # No CUDA toolkit + no driver -> at least one error mentions
@@ -602,8 +601,7 @@ def test_preflight_reports_both_sides_of_the_abi_contract(tmp_path,
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.17")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_specs, str(tmp_path),
-                         check_network=False)
+                         str(tmp_path), check_network=False)
     info = "\n".join(report.info)
     assert "Host glibc" in info
     assert "Env sysroot" in info and "2.17" in info
@@ -619,8 +617,7 @@ def test_preflight_errors_when_the_sysroot_outranks_the_host_glibc(
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.39")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_specs, str(tmp_path),
-                         check_network=False)
+                         str(tmp_path), check_network=False)
     codes = {f.code for f in report.findings}
     assert "abi.sysroot-exceeds-host-glibc" in codes
     # ...and it must land in errors, not warnings: the build cannot
@@ -635,8 +632,7 @@ def test_preflight_is_silent_on_the_pinned_default(tmp_path, monkeypatch):
     recipe = recipe_by_name("molbuilder-siesta-gpu")
     _write_sysroot(tmp_path, "2.17")
     report = B.preflight(recipe.build_spec, _abi_probe(tmp_path),
-                         recipe.conda_specs, str(tmp_path),
-                         check_network=False)
+                         str(tmp_path), check_network=False)
     assert [f for f in report.findings if f.code.startswith("abi.")] == []
 
 
@@ -685,7 +681,6 @@ def test_preflight_surfaces_stale_dirs_as_warning(tmp_path, monkeypatch):
     """When stale dirs are detected, preflight returns a warning
     (not an error), and the message tells the user how to clean up."""
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
-    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     env_prefix = str(tmp_path / "env")
     paths = B.resolve_paths(spec, env_prefix)
     (paths.root / "elsi").mkdir(parents=True)
@@ -696,7 +691,7 @@ def test_preflight_surfaces_stale_dirs_as_warning(tmp_path, monkeypatch):
         cuda_version="13.0", cuda_compute_cap="8.0",
         gcc_version="14.2", openmpi_version="5.0.5", jobs=8,
     )
-    report = B.preflight(spec, probe, pkgs, env_prefix, check_network=False)
+    report = B.preflight(spec, probe, env_prefix, check_network=False)
     warn_text = " ".join(report.warnings)
     assert "elsi" in warn_text or "stale" in warn_text.lower()
     assert "--rebuild=all" in warn_text
@@ -707,7 +702,6 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path, monkeypatch):
     succeeded=False with NO subprocess invoked (no sentinels written,
     no build dir created)."""
     spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
-    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_specs
     env_prefix = str(tmp_path / "env")
     os.makedirs(env_prefix)
     # THE ERROR IS INJECTED, not hoped for.  This test said "No CUDA on the fake
@@ -725,7 +719,6 @@ def test_run_build_short_circuits_on_preflight_error(tmp_path, monkeypatch):
     result = B.run_build_spec(
         spec, env_prefix,
         conda_binary="/bin/false",   # would fail if called
-        conda_specs=pkgs,
         skip_network_check=True,
     )
     assert result.succeeded is False
@@ -1068,10 +1061,9 @@ def test_template_substitution_resolves_env_prefix(tiny_spec, fake_probe,
     """{env_prefix} must resolve to the conda env's prefix path so
     cmake -DMPI_C_COMPILER={env_prefix}/bin/mpicc resolves to the env's
     mpicc, not a system one."""
-    refs = {"a": "ref-a", "b": "ref-b"}
-    paths, fingerprint, steps = B.plan_build_spec(
-        tiny_spec, str(tmp_path / "env"), fake_probe, refs,
-    )
+    steps = B.plan_build_spec(
+        tiny_spec, B.resolve_paths(tiny_spec, str(tmp_path / "env")),
+        fake_probe)
     # tiny_spec doesn't use {env_prefix}, but the substitution dict
     # MUST include it for the real recipes that do.  Inject a probe
     # via _build_substitutions.

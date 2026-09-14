@@ -439,9 +439,8 @@ class BuildComponent:
         Git URL to clone.  Anonymous HTTPS only; ssh:// is rejected
         because conda installs run unattended.
     ref
-        Tag, branch, or SHA to ``git checkout``.  Pinned tags give
-        deterministic fingerprints; branches re-resolve on every clone
-        and the resolved SHA participates in the toolchain fingerprint.
+        Tag, branch, or SHA to ``git checkout``.  A pinned tag gives the
+        same build every time; a branch re-resolves on every clone.
     configure_argv
         Template argv for the cmake configure step (after the
         substitutions above are applied).
@@ -455,8 +454,8 @@ class BuildComponent:
         sentinel so resume logic works).
     needs_cuda
         When ``True``, this component participates in the CUDA-version
-        compatibility pre-flight and the fingerprint records the
-        detected CUDA toolkit version.  ELPA needs ``True`` (the
+        compatibility pre-flight, whose report records the detected
+        CUDA toolkit version.  ELPA needs ``True`` (the
         only component that itself emits CUDA kernels); SIESTA proxies
         all GPU work through ELPA and doesn't need its own CUDA
         config.
@@ -476,8 +475,8 @@ class BuildComponent:
     tarball_url
         When set, the clone phase downloads a tarball via curl + tar
         instead of ``git clone``.  Mutually exclusive with
-        ``repo_url`` for the clone step; ``ref`` is still used for
-        the toolchain fingerprint.  Used for ELPA, where conda-forge
+        ``repo_url`` for the clone step; ``ref`` still names the
+        release, through ``{ref}`` in the URL.  Used for ELPA, where conda-forge
         + Spack + EasyBuild all download from MPCDF's tarball archive
         at ``elpa.mpcdf.mpg.de/software/tarball-archive/Releases/``.
         Pre-bootstrapped (no autoreconf needed) and SHA256-pinnable.

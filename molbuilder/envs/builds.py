@@ -12,24 +12,25 @@ This module is the procedural counterpart to the declarative
    build-time/run-time ABI contract -- can this env's toolchain
    produce a binary this host can execute?  See
    :mod:`molbuilder.envs.abi`.
-2. Compute a toolchain fingerprint over ``(gcc, openmpi, cuda, refs)``
-   so resumes can short-circuit phases whose fingerprint matches.
-3. For each component (in dependency order): clone -> configure ->
-   build -> install -> verify.  Each phase writes a sentinel file.
-4. After install, render activate.d / deactivate.d hooks that put
+2. For each component (in dependency order): clone -> configure ->
+   build -> install -> verify.  Each phase leaves a sentinel file; a
+   resume skips the phases whose sentinel exists, and a component whose
+   installed binary still answers its verify command is skipped whole
+   (`component_install_valid`).
+3. After install, render activate.d / deactivate.d hooks that put
    the built binaries on PATH + LD_LIBRARY_PATH only when the env is
    activated.
 
-It is the **only** module that runs subprocesses outside of conda's
-install code path.  Every other write-side action goes through here.
+It holds the ONE DOOR a command takes into an env (`dispatch_into_env`) and
+the executor for source builds.  Other modules run subprocesses too -- the
+installer's steps, the audit's probes, the manager reads -- but every one that
+ENTERS an env comes through here.
 
 The 2026-06-14 Decisions log entry locks the design; the companion
 engineering doc lives at :doc:`docs/engines/siesta-gpu`.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
 import shlex
@@ -37,7 +38,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, TextIO, Tuple
@@ -240,12 +240,13 @@ def run_streaming(
         the end (overwrites any prior content).  ``None`` skips
         log persistence.
     sink
-        Where to stream lines as they arrive (typically
-        ``sys.stderr``).  ``None`` defaults to ``sys.stderr``.
-    indent
-        Prefix prepended to each streamed line so subprocess
-        output is visually distinct from the wrapper's own progress
-        lines.  Pass ``""`` for no indent.
+        Where to stream lines as they arrive, for a person watching.
+        ``None`` means CAPTURED ONLY: nothing is written anywhere and the
+        caller reads the returned transcript.  It defaulted to
+        ``sys.stderr`` until 2026-09-13, so a caller that passed nothing --
+        `doctor`'s verify probe, whose own comment said "captured rather
+        than streamed" -- had its subprocess output streamed into the
+        middle of the report.  A caller that wants streaming says so.
     timeout
         Optional seconds; ``Popen.wait(timeout=...)`` raises
         :class:`subprocess.TimeoutExpired` on overrun.  ``None``
@@ -259,7 +260,7 @@ def run_streaming(
         string (the tail of which is shown in the CLI's failure
         recap).
     """
-    out_sink: TextIO = sink if sink is not None else sys.stderr
+    out_sink: Optional[TextIO] = sink
     try:
         # text=True + bufsize=1 + stderr→stdout gives line-buffered
         # interleaved output as the build emits it.  Many build tools
@@ -292,13 +293,14 @@ def run_streaming(
         assert proc.stdout is not None
         for line in proc.stdout:
             captured_lines.append(line)
-            try:
-                out_sink.write(_STREAM_INDENT + line)
-                out_sink.flush()
-            except OSError:
-                # If the sink dies (closed pipe, etc.) keep accumulating;
-                # we still want the log file to land.
-                pass
+            if out_sink is not None:
+                try:
+                    out_sink.write(_STREAM_INDENT + line)
+                    out_sink.flush()
+                except OSError:
+                    # If the sink dies (closed pipe, etc.) keep accumulating;
+                    # we still want the log file to land.
+                    pass
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -309,11 +311,12 @@ def run_streaming(
                 pass
             tail = f"\n[killed after {timeout}s timeout]\n"
             captured_lines.append(tail)
-            try:
-                out_sink.write(_STREAM_INDENT + tail)
-                out_sink.flush()
-            except OSError:
-                pass
+            if out_sink is not None:
+                try:
+                    out_sink.write(_STREAM_INDENT + tail)
+                    out_sink.flush()
+                except OSError:
+                    pass
             combined = "".join(captured_lines)
             if log_file is not None:
                 try:
@@ -458,9 +461,9 @@ def addressed_by_prefix(argv: Sequence[str], prefix: str) -> Tuple[str, ...]:
 def _inner_command(argv: Sequence[str]) -> Tuple[str, ...]:
     """The command a ``<mgr> run`` argv is carrying.
 
-    ``install.py`` spells ``-n NAME``, ``_run_build_phase`` spells
-    ``--prefix P --``; both are accepted because both are this module's own
-    `conda_run_argv` output, re-addressed or not.
+    Both addresses -- ``-n NAME`` from the planner, ``--prefix P`` from
+    `addressed_by_prefix` or `conda_run_prefix_argv` -- are five tokens long,
+    because both are this module's own `_run_argv` output.
     """
     if not _is_run_argv(argv):
         # Not a `run` argv at all -- `conda create`, `conda install -n ...`.
@@ -470,10 +473,7 @@ def _inner_command(argv: Sequence[str]) -> Tuple[str, ...]:
         # `argv[5:]` of a create command would be a plausible-looking shell
         # string that runs the wrong thing.
         raise ValueError(f"not a `<mgr> run` argv: {tuple(argv)!r}")
-    start = 5
-    if start < len(argv) and str(argv[start]) == "--":
-        start += 1
-    cmd = tuple(str(a) for a in argv[start:])
+    cmd = tuple(str(a) for a in argv[5:])
     if not cmd:
         raise ValueError(f"no inner command in {tuple(argv)!r}")
     return cmd
@@ -608,8 +608,8 @@ class ToolchainProbe:
     """Snapshot of host + conda-env toolchain state.
 
     Populated by :func:`probe_toolchain` from a live conda env after
-    conda create has run.  Feeds the fingerprint hash so resumes
-    invalidate when any input shifts.
+    conda create has run.  Read by `preflight` (the report a person sees
+    before a build) and by the build templates (`{jobs}`, `{env_prefix}`).
     """
     env_prefix: str
     cuda_home: Optional[str]
@@ -1109,7 +1109,10 @@ class PreflightReport:
 #: failed install", and the remedy that warning prints, `--rebuild=all`,
 #: deletes the ccache that makes a rebuild cheap.
 _ARTIFACT_ROOT_ENTRIES = frozenset({
-    "src", "build", "logs", ".sentinels", ".toolchain-fingerprint",
+    "src", "build", "logs", ".sentinels",
+    # written by every install before 2026-09-13 and read by nothing since
+    # 2026-06-15; an old tree still has one, and it is not stale
+    ".toolchain-fingerprint",
     # created by the build wrapper -- see `_run_build_phase`
     ".tmp", ".ccache", ".cache",
 })
@@ -1128,9 +1131,8 @@ def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
       recipe.  Harmless but signals the user is on outdated state.
     - Half-cloned ``src/<comp>/`` from an interrupted install (handled
       by the clone-wipe rule, but worth surfacing).
-    - ``logs/`` or ``.sentinels/`` from a wildly different prior config
-      (only weird if .toolchain-fingerprint disagrees with the current
-      build's fingerprint, which is a separate sentinel-resume check).
+    - ``logs/`` or ``.sentinels/`` are never stale: an old tree's
+      sentinels are honoured by a resume and swept by ``--rebuild``.
 
     Returns a list of unexpected entries (relative names); empty list
     means clean.
@@ -1152,7 +1154,6 @@ def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
 
 
 def preflight(spec: BuildSpec, probe: ToolchainProbe,
-              conda_specs: Sequence[str],
               env_prefix: Optional[str] = None,
               *,
               check_network: bool = True,
@@ -1293,8 +1294,6 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         if executes is not None:
             emit(executes)
 
-    # Forbidden packages (MKL etc.)
-
     # Disk
     if env_prefix:
         # A REMINDER, NEVER AN ERROR.  This appended to `errors` below a
@@ -1405,7 +1404,6 @@ class BuildPaths:
     build: Path                    # <root>/build
     logs: Path                     # <root>/logs
     sentinels: Path                # <root>/.sentinels
-    fingerprint_file: Path         # <root>/.toolchain-fingerprint
     activate_d: Path               # $CONDA_PREFIX/etc/conda/activate.d
     deactivate_d: Path             # $CONDA_PREFIX/etc/conda/deactivate.d
     activate_hook: Path            # <activate_d>/zz-<artifact_subdir>.sh
@@ -1433,7 +1431,6 @@ def resolve_paths(spec: BuildSpec, env_prefix: str) -> BuildPaths:
         build=root / "build",
         logs=root / "logs",
         sentinels=root / ".sentinels",
-        fingerprint_file=root / ".toolchain-fingerprint",
         activate_d=Path(env_prefix, "etc", "conda", "activate.d"),
         deactivate_d=Path(env_prefix, "etc", "conda", "deactivate.d"),
         activate_hook=Path(env_prefix, "etc", "conda", "activate.d",
@@ -1444,56 +1441,25 @@ def resolve_paths(spec: BuildSpec, env_prefix: str) -> BuildPaths:
 
 
 # --------------------------------------------------------------------- #
-#  Toolchain fingerprint                                                 #
+#  Sentinels                                                            #
 # --------------------------------------------------------------------- #
 
 
-def compute_fingerprint(spec: BuildSpec, probe: ToolchainProbe,
-                        component_refs: Mapping[str, str]) -> str:
-    """SHA256 over the toolchain inputs that should force a rebuild.
+def write_sentinel(sentinel_path: Path) -> None:
+    """Mark a phase done.  The file's EXISTENCE is the whole record.
 
-    Inputs (sorted-JSON canonical form):
-        - cuda_version, cuda_compute_cap
-        - gcc_version, openmpi_version
-        - artifact_subdir
-        - per-component (repo_url, ref, resolved_sha)
-
-    ``component_refs`` is a mapping of component name to the resolved
-    git SHA (after clone + checkout).  When a component hasn't been
-    cloned yet, pass the declared ``ref`` instead -- the fingerprint
-    will change after the clone resolves the real SHA, which is what
-    we want.
+    Until 2026-09-13 it carried a toolchain fingerprint -- a SHA over the
+    CUDA, gcc and OpenMPI versions and each component's resolved git commit,
+    costing a ``git rev-parse`` per component per install -- and a
+    timestamp.  Nothing read either: the fingerprint's reader was retired on
+    2026-06-15 when artifact presence became the trust source
+    (`component_install_valid`), and `run_build_spec` asks only whether the
+    file exists.  The timestamp is the file's own mtime.  The record of which
+    toolchain a build used is the preflight report, printed and teed into the
+    install log.
     """
-    inputs = {
-        "cuda_version": probe.cuda_version,
-        "cuda_compute_cap": probe.cuda_compute_cap,
-        "gcc_version": probe.gcc_version,
-        "openmpi_version": probe.openmpi_version,
-        "artifact_subdir": spec.artifact_subdir,
-        "components": {
-            comp.name: {
-                "repo": comp.repo_url,
-                "declared_ref": comp.ref,
-                "resolved_ref": component_refs.get(comp.name, comp.ref),
-            }
-            for comp in spec.components
-        },
-    }
-    blob = json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(blob).hexdigest()
-
-
-def write_sentinel(sentinel_path: Path, fingerprint: str, *,
-                   now: Optional[Callable[[], float]] = None) -> None:
-    """Write a sentinel file recording the toolchain fingerprint."""
-    now_fn = now if now is not None else time.time
-    payload = {
-        "fingerprint": fingerprint,
-        "timestamp": now_fn(),
-    }
     sentinel_path.parent.mkdir(parents=True, exist_ok=True)
-    sentinel_path.write_text(json.dumps(payload, sort_keys=True),
-                             encoding="utf-8")
+    sentinel_path.touch()
 
 
 def component_install_valid(
@@ -1501,6 +1467,8 @@ def component_install_valid(
     paths: BuildPaths,
     comp: BuildComponent,
     probe: ToolchainProbe,
+    *,
+    conda_binary: str,
 ) -> bool:
     """Probe whether one component is already installed and working.
 
@@ -1509,9 +1477,10 @@ def component_install_valid(
     matches ``verify_expected`` if set).  Returns False when the
     install dir is missing, no verify is defined, or the probe fails.
 
-    This is the artifact-presence gate that replaced the global
-    fingerprint check.  See the 2026-06-15 "drop fingerprint, gate
-    on artifact" decision in molbuilder/docs/design.md for context.
+    This is the artifact-presence gate: the installed binary answering is
+    the evidence that the component is done, so an install log, a sentinel
+    or a recorded toolchain hash never has to be trusted over the artifact
+    (the 2026-06-15 "gate on artifact" decision).
     """
     install_dir = paths.component_install(comp.name)
     if not install_dir.exists():
@@ -1524,13 +1493,21 @@ def component_install_valid(
         argv = _apply_template(comp.verify_argv, subs)
     except ValueError:
         return False
-    # ``test -f`` and similar work as plain argv; binary checks
-    # (e.g. ``{install}/bin/siesta --version``) also work.  We don't
-    # route through ``conda run`` here -- the install dir is a fully
-    # self-contained set of files, and the verify argv either targets
-    # a file existence check or an executable inside that dir.
-    cp = _run_capture(list(argv))
-    return cp.returncode == 0
+    # THROUGH THE DOOR, under the build's own environment -- the same way
+    # the verify PHASE runs this same command.  It ran bare until
+    # 2026-09-13, on the reasoning that an install dir is self-contained; a
+    # source-built binary is exactly the one that may not be (no RPATH yet,
+    # MPI wanting its tmpdir), and a gate that measures "installed and
+    # working" under different conditions from the phase that verified it
+    # can only disagree with it (M1, K-L4).  Quiet: a gate is read, not
+    # watched.
+    rc, _out = dispatch_into_env(
+        conda_run_prefix_argv(conda_binary, probe.env_prefix, *argv),
+        probe.env_prefix,
+        env=_build_env(probe.env_prefix, paths),
+        sink=None, timeout=120,
+    )
+    return rc == 0
 
 
 # --------------------------------------------------------------------- #
@@ -1584,8 +1561,7 @@ def _apply_template(argv: Sequence[str], subs: Mapping[str, str]) -> Tuple[str, 
     return tuple(out)
 
 
-def render_activate_hook(spec: BuildSpec, paths: BuildPaths,
-                         probe: ToolchainProbe) -> str:
+def render_activate_hook(spec: BuildSpec) -> str:
     """Render the activate.d hook body for the spec.
 
     The hook uses literal ``$CONDA_PREFIX`` (resolved at activation
@@ -1597,8 +1573,7 @@ def render_activate_hook(spec: BuildSpec, paths: BuildPaths,
     return spec.activate_hook or ""
 
 
-def render_deactivate_hook(spec: BuildSpec, paths: BuildPaths,
-                           probe: ToolchainProbe) -> str:
+def render_deactivate_hook(spec: BuildSpec) -> str:
     """Render the deactivate.d hook body (pass-through; see
     :func:`render_activate_hook`)."""
     return spec.deactivate_hook or ""
@@ -1617,7 +1592,6 @@ class BuildStep:
     argv: Tuple[str, ...]
     sentinel: Path
     log_file: Path
-    cwd: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -1634,7 +1608,6 @@ class BuildResult:
     """Outcome of one :func:`run_build_spec` invocation."""
     spec: BuildSpec
     env_prefix: str
-    fingerprint: str
     preflight_errors: Tuple[str, ...]
     steps: Tuple[BuildStepResult, ...]
     activate_hook_written: bool
@@ -1684,14 +1657,14 @@ def _wipe_component(paths: BuildPaths, name: str) -> None:
 
 
 def plan_build_spec(spec: BuildSpec,
-                    env_prefix: str,
-                    probe: ToolchainProbe,
-                    component_refs: Mapping[str, str]
-                    ) -> Tuple[BuildPaths, str, List[BuildStep]]:
-    """Build the step list (does NOT execute or touch the filesystem)."""
-    paths = resolve_paths(spec, env_prefix)
-    fingerprint = compute_fingerprint(spec, probe, component_refs)
+                    paths: BuildPaths,
+                    probe: ToolchainProbe) -> List[BuildStep]:
+    """Build the step list (does NOT execute or touch the filesystem).
 
+    ``paths`` is the layout the caller already resolved; this used to resolve
+    it again and hand it back, and `run_build_spec` bound that copy to a
+    name that said ``_unused``.
+    """
     steps: List[BuildStep] = []
     for comp in spec.components:
         subs = _build_substitutions(comp, spec, paths, probe)
@@ -1753,28 +1726,24 @@ def plan_build_spec(spec: BuildSpec,
             argv=clone_argv,
             sentinel=paths.sentinel(comp.name, "clone"),
             log_file=paths.logs / f"{comp.name}.clone.log",
-            cwd=None,
         ))
         steps.append(BuildStep(
             component=comp.name, phase="configure",
             argv=_apply_template(comp.configure_argv, subs),
             sentinel=paths.sentinel(comp.name, "configure"),
             log_file=paths.logs / f"{comp.name}.configure.log",
-            cwd=None,
         ))
         steps.append(BuildStep(
             component=comp.name, phase="build",
             argv=_apply_template(comp.build_argv, subs),
             sentinel=paths.sentinel(comp.name, "build"),
             log_file=paths.logs / f"{comp.name}.build.log",
-            cwd=None,
         ))
         steps.append(BuildStep(
             component=comp.name, phase="install",
             argv=_apply_template(comp.install_argv, subs),
             sentinel=paths.sentinel(comp.name, "install"),
             log_file=paths.logs / f"{comp.name}.install.log",
-            cwd=None,
         ))
         if comp.verify_argv:
             steps.append(BuildStep(
@@ -1782,47 +1751,34 @@ def plan_build_spec(spec: BuildSpec,
                 argv=_apply_template(comp.verify_argv, subs),
                 sentinel=paths.sentinel(comp.name, "verify"),
                 log_file=paths.logs / f"{comp.name}.verify.log",
-                cwd=None,
             ))
-    return paths, fingerprint, steps
+    return steps
 
 
-def _run_build_phase(step: BuildStep,
-               *,
-               env_prefix: str,
-               conda_binary: str,
-               timeout: int = 7200) -> BuildStepResult:
-    """Run ONE build phase with live output, inside the env.
+def _build_env(env_prefix: str, paths: BuildPaths) -> Dict[str, str]:
+    """The environment every source-build command runs in -- the phases and
+    the presence gate alike, so one command is never measured under two
+    conditions.
 
-    Output streams to stderr line-by-line so the user can see the build's
-    progress (cmake compile lines, ninja step counts, git clone
-    receiving-objects updates) instead of staring at a silent
-    "[1/15] elpa.clone: ..." for 15 minutes.  The full transcript is still
-    written to ``step.log_file`` for post-hoc inspection.
+    HPC strictness: every temp + cache dir the build tools touch lives under
+    the artifact root (itself under ``<prefix>/opt/<artifact_subdir>``), so
+    the env is the single directory an admin has to clean up.  Otherwise
+    cmake's temp probes go to /tmp (size-limited on most clusters), ccache
+    writes to ~/.ccache and meson scribbles in ~/.cache -- all outside the
+    env.  The root comes from ``paths``, which the caller holds; until
+    2026-09-13 it was climbed out of the step's log path (A11).
 
-    **It enters the env through `dispatch_into_env`, like every other step**
-    (`installation.md` M1).  Until 2026-09-12 it held its own copy of the
-    activation wrapper and the two copies had drifted four ways -- and the copy
-    here was the only one passing `build_subprocess_env()`, so the installer's
-    pip steps ran with exactly the host leakage this module exists to strip.
-    What a build needs BEYOND activation is stated below as a dict, not as a
-    shell string, so the route and the fallback cannot differ.
+    Straight from `build_subprocess_env`, not `env_for_step`: that one puts
+    the temp and pip cache under ``<prefix>/var`` -- right for a pip step --
+    and every build phase then overrode both, having created the directories
+    for nothing.
     """
-    step.log_file.parent.mkdir(parents=True, exist_ok=True)
-    # HPC strictness: every temp + cache dir the build tools touch must live
-    # under the artifact root (itself under ``<prefix>/opt/<artifact_subdir>``),
-    # so the env is the single directory an admin has to clean up.  Otherwise
-    # cmake's temp probes go to /tmp (size-limited on most clusters), ccache
-    # writes to ~/.ccache and meson scribbles in ~/.cache -- all outside the
-    # env.  Derived from the step's log path, which is
-    # ``<root>/logs/<comp>.<phase>.log`` per ``plan_build_spec``.
-    paths_root = step.log_file.parent.parent
-    tmp = paths_root / ".tmp"
-    ccache = paths_root / ".ccache"
-    cache = paths_root / ".cache"
+    tmp = paths.root / ".tmp"
+    ccache = paths.root / ".ccache"
+    cache = paths.root / ".cache"
     for d in (tmp, ccache, cache / "pip"):
         d.mkdir(parents=True, exist_ok=True)
-    env = env_for_step(env_prefix)
+    env = build_subprocess_env()
     env.update({
         "TMPDIR": str(tmp), "TMP": str(tmp), "TEMP": str(tmp),
         "CCACHE_DIR": str(ccache),
@@ -1841,10 +1797,37 @@ def _run_build_phase(step: BuildStep,
         # no real shmem traffic to size for.
         "OMPI_MCA_orte_tmpdir_base": "/tmp",
     })
+    return env
+
+
+def _run_build_phase(step: BuildStep,
+               *,
+               env_prefix: str,
+               conda_binary: str,
+               paths: BuildPaths,
+               timeout: int = 7200) -> BuildStepResult:
+    """Run ONE build phase with live output, inside the env.
+
+    Output streams to stderr line-by-line so the user can see the build's
+    progress (cmake compile lines, ninja step counts, git clone
+    receiving-objects updates) instead of staring at a silent
+    "[1/15] elpa.clone: ..." for 15 minutes.  The full transcript is still
+    written to ``step.log_file`` for post-hoc inspection.
+
+    **It enters the env through `dispatch_into_env`, like every other step**
+    (`installation.md` M1).  Until 2026-09-12 it held its own copy of the
+    activation wrapper and the two copies had drifted four ways -- and the copy
+    here was the only one passing `build_subprocess_env()`, so the installer's
+    pip steps ran with exactly the host leakage this module exists to strip.
+    What a build needs BEYOND activation is `_build_env`'s dict, not a
+    shell string, so the route and the fallback cannot differ.
+    """
+    step.log_file.parent.mkdir(parents=True, exist_ok=True)
     rc, combined = dispatch_into_env(
         conda_run_prefix_argv(conda_binary, env_prefix, *step.argv),
         env_prefix,
-        env=env,
+        env=_build_env(env_prefix, paths),
+        sink=sys.stderr,            # a person is watching a long build
         log_file=step.log_file,
         timeout=timeout,
     )
@@ -1872,7 +1855,6 @@ def run_build_spec(spec: BuildSpec,
                    *,
                    conda_binary: str,
                    rebuild: Optional[str] = None,
-                   conda_specs: Sequence[str] = (),
                    skip_network_check: bool = False,
                    on_warnings: Optional[ConfirmWarningsCallback] = None,
                    on_progress: Optional[ProgressCallback] = None,
@@ -1902,14 +1884,13 @@ def run_build_spec(spec: BuildSpec,
         pass a recording callable.
     """
     probe = probe_toolchain(env_prefix)
-    report = preflight(spec, probe, conda_specs, env_prefix,
+    report = preflight(spec, probe, env_prefix,
                        check_network=not skip_network_check)
 
     if report.errors:
         # Pre-flight failure short-circuits.  No filesystem mutations.
         return BuildResult(
             spec=spec, env_prefix=env_prefix,
-            fingerprint="",
             preflight_errors=report.errors,
             steps=(),
             activate_hook_written=False,
@@ -1922,7 +1903,6 @@ def run_build_spec(spec: BuildSpec,
             # User declined to proceed past warnings.
             return BuildResult(
                 spec=spec, env_prefix=env_prefix,
-                fingerprint="",
                 preflight_errors=(
                     "user declined to proceed past preflight warnings",
                 ) + report.warnings,
@@ -1954,25 +1934,7 @@ def run_build_spec(spec: BuildSpec,
             if stale_path.exists():
                 shutil.rmtree(stale_path, ignore_errors=True)
 
-    # Resolved-ref dict is still useful as forensic metadata recorded
-    # in the fingerprint file, but it no longer gates rebuilds.  The
-    # artifact-presence probe below is the trust source.
-    component_refs: dict = {}
-    for comp in spec.components:
-        src_git = paths.component_src(comp.name) / ".git"
-        if src_git.exists():
-            cp = _run_capture(["git", "-C", str(paths.component_src(comp.name)),
-                               "rev-parse", "HEAD"])
-            if cp.returncode == 0 and cp.stdout.strip():
-                component_refs[comp.name] = cp.stdout.strip()
-                continue
-        component_refs[comp.name] = comp.ref
-
-    _paths_unused, fingerprint, plan = plan_build_spec(
-        spec, env_prefix, probe, component_refs,
-    )
-
-    paths.fingerprint_file.write_text(fingerprint, encoding="utf-8")
+    plan = plan_build_spec(spec, paths, probe)
 
     # Artifact-presence reconciliation -- the trust source for "is
     # this component installed".  Replaces the old global-fingerprint
@@ -1992,11 +1954,12 @@ def run_build_spec(spec: BuildSpec,
     #    is fast and resume-friendly.  If they're also broken, the user
     #    can pass ``--rebuild=<component>`` to wipe the whole component.
     for comp in spec.components:
-        if component_install_valid(spec, paths, comp, probe):
+        if component_install_valid(spec, paths, comp, probe,
+                                   conda_binary=conda_binary):
             for phase in PHASES:
                 sentinel = paths.sentinel(comp.name, phase)
                 if not sentinel.exists():
-                    write_sentinel(sentinel, fingerprint)
+                    write_sentinel(sentinel)
         else:
             for phase in ("install", "verify"):
                 sentinel = paths.sentinel(comp.name, phase)
@@ -2034,36 +1997,32 @@ def run_build_spec(spec: BuildSpec,
             if src_dir.exists():
                 shutil.rmtree(src_dir, ignore_errors=True)
             src_dir.parent.mkdir(parents=True, exist_ok=True)
-        # NO `conda_binary=` HERE.  `5ef047a0` removed that parameter from
-        # `_run_build_phase` as dead -- correctly, the wrapper activates the
-        # prefix with bash and never shells out to the manager -- but left this
-        # call passing it, so EVERY source build died with
-        # `TypeError: _run_build_phase() got an unexpected keyword argument
-        # 'conda_binary'` at its first phase.  Three commits shipped on top of
-        # it.  Nothing caught it because the only test reaching this line
-        # expected preflight to short-circuit first, and it did: a hard-coded
-        # 30 GB disk gate (removed 2026-09-12) or the missing-CUDA error stopped
-        # execution before any phase ran.  Deleting the gate is what exposed it.
+        # `conda_binary` is what addresses the manager's `run` (M1); the
+        # phase once entered the env with a hand-written bash wrapper and this
+        # argument was dropped as dead -- from the callee only, so every
+        # source build died here with a TypeError for four commits.  The test
+        # that crosses this line (`test_run_build_actually_REACHES_a_phase`)
+        # exists because of that.
         result = _run_build_phase(step, env_prefix=env_prefix,
-                                  conda_binary=conda_binary)
+                                  conda_binary=conda_binary, paths=paths)
         executed.append(result)
         if on_progress is not None:
             on_progress(result.status, step, result)
         if result.status != "ok":
             failed = True
             continue
-        write_sentinel(step.sentinel, fingerprint)
+        write_sentinel(step.sentinel)
 
     activate_written = False
     deactivate_written = False
     if not failed:
-        body = render_activate_hook(spec, paths, probe)
+        body = render_activate_hook(spec)
         if body:
             paths.activate_d.mkdir(parents=True, exist_ok=True)
             paths.activate_hook.write_text(body, encoding="utf-8")
             paths.activate_hook.chmod(0o755)
             activate_written = True
-        body = render_deactivate_hook(spec, paths, probe)
+        body = render_deactivate_hook(spec)
         if body:
             paths.deactivate_d.mkdir(parents=True, exist_ok=True)
             paths.deactivate_hook.write_text(body, encoding="utf-8")
@@ -2072,7 +2031,6 @@ def run_build_spec(spec: BuildSpec,
 
     return BuildResult(
         spec=spec, env_prefix=env_prefix,
-        fingerprint=fingerprint,
         preflight_errors=(),
         steps=tuple(executed),
         activate_hook_written=activate_written,
@@ -2215,7 +2173,6 @@ __all__ = [
     "env_size_reference_gb",
     "detect_gpu_name",
     "resolve_paths",
-    "compute_fingerprint",
     "write_sentinel",
     "component_install_valid",
     "downstream_components",

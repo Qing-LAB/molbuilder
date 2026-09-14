@@ -514,7 +514,6 @@ def test_build_phases_carry_the_verdict_builds_gave_them(monkeypatch):
                         lambda *a, **kw: B.BuildResult(
                             spec=recipe.build_spec,
                             env_prefix="/fake/envs/x",
-                            fingerprint="deadbeef",
                             activate_hook_written=False,
                             deactivate_hook_written=False,
                             succeeded=False,
