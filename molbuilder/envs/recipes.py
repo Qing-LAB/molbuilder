@@ -2075,6 +2075,16 @@ _SIESTA_GPU = Recipe(
 # If the notebook tab shows NO kernels, that is the honest state of a machine
 # whose host env predates this: re-run `install molbuilder --yes` and the
 # kernelspec lands.
+#
+# **`repair` CANNOT do it, and that is worth knowing before you reach for it.**
+# `repair` exists to close what the package AUDIT reports, so it dispatches
+# `conda_step_for` / `pip_step_for` and nothing else -- `extra_steps` are not
+# part of what it re-runs (deliberately: an extra step can be expensive, and
+# repair is the cheap verb).  So on a machine whose host env predates this
+# recipe the audit reports `ipykernel` missing, `repair` installs it, and the
+# kernelspec is STILL absent because the step that writes it never ran.
+# `install` runs the whole plan -- create (skipped, the env is there), pip,
+# extra steps, verify -- which is why it is the verb named here.
 _JUPYTER = Recipe(
     name=DEFAULT_ENV_NAMES["jupyter"],
     category="jupyter",
@@ -2101,12 +2111,12 @@ _JUPYTER = Recipe(
         "plain-http notebook server is blocked by the browser as mixed "
         "content -- `molbuilder jupyter` reuses the cert and key `serve` "
         "was given, and refuses to start without them "
-        "(docs/web/jupyter.md 2).",
+        "(docs/web/jupyter.md § 2).",
         "A free TCP port at <serve port> + 1 on this machine, bound to "
         "loopback unless you say otherwise.  A live kernel is arbitrary "
         "code execution as the account running the server, which is why "
         "starting and stopping it is an admin action "
-        "(docs/ops/access-control.md 6).",
+        "(docs/ops/access-control.md § 6).",
     ),
 )
 
