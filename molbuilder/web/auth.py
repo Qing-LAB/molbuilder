@@ -73,8 +73,8 @@ _PUBLIC_ENDPOINTS = frozenset({
     # unauthenticated.  A monitor on a compute node cannot do a browser
     # sign-in, so `notify.api_notify` authenticates itself: an HMAC-SHA256
     # signature over the exact body, compared by `hmac.compare_digest`.
-    # It is registered at all only when the operator configured BOTH a key
-    # file and a route segment (`app.py`), so on a server that has not,
+    # It is registered at all only when the key file exists and carries a
+    # route (`app.py`), so on a server that has not,
     # this name matches no route.
     #
     # **This exemption must not lapse into a redirect.**  If the name ever

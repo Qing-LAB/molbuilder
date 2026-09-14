@@ -123,7 +123,11 @@ def _tee_console_to(log_path: Path):
     orig_out = sys.stdout
     orig_err = sys.stderr
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Through the one creator, so `logs/` is 0700 when this verb is the
+        # first to make it (a bare `mkdir` left it at the umask until the next
+        # `serve` tightened it -- review C-L5, 2026-09-14).
+        from ..config_dir import ensure_private_dir
+        ensure_private_dir(log_path.parent)
         fh = open(log_path, "w", encoding="utf-8", buffering=1)
         sys.stdout = _TeeStream(orig_out, fh)
         sys.stderr = _TeeStream(orig_err, fh)

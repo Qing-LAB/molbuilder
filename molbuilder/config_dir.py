@@ -241,8 +241,15 @@ def logs_dir() -> Path:
 def reports_dir() -> Path:
     """Per-run measurements -- kept, grepped a year later, NOT diagnostics.
 
-    Beside ``logs/`` and deliberately not inside it: filing measurements under
-    a name that reads as *disposable* invited exactly that mistake once.
+    **``reports/``, not ``logs/``, and the distinction is the point** (user,
+    2026-08-27: *this is a different kind of log, not of the status of
+    molbuilder but collection of computation results*).  ``logs/`` holds
+    molbuilder's own operational output -- read when something is wrong,
+    deleted when it is fixed.  These are measurements from calculations:
+    energies, iteration counts, when a relaxation step landed -- kept, grepped
+    a year later, plotted.  Filing them under ``logs/`` invited exactly one
+    mistake: treating them as disposable.  One file per user, JSON Lines, so
+    ``jq`` and ``pandas`` read it with no parser of ours in the middle.
     """
     return state_dir() / "reports"
 
@@ -292,7 +299,16 @@ def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,
     re-mode, and refusing to log would be the worse outcome.
     """
     d = Path(d)
-    d.mkdir(parents=True, exist_ok=True, mode=mode)
+    # EVERY MISSING ANCESTOR AT ``mode`` TOO.  `Path.mkdir(parents=True,
+    # mode=)` gives the mode to the leaf only and creates missing parents at
+    # the umask -- so the first thing made under a fresh config root (say
+    # `environments/` by `jobset probe --write`) left the ROOT itself 0755
+    # around every secret written into it later, and `envs doctor` then
+    # reported a directory this program had made.  Measured 2026-09-14.
+    for parent in reversed(d.parents):
+        if not parent.exists():
+            parent.mkdir(mode=mode, exist_ok=True)
+    d.mkdir(exist_ok=True, mode=mode)
     if tighten:
         try:
             if stat.S_IMODE(d.stat().st_mode) != mode:

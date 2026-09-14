@@ -120,7 +120,7 @@ named.
 calculation folder is very often the working directory, so a cwd step would make
 the machine scope and the calculation scope the *same file* whenever you ran
 from inside a bundle — and M-3's precedence would be comparing a record against
-itself. `molbuilder.json` can afford the cwd step because its calculation-scope
+itself. `molbuilder.json` has no working-directory step because its calculation-scope
 counterpart has a different name (`.molbuilder.json`, with the dot).
 
 > **A search order is not a merge order.** `molbuilder.json`'s three locations
@@ -354,7 +354,7 @@ restart, behind a warning in a log nobody reads.
 
 ### 2.2 Which file actually took effect is displayed, never inferred
 
-Three files can supply a `scheduler` block — the working directory's, the
+Two files can supply a `scheduler` block — the
 per-user XDG one, and the bundle's — so *"it read the wrong config"* is a real
 and frequent diagnosis. Two rules make it a readable one:
 

@@ -165,6 +165,15 @@ class TestTheOneCreator:
         d = CD.ensure_private_dir(tmp_path / "a" / "b")
         assert stat.S_IMODE(d.stat().st_mode) == 0o700
 
+    def test_every_missing_ancestor_is_private_too(self, tmp_path):
+        """`Path.mkdir(parents=True, mode=)` gives the mode to the leaf and
+        the umask to the parents it creates -- so `environments/` made under a
+        fresh config root left the ROOT at 0755 around every secret written
+        into it later (review C-L1, measured 2026-09-14)."""
+        d = CD.ensure_private_dir(tmp_path / "root" / "mid" / "leaf")
+        for p in (d, d.parent, d.parent.parent):
+            assert stat.S_IMODE(p.stat().st_mode) == 0o700, p
+
     def test_it_does_not_police_what_is_already_there(self, tmp_path):
         """Seeding seeds.  On a cluster `XDG_CONFIG_HOME=/scratch/$USER` is how
         a person keeps tokens off an NFS `$HOME`, and silently re-moding what

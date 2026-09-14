@@ -107,6 +107,53 @@ class RuntimeConfigError(Exception):
     """
 
 
+def _naming(path: Path, exc: Exception) -> str:
+    """The refusal with the FILE in front of it, once.
+
+    The validators speak in terms of the schema and spell the generic
+    ``molbuilder.json``; the reader and the writer know which file refused.
+    A malformed project ``.molbuilder.json`` used to refuse naming
+    'molbuilder.json' with no path (R10, 2026-08-12) -- and, after the path
+    was put in front, a retired-key refusal read
+    "/p/.molbuilder.json: molbuilder.json: 'paths.logs' ..." (two names,
+    the second wrong; review C-L6, 2026-09-14).  The generic name is dropped
+    when the real one is supplied.
+    """
+    msg = str(exc)
+    if str(path) in msg:
+        return msg
+    generic = f"{CONFIG_FILENAME}: "
+    if msg.startswith(generic):
+        msg = msg[len(generic):]
+    return f"{path}: {msg}"
+
+
+def _refuse_misplaced(scope: Mapping[str, Any], path: Path) -> None:
+    """A machine-only section in a PROJECT file is refused, by name.
+
+    The reader's rule since the registry; the WRITER applies it to the merged
+    file too since 2026-09-14 -- it checked the patch only, so a project file
+    already carrying ``tls`` was written and then refused by every read
+    (review C-L2).
+    """
+    misplaced = sorted(
+        k for k in scope
+        if k in _SECTIONS and "project" not in _SECTIONS[k]["scopes"])
+    if misplaced:
+        allowed = ", ".join(n for n, spec in _SECTIONS.items()
+                            if "project" in spec["scopes"])
+        raise RuntimeConfigError(
+            f"{path}: "
+            f"{', '.join(map(repr, misplaced))} may not live in a "
+            f"PROJECT-scope file ({PROJECT_CONFIG_FILENAME}, in a project "
+            f"or calculation folder) -- machine sections have one home, the "
+            f"server-wide {CONFIG_FILENAME}.  A project file may carry: "
+            f"{allowed}.  (Refused rather than ignored: a section that is "
+            f"read, validated and then silently dropped looks effective "
+            f"while nobody applied it.)"
+        )
+
+
 def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
     """Read ``molbuilder.json`` from ``path``, or from the one place the
     machine scope lives.
@@ -142,14 +189,7 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
     try:
         return _normalise(raw)
     except RuntimeConfigError as exc:
-        # The validators speak in terms of the SCHEMA and spell the
-        # generic name; the reader knows WHICH file refused.  A malformed
-        # project .molbuilder.json or XDG file used to refuse naming
-        # 'molbuilder.json' with no path (R10, 2026-08-12).
-        msg = str(exc)
-        if str(cfg_path) not in msg:
-            raise RuntimeConfigError(f"{cfg_path}: {msg}") from None
-        raise
+        raise RuntimeConfigError(_naming(cfg_path, exc)) from None
 
 
 # --------------------------------------------------------------------- #
@@ -490,11 +530,6 @@ def _read_auth(raw: Mapping[str, Any]):
 
 
 #: One URL segment: letters, digits, '-' and '_'.  Deliberately narrow --
-#: the value becomes part of a route, and anything with a slash or a dot in
-#: it would silently mean a different path than the one written down.
-_NOTIFY_ROUTE_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-
-
 #: Both retired 2026-08-31.  The listener is switched on by the key file
 #: itself, which now carries its own route.
 _NOTIFY_SETTINGS_MOVED = (
@@ -1226,6 +1261,11 @@ def machine_config_shadow() -> Optional[str]:
     # this whole change removes, and it would go unnoticed because both answers
     # agree today.
     home = machine_config_path()
+    if here == home:
+        # The working directory IS the config directory (`cd ~/.config/
+        # molbuilder`): the file here is the one that is read.  This warned
+        # about it anyway, naming the same path on both lines (C-L3).
+        return None
     return "\n".join([
         f"{CONFIG_FILENAME} in the working directory is NOT READ: {here}",
         f"  The machine config has one location, and this is not it: {home}"
@@ -1264,8 +1304,10 @@ def machine_config_mode_warning() -> Optional[str]:
         mode = path.stat().st_mode & 0o777
     except OSError:
         return None
-    loose = mode & ~PRIVATE_FILE_MODE
-    if not loose:
+    # Bits that give SOMEONE ELSE access.  Owner-execute (a 0700 file) is
+    # untidy but grants nobody anything, and this said "more than its owner
+    # can read it" for exactly that case (review C-L7, 2026-09-14).
+    if not (mode & 0o077):
         return None
     who = []
     if mode & 0o077 & 0o070:
@@ -1449,22 +1491,7 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
             f"change where files are stored between a save and a restore "
             f"(docs/execution/checkpointing.md S1c, I2c)."
         )
-    misplaced = sorted(
-        k for k in scope
-        if k in _SECTIONS and "project" not in _SECTIONS[k]["scopes"])
-    if misplaced:
-        allowed = ", ".join(n for n, spec in _SECTIONS.items()
-                            if "project" in spec["scopes"])
-        raise RuntimeConfigError(
-            f"{_project_config_file(project_dir)}: "
-            f"{', '.join(map(repr, misplaced))} may not live in a "
-            f"PROJECT-scope file ({PROJECT_CONFIG_FILENAME}, in a project "
-            f"or calculation folder) -- machine sections have one home, the "
-            f"server-wide {CONFIG_FILENAME}.  A project file may carry: "
-            f"{allowed}.  (Refused rather than ignored: a section that is "
-            f"read, validated and then silently dropped looks effective "
-            f"while nobody applied it.)"
-        )
+    _refuse_misplaced(scope, _project_config_file(project_dir))
     return scope
 
 
@@ -1497,12 +1524,10 @@ def read_effective_config(
     the rules in :func:`_deep_merge`).
 
     NOTE: the merge here is the GENERIC merge.  Subsystems with
-    field-specific merge rules (like ``script_generation.preactivate``,
+    field-specific merge rules (like ``script_generation.preamble``,
     which concatenates rather than replaces) must use their dedicated
-    getter -- e.g. :func:`get_script_generation` reads both raw scopes
-    and concatenates ``preactivate``, ignoring the generic merge.
-    Other ``script_generation`` fields (``autodetect_conda``,
-    ``preactivate_format``) use the standard replace rule.
+    getter -- e.g. :func:`get_script_generation` reads both scopes
+    and concatenates ``preamble``, ignoring the generic merge.
     """
     server = read_config()
     if project_dir is None:
@@ -1989,9 +2014,19 @@ def get_execution(
 
     mode = merged.get("mode")
     if mode is not None and mode not in ("direct", "submit"):
+        # NAME THE FILE THAT SET IT (§ 2.2 rule 1).  This said "Fix it in
+        # .molbuilder.json" for a value that may sit in the machine file,
+        # sending the person to a file that need not exist (review C-L4).
+        scopes = [(machine_config_path(), read_config())]
+        if project_dir is not None:
+            scopes.append((_project_config_file(project_dir),
+                           _read_project(Path(project_dir))))
+        where = [str(p) for p, cfg in scopes
+                 if (cfg.get("execution") or {}).get("mode") == mode]
         raise RuntimeConfigError(
             f'execution.mode must be "direct" or "submit"; got {mode!r}.\n'
-            "Fix it in .molbuilder.json (running-a-job.md § 5.4).")
+            f"Fix it in {' or '.join(where) or CONFIG_FILENAME} "
+            f"(running-a-job.md § 5.4).")
     submit_via = merged.get("submit_via", "slurm")
     domain = merged.get("domain")
     if domain is not None and not isinstance(domain, str):
@@ -2120,11 +2155,16 @@ def write_config_scope(
                 f"and retry.") from exc
 
     merged = _deep_merge(existing, dict(patch))
+    if project_dir is not None:
+        # The reader's scope rule on the WHOLE file, not just the patch: a
+        # project file that already carried a machine section was written
+        # and then refused by every read (review C-L2, 2026-09-14).
+        _refuse_misplaced(merged, target)
     # Round-trip through the validator BEFORE writing so we never
     # produce a file that ``read_config`` would reject.
     try:
         _normalise(merged)
-    except RuntimeConfigError:
+    except RuntimeConfigError as exc:
         # WHOSE FAULT?  The merge fails when the patch is bad -- or when the
         # file was already one the server would refuse before this write (a
         # bad `envs` entry, measured 2026-09-10 through the auth wizard,
@@ -2140,7 +2180,7 @@ def write_config_scope(
                     f"{target} was ALREADY one the server would refuse, "
                     f"before this write -- {was}.  Nothing was written; fix "
                     f"that section and retry.") from None
-        raise
+        raise RuntimeConfigError(_naming(target, exc)) from None
 
     # 0700 through the one creator when this call is what makes the directory
     # -- a bare `mkdir` here left the config root at the umask default around

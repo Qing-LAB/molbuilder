@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ..config_dir import config_dir, ensure_private_dir, secrets_dir, PRIVATE_FILE_MODE
+from ..config_dir import config_dir, ensure_private_dir, secrets_dir
 
 __all__ = [
     "Step", "conda_hook", "seed_document", "seeding_blockers",
@@ -471,20 +471,18 @@ def seed_machine_config(activation: str,
     an activation, so the operator learns the one fact that matters without
     this module touching anything.
     """
-    from ..persist import write_json
-    from ..runtime_config import CONFIG_FILENAME
+    from ..runtime_config import machine_config_path, write_config_scope
 
-    path = config_dir() / CONFIG_FILENAME
+    path = machine_config_path()
     if path.exists():
         return Step(path, "kept", _activation_note())
     _ensure_root()
-    # 0600 FROM THE FIRST BYTE, as a parameter of the one writer
-    # (configuration.md § 2.3).  Until 2026-09-13 this `touch`-ed the path
-    # 0600 and then called a plain `write_json` -- a workaround for the writer
-    # not taking `mode=`, which made its preserve-the-mode branch do the job
-    # sideways and needed nine lines of comment to explain.
-    write_json(path, seed_document(activation, preamble, projects),
-               mode=PRIVATE_FILE_MODE)
+    # THE ONE WRITER of this file (configuration.md § 2.3): its own path from
+    # its own resolver, validated with the server's validator before a byte
+    # lands, 0600 from the first byte.  Until 2026-09-14 this joined the
+    # filename itself and wrote through `write_json` -- a second writer whose
+    # seed was never validated (review C-Y1).
+    write_config_scope(None, seed_document(activation, preamble, projects))
     note = f'script_generation.activation = "{activation}"'
     if preamble:
         note += f"; preamble = {preamble!r}"

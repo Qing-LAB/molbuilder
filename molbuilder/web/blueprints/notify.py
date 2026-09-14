@@ -79,7 +79,6 @@ import logging.handlers
 import re
 import time
 from collections import deque
-from pathlib import Path
 from typing import Any, Dict, NoReturn, Optional
 
 from flask import Blueprint, abort, jsonify, request
@@ -163,34 +162,6 @@ def _too_many(user: str, now: float) -> bool:
     return False
 
 
-def log_root() -> Path:
-    """Where run reports are written.
-
-    **`reports/`, not `logs/`, and the distinction is the point** (user,
-    2026-08-27: *this is a different kind of log, not of the status of
-    molbuilder but collection of computation results*).
-
-    The LOG directory holds molbuilder's own operational output -- what
-    the env installer did, what the server logged. Those are diagnostics:
-    you read them when something is wrong, and you delete them when it is
-    fixed. **These are measurements from calculations** -- energies,
-    iteration counts, when a relaxation step landed. They are the kind of
-    thing you keep, grep a year later, and plot. Filing them under `logs/`
-    invited exactly one mistake: treating them as disposable.
-
-    One file per user, JSON Lines, so `jq` and `pandas` both read it with
-    no parser of ours in the middle.
-
-    *(By the letter of the XDG spec this belongs under `$XDG_STATE_HOME`,
-    as does `logs/`. Moving both is its own change.)* -- **done 2026-08-31**
-    (`archive/2026-09-01-config-access-plan.md` § 3.2): both now sit under the state
-    directory, still in separate folders, so the distinction this docstring
-    draws survives the move.
-    """
-    from ...config_dir import reports_dir
-    return reports_dir()
-
-
 def read_keys() -> Dict[str, str]:
     """``{user: signing-key}`` from the operator's 0600 file, or ``{}``.
 
@@ -261,7 +232,8 @@ def _logger_for(user: str) -> logging.Logger:
     # nothing in it to guard.  (A 0600/0700 rule stood here from 2026-08-27
     # to 2026-09-13, reasoned from a shared-server premise that does not
     # hold -- a home directory is the user's own.)
-    root = log_root()
+    from ...config_dir import reports_dir
+    root = reports_dir()
     root.mkdir(parents=True, exist_ok=True)
     lg = logging.getLogger(f"molbuilder.notify.{user}")
     lg.propagate = False          # these are records, not app logs

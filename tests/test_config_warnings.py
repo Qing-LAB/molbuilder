@@ -92,6 +92,19 @@ class TestWhenItSpeaks:
 
 class TestItIsAWarningAndNotARefusal:
 
+    def test_the_config_directory_is_not_a_shadow_of_itself(self, isolated,
+                                                           monkeypatch):
+        """`cd ~/.config/molbuilder` and every surface warned that the file
+        here is NOT READ, naming the same path on both lines (review C-L3,
+        measured 2026-09-14).  The file in the working directory IS the one
+        that is read when the working directory is the config directory."""
+        from molbuilder.runtime_config import machine_config_shadow
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        home.write_text("{}")
+        monkeypatch.chdir(home.parent)
+        assert machine_config_shadow() is None
+
     def test_the_cwd_file_is_not_read(self, isolated):
         from molbuilder.runtime_config import machine_config_path
         work, home = isolated
@@ -159,6 +172,15 @@ class TestTheModeIsCheckedOnTheWayIn:
     def test_no_file_says_nothing(self, isolated):
         assert _mode_warning() is None, (
             "there is nothing to say about a file nobody wrote")
+
+    def test_owner_only_bits_are_not_a_reach(self, isolated):
+        """A 0700 file is untidy and grants nobody anything; this said "more
+        than its owner can read it" about it (review C-L7)."""
+        _work, home = isolated
+        home.parent.mkdir(parents=True, exist_ok=True)
+        home.write_text("{}")
+        home.chmod(0o700)
+        assert _mode_warning() is None
 
     @pytest.mark.parametrize("mode", [0o644, 0o640, 0o666, 0o604])
     def test_any_reach_past_the_owner_is_named(self, isolated, mode):

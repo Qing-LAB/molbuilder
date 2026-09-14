@@ -214,9 +214,6 @@ def issue_notify_key(user: str, *,
 # https://uto.asu.edu/sites/default/files/2022-10/ASU%20CAS%20Documentation.pdf
 # Hardcoding is OK because they're institutional URLs, not secrets.
 _ASU_CAS_LOGIN_URL = "https://weblogin.asu.edu/cas/login"
-_ASU_CAS_VALIDATE_URL = (
-    "https://weblogin.asu.edu/cas/p3/serviceValidate"
-)
 _ASU_EMAIL_DOMAIN = "asu.edu"
 
 

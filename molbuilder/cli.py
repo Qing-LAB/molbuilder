@@ -1342,10 +1342,11 @@ def _print_oauth_redirect_hint_if_auth_on(scheme, host, port):
 def _resolve_tls(cert_cli, key_cli):
     """CLI flags > the machine config > (None, None).
 
-    Reads cert/key from the machine config (via
-    :mod:`molbuilder.config`).  Both nested (``"tls": {"cert": ...,
-    "key": ...}``) and flat (top-level ``"cert"`` / ``"key"``) shapes
-    are accepted; see ``molbuilder.config`` for details.  A partial
+    Reads cert/key from the machine config through
+    `runtime_config.get_tls`.  ONE shape -- ``"tls": {"cert": ..., "key":
+    ...}``; the flat top-level ``cert``/``key`` is refused by name
+    (`runtime_config._FLAT_TLS_RETIRED`, 2026-09-02; this docstring said
+    "accepted" until 2026-09-14).  A partial
     pair (cert without key or vice versa) is reported on stderr and
     falls back to HTTP.
 

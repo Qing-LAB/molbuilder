@@ -123,6 +123,19 @@ def test_an_existing_config_is_left_exactly_as_it_is(fresh):
     assert mine.read_bytes() == original
     assert require_activation() == "source activate"
 
+def test_a_seed_the_loader_would_refuse_is_not_written(fresh, monkeypatch):
+    """The seed goes through the one writer of molbuilder.json, which
+    validates before a byte lands.  `init-config` had a writer of its own,
+    so a seed the loader refused would have been written, reported
+    "created", and refused by every later read (review C-Y1)."""
+    from molbuilder.runtime_config import RuntimeConfigError, machine_config_path
+    monkeypatch.setattr(initconfig, "seed_document",
+                        lambda *a, **k: {"bogus": {"x": 1}})
+    with pytest.raises(RuntimeConfigError, match="unknown top-level"):
+        initconfig.seed_machine_config("conda activate")
+    assert not machine_config_path().exists()
+
+
 
 def test_a_kept_config_that_states_no_activation_says_so(fresh):
     """Keeping the file is not the same as staying quiet about it.

@@ -398,6 +398,47 @@ def test_a_file_that_was_already_refused_is_named_not_the_patch(sandbox):
         "envs": {"siesta": 5}}
 
 
+def test_a_project_write_refuses_a_machine_section_already_in_the_file(sandbox):
+    """The writer applied the scope rule to the PATCH only, so a project file
+    already carrying `tls` was written -- and then refused by every read
+    (review C-L2, measured 2026-09-14).  Reader and writer apply one rule to
+    the whole file now."""
+    proj = sandbox / "proj"; proj.mkdir()
+    before = {"tls": {"cert": "/c", "key": "/k"}}
+    (proj / ".molbuilder.json").write_text(json.dumps(before))
+    with pytest.raises(RuntimeConfigError, match="'tls' may not live in a PROJECT"):
+        write_config_scope(project_dir=proj, patch={"execution": {"mode": "submit"}})
+    assert json.loads((proj / ".molbuilder.json").read_text()) == before
+
+
+def test_a_refusal_names_the_file_once(sandbox):
+    """Two shapes of one defect (review C-L6): the writer re-raised the
+    validator's generic `molbuilder.json:` for a project file, and a
+    retired-key refusal on a project file read `/p/.molbuilder.json:
+    molbuilder.json: 'paths.logs' ...` -- two names, the second wrong."""
+    proj = sandbox / "proj"; proj.mkdir()
+    target = str(proj / ".molbuilder.json")
+    with pytest.raises(RuntimeConfigError) as e:
+        write_config_scope(project_dir=proj, patch={"execution": "nope"})
+    assert str(e.value).startswith(target + ": "), str(e.value)
+    assert str(e.value).count("molbuilder.json:") == 1, str(e.value)
+    (proj / ".molbuilder.json").write_text(json.dumps({"paths": {"logs": "/x"}}))
+    with pytest.raises(RuntimeConfigError) as e:
+        read_effective_config(proj)
+    assert str(e.value).startswith(target + ": 'paths.logs'"), str(e.value)
+
+
+def test_a_bad_execution_mode_names_the_file_that_set_it(sandbox):
+    """"Fix it in .molbuilder.json" sent the person to a project file that
+    need not exist for a value sitting in the machine file (review C-L4)."""
+    from molbuilder.runtime_config import get_execution, machine_config_path
+    (sandbox / "molbuilder.json").write_text(json.dumps({"execution": {"mode": "batch"}}))
+    with pytest.raises(RuntimeConfigError) as e:
+        get_execution()
+    assert str(machine_config_path()) in str(e.value), str(e.value)
+    assert ".molbuilder.json" not in str(e.value), str(e.value)
+
+
 def test_write_validates_before_writing(sandbox):
     """A patch with an invalid value is rejected -- the file is NOT
     written.  Otherwise the next read_effective_config call would fail
