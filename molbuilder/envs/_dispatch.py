@@ -3,7 +3,8 @@
 Pure dispatch layer on top of :mod:`molbuilder.diagnostics`.  Two
 functions, both stateless except for reading the diagnostics singleton:
 
-  * :func:`run_in_env` -- explicit ``conda run -n <env>`` subprocess wrapper.
+  * :func:`run_in_env` -- run one argv inside a named env, through the
+    one door (`builds.dispatch_into_env`).
   * :func:`run_tool`   -- "routed env wins over host PATH" dispatch.
 
 Dispatch policy in :func:`run_tool`: when a tool has a routing entry
@@ -24,31 +25,40 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from typing import Sequence, Optional
+from pathlib import Path
+from typing import Optional, Sequence
 
 from ..diagnostics import get_capabilities
-# The run spelling, the signature of a broken manager `run`, the activation
-# fallback and the once-per-process measurement all live with the install
-# door (`builds`); this module shares them rather than keeping a second
-# opinion.  What differs here is only the subprocess STYLE: a tool call wants
-# a CompletedProcess with captured output, not a streamed transcript.
 from . import builds as _builds
 from .builds import conda_run_argv
 
 
 def run_in_env(env_name: str,
                argv: Sequence[str],
-               **popen_kwargs) -> subprocess.CompletedProcess:
-    """Run ``argv`` inside ``env_name`` via ``conda run``.
+               *,
+               cwd: Optional[Path] = None,
+               timeout: Optional[int] = None,
+               ) -> subprocess.CompletedProcess:
+    """Run ``argv`` inside ``env_name`` -- THROUGH THE ONE DOOR (M1).
 
-    The ``--no-capture-output`` flag is passed so the caller's
-    ``capture_output=True`` on the outer ``subprocess.run`` works
-    transparently: conda streams the inner process's stdout/stderr
-    through, and the outer ``subprocess.run`` captures them into
-    ``result.stdout`` / ``result.stderr``.
+    `builds.dispatch_into_env`: the manager's own ``run``, re-addressed at
+    the env's directory (M2), with the once-per-process measurement of a
+    broken ``run`` stub and the activation fallback -- the route every
+    installer step and build phase takes.  Until 2026-09-13 this function
+    kept a second copy of that: its own stub detection, its own wrapper,
+    addressed by NAME, and reaching up into `install` for the prefix when
+    the copy needed one (J1, Y5).
 
-    Raises :class:`RuntimeError` if the conda CLI itself wasn't found
-    by the diagnostic probe.
+    What differs from a build phase is only the STYLE of the answer.  A
+    tool call wants a `CompletedProcess` with captured output rather than
+    a streamed transcript, so the door runs quietly and the transcript
+    comes back as ``stdout`` -- one stream: through the door stdout and
+    stderr are not separable, and ``stderr`` is always ``""``.
+    ``returncode`` is ``None`` when the command never launched.  A
+    ``timeout`` overrun raises `subprocess.TimeoutExpired`, as
+    `subprocess.run` would.
+
+    Raises :class:`RuntimeError` if no manager was found.
     """
     caps = get_capabilities()
     if caps.conda_binary is None:
@@ -60,68 +70,25 @@ def run_in_env(env_name: str,
             f"molbuilder.json (an absolute path), or install/activate "
             f"one before invoking molbuilder."
         )
-    # ONE SPELLING of the run command line, shared with the install path.
-    #
-    # S17, closed 2026-09-12.  A manager whose `run` is broken -- mamba 1.x,
-    # whose stub does ``exec -- "$@"`` whereupon bash rejects ``--`` -- used to
-    # make this the one dispatch with no workaround: `run_tool("tleap", ...)`
-    # died on a shell error about mamba's own file, naming nothing to do with
-    # AmberTools.  The fix is the same RETRY the install door uses, and it keeps
-    # this hot path (once per structure build) at exactly one subprocess on a
-    # working manager: the prefix `activation_wrapper` needs is resolved only
-    # after the stub has actually been seen, on the machines that have it.
     full = conda_run_argv(caps.conda_binary, env_name, *argv)
-    if _builds.manager_run_unusable():
-        wrapped = _wrap_for_broken_manager(full, env_name, caps.conda_binary)
-        if wrapped is not None:
-            return subprocess.run(list(wrapped), **popen_kwargs)
-    done = subprocess.run(list(full), **popen_kwargs)
-    if not _shows_broken_manager_run(done):
-        return done
-    _builds._MANAGER_RUN_UNUSABLE["seen"] = True
-    wrapped = _wrap_for_broken_manager(full, env_name, caps.conda_binary)
-    if wrapped is None:
-        return done  # nothing better to offer; the original failure stands
-    return subprocess.run(list(wrapped), **popen_kwargs)
-
-
-def _shows_broken_manager_run(done: subprocess.CompletedProcess) -> bool:
-    """Did this call fail with the broken-`run`-stub signature?
-
-    Either stream, str or bytes, and ``None`` when the caller did not capture --
-    in which case there is nothing to read and the answer is no.
-    """
-    if done.returncode == 0:
-        return False
-    sig = _builds.MANAGER_RUN_STUB_SIGNATURE
-    for stream in (done.stdout, done.stderr):
-        if isinstance(stream, bytes):
-            if sig.encode() in stream:
-                return True
-        elif isinstance(stream, str) and sig in stream:
-            return True
-    return False
-
-
-def _wrap_for_broken_manager(full, env_name: str, conda_binary: str):
-    """The activation fallback for this argv, or ``None`` if the prefix is
-    unknown -- in which case there is no wrapper to build and the caller keeps
-    the manager's own failure."""
-    from .install import _env_prefix  # imported here: `install` is above us
-    prefix = _env_prefix(env_name, conda_binary)
-    if prefix is None:
-        return None
-    return _builds.activation_wrapper(full, prefix)
+    rc, out = _builds.dispatch_into_env(
+        full, caps.env_prefix(env_name), cwd=cwd, sink=None, timeout=timeout)
+    if (rc is None and timeout is not None
+            and out.endswith(_builds.timeout_tail(timeout))):
+        raise subprocess.TimeoutExpired(list(full), timeout, output=out)
+    return subprocess.CompletedProcess(list(full), rc, stdout=out, stderr="")
 
 
 def run_tool(tool: str,
              argv: Sequence[str],
              *,
              env: Optional[str] = None,
-             **popen_kwargs) -> subprocess.CompletedProcess:
+             cwd: Optional[Path] = None,
+             timeout: Optional[int] = None,
+             ) -> subprocess.CompletedProcess:
     """Dispatch ``tool argv...`` to the routed env (preferred) or host PATH.
 
-    Resolution order:
+    Resolution order (`route`):
 
       1. Explicit ``env=...`` -- dispatch into that env, or raise
          :class:`FileNotFoundError` if it doesn't exist on this machine.
@@ -131,13 +98,15 @@ def run_tool(tool: str,
       4. Otherwise raise :class:`FileNotFoundError` with a message
          naming every candidate that was tried.
 
-    Keyword args (``capture_output``, ``text``, ``cwd``, ``timeout``,
-    ``env``, ...) flow through to ``subprocess.run`` unchanged.
+    Output is captured as text either way; ``cwd`` and ``timeout`` are the
+    two things a caller has to say.  (It took ``**popen_kwargs`` until
+    2026-09-13, when the env branch stopped being a `subprocess.run`.)
     """
     routed = route(tool, env=env)
     if routed is None:
-        return subprocess.run([tool, *argv], **popen_kwargs)
-    return run_in_env(routed, [tool, *argv], **popen_kwargs)
+        return subprocess.run([tool, *argv], capture_output=True, text=True,
+                              cwd=cwd, timeout=timeout)
+    return run_in_env(routed, [tool, *argv], cwd=cwd, timeout=timeout)
 
 
 def route(tool: str, *, env: Optional[str] = None) -> Optional[str]:

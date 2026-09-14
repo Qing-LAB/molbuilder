@@ -204,6 +204,59 @@ def test_run_step_hands_that_environment_to_the_door(tmp_path, monkeypatch):
 #  S17 -- the tool router gets the same answer                                #
 # --------------------------------------------------------------------------- #
 
+def _machine_with(env_name, prefix):
+    from molbuilder.diagnostics import Capabilities, set_capabilities
+    set_capabilities(Capabilities(
+        runtime_config={}, conda_binary="/opt/mgr/bin/conda",
+        conda_envs={env_name: prefix}))
+
+
+def test_the_tool_router_enters_through_the_door_addressed_by_prefix(
+        tmp_path, monkeypatch):
+    """`run_tool` takes the same route as an install step: the door, with
+    the env's directory (M1, M2).  Until 2026-09-13 the router kept its own
+    copy of the broken-`run` detection and wrapper, addressed the env by
+    NAME, and reached into `install` for a prefix when its copy needed one.
+
+    Asked through `run_tool` with a fake door: what the door was handed, and
+    what the caller got back."""
+    from molbuilder import envs
+
+    seen = {}
+
+    def fake_door(argv, prefix, *, cwd=None, sink=None, timeout=None, **kw):
+        seen.update(argv=tuple(argv), prefix=prefix, cwd=cwd, sink=sink,
+                    timeout=timeout)
+        return (0, "tleap: done\n")
+
+    monkeypatch.setattr(B, "dispatch_into_env", fake_door)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))    # no host tleap
+    _machine_with("molbuilder-MDtools", "/envs/mdtools")
+
+    done = envs.run_tool("tleap", ["-f", "in.leap"], cwd=tmp_path, timeout=7)
+
+    assert seen["argv"] == B.conda_run_argv(
+        "/opt/mgr/bin/conda", "molbuilder-MDtools", "tleap", "-f", "in.leap")
+    assert seen["prefix"] == "/envs/mdtools"
+    assert seen["cwd"] == tmp_path and seen["timeout"] == 7
+    assert seen["sink"] is None, "a tool call is read, not watched"
+    assert done.returncode == 0 and done.stdout == "tleap: done\n"
+
+
+def test_a_tool_that_overruns_its_timeout_raises_as_subprocess_run_would(
+        monkeypatch):
+    """The door kills and reports in its transcript; the caller of a tool
+    expects `subprocess.TimeoutExpired`, and gets it."""
+    import subprocess
+    from molbuilder import envs
+
+    monkeypatch.setattr(
+        B, "dispatch_into_env",
+        lambda argv, prefix, **kw: (None, "partial\n" + B.timeout_tail(3)))
+    _machine_with("molbuilder-MDtools", "/envs/mdtools")
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        envs.run_in_env("molbuilder-MDtools", ["tleap"], timeout=3)
 
 
 # --------------------------------------------------------------------------- #

@@ -211,6 +211,17 @@ _LEAKAGE_ENV_PREFIXES: Tuple[str, ...] = (
 _STREAM_INDENT = "    "
 
 
+def timeout_tail(timeout: Optional[int]) -> str:
+    """The line `run_streaming` appends when it kills a command on timeout.
+
+    One spelling, because `_dispatch.run_in_env` reads it back to raise the
+    `subprocess.TimeoutExpired` a tool caller expects: the transcript is the
+    only channel the door has, and ``returncode is None`` alone cannot tell a
+    timeout from a command that never launched.
+    """
+    return f"\n[killed after {timeout}s timeout]\n"
+
+
 def run_streaming(
     argv: Sequence[str],
     *,
@@ -309,7 +320,7 @@ def run_streaming(
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 pass
-            tail = f"\n[killed after {timeout}s timeout]\n"
+            tail = timeout_tail(timeout)
             captured_lines.append(tail)
             if out_sink is not None:
                 try:
@@ -548,6 +559,7 @@ def env_for_step(env_prefix: Optional[str],
 def dispatch_into_env(argv: Sequence[str],
                       env_prefix: Optional[str],
                       *,
+                      cwd: Optional[Path] = None,
                       env: Optional[Mapping[str, str]] = None,
                       sink: Optional[TextIO] = None,
                       log_file: Optional[Path] = None,
@@ -570,13 +582,13 @@ def dispatch_into_env(argv: Sequence[str],
     if env_prefix is None or not _is_run_argv(argv):
         # Nothing to enter: `conda create`, `conda install -n ...`, or a bare
         # command.  The manager is the whole command here.
-        return run_streaming(argv, env=env, sink=sink, log_file=log_file,
-                             timeout=timeout)
+        return run_streaming(argv, cwd=cwd, env=env, sink=sink,
+                             log_file=log_file, timeout=timeout)
 
     if not _MANAGER_RUN_UNUSABLE["seen"]:
         rc, out = run_streaming(addressed_by_prefix(argv, env_prefix),
-                                env=env, sink=sink, log_file=log_file,
-                                timeout=timeout)
+                                cwd=cwd, env=env, sink=sink,
+                                log_file=log_file, timeout=timeout)
         if MANAGER_RUN_STUB_SIGNATURE not in (out or ""):
             return rc, out
         _MANAGER_RUN_UNUSABLE["seen"] = True
@@ -588,8 +600,9 @@ def dispatch_into_env(argv: Sequence[str],
                 f"this run.\n")
             sink.flush()
 
-    return run_streaming(activation_wrapper(argv, env_prefix), env=env,
-                         sink=sink, log_file=log_file, timeout=timeout)
+    return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,
+                         env=env, sink=sink, log_file=log_file,
+                         timeout=timeout)
 
 
 # Phases that wipe their build directory when re-run (everything from

@@ -108,15 +108,12 @@ quit
 """)
 
         try:
-            # run_tool dispatches to the host PATH if tleap is there,
-            # otherwise into the molbuilder-MDtools conda env via
-            # `conda run -n <env> --no-capture-output tleap -f ...`.
-            # Subprocess kwargs (capture_output, text, cwd, timeout)
-            # pass through unchanged.
+            # run_tool dispatches into the molbuilder-MDtools env when it
+            # exists (through the one door, `builds.dispatch_into_env`),
+            # else to the host PATH.  Output is captured as text either way;
+            # through the door stdout and stderr come back as one stream.
             result = run_tool(
-                "tleap", ["-f", in_path],
-                capture_output=True, text=True, cwd=workdir,
-                timeout=120,
+                "tleap", ["-f", in_path], cwd=workdir, timeout=120,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
