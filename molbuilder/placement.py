@@ -110,18 +110,9 @@ def places() -> Tuple[Place, ...]:
               "deliberately to keep it out of a user-visible response"),
         Place("a serve log", logs_dir, False, PRIVATE_FILE_MODE, True,
               "measured 2026-09-12 carrying a client_secret", "serve-*.log"),
-        # PRIVATE, though no credential is in it: these are what your
-        # calculations did, and the key that signs a report was 0600 while the
-        # report itself inherited the umask -- "the wrong way round on a
-        # shared server" (2026-08-27).  This row said `None` until 2026-09-13
-        # while the writer enforced 0700/0600 (K-L2): contract and code
-        # disagreed about what these files are.
-        Place("reports/", reports_dir, True, PRIVATE_DIR_MODE, False,
-              "per-run measurements, kept and grepped -- yours, on a server "
-              "other people can log in to"),
-        Place("a run-report record", reports_dir, False, PRIVATE_FILE_MODE,
-              False, "what your calculations did, one line per report",
-              "*.jsonl*"),
+        Place("reports/", reports_dir, True, None, False,
+              "per-run measurements, kept and grepped; a scientific report, "
+              "with nothing in it to guard"),
         Place("the runtime directory", runtime_dir, True, PRIVATE_DIR_MODE,
               False,
               "ours, and when $XDG_RUNTIME_DIR is absent it falls back inside "

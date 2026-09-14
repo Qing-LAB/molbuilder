@@ -65,9 +65,7 @@ __all__ = [
 #: (`configuration.md` § 2.1b).
 PRIVATE_DIR_MODE = 0o700
 
-#: A file that is yours alone: owner reads and writes, nobody else.  A
-#: credential, and also a record of what your calculations did -- on a shared
-#: server the DATA a key protects deserves the mode the key has.
+#: A file carrying a credential: owner reads and writes, nobody else.
 #: (Three pairs of names carried these two numbers until 2026-09-13 --
 #: `CONFIG_*_MODE` in `runtime_config`, `REPORT_*_MODE` in the notify
 #: blueprint -- so the writer of `molbuilder.json` used one pair and the

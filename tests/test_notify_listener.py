@@ -291,36 +291,6 @@ def test_the_window_memory_is_bounded_by_the_CAP_not_the_traffic(store):
     assert len(N._recent[USER]) <= N.MAX_REPORTS_PER_MIN
 
 
-def test_results_are_not_world_readable(store):
-    """The KEY file was always 0600; the DATA it protects was 0664 in an
-    0775 directory, inheriting the umask — the wrong way round on a shared
-    server."""
-    import stat
-    client, reports = store
-    _post(client)
-    f = reports / f"{USER}.jsonl"
-    assert stat.S_IMODE(f.stat().st_mode) == 0o600
-    assert stat.S_IMODE(reports.stat().st_mode) == 0o700
-
-
-def test_the_file_after_a_rotation_is_as_private_as_the_first(store,
-                                                              monkeypatch):
-    """The handler opens a new file on every rollover, at the umask.  One
-    chmod after construction covered the first file only, so from the second
-    file on the results were group-readable again (K-L2)."""
-    import stat
-    from molbuilder.web.blueprints import notify as N
-    monkeypatch.setattr(N, "LOG_BYTES", 120)      # a rollover every report
-    client, reports = store
-    for _ in range(3):
-        _post(client)
-    current = reports / f"{USER}.jsonl"
-    rotated = reports / f"{USER}.jsonl.1"
-    assert rotated.exists(), "no rollover happened; the test measures nothing"
-    for f in (current, rotated):
-        assert stat.S_IMODE(f.stat().st_mode) == 0o600, f
-
-
 def test_the_wrong_segment_is_a_plain_404(store):
     client, log_root = store
     assert _post(client, path="/api/notify").status_code == 404

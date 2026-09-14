@@ -76,7 +76,6 @@ import hmac
 import json
 import logging
 import logging.handlers
-import os
 import re
 import time
 from collections import deque
@@ -253,41 +252,21 @@ def _resolve_user(presented: str, timestamp: str, body: bytes,
     return found
 
 
-class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
-    """A rotating handler whose every file is 0600 from its first byte.
-
-    Results are yours: they were 0664 in an 0775 directory, inheriting the
-    umask, so on a shared server anybody in the group could read what your
-    calculations were doing -- while the KEY that signs a report was 0600.
-    The data a key protects gets the mode the key has (2026-08-27).
-
-    The handler opens the file in its constructor and again on EVERY
-    rollover, and the base class opens at the umask.  One `os.chmod` after
-    construction covered the first file only, so the second file and every
-    one after it came back at 0664 (K-L2).  Overriding `_open` is the one
-    place both openings go through -- and it goes through
-    `serve_daemon.open_private`, the door `configuration.md` § 2.3 names for
-    an appended log.
-    """
-
-    def _open(self):
-        from ...serve_daemon import open_private
-        return open_private(Path(self.baseFilename), self.mode)
-
-
 def _logger_for(user: str) -> logging.Logger:
     """A rotating logger per user, made once and reused."""
     lg = _loggers.get(user)
     if lg is not None:
         return lg
-    from ...config_dir import ensure_private_dir
-    # Ours, and about to hold your results: made 0700, tightened if it
-    # arrived looser.
-    root = ensure_private_dir(log_root(), tighten=True)
+    # At the umask, like any other file of yours: a scientific report, with
+    # nothing in it to guard.  (A 0600/0700 rule stood here from 2026-08-27
+    # to 2026-09-13, reasoned from a shared-server premise that does not
+    # hold -- a home directory is the user's own.)
+    root = log_root()
+    root.mkdir(parents=True, exist_ok=True)
     lg = logging.getLogger(f"molbuilder.notify.{user}")
     lg.propagate = False          # these are records, not app logs
     lg.setLevel(logging.INFO)
-    handler = _PrivateRotatingFileHandler(
+    handler = logging.handlers.RotatingFileHandler(
         root / f"{user}.jsonl", maxBytes=LOG_BYTES, backupCount=LOG_KEEP,
         encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))

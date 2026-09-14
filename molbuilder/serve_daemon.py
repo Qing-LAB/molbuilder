@@ -163,11 +163,6 @@ class LogRoll:
         # was not.  A CAS ticket (`cas.py`), an OAuth code, and the `--cert` /
         # `--key` paths in the child argv land here too.
         #
-        # Which is the inversion this project already named and fixed one
-        # level over, for the run-report records: "the KEY file was always
-        # 0600 and the DATA it protects was not, which is the wrong way round
-        # on a shared server" (`run-reports.md`).
-        #
         # Mode on the descriptor at CREATE time, not a chmod afterwards: a
         # chmod races the first write, and `configuration.md` 2.1b requires
         # the mode to be right "before there is anything to read".

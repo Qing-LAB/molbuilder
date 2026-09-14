@@ -411,9 +411,10 @@ year later, and plot them. Filing them under `logs/` invited exactly one
 mistake: treating results as disposable.
 
 One file per user, **JSON Lines**, so `jq` and `pandas` read it directly with
-no parser of ours in the middle. Mode `0600` in a `0700` directory — the key
-file was always `0600` and the data it protects was not, which was the wrong
-way round on a shared server.
+no parser of ours in the middle. It takes the umask, like any other file of
+yours: a scientific report, with nothing in it to guard. *(A `0600`/`0700` rule
+stood here from 2026-08-27 to 2026-09-13; it reasoned from a shared-server
+premise that does not hold — a home directory is the user's own.)*
 
 **Every line stands on its own.** A line used to read `{"event":
 "scf_converged", "energy": "-1740.2"}` and nothing said *which* calculation,
@@ -662,7 +663,7 @@ damage if a destination is ever compromised: the worst it buys is noise.
 | when to fire | `monitor.run_monitor` |
 | what a channel name resolves to | `monitor.load_channels` → `config_dir()/notify` |
 | which channels one run uses | `task.Notify.channels` → `--notify-channels` (§ 3.0) |
-| where results land | `$XDG_STATE_HOME/molbuilder/reports/<user>.jsonl` (default `~/.local/state/molbuilder/`), JSON Lines, 0600 (§ 4.1a).  `$XDG_STATE_HOME` moves it -- `paths.reports` was retired 2026-08-31 and is now refused (`configuration.md` § 2.1d) |
+| where results land | `$XDG_STATE_HOME/molbuilder/reports/<user>.jsonl` (default `~/.local/state/molbuilder/`), JSON Lines (§ 4.1a).  `$XDG_STATE_HOME` moves it -- `paths.reports` was retired 2026-08-31 and is now refused (`configuration.md` § 2.1d) |
 | what identifies a report | `monitor.run_identity` — label, job id, host (§ 4.1a) |
 | overriding that once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |
 | the card that sets **when**, and ticks the names | the Task-setup tab, `task-setup.md` § 7 |

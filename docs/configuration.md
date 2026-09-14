@@ -408,9 +408,7 @@ readable by anyone but its owner, not even for the length of a write.
 
 And **every secret this package writes went through the second one** — the
 session key, the Google client secret, `notify_keys`, `notify` — while the
-non-secret `molbuilder.json` got the atomic one. That is the wrong way round: it
-is the same inversion [`run-reports.md`](?doc=execution/run-reports.md) records
-one level down, where *the key file was `0600` and the data it protects was not*.
+non-secret `molbuilder.json` got the atomic one. That is the wrong way round.
 
 **Why a rule that should have caught it did not.** R10 (2026-08-12) aligned what
 it called *"the last in-place `O_TRUNC` write"* with the atomic writer, for
@@ -574,8 +572,7 @@ $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 ├── logs/                  diagnostics — delete when fixed  0700   config_dir.logs_dir()
 │   ├── serve-<port>.log        everything the server prints 0600   config_dir.serve_log()
 │   └── serve-<port>.stacks.log thread stacks on SIGUSR1     0600   config_dir.serve_stacks_log()
-└── reports/               per-run measurements — KEPT      0700   config_dir.reports_dir()
-    └── <user>.jsonl            one line per report, rotated  0600
+└── reports/               per-run measurements — KEPT              config_dir.reports_dir()
 
 $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 │                                             config_dir.runtime_dir()
