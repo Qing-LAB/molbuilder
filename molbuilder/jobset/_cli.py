@@ -178,11 +178,11 @@ def _echo_config_root() -> None:
     placement: every real invocation, no help-text noise.
     """
     import click as _click
-    from ..runtime_config import (CONFIG_FILENAME, machine_config_path,
-                                  machine_config_warnings)
-    path, via = machine_config_path()
+    from ..placement import machine_config_warnings
+    from ..runtime_config import CONFIG_FILENAME, machine_config_path
+    path = machine_config_path()
     state = "found" if path.is_file() else "not found -- defaults in effect"
-    _click.echo(f"{CONFIG_FILENAME}: {path} ({state}, via {via})")
+    _click.echo(f"{CONFIG_FILENAME}: {path} ({state}, via config-dir)")
     # A cwd file LOSES silently otherwise (configuration.md § 2.1a).  The line
     # above already names the resolved path; this says what that path is
     # standing in front of, which is the half a reader cannot infer.  To

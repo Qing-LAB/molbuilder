@@ -27,9 +27,10 @@ Schema (all sections optional)::
                   "mdtools": "molbuilder-MDtools" }
     }
 
-For backwards compatibility with the flat shape shipped before the
-2026-05-14 four-env design, top-level ``cert`` and ``key`` keys are
-also honoured (folded into ``tls`` by :func:`_normalise`).  **An
+The flat shape shipped before the 2026-05-14 four-env design -- top-level
+``cert`` and ``key`` -- is **refused by name** with the ``tls`` spelling
+shown (``_RETIRED_FLAT_TLS``); this header said "honoured (folded into
+tls)" until 2026-09-13, a year after that stopped being so.  **An
 unknown top-level key is REFUSED with the known sections named** (U7,
 2026-08-12; ``_``-prefixed keys are comments) — this header taught
 "ignored silently so the file can grow" until R8, the exact tolerance
@@ -124,7 +125,7 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
     Raises :class:`RuntimeConfigError` when the JSON is malformed or the
     schema is invalid.
     """
-    cfg_path = path if path is not None else machine_config_path()[0]
+    cfg_path = path if path is not None else machine_config_path()
     if not cfg_path.is_file():
         return {}
     try:
@@ -149,23 +150,6 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
         if str(cfg_path) not in msg:
             raise RuntimeConfigError(f"{cfg_path}: {msg}") from None
         raise
-
-
-def _read_section(raw: Mapping[str, Any], key: str) -> Dict[str, Any]:
-    """Return ``raw[key]`` as a fresh dict, validated to be an object.
-
-    Returns ``{}`` when the key is absent.  Raises
-    :class:`RuntimeConfigError` when the value is present but not a
-    mapping.  Section types beyond "object" (e.g. string-keyed,
-    string-valued for ``envs``) are enforced by :func:`_normalise`.
-    """
-    val = raw.get(key, {})
-    if not isinstance(val, Mapping):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: {key!r} must be an object, "
-            f"got {type(val).__name__}"
-        )
-    return dict(val)
 
 
 # --------------------------------------------------------------------- #
@@ -429,7 +413,7 @@ def _read_tls(raw: Mapping[str, Any]):
     tell a migrated file from an un-migrated one.  ``_normalise`` refuses the
     flat keys by name and says what to write instead.
     """
-    tls = _read_section(raw, "tls")
+    tls = _require_object_section(raw, "tls") or {}
     for k, v in tls.items():
         if not isinstance(v, str):
             raise RuntimeConfigError(
@@ -440,7 +424,7 @@ def _read_tls(raw: Mapping[str, Any]):
 
 
 def _read_envs(raw: Mapping[str, Any]):
-    envs = _read_section(raw, "envs")
+    envs = _require_object_section(raw, "envs") or {}
     for k, v in envs.items():
         if not isinstance(k, str) or not isinstance(v, str):
             raise RuntimeConfigError(
@@ -469,7 +453,7 @@ def _read_auth(raw: Mapping[str, Any]):
     # ``docs/ops/deployment.md``.
     if "auth" not in raw:
         return None
-    auth = _read_section(raw, "auth")
+    auth = _require_object_section(raw, "auth") or {}
     providers = auth.get("providers")
     if not isinstance(providers, list) or not providers:
         raise RuntimeConfigError(
@@ -1020,7 +1004,10 @@ def get_checkpoint_engines() -> list:
     first until the day it matters -- which is how `*.MD` sat in no store for
     months.
     """
-    section = _validate_checkpoint(_read_server_wide().get("checkpoint") or {})
+    # `read_config` hands back the section already validated (the registry's
+    # reader IS `_validate_checkpoint`); the defaults are asked for only when
+    # the file has no section at all.
+    section = read_config().get("checkpoint") or _validate_checkpoint({})
     return sorted(section["engines"])
 
 
@@ -1042,8 +1029,7 @@ def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
 
     Returns ``{"size_limit_bytes": int, "always_large": [glob, ...]}``.
     """
-    cfg = _read_server_wide()
-    section = _validate_checkpoint(cfg.get("checkpoint") or {})
+    section = read_config().get("checkpoint") or _validate_checkpoint({})
     engines = section["engines"]
     always = engines.get(engine) if engine else None
     if always is None:
@@ -1186,18 +1172,6 @@ def _project_config_file(project_dir) -> Path:
     return Path(project_dir) / PROJECT_CONFIG_FILENAME
 
 
-def _read_scope(path: Path) -> Dict[str, Any]:
-    """Read one scope's JSON file; ``{}`` if absent.
-
-    Reuses :func:`read_config` for the parse + normalise path; this
-    wrapper just hides the missing-file vs read-error distinction
-    so the caller can short-circuit on empty.
-    """
-    if not path.is_file():
-        return {}
-    return read_config(path)
-
-
 #: The sections :func:`config_provenance` reports.  A deliberate ALLOWLIST:
 #: the machine file also carries ``auth`` / ``tls``,
 #: and provenance output lands in terminals, STAGE-PLAN.md and shipped run
@@ -1208,15 +1182,16 @@ _PROVENANCE_SECTIONS = tuple(
     name for name, spec in _SECTIONS.items() if spec["provenance_safe"])
 
 
-def machine_config_path() -> Tuple[Path, str]:
-    """Which ``molbuilder.json`` the MACHINE scope resolves to, and how —
-    ``(path, "config-dir")``.
+def machine_config_path() -> Path:
+    """Which ``molbuilder.json`` the MACHINE scope resolves to.
 
     Split out 2026-08-17 so a refusal can name the file it is refusing.  This
-    two-step lookup was computed inline in :func:`config_provenance` and
-    re-derived inside :func:`read_config`, so the display that exists to answer
-    *"which file said this"* and the reader that raises about it could describe
-    different files.
+    lookup was computed inline in :func:`config_provenance` and re-derived
+    inside :func:`read_config`, so the display that exists to answer *"which
+    file said this"* and the reader that raises about it could describe
+    different files.  It returned ``(path, "config-dir")`` until 2026-09-13;
+    the second element had been a constant since the working-directory step
+    was deleted, and fourteen callers indexed ``[0]`` past it.
     """
     # ONE LOCATION (`archive/2026-09-01-config-access-plan.md` § 3.3).  A working-directory
     # `molbuilder.json` was step 1 of a first-found-wins search until
@@ -1224,7 +1199,7 @@ def machine_config_path() -> Tuple[Path, str]:
     # `.molbuilder.json`, which MERGES rather than replaces -- and it was the
     # entire source of one setting living in two files with nothing saying
     # which won.  Nothing stops now, because there is nothing to stop at.
-    return _machine_config_file().resolve(), "config-dir"
+    return _machine_config_file().resolve()
 
 
 def machine_config_shadow() -> Optional[str]:
@@ -1250,7 +1225,7 @@ def machine_config_shadow() -> Optional[str]:
     # ASKED, not re-derived: a second copy of the resolution is the split-brain
     # this whole change removes, and it would go unnoticed because both answers
     # agree today.
-    home = machine_config_path()[0]
+    home = machine_config_path()
     return "\n".join([
         f"{CONFIG_FILENAME} in the working directory is NOT READ: {here}",
         f"  The machine config has one location, and this is not it: {home}"
@@ -1261,65 +1236,6 @@ def machine_config_shadow() -> Optional[str]:
     ])
 
 
-def machine_config_warnings() -> List[str]:
-    """Everything worth saying about the machine config on the way in.
-
-    The shadow warning (a `molbuilder.json` in the launch directory that is NOT
-    read), then every place in the configured tree that arrived looser than it
-    should be, skipping the ones with nothing to say.
-
-    **The pair exists because both were only reached from `jobset`.** Measured
-    2026-09-12: `machine_config_mode_warning` had exactly two callers, the jobset
-    verbs and `config_provenance`, and neither `serve` nor `auth-setup` was one.
-    So a `molbuilder.json` copied from another machine at `0644` -- the arriving-
-    loose case § 2.1b exists for, which no writer can control -- sat
-    world-readable on a shared login node with its `tls.key` path and provider
-    credentials inside, and the server that read it said nothing. Same for a
-    stray cwd copy the person was editing in vain.
-
-    One function so a surface adopts BOTH by calling one thing; the two halves
-    were already one `for` loop in `jobset/_cli.py`, which is the shape being
-    named rather than invented.
-
-    **Every surface that reads this file now calls THIS**, as of 2026-09-13:
-    `serve` and `serve restart`, `auth-setup`, and the jobset group callback --
-    which was the loop above and went on calling the two halves itself, so
-    `placement_warnings` (added here later) reached `serve` and not `jobset`.
-    A function extracted from a site that keeps its copy has not replaced
-    anything; it has forked it.
-    """
-    shadow = machine_config_shadow()
-    return ([shadow] if shadow else []) + placement_warnings()
-
-
-def placement_warnings() -> List[str]:
-    """What in the configured tree arrived looser than it should be.
-
-    `placement.findings` is the whole of it -- one table, one audit, read here
-    and by `envs doctor`.  It sits beside the pair above because a surface
-    adopts the lot by calling `machine_config_warnings`, which is the shape
-    that got the mode warning to `serve` in the first place.
-
-    `molbuilder.json` IS ONE OF ITS ROWS, and that is why the sum above no
-    longer adds `machine_config_mode_warning` beside it.  Both say the same
-    thing about the same file in different words, so `serve` printed the mode
-    of `molbuilder.json` twice, with two sentences and the identical `chmod
-    0600` under each -- measured 2026-09-13 driving the jobset callback
-    against a 0644 config.  A11: one home per filename, and the table is the
-    one that knows every path in the tree.
-
-    `machine_config_mode_warning` is not dead -- `config_provenance` still
-    reports it, and should: that is a line about THIS file's provenance, not
-    an audit of the tree, and it phrases § 2.1b's consequence in prose rather
-    than naming an expected mode.  Two readers, one each.
-    """
-    try:
-        from .placement import findings
-    except ImportError:        # pragma: no cover - a partial install
-        return []
-    return list(findings())
-
-
 def machine_config_mode_warning() -> Optional[str]:
     """A warning when the machine config is readable by anyone but its owner.
 
@@ -1327,9 +1243,10 @@ def machine_config_mode_warning() -> Optional[str]:
     `auth.providers` block, so a world-readable copy on a shared login node is
     an exposure rather than an untidiness.
 
-    WRITING IT TIGHTLY WAS ALREADY HANDLED -- ``auth_setup`` opens with
-    ``0o600`` and ``fchmod``s before the first byte, so the mode is right
-    before there is anything to read.  What no writer can control is a file
+    WRITING IT TIGHTLY IS THE WRITER'S JOB -- `write_config_scope` goes
+    through ``write_bytes(mode=0o600)``, whose temp is private before it has
+    a name, so the mode is right before there is anything to read.  What no
+    writer can control is a file
     that ARRIVES loose: copied from another machine, restored from a backup,
     made by an editor, or unpacked from an archive that dropped its modes.
     Those never pass through the careful path, so the check belongs on the way
@@ -1340,7 +1257,7 @@ def machine_config_mode_warning() -> Optional[str]:
     the file does not exist -- there is nothing to say about a file nobody
     wrote.
     """
-    path, _via = machine_config_path()
+    path = machine_config_path()
     try:
         if not path.is_file():
             return None
@@ -1385,9 +1302,9 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     already names a different artifact -- the portable prepped directory
     the JobSet framework's ``--bundle`` points at.
     """
-    machine_path, machine_via = machine_config_path()
+    machine_path = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
-                "found": machine_path.is_file(), "via": machine_via}]
+                "found": machine_path.is_file(), "via": "config-dir"}]
     # WHAT THIS SCOPE IS STANDING IN FRONT OF (§ 2.1a).  The row above says
     # which file was reached; it cannot say that another one exists and was
     # skipped, and that is the state where a setting is written twice and read
@@ -1504,18 +1421,6 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _read_server_wide() -> Dict[str, Any]:
-    """The machine config, from the one place it lives
-    (`configuration.md` § 2.1c).
-
-    Since 2026-08-13 this IS :func:`read_config`'s own default lookup
-    (A-7 closed the split-brain where serve/TLS/auth read cwd-only while
-    these getters fell back to XDG); the alias stays because the section
-    getters read better naming the SCOPE than the mechanism.
-    """
-    return read_config()
-
-
 def _read_project(project_dir: Path) -> Dict[str, Any]:
     """One project-scope file, refusing the one section that may not live here.
 
@@ -1528,7 +1433,7 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
     silently dropped is worse than one that was never allowed -- it looks
     effective, and the folder is saved under rules nobody applied.
     """
-    scope = _read_scope(_project_config_file(project_dir))
+    scope = read_config(_project_config_file(project_dir))
     if "checkpoint" in scope:
         # The registry says machine-only too, but checkpoint keeps its own
         # message: S1c is the section-specific WHY, and the operator
@@ -1599,7 +1504,7 @@ def read_effective_config(
     Other ``script_generation`` fields (``autodetect_conda``,
     ``preactivate_format``) use the standard replace rule.
     """
-    server = _read_server_wide()
+    server = read_config()
     if project_dir is None:
         return server
     project = _read_project(Path(project_dir))
@@ -1626,18 +1531,18 @@ def get_script_generation(
             "_preamble_scopes": ["server", "project"] subset,
         }
     """
-    server_raw = _read_server_wide().get("script_generation") or {}
+    server_raw = read_config().get("script_generation") or {}
     project_raw: Dict[str, Any] = {}
     if project_dir is not None:
         project_raw = _read_project(Path(project_dir)).get(
             "script_generation") or {}
 
-    # Normalise both scopes through the validator (catches type errors
-    # and applies the preactivate -> preamble alias).
-    server   = _validate_script_generation(server_raw) if server_raw else dict(
-        _SCRIPT_GENERATION_DEFAULTS)
-    project  = _validate_script_generation(project_raw) if project_raw else dict(
-        _SCRIPT_GENERATION_DEFAULTS)
+    # Both scopes arrive validated -- `read_config` runs the registry's
+    # reader, which IS `_validate_script_generation` (type errors caught, the
+    # preactivate -> preamble alias applied).  A scope with no section gets
+    # the defaults.
+    server   = server_raw or dict(_SCRIPT_GENERATION_DEFAULTS)
+    project  = project_raw or dict(_SCRIPT_GENERATION_DEFAULTS)
 
     # Per-scope preamble chunks (server first, then project).  Empty
     # strings drop out so the renderer can emit per-scope sentinel
@@ -1920,7 +1825,7 @@ def _declared_routing(project_dir: Optional[Path] = None) -> List[Dict[str, Any]
     hand-written note about it -- which is why this is a FALLBACK.
     """
     out: List[Dict[str, Any]] = []
-    scopes = [_read_server_wide().get("scheduler")]
+    scopes = [read_config().get("scheduler")]
     if project_dir is not None:
         scopes.append(_read_project(Path(project_dir)).get("scheduler"))
     for raw in scopes:
@@ -1939,11 +1844,7 @@ def _declared_routing(project_dir: Optional[Path] = None) -> List[Dict[str, Any]
 
 def get_paths() -> Dict[str, Any]:
     """The effective ``paths`` block, or ``{}``.  See :func:`_read_paths`."""
-    raw = _read_server_wide()
-    try:
-        return dict(_read_paths(raw) or {})
-    except RuntimeConfigError:
-        raise
+    return dict(read_config().get("paths") or {})
 
 
 def get_scheduler(
@@ -1971,7 +1872,7 @@ def get_scheduler(
         }
         or None.
     """
-    server_raw  = _read_server_wide().get("scheduler")
+    server_raw  = read_config().get("scheduler")
     project_raw: Optional[Mapping[str, Any]] = None
     project_path = None
     if project_dir is not None:
@@ -1998,16 +1899,14 @@ def get_scheduler(
     if not server_raw and not project_raw:
         return None
 
+    # Each scope's block is an object or absent: `read_config` has already
+    # refused anything else (the registry's reader), so there is no third
+    # case to branch on here.
     merged: Dict[str, Any] = {}
-    if isinstance(server_raw, Mapping):
+    if server_raw:
         merged = _deep_merge(merged, dict(server_raw))
-    elif server_raw is not None:
-        # A non-object scheduler at server scope is a hard error.
-        merged = _validate_scheduler(server_raw)  # raises with the message
-    if isinstance(project_raw, Mapping):
+    if project_raw:
         merged = _deep_merge(merged, dict(project_raw))
-    elif project_raw is not None:
-        _validate_scheduler(project_raw)  # raises
 
     # Name the FILE the block came from.  `_validate_scheduler` sees only the
     # MERGED mapping, so every refusal it raises -- a bad `kind`, a missing
@@ -2019,7 +1918,7 @@ def get_scheduler(
     # Where ONE scope defines the block we can pin it exactly; where both do,
     # both are listed rather than one guessed at.
     contributors = [str(path) for path, raw in
-                    ((machine_config_path()[0], server_raw),
+                    ((machine_config_path(), server_raw),
                      (project_path, project_raw))
                     if isinstance(raw, Mapping)]
     try:
@@ -2186,7 +2085,7 @@ def write_config_scope(
         # THE SAME DOOR THE READER USES.  A writer with its own idea of where
         # the machine file lives writes one nothing reads, which is the whole
         # failure this change removes.
-        target = machine_config_path()[0]
+        target = machine_config_path()
     else:
         # The same scope rule reads enforce (the registry): refusing at
         # WRITE time beats producing a file every later read refuses.
@@ -2268,7 +2167,6 @@ __all__ = [
     "CONFIG_FILENAME",
     "PROJECT_CONFIG_FILENAME",
     "RuntimeConfigError",
-    "machine_config_warnings",
     "read_config",
     "read_effective_config",
     "write_config_scope",

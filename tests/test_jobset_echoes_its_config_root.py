@@ -80,7 +80,7 @@ def test_the_line_names_the_same_file_config_provenance_would():
     stay wired to the SAME function rather than each growing its own
     resolution."""
     from molbuilder.runtime_config import machine_config_path
-    path, via = machine_config_path()
+    path = machine_config_path()
     line = _first_line(["machines"])
     assert str(path) in line
-    assert f"via {via}" in line
+    assert "via config-dir" in line

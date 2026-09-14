@@ -79,7 +79,7 @@ def places() -> Tuple[Place, ...]:
               "it holds the session key, the OAuth client secret and the "
               "notify keys, and a listable directory names a file even when "
               "the file itself is shut"),
-        Place("molbuilder.json", lambda: machine_config_path()[0], False,
+        Place("molbuilder.json", lambda: machine_config_path(), False,
               PRIVATE_FILE_MODE, True,
               "it carries tls.key's path and the auth.providers block"),
         # The NAME from its owner, not a literal: this row re-spelled
@@ -165,3 +165,21 @@ def findings() -> List[str]:
                 f"what it should be -- {place.why}.\n"
                 f"  Fix it with: chmod {place.mode:04o} {target}")
     return out
+
+
+def machine_config_warnings() -> List[str]:
+    """Everything wrong with where and how the config ARRIVED, one line each.
+
+    The shadow (a ``./molbuilder.json`` nobody reads -- phrased by
+    `runtime_config.machine_config_shadow`) followed by every mode finding
+    in the tree (`findings`).  Every command that reads the config prints
+    these -- `serve`, the jobset verbs, `auth-setup` -- so adding a check
+    here reaches all of them.
+
+    It lived in `runtime_config` until 2026-09-13 and imported this module
+    lazily to get the findings: the one place `runtime_config` reached UP,
+    for a sum that is an audit (K-Y2).  Here it imports downward only.
+    """
+    from .runtime_config import machine_config_shadow
+    shadow = machine_config_shadow()
+    return ([shadow] if shadow else []) + findings()

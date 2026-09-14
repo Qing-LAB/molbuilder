@@ -335,7 +335,7 @@ class TestEveryFileHasADoor:
         doors = {
             "session_key": session_key(),
             "google_client_secret": google_client_secret(),
-            "machine config": machine_config_path()[0],
+            "machine config": machine_config_path(),
             "environment record": machine_scope_path(),
             "environments/": environments_dir(),
             "notify": default_notify_path(),

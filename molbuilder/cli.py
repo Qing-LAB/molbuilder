@@ -1519,7 +1519,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     # (D12).  `serve` and the jobset verbs already call this; the function's
     # own docstring named THIS command as the surface that did not.  To
     # stderr, so it reaches a person without entering piped output.
-    from .runtime_config import machine_config_warnings
+    from .placement import machine_config_warnings
     for _warning in machine_config_warnings():
         click.echo(_warning, err=True)
 
@@ -1548,7 +1548,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     # dropped `auth.trust_proxy`.  (And it defaulted to `./molbuilder.json`
     # until 2026-08-30: the git root, for anyone inside a checkout.)
     from .runtime_config import machine_config_path, write_config_scope
-    output_path = machine_config_path()[0]
+    output_path = machine_config_path()
     from .config_dir import google_client_secret
     google_secret_file = google_client_secret()
 
@@ -2160,7 +2160,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     # credentials in it, and the server that read it said nothing.  § 2.1b exists
     # for exactly the cases no writer can control.  To stderr, so it reaches a
     # person without entering piped output.
-    from .runtime_config import machine_config_warnings
+    from .placement import machine_config_warnings
     for _warning in machine_config_warnings():
         click.echo(_warning, err=True)
 
@@ -2274,7 +2274,7 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # where the person is watching; `start` hands the terminal back, and its
     # child's stderr goes into the log -- so a warning emitted only by the child
     # is one nobody reads until they go looking for why sign-in broke.
-    from .runtime_config import machine_config_warnings
+    from .placement import machine_config_warnings
     for _warning in machine_config_warnings():
         click.echo(_warning, err=True)
     state = pid_state(read_pid(port))

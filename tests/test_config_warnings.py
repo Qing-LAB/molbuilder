@@ -96,10 +96,8 @@ class TestItIsAWarningAndNotARefusal:
         from molbuilder.runtime_config import machine_config_path
         work, home = isolated
         (work / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
-        path, via = machine_config_path()
-        assert path == home.resolve(), (
+        assert machine_config_path() == home.resolve(), (
             "one location -- and it is not the working directory")
-        assert via == "config-dir"
 
     def test_and_its_contents_do_not_leak_in(self, isolated):
         """The sharp end: not merely 'a different path' but 'that file's
@@ -220,7 +218,7 @@ class TestItIsAWarningAndNotARefusalEither:
         f = home
         f.write_text("{}")
         f.chmod(0o644)
-        assert machine_config_path()[0] == f.resolve(), (
+        assert machine_config_path() == f.resolve(), (
             "refusing would lock a person out over something they can fix in "
             "one command -- which the message names")
 
@@ -268,7 +266,7 @@ class TestOneFindingIsSaidOnce:
     """
 
     def test_a_loose_config_is_reported_once(self, isolated):
-        from molbuilder.runtime_config import machine_config_warnings
+        from molbuilder.placement import machine_config_warnings
         _work, cfg = isolated
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text("{}")
