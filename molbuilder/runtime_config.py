@@ -2080,16 +2080,19 @@ def get_execution(
     detection): you can be *on* slurm yet launch ``direct``, or force
     ``launch`` from an interactive shell.  A malformed ``mode`` raises.
     """
-    server_raw = _read_server_wide().get("execution") or {}
-    project_raw: Dict[str, Any] = {}
-    if project_dir is not None:
-        project_raw = _read_project(Path(project_dir)).get("execution") or {}
-
-    merged: Dict[str, Any] = {}
-    if isinstance(server_raw, Mapping):
-        merged = _deep_merge(merged, dict(server_raw))
-    if isinstance(project_raw, Mapping):
-        merged = _deep_merge(merged, dict(project_raw))
+    # THROUGH THE ONE DOOR.  This spelled the two-scope merge itself -- read
+    # server, read project, `_deep_merge` -- which is `read_effective_config`
+    # exactly, and that function had no production caller at all.  Same two
+    # file reads either way (neither is cached), same result; measured
+    # 2026-09-13 against a config with both scopes set.
+    #
+    # The `isinstance(..., Mapping)` guards that stood here were unreachable:
+    # both scope readers VALIDATE before returning, so an `execution` that is
+    # not an object is refused there and never arrives.  What they actually
+    # did was silently ignore a malformed project section in the one case the
+    # validation ever missed -- the opposite of this module's own rule that a
+    # section read and then dropped is worse than one never allowed.
+    merged = read_effective_config(project_dir).get("execution") or {}
 
     mode = merged.get("mode")
     if mode is not None and mode not in ("direct", "submit"):
