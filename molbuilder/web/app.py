@@ -53,7 +53,8 @@ import os
 import threading
 import time
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_file
+from flask import (Flask, abort, jsonify, make_response, redirect,
+                   render_template, request, send_file)
 
 from .tabs import TABS, landing_path
 # The supervisor protocol -- a leaf module that imports nothing, so the
@@ -335,6 +336,12 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(system_load_bp)
     app.register_blueprint(checkpoint_bp)
     app.register_blueprint(docs_bp)
+    # The notebook tab's control surface.  Its START/STOP routes exist only
+    # under a supervisor and only for the admin list (access-control.md § 6);
+    # `status` is always there, because answering "is there a notebook" is not
+    # itself a capability and the page needs it to decide what to draw.
+    from .blueprints.jupyter import bp as jupyter_bp
+    app.register_blueprint(jupyter_bp)
     app.register_blueprint(bench_bp)
 
     # THE RUN-REPORT LISTENER IS REGISTERED ONLY WHEN IT IS CONFIGURED.
@@ -529,6 +536,41 @@ def create_app(*, config=None) -> Flask:
     # there).
         # The contract is docs/web/task-setup.md.
         return render_template("task_setup.html")
+
+    @app.route("/jupyternb")
+    def jupyternb_page():
+        # The JupyterNB tab: a frame onto a Jupyter molbuilder starts and
+        # stops.  Contract: docs/web/jupyter.md.  The route spells the tab's
+        # label, as every route here does (`tabs.md` 1).
+        #
+        # ITS OWN Content-Security-Policy, because the global one says
+        # `frame-src` falls back to `default-src 'self'` and the notebook is
+        # a DIFFERENT ORIGIN (this host, the next port up).  Set here rather
+        # than widened globally: every other page in this app frames nothing,
+        # and a `frame-src` that admitted another origin everywhere would be
+        # a hole opened for one page.  `_add_security_headers` uses
+        # `setdefault`, so this one stands.
+        from ..jupyter import jupyter_port
+        resp = make_response(render_template("jupyternb.html"))
+        try:
+            port = int((request.host or "").rsplit(":", 1)[1])
+        except (IndexError, ValueError):
+            port = 0
+        frame = f"{request.scheme}://*:{jupyter_port(port)}" if port else "'none'"
+        resp.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            f"frame-src {frame}; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+        return resp
 
     @app.route("/this-machine")
     def this_machine_page():

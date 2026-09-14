@@ -1,4 +1,4 @@
-# Jupyter — a live notebook tab, and the lifecycle that keeps it honest
+# Jupyter — the JupyterNB tab, and the lifecycle that keeps it honest
 
 **Role:** contract
 **Domain:** web
@@ -47,9 +47,17 @@ a frame at Jupyter directly.
 
 Two consequences that are not optional:
 
-* **TLS on the Jupyter port too.** The app page is HTTPS, so an `http://` frame
-  is blocked as mixed content. Jupyter reuses the cert/key `serve` already
-  loads.
+* **The notebook takes the SAME scheme the app page is served with.** A
+  browser blocks an `http://` frame inside an `https://` page as mixed
+  content, so the two must match — Jupyter reuses the cert and key `serve`
+  resolved, and runs plain http when `serve` has none. It does **not** refuse
+  to start without TLS; this section said it did until 2026-09-14, while a
+  plain-http molbuilder had been running one the whole time. What the rule
+  does require is that the resolution be the SAME on both sides: `serve start`
+  resolves TLS from the `tls` block in `molbuilder.json` as well as the
+  command line, and until the same day it handed the notebook only the raw
+  flags — so a machine configured in the file served an https page and framed
+  an http notebook.
 * **Framing must be allowed.** Jupyter sends `X-Frame-Options` / a CSP
   `frame-ancestors` by default and will refuse to be framed;
   `ServerApp.tornado_settings` has to name molbuilder's origin.
@@ -104,14 +112,110 @@ So Jupyter is parented to the **supervisor**:
 | `serve stop` / supervisor exit | **dies** |
 | `kill -9` of the supervisor | **dies** (§ 3.1) |
 
-## 4. Nothing runs until asked
+## 4. Nothing runs until asked — **not even by looking**
 
-No kernel starts on page load. The tab starts Jupyter on first open or on an
-explicit control action, and Jupyter's own settings shrink the idle window
-rather than molbuilder hand-rolling one:
-`MappingKernelManager.cull_idle_timeout` reaps idle kernels, and
-`ServerApp.shutdown_no_activity_timeout` stops the server when nobody is using
-it.
+Opening the tab **probes and reports**; it starts nothing. Starting a notebook
+runs code as the account serving the page, so it is a thing a person asks for,
+with a button. *(Decided with the user 2026-09-13, against the earlier "starts
+on first open" written here: a tab that runs code because you clicked its name
+is a tab you cannot look at safely.)*
+
+That gives the tab exactly four states, and the person moves between them:
+
+| State | What the tab shows |
+|---|---|
+| the env is not installed | the install command — the env is **opt-in**, so this is an ordinary state and not an error |
+| installed, nothing running | one sentence saying what starting gets you, and the Start button — **unless** this molbuilder has no supervisor to hold a notebook, or the viewer may not control one, in which case the sentence says which and there is no button |
+| starting | the same row, polling, until the port answers |
+| running | the framed JupyterLab, and a Stop button. A viewer who may not control it gets neither: the token that reaches a kernel is withheld from them (§ 6), so there is nothing to frame |
+
+Once it is running, Jupyter's own settings shrink the idle window rather than
+molbuilder hand-rolling one: `MappingKernelManager.cull_idle_timeout` reaps
+idle kernels, and `ServerApp.shutdown_no_activity_timeout` stops the server
+when nobody is using it.
+
+### 4.1 What the framed Lab looks like, and what it remembers
+
+A Lab in a frame is not a Lab in a window, and four of its defaults are wrong
+here. molbuilder sets them in `_LAB_OVERRIDES` (`jupyter.py`) — **defaults, not
+values**: every one is still a control the person can change inside Lab.
+
+| Setting | Why |
+|---|---|
+| multi-document mode (`startMode: multiple`) | Lab's document **tab bar**, so several notebooks are open at once. Single-document mode was tried first, to be rid of Lab's file browser — it takes the tab bar with it, and reading two notebooks side by side is worth more than losing the panel is *(decided with the user 2026-09-14)* |
+| `kernelShutdown: true` | Closing a notebook shuts its kernel down. Lab keeps it running by default so you can reopen with your variables; inside a tab of another application a kernel nobody can see is memory — and on a GPU box a device — held for no one. A page RELOAD is not a close, so reopening reconnects |
+| dark theme + dark scrollbars | Lab renders light by default, inside an application that is dark everywhere else. The frame read as a different program pasted into the page |
+| `fetchNews: false`, `checkForUpdates: false` | Jupyter asks each viewer whether it may fetch its news feed, in a popup over the frame. A tab inside molbuilder is not where that is answered, and the answer is a network call from a machine that may have no route out |
+| **its own settings home** (`config_dir.jupyter_lab_home`) | `app_settings_dir` · `user_settings_dir` · `workspaces_dir`, all separate from `~/.jupyter`. Lab writes a user setting the first time it resolves one and a user setting BEATS an override, so a shared home let the framed Lab adopt whatever the person's standalone Lab had written — and let molbuilder's choices leak back into it |
+
+**And it remembers no LAYOUT.** The frame URL carries Jupyter's `?reset`,
+which resets the *workspace* — which documents were open, which side panel was
+showing — and nothing else. That restore argued with the one thing this tab
+decides: it disagreed with the folder the projects sidebar had selected.
+**The notebook file is the state worth keeping, and it is on disk.**
+*(Decided with the user 2026-09-14.)*
+
+The four settings above are **user settings**, not workspace, so `?reset` does
+not touch them: they live in `user-settings/` and persist across loads by
+design — which is the point of the separate settings home, and why a person's
+own change inside Lab sticks. *(This section claimed `?reset` restored all four
+until the claim was checked.)*
+
+### 4.2 No `.ipynb_checkpoints` in the projects tree
+
+Jupyter writes a `.ipynb_checkpoints/` directory **beside every notebook it
+saves**. In a projects tree that is a directory in every folder somebody has
+opened a notebook in — swept up by result scans, carried along by every copy to
+a cluster, and holding a stale duplicate of work nobody asked it to keep.
+
+Jupyter has no switch for it, and the obvious workaround is worse than the
+problem: `FileCheckpoints.checkpoint_dir` only *renames* the directory, and
+pointing it at one shared absolute path makes two `Untitled.ipynb` in different
+folders write the same `Untitled-checkpoint.ipynb`, so a restore hands back the
+wrong file. What the contents manager *does* take is a `checkpoints_class`, and
+jupyter-server ships no no-op one — so molbuilder writes one, into a generated
+`jupyter_server_config.py` passed as `ServerApp.config_file`. A Jupyter config
+file is executed Python, which is why the class can live there rather than on
+`PYTHONPATH`. Being an absolute path, it is loaded *instead of* searching the
+config path, so the framed server does not read a personal
+`~/.jupyter/jupyter_server_config.py` either — the same isolation § 4.1 gives
+the settings home.
+
+Restoring **refuses** rather than quietly doing nothing: with the checkpoint
+list empty Lab offers nothing to restore, and a path that could still be
+reached must never silently discard an edit. *(Asked for by the user
+2026-09-14; verified the same day — a checkpoint POST answered
+`{"id": "no-checkpoint"}`, the list came back empty, and no directory
+appeared.)*
+
+### 4.3 Where a notebook is saved, said out loud
+
+**Lab's own file browser decides.** Its current folder is what the Launcher
+creates in, and molbuilder cannot see or set it once the frame is live —
+re-pointing the frame means reloading it, which discards every open document.
+The projects sidebar still chooses where Lab *opens* (the frame URL is
+`/lab/tree/<selected folder>`), and after that the person is driving.
+
+So the tab states the fact it can know rather than the one it would like to.
+`jupyter.open_notebooks` asks Jupyter's own `GET /api/sessions` and the control
+row lists **the full path of every notebook Lab has open**. The row used to
+claim "new notebooks are saved in `<the folder molbuilder selected>`", which is
+true for exactly as long as it takes to click a folder inside Lab — and with
+several notebooks open it is usually wrong. Naming the control that decides
+beats impersonating it. *(Asked for by the user 2026-09-14: "I want to make
+where those notebooks are saved clear and explicit".)*
+
+**Closing a notebook shuts its kernel down** — `kernelShutdown` in § 4.1.
+*(This paragraph said no such setting existed, until searching every shipped
+schema on 2026-09-14 found it.)*
+
+A page RELOAD is not a close: the workspace reset closes documents without Lab
+treating it as one, so reopening the same notebook reconnects to its kernel
+with its variables. What catches the rest is the timeout culling above, and its
+generosity is deliberate: the tab is an **iframe**, so switching to Results
+closes the kernel's socket. Culling promptly on a closed connection would mean
+a five-minute look at another tab costs you every variable in memory. Nothing
+leaks regardless — the whole tree dies with molbuilder (§ 3).
 
 ## 5. The control surface
 
@@ -128,21 +232,83 @@ answering.
 
 ## 6. What this exposes
 
-A live kernel is **arbitrary code execution**, reachable on a network port, in
-an env with the project's science stack. That is a deliberate decision and
-belongs in `access-control.md` beside the rest of the exposure story — not an
-implication of having added a tab. Minimum: bind to loopback unless the
-operator states otherwise, and keep Jupyter's own token auth on.
+A live kernel is **arbitrary code execution** as the account serving the page,
+reachable on a network port. That is a deliberate decision, not an implication
+of having added a tab, so here is the rule that ships.
+
+**Starting one, stopping one, and being handed the token that reaches one are
+the same privilege**, and `_may_control` (`web/blueprints/jupyter.py`) grants
+all three together:
+
+1. an **admin** request may (`web/admin.py` — with no `admin` section
+   configured, that is anyone who can sign in, per `access-control.md` § 5);
+2. otherwise, if **sign-in is configured at all**, nobody else may;
+3. otherwise — an unauthenticated molbuilder — a **loopback** peer may.
+
+Rule 3 is the one worth reading twice: "no sign-in configured" does not imply
+a loopback bind, so an unauthenticated molbuilder can legitimately be listening
+on a network interface, and there the check is the peer address and nothing
+else.
+
+**The token follows the same rule.** `/api/jupyter/status` is readable by
+anyone who can reach the page — it has to be, the tab draws itself from it —
+but it returns `token: ""` to a caller who may not control the notebook, and
+the tab then refuses to frame Lab rather than showing Jupyter's login page.
+Until 2026-09-14 the token went to every caller while the Start button was
+gated: the gate was inverted, since *using* a running kernel is the same code
+execution as starting one.
+
+Jupyter's own token auth stays on, and the server binds to loopback unless the
+operator says otherwise.
 
 ## 7. The env
 
 `molbuilder-jupyternb`, one recipe in the registry like every other backend
-(`installation.md` § 1). It is not the host env: the notebook stack pins its
-own dependencies, and the isolation rule is the whole point of the per-backend
-model.
+(`installation.md` § 1), and it holds **everything a notebook needs**: the
+JupyterLab server, the `ipykernel` a cell runs on, and the analysis stack —
+`numpy`, `scipy`, `pandas`, `matplotlib`. Jupyter is installed, activated and
+runs here. **No other env carries notebook tooling.**
+
+It deliberately holds no science backend — no `ase`, `sisl`, `rdkit` or
+`pyscf`. Those would be a second copy to keep in step with the first, and the
+day the two drift a notebook stops reproducing what a calculation does,
+silently. This env *reads* what a calculation wrote and plots it; it is not a
+second place to run one.
+
+*(That is the user's design, stated 2026-09-14. The earlier text here — the
+stack in the host env, each calculation env offering itself as a kernel — was
+mine and was wrong: to be a kernel an env must carry `ipykernel`, which drags
+`debugpy`, `ipython`, `jupyter_client`, `pyzmq`, `tornado` and six more into an
+env whose only job is reproducible calculation. A job env stays a job env.)*
 
 ## 8. Status
 
-**Designed, not built** *(2026-09-11)*. The decision recorded here is § 3.4 —
-parented to the supervisor — taken by the user against the two alternatives
-(dying with the server child, or fully independent with its own pidfile).
+**Built** *(2026-09-14)*, and § 3.4 — parented to the supervisor — is the
+decision the user took against the two alternatives (dying with the server
+child, or fully independent with its own pidfile).
+
+Where it lives: `molbuilder/jupyter.py` (the lifecycle, the shepherd, and the
+generated Lab settings), `serve_daemon` (the two signals, the stop-on-exit,
+and the startup reconciliation — done with its own helpers, because it may
+import nothing of the application), `web/blueprints/jupyter.py` (status ·
+start · stop), and the **JupyterNB** tab at `/jupyternb`.
+
+There is deliberately **no kernel search path**. One stood here until
+2026-09-14, from the design where every env offered itself as a kernel; once
+that was withdrawn it contributed zero kernels and one cross-env leak — the
+host env's `share/jupyter` went on `JUPYTER_PATH` first, handing the framed Lab
+a `jupyterlab-plotly` extension built against a `plotly` the notebook env does
+not have. The kernel lives in the same prefix the server runs in, so Jupyter
+finds it through `sys.prefix` with no search path at all.
+
+Verified in a browser on 2026-09-14: Start → supervisor → shepherd → the
+manager's own `run` → `jupyter lab`, framed, rooted at the projects tree, and
+Stop taking the whole process group with it.
+
+**Known gap.** An env built before the analysis stack was added to the recipe
+has a kernel that cannot `import numpy`. The verb is
+`repair molbuilder-jupyternb`, **not `install`**: on an env that already
+exists `install` skips the create step and goes straight to verify, so it adds
+no missing conda package. `repair` is what closes what the package audit
+reports. *(Measured 2026-09-14, after `install` reported FAILED with
+`No module named 'numpy'` and had installed nothing.)*

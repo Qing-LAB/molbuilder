@@ -508,7 +508,13 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 94 routes
+## 3. Endpoint index — all 96 routes
+
+> **96 is what an ordinary server exposes.** Two more —
+> `POST /api/jupyter/start` and `POST /api/jupyter/stop` — are registered
+> **only under a supervisor** (`web/jupyter.md` § 5), so a supervised process
+> has 98. The count is pinned by a test that builds the app without one, which
+> is why the header names 96 while § 5 lists four notebook routes.
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -630,8 +636,13 @@ auth routes.
 
 **App-level** — `GET /` (redirect to the landing tab); `GET /molbuilder`,
 `/structure-optimization`, `/spectrum-calculation`, `/transport-calculation`,
-`/results`, `/documents`, `/molview-demo` (tab pages);
+`/results`, `/documents`, `/jupyternb`, `/molview-demo` (tab pages);
 `GET /api/health` → `{ ok, version }`;
+`GET /api/jupyter/status` → the notebook tab's whole state — env installed,
+process up, answering, the open notebooks' paths, and **the token, only when
+the caller may control it** (`web/jupyter.md` § 6); `POST /api/jupyter/start`
+· `POST /api/jupyter/stop` — registered **only under a supervisor**, because a
+button that cannot work is worse than an absent one;
 `GET /api/backends` → `{ ok, available, auto_name }`;
 `GET /vendor/plotly.min.js` (the Plotly bundle, 404 if absent).
 

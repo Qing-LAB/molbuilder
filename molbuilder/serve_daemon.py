@@ -37,7 +37,8 @@ from typing import List, Optional, Tuple
 # it restarts -- reach it.  Four one-line pass-throughs (`run_dir`, `pid_path`,
 # `log_path`, `stacks_path`) and a private `_mkdir_private` stood between this
 # module and those doors until 2026-09-13 (K-D3, I8's shape).
-from .config_dir import ensure_private_dir, runtime_dir, serve_log, serve_pidfile
+from .config_dir import (ensure_private_dir, jupyter_log, jupyter_pidfile,
+                          runtime_dir, serve_log, serve_pidfile)
 from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 
 
@@ -176,12 +177,18 @@ def read_pid(port: int) -> Optional[int]:
         return None
 
 
-def pid_state(pid: Optional[int]) -> str:
+def pid_state(pid: Optional[int], *, marker: bytes = b"serve") -> str:
     """``"ours"`` | ``"foreign"`` | ``"dead"`` — what the pid actually is.
 
     ``foreign`` covers both *someone else's process* and *a recycled pid
-    now running something that is not a molbuilder serve* — either way it
-    is nothing this module may signal.
+    now running something that is not ours* — either way it is nothing this
+    module may signal.
+
+    ``marker`` is the second word the command line must carry, beside
+    ``molbuilder``: ``serve`` for the supervisor, ``_shepherd`` for the
+    notebook server it holds (`molbuilder.jupyter`).  One verification, two
+    pidfiles -- a second copy of "alive, yours, actually ours" is how one of
+    them comes to be laxer than the other.
     """
     if pid is None:
         return "dead"
@@ -194,9 +201,61 @@ def pid_state(pid: Optional[int]) -> str:
         cmdline = (proc / "cmdline").read_bytes().replace(b"\0", b" ")
     except OSError:
         return "foreign"
-    if b"molbuilder" not in cmdline or b"serve" not in cmdline:
+    if b"molbuilder" not in cmdline or marker not in cmdline:
         return "foreign"
     return "ours"
+
+
+def stop_by_pidfile(path: Path, *, marker: bytes, grace_s: float = 5.0,
+                    ) -> Tuple[bool, str]:
+    """Verify, SIGTERM, wait, and take the group if it did not go.
+
+    The general form of what `signal_supervisor` does for the serve pidfile,
+    used for the notebook's (`jupyter.md` § 3.2).  The group matters there:
+    the process named by that file leads its own session, so its group is the
+    notebook server AND every `ipykernel` under it -- which are what hold
+    memory and GPUs, and what stopping the server alone routinely leaves.
+
+    A stale file is cleaned up and REPORTED; a recycled pid is never
+    signalled.
+    """
+    try:
+        pid = int(path.read_text().strip())
+    except (OSError, ValueError):
+        pid = None
+    state = pid_state(pid, marker=marker)
+    if state == "dead":
+        if pid is not None:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return False, f"stale pidfile: pid {pid} is gone (removed)"
+        return False, "not running"
+    if state == "foreign":
+        return False, (f"refusing: pid {pid} is not ours -- the pidfile is "
+                       f"stale and the pid was recycled")
+    os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline:
+        if pid_state(pid, marker=marker) != "ours":
+            break
+        time.sleep(0.1)
+    else:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        except OSError:
+            pass
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return True, f"stopped (pid {pid}, forced)"
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return True, f"stopped (pid {pid})"
 
 
 # --------------------------------------------------------------------- #
@@ -261,6 +320,7 @@ def _note(roll: "LogRoll", msg: str) -> None:
 
 def supervise(port: int, child_argv: List[str], *,
               log_max_bytes: int, log_keep: int,
+              jupyter_argv: Optional[List[str]] = None,
               max_restarts: Optional[int] = None) -> int:
     """The daemon's main loop: run the child, pump its output through the
     roll, apply :func:`child_exit_action` when it exits.
@@ -268,6 +328,24 @@ def supervise(port: int, child_argv: List[str], *,
     ``SIGHUP`` recycles the child (the `restart` verb); ``SIGTERM`` takes
     the child down and exits cleanly, removing the pidfile.
     ``max_restarts`` exists for bounded tests; production passes None.
+
+    **``SIGUSR1`` / ``SIGUSR2`` start and stop the NOTEBOOK server**
+    (`docs/web/jupyter.md` § 3.4).  It is parented HERE, one level above the
+    server child, and the reason is the reload: this loop respawns that child
+    on `RELOAD_EXIT_CODE`, so a Jupyter parented to it would be killed by
+    every unrelated code change -- destroying notebook state for a reason that
+    had nothing to do with notebooks.  Parented here it survives a reload and
+    goes when the daemon goes.
+
+    That is also why the web tab cannot start it directly: the tab runs IN the
+    server child.  It signals this process instead, and so does
+    ``molbuilder jupyter start``.
+
+    ``jupyter_argv`` is a list of strings, handed over exactly as
+    ``child_argv`` is -- **this module imports nothing of the application**,
+    which is the property that lets a child failing to import leave the parent
+    alive to be fixed.  ``None`` means this molbuilder was started without a
+    notebook command line, and the signals are then no-ops that say so.
     """
     roll = LogRoll(serve_log(port), max_bytes=log_max_bytes, keep=log_keep)
     # THE XDG DEFAULTS, NOT `molbuilder.json`'s `paths` block -- and there is
@@ -287,7 +365,97 @@ def supervise(port: int, child_argv: List[str], *,
     ensure_private_dir(runtime_dir(), tighten=True)
     serve_pidfile(port).write_text(f"{os.getpid()}\n")
 
-    state = {"child": None, "hup": False, "term": False}
+    # LAYER 3 (docs/web/jupyter.md § 3.3): a notebook server that outlived the
+    # molbuilder that started it -- a machine crash, or a survivor re-parented
+    # before the signal landed -- is stopped now, before this one runs.
+    #
+    # DONE HERE WITH THIS MODULE'S OWN HELPERS, not by calling
+    # `molbuilder.jupyter`: that module reaches the env door and the recipe
+    # registry, and this one imports nothing of the application -- which is
+    # the property that lets a child failing to import leave the supervisor
+    # alive.  All reconciliation needs is a pidfile path (`config_dir`, the
+    # stdlib-only bootstrap) and "verify, then signal", which is the job this
+    # module already does for its own pidfile.
+    if jupyter_argv is not None:
+        nb_pidfile = jupyter_pidfile(port)
+        if nb_pidfile.exists():
+            ok, said = stop_by_pidfile(nb_pidfile, marker=b"_shepherd")
+            _note(roll, f"notebook left from a previous run: {said}")
+
+    state: dict = {"child": None, "hup": False, "term": False,
+                   "jupyter": None}
+
+    def _start_jupyter() -> None:
+        """Launch the shepherd, in ITS OWN SESSION.
+
+        The new session makes the shepherd a process-group leader, so
+        everything the door launches below it -- the manager's ``run``,
+        ``jupyter-server``, every ``ipykernel`` -- lands in one group the
+        shepherd can take down by signalling itself.  It stays a CHILD of
+        this process, which is what `PR_SET_PDEATHSIG` keys on.
+        """
+        if jupyter_argv is None:
+            _note(roll, "notebook: not configured for this server")
+            return
+        live = state["jupyter"]
+        if live is not None and live.poll() is None:
+            _note(roll, f"notebook: already running (pid {live.pid})")
+            return
+        # ITS OUTPUT GOES TO ITS OWN LOG, opened here.  The shepherd's
+        # stderr is otherwise this process's, and this process is daemonised
+        # -- so a notebook that refuses to start (no env manager, env not
+        # installed) said why into /dev/null.  Measured on the dev server
+        # 2026-09-14: the supervisor logged "started", the shepherd exited,
+        # and there was nothing anywhere to say what was wrong.
+        #
+        # Opened per start and handed over, so the shepherd owns it after the
+        # fork and this loop does no pumping -- the log is the record, not a
+        # stream this process has to service.
+        try:
+            log = jupyter_log(port)
+            log.parent.mkdir(parents=True, exist_ok=True)
+            fh = open(log, "ab", buffering=0)
+        except OSError as exc:
+            _note(roll, f"notebook: could not open its log -- {exc}")
+            return
+        try:
+            state["jupyter"] = subprocess.Popen(
+                jupyter_argv, start_new_session=True,
+                stdout=fh, stderr=subprocess.STDOUT)
+            _note(roll, f"notebook: started (pid {state['jupyter'].pid}); "
+                        f"it logs to {log}")
+        except OSError as exc:
+            _note(roll, f"notebook: could not start -- {exc}")
+        finally:
+            fh.close()
+
+    def _stop_jupyter() -> None:
+        """SIGTERM the shepherd; its own handler takes the group with it."""
+        live = state["jupyter"]
+        if live is None or live.poll() is not None:
+            state["jupyter"] = None
+            return
+        try:
+            live.terminate()
+            live.wait(timeout=10)
+            _note(roll, f"notebook: stopped (pid {live.pid})")
+        except subprocess.TimeoutExpired:
+            # The shepherd did not go.  Its GROUP does -- and since it leads
+            # its own session, that is the notebook and every kernel.
+            try:
+                os.killpg(os.getpgid(live.pid), signal.SIGKILL)
+            except OSError:
+                pass
+            _note(roll, f"notebook: stopped (pid {live.pid}, forced)")
+        except OSError as exc:
+            _note(roll, f"notebook: could not stop -- {exc}")
+        state["jupyter"] = None
+
+    def _on_usr1(signum, frame):
+        _start_jupyter()
+
+    def _on_usr2(signum, frame):
+        _stop_jupyter()
 
     def _on_hup(signum, frame):
         state["hup"] = True
@@ -301,6 +469,8 @@ def supervise(port: int, child_argv: List[str], *,
 
     signal.signal(signal.SIGHUP, _on_hup)
     signal.signal(signal.SIGTERM, _on_term)
+    signal.signal(signal.SIGUSR1, _on_usr1)
+    signal.signal(signal.SIGUSR2, _on_usr2)
 
     env = dict(os.environ)
     env[SUPERVISED_ENV] = "1"
@@ -349,6 +519,11 @@ def supervise(port: int, child_argv: List[str], *,
             if max_restarts is not None and restarts > max_restarts:
                 return code
     finally:
+        # THE NOTEBOOK GOES WITH THE DAEMON.  Layers 1 and 2 would get it
+        # anyway (the shepherd's PDEATHSIG fires when this process exits, and
+        # takes its group), but asking politely first lets a kernel mid-cell
+        # unwind rather than being killed by the kernel.
+        _stop_jupyter()
         try:
             serve_pidfile(port).unlink()
         except OSError:

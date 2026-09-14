@@ -344,25 +344,33 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 # offered must actually fix what was just listed.
                 _flags = (("--include-version-fix",) if _has_version
                           else ())
+                # NEITHER VERB ALONE FINISHES A RECIPE WITH POST-INSTALL
+                # STEPS, so for one that has them doctor prints both.
+                #
+                # `repair` installs what the audit reported and does NOT
+                # re-run `extra_steps`; `install` runs the whole plan but
+                # SKIPS THE CREATE STEP on an env that already exists -- and
+                # conda packages enter a plan only through create, so it adds
+                # no missing package (measured 2026-09-14: `install` on a
+                # present env went straight from "conda create: SKIPPED" to
+                # verify, having installed nothing).
+                #
+                # This branch printed `install` alone until then, on the
+                # strength of a worked example -- the host env's `ipykernel`
+                # kernelspec -- that no longer exists.  The only recipe left
+                # with post-install steps is the GPU env's toolchain shims,
+                # and for THAT one a missing conda package was being answered
+                # with the one command that cannot install it.
+                click.echo("    next:    "
+                           + _fix_cmd("repair", rep.recipe.name, *_flags))
                 if rep.recipe.extra_steps:
-                    # `repair` CANNOT finish this env.  It closes what the
-                    # package audit reports -- `conda_step_for` /
-                    # `pip_step_for` -- and does not re-run `extra_steps`, so
-                    # for a recipe that has them it would install the package
-                    # and leave the step that makes it useful undone.  The
-                    # host env's `ipykernel` is the case: repaired, it is
-                    # present and there is still no notebook kernel, because
-                    # the kernelspec is written by an extra step.  `install`
-                    # runs the whole plan and skips what is already done.
-                    click.echo("    next:    "
+                    click.echo("    then:    "
                                + _fix_cmd("install", rep.recipe.name, "--yes"))
-                    click.echo("             (this recipe has post-install "
-                               "steps, which `repair` does not re-run)")
-                else:
-                    click.echo("    next:    "
-                               + _fix_cmd("repair", rep.recipe.name, *_flags))
+                    click.echo("             (repair installs the packages; "
+                               "this recipe also has post-install steps, "
+                               "which only `install` re-runs)")
 
-                if _has_version and not _has_missing and not rep.recipe.extra_steps:
+                if _has_version and not _has_missing:
                     click.echo("             (only version/build pins "
                                "differ; --include-version-fix is what "
                                "makes repair rebuild those)")

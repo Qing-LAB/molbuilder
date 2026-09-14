@@ -200,7 +200,7 @@ A **bare string is the ordinary case** and is normalised into a record. A record
 is written out only when the package needs something a name cannot say:
 
 ```python
-conda_packages=("python=3.12", "pip", "numpy"),
+conda_packages=(_PYTHON_SPEC, "pip", "numpy"),
 pip_packages=("pubchempy",
               PipPackage("cupy-cuda13x", extras="[ctk]", optional=True,
                          reason="GPU only; the env is a full CPU env without it")),
@@ -610,13 +610,21 @@ before the Python layer that honours the flag, and on a fresh machine — the on
 case where a bootstrap dry run is interesting — "print the plan; do not install"
 performed several GB of conda create. Planning genuinely requires the env, so
 `bootstrap --dry-run` now refuses and names the command that makes it work.
-`--gcc` is still the only flag the shim *consumes*; this one it reads and also
-passes on.
+The shim *consumes* two flags — `--gcc` and `--python` — and this one it reads
+and also passes on.
 
 **The flag reference is Python's.** The shim's help names only what Python
-cannot know — `--gcc`, which it consumes because `recipes.py` reads
-`MOLBUILDER_GCC` at import time, and the two flags it reads and forwards — and
-points at `<subcommand> --help` for the rest. It used to re-specify every flag
+cannot know — `--gcc` and `--python`, which it consumes because `recipes.py`
+reads `MOLBUILDER_GCC` and `MOLBUILDER_PYTHON` at import time, and the two
+flags it reads and forwards — and
+points at `<subcommand> --help` for the rest. **A consumed flag is parsed
+before anything reads it** — `--python` also reaches a bash array (the host
+env's package list, which bash must build before any python exists to read a
+recipe), and while the parse sat at the bottom of the file
+`bootstrap --python 3.13` built the host env on 3.12 and every other env on
+3.13. `--gcc` never had that exposure, because `MOLBUILDER_GCC` is read only
+Python-side. *(Found and fixed 2026-09-14.)*
+It also points at `<subcommand> --help` for the rest. It used to re-specify every flag
 and had drifted in four places, including two flags the Python layer *prints as
 the command to run*: a second copy of a surface nothing can keep in sync is
 worse than no copy.

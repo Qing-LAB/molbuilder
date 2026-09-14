@@ -377,6 +377,22 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         # ``packaging.version`` (not a host-env dep we want to lock in
         # for an audit pass).  The name-presence check still catches
         # missing packages, which is the common failure mode.
+        # THE INTERPRETER'S VERSION IS NOT AUDITABLE, and comparing it does
+        # real damage.  `python=<X.Y>` in a recipe is resolved from
+        # `MOLBUILDER_PYTHON` at import (`recipes._PYTHON_SPEC`), so the
+        # declared value is a property of THE SHELL DOCTOR IS RUN FROM while
+        # the installed value is a property of the env on disk.  Those are
+        # different things, and they disagree in BOTH directions -- the
+        # variable set here but not at install time, or set then and not now.
+        # Either way the audit would report `conda-version` on a healthy env,
+        # and doctor's remedy is `repair`, which would `conda install
+        # python=<other>` and change the interpreter under a populated env.
+        #
+        # A MISSING python is still reported (`conda-missing`, above), and an
+        # env whose python cannot run the stack still fails `verify`.  What is
+        # dropped is only the comparison that had no stable referent.
+        if name == "python":
+            continue
         if version_pat and version_pat != "*" and comparator == "=":
             # Conda treats ``=X.Y`` as ``starts with X.Y``.  fnmatch
             # would only match exact unless the user passed a glob,

@@ -107,9 +107,30 @@ def test_the_toolchain_is_pinned_to_a_MINOR_version(recipe):
             f"the rest of the family uses ({_GCC_VERSION}): {pkgs}")
 
 
-def test_pins_python_3_12(recipe):
-    """Matches the host env + every other recipe."""
-    assert "python=3.12" in recipe.conda_specs
+def test_pins_the_project_python(recipe):
+    """**Every env that declares a python declares the SAME one.**
+
+    That is the invariant, and it is what a single `MOLBUILDER_PYTHON` exists
+    to hold.  Asserting the literal ``python=3.12`` instead -- which this did
+    until 2026-09-14 -- pinned the DEFAULT, so the test failed on any machine
+    that legitimately overrode it, and it said nothing at all about whether
+    the five recipes agreed with each other.
+
+    `molbuilder-siesta` is excluded by the `if`, not forgotten: it declares no
+    python, so conda-forge's `siesta` build brings its own.  Pinning it would
+    constrain the one env whose purpose is installing anywhere.
+    """
+    from molbuilder.envs.recipes import BUILTIN_RECIPES, _PYTHON_SPEC
+    assert _PYTHON_SPEC in recipe.conda_specs, (
+        f"the GPU recipe does not declare the project python "
+        f"({_PYTHON_SPEC}): {recipe.conda_specs}")
+    declared = {r.name: [p for p in r.conda_specs if p.startswith("python=")]
+                for r in BUILTIN_RECIPES}
+    disagree = {n: v for n, v in declared.items()
+                if v and v != [_PYTHON_SPEC]}
+    assert not disagree, (
+        f"these recipes declare a different python from the project's "
+        f"{_PYTHON_SPEC}: {disagree}")
 
 
 def test_pins_cmake_geq_3_30(recipe):

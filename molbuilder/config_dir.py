@@ -55,6 +55,7 @@ __all__ = [
     # The files with no format to own them -- spelled here and nowhere else.
     "session_key", "google_client_secret", "secrets_dir",
     "serve_pidfile", "serve_log", "serve_stacks_log",
+    "jupyter_pidfile", "jupyter_log", "jupyter_runtime",
     "CONFIG_DIR_ENV", "DIRNAME",
     # Making one of those directories, privately.
     "PRIVATE_DIR_MODE", "PRIVATE_FILE_MODE", "ensure_private_dir",
@@ -267,6 +268,65 @@ def serve_log(port: int) -> Path:
 def serve_stacks_log(port: int) -> Path:
     """Thread stacks, appended on ``SIGUSR1`` and before any forced child kill."""
     return logs_dir() / f"serve-{port}.stacks.log"
+
+
+# --------------------------------------------------------------------- #
+#  The notebook server (docs/web/jupyter.md)                             #
+# --------------------------------------------------------------------- #
+#
+# KEYED BY THE SERVE PORT, not by Jupyter's own.  What a person stops is
+# "the notebook belonging to the molbuilder I am running", and they know
+# which molbuilder that is by the port they opened in a browser.  Jupyter's
+# port is derived from it (`jupyter.jupyter_port`), so keying these files by
+# the derived number would ask somebody to do the arithmetic before they
+# could find a log.
+
+def jupyter_pidfile(serve_port: int) -> Path:
+    """The SHEPHERD's pid -- the address `jupyter stop` acts on.
+
+    Beside the serve pidfile and for the same reason: it is an address, not a
+    secret, and it lives where a per-user runtime file belongs.
+    """
+    return runtime_dir() / f"jupyter-{serve_port}.pid"
+
+
+def jupyter_log(serve_port: int) -> Path:
+    """Everything the notebook server prints."""
+    return logs_dir() / f"jupyter-{serve_port}.log"
+
+
+def jupyter_runtime(serve_port: int) -> Path:
+    """Where the notebook is and the token that reaches it.
+
+    **A CREDENTIAL**: the token is what authenticates a browser to a live
+    kernel, which is arbitrary code execution as this account.  Written
+    through `persist.write_json(mode=PRIVATE_FILE_MODE)` and read by the tab's
+    own blueprint -- never by the browser directly.
+    """
+    return runtime_dir() / f"jupyter-{serve_port}.json"
+
+
+def jupyter_lab_home() -> Path:
+    """The settings home of the FRAMED JupyterLab -- molbuilder's, not yours.
+
+    Two directories under it, both handed to Lab on the command line:
+
+      * ``settings/overrides.json`` -- the DEFAULTS a framed Lab starts with
+        (`jupyter.md` 4), rewritten at every start.
+      * ``user-settings/`` -- where Lab saves what a person changes inside the
+        frame.
+
+    **Separate from ``~/.jupyter`` on purpose.**  Lab writes a user setting the
+    first time it resolves one, and a user setting BEATS an override -- so a
+    framed Lab sharing the person's own settings home adopted whatever their
+    standalone Lab had written and ignored every default here (measured
+    2026-09-14: the theme stayed light on the first reload and never changed
+    again).  Keeping the two apart also means molbuilder's defaults never
+    appear in the Lab they run themselves.
+
+    Not port-keyed: the defaults do not differ between servers.
+    """
+    return state_dir() / "jupyter-lab"
 
 
 def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,

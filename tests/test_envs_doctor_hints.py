@@ -21,13 +21,10 @@ from molbuilder.envs.doctor import (EnvReport, PackageAudit,
                                     PackageAuditIssue)
 from molbuilder.envs.recipes import BUILTIN_RECIPES
 
-# CHOSEN BY THE PROPERTY UNDER TEST, not by index.  These tests are about
-# the REPAIR hint, and `doctor` offers `repair` only for a recipe with no
-# post-install steps -- `repair` does not re-run `extra_steps`, so for a
-# recipe that has them it would install the package and leave the step that
-# makes it useful undone.  `BUILTIN_RECIPES[0]` was the host env, which grew
-# an extra step on 2026-09-14 and quietly moved these tests onto the other
-# branch.
+# CHOSEN BY THE PROPERTY UNDER TEST, not by index.  These tests split on
+# whether a recipe has post-install steps, because that is what decides how
+# many commands `doctor` prints -- so the fixtures ask for the property
+# rather than trusting a position in the registry to keep it.
 RECIPE = next(r for r in BUILTIN_RECIPES if not r.extra_steps)
 NAME = RECIPE.name
 
@@ -78,23 +75,31 @@ def test_required_missing_packages_carry_the_repair_command(capsys):
     assert "next:    " + _fix_cmd("repair", NAME) in out
 
 
-def test_a_recipe_with_post_install_steps_is_sent_to_install_not_repair(
-        capsys):
-    """`repair` closes what the package AUDIT reports and nothing else.  For a
-    recipe whose plan has post-install steps, that leaves the env half-done --
-    the host env's `ipykernel` is the case: repaired, the package is present
-    and there is still no notebook kernel, because the kernelspec is written
-    by an extra step.  So the hint names `install`, which runs the whole plan
-    and skips what is already done, and says why.
+def test_a_recipe_with_post_install_steps_needs_both_verbs(capsys):
+    """**Neither verb alone finishes it**, so doctor names both.
+
+    `repair` installs what the audit reported and does not re-run
+    `extra_steps`.  `install` runs the whole plan but SKIPS THE CREATE STEP on
+    an env that already exists -- and conda packages enter a plan only through
+    create, so it adds no missing package.
+
+    This printed `install` ALONE until 2026-09-14, justified by a worked
+    example (the host env's `ipykernel` kernelspec) that no longer exists.
+    The only recipe with post-install steps left is the GPU env, and a missing
+    conda package there was being answered with the one command that provably
+    cannot install it -- measured the same day: `install` on a present env goes
+    from "conda create: SKIPPED" straight to verify, having installed nothing.
     """
     rep = _report(recipe=RECIPE_WITH_STEPS,
                   effective_name=RECIPE_WITH_STEPS.name,
                   package_audit=_audit(_issue("conda-missing")))
     code, out = _render(capsys, rep)
     assert code == 1
-    assert _fix_cmd("install", RECIPE_WITH_STEPS.name, "--yes") in out
+    # The one that installs the missing package comes FIRST.
+    assert "next:    " + _fix_cmd("repair", RECIPE_WITH_STEPS.name) in out
+    assert "then:    " + _fix_cmd(
+        "install", RECIPE_WITH_STEPS.name, "--yes") in out
     assert "post-install steps" in out
-    assert _fix_cmd("repair", RECIPE_WITH_STEPS.name) not in out
 
 
 def test_a_version_only_failure_hints_the_flag_that_actually_fixes_it(

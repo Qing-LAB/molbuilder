@@ -18,13 +18,19 @@
 #     3. Forward "$@" verbatim to `python -m molbuilder envs ...`
 #        inside the host env.
 #
-#   ONE flag breaks rule 3, and only one: ``--gcc <X.Y>``.  It is
-#   consumed here and re-exported as MOLBUILDER_GCC instead of being
-#   forwarded, because recipes.py reads that variable at IMPORT time
-#   into the module-level ``_GCC_VERSION`` -- a Python-side option
-#   would arrive after the value it must change was already frozen.
+#   TWO flags break rule 3, and only two: ``--gcc <X.Y>`` and
+#   ``--python <X.Y>``.  Both are consumed here and re-exported
+#   (MOLBUILDER_GCC / MOLBUILDER_PYTHON) instead of being forwarded,
+#   because recipes.py reads those variables at IMPORT time into
+#   module-level recipe data -- a Python-side option would arrive
+#   after the value it must change was already frozen.
 #   Any future shim-consumed flag needs a forcing reason of that kind;
 #   without one it belongs in Python with everything else.
+#
+#   AND THEY ARE PARSED BEFORE ANYTHING READS THEM.  `--python` also
+#   reaches a bash array here (the host env's package list), which
+#   `--gcc` never did, so the parse must happen before that array is
+#   built.  It is -- see "THE SHIM'S OWN FLAGS ARE PARSED FIRST".
 #
 #   Everything else -- recipe-name validation, --rebuild component
 #   lookup, --check / --dry-run semantics, the elsi→siesta alias,
@@ -108,6 +114,153 @@ AUTO_YES=0
 # this script owns happens BEFORE the Python layer that honours it.
 MB_DRY_RUN=0
 ORIGINAL_ARGS=("$@")
+
+# ---- THE SHIM'S OWN FLAGS ARE PARSED FIRST -------------------------------
+#
+# Moved here from the bottom of the file on 2026-09-14, and the move is the
+# fix for a real bug rather than tidying.  `HOST_CONDA_PACKAGES` below is a
+# TOP-LEVEL array assignment, so its `python=${MOLBUILDER_PYTHON:-3.12}`
+# entry expands the moment control reaches it.  With this block still ~400
+# lines further down, `bootstrap --python 3.13` built the HOST env on 3.12
+# and every other env on 3.13 -- a split, silently, because only the
+# exported-variable form was in the environment early enough.
+#
+# `--gcc` never had the problem: MOLBUILDER_GCC is read Python-side only, so
+# its export order never mattered.  `python=` is the first of these values
+# to cross into a bash array, and it crossed at the wrong point in the file.
+#
+# The rule this encodes: consume your own flags before defining anything
+# that reads them.
+# ---- --gcc <X.Y>: pin the source-build toolchain ------------------------
+#
+# Intercepted HERE, in the shell, and EXPORTED rather than forwarded to
+# the Python layer.  recipes.py reads MOLBUILDER_GCC at IMPORT time into
+# the module-level ``_GCC_VERSION``; a Python-side flag would arrive
+# after the value it needs to change was already frozen.
+#
+# Stripped from "$@" before the subcommand dispatch below, so
+# ``--gcc 14.3 install siesta-gpu`` and ``install siesta-gpu --gcc=14.3``
+# both work -- the dispatch must see the SUBCOMMAND as $1.
+# ORIGINAL_ARGS was captured at the top of the file and still holds the
+# flag, so the re-exec hint the conda probe prints stays runnable.
+#
+# Runs BEFORE the no-subcommand check so a bare ``--gcc 14.3`` (no
+# subcommand) still lands on the usage message rather than an unbound
+# $1 under ``set -u``.
+# Shape-check the value rather than passing it straight through: a typo
+# like ``--gcc 14,3`` or ``--gcc gcc14`` would otherwise reach the conda
+# solver as ``gcc_linux-64=14,3`` and fail minutes later, after the host
+# env work, with a message about a package spec rather than about the
+# flag the user mistyped.  Deliberately narrow: the flag is the guided
+# path, MOLBUILDER_GCC is the expert one and skips this check.
+#
+# Note what the env var can and CANNOT do.  recipes.py renders
+# ``gcc_linux-64={_GCC_VERSION}`` -- it always supplies the ``=`` -- so
+# a wildcard (``14.*``) works but a range (``>=13,<15``) becomes the
+# malformed ``gcc_linux-64==>=13,<15``.  The message below says only
+# what is true; do not widen it to "any conda spec".
+_mb_set_gcc() {
+    if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        echo "[molbuilder] --gcc wants a version like 14.3 (got '$1')." >&2
+        echo "[molbuilder] Need a wildcard? export MOLBUILDER_GCC='14.*' instead." >&2
+        exit 2
+    fi
+    export MOLBUILDER_GCC="$1"
+}
+
+# --python <X.Y>: the interpreter every env is built on.
+#
+# Consumed here for the same forcing reason as --gcc: recipes.py reads
+# MOLBUILDER_PYTHON at IMPORT time into module-level recipe data, so a
+# Python-side option would arrive after the value it must change was frozen.
+#
+# THE FLOOR IS CHECKED HERE BECAUSE HERE IS WHERE IT IS CHEAP.  pyproject
+# declares ``requires-python = ">=3.11"`` and `template.py` imports `tomllib`
+# unconditionally, so 3.10 produces an env that builds for minutes and then
+# cannot `import molbuilder` -- from inside the very env this script then
+# dispatches into.  A shape check costs nothing and fails in the first second.
+# The upper end is not guessed at: whether conda-forge has rdkit/openbabel/
+# sisl for a given python is the solver's question, and it answers it.
+_mb_set_python() {
+    # NO LEADING ZEROS.  `[0-9]+` admitted `3.09`, and bash then read `09` as
+    # an invalid octal literal in the `(( ))` below: the test errored to
+    # stderr, the `if` was simply not taken (and `set -e` does not fire inside
+    # an `if` condition), so a version BELOW the floor sailed through to the
+    # solver.  Measured 2026-09-14.
+    if ! [[ "$1" =~ ^3\.(0|[1-9][0-9]*)$ ]]; then
+        echo "[molbuilder] --python wants a minor version like 3.12 (got '$1')." >&2
+        echo "[molbuilder] A bare major ('3') is not a pin -- conda reads it as 3.*." >&2
+        exit 2
+    fi
+    local _minor="${1#3.}"
+    if (( _minor < 11 )); then
+        echo "[molbuilder] --python $1 is below molbuilder's floor." >&2
+        echo "[molbuilder] pyproject.toml declares requires-python >= 3.11, and" >&2
+        echo "[molbuilder] molbuilder imports tomllib unconditionally -- the env" >&2
+        echo "[molbuilder] would build and then fail at 'import molbuilder'." >&2
+        exit 2
+    fi
+    export MOLBUILDER_PYTHON="$1"
+}
+
+_MB_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --gcc)
+            if [[ -z "${2:-}" || "${2}" == -* ]]; then
+                echo "[molbuilder] --gcc needs a version, e.g. --gcc 14.3" >&2
+                exit 2
+            fi
+            _mb_set_gcc "$2"
+            shift 2
+            ;;
+        --gcc=*)
+            _mb_set_gcc "${1#--gcc=}"
+            shift
+            ;;
+        --python)
+            if [[ -z "${2:-}" || "${2}" == -* ]]; then
+                echo "[molbuilder] --python needs a version, e.g. --python 3.12" >&2
+                exit 2
+            fi
+            _mb_set_python "$2"
+            shift 2
+            ;;
+        --python=*)
+            _mb_set_python "${1#--python=}"
+            shift
+            ;;
+        *)
+            _MB_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+# ``${a[@]+"${a[@]}"}`` -- the empty-array guard.  A bare
+# "${_MB_ARGS[@]}" on an empty array is an unbound-variable error under
+# ``set -u`` on bash < 4.4, which is still what some HPC login nodes ship.
+set -- ${_MB_ARGS[@]+"${_MB_ARGS[@]}"}
+# Announce only an OVERRIDE.  The recipe's own default is already a pin
+# (14.3), so silence here means "the vetted default"; a line here means
+# the user or their environment moved off it, which is worth seeing --
+# including when MOLBUILDER_GCC came from the environment rather than
+# the flag, since that is the case nobody remembers setting.
+# The VALUE is not compared against a hardcoded default here: the recipe
+# derives it per SIESTA tag (`_GCC_PIN_BY_SIESTA_REF`), so a literal in bash
+# would go stale the day that table gains a row -- and the old line printed
+# "toolchain override: ...=14.3 (recipe default is 14.3)" for the very
+# invocation this file documents.  Say only what bash can know: a value was
+# supplied from outside.  Python prints what it resolved.
+if [[ -n "${MOLBUILDER_GCC:-}" ]]; then
+    echo "[molbuilder] toolchain pinned from the environment:" \
+         "gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" >&2
+fi
+if [[ -n "${MOLBUILDER_PYTHON:-}" ]]; then
+    echo "[molbuilder] python pinned from the environment:" \
+         "python=${MOLBUILDER_PYTHON} (every env but molbuilder-siesta," \
+         "which declares none)" >&2
+fi
+
 
 # ---- usage ---------------------------------------------------------------
 
@@ -217,14 +370,28 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   them; --projects PATH declares the tree.  Run
                   automatically at the end of bootstrap, never
                   overwrites.  See docs/ops/installation.md section 2.1
-  install <recipe>   install (or repair) one recipe
-  repair <recipe>    install packages doctor's audit reported missing
+  install <recipe>   create the env and run its whole plan.  On an env
+                     that ALREADY EXISTS it skips the create step -- and
+                     conda packages enter only there, so it adds no
+                     missing package.  That is `repair`'s job, below.
+  repair <recipe>    install packages doctor's audit reported missing --
+                     the verb for an env that exists and is short of
+                     something
   validate <recipe>  run post-install correctness probes
   clean <recipe>     delete build-only dirs to free disk; keeps the
                      installed binaries, so SIESTA still runs after
   bootstrap       install every conda-only recipe + run doctor
 
-THE ONE FLAG THIS SCRIPT OWNS (Python's --help does not list it):
+THE TWO FLAGS THIS SCRIPT OWNS (Python's --help does not list them):
+
+  --python <X.Y>  the python every env is built on, e.g. --python 3.12
+                  (default 3.12).  Consumed here, never forwarded, for the
+                  same reason as --gcc: recipes.py reads MOLBUILDER_PYTHON
+                  at IMPORT time.  Refuses a bare major (not a pin) and
+                  anything below 3.11 (molbuilder's real floor), so a typo
+                  costs a second rather than a multi-GB solve.
+                  Only affects a FRESH solve -- pair with --clean to move
+                  an env that already exists.
 
   --gcc <X.Y>     pin the source-build toolchain, e.g. --gcc 14.3.
                   Equivalent to exporting MOLBUILDER_GCC, except that
@@ -313,6 +480,16 @@ Environment variables:
                                  produce unrunnable binaries.
                                  Pair with --clean to change an env that
                                  already exists.
+  MOLBUILDER_PYTHON              the python EVERY env is built on (default
+                                 3.12).  A minor version -- conda reads a bare
+                                 "3" as "3.*", which is not a pin.  Floor is
+                                 3.11 (pyproject's requires-python, and
+                                 molbuilder imports tomllib unconditionally);
+                                 the --python flag refuses below it before the
+                                 solver runs.  molbuilder-siesta is unaffected
+                                 -- it declares no python, so conda-forge's
+                                 siesta build brings its own.  Equivalent to
+                                 the --python <X.Y> flag.
   MOLBUILDER_GCC                 source-build recipes: which
                                  gcc/gxx/gfortran_linux-64 to install.
                                  Default 14.3 -- a MINOR-version pin,
@@ -548,14 +725,17 @@ EOF
 # isn't available until the host env exists.
 
 HOST_CONDA_PACKAGES=(
-    python=3.12 pip
+    # THE SAME VARIABLE recipes.py reads, resolved here because this array is
+    # what creates the host env BEFORE any python exists to read a recipe.
+    # The drift-guard test expands this default the same way, so the two
+    # halves agree whether or not the variable is set.
+    "python=${MOLBUILDER_PYTHON:-3.12}" pip
     numpy ase sisl
     rdkit openbabel biopython
     flask click plotly
     authlib python-cas
     pytest pyflakes
     "psutil>=5.9"
-    ipykernel
     numactl
     # run-checkpoints subsystem (docs/execution/running-a-job.md § 6):
     # git provided by every molbuilder env so the wrapper bootstrap
@@ -868,84 +1048,6 @@ dispatch() {
 # The only auto-creation point is bootstrap.  Every other subcommand
 # expects the host env to already exist -- if it doesn't, the user's
 # next step is bootstrap, not "copy this conda block."
-
-# ---- --gcc <X.Y>: pin the source-build toolchain ------------------------
-#
-# Intercepted HERE, in the shell, and EXPORTED rather than forwarded to
-# the Python layer.  recipes.py reads MOLBUILDER_GCC at IMPORT time into
-# the module-level ``_GCC_VERSION``; a Python-side flag would arrive
-# after the value it needs to change was already frozen.
-#
-# Stripped from "$@" before the subcommand dispatch below, so
-# ``--gcc 14.3 install siesta-gpu`` and ``install siesta-gpu --gcc=14.3``
-# both work -- the dispatch must see the SUBCOMMAND as $1.
-# ORIGINAL_ARGS was captured at the top of the file and still holds the
-# flag, so the re-exec hint the conda probe prints stays runnable.
-#
-# Runs BEFORE the no-subcommand check so a bare ``--gcc 14.3`` (no
-# subcommand) still lands on the usage message rather than an unbound
-# $1 under ``set -u``.
-# Shape-check the value rather than passing it straight through: a typo
-# like ``--gcc 14,3`` or ``--gcc gcc14`` would otherwise reach the conda
-# solver as ``gcc_linux-64=14,3`` and fail minutes later, after the host
-# env work, with a message about a package spec rather than about the
-# flag the user mistyped.  Deliberately narrow: the flag is the guided
-# path, MOLBUILDER_GCC is the expert one and skips this check.
-#
-# Note what the env var can and CANNOT do.  recipes.py renders
-# ``gcc_linux-64={_GCC_VERSION}`` -- it always supplies the ``=`` -- so
-# a wildcard (``14.*``) works but a range (``>=13,<15``) becomes the
-# malformed ``gcc_linux-64==>=13,<15``.  The message below says only
-# what is true; do not widen it to "any conda spec".
-_mb_set_gcc() {
-    if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
-        echo "[molbuilder] --gcc wants a version like 14.3 (got '$1')." >&2
-        echo "[molbuilder] Need a wildcard? export MOLBUILDER_GCC='14.*' instead." >&2
-        exit 2
-    fi
-    export MOLBUILDER_GCC="$1"
-}
-
-_MB_ARGS=()
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --gcc)
-            if [[ -z "${2:-}" || "${2}" == -* ]]; then
-                echo "[molbuilder] --gcc needs a version, e.g. --gcc 14.3" >&2
-                exit 2
-            fi
-            _mb_set_gcc "$2"
-            shift 2
-            ;;
-        --gcc=*)
-            _mb_set_gcc "${1#--gcc=}"
-            shift
-            ;;
-        *)
-            _MB_ARGS+=("$1")
-            shift
-            ;;
-    esac
-done
-# ``${a[@]+"${a[@]}"}`` -- the empty-array guard.  A bare
-# "${_MB_ARGS[@]}" on an empty array is an unbound-variable error under
-# ``set -u`` on bash < 4.4, which is still what some HPC login nodes ship.
-set -- ${_MB_ARGS[@]+"${_MB_ARGS[@]}"}
-# Announce only an OVERRIDE.  The recipe's own default is already a pin
-# (14.3), so silence here means "the vetted default"; a line here means
-# the user or their environment moved off it, which is worth seeing --
-# including when MOLBUILDER_GCC came from the environment rather than
-# the flag, since that is the case nobody remembers setting.
-# The VALUE is not compared against a hardcoded default here: the recipe
-# derives it per SIESTA tag (`_GCC_PIN_BY_SIESTA_REF`), so a literal in bash
-# would go stale the day that table gains a row -- and the old line printed
-# "toolchain override: ...=14.3 (recipe default is 14.3)" for the very
-# invocation this file documents.  Say only what bash can know: a value was
-# supplied from outside.  Python prints what it resolved.
-if [[ -n "${MOLBUILDER_GCC:-}" ]]; then
-    echo "[molbuilder] toolchain pinned from the environment:" \
-         "gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" >&2
-fi
 
 if [[ $# -eq 0 ]]; then
     cat <<'EOF' >&2

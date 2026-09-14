@@ -183,6 +183,15 @@ _L1_MODULES = {
 }
 
 _L2_MODULES = {
+    "jupyter",           # the notebook server's lifecycle (docs/web/jupyter.md).
+                         # L2, NOT L1 beside `serve_daemon`: it enters an env
+                         # through the door and reads the recipe registry, so
+                         # it imports the application -- which is exactly what
+                         # the supervisor may not do.  The supervisor holds
+                         # the notebook's argv as a list of strings and
+                         # reconciles a stale pidfile with its OWN helpers
+                         # (`stop_by_pidfile`), so nothing here is imported
+                         # from L1.
     "peptide", "nucleic", "smiles", "pubchem",
     "modify", "validation",
     "workingcopy_structure",   # structure+sidecar codec for the workingcopy

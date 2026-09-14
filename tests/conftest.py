@@ -375,6 +375,10 @@ def _env_fingerprint():
     of what is installed) and of ``site-packages/`` (pip's).  An install, an
     uninstall or a removal changes one of those; reading a package does not.
     No hashing -- these directories hold tens of thousands of files.
+
+    Returns ``None`` -- **not** an empty dict -- when the registry could not be
+    read at all, so the caller can tell "cannot tell" from "everything went
+    away".
     """
     import molbuilder.diagnostics as _diag
     # The bound snapshot when a test has one (that is what makes this
@@ -382,7 +386,7 @@ def _env_fingerprint():
     # which is the case at both ends of a session, where it matters.
     caps = _diag.get_capabilities() if _diag._snapshot else _diag.detect()
     if not caps.conda_binary:
-        return {}
+        return None                            # no manager: cannot tell
     # `caps.conda_envs` IS the {name: prefix} map since 2026-09-12, so this
     # reads the registry once rather than twice -- the manager is slow (1.2 s
     # per call on a warm workstation) and this runs at both ends of a session.
@@ -401,7 +405,15 @@ def _env_fingerprint():
             except OSError:
                 sig.append((sub, "unreadable"))
         out[name] = tuple(sig)
-    return out
+    # AN EMPTY REGISTRY IS "COULD NOT READ IT", NOT "EVERY ENV VANISHED".
+    # `conda env list --json` gives a 10 s timeout ten seconds to answer and
+    # returns `{}` on any failure (`diagnostics._conda_envs`), so one slow
+    # read -- a cold conda on a loaded box -- used to make the two ends of a
+    # session disagree about EVERY name, and this canary then accused the
+    # suite of destroying all of them.  Measured 2026-09-14, on a run where
+    # nothing touched an env.  A test that really removed one leaves the
+    # other names in place, so distinguishing the two costs nothing.
+    return out or None
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -425,6 +437,28 @@ def the_suite_leaves_your_environments_alone():
     before = _env_fingerprint()
     yield
     after = _env_fingerprint()
+    if before is None or after is None:
+        # One end could not read the registry (no manager, or the read timed
+        # out).  Nothing is provable either way, and a false alarm here reads
+        # as "the suite destroyed your environments" -- the most expensive
+        # wrong thing this file could say.
+        #
+        # BUT SAY THAT IT IS OFF.  Silence here is indistinguishable from
+        # "the canary ran and found nothing", and the likelier end to fail is
+        # the FIRST one -- a cold conda at session start -- which disarms it
+        # for the whole run.  A warning keeps "no alarm" and "no canary"
+        # different things.  It also means a total wipe (every env gone, so
+        # `after` is empty) is reported as unprovable rather than passing
+        # quietly.
+        import warnings
+        warnings.warn(
+            "env canary DISARMED: the conda registry could not be read at "
+            + ("session start" if before is None else "session end")
+            + " (no manager, or `conda env list --json` timed out).  This "
+            "run proves nothing about whether an env changed.",
+            stacklevel=1,
+        )
+        return
     if before != after:
         changed = sorted(set(before) ^ set(after)) or sorted(
             k for k in before if before.get(k) != after.get(k))

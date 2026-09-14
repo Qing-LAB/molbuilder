@@ -23,23 +23,29 @@ to a backend env whenever a job needs it.
 
 ```mermaid
 flowchart TD
-  HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python 3.12 · ase · rdkit · openbabel · flask · sisl"]
+  HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python · ase · rdkit · openbabel · flask · sisl"]
   HOST -->|"conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)"]
   HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · (gpu4pyscf)"]
   HOST -->|"conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
   HOST -->|"conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
-  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab only — no science stack"]
-  NB -.->|"kernelspec on JUPYTER_PATH"| HOST
-  NB -.->|"kernelspec on JUPYTER_PATH"| PY
+  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib<br/>(optional)"]
 ```
 
-The dotted edges are the notebook tab, and two of them run the other way on
-purpose: `molbuilder-jupyternb` holds **JupyterLab and nothing else**, and the
-kernels you pick in a notebook are the *other* envs — each registers its own
-kernelspec into its own prefix, and the notebook server is pointed at them. A
-second copy of ase/rdkit/pyscf inside the notebook env would be a second thing
-to keep in step, and the day it drifted a notebook would stop reproducing what
-a calculation does. See [`web/jupyter.md`](?doc=web/jupyter.md) § 7.
+The dotted edge is the notebook tab, and it is the only one: the notebook env
+is **self-contained**. It holds the JupyterLab server, the `ipykernel` a cell
+runs on, and the analysis stack — Jupyter is installed, activated and runs
+there, and **no other env carries notebook tooling**. It deliberately holds no
+science backend: a second copy of ase/rdkit/pyscf would be a second thing to
+keep in step, and the day it drifted a notebook would stop reproducing what a
+calculation does. It is an env for *reading* what a calculation wrote.
+
+*(Until 2026-09-14 this diagram had two edges running the other way —
+`molbuilder` and `molbuilder-pySCF` each registering a kernelspec — and the
+env held "JupyterLab and nothing else". That design was withdrawn: to be a
+kernel an env must carry `ipykernel`, which drags `debugpy`, `ipython`,
+`pyzmq`, `tornado` and seven more into an env whose only job is reproducible
+calculation. **A job env stays a job env.**)* See
+[`web/jupyter.md`](?doc=web/jupyter.md) § 7.
 
 Each environment is defined by a **recipe** — a frozen data record in
 `molbuilder/envs/recipes.py` listing its channels, conda packages, pip packages,
@@ -311,7 +317,7 @@ Reference:
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
-| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab` — **the server only**. Kernels come from the host and pySCF envs, which carry `ipykernel` and register a kernelspec into their own prefix. **Opt-in**, like the GPU env: `bootstrap` does not install it |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel` and the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It deliberately holds no science backend (no ase / sisl / rdkit / pyscf): those would be a second copy to keep in step, and this is an env for *reading* what a calculation wrote, not for running one. **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **pyberny** | `molbuilder-pySCF` | **manual / optional** — unmaintained; the conda recipe omits it |
 | **X3DNA (3DNA)** | host-external | **manual** — restricted licence; you extract it and export `X3DNA` + `PATH` yourself |
@@ -587,6 +593,42 @@ ever unavailable:
 bash scripts/install-env.sh install molbuilder-siesta-gpu --gcc 13 --yes
 MOLBUILDER_GCC=13 bash scripts/install-env.sh install molbuilder-siesta-gpu   # equivalent
 ```
+
+### Choosing the Python every env is built on
+
+One value, `MOLBUILDER_PYTHON`, default **3.12**. It sets the `python=` pin in
+every recipe that declares one:
+
+```bash
+bash scripts/install-env.sh bootstrap --python 3.13 --yes
+MOLBUILDER_PYTHON=3.13 bash scripts/install-env.sh bootstrap --yes   # equivalent
+```
+
+Four things are worth knowing before you move it.
+
+* **It is read when the recipes are imported**, like `MOLBUILDER_GCC`, so the
+  shim consumes `--python` rather than forwarding it. A long-running
+  `molbuilder serve` keeps the value it started with until it is restarted.
+* **A minor version, not a major.** conda reads a bare `3` as `3.*`, so two
+  machines installing weeks apart would resolve different interpreters. The
+  flag refuses anything but `3.<minor>`.
+* **The floor is 3.11 and it is real** — `pyproject.toml` declares it and
+  molbuilder imports `tomllib` unconditionally. The flag refuses below it in
+  the first second rather than after a multi-gigabyte solve. The ceiling is
+  not guessed at: whether conda-forge has rdkit, openbabel and sisl for a
+  given python is the solver's question and it answers it.
+* **`molbuilder-siesta` is unaffected.** It declares no python at all, so
+  conda-forge's `siesta` build brings its own. That env exists to be
+  installable anywhere, and a pin would constrain the one solve whose purpose
+  is not to be constrained.
+
+**It does not appear in a generated job script.** Decks launch with a bare
+`python` after the env is activated, and the run monitor probes
+`command -v python3 || command -v python`, so a script picks up whatever
+interpreter its env has. The variable reaches a job by deciding what the env
+contains, never by being written into a script — and it does **not** raise the
+floor the monitor must parse on a compute node, which is the target env's
+python and may be far older.
 
 **CUDA target architecture.** The GPU kernels are compiled for the compute
 capability `nvidia-smi` reports on the machine you install from; with no GPU

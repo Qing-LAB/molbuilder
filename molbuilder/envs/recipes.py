@@ -162,6 +162,33 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
                             #   MOLBUILDER_SIESTA_TAG=<sha>
                             "5.4.2")
 
+#: THE PYTHON EVERY ENV IS BUILT ON.  One value, five recipes.
+#:
+#: Read at IMPORT time, like `MOLBUILDER_GCC` and for the same forcing
+#: reason: the recipes are module-level data, so a Python-side flag would
+#: arrive after the value it must change was already frozen.  `--python <X.Y>`
+#: on the shim sets it; so does exporting the variable.
+#:
+#: **A MINOR PIN, not a major one.**  conda reads a bare ``3`` as ``3.*``, so
+#: two machines installing weeks apart would legitimately resolve different
+#: interpreters -- the same trap the gcc pin documents at length above.
+#:
+#: THE FLOOR IS REAL AND IS NOT ENFORCED HERE.  `pyproject.toml` says
+#: ``requires-python = ">=3.11"``, and `template.py` imports `tomllib`
+#: unconditionally, so anything below 3.11 builds a multi-gigabyte env and
+#: then fails at `import molbuilder` from inside it.  The shim shape-checks
+#: the value before the solver ever sees it (`_mb_set_python`), which is the
+#: only place that check can be cheap.  Setting the variable directly is the
+#: expert path and skips it, exactly as `MOLBUILDER_GCC` does.
+#:
+#: `molbuilder-siesta` is deliberately NOT in the five: it declares no python
+#: at all, so conda-forge's `siesta` build brings whatever it brings.  That
+#: env exists to be installable anywhere, and a pin would newly constrain the
+#: one solve whose whole purpose is not to be constrained.
+_PYTHON_VERSION = _env_default("MOLBUILDER_PYTHON", "3.12")
+_PYTHON_SPEC = f"python={_PYTHON_VERSION}"
+
+
 # Conda-package version pins.  Empty default = unpinned (conda's SAT
 # solver picks the latest compatible).  Override by setting the
 # variable to a conda spec fragment (e.g. ``=14`` or ``>=3.30``).
@@ -929,8 +956,14 @@ _HOST = Recipe(
                 "chemistry, and the web UI.",
     channels=("conda-forge",),
     conda_packages=(
-        "python=3.12", "pip",
+        _PYTHON_SPEC, "pip",
         "numpy", "ase", "sisl",
+        # NOTHING NOTEBOOK-RELATED BELONGS HERE.  On 2026-09-14 this list
+        # briefly gained `scipy`, `pandas`, `matplotlib` and `ipykernel`,
+        # added while this env was going to be the notebook KERNEL.  It is
+        # not: `molbuilder-jupyternb` holds the server, the kernel and the
+        # analysis stack, and no other env carries notebook tooling.  All
+        # four are gone and this list is what it was before.
         "rdkit", "openbabel", "biopython",
         "flask", "click", "plotly",
         "authlib", "python-cas",
@@ -941,12 +974,6 @@ _HOST = Recipe(
         # ModuleNotFoundError.  Declared in pyproject.toml's runtime
         # deps; mirrored here so the conda-create path also picks it up.
         "psutil>=5.9",
-        # ipykernel: so this env can offer itself as a NOTEBOOK KERNEL.  The
-        # notebook server lives in `molbuilder-jupyternb` and holds no
-        # science stack; a notebook that can `import molbuilder` is running
-        # on THIS env's python.  See `_JUPYTER` for why the kernel lives here
-        # rather than the stack living there.
-        "ipykernel",
         # NUMA control tool.  The CONSUMER is the generated GPU wrapper:
         # `runwrap._gpu_runtime_defaults_block` pins ranks to the
         # GPU-proximate socket only when `numactl` is on PATH, and
@@ -998,17 +1025,11 @@ _HOST = Recipe(
         PipPackage("pubchempy", optional=True,
                    reason="UI only -- PubChem name lookup in the Molbuilder tab"),
     ),
-    # THIS ENV AS A NOTEBOOK KERNEL (`docs/web/jupyter.md` § 7).
-    # `--sys-prefix` writes the kernelspec into THIS env's own
-    # `share/jupyter/kernels/`, so nothing lands in `~/.local/share/jupyter`
-    # and `conda env remove` takes the kernel with the env.  The notebook
-    # server finds it because `molbuilder.jupyter` puts this prefix on
-    # `JUPYTER_PATH`; no env ever writes into another.
-    extra_steps=((
-        "python", "-m", "ipykernel", "install", "--sys-prefix",
-        "--name", "molbuilder-host",
-        "--display-name", "molbuilder (host env)",
-    ),),
+    # NOT A NOTEBOOK KERNEL.  `ipykernel` and a kernelspec stood here from
+    # 2026-09-13 (5c780f18) until 2026-09-14, so a notebook could run on this
+    # env's python.  The user's design is the other one: the notebook env is
+    # SELF-CONTAINED and no other env carries notebook tooling.  See
+    # `_JUPYTER`.
     verify_argv=("python", "-c",
                  "import ase, sisl, rdkit, flask, click, plotly; "
                  "print('host env OK')"),
@@ -1023,12 +1044,8 @@ _PYSCF = Recipe(
                 "geomeTRIC geomopt; gpu4pyscf available when use_gpu=True.",
     channels=("conda-forge",),
     conda_packages=(
-        "python=3.12", "pip",
+        _PYTHON_SPEC, "pip",
         "pyscf", "pyscf-dispersion", "geometric",
-        # ipykernel: this env as a NOTEBOOK KERNEL.  A notebook exploring a
-        # spectrum or a geometry optimisation wants THIS python -- the one
-        # the deck runs on -- not a second pyscf beside it.  See `_JUPYTER`.
-        "ipykernel",
         # NUMA control tool (mirrors molbuilder-siesta-gpu).  PySCF
         # uses threaded BLAS that benefits from socket-local pinning
         # on dual-socket boxes -- ``numactl --cpunodebind`` wraps the
@@ -1126,17 +1143,13 @@ _PYSCF = Recipe(
                  "scripts/install-env.sh repair molbuilder-pySCF "
                  "--include-optional')"),
     verify_expect_contains="prop: polarizability OK",
-    # THIS ENV AS A NOTEBOOK KERNEL (`docs/web/jupyter.md` § 7).
-    # `--sys-prefix` writes the kernelspec into THIS env's own
-    # `share/jupyter/kernels/`, so nothing lands in `~/.local/share/jupyter`
-    # and `conda env remove` takes the kernel with the env.  The notebook
-    # server finds it because `molbuilder.jupyter` puts this prefix on
-    # `JUPYTER_PATH`; no env ever writes into another.
-    extra_steps=((
-        "python", "-m", "ipykernel", "install", "--sys-prefix",
-        "--name", "molbuilder-pyscf",
-        "--display-name", "molbuilder (pySCF)",
-    ),),
+    # NOT A NOTEBOOK KERNEL, DELIBERATELY.  `ipykernel` and a kernelspec
+    # stood here from 2026-09-13 (5c780f18) until 2026-09-14, so a notebook
+    # could `import pyscf` on the same python a deck runs on.  The user never
+    # asked for it and removed it: being a kernel costs this env `debugpy`,
+    # `ipython`, `jupyter_client`, `pyzmq`, `tornado` and six more, inside the
+    # one env whose job is running pySCF reproducibly.  **A job env stays a
+    # job env.**  Notebook work belongs to `molbuilder-jupyternb`.
 )
 
 
@@ -1201,7 +1214,7 @@ _MDTOOLS = Recipe(
     channels=("dacase", "conda-forge"),
     # git: uniform across every env -- see the _HOST recipe for why it is
     # everywhere and what may NOT use it.
-    conda_packages=("python=3.12", "dacase::ambertools-dac=26", "git"),
+    conda_packages=(_PYTHON_SPEC, "dacase::ambertools-dac=26", "git"),
     # tleap -f /dev/null prints its banner and exits 1 (no script to
     # source); the banner "Welcome to LEaP!" is the proof the binary
     # in this env launched.  See `verify_ignore_exit_code` docstring.
@@ -1791,18 +1804,14 @@ _SIESTA_GPU_BUILD = BuildSpec(
     artifact_subdir="siesta-gpu-stack",
     components=(_ELPA, _SIESTA_GPU_COMPONENT),
     cuda_required=True,
-    # WHAT THE BUILD NEEDS, not what the host compiler pairs with.  This is a
-    # floor on the CUDA toolkit for ELPA + SIESTA; `check_cuda_gcc_compat` is
-    # a SEPARATE check for whether nvcc accepts the chosen gcc, and it names
-    # `MOLBUILDER_GCC=13` when it does not.  Moved to 12.8 on 2026-09-14 on
-    # the reasoning that 12.4 "does not pair with the default gcc 14.3" --
-    # wrong twice over: the pairing check already covers that, and the move
-    # refused CUDA 12.4 + gcc 13, which the table allows.  Reverted the same
-    # day (user: the gcc pin is about SIESTA 5.4.2's kpoint_t.F90 miscompile
-    # under 14.4, and this floor should track what ELPA requires).
-    #
-    # The 12.4 itself came in with the original design commit (d8106e6b) and
-    # has NOT been checked against ELPA 2024.05.001's own documented minimum.
+    # (A twelve-line note about a `cuda_min_version` floor stood here until
+    # 2026-09-14, arguing about whether its 12.4 was right.  The FIELD was
+    # deleted the same day -- see `BuildSpec`'s docstring for why -- so the
+    # note described a setting nobody holds and left an open question about
+    # a number that no longer exists.  The toolkit version this build gets is
+    # `cuda-version={_CUDA_VERSION}` in the package list below, which this
+    # file chooses; whether nvcc accepts the chosen gcc is
+    # `builds.check_cuda_gcc_compat`, asked separately.)
     activate_hook=_SIESTA_GPU_ACTIVATE_HOOK,
     deactivate_hook=_SIESTA_GPU_DEACTIVATE_HOOK,
 )
@@ -1826,7 +1835,7 @@ _SIESTA_GPU = Recipe(
         # Toolchain.  gcc_linux-64=<N> compiler family pinned via
         # MOLBUILDER_GCC (default 14.3; use 13 for CUDA 12.0-12.7, 11
         # for CUDA 11.x).
-        "python=3.12",
+        _PYTHON_SPEC,
         f"gcc_linux-64={_GCC_VERSION}",
         f"gxx_linux-64={_GCC_VERSION}",
         f"gfortran_linux-64={_GCC_VERSION}",
@@ -2060,85 +2069,93 @@ _SIESTA_GPU = Recipe(
 
 
 # --------------------------------------------------------------------- #
-#  molbuilder-jupyternb: JupyterLab, and NOT the science stack            #
+#  molbuilder-jupyternb: the notebook env, ENTIRE                         #
 # --------------------------------------------------------------------- #
 #
 # Companion doc: docs/web/jupyter.md.
 #
-# **WHAT IS IN HERE: the notebook SERVER.  What is not: any kernel.**
+# **EVERYTHING A NOTEBOOK NEEDS IS IN HERE**: the JupyterLab server, the
+# `ipykernel` a cell runs on, and the analysis stack (numpy / scipy / pandas
+# / matplotlib).  Jupyter is installed here, activated here, and works here.
+# **No other env carries notebook tooling.**
 #
-# A notebook you cannot `import molbuilder` from is a toy, so the obvious
-# move is to install the science stack here too -- and that is the move this
-# recipe refuses.  It would be a SECOND copy of ase / sisl / rdkit / pyscf to
-# keep in step with the first, and the moment the two drift a notebook stops
-# reproducing what a calculation does, silently.  The per-backend isolation
-# rule (`installation.md` § 1) exists for exactly that.
+# That is the user's design, stated 2026-09-14, and it replaced mine.  Mine
+# put the stack in the host env and made each calculation env offer itself as
+# a kernel, so that a notebook would run on the same python as a deck.  The
+# cost was invisible until somebody named it: to be a kernel an env must
+# carry `ipykernel`, which drags in `debugpy`, `ipython`, `jupyter_client`,
+# `pyzmq`, `tornado` and six more -- into `molbuilder-pySCF`, whose one job is
+# running pySCF reproducibly.  **A job env stays a job env.**
 #
-# So the kernels are the OTHER envs.  Each env that wants to be one installs
-# `ipykernel` and registers its own kernelspec INTO ITS OWN PREFIX
-# (`python -m ipykernel install --sys-prefix`, an extra step of that recipe),
-# and `molbuilder.jupyter` points `JUPYTER_PATH` at those prefixes when it
-# starts the server.  Three properties follow, and each is why it is done
-# this way rather than with `--user`:
+# What this env deliberately does NOT carry is the SCIENCE backends -- no ase,
+# sisl, rdkit or pyscf.  Those would be a second copy to keep in step with the
+# first, and the day the two drift a notebook stops reproducing what a
+# calculation does, silently (`installation.md` 1, the per-backend isolation
+# rule).  This is an ANALYSIS env: it reads what a calculation wrote and plots
+# it.  It is not a second place to run one.
 #
-#   * **nothing is written outside an env.**  No `~/.local/share/jupyter`,
-#     so `conda env remove` really does clean up -- the same rule the
-#     artifact root follows (`$CONDA_PREFIX/opt/...`).
-#   * **no env writes into another.**  A kernelspec that pointed one env's
-#     python at another env's prefix would be the cross-env reach the door
-#     rules forbid; here each env speaks only for itself.
-#   * **a kernel appears when its env is installed, and goes when it is
-#     removed**, with no third place to keep in step.
+# The kernel is registered by nothing: `ipykernel` installs its own `python3`
+# kernelspec into this env's prefix, and the server runs in the same prefix,
+# so it is found with no `JUPYTER_PATH` entry and nothing written outside the
+# env.  `conda env remove` takes the whole thing.
 #
-# If the notebook tab shows NO kernels, that is the honest state of a machine
-# whose host env predates this: re-run `install molbuilder --yes` and the
-# kernelspec lands.
+# If a notebook cannot `import numpy`, the env predates this recipe.  The verb
+# is `repair molbuilder-jupyternb`, NOT `install`: on an env that already
+# exists `install` skips create and goes straight to verify, so it adds no
+# missing conda package.  `repair` closes what the package audit reports --
+# measured 2026-09-14, when `install` reported FAILED and had installed
+# nothing.
 #
-# **`repair` CANNOT do it, and that is worth knowing before you reach for it.**
-# `repair` exists to close what the package AUDIT reports, so it dispatches
-# `conda_step_for` / `pip_step_for` and nothing else -- `extra_steps` are not
-# part of what it re-runs (deliberately: an extra step can be expensive, and
-# repair is the cheap verb).  So on a machine whose host env predates this
-# recipe the audit reports `ipykernel` missing, `repair` installs it, and the
-# kernelspec is STILL absent because the step that writes it never ran.
-# `install` runs the whole plan -- create (skipped, the env is there), pip,
-# extra steps, verify -- which is why it is the verb named here.
 _JUPYTER = Recipe(
     name=DEFAULT_ENV_NAMES["jupyter"],
     category="jupyter",
-    description="JupyterLab for the notebook tab (the kernels are the "
-                "other envs).",
+    description="JupyterLab for the notebook tab: the server, its kernel "
+                "and the analysis stack, all in this one env.",
     # NOT in the default stack, and not because it is expensive -- it is a
     # feature you choose.  A machine that will never open the notebook tab
     # should not carry a notebook server because somebody ran `bootstrap`.
     opt_in="optional -- the notebook tab",
     channels=("conda-forge",),
     conda_packages=(
-        "python=3.12",
+        _PYTHON_SPEC,
         # jupyterlab brings jupyter-server, the extension machinery and the
-        # `jupyter` dispatcher; that is the whole payload of this env.
+        # `jupyter` dispatcher.
         "jupyterlab",
+        # ipykernel: THE KERNEL A NOTEBOOK RUNS ON, and it runs here.  It
+        # arrives today as a jupyterlab dependency; it is named because this
+        # env relies on it directly, which is the shape the package audit
+        # exists to keep honest -- a package nothing declares disappears the
+        # day that dependency changes.
+        "ipykernel",
+        # THE ANALYSIS STACK.  A notebook tabulates results and plots them,
+        # and it does that on THIS env's python.  See the block above this
+        # recipe for why the stack is here and not reached for in another
+        # env.
+        "numpy", "scipy", "pandas", "matplotlib",
         # git: uniform across every env -- see the _HOST recipe for why it is
         # everywhere.  A notebook that inspects a calculation folder wants it.
         "git",
     ),
     verify_argv=("bash", "-c",
                  "set -e; jupyter lab --version; "
-                 "python -c \"import jupyter_server; "
+                 "python -c \"import jupyter_server, ipykernel, numpy, "
+                 "scipy, pandas, matplotlib; "
                  "print('jupyternb OK')\""),
     verify_expect_contains="jupyternb OK",
     system_preconditions=(
-        "A browser that can reach this machine over HTTPS.  The notebook "
-        "tab is an IFRAME and the app page is served over TLS, so a "
-        "plain-http notebook server is blocked by the browser as mixed "
-        "content -- `molbuilder jupyter` reuses the cert and key `serve` "
-        "was given, and refuses to start without them "
-        "(docs/web/jupyter.md § 2).",
+        "Nothing beyond what `serve` already has.  The notebook takes the "
+        "SAME scheme the app page is served with -- it reuses `serve`'s "
+        "cert and key when there are any, and runs plain http when there "
+        "are not.  It has to: the tab is an IFRAME, so an http notebook "
+        "under an https page is blocked by the browser as mixed content "
+        "(docs/web/jupyter.md § 2).  It does NOT refuse to start without "
+        "TLS -- this line said it did until 2026-09-14, and a plain-http "
+        "molbuilder had been running one the whole time.",
         "A free TCP port at <serve port> + 1 on this machine, bound to "
         "loopback unless you say otherwise.  A live kernel is arbitrary "
         "code execution as the account running the server, which is why "
-        "starting and stopping it is an admin action "
-        "(docs/ops/access-control.md § 6).",
+        "starting and stopping it -- and the token that reaches it -- are "
+        "admin actions (docs/web/jupyter.md § 6).",
     ),
 )
 

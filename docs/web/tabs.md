@@ -19,7 +19,7 @@ three protocols that cut across all of them**.
 
 ## 1. The tab roster and the shared shell
 
-There are **eight tabs**, and their order is defined in exactly one place — the
+There are **nine tabs**, and their order is defined in exactly one place — the
 `TABS` list in `tabs.py`. In canonical order:
 
 | Tab | Path | What it's for | Own doc |
@@ -32,6 +32,7 @@ There are **eight tabs**, and their order is defined in exactly one place — th
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **This machine** | `/this-machine` | the box you are signed in to, not a calculation: its notification channels and its run-report listener. **The only surface where a secret is typed** | [`this-machine.md`](?doc=web/this-machine.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
+| **JupyterNB** | `/jupyternb` | a JupyterLab framed in the tab, running on its own env's python — the one tab that runs *your* code rather than an engine's. **Optional**: the env is opt-in and nothing starts the server but you | [`jupyter.md`](?doc=web/jupyter.md) |
 
 > **Task setup is a shared surface** that starts from a calculation folder
 > rather than from a form, so every describing tab above feeds one

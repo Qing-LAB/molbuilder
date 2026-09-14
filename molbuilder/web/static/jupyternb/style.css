@@ -1,0 +1,116 @@
+/* JupyterNB — composition only (`ui-contract.md` § 1).
+ *
+ * Every surface on this page is the app's own: `.card` for the control strip,
+ * `.status` for its message, the bare `button` and its `.primary` variant for
+ * the one action.  What lives here is the ARRANGEMENT — a page whose whole
+ * job is to give a framed JupyterLab the height it needs, with one row of
+ * chrome above it.
+ *
+ * `nb-` throughout, so nothing here can reach a control on another tab.
+ */
+
+/* THE TAB FILLS THE PANE AND DOES NOT SCROLL IT.  `.app-content` owns the
+   scroll for every tab (page-shell.css, "App shell") -- right for a page of
+   cards, wrong for this one: a framed JupyterLab lays itself out against the
+   height it is GIVEN, so an unbounded pane hands it an arbitrary box and Lab
+   grows its own scrollbar inside the pane's.  Taking exactly the pane's
+   height, and letting the frame shrink into what the row leaves, is what
+   makes Lab behave here the way it behaves standalone. */
+.nb-tab {
+    height: 100%;
+    /* No `max-width` and no centering, unlike every other tab's container:
+       those set a READING measure, and nothing here is read -- the frame is
+       an application and wants the width it is given. */
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    min-height: 0;          /* so the frame below can actually shrink */
+}
+
+/* The control strip: a `.card` laid out as ONE ROW.  The surface (background,
+   border, radius, shadow) is the shell's and is not restated here -- a copy
+   that restated it and differed in one value is exactly what made the Modify
+   tab's cards visibly softer than every other tab's (modify/style.css,
+   2026-08-24).  Only the inset is tuned, because the shell's card padding is
+   sized for a card with a heading and this row has none. */
+.nb-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm) var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+}
+
+/* The message: page-shell's `.status`, tuned for POSITION only -- the sheet
+   that owns it says a page may do exactly that, and that the severity colours
+   stay there.  `22rem` is a flex BASIS, not a width: the sentence wraps to its
+   own line before it would squeeze the button off the row. */
+.nb-msg {
+    flex: 1 1 22rem;
+    margin: 0;
+}
+
+/* The open-notebook paths in the message are `code` ELEMENTS, and no sheet
+   this page loads styles a bare `code` -- page-shell has none, and
+   form-components scopes its two (`.card h2 code`, `.viewer-info code`).  So
+   they rendered in the browser's default monospace at its default size inside
+   a `--text-sm` line.  `test_css_classes_are_defined.py` cannot catch this:
+   it checks CLASS names, and an unstyled element has none. */
+.nb-msg code {
+    font-family: var(--font-mono);
+    color: var(--text-mono);
+    overflow-wrap: anywhere;
+}
+
+.nb-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-left: auto;      /* the action sits at the row's end */
+}
+
+/* The install command — the one state whose answer is a terminal rather than
+   a button.  A row of its own, selectable, on `--bg-code`: the surface this
+   palette already means "text to copy" by (the fdf / py preview blocks).  It
+   is declared here, per page, the way `results` and `task-setup` declare
+   theirs; there is no shared one-line-command widget to reach for. */
+.nb-cmd {
+    flex: 1 1 100%;
+    /* Every sibling copy of this surface sets the mono family
+       (`form-components` .fdf-output, `task-setup` .ts-cmd, `results`);
+       this one did not -- so the one command in the app a person is meant
+       to COPY was the one in the browser's default face. */
+    font-family: var(--font-mono);
+    padding: var(--space-sm) var(--space-sm2);
+    border-radius: var(--radius-sm);
+    background: var(--bg-code);
+    border: 1px solid var(--border-strong);
+    color: var(--text-mono);
+    font-size: var(--text-xs);
+    user-select: all;
+    overflow-wrap: anywhere;
+}
+
+/* THE FRAME TAKES EVERYTHING THE ROW LEAVES. */
+.nb-frame-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+
+/* The [hidden] guard (§ 6): the `display: flex` above would otherwise beat the
+   UA's `[hidden] { display: none }` on source order.  This page showed the bug
+   as a tall empty box under the row. */
+.nb-frame-wrap[hidden] { display: none; }
+
+.nb-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+}

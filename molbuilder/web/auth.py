@@ -151,6 +151,23 @@ def _get_providers_state(app):
     return app.extensions.get(_PROVIDERS_EXT_KEY)
 
 
+def sign_in_is_configured(app) -> bool:
+    """Is there a sign-in gate on this app at all?
+
+    **A PUBLIC predicate because a GATE depends on the answer.**  The notebook
+    blueprint asks it to decide whether a loopback client may start a kernel
+    (`blueprints/jupyter.py`), and it used to spell `_PROVIDERS_EXT_KEY`
+    itself.  That fails OPEN on a rename: `.get()` returns `None`, "sign-in is
+    not configured" becomes true, and an authenticated network-bound server
+    starts admitting any loopback peer.  One owner for the key, and the
+    question asked rather than the storage guessed at.
+
+    `init_auth` refuses an empty provider list, so a stored state is always
+    truthy and this is exactly "are there providers".
+    """
+    return bool(_get_providers_state(app))
+
+
 def _provider_or_404(app, provider_id: str) -> dict:
     """Look up a provider entry by id; abort 404 when unknown."""
     state = _get_providers_state(app)

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; JupyterNB</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+{# Every page that loads the shell loads the dialog component with it -- the
+   projects sidebar opens dialogs from this page like any other
+   (`test_css_classes_are_defined.py`). #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
+{# form-components carries `button.primary` -- the Start button wore that class
+   with this sheet unloaded, so the one action on the page rendered as an
+   ordinary button (2026-09-14). #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='jupyternb/style.css') }}">
+{# molbuilder-runtime.js MUST load before any other molbuilder script. #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
+</head>
+{# THE APP SHELL's own shape (page-shell.css "App shell", ui-contract.md):
+   a tab with the projects sidebar opts in on <body> and wraps
+   [sidebar | content] in .app-body / .app-content.  Without it the sidebar
+   is a rail the content sits UNDER, which is what this page did until it was
+   looked at in a browser. #}
+<body data-sidebars="projects">
+
+{% set active_tab = "jupyternb" %}
+{% include "_app_header.html" %}
+
+<div class="app-body">
+{% include "_projects_sidebar.html" %}
+<div class="app-content">
+
+{# THE ONE TAB THAT RUNS YOUR CODE.  Everything else here describes a
+   calculation and hands it to an engine; this frames a JupyterLab served
+   from `molbuilder-jupyternb`, whose own python is the kernel -- an
+   ANALYSIS env (numpy / scipy / pandas / matplotlib), not a second place to
+   run a calculation.  Contract: docs/web/jupyter.md. #}
+<main class="nb-tab">
+
+  {# THE WHOLE CHROME IS ONE ROW: what is going on, and the button that acts
+     on it.  No heading -- the tab nav already says which tab this is, and a
+     second title above a full-height JupyterLab spends a band of the viewport
+     telling the reader what they just clicked.  No lede either: what the
+     kernels are belongs in the sentence that is on screen when it matters,
+     not in a paragraph that is always there.  The frame is the page; this
+     row is its handle.
+
+     `card` is the shell's surface and `status` is the shell's message class
+     (`ui-contract.md` 1) -- the `nb-` classes beside them carry ARRANGEMENT
+     only, which is all a page sheet may own. #}
+  <div class="card nb-bar">
+    <p class="status nb-msg" id="nb-state">Checking&hellip;</p>
+    <div class="nb-actions" id="nb-actions"></div>
+    {# The install command, in the one state whose answer is a terminal.  A
+       direct child of the row so it wraps to its OWN full-width line rather
+       than being squeezed into the button group.  It sets no `display`, so
+       the UA's `[hidden]` rule hides it without a guard (§ 6). #}
+    <code class="nb-cmd" id="nb-cmd" hidden></code>
+  </div>
+
+  {# The frame, added only once there is something answering.  An iframe
+     whose src is set before the server answers shows the browser's own
+     connection-refused page, which reads as a molbuilder error. #}
+  <section class="nb-frame-wrap" id="nb-frame-wrap" hidden>
+    <iframe class="nb-frame" id="nb-frame" title="JupyterLab"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"></iframe>
+  </section>
+
+</main>
+
+</div>{#- /.app-content -#}
+</div>{#- /.app-body -#}
+
+<script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='jupyternb/index.js') }}"></script>
+</body>
+</html>

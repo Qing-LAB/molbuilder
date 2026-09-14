@@ -2304,12 +2304,167 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
                f"keep {log_keep} archives)")
     click.echo(f"  pidfile: {serve_pidfile(port)}")
     click.echo("  then:    molbuilder serve status")
+    # THE NOTEBOOK'S COMMAND LINE, built here and handed over -- the
+    # supervisor holds a list of strings and imports nothing of the
+    # application (docs/web/jupyter.md § 3.4).  Nothing starts yet: the tab
+    # or `molbuilder jupyter start` asks for it.
+    #
+    # RESOLVED TLS, not the raw flags.  The server CHILD resolves its own
+    # (`cmd_serve`'s `_resolve_tls`, which also reads the `tls` block in
+    # molbuilder.json); this path never did, so a machine that configures TLS
+    # in the file rather than on the command line served the page over https
+    # and started the notebook over http.  The tab builds the frame URL from
+    # `location.protocol`, so it then asked https of a plain-http server and
+    # the frame died as mixed content.  The two schemes must agree, and this
+    # is where they are made to (found in review 2026-09-14).
+    _nb_cert, _nb_key = _resolve_tls(cert, key)
+    from .jupyter import shepherd_argv
+    notebook = shepherd_argv(port, host=host, cert=_nb_cert, key=_nb_key)
     daemonize()
     # from here we are the detached supervisor; nothing prints to the
     # terminal again -- the roll owns every later byte
     raise SystemExit(supervise(
         port, child,
-        log_max_bytes=log_max_mb * 1024 * 1024, log_keep=log_keep))
+        log_max_bytes=log_max_mb * 1024 * 1024, log_keep=log_keep,
+        jupyter_argv=notebook))
+
+
+# --------------------------------------------------------------------- #
+#  jupyter -- the notebook tab's process, from a terminal                 #
+# --------------------------------------------------------------------- #
+
+@cli.group("jupyter", short_help="the notebook server behind the Notebook tab")
+def jupyter_group():
+    """Start, stop and inspect the notebook server.
+
+    **The tab's buttons do the same thing through the same door**, so a
+    notebook that will not start is debuggable without a browser --
+    `docs/web/jupyter.md` § 5, the same reason `serve` has these verbs.
+
+    The server is parented to the molbuilder SUPERVISOR, not to the web
+    server, so a code reload does not destroy notebook state and
+    `serve stop` takes the notebook and every kernel with it.  These verbs
+    signal that supervisor; without one (`serve foreground`,
+    `--no-supervise`) there is nobody to hold the notebook and they say so.
+    """
+
+
+def _jupyter_signal(port: int, sig: int, verb: str) -> None:
+    """Ask the supervisor.  Verified before signalled, like `serve` does."""
+    from .serve_daemon import signal_supervisor
+    ok, msg = signal_supervisor(port, sig)
+    if not ok:
+        raise click.ClickException(
+            f"cannot {verb} the notebook: {msg}.\n"
+            f"  The notebook server is held by `molbuilder serve`'s "
+            f"supervisor; start one with `molbuilder serve start --port "
+            f"{port}`.")
+    click.echo(f"asked the supervisor to {verb} the notebook: {msg}")
+
+
+@jupyter_group.command("start", short_help="start the notebook server")
+@click.option("--port", type=int, default=8000, show_default=True,
+              help="the SERVE port -- the notebook's own is that plus one.")
+def cmd_jupyter_start(port):
+    """Ask the supervisor to start the notebook server (idempotent)."""
+    import signal as _signal
+    _jupyter_signal(port, _signal.SIGUSR1, "start")
+    click.echo("  then:  molbuilder jupyter status --port %d" % port)
+
+
+@jupyter_group.command("stop", short_help="stop it, and every kernel with it")
+@click.option("--port", type=int, default=8000, show_default=True,
+              help="the SERVE port this notebook belongs to.")
+def cmd_jupyter_stop(port):
+    """Stop the notebook server AND its kernels.
+
+    The kernels are grandchildren and they are what hold memory and GPUs, so
+    the stop takes the whole process group (`jupyter.md` § 3.2).
+    """
+    import signal as _signal
+    _jupyter_signal(port, _signal.SIGUSR2, "stop")
+
+
+@jupyter_group.command("restart", short_help="stop it, then start it again")
+@click.option("--port", type=int, default=8000, show_default=True)
+def cmd_jupyter_restart(port):
+    """Stop and start.  **Every kernel dies** -- a notebook's variables are in
+    the kernel, so this is not the harmless verb `serve restart` is.
+
+    WAITS FOR THE STOP TO LAND before asking for the start.  It used to sleep
+    a flat 1.0 s, which is exactly the shepherd's own minimum teardown, so the
+    start signal routinely arrived while the supervisor was still inside
+    `_stop_jupyter`; `_start_jupyter` then saw the old shepherd still alive,
+    answered "already running", and the stop that followed left nothing at
+    all.  The verb silently degraded to `stop` (measured 2026-09-14).
+    """
+    import signal as _signal
+    import time as _time
+    from .jupyter import read_pid, pid_state
+    _jupyter_signal(port, _signal.SIGUSR2, "stop")
+    # The shepherd's polite phase is `_STOP_GRACE_S`, then a group SIGKILL;
+    # the supervisor waits 10 s on top.  Give it that whole budget, and ask
+    # the pidfile rather than guessing -- the shepherd removes it as it dies.
+    deadline = _time.monotonic() + 20.0
+    while _time.monotonic() < deadline:
+        if pid_state(read_pid(port)) != "ours":
+            break
+        _time.sleep(0.25)
+    else:
+        click.echo("  the notebook did not stop within 20s; not starting a "
+                   "second one.  `molbuilder jupyter status --port %d`"
+                   % port)
+        return
+    _jupyter_signal(port, _signal.SIGUSR1, "start")
+
+
+@jupyter_group.command("status",
+                       short_help="is it up, is it ANSWERING, where")
+@click.option("--port", type=int, default=8000, show_default=True)
+def cmd_jupyter_status(port):
+    """Two questions, answered separately -- `deployment.md` § 1.0b's rule:
+    the failure worth catching is a process that is up and not answering."""
+    from .jupyter import log_path, status
+    st = status(port)
+    if not st["running"]:
+        if st["pid_state"] == "foreign":
+            click.echo("not running -- and the pidfile is stale: its pid is "
+                       "not a notebook of yours")
+        else:
+            click.echo("not running")
+        click.echo(f"  start it:  molbuilder jupyter start --port {port}")
+        # THE LOG, NAMED WHEN IT IS NOT RUNNING -- which is exactly when a
+        # person needs it: a notebook that refused to start said why there.
+        nb_log = log_path(port)
+        if nb_log.exists():
+            click.echo(f"  last log:  {nb_log}")
+        raise SystemExit(1)
+    click.echo(f"running    pid {st['pid']}, port {st['port']}")
+    click.echo("answering  " + ("yes" if st["answering"] else
+                                "NO -- it is up but not serving; see the log"))
+    click.echo(f"log        {log_path(port)}")
+    # THE TOKEN IS NOT PRINTED.  It authenticates a browser to a live kernel,
+    # which is code execution as this account; the tab reads it server-side.
+    if st["url"]:
+        click.echo(f"url        {st['url']}  (the tab adds the token)")
+    raise SystemExit(0 if st["answering"] else 1)
+
+
+@jupyter_group.command("_shepherd", hidden=True)
+@click.option("--serve-port", type=int, required=True)
+@click.option("--host", default="127.0.0.1")
+@click.option("--cert", default=None)
+@click.option("--key", default=None)
+def cmd_jupyter_shepherd(serve_port, host, cert, key):
+    """NOT FOR PEOPLE -- the process the supervisor launches.
+
+    Hidden because running it by hand gets the parentage wrong: started from a
+    shell it is parented to that shell, so `PR_SET_PDEATHSIG` fires when the
+    shell exits and the notebook dies with your terminal.  `jupyter start` is
+    the verb.
+    """
+    from .jupyter import run_shepherd
+    raise SystemExit(run_shepherd(serve_port, host=host, cert=cert, key=key))
 
 
 @serve_group.command("status", short_help="is it up, is it ANSWERING, where")

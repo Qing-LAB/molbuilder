@@ -54,7 +54,17 @@ def _parse_bash_array(text: str, name: str) -> list[str]:
 
     Returns the tokens with version specifiers preserved (e.g.
     ``python=3.12``).  Comments + whitespace are stripped.
+
+    **``${VAR:-default}`` IS EXPANDED, against this process's environment.**
+    The host array is the one place bash must name a package before any python
+    exists to read a recipe, so when a spec becomes overridable both halves
+    have to resolve it -- and they have to resolve it the SAME way, or this
+    guard fails on every machine where the variable happens to be set.
+    `recipes.py` reads the variable with the same default at import; expanding
+    it here is what keeps the comparison meaningful in both states rather than
+    only in the unset one.
     """
+    import os
     import re
     m = re.search(
         rf'^{re.escape(name)}=\(\s*(.*?)\s*\)\s*$',
@@ -80,6 +90,13 @@ def _parse_bash_array(text: str, name: str) -> list[str]:
             continue
         if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in ('"', "'"):
             tok = tok[1:-1]
+        # Only the ``${NAME:-default}`` form, and only that form: anything
+        # richer in a package list is a reason to look, not to interpret.
+        tok = re.sub(
+            r"\$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\}",
+            lambda m: os.environ.get(m.group(1)) or m.group(2),
+            tok,
+        )
         out.append(tok)
     return out
 

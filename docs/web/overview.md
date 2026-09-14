@@ -5,7 +5,7 @@
 **Companions:** this is the map; every module named below has its own doc, linked
 in the registry (§ 4). New here? Read this, then the one module you need.
 
-The molbuilder front end is **eight tabs sharing one app shell**, and behind them a
+The molbuilder front end is **nine tabs sharing one app shell**, and behind them a
 small set of **reusable modules** that do the real work. A tab is deliberately
 thin: it lays out some cards, then *mounts* the modules — the 3D viewer, the file
 browser, the option forms, the result viewers — and wires their events to the

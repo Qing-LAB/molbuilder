@@ -67,6 +67,12 @@ TABS: Final[List[Tab]] = [
     {"key": "documents",
      "path": "/documents",
      "label": "Documents"},
+    # LAST.  The only tab that runs YOUR code rather than molbuilder's, and
+    # the only one whose env is opt-in -- on a machine that never installs it
+    # the tab is a dead end, so it sits where a dead end costs least.
+    {"key": "jupyternb",
+     "path": "/jupyternb",
+     "label": "JupyterNB"},
 ]
 
 
