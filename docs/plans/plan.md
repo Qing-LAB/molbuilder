@@ -1680,6 +1680,25 @@ the only finding here that prevents the next one.
 1. **W25 first, because it is a correctness bug, not a UI one.** Replace the
    four transmission scalars with the `%block TBT.Contour` the binary reads,
    keeping the person's window/points as the block's `from…to`/`points`.
+   ✅ **Done 2026-09-15.** Three things came out of doing it that the
+   investigation had not seen:
+   * **Three tests were pinning the dead keywords**, including one whose own
+     docstring describes the exact failure it was satisfied by — *"tbtrans
+     falls back to its own defaults and the transmission curve … is reported
+     over an interval nobody chose"*. A test written to catch this bug
+     passed **because of** it.
+   * **The fix's own comment resurrected the tokens.** Two of those tests
+     assert a keyword by plain substring over the whole deck, so naming
+     `TS.TBT.*` in an explanatory comment made them pass on prose. Caught
+     within the hour; the emitter no longer spells them, and the rule is
+     worth keeping: **a comment must not be able to satisfy an assertion.**
+   * **`transport/record.py` holds the best evidence on the open question.**
+     Its docstring pins the `AVTRANS` format *live on 5.4.2* and says E is
+     relative to E_F *"when the deck said `TS.TBT.Erange.RelToEF T`"* — a
+     keyword that can never have done anything, so what was observed was
+     tbtrans's **default**. That points at *relative by default*, i.e. the
+     retired switch was never needed rather than mis-spelled. Evidence, not
+     settled: closed by reading one real `AVTRANS` beside its device `.fdf`.
 2. The three contour fields become the real `TS.Contours.*` keywords, or go.
    **`contour_n_circle` leaves the Methods paragraph the same day**, whichever
    way it is settled — a sentence reporting an unset parameter is the one

@@ -259,8 +259,18 @@ def test_render_script_emits_correct_atom_counts():
     # SolutionMethod, NOT TS.SolutionMethod which 5.4.2 rejects
     # with "Unrecognized TranSiesta solution method").
     assert "SolutionMethod         transiesta" in script
-    # TBtrans block for transmission.
-    assert "TS.TBT.NumE            401" in script   # default 401 points
+    # TBtrans transmission window -- a CONTOUR BLOCK, and the default 401
+    # points are its `points` line.
+    #
+    # This asserted `TS.TBT.NumE 401` until 2026-09-15, a SIESTA-3.x
+    # spelling the installed 5.4.2 tbtrans cannot read (`plan.md` § 5o) --
+    # so it pinned the bug.  Note the assertion two lines up, which DID
+    # measure `SolutionMethod` against 5.4.2 and says so: one keyword in
+    # this file was checked against the binary and the other was not, which
+    # is what `test_transport_keywords_exist_in_the_binary.py` now removes
+    # the possibility of.
+    assert "%block TBT.Contour.window" in script
+    assert "points 401" in script
 
 
 def test_render_script_has_correct_species_block():

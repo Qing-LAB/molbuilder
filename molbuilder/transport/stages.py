@@ -349,7 +349,8 @@ def render_stage_deck(stage: str, composed: ComposedJunction,
                 f"the {stage} deck cannot render:\n  - "
                 + "\n  - ".join(i.message for i in errors))
         # The transmission deck is the SAME text: TBtrans reads the
-        # device deck (geometry + TS.Elecs + the TS.TBT.* window) and
+        # device deck (geometry + TS.Elecs + the `%block TBT.Contour`
+        # window -- four dead `TS.TBT.*` scalars until 2026-09-15) and
         # post-processes the converged device's files; only the binary
         # differs, and the binary is launch routing (P5).
         return TransiestaEngine.render_script(dev, cfg)

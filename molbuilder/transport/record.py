@@ -51,9 +51,23 @@ def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
     """``<label>.TBT.AVTRANS_<L>-<R>`` → ``(energies_ev, transmission)``.
 
     The format (pinned live, 5.4.2): ``#`` comment lines, then two
-    columns — E in eV (relative to E_F when the deck said
-    ``TS.TBT.Erange.RelToEF T``, which the composite's deck does) and
-    the k-averaged T(E).
+    columns — E in eV, and the k-averaged T(E).
+
+    **THE OBSERVATION STANDS; ITS ATTRIBUTION WAS WRONG.**  This said E
+    was relative to E_F *"when the deck said ``TS.TBT.Erange.RelToEF T``,
+    which the composite's deck does"* — and that keyword is one the 5.4.2
+    tbtrans cannot read (`plan.md` § 5o), so it can never have caused
+    anything.  Whatever was observed in the live file was tbtrans's OWN
+    default behaviour.
+
+    That makes this docstring the best evidence bearing on § 5o's one open
+    question — whether a ``%block TBT.Contour`` line's energies are
+    absolute or E_F-relative — and it points at *relative by default*,
+    which would mean the retired switch was never needed rather than
+    merely mis-spelled.  **Recorded as evidence, not settled:** this is a
+    docstring's recollection of a run whose artifact does not survive in
+    the tree, and the question is closed by reading one real
+    ``AVTRANS`` file beside its device ``.fdf``, not by this sentence.
     """
     energies: List[float] = []
     trans: List[float] = []

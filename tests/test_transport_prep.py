@@ -306,7 +306,7 @@ class TestTheLadderPreps:
 
     def test_the_transmission_deck_carries_the_tbt_window(self, calc):
         """SCIENCE. The transmission deck carries the tbtrans energy window
-        (`TS.TBT.NumE`, `TS.TBT.Emin`).
+        -- as the contour block tbtrans actually reads.
 
         Catches the deliverable being computed over no energy range. T(E) is
         evaluated on a grid the deck specifies; with the window keywords missing,
@@ -317,13 +317,20 @@ class TestTheLadderPreps:
         Contract: `engines/transport.md` § 2 (T(E) = Tr[Gamma_L G Gamma_R G+])
         + § 1 (the transmission stage's product).
 
-        THIN: it asserts the keywords are PRESENT, not that their values bracket
+        THIN: it asserts the window is PRESENT, not that its values bracket
         E_F, which is what makes the window right or wrong.
+
+        **It asserted `TS.TBT.NumE` / `TS.TBT.Emin` until 2026-09-15** --
+        keywords the installed 5.4.2 tbtrans cannot read, so it was pinning
+        precisely the failure its own docstring describes: tbtrans falling
+        back to its own defaults over an interval nobody chose
+        (`plan.md` § 5o).  A test written to catch that was satisfied by it.
         """
         prep_calculation(calc, "transmission")
         text = (calc / "05_transmission" / "T_05_transmission.fdf"
                 ).read_text()
-        assert "TS.TBT.NumE" in text and "TS.TBT.Emin" in text
+        assert "%block TBT.Contours" in text
+        assert "%block TBT.Contour." in text and "part line" in text
 
     def test_the_electronic_contract_is_the_citations(self, calc):
         """fdf-is-truth: the distinctive values in the cited deck land

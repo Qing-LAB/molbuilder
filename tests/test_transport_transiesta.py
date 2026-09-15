@@ -121,14 +121,21 @@ def test_render_script_emits_required_transiesta_keywords(
         "%block TS.ChemPots",
         "%block TS.ChemPot.",     # one per chempot
         "TS.Voltage",
-        # NOTE: TS.ComplexContour.Emin / TS.ComplexContour.NumCircle
-        # were absorbed into the per-%block TS.ChemPot.<name> blocks
-        # under modern SIESTA 4.1+ / 5.x; not asserted at top level
-        # any more.  Empirically verified vs. SIESTA 5.4.2 (see
-        # tests/test_transiesta_siesta_smoke_l4.py).
-        "TS.TBT.NumE",
-        "TS.TBT.Emin",
-        "TS.TBT.Emax",
+        # THE TRANSMISSION WINDOW IS A CONTOUR BLOCK (2026-09-15).
+        # This required `TS.TBT.NumE` / `Emin` / `Emax` -- SIESTA-3.x
+        # spellings the installed 5.4.2 tbtrans cannot read, so the list
+        # was pinning the bug (`plan.md` § 5o).
+        #
+        # It also passed for a WORSE reason for one commit: the fix's own
+        # explanatory comment in the deck spelled the dead tokens, and
+        # this assertion is a plain substring search over the whole
+        # script -- so prose satisfied it.  A keyword assertion must not
+        # be satisfiable by a comment, which is why the emitter no longer
+        # names them.
+        "%block TBT.Contours",
+        "%block TBT.Contour.",    # the window itself
+        "part line",              # tbtrans refuses any other contour type
+        "TBT.HS",                 # where the converged device H is
     ]
     for k in required:
         assert k in script, (
