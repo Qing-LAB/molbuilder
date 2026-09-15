@@ -1,7 +1,10 @@
 """The Notebook tab's control surface: start, stop, and where to point a frame.
 
-Contract: `docs/web/jupyter.md`; the exposure decision is
-`docs/ops/access-control.md` § 6.
+Contract: `docs/web/jupyter.md`; the exposure rule is that document's § 6.
+(It said `access-control.md` § 6 until 2026-09-14, which is about
+`/api/admin/reload` and contains no mention of a notebook -- the rule that
+actually ships, including the loopback clause below, was only ever in this
+docstring.)
 
 **WHY THESE ROUTES ARE ADMIN-ONLY, and why they can be absent entirely.**
 A live kernel is arbitrary code execution as the account running the server --
@@ -11,6 +14,14 @@ direction.  So it follows the same rule, and for the same reason:
 * **no supervisor, no routes.**  The notebook is held by `serve`'s supervisor
   (§ 3.4), so without one there is nobody to start or stop it, and a button
   that cannot work is worse than an absent one.
+
+  Registration can only ask the ENV VAR, because it happens at import with no
+  request in hand -- and that variable means *somebody can respawn me*, which
+  `serve foreground` also sets while writing no pidfile and installing no
+  handlers.  So the button's real precondition is asked per request, by
+  `_supervised()`: a serve pidfile naming a live serve of ours.  Under
+  `serve foreground` the routes therefore exist and the tab correctly shows
+  no button; a direct POST gets `signal_supervisor`'s own refusal.
 * **the `admin` list decides who may press it.**  Signing in is not enough:
   reaching a session already required being in a provider's ``allowed_users``,
   but *running code on the server* is the privilege § 5 separates.
@@ -35,7 +46,27 @@ bp = Blueprint("jupyter", __name__)
 
 
 def _supervised() -> bool:
-    return os.environ.get(SUPERVISED_ENV) == "1"
+    """Is there a supervisor that can actually be ASKED to hold a notebook?
+
+    `SUPERVISED_ENV` alone is the wrong question, and answering it was a real
+    defect.  `reload_protocol`'s own docstring says what that flag means --
+    *somebody can respawn me* -- and TWO supervisors set it: `serve start`'s
+    `serve_daemon.supervise`, which writes a pidfile and installs the two USR
+    handlers, and `serve foreground`'s `cli._supervise_forever`, which does
+    neither.  Under the second, this returned True, the routes registered
+    against the module's own "no supervisor, no routes" rule, the tab drew a
+    Start button, and the click came back `not running (no pidfile at ...)` --
+    which reads as a broken molbuilder rather than as a run mode that has no
+    notebook.  Found in review 2026-09-14.
+
+    So the probe is the thing the Start button actually depends on: a serve
+    pidfile naming a live serve of ours, which is exactly what
+    `signal_supervisor` will go looking for.
+    """
+    if os.environ.get(SUPERVISED_ENV) != "1":
+        return False
+    from ...serve_daemon import pid_state, read_pid
+    return pid_state(read_pid(_serve_port())) == "ours"
 
 
 def _may_control() -> bool:
@@ -93,15 +124,14 @@ def _may_control() -> bool:
 def _serve_port() -> int:
     """The port THIS server is on -- the notebook's is derived from it.
 
-    Read from the request's own host rather than configured: a second
-    molbuilder on another port has its own notebook, and asking the request
-    is how each one finds its own (`jupyter.jupyter_port`).
+    ONE HOME, in `web.app`.  This parsed `request.host` itself and fell back
+    to **80** while `app.py` parsed the same header and fell back to **0** --
+    two answers to one question, and the notebook feature simply does not
+    work behind the reverse proxy `deployment.md` recommends, because the
+    public host's port is not the port the supervisor is keyed by.
     """
-    from flask import request
-    try:
-        return int((request.host or "").rsplit(":", 1)[1])
-    except (IndexError, ValueError):
-        return 80
+    from ..app import serve_port
+    return serve_port()
 
 
 @bp.get("/api/jupyter/status")
@@ -134,9 +164,15 @@ def api_jupyter_status():
     from ...jupyter import status
 
     port = _serve_port()
-    st = status(port)
-    st["may_control"] = bool(_supervised() and _may_control())
-    st["supervised"] = _supervised()
+    # ONE CALL EACH.  `_supervised()` reads a pidfile and stats /proc, and it
+    # was asked twice per request on a polling endpoint.
+    supervised = _supervised()
+    may_control = bool(supervised and _may_control())
+    # The token and the open-notebook paths are never even PRODUCED for a
+    # caller who may not control the notebook -- see `status`.
+    st = status(port, include_private=may_control)
+    st["may_control"] = may_control
+    st["supervised"] = supervised
 
     # THE ENV, PROBED -- the browser cannot ask conda anything.
     recipe = recipe_by_name("molbuilder-jupyternb")
@@ -167,6 +203,7 @@ def api_jupyter_status():
     st["env_installed"] = installed
     st["install_command"] = fix_cmd("install", recipe.name, "--yes")
 
+    # (The token and the open paths are withheld in `status` itself, above.)
     # THE TOKEN IS GATED BY THE SAME RULE AS START AND STOP.
     #
     # It authenticates a browser to a LIVE KERNEL, which is arbitrary code
@@ -181,8 +218,6 @@ def api_jupyter_status():
     #
     # The tab needs it only to build the iframe URL, which is exactly the
     # thing a caller who may not control the notebook has no business doing.
-    if not st["may_control"]:
-        st["token"] = ""
     return jsonify({"ok": True, **st})
 
 
@@ -208,7 +243,11 @@ if os.environ.get(SUPERVISED_ENV) == "1":
 
     @bp.post("/api/jupyter/stop")
     def api_jupyter_stop():
-        """Stop it, and every kernel with it (`jupyter.md` § 3.2)."""
+        """Stop it, and its kernels with it (`jupyter.md` § 3.2).
+
+        The kernels go because the SERVER goes -- Jupyter collects them
+        itself -- not because any signal of ours reaches them.
+        """
         import signal
 
         from ...serve_daemon import signal_supervisor

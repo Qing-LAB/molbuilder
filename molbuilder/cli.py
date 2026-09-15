@@ -2236,6 +2236,12 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
                 "refusing to start an unauthenticated server on a "
                 "non-loopback interface.")
         app = create_app(config={})
+        # THIS PROCESS'S PORT, on the Flask app rather than through
+        # `create_app(config=)` -- that argument is the RUNTIME config
+        # dict and `{}` there is load-bearing.  `web.app.serve_port`
+        # reads this; parsing it back out of `Host:` gave the wrong
+        # answer behind a proxy.
+        app.config["MOLBUILDER_SERVE_PORT"] = port
         click.echo(
             f"molbuilder web UI (NO AUTH -- loopback only) starting at "
             f"http://{host}:{port}", err=True)
@@ -2248,6 +2254,8 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     _enforce_tls_for_remote_bind(host, ssl_ctx, allow_insecure_binding)
     scheme  = "https" if ssl_ctx else "http"
     app = create_app()
+    # This process's port -- see `web.app.serve_port`.
+    app.config["MOLBUILDER_SERVE_PORT"] = port
     click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
     _print_oauth_redirect_hint_if_auth_on(scheme, host, port)
     if ssl_ctx is not None:
@@ -2333,7 +2341,7 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
 #  jupyter -- the notebook tab's process, from a terminal                 #
 # --------------------------------------------------------------------- #
 
-@cli.group("jupyter", short_help="the notebook server behind the Notebook tab")
+@cli.group("jupyter", short_help="the notebook server behind the JupyterNB tab")
 def jupyter_group():
     """Start, stop and inspect the notebook server.
 
@@ -2343,7 +2351,8 @@ def jupyter_group():
 
     The server is parented to the molbuilder SUPERVISOR, not to the web
     server, so a code reload does not destroy notebook state and
-    `serve stop` takes the notebook and every kernel with it.  These verbs
+    `serve stop` takes the notebook with it, and Jupyter's own cleanup
+    takes the kernels with that.  These verbs
     signal that supervisor; without one (`serve foreground`,
     `--no-supervise`) there is nobody to hold the notebook and they say so.
     """
@@ -2372,14 +2381,15 @@ def cmd_jupyter_start(port):
     click.echo("  then:  molbuilder jupyter status --port %d" % port)
 
 
-@jupyter_group.command("stop", short_help="stop it, and every kernel with it")
+@jupyter_group.command("stop", short_help="stop the notebook server; its kernels go with it")
 @click.option("--port", type=int, default=8000, show_default=True,
               help="the SERVE port this notebook belongs to.")
 def cmd_jupyter_stop(port):
     """Stop the notebook server AND its kernels.
 
-    The kernels are grandchildren and they are what hold memory and GPUs, so
-    the stop takes the whole process group (`jupyter.md` § 3.2).
+    The stop takes the shepherd's process group, which is the shepherd, the
+    manager's `run` and jupyter-server.  The kernels go because the SERVER
+    goes -- Jupyter collects its own (`jupyter.md` § 3.2).
     """
     import signal as _signal
     _jupyter_signal(port, _signal.SIGUSR2, "stop")
@@ -2401,20 +2411,35 @@ def cmd_jupyter_restart(port):
     import signal as _signal
     import time as _time
     from .jupyter import read_pid, pid_state
+    # WAIT ON THE PROCESS, NOT ON ITS PIDFILE.
+    #
+    # The pidfile stopped being a liveness signal in the same commit that
+    # added this wait: `_on_stop` now unlinks it FIRST and only then begins
+    # the `_STOP_GRACE_S` teardown, so the file is gone within milliseconds
+    # while the shepherd lives on for five more seconds.  Waiting on the file
+    # therefore returned at once and the start signal landed mid-teardown --
+    # reproducing the exact degradation this verb was fixed for.  Two fixes
+    # in one commit, each undoing the other (found in review 2026-09-14).
+    #
+    # The pid read BEFORE the stop is the honest handle: `pid_state` answers
+    # "ours" only while that process is alive and really is a shepherd.
+    doomed = read_pid(port)
     _jupyter_signal(port, _signal.SIGUSR2, "stop")
-    # The shepherd's polite phase is `_STOP_GRACE_S`, then a group SIGKILL;
-    # the supervisor waits 10 s on top.  Give it that whole budget, and ask
-    # the pidfile rather than guessing -- the shepherd removes it as it dies.
-    deadline = _time.monotonic() + 20.0
-    while _time.monotonic() < deadline:
-        if pid_state(read_pid(port)) != "ours":
-            break
-        _time.sleep(0.25)
-    else:
-        click.echo("  the notebook did not stop within 20s; not starting a "
-                   "second one.  `molbuilder jupyter status --port %d`"
-                   % port)
-        return
+    if doomed is not None:
+        # `while/else` would have fired its else-branch when nothing was
+        # running at all (empty loop, no break) and announced a stop that
+        # had not failed -- so the "was anything there" question is asked
+        # once, here, rather than folded into the loop condition.
+        deadline = _time.monotonic() + 20.0
+        while _time.monotonic() < deadline:
+            if pid_state(doomed) != "ours":
+                break
+            _time.sleep(0.25)
+        else:
+            click.echo("  the notebook did not stop within 20s; not starting "
+                       "a second one.  `molbuilder jupyter status --port %d`"
+                       % port)
+            return
     _jupyter_signal(port, _signal.SIGUSR1, "start")
 
 

@@ -56,6 +56,7 @@ __all__ = [
     "session_key", "google_client_secret", "secrets_dir",
     "serve_pidfile", "serve_log", "serve_stacks_log",
     "jupyter_pidfile", "jupyter_log", "jupyter_runtime",
+    "jupyter_lab_home",
     "CONFIG_DIR_ENV", "DIRNAME",
     # Making one of those directories, privately.
     "PRIVATE_DIR_MODE", "PRIVATE_FILE_MODE", "ensure_private_dir",

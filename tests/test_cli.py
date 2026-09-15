@@ -1041,6 +1041,13 @@ def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
     calls = {}
 
     class _FakeApp:
+        # `config` because a Flask app has one, and `cmd_serve` now records
+        # THIS PROCESS's port on it (`web.app.serve_port` -- the port used to
+        # be parsed back out of the Host header, which is the wrong answer
+        # behind a proxy).  A stub that stands in for a Flask app has to
+        # carry the parts of a Flask app the caller uses.
+        config: dict = {}
+
         def run(self, **kw):
             calls["run_kwargs"] = kw
 

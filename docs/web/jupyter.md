@@ -14,7 +14,7 @@ means; [`overview.md`](?doc=web/overview.md) — the tab registry.
 | rule | where |
 |---|---|
 | **Flask cannot carry the kernel.** The server is plain WSGI; Jupyter kernels talk WebSocket. The tab is an **iframe to a separately-run Jupyter**, and the socket goes browser→Jupyter directly | § 2 |
-| **The kernel is a grandchild.** Killing the Jupyter server alone leaves `ipykernel` processes holding memory and GPUs. Every stop takes the **process group** | § 3.2 |
+| **Stopping means stopping the SERVER.** The tree is supervisor → shepherd → the manager's `run` → jupyter-server, so a stop takes the shepherd's whole process group. The kernels are not in that group and do not need to be: Jupyter collects its own | § 3.2 |
 | **`kill -9` runs no handler.** `PR_SET_PDEATHSIG` is the only mechanism that survives it; the pidfile reconciliation is what catches the rest | § 3.1, § 3.3 |
 | **Parented to the SUPERVISOR, not the server child.** A code reload must not kill your notebook; stopping molbuilder must | § 3.4 |
 | **Nothing runs until asked.** No kernel on page load; idle kernels are culled by Jupyter's own timeouts | § 4 |
@@ -22,10 +22,16 @@ means; [`overview.md`](?doc=web/overview.md) — the tab registry.
 
 ```
    browser ──HTTP──▶ molbuilder (Flask/WSGI, :8888)   tab shell, control API
+      │                       │
+      │                       └── shepherd ── <mgr> run ── jupyter server
+      │                           └───────────────────────────┘
+      │                             one process group: a stop takes all three
       │
       └──WebSocket──▶ jupyter server (:8889)  ◀── started/stopped by molbuilder
                             │
-                            └── ipykernel, ipykernel, …   (the grandchildren)
+                            └── ipykernel, ipykernel, …
+                                each in its OWN session -- Jupyter collects
+                                them, molbuilder's signal does not reach them
 ```
 
 ---
@@ -80,12 +86,31 @@ is set in the child, so the kernel signals it when its parent dies — including
 when the parent was killed outright. Linux-only, which matches the project's
 stated platform.
 
-### 3.2 A process group, because the kernels are grandchildren
+### 3.2 A process group, so the stop reaches the SERVER
 
-The Jupyter **server** is the child; the `ipykernel` processes it spawns are
-grandchildren, and they are what hold memory and GPUs. Stopping the server
-alone routinely leaves them. The child is started in its own session
-(`start_new_session=True`) and stopped with `killpg`, so the whole tree goes.
+The tree is four deep: molbuilder's supervisor starts a **shepherd**, the
+shepherd enters the env through the manager's `run`, and that runs
+**jupyter-server**. Signalling any one of those is not signalling the others,
+so the shepherd is started in its own session (`start_new_session=True`) and
+takes its whole group down at once.
+
+**The group does NOT reach the kernels — and it does not need to.**
+`jupyter_client` launches every kernel with `start_new_session=True`, so each
+kernel is its own session and group leader and no `killpg` of molbuilder's
+ever touches it. Measured 2026-09-14: a kernel's process group was 2152481
+against the shepherd's 2141249.
+
+Jupyter owns that half, and owns it twice. A graceful `SIGTERM` makes the
+server shut its own kernels down. If the server dies with no handler at all,
+`ipykernel`'s parent poller sees `JPY_PARENT_PID` vanish and each kernel exits
+by itself — measured the same day by `kill -9` on the server, with the kernel
+gone in about a second and nothing orphaned.
+
+So what this layer guarantees is that **the server dies**, and the server
+dying is what collects the kernels. *(This section claimed the group reached
+the kernels directly, and a `/proc`-walking reaper was drafted to make that
+claim true before the measurement showed the backstop already works. Building
+it would have been a third copy of something Jupyter does and passes.)*
 
 This composes with § 3.1: `PR_SET_PDEATHSIG` keys on *parent death*, not on
 group membership, so a new session does not disable it.

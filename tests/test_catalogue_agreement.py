@@ -21,10 +21,27 @@ That breaks D3 (*each value is stored once*), and D3's own reasoning says what
 happens next: *"then a hand edit of one is silently ignored — the file
 disagreeing with itself."*
 
-**So this file is the interim contract.** It cannot make the duplication go
-away; it makes it impossible for the two to drift apart without a red test
-naming the item and the key. When the form moves onto the catalogue, the
-metadata is deleted and this file goes with it.
+**So this file is the interim contract** -- but READ WHAT IT STILL CHECKS.
+It used to say it made drift "impossible … without a red test naming the item
+and the key". That stopped being true on 2026-09-10, when `082ba979` retired
+`test_every_mirrored_fact_agrees` in a sweep aimed at tests that assert where
+code lives. Nothing compares the two homes on any key today; `MIRRORED` and
+`RENAMED` below are read only by the debt count in `test_doc_claims.py`.
+
+What survives here is narrower: category ORDER, declared TYPE, orphan items,
+and panel presence. The cost of the gap was measured on 2026-09-14 -- a fix to
+the dataclass half of `engine`'s `item_kind` passed three tests while the
+catalogue half stayed wrong, and only a mutation test noticed.
+
+**Restoring a blanket agreement check would be wrong**, which is why this note
+and not a test: `restart` legitimately declares `deck` in the shared catalogue
+row and `produce` in the PySCF dataclass, because it expands three keywords on
+SIESTA and none on PySCF. Of 109 shared items that is the only `kind`
+disagreement, and it is correct. An agreement test would have to know that,
+and no document states the exception.
+
+When the form moves onto the catalogue, the metadata is deleted and this file
+goes with it.
 """
 from __future__ import annotations
 

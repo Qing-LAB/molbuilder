@@ -14,10 +14,26 @@ three until 2026-09-14.
 1. **`PR_SET_PDEATHSIG`** -- the only mechanism that survives `kill -9` of the
    parent, which runs no handler.  The shepherd asks the kernel to signal IT
    when its parent goes.
-2. **A process group** -- the kernels are GRANDCHILDREN (`jupyter-server`
-   spawns an `ipykernel` per notebook, and those are what hold memory and
-   GPUs).  Stopping the server alone routinely leaves them, so every stop
-   takes the whole group.
+2. **A process group** -- so a stop takes the SERVER, not just the shepherd:
+   the tree is shepherd -> the manager's `run` -> `jupyter-server`, and
+   signalling one of them is not signalling the others.
+
+   **THE GROUP DOES NOT REACH THE KERNELS, and it does not need to.**
+   `jupyter_client` launches every kernel with `start_new_session=True`
+   (`launcher.py`), so each kernel is its own session and group leader and
+   `killpg` never touches it -- measured 2026-09-14, kernel pgid 2152481
+   against the shepherd's 2141249.  Jupyter owns that half and owns it
+   twice: a graceful SIGTERM makes the server shut its kernels down itself,
+   and if the server dies with no handler at all, `ipykernel`'s parent
+   poller sees `JPY_PARENT_PID` vanish and the kernel exits on its own.
+   Measured the same day by `kill -9` on the server: the kernel was gone in
+   about a second, with nothing orphaned.
+
+   So what layer 2 guarantees is that **the server dies**, and the server
+   dying is what collects the kernels.  This block claimed the group reached
+   the kernels directly; a `/proc`-walking reaper was drafted to make that
+   true and then dropped, because it would have been a third copy of a
+   backstop Jupyter already provides and passes.
 3. **Reconciliation at startup** -- a machine crash, and a survivor that was
    re-parented before the signal landed, are outside layers 1 and 2.  The next
    `supervise()` (so `serve start` AND `serve foreground`) reads the pidfile
@@ -43,10 +59,10 @@ survives a reload and dies with the daemon.
 * the supervisor must be able to stop the notebook and every kernel under it
   with one signal.  It starts the shepherd in its own SESSION
   (``start_new_session=True``), which makes the shepherd a process-group
-  leader; everything the door launches below it -- the manager's ``run``,
-  ``jupyter-server``, every ``ipykernel`` -- inherits that group.  So the
-  shepherd stops the lot by signalling its OWN group, and no part of this
-  needs the door to hand back a pid.
+  leader; the manager's ``run`` and ``jupyter-server`` inherit that group.
+  So the shepherd stops them by signalling its OWN group, and no part of
+  this needs the door to hand back a pid.  (The KERNELS are not in that
+  group -- see layer 2 above; Jupyter collects those itself.)
 
 So the supervisor only ever launches an argv it was handed, and this module is
 what that argv runs.
@@ -70,9 +86,13 @@ _PR_SET_PDEATHSIG = 1
 #: A kernel mid-cell gets a moment to unwind; a wedged one does not get to
 #: hold a GPU indefinitely.  It sits inside the supervisor's own 10 s wait for
 #: the shepherd (`serve_daemon._stop_jupyter`), so the polite phase always
-#: finishes first.  **Used by `_stop_own_group`** -- it was a constant nothing
+#: finishes first there.  It must also stay strictly BELOW
+#: `serve_daemon.stop_by_pidfile`'s own grace, which reconciliation uses: the
+#: two were both 5.0, so the reconciliation poll timed out at the same instant
+#: the shepherd would have exited and reported "(forced)" for every perfectly
+#: polite stop.  **Used by `_stop_own_group`** -- it was a constant nothing
 #: read until 2026-09-14, while the code slept a hardcoded 1.0 beside it.
-_STOP_GRACE_S = 5.0
+_STOP_GRACE_S = 4.0
 
 #: Jupyter's own idle reaping, in seconds.  **Its settings, not a timer of
 #: ours** (`jupyter.md` § 4): a hand-rolled one would be a second opinion
@@ -184,6 +204,22 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
     return doc if isinstance(doc, dict) else {}
 
 
+def _unverified_ctx():
+    """The TLS context for talking to OUR OWN notebook.
+
+    Verification is off on purpose and the reason is one sentence:
+    molbuilder handed Jupyter that certificate, and the question being asked
+    is *"is it answering"*, not *"is it trusted"*.  One home, because this is
+    a security knob and it was built twice in this file -- once in
+    `answering`, once in `open_notebooks` -- with nothing binding the copies.
+    """
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def answering(serve_port: int, *, timeout: float = 1.5) -> bool:
     """Is something listening on the notebook port and talking HTTP?
 
@@ -192,18 +228,15 @@ def answering(serve_port: int, *, timeout: float = 1.5) -> bool:
     TLS is not verified here -- molbuilder gave Jupyter the certificate, and
     what is being asked is *"is it answering"*, not *"is it trusted"*.
     """
-    import ssl
     import urllib.error
     import urllib.request
     runtime = read_runtime(serve_port)
     url = str(runtime.get("url") or "")
     if not url:
         return False
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(url, timeout=timeout, context=ctx):
+        with urllib.request.urlopen(url, timeout=timeout,
+                                    context=_unverified_ctx()):
             return True
     except urllib.error.HTTPError:
         # It answered -- with a refusal, because no token was presented.
@@ -227,24 +260,21 @@ def open_notebooks(serve_port: int, *,
     Empty on any failure: this decorates the control row and must never be the
     reason it cannot render.
     """
-    import json as _json
-    import ssl
+    import json
     import urllib.request
     runtime = read_runtime(serve_port)
     base  = str(runtime.get("base") or "")
     token = str(runtime.get("token") or "")
     if not base or not token:
         return []
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     req = urllib.request.Request(
         f"{base}/api/sessions",
         headers={"Authorization": f"token {token}"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
-            sessions = _json.loads(r.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=timeout,
+                                    context=_unverified_ctx()) as r:
+            sessions = json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001 - a decoration, never a failure
         return []
     out: List[Dict[str, object]] = []
@@ -259,9 +289,19 @@ def open_notebooks(serve_port: int, *,
     return sorted(out, key=lambda n: str(n["path"]))
 
 
-def status(serve_port: int) -> Dict[str, object]:
+def status(serve_port: int, *, include_private: bool = True
+           ) -> Dict[str, object]:
     """**Two questions, answered separately**, for `deployment.md` § 1.0b's
-    reason: the wedge worth catching is up-and-not-answering."""
+    reason: the wedge worth catching is up-and-not-answering.
+
+    `include_private=False` withholds the two things a caller who may not
+    CONTROL the notebook has no business with: the token, which authenticates
+    a browser to a live kernel, and the paths of the notebooks currently open,
+    which are somebody's project tree.  Withholding them here rather than
+    deleting them afterwards is the difference between a credential that was
+    never produced and one whose safety depends on a later statement in a
+    function that will grow.
+    """
     pid = read_pid(serve_port)
     state = pid_state(pid)
     running = state == "ours"
@@ -274,10 +314,12 @@ def status(serve_port: int) -> Dict[str, object]:
         "port": jupyter_port(serve_port),
         "answering": up,
         "url": str(runtime.get("url") or ""),
-        "token": str(runtime.get("token") or ""),
+        "token": (str(runtime.get("token") or "")
+                  if include_private else ""),
         # Only when there is something to ask: one HTTP call, and asking a
         # server that is not answering is a timeout on every poll.
-        "open": open_notebooks(serve_port) if up else [],
+        "open": (open_notebooks(serve_port)
+                 if (up and include_private) else []),
     }
 
 
@@ -304,13 +346,20 @@ def _set_pdeathsig() -> bool:
 
 
 def _stop_own_group() -> None:
-    """Signal this process's whole group, which is every kernel under it.
+    """Signal this process's whole group: the shepherd, the manager's ``run``,
+    and ``jupyter-server``.
 
-    The shepherd is a group LEADER (the supervisor started it with
-    ``start_new_session=True``), so its group is exactly the tree the door
-    launched: the manager's ``run``, ``jupyter-server``, and every
-    ``ipykernel``.  SIGTERM is ignored in this process first, or the signal we
-    are about to send would re-enter this handler.
+    **NOT the kernels**, and that is not a gap.  `jupyter_client` starts every
+    kernel with ``start_new_session=True``, so each is its own group leader
+    and no ``killpg`` of ours reaches it.  What this guarantees is that the
+    SERVER dies; Jupyter then collects its own kernels two ways -- the
+    server's SIGTERM handler shuts them down gracefully, and if the server is
+    SIGKILLed instead, `ipykernel`'s parent poller sees the parent go and each
+    kernel exits by itself.  Both measured 2026-09-14; a `kill -9` on the
+    server left no kernel behind after about a second.
+
+    SIGTERM is ignored in this process first, or the signal we are about to
+    send would re-enter this handler.
     """
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     try:
@@ -485,6 +534,15 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
         "--no-browser",
         f"--ServerApp.ip={host}",
         f"--ServerApp.port={port}",
+        # A TAKEN PORT IS A REFUSAL, NOT A SILENT MOVE.  jupyter-server
+        # defaults `port_retries` to 50 and then picks a RANDOM free port in
+        # that range -- so if `serve_port + 1` were busy, Jupyter would start
+        # happily somewhere nobody recorded, while the runtime file, the
+        # `frame-src` CSP, the `frame-ancestors` grant and `answering()` all
+        # kept naming the port it was asked for.  The tab would say "wedged"
+        # over a perfectly healthy notebook.  Zero makes the clash an error
+        # molbuilder can see and report.
+        "--ServerApp.port_retries=0",
         f"--ServerApp.token={token}",
         f"--ServerApp.root_dir={root_dir}",
         f"--ServerApp.tornado_settings={json.dumps(settings)}",
@@ -533,21 +591,41 @@ def run_shepherd(serve_port: int, *, host: str,
     recipe = recipe_by_name("molbuilder-jupyternb")
     env_name = effective_name(recipe, caps)
     if not caps.env_available(env_name):
+        # THE REMEDY HAS ONE HOME (`envs.hints`), and this hand-copied it.
+        # That module's own docstring records the incident it was created by:
+        # `recipes.py` copied `_cli._fix_cmd`'s output, the copy drifted to a
+        # recipe name `recipe_by_name` does not accept, and the remedy printed
+        # was itself a usage error.  This copy had the same two seeds -- a
+        # hardcoded recipe name beside an `{env_name}` config may have
+        # renamed.  `hints` is stdlib-only and floor 1, so there was never a
+        # layering reason not to call it.
+        from .envs.hints import fix_cmd
         sys.stderr.write(
             f"molbuilder jupyter: env `{env_name}` is not installed.  It is "
-            f"opt-in: `bash scripts/install-env.sh install "
-            f"molbuilder-jupyternb --yes`.\n")
+            f"opt-in: `{fix_cmd('install', recipe.name, '--yes')}`.\n")
         return 2
 
     port = jupyter_port(serve_port)
     token = secrets.token_urlsafe(32)
+    # EVERYTHING THAT CAN RAISE HAPPENS BEFORE THE PIDFILE EXISTS.
+    # `prepare_lab_home` creates three directories and writes two files; a
+    # read-only or full state dir raised out of `run_shepherd` with the
+    # pidfile and the 0600 runtime file already on disk, because it sat
+    # between the write and the `try`.  The next `serve start` then reported
+    # a stale pidfile for a notebook that had never run.
+    lab_dirs = prepare_lab_home()
     scheme = "https" if (cert and key) else "http"
+    # BRACKET AN IPv6 LITERAL.  `--host ::1` produced `http://::1:8001/lab`,
+    # which `urlopen` cannot parse -- so `answering()` reported down forever
+    # and the tab stuck on "Starting...".  (The browser was unaffected: the
+    # tab rebuilds the base from `location.hostname`.)
+    _hostpart = f"[{host}]" if ":" in host else host
     ensure_private_dir(pid_path(serve_port).parent, tighten=True)
     pid_path(serve_port).write_text(f"{os.getpid()}\n")
     # 0600: the token authenticates a browser to a live kernel.
     write_json(runtime_path(serve_port),
-               {"url": f"{scheme}://{host}:{port}/lab",
-                "base": f"{scheme}://{host}:{port}",
+               {"url": f"{scheme}://{_hostpart}:{port}/lab",
+                "base": f"{scheme}://{_hostpart}:{port}",
                 "token": token, "port": port},
                mode=PRIVATE_FILE_MODE)
 
@@ -578,14 +656,26 @@ def run_shepherd(serve_port: int, *, host: str,
     env = dict(os.environ)
     argv = notebook_argv(caps.conda_binary, env_name, host=host, port=port,
                          token=token, root_dir=str(projects_root()),
-                         cert=cert, key=key, lab_dirs=prepare_lab_home())
+                         cert=cert, key=key, lab_dirs=lab_dirs)
     try:
-        # NO `log_file=`: this process's stdout and stderr ARE the notebook
-        # log (the supervisor opened it and handed it over), so `sink` alone
-        # puts every line there.  Passing both would have two writers on one
-        # file.
+        # NO PIPE AND NO SINK.  This process's stdout and stderr ARE the
+        # notebook log -- the supervisor opened it and handed it over -- so
+        # the child inheriting them writes straight into that file.
+        #
+        # It used to be streamed through `sink=sys.stderr`, which copied
+        # every line through Python into the same file it was already bound
+        # for, and kept a copy of all of it in memory for the life of the
+        # server (`run_streaming` accumulates, for the tail-on-failure a
+        # BUILD wants; this return value is discarded).  A server is not a
+        # build: it runs for days and Jupyter logs every request.
+        #
+        # The cost is stated at `dispatch_into_env`: no pipe means no
+        # automatic fallback for a broken `mamba run`.  Here that is the
+        # right trade -- the manager's error goes into the notebook log like
+        # everything else, and the tab already says a notebook was asked for
+        # and none started.
         rc, _out = dispatch_into_env(
-            argv, caps.env_prefix(env_name), env=env, sink=sys.stderr)
+            argv, caps.env_prefix(env_name), env=env, inherit_stdio=True)
     finally:
         _forget(serve_port)
     return rc if rc is not None else 1

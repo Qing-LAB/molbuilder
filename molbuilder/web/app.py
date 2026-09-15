@@ -53,8 +53,8 @@ import os
 import threading
 import time
 
-from flask import (Flask, abort, jsonify, make_response, redirect,
-                   render_template, request, send_file)
+from flask import (Flask, abort, current_app, jsonify, make_response,
+                   redirect, render_template, request, send_file)
 
 from .tabs import TABS, landing_path
 # The supervisor protocol -- a leaf module that imports nothing, so the
@@ -197,6 +197,41 @@ def _install_client_disconnect_filter():
         if not any(isinstance(x, _ClientDisconnectSSLFilter)
                    for x in log.filters):
             log.addFilter(f)
+
+
+#: The config key holding THIS PROCESS's serve port.
+_SERVE_PORT_KEY = "MOLBUILDER_SERVE_PORT"
+
+
+def serve_port() -> int:
+    """Which molbuilder is this, by port -- the ONE answer.
+
+    **A property of the process, not of the request.**  It keys the serve and
+    notebook pidfiles, the notebook's runtime file, the `frame-src` CSP, the
+    `frame-ancestors` grant Jupyter is given, and which supervisor a start
+    signal reaches.  It was parsed out of `request.host` in two places with
+    two different fallbacks (0 here, 80 in the notebook blueprint), which had
+    two consequences: on a `Host:` with no port the page said `frame-src
+    'none'` while the API reported on port 80, and **behind the reverse proxy
+    `deployment.md` recommends the whole notebook feature stopped working** --
+    the tab addressed `serve-80.pid` while the supervisor held
+    `serve-8000.pid`, so status read "not running" forever and Start named a
+    pidfile nobody had configured.  Found in review 2026-09-14.
+
+    `cmd_serve` knows the number and now says so at app build.  The header
+    parse survives only as a fallback for an app built without it (tests, an
+    embedding caller), and it is written ONCE, here.
+    """
+    port = current_app.config.get(_SERVE_PORT_KEY)
+    if isinstance(port, int) and port > 0:
+        return port
+    try:
+        return int((request.host or "").rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        # No port in the Host header and nobody told us: 0 is the honest
+        # answer, and every caller treats it as "I do not know" rather than
+        # guessing at 80.
+        return 0
 
 
 def create_app(*, config=None) -> Flask:
@@ -552,10 +587,7 @@ def create_app(*, config=None) -> Flask:
         # `setdefault`, so this one stands.
         from ..jupyter import jupyter_port
         resp = make_response(render_template("jupyternb.html"))
-        try:
-            port = int((request.host or "").rsplit(":", 1)[1])
-        except (IndexError, ValueError):
-            port = 0
+        port = serve_port()
         frame = f"{request.scheme}://*:{jupyter_port(port)}" if port else "'none'"
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; "

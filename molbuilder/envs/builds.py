@@ -231,6 +231,7 @@ def run_streaming(
     log_file: Optional[Path] = None,
     sink: Optional[TextIO] = None,
     timeout: Optional[int] = None,
+    inherit_stdio: bool = False,
 ) -> Tuple[Optional[int], str]:
     """Run a subprocess streaming stdout+stderr to ``sink`` in real time.
 
@@ -279,15 +280,34 @@ def run_streaming(
         # (cmake, ninja) line-flush by default; some don't (autoconf-
         # style) but the merge to stdout still streams paragraph-by-
         # paragraph instead of blocking until exit.
-        proc = subprocess.Popen(
-            list(argv),
-            cwd=str(cwd) if cwd is not None else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=dict(env) if env is not None else None,
-        )
+        if inherit_stdio:
+            # NO PIPE, NO PUMP, NO COPY -- the child writes straight to the
+            # file descriptors this process already has.
+            #
+            # For a BUILD, the pipe earns itself twice: the caller watches
+            # progress, and the captured text is printed when a step fails.
+            # For a SERVER it earns nothing.  The supervisor already opened
+            # the notebook log and handed it to the shepherd as stdout, so
+            # Jupyter's output reaches that file either way -- piping it
+            # through Python only re-copies it, line by line, for days, and
+            # keeps every line in a list nobody reads (the shepherd discards
+            # the return value).  Inheriting is the same log, without the
+            # copy or the growth.
+            proc = subprocess.Popen(
+                list(argv),
+                cwd=str(cwd) if cwd is not None else None,
+                env=dict(env) if env is not None else None,
+            )
+        else:
+            proc = subprocess.Popen(
+                list(argv),
+                cwd=str(cwd) if cwd is not None else None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=dict(env) if env is not None else None,
+            )
     except (FileNotFoundError, OSError) as exc:
         msg = f"failed to launch: {exc}"
         if log_file is not None:
@@ -297,6 +317,17 @@ def run_streaming(
             except OSError:
                 pass
         return None, msg
+
+    if inherit_stdio:
+        # Nothing to read; just wait for it.  There is no transcript to
+        # return, and the one caller that asks for this does not want one.
+        try:
+            rc = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            return None, ""
+        return rc, ""
 
     captured_lines: List[str] = []
     try:
@@ -589,12 +620,21 @@ def dispatch_into_env(argv: Sequence[str],
                       sink: Optional[TextIO] = None,
                       log_file: Optional[Path] = None,
                       timeout: Optional[int] = None,
+                      inherit_stdio: bool = False,
                       ) -> Tuple[Optional[int], str]:
     """Launch one argv inside an env.  THE ONE DOOR (M1).
 
     The manager's own ``run`` is the route.  A manager whose ``run`` is broken
     -- mamba 1.x, still common on clusters -- is MEASURED, not guessed from a
     version number: the first attempt that fails with
+    **`inherit_stdio=True` GIVES UP THE AUTOMATIC FALLBACK**, and says so
+    here because the caller is choosing it: with no pipe there is no output
+    to scan, so a broken `mamba run` is not detected and not worked around.
+    The one caller that asks for it is the notebook shepherd, where the child
+    runs for days and the log file is already its stdout -- and where the
+    failure is loud rather than silent: the manager's own error lands in the
+    notebook log, and the tab says a notebook was asked for and none started.
+
     `MANAGER_RUN_STUB_SIGNATURE` switches this process to
     `activation_wrapper` and says so once.  The stub dies before the inner
     command starts, so that retry cannot half-run anything.
@@ -612,11 +652,13 @@ def dispatch_into_env(argv: Sequence[str],
         # Nothing to enter: `conda create`, `conda install --prefix ...`,
         # `env remove`, or a bare command.  The manager is the whole command.
         return run_streaming(argv, cwd=cwd, env=env, sink=sink,
-                             log_file=log_file, timeout=timeout)
+                             log_file=log_file, timeout=timeout,
+                             inherit_stdio=inherit_stdio)
 
     if not _MANAGER_RUN_UNUSABLE["seen"]:
         rc, out = run_streaming(argv, cwd=cwd, env=env, sink=sink,
-                                log_file=log_file, timeout=timeout)
+                                log_file=log_file, timeout=timeout,
+                                inherit_stdio=inherit_stdio)
         if MANAGER_RUN_STUB_SIGNATURE not in (out or ""):
             return rc, out
         _MANAGER_RUN_UNUSABLE["seen"] = True
@@ -633,7 +675,7 @@ def dispatch_into_env(argv: Sequence[str],
 
     return run_streaming(activation_wrapper(argv, env_prefix), cwd=cwd,
                          env=env, sink=sink, log_file=log_file,
-                         timeout=timeout)
+                         timeout=timeout, inherit_stdio=inherit_stdio)
 
 
 # Phases that wipe their build directory when re-run (everything from

@@ -213,8 +213,11 @@ def stop_by_pidfile(path: Path, *, marker: bytes, grace_s: float = 5.0,
     The general form of what `signal_supervisor` does for the serve pidfile,
     used for the notebook's (`jupyter.md` § 3.2).  The group matters there:
     the process named by that file leads its own session, so its group is the
-    notebook server AND every `ipykernel` under it -- which are what hold
-    memory and GPUs, and what stopping the server alone routinely leaves.
+    shepherd, the manager's `run` and the notebook SERVER.  The kernels are
+    not in it -- `jupyter_client` gives each its own session -- and do not
+    need to be: killing the server is what makes Jupyter collect them, by its
+    own cleanup on SIGTERM or by `ipykernel`'s parent poller if the server
+    dies outright.
 
     A stale file is cleaned up and REPORTED; a recycled pid is never
     signalled.
@@ -383,16 +386,20 @@ def supervise(port: int, child_argv: List[str], *,
             _note(roll, f"notebook left from a previous run: {said}")
 
     state: dict = {"child": None, "hup": False, "term": False,
-                   "jupyter": None}
+                   # `nb_busy` / `nb_pending`: the two notebook signals act
+                   # IN the handler (the loop is blocked pumping) and must
+                   # never act inside each other -- see `_notebook_action`.
+                   "jupyter": None, "nb_busy": False, "nb_pending": None}
 
     def _start_jupyter() -> None:
         """Launch the shepherd, in ITS OWN SESSION.
 
-        The new session makes the shepherd a process-group leader, so
-        everything the door launches below it -- the manager's ``run``,
-        ``jupyter-server``, every ``ipykernel`` -- lands in one group the
-        shepherd can take down by signalling itself.  It stays a CHILD of
-        this process, which is what `PR_SET_PDEATHSIG` keys on.
+        The new session makes the shepherd a process-group leader, so the
+        manager's ``run`` and ``jupyter-server`` land in one group the
+        shepherd can take down by signalling itself.  (Kernels get their own
+        sessions from `jupyter_client` and are collected by Jupyter, not by
+        that signal -- `jupyter.py`'s module docstring, layer 2.)  It stays a
+        CHILD of this process, which is what `PR_SET_PDEATHSIG` keys on.
         """
         if jupyter_argv is None:
             _note(roll, "notebook: not configured for this server")
@@ -413,8 +420,17 @@ def supervise(port: int, child_argv: List[str], *,
         # stream this process has to service.
         try:
             log = jupyter_log(port)
-            log.parent.mkdir(parents=True, exist_ok=True)
-            fh = open(log, "ab", buffering=0)
+            ensure_private_dir(log.parent, tighten=True)
+            # 0600 FROM ITS FIRST BYTE, through the door this module made
+            # public for exactly this.  A bare `open(..., "ab")` stood here
+            # and landed 0664 -- and this log is a SECRET SINK: jupyter-server
+            # prints its own URL with the token in it, so the credential
+            # `jupyter_runtime` is careful to write 0600 was sitting
+            # world-readable beside it (measured 2026-09-14: 14 occurrences
+            # of `token=` in a 0664 file).  It was saved from being worse
+            # only by `LogRoll` having tightened the shared `logs/` dir first
+            # -- an accident of ordering, not a property of this code.
+            fh = open_private(log, "ab")
         except OSError as exc:
             _note(roll, f"notebook: could not open its log -- {exc}")
             return
@@ -433,6 +449,12 @@ def supervise(port: int, child_argv: List[str], *,
         """SIGTERM the shepherd; its own handler takes the group with it."""
         live = state["jupyter"]
         if live is None or live.poll() is not None:
+            # SAY IT.  This returned in silence, which is how the reentrancy
+            # bug above stayed invisible: the supervisor had lost its handle,
+            # every stop did nothing, and the log recorded nothing at all.
+            _note(roll, "notebook: nothing to stop"
+                        if live is None else
+                        f"notebook: already gone (pid {live.pid})")
             state["jupyter"] = None
             return
         try:
@@ -441,7 +463,10 @@ def supervise(port: int, child_argv: List[str], *,
             _note(roll, f"notebook: stopped (pid {live.pid})")
         except subprocess.TimeoutExpired:
             # The shepherd did not go.  Its GROUP does -- and since it leads
-            # its own session, that is the notebook and every kernel.
+            # its own session, that is the shepherd, the manager's `run` and
+            # jupyter-server.  NOT the kernels: each has its own session
+            # (`jupyter_client`), and it is the SERVER dying that makes
+            # Jupyter collect them.  See `jupyter.py`'s module docstring.
             try:
                 os.killpg(os.getpgid(live.pid), signal.SIGKILL)
             except OSError:
@@ -451,11 +476,50 @@ def supervise(port: int, child_argv: List[str], *,
             _note(roll, f"notebook: could not stop -- {exc}")
         state["jupyter"] = None
 
+    def _notebook_action(action: str) -> None:
+        """Run one notebook action, and NEVER inside another one.
+
+        These two handlers cannot be reduced to flags the way SIGHUP and
+        SIGTERM are: the main loop spends its life blocked in the pump
+        (`child.stdout.read`), so a flag would not be looked at until the
+        server child exited -- and "start the notebook" would mean "start it
+        the next time the app restarts".  They have to act in the signal.
+
+        What they must not do is act inside EACH OTHER, and that is not
+        hypothetical -- it happened on this machine on 2026-09-14.  A
+        `jupyter restart` sent SIGUSR2 then SIGUSR1; the second arrived while
+        `_stop_jupyter` was inside `live.wait(timeout=10)`, so `_start_jupyter`
+        ran nested and launched a new shepherd, and then the outer stop
+        finished and set `state["jupyter"] = None` -- **discarding the handle
+        to the shepherd just started**.  The log showed it plainly, "started
+        (pid B)" printed before "stopped (pid A)".  From then on the
+        supervisor believed no notebook was running while one was, and every
+        later stop returned silently at `live is None`.
+
+        So a second action arriving mid-action is QUEUED, not nested, and the
+        queue is one deep because the only thing that matters is where you
+        end up: the last request wins.
+        """
+        if state["nb_busy"]:
+            state["nb_pending"] = action
+            return
+        state["nb_busy"] = True
+        try:
+            while action is not None:
+                if action == "start":
+                    _start_jupyter()
+                else:
+                    _stop_jupyter()
+                action = state["nb_pending"]
+                state["nb_pending"] = None
+        finally:
+            state["nb_busy"] = False
+
     def _on_usr1(signum, frame):
-        _start_jupyter()
+        _notebook_action("start")
 
     def _on_usr2(signum, frame):
-        _stop_jupyter()
+        _notebook_action("stop")
 
     def _on_hup(signum, frame):
         state["hup"] = True
