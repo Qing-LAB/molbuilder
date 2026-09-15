@@ -25,7 +25,7 @@ form was retired with it — a verb is named, never implied)*:
 
 ```bash
 python -m molbuilder serve start        # background: detach, log, pidfile
-python -m molbuilder serve status       # is it up, is it ANSWERING, where
+python -m molbuilder serve status       # SURVEYS every server; --port for one
 python -m molbuilder serve restart      # recycle the server in place
 python -m molbuilder serve stop         # bring it down
 python -m molbuilder serve foreground   # today's terminal-bound run (dev)
@@ -91,6 +91,18 @@ no health-check auto-restart. A child that is up but not answering is a
 question, not a verdict: without a diagnosis, an automatic kill could
 interrupt real user work on a guess. The order is diagnosis first
 (the stack dump above), then a **human** decides (`serve restart`).
+
+**`serve status` with no `--port` surveys.** It used to default to 8000, so a
+molbuilder on any other port was reported *"not running"* — the one answer
+worse than none, because it is confidently wrong while the port sits on disk
+(`runtime_dir()` holds one `serve-<port>.pid` per server). With no `--port` it
+lists every server that has a pidfile, each verified with `pid_state` and each
+probed for an answer, and says whether a notebook is held beside it; naming a
+`--port` gives the single-server detail exactly as before. A miss on a named
+port also names the servers that *are* up. **Two limits it states rather than
+implies:** a `serve foreground` writes no pidfile and cannot appear, and a
+stale file is reported stale, never signalled. `jupyter status` does the same
+for notebooks. *(User ruling 2026-09-15; `plan.md` § 5n, J14.)*
 
 **The log is the record — and nothing more is built.** Every daemon
 event line (child start, respawn, flap give-up, stop) is timestamped,

@@ -47,6 +47,7 @@ from __future__ import annotations
 import os
 import stat
 from pathlib import Path
+from typing import List
 
 __all__ = [
     # The directories.  A format owner asks for one of these and joins its
@@ -55,6 +56,7 @@ __all__ = [
     # The files with no format to own them -- spelled here and nowhere else.
     "session_key", "google_client_secret", "secrets_dir",
     "serve_pidfile", "serve_log", "serve_stacks_log",
+    "ports_with_pidfile",
     "jupyter_pidfile", "jupyter_log", "jupyter_runtime",
     "jupyter_lab_home",
     "CONFIG_DIR_ENV", "DIRNAME",
@@ -259,6 +261,32 @@ def reports_dir() -> Path:
 def serve_pidfile(port: int) -> Path:
     """The supervisor's pidfile -- the address ``stop``/``restart`` act on."""
     return runtime_dir() / f"serve-{port}.pid"
+
+
+def ports_with_pidfile(prefix: str = "serve") -> List[int]:
+    """Every port that has a pidfile -- `serve_pidfile` INVERTED.
+
+    One home for the ``<prefix>-<port>.pid`` shape, in both directions, for
+    the reason `jupyter.serve_port_of` exists: a second place that knows how
+    to take the name apart drifts the day the name changes.
+
+    **This is what lets `serve status` answer without being told a port.**
+    It defaulted to 8000, so a server on 8888 was reported *"not running"* --
+    confidently wrong, when the port was on disk the whole time
+    (`plan.md` § 5n, J14).
+
+    It lists only what has a FILE.  A `serve foreground` writes none, so it
+    cannot appear here, and a caller that means *"what is running"* has to
+    say so rather than let an empty list imply it.  Whether each pid is alive
+    and really ours is `serve_daemon.pid_state`'s question, not this one's.
+    """
+    out: List[int] = []
+    for p in runtime_dir().glob(f"{prefix}-*.pid"):
+        try:
+            out.append(int(p.stem.split("-", 1)[1]))
+        except (IndexError, ValueError):
+            continue        # not one of ours; the name is the only claim
+    return sorted(out)
 
 
 def serve_log(port: int) -> Path:

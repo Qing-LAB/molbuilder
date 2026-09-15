@@ -2045,6 +2045,22 @@ def _serve_port_flag(f):
              "at.")(f)
 
 
+def _serve_port_filter(f):
+    """``--port`` for a verb that REPORTS -- optional, because *"which port?"*
+    is the question the person is asking.
+
+    Distinct from `_serve_port_flag` on purpose: an acting verb must be told
+    exactly which server to stop, while a reporting one defaulting to 8000
+    told somebody running on 8888 that nothing was running -- confidently
+    wrong, with the port sitting on disk the whole time (`plan.md` § 5n, J14,
+    the user's own).
+    """
+    return click.option(
+        "--port", type=int, default=None,
+        help="one server to report on.  Omit it and every server with a "
+             "pidfile is surveyed.")(f)
+
+
 def _serve_flags(f):
     """The flags ``foreground`` and ``start`` share -- one decorator, so
     the two verbs cannot drift apart about what a server accepts."""
@@ -2468,11 +2484,22 @@ def cmd_jupyter_restart(port):
 
 @jupyter_group.command("status",
                        short_help="is it up, is it ANSWERING, where")
-@_serve_port_flag
+@_serve_port_filter
 def cmd_jupyter_status(port):
     """Two questions, answered separately -- `deployment.md` § 1.0b's rule:
-    the failure worth catching is a process that is up and not answering."""
+    the failure worth catching is a process that is up and not answering.
+
+    **With no `--port`, every notebook is surveyed** -- the same reason
+    `serve status` does (`plan.md` § 5n, J14).  A notebook is keyed by the
+    SERVE port it belongs to, and that number is on disk; defaulting to 8000
+    reported *"not running"* to somebody whose notebook was up beside a
+    server on another port.
+    """
     from .jupyter import log_path, status
+
+    if port is None:
+        raise SystemExit(_survey_notebooks())
+
     st = status(port)
     if not st["running"]:
         if st["pid_state"] == "foreign":
@@ -2486,6 +2513,7 @@ def cmd_jupyter_status(port):
         nb_log = log_path(port)
         if nb_log.exists():
             click.echo(f"  last log:  {nb_log}")
+        _say_which_notebooks_else(port)
         raise SystemExit(1)
     click.echo(f"running    pid {st['pid']}, port {st['port']}")
     click.echo("answering  " + ("yes" if st["answering"] else
@@ -2496,6 +2524,50 @@ def cmd_jupyter_status(port):
     if st["url"]:
         click.echo(f"url        {st['url']}  (the tab adds the token)")
     raise SystemExit(0 if st["answering"] else 1)
+
+
+def _live_notebook_ports():
+    """The serve ports that have a notebook of ours running."""
+    from .config_dir import ports_with_pidfile
+    from .jupyter import pid_state, read_pid
+    return [p for p in ports_with_pidfile("jupyter")
+            if pid_state(read_pid(p)) == "ours"]
+
+
+def _say_which_notebooks_else(missing_port: int) -> None:
+    """After a miss on one port, name the notebooks that ARE there."""
+    others = [p for p in _live_notebook_ports() if p != missing_port]
+    if others:
+        click.echo("  but a notebook IS running beside the server on port "
+                   + ", ".join(str(p) for p in others)
+                   + " -- `molbuilder jupyter status` with no --port surveys "
+                     "them all.")
+
+
+def _survey_notebooks() -> int:
+    """Every notebook with a pidfile, one line each.  Returns the exit code.
+
+    0 when at least one answers, 1 otherwise -- this verb's own two codes,
+    not `serve status`'s three, because that is what its single-port path
+    already returns and a survey must not invent a third vocabulary.
+    """
+    from .jupyter import log_path, status
+    ports = _live_notebook_ports()
+    if not ports:
+        click.echo("no notebook server is running.")
+        click.echo("  start one:  molbuilder jupyter start --port <serve "
+                   "port>   (or the JupyterNB tab's button)")
+        return 1
+    answered = False
+    for p in ports:
+        st = status(p, include_private=False)
+        answered = answered or bool(st["answering"])
+        click.echo(f"serve {p:<6} notebook pid {st['pid']:<8} "
+                   f"port {st['port']:<6} "
+                   f"answering: {'yes' if st['answering'] else 'NO'}   "
+                   f"log {log_path(p)}")
+    click.echo("  detail on one:  molbuilder jupyter status --port <port>")
+    return 0 if answered else 1
 
 
 @jupyter_group.command("_shepherd", hidden=True)
@@ -2515,34 +2587,23 @@ def cmd_jupyter_shepherd(serve_port, host, cert, key):
     raise SystemExit(run_shepherd(serve_port, host=host, cert=cert, key=key))
 
 
-@serve_group.command("status", short_help="is it up, is it ANSWERING, where")
-@_serve_port_flag
-def cmd_serve_status(port):
-    """Two questions, answered separately (`deployment.md` 1.0b): the
-    2026-08-28 wedge was a server that was UP and not ANSWERING, and a
-    status that conflates the two calls that healthy."""
-    from .config_dir import serve_log, serve_pidfile
-    from .serve_daemon import pid_state, read_pid
-    pid = read_pid(port)
-    state = pid_state(pid)
-    if state == "dead":
-        if pid is not None:
-            click.echo(f"not running -- stale pidfile at {serve_pidfile(port)} "
-                       f"(pid {pid} is gone)")
-        else:
-            click.echo(f"not running (no pidfile at {serve_pidfile(port)})")
-        raise SystemExit(3)
-    if state == "foreign":
-        click.echo(f"pidfile names pid {pid}, which is NOT your molbuilder "
-                   f"serve -- stale file, recycled pid.  Nothing to act on.")
-        raise SystemExit(3)
-    click.echo(f"process:   up (supervisor pid {pid})")
-    click.echo(f"log:       {serve_log(port)}")
-    # the second question: does it ANSWER.  Loopback, either scheme; a
-    # cert made for the public name fails verification on 127.0.0.1, and
-    # this asks about liveness, not identity -- so verification is off
-    # for exactly this request.  `serve_daemon` owns that knob (one home,
-    # three hand-built copies until 2026-09-15).
+def _probe_health(port: int, *, timeout: float = 5.0):
+    """Does the molbuilder on ``port`` ANSWER?  -> ``(bool, one line)``.
+
+    THE SECOND QUESTION (`deployment.md` § 1.0b): the 2026-08-28 wedge was a
+    server that was UP and not ANSWERING, and a status conflating the two
+    calls that healthy.
+
+    Loopback, either scheme, verification off -- a cert made for the public
+    name fails on `127.0.0.1`, and this asks about liveness, not identity
+    (`serve_daemon.unverified_ctx` owns that knob).
+
+    One home because the survey and the single-port report must not answer
+    this two ways.  The timeout only ever bites on a server that is actually
+    wedged: a refused connection returns at once and a live one answers at
+    once, so surveying several costs nothing extra unless one of them is the
+    case worth waiting for.
+    """
     import urllib.error
     import urllib.request
 
@@ -2552,31 +2613,36 @@ def cmd_serve_status(port):
         try:
             with urllib.request.urlopen(
                     f"{scheme}://127.0.0.1:{port}/api/health",
-                    timeout=5, context=ctx if scheme == "https" else None):
-                click.echo(f"answering: yes ({scheme}, /api/health)")
-                return
+                    timeout=timeout,
+                    context=ctx if scheme == "https" else None):
+                return True, f"yes ({scheme}, /api/health)"
         except urllib.error.HTTPError:
-            click.echo(f"answering: yes ({scheme}; /api/health refused, "
-                       f"which is still an answer)")
-            return
+            return True, (f"yes ({scheme}; /api/health refused, which is "
+                          f"still an answer)")
         except (urllib.error.URLError, OSError, TimeoutError):
             continue
-    click.echo("answering: NO -- the process is up but /api/health gave "
-               "nothing within 5s.  `kill -USR1` the child pid and read "
-               "the stacks log, or `molbuilder serve restart`.")
-    # The log is the record of concerns and detections (deployment.md
-    # § 1.0c, user ruling 2026-08-28) -- this detection lands there too,
-    # not only in whichever terminal happened to ask.  A one-line append
-    # beside the daemon's own writes; the rare rotation race can cost
-    # this line at worst, never a daemon byte.
+    return False, (f"NO -- the process is up but /api/health gave nothing "
+                   f"within {timeout:g}s")
+
+
+def _note_wedge(port: int, pid: int) -> None:
+    """Append the detection to the server's own log.
+
+    The log is the record of concerns and detections (`deployment.md`
+    § 1.0c, user ruling 2026-08-28) -- a wedge belongs there too, not only in
+    whichever terminal happened to ask.  A one-line append beside the
+    daemon's own writes; the rare rotation race can cost this line at worst,
+    never a daemon byte.
+    """
     import time as _time
+
+    from .config_dir import ensure_private_dir, serve_log
     try:
-        from .config_dir import ensure_private_dir
-        from .serve_daemon import open_private
         # The same doors the daemon uses.  When `status` is the FIRST writer --
         # a box where the server has never started -- a bare mkdir + append
-        # created the log 0664 in a 0775 directory, and a later supervisor start
-        # tightened both, so the window was "until one runs" (I5).
+        # created the log 0664 in a 0775 directory, and a later supervisor
+        # start tightened both, so the window was "until one runs" (I5).
+        from .serve_daemon import open_private
         ensure_private_dir(serve_log(port).parent, tighten=True)
         with open_private(serve_log(port), "ab") as fh:
             fh.write((f"[serve-status] "
@@ -2585,7 +2651,124 @@ def cmd_serve_status(port):
                       f"gave nothing within 5s\n").encode())
     except OSError:
         pass                     # the terminal report above still stands
+
+
+@serve_group.command("status", short_help="is it up, is it ANSWERING, where")
+@_serve_port_filter
+def cmd_serve_status(port):
+    """Two questions, answered separately (`deployment.md` 1.0b): the
+    2026-08-28 wedge was a server that was UP and not ANSWERING, and a
+    status that conflates the two calls that healthy.
+
+    **With no `--port`, every server is surveyed.**  The port is on disk --
+    `runtime_dir()` holds one `serve-<port>.pid` per server -- so a status
+    that has to be told which port can only ever confirm a guess.
+    """
+    from .config_dir import serve_log, serve_pidfile
+    from .serve_daemon import pid_state, read_pid
+
+    if port is None:
+        raise SystemExit(_survey())
+
+    pid = read_pid(port)
+    state = pid_state(pid)
+    if state == "dead":
+        if pid is not None:
+            click.echo(f"not running -- stale pidfile at {serve_pidfile(port)} "
+                       f"(pid {pid} is gone)")
+        else:
+            click.echo(f"not running (no pidfile at {serve_pidfile(port)})")
+        _say_where_else(port)
+        raise SystemExit(3)
+    if state == "foreign":
+        click.echo(f"pidfile names pid {pid}, which is NOT your molbuilder "
+                   f"serve -- stale file, recycled pid.  Nothing to act on.")
+        _say_where_else(port)
+        raise SystemExit(3)
+    click.echo(f"process:   up (supervisor pid {pid})")
+    click.echo(f"log:       {serve_log(port)}")
+    ok, said = _probe_health(port)
+    click.echo(f"answering: {said}")
+    if ok:
+        return
+    click.echo("  `kill -USR1` the child pid and read the stacks log, or "
+               "`molbuilder serve restart`.")
+    _note_wedge(port, pid)
     raise SystemExit(4)
+
+
+def _say_where_else(missing_port: int) -> None:
+    """After a miss on one port, name the servers that ARE there.
+
+    The whole of J14 in one line: being told *"not running"* while another
+    molbuilder serves happily two ports away is the answer that sends a
+    person looking for a bug in the server.
+    """
+    from .config_dir import ports_with_pidfile
+    from .serve_daemon import pid_state, read_pid
+    others = [p for p in ports_with_pidfile()
+              if p != missing_port and pid_state(read_pid(p)) == "ours"]
+    if others:
+        click.echo("  but a molbuilder IS running on port "
+                   + ", ".join(str(p) for p in others)
+                   + " -- `molbuilder serve status` with no --port surveys "
+                     "them all.")
+
+
+def _survey() -> int:
+    """Every server with a pidfile, one line each.  Returns the exit code.
+
+    0 when at least one answers, 4 when some are up and none answer, 3 when
+    there is nothing to report -- the same three codes the single-port path
+    uses, so a script does not have to learn a second vocabulary.
+    """
+    from .config_dir import ports_with_pidfile
+    from .serve_daemon import pid_state, read_pid
+
+    rows, stale = [], []
+    for p in ports_with_pidfile():
+        pid = read_pid(p)
+        if pid_state(pid) == "ours":
+            rows.append((p, pid))
+        else:
+            stale.append(p)
+
+    if not rows:
+        click.echo("no molbuilder server is running.")
+        if stale:
+            click.echo("  stale pidfile(s) for port "
+                       + ", ".join(str(p) for p in stale)
+                       + " -- the process is gone; nothing to act on.")
+        # SAY WHAT THIS CANNOT SEE.  `serve foreground` writes no pidfile, so
+        # an empty survey is "nothing left a record", which is not the same
+        # sentence as "nothing is running".
+        click.echo("  (a `serve foreground` writes no pidfile and cannot "
+                   "appear here.)")
+        return 3
+
+    answered = False
+    for p, pid in rows:
+        ok, said = _probe_health(p)
+        answered = answered or ok
+        nb = "yes" if _notebook_is_up(p) else "no"
+        click.echo(f"port {p:<6} pid {pid:<8} answering: {said}"
+                   f"   notebook: {nb}")
+    if stale:
+        click.echo("stale pidfile(s) for port "
+                   + ", ".join(str(p) for p in stale) + ".")
+    click.echo("  detail on one:  molbuilder serve status --port <port>")
+    return 0 if answered else 4
+
+
+def _notebook_is_up(serve_port: int) -> bool:
+    """Is a notebook held beside the server on ``serve_port``?
+
+    The pid only -- no HTTP.  The survey's job is *"what is running"*, and
+    `molbuilder jupyter status --port N` is the verb that asks a notebook
+    whether it is answering.
+    """
+    from .jupyter import pid_state as nb_state, read_pid as nb_pid
+    return nb_state(nb_pid(serve_port)) == "ours"
 
 
 @serve_group.command("restart", short_help="recycle the server in place")

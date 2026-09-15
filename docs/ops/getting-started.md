@@ -162,7 +162,8 @@ full story of records, `--target`, and what refuses when a record is stale:
 ```bash
 molbuilder serve start        # background; log under $XDG_STATE_HOME/molbuilder,
                               # pidfile under $XDG_RUNTIME_DIR/molbuilder
-molbuilder serve status       # is it up, is it answering, where
+molbuilder serve status       # every server you have running, and whether
+                              # each answers (--port for one in detail)
 ```
 
 (`serve foreground` keeps it in your terminal; `restart`/`stop` act on your
