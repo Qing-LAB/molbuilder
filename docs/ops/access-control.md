@@ -75,7 +75,7 @@ it exists only under a supervisor **and** only for a named admin (§ 6).
 
 ---
 
-## 2. Four questions, four gates
+## 2. Five questions, five gates
 
 They are separate because they are different questions, and one answer would be
 wrong for at least one of them.
@@ -86,10 +86,50 @@ wrong for at least one of them.
 | **Does this traffic look hostile?** | the rate limiter | empty `429`, `Connection: close`, 1 h | `web/rate_limit.py` |
 | **May this person read and clear the block list?** | the `admin` list | `403` | `web/admin.py` |
 | **May this person stop the process everyone shares?** | supervisor **and** the `admin` list | the route **does not exist** — `404` | `web/app.py` |
+| **May this person run arbitrary code on this machine?** | supervisor **and** the `admin` list — *or* loopback on a server with no sign-in | `404` with no supervisor to ask, `403` with one | `web/blueprints/jupyter.py` |
 
-Read the last two rows together: **one list answers both**, and they refuse in
-different ways — a 403 for the block list, an absent route for the restart. § 5
-and § 6 are why.
+Read rows three to five together: **one list answers all of them**, and they
+refuse in different ways — a 403 for the block list, an absent route for the
+restart, and 404-then-403 for the notebook. § 5 and § 6 are why.
+
+### 2.0 The fifth gate — a live kernel *(added 2026-09-15)*
+
+**This document listed four gates while a fifth had shipped**, and the fifth is
+the one that hands out arbitrary code execution: `POST /api/jupyter/start` and
+`/stop`. The blueprint said so in its own docstring — *"a live kernel is
+arbitrary code execution as the account running the server — the same
+capability `POST /api/admin/reload` guards, arrived at from the other
+direction"* — and then cited `jupyter.md` § 6 rather than this page, which
+fixed the pointer and left the owning document without the rule. An operator
+asking *"who can run code on my server"* got an answer that was wrong and
+looked complete. *(`plan.md` § 5n.8.)*
+
+Three things make it differ from the restart gate, and each is deliberate:
+
+1. **The routes are always registered and refuse per request.** The restart
+   route is absent when it cannot work; these answer **404** when there is no
+   supervisor to ask, because the precondition — a live supervisor holding a
+   notebook — is a *request-time* fact, and gating registration on an
+   environment variable made the URL map depend on how the process was
+   started. Same thing a client sees; decided when it is knowable.
+2. **403, not 404, for a caller who may not press it.** There is a button to
+   refuse, so the honest answer is *not yours*, not *does not exist*.
+3. **ONE EXCEPTION, deliberately narrow: loopback on a server with no sign-in
+   configured.** On such a server the `admin` list can never answer yes — it
+   needs a session and none can exist — so the capability would be unreachable
+   from the browser on every developer's own machine, which is where notebooks
+   are used. It is not a hole: a client on the loopback interface already has a
+   shell on this account and can run `molbuilder jupyter start` directly, and
+   with no sign-in every file endpoint is open to it anyway. It requires BOTH
+   conditions: a server *with* sign-in falls to the `admin` list even on
+   loopback, and a server without sign-in gives nobody off-machine the button —
+   which matters, because "no providers" does not force a loopback bind.
+
+**And the token is the same capability.** Reaching a running kernel is the same
+code execution as starting one, so `GET /api/jupyter/status` withholds the
+notebook's token — and the paths of the open notebooks — from any caller who
+may not control it, by never producing them. `web/jupyter.md` § 5.1 is the
+payload contract; § 6 there is the exposure rule.
 
 ### 2.1 A request, walking through them
 
@@ -107,7 +147,7 @@ flowchart TB
     B["empty 429 · Connection: close<br/>cooled off for 1 hour"]
     ADM{"an admin-only route?"}
     A403["403 — the block list"]
-    A404["404 — the restart route<br/><b>does not exist</b> for you"]
+    A404["404 — the restart route<br/><b>does not exist</b> for you;<br/>the notebook's refuses per request"]
     OK(["served"])
 
     R --> A

@@ -35,8 +35,9 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, config_dir,
-                         google_client_secret, logs_dir, reports_dir,
-                         runtime_dir, secrets_dir, session_key, state_dir)
+                         google_client_secret, jupyter_lab_home, logs_dir,
+                         reports_dir, runtime_dir, secrets_dir, session_key,
+                         state_dir)
 
 __all__ = ["Place", "places", "findings"]
 
@@ -119,6 +120,32 @@ def places() -> Tuple[Place, ...]:
               "the state root, where the default umask is not good enough"),
         Place("a serve pidfile", runtime_dir, False, None, False,
               "an address, not a secret", "serve-*.pid"),
+        # THE NOTEBOOK'S FOUR, absent from this table until 2026-09-15 while
+        # the newest credential in the tree lived in two of them
+        # (`plan.md` § 5n.8).  This module's own docstring says why that
+        # mattered: the audit exists because a file "ARRIVES loose in ways no
+        # writer controls" -- restored from a backup, copied off another
+        # machine, or left by a molbuilder older than the 2026-09-14 fix,
+        # which is exactly the measured 0664 case.  The writers are careful
+        # now; nothing was WATCHING.
+        Place("a notebook log", logs_dir, False, PRIVATE_FILE_MODE, True,
+              "jupyter-server prints its own URL with the token in it at "
+              "every start -- measured 2026-09-14 at 0664 with 14 "
+              "occurrences of `token=`, and the token reaches a live kernel",
+              "jupyter-*.log"),
+        Place("a notebook pidfile", runtime_dir, False, None, False,
+              "an address, not a secret -- the shepherd's, beside the "
+              "serve pidfile", "jupyter-*.pid"),
+        Place("a notebook runtime file", runtime_dir, False,
+              PRIVATE_FILE_MODE, True,
+              "it holds the notebook's TOKEN, which authenticates a browser "
+              "to a live kernel -- arbitrary code execution as this account",
+              "jupyter-*.json"),
+        Place("the framed Lab's home", jupyter_lab_home, True,
+              PRIVATE_DIR_MODE, True,
+              "molbuilder's own Lab settings and per-server workspaces; it "
+              "sits in the state root, where the default umask is not good "
+              "enough"),
     )
 
 

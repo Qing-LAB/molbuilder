@@ -312,3 +312,26 @@ def test_one_servers_start_does_not_forget_another_servers_layout(
     assert shared.read_text() == "shared", (
         "the SHARED half of the Lab home must survive -- the defaults and a "
         "person's own settings do not differ between servers")
+
+
+def test_the_suite_cannot_see_the_developers_own_servers():
+    """THE ISOLATION THAT MAKES EVERY OTHER TEST HERE MEAN SOMETHING.
+
+    `config_dir.ports_with_pidfile()` globs `$XDG_RUNTIME_DIR/molbuilder`,
+    and five call sites reach it as of 2026-09-15 -- both status surveys,
+    both "but a server IS running on ..." hints, and `port_clash`, which
+    `serve start` calls before detaching. One of those then makes a real
+    HTTP request to every port it finds.
+
+    `conftest` pins `XDG_RUNTIME_DIR` for exactly this, and it did not until
+    2026-09-15: redirecting HOME does not reach that variable, so a test
+    could read the developer's live `serve-<port>.pid` and prove nothing
+    (`plan.md` § 5n.8). This asserts the guarantee instead of trusting it.
+    """
+    from molbuilder.config_dir import ports_with_pidfile, runtime_dir
+    root = str(runtime_dir())
+    assert "/run/user/" not in root, (
+        f"the suite is looking at the session runtime root ({root}); "
+        f"conftest must pin XDG_RUNTIME_DIR")
+    assert ports_with_pidfile() == [] and ports_with_pidfile("jupyter") == [], (
+        "the suite can see pidfiles it did not write")

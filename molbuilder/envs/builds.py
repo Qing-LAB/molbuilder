@@ -264,6 +264,28 @@ def run_streaming(
         Optional seconds; ``Popen.wait(timeout=...)`` raises
         :class:`subprocess.TimeoutExpired` on overrun.  ``None``
         waits indefinitely.
+    inherit_stdio
+        **NO PIPE AND NO CAPTURE**: the child writes straight to the file
+        descriptors this process already has.  It CHANGES WHAT THREE OTHER
+        PARAMETERS MEAN, which is why it is documented here and not only in
+        the body (the flag shipped 2026-09-15 documented at
+        `dispatch_into_env` and nowhere at this door, so a caller reading
+        this contract and passing ``sink=`` with it got silence and no
+        error -- `plan.md` § 5n.8):
+
+        * ``sink`` is IGNORED -- there is nothing to stream, the child owns
+          the descriptor;
+        * ``log_file`` is IGNORED for the same reason -- nothing is
+          captured to write;
+        * ``captured`` in the return is always ``""``.
+
+        For a BUILD the pipe earns itself twice: the caller watches progress
+        and the captured text is printed when a step fails.  For a SERVER it
+        earns nothing -- the supervisor already opened the log and handed it
+        over as stdout, so piping through Python re-copies every line, for
+        days, into a list nobody reads.  It also gives up
+        `dispatch_into_env`'s automatic mamba-1.x fallback, which needs to
+        read the child's first bytes; that cost is stated there.
 
     Returns
     -------
@@ -271,7 +293,15 @@ def run_streaming(
         ``returncode`` is ``None`` on launch failure / timeout;
         ``captured`` is the full combined stdout+stderr as a
         string (the tail of which is shown in the CLI's failure
-        recap).
+        recap) -- and always ``""`` under ``inherit_stdio``.
+
+        **A ``None`` return does not say WHICH.** Launch failure comes back
+        ``(None, "failed to launch: ...")`` and a timeout ``(None, "")``, so
+        a caller that needs to tell them apart reads the message rather than
+        the code.  Under ``inherit_stdio`` both are ``(None, "")`` and
+        indistinguishable; the one caller that asks for it (`run_shepherd`)
+        treats any non-zero as "the notebook did not run" and the log is
+        where the reason is.
     """
     out_sink: Optional[TextIO] = sink
     try:

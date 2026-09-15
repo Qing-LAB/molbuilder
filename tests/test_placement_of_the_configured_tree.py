@@ -54,6 +54,56 @@ def test_every_row_of_the_table_resolves(isolated_tree):
     assert len(seen) == len(set(seen)), f"duplicate rows: {seen}"
 
 
+def test_every_credential_door_in_config_dir_has_a_row(isolated_tree):
+    """THE TABLE MUST NOT HAVE A HOLE, and nothing checked that until now.
+
+    `placement` is the audit for a file that **arrives** loose -- restored
+    from a backup, copied off another machine, or left by an older
+    molbuilder -- so a door missing from the table is a credential nothing
+    watches.  On 2026-09-15 the four newest doors were all missing:
+    `jupyter_log` (which `serve_daemon` calls "a SECRET SINK", measured at
+    0664 with fourteen `token=` lines), `jupyter_runtime` (the token
+    itself), `jupyter_pidfile` and `jupyter_lab_home`.  Every writer was
+    careful; nothing was WATCHING (`plan.md` § 5n.8).
+
+    So this asserts COVERAGE rather than any one row: every path-returning
+    door `config_dir` exports is either in the table or named here as
+    deliberately outside it, with the reason.  Adding a door and forgetting
+    the row now fails, which is the whole point.
+    """
+    # Doors that are deliberately NOT rows, each with its reason.  A door
+    # added to `config_dir.__all__` lands in neither list and fails.
+    NOT_POLICED = {
+        # A per-port name the `serve-*.log` / `jupyter-*.log` patterns
+        # already cover as families; a row per port is impossible.
+        "serve_log", "serve_stacks_log", "jupyter_log",
+        "serve_pidfile", "jupyter_pidfile", "jupyter_runtime",
+        # Not a path door.
+        "ports_with_pidfile",
+    }
+    rows = {p.what for p in P.places()}
+    doors = [n for n in CD.__all__
+             if callable(getattr(CD, n, None)) and n not in NOT_POLICED]
+    missing = []
+    for name in doors:
+        fn = getattr(CD, name)
+        try:
+            path = fn()                      # only the zero-argument doors
+        except TypeError:
+            continue                         # takes a port: a family, above
+        if not any(p.resolve() == path for p in P.places()):
+            missing.append(f"{name}() -> {path}")
+    assert not missing, (
+        "config_dir doors with no row in `placement.places()`, so nothing "
+        "audits them: " + "; ".join(missing) + f".  Rows today: {sorted(rows)}")
+
+    # AND the per-port families are covered by a pattern, not by luck.
+    patterns = {p.pattern for p in P.places() if p.pattern}
+    for family in ("serve-*.log", "serve-*.pid",
+                   "jupyter-*.log", "jupyter-*.pid", "jupyter-*.json"):
+        assert family in patterns, f"no row covers the {family} family"
+
+
 def test_a_tree_this_program_creates_is_never_loose(isolated_tree):
     """End to end, through the real doors: seed a fresh installation, write a
     config, run the supervisor's log roll -- then ask the audit.

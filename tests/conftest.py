@@ -568,6 +568,28 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))   # the Windows spelling
 
+    # AND THE RUNTIME ROOT (2026-09-15).  `runtime_dir()` is
+    # `$XDG_RUNTIME_DIR/molbuilder` when that variable is set -- which it is
+    # on any desktop session -- and redirecting HOME does NOT reach it.  It
+    # holds the live `serve-<port>.pid` and `jupyter-<port>.pid` of the
+    # developer's own servers.
+    #
+    # It was harmless while nothing read that directory in a test.  It
+    # stopped being harmless on 2026-09-15: `config_dir.ports_with_pidfile`
+    # GLOBS it, and five call sites now reach it -- the two status surveys,
+    # the two "but a server IS running on ..." hints, and
+    # `jupyter.port_clash`, which `serve start` calls before detaching.  One
+    # of those then makes a REAL HTTP request to every port it finds, which
+    # on this machine is the developer's dev server.
+    #
+    # So a test could read found state and prove nothing, which is the one
+    # thing `feedback_confirm_data_relevance` forbids.  Pinned here so the
+    # guarantee holds by construction rather than by each test remembering
+    # -- the same reasoning as the HOME line above, which exists because 36
+    # files were each remembering a rule.
+    monkeypatch.setenv("XDG_RUNTIME_DIR",
+                       str(tmp_path_factory.mktemp("xdg-runtime")))
+
 
 @pytest.fixture(autouse=True)
 def product_toolchain_is_the_suites_own(_product_toolchain_stubs, monkeypatch):
