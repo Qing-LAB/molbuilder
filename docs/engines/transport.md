@@ -407,6 +407,96 @@ to emit it unconditionally.
 `elec-pos` / `start` / `begin` / `end`, which is more permissive than the
 manual documents.)*
 
+### 3.4 The workflow, end to end — and whether the UI follows it
+
+*(Browser walk 2026-09-15, on the live server with a real cited junction:
+Au-BDT-Au, CONCLUDED, 444 atoms. § 3.3 says what the parameters ARE; this
+says what ORDER they belong in, and where the surfaces disagree.)*
+
+#### 3.4.1 The scientific sequence, and who owns each step
+
+| # | step | owned by | state |
+|---|---|---|---|
+| 0 | build the junction and **label the regions** | Molbuilder tab | ✅ labels are assigned where the junction is built, never here |
+| 1 | **relax it** to a CONCLUDED attempt | Structure-optimization tab | ✅ |
+| 2 | **cite** that directory — files, not names, decide what qualifies | Transport card 1 | ✅ and the viewer follows the citation |
+| 3 | **check** the chemistry and the labels | Transport card 2 | ✅ auto-fires on citation; informational only |
+| 4 | state the **bias** | Transport card 4 | ⚠️ in the wrong card — 3.4.3 |
+| 5 | state the **transport parameters** | Transport card 3 | ✅ since 2026-09-15 (§ 3.3) |
+| 6 | **describe** → `task.json` | Transport card 4 | ✅ |
+| 7 | pick the **machine**, prep and launch each stage | **Task setup** tab | ✅ verified live — 3.4.4 |
+| 8 | read `<label>.transport.json` | Results tab | ⚠️ **W10** — the reader does not exist |
+
+**The electrode is DERIVED, not a step.** This is the part of the design most
+worth defending: a person never builds a lead by hand. The electrode models
+come from the citation's own labelled electrode atoms, and the two k-sampling
+rules that make NEGF correct are enforced rather than trusted:
+
+* **the device must have `kz = 1`** — an **error** if not, because NEGF treats
+  the transport axis as OPEN and `kz > 1` imposes a fake Bloch periodicity
+  along it (`preflight.py` C2);
+* **the electrode must have dense `kz`** — it is a *periodic bulk* run, and a
+  thin lead cell has a large 1-D Brillouin zone (`wizard.py`, warned below 20);
+* **the transverse k must MATCH** between the two, or the lead cannot attach.
+
+Those three, plus the sealed electronic contract (§ 3.3.2), are the whole of
+what makes a lead self-energy trustworthy, and all four are guarded.
+
+#### 3.4.2 What is still scientifically incomplete
+
+| gap | consequence |
+|---|---|
+| **no electrode-thickness convergence** (`plan.md` **S13**) | how many lead layers is a convergence property, and nothing sweeps it — a person picks a number and cannot see whether `T(E_F)` has stopped moving |
+| **no transverse-k convergence run** | the knob exists now (§ 3.3.4) but sweeping it is manual: describe, prep, launch, read, repeat |
+| **no reader for the deliverable** (**W10**) | `<label>.transport.json` is written and nothing displays `T(E)` or the I–V curve |
+| **spin is a selector, not a path** | `TBT.Spin` picks a channel; a spin-polarised *device SCF* producing two is not wired |
+| **`TS.Elecs.Eta` unexposed** | its TBtrans twin is a knob; the TranSIESTA-side one is not |
+
+#### 3.4.3 Where the UI order disagrees with the physics
+
+**The bias is in the wrong card.** It sits in card 4 beside the *Describe*
+button, which makes it look like a property of saving. It is the experiment —
+and it *governs* other fields: at zero bias the entire non-equilibrium half of
+the density contour (`TS.Contours.nEq.*`) is inert, and more than one value
+turns the run into a chain of attempt ladders. It belongs at the TOP of the
+physics card, where what it governs can sit under it.
+
+**Three measured UI defects, all in card 1's fused viewer:**
+
+| what | measured |
+|---|---|
+| **the atom list traps the page scroll** | a wheel over the card scrolled rows 38→53 of 444 and left the page where it was. Reaching card 3 needs a person to find a margin first — hit three times in one walk, including with `Page_Up` |
+| **444 checkboxes precede every transport control** | the page's interactive order is one checkbox per atom before a single parameter, so keyboard reach to the form is 444 tab stops |
+| **card 2's rationale is a wall of prose** | correct and worth reading once, and it pushes card 3 below two screens |
+
+None is a transport bug; together they are why the tab reads as long and
+unnavigable, and the fix is card 1's, not the form's.
+
+#### 3.4.4 The Task setup seam — it works, and it says two wrong things
+
+**Verified live** against `projects/Au-BDT-Au/transport/AuBDTAu-CT`:
+`POST /api/task-setup/prep-plan` answers for a transport description with the
+five stages in order, `hierarchical` shape, `01_seed` … `05_transmission`
+directories, each stage's deck and validation file named by the producer, and
+the bundle (`job-set.json`, `STAGE-PLAN.md`, `environment.json`,
+`jobset-decisions.log`). **The framework does carry transport**, and the
+machine/queue card is the same one every other kind uses.
+
+Two things the page says that are wrong for transport:
+
+1. **The empty state names only one source.** *"Send parameters here from the
+   Structure-optimization tab, or run `molbuilder jobset init`"*
+   (`task-setup/viewer.js`). The **Transport** tab writes `task.json` too, by
+   its own door — so somebody who has just described a transport calculation
+   and landed on an empty folder is told about a route they did not take and
+   not about the one they did.
+2. **"What gets written" promises a template that never comes.**
+   `<label>.template.toml` is a static row (`task_setup.html`), and a
+   transport description has **no template** — the contract arrives from the
+   citation at prep, which is § 3.1's whole point. Confirmed three ways: no
+   `template` key in the description, no file in the folder, and `prep-plan`'s
+   own bundle does not list one.
+
 ## 4. Region labels drive everything
 
 The three runs are all derived from **per-atom region labels** on the input
