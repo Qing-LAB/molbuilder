@@ -514,6 +514,17 @@ class TestPartialSpectraInspectorEndpoint:
         "results-summary-list",
         "spectrum-chart",
         "broadening-fwhm",
+        # The intensity floor, and the methods block the spectrum is
+        # reported with.  Both arrived with the one-view rewrite
+        # (b337f91c) and the contract list was not extended with them,
+        # so this class failed on main until 2026-09-14.  All six are
+        # live: `lib/spectra/core.js` binds every one through `$()`.
+        "display-floor",
+        "display-floor-out",
+        "methods-block",
+        "methods-text",
+        "methods-copy",
+        "methods-copy-note",
         # Modes table
         "modes-table",
         "modes-tbody",

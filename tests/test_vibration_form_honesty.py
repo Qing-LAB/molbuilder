@@ -134,10 +134,24 @@ def _vibration_items():
     return items
 
 
+#: Returned by `_probe_value` for an item whose choice list holds exactly one
+#: legal value.  **Not the same as "no probe generator".**  The gate measures
+#: honesty by setting a NON-DEFAULT value and demanding the deck change; a
+#: field with one legal choice has no non-default value, so the measurement
+#: does not exist to fail.  Nor can such a field lie: the form shows one
+#: option and that option is what runs.
+#:
+#: `engine` (`config/pyscf.py`) is the case -- `choices=("pyscf",)`, deliberate,
+#: so the selection is VISIBLE and a second engine has somewhere to be chosen
+#: rather than inferred.  It was reported as "extend _PROBES", which no probe
+#: generator can satisfy (found 2026-09-14, failing on main since 3aaec645).
+_ONE_CHOICE = object()
+
+
 def _probe_value(item):
     if item.choices:
         others = [c for c in item.choices if c != item.default]
-        return others[0] if others else None
+        return others[0] if others else _ONE_CHOICE
     fn = _PROBES.get(item.type)
     if fn is None:
         return None
@@ -158,10 +172,15 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
                  for name in ("water", "gold")}
     silent = []
     skipped = []
+    one_choice = []
     for item in _vibration_items():
         if item.name in STILL_OPEN:
             continue
         probe = _probe_value(item)
+        if probe is _ONE_CHOICE:
+            # Nothing to measure, and nothing to lie about -- see _ONE_CHOICE.
+            one_choice.append(item.name)
+            continue
         if probe is None or probe == item.default:
             skipped.append(item.name)
             continue
@@ -175,6 +194,14 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
             continue
         if _strip_config_echo(text) == baselines[which]:
             silent.append(item.name)
+    # A single-choice field is exempt from the honesty measurement, but not
+    # from being NOTICED: the day one grows a second choice it leaves this
+    # list and must then change the deck like everything else.
+    assert one_choice == ["engine"], (
+        f"the set of single-choice vibration parameters changed: "
+        f"{one_choice}.  A field that GAINED a second choice now owes the "
+        f"honesty measurement; one that LOST its choices is a different "
+        f"question.  Either way, look -- do not just widen this list.")
     assert not skipped, (
         f"probe generator could not produce a distinct value for: "
         f"{skipped} -- extend _PROBES rather than skipping silently")

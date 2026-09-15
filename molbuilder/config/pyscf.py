@@ -250,6 +250,19 @@ class PySCFConfig:
         "tier":    "basic",
         "choices": ("pyscf",),
         "engine_key":  '(molbuilder: selects the deck composer + the backend env)',
+        # `produce`, and the contract forces the choice (template.md 6.0): an
+        # `engine_key` that is a molbuilder NOTE derives no anchor, so the
+        # default kind `engine` is refused -- "this item is not an engine
+        # keyword, so tell me what it is."  It is not `deck`: it writes no
+        # keyword and expands to none.  What it does is decide WHICH producer
+        # writes the script, which is 6's definition of `produce` -- shaping
+        # how the script is written without becoming a keyword itself.  Its
+        # siblings here agree: `job_name`, `optimize` and `on_nonconvergence`
+        # are all molbuilder-level selectors marked `produce`.
+        #
+        # Omitted when this field landed (3aaec645, 2026-09-11), which left
+        # four tests failing on main.
+        "item_kind": "produce",
         "help": ("which program runs the vibrational calculation.  PySCF "
                  "is the only engine wired to the Spectra tab today -- it "
                  "supplies the analytic Hessian, the normal modes, and "

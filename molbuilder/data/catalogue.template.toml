@@ -961,11 +961,16 @@ enable point-group symmetry; faster but rarely matches builder-output geometry e
 A symmetric molecule can run 2-10x faster with this on, because PySCF skips the integrals symmetry makes redundant. It is unforgiving of numerical drift, though: builder output rarely places atoms on the symmetry elements to the precision PySCF checks, and a near miss is refused rather than approximated. Leave it off unless you know the geometry is exact."""
 
 [item.engine]
-kind = "engine"
+# `produce`, not `engine`, and no authored `anchor` -- template.md 6.0.  The
+# engine_key is a molbuilder NOTE, so `_bare_anchor` derives "" and the
+# default kind is refused; and an anchor is DERIVED, never authored, so the
+# `anchor = "pyscf"` that stood here contradicted its own engine_key.  This
+# item selects WHICH producer writes the deck, which is what `produce` means.
+# The dataclass half (`config/pyscf.py`) says the same -- 6.0's two homes.
+kind = "produce"
 category = ["method"]
 engines = ["pyscf"]
 calculations = ["vibration"]
-anchor = "pyscf"
 engine_key = "(molbuilder: selects the deck composer + the backend env)"
 type = "enum"
 choices = ["pyscf"]
