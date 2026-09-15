@@ -1484,7 +1484,11 @@ Each step is separately green and separately revertible.
     *(Done 2026-09-15. `jupyter.md` § 5.1 is the 16-key table and § 5.2 the
     two control routes' four status codes; the blueprint builds the payload
     in one expression instead of six `st[...] =` mutations.)*
-11. § 5n.7's tests, and **J12**.
+11. § 5n.7's tests, and **J12**. *(Done 2026-09-15 —
+    `tests/test_jupyter_contract.py`, 7 tests / 11 cases, all seven
+    mutation-tested. **The suite grows by seven**, and § 5n.7's "does not
+    grow" line was wrong: it assumed hand-written assertions to remove, and
+    there were none — the coverage being replaced is zero, which is J10.)*
 
 ### 5n.7 Tests — the set, deliberately small
 
@@ -1506,8 +1510,11 @@ setting. Six, and each one fails on a real mutation:
    mutation it catches (wiping the wrong directory) would silently discard
    a person's Lab settings.
 
-The hand-written assertions these replace come out with them, so the suite
-does not grow by seven.
+*(Written 2026-09-15 and the sentence here was wrong: there were no
+hand-written assertions to remove, because there was no coverage at all.
+**The suite grows by seven.** That is J10's whole point, and the usual rule —
+unifying an API must REDUCE the count — does not apply to a feature whose
+count is zero.)*
 
 ---
 
