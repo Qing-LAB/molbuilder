@@ -508,13 +508,16 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 96 routes
+## 3. Endpoint index — all 98 routes
 
-> **96 is what an ordinary server exposes.** Two more —
-> `POST /api/jupyter/start` and `POST /api/jupyter/stop` — are registered
-> **only under a supervisor** (`web/jupyter.md` § 5), so a supervised process
-> has 98. The count is pinned by a test that builds the app without one, which
-> is why the header names 96 while § 5 lists four notebook routes.
+> **98 on every server, supervised or not.** It was 96 until 2026-09-15,
+> because `POST /api/jupyter/start` and `POST /api/jupyter/stop` were
+> registered inside `if os.environ.get(SUPERVISED_ENV) == "1":` — so the URL
+> map itself depended on how the process had been started, and this count
+> depended on which of the two you measured. They now register always and
+> answer **404** when there is no supervisor to ask, which is the same thing
+> a client sees and is decided when the answer is knowable
+> (`plan.md` § 5n, J3).
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -641,8 +644,9 @@ auth routes.
 `GET /api/jupyter/status` → the notebook tab's whole state — env installed,
 process up, answering, the open notebooks' paths, and **the token, only when
 the caller may control it** (`web/jupyter.md` § 6); `POST /api/jupyter/start`
-· `POST /api/jupyter/stop` — registered **only under a supervisor**, because a
-button that cannot work is worse than an absent one;
+· `POST /api/jupyter/stop` → **404** with no supervisor to ask (a button that
+cannot work is worse than an absent one), **403** for a caller who may not run
+code on this machine, else **202**;
 `GET /api/backends` → `{ ok, available, auto_name }`;
 `GET /vendor/plotly.min.js` (the Plotly bundle, 404 if absent).
 

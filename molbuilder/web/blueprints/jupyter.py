@@ -11,17 +11,24 @@ A live kernel is arbitrary code execution as the account running the server --
 the same capability `POST /api/admin/reload` guards, arrived at from the other
 direction.  So it follows the same rule, and for the same reason:
 
-* **no supervisor, no routes.**  The notebook is held by `serve`'s supervisor
+* **no supervisor, no control.**  The notebook is held by `serve`'s supervisor
   (§ 3.4), so without one there is nobody to start or stop it, and a button
   that cannot work is worse than an absent one.
 
-  Registration can only ask the ENV VAR, because it happens at import with no
-  request in hand -- and that variable means *somebody can respawn me*, which
+  **ONE GATE, ASKED PER REQUEST** (`plan.md` § 5n, J3).  There were two until
+  2026-09-15.  Registration itself sat behind the SUPERVISED env var, read at
+  import -- and that variable means *somebody can respawn me*, which
   `serve foreground` also sets while writing no pidfile and installing no
-  handlers.  So the button's real precondition is asked per request, by
-  `_supervised()`: a serve pidfile naming a live serve of ours.  Under
-  `serve foreground` the routes therefore exist and the tab correctly shows
-  no button; a direct POST gets `signal_supervisor`'s own refusal.
+  handlers.  So `_supervised()` was added per request to ask the real
+  question, and the module ended up with two gates on two different facts for
+  one rule.  The import-time one had a second cost: it made the app's URL MAP
+  depend on the environment `create_app()` happened to run in, so no test
+  could reach these routes at all.
+
+  The routes are therefore always registered, and `_refuse()` answers **404**
+  when `_supervised()` says no.  The same thing a client sees, decided when
+  the answer is knowable -- and now with a sentence saying which run mode
+  this is, instead of Flask's bare HTML page.
 * **the `admin` list decides who may press it.**  Signing in is not enough:
   reaching a session already required being in a provider's ``allowed_users``,
   but *running code on the server* is the privilege § 5 separates.
@@ -221,38 +228,64 @@ def api_jupyter_status():
     return jsonify({"ok": True, **st})
 
 
-if os.environ.get(SUPERVISED_ENV) == "1":
+def _refuse():
+    """The ONE refusal for the two control routes, or ``None`` to proceed.
 
-    @bp.post("/api/jupyter/start")
-    def api_jupyter_start():
-        """Ask the supervisor to start it.  Admin only; idempotent."""
-        import signal
+    Returns a ready ``(body, status)`` -- 404 when there is no supervisor to
+    ask, 403 when there is one and this caller may not press the button.
 
-        from ...serve_daemon import signal_supervisor
+    **One sentence, not two.**  `start` used to answer with three lines
+    naming `molbuilder.json`'s `admin` section while `stop` answered
+    ``"admin auth required"`` -- the same gate, the same condition, two
+    answers, and the short one told a person nothing about what to do
+    (`plan.md` § 5n, J4).
+    """
+    if not _supervised():
+        return jsonify({
+            "ok": False,
+            "error": ("this molbuilder has no supervisor to hold a notebook: "
+                      "it was started with `serve foreground` or "
+                      "`--no-supervise`.  `molbuilder serve start` gives it "
+                      "one."),
+        }), 404
+    if not _may_control():
+        return jsonify({
+            "ok": False,
+            "error": ("admin auth required: a live kernel runs code as the "
+                      "account serving this page.  Sign in -- or, if an "
+                      "`admin` section in molbuilder.json names addresses, "
+                      "sign in as one of them."),
+        }), 403
+    return None
 
-        if not _may_control():
-            return jsonify({
-                "ok": False,
-                "error": ("admin auth required: a live kernel runs code as "
-                          "the account serving this page.  Sign in -- or, if "
-                          "an `admin` section in molbuilder.json names "
-                          "addresses, sign in as one of them."),
-            }), 403
-        ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR1)
-        return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
 
-    @bp.post("/api/jupyter/stop")
-    def api_jupyter_stop():
-        """Stop it, and its kernels with it (`jupyter.md` § 3.2).
+@bp.post("/api/jupyter/start")
+def api_jupyter_start():
+    """Ask the supervisor to start it.  Admin only; idempotent."""
+    import signal
 
-        The kernels go because the SERVER goes -- Jupyter collects them
-        itself -- not because any signal of ours reaches them.
-        """
-        import signal
+    from ...serve_daemon import signal_supervisor
 
-        from ...serve_daemon import signal_supervisor
+    refused = _refuse()
+    if refused is not None:
+        return refused
+    ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR1)
+    return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
 
-        if not _may_control():
-            return jsonify({"ok": False, "error": "admin auth required"}), 403
-        ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR2)
-        return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
+
+@bp.post("/api/jupyter/stop")
+def api_jupyter_stop():
+    """Stop it, and its kernels with it (`jupyter.md` § 3.2).
+
+    The kernels go because the SERVER goes -- Jupyter collects them
+    itself -- not because any signal of ours reaches them.
+    """
+    import signal
+
+    from ...serve_daemon import signal_supervisor
+
+    refused = _refuse()
+    if refused is not None:
+        return refused
+    ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR2)
+    return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
