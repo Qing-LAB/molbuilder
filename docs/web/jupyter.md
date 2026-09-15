@@ -145,14 +145,46 @@ with a button. *(Decided with the user 2026-09-13, against the earlier "starts
 on first open" written here: a tab that runs code because you clicked its name
 is a tab you cannot look at safely.)*
 
-That gives the tab exactly four states, and the person moves between them:
+### 4.0 The states — the table the tab is built from
 
-| State | What the tab shows |
-|---|---|
-| the env is not installed | the install command — the env is **opt-in**, so this is an ordinary state and not an error |
-| installed, nothing running | one sentence saying what starting gets you, and the Start button — **unless** this molbuilder has no supervisor to hold a notebook, or the viewer may not control one, in which case the sentence says which and there is no button |
-| starting | the same row, polling, until the port answers |
-| running | the framed JupyterLab, and a Stop button. A viewer who may not control it gets neither: the token that reaches a kernel is withheld from them (§ 6), so there is nothing to frame |
+**This said "exactly four states" until 2026-09-15, while `render` carried
+thirteen `return`s** (`plan.md` § 5n, J7). The four with the most behaviour —
+the ones with a time budget and their own button — were the four it did not
+name. The code is now a literal table (`STATES` in `jupyternb/index.js`) and
+this is the same list in the same order. **First match wins**, so the order
+is the contract.
+
+| # | State | When | Shows | Waits |
+|---|---|---|---|---|
+| 1 | **env-missing** | the env is not installed | the install command — the env is **opt-in**, so this is ordinary and not an error | — |
+| 2 | **no-token** | running and answering, but the token was withheld | that using a kernel is an admin action (§ 6). Nothing is framed: framing anyway would put Jupyter's own login page in the tab, which reads as molbuilder being broken | — |
+| 3 | **opening** | answering, but the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4 at the projects root |
+| 4 | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button | 30 s heartbeat |
+| 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with Stop |
+| 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → *"none started"*, naming the **serve** log |
+| 7 | **unsupervised** | no supervisor to hold a notebook | that `serve start` is what gives it one. **Not** `jupyter start` — that verb signals the supervisor, so it is the one command guaranteed to fail here | — |
+| 8 | **no-control** | nothing running, and this viewer may not start one | that starting runs code on this machine | — |
+| 9 | **idle** | installed, nothing running, and the person may ask | what starting gets you, and the Start button | — |
+| 10 | **unreachable** | the status endpoint could not be asked | the error, and a **Try again** button | — |
+
+**WAITING HAS ONE RULE.** A state declares how long it may last; entering it
+starts the clock, and entering is the only thing that resets it. Five
+independent mechanisms with three different clearing rules preceded this —
+one cleared inside a branch, one at the top of the render, and one never — so
+a notebook that went away later could make the tab print a red error about a
+start that had worked. Budgets are in **milliseconds, not polls**, because the
+three they replaced did not wake the same way: two polled at two different
+intervals and one waited on an event. Time is what they all meant, and saying
+it in time lets each state keep the wake-up that suits it.
+
+State 3 is the one to understand: it exists because Lab's Launcher creates a
+notebook **in the folder the frame is showing**, so framing before the root is
+known put every new notebook in `projects/` however carefully a folder had
+been picked. It waits on the sidebar's own event rather than polling — each
+poll costs the server two blocking round-trips to Jupyter — and it has a
+budget because that event **can never fire**: the sidebar publishes nothing
+when `/api/files/roots` fails. When there is no such door on the page at all,
+state 3 simply does not match and state 4 takes it.
 
 Once it is running, Jupyter's own settings shrink the idle window rather than
 molbuilder hand-rolling one: `MappingKernelManager.cull_idle_timeout` reaps
