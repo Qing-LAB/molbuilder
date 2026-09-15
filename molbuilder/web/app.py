@@ -218,13 +218,33 @@ def serve_port() -> int:
     `serve-8000.pid`, so status read "not running" forever and Start named a
     pidfile nobody had configured.  Found in review 2026-09-14.
 
-    `cmd_serve` knows the number and now says so at app build.  The header
-    parse survives only as a fallback for an app built without it (tests, an
-    embedding caller), and it is written ONCE, here.
+    Three sources, in order of how much they know:
+
+    1. **`app.config`** -- `cmd_serve` knows the number and says so at app
+       build.  The ordinary case.
+    2. **`$MOLBUILDER_SERVE_PORT`** -- for an EMBEDDING CALLER, which is not
+       an exotic case: `deployment.md` § 1.3 tells operators to run
+       `create_app()` under gunicorn behind nginx, and that path never
+       touches `app.config`, so this function fell through to the header and
+       read the PUBLIC port (443) -- addressing `serve-443.pid` while the
+       supervisor held `serve-8000.pid`.  Verbatim the failure the paragraph
+       above describes as the reason this function exists, fixed for
+       `molbuilder serve` and left broken for the deployment the docs
+       recommend (found in review 2026-09-15, `plan.md` § 5n.8).  Same key
+       name, so there is one thing to know.
+    3. **the `Host:` header** -- last, and only as a guess for an app built
+       without either (tests). It is written ONCE, here.
     """
     port = current_app.config.get(_SERVE_PORT_KEY)
     if isinstance(port, int) and port > 0:
         return port
+    import os
+    try:
+        from_env = int(os.environ.get(_SERVE_PORT_KEY, ""))
+        if from_env > 0:
+            return from_env
+    except ValueError:
+        pass
     try:
         return int((request.host or "").rsplit(":", 1)[1])
     except (IndexError, ValueError):

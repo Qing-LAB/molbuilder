@@ -54,7 +54,20 @@ calculation.
 | File | Schema | Read by | Status |
 |---|---|---|---|
 | `fcc_lattice.json` | v3 | `molbuilder.modify.load_fcc_lattice_full` (and `_load_fcc_lattice`, the experimental-only shim) | live |
+| `contact_distance.json` | — | `molbuilder.modify` | live |
 | `catalogue.template.toml` | `molbuilder/template@2` | `molbuilder.template.read_template` | **new 2026-08-14 — the parameter catalogue** |
+| `jupyter.toml` | `molbuilder/jupyter@1` | `molbuilder.jupyter.load_rules` | **new 2026-09-15 — the framed notebook's settings** |
+| `jupyter_server_config.py` | — (executed Python) | **nothing imports it** — `molbuilder.jupyter.prepare_lab_home` COPIES it into the Lab home at every notebook start | **new 2026-09-15** |
+
+> **Two of these are not "fundamental physical data", and that is deliberate.**
+> This directory is also where molbuilder keeps an authored RULE TABLE it ships
+> (`catalogue.template.toml`, `jupyter.toml`) and one file of real Python that
+> is copied rather than imported — `jupyter_server_config.py` subclasses a
+> jupyter-server class the host env does not have, so it must never be
+> importable, and a directory with no `__init__.py` is what guarantees that.
+> Both are carried into a wheel by `pyproject.toml`'s `data/*.toml` and
+> `data/*.py`. *(The table above listed neither, nor `contact_distance.json`,
+> until 2026-09-15.)*
 
 ---
 

@@ -571,13 +571,28 @@ $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 │                                             config_dir.state_dir()
 ├── logs/                  diagnostics — delete when fixed  0700   config_dir.logs_dir()
 │   ├── serve-<port>.log        everything the server prints 0600   config_dir.serve_log()
-│   └── serve-<port>.stacks.log thread stacks on SIGUSR1     0600   config_dir.serve_stacks_log()
+│   ├── serve-<port>.stacks.log thread stacks on SIGUSR1     0600   config_dir.serve_stacks_log()
+│   └── jupyter-<port>.log      the notebook server's own —   0600   config_dir.jupyter_log()
+│                               A SECRET SINK: jupyter prints
+│                               its URL with the token in it
+├── jupyter-lab/           the FRAMED Lab's own home        0700   config_dir.jupyter_lab_home()
+│   ├── settings/               molbuilder's defaults, rewritten at every start
+│   ├── user-settings/          what a person changes inside Lab — SHARED, never wiped
+│   ├── workspaces/<port>/      which documents were open — PER SERVER, emptied at each start
+│   └── jupyter_server_config.py  copied from data/ — suppresses .ipynb_checkpoints
 └── reports/               per-run measurements — KEPT              config_dir.reports_dir()
 
 $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 │                                             config_dir.runtime_dir()
-└── serve-<port>.pid       the address stop/restart act on          config_dir.serve_pidfile()
+├── serve-<port>.pid       the address stop/restart act on          config_dir.serve_pidfile()
+├── jupyter-<port>.pid     the SHEPHERD's — jupyter stop's address  config_dir.jupyter_pidfile()
+└── jupyter-<port>.json    where the notebook is AND ITS TOKEN 0600 config_dir.jupyter_runtime()
+                           — the token reaches a live kernel
 ```
+
+*(The notebook's four were absent from this tree, and from `placement.py`'s
+table, until 2026-09-15 — so the audit below never checked the newest
+credential in the tree. `plan.md` § 5n.8.)*
 
 **The modes above are not prose: they are `molbuilder/placement.py`'s table**
 *(2026-09-13)*. One row per entry drawn here — the OWNER's resolver, the expected

@@ -266,7 +266,14 @@ def test_start_refuses_when_already_running(monkeypatch):
     from click.testing import CliRunner
     from molbuilder.cli import cli
     monkeypatch.setattr(sd, "read_pid", lambda port: 4242)
-    monkeypatch.setattr(sd, "pid_state", lambda pid: "ours")
+    monkeypatch.setattr(sd, "pid_state",
+                        # `**kw` because the real signature takes a
+                        # `marker` -- `serve` for the supervisor,
+                        # `_shepherd` for the notebook -- and a stub
+                        # narrower than the contract breaks the day a
+                        # caller uses the rest of it (2026-09-15: the
+                        # status detail began reporting the notebook).
+                        lambda pid, **kw: "ours")
     r = CliRunner().invoke(cli, ["serve", "start", "--port", "8123"])
     assert r.exit_code != 0
     assert "already running" in r.output
@@ -284,7 +291,14 @@ def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(sd, "read_pid", lambda port: os.getpid())
-    monkeypatch.setattr(sd, "pid_state", lambda pid: "ours")
+    monkeypatch.setattr(sd, "pid_state",
+                        # `**kw` because the real signature takes a
+                        # `marker` -- `serve` for the supervisor,
+                        # `_shepherd` for the notebook -- and a stub
+                        # narrower than the contract breaks the day a
+                        # caller uses the rest of it (2026-09-15: the
+                        # status detail began reporting the notebook).
+                        lambda pid, **kw: "ours")
     # port 9329: nothing listens -- the health probe fails fast
     r = CliRunner().invoke(cli, ["serve", "status", "--port", "9329"])
     assert r.exit_code == 4

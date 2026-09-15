@@ -217,6 +217,17 @@ or behind nginx, *you* wrap it; molbuilder doesn't spawn workers, and its rate
 limiter (§4) is per-process, so multiple workers would each keep their own
 counters.
 
+> **If you wrap it, set `MOLBUILDER_SERVE_PORT`** to the port molbuilder's own
+> supervisor was started on. The app needs to know *which molbuilder it is* by
+> port — it keys the serve and notebook pidfiles, the notebook's runtime file,
+> the `frame-src` CSP and the `frame-ancestors` grant. `molbuilder serve` tells
+> the app directly; an embedding caller never touches `app.config`, so without
+> the variable the app falls back to the `Host:` header and reads the **public**
+> port — which behind nginx is 443, and the notebook feature then addresses
+> `serve-443.pid` while the supervisor holds `serve-8000.pid`. *(Found
+> 2026-09-15; the same failure had been fixed for `molbuilder serve` the day
+> before and left in place for the deployment this section recommends.)*
+
 **The bind guard.** molbuilder refuses to bind a **non-loopback** host without
 TLS — because doing so serves the whole `projects/` tree (read/write/delete) to
 the network. You satisfy it by adding `--cert/--key`, putting it behind a

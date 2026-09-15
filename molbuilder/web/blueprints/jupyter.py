@@ -103,11 +103,20 @@ def _may_control() -> bool:
     `--no-auth` flag does), so an unauthenticated molbuilder can legitimately
     be listening on a network interface.
 
-    ``request.remote_addr`` is the socket peer: this app installs no
-    ProxyFix, so no header can forge it.  The one deployment this misreads
-    is a reverse proxy on the same host in front of an UNAUTHENTICATED
-    molbuilder -- where every file endpoint is already exposed, which
-    `_enforce_tls_for_remote_bind` calls "two attacks in one".
+    ``request.remote_addr`` is the socket peer, so no header can forge it --
+    **and that holds for a narrower reason than "this app installs no
+    ProxyFix", which is what this said until 2026-09-15.**  `auth.trust_proxy`
+    DOES install one (`web/auth.py`).  It is still true here, by the
+    condition rule 2 already requires: ProxyFix is installed by `init_auth`,
+    which only runs when providers are configured, and rule 2 only runs when
+    there are NONE.  So the two cannot coexist -- but the reason is the
+    condition, not the absence of the middleware
+    (`plan.md` § 5n.8).
+
+    The one deployment this misreads is a reverse proxy on the same host in
+    front of an UNAUTHENTICATED molbuilder -- where every file endpoint is
+    already exposed, which `_enforce_tls_for_remote_bind` calls "two attacks
+    in one".
     """
     import ipaddress
 

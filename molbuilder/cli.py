@@ -2341,6 +2341,30 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
             f"already running (pid {read_pid(port)}, port {port}).  "
             f"`molbuilder serve status` to look, `serve restart` to "
             f"recycle it.")
+    # AND IS THE PORT ACTUALLY FREE?  The pidfile answers "is a supervisor of
+    # mine there", which is not the same question (`plan.md` § 5n.8).
+    #
+    # `kill -9` of a supervisor leaves the server CHILD reparented and still
+    # holding the port -- the child has no PDEATHSIG, and the supervisor's
+    # cleanup never ran, so the pidfile reads "dead" and this verb happily
+    # detached into a child that could not bind.  The failure then landed in
+    # the log AFTER `daemonize()`, so nothing reached the terminal and the
+    # person was left doing exactly what `serve status` had told them to.
+    #
+    # Checked here because this is the last moment anything reaches them --
+    # the same reason the notebook's clash warning is printed just below.
+    # A REFUSAL rather than a warning: a web server that cannot bind has
+    # nothing left to do, unlike a notebook whose server is still useful.
+    _held = _port_in_use(host, port)
+    if _held:
+        raise click.ClickException(
+            f"port {port} is already in use on {host}, and no supervisor of "
+            f"yours holds it ({_held}).\n"
+            f"  Most likely an orphaned server child -- `kill -9` of a "
+            f"supervisor leaves one running, because the child has no "
+            f"PDEATHSIG and the pidfile is removed.\n"
+            f"  Find it with `ss -ltnp | grep :{port}` and stop it, or "
+            f"start on another port.")
     child = [sys.executable, "-m", "molbuilder", "serve", "foreground",
              "--host", host, "--port", str(port), "--no-supervise"]
     if cert:
@@ -2359,6 +2383,9 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
                f"keep {log_keep} archives)")
     click.echo(f"  pidfile: {serve_pidfile(port)}")
     click.echo("  then:    molbuilder serve status")
+    _logout = _runtime_dir_dies_at_logout()
+    if _logout:
+        click.echo(_logout, err=True)
     # THE NOTEBOOK'S COMMAND LINE, built here and handed over -- the
     # supervisor holds a list of strings and imports nothing of the
     # application (docs/web/jupyter.md § 3.4).  Nothing starts yet: the tab
@@ -2413,8 +2440,94 @@ def jupyter_group():
     """
 
 
+#: What a supervisor that PREDATES the notebook feature cannot do, and the
+#: only thing that gives it the ability.  A supervisor survives a code reload
+#: by design (`jupyter.md` § 3.4), so this is an ordinary state on a machine
+#: that has been running molbuilder since before the feature landed.
+_PREDATES_NOTE = (
+    "  If the notebook does not come up, this supervisor may PREDATE the\n"
+    "  notebook feature -- it survives a code reload, so `molbuilder serve\n"
+    "  stop` then `serve start` is what gives it one.  `molbuilder serve\n"
+    "  status` names the server log, which says `notebook: not configured\n"
+    "  for this server` in that case.")
+
+
+def _port_in_use(host: str, port: int) -> str:
+    """``""`` when the port is free to bind, else why it is not.
+
+    A bind test on the address the CHILD will use, so the answer is the
+    child's: a wildcard bind and a loopback bind fail differently, and
+    guessing from `127.0.0.1` would pass a port held on another interface.
+    """
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+        return ""
+    except OSError as exc:
+        return str(exc)
+
+
+def _runtime_dir_dies_at_logout() -> str:
+    """``""``, or a sentence about a daemon that will become unaddressable.
+
+    `runtime_dir()` is ``$XDG_RUNTIME_DIR/molbuilder`` when that variable is
+    set, and its own docstring already names the tension: that directory is
+    *"cleared when the session ends, which is right for a pidfile and wrong
+    for anything meant to outlive a logout."*  `serve start` DETACHES, so it
+    is by definition meant to outlive the terminal.
+
+    What happens without this: log out of your last session and logind
+    removes the directory.  The daemon and its notebook keep running -- both
+    are `setsid`-detached -- but every verb loses its address.  `serve
+    status` says nothing is running, `serve stop` says there is no pidfile,
+    and the tab shows the no-supervisor state while a notebook with live
+    kernels is up.  Reconciliation cannot find them either: it reads the
+    pidfile that is gone.  The kernels can then only be killed by hand,
+    which on a GPU box holds a device (found in review 2026-09-15,
+    `plan.md` § 5n.8).
+
+    Quiet when lingering is on, because then the directory survives and
+    there is nothing to say.  Quiet too when `loginctl` is absent -- a
+    machine without logind is not the case this warns about.
+    """
+    import os
+    import subprocess
+    rt = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not rt.startswith("/run/user/"):
+        return ""                       # not session-scoped; nothing to say
+    try:
+        out = subprocess.run(
+            ["loginctl", "show-user", str(os.getuid()), "-p", "Linger"],
+            capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""                       # no logind: not this case
+    if "Linger=yes" in out:
+        return ""
+    return (f"note: the pidfile lives under {rt}, which your session manager "
+            f"removes at your LAST logout.\n"
+            f"  The server and its notebook keep running, but every verb "
+            f"loses its address -- `serve status` will say nothing is "
+            f"running while kernels are still up.\n"
+            f"  `loginctl enable-linger` keeps the directory, or set "
+            f"XDG_RUNTIME_DIR to somewhere that outlives the session.")
+
+
 def _jupyter_signal(port: int, sig: int, verb: str) -> None:
-    """Ask the supervisor.  Verified before signalled, like `serve` does."""
+    """Ask the supervisor.  Verified before signalled, like `serve` does.
+
+    **A DELIVERED SIGNAL IS NOT A DONE DEED.**  `signal_supervisor` answers
+    for the delivery; the handler runs in another process and, if that
+    supervisor holds no notebook argv, writes *"notebook: not configured for
+    this server"* into the SERVE log and returns.  So this used to print
+    "asked the supervisor to start the notebook" and exit 0 for a start that
+    could never happen, and `jupyter status` then prescribed the same
+    command again -- a loop with no diagnosis, while the tab explained the
+    identical condition perfectly well (found in review 2026-09-15,
+    `plan.md` § 5n.8).  Saying it on the way IN is the cheap half; the other
+    half is `cmd_jupyter_status` not recommending this verb as the remedy.
+    """
     from .serve_daemon import signal_supervisor
     ok, msg = signal_supervisor(port, sig)
     if not ok:
@@ -2424,6 +2537,14 @@ def _jupyter_signal(port: int, sig: int, verb: str) -> None:
             f"supervisor; start one with `molbuilder serve start --port "
             f"{port}`.")
     click.echo(f"asked the supervisor to {verb} the notebook: {msg}")
+    if sig_starts_a_notebook(sig):
+        click.echo(_PREDATES_NOTE, err=True)
+
+
+def sig_starts_a_notebook(sig) -> bool:
+    """Is this the START signal?  Only a start can fail the way above."""
+    import signal as _signal
+    return sig == _signal.SIGUSR1
 
 
 @jupyter_group.command("start", short_help="start the notebook server")
@@ -2523,17 +2644,33 @@ def cmd_jupyter_status(port):
         else:
             click.echo("not running")
         click.echo(f"  start it:  molbuilder jupyter start --port {port}")
-        # THE LOG, NAMED WHEN IT IS NOT RUNNING -- which is exactly when a
-        # person needs it: a notebook that refused to start said why there.
+        # BOTH LOGS, NAMED WHEN IT IS NOT RUNNING -- which is exactly when a
+        # person needs them, and they hold DIFFERENT failures.  Everything
+        # `_start_jupyter` cannot do (no argv, the log would not open, the
+        # spawn raised) is in the SERVE log; everything jupyter-server itself
+        # refuses -- a taken port above all -- is in the NOTEBOOK log.  This
+        # named only the second, which is empty in the commonest case, and
+        # then offered the start verb again as the remedy (`plan.md` § 5n.8).
+        from .config_dir import serve_log
         nb_log = jupyter_log(port)
         if nb_log.exists():
             click.echo(f"  last log:  {nb_log}")
+        click.echo(f"  and:       {serve_log(port)}  (why a start did not "
+                   f"take)")
+        click.echo(_PREDATES_NOTE)
         _say_which_notebooks_else(port)
         raise SystemExit(1)
     click.echo(f"running    pid {st['pid']}, port {st['port']}")
     click.echo("answering  " + ("yes" if st["answering"] else
                                 "NO -- it is up but not serving; see the log"))
     click.echo(f"log        {jupyter_log(port)}")
+    # WHAT IS OPEN -- paid for and then withheld until 2026-09-15.  `status`
+    # asks Jupyter for its sessions whenever `include_private` is on, so this
+    # verb was already making the HTTP round trip and printing none of it;
+    # the tab shows the same fact (`plan.md` § 5n.8).
+    for _nb in (st["open"] or []):
+        click.echo(f"open       {_nb.get('path', '?')}"
+                   f"   ({_nb.get('state') or 'unknown'})")
     # THE TOKEN IS NOT PRINTED.  It authenticates a browser to a live kernel,
     # which is code execution as this account; the tab reads it server-side.
     if st["url"]:
@@ -2705,6 +2842,18 @@ def cmd_serve_status(port):
     click.echo(f"log:       {serve_log(port)}")
     ok, said = _probe_health(port)
     click.echo(f"answering: {said}")
+    # A SUPERSET OF THE SURVEY ROW THAT SENT YOU HERE.  The survey prints
+    # `notebook: yes|no` and the port-clash note and then says "detail on
+    # one: ... --port <port>", and the detail knew LESS than the line it came
+    # from (`plan.md` § 5n.8).
+    from .jupyter import pid_state as nb_state, port_clash
+    from .jupyter import read_pid as nb_pid
+    nb_up = nb_state(nb_pid(port)) == "ours"
+    click.echo(f"notebook:  {'running' if nb_up else 'not running'}"
+               f"   (molbuilder jupyter status --port {port})")
+    clash = port_clash(port)
+    if clash:
+        click.echo(f"  NOTE: {clash}")
     if ok:
         return
     click.echo("  `kill -USR1` the child pid and read the stacks log, or "
