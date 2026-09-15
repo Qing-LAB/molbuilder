@@ -228,8 +228,15 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         # TO ITS OWN END whatever wrapper (or no wrapper) launched it.
         # molbuilder's own marker still answers first because it carries
         # the rc line.
+        # The VALUE is the evidence -- the file name.  It carried its own
+        # explanation, "(SIESTA's own clean-exit marker)", until
+        # 2026-09-15, and the tab renders it inside its own parentheses:
+        # the junction line read "CONCLUDED (0_NORMAL_EXIT (SIESTA's own
+        # clean-exit marker))".  What the marker means belongs where a
+        # reader can look it up (`engines/transport.md` 3.1), not
+        # nested two deep in a status line.
         if concluded is None and (cite_dir / "0_NORMAL_EXIT").is_file():
-            concluded = "0_NORMAL_EXIT (SIESTA's own clean-exit marker)"
+            concluded = "0_NORMAL_EXIT"
         # A molbuilder attempt mid-run HAS record files that do not
         # conclude; attempt_concluded answers None for both that and
         # no-record-at-all.  Tell them apart by the files themselves --

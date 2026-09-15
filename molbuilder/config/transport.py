@@ -137,12 +137,14 @@ class TransportConfig:
         "Electrodes",
         "Transmission",
         "Transmission k-sampling",
+        "Spin channel",
         "Broadening",
         "Outputs",
         "NEGF density contour",
         "Leads",
         "Electronic contract",
         "Runtime",
+        "Logging",
     )
 
     _form_section_descriptions = {
@@ -150,9 +152,13 @@ class TransportConfig:
             "How densely the transverse Brillouin zone is sampled when "
             "T(E) is evaluated.  tbtrans INHERITS the SCF's grid unless "
             "told otherwise, and a grid converged for a total energy is "
-            "routinely far too coarse for transmission -- so the standard "
+            "routinely far too coarse for transmission — so the standard "
             "convergence study is T(E_F) against this grid with "
             "everything else fixed."),
+        "Spin channel": (
+            "Which spin's transmission tbtrans reports.  Only "
+            "meaningful once the device itself is spin-polarised, "
+            "which the chemistry analysis in step 2 flags."),
         "Broadening": (
             "The imaginary parts that set the T(E) lineshape.  Too large "
             "smears resonances into a featureless curve; too small turns "
@@ -160,7 +166,7 @@ class TransportConfig:
         "Outputs": (
             "Which quantities tbtrans writes besides the transmission.  "
             "Every one defaults to OFF in the engine, so a run produces "
-            "T(E) and nothing else unless asked -- there is no DOS or "
+            "T(E) and nothing else unless asked — there is no DOS or "
             "eigenchannel data on disk to plot later."),
         "NEGF density contour": (
             "The complex-contour integration that builds the "
@@ -174,10 +180,9 @@ class TransportConfig:
             "the electrode cell tiles the device's cross-section."),
         "Electronic contract": (
             "Basis, exchange-correlation and mesh.  These are the "
-            "CITATION's to say -- electrode and device must share them "
-            "or the lead self-energy cannot attach seamlessly -- so they "
-            "are sealed unless the citation carries no deck.  They sat "
-            "under \"NEGF\" until 2026-09-15, which misdescribed them."),
+            "CITATION's to say — electrode and device must share them "
+            "or the lead self-energy cannot attach seamlessly — so they "
+            "are sealed unless the citation carries no deck."),
         "System": (
             "Engine selection and job-name identity.  TranSIESTA "
             "handles larger device regions with pseudopotentials; "
@@ -194,10 +199,14 @@ class TransportConfig:
             "between leads."
         ),
         "Transmission": (
-            "Energy window over which T(E) is evaluated.  Center at "
-            "E_F (relative=True) for cleanest interpretation; the "
-            "absolute-energy mode is for cross-engine comparison.  "
-            "Resolution ≈ (e_max - e_min) / (n_points - 1)."
+            "The energy window T(E) is evaluated on.  The three "
+            "numbers below become the from / to / points lines of the "
+            "TBT.Contour.window block, so the curve comes back spaced "
+            "(max − min) / (points − 1).  Whether tbtrans reads the "
+            "two energies as absolute or as relative to the device's "
+            "Fermi level is unresolved against SIESTA 5.4.2, which is "
+            "why this tab offers no reference switch — see the "
+            "transport contract, § 3.3."
         ),
         "NEGF": (
             "Self-energy + contour parameters that the NEGF density "
@@ -206,9 +215,13 @@ class TransportConfig:
             "see density-of-states artefacts or convergence issues."
         ),
         "Runtime": (
-            "How the run uses your hardware -- memory budget, CPU "
-            "thread count, log verbosity.  These don't affect the "
-            "science, only wall time and diagnostic output."
+            "How the run uses your hardware — memory budget and CPU "
+            "thread count.  Neither affects the science, only wall "
+            "time."
+        ),
+        "Logging": (
+            "How much the engine says while it runs.  Diagnostic "
+            "output only; it changes nothing about the result."
         ),
     }
 
@@ -385,8 +398,21 @@ class TransportConfig:
                        "which is the old behaviour and rarely the right "
                        "answer.",
         })
+    # ================= Spin channel =================
+    #
+    # ITS OWN SECTION, and not "Transmission k-sampling" where it sat
+    # until 2026-09-15.  Two reasons, and the second is the visible one:
+    # a spin selector is not a k-sampling knob, and this field is
+    # `profile` (nothing about staging tightens it) while the k-grid is
+    # `stage` -- so one section name straddled two workflow-group cards
+    # and the form drew the legend "Transmission k-sampling" TWICE, once
+    # in Run profile over a spin box and again in Convergence targets
+    # over the grid.  The section is the inner legend and the group is
+    # the outer card (`web/form-schema.md` 1.3); the two axes are
+    # orthogonal, so a section that spans groups gets repeated, by
+    # design.  The fix is a name that belongs to one of them.
     tbt_spin: int = field(default=0, metadata={
-        "section": "Transmission k-sampling",
+        "section": "Spin channel",
         "workflow_group": "profile",
         "label":   "Spin channel (0 = both)",
         "range":   (0, 2),
@@ -708,8 +734,12 @@ class TransportConfig:
                    "rank avoids oversubscription -- see runwrap.py "
                    "thread-pinning note).",
     })
+    # Logging is its own section for the reason spelled out above
+    # `tbt_spin`: memory and threads are `budget`, verbosity is
+    # `profile`, and while all three were called "Runtime" the form drew
+    # that legend twice -- in Run profile and again in Compute & budget.
     log_level: str = field(default="info", metadata={
-        "section": "Runtime",
+        "section": "Logging",
         "workflow_group": "profile",
         "label":   "Log verbosity",
         "choices": ("warning", "info", "debug"),

@@ -527,7 +527,7 @@ The manual: a `%block TS.Elec.<name>` **must** carry `HS`,
 | `TBT.DOS.Gf` · `TBT.DOS.A` · `TBT.DOS.Elecs` | all `false` | ✅ (*Outputs*) — **W10 now has data to read, when asked for** |
 | `TBT.T.Eig` | `0` | ✅ (*Outputs*) |
 | `TBT.T.All` · `TBT.T.Bulk` | `false` | ✅ (*Outputs*). `TBT.T.Out` ❌ — it needs a multi-terminal case to mean anything |
-| `TBT.Spin` | all spins | ✅ (*Transmission k-sampling*) — the SELECTOR; a spin-polarised device run is still not wired end to end |
+| `TBT.Spin` | all spins | ✅ (*Spin channel*) — the SELECTOR; a spin-polarised device run is still not wired end to end.  Its own section since 2026-09-15: it was filed under *Transmission k-sampling*, which it is not, and being `profile` where the k-grid is `stage` split that legend across two cards |
 
 **Why `TBT.k` is the one that matters.** It *inherits the SCF's* grid. A
 transverse grid converged for a total energy is routinely far too coarse for
@@ -621,12 +621,12 @@ that read as self-contradictory and prompted the question that produced § 0.
 
 #### 3.4.3 Where the UI order disagrees with the physics
 
-**The bias is in the wrong card.** It sits in card 4 beside the *Describe*
-button, which makes it look like a property of saving. It is the experiment —
-and it *governs* other fields: at zero bias the entire non-equilibrium half of
-the density contour (`TS.Contours.nEq.*`) is inert, and more than one value
-turns the run into a chain of attempt ladders. It belongs at the TOP of the
-physics card, where what it governs can sit under it.
+**The bias was in the wrong card.** ✅ **Fixed 2026-09-15.** It sat in card 4
+beside the *Describe* button, which made it look like a property of saving. It
+is the experiment — and it *governs* other fields: at zero bias the entire
+non-equilibrium half of the density contour (`TS.Contours.nEq.*`) is inert, and
+more than one value turns the run into a chain of attempt ladders. It is now at
+the TOP of the physics card, with what it governs under it.
 
 **Three measured UI defects, all in card 1's fused viewer:**
 
@@ -634,7 +634,7 @@ physics card, where what it governs can sit under it.
 |---|---|
 | **the atom list traps the page scroll** | a wheel over the card scrolled rows 38→53 of 444 and left the page where it was. Reaching card 3 needs a person to find a margin first — hit three times in one walk, including with `Page_Up` |
 | **444 checkboxes precede every transport control** | the page's interactive order is one checkbox per atom before a single parameter, so keyboard reach to the form is 444 tab stops |
-| **card 2's rationale is a wall of prose** | correct and worth reading once, and it pushes card 3 below two screens |
+| **card 2's rationale is a wall of prose** | ✅ **fixed 2026-09-15** — not by cutting it but by giving it a measure: `--measure-prose` caps `.auto-detect-rationale` (and `.hint`) at 74 characters. It was ~150 characters a line, twice the readable maximum |
 
 **None is a transport bug, and the first two are not even bugs.** Diagnosed
 2026-09-15: `.molviewer-selection-list-wrap` carries `overflow-y: auto`
@@ -682,6 +682,34 @@ Two things the page says that are wrong for transport:
    all — where the panel shows what *would* be written if parameters were
    sent from the Optimization tab, which is correct for an empty folder. A
    claim about a kind, made without selecting a folder of that kind.
+
+#### 3.4.5 How the tab SAYS all of this — the presentation rules
+
+*Added 2026-09-15, from a user report: "all text does not fit the boxes, and
+alignment and layout is visually ugly", and "clean up the text in the boxes …
+refer to the correct document with context explaining how each step".*
+
+Every item below was a **measured** defect on this tab, and every fix is owned
+by the shared module that was wrong — so the other form tabs got it too.
+
+| rule | what it replaced |
+|---|---|
+| **Prose obeys a measure.** `--measure-prose: 74ch` caps `.hint`, `.schema-section-desc`, `.workflow-group-subtitle` and the chemistry rationale. In `ch`, so it tracks the font and the reader's zoom | no cap at all: a card's help paragraph ran the full content column, ~150 characters a line |
+| **The engine-key badge is a CAPTION, not a control.** `align-items: flex-start` on the label; the badge shrink-wraps | the label stretched it to the column, so a 341px bordered box sat under a 349px input and read as a second field — all 21 of them. And `word-break: break-word` hyphenated keywords early: `TS.Elecs.Bul` / `k` |
+| **A checkbox row is a two-column GRID**: the box in column one, the caption and everything after it stacked in column two | one flex row shared by box + caption + badge + help, so "Use the electrode's own bulk Hamiltonian" took three lines beside a broken badge |
+| **The label's caption is an ELEMENT** (`.schema-field-text`), not a bare text node | a text node is an anonymous flex item no selector can place — the single cause of the two rows above *and* of the `is-advanced` bullet being drawn on a line of its own, seven times down this form |
+| **A section's description renders in the card that holds the WHOLE section** | it rendered on the renderer's *bare* path only. Every field here is `workflow_group`-tagged, so every section is in a card, so all twelve paragraphs were displayed nowhere — while a data-presence test passed. Guarded now by `tests/test_form_schema_section_description_js.py` |
+| **A section name belongs to ONE workflow group.** The two axes are orthogonal (`web/form-schema.md` § 1.3), so a section that straddles is drawn once per card | *Transmission k-sampling* and *Runtime* each appeared twice, over unrelated fields. Split into *Spin channel* and *Logging* |
+| **A group's subtitle holds for every engine that renders it** | *Run profile* named SIESTA's own fields — "charge, spin, metallic vs organic, smearing, and the functional" — above a card holding the spin channel and the log verbosity |
+| **Content links have a colour** (`main a`, `.sidebar-rail a` in `page-shell.css`) | nothing styled a bare `<a>`, so every inline link in every card used Chromium's default `rgb(0, 0, 238)` on a `#1d2128` card: a contrast ratio of **1.72:1** against WCAG's floor of 4.5 |
+| **A value carries evidence, not its own explanation** | the junction line read `CONCLUDED (0_NORMAL_EXIT (SIESTA's own clean-exit marker))` — a parenthetical inside a parenthetical, because `compose.py` put the gloss in the value |
+
+**And what each card's text now says**, in this order: *what the step does*,
+*how it works*, then a **Reference** line naming the section of this document
+that governs it. Card 1 → § 3.1 + § 4, card 3 → § 3.3 + § 0.2 + § 0.4,
+card 4 → § 1 + § 3.4. The document viewer has no heading anchors, so the link
+opens the document and the prose names the section — a `#fragment` would be a
+link that silently does nothing.
 
 ## 4. Region labels drive everything
 

@@ -371,11 +371,24 @@
                 }
                 input = makeText(f);
         }
+        // The caption is a SPAN, not a bare text node (2026-09-15).  A
+        // text node inside a flex/grid <label> becomes an ANONYMOUS item
+        // that no selector can reach, and three defects followed from
+        // that one fact: the `.is-advanced` bullet had to be a ::before
+        // on the label, which in a column layout is an item of its own
+        // and drew the "•" on a line by itself; the engine-key badge
+        // stretched to the label's full width and read as a second input
+        // box; and a checkbox row could only be `flex-direction: row`,
+        // so checkbox + caption + badge + help shared one line and the
+        // caption wrapped to three.  With the caption addressable,
+        // `form-schema.css` places all three.
+        const caption = el("span", {class: "schema-field-text"},
+                           labelText(f));
         if (f.kind === "checkbox") {
             labelEl.appendChild(input);
-            labelEl.appendChild(document.createTextNode(" " + labelText(f)));
+            labelEl.appendChild(caption);
         } else {
-            labelEl.appendChild(document.createTextNode(labelText(f) + " "));
+            labelEl.appendChild(caption);
             labelEl.appendChild(input);
         }
         const badge = engineKeyBadge(f);
@@ -414,25 +427,31 @@
                     + "until both are answered, and every output file is "
                     + "named after the first.",
         },
+        // The subtitles say what the GROUP means, so they must hold for
+        // every engine that renders one.  "profile" listed SIESTA's own
+        // fields -- "charge, spin, metallic vs organic, smearing, and
+        // the functional" -- until 2026-09-15, and on the transport tab
+        // that card holds the spin channel and the log verbosity: four
+        // of the five named things were not on the page.  What each
+        // FIELD is for is the section description's job, one level down.
         "profile": {
             title:    "Run profile",
             subtitle: "WHAT you're computing — the physical character of "
-                    + "the system: charge, spin, metallic vs organic, "
-                    + "smearing, and the functional.  Set once per run; "
-                    + "doesn't change between stages.",
+                    + "the system.  Set once per run; it does not change "
+                    + "between stages.",
         },
         "stage": {
             title:    "Convergence targets",
-            subtitle: "What counts as converged — the knobs a staged "
-                    + "sequence TIGHTENS as it goes.  This is the set the "
-                    + "staging surface steps; nothing on this page steps it.",
+            subtitle: "What counts as CONVERGED — the settings a staged "
+                    + "sequence tightens as it goes.  The staging surface "
+                    + "steps these; nothing on this page does.",
         },
         "budget": {
             title:    "Compute & budget",
             subtitle: "How much compute am I willing to spend?  "
-                    + "Iteration caps + parallel layout (MPI ranks, "
-                    + "OMP threads, memory).  Scales with system size; "
-                    + "does NOT change what counts as converged.",
+                    + "Iteration caps and the parallel layout.  Scales "
+                    + "with system size; does NOT change what counts "
+                    + "as converged.",
         },
         // Added 2026-08-15.  Not a home for leftovers: FOUR of these were
         // already on the form, mis-filed under "what you're computing"
@@ -501,8 +520,15 @@
             tagged[role] = new Map();
         }
         const untagged = [];
+        // A section's DESCRIPTION, and how many fields the section has
+        // in total -- the two facts PASS 2 needs to decide whether a
+        // card may show that description.  See the note where it does.
+        const sectionDesc  = new Map();
+        const sectionTotal = new Map();
 
         for (const sect of schema.sections) {
+            sectionDesc.set(sect.name, sect.description);
+            sectionTotal.set(sect.name, sect.fields.length);
             const remainingFields = [];
             for (const f of sect.fields) {
                 const role = f.workflow_group;
@@ -550,6 +576,29 @@
             for (const [sectName, fields] of sectMap.entries()) {
                 const fs = el("fieldset", { class: "schema-section" });
                 fs.appendChild(el("legend", null, sectName));
+                // THE SECTION'S OWN EXPLANATION, which reached the
+                // screen on the bare path only until 2026-09-15.  Every
+                // field on the transport tab is workflow-group tagged,
+                // so every section rendered inside a card -- and all
+                // ten paragraphs of `_form_section_descriptions` were
+                // written, tested for presence, and displayed NOWHERE.
+                //
+                // Shown only when this card holds the WHOLE section.  A
+                // section split across cards is a SUBSET here, and a
+                // paragraph about the whole section is then partly
+                // false: "Runtime ... memory budget, CPU thread count,
+                // log verbosity" over a card holding only verbosity.
+                // Repeating it in each card would say it twice and be
+                // wrong twice, so a split section keeps its bare legend
+                // and the fix is to stop splitting it.
+                const desc = sectionDesc.get(sectName);
+                if (desc && fields.length === sectionTotal.get(sectName)) {
+                    fs.appendChild(el(
+                        "p",
+                        { class: "schema-section-desc" },
+                        desc,
+                    ));
+                }
                 for (const f of fields) {
                     fs.appendChild(renderField(f));
                 }

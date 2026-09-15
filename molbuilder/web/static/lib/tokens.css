@@ -125,6 +125,20 @@
     --line-normal:      1.5;
     --line-loose:       1.65;
 
+    /* THE MEASURE -- how long a line of prose may get before the eye
+     * loses the return sweep.  In `ch` because the limit is a COUNT OF
+     * CHARACTERS, not a distance: it tracks the font and the reader's
+     * zoom the way a pixel width never could.  Typography's range for
+     * continuous text is 45-75 characters; these hints are short
+     * explanatory paragraphs in a wide card, so the looser end.
+     *
+     * Added 2026-09-15: `.hint` had no cap at all, so a card's help
+     * paragraph ran the full width of the app content column -- about
+     * 150 characters on this display, twice the readable maximum, and
+     * the reason every card read as a wall (user: "all text does not
+     * fit the boxes ... visually ugly"). */
+    --measure-prose:    74ch;
+
     --weight-normal:    400;
     --weight-medium:    500;
     --weight-semibold:  600;

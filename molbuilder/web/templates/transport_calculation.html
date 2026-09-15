@@ -44,26 +44,45 @@
   <section class="card" id="junction-card">
     <h2>1. The junction</h2>
     <p class="hint">
-      Transport is an assembly built from ONE cited directory, and what
-      makes a directory citable is its <strong>files</strong> — never
-      its name or where it sits: a <em>finished relaxation</em>
-      (<code>.fdf</code> + <code>.XV</code> together; the deck is the
-      electronic contract) or a <em>labeled structure</em>
-      (<code>.xyz</code> + <code>.molstruct.json</code>; the contract
-      fields open up in Parameters, since there is no deck to be
-      truth).  Pick any directory — the meta line classifies it and
-      says exactly what is missing when it does not qualify.  The
-      viewer below shows the CITED labeled structure (a different
-      bridge variation means citing a different directory).  Labels
-      are assigned where the junction is built — the
-      <a href="/molbuilder">Molbuilder</a> tab — never here.
-      <br />Usual convention: <strong><code>L-electrode</code> low z,
-      <code>R-electrode</code> high z</strong> (TranSIESTA's own — the
-      first atoms are the <code>−A3</code> lead).  The atom order and
-      the semi-infinite directions follow the <em>geometry</em>;
-      <code>µ = +V/2</code> follows the <em>name</em>.  A junction
-      labeled the other way round still runs — it biases the high-z
-      lead instead — and is flagged here with a one-click rename.
+      <strong>Point the calculation at one directory that already holds
+      a relaxed junction.</strong>  Every later stage is derived from
+      it: the sorted copy, both electrode cells, the device, the
+      transmission.  Nothing is uploaded or copied here — the
+      directory is cited.
+    </p>
+    <p class="hint">
+      A directory qualifies by its <strong>files</strong>, not its name
+      or location, in one of two shapes:
+    </p>
+    <ul class="hint">
+      <li><code>.fdf</code> + <code>.XV</code> — a relaxation that
+          concluded.  Its deck also fixes basis, functional and mesh,
+          so step 3 leaves those alone.</li>
+      <li><code>.xyz</code> + <code>.molstruct.json</code> — a
+          labelled structure.  There is no deck to be truth, so step 3
+          asks for the basis, functional and mesh instead.</li>
+    </ul>
+    <p class="hint">
+      Pick any directory: the line under the button names what it is,
+      or what it is missing.  The viewer then shows the cited structure
+      with its region labels — use it to check that the electrodes and
+      the bridge are the atoms you meant.
+    </p>
+    <p class="hint">
+      Labels are assigned where the junction is built, on the
+      <a href="/molbuilder">Molbuilder</a> tab, never here.  The
+      convention is <code>L-electrode</code> at low z and
+      <code>R-electrode</code> at high z: atom order follows the
+      <em>geometry</em>, but the bias <code>µ = +V/2</code> follows the
+      <em>name</em>, so labelling them the other way round biases the
+      other lead.  That case is detected below and offers a rename.
+    </p>
+    <p class="hint hint-ref">
+      Reference —
+      <a href="/documents?doc=engines/transport.md" target="_blank"
+         rel="noopener">Transport contract</a>:
+      § 3.1 what makes a directory citable, § 4 how region labels
+      drive the five stages.
     </p>
     <div class="action-row">
       <button id="transport-junction-btn" type="button"
@@ -87,12 +106,17 @@
   </section>
 
   {#- ===================== 2. Analyze chemistry ===================== -#}
-  {% set hint %}Surfaces the open-shell-metal check (same as on
-      <a href="/structure-optimization">Optimization</a> and
-      <a href="/spectrum-calculation">Spectrum</a>) plus a region-
-      label summary — run on the CITED junction's structure.
-      Auto-fires when you cite one; re-run it from the button below.
-      No form fields are mutated — this step is informational only.{% endset %}
+  {% set hint %}<p><strong>Read the cited structure back before you
+      spend any compute on it.</strong>  Two things are reported: the
+      open-shell-metal check — whether this system wants a
+      spin-polarised run — and a count of the atoms carrying each
+      region label.  It runs automatically when you cite a junction;
+      the button re-runs it.</p>
+      <p>Nothing here changes a setting: the panel is a reading, and
+      acting on it means editing step 3 or relabelling in
+      <a href="/molbuilder">Molbuilder</a>.  The same check runs on
+      <a href="/structure-optimization">Structure optimization</a> and
+      <a href="/spectrum-calculation">Spectrum calculation</a>.</p>{% endset %}
   {% set title = "Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited." %}
   {% set button_label = "Re-analyze chemistry" %}
   {% include "_analyze_chemistry_card.html" %}
@@ -112,24 +136,36 @@
              title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan: one attempt ladder per point, launched as one chain job." />
     </div>
     <p class="hint">
-      The bias is the experiment, so it comes first — and it decides
-      whether the rest matters.  <strong>At 0 V the calculation is at
-      equilibrium</strong>, and every field in
-      <em>NEGF density contour</em> marked <em>non-equilibrium</em> does
-      nothing.  More than one voltage is a <strong>scan</strong>: one
-      attempt ladder per point, launched as one chain job, each point
-      warm-started from the previous one.
+      <strong>The bias is the experiment, so it is asked first — and it
+      decides whether the rest matters.</strong>  At <code>0.0</code> the
+      junction is at equilibrium and every field marked
+      <em>non-equilibrium</em> below does nothing.  Several values are a
+      <strong>scan</strong>: one run per voltage, launched as a single
+      chain job, each starting from the one before it.
     </p>
     <p class="hint">
-      Below: every knob this calculation has, in the order you decide
-      them — what is computed, how sharply, what gets written, then the
-      machinery.  Each label carries the exact keyword it writes
-      (the <code>engine_key</code> badge), and every one of those has
-      been checked against the installed SIESTA binary
-      (<code>engines/transport.md</code> § 3.3).  The
-      <strong>electronic contract</strong> — basis, functional, mesh —
-      is not here: it arrives from the cited junction's own deck, so
-      the leads and the device cannot disagree (§ 0.4).
+      Everything below is a knob this calculation actually has, ordered
+      the way you decide them: <em>what</em> is computed (the energy
+      window and its k-sampling), <em>how sharply</em> (broadening),
+      <em>what gets written</em> (outputs), then the machinery (the
+      density contour, the leads) and the shell.  The grey tag under
+      each field is the exact fdf keyword it writes, so a setting can
+      be looked up in the SIESTA manual by name; <em>help</em> expands
+      the reasoning and the citation.
+    </p>
+    <p class="hint">
+      <strong>Basis, functional and mesh are deliberately absent.</strong>
+      They arrive from the cited junction's own deck, because the
+      electrodes and the device must share them or the lead self-energy
+      cannot attach.  They appear here only for a citation that carries
+      no deck.
+    </p>
+    <p class="hint hint-ref">
+      Reference —
+      <a href="/documents?doc=engines/transport.md" target="_blank"
+         rel="noopener">Transport contract</a>:
+      § 3.3 every parameter and what it writes, § 0.2 the three k-grid
+      axes, § 0.4 the four things that must agree.
     </p>
     <div id="transport-form-container" class="param-grid">
       <p class="muted">Loading form schema&hellip;</p>
@@ -140,21 +176,23 @@
   <section class="card" id="composite-card">
     <h2>4. Describe</h2>
     <p class="hint">
-      One button, and nothing left to ask — the bias moved up to card 3
-      with the physics it governs.
-      This writes the finished <code>task.json</code> into the
-      folder selected in the Projects sidebar — a folder <em>of its
-      own</em>, never the cited junction (the calculation does not live
-      inside its citation; make one under this project's transport
-      topic and select it).  Nothing is left to ask:
-      the five stages and the shape are fixed by design, and prep
-      derives everything else from the citation above (the sorted copy,
-      both electrode cells, the seed, the NEGF device, the TBtrans
-      transmission).  The electronic contract (basis, XC, mesh) comes
-      from the cited attempt's own <code>.fdf</code>; form fields you
-      changed travel as stage overrides where they are transport's own
-      (transmission window, contour).  More than one voltage is a scan:
-      one attempt ladder per point, launched as one chain job.
+      <strong>Write the calculation down.</strong>  This produces one
+      <code>task.json</code> — the citation, your settings from step 3,
+      and the bias list — in the folder selected in the Projects
+      sidebar.  It runs nothing; the stages are prepared and launched
+      afterwards.
+    </p>
+    <p class="hint">
+      Select a folder <strong>of its own</strong>, not the cited
+      junction: a calculation does not live inside its own input.  Make
+      one under this project and select it in the sidebar.
+    </p>
+    <p class="hint hint-ref">
+      Reference —
+      <a href="/documents?doc=engines/transport.md" target="_blank"
+         rel="noopener">Transport contract</a>:
+      § 1 one citation → five derived stages, § 3.4 the workflow end to
+      end.
     </p>
     <div class="action-row">
       <button id="transport-send-btn" class="full-btn" disabled
@@ -166,21 +204,24 @@
     </div>
     {#- The road after describing — the composite's own quickstart. -#}
     <details class="hint">
-      <summary>After describing: the five-stage road</summary>
+      <summary>What happens after this — the five stages, in order</summary>
       <ol>
-        <li><code>task.json</code> is the whole floor 2 (no template:
-            the contract arrives from the citation at prep).  Prep from
-            <a href="/task-setup">Task setup</a>'s buttons on that
-            folder, or the CLI.</li>
-        <li><code>prep run seed</code> → launch; then
-            <code>electrode_L</code>, <code>electrode_R</code>; then
-            <code>device</code> (a bias scan launches as ONE chain job
-            walking the points, each warm-started from the previous
-            point's <code>.TSDE</code>); then
+        <li><strong>Prepare and launch each stage</strong> from
+            <a href="/task-setup">Task setup</a> on that folder, or from
+            the CLI.  Each stage gathers what it needs from the stages
+            that finished before it, so the order is not optional:
+            <code>seed</code> → <code>electrode_L</code> →
+            <code>electrode_R</code> → <code>device</code> →
             <code>transmission</code>.</li>
-        <li><code>summarize run</code> — writes
-            <code>&lt;label&gt;.transport.json</code> (T(E) per bias,
-            G(E_F), the I–V table from TBtrans's own integral).</li>
+        <li><strong>Why five and not one:</strong> tbtrans needs each
+            lead's converged bulk Hamiltonian before it can build that
+            lead's self-energy, and the device needs both.  A bias scan
+            is still one job — it walks the voltages, each warm-started
+            from the previous point's density.</li>
+        <li><strong>Read it back</strong> with <code>summarize run</code>,
+            which writes <code>&lt;label&gt;.transport.json</code>:
+            T(E) per bias, the conductance at E_F, and the I–V table
+            from tbtrans's own integral.</li>
       </ol>
     </details>
   </section>

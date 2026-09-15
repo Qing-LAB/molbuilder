@@ -307,6 +307,42 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
     box-shadow: var(--shadow-card);
 }
 
+/* ---- Links in page content ---------------------------------------
+ *
+ * NOTHING styled a bare <a> until 2026-09-15, in an app that has no
+ * light theme: every inline link in every card rendered in Chromium's
+ * own default `rgb(0, 0, 238)` on a #1d2128 card -- a contrast ratio of
+ * **1.72:1**, measured, where WCAG's floor for body text is 4.5.  The
+ * links were there and unreadable, which is worse than absent: the
+ * transport tab's "the Molbuilder tab" pointer, the Documents
+ * references, the cross-tab links on Optimization and Spectrum.
+ *
+ * Scoped to content so it cannot reach the chrome that already styles
+ * its own anchors (`header .app-account__logout`, the tab strip) or a
+ * module's internals.  Underlined only on hover: in a card full of
+ * `--accent` legends and badges, colour alone is not enough to find a
+ * link, but a permanently underlined one turns a paragraph into a
+ * fence. */
+main a,
+.sidebar-rail a {
+    color: var(--accent);
+    text-decoration: none;
+}
+main a:hover,
+.sidebar-rail a:hover {
+    /* The underline is the whole hover signal.  `--accent-strong`
+     * (#4a8de0) is DARKER than `--accent` (#6ba6ff), which is the
+     * right direction on a light ground and the wrong one here -- it
+     * would lower the contrast of the thing being pointed at. */
+    text-decoration: underline;
+}
+main a:focus-visible,
+.sidebar-rail a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
 /* ---- Generic form controls -------------------------------------- */
 
 input[type="text"],

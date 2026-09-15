@@ -42,11 +42,25 @@ fieldset legend {
 fieldset label {
     display: flex;
     flex-direction: column;
+    /* Cross-axis START, not the default STRETCH.  Stretch is right for
+     * the input (it should fill the column) and wrong for everything
+     * else in the stack: it is what made the engine-key badge 341px
+     * wide inside a 349px label, so a caption-sized tag rendered as a
+     * full-width bordered box and read as a SECOND input to type in
+     * (measured 2026-09-15, 21 of 21 badges).  The input takes its
+     * width back explicitly below. */
+    align-items: flex-start;
     gap: 2px;
     margin: var(--space-sm) 0;
     font-size: var(--text-sm);
     color: var(--text-secondary);
     min-width: 0;
+}
+/* The label's caption -- a real element since 2026-09-15 so that the
+ * advanced marker and the checkbox row can be placed (see
+ * `form-schema.js` renderField).  Prose, so it wraps at words. */
+fieldset label > .schema-field-text {
+    line-height: var(--line-snug);
 }
 
 /* Optional per-section description (`{"description": "..."}` on a
@@ -56,8 +70,9 @@ fieldset .schema-section-desc {
     margin: 0 0 var(--space-sm);
     padding: 0 2px;
     font-size: var(--text-xs);
-    line-height: 1.45;
+    line-height: var(--line-normal);   /* was a hand-written 1.45 */
     color: var(--text-secondary);
+    max-width: var(--measure-prose);   /* prose obeys the measure */
 }
 
 fieldset label > input,
@@ -67,6 +82,13 @@ fieldset label > select {
     max-width: none;
     min-width: 0;
 }
+/* An input fills its column; the caption, badge and help do not (see the
+ * `align-items` note above).  `width: 100%` already did this for input
+ * and select -- the int-triple row is a DIV and needs saying. */
+fieldset label > .schema-int-triple {
+    align-self: stretch;
+}
+
 /* Checkboxes: native rendering at a comfortable 16px so the
  * affordance reads unambiguously as "you can click this".  Without
  * explicit sizing browsers fall back to the system default (~13 px
@@ -80,16 +102,32 @@ fieldset label > input[type="checkbox"] {
     align-self: center;
     cursor: pointer;
 }
+/* A checkbox row is a GRID, not a flex row (2026-09-15).  As one row of
+ * flex items the box, the caption, the engine-key badge and the help
+ * disclosure all competed for the same line: in the Outputs section the
+ * caption wrapped to two lines and the badge to two more, and in Leads
+ * "Use the electrode's own bulk Hamiltonian" took three lines beside a
+ * badge that broke mid-word (`TS.Elecs.Bul` / `k`).  Two columns fix it
+ * without a single width: the box holds column one, and every sibling
+ * stacks under the caption in column two.
+ *
+ * The caption is an element rather than a text node precisely so this
+ * rule can exist -- an anonymous grid item cannot be placed. */
 fieldset label:has(> input[type="checkbox"]) {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: auto 1fr;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs) var(--space-sm);
     cursor: pointer;
     /* Checkbox-style labels get padding so the whole row is a
      * comfortable click target, not just the 16 px box. */
     padding: var(--space-xs) 2px;
     border-radius: var(--radius-sm);
     transition: background 100ms ease;
+}
+fieldset label:has(> input[type="checkbox"]) > :not(input[type="checkbox"]) {
+    grid-column: 2;
+    justify-self: start;
 }
 fieldset label:has(> input[type="checkbox"]):hover {
     background: var(--bg-input-focus, rgba(255, 255, 255, 0.04));
@@ -195,7 +233,15 @@ fieldset select:disabled {
     grid-template-columns:
         repeat(auto-fit, minmax(min(var(--param-col-min), 100%), 1fr));
     gap: var(--space-md);
-    align-items: start;
+    /* STRETCH (the default), not `start` -- restored 2026-09-15.  These
+     * grid items are BORDERED boxes, and `start` sized each to its own
+     * field count: "Transmission" (3 fields, 195px) sat beside
+     * "Transmission k-sampling" (1 field, 170px) and the two bottom
+     * borders stopped at different heights, with the gap below the
+     * short one reading as a rendering fault rather than as spare room.
+     * Stretch makes a row of boxes one band.  The fields inside still
+     * start at the top -- `align-content: start` on the fieldset. */
+    align-items: stretch;
 }
 
 .workflow-group > .workflow-group-header,
@@ -283,17 +329,25 @@ fieldset select:disabled {
 
 /* Advanced-tier fields: keep visible but slightly dimmed so the
  * "advanced knob" status reads without hiding the control.  The
- * leading bullet conveys "advanced" for text/select/number inputs.
- * Checkboxes get the dim only — adding ::before to a checkbox row
- * inserts the bullet INTO the flex layout right next to the
- * checkbox box, making the box look like just another bullet.
- * (2026-06-12 user report: "the 'Raman' and 'IR' option does not
- * look like a check box and i am not sure what i can/should do
- * with them. it seems like a bullet point …".) */
+ * leading bullet conveys "advanced".
+ *
+ * THE MARKER BELONGS TO THE CAPTION, not to the label (2026-09-15).
+ * On the label it was a pseudo-element of a COLUMN flex container, so
+ * it became an item like any other and drew "•" alone on the line
+ * ABOVE the caption — seven of them down the transport form, reading
+ * as empty bullet lists.  Hanging it off the caption puts it back in
+ * the text, where it is a mark on a word rather than a list item.
+ *
+ * Checkboxes still get the dim only.  The exception is NOT stale: with
+ * the marker inside the caption the bullet lands between the box and
+ * its text ("☐ • Bulk transmission", measured here), which is the
+ * same dot-beside-a-box the 2026-06-12 report was about — "the 'Raman'
+ * and 'IR' option does not look like a check box … it seems like a
+ * bullet point". */
 .schema-field.is-advanced {
     opacity: 0.85;
 }
-.schema-field.is-advanced:not(.schema-field-checkbox)::before {
+.schema-field.is-advanced:not(.schema-field-checkbox) > .schema-field-text::before {
     content: "•";
     color: var(--accent);
     margin-right: var(--space-xs);
@@ -321,12 +375,25 @@ fieldset select:disabled {
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm, 4px);
     color: var(--text-mono);
+    /* A CAPTION, and it has to look like one.  It is the last item in a
+     * stacked label, so the label's old cross-axis stretch sized it to
+     * the whole column and it rendered as a bordered full-width box
+     * directly under the real input -- indistinguishable from a second
+     * field (2026-09-15: 341px badge in a 349px label, all 21 of them).
+     * `align-items: flex-start` up on the label is the fix; this pair
+     * states the intent locally and caps the runaway case. */
+    align-self: flex-start;
+    max-width: 100%;
     /* Long engine_key strings (e.g. PySCF's ``gto.M(spin=...) # 2S,
      * # of unpaired electrons``) would push the .param-grid column
-     * out under nowrap.  Allow breaks anywhere instead so a 60-char
-     * badge wraps cleanly inside the 220px-min grid cell. */
+     * out under nowrap.  `overflow-wrap: anywhere` breaks a keyword
+     * only when there is no other break opportunity left.
+     * `word-break: break-word` stood beside it until 2026-09-15 and
+     * broke keywords EARLY, to balance the line -- which is how a
+     * checkbox row rendered `TS.Elecs.Bul` / `k`.  A keyword the reader
+     * is meant to find in the SIESTA manual must not be hyphenated for
+     * tidiness, so only the last-resort rule survives. */
     overflow-wrap: anywhere;
-    word-break: break-word;
     vertical-align: baseline;
     /* inline-block so the badge wraps as a unit rather than the
      * children separating awkwardly on narrow viewports. */
@@ -504,6 +571,7 @@ fieldset select:disabled {
     line-height: var(--line-snug);
     color: var(--text-secondary);
     font-style: italic;
+    max-width: var(--measure-prose);   /* prose obeys the measure */
 }
 
 /* Detection chip on the right side of the header.  Used to surface

@@ -83,8 +83,9 @@ class TestTransportSchemaEndpoint:
         body = web.get("/api/transport/schema").get_json()
         sections = body["schema"]["sections"]
         assert [s["name"] for s in sections] == [
-            "Transmission", "Transmission k-sampling", "Broadening",
-            "Outputs", "NEGF density contour", "Leads", "Runtime",
+            "Transmission", "Transmission k-sampling", "Spin channel",
+            "Broadening", "Outputs", "NEGF density contour", "Leads",
+            "Runtime", "Logging",
         ], (
             "the override lane's sections, in the order a person decides "
             "in.  System and Electrodes are emptied by the seal filter, "

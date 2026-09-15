@@ -131,6 +131,8 @@ button.danger:disabled {
 .auto-detect-panel .auto-detect-rationale {
     margin: var(--space-sm) 0;
     color: var(--text-primary);
+    line-height: var(--line-loose);
+    max-width: var(--measure-prose);   /* prose obeys the measure */
 }
 .auto-detect-panel .auto-detect-warnings {
     margin: var(--space-xs) 0;
@@ -223,8 +225,38 @@ button.danger:disabled {
 .hint {
     color: var(--text-secondary);
     font-size: var(--text-sm);
-    margin: var(--space-xs) 0 12px;
-    line-height: 1.55;
+    margin: var(--space-xs) 0 var(--space-sm2);
+    /* Tokens, not the 1.55 and the 12px that stood here: both were the
+     * neighbouring token's value written out by hand. */
+    line-height: var(--line-loose);
+    /* A hint is PROSE and obeys the measure.  Uncapped it filled the
+     * content column edge to edge (2026-09-15). */
+    max-width: var(--measure-prose);
+}
+/* A list inside a hint.  Four tabs put one there and NO rule answered
+ * it until 2026-09-15, so each rendered with the browser's own ~40px
+ * marker indent inside a 14px paragraph -- the list sat further right
+ * than the text it belonged to. */
+.hint ul,
+.hint ol {
+    margin: var(--space-xs) 0;
+    padding-left: var(--space-lg2);
+}
+.hint li {
+    margin-bottom: var(--space-xs);
+}
+.hint li:last-child {
+    margin-bottom: 0;
+}
+/* A hint that is a BLOCK of prose (`<div class="hint">` with paragraphs
+ * inside -- see `_analyze_chemistry_card.html`).  Without this the
+ * paragraphs take the browser's 1em default and the block's own
+ * `margin` stacks on top of the first and last one. */
+.hint > p {
+    margin: 0 0 var(--space-sm);
+}
+.hint > p:last-child {
+    margin-bottom: 0;
 }
 
 /* ---- FDF / PySCF action row + generated-output box ---- */
