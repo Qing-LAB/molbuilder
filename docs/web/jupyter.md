@@ -113,6 +113,33 @@ authoritative for a port that four other places derive — which is the design
 `port_retries = 0` was chosen against. *(User question 2026-09-15;
 `plan.md` § 5n, J15.)*
 
+### 2.1a The frame is the BROWSER's problem, and only the browser can answer it
+
+**`answering()` cannot tell you whether the frame will load.** It runs on the
+machine molbuilder is on; the frame runs in somebody's browser, and through an
+ssh tunnel or behind a reverse proxy those are not the same host. The tab
+builds the frame URL from **this page's** host and `st.port` — *this host, one
+port up* — which is true on the machine and false the moment only molbuilder's
+port is forwarded. Three separate places assume it, each individually right:
+the frame URL (`index.js`), the `frame-src` CSP (`web/app.py`, built from the
+request's scheme), and the `frame-ancestors` grant (`jupyter.py`, built from
+the port molbuilder BOUND to).
+
+Before 2026-09-15 every one of those failures landed in the *framed* state,
+whose message says the kernel is ready — the iframe showed the browser's
+connection-refused page under a sentence claiming all was well, and **no state
+covered a frame that failed**. There is no load or error event on a
+cross-origin iframe that can be relied on, so the page asks the network
+instead: one `no-cors` fetch per server, which resolves opaquely when the port
+is reachable and rejects when the connection is refused or the host will not
+resolve. That is state **4a**.
+
+**The requirement, stated once:** the browser must be able to reach
+`<this page's scheme>://<this page's host>:<molbuilder's port + 1>`. Forward
+that port too, or proxy it beside molbuilder's own. molbuilder cannot carry
+the traffic itself — § 2 is why: WSGI has no WebSocket, and the kernel
+connection is one. *(`plan.md` § 5n.8.)*
+
 ## 3. The lifecycle
 
 Copied in discipline from `serve_daemon.py`, which already solves this shape for
@@ -197,16 +224,28 @@ is the contract.
 
 | # | State | When | Shows | Waits |
 |---|---|---|---|---|
-| 1 | **env-missing** | the env is not installed | the install command — the env is **opt-in**, so this is ordinary and not an error | — |
-| 2 | **no-token** | running and answering, but the token was withheld | that using a kernel is an admin action (§ 6). Nothing is framed: framing anyway would put Jupyter's own login page in the tab, which reads as molbuilder being broken | — |
-| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4 at the projects root |
-| 4 | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button *if this viewer may control it* | 30 s heartbeat |
-| 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with Stop *if this viewer may control it* |
-| 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → the port clash if there is one (§ 2.1), else *"none started"* naming **both** logs |
-| 7 | **unsupervised** | no supervisor to hold a notebook | that `serve start` is what gives it one. **Not** `jupyter start` — that verb signals the supervisor, so it is the one command guaranteed to fail here | — |
-| 8 | **no-control** | nothing running, and this viewer may not start one | that starting runs code on this machine | — |
-| 9 | **idle** | installed, nothing running, and the person may ask | what starting gets you, and the Start button | — |
-| 10 | **unreachable** | the status endpoint could not be asked | the error, and a **Try again** button | — |
+| 1 | **env-missing** | the env is not installed | the install command — the env is **opt-in**, so this is ordinary and not an error | 60 s |
+| 2 | **no-token** | running and answering, but the token was withheld | that using a kernel is an admin action (§ 6). Nothing is framed: framing anyway would put Jupyter's own login page in the tab, which reads as molbuilder being broken | 30 s |
+| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4b at the projects root |
+| 4a | **frame-unreachable** | answering on the server, but **this browser** cannot reach the notebook's port | which address to make reachable, and why molbuilder cannot carry it for you (§ 2.1a) | a **Try the frame again** button |
+| 4b | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button *if this viewer may control it* | 30 s heartbeat |
+| 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with **Check again** and Stop |
+| 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → the port clash if there is one (§ 2.1), else *"none started"* naming **both** logs, with **Check again** |
+| 7 | **unsupervised** | no supervisor to hold a notebook | that `serve start` is what gives it one. **Not** `jupyter start` — that verb signals the supervisor, so it is the one command guaranteed to fail here | 30 s |
+| 8 | **no-control** | nothing running, and this viewer may not start one | that starting runs code on this machine | 30 s |
+| 9 | **idle** | installed, nothing running, and the person may ask | what starting gets you, and the Start button | 15 s heartbeat |
+| 10 | **unreachable** | the status endpoint could not be asked | the error, and a **Try again** button | that button |
+
+**EVERY STATE EITHER POLLS OR OFFERS A BUTTON**, and four of them did neither
+until 2026-09-15. A notebook started from a *terminal* was invisible to an
+open tab until somebody reloaded it, and a budget that ran out was a dead end
+— `render` returns before it schedules, so wedged and *"none started"* left a
+red sentence and no timer, and *"none started"* left an **empty** action row
+because the Start click had cleared it. `unreachable` had a **Try again** for
+exactly this reason and the other paths did not. *(`plan.md` § 5n.8.)*
+`env-missing` polls slowest on purpose: it is the one poll that costs a
+subprocess, because a negative answer re-asks the env manager rather than
+trusting a snapshot bound at process start.
 
 **WAITING HAS ONE RULE.** A state declares how long it may last; entering it
 starts the clock, and entering is the only thing that resets it. Five

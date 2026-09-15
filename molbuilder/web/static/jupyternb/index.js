@@ -27,6 +27,11 @@
  * long it may last and what it becomes when that runs out.  The document
  * listed four states while this function had thirteen `return`s; the table
  * below and `jupyter.md` § 4 are now the same list.
+ *
+ * AND EVERY STATE EITHER POLLS OR OFFERS A BUTTON.  Four of them did
+ * neither until 2026-09-15, so a notebook started from a terminal was
+ * invisible to an open tab, and a budget that ran out was a dead end a page
+ * reload was the only way out of (`plan.md` § 5n.8).
  */
 const $ = (id) => document.getElementById(id);
 
@@ -92,6 +97,45 @@ let framedKey = null;
  *  button: click, nothing, click, nothing. */
 let startAsked = false;
 
+/** Set when THIS BROWSER cannot reach the notebook's port, whatever the
+ *  server says about it.  Read by state 4b's `when`. */
+let frameUnreachable = false;
+/** The `port|token` the reachability probe has already answered for, so it
+ *  runs once per server and not once per poll. */
+let probedKey = null;
+
+/** CAN THIS BROWSER REACH THE NOTEBOOK AT ALL?
+ *
+ *  **The server's own probe cannot answer this** (`plan.md` § 5n.8).
+ *  `answering()` runs on the machine molbuilder is on; the FRAME runs in
+ *  somebody's browser, and the two are not the same host through an ssh
+ *  tunnel or behind a reverse proxy.  The tab builds the frame URL from
+ *  `location.hostname` and `st.port` -- this page's host, one port up --
+ *  and through `ssh -L 8000:server:8000` that is the LAPTOP's 8001, which
+ *  nothing is listening on.  The iframe then showed the browser's
+ *  connection-refused page inside a tab whose message said all was well,
+ *  and NO state covered it: there is no load or error detection on an
+ *  iframe that can be relied on cross-origin.
+ *
+ *  So the page asks the network directly.  A `no-cors` fetch cannot read
+ *  the response -- that is the point -- but it distinguishes the two cases
+ *  that matter: a reachable port RESOLVES (opaquely, CORS or not), and a
+ *  refused connection or an unresolvable host REJECTS.  One request per
+ *  server, not per poll.
+ */
+async function probeFrameReachable(base, key) {
+  if (probedKey === key) return;
+  probedKey = key;
+  try {
+    await fetch(`${base}/lab`, { mode: "no-cors", cache: "no-store" });
+    frameUnreachable = false;
+  } catch (_) {
+    frameUnreachable = true;
+    currentState = null;               // 4b is a different state; fresh clock
+    refresh();
+  }
+}
+
 /** Set when the projects root could not be resolved in time.  Once true,
  *  `opening` never matches again and `framed` opens at the projects root --
  *  a worse default than the selected folder and a far better one than a tab
@@ -135,6 +179,13 @@ function selectedRelative() {
   return dir.slice(root.length).replace(/^\/+/, "");
 }
 
+/** THE ONE BASE the frame and the reachability probe both use -- this
+ *  page's host, one port up.  Two spellings would let the probe answer for
+ *  an address the frame does not visit. */
+const frameBase = (st) =>
+  `${location.protocol}//${location.hostname}:${st.port}`;
+
+
 function labUrl(st, rel) {
   // `/lab/tree/<path>` is JupyterLab's own "open here" URL, and the token is
   // how Jupyter authenticates the browser.  Both are Jupyter's shapes; this
@@ -171,7 +222,7 @@ function labUrl(st, rel) {
   // flag read the same directory.  It also means the tree path and a restore
   // are never sent together, so Lab's own precedence between them -- which
   // molbuilder has not measured -- cannot decide anything here.
-  const base = `${location.protocol}//${location.hostname}:${st.port}`;
+  const base = frameBase(st);
   const path = (rel && !st.workspace_saved)
     ? `/tree/${rel.split("/").map(encodeURIComponent).join("/")}`
     : "";
@@ -259,6 +310,12 @@ const STATES = [
       cmd.textContent = st.install_command;
       cmd.hidden = false;
     },
+    // SLOWLY, because this is the one poll that costs a subprocess: when the
+    // env is absent the status endpoint re-asks the manager rather than
+    // trusting a snapshot bound at process start.  Sixty seconds is enough
+    // that "install it, then reload this tab" stops being the only way, and
+    // rare enough that an idle tab is not running `conda env list` at people.
+    pollMs: 60000,
   },
   {
     // (2) Running, but this caller was not given the token.
@@ -274,6 +331,7 @@ const STATES = [
       "A notebook server is running on this machine, but using it means "
       + "running code as the account serving this page — so it is an admin "
       + "action. Ask whoever administers this server."),
+    pollMs: 30000,
   },
   {
     // (3) Answering, but the sidebar has not resolved its root yet.
@@ -312,7 +370,32 @@ const STATES = [
     expired: (st) => { rootIsLost = true; render(st); },
   },
   {
-    // (4) Up and answering -- frame it.
+    // (4a) Answering on the SERVER, unreachable from THIS BROWSER.
+    //
+    // The one state that is about the viewer's network rather than the
+    // server's.  It exists because the frame URL is `this page's host, one
+    // port up` -- true on the machine, false through a tunnel that forwards
+    // only molbuilder's port, and false behind a reverse proxy that
+    // terminates TLS and proxies one port.  Before 2026-09-15 every one of
+    // those landed in state 4 with a message saying all was well
+    // (`plan.md` § 5n.8, and `jupyter.md` § 2.1a).
+    name: "frame-unreachable",
+    when: (st) => st.running && st.answering && frameUnreachable,
+    enter: (st) => {
+      const base = frameBase(st);
+      say("JupyterLab is running on the server, but this browser cannot "
+          + "reach it. The notebook has its own port — the kernel talks to "
+          + "it directly, so molbuilder cannot carry that traffic for you. "
+          + "Make ",
+          code(base),
+          " reachable from here: forward that port too if you are "
+          + "tunnelling (it is molbuilder's port plus one), or proxy it "
+          + "beside molbuilder's own.");
+      actions.appendChild(recheckButton("Try the frame again"));
+    },
+  },
+  {
+    // (4b) Up and answering -- frame it.
     name: "framed",
     when: (st) => st.running && st.answering,
     frame: true,
@@ -332,6 +415,10 @@ const STATES = [
         framedKey = key;
         frame.src = labUrl(st, rel === null ? "" : rel);
       }
+      // ASK THE NETWORK, ONCE PER SERVER.  Not awaited: the frame is
+      // already pointed and a reachable notebook must not wait on a probe.
+      // If it fails, `frameUnreachable` flips and state 4a takes over.
+      probeFrameReachable(frameBase(st), key);
       // WHAT IS OPEN, AND WHERE -- Jupyter's own answer (`open_notebooks`),
       // not a guess.  The tab used to claim "new notebooks are saved in <the
       // folder molbuilder selected>", which is true for exactly as long as
@@ -372,7 +459,9 @@ const STATES = [
     budgetMs: 30000,
     expired: (st) => {
       sayError("The notebook process is up but never started answering. "
-               + "It is wedged; stop it and look at the notebook log.");
+               + "It is wedged, or a cold first start is still importing. "
+               + "Check again, or stop it and read the notebook log.");
+      actions.appendChild(recheckButton());
       if (st.may_control) actions.appendChild(stopButton());
     },
   },
@@ -405,6 +494,7 @@ const STATES = [
                + "`molbuilder serve status` names the server log; "
                + "`molbuilder jupyter status` names the notebook log, which "
                + "is where jupyter's own refusals are written.");
+      actions.appendChild(recheckButton());
     },
   },
   {
@@ -420,6 +510,7 @@ const STATES = [
       + "hold one — it was started with `serve foreground` or "
       + "`--no-supervise`. Restart it with `molbuilder serve start` and the "
       + "button appears here."),
+    pollMs: 30000,
   },
   {
     // (8) Nothing running, and this caller may not start one.
@@ -429,11 +520,18 @@ const STATES = [
       "JupyterLab is not running. Starting one runs code on this machine, "
       + "so it is an admin action — ask whoever administers this server, or "
       + "start it there with `molbuilder jupyter start`."),
+    pollMs: 30000,
   },
   {
     // (9) Installed, nothing running, and the person may ask.
     name: "idle",
     when: () => true,
+    // A HEARTBEAT, for the reason `framed` got one: four of the ten states
+    // declared neither a poll nor a budget, so a notebook started from a
+    // TERMINAL left the Start button sitting over a running, answering
+    // server until somebody reloaded the page (`plan.md` § 5n.8).  Cheap
+    // here -- with nothing running, `status` makes no HTTP call at all.
+    pollMs: 15000,
     enter: () => {
       say("Start JupyterLab to write notebooks under your projects tree. Its "
           + "kernel is the notebook env's own python — numpy, scipy, pandas "
@@ -444,8 +542,12 @@ const STATES = [
         actions.replaceChildren();
         const res = await post("/api/jupyter/start");
         if (!res.ok) {
+          // AND A WAY FORWARD.  The click emptied the action row and
+          // `render` had already stopped polling, so this used to leave a
+          // red sentence, no button and no timer.
           sayError(`Could not start it: ${res.body.error || res.body.message
                    || ("HTTP " + res.status)}`);
+          actions.appendChild(recheckButton());
           return;
         }
         startAsked = true;
@@ -481,6 +583,26 @@ function unreachable(err) {
   }, { primary: true }));
 }
 
+/** A way out of any state that has stopped polling.
+ *
+ *  EVERY GIVE-UP MUST OFFER ONE (`plan.md` § 5n.8).  `render` returns right
+ *  after `expired`, before it schedules anything, so a budget that runs out
+ *  used to leave a red sentence and no timer -- and `asked`'s give-up left an
+ *  EMPTY action row, because the Start click had cleared it, so after a
+ *  failed start there was not even a Start button to press again.  A page
+ *  reload was the only way out of four states, and nothing on screen said
+ *  so.  `unreachable()` already had this button for exactly this reason; the
+ *  other paths did not. */
+function recheckButton(label = "Check again") {
+  return button(label, () => {
+    say("Checking…");
+    currentState = null;        // a fresh entry, so budgets start over
+    frameUnreachable = false;
+    refresh();
+  }, { primary: true });
+}
+
+
 function stopButton() {
   return button("Stop JupyterLab", async () => {
     say("Stopping…");
@@ -492,6 +614,7 @@ function stopButton() {
       // happened.  Start checked its answer; this did not.
       sayError(`Could not stop it: ${res.body.error || res.body.message
                || ("HTTP " + res.status)}`);
+      actions.appendChild(recheckButton());
       return;
     }
     frame.src = "about:blank";
