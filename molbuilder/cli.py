@@ -2367,8 +2367,16 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # the frame died as mixed content.  The two schemes must agree, and this
     # is where they are made to (found in review 2026-09-14).
     _nb_cert, _nb_key = _resolve_tls(cert, key)
-    from .jupyter import shepherd_argv
+    from .jupyter import port_clash, shepherd_argv
     notebook = shepherd_argv(port, host=host, cert=_nb_cert, key=_nb_key)
+    # SAY IT BEFORE DETACHING.  This is the last moment anything reaches the
+    # terminal, and a clash is knowable now (`jupyter.port_clash`).  A
+    # WARNING, not a refusal: the web server on this port is perfectly
+    # startable, and only its notebook is doomed -- refusing the whole verb
+    # would be deciding for somebody who may not want a notebook at all.
+    _clash = port_clash(port)
+    if _clash:
+        click.echo(f"  NOTE:    {_clash}", err=True)
     daemonize()
     # from here we are the detached supervisor; nothing prints to the
     # terminal again -- the roll owns every later byte
@@ -2753,11 +2761,22 @@ def _survey() -> int:
         nb = "yes" if _notebook_is_up(p) else "no"
         click.echo(f"port {p:<6} pid {pid:<8} answering: {said}"
                    f"   notebook: {nb}")
+        # The clash is computable from what this loop already read, and the
+        # survey is where somebody looks when a notebook will not start.
+        clash = _port_clash(p)
+        if clash:
+            click.echo(f"  NOTE: {clash}")
     if stale:
         click.echo("stale pidfile(s) for port "
                    + ", ".join(str(p) for p in stale) + ".")
     click.echo("  detail on one:  molbuilder serve status --port <port>")
     return 0 if answered else 4
+
+
+def _port_clash(serve_port: int):
+    """`jupyter.port_clash`, imported where it is used."""
+    from .jupyter import port_clash
+    return port_clash(serve_port)
 
 
 def _notebook_is_up(serve_port: int) -> bool:

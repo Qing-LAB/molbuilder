@@ -60,8 +60,7 @@ def _supervised() -> bool:
     *somebody can respawn me* -- and TWO supervisors set it: `serve start`'s
     `serve_daemon.supervise`, which writes a pidfile and installs the two USR
     handlers, and `serve foreground`'s `cli._supervise_forever`, which does
-    neither.  Under the second, this returned True, the routes registered
-    against the module's own "no supervisor, no routes" rule, the tab drew a
+    neither.  Under the second, this returned True, the tab drew a
     Start button, and the click came back `not running (no pidfile at ...)` --
     which reads as a broken molbuilder rather than as a run mode that has no
     notebook.  Found in review 2026-09-14.
@@ -209,6 +208,15 @@ def api_jupyter_status():
     st["env_name"] = env_name
     st["env_installed"] = installed
     st["install_command"] = fix_cmd("install", recipe.name, "--yes")
+    # WHY A START WILL FAIL, BEFORE IT IS TRIED (`plan.md` § 5n, J15).  The
+    # notebook port is `serve + 1`, so two molbuilders on adjacent ports
+    # collide by construction, and the refusal is written in the NOTEBOOK log
+    # -- which a person clicking a button in a browser is never going to
+    # read.  Costs nothing on the hot path: `port_clash` returns at once when
+    # a notebook of ours is already up, which is every poll in the framed
+    # state.  Gated like the rest: it names another server on this machine.
+    from ...jupyter import port_clash
+    st["port_clash"] = port_clash(port) if may_control else None
 
     # (The token and the open paths are withheld in `status` itself, above.)
     # THE TOKEN IS GATED BY THE SAME RULE AS START AND STOP.

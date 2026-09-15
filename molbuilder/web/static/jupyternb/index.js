@@ -357,17 +357,28 @@ const STATES = [
     enter: () => say("Starting…"),
     pollMs: 1200,
     budgetMs: 15000,
-    expired: () => {
-      // THE SERVE LOG, NOT THE NOTEBOOK LOG.  Every way `_start_jupyter` can
-      // fail -- no argv (a supervisor that predates the feature), the log
-      // could not be opened, the spawn raised -- writes to the SERVE log,
-      // because the notebook log is the thing that could not be started.
+    expired: (st) => {
       startAsked = false;
+      // A PORT CLASH IS THE ONE CAUSE THE SERVER CAN NAME, so say it instead
+      // of a list of things to go and check.  The notebook port is
+      // `serve + 1`, so two molbuilders on adjacent ports collide by
+      // construction (`jupyter.port_clash`).
+      if (st.port_clash) {
+        sayError("Asked for a notebook and none started: " + st.port_clash);
+        return;
+      }
+      // TWO LOGS, AND THEY HOLD DIFFERENT FAILURES.  Everything
+      // `_start_jupyter` cannot do -- no argv (a supervisor predating this
+      // feature), the log could not be opened, the spawn raised -- is in the
+      // SERVE log, because the notebook log is the thing that could not be
+      // started.  Everything jupyter-server itself refuses is in the
+      // NOTEBOOK log.  Naming only one sent people to the wrong file.
       sayError("Asked for a notebook and none started. The supervisor may "
                + "predate this feature — it survives a code reload, so "
                + "`molbuilder serve stop` then `serve start` gives it one. "
-               + "`molbuilder serve status` names the server log, which says "
-               + "which.");
+               + "`molbuilder serve status` names the server log; "
+               + "`molbuilder jupyter status` names the notebook log, which "
+               + "is where jupyter's own refusals are written.");
     },
   },
   {

@@ -1468,6 +1468,12 @@ Each step is separately green and separately revertible.
    *(Done 2026-09-15. The backticks in this line were eaten by an unquoted
    shell heredoc when § 5n was written; restored with the J15 entry.)*
 9. **J15** — measure the port clash, then warn where it is knowable.
+   *(Done 2026-09-15. Measured: jupyter-server exits 1 with "the Jupyter
+   server could not be started because port 6007 is not available", so the
+   assumption held. `jupyter.port_clash()` is the one home; `serve start`
+   warns before detaching, the survey warns per server, and the status
+   payload carries it so the tab can name the cause. The payload is now 15
+   keys, which step 10 documents.)*
 10. **J5 + J11** — the response shape stated once; the stale docstring.
 11. § 5n.7's tests, and **J12**.
 

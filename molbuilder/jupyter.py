@@ -123,6 +123,66 @@ def serve_port_of(notebook_port: int) -> int:
     return notebook_port - 1
 
 
+def port_clash(serve_port: int) -> Optional[str]:
+    """Is this molbuilder's notebook port already claimed?  A sentence, or
+    ``None``.
+
+    **TWO MOLBUILDERS ON ADJACENT PORTS COLLIDE BY CONSTRUCTION.**
+    `jupyter_port` is ``p + 1``, so a molbuilder on 6006 wants 6007 for its
+    notebook while a molbuilder on 6007 wants 6007 for its WEB server.
+    Whichever starts second loses, and which one that is decides the symptom:
+    the notebook refuses to start, or `serve start` cannot bind.
+
+    `--ServerApp.port_retries=0` already makes that LOUD rather than silent --
+    measured 2026-09-15 against a live notebook on 6007: *"ERROR: the Jupyter
+    server could not be started because port 6007 is not available"*, exit 1.
+    Without it jupyter-server picks a random free port out of fifty while the
+    runtime file, the `frame-ancestors` grant and `answering()` all keep
+    naming ``p + 1``, and the tab reports "wedged" over a healthy notebook.
+
+    So the gap this closes is not the crash; it is that **nothing said so in
+    advance when it was knowable**.  Two questions, in order of how much they
+    can explain:
+
+    1. is the notebook port another molbuilder's SERVE port?  Attributable
+       from the pidfiles alone, and it names the other server.
+    2. is anything at all listening there?  A bind test -- generic, and the
+       answer is only *"something"*.
+
+    **NOT a change to the derivation** (`plan.md` § 5n, J15).  ``p + 1`` is
+    one number to remember and the pairing has one home in both directions;
+    ``p + 1000`` moves the collision without removing it, and letting Jupyter
+    choose freely makes the runtime file authoritative for a port that four
+    other places derive.
+    """
+    import socket
+
+    from .config_dir import ports_with_pidfile
+    from .serve_daemon import pid_state as serve_pid_state, read_pid as serve_pid
+    nb = jupyter_port(serve_port)
+
+    # OUR OWN notebook already holding it is not a clash, it is the notebook.
+    if pid_state(read_pid(serve_port)) == "ours":
+        return None
+
+    for other in ports_with_pidfile():
+        if other == nb and serve_pid_state(serve_pid(other)) == "ours":
+            return (f"port {nb} is the WEB port of the molbuilder serving on "
+                    f"{other}, and it is the port this one's notebook needs "
+                    f"({serve_port} + 1).  The notebook will refuse to start "
+                    f"while that server runs.  Serve this molbuilder on a "
+                    f"port that is not adjacent to another.")
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", nb))
+    except OSError:
+        return (f"something is already listening on port {nb}, which is the "
+                f"port this molbuilder's notebook needs ({serve_port} + 1).  "
+                f"The notebook will refuse to start until that port is free.")
+    return None
+
+
 def shepherd_argv(serve_port: int, *, host: str,
                   cert: Optional[str] = None,
                   key: Optional[str] = None) -> List[str]:

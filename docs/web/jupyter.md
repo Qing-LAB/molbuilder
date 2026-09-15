@@ -17,6 +17,7 @@ means; [`overview.md`](?doc=web/overview.md) — the tab registry.
 | **Stopping means stopping the SERVER.** The tree is supervisor → shepherd → the manager's `run` → jupyter-server, so a stop takes the shepherd's whole process group. The kernels are not in that group and do not need to be: Jupyter collects its own | § 3.2 |
 | **`kill -9` runs no handler.** `PR_SET_PDEATHSIG` is the only mechanism that survives it; the pidfile reconciliation is what catches the rest | § 3.1, § 3.3 |
 | **Parented to the SUPERVISOR, not the server child.** A code reload must not kill your notebook; stopping molbuilder must | § 3.4 |
+| **The notebook port is `serve + 1`.** Two molbuilders on adjacent ports collide by construction, and molbuilder says so before it starts rather than after | § 2.1 |
 | **Nothing runs until asked.** No kernel on page load; idle kernels are culled by Jupyter's own timeouts | § 4 |
 | **A live kernel is arbitrary code execution on a network port.** That is a decision, not a side effect of adding a tab | § 6 |
 
@@ -71,6 +72,46 @@ Two consequences that are not optional:
 The rejected alternative — replacing the WSGI server with gunicorn+gevent or an
 ASGI stack — collides with the TLS hardening bolted onto `ThreadedWSGIServer`
 (`cli.py`, `_molbuilder_tls_hardened`), and buys nothing the iframe does not.
+
+### 2.1 The notebook port, and what collides with it
+
+`jupyter_port(p) = p + 1` — **derived, not configured**, so there is one
+number to remember and the pair moves together when a second molbuilder runs
+on another port. `serve_port_of` is the same derivation inverted, because the
+`frame-ancestors` grant has to name molbuilder's own port and a second
+`p - 1` in a security header is the last copy that should be allowed to
+drift.
+
+**The cost of deriving it is that adjacent ports collide.** A molbuilder on
+6006 wants 6007 for its notebook; a molbuilder on 6007 wants 6007 for its
+*web server*. Whichever starts second loses, and which one that is decides
+the symptom — the notebook refuses to start, or `serve start` cannot bind.
+
+Three things make that honest rather than mysterious:
+
+1. **`ServerApp.port_retries = 0`** (`data/jupyter.toml`). jupyter-server
+   otherwise tries fifty more ports and picks a random free one, while the
+   runtime file, the CSP, the `frame-ancestors` grant and `answering()` all
+   keep naming `p + 1` — so the tab would report *wedged* over a perfectly
+   healthy notebook. Measured 2026-09-15 against a live notebook on 6007:
+   *"ERROR: the Jupyter server could not be started because port 6007 is not
+   available"*, exit 1.
+2. **It is said in advance where it is knowable.** `jupyter.port_clash()`
+   asks two questions in order — is that port another molbuilder's *serve*
+   port (attributable from the pidfiles, and it names the other server), and
+   failing that, is anything listening there at all. `serve start` prints it
+   before detaching, the `serve status` survey prints it per server, and the
+   tab's status payload carries it so a give-up message can name the cause
+   instead of listing things to go and check.
+3. **It is a warning, not a refusal.** The web server on that port is
+   perfectly startable; only its notebook is doomed. Refusing the verb would
+   be deciding for somebody who may not want a notebook at all.
+
+**The derivation does not change.** `p + 1000` moves the collision without
+removing it, and letting Jupyter choose freely makes the runtime file
+authoritative for a port that four other places derive — which is the design
+`port_retries = 0` was chosen against. *(User question 2026-09-15;
+`plan.md` § 5n, J15.)*
 
 ## 3. The lifecycle
 
