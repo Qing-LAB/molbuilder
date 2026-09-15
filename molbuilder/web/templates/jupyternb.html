@@ -18,14 +18,28 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='jupyternb/style.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script. #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
+{# NOT lib/status.js.  The shared writer sets `el.className = "status" +
+   severity`, which would wipe `nb-msg` (the class carrying the row's flex
+   basis), and it takes a STRING while this row inserts `<code>` element
+   nodes for notebook paths.  Loading it and not calling it was a false
+   signal that this page used it, so the tag is gone and the reason is
+   here; `index.js`'s `say`/`sayError` are the local writer. #}
 </head>
 {# THE APP SHELL's own shape (page-shell.css "App shell", ui-contract.md):
    a tab with the projects sidebar opts in on <body> and wraps
    [sidebar | content] in .app-body / .app-content.  Without it the sidebar
    is a rail the content sits UNDER, which is what this page did until it was
    looked at in a browser. #}
-<body data-sidebars="projects">
+{# MOUNTED, NOT SHOWN.  `data-sidebars="projects"` still mounts the sidebar --
+   this page needs the projects ROOT resolved and the selected folder known,
+   because that is what decides where Lab OPENS.  `data-sidebars-hidden` drops
+   its chrome: the frame carries JupyterLab's own file browser, and a second
+   tree of the same folders is not just repetition -- Lab's browser is what
+   decides where a new notebook SAVES, and molbuilder's does not, so showing
+   both offers a control that does not do what it looks like it does.
+   Switching to any other tab restores the sidebar by simply not carrying this
+   attribute; nothing is stored and nothing has to be put back. #}
+<body data-sidebars="projects" data-sidebars-hidden>
 
 {% set active_tab = "jupyternb" %}
 {% include "_app_header.html" %}

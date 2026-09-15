@@ -224,6 +224,23 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
     display: none;
 }
 
+/* MOUNTED BUT NEVER SHOWN -- a tab that needs the sidebar's STATE and not its
+ * tree.  JupyterNB is the case: the frame carries JupyterLab's own file
+ * browser, so a second tree of the same folders is not only redundant, it
+ * MISLEADS -- Lab's browser is what decides where a new notebook is saved,
+ * and molbuilder's does not.  The sidebar still mounts, so the projects root
+ * resolves and the selected folder is known (that is what decides where Lab
+ * OPENS); only the chrome is gone.
+ *
+ * NOT the collapse above, deliberately: that state is persisted in
+ * sessionStorage, so reusing it here would leave the sidebar collapsed on
+ * every OTHER tab -- the opposite of "restore it when I switch away".  An
+ * attribute on one page restores by simply not being there: nothing to
+ * remember, nothing to undo. */
+body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
+    display: none;
+}
+
 /* ---- Dock panel — the shared rail-child geometry (§4.2) --------------------
  * A ``.dock-panel`` is a full-height flex COLUMN that scrolls internally;
  * an instance sets only its own WIDTH + palette (projects: var(--ps-w)).

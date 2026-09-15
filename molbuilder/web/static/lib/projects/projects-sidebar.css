@@ -1496,3 +1496,22 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     font-size: var(--text-xs);
     padding: var(--space-sm);
 }
+
+
+/* ---- Mounted but never shown (page-shell: `[data-sidebars-hidden]`) -------
+ *
+ * The rail is hidden by the shell, which owns it.  These three live OUTSIDE
+ * the rail and belong to this module, so this is where they are answered:
+ * the narrow-viewport hamburger, its backdrop, and the edge tab that reopens
+ * a collapsed sidebar.  Leaving any of them would put a control on screen
+ * for a panel the page has decided not to offer.
+ *
+ * `!important` on the mobile toggle only: its own media query sets a
+ * `display` at a specificity this cannot outrank from here. */
+body[data-sidebars-hidden] .ps-mobile-toggle {
+    display: none !important;
+}
+body[data-sidebars-hidden] .ps-mobile-backdrop,
+body[data-sidebars-hidden] .ps-edge-tab--reopen {
+    display: none;
+}
