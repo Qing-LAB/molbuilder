@@ -97,16 +97,39 @@
   {% set button_label = "Re-analyze chemistry" %}
   {% include "_analyze_chemistry_card.html" %}
 
-  {#- ===================== 3. Parameters ===================== -#}
+  {#- ===================== 3. The physics ===================== -#}
   <section class="card" id="parameters-card">
-    <h2>3. Parameters</h2>
+    <h2>3. The physics</h2>
+    {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
+        fields under it: at zero bias the whole non-equilibrium half of
+        the density contour is inert, and more than one value turns the
+        run into a chain of attempt ladders.  It sat in card 4 beside
+        the Describe button until 2026-09-15, which read as though it
+        were a property of SAVING (`engines/transport.md` § 3.4.3). -#}
+    <div class="action-row" id="transport-bias-row">
+      <label for="transport-bias"><strong>Bias list (V):</strong></label>
+      <input id="transport-bias" type="text" value="0.0"
+             title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan: one attempt ladder per point, launched as one chain job." />
+    </div>
     <p class="hint">
-      TransportConfig fields rendered from the schema.  Hover any
-      label to see what TranSIESTA / PySCF-NEGF keyword it writes
-      (the per-field <code>engine_key</code> badge).  Defaults are
-      production-tuned for Au-thiol junctions; the
-      <strong>NEGF</strong> section has tier=advanced fields that
-      stay collapsed unless you need to touch contour parameters.
+      The bias is the experiment, so it comes first — and it decides
+      whether the rest matters.  <strong>At 0 V the calculation is at
+      equilibrium</strong>, and every field in
+      <em>NEGF density contour</em> marked <em>non-equilibrium</em> does
+      nothing.  More than one voltage is a <strong>scan</strong>: one
+      attempt ladder per point, launched as one chain job, each point
+      warm-started from the previous one.
+    </p>
+    <p class="hint">
+      Below: every knob this calculation has, in the order you decide
+      them — what is computed, how sharply, what gets written, then the
+      machinery.  Each label carries the exact keyword it writes
+      (the <code>engine_key</code> badge), and every one of those has
+      been checked against the installed SIESTA binary
+      (<code>engines/transport.md</code> § 3.3).  The
+      <strong>electronic contract</strong> — basis, functional, mesh —
+      is not here: it arrives from the cited junction's own deck, so
+      the leads and the device cannot disagree (§ 0.4).
     </p>
     <div id="transport-form-container" class="param-grid">
       <p class="muted">Loading form schema&hellip;</p>
@@ -117,7 +140,9 @@
   <section class="card" id="composite-card">
     <h2>4. Describe</h2>
     <p class="hint">
-      This button writes the finished <code>task.json</code> into the
+      One button, and nothing left to ask — the bias moved up to card 3
+      with the physics it governs.
+      This writes the finished <code>task.json</code> into the
       folder selected in the Projects sidebar — a folder <em>of its
       own</em>, never the cited junction (the calculation does not live
       inside its citation; make one under this project's transport
@@ -131,11 +156,6 @@
       (transmission window, contour).  More than one voltage is a scan:
       one attempt ladder per point, launched as one chain job.
     </p>
-    <div class="action-row">
-      <label for="transport-bias">Bias list (V):</label>
-      <input id="transport-bias" type="text" value="0.0"
-             title="Comma-separated volts, 0.0 first — the chain starts from equilibrium.  More than one value is a scan: one attempt ladder per point, launched as one chain job." />
-    </div>
     <div class="action-row">
       <button id="transport-send-btn" class="full-btn" disabled
               title="Writes the finished task.json into the folder selected in the Projects sidebar.  Prep it stage by stage from Task setup or the CLI.">

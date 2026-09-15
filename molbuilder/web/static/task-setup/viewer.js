@@ -1137,10 +1137,18 @@ async function loadFolder(projects, dir) {
         $("ts-shape-card").hidden = true;
         $("ts-next-card").hidden = true;
         refreshSave();
+        // EVERY DOOR THAT WRITES ONE, not just the first.  This named the
+        // Structure-optimization tab alone, and the Transport tab writes a
+        // `task.json` through its own door -- so somebody who had just
+        // described a transport calculation was told about a route they did
+        // not take and not about the one they did
+        // (`engines/transport.md` § 3.4.4).
         setState("empty", "No description here yet",
-                 "This folder carries no task.json and no hand-over. Send "
-                 + "parameters here from the Structure-optimization tab, or "
-                 + "run `molbuilder jobset init`.");
+                 "This folder carries no task.json and no hand-over.  Send "
+                 + "parameters here from Structure optimization or Spectrum "
+                 + "calculation, or press Describe on Transport calculation "
+                 + "(which writes straight into the folder selected there), "
+                 + "or run `molbuilder jobset init`.");
         $("ts-stages-card").hidden = true;
         { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         $("ts-machine-card").hidden = true;

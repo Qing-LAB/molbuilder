@@ -40,6 +40,179 @@ function).
 
 ---
 
+## 0. Orientation — what this calculation is, before any keyword
+
+*(Written 2026-09-15 for a reader who has not done NEGF before, and because
+§ 3.4's first attempt at explaining the k-grids conflated two different axes
+and read as self-contradictory. If you only read one section, read this one.)*
+
+### 0.1 Why one run cannot do it
+
+You want one number: how much current crosses the molecule. An ordinary DFT
+run cannot give it, because an ordinary run needs a **closed** box — a finite
+list of atoms with nothing outside. A junction is **open**: electrons arrive
+from one gold wire and leave through the other, indefinitely.
+
+```mermaid
+flowchart LR
+    subgraph L["LEFT ELECTRODE — semi-infinite bulk Au"]
+        direction LR
+        LI["… ● ● ● ●"]
+    end
+    subgraph D["BRIDGE — the molecule + its contact atoms"]
+        DI["S—C₆H₄—S"]
+    end
+    subgraph R["RIGHT ELECTRODE — semi-infinite bulk Au"]
+        direction LR
+        RI["● ● ● ● …"]
+    end
+    L -->|"Σ_L : and so on, forever"| D
+    D -->|"Σ_R : and so on, forever"| R
+```
+
+The trick is not to simulate infinite wire. You compute a small piece of
+**pure bulk gold** once, and from it build a mathematical object — the
+**self-energy** Σ — which says *"past this edge, more of the same, forever."*
+The junction is then solved as a finite problem with two Σ attached.
+
+That is why the workflow is five stages and not one.
+
+```mermaid
+flowchart TD
+    S1["1 · seed<br/>a first density to start from"]
+    S2["2 · electrode_L<br/>bulk Au, PERIODIC along the wire<br/>writes .TSHS"]
+    S3["3 · electrode_R<br/>the same, other side<br/>writes .TSHS"]
+    S4["4 · device<br/>the 444-atom junction + both Σ<br/>NEGF, self-consistent"]
+    S5["5 · transmission<br/>TBtrans reads the converged result<br/>→ T(E), I–V"]
+    S1 --> S2 --> S3 --> S4 --> S5
+    S2 -. "Σ_L" .-> S4
+    S3 -. "Σ_R" .-> S4
+```
+
+**You never build a lead by hand.** You label atoms `L-electrode` /
+`R-electrode` on the Molbuilder tab; stages 2 and 3 are *derived* from those
+labels (§ 4). This is the design decision the rest of the feature rests on.
+
+### 0.2 The k-grids — three axes, and only one of them is shared
+
+**This is the part that reads as a contradiction until you separate the
+axes.** A junction has three directions and they are not alike:
+
+```mermaid
+flowchart TB
+    subgraph AX["The three axes of a junction cell"]
+        direction TB
+        T["A1, A2 — TRANSVERSE<br/>across the wire: the cross-section<br/>the junction repeats sideways, so this is PERIODIC"]
+        Z["A3 — TRANSPORT<br/>along the wire: where current flows"]
+    end
+    T --- Z
+```
+
+Now the two rules that sounded like they fought each other:
+
+| | **A1, A2 — transverse** | **A3 — transport** |
+|---|---|---|
+| **device** (stage 4) | periodic → needs k-points, e.g. `4 4` | **`kz = 1`**, always. An **error** otherwise |
+| **electrode** (stages 2–3) | periodic → **the same `4 4`** | **dense** — molbuilder's default is `40`. It really is infinite bulk |
+
+They are opposite values **on different axes**, not conflicting values on the
+same one. And molbuilder does exactly this: `wizard.py` reads `kx, ky` from
+the shared config and *discards* its `kz`, substituting a dense
+`electrode_kz`:
+
+```python
+kx, ky, _kz = cfg.k_mesh_transverse      # transverse: taken
+...
+f"    0    0  {int(electrode_kz):>3}"    # transport: replaced, dense
+```
+
+**Why `kz = 1` on the device.** `kz = 3` would tell SIESTA the junction tiles
+along the wire — molecule, gold, molecule, gold, forever. You would be
+computing a *crystal of molecules*, not one molecule between two contacts.
+The result would look like a transmission and would not be one. Σ is what
+represents the beyond; a `kz > 1` imposes a second, fake periodicity on top
+of it.
+
+**Why `kz` must be dense on the electrode.** The lead's `kz` is an
+**integral** — it is summed over to build Σ. A thin lead cell has a large
+1-D Brillouin zone, so too few points means the "bulk gold" you computed is
+not converged bulk gold, and Σ describes subtly the wrong metal.  molbuilder
+defaults it to **40** and warns below 20.
+
+### 0.3 "Once Σ is computed, why does k still matter?"
+
+Because **Σ is not one matrix. It is one matrix per transverse k-point.**
+
+The lead's `kz` is integrated away and never appears again. The transverse
+k is *not* integrated away — it survives as a label:
+
+```mermaid
+flowchart LR
+    E["electrode run<br/>k⊥ = (4,4), kz = 20"] -->|"kz integrated OUT"| SE["Σ(k⊥, E)<br/>one per transverse k-point"]
+    SE --> G["G(k⊥,E) = [E·S(k⊥) − H(k⊥) − Σ_L(k⊥,E) − Σ_R(k⊥,E)]⁻¹"]
+    DEV["device run<br/>k⊥ = (4,4), kz = 1"] -->|"H(k⊥), S(k⊥)"| G
+    G --> TK["T(E) = average over k⊥ of Tr[Γ_L G Γ_R G†]"]
+```
+
+So the transverse grid must **match** because `Σ(k⊥)` has to be paired with
+the device's `H(k⊥)` **at the same k⊥**. A Σ computed at (4,4) has nothing to
+attach to in a device solved at (6,6) — there is no k-point in common to
+build `G` at.
+
+**And then there is a third grid, which surprises people.** TBtrans averages
+`T(E)` over transverse k as well, and *it may use a different, denser grid*
+(`TBT.k`, § 3.3.4). That is legal because `H` and `Σ` are stored in **real
+space** in the `.TSHS`/`.HSX` files, so tbtrans can evaluate them at any k⊥
+it likes. And it is usually *necessary*, because the two grids are converging
+different things:
+
+| grid | converges | typical |
+|---|---|---|
+| the SCF's `k⊥` | the **density** — a smooth integral | `4 4 1` |
+| TBtrans's `TBT.k` | **T(E)** — sharp resonances in k⊥ | `12 12 1` or more |
+
+A grid fine enough for the density is routinely far too coarse for the
+transmission. **`TBT.k` defaults to inheriting the SCF's** — which is why
+`T(E_F)` against `TBT.k` is the standard convergence study, and why not being
+able to set it was the largest gap in this tab until 2026-09-15.
+
+*(A denser `TBT.k` cannot rescue a device SCF whose own `k⊥` was too coarse:
+that `H` is simply wrong, and evaluating a wrong `H` at more k-points does
+not improve it. Converge the SCF first, then the transmission.)*
+
+### 0.4 The four things that must agree, and where each is enforced
+
+Every one of these, if wrong, gives a **plausible-looking wrong answer**
+rather than a crash — which is why they are guards in code and not advice.
+
+| # | must be true | enforced | manual |
+|---|---|---|---|
+| 1 | device `kz = 1` | **error** — `preflight.py` check C2 | § 11.7 |
+| 2 | electrode `kz` dense | default **40**; warned below 20 — `wizard.py` | § 11.4 |
+| 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | § 11.8 |
+| 4 | basis, XC and mesh identical | **sealed** at both doors — they come from the citation's own `.fdf` | § 11.7 |
+
+Number 4 is why the tab makes you **cite a finished relaxation** instead of
+typing a basis: the numbers arrive from that run's deck, so they cannot
+disagree with what the leads were computed with. The manual is blunt that
+TranSIESTA expects a *metallic* electrode and that fixing the boundary is
+"an intricate and important" matter.
+
+### 0.5 Worked example — the Au–BDT–Au junction in this repo
+
+`projects/Au-BDT-Au/transport/AuBDTAu-CT`, cited from a CONCLUDED relaxation:
+
+| | |
+|---|---|
+| structure | 444 atoms — 432 Au, one benzene-1,4-dithiol bridge |
+| labels | `L-electrode` (low z) · `BRIDGE` · `R-electrode` (high z) |
+| contract, from the citation | DZP · GGA-PBE · 300 Ry mesh |
+| device k | `2 2 1` — transverse 2×2, **transport 1** |
+| electrode k | `2 2 40` — the same 2×2, **transport dense** (the wizard's default) |
+| bias | `0.0` → equilibrium, so the non-equilibrium contour settings are inert |
+| what prep writes | `01_seed` … `05_transmission`, a deck + a validation file each |
+| the deliverable | `<label>.transport.json` — T(E) per bias, G(E_F), the I–V table |
+
 ## 1. The mental model — one citation → five derived stages
 
 Conductance is **not one run**. It is several coupled SIESTA runs that must
@@ -427,20 +600,14 @@ says what ORDER they belong in, and where the surfaces disagree.)*
 | 7 | pick the **machine**, prep and launch each stage | **Task setup** tab | ✅ verified live — 3.4.4 |
 | 8 | read `<label>.transport.json` | Results tab | ⚠️ **W10** — the reader does not exist |
 
-**The electrode is DERIVED, not a step.** This is the part of the design most
-worth defending: a person never builds a lead by hand. The electrode models
-come from the citation's own labelled electrode atoms, and the two k-sampling
-rules that make NEGF correct are enforced rather than trusted:
+**The electrode is DERIVED, not a step** — a person never builds a lead by
+hand, and the four things that must agree for a lead self-energy to be
+trustworthy are enforced in code rather than left as advice.
 
-* **the device must have `kz = 1`** — an **error** if not, because NEGF treats
-  the transport axis as OPEN and `kz > 1` imposes a fake Bloch periodicity
-  along it (`preflight.py` C2);
-* **the electrode must have dense `kz`** — it is a *periodic bulk* run, and a
-  thin lead cell has a large 1-D Brillouin zone (`wizard.py`, warned below 20);
-* **the transverse k must MATCH** between the two, or the lead cannot attach.
-
-Those three, plus the sealed electronic contract (§ 3.3.2), are the whole of
-what makes a lead self-energy trustworthy, and all four are guarded.
+**§ 0.2–0.4 is where that is explained**, including why "electrode `kz` dense"
+and "transverse k must match" are not in conflict: they are *different axes*.
+This section does not restate it — an earlier version did, in three bullets
+that read as self-contradictory and prompted the question that produced § 0.
 
 #### 3.4.2 What is still scientifically incomplete
 
@@ -469,8 +636,24 @@ physics card, where what it governs can sit under it.
 | **444 checkboxes precede every transport control** | the page's interactive order is one checkbox per atom before a single parameter, so keyboard reach to the form is 444 tab stops |
 | **card 2's rationale is a wall of prose** | correct and worth reading once, and it pushes card 3 below two screens |
 
-None is a transport bug; together they are why the tab reads as long and
-unnavigable, and the fix is card 1's, not the form's.
+**None is a transport bug, and the first two are not even bugs.** Diagnosed
+2026-09-15: `.molviewer-selection-list-wrap` carries `overflow-y: auto`
+(`molview.css`) and the list renders **one row per atom, unvirtualised**. With
+444 atoms that region holds roughly ten screens of scroll, so a wheel over it
+is *correctly* consumed by it and only chains to the page once it bottoms
+out — which it effectively never does. The 444 tab stops are the same cause:
+444 real checkboxes in the DOM.
+
+So the fix is **MolView's**, not transport's, and it is one of:
+
+| option | reach |
+|---|---|
+| virtualise the atom list (render a window, not 444 rows) | fixes both symptoms at the source — and touches **six** templates that mount the panel: Molbuilder, Modify, Spectrum, Transport, Results, molview-demo |
+| cap the list's height so the trap is visibly a small pane | cosmetic; the trap shrinks, it does not go |
+| **transport only:** do not mount the atom list in card 1 at all | card 1 exists to CHECK labels — it says so, and says labels are assigned on the Molbuilder tab. A 444-row editor for something you cannot edit here is the wrong control. Scoped to this tab, no shared module touched |
+
+The third is the one this document would recommend, and it is a UI decision
+rather than a defect fix, so it waits for a ruling.
 
 #### 3.4.4 The Task setup seam — it works, and it says two wrong things
 
@@ -490,12 +673,15 @@ Two things the page says that are wrong for transport:
    its own door — so somebody who has just described a transport calculation
    and landed on an empty folder is told about a route they did not take and
    not about the one they did.
-2. **"What gets written" promises a template that never comes.**
-   `<label>.template.toml` is a static row (`task_setup.html`), and a
-   transport description has **no template** — the contract arrives from the
-   citation at prep, which is § 3.1's whole point. Confirmed three ways: no
-   `template` key in the description, no file in the folder, and `prep-plan`'s
-   own bundle does not list one.
+2. ~~**"What gets written" promises a template that never comes.**~~
+   **WITHDRAWN — this was my error, not the page's** *(2026-09-15, found by
+   reading `task-setup/viewer.js` after claiming it)*. The template and
+   structure rows ARE hidden for a transport description:
+   `li.hidden = (docKind === "transport")`, with a comment giving § 4.1's
+   reason. What I actually saw was the **empty** state — no `task.json` at
+   all — where the panel shows what *would* be written if parameters were
+   sent from the Optimization tab, which is correct for an empty folder. A
+   claim about a kind, made without selecting a folder of that kind.
 
 ## 4. Region labels drive everything
 
