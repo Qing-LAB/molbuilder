@@ -249,18 +249,44 @@ same place, which is what § 5n of the plan moved them for.)*
 | `fetchNews: false`, `checkForUpdates: false` | Jupyter asks each viewer whether it may fetch its news feed, in a popup over the frame. A tab inside molbuilder is not where that is answered, and the answer is a network call from a machine that may have no route out |
 | **its own settings home** (`config_dir.jupyter_lab_home`) | `app_settings_dir` · `user_settings_dir` · `workspaces_dir`, all separate from `~/.jupyter`. Lab writes a user setting the first time it resolves one and a user setting BEATS an override, so a shared home let the framed Lab adopt whatever the person's standalone Lab had written — and let molbuilder's choices leak back into it |
 
-**And it remembers no LAYOUT.** The frame URL carries Jupyter's `?reset`,
-which resets the *workspace* — which documents were open, which side panel was
-showing — and nothing else. That restore argued with the one thing this tab
-decides: it disagreed with the folder the projects sidebar had selected.
-**The notebook file is the state worth keeping, and it is on disk.**
-*(Decided with the user 2026-09-14.)*
+**It remembers your LAYOUT while the server runs, and forgets it when the
+server restarts.** *(User ruling 2026-09-15, superseding the 2026-09-14
+decision recorded below.)*
 
-The four settings above are **user settings**, not workspace, so `?reset` does
-not touch them: they live in `user-settings/` and persist across loads by
-design — which is the point of the separate settings home, and why a person's
-own change inside Lab sticks. *(This section claimed `?reset` restored all four
-until the claim was checked.)*
+Lab saves a **workspace** — which documents were open, which side panel was
+showing — and molbuilder empties that directory **once, when the notebook
+server starts** (`jupyter.prepare_lab_home`). So:
+
+| | |
+|---|---|
+| switch to another molbuilder tab and come back | your notebook is still open, and its kernel never stopped |
+| reload `/jupyternb` | the same |
+| `jupyter restart`, `serve stop` + `start`, a new notebook server | clean |
+
+**What this replaced, and why it was wrong.** The frame URL used to carry
+Jupyter's `?reset` on *every load*. That was aimed at a real problem — a
+restored workspace argues with the folder the projects sidebar selects — but
+it was applied at the wrong moment: every **load**, when what was meant was
+every **start**. Leaving `/jupyternb` destroys the iframe, so a tab switch is
+a load, and switching away and back therefore threw away the notebook you had
+open **while its kernel was still running**. *(Reported by the user
+2026-09-15; `plan.md` § 5n, J13.)*
+
+**The folder is carried exactly once.** `status` reports `workspace_saved`,
+and the tab uses it to decide the URL: with no workspace this is the first
+framing since the server started, so the URL carries the selected folder
+(`/lab/tree/<folder>`) and Lab opens there; with one, the URL carries no tree
+path at all and nothing competes with the restore. Asking the **server** —
+rather than remembering in the browser — is what keeps the two halves from
+disagreeing: the wipe and the flag read the same directory, and nothing has
+to survive a page load. It also means a tree path and a restore are never
+sent together, so Lab's own precedence between them, which molbuilder has
+**not** measured, decides nothing here.
+
+The four settings above are **user settings**, not workspace: they live in
+`user-settings/`, which the wipe never touches, so a person's own change
+inside Lab sticks across every restart. *(This section claimed `?reset`
+restored all four until the claim was checked.)*
 
 ### 4.2 No `.ipynb_checkpoints` in the projects tree
 

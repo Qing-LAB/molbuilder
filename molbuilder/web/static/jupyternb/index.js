@@ -148,17 +148,34 @@ function labUrl(st, rel) {
   // 2026-09-14).  The notebook is always on this same host, one port up, so
   // the only honest base is the one this page was reached at.
   //
-  // `reset` -- START CLEAN, EVERY TIME.  Lab restores a saved WORKSPACE on
-  // load -- which documents were open, which side panel was showing -- and
-  // that restore argues with the one thing this tab decides: the folder Lab
-  // opens at.  The notebook FILE is the state worth keeping and it is on
-  // disk; a panel layout is not (decided with the user 2026-09-14).
-  // `?reset` is Jupyter's own flag for it.
+  // CLEAN ON A NEW SERVER, PERSISTENT WHILE ONE RUNS (user, 2026-09-15).
+  //
+  // `?reset` used to be on EVERY load.  It was aimed at a real problem -- a
+  // restored workspace argues with the folder this tab selects -- but at the
+  // wrong moment: every LOAD, when what was meant was every START.  Leaving
+  // /jupyternb destroys the iframe, so a tab switch is a load, and switching
+  // away and back therefore threw away the notebook you had open while its
+  // kernel was still running.
+  //
+  // The reset now happens once, server-side, when the notebook server
+  // starts (`jupyter.prepare_lab_home`).  So there is nothing to reset here
+  // and exactly one thing to decide: does Lab have a workspace to restore?
+  //
+  //   * NO  -- first framing since the server started, so carry the folder
+  //            the projects sidebar selected and let Lab open there.
+  //   * YES -- somebody has been working in it.  Carry NO tree path, so
+  //            nothing competes with the restore.
+  //
+  // Asking the server (`st.workspace_saved`) rather than remembering in the
+  // browser is what keeps the two halves from disagreeing: the wipe and the
+  // flag read the same directory.  It also means the tree path and a restore
+  // are never sent together, so Lab's own precedence between them -- which
+  // molbuilder has not measured -- cannot decide anything here.
   const base = `${location.protocol}//${location.hostname}:${st.port}`;
-  const path = rel ? `/tree/${rel.split("/").map(encodeURIComponent).join("/")}` : "";
-  const query = st.token
-    ? `?token=${encodeURIComponent(st.token)}&reset`
-    : "?reset";
+  const path = (rel && !st.workspace_saved)
+    ? `/tree/${rel.split("/").map(encodeURIComponent).join("/")}`
+    : "";
+  const query = st.token ? `?token=${encodeURIComponent(st.token)}` : "";
   return `${base}/lab${path}${query}`;
 }
 

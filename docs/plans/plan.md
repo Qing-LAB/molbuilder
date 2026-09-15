@@ -1458,6 +1458,12 @@ Each step is separately green and separately revertible.
 5. **J9 + J8** — the shared port flag; the third TLS context.
 6. **J6 + J7** — the tab's state table, and § 4 rewritten from it.
 7. **J13** — the workspace survives a tab switch and dies with the server.
+   *(Done 2026-09-15. Measurement (b) answered — the workspace file carries a
+   live mtime, so Lab writes it continuously and `?reset` was what discarded
+   it. Measurement (a) was **not** made and is no longer needed: the shape
+   chosen never sends a tree path and a restore together, so Lab's precedence
+   between them decides nothing. The payload is 16 keys with
+   `workspace_saved`, which step 10 documents.)*
    **Measure first** (does `/lab/tree/<path>` fight a restore; is the
    workspace written eagerly enough), then `prepare_lab_home()` wipes
    `workspaces/`, `?reset` comes out of `labUrl`, and `jupyter.md` § 4.1's

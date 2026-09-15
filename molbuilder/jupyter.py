@@ -378,6 +378,11 @@ def status(serve_port: int, *, include_private: bool = True
         # server that is not answering is a timeout on every poll.
         "open": (open_notebooks(serve_port)
                  if (up and include_private) else []),
+        # IS THERE A LAYOUT TO RESTORE?  What lets the tab point the frame
+        # correctly after a switch away and back -- see `workspace_saved`.
+        # Not private: it is one boolean about this machine's own Lab, and
+        # the tab needs it in exactly the state where it may frame.
+        "workspace_saved": workspace_saved() if running else False,
     }
 
 
@@ -561,6 +566,95 @@ def option_argv(settings: Dict[str, object]) -> List[str]:
     return out
 
 
+#: The `[lab.home]` option whose directory holds Lab's saved WORKSPACE --
+#: which documents were open, which panel was showing.  Named once, because
+#: two things key off it: the wipe at every start, and the flag that tells
+#: the tab whether there is anything to restore.
+_WORKSPACE_OPT = "LabApp.workspaces_dir"
+
+
+def _workspace_dir() -> Optional[Path]:
+    """Where Lab saves its workspace, or ``None`` if the table declares none."""
+    from .config_dir import jupyter_lab_home
+    name = load_rules().lab_home.get(_WORKSPACE_OPT)
+    return (jupyter_lab_home() / name) if name else None
+
+
+def workspace_saved() -> bool:
+    """Has the framed Lab saved a workspace since this server started?
+
+    **This is what makes a tab switch keep your notebook open** without any
+    browser state at all (`plan.md` § 5n, J13, the user's own ask).  Leaving
+    `/jupyternb` destroys the iframe, so coming back always re-points it --
+    that is a page navigation and cannot be avoided in the tab.  What decides
+    whether Lab comes back where you left it is its WORKSPACE, and the tab
+    needs to know one thing to point correctly: is there one?
+
+    * **No** -- this is the first framing since the server started, so the
+      URL carries the folder the projects sidebar has selected and Lab opens
+      there.
+    * **Yes** -- somebody has been working in it, so the URL carries no tree
+      path and Lab restores what was open.
+
+    Asking the SERVER rather than remembering in the browser is the whole
+    trick: the wipe at `prepare_lab_home` and this flag are the same fact
+    read from the same directory, so they cannot disagree, and nothing has to
+    survive a page load.
+    """
+    d = _workspace_dir()
+    try:
+        return d is not None and any(d.iterdir())
+    except OSError:
+        return False
+
+
+def _forget_workspace(home: Path, rules: "JupyterRules") -> None:
+    """Empty Lab's workspace directory.  Called at every shepherd start.
+
+    **CLEAN ON A NEW SERVER, PERSISTENT WHILE ONE RUNS** -- the user's rule,
+    2026-09-15: *"we would like to have this persistent when switching tab,
+    but do not need this when server get shutdown and restarted."*
+
+    This SUPERSEDES the decision taken with the user on 2026-09-14, which put
+    Jupyter's `?reset` on every page load (`jupyter.md` § 4.1).  That reset
+    was aimed at a real problem -- a restored workspace argued with the
+    folder the projects sidebar had selected -- but it was applied at the
+    wrong moment: every LOAD, when what was meant was every START.  A tab
+    switch is a load, so switching away and back threw away the notebook you
+    had open while its kernel was still running.
+
+    Doing it here instead of in the browser is what makes the two halves
+    impossible to disagree: one directory, emptied by the process that owns
+    it, and `workspace_saved()` reading the same directory back.
+
+    Only the CONTENTS go, and only under the Lab home -- `user-settings/` is
+    a person's own and is never touched.
+    """
+    name = rules.lab_home.get(_WORKSPACE_OPT)
+    if not name:
+        return
+    ws = home / name
+    # A DELETE, SO SAY EXACTLY WHAT THIS GUARD DOES.  `name` comes from a
+    # data file; this refuses a name that ESCAPES the Lab home -- a
+    # separator, a `..`, an absolute path -- measured 2026-09-15 with
+    # `../../../escape`.  It does NOT catch a wrong but well-formed name:
+    # point the row at `user-settings` and that is what gets emptied.  What
+    # catches THAT is the test asserting `user-settings/` survives a start,
+    # and it is the only thing that does.
+    if not ws.is_dir() or ws.parent != home or ws == home:
+        return
+    import shutil as _shutil
+    for child in ws.iterdir():
+        try:
+            if child.is_dir() and not child.is_symlink():
+                _shutil.rmtree(child)
+            else:
+                child.unlink()
+        except OSError:
+            pass            # a layout we could not remove is not a reason
+                            # to refuse to start a notebook
+
+
 def prepare_lab_home() -> Dict[str, str]:
     """Prepare the framed Lab's own directories and config; return every
     generated path keyed by the command-line option it answers.
@@ -588,6 +682,7 @@ def prepare_lab_home() -> Dict[str, str]:
     from .config_dir import ensure_private_dir, jupyter_lab_home
     rules = load_rules()
     home = ensure_private_dir(jupyter_lab_home())
+    _forget_workspace(home, rules)
     out = {opt: str(ensure_private_dir(home / name))
            for opt, name in rules.lab_home.items()}
 
