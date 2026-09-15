@@ -177,8 +177,6 @@ def api_jupyter_status():
     # The token and the open-notebook paths are never even PRODUCED for a
     # caller who may not control the notebook -- see `status`.
     st = status(port, include_private=may_control)
-    st["may_control"] = may_control
-    st["supervised"] = supervised
 
     # THE ENV, PROBED -- the browser cannot ask conda anything.
     recipe = recipe_by_name("molbuilder-jupyternb")
@@ -205,35 +203,41 @@ def api_jupyter_status():
                 installed = env_name in conda_env_prefixes(caps.conda_binary)
             except Exception:  # noqa: BLE001 - a manager that will not answer
                 pass           # leaves the snapshot's answer standing
-    st["env_name"] = env_name
-    st["env_installed"] = installed
-    st["install_command"] = fix_cmd("install", recipe.name, "--yes")
-    # WHY A START WILL FAIL, BEFORE IT IS TRIED (`plan.md` § 5n, J15).  The
-    # notebook port is `serve + 1`, so two molbuilders on adjacent ports
-    # collide by construction, and the refusal is written in the NOTEBOOK log
-    # -- which a person clicking a button in a browser is never going to
-    # read.  Costs nothing on the hot path: `port_clash` returns at once when
-    # a notebook of ours is already up, which is every poll in the framed
-    # state.  Gated like the rest: it names another server on this machine.
     from ...jupyter import port_clash
-    st["port_clash"] = port_clash(port) if may_control else None
 
-    # (The token and the open paths are withheld in `status` itself, above.)
-    # THE TOKEN IS GATED BY THE SAME RULE AS START AND STOP.
+    # THE WHOLE PAYLOAD, IN ONE EXPRESSION (`plan.md` § 5n, J5).
     #
-    # It authenticates a browser to a LIVE KERNEL, which is arbitrary code
-    # execution as the account serving this page -- the same capability the
-    # Start button hands out.  Returning it to every caller while refusing
-    # them the button inverted the gate: a client who may not START a
-    # notebook could USE one that was already running.  The earlier
-    # justification here ("already behind the sign-in gate") does not hold in
-    # the case `_may_control` itself contemplates -- an unauthenticated
-    # molbuilder may legitimately be bound to a network interface, and then
-    # there is no sign-in gate at all.  Found in review 2026-09-14.
+    # Nine keys come from `jupyter.status()`, six are added here and `ok` is
+    # the envelope -- and until 2026-09-15 the six arrived as scattered
+    # `st[...] = ` mutations, so the shape a page depends on existed in no
+    # single place and in no document.  `jupyter.md` § 5 is the contract;
+    # this is the one assembly, and the two are meant to be read together.
     #
-    # The tab needs it only to build the iframe URL, which is exactly the
-    # thing a caller who may not control the notebook has no business doing.
-    return jsonify({"ok": True, **st})
+    # TWO THINGS ARE WITHHELD, and not by deleting them afterwards.
+    # `include_private=False` means `token` and `open` are never PRODUCED
+    # for a caller who may not control the notebook -- the difference between
+    # a credential that was never built and one whose safety depends on a
+    # later line in a function that will grow.  The token authenticates a
+    # browser to a LIVE KERNEL, which is the same arbitrary code execution
+    # the Start button hands out; returning it to every caller while refusing
+    # them the button inverted the gate, and the old justification ("already
+    # behind the sign-in gate") does not hold in the case `_may_control`
+    # itself contemplates -- an unauthenticated molbuilder legitimately bound
+    # to a network interface has no sign-in gate at all.
+    #
+    # `port_clash` is gated too: it names another server on this machine.
+    return jsonify({
+        "ok":              True,
+        **st,                       # running · pid · pid_state · port ·
+                                    # answering · url · token · open ·
+                                    # workspace_saved
+        "supervised":      supervised,
+        "may_control":     may_control,
+        "env_name":        env_name,
+        "env_installed":   installed,
+        "install_command": fix_cmd("install", recipe.name, "--yes"),
+        "port_clash":      port_clash(port) if may_control else None,
+    })
 
 
 def _refuse():

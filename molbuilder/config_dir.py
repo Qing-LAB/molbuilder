@@ -338,12 +338,25 @@ def jupyter_runtime(serve_port: int) -> Path:
 def jupyter_lab_home() -> Path:
     """The settings home of the FRAMED JupyterLab -- molbuilder's, not yours.
 
-    Two directories under it, both handed to Lab on the command line:
+    **Three directories and one file**, every one of them named in
+    ``data/jupyter.toml``'s ``[lab.home]`` and ``[lab.config]`` rather than
+    here, and each handed to Lab on the command line:
 
       * ``settings/overrides.json`` -- the DEFAULTS a framed Lab starts with
-        (`jupyter.md` 4), rewritten at every start.
-      * ``user-settings/`` -- where Lab saves what a person changes inside the
-        frame.
+        (`jupyter.md` 4.1), rewritten at every start.
+      * ``user-settings/`` -- where Lab saves what a person changes inside
+        the frame.  **Never touched** by anything molbuilder does.
+      * ``workspaces/`` -- which documents were open.  **Emptied at every
+        notebook-server start** and kept across every page load, which is
+        what lets a tab switch come back to your notebook while a restart
+        gives you a clean one (`jupyter.md` 4.1).
+      * ``jupyter_server_config.py`` -- copied from
+        ``data/jupyter_server_config.py``; it is what suppresses
+        ``.ipynb_checkpoints`` (`jupyter.md` 4.2).
+
+    *(This said "two directories" while the code made three and wrote a
+    config file beside them -- the door's own contract behind its caller,
+    `plan.md` 5n J11.)*
 
     **Separate from ``~/.jupyter`` on purpose.**  Lab writes a user setting the
     first time it resolves one, and a user setting BEATS an override -- so a

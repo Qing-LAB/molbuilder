@@ -1481,6 +1481,9 @@ Each step is separately green and separately revertible.
    payload carries it so the tab can name the cause. The payload is now 15
    keys, which step 10 documents.)*
 10. **J5 + J11** — the response shape stated once; the stale docstring.
+    *(Done 2026-09-15. `jupyter.md` § 5.1 is the 16-key table and § 5.2 the
+    two control routes' four status codes; the blueprint builds the payload
+    in one expression instead of six `st[...] =` mutations.)*
 11. § 5n.7's tests, and **J12**.
 
 ### 5n.7 Tests — the set, deliberately small

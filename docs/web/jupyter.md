@@ -364,6 +364,59 @@ plus a blueprint the tab calls. `status` answers **two** questions separately �
 `deployment.md` gives: the wedge worth catching is a server that is up and not
 answering.
 
+### 5.1 `GET /api/jupyter/status` — the payload, stated once
+
+**Sixteen keys, authored in two modules and read by a third, and until
+2026-09-15 written down nowhere** (`plan.md` § 5n, J5). `jupyter.status()`
+produces nine, the blueprint adds six in one expression, `ok` is the
+envelope, and `jupyternb/index.js` reads all of them. This table is the
+contract; the assembly at the end of `api_jupyter_status` is the one place
+the shape is built.
+
+| key | from | meaning |
+|---|---|---|
+| `ok` | blueprint | the envelope. `false` never happens here — the tab treats its absence as *unreachable* |
+| `running` | `status()` | a pidfile naming a live shepherd of ours |
+| `pid` · `pid_state` | `status()` | which process, and `ours` / `foreign` / `dead` |
+| `port` | `status()` | the notebook's own port — `serve + 1` (§ 2.1) |
+| `answering` | `status()` | the **second** question: it replied over HTTP |
+| `url` | `status()` | where it bound. The tab does **not** use this to frame — see § 4.1 |
+| `token` | `status()` | **withheld unless `may_control`** |
+| `open` | `status()` | the paths Jupyter says are open. **Withheld unless `may_control`** |
+| `workspace_saved` | `status()` | has Lab saved a layout since this server started (§ 4.1) |
+| `supervised` | blueprint | is there a supervisor that can be asked at all |
+| `may_control` | blueprint | may **this request** start and stop it |
+| `env_name` · `env_installed` | blueprint | the opt-in env, probed — the browser cannot ask conda |
+| `install_command` | blueprint | what to run when it is not installed |
+| `port_clash` | blueprint | why a start will fail, before it is tried (§ 2.1). **Withheld unless `may_control`** |
+
+**Three are withheld, and by never being produced.** `include_private=False`
+means `token` and `open` are not built at all for a caller who may not
+control the notebook — the difference between a credential that never
+existed and one whose safety depends on a later line in a function that will
+grow. The token reaches a **live kernel**, which is the same arbitrary code
+execution the Start button hands out; returning it to everyone while
+refusing them the button inverted the gate. `port_clash` is withheld for a
+smaller reason: it names another server on this machine.
+
+### 5.2 The two control routes
+
+`POST /api/jupyter/start` and `POST /api/jupyter/stop` are **always
+registered** and answer:
+
+| | |
+|---|---|
+| **404** | no supervisor to ask — the button is absent, and a misconfiguration reads as *missing*, never as *anyone may start a kernel here* |
+| **403** | there is one, and this caller may not run code on this machine |
+| **202** | the signal was delivered |
+| **409** | the supervisor refused it |
+
+One gate, one refusal, both in `_refuse()`. They were registered behind an
+environment variable read at import until 2026-09-15, which made the app's
+URL map depend on how the process had been started — so no test could reach
+them, and the documented route count depended on which of the two you
+measured (`plan.md` § 5n, J3/J4).
+
 ## 6. What this exposes
 
 A live kernel is **arbitrary code execution** as the account serving the page,
