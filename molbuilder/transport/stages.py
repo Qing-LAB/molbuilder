@@ -55,6 +55,20 @@ class StageError(Exception):
 #: ``task.bias``'s, the identity the task's.  ONE spelling: `config_for`
 #: refuses on it at prep, and the web hand-over refuses on it at send —
 #: same set, same reason, both name the field.
+#: A FIELD WHOSE KEYWORD IS UNRESOLVED — rendered nowhere, so it cannot be
+#: a control that does nothing.
+#:
+#: `transmission_relative_to_ef` wrote `TS.TBT.Erange.RelToEF`, which the
+#: 5.4.2 tbtrans does not know.  Its replacement is not a rename — whether a
+#: `%block TBT.Contour` line's energies are absolute or relative to the
+#: device E_F could not be settled from the binary — and inventing a mapping
+#: is what put four dead keywords in the deck (`plan.md` § 5o).  It stays a
+#: field so the question has an address, and stays out of the form so nobody
+#: is offered a switch that moves nothing.  It is NOT sealed: an override
+#: naming it is still refused by nothing here, because there is nothing to
+#: refuse — it reaches no deck.
+UNRESOLVED_FIELDS = frozenset({"transmission_relative_to_ef"})
+
 #: The description's OWN facts — refused as overrides for EVERY
 #: citation form: the engine is fixed, the label names the job, the
 #: bias is the description's `--bias`.

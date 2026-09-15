@@ -437,11 +437,13 @@ def _emit_transiesta_block(struct: Structure,
     planned follow-up; today such a structure emits a single
     notice in render_script's pre-emit pass.
 
-    TBtrans block (transmission post-processing) is unchanged —
-    its keyword names didn't migrate in 4.1+.
+    **The TBtrans half DID migrate, and this docstring said it had
+    not** -- "its keyword names didn't migrate in 4.1+", which is the
+    false belief that kept four SIESTA-3.x scalars in this emitter
+    until 2026-09-15.  They are a `%block TBT.Contour` now; the block
+    below carries the measurement (`plan.md` § 5o).
     """
     bias = cfg.bias_voltages_v[0] if cfg.bias_voltages_v else 0.0
-    erange_relative = "T" if cfg.transmission_relative_to_ef else "F"
 
     electrodes = _find_electrode_regions(struct)
     # Canonical 2-terminal naming: the z-min electrode binds to the
@@ -648,10 +650,32 @@ def _emit_transiesta_block(struct: Structure,
         "",
         "# TBtrans transmission post-processing.",
         "# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) § IV.",
-        f"TS.TBT.NumE            {cfg.transmission_n_points}",
-        f"TS.TBT.Emin            {cfg.transmission_emin_ev:.2f} eV",
-        f"TS.TBT.Emax            {cfg.transmission_emax_ev:.2f} eV",
-        f"TS.TBT.Erange.RelToEF  {erange_relative}",
+        "#",
+        "# A CONTOUR BLOCK, NOT SCALARS.  This emitted",
+        "#   TS.TBT.NumE / TS.TBT.Emin / TS.TBT.Emax / TS.TBT.Erange.RelToEF",
+        "# until 2026-09-15 -- SIESTA-3.x spellings that the 5.4.2 tbtrans",
+        "# this project installs cannot read: `strings` on the binary finds",
+        "# ZERO occurrences of Emin, Emax, NumE, Erange or RelToEF in any",
+        "# spelling or prefix.  fdf ignores a label nobody queries, so the",
+        "# run completed and T(E) came out on tbtrans's DEFAULT energy grid",
+        "# while the form said otherwise -- a wrong answer that looks right",
+        "# (`plan.md` § 5o).",
+        "#",
+        "# The modern mechanism is `TBT.Contours` naming one or more blocks.",
+        "# `part line` is not a choice: tbtrans refuses anything else with",
+        "# \"Unrecognized contour type for tbtrans, MUST be a line part\" --",
+        "# its own string, which is where this grammar was read from.",
+        "%block TBT.Contours",
+        "  window",
+        "%endblock TBT.Contours",
+        "",
+        "%block TBT.Contour.window",
+        "  part line",
+        f"   from {cfg.transmission_emin_ev:.5f} eV "
+        f"to {cfg.transmission_emax_ev:.5f} eV",
+        f"    points {cfg.transmission_n_points}",
+        "     method mid-rule",
+        "%endblock TBT.Contour.window",
         "# WHERE the device Hamiltonian is: SIESTA 5.x TranSIESTA writes",
         "# the converged H as <SystemLabel>.TS.HSX (the sparse container",
         "# that replaced the 4.x device .TSHS), and tbtrans 5.x looks for",

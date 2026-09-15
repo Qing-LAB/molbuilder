@@ -445,12 +445,13 @@ def api_transport_schema() -> Any:
     sections the filter empties (System, Electrodes) are dropped whole.
     """
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
-                                             SEALED_ALWAYS)
+                                             SEALED_ALWAYS,
+                                             UNRESOLVED_FIELDS)
     # ?contract=cited (default) hides the contract fields -- they are
     # the citation's deck's to say; ?contract=open offers them, for a
     # form-B citation (a labeled pair carries no deck; 4.1b).  The tab
     # passes what describe_attempt answered.
-    hidden = set(SEALED_ALWAYS)
+    hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS
     if str(request.args.get("contract") or "cited") != "open":
         hidden |= CONTRACT_FIELDS
     schema = _dataclass_to_form_schema(TransportConfig, "t")

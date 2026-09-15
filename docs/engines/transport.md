@@ -193,6 +193,84 @@ from a geometry that is still moving.
 
 ---
 
+### 3.2 The web tab's shape — ONE PANEL PER ENGINE, not one badge per field
+
+*(User ruling 2026-09-15, after opening the tab: "i am confused to see mainly
+pyscf settings on that page while the main design should be focused on
+transiesta … let's separate transiesta and pySCF engine completely because the
+setting etc may be completely different. so why don't we use tab of different
+engine to separate them rather than marking each parameters".)*
+
+**The rule: an engine is a PANEL, and a panel's fields are that engine's
+alone.** It is the pattern the Structure-optimization tab already uses — one
+card, a sub-tab strip, one panel per engine, one schema endpoint per engine
+(`/api/build/schema/<engine>`), and **one config dataclass per engine**.
+`SiestaConfig` (49 fields) and `PySCFConfig` (60) share not one field name.
+That last part is what actually separates them; the tab strip is how a person
+sees it.
+
+**What was wrong.** `TransportConfig` held 22 fields, of which **20 are
+TranSIESTA's or shared and exactly 2 are PySCF's** — `pyscf_functional` and
+`pyscf_basis` — sitting in the **NEGF** section beside three
+`TS.ComplexContour.*` fields. Three consequences, each measured
+2026-09-15:
+
+1. They were **the only two fields in the whole form with an engine name in
+   the label**, in the section a reader takes as the scientific core. With
+   three Runtime badges also naming pyscf, 5 of the 12 rendered fields said
+   *PySCF* — so the page read as a PySCF page for a workflow that is
+   TranSIESTA's entire subject.
+2. **The engine cannot be selected.** `registered_engines()` is
+   `['transiesta']`, and `engine`'s own `choices` is `("transiesta",)` with a
+   comment saying a PySCF backend "adds its choice back here in the same
+   commit". § 8's follow-up states the rule outright — *the form offers only
+   registered engines* — and it had been applied to the engine **selector**
+   and not to that engine's **parameters**.
+3. **They travelled.** Neither is in `SEALED_ALWAYS` nor `CONTRACT_FIELDS`,
+   so the override gate accepted them, they were written into `task.json`'s
+   device-stage bag, and they merged into the config the deck renders from —
+   where `engine` is hardcoded `"transiesta"` and nothing reads them. That is
+   exactly the trap `/api/transport/schema`'s own docstring refuses: *"a form
+   field the door is guaranteed to refuse is a trap, not a control."*
+
+#### What the shape is
+
+| | |
+|---|---|
+| **The card** | `3. Calculation parameters` gains a `.tabs` strip, one `.tab-btn` per KNOWN engine, one `.tab-panel` each — the `index.html` pattern, reused rather than reinvented |
+| **The panel IS the engine** | `engine` is already a sealed field nothing renders (`SEALED_ALWAYS`), hardcoded `"transiesta"` where the config is built. The active panel becomes that field's value, which is how the optimization tab has always worked: the panel decides which renderer runs |
+| **The schema** | `GET /api/transport/schema/<engine>`, mirroring `/api/build/schema/<engine>`. An unknown engine is a clean 404, not a defaulted response |
+| **One config per engine** | `TransportConfig` is **TranSIESTA's**, and loses both `pyscf_*` fields. A `PyscfNegfTransportConfig` is authored **with** that backend and not before — an engine's parameter set is not designable in the abstract, and a config nothing renders from is the residue this rule exists to prevent |
+| **The name stays** | `TransportConfig` is referenced by 14 product modules and 16 test files; a rename carries no behaviour. Its docstring says whose it is |
+| **The override gate follows** | its vocabulary becomes the SELECTED engine's field names, so a PySCF name is **refused** for a TranSIESTA run instead of accepted and ignored — closing consequence 3 at the door, not only in the form |
+| **Runtime badges** | name only engines you can run. `(transiesta) WriteVerbosity / (pyscf) mol.verbose` becomes TranSIESTA's alone until there is a second panel to carry the other half |
+
+#### A known engine with no backend is a DISABLED tab
+
+*(the user's choice, 2026-09-15, against hiding it and against giving it live
+fields.)*
+
+The strip is drawn from the **known** engines; `registered_engines()` decides
+which are live. `PySCF-NEGF` is therefore drawn, **disabled**, with a title
+saying what would make it live — *no PySCF-NEGF backend is built yet;
+transport ships on TranSIESTA*.
+
+It is not the trap `engine`'s `choices` comment refuses: a disabled button
+cannot be chosen, so no describe can be built on it and no field of its can
+travel. What it buys is that the **separation is visible on the page** rather
+than only in this document, and that the roadmap in § 8 has a place in the UI
+that cannot drift from the registry — the button's state is read from
+`registered_engines()`, so the day a backend registers, the tab goes live and
+its panel appears with it.
+
+#### What does NOT change
+
+The citation, the region labels, the five derived stages, the bias chain and
+the sealed electronic contract are **the composite's**, not an engine's
+(§§ 3.1, 4, 5). They stay in cards 1, 2 and 4 exactly as they are. Only
+card 3 — the override lane — is per-engine, because that is the only part of
+the surface whose vocabulary an engine owns.
+
 ## 4. Region labels drive everything
 
 The three runs are all derived from **per-atom region labels** on the input
@@ -569,7 +647,9 @@ single-point, or a relaxation if those layers are not frozen.
   init --calculation transport`; no hand-over, because nothing is
   awaiting).  Transport-only knobs changed in the form ride as
   device-stage overrides; the electronic-contract fields are sealed at
-  both doors (the citation's to say).  Task setup reads the saved
+  both doors (the citation's to say).  **The parameters card is one panel
+  per ENGINE** since 2026-09-15 — § 3.2, and the follow-up below is where
+  its second panel comes from.  Task setup reads the saved
   description as the run surface (machine, queue, prep).  The render
   endpoint (`/api/transport/render`) remains as the engine's validation
   surface.
@@ -577,9 +657,13 @@ single-point, or a relaxation if those layers are not frozen.
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **Results-tab transmission inspector** (T(E) + I–V charts read
   from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —
-  a backend that registers itself also adds its engine choice back to
-  `TransportConfig` (the form offers only registered engines since
-  2026-08-29).
+  which arrives as a registered engine, its OWN config dataclass and the
+  panel that renders it (§ 3.2), all in one commit.  Until then its sub-tab
+  is drawn and disabled, and `TransportConfig` carries none of its fields.
+  *(This bullet said the backend "adds its engine choice back to
+  `TransportConfig`" — true of the selector, and it was read as licence to
+  keep two PySCF PARAMETERS in that dataclass, which is what § 3.2 was
+  written to settle.)*
 
 ---
 

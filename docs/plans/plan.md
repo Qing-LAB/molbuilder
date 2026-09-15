@@ -100,6 +100,8 @@ the same day, with what it turned out to be.
 | **N6** | paths standard |  | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
 | **N7** | paths standard |  | delete the superseded surface, **one module per commit** — `sidecars.molstruct`, then `identity`, then `materialize`, then `paths`/`runfiles`. Forty functions cannot be retired in one separately-green step | the guard asserts the framework's public surface IS the three verbs plus the catalogue |
 | **W23** | front end / ops | **The JupyterNB feature is hand-built where it should be declared — fifteen items, one plan: § 5n.** *(user, 2026-09-15: "why is jupyter.py not following a data-driven design but rather handcrafted jibberish of code?" … "use .json or .jsonl or .toml to help clean this up. this is a systematic design, not some hacking" … "make sure that you don't have other hackish code in the design".)*  The settings a framed Jupyter starts with are expressed three ways inside one function, 40 lines of real Python live inside a string literal no tool can read, the control routes are gated twice on two different facts, the tab's waiting is five ad-hoc timers, and **the whole feature has no test** — 1,610 lines in its own five files, plus the notebook half of `serve_daemon` and six CLI verbs.  The contract, the admission rule that keeps the data file from becoming a dumping ground, the sweep of the other residue, and the order of work are in **§ 5n** | § 5n · found 2026-09-15 | **all fifteen shipped 2026-09-15**, then reviewed with fresh eyes the same day — nine further defects, one of them destructive and one re-creating J13's own bug. § 5n.8 has them and they are fixed; two are recorded as **J16** and **J17** below |
+| **W24** | front end / engines | **The transport tab is one panel per ENGINE, not one badge per field.** *(user, 2026-09-15: "i am confused to see mainly pyscf settings on that page while the main design should be focused on transiesta … let's separate transiesta and pySCF engine completely … why don't we use tab of different engine to separate them rather than marking each parameters".)*  Measured: of the 12 fields the tab renders, **5 name PySCF** and the only two with an engine name in the LABEL are `pyscf_functional` / `pyscf_basis` — in the NEGF section, for an engine `registered_engines()` does not list and `engine`'s own `choices` excludes. They are neither sealed nor contract-locked, so they travelled into `task.json`'s device-stage bag and merged into a config where `engine` is hardcoded `"transiesta"` and nothing reads them — the trap the schema endpoint's own docstring refuses. And card 3 claims the advanced fields "stay collapsed"; `tier: advanced` sets `opacity: 0.85` and a bullet, and collapses nothing | **contract settled in `engines/transport.md` § 3.2** — the `index.html` pattern (one card, a sub-tab strip, one panel and one schema endpoint per engine, one config dataclass per engine, which is what actually separates them: `SiestaConfig` and `PySCFConfig` share no field name). A known engine with no backend is a DISABLED tab saying what would make it live (the user's choice against hiding it and against live fields). `TransportConfig` keeps its name — 14 modules and 16 test files reference it — and loses both `pyscf_*` fields; the override gate's vocabulary becomes the selected engine's, so a PySCF name is refused rather than ignored | not started |
+| **W25** | engines / science | **THE TRANSPORT TAB'S PARAMETER SURFACE IS INERT — measured against the installed binary, not a manual.** `molbuilder-siesta` ships **SIESTA 5.4.2**, whose fdf labels are compiled into `siesta`/`tbtrans` as literal strings, so this is countable. **Of the 12 fields the tab renders, 10 cannot affect the run:** the four transmission scalars write `TS.TBT.Emin` / `Emax` / `NumE` / `Erange.RelToEF` and `tbtrans` contains **zero** occurrences of `Emin`, `Emax`, `NumE`, `Erange` or `RelToEF` in any spelling; the three contour fields name `TS.ComplexContour.NumCircle` / `NumLine` / `Emin`, all **zero** in `siesta` (only the unused legacy `ComplexContour.NPoles` survives); `log_level` claims `WriteVerbosity`, **zero** in `siesta`. Four of those have no consumer in the tree at all, and **`contour_n_circle` reaches only the Methods paragraph**, which reports a contour the deck never carried — the one finding here with a publication consequence. fdf ignores a label nobody queries, so all of this is SILENT: the run completes and T(E) comes out on tbtrans's default grid. **What is sound:** the five-stage ladder is the standard recipe, the electrode→`.TSHS`→device→`TBT.HS` plumbing is correct and was measured live, every `%block TS.Elec.<name>` key is the right 5.x spelling, and the shared-electronic-contract invariant is the right physics. **Missing controls, each verified present in the binary:** `TBT.Contours` + `%block TBT.Contour.<name>`, `TBT.k` / `TBT.kgrid.MonkhorstPack` (T(E) needs a denser transverse grid than the SCF — the standard convergence study, inexpressible today), `TBT.Elecs.Eta`, `TBT.Contours.Eta`, `TBT.ElectronicTemperature`, `TS.Contours.nEq.Eta` / `Eq.Pole` / `nEq.Fermi.Cutoff`, the `TBT.DOS.*`/`TBT.T.*` outputs **W10** would read, `TS.Elecs.Bulk`, `bloch` (hardcoded `1 1 1`), `TBT.Spin` | § 5o · found 2026-09-15 | **contour fix landing; the rest sequenced in § 5o.5** |
 
 ---
 
@@ -1557,6 +1559,135 @@ unifying an API must REDUCE the count — does not apply to a feature whose
 count is zero.)*
 
 ---
+
+## 5o. Transport — the parameter surface is inert, measured against the binary *(2026-09-15)*
+
+*(User: "check vigorously against actual transiesta manual and scientifically
+how this computational process should be conducted. find the missing gap in UI
+and parameter setting … and any inconsistency or potential issues. we need a
+full solution for this particular task.")*
+
+### 5o.0 How this was checked — the binary, not a memory of the manual
+
+`molbuilder-siesta` ships **SIESTA 5.4.2** (`strings` on the binary). SIESTA's
+fdf keywords are compiled into `siesta` and `tbtrans` as literal strings by
+the `fdf_get` call sites, so **whether this installation can read a keyword is
+measurable**, not a matter of recollection. Every claim below is a count taken
+from `~/miniconda3/envs/molbuilder-siesta/bin/{siesta,tbtrans}`.
+
+The method's one limit, stated: a label assembled at runtime from a prefix
+does not appear whole — which is why `TS.ChemPots` counts 0 while `ChemPots`
+and `.ChemPot.` are present, and the chempot blocks are *fine*. Each negative
+below was therefore re-checked for the bare stem in **any** spelling.
+
+### 5o.1 What is SOUND — so this review can be audited, not just believed
+
+* **The five-stage ladder is the standard TranSIESTA recipe.** seed →
+  electrode_L → electrode_R → device → transmission, with the electrodes run
+  as bulk single-points and the device solved by NEGF. That is the workflow
+  the method requires; nothing about the shape is wrong.
+* **The electrode → device hand-off is correct and was measured live.** The
+  electrode deck writes `TS.HS.Save true` **and** `SaveHS true`
+  (`wizard.py:287`), a preflight refuses an electrode deck that would not
+  write its `.TSHS` (`preflight.py:315`), and the device deck points tbtrans
+  at the converged Hamiltonian with `TBT.HS <label>.TS.HSX` — that line
+  carries a comment recording a live 5.4.2 measurement, and `TBT.HS` is in
+  the binary.
+* **Every per-electrode block key is the right 4.1+/5.x spelling:** `HS`,
+  `chem-pot`, `used-atoms`, `elec-pos begin|end`, `bloch`,
+  `semi-inf-direction`, inside `%block TS.Elec.<name>`, with
+  `%block TS.Elecs`, `%block TS.ChemPots` / `TS.ChemPot.<name>`,
+  `TS.Atoms.Buffer` and `TS.Voltage` — all present in `siesta`.
+* **The consistency contract is the right physics.** Electrodes and device
+  must share basis, XC and mesh or the lead self-energy cannot attach
+  seamlessly; § 5 makes that an invariant and the contract fields are sealed
+  at both doors. That is the single most important scientific rule in the
+  workflow and it is correctly enforced.
+
+### 5o.2 THE FINDING: ten of the twelve fields the tab renders cannot affect the run
+
+| field | writes | in SIESTA 5.4.2? | effect |
+|---|---|---|---|
+| `transmission_emin_ev` | `TS.TBT.Emin` | **`Emin`: 0 occurrences in `tbtrans`, any spelling** | none |
+| `transmission_emax_ev` | `TS.TBT.Emax` | **`Emax`: 0** | none |
+| `transmission_n_points` | `TS.TBT.NumE` | **`NumE`: 0** (only the words "numeric") | none |
+| `transmission_relative_to_ef` | `TS.TBT.Erange.RelToEF` | **`Erange`: 0 · `RelToEF`: 0** | none |
+| `contour_n_circle` | *nothing* | — | **only the Methods paragraph** (`transiesta.py:1015`) |
+| `contour_n_real` | *nothing* | — | **no consumer anywhere** |
+| `contour_e_bottom_ev` | *nothing* | — | **no consumer anywhere** |
+| `pyscf_functional` | *nothing* | engine not registered | none |
+| `pyscf_basis` | *nothing* | engine not registered | none |
+| `log_level` | `WriteVerbosity` claimed | **`WriteVerbosity`: 0 in `siesta`** | **no consumer anywhere** |
+| `max_memory_mb` | runner `ulimit -v` | n/a (not fdf) | real |
+| `num_threads` | `OMP_NUM_THREADS` | n/a (not fdf) | real |
+
+**Two of twelve do anything, and both are shell knobs.** Every field that is
+supposed to shape the *physics* is inert.
+
+**Three distinct failures, not one:**
+
+1. **Pre-4.1 keywords on a 5.4.2 binary.** `TS.TBT.*` and
+   `TS.ComplexContour.NumCircle` / `NumLine` / `Emin` are SIESTA-3.x-era spellings.
+   5.4.2 keeps exactly one legacy alias, `ComplexContour.NPoles`, which
+   molbuilder does not use. The emitter's own header says "modern SIESTA
+   4.1+/5.x NEGF syntax" — the device blocks are, the transmission window is
+   not. **fdf ignores a label nobody queries**, so this is silent: the run
+   completes and T(E) comes out on tbtrans's *default* energy grid, not the
+   one the person asked for. A wrong answer that looks right.
+2. **Fields wired to nothing.** Four have no consumer in the tree at all.
+3. **A Methods paragraph that reports a setting the calculation never
+   received.** `contour_n_circle` reaches only the manuscript sentence —
+   *"NEGF density integration used a complex contour with N imaginary-axis
+   points"* — for a deck that carries no contour keyword. That is the one
+   finding here with a **publication** consequence.
+
+*(No surviving artifact in `projects/` evidences the carbon-chain live walk
+§ 8 cites, so I cannot say what that run's T(E) grid actually was — only that
+these four keywords could not have set it.)*
+
+### 5o.3 What a correct 5.4.2 run needs and the UI cannot say
+
+Each verified PRESENT in the installed binary, so each is a real control
+being left on the table:
+
+| what | keyword | why it matters scientifically |
+|---|---|---|
+| the transmission energy window | `TBT.Contours` + `%block TBT.Contour.<name>` (`from … to`, `points`/`delta`, `method`) | **the actual replacement for the four dead fields** — the modern mechanism is a contour BLOCK, not scalars |
+| transverse k for T(E) | `TBT.k` / `TBT.kgrid.MonkhorstPack` | T(E) needs a **denser** transverse grid than the SCF; convergence in it is the standard transport convergence study, and the tab cannot express it at all |
+| broadening η | `TBT.Elecs.Eta`, `TBT.Contours.Eta` | sets the T(E) lineshape; too large smears resonances, too small makes them noise |
+| tbtrans's own temperature | `TBT.ElectronicTemperature` | separate from the device SCF's; it is what enters the I–V Fermi functions |
+| the SIESTA-side NEGF contour | `TS.Contours.nEq.Eta`, `TS.Contours.Eq.Pole`, `TS.Contours.nEq.Fermi.Cutoff` | the real controls the three dead contour fields were reaching for |
+| what gets written | `TBT.DOS.Gf`, `TBT.DOS.A`, `TBT.DOS.Elecs`, `TBT.T.Gf`, `TBT.T.Bulk`, `TBT.T.All` | without these there is no PDOS or per-lead data on disk — which is what **W10**'s transmission inspector would have to read |
+| lead treatment | `TS.Elecs.Bulk`, `bloch` (hardcoded `1 1 1`) | Bloch expansion of a minimal electrode cell is the standard cost saving; bulk-H in the lead region is a physics choice |
+| spin | `TBT.Spin` | no spin-polarised transport path exists, and the junction chemistry check already detects open-shell metals |
+
+### 5o.4 The rule that stops this recurring — and it is TESTABLE
+
+§ 3.2's per-engine panels are the right frame, and the frame must carry this:
+
+> **A field's `engine_key` names a keyword its engine's own binary accepts,
+> and that is checked against the installed binary rather than asserted.**
+
+The binaries are on disk in the env this project installs. A test can walk
+every `engine_key` in a config dataclass, extract the fdf label, and grep the
+engine's binary for its stem — skipping when the env is absent, the way
+env-dependent tests already do. That converts *"the manual says this exists"*
+— which is how seven dead keywords shipped — into a machine check, and it is
+the only finding here that prevents the next one.
+
+### 5o.5 Order of work
+
+1. **W25 first, because it is a correctness bug, not a UI one.** Replace the
+   four transmission scalars with the `%block TBT.Contour` the binary reads,
+   keeping the person's window/points as the block's `from…to`/`points`.
+2. The three contour fields become the real `TS.Contours.*` keywords, or go.
+   **`contour_n_circle` leaves the Methods paragraph the same day**, whichever
+   way it is settled — a sentence reporting an unset parameter is the one
+   thing here that must not survive another commit.
+3. `log_level` gets a real keyword or goes.
+4. § 3.2's panel split (W24), with `TransportConfig` becoming TranSIESTA's.
+5. The engine_key-versus-binary test, and the missing controls above added
+   panel by panel with the test green at each step.
 
 ## 6. Closed by consolidation — archived
 

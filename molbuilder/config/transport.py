@@ -263,7 +263,7 @@ class TransportConfig:
         "label":   "Energy window min",
         "unit":    "eV",
         "range":   (-10.0, 0.0),
-        "engine_key": 'TS.TBT.Emin  (transiesta)',
+        "engine_key": '%block TBT.Contour.window -> from  (transiesta)',
         "help":    "lower edge of the T(E) energy window.  Relative "
                    "to E_F when ``transmission_relative_to_ef`` is on "
                    "(the default).  ±2 eV is the standard window for "
@@ -277,7 +277,7 @@ class TransportConfig:
         "label":   "Energy window max",
         "unit":    "eV",
         "range":   (0.0, 10.0),
-        "engine_key": 'TS.TBT.Emax  (transiesta)',
+        "engine_key": '%block TBT.Contour.window -> to  (transiesta)',
         "help":    "upper edge of the T(E) energy window.  See "
                    "``transmission_emin_ev`` for sign conventions.",
     })
@@ -286,7 +286,7 @@ class TransportConfig:
         "workflow_group": "stage",
         "label":   "Energy grid points",
         "range":   (51, 4001),
-        "engine_key": 'TS.TBT.NumE  (transiesta)',
+        "engine_key": '%block TBT.Contour.window -> points  (transiesta)',
         "help":    "number of evenly-spaced energies at which T(E) is "
                    "computed.  Resolution = (emax - emin) / (N - 1); "
                    "default 401 over a 4 eV window = 10 meV/point, "
@@ -294,15 +294,27 @@ class TransportConfig:
                    "transmission features in the ±1 V conductance "
                    "window.",
     })
+    #: NOT EMITTED, and not rendered -- `UNRESOLVED_FIELDS` below.
+    #:
+    #: It wrote `TS.TBT.Erange.RelToEF`, which the 5.4.2 tbtrans does not
+    #: know (`RelToEF`: zero occurrences).  Its replacement is NOT a
+    #: rename: whether a `%block TBT.Contour` line's `from`/`to` are read
+    #: as absolute energies or relative to the device E_F could not be
+    #: settled from the binary, and **inventing a mapping is exactly what
+    #: put four dead keywords in the deck** (`plan.md` § 5o).  It keeps
+    #: its place so the question has an address; it offers no control
+    #: until a live tbtrans answers it.
     transmission_relative_to_ef: bool = field(default=True, metadata={
         "section": "Transmission",
         "workflow_group": "profile",
         "label":   "Energy is relative to E_F",
-        "engine_key": 'TS.TBT.Erange.RelToEF  (transiesta)',
-        "help":    "if on (default), energies are written as E - E_F; "
-                   "off writes absolute energies (Hartree-tree, eV).  "
-                   "Relative is the clean way to compare junctions "
-                   "with different absolute Fermi levels.",
+        "engine_key": '(unresolved -- see the note above the field)',
+        "help":    "NOT WIRED.  The energy reference of a "
+                   "`%block TBT.Contour` line is unresolved against "
+                   "tbtrans 5.4.2, so this writes nothing rather than "
+                   "guess.  The window you set is emitted exactly as "
+                   "given; how tbtrans references it is the open "
+                   "question (plan.md 5o).",
     })
 
     # ----------------- NEGF -----------------

@@ -1233,12 +1233,26 @@ class TestTheOverrideLane:
 
         Contract: `engines/transport.md` § 5 (the invariant set is the citation's;
         everything else is the description's).
+
+        **The evidence changed on 2026-09-15, the property did not.** This
+        asserted `TS.TBT.NumE 101` -- a SIESTA-3.x keyword the installed
+        5.4.2 tbtrans cannot read (`plan.md` § 5o), so the test was pinning
+        the bug: the override did land in the deck and the deck could not be
+        read, which is the one arrangement that satisfies "reaches the
+        rendered deck" while the setting still does nothing.  It now asserts
+        the contour block's own `points`, and
+        `test_transport_keywords_exist_in_the_binary.py` is what stops a
+        dead keyword satisfying this test again.
         """
         self._with_override(calc, "device",
                             {"transmission_n_points": 101})
         prep_calculation(calc, "device")
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
-        assert "TS.TBT.NumE            101" in text
+        assert "%block TBT.Contour.window" in text, (
+            "the transmission window is a contour BLOCK since 2026-09-15")
+        assert "points 101" in text, (
+            "the override did not reach the contour the deck actually "
+            f"carries:\n{text[text.find('%block TBT.Contour'):][:400]}")
 
     def test_a_contract_field_is_sealed(self, calc):
         """SCIENCE. A CONTRACT field -- here `basis_size` -- cannot be overridden on a

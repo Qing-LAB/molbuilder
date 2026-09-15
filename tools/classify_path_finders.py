@@ -117,6 +117,17 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
      "_warn_if_residue_piling", "*.wc.json"):
         ("door - a finder, not a caller",
          "the same store counting its own residue, through the same constant"),
+    ("molbuilder/config_dir.py", "ports_with_pidfile", "{prefix}-*.pid"):
+        ("door - a finder, not a caller",
+         "`serve_pidfile` INVERTED, in the module that owns the name.  The "
+         "same shape as `_state_indices` above: the composer and the finder "
+         "are the same module reading the same `<prefix>-<port>.pid` shape, "
+         "and this IS the door its five callers ask -- both status surveys, "
+         "both \"but a server IS running on ...\" hints, and "
+         "`jupyter.port_clash`.  It answers WHICH PORTS EXIST, which is a "
+         "question only the layer that spells the name can answer; a caller "
+         "globbing it would be the § 4.5 violation this entry is often "
+         "mistaken for (added 2026-09-15 with the surveys)"),
 
     # -- DOOR-FED: the pattern is a PARAMETER, and its one producer is a door.
     #    A survey that reads syntax cannot see that; each of these was read.
