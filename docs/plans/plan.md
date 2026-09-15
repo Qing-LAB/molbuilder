@@ -99,6 +99,7 @@ the same day, with what it turned out to be.
 | **N5** | paths standard |  | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |
 | **N6** | paths standard |  | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
 | **N7** | paths standard |  | delete the superseded surface, **one module per commit** — `sidecars.molstruct`, then `identity`, then `materialize`, then `paths`/`runfiles`. Forty functions cannot be retired in one separately-green step | the guard asserts the framework's public surface IS the three verbs plus the catalogue |
+| **W23** | front end / ops | **The JupyterNB feature is hand-built where it should be declared — thirteen items, one plan: § 5n.** *(user, 2026-09-15: "why is jupyter.py not following a data-driven design but rather handcrafted jibberish of code?" … "use .json or .jsonl or .toml to help clean this up. this is a systematic design, not some hacking" … "make sure that you don't have other hackish code in the design".)*  The settings a framed Jupyter starts with are expressed three ways inside one function, 40 lines of real Python live inside a string literal no tool can read, the control routes are gated twice on two different facts, the tab's waiting is five ad-hoc timers, and **the whole feature has no test** — 1,610 lines in its own five files, plus the notebook half of `serve_daemon` and six CLI verbs.  The contract, the admission rule that keeps the data file from becoming a dumping ground, the sweep of the other residue, and the order of work are in **§ 5n** | § 5n · found 2026-09-15 | **contract settled, not started** |
 
 ---
 
@@ -1305,6 +1306,183 @@ carried as if they were pending.
 cannot-fails, where the evidence is a line of shipped code rather than an
 argument about reachability, and their reasoning is in the commit messages
 `test-audit-findings.md` § 0 lists.
+
+---
+
+## 5n. JupyterNB — settings as DATA, and the hand-built residue *(2026-09-15)*
+
+**Origin.** The user, reading `molbuilder/jupyter.py`: *"why is jupyter.py not
+following a data-driven design but rather handcrafted jibberish of code?"* —
+then *"use .json or .jsonl or .toml to help clean this up. this is a
+systematic design, not some hacking"* — then *"make sure that you don't have
+other hackish code in the design, put this all in a consolidated plan."*
+
+**The judgement is right and it is narrower than the words.** Parts of this
+feature are already declarative (`_LAB_OVERRIDES`, `prepare_lab_home`'s
+option→path map, `envs/recipes.py::_JUPYTER`). What earns the word is that
+**the same kind of fact is expressed three different ways inside one
+function**, that **40 lines of real Python live inside a string literal**, and
+that **nothing has ever forced a seam on any of it** — the feature has no
+test. § 5n.5 lists what is NOT residue, so the sweep can be checked rather
+than believed.
+
+**Row: W23.** This section is the contract; no code until it is agreed.
+
+---
+
+### 5n.1 The data file — format, location, and the admission rule
+
+**TOML.** The project already answers this. Authored **rule tables** are TOML,
+read with stdlib `tomllib` and gated by `persist.check_schema`:
+`siesta/warm-files.toml`, `pyscf/warm-files.toml`,
+`data/catalogue.template.toml`. JSON here is reserved for **fundamental
+numeric tables** nobody annotates (`data/contact_distance.json`,
+`data/fcc_lattice.json`). JSONL is a record stream, and this is a table. And
+every row in this table exists for a reason that has to travel with the row —
+TOML takes comments; JSON does not.
+
+**`molbuilder/data/jupyter.toml`**, covered by the existing `data/*.toml`
+package-data pattern. No packaging change, and this repository already
+carries the incident where a `.toml` shipped in no wheel (`pyproject.toml`,
+the comment above `data/*.toml`).
+
+**Schema-stamped**, exactly as `warm-files.toml` is:
+`schema = "molbuilder/jupyter@1"`, gated by `persist.check_schema`. An unknown
+top-level section is refused **by naming the sections that exist** —
+`warmfiles`' own refusal style, and the reason it is worth copying is that a
+typo in a settings file otherwise disables a setting silently.
+
+**THE ADMISSION RULE — what stops the file becoming a dumping ground.**
+
+> A row belongs in `jupyter.toml` **if and only if its value is knowable
+> before the process starts.** Anything that needs a runtime fact stays in
+> code, and is emitted through the same writer.
+
+That is a testable line, not taste. It cuts the current settings as follows:
+
+| in the file | stays in code, and why |
+|---|---|
+| `ServerApp.port_retries = 0` | `ServerApp.ip` — a CLI argument |
+| `MappingKernelManager.cull_idle_timeout = 1800` | `ServerApp.port` — derived, `jupyter_port(serve_port)` |
+| `MappingKernelManager.cull_connected = false` | `ServerApp.token` — generated per start; a credential gets no home in the repo |
+| `ServerApp.shutdown_no_activity_timeout = 3600` | `ServerApp.root_dir` — the projects root |
+| `[lab.home]` — the three `LabApp.*_dir` options → their subdirectory names | `ServerApp.tornado_settings` — the `frame-ancestors` grant, **derived** from `serve_port_of(port)`. A security header stays a computation with its reasoning beside it |
+| `[lab.overrides]` — all four plugin sections, verbatim from `_LAB_OVERRIDES` | `certfile` / `keyfile` — present only when `serve` has TLS |
+
+**Lifecycle constants do NOT move.** `_PR_SET_PDEATHSIG = 1` is a kernel ABI
+number; `_MARKER` is an identity string; `_STOP_GRACE_S = 4.0` is coupled to
+`serve_daemon.stop_by_pidfile`'s `grace_s = 5.0` and splitting a coupled pair
+across a data file and a module is worse than leaving both in code. *(That
+coupling is asserted by a comment and by nothing else — see J12.)*
+
+### 5n.2 The generated Python is a FILE, not a string
+
+`_SERVER_CONFIG` becomes **`molbuilder/data/jupyter_server_config.py`**, a real
+`.py` file copied verbatim at every start. It does **not** become TOML:
+putting Python in a data file is the same defect in a worse place.
+
+**Why not `inspect.getsource`**, which is this project's pattern for generated
+code (`trajectory_log/emitter.py`, `pyscf/input.py`, `pyscf/vibration_emitters.py`
+×2): that needs the class importable, and `NoCheckpoints` must subclass
+`jupyter_server`'s `AsyncCheckpoints` **at class-definition time**. The
+shepherd runs in the HOST env, which does not have `jupyter_server` and must
+not need it. A file under `data/` is never imported, so it may name
+`jupyter_server` freely, while pyflakes, an editor and `ast.parse` all still
+read it as Python. One packaging addition: `data/*.py`.
+
+### 5n.3 One emitter
+
+`notebook_argv` stops holding a list literal. It builds a single
+`{trait: value}` map — the file's rows merged with the runtime rows — and
+emits `--{k}={v}`. The three mechanisms collapse to one, and a dropped row
+like `port_retries` becomes **visibly missing from a table** instead of
+invisibly absent from a list.
+
+### 5n.4 The sweep — the other hand-built residue
+
+Twelve found 2026-09-15 by reading the whole feature; **J13 is the user's own, added the same day**.  Read: `jupyter.py`,
+`web/blueprints/jupyter.py`, `web/static/jupyternb/`, `web/templates/jupyternb.html`,
+the notebook half of `serve_daemon.py`, the `jupyter` CLI group, `config_dir`'s
+four doors, and `envs/recipes.py::_JUPYTER`.
+
+| # | what | why it is residue |
+|---|---|---|
+| **J1** | **Three mechanisms for one traitlets setting**, inside `notebook_argv`: 11 hand-written f-strings in a list literal, 2 of them interpolating module constants, and 4 more passed as a dict through a `--{k}={v}` loop **twelve lines below**. **15 settings, one shape** -- `--<Class>.<trait>=<value>` -- said three ways | § 5n.1 + § 5n.3 |
+| **J2** | **`_SERVER_CONFIG` — 40 lines of real Python in a string literal.** No linter, no import, no test reaches it. **The cost is measured:** it was deleted by accident on 2026-09-14 by an edit that removed everything between two dead functions, and that shipped a `NameError` on every notebook start. `pyflakes` caught the sibling (`_LAB_OVERRIDES`, a name that IS referenced) and could say nothing about this one | § 5n.2 |
+| **J3** | **The control routes are gated twice, on two different facts.** `@bp.post("/api/jupyter/start")` is registered inside `if os.environ.get(SUPERVISED_ENV) == "1":` **at import**, and the module's own docstring then explains that this flag is *not* the real precondition — `serve foreground` sets it while writing no pidfile — so a second, per-request gate `_supervised()` was added on 2026-09-14. Two gates, one fact. The import-time one also makes the app's **URL map depend on the environment `create_app()` happened to run in**, which is why no test can reach these routes | **Fix:** register always; the handler answers 404 when `_supervised()` is false. That is the behaviour § 6 of `jupyter.md` already specifies (*"404 rather than 403"*), with one gate, evaluated when the answer is knowable |
+| **J4** | **Two hand-written 403 messages for one refusal.** `start` returns a three-line sentence naming `molbuilder.json`'s `admin` section; `stop` returns `"admin auth required"`. Same gate, same condition, two answers — and the short one tells a person nothing about what to do | One `_refuse()`, one sentence |
+| **J5** | **The status payload has no author.** `jupyter.status()` returns 8 keys, the blueprint bolts on 5 more (`may_control`, `supervised`, `env_name`, `env_installed`, `install_command`), and `index.js` reads all 13 plus `ok`. Three files define one shape and no document states it — the two-authored-homes smell `engines/template.md` § 6.0 has a rule for | State the response shape once, in `jupyter.md` § 5; assemble it in one place |
+| **J6** | **The tab's waiting is five ad-hoc timers, not a state machine.** `pollTimer`; `START_POLLS`/`startPollsLeft` at 1200 ms; `WEDGE_POLLS`/`wedgePolls` at 1500 ms; `ROOT_WAIT_MS`/`rootGaveUp` on a raw `setTimeout`; and three bare `pollSoon(600 \| 1500 \| 30000)`. Each arrived after its own incident — the comments are the record — and **each has its own clearing rule scattered through `render`**: `startPollsLeft` is cleared in one branch, `wedgePolls` at the top of the function, `rootGaveUp` never | **Fix:** one table of states, each row `{when, message, framed, pollMs, budget, onExhausted}`; `render` selects a row and one function applies it. **A JS object literal, not a data file** — the strings are UI copy and belong beside the page (`ui-contract.md`), and shipping TOML to a browser buys nothing |
+| **J7** | **`jupyter.md` § 4 says "exactly four states". `render` carries **13** `return` statements and `refresh`'s `catch` adds a fourteenth outcome.** Four of the undocumented ones carry their own time budget AND their own button — wedged, *"asked for a notebook and none started"*, waiting for the projects root, and the fetch failure. **The states with the most behaviour are the ones the contract does not name** | Fixed with J6: the table in the code and the table in § 4 become the same list |
+| **J8** | **A third hand-built unverified TLS context.** `jupyter.py` collapsed two copies into `_unverified_ctx()` on 2026-09-14, with a docstring saying *"One home, because this is a security knob"*. `cli.py:2525-2527` still builds the same three lines for `serve status` | One home means one home. `serve`'s, not the notebook's — but the same knob, and the claim is already written |
+| **J9** | **`--port` hand-written six times across the `jupyter` verbs, while `_serve_flags` sits ~350 lines above** saying *"one decorator, so the two verbs cannot drift apart about what a server accepts"*. **The six have already drifted:** two carry help text that disagrees (*"the SERVE port -- the notebook's own is that plus one"* vs *"the SERVE port this notebook belongs to"*) and three carry none | A `_port_flag` the six share |
+| **J10** | **THE FEATURE HAS NO TEST.** 1,610 lines across its own five files, plus the notebook half of `serve_daemon` and six CLI verbs. Nothing under `tests/` imports `molbuilder.jupyter` or touches `/api/jupyter/*`; the only mentions are an env name in `test_diagnostics` / `test_envs_install` and a layer entry in `test_layering`. **Every one of the nine defects fixed on 2026-09-14 was found by eye or by running the live server, and J2 shipped.** This is the root of the whole row: nothing has ever forced a seam on this code | § 5n.7 |
+| **J11** | **`config_dir.jupyter_lab_home`'s docstring says "Two directories under it"**; `prepare_lab_home` creates **three** (`settings`, `user-settings`, `workspaces`) and writes a config file beside them. The door's own contract is behind its caller | One sentence |
+| **J12** | **`_STOP_GRACE_S < serve_daemon`'s `grace_s` is asserted by a comment and by nothing else.** The two were both `5.0`, and reconciliation then reported *"(forced)"* for every perfectly polite stop. It was fixed by changing one number; nothing stops the other moving back | One assertion, in the test set below |
+| **J13** | **SWITCHING TABS LOSES THE OPEN NOTEBOOK, and the kernel it belongs to is still running.** *(user, 2026-09-15: "when we switch tabs (without quitting server), currently the jupyternb tab reinit and does not open the original tab before the switching even though the kernel etc is still running … we would like to have this persistent when switching tab, but do not need this when server get shutdown and restarted.")*  Leaving `/jupyternb` destroys the iframe, so coming back always re-points it — that part is a page navigation and cannot be avoided in the tab. What decides whether Lab comes back where you left it is its **workspace** (which documents were open), and `labUrl` sends `?reset` on **every** load (`index.js:137`), which throws it away. **This supersedes a decision taken with the user on 2026-09-14** (`jupyter.md` § 4.1, *"it remembers no LAYOUT"*), whose reason was that a restore argued with the folder the projects sidebar had selected — a reason that has since weakened on its own, because the sidebar is no longer SHOWN on this tab and cannot be changed from it | **Fix — server-side, one home (preferred): `prepare_lab_home()` DELETES `workspaces/` at every shepherd start, and `?reset` is dropped from the URL entirely.** A new server then has no workspace to restore (clean, as asked); a tab switch or a page reload restores the one Lab has been saving (persistent, as asked); and no browser state is involved, so there is nothing to keep in sync. **Two things to MEASURE before the shape is fixed:** whether `/lab/tree/<path>` fights a restored workspace or merely moves the file browser, and whether Lab writes the workspace eagerly enough that a switch seconds after opening a notebook is caught. **Fallback if the measurement says no:** compare `st.token` to one remembered in `localStorage` and send `?reset` only when it differs — the token is regenerated by `run_shepherd` at every start, so it already IS the server-session identity. `localStorage`, not `sessionStorage`: closing a browser tab is not a server restart |
+
+### 5n.5 What is NOT residue — so the sweep can be checked
+
+* **The three lifecycle layers and their constants.** Order is the content —
+  *"everything that can raise happens before the pidfile exists"* is not
+  something a table can say — and each layer is measured, not argued.
+* **`jupyter_port` / `serve_port_of`.** One derivation, both directions, with
+  a stated security reason for the inverse existing at all.
+* **`_LAB_OVERRIDES` and `prepare_lab_home`'s option→path map.** Already
+  tables. They move into the file; their shape does not change.
+* **`envs/recipes.py::_JUPYTER`.** Already declarative, and its packages carry
+  their reasons.
+* **`config_dir`'s four doors.** Consistent and reasoned — including
+  `jupyter_lab_home` **not** being port-keyed, which the docstring states and
+  justifies (*"the defaults do not differ between servers"*).
+* **`serve_daemon`'s stringly-keyed `state` dict** (`"child"`, `"hup"`,
+  `"term"`, `"jupyter"`, `"nb_busy"`, `"nb_pending"`). It is L1, it predates
+  this feature, and reshaping it is not this row. **Out of scope, on purpose.**
+
+### 5n.6 Order of work
+
+Each step is separately green and separately revertible.
+
+1. `molbuilder/data/jupyter.toml` + the loader (schema gate, refusal by name).
+2. `notebook_argv` → one emitter; `_LAB_OVERRIDES` and the lab-home map read
+   from the file. **`jupyter.py` loses ~115 lines.**
+3. `molbuilder/data/jupyter_server_config.py` + `data/*.py` in `pyproject.toml`.
+4. **J3 + J4** — one gate, one refusal. (This is what makes the blueprint
+   testable, so it comes before the tests.)
+5. **J9 + J8** — the shared port flag; the third TLS context.
+6. **J6 + J7** — the tab's state table, and § 4 rewritten from it.
+7. **J13** — the workspace survives a tab switch and dies with the server.
+   **Measure first** (does `/lab/tree/<path>` fight a restore; is the
+   workspace written eagerly enough), then `prepare_lab_home()` wipes
+   `workspaces/`, `?reset` comes out of `labUrl`, and `jupyter.md` § 4.1's
+   *"it remembers no LAYOUT"* paragraph is rewritten to say what replaced it
+   and why — a decision taken with the user is superseded in writing, never
+   silently flipped.
+8. **J5 + J11** — the response shape stated once; the stale docstring.
+9. § 5n.7's tests, and **J12**.
+
+### 5n.7 Tests — the set, deliberately small
+
+`feedback_tests_earn_their_place` applies: this must not become a test per
+setting. Six, and each one fails on a real mutation:
+
+1. The schema gate refuses a wrong stamp.
+2. An unknown top-level section is refused **by naming the sections that exist**.
+3. Every `[server]` row reaches the argv — the assertion a dropped
+   `port_retries` trips.
+4. `data/jupyter_server_config.py` parses (`ast.parse`) and defines
+   `NoCheckpoints` — the assertion J2's accident would have tripped.
+5. `/api/jupyter/start` answers **404** with no supervisor and **403** to a
+   non-admin with one — J3 and J4 in one test, and impossible to write today.
+6. `_STOP_GRACE_S < serve_daemon`'s grace — J12.
+7. `prepare_lab_home()` leaves no workspace behind — write a file into
+   `workspaces/`, call it, assert the file is gone while `user-settings/`
+   is untouched. That is J13's whole contract on the server side, and the
+   mutation it catches (wiping the wrong directory) would silently discard
+   a person's Lab settings.
+
+The hand-written assertions these replace come out with them, so the suite
+does not grow by seven.
 
 ---
 
