@@ -170,11 +170,31 @@ class LogRoll:
 #  pid verification — never signal what you have not identified          #
 # --------------------------------------------------------------------- #
 
-def read_pid(port: int) -> Optional[int]:
+def read_pidfile(path: Path) -> Optional[int]:
+    """The pid a pidfile names, or ``None`` if it cannot be read as one.
+
+    THE ONE READER (`plan.md` § 5n, J16).  These four lines stood in three
+    places -- here keyed by serve port, in `stop_by_pidfile` on a path, and
+    in `molbuilder.jupyter` keyed by serve port -- which is the same shape
+    that was collapsed for the TLS context (J8) and for pid VERIFICATION
+    (`jupyter.pid_state` delegating to `pid_state` here).  The read beside
+    them was left at three copies until 2026-09-15.
+
+    Absent, empty, unreadable and "not a number" all answer ``None``, and
+    every caller treats that as *nothing to act on* -- so a missing pidfile
+    and a corrupt one are the same answer, deliberately: neither names a
+    process, and the verification step (`pid_state`) is what decides whether
+    a pid that IS named may be signalled.
+    """
     try:
-        return int(serve_pidfile(port).read_text().strip())
+        return int(Path(path).read_text().strip())
     except (OSError, ValueError):
         return None
+
+
+def read_pid(port: int) -> Optional[int]:
+    """The supervisor's own pid for ``port`` -- `read_pidfile` at its address."""
+    return read_pidfile(serve_pidfile(port))
 
 
 def unverified_ctx():
@@ -245,10 +265,7 @@ def stop_by_pidfile(path: Path, *, marker: bytes, grace_s: float = 5.0,
     A stale file is cleaned up and REPORTED; a recycled pid is never
     signalled.
     """
-    try:
-        pid = int(path.read_text().strip())
-    except (OSError, ValueError):
-        pid = None
+    pid = read_pidfile(path)
     state = pid_state(pid, marker=marker)
     if state == "dead":
         if pid is not None:

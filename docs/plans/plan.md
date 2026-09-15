@@ -1524,8 +1524,8 @@ programme, both in code it did not open:
 
 | # | area | item | state |
 |---|---|---|---|
-| **J16** | ops | **Three copies of "read a pidfile"** — `jupyter.read_pid`, `serve_daemon.read_pid`, and the same four lines inside `serve_daemon.stop_by_pidfile`. Exactly the shape J8 collapsed for the TLS context and `pid_state` collapsed for verification, with the *read* left at three | open |
-| **J17** | ops | **`jupyter.py`'s `pid_path` / `log_path` / `runtime_path`** are one-line pass-throughs to `config_dir` — the pattern `serve_daemon` deleted as K-D3, whose comment says so in as many words. Worse, they RENAME: the notebook log is `jupyter_log` in one module and `log_path` in another. `pid_path` and `runtime_path` have no caller outside `jupyter.py` | open |
+| **J16** | ops | **Three copies of "read a pidfile"** — `jupyter.read_pid`, `serve_daemon.read_pid`, and the same four lines inside `serve_daemon.stop_by_pidfile`. Exactly the shape J8 collapsed for the TLS context and `pid_state` collapsed for verification, with the *read* left at three | ✅ **done 2026-09-15** — `serve_daemon.read_pidfile(path)` is the one reader; `read_pid` is it at the serve address, `jupyter.read_pid` it at the notebook's, and `stop_by_pidfile` calls it. Every edge re-checked against the three it replaced (absent · empty · garbage · whitespace · a directory) |
+| **J17** | ops | **`jupyter.py`'s `pid_path` / `log_path` / `runtime_path`** are one-line pass-throughs to `config_dir` — the pattern `serve_daemon` deleted as K-D3, whose comment says so in as many words. Worse, they RENAME: the notebook log is `jupyter_log` in one module and `log_path` in another. `pid_path` and `runtime_path` have no caller outside `jupyter.py` | ✅ **done 2026-09-15** — all three deleted, callers ask `config_dir`. The notebook log has ONE name now, so grepping `jupyter_log` finds every reader |
 
 ### 5n.7 Tests — the set, deliberately small
 

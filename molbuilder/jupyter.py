@@ -224,23 +224,18 @@ def shepherd_argv(serve_port: int, *, host: str,
     return argv
 
 
-# --------------------------------------------------------------------- #
-#  Where the files are -- through config_dir's doors, like every other    #
-# --------------------------------------------------------------------- #
-
-def pid_path(serve_port: int) -> Path:
-    from .config_dir import jupyter_pidfile
-    return jupyter_pidfile(serve_port)
-
-
-def log_path(serve_port: int) -> Path:
-    from .config_dir import jupyter_log
-    return jupyter_log(serve_port)
-
-
-def runtime_path(serve_port: int) -> Path:
-    from .config_dir import jupyter_runtime
-    return jupyter_runtime(serve_port)
+# WHERE THE FILES ARE: `config_dir`, asked directly.
+#
+# `pid_path`, `log_path` and `runtime_path` stood here as one-line forwards
+# to `jupyter_pidfile` / `jupyter_log` / `jupyter_runtime` until 2026-09-15
+# (`plan.md` § 5n, J17).  That is the pattern `serve_daemon` deleted as K-D3
+# -- its own import comment says so: *"Four one-line pass-throughs … stood
+# between this module and those doors until 2026-09-13."*
+#
+# They were worse than plain forwards, because they RENAMED: the notebook
+# log was `jupyter_log` where `serve_daemon` opened it and `log_path` where
+# `cli` printed it, so grepping for either name found half the callers.  Two
+# of the three had no caller outside this module at all.
 
 
 # --------------------------------------------------------------------- #
@@ -248,10 +243,16 @@ def runtime_path(serve_port: int) -> Path:
 # --------------------------------------------------------------------- #
 
 def read_pid(serve_port: int) -> Optional[int]:
-    try:
-        return int(pid_path(serve_port).read_text().strip())
-    except (OSError, ValueError):
-        return None
+    """The shepherd's pid for ``serve_port``, or ``None``.
+
+    **`serve_daemon`'s reader, at this module's address** -- the same
+    delegation `pid_state` below already makes, and for the same reason: two
+    copies of "what does this pidfile say" is how one of them comes to
+    treat a corrupt file differently from the other (J16).
+    """
+    from .config_dir import jupyter_pidfile
+    from .serve_daemon import read_pidfile
+    return read_pidfile(jupyter_pidfile(serve_port))
 
 
 #: What a shepherd's command line carries, beside ``molbuilder`` -- the word
@@ -285,8 +286,11 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
     so this is read server-side and handed to the page, never published.
     """
     import json
+
+    from .config_dir import jupyter_runtime
     try:
-        doc = json.loads(runtime_path(serve_port).read_text(encoding="utf-8"))
+        doc = json.loads(
+            jupyter_runtime(serve_port).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return doc if isinstance(doc, dict) else {}
@@ -406,7 +410,9 @@ def status(serve_port: int, *, include_private: bool = True
 
 
 def _forget(serve_port: int) -> None:
-    for p in (pid_path(serve_port), runtime_path(serve_port)):
+    from .config_dir import jupyter_pidfile, jupyter_runtime
+    for p in (jupyter_pidfile(serve_port),
+              jupyter_runtime(serve_port)):
         try:
             p.unlink()
         except OSError:
@@ -848,7 +854,8 @@ def run_shepherd(serve_port: int, *, host: str,
     from .envs.builds import dispatch_into_env
     from .envs.recipes import effective_name, recipe_by_name
     from .persist import write_json
-    from .config_dir import PRIVATE_FILE_MODE, ensure_private_dir
+    from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
+                             jupyter_pidfile, jupyter_runtime)
     from .projects import projects_root
 
     _set_pdeathsig()
@@ -906,10 +913,10 @@ def run_shepherd(serve_port: int, *, host: str,
     # and the tab stuck on "Starting...".  (The browser was unaffected: the
     # tab rebuilds the base from `location.hostname`.)
     _hostpart = f"[{host}]" if ":" in host else host
-    ensure_private_dir(pid_path(serve_port).parent, tighten=True)
-    pid_path(serve_port).write_text(f"{os.getpid()}\n")
+    ensure_private_dir(jupyter_pidfile(serve_port).parent, tighten=True)
+    jupyter_pidfile(serve_port).write_text(f"{os.getpid()}\n")
     # 0600: the token authenticates a browser to a live kernel.
-    write_json(runtime_path(serve_port),
+    write_json(jupyter_runtime(serve_port),
                {"url": f"{scheme}://{_hostpart}:{port}/lab",
                 "base": f"{scheme}://{_hostpart}:{port}",
                 "token": token},

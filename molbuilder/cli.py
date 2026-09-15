@@ -2509,7 +2509,8 @@ def cmd_jupyter_status(port):
     reported *"not running"* to somebody whose notebook was up beside a
     server on another port.
     """
-    from .jupyter import log_path, status
+    from .config_dir import jupyter_log
+    from .jupyter import status
 
     if port is None:
         raise SystemExit(_survey_notebooks())
@@ -2524,7 +2525,7 @@ def cmd_jupyter_status(port):
         click.echo(f"  start it:  molbuilder jupyter start --port {port}")
         # THE LOG, NAMED WHEN IT IS NOT RUNNING -- which is exactly when a
         # person needs it: a notebook that refused to start said why there.
-        nb_log = log_path(port)
+        nb_log = jupyter_log(port)
         if nb_log.exists():
             click.echo(f"  last log:  {nb_log}")
         _say_which_notebooks_else(port)
@@ -2532,7 +2533,7 @@ def cmd_jupyter_status(port):
     click.echo(f"running    pid {st['pid']}, port {st['port']}")
     click.echo("answering  " + ("yes" if st["answering"] else
                                 "NO -- it is up but not serving; see the log"))
-    click.echo(f"log        {log_path(port)}")
+    click.echo(f"log        {jupyter_log(port)}")
     # THE TOKEN IS NOT PRINTED.  It authenticates a browser to a live kernel,
     # which is code execution as this account; the tab reads it server-side.
     if st["url"]:
@@ -2565,7 +2566,8 @@ def _survey_notebooks() -> int:
     not `serve status`'s three, because that is what its single-port path
     already returns and a survey must not invent a third vocabulary.
     """
-    from .jupyter import log_path, status
+    from .config_dir import jupyter_log
+    from .jupyter import status
     ports = _live_notebook_ports()
     if not ports:
         click.echo("no notebook server is running.")
@@ -2579,7 +2581,7 @@ def _survey_notebooks() -> int:
         click.echo(f"serve {p:<6} notebook pid {st['pid']:<8} "
                    f"port {st['port']:<6} "
                    f"answering: {'yes' if st['answering'] else 'NO'}   "
-                   f"log {log_path(p)}")
+                   f"log {jupyter_log(p)}")
     click.echo("  detail on one:  molbuilder jupyter status --port <port>")
     return 0 if answered else 1
 
