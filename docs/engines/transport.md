@@ -271,6 +271,142 @@ the sealed electronic contract are **the composite's**, not an engine's
 card 3 — the override lane — is per-engine, because that is the only part of
 the surface whose vocabulary an engine owns.
 
+### 3.3 The parameter inventory — what a person supplies, what is derived, what is a knob
+
+*(Built 2026-09-15 against the **SIESTA 5.4.0 manual** — the release note for
+the 5.4.2 this project installs — and cross-checked against the binaries'
+own compiled fdf labels. Defaults below are the manual's, verbatim.)*
+
+**Read this before adding a field to any engine panel.** § 3.2 says a panel's
+fields are its engine's alone; this says what the fields *are*, and the four
+tables are in the order a calculation needs them.
+
+#### 3.3.1 What the PERSON must supply — no default can exist
+
+| what | why it cannot be defaulted | where today |
+|---|---|---|
+| the junction geometry | it is the science | cited directory (§ 3.1) |
+| **region labels** `L-electrode` / `R-electrode` / the bridge | which atoms are lead and which are device is a physical claim about the structure | the Molbuilder tab; § 4 |
+| the electrode's own bulk cell and relaxed geometry | a lead is a *separate periodic calculation*; its `.TSHS` is an input to the device | the electrode wizard |
+| a pseudopotential per species | external data | gathered at prep, three refusals |
+| the bias list | the experiment being modelled | card 4 |
+| **the transverse k-grid for T(E)** | see 3.3.4 — it is NOT the SCF's, and no default is right | **MISSING** |
+| electrode thickness / layer count | convergence property of the lead | the wizard; the sweep is **S13**, not built |
+
+Two of these are *derived* rather than asked, correctly: the **semi-infinite
+direction** comes from the geometry (the z-sorted electrode order), and
+`μ = ±V/2` comes from the electrode *name*. § 3.1 records why — and that a
+junction labelled the other way round still runs, with a one-click rename
+offered.
+
+#### 3.3.2 What the CITATION supplies — sealed at both doors
+
+`basis_size`, `xc_functional`, `xc_authors`, `siesta_mesh_cutoff_ry`,
+`energy_shift_ry`, `electronic_temperature_k`, `k_mesh_transverse`.
+
+**This is the most important scientific rule in the workflow** (§ 5): the
+electrode and device runs must share the electronic contract or the lead
+self-energy cannot attach seamlessly. They arrive from the cited attempt's own
+`.fdf` and are refused as overrides. *(A form-B citation — a labelled
+`.xyz` + `.molstruct.json` pair with no deck — opens them, because there is
+no deck to be truth.)*
+
+> **They are mis-sectioned.** Five of them declare `section: "NEGF"`
+> (`basis_size`, `energy_shift_ry`, `xc_functional`, `xc_authors`,
+> `siesta_mesh_cutoff_ry`). They are the *electronic contract*, not NEGF
+> parameters — invisible today because they are hidden, but a form-B citation
+> renders them under a heading that misdescribes them. They belong in a
+> section of their own.
+
+#### 3.3.3 TranSIESTA — the NEGF SCF (device stage)
+
+The manual: a `%block TS.Elec.<name>` **must** carry `HS`,
+`semi-inf-dir`, `electrode-pos` and `chem-pot`; the rest is optional.
+
+| keyword | manual default | molbuilder |
+|---|---|---|
+| `SolutionMethod transiesta` | — | ✅ emitted (**not** `TS.SolutionMethod`, which 5.4.2 rejects) |
+| `%block TS.Elecs` · `TS.Elec.<name>` | — | ✅ with `HS` · `chem-pot` · `used-atoms` · `bloch` · `semi-inf-direction` |
+| `electrode-pos` \| `elec-pos` | *(required, no default)* | ⚠️ **omitted unless buffer atoms are declared** — see 3.3.6 |
+| `%block TS.ChemPots` · `TS.ChemPot.<name>` | — | ✅ |
+| `TS.Voltage` | `0 eV` | ✅ from the bias |
+| `TS.Atoms.Buffer` | *(none)* | ✅ when declared |
+| `TS.HS.Save` | **`true`** | ✅ set explicitly in the electrode deck (belt-and-braces; `-electrode` on the command line is the manual's one-flag equivalent) |
+| `TS.Elecs.Bulk` | `true` | ❌ not emitted — the default is what you want |
+| `TS.Elecs.Eta` | `1 meV` | ❌ |
+| `TS.Contours.Eq.Pole` | `1.5 eV` | ❌ — **what the three dead contour fields were reaching for** |
+| `TS.Contours.nEq.Eta` | `min[η_e]/10` | ❌ |
+| `TS.Contours.nEq.Fermi.Cutoff` | `5 k_B T` | ❌ |
+| `TS.ElectronicTemperature` | `⟨ElectronicTemperature⟩` | ✅ via the contract |
+| `TS.Forces` | `true` | ❌ — relevant only for relaxation under bias |
+| `TS.Hartree.Fix` | `[-+][ABC]` | ❌ — the manual calls fixing the boundary *"an intricate and important"* matter |
+
+#### 3.3.4 TBtrans — the transmission (transmission stage)
+
+| keyword | manual default | molbuilder |
+|---|---|---|
+| `TBT.Contours` + `%block TBT.Contour.<name>` | `from -2. eV to 2. eV`, `delta 0.01 eV`, `mid-rule` | ✅ **since 2026-09-15** — `part line`, `from…to`, `points`, `method` |
+| `TBT.HS` | `⟨SystemLabel⟩.TSHS` | ✅ pointed at the 5.x `.TS.HSX` |
+| **`TBT.k`** | **inherits `kgrid_Monkhorst_Pack`** | ❌ **the most important gap** — see below |
+| `TBT.Elecs.Eta` | `1 meV` | ❌ |
+| `TBT.Contours.Eta` | `min(η_e)/10` | ❌ |
+| `TBT.ChemPot.<>.ElectronicTemperature` | `⟨TS.ElectronicTemperature⟩` | ❌ |
+| `TBT.DOS.Gf` · `TBT.DOS.A` · `TBT.DOS.Elecs` | all `false` | ❌ — **no DOS is written at all** |
+| `TBT.T.Eig` | `0` | ❌ — no transmission eigenchannels |
+| `TBT.T.All` · `TBT.T.Out` · `TBT.T.Bulk` | all `false` | ❌ |
+| `TBT.Spin` | all spins | ❌ — no spin-polarised transport path |
+
+**Why `TBT.k` is the one that matters.** It *inherits the SCF's* grid. A
+transverse grid converged for a total energy is routinely far too coarse for
+`T(E)`: transmission is an integral over the transverse Brillouin zone and its
+features sharpen with k-density, so the standard convergence study is
+*T(E_F) against transverse k with everything else fixed*. molbuilder cannot
+express it today, which means that study cannot be run from this tab at all.
+
+**And the outputs default to `false`.** Today a run produces transmission and
+nothing else — so **W10**'s transmission inspector has no DOS or eigenchannel
+data to read even in principle, and the missing flags are why.
+
+#### 3.3.5 Why the dead keywords were invisible for so long
+
+The four `TS.TBT.*` scalars retired on 2026-09-15 could not be read by this
+tbtrans (§ 5o). They nevertheless produced the **right answer by default**:
+
+| | window | spacing | points |
+|---|---|---|---|
+| molbuilder's defaults | −2 → +2 eV | 0.01 eV | 401 |
+| **tbtrans's own default contour** | −2 → +2 eV | 0.01 eV | 401 |
+
+**The same grid, to the point.** So a run that touched nothing got exactly
+what the form promised, and the defect bit only somebody who *changed* a
+value — which is why a live walk passed, why nothing ever looked wrong, and
+why three tests could pin the dead keywords without anyone noticing. Latent,
+not active; and the reason it stayed latent is coincidence, not design.
+
+It also settles § 5o's open question: the manual states the contour's energy
+reference is **the equilibrium Fermi level by default**, which is what
+`transport/record.py` observed live and mis-attributed to a keyword. The
+retired `relative_to_ef` switch was **never needed**, not merely mis-spelled.
+
+#### 3.3.6 The one conformance defect found by this pass
+
+**`elec-pos` is omitted unless buffer atoms are declared.** The manual lists
+it among the four lines a `TS.Elec.<name>` block must carry; the emitter
+writes it inside `if buffer_idx:`, so an ordinary junction — no buffer atoms —
+gets two electrode blocks without it. Measured 2026-09-15 by rendering both
+cases.
+
+It has probably been harmless: molbuilder sorts the junction so the electrodes
+are the first and last atoms, which is where an omitted position would
+default to anyway. But that is **undocumented reliance on a default the manual
+does not state**, it breaks the moment a junction is not sorted that way or a
+third electrode appears, and the emitter already knows the indices. The fix is
+to emit it unconditionally.
+
+*(The `begin` spelling molbuilder uses is fine: the binary accepts
+`elec-pos` / `start` / `begin` / `end`, which is more permissive than the
+manual documents.)*
+
 ## 4. Region labels drive everything
 
 The three runs are all derived from **per-atom region labels** on the input

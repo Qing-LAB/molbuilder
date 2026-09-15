@@ -535,16 +535,32 @@ def _emit_transiesta_block(struct: Structure,
                      f"{electrode_hs_stem(cfg.job_name, label)}.TSHS")
         lines.append(f"  chem-pot           {cp}")
         lines.append(f"  used-atoms         {len(idxs)}")
-        if buffer_idx:
-            if i == 0:
-                # 1-based index of the electrode's first atom.
-                lines.append(f"  elec-pos begin     {min(idxs) + 1}")
-            else:
-                # Counted from the end: -1 is the last atom, so the
-                # electrode's last atom (0-based ``max``) sits at
-                # -(n_total - max).
-                lines.append(f"  elec-pos end       "
-                             f"{-(n_total - max(idxs))}")
+        # ALWAYS, because the manual lists it among the four lines a
+        # `%block TS.Elec.<name>` MUST carry -- HS, semi-inf-dir,
+        # electrode-pos, chem-pot (SIESTA 5.4.0 manual;
+        # `engines/transport.md` § 3.3.6).
+        #
+        # This sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
+        # junction -- no buffer atoms -- got two electrode blocks without
+        # it.  Probably harmless, and that is the problem: molbuilder sorts
+        # the junction so the electrodes ARE the first and last atoms, which
+        # is where an omitted position would land anyway, so the deck relied
+        # on an undocumented default agreeing with the truth.  It stops
+        # agreeing the moment a junction is not sorted that way or a third
+        # electrode appears -- and the indices are right here.
+        #
+        # `begin` / `end` are the binary's own tokens (it accepts
+        # elec-pos | start | begin | end), which is more permissive than the
+        # manual documents.
+        if i == 0:
+            # 1-based index of the electrode's first atom.
+            lines.append(f"  elec-pos begin     {min(idxs) + 1}")
+        else:
+            # Counted from the end: -1 is the last atom, so the
+            # electrode's last atom (0-based ``max``) sits at
+            # -(n_total - max).
+            lines.append(f"  elec-pos end       "
+                         f"{-(n_total - max(idxs))}")
         lines.append("  bloch              1 1 1")
         lines.append(f"  semi-inf-direction {sid}")
         lines.append(f"%endblock TS.Elec.{block_name}")

@@ -158,3 +158,80 @@ def _junction_and_config():
                  REGION_RIGHT_ELECTRODE: [4, 5]},
     )
     return struct, TransportConfig(job_name="kwcheck")
+
+
+#: The four lines the SIESTA 5.4.0 manual says a `%block TS.Elec.<name>`
+#: MUST carry: "There are a few lines that must be present, HS,
+#: semi-inf-dir, electrode-pos, chem-pot.  The remaining options are
+#: optional."
+_REQUIRED_ELECTRODE_LINES = ("HS", "semi-inf", "elec-pos", "chem-pot")
+
+
+@pytest.mark.parametrize("with_buffer", [False, True])
+def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
+    """SCIENCE. An electrode block missing a required line is not a deck.
+
+    `elec-pos` sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
+    junction -- no buffer atoms -- got two electrode blocks without it
+    (`engines/transport.md` § 3.3.6). It was probably harmless, and that is
+    exactly why it needs a test rather than a reading: molbuilder sorts the
+    junction so the electrodes ARE the first and last atoms, which is where
+    an omitted position would land anyway, so the deck relied on an
+    undocumented default agreeing with the truth. Both cases are
+    parametrised because only one of them was broken.
+
+    Needs no binary, so it does not skip.
+    """
+    import re
+
+    import numpy as np
+
+    from molbuilder.config.transport import (REGION_BRIDGE,
+                                             REGION_LEFT_ELECTRODE,
+                                             REGION_RIGHT_ELECTRODE,
+                                             TransportConfig)
+    from molbuilder.structure import Structure
+    from molbuilder.transport import get_engine
+
+    if with_buffer:
+        n, regions = 7, {"buffer": [0], REGION_LEFT_ELECTRODE: [1, 2],
+                         REGION_BRIDGE: [3, 4], REGION_RIGHT_ELECTRODE: [5, 6]}
+    else:
+        n, regions = 6, {REGION_LEFT_ELECTRODE: [0, 1], REGION_BRIDGE: [2, 3],
+                         REGION_RIGHT_ELECTRODE: [4, 5]}
+    struct = Structure(
+        elements=["Au"] * n,
+        positions=np.array([[0, 0, 2.0 * i] for i in range(n)], dtype=float),
+        regions=regions)
+    rendered = get_engine("transiesta").render_script(
+        struct, TransportConfig(job_name="J"))
+    deck = ("\n".join(rendered) if isinstance(rendered, (list, tuple))
+            else str(rendered))
+
+    blocks = re.findall(r"%block TS\.Elec\.(\w+)(.*?)%endblock", deck, re.S)
+    assert len(blocks) == 2, f"expected two electrode blocks, got {len(blocks)}"
+    for name, body in blocks:
+        missing = [k for k in _REQUIRED_ELECTRODE_LINES if k not in body]
+        assert not missing, (
+            f"%block TS.Elec.{name} omits {missing}, which the SIESTA 5.4.0 "
+            f"manual lists as lines that MUST be present "
+            f"(`engines/transport.md` § 3.3):\n{body}")
+
+    # AND THE RIGHT ONE, NOT MERELY ONE.  Checking only that `elec-pos` is
+    # PRESENT was too weak, and the first mutation test proved it: moving the
+    # left electrode's line back inside the buffer branch made the `else`
+    # fire, so L got `elec-pos end` -- a WRONG position that a
+    # presence-check cannot see, and the guard stayed green (caught
+    # 2026-09-15 while mutation-testing this very test).
+    #
+    # The pairing is the fact worth pinning: the z-min electrode is anchored
+    # by its FIRST atom (`begin`) and the z-max one by its LAST (`end`,
+    # counted back from the end of the sorted structure).
+    left, right = dict(blocks)["L"], dict(blocks)["R"]
+    assert "elec-pos begin" in left, (
+        f"the z-min electrode must be anchored by its first atom:\n{left}")
+    assert "elec-pos end" in right, (
+        f"the z-max electrode must be anchored by its last atom:\n{right}")
+    assert "elec-pos end" not in left and "elec-pos begin" not in right, (
+        "the two electrodes' anchors are swapped -- L is anchored from the "
+        f"end or R from the beginning:\nL:{left}\nR:{right}")

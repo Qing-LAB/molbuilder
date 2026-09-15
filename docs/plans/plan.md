@@ -1708,6 +1708,77 @@ the only finding here that prevents the next one.
 5. The engine_key-versus-binary test, and the missing controls above added
    panel by panel with the test green at each step.
 
+### 5o.6 The manual pass — the parameter inventory, and what it changed
+
+*(User: "do thorough scientific investigation including transiesta's own
+manual … a full list of parameter and settings … identify sources of data
+user need to provide. check our framework and see where things are missing.")*
+
+**Source.** The SIESTA **5.4.0** manual — the release note for the 5.4.2 this
+project installs — pulled from the project's own GitLab and extracted
+locally, plus the TBtrans reference page, cross-checked against the binaries'
+compiled fdf labels. The inventory lives in `engines/transport.md` § 3.3,
+where a person adding a field will look; this section records what the pass
+CHANGED and what it leaves open.
+
+**It answered § 5o's open question.** The manual states a TBtrans contour's
+energy reference is **the equilibrium Fermi level by default**. So
+`transport/record.py`'s live observation was right and only its attribution
+was wrong: the retired `relative_to_ef` switch was **never needed**, not
+mis-spelled. Closed.
+
+**It explained the whole history.** tbtrans's own default contour is
+`from -2. eV to 2. eV, delta 0.01 eV, mid-rule` — 401 points. molbuilder's
+defaults are −2 eV, +2 eV, 401 points: **the same grid to the point.** The
+four dead keywords therefore produced exactly the intended result for anyone
+who changed nothing, and bit only somebody who changed a value. Latent, not
+active — and latent by coincidence, not design. That is why a live walk
+passed and why three tests could pin them unnoticed.
+
+**One conformance defect, fixed here.** The manual: a `%block TS.Elec.<name>`
+must carry `HS`, `semi-inf-dir`, `electrode-pos`, `chem-pot`. `elec-pos` sat
+inside `if buffer_idx:`, so an ORDINARY junction got two electrode blocks
+without it. Probably harmless — the junction is sorted so the electrodes are
+the first and last atoms, which is where an omitted anchor would land — which
+is precisely the problem: an undocumented default agreeing with the truth. Now
+emitted unconditionally, with a test.
+
+> **And mutation-testing that test caught a weak test of mine.** Checking
+> that `elec-pos` is PRESENT passed the regression, because putting the line
+> back inside the buffer branch made the `else` fire and gave the LEFT
+> electrode `elec-pos end` — a wrong anchor a presence-check cannot see. The
+> test now pins the PAIRING (z-min anchored by its first atom, z-max by its
+> last) and catches all three mutations: the line moved, the line deleted,
+> the anchors swapped.
+
+#### What is missing, in the order it should be built
+
+Each verified present in the installed binary, with the manual's default.
+**The framework for all of them is § 3.2's per-engine panel** — these are
+TranSIESTA's panel, and none of them belongs in a shared dataclass.
+
+| # | what | why it is next |
+|---|---|---|
+| **1** | **`TBT.k` — the transverse grid for T(E)** | It *inherits the SCF's*, and an SCF grid is routinely far too coarse for transmission. The standard convergence study is **T(E_F) against transverse k** — and it cannot be run from this tab at all. The single largest scientific gap |
+| **2** | the `TBT.DOS.*` / `TBT.T.Eig` / `TBT.T.All` output flags (all default `false`) | a run writes transmission and nothing else, so **W10**'s inspector has no DOS or eigenchannel data to read *even in principle* |
+| **3** | `TBT.Elecs.Eta` (1 meV) · `TBT.Contours.Eta` (min η_e/10) | broadening sets the T(E) lineshape: too large smears resonances, too small makes them noise |
+| **4** | the real `TS.Contours.*` — `Eq.Pole` (1.5 eV), `nEq.Eta`, `nEq.Fermi.Cutoff` (5 k_B T) | what the three dead `TS.ComplexContour.*` fields were reaching for. **Retire or rewire those three in the same commit**, and `contour_n_circle` leaves the Methods paragraph with them |
+| **5** | `TBT.ChemPot.<>.ElectronicTemperature` | tbtrans's own, inheriting `TS.ElectronicTemperature`; it is what enters the I–V Fermi functions |
+| **6** | `TS.Elecs.Bulk` (true) · `bloch` (hardcoded `1 1 1`) · `TS.Hartree.Fix` | lead treatment and the boundary condition the manual calls *"an intricate and important"* matter |
+| **7** | `TBT.Spin` | no spin-polarised transport path, while the junction chemistry check already detects open-shell metals |
+| **8** | re-section the five contract fields out of **NEGF** | `basis_size`, `energy_shift_ry`, `xc_functional`, `xc_authors`, `siesta_mesh_cutoff_ry` declare `section: "NEGF"` and are the *electronic contract*. Hidden today, but a form-B citation renders them under a heading that misdescribes them |
+| **9** | `log_level` → a real keyword or gone | it claims `WriteVerbosity`, which is **zero** in `siesta` |
+
+**Two things the pass did NOT settle**, recorded rather than guessed:
+
+* **What TranSIESTA does when a required electrode line is absent** — error,
+  or silent default. It could not be determined without a live run, and the
+  fix made the question moot rather than answering it.
+* **Whether the live carbon-chain walk § 8 cites ever exercised a
+  non-default window.** No artifact survives in `projects/`. Given the
+  default coincidence above, a default-valued walk would have looked correct
+  either way.
+
 ## 6. Closed by consolidation — archived
 
 *The provenance map of the nine archived plan documents and where each one's open items went. Several of the rows it points at have since been killed as untrue, so it is history: archived 2026-09-10.*
