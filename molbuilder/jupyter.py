@@ -207,17 +207,15 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
 def _unverified_ctx():
     """The TLS context for talking to OUR OWN notebook.
 
-    Verification is off on purpose and the reason is one sentence:
-    molbuilder handed Jupyter that certificate, and the question being asked
-    is *"is it answering"*, not *"is it trusted"*.  One home, because this is
-    a security knob and it was built twice in this file -- once in
-    `answering`, once in `open_notebooks` -- with nothing binding the copies.
+    **`serve_daemon`'s**, the way `pid_state` below is.  It is a security
+    knob, and it had been built by hand three times -- twice here, once in
+    `cli.py`'s `serve status`.  Collapsing the two in this file on
+    2026-09-14 left a docstring claiming one home while a third copy stood
+    in another module, which is the same defect one step quieter
+    (`plan.md` § 5n, J8).
     """
-    import ssl
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+    from .serve_daemon import unverified_ctx
+    return unverified_ctx()
 
 
 def answering(serve_port: int, *, timeout: float = 1.5) -> bool:

@@ -2021,12 +2021,37 @@ def serve_group():
     """
 
 
+#: The port every `serve` and `jupyter` verb defaults to.  One home, because
+#: it is the ADDRESS those verbs act at: a default that differs between two
+#: of them sends a stop to a server that is not the one just started.
+_DEFAULT_SERVE_PORT = 8000
+
+
+def _serve_port_flag(f):
+    """``--port`` for a verb that ACTS ON a running molbuilder.
+
+    `_serve_flags` below already existed for the same reason -- *"one
+    decorator, so the two verbs cannot drift apart"* -- and seven other verbs
+    hand-wrote this option anyway, three hundred lines down (`plan.md` § 5n,
+    J9).  **They had already drifted**: two carried help text that disagreed
+    (*"the SERVE port -- the notebook's own is that plus one"* against *"the
+    SERVE port this notebook belongs to"*) and three carried none at all, so
+    `molbuilder jupyter status --help` explained nothing while its sibling
+    did.
+    """
+    return click.option(
+        "--port", type=int, default=_DEFAULT_SERVE_PORT, show_default=True,
+        help="the port molbuilder serves on -- the address this verb acts "
+             "at.")(f)
+
+
 def _serve_flags(f):
     """The flags ``foreground`` and ``start`` share -- one decorator, so
     the two verbs cannot drift apart about what a server accepts."""
     for opt in reversed([
         click.option("--host",  default="127.0.0.1", show_default=True),
-        click.option("--port",  type=int, default=8000, show_default=True),
+        click.option("--port",  type=int, default=_DEFAULT_SERVE_PORT,
+                     show_default=True),
         click.option("--cert", type=click.Path(exists=True, dir_okay=False),
                      help="TLS cert (PEM).  Overrides molbuilder.json."),
         click.option("--key",  type=click.Path(exists=True, dir_okay=False),
@@ -2372,8 +2397,7 @@ def _jupyter_signal(port: int, sig: int, verb: str) -> None:
 
 
 @jupyter_group.command("start", short_help="start the notebook server")
-@click.option("--port", type=int, default=8000, show_default=True,
-              help="the SERVE port -- the notebook's own is that plus one.")
+@_serve_port_flag
 def cmd_jupyter_start(port):
     """Ask the supervisor to start the notebook server (idempotent)."""
     import signal as _signal
@@ -2382,8 +2406,7 @@ def cmd_jupyter_start(port):
 
 
 @jupyter_group.command("stop", short_help="stop the notebook server; its kernels go with it")
-@click.option("--port", type=int, default=8000, show_default=True,
-              help="the SERVE port this notebook belongs to.")
+@_serve_port_flag
 def cmd_jupyter_stop(port):
     """Stop the notebook server AND its kernels.
 
@@ -2396,7 +2419,7 @@ def cmd_jupyter_stop(port):
 
 
 @jupyter_group.command("restart", short_help="stop it, then start it again")
-@click.option("--port", type=int, default=8000, show_default=True)
+@_serve_port_flag
 def cmd_jupyter_restart(port):
     """Stop and start.  **Every kernel dies** -- a notebook's variables are in
     the kernel, so this is not the harmless verb `serve restart` is.
@@ -2445,7 +2468,7 @@ def cmd_jupyter_restart(port):
 
 @jupyter_group.command("status",
                        short_help="is it up, is it ANSWERING, where")
-@click.option("--port", type=int, default=8000, show_default=True)
+@_serve_port_flag
 def cmd_jupyter_status(port):
     """Two questions, answered separately -- `deployment.md` § 1.0b's rule:
     the failure worth catching is a process that is up and not answering."""
@@ -2493,7 +2516,7 @@ def cmd_jupyter_shepherd(serve_port, host, cert, key):
 
 
 @serve_group.command("status", short_help="is it up, is it ANSWERING, where")
-@click.option("--port", type=int, default=8000, show_default=True)
+@_serve_port_flag
 def cmd_serve_status(port):
     """Two questions, answered separately (`deployment.md` 1.0b): the
     2026-08-28 wedge was a server that was UP and not ANSWERING, and a
@@ -2518,13 +2541,13 @@ def cmd_serve_status(port):
     # the second question: does it ANSWER.  Loopback, either scheme; a
     # cert made for the public name fails verification on 127.0.0.1, and
     # this asks about liveness, not identity -- so verification is off
-    # for exactly this request.
-    import ssl
+    # for exactly this request.  `serve_daemon` owns that knob (one home,
+    # three hand-built copies until 2026-09-15).
     import urllib.error
     import urllib.request
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+
+    from .serve_daemon import unverified_ctx
+    ctx = unverified_ctx()
     for scheme in ("https", "http"):
         try:
             with urllib.request.urlopen(
@@ -2566,7 +2589,7 @@ def cmd_serve_status(port):
 
 
 @serve_group.command("restart", short_help="recycle the server in place")
-@click.option("--port", type=int, default=8000, show_default=True)
+@_serve_port_flag
 def cmd_serve_restart(port):
     """Signal the supervisor to recycle the child -- the Reload button's
     effect, workable from a script, and workable when the child is HUNG
@@ -2579,7 +2602,7 @@ def cmd_serve_restart(port):
 
 
 @serve_group.command("stop", short_help="bring the background server down")
-@click.option("--port", type=int, default=8000, show_default=True)
+@_serve_port_flag
 def cmd_serve_stop(port):
     import signal as _signal
     from .serve_daemon import signal_supervisor

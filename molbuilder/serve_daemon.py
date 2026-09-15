@@ -177,6 +177,29 @@ def read_pid(port: int) -> Optional[int]:
         return None
 
 
+def unverified_ctx():
+    """The TLS context for asking a server WE STARTED whether it answers.
+
+    Verification is off on purpose and the reason is one sentence:
+    molbuilder handed that process the certificate, and the question being
+    asked is *"is it answering"*, not *"is it trusted"*.  A cert made for the
+    public name fails verification on `127.0.0.1` anyway, which is where
+    every one of these probes goes.
+
+    **ONE HOME, because it is a security knob.**  It was built by hand three
+    times: twice in `jupyter.py` (collapsed there on 2026-09-14, with a
+    docstring claiming one home) and once more in `cli.py`'s `serve status`,
+    which that collapse did not reach (`plan.md` § 5n, J8).  Here because
+    this module is the supervisor's own floor -- stdlib only, imported by
+    both callers already, and the serve side is not the notebook's to own.
+    """
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def pid_state(pid: Optional[int], *, marker: bytes = b"serve") -> str:
     """``"ours"`` | ``"foreign"`` | ``"dead"`` — what the pid actually is.
 
