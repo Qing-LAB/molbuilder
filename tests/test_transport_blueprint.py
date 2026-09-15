@@ -71,14 +71,25 @@ class TestTransportSchemaEndpoint:
         BY NAME must not be offered as an input (found rendered
         2026-08-29 — ten sealed fields as editable inputs, the bias
         asked twice).  The filter empties System and Electrodes whole,
-        so the served sections are the three that carry transport-only
-        knobs, still in ``_form_section_order`` order."""
+        so the served sections are the ones that carry transport-only
+        knobs, still in ``_form_section_order`` order.
+
+        **The list grew on 2026-09-15** and the order is now a scientific
+        one (`engines/transport.md` § 3.3): what is computed, how sharply,
+        what is written, then the machinery.  "NEGF" is gone as a heading --
+        it had collected both the density contour AND the five electronic-
+        contract fields, which are not NEGF parameters at all."""
         from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
         body = web.get("/api/transport/schema").get_json()
         sections = body["schema"]["sections"]
         assert [s["name"] for s in sections] == [
-            "Transmission", "NEGF", "Runtime",
-        ]
+            "Transmission", "Transmission k-sampling", "Broadening",
+            "Outputs", "NEGF density contour", "Leads", "Runtime",
+        ], (
+            "the override lane's sections, in the order a person decides "
+            "in.  System and Electrodes are emptied by the seal filter, "
+            "and 'Electronic contract' only appears for a form-B citation "
+            "(?contract=open), which has no deck to be truth")
         offered = {f["name"] for s in sections for f in s["fields"]}
         leaked = offered & SEALED_TRANSPORT_FIELDS
         assert not leaked, (

@@ -123,16 +123,61 @@ def is_electrode_label(label: str) -> bool:
 
 @dataclass
 class TransportConfig:
-    # Form-section render order.  The shared pattern.
+    # Form-section render order -- and it is a SCIENTIFIC order, not a
+    # historical one (2026-09-15, `engines/transport.md` § 3.3).  It was
+    # System / Electrodes / Transmission / NEGF / Runtime, with the
+    # electronic contract sitting inside "NEGF" where it never belonged and
+    # nothing at all for the transverse k-grid, the broadening or the
+    # outputs.  The order below is the order a person decides in: what is
+    # computed (the window, its k-sampling), how sharply (broadening), what
+    # is written (outputs), then the machinery (the density contour, the
+    # leads), then what the citation already fixed, then the shell.
     _form_section_order = (
         "System",
         "Electrodes",
         "Transmission",
-        "NEGF",
+        "Transmission k-sampling",
+        "Broadening",
+        "Outputs",
+        "NEGF density contour",
+        "Leads",
+        "Electronic contract",
         "Runtime",
     )
 
     _form_section_descriptions = {
+        "Transmission k-sampling": (
+            "How densely the transverse Brillouin zone is sampled when "
+            "T(E) is evaluated.  tbtrans INHERITS the SCF's grid unless "
+            "told otherwise, and a grid converged for a total energy is "
+            "routinely far too coarse for transmission -- so the standard "
+            "convergence study is T(E_F) against this grid with "
+            "everything else fixed."),
+        "Broadening": (
+            "The imaginary parts that set the T(E) lineshape.  Too large "
+            "smears resonances into a featureless curve; too small turns "
+            "them into numerical noise."),
+        "Outputs": (
+            "Which quantities tbtrans writes besides the transmission.  "
+            "Every one defaults to OFF in the engine, so a run produces "
+            "T(E) and nothing else unless asked -- there is no DOS or "
+            "eigenchannel data on disk to plot later."),
+        "NEGF density contour": (
+            "The complex-contour integration that builds the "
+            "non-equilibrium density matrix.  Production defaults are "
+            "the SIESTA manual's; touch these when the density shows "
+            "artefacts near the chemical potential or the SCF will not "
+            "converge under bias."),
+        "Leads": (
+            "How the semi-infinite electrodes are treated: whether their "
+            "own bulk Hamiltonian is used in the lead region, and how "
+            "the electrode cell tiles the device's cross-section."),
+        "Electronic contract": (
+            "Basis, exchange-correlation and mesh.  These are the "
+            "CITATION's to say -- electrode and device must share them "
+            "or the lead self-energy cannot attach seamlessly -- so they "
+            "are sealed unless the citation carries no deck.  They sat "
+            "under \"NEGF\" until 2026-09-15, which misdescribed them."),
         "System": (
             "Engine selection and job-name identity.  TranSIESTA "
             "handles larger device regions with pseudopotentials; "
@@ -319,91 +364,241 @@ class TransportConfig:
 
     # ----------------- NEGF -----------------
 
-    contour_n_circle: int = field(default=32, metadata={
-        "section": "NEGF",
-        "workflow_group": "stage",
-        "label":   "Contour points (imaginary axis)",
-        "range":   (8, 128),
+    # ================= Transmission k-sampling =================
+
+    tbt_k_grid: Tuple[int, int, int] = field(
+        default=(0, 0, 0), metadata={
+            "section": "Transmission k-sampling",
+            "workflow_group": "stage",
+            "label":   "Transverse k-grid for T(E)  (0 0 0 = inherit the SCF's)",
+            "engine_key": 'TBT.k  (tbtrans)',
+            "help":    "THE CONVERGENCE KNOB THIS TAB COULD NOT EXPRESS "
+                       "until 2026-09-15.  tbtrans inherits the SCF's "
+                       "kgrid_Monkhorst_Pack, and a grid converged for a "
+                       "total ENERGY is routinely far too coarse for "
+                       "transmission: T(E) is an integral over the "
+                       "transverse Brillouin zone and its features sharpen "
+                       "with k-density.  The standard study is T(E_F) "
+                       "against this grid with everything else fixed -- so "
+                       "it is usually DENSER than the SCF's, and the "
+                       "transport direction stays 1.  0 0 0 inherits, "
+                       "which is the old behaviour and rarely the right "
+                       "answer.",
+        })
+    tbt_spin: int = field(default=0, metadata={
+        "section": "Transmission k-sampling",
+        "workflow_group": "profile",
+        "label":   "Spin channel (0 = both)",
+        "range":   (0, 2),
         "tier":    "advanced",
-        "engine_key": 'TS.ComplexContour.NumCircle  (transiesta)',
-        "help":    "number of Gauss-Legendre nodes on the imaginary-"
-                   "axis semicircle that integrates the NEGF density "
-                   "matrix below E_F.  Standard prescription "
-                   "(Brandbyge et al. 2002 §IV) recommends 32-64 "
-                   "for converged densities on typical junctions; "
-                   "raise if you see DOS artefacts near the chemical "
-                   "potential.",
+        "engine_key": 'TBT.Spin  (tbtrans)',
+        "help":    "1 selects spin-up and 2 spin-down; 0 (the engine's "
+                   "default) does both.  Only meaningful for a "
+                   "spin-polarised device run, which the chemistry "
+                   "analysis flags when it finds an open-shell metal.",
     })
-    contour_n_real: int = field(default=8, metadata={
-        "section": "NEGF",
+
+    # ================= Broadening =================
+
+    tbt_elecs_eta_ev: float = field(default=0.001, metadata={
+        "section": "Broadening",
         "workflow_group": "stage",
-        "label":   "Contour points (real axis)",
-        "range":   (4, 64),
-        "tier":    "advanced",
-        "engine_key": 'TS.ComplexContour.NumLine  (transiesta)',
-        "help":    "number of energy points on the real-axis bias-"
-                   "window segment of the NEGF contour.  Only "
-                   "relevant at non-zero bias; at V = 0 this segment "
-                   "vanishes and the count is ignored.  Empirically "
-                   "stable at 8 for bias windows ≤ 1 V; scale "
-                   "proportionally for larger biases (Stokbro 2003 "
-                   "Table I uses 10-12 for 1-2 V).",
-    })
-    contour_e_bottom_ev: float = field(default=-40.0, metadata={
-        "section": "NEGF",
-        "workflow_group": "stage",
-        "label":   "Contour bottom",
+        "label":   "Electrode self-energy broadening",
         "unit":    "eV",
-        "range":   (-100.0, -10.0),
+        "range":   (0.0, 1.0),
         "tier":    "advanced",
-        "engine_key": 'TS.ComplexContour.Emin  (transiesta)',
-        # Help-text rewrite 2026-06-10 post-review: the prior
-        # "Au 5d ~-7 eV is well above this" was confusing because
-        # -7 is numerically greater than -40 but in transport
-        # context users expect "shallow vs deep" framing.  Restated
-        # in terms of binding depth below E_F.
-        "help":    "deepest energy on the NEGF complex contour, "
-                   "relative to E_F (E_F = 0).  Must be BELOW the "
-                   "lowest occupied state in the device region.  "
-                   "Default -40 eV is safe for first-row + Au / "
-                   "second-row leads (Au 5d binds at ~7 eV below "
-                   "E_F; -40 eV gives ~33 eV margin).  Lower to "
-                   "-50 / -60 eV for heavy-element electrodes "
-                   "(Pt 5p, Pd 4p go ~20-25 eV below E_F).  "
-                   "Brandbyge et al. 2002 § IV.",
+        "engine_key": 'TBT.Elecs.Eta  (tbtrans)',
+        "help":    "the imaginary part in the lead surface Green "
+                   "function.  The manual's default is 1 meV.  It sets "
+                   "the T(E) LINESHAPE: too large smears resonances "
+                   "into a featureless curve, too small turns them into "
+                   "numerical noise.",
+    })
+    tbt_contours_eta_ev: float = field(default=0.0, metadata={
+        "section": "Broadening",
+        "workflow_group": "stage",
+        "label":   "Device contour broadening (0 = engine default)",
+        "unit":    "eV",
+        "range":   (0.0, 1.0),
+        "tier":    "advanced",
+        "engine_key": 'TBT.Contours.Eta  (tbtrans)',
+        "help":    "broadening on tbtrans's own energy contour.  0 "
+                   "leaves the engine's default, min(eta_electrode)/10 "
+                   "-- a FORMULA that tracks the field above, so a "
+                   "number here decouples them.",
     })
 
-    # ----------------- Engine-specific (Method) -----------------
+    # ================= Outputs =================
+    #
+    # EVERY ONE OF THESE DEFAULTS TO FALSE IN TBTRANS, so a run writes
+    # transmission and nothing else -- which is why the Results-tab
+    # transmission inspector (plan.md W10) has no DOS or eigenchannel data
+    # to read even in principle.  Off is kept as the default here too: each
+    # costs disk and time, and asking for them is a decision.
 
-    # PySCF-NEGF method.  Ignored when engine='transiesta' (TranSIESTA
-    # picks the level of theory via its own pseudopotential + XC
-    # selection in the .fdf the engine emits).  These are exposed at
-    # tier='advanced' so the form de-emphasises them when the user
-    # has picked TranSIESTA.
+    tbt_dos_gf: bool = field(default=False, metadata={
+        "section": "Outputs",
+        "workflow_group": "stage",
+        "label":   "Green-function DOS",
+        "engine_key": 'TBT.DOS.Gf  (tbtrans)',
+        "help":    "writes the device DOS from the full Green function, "
+                   "bound states included (DOS / AVDOS files).",
+    })
+    tbt_dos_a: bool = field(default=False, metadata={
+        "section": "Outputs",
+        "workflow_group": "stage",
+        "label":   "Spectral DOS per electrode",
+        "engine_key": 'TBT.DOS.A  (tbtrans)',
+        "help":    "writes the spectral-function DOS, i.e. the DOS each "
+                   "lead injects (ADOS / AVADOS).  This is what a "
+                   "per-lead PDOS plot reads.",
+    })
+    tbt_dos_elecs: bool = field(default=False, metadata={
+        "section": "Outputs",
+        "workflow_group": "stage",
+        "label":   "Bulk electrode DOS",
+        "engine_key": 'TBT.DOS.Elecs  (tbtrans)',
+        "help":    "writes the pristine bulk lead DOS (BDOS / AVBDOS) -- "
+                   "the reference a transmission feature is judged "
+                   "against.",
+    })
+    tbt_t_eig: int = field(default=0, metadata={
+        "section": "Outputs",
+        "workflow_group": "stage",
+        "label":   "Transmission eigenchannels",
+        "range":   (0, 20),
+        "engine_key": 'TBT.T.Eig  (tbtrans)',
+        "help":    "how many transmission EIGENVALUES to write (TEIG / "
+                   "AVTEIG).  0 is the engine's default.  The "
+                   "eigenchannel decomposition is what says WHICH "
+                   "orbital carries the current, and it is the usual "
+                   "next question after T(E).",
+    })
+    tbt_t_bulk: bool = field(default=False, metadata={
+        "section": "Outputs",
+        "workflow_group": "stage",
+        "label":   "Bulk transmission",
+        "tier":    "advanced",
+        "engine_key": 'TBT.T.Bulk  (tbtrans)',
+        "help":    "writes each lead's own bulk transmission (BTRANS) -- "
+                   "the ballistic ceiling the junction is compared to.",
+    })
+    tbt_t_all: bool = field(default=False, metadata={
+        "section": "Outputs",
+        "workflow_group": "stage",
+        "label":   "All electrode pairs",
+        "tier":    "advanced",
+        "engine_key": 'TBT.T.All  (tbtrans)',
+        "help":    "writes every ordered electrode pair rather than "
+                   "assuming T_ij = T_ji.  For two terminals at "
+                   "equilibrium the assumption holds; under bias, or "
+                   "with three or more leads, it does not.",
+    })
 
-    pyscf_functional: str = field(default="B3LYP", metadata={
-        "section": "NEGF",
-        "workflow_group": "profile",
-        "label":   "PySCF: XC functional",
+    # ================= NEGF density contour =================
+    #
+    # THE THREE FIELDS THAT WERE HERE NAMED KEYWORDS THAT DO NOT EXIST.
+    # `TS.ComplexContour.NumCircle` / `NumLine` / `Emin` are SIESTA-3.x
+    # spellings; 5.4.2 keeps only the unused legacy `ComplexContour.NPoles`
+    # (`plan.md` § 5o).  They are NOT renamed to the modern keywords,
+    # because the modern ones are not the same quantities: `NumCircle` was a
+    # node COUNT, and `TS.Contours.Eq.Pole` is an ENERGY.  Retired, and the
+    # real controls added in their place.
+    #
+    # EMISSION POLICY for everything below, stated once: where the manual's
+    # default is a NUMBER it is this field's default and always emitted, so
+    # the deck is self-documenting and behaviour is unchanged.  Where the
+    # manual's default is a FORMULA (`min[eta_e]/10`, `5 kB T`) the field
+    # defaults to 0 meaning *leave it to the engine*, and nothing is emitted
+    # -- writing a number there would silently replace a formula.
+
+    negf_eq_pole_ev: float = field(default=1.5, metadata={
+        "section": "NEGF density contour",
+        "workflow_group": "stage",
+        "label":   "Equilibrium pole energy",
+        "unit":    "eV",
+        "range":   (0.1, 10.0),
         "tier":    "advanced",
-        "engine_key": 'mf.xc = ...  (pyscf-negf)',
-        "help":    "(engine=pyscf-negf only) XC functional name "
-                   "(libxc string).  Use the SAME functional as the "
-                   "geometry relaxation -- transmission is sensitive "
-                   "to E_F alignment, which depends on the SCF "
-                   "method.",
+        "engine_key": 'TS.Contours.Eq.Pole  (transiesta)',
+        "help":    "the energy at which the equilibrium contour's poles "
+                   "sit, which fixes how many Matsubara poles the "
+                   "residue sum carries.  The manual's default, 1.5 eV, "
+                   "is the production value; raising it costs poles and "
+                   "buys accuracy in the occupied density.",
     })
-    pyscf_basis: str = field(default="def2-SVP", metadata={
-        "section": "NEGF",
-        "workflow_group": "profile",
-        "label":   "PySCF: basis set",
+    negf_neq_eta_ev: float = field(default=0.0, metadata={
+        "section": "NEGF density contour",
+        "workflow_group": "stage",
+        "label":   "Non-equilibrium broadening (0 = engine default)",
+        "unit":    "eV",
+        "range":   (0.0, 1.0),
         "tier":    "advanced",
-        "engine_key": 'gto.M(basis=...)  (pyscf-negf)',
-        "help":    "(engine=pyscf-negf only) Gaussian basis set.  "
-                   "def2-SVP is the production minimum; def2-TZVP "
-                   "is recommended when transmission features are "
-                   "sensitive to lead-DOS detail.",
+        "engine_key": 'TS.Contours.nEq.Eta  (transiesta)',
+        "help":    "imaginary part on the non-equilibrium (real-axis) "
+                   "contour.  0 leaves the engine's own default, which "
+                   "is min[eta_electrode]/10 -- a FORMULA, so a number "
+                   "here replaces it rather than restating it.  Only "
+                   "relevant under bias.",
     })
+    negf_neq_fermi_cutoff_ev: float = field(default=0.0, metadata={
+        "section": "NEGF density contour",
+        "workflow_group": "stage",
+        "label":   "Non-equilibrium Fermi cutoff (0 = engine default)",
+        "unit":    "eV",
+        "range":   (0.0, 10.0),
+        "tier":    "advanced",
+        "engine_key": 'TS.Contours.nEq.Fermi.Cutoff  (transiesta)',
+        "help":    "how far beyond the bias window the non-equilibrium "
+                   "integration runs.  0 leaves the engine's default of "
+                   "5 kB T, which scales with the electronic "
+                   "temperature -- a number here fixes it instead.",
+    })
+
+    # ================= Leads =================
+
+    elecs_bulk: bool = field(default=True, metadata={
+        "section": "Leads",
+        "workflow_group": "stage",
+        "label":   "Use the electrode's own bulk Hamiltonian",
+        "tier":    "advanced",
+        "engine_key": 'TS.Elecs.Bulk  (transiesta)',
+        "help":    "on (the manual's default), the lead region uses the "
+                   "Hamiltonian from the ELECTRODE calculation; off, it "
+                   "uses the scattering region's own elements there.  On "
+                   "is right whenever the electrode really is bulk-like, "
+                   "which is what the region labels assert.",
+    })
+    electrode_bloch: Tuple[int, int, int] = field(
+        default=(1, 1, 1), metadata={
+            "section": "Leads",
+            "workflow_group": "stage",
+            "label":   "Bloch expansion of the electrode cell",
+            "tier":    "advanced",
+            "engine_key": 'bloch  (inside %block TS.Elec.<name>)',
+            "help":    "how many times the electrode's own unit cell is "
+                       "repeated to tile the device's cross-section.  "
+                       "1 1 1 means the electrode cell already matches; "
+                       "expanding a SMALLER electrode cell is the "
+                       "standard cost saving, and it must match the "
+                       "device geometry exactly or the lead will not "
+                       "attach.",
+        })
+
+    # THE TWO PySCF FIELDS LEFT HERE ON 2026-09-15.
+    #
+    # `TransportConfig` is **TranSIESTA's** (`engines/transport.md` § 3.2).
+    # `pyscf_functional` and `pyscf_basis` sat in the NEGF section, beside
+    # three `TS.ComplexContour.*` fields, for an engine `registered_engines()`
+    # does not list and `engine`'s own `choices` excludes -- so they were the
+    # only two fields in the form with an engine name in the LABEL, which is
+    # why the tab read as a PySCF page for a workflow that is TranSIESTA's
+    # entire subject (user, 2026-09-15).  Neither was sealed, so both
+    # travelled into `task.json` and merged into a config where `engine` is
+    # hardcoded `"transiesta"` and nothing read them.
+    #
+    # They come back with a `PyscfNegfTransportConfig` authored WITH that
+    # backend and the panel that renders it, in one commit -- not before.
+    # An engine's parameter set is not designable in the abstract.
 
     # TranSIESTA-specific method knobs.  Default values follow the
     # SIESTA Method-tab defaults in the Build workflow.
@@ -416,7 +611,7 @@ class TransportConfig:
     # attempt's own .fdf — the deck that actually ran is the truth
     # about a result — so the fields had to exist to be filled.
     basis_size: str = field(default="DZP", metadata={
-        "section": "NEGF",
+        "section": "Electronic contract",
         "workflow_group": "stage",
         "label":   "Basis size",
         "tier":    "advanced",
@@ -428,7 +623,7 @@ class TransportConfig:
                    "this is filled from the cited junction's own .fdf.",
     })
     energy_shift_ry: float = field(default=0.01, metadata={
-        "section": "NEGF",
+        "section": "Electronic contract",
         "workflow_group": "stage",
         "label":   "PAO energy shift",
         "unit":    "Ry",
@@ -441,7 +636,7 @@ class TransportConfig:
                    "cited junction's own .fdf.",
     })
     xc_functional: str = field(default="GGA", metadata={
-        "section": "NEGF",
+        "section": "Electronic contract",
         "workflow_group": "stage",
         "label":   "XC family",
         "tier":    "advanced",
@@ -453,7 +648,7 @@ class TransportConfig:
                    "junction's own .fdf.",
     })
     xc_authors: str = field(default="PBE", metadata={
-        "section": "NEGF",
+        "section": "Electronic contract",
         "workflow_group": "stage",
         "label":   "XC authors",
         "tier":    "advanced",
@@ -465,7 +660,7 @@ class TransportConfig:
     })
 
     siesta_mesh_cutoff_ry: int = field(default=300, metadata={
-        "section": "NEGF",
+        "section": "Electronic contract",
         "workflow_group": "stage",
         "label":   "TranSIESTA: mesh cutoff",
         "unit":    "Ry",
@@ -496,10 +691,10 @@ class TransportConfig:
         "label":   "Memory budget",
         "unit":    "MB",
         "range":   (1000, 256000),
-        "engine_key": '(runner) ulimit -v / (pyscf) mol.max_memory',
-        "help":    "soft memory ceiling for the engine.  PySCF "
-                   "respects this via its own max_memory parameter; "
-                   "SIESTA-MPI splits the budget across MPI ranks.",
+        "engine_key": '(runner) ulimit -v',
+        "help":    "soft memory ceiling for the engine.  The runner "
+                   "applies it as `ulimit -v`, and SIESTA-MPI splits "
+                   "the budget across MPI ranks.",
     })
     num_threads: int = field(default=4, metadata={
         "section": "Runtime",
@@ -518,8 +713,12 @@ class TransportConfig:
         "workflow_group": "profile",
         "label":   "Log verbosity",
         "choices": ("warning", "info", "debug"),
-        "engine_key": '(transiesta) WriteVerbosity / (pyscf) mol.verbose',
+        "engine_key": 'TBT.Verbosity  (tbtrans)',
         "help":    "engine log verbosity.  debug emits per-iteration "
                    "NEGF residuals + density-matrix norms; useful "
-                   "when investigating convergence problems.",
+                   "when investigating convergence problems.  Maps onto "
+                   "TBT.Verbosity, an integer 0-10 defaulting to 5 "
+                   "(TBtrans reference): warning=2, info=5, debug=8.  "
+                   "It claimed `WriteVerbosity` until 2026-09-15, which "
+                   "is zero occurrences in the 5.4.2 binary.",
     })

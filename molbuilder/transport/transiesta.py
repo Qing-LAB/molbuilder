@@ -95,6 +95,18 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
     return f"{job_name}_{label}"
 
 
+#: `log_level`'s three words as the integer `TBT.Verbosity` takes.
+#:
+#: **Sourced, not invented** (TBtrans reference, checked 2026-09-15):
+#: `TBT.Verbosity` is an integer in 0-10, default 5, "for smaller numbers
+#: less information will be printed".  The field claimed `WriteVerbosity`
+#: until then -- zero occurrences in the 5.4.2 binary -- and a mapping was
+#: NOT invented for it in the same pass that retired
+#: `transmission_relative_to_ef` precisely for want of a sourced one
+#: (`plan.md` § 5o).  `info` is the engine's own default.
+_TBT_VERBOSITY = {"warning": 2, "info": 5, "debug": 8}
+
+
 def _find_electrode_regions(
     struct: Structure,
 ) -> List[Tuple[str, str, List[int]]]:
@@ -561,7 +573,8 @@ def _emit_transiesta_block(struct: Structure,
             # -(n_total - max).
             lines.append(f"  elec-pos end       "
                          f"{-(n_total - max(idxs))}")
-        lines.append("  bloch              1 1 1")
+        bl = getattr(cfg, "electrode_bloch", (1, 1, 1))
+        lines.append(f"  bloch              {bl[0]} {bl[1]} {bl[2]}")
         lines.append(f"  semi-inf-direction {sid}")
         lines.append(f"%endblock TS.Elec.{block_name}")
         lines.append("")
@@ -664,6 +677,20 @@ def _emit_transiesta_block(struct: Structure,
         ".fdf per bias.",
         f"TS.Voltage             {bias:.4f} eV",
         "",
+        "# THE NEGF DENSITY CONTOUR, and the lead treatment.",
+        "# Defaults are the SIESTA 5.4.0 manual's; a 0 above means \"leave",
+        "# it to the engine\" for the two whose default is a FORMULA rather",
+        "# than a number, and nothing is emitted for those",
+        "# (`engines/transport.md` § 3.3).",
+        f"TS.Contours.Eq.Pole    {cfg.negf_eq_pole_ev:.4f} eV",
+        f"TS.Elecs.Bulk          "
+        f"{'true' if cfg.elecs_bulk else 'false'}",
+    ] + ([f"TS.Contours.nEq.Eta    {cfg.negf_neq_eta_ev:.6f} eV"]
+         if cfg.negf_neq_eta_ev > 0 else []) + (
+        [f"TS.Contours.nEq.Fermi.Cutoff  "
+         f"{cfg.negf_neq_fermi_cutoff_ev:.4f} eV"]
+        if cfg.negf_neq_fermi_cutoff_ev > 0 else []) + [
+        "",
         "# TBtrans transmission post-processing.",
         "# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) § IV.",
         "#",
@@ -696,6 +723,39 @@ def _emit_transiesta_block(struct: Structure,
         f"    points {cfg.transmission_n_points}",
         "     method mid-rule",
         "%endblock TBT.Contour.window",
+        "",
+        "# THE REST OF TBTRANS'S OWN SURFACE (`engines/transport.md` § 3.3).",
+        "#",
+        "# `TBT.k` IS THE ONE THAT MATTERS.  tbtrans inherits the SCF's",
+        "# kgrid_Monkhorst_Pack, and a grid converged for a total energy is",
+        "# routinely far too coarse for transmission -- T(E) is an integral",
+        "# over the transverse Brillouin zone.  0 0 0 in the form means",
+        "# inherit, which is the old behaviour, so nothing is written.",
+        "#",
+        "# Every output below defaults to false in tbtrans, so a run wrote",
+        "# transmission and NOTHING else until 2026-09-15 -- which is why",
+        "# the Results transmission inspector had no DOS or eigenchannel",
+        "# data to read even in principle.",
+    ] + ([f"TBT.k                  "
+          f"{cfg.tbt_k_grid[0]} {cfg.tbt_k_grid[1]} {cfg.tbt_k_grid[2]}"]
+         if any(cfg.tbt_k_grid) else []) + (
+        [f"TBT.Spin               {cfg.tbt_spin}"]
+        if cfg.tbt_spin else []) + [
+        f"TBT.Elecs.Eta          {cfg.tbt_elecs_eta_ev:.6f} eV",
+    ] + ([f"TBT.Contours.Eta       {cfg.tbt_contours_eta_ev:.6f} eV"]
+         if cfg.tbt_contours_eta_ev > 0 else []) + [
+        f"TBT.DOS.Gf             "
+        f"{'true' if cfg.tbt_dos_gf else 'false'}",
+        f"TBT.DOS.A              "
+        f"{'true' if cfg.tbt_dos_a else 'false'}",
+        f"TBT.DOS.Elecs          "
+        f"{'true' if cfg.tbt_dos_elecs else 'false'}",
+        f"TBT.T.Eig              {cfg.tbt_t_eig}",
+        f"TBT.T.Bulk             "
+        f"{'true' if cfg.tbt_t_bulk else 'false'}",
+        f"TBT.T.All              "
+        f"{'true' if cfg.tbt_t_all else 'false'}",
+        f"TBT.Verbosity          {_TBT_VERBOSITY.get(cfg.log_level, 5)}",
         "# WHERE the device Hamiltonian is: SIESTA 5.x TranSIESTA writes",
         "# the converged H as <SystemLabel>.TS.HSX (the sparse container",
         "# that replaced the 4.x device .TSHS), and tbtrans 5.x looks for",
@@ -1049,6 +1109,15 @@ class TransiestaEngine:
         alongside parse_output (the manuscript prose interpolates
         actual run parameters from ``results``, which doesn't exist
         yet for TranSIESTA).
+
+        **EVERY NUMBER HERE IS NOW ONE THE DECK CARRIES.**  This reported
+        `contour_n_circle` -- a field written into no deck, so the sentence
+        claimed a contour the calculation never received, which is the one
+        defect in this area with a PUBLICATION consequence
+        (`plan.md` § 5o).  The pole energy, the transmission window, its
+        point count and the broadening are all emitted keywords now, and
+        "relative to E_F" is the reference the TBtrans manual states for a
+        contour by default.
         """
         return (
             f"Transport calculations were performed with TranSIESTA "
@@ -1056,8 +1125,13 @@ class TransiestaEngine:
             f"using a DZP basis, the PBE functional, and a "
             f"{cfg.siesta_mesh_cutoff_ry} Ry real-space mesh cutoff.  "
             f"NEGF density integration used a complex contour with "
-            f"{cfg.contour_n_circle} imaginary-axis points "
+            f"poles at {cfg.negf_eq_pole_ev:g} eV "
             f"(Brandbyge et al. 2002 § IV).  "
+            f"Transmission was evaluated on "
+            f"{cfg.transmission_n_points} energies from "
+            f"{cfg.transmission_emin_ev:g} to "
+            f"{cfg.transmission_emax_ev:g} eV relative to E_F, with a "
+            f"{cfg.tbt_elecs_eta_ev * 1000:g} meV electrode broadening.  "
             f"Electronic temperature was {cfg.electronic_temperature_k:.0f} K.  "
             f"(Full Methods paragraph deferred to the follow-up release "
             f"that lands parse_output + the .transport.json schema.)"

@@ -1753,6 +1753,53 @@ emitted unconditionally, with a test.
 
 #### What is missing, in the order it should be built
 
+> ### ✅ **SEVEN OF THE NINE SHIPPED 2026-09-15.**
+> The form went 12 fields → **21**, in seven sections ordered by the decision
+> a person makes rather than by history: *Transmission* · *Transmission
+> k-sampling* · *Broadening* · *Outputs* · *NEGF density contour* · *Leads* ·
+> *Runtime*. **`TBT.k` is reachable**, so the T(E_F)-against-transverse-k
+> study can be run from the tab. Every output flag is offered, so **W10** has
+> data to read when asked for. The two PySCF fields are **gone** — the form
+> contains the string "pyscf" nowhere — and the five electronic-contract
+> fields have a section that names them correctly.
+>
+> **Emission policy, stated once and applied throughout:** where the manual's
+> default is a NUMBER it is the field's default and is always emitted, so the
+> deck is self-documenting and behaviour is unchanged; where the default is a
+> FORMULA (`min[η_e]/10`, `5 k_B T`, *inherit the SCF grid*) the field
+> defaults to 0/`0 0 0` meaning *leave it to the engine* and nothing is
+> written — because a number there would silently replace a formula.
+>
+> **`log_level` got a real keyword rather than deletion:** `TBT.Verbosity`,
+> an integer 0–10 defaulting to 5, is in the binary, and the three words map
+> onto it (warning 2 · info 5 · debug 8). **The mapping is sourced from the
+> TBtrans reference, not invented** — the same pass that retired
+> `transmission_relative_to_ef` for want of a sourced mapping could not then
+> invent one here.
+>
+> **Two are deliberately NOT knobs**, and that is the finding rather than a
+> gap: `TS.Hartree.Fix` is derivable from the transport axis exactly as
+> `semi-inf-direction` is, and the manual calls the boundary *"an intricate
+> and important"* matter — it should be derived, never typed. And
+> `TBT.ChemPot.<>.ElectronicTemperature` is per-chemical-potential, so it
+> belongs with the bias scan, not the override lane.
+>
+> **Still open:** `TS.Elecs.Eta` (the TranSIESTA-side twin of a broadening
+> that IS exposed), `TBT.T.Out` (meaningless below three terminals), and a
+> spin-polarised device run wired end to end — `TBT.Spin` selects a channel,
+> which is not the same as the SCF producing two.
+>
+> **Four tests failed on this change and every one was right to.** The
+> Methods paragraph still interpolated the deleted `contour_n_circle`; two
+> new sections had no description; the served section list is pinned; and a
+> bias assertion searched the WHOLE deck for `"1.5000 eV"`, which
+> `TS.Contours.Eq.Pole 1.5000 eV` now also matches — a loose assertion
+> testing a number rather than a keyword, scoped to `TS.Voltage` lines now.
+> The Methods sentence reports only emitted values, which closes the one
+> defect here with a publication consequence.
+
+
+
 Each verified present in the installed binary, with the manual's default.
 **The framework for all of them is § 3.2's per-engine panel** — these are
 TranSIESTA's panel, and none of them belongs in a shared dataclass.

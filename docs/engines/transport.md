@@ -311,12 +311,12 @@ self-energy cannot attach seamlessly. They arrive from the cited attempt's own
 `.xyz` + `.molstruct.json` pair with no deck — opens them, because there is
 no deck to be truth.)*
 
-> **They are mis-sectioned.** Five of them declare `section: "NEGF"`
+> **They WERE mis-sectioned** (fixed 2026-09-15). Five of them declared `section: "NEGF"`
 > (`basis_size`, `energy_shift_ry`, `xc_functional`, `xc_authors`,
 > `siesta_mesh_cutoff_ry`). They are the *electronic contract*, not NEGF
 > parameters — invisible today because they are hidden, but a form-B citation
-> renders them under a heading that misdescribes them. They belong in a
-> section of their own.
+> rendered them under a heading that misdescribed them. They now have a
+> section of their own, *Electronic contract*.
 
 #### 3.3.3 TranSIESTA — the NEGF SCF (device stage)
 
@@ -332,14 +332,14 @@ The manual: a `%block TS.Elec.<name>` **must** carry `HS`,
 | `TS.Voltage` | `0 eV` | ✅ from the bias |
 | `TS.Atoms.Buffer` | *(none)* | ✅ when declared |
 | `TS.HS.Save` | **`true`** | ✅ set explicitly in the electrode deck (belt-and-braces; `-electrode` on the command line is the manual's one-flag equivalent) |
-| `TS.Elecs.Bulk` | `true` | ❌ not emitted — the default is what you want |
-| `TS.Elecs.Eta` | `1 meV` | ❌ |
-| `TS.Contours.Eq.Pole` | `1.5 eV` | ❌ — **what the three dead contour fields were reaching for** |
-| `TS.Contours.nEq.Eta` | `min[η_e]/10` | ❌ |
-| `TS.Contours.nEq.Fermi.Cutoff` | `5 k_B T` | ❌ |
+| `TS.Elecs.Bulk` | `true` | ✅ **since 2026-09-15**, and a knob (*Leads*) |
+| `TS.Elecs.Eta` | `1 meV` | ❌ — the TBtrans-side twin is exposed; this one is not |
+| `TS.Contours.Eq.Pole` | `1.5 eV` | ✅ **since 2026-09-15** (*NEGF density contour*) — what the three dead fields were reaching for |
+| `TS.Contours.nEq.Eta` | `min[η_e]/10` | ✅ — emitted only when set, because the default is a FORMULA |
+| `TS.Contours.nEq.Fermi.Cutoff` | `5 k_B T` | ✅ — emitted only when set (formula default) |
 | `TS.ElectronicTemperature` | `⟨ElectronicTemperature⟩` | ✅ via the contract |
 | `TS.Forces` | `true` | ❌ — relevant only for relaxation under bias |
-| `TS.Hartree.Fix` | `[-+][ABC]` | ❌ — the manual calls fixing the boundary *"an intricate and important"* matter |
+| `TS.Hartree.Fix` | `[-+][ABC]` | ❌ — **deliberately not a knob**: the manual calls the boundary *"an intricate and important"* matter, and the direction is DERIVABLE from the transport axis, like `semi-inf-direction`. It should be derived, never typed |
 
 #### 3.3.4 TBtrans — the transmission (transmission stage)
 
@@ -347,14 +347,14 @@ The manual: a `%block TS.Elec.<name>` **must** carry `HS`,
 |---|---|---|
 | `TBT.Contours` + `%block TBT.Contour.<name>` | `from -2. eV to 2. eV`, `delta 0.01 eV`, `mid-rule` | ✅ **since 2026-09-15** — `part line`, `from…to`, `points`, `method` |
 | `TBT.HS` | `⟨SystemLabel⟩.TSHS` | ✅ pointed at the 5.x `.TS.HSX` |
-| **`TBT.k`** | **inherits `kgrid_Monkhorst_Pack`** | ❌ **the most important gap** — see below |
-| `TBT.Elecs.Eta` | `1 meV` | ❌ |
-| `TBT.Contours.Eta` | `min(η_e)/10` | ❌ |
-| `TBT.ChemPot.<>.ElectronicTemperature` | `⟨TS.ElectronicTemperature⟩` | ❌ |
-| `TBT.DOS.Gf` · `TBT.DOS.A` · `TBT.DOS.Elecs` | all `false` | ❌ — **no DOS is written at all** |
-| `TBT.T.Eig` | `0` | ❌ — no transmission eigenchannels |
-| `TBT.T.All` · `TBT.T.Out` · `TBT.T.Bulk` | all `false` | ❌ |
-| `TBT.Spin` | all spins | ❌ — no spin-polarised transport path |
+| **`TBT.k`** | **inherits `kgrid_Monkhorst_Pack`** | ✅ **since 2026-09-15** (*Transmission k-sampling*); `0 0 0` still means inherit — see below |
+| `TBT.Elecs.Eta` | `1 meV` | ✅ (*Broadening*) |
+| `TBT.Contours.Eta` | `min(η_e)/10` | ✅ — emitted only when set (formula default) |
+| `TBT.ChemPot.<>.ElectronicTemperature` | `⟨TS.ElectronicTemperature⟩` | ❌ — per-chempot, so it belongs with the bias scan rather than the override lane |
+| `TBT.DOS.Gf` · `TBT.DOS.A` · `TBT.DOS.Elecs` | all `false` | ✅ (*Outputs*) — **W10 now has data to read, when asked for** |
+| `TBT.T.Eig` | `0` | ✅ (*Outputs*) |
+| `TBT.T.All` · `TBT.T.Bulk` | `false` | ✅ (*Outputs*). `TBT.T.Out` ❌ — it needs a multi-terminal case to mean anything |
+| `TBT.Spin` | all spins | ✅ (*Transmission k-sampling*) — the SELECTOR; a spin-polarised device run is still not wired end to end |
 
 **Why `TBT.k` is the one that matters.** It *inherits the SCF's* grid. A
 transverse grid converged for a total energy is routinely far too coarse for

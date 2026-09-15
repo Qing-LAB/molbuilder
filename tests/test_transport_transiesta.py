@@ -188,8 +188,17 @@ def test_render_script_emits_only_first_bias_voltage(labeled_device):
     assert len(voltage_lines) == 1
     assert "0.5000 eV" in voltage_lines[0]
     # The other values must NOT appear as TS.Voltage entries.
-    assert "1.0000 eV" not in script
-    assert "1.5000 eV" not in script
+    #
+    # SCOPED TO THE VOLTAGE LINES.  A bare `"1.5000 eV" not in script`
+    # stood here and broke on 2026-09-15, when the deck began emitting
+    # `TS.Contours.Eq.Pole 1.5000 eV` -- a real keyword that happens to
+    # share the bias's formatting.  The property is about TS.Voltage, so
+    # the assertion has to be too; the loose form was testing the whole
+    # deck for a number.
+    others = [ln for ln in script.split("\n")
+              if ln.lstrip().startswith("TS.Voltage")
+              and ("1.0000" in ln or "1.5000" in ln)]
+    assert not others, f"a later bias leaked into TS.Voltage: {others}"
 
 
 def test_render_script_carries_chemical_species_block(labeled_device,
