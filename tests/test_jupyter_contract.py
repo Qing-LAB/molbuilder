@@ -8,7 +8,7 @@ literal — shipped a `NameError` on every notebook start because no linter,
 import or test could see it. That is the root of the whole row: nothing had
 ever forced a seam on this code.
 
-**Seven tests, and the suite grows by seven**, which is worth saying plainly
+**Eight tests, and the suite grows by eight**, which is worth saying plainly
 because the usual rule here is that unifying an API must REDUCE the count.
 There is nothing to remove: the coverage being replaced is zero.
 
@@ -22,6 +22,7 @@ the code broken, the right test watched to fail, the code restored:
 5. the control routes' 404 and 403                      `jupyter.md` § 5.2
 6. the stop grace stays under the supervisor's          `jupyter.py`
 7. a start forgets the workspace and keeps the settings `jupyter.md` § 4.1
+8. one server's start keeps another server's layout   `jupyter.md` § 4.1
 """
 from __future__ import annotations
 
@@ -153,6 +154,25 @@ def test_the_generated_server_config_is_readable_python():
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     assert {"create_checkpoint", "list_checkpoints", "rename_checkpoint",
             "delete_checkpoint", "restore_checkpoint"} <= methods
+    # AND THAT IT IS ACTUALLY WIRED IN.  The class existing configures
+    # nothing -- the two trailing assignments do, and the file's own comment
+    # says BOTH are needed because the running manager inherits from both
+    # bases.  Deleting one looks redundant and is the likelier edit than
+    # deleting the block, and it would put `.ipynb_checkpoints/` back into
+    # the projects tree while every other assertion here stayed green
+    # (gap found in review 2026-09-15).
+    wired = {
+        f"{n.targets[0].value.value.id}.{n.targets[0].value.attr}"
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign)
+        and isinstance(n.targets[0], ast.Attribute)
+        and isinstance(n.targets[0].value, ast.Attribute)
+        and isinstance(n.targets[0].value.value, ast.Name)
+        and n.targets[0].attr == "checkpoints_class"
+    }
+    assert wired == {"c.ContentsManager", "c.AsyncContentsManager"}, (
+        f"the no-op checkpoints class is wired into {wired or 'nothing'}; "
+        f"jupyter.md 4.2 requires both managers")
 
 
 # --------------------------------------------------------------------- #
@@ -236,10 +256,10 @@ def test_a_start_empties_the_workspace_and_keeps_user_settings(
     catches that, and it is the only thing that does.
     """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    out = J.prepare_lab_home()
+    out = J.prepare_lab_home(8000)
     ws = __import__("pathlib").Path(out["LabApp.workspaces_dir"])
-    home = ws.parent
-    assert not J.workspace_saved(), "a fresh Lab home has no layout to restore"
+    home = ws.parent.parent
+    assert not J.workspace_saved(8000), "a fresh Lab home has no layout"
 
     # Lab saves a layout; a person changes a setting.
     (ws / "default.jupyterlab-workspace").write_text('{"data": {}}')
@@ -247,11 +267,11 @@ def test_a_start_empties_the_workspace_and_keeps_user_settings(
     (ws / "nested" / "more").write_text("x")
     mine = home / "user-settings" / "mine.jupyterlab-settings"
     mine.write_text('{"theme": "chosen by a person"}')
-    assert J.workspace_saved()
+    assert J.workspace_saved(8000)
 
-    J.prepare_lab_home()          # the next notebook server starts
+    J.prepare_lab_home(8000)      # the next notebook server starts
 
-    assert not J.workspace_saved()
+    assert not J.workspace_saved(8000)
     assert list(ws.iterdir()) == [], "the layout outlived its server"
     assert mine.read_text() == '{"theme": "chosen by a person"}', (
         "a start discarded the person's own Lab settings")
@@ -260,3 +280,35 @@ def test_a_start_empties_the_workspace_and_keeps_user_settings(
     written = json.loads(
         (home / "settings" / "overrides.json").read_text(encoding="utf-8"))
     assert written == J.load_rules().overrides
+
+
+def test_one_servers_start_does_not_forget_another_servers_layout(
+        tmp_path, monkeypatch):
+    """TWO MOLBUILDERS DO NOT SHARE A LAYOUT.
+
+    Found in review 2026-09-15, hours after J13 shipped: the Lab home is
+    deliberately not port-keyed, and J13 put per-server SESSION state into
+    it. Starting B's notebook emptied A's workspace, so A's next tab switch
+    lost the notebook whose kernel was still running -- J13's own bug, back.
+    And B's saved workspace made A's first framing report `workspace_saved`
+    true, so A opened at the projects root instead of the selected folder.
+
+    `settings/` and `user-settings/` stay SHARED, which is the half of the
+    original reasoning that is still right, so this asserts both halves.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    a = __import__("pathlib").Path(
+        J.prepare_lab_home(8000)["LabApp.workspaces_dir"])
+    (a / "default.jupyterlab-workspace").write_text('{"data": {"A": 1}}')
+    shared = a.parent.parent / "user-settings" / "mine.jupyterlab-settings"
+    shared.write_text("shared")
+
+    b = __import__("pathlib").Path(
+        J.prepare_lab_home(9000)["LabApp.workspaces_dir"])
+
+    assert a != b, "two servers were handed the same workspace directory"
+    assert J.workspace_saved(8000), "B's start forgot A's layout"
+    assert not J.workspace_saved(9000), "B inherited A's layout"
+    assert shared.read_text() == "shared", (
+        "the SHARED half of the Lab home must survive -- the defaults and a "
+        "person's own settings do not differ between servers")

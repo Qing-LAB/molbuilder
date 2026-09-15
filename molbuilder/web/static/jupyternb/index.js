@@ -20,7 +20,7 @@
  * Until 2026-09-15 this file had five independent waiting mechanisms, each
  * added after its own incident: a poll timer, a `startPollsLeft` counter at
  * 1200 ms, a `wedgePolls` counter at 1500 ms, a `rootGaveUp` flag on a raw
- * `setTimeout`, and three bare `pollSoon(600 | 1500 | 30000)` calls.  Each
+ * `setTimeout`, and three bare `pollSoon(...)` calls.  Each
  * had its own clearing rule scattered through `render` -- one cleared in a
  * branch, one at the top of the function, and `rootGaveUp` never cleared at
  * all.  They are now ONE rule: a state is entered, and `STATES` says how
@@ -195,14 +195,15 @@ async function post(path) {
  *  when the page has no such door at all. */
 let rootWaiter = null;
 function whenRootKnown(fn) {
-  const p = (window.molbuilder && window.molbuilder.projects) || null;
-  if (!p || typeof p.onProjectsRootResolved !== "function") return false;
-  if (rootWaiter) return true;
-  rootWaiter = p.onProjectsRootResolved(() => {
+  // NO DOOR CHECK HERE.  `hasRootDoor()` is that question's one home and
+  // `opening.when` already asks it, so the copy this function carried --
+  // with a `false` return nobody read -- could not fire (found in review
+  // 2026-09-15, the residue of moving the check out of `enter`).
+  if (rootWaiter) return;
+  rootWaiter = window.molbuilder.projects.onProjectsRootResolved(() => {
     if (rootWaiter) { rootWaiter(); rootWaiter = null; }
     fn();
   });
-  return true;
 }
 
 /* ---- Waiting: one rule ---------------------------------------------------
@@ -290,7 +291,15 @@ const STATES = [
     // page reload the only way out.  Opening at the projects root is a worse
     // default than the selected folder and a far better one than a dead tab.
     name: "opening",
+    // `!st.workspace_saved` BECAUSE THE FOLDER IS ONLY USED WHEN THERE IS
+    // NOTHING TO RESTORE (`labUrl`).  Without this term the tab hid the
+    // frame for the full 8 s budget waiting for a value it was about to
+    // throw away -- and it did so on the headline case J13 was written
+    // for: switch away, come back, the sidebar's bootstrap is slow or has
+    // failed, and the notebook you left open is behind "Opening
+    // JupyterLab…" (found in review 2026-09-15).
     when: (st) => st.running && st.answering && !rootIsLost
+                  && !st.workspace_saved
                   && hasRootDoor() && selectedRelative() === null,
     enter: () => {
       say("Opening JupyterLab…");
@@ -440,9 +449,13 @@ const STATES = [
           return;
         }
         startAsked = true;
-        // Leave `asked` a clean entry, so its budget starts now.
+        // Leave `asked` a clean entry, so its budget starts now, and let
+        // the TABLE say how soon to look -- `pollSoon(1200)` stood here and
+        // was a second spelling of `asked`'s own `pollMs`, which is exactly
+        // the drift the table was built to end (found in review
+        // 2026-09-15).
         currentState = null;
-        pollSoon(1200);
+        refresh();
       }, { primary: true }));
     },
   },
@@ -484,7 +497,7 @@ function stopButton() {
     frame.src = "about:blank";
     framedKey = null;
     currentState = null;
-    pollSoon(600);
+    refresh();          // the table decides what comes next, not a number here
   });
 }
 

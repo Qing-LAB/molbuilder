@@ -346,10 +346,11 @@ def jupyter_lab_home() -> Path:
         (`jupyter.md` 4.1), rewritten at every start.
       * ``user-settings/`` -- where Lab saves what a person changes inside
         the frame.  **Never touched** by anything molbuilder does.
-      * ``workspaces/`` -- which documents were open.  **Emptied at every
-        notebook-server start** and kept across every page load, which is
-        what lets a tab switch come back to your notebook while a restart
-        gives you a clean one (`jupyter.md` 4.1).
+      * ``workspaces/<serve port>/`` -- which documents were open.
+        **Emptied at every notebook-server start** and kept across every
+        page load, which is what lets a tab switch come back to your
+        notebook while a restart gives you a clean one (`jupyter.md` 4.1).
+        **The one thing under here that IS port-keyed** -- see below.
       * ``jupyter_server_config.py`` -- copied from
         ``data/jupyter_server_config.py``; it is what suppresses
         ``.ipynb_checkpoints`` (`jupyter.md` 4.2).
@@ -366,7 +367,17 @@ def jupyter_lab_home() -> Path:
     again).  Keeping the two apart also means molbuilder's defaults never
     appear in the Lab they run themselves.
 
-    Not port-keyed: the defaults do not differ between servers.
+    **Not port-keyed, with one exception that proves the rule.**  The
+    defaults do not differ between servers, and neither does a person's own
+    change to one -- so ``settings/`` and ``user-settings/`` are shared, and
+    a setting changed in one molbuilder's framed Lab follows them to the
+    next.  ``workspaces/`` is SESSION state, which does differ, so it is
+    keyed by serve port one level down (`jupyter._workspace_dir`).
+
+    That exception was missed when the workspace arrived on 2026-09-15:
+    this sentence justified sharing a directory that had just stopped
+    holding only defaults, and the shared layout re-created the bug the
+    workspace was added to fix -- one server's start emptied another's.
     """
     return state_dir() / "jupyter-lab"
 

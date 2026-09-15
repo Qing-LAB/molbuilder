@@ -646,7 +646,8 @@ process up, answering, the open notebooks' paths, and **the token, only when
 the caller may control it** (`web/jupyter.md` § 6); `POST /api/jupyter/start`
 · `POST /api/jupyter/stop` → **404** with no supervisor to ask (a button that
 cannot work is worse than an absent one), **403** for a caller who may not run
-code on this machine, else **202**;
+code on this machine, **202** when the signal is delivered, **409** when the
+supervisor refuses it;
 `GET /api/backends` → `{ ok, available, auto_name }`;
 `GET /vendor/plotly.min.js` (the Plotly bundle, 404 if absent).
 

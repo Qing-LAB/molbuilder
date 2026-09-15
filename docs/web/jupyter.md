@@ -199,10 +199,10 @@ is the contract.
 |---|---|---|---|---|
 | 1 | **env-missing** | the env is not installed | the install command — the env is **opt-in**, so this is ordinary and not an error | — |
 | 2 | **no-token** | running and answering, but the token was withheld | that using a kernel is an admin action (§ 6). Nothing is framed: framing anyway would put Jupyter's own login page in the tab, which reads as molbuilder being broken | — |
-| 3 | **opening** | answering, but the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4 at the projects root |
-| 4 | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button | 30 s heartbeat |
-| 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with Stop |
-| 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → *"none started"*, naming the **serve** log |
+| 3 | **opening** | answering, **nothing to restore**, and the projects sidebar has not resolved its root | *"Opening JupyterLab…"* | the sidebar's own door, **8 s** → 4 at the projects root |
+| 4 | **framed** | running and answering | the framed JupyterLab, what it has open, and a Stop button *if this viewer may control it* | 30 s heartbeat |
+| 5 | **starting** | the process is up but not serving | *"…up but not answering yet"* | 1.5 s, **30 s** → wedged, with Stop *if this viewer may control it* |
+| 6 | **asked** | Start was clicked and nothing is up yet | *"Starting…"* | 1.2 s, **15 s** → the port clash if there is one (§ 2.1), else *"none started"* naming **both** logs |
 | 7 | **unsupervised** | no supervisor to hold a notebook | that `serve start` is what gives it one. **Not** `jupyter start` — that verb signals the supervisor, so it is the one command guaranteed to fail here | — |
 | 8 | **no-control** | nothing running, and this viewer may not start one | that starting runs code on this machine | — |
 | 9 | **idle** | installed, nothing running, and the person may ask | what starting gets you, and the Start button | — |
@@ -246,7 +246,7 @@ same place, which is what § 5n of the plan moved them for.)*
 | multi-document mode (`startMode: multiple`) | Lab's document **tab bar**, so several notebooks are open at once. Single-document mode was tried first, to be rid of Lab's file browser — it takes the tab bar with it, and reading two notebooks side by side is worth more than losing the panel is *(decided with the user 2026-09-14)* |
 | `kernelShutdown: true` | Closing a notebook shuts its kernel down. Lab keeps it running by default so you can reopen with your variables; inside a tab of another application a kernel nobody can see is memory — and on a GPU box a device — held for no one. A page RELOAD is not a close, so reopening reconnects |
 | dark theme + dark scrollbars | Lab renders light by default, inside an application that is dark everywhere else. The frame read as a different program pasted into the page |
-| `fetchNews: false`, `checkForUpdates: false` | Jupyter asks each viewer whether it may fetch its news feed, in a popup over the frame. A tab inside molbuilder is not where that is answered, and the answer is a network call from a machine that may have no route out |
+| `fetchNews: "false"` (a quoted string enum — Jupyter's own schema), `checkForUpdates: false` (a real boolean) | Jupyter asks each viewer whether it may fetch its news feed, in a popup over the frame. A tab inside molbuilder is not where that is answered, and the answer is a network call from a machine that may have no route out |
 | **its own settings home** (`config_dir.jupyter_lab_home`) | `app_settings_dir` · `user_settings_dir` · `workspaces_dir`, all separate from `~/.jupyter`. Lab writes a user setting the first time it resolves one and a user setting BEATS an override, so a shared home let the framed Lab adopt whatever the person's standalone Lab had written — and let molbuilder's choices leak back into it |
 
 **It remembers your LAYOUT while the server runs, and forgets it when the
@@ -272,6 +272,18 @@ a load, and switching away and back therefore threw away the notebook you had
 open **while its kernel was still running**. *(Reported by the user
 2026-09-15; `plan.md` § 5n, J13.)*
 
+**The workspace is PER SERVER.** `config_dir.jupyter_lab_home()` is
+deliberately not port-keyed, and the reason was right while it held only
+defaults — *"the defaults do not differ between servers."* Session state
+does. So the layout lives in `workspaces/<serve port>/`, and `settings/` and
+`user-settings/` stay shared. Sharing the workspace re-created this very
+section's bug for anyone running two molbuilders: starting B's notebook
+emptied A's layout, so A's next tab switch lost the notebook whose kernel was
+still running; and B's saved layout made A's first framing believe there was
+something to restore, so A opened at the projects root instead of the
+selected folder. *(Found in review 2026-09-15, hours after this section was
+written.)*
+
 **The folder is carried exactly once.** `status` reports `workspace_saved`,
 and the tab uses it to decide the URL: with no workspace this is the first
 framing since the server started, so the URL carries the selected folder
@@ -283,10 +295,15 @@ to survive a page load. It also means a tree path and a restore are never
 sent together, so Lab's own precedence between them, which molbuilder has
 **not** measured, decides nothing here.
 
-The four settings above are **user settings**, not workspace: they live in
-`user-settings/`, which the wipe never touches, so a person's own change
-inside Lab sticks across every restart. *(This section claimed `?reset`
-restored all four until the claim was checked.)*
+The four settings above are **not workspace**, so the wipe never touches
+them — but note *where* they are. molbuilder writes them to the **app**
+settings directory, `settings/overrides.json`, rewritten at every start; a
+person's own change to one of them is what Lab saves into `user-settings/`,
+and a user setting beats an override, so it sticks across every restart.
+Debugging *"why does my framed Lab look like this"* starts at
+`settings/overrides.json`. *(This paragraph sent readers to `user-settings/`
+for the defaults until 2026-09-15, and claimed `?reset` restored all four
+until the claim was checked before that.)*
 
 ### 4.2 No `.ipynb_checkpoints` in the projects tree
 
@@ -343,9 +360,11 @@ where those notebooks are saved clear and explicit".)*
 *(This paragraph said no such setting existed, until searching every shipped
 schema on 2026-09-14 found it.)*
 
-A page RELOAD is not a close: the workspace reset closes documents without Lab
-treating it as one, so reopening the same notebook reconnects to its kernel
-with its variables. What catches the rest is the timeout culling above, and its
+A page RELOAD is not a close: Lab restores the workspace and reconnects each
+document to its kernel, variables and all. *(This said the reload's own
+**workspace reset** was what closed the documents. That reset no longer
+happens on a load — § 4.1 moved it to the server start — so the reason was
+gone while the conclusion stayed true; corrected 2026-09-15.)* What catches the rest is the timeout culling above, and its
 generosity is deliberate: the tab is an **iframe**, so switching to Results
 closes the kernel's socket. Culling promptly on a closed connection would mean
 a five-minute look at another tab costs you every variable in memory. Nothing
@@ -369,7 +388,9 @@ answering.
 **Sixteen keys, authored in two modules and read by a third, and until
 2026-09-15 written down nowhere** (`plan.md` § 5n, J5). `jupyter.status()`
 produces nine, the blueprint adds six in one expression, `ok` is the
-envelope, and `jupyternb/index.js` reads all of them. This table is the
+envelope. `jupyternb/index.js` reads **thirteen** of them — `pid`,
+`pid_state` and `url` are produced for the CLI's `jupyter status`, and the
+tab deliberately ignores `url` (see its row). This table is the
 contract; the assembly at the end of `api_jupyter_status` is the one place
 the shape is built.
 

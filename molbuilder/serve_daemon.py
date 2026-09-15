@@ -522,6 +522,15 @@ def supervise(port: int, child_argv: List[str], *,
         So a second action arriving mid-action is QUEUED, not nested, and the
         queue is one deep because the only thing that matters is where you
         end up: the last request wins.
+
+        **One window this does NOT close**, stated rather than papered over
+        (found in review 2026-09-15): a signal delivered between reading
+        ``nb_pending`` and clearing it is lost.  No arrangement of Python
+        statements closes it -- the tuple form still performs two stores --
+        and the only real fix is masking signals around the swap, which is
+        machinery for a one-bytecode window in software one person drives
+        from one keyboard.  The nesting bug this function exists for was
+        measured and reproducible; this is not.
         """
         if state["nb_busy"]:
             state["nb_pending"] = action

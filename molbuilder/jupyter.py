@@ -36,8 +36,13 @@ three until 2026-09-14.
    backstop Jupyter already provides and passes.
 3. **Reconciliation at startup** -- a machine crash, and a survivor that was
    re-parented before the signal landed, are outside layers 1 and 2.  The next
-   `supervise()` (so `serve start` AND `serve foreground`) reads the pidfile
-   and, only if the pid is alive and really is a shepherd of ours, stops it.
+   `supervise()` reads the pidfile and, only if the pid is alive and really
+   is a shepherd of ours, stops it.  **`serve start` ONLY** -- this said
+   "AND `serve foreground`" until 2026-09-15 and that was false: `supervise`
+   has one call site, `cli.cmd_serve_start`, and `serve foreground` goes to
+   `cli._supervise_forever`, which reconciles nothing.  A notebook that
+   outlived a crash is collected by the next `serve start`, and a
+   `serve foreground` walks past it.
    Same rule `serve_daemon` states: a stale file whose pid was recycled is
    REPORTED stale, never signalled.  **That code is in `serve_daemon`, not
    here** -- see above.
@@ -161,17 +166,35 @@ def port_clash(serve_port: int) -> Optional[str]:
     from .serve_daemon import pid_state as serve_pid_state, read_pid as serve_pid
     nb = jupyter_port(serve_port)
 
+    # DIRECTION 2 FIRST, because it is the one that stops `serve start` dead.
+    # Is OUR OWN web port some other molbuilder's NOTEBOOK port?  Then this
+    # server cannot bind at all, and the failure lands in the serve log after
+    # the terminal is gone.  The docstring named both directions from the
+    # start and the code asked only the first (found in review 2026-09-15).
+    for other in ports_with_pidfile("jupyter"):
+        if (jupyter_port(other) == serve_port
+                and pid_state(read_pid(other)) == "ours"):
+            return (f"port {serve_port} is already the NOTEBOOK port of the "
+                    f"molbuilder serving on {other} ({other} + 1).  This "
+                    f"server cannot bind it while that notebook runs.  "
+                    f"Choose a port that is not adjacent to another "
+                    f"molbuilder.")
+
     # OUR OWN notebook already holding it is not a clash, it is the notebook.
     if pid_state(read_pid(serve_port)) == "ours":
         return None
 
-    for other in ports_with_pidfile():
-        if other == nb and serve_pid_state(serve_pid(other)) == "ours":
-            return (f"port {nb} is the WEB port of the molbuilder serving on "
-                    f"{other}, and it is the port this one's notebook needs "
-                    f"({serve_port} + 1).  The notebook will refuse to start "
-                    f"while that server runs.  Serve this molbuilder on a "
-                    f"port that is not adjacent to another.")
+    # DIRECTION 1: is our notebook's port another molbuilder's WEB port?
+    # Asked directly rather than by scanning the runtime directory -- the
+    # old loop could only ever fire on `other == nb`, so the glob answered a
+    # question `read_pid(nb)` answers on its own (a missing pidfile reads as
+    # "dead", which is exactly what the scan was looking for).
+    if serve_pid_state(serve_pid(nb)) == "ours":
+        return (f"port {nb} is the WEB port of another molbuilder, and it is "
+                f"the port this one's notebook needs ({serve_port} + 1).  "
+                f"The notebook will refuse to start while that server runs.  "
+                f"Serve this molbuilder on a port that is not adjacent to "
+                f"another.")
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -251,7 +274,12 @@ def pid_state(pid: Optional[int]) -> str:
 
 
 def read_runtime(serve_port: int) -> Dict[str, object]:
-    """``{"url": ..., "token": ..., "port": ...}``, or ``{}``.
+    """``{"url": ..., "base": ..., "token": ...}``, or ``{}``.
+
+    *(It advertised ``port`` -- which nothing read, `status` computes it from
+    `jupyter_port` -- and omitted ``base``, which `open_notebooks` does read.
+    The docstring named the dead key and hid the live one, found in review
+    2026-09-15; the key is gone with it.)*
 
     The token is a CREDENTIAL -- it authenticates a browser to a live kernel --
     so this is read server-side and handed to the page, never published.
@@ -264,20 +292,6 @@ def read_runtime(serve_port: int) -> Dict[str, object]:
     return doc if isinstance(doc, dict) else {}
 
 
-def _unverified_ctx():
-    """The TLS context for talking to OUR OWN notebook.
-
-    **`serve_daemon`'s**, the way `pid_state` below is.  It is a security
-    knob, and it had been built by hand three times -- twice here, once in
-    `cli.py`'s `serve status`.  Collapsing the two in this file on
-    2026-09-14 left a docstring claiming one home while a third copy stood
-    in another module, which is the same defect one step quieter
-    (`plan.md` § 5n, J8).
-    """
-    from .serve_daemon import unverified_ctx
-    return unverified_ctx()
-
-
 def answering(serve_port: int, *, timeout: float = 1.5) -> bool:
     """Is something listening on the notebook port and talking HTTP?
 
@@ -288,13 +302,15 @@ def answering(serve_port: int, *, timeout: float = 1.5) -> bool:
     """
     import urllib.error
     import urllib.request
+
+    from .serve_daemon import unverified_ctx
     runtime = read_runtime(serve_port)
     url = str(runtime.get("url") or "")
     if not url:
         return False
     try:
         with urllib.request.urlopen(url, timeout=timeout,
-                                    context=_unverified_ctx()):
+                                    context=unverified_ctx()):
             return True
     except urllib.error.HTTPError:
         # It answered -- with a refusal, because no token was presented.
@@ -320,6 +336,8 @@ def open_notebooks(serve_port: int, *,
     """
     import json
     import urllib.request
+
+    from .serve_daemon import unverified_ctx
     runtime = read_runtime(serve_port)
     base  = str(runtime.get("base") or "")
     token = str(runtime.get("token") or "")
@@ -331,7 +349,7 @@ def open_notebooks(serve_port: int, *,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout,
-                                    context=_unverified_ctx()) as r:
+                                    context=unverified_ctx()) as r:
             sessions = json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001 - a decoration, never a failure
         return []
@@ -382,7 +400,8 @@ def status(serve_port: int, *, include_private: bool = True
         # correctly after a switch away and back -- see `workspace_saved`.
         # Not private: it is one boolean about this machine's own Lab, and
         # the tab needs it in exactly the state where it may frame.
-        "workspace_saved": workspace_saved() if running else False,
+        "workspace_saved": (workspace_saved(serve_port)
+                            if running else False),
     }
 
 
@@ -573,15 +592,38 @@ def option_argv(settings: Dict[str, object]) -> List[str]:
 _WORKSPACE_OPT = "LabApp.workspaces_dir"
 
 
-def _workspace_dir() -> Optional[Path]:
-    """Where Lab saves its workspace, or ``None`` if the table declares none."""
+def _workspace_dir(serve_port: int) -> Optional[Path]:
+    """Where Lab saves THIS server's workspace, or ``None`` if none declared.
+
+    **PER SERVER, under a Lab home that is otherwise shared** -- found in
+    review 2026-09-15, hours after J13 shipped, and it re-created the very
+    bug J13 was written for.
+
+    `config_dir.jupyter_lab_home()` is deliberately not port-keyed, and its
+    reason was sound while the directory held only DEFAULTS: *"the defaults
+    do not differ between servers."*  J13 then put per-server SESSION state
+    -- the saved workspace, emptied at every notebook start -- into that
+    same shared directory, and the reason stopped covering it.  Two
+    molbuilders and it fails in both directions: starting B's notebook wipes
+    A's layout, so A's next tab switch loses the notebook whose kernel is
+    still running (J13, verbatim); and B's saved workspace makes A's first
+    framing report `workspace_saved` true, so A opens at the projects root
+    instead of the selected folder -- the `projects/Untitled.ipynb` failure
+    state 3 exists to prevent.  Both Labs also wrote the same
+    `default.jupyterlab-workspace`, so A could restore B's layout.
+
+    Only the workspace moves.  `settings/` and `user-settings/` stay shared,
+    because the original reasoning is still exactly right for them: the
+    defaults do not differ between servers, and a person's own change inside
+    Lab should follow them to whichever molbuilder they open next.
+    """
     from .config_dir import jupyter_lab_home
     name = load_rules().lab_home.get(_WORKSPACE_OPT)
-    return (jupyter_lab_home() / name) if name else None
+    return (jupyter_lab_home() / name / str(serve_port)) if name else None
 
 
-def workspace_saved() -> bool:
-    """Has the framed Lab saved a workspace since this server started?
+def workspace_saved(serve_port: int) -> bool:
+    """Has the framed Lab saved a workspace since THIS server started?
 
     **This is what makes a tab switch keep your notebook open** without any
     browser state at all (`plan.md` § 5n, J13, the user's own ask).  Leaving
@@ -601,14 +643,15 @@ def workspace_saved() -> bool:
     read from the same directory, so they cannot disagree, and nothing has to
     survive a page load.
     """
-    d = _workspace_dir()
+    d = _workspace_dir(serve_port)
     try:
         return d is not None and any(d.iterdir())
     except OSError:
         return False
 
 
-def _forget_workspace(home: Path, rules: "JupyterRules") -> None:
+def _forget_workspace(home: Path, rules: "JupyterRules",
+                      serve_port: int) -> None:
     """Empty Lab's workspace directory.  Called at every shepherd start.
 
     **CLEAN ON A NEW SERVER, PERSISTENT WHILE ONE RUNS** -- the user's rule,
@@ -633,15 +676,27 @@ def _forget_workspace(home: Path, rules: "JupyterRules") -> None:
     name = rules.lab_home.get(_WORKSPACE_OPT)
     if not name:
         return
-    ws = home / name
+    # THIS SERVER'S workspace only -- see `_workspace_dir`.  Emptying the
+    # shared `workspaces/` would take every other molbuilder's layout with
+    # it, which is the bug this whole mechanism exists to fix.
+    ws = home / name / str(serve_port)
     # A DELETE, SO SAY EXACTLY WHAT THIS GUARD DOES.  `name` comes from a
     # data file; this refuses a name that ESCAPES the Lab home -- a
-    # separator, a `..`, an absolute path -- measured 2026-09-15 with
-    # `../../../escape`.  It does NOT catch a wrong but well-formed name:
-    # point the row at `user-settings` and that is what gets emptied.  What
-    # catches THAT is the test asserting `user-settings/` survives a start,
-    # and it is the only thing that does.
-    if not ws.is_dir() or ws.parent != home or ws == home:
+    # separator, a `..`, an absolute path.
+    #
+    # **RESOLVED, because the unresolved form let the one spelling this
+    # comment named walk straight through** (found in review 2026-09-15,
+    # hours after it was written).  `home / ".."` is a real directory whose
+    # `.parent` IS `home`, so `ws.parent != home` was False and the loop
+    # below would have emptied the Lab home's PARENT -- the whole state
+    # directory: logs, reports, run/.  `../../../escape` was refused and
+    # `..` was not, and the comment claimed both.
+    #
+    # It still does NOT catch a wrong but well-formed name: point the row at
+    # `user-settings` and that is what gets emptied.  What catches THAT is
+    # the test asserting `user-settings/` survives a start, and it is the
+    # only thing that does.
+    if not ws.is_dir() or ws.resolve().parent.parent != home.resolve():
         return
     import shutil as _shutil
     for child in ws.iterdir():
@@ -655,7 +710,7 @@ def _forget_workspace(home: Path, rules: "JupyterRules") -> None:
                             # to refuse to start a notebook
 
 
-def prepare_lab_home() -> Dict[str, str]:
+def prepare_lab_home(serve_port: int) -> Dict[str, str]:
     """Prepare the framed Lab's own directories and config; return every
     generated path keyed by the command-line option it answers.
 
@@ -682,9 +737,14 @@ def prepare_lab_home() -> Dict[str, str]:
     from .config_dir import ensure_private_dir, jupyter_lab_home
     rules = load_rules()
     home = ensure_private_dir(jupyter_lab_home())
-    _forget_workspace(home, rules)
-    out = {opt: str(ensure_private_dir(home / name))
-           for opt, name in rules.lab_home.items()}
+    _forget_workspace(home, rules, serve_port)
+    out = {}
+    for opt, name in rules.lab_home.items():
+        # THE WORKSPACE IS THIS SERVER'S; everything else is shared
+        # (`_workspace_dir` says why, and what it cost to find out).
+        d = home / name / str(serve_port) if opt == _WORKSPACE_OPT \
+            else home / name
+        out[opt] = str(ensure_private_dir(d))
 
     app_settings = rules.lab_home.get("LabApp.app_settings_dir")
     if app_settings is None:
@@ -829,7 +889,17 @@ def run_shepherd(serve_port: int, *, host: str,
     # pidfile and the 0600 runtime file already on disk, because it sat
     # between the write and the `try`.  The next `serve start` then reported
     # a stale pidfile for a notebook that had never run.
-    lab_dirs = prepare_lab_home()
+    lab_dirs = prepare_lab_home(serve_port)
+    # AND THE REST OF IT.  `projects_root()` reads `molbuilder.json` and
+    # `notebook_argv` reads `data/jupyter.toml` (through `load_rules`, whose
+    # own error message anticipates a wheel that shipped without it) -- both
+    # can raise, and both sat BELOW the pidfile write until 2026-09-15 while
+    # the comment above claimed everything that can raise happens first.
+    # Hoisting `prepare_lab_home` had fixed the measured case and left the
+    # invariant false (found in review 2026-09-15).
+    argv = notebook_argv(caps.conda_binary, env_name, host=host, port=port,
+                         token=token, root_dir=str(projects_root()),
+                         cert=cert, key=key, lab_dirs=lab_dirs)
     scheme = "https" if (cert and key) else "http"
     # BRACKET AN IPv6 LITERAL.  `--host ::1` produced `http://::1:8001/lab`,
     # which `urlopen` cannot parse -- so `answering()` reported down forever
@@ -842,7 +912,7 @@ def run_shepherd(serve_port: int, *, host: str,
     write_json(runtime_path(serve_port),
                {"url": f"{scheme}://{_hostpart}:{port}/lab",
                 "base": f"{scheme}://{_hostpart}:{port}",
-                "token": token, "port": port},
+                "token": token},
                mode=PRIVATE_FILE_MODE)
 
     def _on_stop(*_):
@@ -870,9 +940,6 @@ def run_shepherd(serve_port: int, *, host: str,
     # the framed Lab a `jupyterlab-plotly` labextension built against a
     # `plotly` this env does not have.
     env = dict(os.environ)
-    argv = notebook_argv(caps.conda_binary, env_name, host=host, port=port,
-                         token=token, root_dir=str(projects_root()),
-                         cert=cert, key=key, lab_dirs=lab_dirs)
     try:
         # NO PIPE AND NO SINK.  This process's stdout and stderr ARE the
         # notebook log -- the supervisor opened it and handed it over -- so

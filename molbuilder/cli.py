@@ -2066,8 +2066,14 @@ def _serve_flags(f):
     the two verbs cannot drift apart about what a server accepts."""
     for opt in reversed([
         click.option("--host",  default="127.0.0.1", show_default=True),
-        click.option("--port",  type=int, default=_DEFAULT_SERVE_PORT,
-                     show_default=True),
+        # THE SAME OPTION THE OTHER SEVEN VERBS TAKE.  J9 unified those and
+        # left this one -- the eighth copy, inside the decorator whose own
+        # docstring is "so the two verbs cannot drift apart", and the only
+        # one with no `help=`, so `serve start --help` explained nothing
+        # about `--port` while `serve stop --help` did (found in review
+        # 2026-09-15; the commit that unified the seven claimed this was
+        # covered, and it was not).
+        _serve_port_flag,
         click.option("--cert", type=click.Path(exists=True, dir_okay=False),
                      help="TLS cert (PEM).  Overrides molbuilder.json."),
         click.option("--key",  type=click.Path(exists=True, dir_okay=False),
@@ -2758,12 +2764,25 @@ def _survey() -> int:
     for p, pid in rows:
         ok, said = _probe_health(p)
         answered = answered or ok
-        nb = "yes" if _notebook_is_up(p) else "no"
+        # THE LOG IS THE RECORD, whichever form was typed.  `_note_wedge`
+        # states the rule (`deployment.md` § 1.0c, user ruling 2026-08-28):
+        # a detection belongs in the log "not only in whichever terminal
+        # happened to ask".  Before J14 the no-argument form defaulted to
+        # 8000 and took the single-port path, so it logged; making it a
+        # survey silently dropped that for the COMMON invocation (found in
+        # review 2026-09-15).
+        if not ok:
+            _note_wedge(p, pid)
+        # THE PID ONLY, no HTTP: the survey's question is "what is
+        # running", and `jupyter status --port N` is the verb that asks a
+        # notebook whether it ANSWERS.
+        from .jupyter import pid_state as nb_state, port_clash
+        from .jupyter import read_pid as nb_pid
+        nb = "yes" if nb_state(nb_pid(p)) == "ours" else "no"
         click.echo(f"port {p:<6} pid {pid:<8} answering: {said}"
                    f"   notebook: {nb}")
-        # The clash is computable from what this loop already read, and the
-        # survey is where somebody looks when a notebook will not start.
-        clash = _port_clash(p)
+        # The survey is where somebody looks when a notebook will not start.
+        clash = port_clash(p)
         if clash:
             click.echo(f"  NOTE: {clash}")
     if stale:
@@ -2771,23 +2790,6 @@ def _survey() -> int:
                    + ", ".join(str(p) for p in stale) + ".")
     click.echo("  detail on one:  molbuilder serve status --port <port>")
     return 0 if answered else 4
-
-
-def _port_clash(serve_port: int):
-    """`jupyter.port_clash`, imported where it is used."""
-    from .jupyter import port_clash
-    return port_clash(serve_port)
-
-
-def _notebook_is_up(serve_port: int) -> bool:
-    """Is a notebook held beside the server on ``serve_port``?
-
-    The pid only -- no HTTP.  The survey's job is *"what is running"*, and
-    `molbuilder jupyter status --port N` is the verb that asks a notebook
-    whether it is answering.
-    """
-    from .jupyter import pid_state as nb_state, read_pid as nb_pid
-    return nb_state(nb_pid(serve_port)) == "ours"
 
 
 @serve_group.command("restart", short_help="recycle the server in place")

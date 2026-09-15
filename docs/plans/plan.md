@@ -99,7 +99,7 @@ the same day, with what it turned out to be.
 | **N5** | paths standard |  | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |
 | **N6** | paths standard |  | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
 | **N7** | paths standard |  | delete the superseded surface, **one module per commit** — `sidecars.molstruct`, then `identity`, then `materialize`, then `paths`/`runfiles`. Forty functions cannot be retired in one separately-green step | the guard asserts the framework's public surface IS the three verbs plus the catalogue |
-| **W23** | front end / ops | **The JupyterNB feature is hand-built where it should be declared — fifteen items, one plan: § 5n.** *(user, 2026-09-15: "why is jupyter.py not following a data-driven design but rather handcrafted jibberish of code?" … "use .json or .jsonl or .toml to help clean this up. this is a systematic design, not some hacking" … "make sure that you don't have other hackish code in the design".)*  The settings a framed Jupyter starts with are expressed three ways inside one function, 40 lines of real Python live inside a string literal no tool can read, the control routes are gated twice on two different facts, the tab's waiting is five ad-hoc timers, and **the whole feature has no test** — 1,610 lines in its own five files, plus the notebook half of `serve_daemon` and six CLI verbs.  The contract, the admission rule that keeps the data file from becoming a dumping ground, the sweep of the other residue, and the order of work are in **§ 5n** | § 5n · found 2026-09-15 | **contract settled, not started** |
+| **W23** | front end / ops | **The JupyterNB feature is hand-built where it should be declared — fifteen items, one plan: § 5n.** *(user, 2026-09-15: "why is jupyter.py not following a data-driven design but rather handcrafted jibberish of code?" … "use .json or .jsonl or .toml to help clean this up. this is a systematic design, not some hacking" … "make sure that you don't have other hackish code in the design".)*  The settings a framed Jupyter starts with are expressed three ways inside one function, 40 lines of real Python live inside a string literal no tool can read, the control routes are gated twice on two different facts, the tab's waiting is five ad-hoc timers, and **the whole feature has no test** — 1,610 lines in its own five files, plus the notebook half of `serve_daemon` and six CLI verbs.  The contract, the admission rule that keeps the data file from becoming a dumping ground, the sweep of the other residue, and the order of work are in **§ 5n** | § 5n · found 2026-09-15 | **all fifteen shipped 2026-09-15**, then reviewed with fresh eyes the same day — nine further defects, one of them destructive and one re-creating J13's own bug. § 5n.8 has them and they are fixed; two are recorded as **J16** and **J17** below |
 
 ---
 
@@ -1490,10 +1490,47 @@ Each step is separately green and separately revertible.
     grow" line was wrong: it assumed hand-written assertions to remove, and
     there were none — the coverage being replaced is zero, which is J10.)*
 
+### 5n.8 The fresh-eyes review of the review *(2026-09-15, same day)*
+
+Three reviewers over the eleven commits, every claim re-verified here before
+acting. **Nine real defects in work that was hours old**, which is the
+argument for the pass rather than against it. All fixed in one commit; the
+numbers below were re-derived, not taken.
+
+| what | why it mattered |
+|---|---|
+| **`_forget_workspace`'s guard let `..` through** | `home / ".."` is a real directory whose `.parent` IS `home`, so the check passed and the loop would have emptied the state directory — logs, reports, run/. `../../../escape` was refused and `..` was not, and the comment claimed both. **Destructive.** Now compares resolved paths |
+| **the workspace was shared by every server** | `jupyter_lab_home()` is not port-keyed, and J13 put session state in it. Starting B's notebook emptied A's layout → A's next tab switch lost the notebook whose kernel was still running: **J13's own bug, hours after J13**. Now `workspaces/<serve port>/`; `settings/` and `user-settings/` stay shared |
+| **the survey stopped recording a wedge** | before J14 the no-argument `serve status` took the single-port path and appended the detection to the log. Making it a survey dropped that for the **common** invocation, against the rule `_note_wedge`'s own docstring cites |
+| **`port_clash` asked one of the two directions it names** | `serve start --port 6007` beside a live notebook on 6007 warned nothing and failed to bind after `daemonize()`, with the terminal gone. Both directions now, and the first no longer globs the runtime directory to answer a single-port question |
+| **`run_shepherd`'s stated invariant was false** | *"everything that can raise happens before the pidfile exists"* — `projects_root()` and `load_rules()` both sat below the write. Hoisting `prepare_lab_home` had fixed the measured case and left the claim wrong |
+| **state 3 blocked on a folder it was about to discard** | with a workspace to restore the tree path is unused, yet `opening` still hid the frame for its full 8 s budget — on the headline J13 case |
+| **`_serve_flags` still hand-wrote `--port`** | the eighth copy, in the decorator whose docstring forbids drift, and the only one with no help text. **The step-5 commit message claimed this was covered.** It was not |
+| **`web/app.py`'s comment described the design J3 deleted** | and cited the reference the blueprint corrected — the restatement a reader of `create_app` actually sees |
+| **test 4 asserted the class, not the wiring** | deleting one of the two `checkpoints_class` assignments — the plausible "looks redundant" edit — left it green while `.ipynb_checkpoints/` came back |
+
+Smaller, same pass: three pure forwarders inlined (`_unverified_ctx`,
+`_port_clash`, `_notebook_is_up`); `whenRootKnown`'s unreachable door check
+removed; the last two bare `pollSoon` intervals replaced by the table's own;
+the dead `"port"` key dropped from the runtime file and its docstring
+corrected (it named the dead key and hid `"base"`, which IS read);
+`_notebook_action`'s docstring stopped claiming a queue that cannot lose an
+action, because a one-bytecode window exists and no arrangement of Python
+statements closes it. Documents: nine corrections in `jupyter.md`, the 409 in
+`web-api.md`, and `config_dir`'s not-port-keyed reasoning, which J13 outgrew.
+
+**Left on the table, deliberately** — both real, both predating this
+programme, both in code it did not open:
+
+| # | area | item | state |
+|---|---|---|---|
+| **J16** | ops | **Three copies of "read a pidfile"** — `jupyter.read_pid`, `serve_daemon.read_pid`, and the same four lines inside `serve_daemon.stop_by_pidfile`. Exactly the shape J8 collapsed for the TLS context and `pid_state` collapsed for verification, with the *read* left at three | open |
+| **J17** | ops | **`jupyter.py`'s `pid_path` / `log_path` / `runtime_path`** are one-line pass-throughs to `config_dir` — the pattern `serve_daemon` deleted as K-D3, whose comment says so in as many words. Worse, they RENAME: the notebook log is `jupyter_log` in one module and `log_path` in another. `pid_path` and `runtime_path` have no caller outside `jupyter.py` | open |
+
 ### 5n.7 Tests — the set, deliberately small
 
 `feedback_tests_earn_their_place` applies: this must not become a test per
-setting. Six, and each one fails on a real mutation:
+setting. Eight, and each one fails on a real mutation:
 
 1. The schema gate refuses a wrong stamp.
 2. An unknown top-level section is refused **by naming the sections that exist**.
@@ -1509,6 +1546,9 @@ setting. Six, and each one fails on a real mutation:
    is untouched. That is J13's whole contract on the server side, and the
    mutation it catches (wiping the wrong directory) would silently discard
    a person's Lab settings.
+8. **one server's start keeps another server's layout** -- added by the
+   2026-09-15 review, which found the workspace sharing a directory across
+   servers and re-creating J13's bug.
 
 *(Written 2026-09-15 and the sentence here was wrong: there were no
 hand-written assertions to remove, because there was no coverage at all.

@@ -359,6 +359,7 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.checkpoint  import bp as checkpoint_bp
     from .blueprints.docs        import bp as docs_bp
     from .blueprints.bench       import bp as bench_bp
+    from .blueprints.jupyter     import bp as jupyter_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
@@ -371,11 +372,14 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(system_load_bp)
     app.register_blueprint(checkpoint_bp)
     app.register_blueprint(docs_bp)
-    # The notebook tab's control surface.  Its START/STOP routes exist only
-    # under a supervisor and only for the admin list (access-control.md § 6);
-    # `status` is always there, because answering "is there a notebook" is not
-    # itself a capability and the page needs it to decide what to draw.
-    from .blueprints.jupyter import bp as jupyter_bp
+    # The notebook tab's control surface.  ALL THREE ROUTES ARE ALWAYS
+    # REGISTERED; START/STOP refuse per request -- 404 with no supervisor to
+    # ask, 403 for a caller who may not run code here (`web/jupyter.md`
+    # § 5.2).  This said the two control routes "exist only under a
+    # supervisor and only for the admin list (access-control.md § 6)", which
+    # described the import-time gate deleted on 2026-09-15 and cited the
+    # reference corrected the day before -- and it is the restatement a
+    # reader of `create_app` actually sees (found in review 2026-09-15).
     app.register_blueprint(jupyter_bp)
     app.register_blueprint(bench_bp)
 
