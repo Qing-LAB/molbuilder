@@ -163,6 +163,13 @@ molbuilder = [
     # pattern existed until 2026-08-14, so NEITHER shipped in a built wheel --
     # it worked from the repo and would have failed on an installed copy.
     "data/*.toml", "siesta/*.toml", "pyscf/*.toml",
+    # `data/jupyter_server_config.py` -- Python that is COPIED, never
+    # imported: the framed notebook server's config file, which subclasses
+    # jupyter_server's checkpoints class and so cannot be imported by the
+    # host env.  `packages.find` does not carry it because `data/` is not a
+    # package (no `__init__.py`), which is exactly what keeps it unimportable
+    # -- so it needs a pattern here, the same way the .toml tables did.
+    "data/*.py",
 ]
 
 [tool.pytest.ini_options]

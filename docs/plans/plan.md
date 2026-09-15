@@ -1445,7 +1445,11 @@ Each step is separately green and separately revertible.
 
 1. `molbuilder/data/jupyter.toml` + the loader (schema gate, refusal by name).
 2. `notebook_argv` → one emitter; `_LAB_OVERRIDES` and the lab-home map read
-   from the file. **`jupyter.py` loses ~115 lines.**
+   from the file. *(**Done 2026-09-15, and the line-count claim here was
+   wrong**: `jupyter.py` went 681 → 744. The two literals were 78 lines and
+   the loader with its refusals is ~110. The win is not fewer lines — it is
+   130 lines of data in two files that a linter, an editor and `tomllib` can
+   all read, and one emitter instead of three mechanisms.)*
 3. `molbuilder/data/jupyter_server_config.py` + `data/*.py` in `pyproject.toml`.
 4. **J3 + J4** — one gate, one refusal. (This is what makes the blueprint
    testable, so it comes before the tests.)

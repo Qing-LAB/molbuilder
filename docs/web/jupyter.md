@@ -162,8 +162,11 @@ when nobody is using it.
 ### 4.1 What the framed Lab looks like, and what it remembers
 
 A Lab in a frame is not a Lab in a window, and four of its defaults are wrong
-here. molbuilder sets them in `_LAB_OVERRIDES` (`jupyter.py`) — **defaults, not
-values**: every one is still a control the person can change inside Lab.
+here. molbuilder sets them in **`molbuilder/data/jupyter.toml`'s
+`[lab.overrides]`** — **defaults, not values**: every one is still a control
+the person can change inside Lab. *(They were a Python dict in `jupyter.py`
+until 2026-09-15; the table below and that file now say the same thing in the
+same place, which is what § 5n of the plan moved them for.)*
 
 | Setting | Why |
 |---|---|
@@ -198,10 +201,17 @@ problem: `FileCheckpoints.checkpoint_dir` only *renames* the directory, and
 pointing it at one shared absolute path makes two `Untitled.ipynb` in different
 folders write the same `Untitled-checkpoint.ipynb`, so a restore hands back the
 wrong file. What the contents manager *does* take is a `checkpoints_class`, and
-jupyter-server ships no no-op one — so molbuilder writes one, into a generated
-`jupyter_server_config.py` passed as `ServerApp.config_file`. A Jupyter config
-file is executed Python, which is why the class can live there rather than on
-`PYTHONPATH`. Being an absolute path, it is loaded *instead of* searching the
+jupyter-server ships no no-op one — so molbuilder ships one, as
+**`molbuilder/data/jupyter_server_config.py`**, copied into the Lab home at
+every start and passed as `ServerApp.config_file`. A Jupyter config file is
+executed Python, which is why the class can live there rather than on
+`PYTHONPATH`. **A file under `data/`, not a module and not a string literal:**
+it must subclass jupyter-server's `AsyncCheckpoints` at class-definition time,
+and the shepherd runs in the HOST env, which does not have jupyter-server and
+must not need it — so it cannot be imported, and `inspect.getsource` (this
+project's pattern elsewhere) cannot reach it. Left as a string literal it was
+invisible to every tool, and an edit deleted it on 2026-09-14 and shipped a
+`NameError` on every notebook start. Being an absolute path, it is loaded *instead of* searching the
 config path, so the framed server does not read a personal
 `~/.jupyter/jupyter_server_config.py` either — the same isolation § 4.1 gives
 the settings home.

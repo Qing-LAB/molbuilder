@@ -75,6 +75,7 @@ import secrets
 import signal
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -94,11 +95,10 @@ _PR_SET_PDEATHSIG = 1
 #: read until 2026-09-14, while the code slept a hardcoded 1.0 beside it.
 _STOP_GRACE_S = 4.0
 
-#: Jupyter's own idle reaping, in seconds.  **Its settings, not a timer of
-#: ours** (`jupyter.md` § 4): a hand-rolled one would be a second opinion
-#: about when a notebook is idle, and Jupyter is the half that knows.
-_CULL_IDLE_KERNEL_S = 30 * 60
-_SHUTDOWN_NO_ACTIVITY_S = 60 * 60
+#: The schema this module's data file must stamp itself with.  Gated by
+#: `persist.check_schema`, the one enforcement point for the convention --
+#: the same posture `warm-files.toml` has.
+SCHEMA = "molbuilder/jupyter@1"
 
 
 def jupyter_port(serve_port: int) -> int:
@@ -373,119 +373,191 @@ def _stop_own_group() -> None:
         pass
 
 
-#: WHAT A FRAMED LAB STARTS AS.  Lab's defaults are right for a Lab in a
-#: window and wrong for one inside a tab of another application.  Both plugin
-#: ids and both value shapes are Jupyter's own, read out of
-#: ``<env>/share/jupyter/lab/schemas/`` rather than guessed -- which is why
-#: `fetchNews` is a quoted STRING enum ("true" / "false" / "none").
-#:
-#: These are DEFAULTS.  Lab reads them from `app_settings_dir`, and a person's
-#: own change inside Lab is written to the USER settings directory, which
-#: still wins -- so this sets where the tab STARTS, not what anyone is allowed.
-#:
-#: **This table and `_SERVER_CONFIG` below were deleted by accident on
-#: 2026-09-14** -- a helper that removed three dead functions took everything
-#: between two of them, and `prepare_lab_home` then raised `NameError` on
-#: every notebook start.  Nothing caught it: no test reaches this path, and
-#: the shepherd's traceback goes to the notebook log.  Restored verbatim from
-#: the files the working code had already generated.
-_LAB_OVERRIDES: Dict[str, Dict[str, object]] = {
-    "@jupyterlab/application-extension:shell": {
-        # MULTI-DOCUMENT MODE -- Lab's document TAB BAR, so several notebooks
-        # are open at once.  Single-document mode was tried first, to be rid
-        # of Lab's file browser; it takes the tab bar with it, and reading two
-        # notebooks side by side is worth more than losing the panel is
-        # (decided with the user 2026-09-14).
-        "startMode": "multiple",
-    },
-    "@jupyterlab/notebook-extension:tracker": {
-        # CLOSING A NOTEBOOK SHUTS ITS KERNEL DOWN.  Lab keeps it running by
-        # default so you can reopen with your variables; inside a tab of
-        # another application a kernel nobody can see is memory -- and on a
-        # GPU box a device -- held for no one.  A page RELOAD is not a close,
-        # so reopening the same notebook still reconnects.  Asked for by the
-        # user 2026-09-14.
-        "kernelShutdown": True,
-    },
-    "@jupyterlab/apputils-extension:themes": {
-        # Lab renders light by default, inside an application that is dark
-        # everywhere else: the frame read as a different program pasted into
-        # the page.
-        "theme": "JupyterLab Dark",
-        # Lab leaves its scrollbars light-on-light otherwise -- the one part
-        # of the frame that still flashed white against this palette.
-        "theme-scrollbars": True,
-    },
-    "@jupyterlab/apputils-extension:notification": {
-        # Jupyter asks every viewer whether it may fetch its news feed, in a
-        # popup over the frame.  A tab inside molbuilder is not where that is
-        # answered, and the answer would be a network call from a machine
-        # that may have no route out.
-        "fetchNews": "false",
-        "checkForUpdates": False,
-    },
-}
+# --------------------------------------------------------------------- #
+#  The settings, as DATA -- `data/jupyter.toml` and the one reader        #
+# --------------------------------------------------------------------- #
+
+class JupyterRulesError(Exception):
+    """`data/jupyter.toml` is missing, malformed, or names nothing usable."""
 
 
-#: A jupyter-server config file, written beside the Lab settings and handed to
-#: the server as `ServerApp.config_file`.  It exists for ONE thing.
-#:
-#: **Jupyter writes a `.ipynb_checkpoints/` directory beside every notebook it
-#: saves.**  In a projects tree that is a directory in every folder somebody
-#: has opened a notebook in -- swept up by result scans, carried along by
-#: every copy to a cluster, and holding a stale duplicate of work nobody asked
-#: it to keep.
-#:
-#: Jupyter has no switch for it.  `FileCheckpoints.checkpoint_dir` only
-#: RENAMES the directory, and pointing it at one shared absolute path is worse
-#: than the problem: the checkpoint file is named after the notebook alone, so
-#: two `Untitled.ipynb` in different folders collide and a restore hands back
-#: the wrong file.  What the contents manager does take is a
-#: `checkpoints_class`, and jupyter-server ships no no-op one -- so molbuilder
-#: writes it.  A config file is executed Python, which is why the class can
-#: live here instead of on `PYTHONPATH`.
-#:
-#: `restore_checkpoint` REFUSES rather than quietly doing nothing: with
-#: `list_checkpoints` empty Lab offers nothing to restore, and a path that
-#: could still be reached must never silently discard an edit.
-_SERVER_CONFIG = '# Generated by molbuilder at every notebook start -- edits here are lost.\n# Why this file exists: molbuilder.jupyter._SERVER_CONFIG.\nfrom datetime import datetime, timezone\n\nfrom jupyter_server.services.contents.checkpoints import AsyncCheckpoints\n\n\nclass NoCheckpoints(AsyncCheckpoints):\n    """Answer the checkpoint API without writing anything to disk."""\n\n    async def create_checkpoint(self, contents_mgr, path):\n        return {"id": "no-checkpoint",\n                "last_modified": datetime.now(timezone.utc)}\n\n    async def list_checkpoints(self, path):\n        return []\n\n    async def rename_checkpoint(self, checkpoint_id, old_path, new_path):\n        return None\n\n    async def delete_checkpoint(self, checkpoint_id, path):\n        return None\n\n    async def restore_checkpoint(self, contents_mgr, checkpoint_id, path):\n        from tornado.web import HTTPError\n        raise HTTPError(\n            400,\n            "molbuilder runs this notebook server with checkpoints disabled, "\n            "so there is nothing to restore.",\n        )\n\n\n# Both sections: `AsyncContentsManager` redeclares the trait that\n# `ContentsManager` defines, and the running manager inherits from both.\nc.ContentsManager.checkpoints_class = NoCheckpoints        # noqa: F821\nc.AsyncContentsManager.checkpoints_class = NoCheckpoints   # noqa: F821\n'
+#: The sections the file may carry, closed by contract.  A typo in a settings
+#: file otherwise disables a setting in silence, which is the failure this
+#: whole table exists to end -- so an unknown section is refused BY NAMING
+#: THE ONES THAT EXIST, `warmfiles`' own refusal style.
+_SECTIONS = ("schema", "server", "lab")
+_LAB_SECTIONS = ("home", "config", "overrides")
+
+
+@dataclass(frozen=True)
+class JupyterRules:
+    """What `data/jupyter.toml` declares, parsed once.
+
+    ``server`` and ``lab_config``/``lab_home`` are keyed by the traitlets
+    OPTION each answers (``ServerApp.port_retries``,
+    ``LabApp.workspaces_dir``), because that key is what reaches the command
+    line -- so adding a setting is a row here and nothing in the code.
+    """
+    server: Dict[str, object]
+    lab_home: Dict[str, str]
+    lab_config: Dict[str, str]
+    overrides: Dict[str, Dict[str, object]]
+    path: str
+
+
+def rules_path() -> Path:
+    """Where the table lives.  Shipped by `pyproject.toml`'s ``data/*.toml``."""
+    return Path(__file__).resolve().parent / "data" / "jupyter.toml"
+
+
+def load_rules() -> JupyterRules:
+    """Read and validate the settings table.  THE ONE READER.
+
+    The admission rule the file states is not enforceable from here -- *"is
+    this value knowable before the process starts"* is a question about the
+    value, not its shape -- so what this checks is the shape: the stamp, the
+    sections, and that every row is an option with a scalar value.  The rule
+    itself is kept by review, and by the fact that a runtime value has
+    nowhere in the file to come from.
+    """
+    import tomllib
+
+    from .persist import check_schema
+    path = rules_path()
+    try:
+        with open(path, "rb") as fh:
+            raw = tomllib.load(fh)
+    except OSError as exc:
+        raise JupyterRulesError(
+            f"cannot read the notebook settings table at {path}: {exc}. "
+            f"It ships with molbuilder (`pyproject.toml`, `data/*.toml`); an "
+            f"installed copy missing it was built by an older setuptools."
+        ) from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise JupyterRulesError(f"{path}: not valid TOML -- {exc}") from exc
+
+    check_schema(str(raw.get("schema", "")), SCHEMA, label=str(path))
+    unknown = [k for k in raw if k not in _SECTIONS]
+    if unknown:
+        raise JupyterRulesError(
+            f"{path}: unknown section(s) {', '.join(sorted(unknown))} -- this "
+            f"file carries {', '.join(_SECTIONS)} and nothing else.")
+    lab = raw.get("lab") or {}
+    if not isinstance(lab, dict):
+        raise JupyterRulesError(f"{path}: [lab] must be a table.")
+    unknown = [k for k in lab if k not in _LAB_SECTIONS]
+    if unknown:
+        raise JupyterRulesError(
+            f"{path}: unknown [lab.{unknown[0]}] -- [lab] carries "
+            f"{', '.join('lab.' + s for s in _LAB_SECTIONS)} and nothing else.")
+
+    def _flat(section: str, body: object) -> Dict[str, object]:
+        if body is None:
+            return {}
+        if not isinstance(body, dict):
+            raise JupyterRulesError(f"{path}: [{section}] must be a table.")
+        for key, val in body.items():
+            if "." not in key:
+                raise JupyterRulesError(
+                    f"{path}: [{section}] key {key!r} is not a traitlets "
+                    f"option -- every row here is `Class.trait`, because the "
+                    f"key IS what reaches the command line.")
+            if isinstance(val, (dict, list)):
+                raise JupyterRulesError(
+                    f"{path}: [{section}] {key} holds a {type(val).__name__}; "
+                    f"a command-line option carries one scalar.")
+        return dict(body)
+
+    overrides = lab.get("overrides") or {}
+    if not isinstance(overrides, dict) or not all(
+            isinstance(v, dict) for v in overrides.values()):
+        raise JupyterRulesError(
+            f"{path}: [lab.overrides] is one table per PLUGIN ID, each "
+            f"holding that plugin's settings.")
+    return JupyterRules(
+        server=_flat("server", raw.get("server")),
+        lab_home=_flat("lab.home", lab.get("home")),
+        lab_config=_flat("lab.config", lab.get("config")),
+        overrides={str(k): dict(v) for k, v in overrides.items()},
+        path=str(path),
+    )
+
+
+def option_argv(settings: Dict[str, object]) -> List[str]:
+    """``{trait: value}`` -> ``--trait=value``, sorted.  THE ONE EMITTER.
+
+    Every Jupyter setting molbuilder states goes out through here, whether it
+    was authored in `data/jupyter.toml` or computed from a runtime fact -- so
+    there is one spelling of an option on the command line and one place a
+    row can go missing from.  Sorted because the argv is compared in tests and
+    read in logs, and a dict's order is not a fact about the settings.
+
+    Booleans are spelled the way traitlets parses them (`True` / `False`),
+    which is Python's own `repr` and not TOML's lower case.
+    """
+    out: List[str] = []
+    for key in sorted(settings):
+        val = settings[key]
+        out.append(f"--{key}={val!r}" if isinstance(val, bool)
+                   else f"--{key}={val}")
+    return out
 
 
 def prepare_lab_home() -> Dict[str, str]:
     """Prepare the framed Lab's own directories and config; return every
     generated path keyed by the command-line option it answers.
 
-    Three directories and one config file, all separate from ``~/.jupyter``
-    for one reason: **the Lab in this frame is molbuilder's, not the one the
-    person runs themselves.**
-    Sharing them let each write over the other -- Lab saves a user setting the
-    first time it resolves one, and a user setting beats an override, so the
-    framed Lab adopted whatever the standalone Lab had written and ignored
-    every default here (measured 2026-09-14: the theme stayed light).
+    **WHAT IS HERE IS `data/jupyter.toml`'s.**  The directory names, the
+    config file's name and every override are rows in that table; this
+    function turns them into paths under `config_dir.jupyter_lab_home()` and
+    writes the two generated files.  Adding a directory is a row there and
+    nothing here.
 
-    The overrides file is rewritten at every start, so the answer to "why does
-    my framed Lab look like this" is always the table above and never a stale
-    file.  The other two are only created; what Lab saves into them is the
-    person's.
+    Separate from ``~/.jupyter`` for one reason: **the Lab in this frame is
+    molbuilder's, not the one the person runs themselves.**  Sharing them let
+    each write over the other -- Lab saves a user setting the first time it
+    resolves one, and a user setting beats an override, so the framed Lab
+    adopted whatever the standalone Lab had written and ignored every default
+    here (measured 2026-09-14: the theme stayed light).
+
+    The overrides file and the server config are rewritten at every start, so
+    the answer to *"why does my framed Lab look like this"* is always the
+    table and never a stale file.  The other directories are only created;
+    what Lab saves into them is the person's.
     """
     import json
+    import shutil
     from .config_dir import ensure_private_dir, jupyter_lab_home
+    rules = load_rules()
     home = ensure_private_dir(jupyter_lab_home())
-    dirs = {
-        "LabApp.app_settings_dir":  ensure_private_dir(home / "settings"),
-        "LabApp.user_settings_dir": ensure_private_dir(home / "user-settings"),
-        "LabApp.workspaces_dir":    ensure_private_dir(home / "workspaces"),
-    }
-    (dirs["LabApp.app_settings_dir"] / "overrides.json").write_text(
-        json.dumps(_LAB_OVERRIDES, indent=2) + "\n", encoding="utf-8")
-    cfg = home / "jupyter_server_config.py"
-    cfg.write_text(_SERVER_CONFIG, encoding="utf-8")
-    out = {k: str(v) for k, v in dirs.items()}
-    # An ABSOLUTE `config_file` is loaded INSTEAD of searching the config path
-    # (`jupyter_core.application.load_config_file`), so the framed server does
-    # not read a personal `~/.jupyter/jupyter_server_config.py` either -- the
-    # same isolation the settings home gets, for the same reason.
-    out["ServerApp.config_file"] = str(cfg)
+    out = {opt: str(ensure_private_dir(home / name))
+           for opt, name in rules.lab_home.items()}
+
+    app_settings = rules.lab_home.get("LabApp.app_settings_dir")
+    if app_settings is None:
+        raise JupyterRulesError(
+            f"{rules.path}: [lab.home] declares no "
+            f"`LabApp.app_settings_dir`, and that is where the overrides go.")
+    (home / app_settings / "overrides.json").write_text(
+        json.dumps(rules.overrides, indent=2) + "\n", encoding="utf-8")
+
+    # THE CONFIG IS A FILE IN THE PACKAGE, COPIED -- never a string literal
+    # here.  `data/jupyter_server_config.py`'s own docstring says why it is a
+    # file under `data/` rather than a module inlined with `inspect.getsource`
+    # (it must subclass jupyter_server's `AsyncCheckpoints`, which the HOST
+    # env does not have).  An ABSOLUTE `config_file` is then loaded INSTEAD of
+    # searching the config path, so the framed server does not read a personal
+    # `~/.jupyter/jupyter_server_config.py` either.
+    for opt, name in rules.lab_config.items():
+        src = rules_path().parent / name
+        if not src.is_file():
+            raise JupyterRulesError(
+                f"{rules.path}: [lab.config] names {name!r}, which is not in "
+                f"{src.parent}.  It ships with molbuilder (`pyproject.toml`, "
+                f"`data/*.py`).")
+        dst = home / name
+        shutil.copyfile(src, dst)
+        out[opt] = str(dst)
     return out
 
 
@@ -496,19 +568,24 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     """The ``jupyter lab`` command line, as the door will carry it.
 
     Every setting here is Jupyter's own (`jupyter.md` § 4): molbuilder states
-    what it needs and does not re-implement any of it.
+    what it needs and re-implements none of it.  **One map, one emitter** --
+    the authored rows from `data/jupyter.toml` and the computed rows below go
+    out through `option_argv` together, because they are the same kind of
+    fact and were three different mechanisms until 2026-09-15.
 
-    * ``--ServerApp.token`` -- generated by us so the tab can build a URL that
-      works without a person copying anything.  It is a CREDENTIAL and lives
-      in a 0600 runtime file.
-    * ``tornado_settings`` carries ``frame-ancestors`` -- Jupyter refuses to
-      be framed by default, and the tab is an iframe (§ 2).
-    * ``cull_idle_timeout`` / ``shutdown_no_activity_timeout`` -- Jupyter's
-      own idle reaping rather than a timer of ours.
-    * ``lab_dirs`` -- everything `prepare_lab_home` generated, keyed by the
-      option each answers (the key carries its own ``LabApp.`` /
-      ``ServerApp.`` prefix).  Passed straight through, so another generated
-      path is a line there and nothing here.
+    The computed half is here because each row needs something only this
+    process knows, which is the file's own admission rule read backwards:
+
+    * ``token`` -- generated per start so the tab can build a URL nobody has
+      to copy.  A CREDENTIAL; it lives in a 0600 runtime file.
+    * ``tornado_settings`` -- the ``frame-ancestors`` grant.  Jupyter refuses
+      to be framed by default and the tab is an iframe (§ 2).
+    * ``ip`` / ``port`` / ``root_dir`` -- the bind address, the derived port,
+      the projects tree.
+    * ``certfile`` / ``keyfile`` -- only when `serve` itself has TLS.
+    * ``lab_dirs`` -- what `prepare_lab_home` generated, keyed by the option
+      each answers, so a new generated path is a row in the table and
+      nothing here.
     """
     import json
     from .envs.builds import conda_run_argv
@@ -528,34 +605,20 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     serve_port = serve_port_of(port)
     frame_ancestors = (f"frame-ancestors 'self' "
                        f"http://*:{serve_port} https://*:{serve_port}")
-    settings = {"headers": {"Content-Security-Policy": frame_ancestors}}
-    inner = [
-        "jupyter", "lab",
-        "--no-browser",
-        f"--ServerApp.ip={host}",
-        f"--ServerApp.port={port}",
-        # A TAKEN PORT IS A REFUSAL, NOT A SILENT MOVE.  jupyter-server
-        # defaults `port_retries` to 50 and then picks a RANDOM free port in
-        # that range -- so if `serve_port + 1` were busy, Jupyter would start
-        # happily somewhere nobody recorded, while the runtime file, the
-        # `frame-src` CSP, the `frame-ancestors` grant and `answering()` all
-        # kept naming the port it was asked for.  The tab would say "wedged"
-        # over a perfectly healthy notebook.  Zero makes the clash an error
-        # molbuilder can see and report.
-        "--ServerApp.port_retries=0",
-        f"--ServerApp.token={token}",
-        f"--ServerApp.root_dir={root_dir}",
-        f"--ServerApp.tornado_settings={json.dumps(settings)}",
-        f"--MappingKernelManager.cull_idle_timeout={_CULL_IDLE_KERNEL_S}",
-        "--MappingKernelManager.cull_connected=False",
-        f"--ServerApp.shutdown_no_activity_timeout="
-        f"{_SHUTDOWN_NO_ACTIVITY_S}",
-    ]
-    for _opt, _path in sorted((lab_dirs or {}).items()):
-        inner.append(f"--{_opt}={_path}")
+    settings: Dict[str, object] = dict(load_rules().server)
+    settings.update({
+        "ServerApp.ip": host,
+        "ServerApp.port": port,
+        "ServerApp.token": token,
+        "ServerApp.root_dir": root_dir,
+        "ServerApp.tornado_settings": json.dumps(
+            {"headers": {"Content-Security-Policy": frame_ancestors}}),
+    })
+    settings.update(lab_dirs or {})
     if cert and key:
-        inner += [f"--ServerApp.certfile={cert}",
-                  f"--ServerApp.keyfile={key}"]
+        settings["ServerApp.certfile"] = cert
+        settings["ServerApp.keyfile"] = key
+    inner = ["jupyter", "lab", "--no-browser", *option_argv(settings)]
     return list(conda_run_argv(conda, env_name, *inner))
 
 

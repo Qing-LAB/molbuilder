@@ -1,0 +1,140 @@
+# The framed notebook's settings, as DATA.
+#
+# Contract: `docs/web/jupyter.md` § 4 and `docs/plans/plan.md` § 5n.
+# Read by `molbuilder.jupyter.load_rules()`, which is the ONE reader.
+#
+# THE ADMISSION RULE -- what keeps this file from becoming a dumping ground:
+#
+#     A row belongs here IF AND ONLY IF its value is knowable before the
+#     process starts.
+#
+# Everything that needs a runtime fact stays in `jupyter.py` and is emitted
+# through the same writer, so the shape on the command line is identical
+# either way.  What that excludes, and why, so the line can be checked:
+#
+#   ServerApp.ip                a CLI argument
+#   ServerApp.port              derived -- `jupyter_port(serve_port)`
+#   ServerApp.token             generated per start; a credential gets no
+#                               home in the repository
+#   ServerApp.root_dir          the projects root
+#   ServerApp.tornado_settings  the `frame-ancestors` grant, DERIVED from
+#                               `serve_port_of(port)`.  A security header
+#                               stays a computation with its reasoning
+#                               beside it
+#   ServerApp.certfile/keyfile  present only when `serve` has TLS
+#
+# Before 2026-09-15 the rows below were three different mechanisms inside
+# one function -- f-strings in a list literal, module constants interpolated
+# into two of them, and a dict looped into `--{k}={v}` twelve lines lower.
+# All of them were `--<Class>.<trait>=<value>`.  A dropped row is now
+# visibly missing from a table instead of invisibly absent from a list,
+# which is how `port_retries` came to be missing for a week.
+
+schema = "molbuilder/jupyter@1"
+
+
+# ---------------------------------------------------------------------------
+#  [server] -- what jupyter-server is told, by traitlets name.
+#
+#  Jupyter's own settings (`jupyter.md` § 4): molbuilder states what it needs
+#  and re-implements none of it.
+# ---------------------------------------------------------------------------
+[server]
+
+# A TAKEN PORT IS A REFUSAL, NOT A SILENT MOVE.  jupyter-server defaults
+# `port_retries` to 50 and then picks a RANDOM free port in that range -- so
+# if `serve_port + 1` were busy, Jupyter would start happily somewhere nobody
+# recorded, while the runtime file, the `frame-src` CSP, the `frame-ancestors`
+# grant and `answering()` all kept naming the port it was asked for.  The tab
+# would say "wedged" over a perfectly healthy notebook.  Zero makes the clash
+# an error molbuilder can see and report.
+"ServerApp.port_retries" = 0
+
+# JUPYTER'S OWN IDLE REAPING, in seconds -- its settings, not a timer of ours.
+# A hand-rolled one would be a second opinion about when a notebook is idle,
+# and Jupyter is the half that knows.
+"MappingKernelManager.cull_idle_timeout" = 1800          # 30 minutes
+"ServerApp.shutdown_no_activity_timeout" = 3600          # 1 hour
+
+# A CONNECTED KERNEL IS NOT AN IDLE ONE.  With this true, a notebook left open
+# in a browser tab counts as cullable and the page silently loses its kernel.
+"MappingKernelManager.cull_connected" = false
+
+
+# ---------------------------------------------------------------------------
+#  [lab.home] -- the framed Lab's own directories, by the option each answers.
+#
+#  Created under `config_dir.jupyter_lab_home()` and handed to Lab on the
+#  command line.  SEPARATE FROM `~/.jupyter` on purpose: Lab writes a user
+#  setting the first time it resolves one, and a user setting BEATS an
+#  override, so a shared home let the framed Lab adopt whatever the person's
+#  standalone Lab had written -- measured 2026-09-14, the theme stayed light.
+#
+#  The value is the subdirectory NAME; the path is built by the loader's
+#  caller, because the home is a runtime fact.
+# ---------------------------------------------------------------------------
+[lab.home]
+"LabApp.app_settings_dir"  = "settings"        # where overrides.json is written
+"LabApp.user_settings_dir" = "user-settings"   # what a person changes in Lab
+"LabApp.workspaces_dir"    = "workspaces"      # which documents were open
+
+
+# ---------------------------------------------------------------------------
+#  [lab.config] -- a generated file under the same home, by its option.
+#
+#  ABSOLUTE, so `jupyter_core.application.load_config_file` loads it INSTEAD
+#  of searching the config path -- the framed server therefore does not read a
+#  personal `~/.jupyter/jupyter_server_config.py` either, which is the same
+#  isolation the settings home gets, for the same reason.
+# ---------------------------------------------------------------------------
+[lab.config]
+"ServerApp.config_file" = "jupyter_server_config.py"
+
+
+# ---------------------------------------------------------------------------
+#  [lab.overrides] -- WHAT A FRAMED LAB STARTS AS, by plugin id.
+#
+#  Serialized verbatim to `<app_settings_dir>/overrides.json`, rewritten at
+#  every start -- so the answer to "why does my framed Lab look like this" is
+#  always this table and never a stale file.
+#
+#  These are DEFAULTS, not values: Lab reads them from `app_settings_dir`, and
+#  a person's own change inside Lab is written to the USER settings directory,
+#  which still wins.  This sets where the tab STARTS, not what anyone is
+#  allowed.
+#
+#  Both the plugin ids and the value shapes are Jupyter's own, read out of
+#  `<env>/share/jupyter/lab/schemas/` rather than guessed -- which is why
+#  `fetchNews` is a quoted STRING enum ("true" / "false" / "none") sitting
+#  next to a real boolean.
+# ---------------------------------------------------------------------------
+
+# MULTI-DOCUMENT MODE -- Lab's document TAB BAR, so several notebooks are open
+# at once.  Single-document mode was tried first, to be rid of Lab's file
+# browser; it takes the tab bar with it, and reading two notebooks side by side
+# is worth more than losing the panel is (decided with the user 2026-09-14).
+[lab.overrides."@jupyterlab/application-extension:shell"]
+startMode = "multiple"
+
+# CLOSING A NOTEBOOK SHUTS ITS KERNEL DOWN.  Lab keeps it running by default so
+# you can reopen with your variables; inside a tab of another application a
+# kernel nobody can see is memory -- and on a GPU box a device -- held for no
+# one.  A page RELOAD is not a close, so reopening the same notebook still
+# reconnects.  Asked for by the user 2026-09-14.
+[lab.overrides."@jupyterlab/notebook-extension:tracker"]
+kernelShutdown = true
+
+# Lab renders light by default, inside an application that is dark everywhere
+# else: the frame read as a different program pasted into the page.  The
+# scrollbar line is separate because Lab leaves its scrollbars light-on-light
+# otherwise -- the one part of the frame that still flashed white.
+[lab.overrides."@jupyterlab/apputils-extension:themes"]
+theme = "JupyterLab Dark"
+"theme-scrollbars" = true
+
+# Jupyter asks every viewer whether it may fetch its news feed, in a popup over
+# the frame.  A tab inside molbuilder is not where that is answered, and the
+# answer would be a network call from a machine that may have no route out.
+[lab.overrides."@jupyterlab/apputils-extension:notification"]
+fetchNews = "false"
+checkForUpdates = false
