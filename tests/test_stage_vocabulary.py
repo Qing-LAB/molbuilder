@@ -293,6 +293,38 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "parameter ladder, so the tuple is a design constant rather than "
         "a strategy output.  Skipping is the per-stage enabled flag "
         "(ruling Q4), never a different ladder"),
+    "TRANSPORT_STAGE_PRESETS": (
+        1, "molbuilder/transport/stages.py",
+        "mechanism 1's table for the transport kind (2026-09-15) -- what "
+        "each rung RUNS at where it differs from the calculation's own "
+        "answer.  NOT a new mechanism, and deliberately not a new template "
+        "marker either: `solution_method` is exactly `relax_type`'s "
+        "situation, so the shape that carries the relaxation tiers carries "
+        "these.  Two keys wide (solution_method, ts_hs_save) because a rung "
+        "appears here only where the LADDER, not the person, has the "
+        "answer; everything else a transport deck needs is transport-wide "
+        "(engines/transport.md 6.1a)"),
+    "SEALED_BY_STAGE": (
+        1, "molbuilder/transport/stages.py",
+        "derived FROM the table above, not a second list: every field the "
+        "ladder answers.  An override naming one is refused by name, "
+        "because changing it does not tune the rung -- it stops the rung "
+        "being that rung.  Not a way of expressing a stage; the guard that "
+        "keeps mechanism 1's transport table the only author of those "
+        "values"),
+    "default_transport_stages": (
+        11, "molbuilder/transport/stages.py",
+        "the transport twin of `default_siesta_stages`: builds the fixed "
+        "five-rung ladder as task.Stage objects and merges the person's "
+        "device-rung tuning, refusing a name the ladder answers.  ONE door "
+        "for both construction sites (`jobset init`, the web hand-over), "
+        "which built `overrides={}` by hand until 2026-09-15.  Unlike its "
+        "SIESTA twin it does NOT put mechanism 1's table into the bags: "
+        "stages.md 6.2 admits only PROMOTED fields there and `varies` is "
+        "derived from them, so that would make every description claim the "
+        "person promoted `solution_method`.  `config_for` applies the "
+        "table instead.  No strategy argument either -- the rungs are "
+        "fixed by design, so mechanism 2 has nothing to say here"),
     "render_stage_deck": (
         None, "molbuilder/transport/stages.py",
         "renders ONE transport rung's deck from the composed junction + "

@@ -140,17 +140,24 @@ def _write_junction(root, struct):
     return calc
 
 
-def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
-    from molbuilder.task import Stage, Task, derive_run, write_task
+def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2), overrides=None):
+    from molbuilder.task import Task, derive_run, write_task
+    # THE PRODUCT'S OWN DOOR for the ladder, so this fixture keeps
+    # matching what `jobset init` writes: the rungs carry their own
+    # answers (TRANSPORT_STAGE_PRESETS), and *overrides* is the
+    # person's device-rung tuning, merged the way the web hand-over
+    # merges it.  It built `overrides={}` by hand until 2026-09-15,
+    # which stopped being true the day the ladder had answers.
+    from molbuilder.transport.stages import default_transport_stages
     dest = root / "J" / "transport" / "T"
     dest.mkdir(parents=True, exist_ok=True)
     write_task(dest / "task.json", Task(
         engine="siesta", shape="hierarchical",
         run=derive_run("T", cite, stage_names=_STAGES),
         structure=None, calculation="transport",
-        slots={"junction": cite}, bias=bias, varies=(),
-        stages=tuple(Stage(name=n, enabled=True, overrides={})
-                     for n in _STAGES)))
+        slots={"junction": cite}, bias=bias,
+        varies=tuple(sorted(overrides or {})),
+        stages=tuple(default_transport_stages(overrides))))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate"}}))
     return dest
@@ -178,6 +185,31 @@ def calc(tmp_path):
     root = tmp_path / "projects"
     _write_junction(root, _junction_struct())
     return _describe_transport(root)
+
+
+class TestTheLaddersOwnAnswers:
+    """`TRANSPORT_STAGE_PRESETS` — what each rung RUNS at where it
+    differs from the calculation's own answer (`engines/transport.md`
+    § 6.1).
+
+    The values themselves are already asserted by `TestTheLadderPreps`,
+    which reads `SolutionMethod` and `TS.HS.Save` out of the rendered
+    decks. What is pinned HERE is the two properties those assertions
+    cannot see: that a rung's answer stays on that rung, and that
+    nobody else can set one.
+    """
+
+    def test_the_seal_refuses_a_person_naming_a_rungs_answer(self):
+        """`SEALED_BY_STAGE` — changing one does not tune a rung, it
+        stops the rung being that rung, so it is refused by name."""
+        from molbuilder.transport.stages import (SEALED_BY_STAGE, StageError,
+                                                 default_transport_stages)
+        assert SEALED_BY_STAGE == {"solution_method", "ts_hs_save"}
+        for name, value in (("solution_method", "diagon"),
+                            ("ts_hs_save", True)):
+            with pytest.raises(StageError) as e:
+                default_transport_stages({name: value})
+            assert name in str(e.value), "the refusal must name the field"
 
 
 class TestTheLadderPreps:

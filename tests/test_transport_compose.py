@@ -930,6 +930,62 @@ class TestTheRecordedContract:
         assert cfg.k_mesh_transverse == (3, 3, 1), "kz forced 1, always"
         assert cfg.electronic_temperature_k == 150.0
 
+    def test_a_rungs_override_stays_on_that_rung(self, tmp_path):
+        """ONE config PER RUNG, not one per calculation.
+
+        `config_for` merged all five override bags into a single config
+        until 2026-09-15, so a name set by one rung reached every deck.
+        Nothing observable broke while only the `device` bag was ever
+        filled -- which is precisely why it needed pinning before the
+        bags stopped being empty: it is the shape that made a per-stage
+        value (`SolutionMethod`, `TS.HS.Save`) impossible to express.
+
+        Contract: `engines/transport.md` § 6.1.
+        """
+        from molbuilder.transport.stages import config_for
+        from molbuilder.task import Stage, Task, derive_run
+        root, cite = self._recorded_pair(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        stages = tuple(
+            Stage(name=n, enabled=True,
+                  overrides={"transmission_n_points": 77} if n == "device"
+                             else {})
+            for n in ("seed", "device"))
+        task = Task(engine="siesta", shape="hierarchical",
+                    run=derive_run("T", cite, stage_names=("seed", "device")),
+                    structure=None, calculation="transport",
+                    slots={"junction": cite}, bias=(0.0,),
+                    varies=("transmission_n_points",), stages=stages)
+        assert config_for(task, out, stage="device").transmission_n_points == 77
+        assert config_for(task, out, stage="seed").transmission_n_points == 401, (
+            "the device rung's override reached the seed's config: the bags "
+            "are merging again instead of applying per rung")
+
+    def test_each_rung_carries_the_ladders_own_method(self, tmp_path):
+        """`TRANSPORT_STAGE_PRESETS` is applied FROM the table, so a
+        description with empty bags still renders the rung it claims to
+        be rather than the config default."""
+        from molbuilder.transport.stages import (TRANSPORT_STAGES, config_for,
+                                                 default_transport_stages)
+        from molbuilder.task import Task, derive_run
+        root, cite = self._recorded_pair(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        task = Task(engine="siesta", shape="hierarchical",
+                    run=derive_run("T", cite, stage_names=TRANSPORT_STAGES),
+                    structure=None, calculation="transport",
+                    slots={"junction": cite}, bias=(0.0,), varies=(),
+                    stages=tuple(default_transport_stages()))
+        got = {s: (config_for(task, out, stage=s).solution_method,
+                   config_for(task, out, stage=s).ts_hs_save)
+               for s in TRANSPORT_STAGES}
+        assert got == {
+            "seed":         ("diagon", False),
+            "electrode_L":  ("diagon", True),
+            "electrode_R":  ("diagon", True),
+            "device":       ("transiesta", False),
+            "transmission": ("transiesta", False),
+        }, "the ladder's own answers, per rung"
+
     def test_the_record_seals_the_contract_fields(self, tmp_path):
         from molbuilder.transport.stages import StageError, config_for
         from molbuilder.task import Stage, Task, derive_run

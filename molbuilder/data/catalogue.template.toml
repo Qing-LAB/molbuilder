@@ -2109,6 +2109,26 @@ help = """
 Write the transmission between every pair of electrodes, not only the first pair.  For a two-terminal junction the two are the same.
 """
 
+[item.ts_hs_save]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.HS.Save"
+engine_key = "TS.HS.Save"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write the TranSIESTA .TSHS"
+tier = "advanced"
+help = """
+Write `<SystemLabel>.TSHS` -- the Hamiltonian container a device run's `TS.Elec.<name>` reference reads.
+
+This is the ELECTRODE stages' essential output: without it a lead run concludes having produced nothing the device can attach to.  The ladder therefore turns it on for `electrode_L` and `electrode_R` and leaves it off elsewhere, so the calculation's own answer here is `false` and the two lead rungs are the exception.
+"""
+
 [item.negf_eq_pole_ev]
 kind = "engine"
 category = ["convergence"]

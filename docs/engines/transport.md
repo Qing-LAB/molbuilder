@@ -945,6 +945,148 @@ still write `.TSHS` via `TS.HS.Save`.  `summarize run` writes the record —
 
 ---
 
+### 6.1 Five stages, three deck texts, two binaries — and what integrates them
+
+The diagram above follows the *files*.  This one follows the *scripts*,
+because "one calculation" here is **five separate executions of an engine
+binary, each `cd`-ed into its own attempt directory, each reading its own
+`.fdf`** — and that is the fact every other question about transport hangs
+off.
+
+Two things are easy to get wrong and both are visible here:
+
+* **Five stages do not mean five deck texts.**  There are **three**.  The
+  device and the transmission deck are the **same bytes**; what differs is
+  only which binary is pointed at them (`Resources.program`).  That is
+  deliberate — `TBT.*` keywords are inert to `siesta` and `TS.*` keywords
+  are inert to `tbtrans`, so one text can serve both and the two runs
+  cannot drift apart in geometry, basis or electrode identity.
+* **Nothing is "integrated" at the end.**  Integration happens *between*
+  stages, as files, at prep time — `prep` copies a concluded upstream
+  stage's output into the next stage's attempt directory before that stage
+  ever runs.  There is no post-processing step that merges five results;
+  the merge is that stage N+1's SCF starts from stage N's matrices.
+
+```mermaid
+flowchart TB
+    subgraph TXT["the three deck TEXTS (floor 3's output)"]
+      direction LR
+      T1["seed text<br/><i>stages.py::_render_seed</i><br/>SolutionMethod diagon"]
+      T2["electrode text (x2, one per side)<br/><i>wizard.py::render_electrode_fdf</i><br/>diagon · dense kz · TS.HS.Save"]
+      T3["device text<br/><i>transiesta.py::render_script</i><br/>SolutionMethod transiesta + TBT.* block"]
+    end
+
+    T1 --> S1
+    T2 --> S2
+    T2 --> S3
+    T3 --> S4
+    T3 -.->|"same bytes,<br/>different binary"| S5
+
+    subgraph RUN["five executions, five directories"]
+      direction TB
+      S1["<b>01_seed</b>/run-N<br/>siesta &lt;label&gt;.fdf<br/>writes &lt;label&gt;.DM"]
+      S2["<b>02_electrode_L</b>/run-N<br/>siesta &lt;stem_L&gt;.fdf<br/>writes &lt;stem_L&gt;.TSHS"]
+      S3["<b>03_electrode_R</b>/run-N<br/>siesta &lt;stem_R&gt;.fdf<br/>writes &lt;stem_R&gt;.TSHS"]
+      S4["<b>04_device</b>/run-N (per bias point)<br/>siesta &lt;label&gt;.fdf<br/>NEGF SCF -> &lt;label&gt;.TS.HSX + .TSDE"]
+      S5["<b>05_transmission</b>/run-N (per bias point)<br/><b>tbtrans</b> &lt;label&gt;.fdf<br/>-> &lt;label&gt;.TBT.nc"]
+    end
+
+    S1 ==>|"&lt;label&gt;.DM"| S4
+    S2 ==>|"&lt;stem_L&gt;.TSHS"| S4
+    S3 ==>|"&lt;stem_R&gt;.TSHS"| S4
+    S2 ==>|"&lt;stem_L&gt;.TSHS"| S5
+    S3 ==>|"&lt;stem_R&gt;.TSHS"| S5
+    S4 ==>|"&lt;label&gt;.TS.HSX"| S5
+    S5 --> REC["&lt;label&gt;.transport.json<br/><i>summarize run</i>"]
+```
+
+**The bold arrows are the integration, and they are not free.**  Each one is
+a row in `stages.py::stage_inputs` — the DAG as data, not as control flow —
+and `prep` walks it in `jobset/prep.py::gather_transport_inputs`, which
+copies an upstream file only if **three gates** all pass:
+
+| gate | what it refuses |
+|---|---|
+| the upstream stage is PREPPED | citing a stage that was never set up |
+| it holds a CONCLUDED attempt **whose deck matches the current one byte-for-byte** | integrating a result produced by a *different* deck — the silent-wrong-answer case |
+| that attempt actually holds the named file | a run that concluded without writing what it promised |
+
+The newest attempt that passes all three wins, and the copy records its
+provenance in `.gathered-from`.  The byte-for-byte deck gate is the load-bearing
+one: it is what makes "the device's H and the electrodes' H were built on the
+same basis, XC, mesh and electronic temperature" a *checked* fact rather than a
+hope (§ 5).
+
+**Why each stage needs a different text, in one line each** — this is the
+per-stage axis that § 3.2's floor-3 migration has to serve, and it is the
+reason a *single* set of parameter values cannot describe the ladder:
+
+| | `SolutionMethod` | k along transport | writes | why it differs |
+|---|---|---|---|---|
+| seed | `diagon` | 1 | `.DM` | an ordinary closed periodic SCF, only to give the NEGF cycle a starting density |
+| electrode | `diagon` | **dense** (`electrode_kz`) | `.TSHS` | a genuinely periodic *bulk* run — its Fermi level must be well converged, so this axis must be sampled |
+| device | `transiesta` | 1 | `.TS.HSX`, `.TSDE` | an **open** boundary: there is no periodicity along transport to sample |
+| transmission | (inert) | `TBT.k` | `.TBT.nc` | reads the device's saved H; samples the *transverse* BZ for T(E) |
+
+Two rows of that table are the same keyword — `SolutionMethod` — carrying
+**two different values within one calculation**.  That is not expressible as
+"one config filled from one template row", and it is why the migration's unit
+of resolution has to be the **stage**, not the task.
+
+#### 6.1a The ladder's own answers
+
+*Landed 2026-09-15.*  These values were hardcoded literals in the three
+emitters, which is the reason nothing else in the template could reach a
+transport deck (§ 3.2): an emitter that writes `SolutionMethod` itself is an
+emitter that decides, and a decided value has no parameter behind it.
+
+They are now ordinary **stage overrides**, on the mechanism `engines/stages.md`
+§ 1.1 already defines and `SIESTA_STAGE_PRESETS` already uses for the
+relaxation ladder — *"a stage is a named set of the parameters a mission tunes,
+laid over the shared description of the system it does not"*.  No new template
+marker was needed, because `solution_method` is exactly `relax_type`'s
+situation: the template value is **the calculation's own answer** and the
+stage's override is **what this rung runs at when it differs** (`Stage`'s own
+docstring).
+
+| | |
+|---|---|
+| `TRANSPORT_STAGE_PRESETS` | the science stated ONCE — what each rung runs at where it differs.  Two keys wide (`solution_method`, `ts_hs_save`), because a rung appears there only where the LADDER, not the person, has the answer |
+| `default_transport_stages(overrides)` | the one door both construction sites use (`jobset init`, the web hand-over): it builds the five rungs and merges the person's device-rung tuning, refusing a name the ladder answers |
+| `SEALED_BY_STAGE` | the seal: an override naming a field the rung itself answers is refused **by name**, because changing it does not tune the rung, it stops the rung being that rung |
+| `config_for(task, composed, stage=…)` | **per rung.** It merged all five bags into one config until 2026-09-15 — the shape that made a per-stage value impossible, since a name set by two rungs took whichever bag came last |
+
+**The presets are NOT written into `task.json`, and that is § 6.2's call
+rather than a convenience.**  `engines/stages.md` § 6.2 lets a stage override
+only a field the user **promoted**, and promotion is `varies` — which
+`describe.build_description` *derives* as
+`varies_for(s.overrides for s in ladder)`.  Putting the ladder's own answers in
+a rung's bag would therefore force every transport description to claim the
+person promoted `solution_method` and `ts_hs_save`.  They did not: the ladder
+answers them.  So `Stage.overrides` stays exactly what § 6.2 says it is — the
+person's tuning — and `config_for` applies the rung's answers from the table.
+One source, and nothing hidden: the template's `solution_method` is the
+calculation's own answer, and the rung that differs differs *because it is that
+rung*, not because a description quietly said so.
+
+**What this does *not* fix.**  The other 21 SIESTA keywords still cannot reach
+a transport deck — `MaxSCFIterations` and `DM.Tolerance` among them, which is
+why the seed ran to 1000 iterations and died.  Those are person-answered and
+transport-wide; they need floor 3's `spec_for` arm (§ 3.6 items 1–4), not a
+per-stage value.  What landed here is the *prerequisite*: the two values that
+had to stop being literals before an emitter could render from a description at
+all.
+
+**The transport k-axis is deliberately not in the table.**  The device is
+sampled 1 along transport and the lead densely (`electrode_kz`) — but those are
+two different **cells**, so it is the renderers' composition of one
+person-answered transverse grid, not a per-stage value of one parameter.
+(`electrode_kz` is a separate defect: it is a function parameter with a module
+default that `render_stage_deck` never passes, so the row is a control that does
+nothing. Open.)
+
+---
+
 ## 7. The scientific baseline
 
 A defensible starting point (**all values to be convergence-tested**, per § 5's

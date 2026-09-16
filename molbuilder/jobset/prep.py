@@ -1352,7 +1352,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
 
     # ---- 3b. the one config, and the data files ------------------------ #
     try:
-        cfg = config_for(task, composed)
+        # the rung being prepped, so the ladder's own per-stage
+        # answers apply to THIS deck and not to every deck
+        cfg = config_for(task, composed, stage=stage)
     except StageError as exc:
         raise PrepError(str(exc)) from exc
     _transport_provide_pseudos(composed.sorted.structure, cfg, base,

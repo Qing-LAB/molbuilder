@@ -581,6 +581,24 @@ class TransportConfig:
 
     # ================= Leads =================
 
+    # ---- THE LADDER'S OWN ANSWERS -------------------------------------
+    # These two are not offered to anybody: they arrive as the rung's
+    # `overrides`, from TRANSPORT_STAGE_PRESETS, and `SEALED_BY_STAGE`
+    # refuses a person naming either.  They are FIELDS so the emitters
+    # can read them instead of hardcoding a literal -- which is what
+    # they did until 2026-09-15, and the reason nothing else in the
+    # template could reach a transport deck (`engines/transport.md`
+    # §§ 3.2, 6.1).  They carry no form metadata for the same reason
+    # `bias_voltages_v` does not: no form should show them.
+    solution_method: str = field(default="diagon", metadata={
+        "engine_key": "SolutionMethod",
+        "sealed_by_stage": True,
+    })
+    ts_hs_save: bool = field(default=False, metadata={
+        "engine_key": "TS.HS.Save",
+        "sealed_by_stage": True,
+    })
+
     elecs_bulk: bool = field(default=True, metadata={
         "section": "Leads",
         "workflow_group": "stage",
