@@ -300,8 +300,23 @@ _TO_SIESTA_NAME = {
 }
 
 
+def _find_template(base_dir):
+    """The folder's own template, or ``None``.
+
+    ONE door (`template.find_template`), not a glob: a folder holding two
+    templates must not have this reader open one file while `prep` opens
+    another.
+    """
+    from ..template import find_template
+    try:
+        return find_template(base_dir)
+    except Exception:
+        return None
+
+
 def siesta_config_for(task, composed: ComposedJunction, *,
-                      stage: str = None, cfg: TransportConfig = None):
+                      stage: str = None, cfg: TransportConfig = None,
+                      base_dir=None):
     """:func:`config_for`'s answer, re-expressed in the shape the FRAMEWORK
     reads — a :class:`~molbuilder.config.siesta.SiestaConfig`.
 
@@ -344,10 +359,47 @@ def siesta_config_for(task, composed: ComposedJunction, *,
     # being purely deterministic.
     tc = cfg if cfg is not None else config_for(task, composed, stage=stage)
     known = {f.name for f in _dc.fields(SiestaConfig)}
+
+    # THE TEMPLATE IS THE SHARED BASELINE, and it wins (TR1, 2026-09-16).
+    #
+    # `jobset init` writes it with the Class A values DEFAULTED from the
+    # cited run, and the person may change any of them afterwards
+    # (`engines/transport.md` § 2a.7, ruling 1).  So the file -- not the
+    # citation -- is what a deck renders from: re-reading the cited deck
+    # here would quietly discard every edit and make the ruling a fiction.
+    #
+    # A description written before this existed has no template, and then
+    # the citation's own values still answer, unchanged.  That is not a
+    # compatibility shim: a template is simply one more thing a folder may
+    # hold, and its absence is the older state said honestly.
+    base_kw = {}
+    owned_by_template: set = set()
+    if base_dir is not None:
+        from .. import template as _T
+        tmpl = _find_template(base_dir)
+        if tmpl is not None:
+            base = _T.config_from_template(
+                tmpl.read_text(encoding="utf-8"), SiestaConfig,
+                calculation="transport")
+            base_kw = {f.name: getattr(base, f.name)
+                       for f in _dc.fields(SiestaConfig)}
+            # WHICH items the template now owns is the `citation` marker's
+            # own answer -- asked, not listed here.  That is the marker's
+            # whole purpose after TR1: it names what the cited run fills in
+            # AT INIT, and from then on those live in the file like any
+            # other value.  They are dropped from the projection below, or
+            # the citation would overwrite the person's edit and the ruling
+            # would be a fiction.
+            from ..template import catalogue as _cat
+            from ..template import select as _select
+            owned_by_template = {
+                i.name for i in _select(_cat(), engine="siesta",
+                                        citation=True)
+                if "transport" in i.citation}
     kw = {}
     for f in _dc.fields(type(tc)):
         target = _TO_SIESTA_NAME.get(f.name, f.name)
-        if target in known:
+        if target in known and target not in owned_by_template:
             kw[target] = getattr(tc, f.name)
     # WHAT DOES NOT TRAVEL, and why each is safe -- four fields, named,
     # because a silent drop is exactly the failure this projection could
@@ -385,7 +437,10 @@ def siesta_config_for(task, composed: ComposedJunction, *,
     # That is the point of the migration and also its one behavioural
     # change; § 3.6a states which values those are and that they were
     # reviewed for a relaxation, not for a metallic junction seed.
-    return SiestaConfig(**kw)
+    # The template underneath, the projection on top: identity, the bias
+    # axis and the transport-only values are the description's and the
+    # rung's, and none of them is a template item a person edits here.
+    return SiestaConfig(**{**base_kw, **kw})
 
 
 def render_stage_deck(stage: str, composed: ComposedJunction,

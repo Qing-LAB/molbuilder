@@ -77,9 +77,34 @@ def _says(text: str, keyword: str, value: str) -> bool:
     (`engines/transport.md` § 3.6) -- otherwise every migrated rung breaks a
     science assertion for a reason that has nothing to do with science.
     """
-    pattern = r"^" + r"\s+".join(
-        re.escape(w) for w in (keyword + " " + value).split()) + r"\s*$"
-    return re.search(pattern, text, re.M) is not None
+    want = (keyword + " " + value).split()
+    head = re.escape(want[0])
+    for line in text.splitlines():
+        got = line.split()
+        if not got or not re.fullmatch(head, got[0]) or len(got) != len(want):
+            continue
+        if all(_same_token(a, b) for a, b in zip(got[1:], want[1:])):
+            return True
+    return False
+
+
+def _same_token(got: str, want: str) -> bool:
+    """One token of a deck line, compared by VALUE where it is a number.
+
+    `250` and `250.0` are the same mesh cutoff.  They differ because the
+    framework's syntax door formats from the item's DECLARED type (a float)
+    while the hand-written emitters it is replacing formatted the Python
+    value they happened to hold (an int) -- so during the migration one
+    rung says one and another says the other, for a value they agree on.
+
+    Asserting the spelling would make a test fail for a reason that has
+    nothing to do with the science, which is the same trap the column
+    alignment set (see `_says`).
+    """
+    try:
+        return float(got) == float(want)
+    except ValueError:
+        return got == want
 
 
 def _junction_struct(*, order="canonical", buffers=False):
@@ -170,6 +195,16 @@ def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
                      for n in _STAGES)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate"}}))
+    # THE TEMPLATE, through the product's own doors -- `jobset init` writes
+    # one for a transport description since 2026-09-16 (TR1), and a fixture
+    # that skipped it would stop matching what this claims to reproduce.
+    from molbuilder import template as _T
+    from molbuilder.transport.citation_defaults import (
+        siesta_config_from_citation)
+    _cfg = siesta_config_from_citation(root / cite, label="T")
+    (dest / "T.template.toml").write_text(
+        _T.template_with_values(_cfg, engine="siesta",
+                                calculation="transport"))
     return dest
 
 
@@ -207,6 +242,79 @@ UNREACHABLE_BEFORE_THE_SEAM = (
     "SCF.Mixer.Weight", "SCF.Mixer.History", "SCF.FreeE.Converge",
     "WriteForces", "WriteCoorStep", "WriteCoorXmol", "Diag.ParallelOverK",
 )
+
+
+class TestTheTemplateIsTheSharedBaseline:
+    """TR1 — transport has a template, and it is what a deck renders from.
+
+    `engines/transport.md` § 2a.7, ruling 1: the cited relaxation **defaults**
+    the shared electronic description; it does not seal it.  The person may
+    change any of it afterwards, and a change applies to every stage at once
+    because there is one template.
+
+    A transport folder carried no template at all until 2026-09-16, so there
+    was nowhere for that to be true.
+    """
+
+    def _template(self, calc):
+        from molbuilder.template import find_template
+        return find_template(calc)
+
+    def test_editing_the_template_changes_the_deck(self, calc):
+        """THE RULING, as something that can fail.
+
+        Without this the template is a file nothing reads — the defect
+        `electrode_kz` shipped with, one directory up.
+        """
+        from molbuilder.template import read_template, _emit
+        import dataclasses
+        tmpl = self._template(calc)
+        assert tmpl is not None, (
+            "TR1: a transport description must carry a template")
+
+        prep_calculation(calc, "seed")
+        before = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        assert _says(before, "PAO.BasisSize", "TZP"), (
+            "the template's value, defaulted from the cited run, must reach "
+            "the deck")
+        # The citation says TZP too, so the line above cannot tell the two
+        # sources apart -- which is the whole question.  The edit below is
+        # to a value the CITATION does not hold, so only the template can
+        # be the source of what lands.
+
+        # ...now the person changes it, which is exactly what the ruling
+        # exists to permit: relax cheap, transport accurate.
+        parsed = read_template(tmpl.read_text())
+        edited = [dataclasses.replace(i, value="DZP")
+                  if i.name == "basis_size" else i for i in parsed.items]
+        tmpl.write_text(_emit(edited, engines=("siesta",)))
+
+        prep_calculation(calc, "seed")
+        after = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        assert _says(after, "PAO.BasisSize", "DZP"), (
+            "the edit did not reach the deck -- the citation is being "
+            "re-read at prep, which is the SEALED behaviour the ruling "
+            "reversed")
+
+    def test_the_cited_run_fills_it(self, calc):
+        """DEFAULTED, not invented: the values are the citation's."""
+        from molbuilder.template import read_template
+        got = {i.name: i.value
+               for i in read_template(self._template(calc).read_text()).items}
+        assert got["basis_size"] == "TZP"
+        assert got["xc_authors"] == "revPBE"
+        assert got["mesh_cutoff"] == 250.0
+        assert got["kgrid"] == (4, 4, 1), (
+            "the transverse pair carries over and the transport axis is "
+            "forced to 1 -- that axis is the open boundary and is not "
+            "sampled at all")
+
+    def test_a_role_item_is_not_answered_by_the_template(self, calc):
+        """`solution_method` is the rung's, so the file must not claim it."""
+        from molbuilder.template import read_template
+        got = {i.name: i.value
+               for i in read_template(self._template(calc).read_text()).items}
+        assert got["solution_method"] is None
 
 
 class TestTheSeedIsOnTheSeam:

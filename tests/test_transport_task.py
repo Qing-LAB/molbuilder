@@ -155,11 +155,18 @@ class TestInitCLI:
         assert raw["slots"] == {"junction": _CITE}
         assert [s["name"] for s in raw["stages"]] == list(_STAGES)
         assert "structure" not in raw
-        # floor 2 is task.json ALONE
+        # FLOOR 2 IS THE DESCRIPTION: task.json AND a template, like every
+        # other kind.  This asserted `== ["task.json"]` until 2026-09-16,
+        # with the comment "floor 2 is task.json ALONE" -- which was the
+        # sealed design, where the electronic description was read from the
+        # cited run at every prep and so had nowhere to be written down.
+        # `engines/transport.md` § 2a.7 ruled the other way: the cited run
+        # DEFAULTS those values into a template the person may then change,
+        # everywhere at once.  A shared baseline needs a file to live in.
         written = sorted(p.name for p in
                          (tree / "BDT-Au" / "transport" / "BDTTrans"
                           ).iterdir())
-        assert written == ["task.json"]
+        assert written == ["BDTTrans.template.toml", "task.json"]
 
     def test_the_cited_calculation_must_exist_in_the_tree(self, tree):
         r = self._invoke([

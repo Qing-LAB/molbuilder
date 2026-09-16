@@ -76,7 +76,7 @@ def test_an_ordinary_item_is_not_marked():
     assert _decl("mesh").citation == ()
 
 
-def test_the_template_writer_leaves_it_VALUELESS():
+def test_the_template_writer_CARRIES_the_cited_value():
     """§ 6.4's state. The person's field keeps its value; the citation's
     does not, however much the config object happens to hold."""
     # `template_with_values` narrows the CATALOGUE, so it is handed one:
@@ -89,32 +89,40 @@ def test_the_template_writer_leaves_it_VALUELESS():
                                   calculation="transport")
     got = {i.name: i.value for i in T.read_template(text).items}
     assert got["mesh"] == 400, "the person's answer must be written"
-    assert got["basis"] is None, (
-        "the citation's item was emitted carrying a value -- floor 2 would "
-        "then assert an electronic contract it does not own")
-    assert got["ranks"] is None, "the allocation control still holds"
+    assert got["basis"] == "TZP", (
+        "the cited item must be written CARRYING its value.  It was emitted "
+        "valueless until 2026-09-16 -- the sealed reading -- and "
+        "engines/transport.md 2a.7 reversed that: the cited run DEFAULTS "
+        "these and the person may change them, so the template has to show "
+        "the number they would be changing")
+    assert got["ranks"] is None, (
+        "the allocation control still holds -- it is a different answerer "
+        "and nothing about it changed")
 
 
-def test_a_typed_value_is_REFUSED_and_named_to_the_right_answerer():
-    """THE ASSERTION THE TWO FROZENSETS WERE STANDING IN FOR.
+def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
+    """The reversal, asserted rather than assumed *(2026-09-16)*.
 
-    Checked where the KIND is known, not in `read_template`: the master
-    catalogue carries both the marker and a value (86 rows of 103 carry
-    one), and `basis_size` is the person's answer for an optimization and
-    the citation's for transport.  A reader with no kind cannot tell.
+    This test said the opposite until today: a template answering a cited
+    item was refused, because the write side emitted them valueless and so a
+    value could only be a hand edit -- "the one edit that can make a device
+    disagree with its own leads".
 
-    And the message must name the CITATION: routed to the scheduler's story
-    it would send a reader to the queue configuration over a basis set.
+    `engines/transport.md` § 2a.7 ruled the other way, and the invariant
+    survives intact: electrode and device cannot disagree because there is
+    **one** value shared by every stage, not because it came from the cited
+    run.  What is withdrawn is only the claim about its source.  So the
+    worked case is now legal -- relax with DZP because it is cheap and
+    adequate for geometry, then transport with TZP because the longer
+    orbital tails carry the metal-molecule coupling.
     """
     text = T._emit([dataclasses.replace(_decl("basis"), value="TZP")],
                    engines=("siesta",))
-    with pytest.raises(ValueError) as exc:
-        T.config_from_template(text, _Cited, calculation="transport")
-    msg = str(exc.value)
-    assert "CITATION" in msg, f"refused, but not as the citation's: {msg}"
-    assert "SCHEDULER" not in msg, (
-        f"refused with the WRONG answerer's story -- this is the confusion "
-        f"the marker exists to remove: {msg}")
+    cfg = T.config_from_template(text, _Cited, calculation="transport")
+    assert cfg.basis == "TZP", (
+        "a transport template answering a cited item is now the ORDINARY "
+        "state: it is what `jobset init` writes, defaulted from the cited "
+        "run, and what a person edits afterwards")
 
 
 def test_the_SAME_value_is_accepted_for_a_kind_the_citation_does_not_answer():

@@ -1392,7 +1392,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     if stage == "seed":
         from ..transport.stages import siesta_config_for
         scfg = siesta_config_for(task, composed, stage=stage,
-                                 cfg=cfg)
+                                 cfg=cfg, base_dir=base)
         # NO pipeline log: `_prep_transport` takes `pipeline_log` as a bool
         # and builds no log object, which § 3.2 records as a documented
         # no-op.  Passing `log=None` keeps that true rather than inventing

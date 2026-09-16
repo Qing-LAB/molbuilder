@@ -1001,10 +1001,20 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # stage's ROLE (2026-09-16) -- a role item has no value a
             # description could legitimately claim to have set, because the
             # rung decides it.
+            # Valueless for the answerers that are not floor 2's: the
+            # scheduler (§ 7) and the stage's ROLE (§ 6.4, 2026-09-16).
+            #
+            # `citation` is NOT among them, and stopped being on 2026-09-16.
+            # It marked an item the cited run answered AT PREP, written
+            # valueless here -- the SEALED reading.  `engines/transport.md`
+            # § 2a.7 ruled the other way: the cited run **defaults** these
+            # values and the person may change them, everywhere at once.
+            # So the citation is a source of defaults at `init`, and what it
+            # produces is an ordinary template value from then on.  The
+            # marker keeps its name because *which items are harvested from
+            # the cited run* is still exactly what it answers.
             value=(None
-                   if (it.allocation
-                       or calculation in it.citation
-                       or calculation in it.role)
+                   if (it.allocation or calculation in it.role)
                    else getattr(config, it.name, it.value)),
         )
         for it in select(parsed, engine=eng)
@@ -1535,24 +1545,18 @@ def config_from_template(text: str, config_cls, *, calculation: str = ""):
             f"carry (engines/template.md § 7): they arrive as the "
             f"ALLOCATION at `prep`, on the machine that runs the job.  "
             f"Remove them from the template and state them at prep.")
-    # § 6.4's OTHER answerer.  Kind-dependent, which is why it is checked
-    # here and not in `read_template`: `basis_size` is the person's answer
-    # for an optimization and the CITATION's for transport, and the master
-    # catalogue carries both the marker and a value.  The caller that knows
-    # the kind is the one that can ask.
-    cited = sorted(it.name for it in mine
-                   if calculation and calculation in it.citation
-                   and it.is_set)
-    if cited:
-        # The write side emits these valueless, so a VALUE is a hand edit --
-        # and it is the one edit that can make a device disagree with its
-        # own leads.
-        raise ValueError(
-            f"template answers {', '.join(map(repr, cited))}, which the "
-            f"CITATION answers for a {calculation!r} calculation: they are "
-            f"read from the cited run's own deck so the electrode and the "
-            f"device cannot disagree (engines/transport.md § 3.3.3).  "
-            f"Remove the value(s); `prep` fills them from the citation.")
+    # NO CITATION REFUSAL HERE, and its absence is the ruling.
+    #
+    # Until 2026-09-16 a template answering a `citation` item was refused:
+    # the write side emitted them valueless, so a value was a hand edit, and
+    # "the one edit that can make a device disagree with its own leads".
+    # `engines/transport.md` § 2a.7 reversed that.  The invariant it
+    # protected -- electrode and device unable to disagree -- is untouched,
+    # because ONE value shared by every stage cannot disagree with itself;
+    # what is withdrawn is the claim that the value must come from the cited
+    # run.  A person may relax with DZP and transport with TZP, and a
+    # template answering `basis_size` for a transport calculation is now the
+    # ordinary state rather than an error.
     unknown = sorted(k for k in vals if k not in known)
     if unknown:
         # Refused, never dropped (U16): this is a file people edit by

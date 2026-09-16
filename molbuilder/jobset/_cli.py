@@ -421,6 +421,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     from ..projects import projects_root
     citation = str(_P(resolved).relative_to(projects_root()))
     from ..transport.compose import ComposeError, classify_citation
+    from .. import template as _T
     try:
         classify_citation(_P(resolved))
     except ComposeError as exc:
@@ -451,14 +452,37 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     dest = out_dir if out_dir.is_absolute() else         _P(_resolve_bundle(None, None, str(out_dir), must_exist=False))
     dest.mkdir(parents=True, exist_ok=True)
     write_task(dest / TASK_FILENAME, task)
+
+    # THE TEMPLATE -- transport's shared baseline, like every other kind's
+    # (TR1).  A transport folder carried no template at all until
+    # 2026-09-16, so the Class A values had nowhere to live and the stage
+    # table had nothing to inherit from (`engines/transport.md` § 2a.3).
+    #
+    # Its values are DEFAULTED FROM THE CITED RUN, not sealed to it
+    # (§ 2a.7): the person may change any of them afterwards, and a change
+    # applies to every stage at once because there is one template.
+    from ..transport.citation_defaults import siesta_config_from_citation
+    cfg = siesta_config_from_citation(_P(resolved), label=task.label)
+    # THE ONE DOOR that forms this name (`template.template_path`).  Six
+    # call sites spelled it by hand, in two incompatible ways, until
+    # 2026-08-17; `test_doc_claims` walks the AST to keep it at one, and
+    # caught this line the day it was written.
+    tmpl = _T.template_path(dest, task.label)
+    tmpl.write_text(
+        _T.template_with_values(cfg, engine="siesta",
+                                calculation="transport"),
+        encoding="utf-8")
+
     click.echo(f"Described transport '{task.run.name}' in {dest} -- "
                f"composes {citation}.")
     click.echo(f"  {TASK_FILENAME}")
+    click.echo(f"  {tmpl.name}")
     click.echo("")
-    click.echo("Floor 2 for transport is task.json alone: the structure, "
-               "pseudos and electronic template arrive at prep from the "
-               "citation (one template governs everything).  On the "
-               "machine that will run it:")
+    click.echo("The template carries the shared electronic description, "
+               "filled in from the run you cited -- change anything in it "
+               "and every stage follows, because there is one of it.  The "
+               "structure and pseudopotentials still arrive at prep from "
+               "the citation.  On the machine that will run it:")
     click.echo(f"  cd {dest} && molbuilder jobset prep run seed")
 
 
