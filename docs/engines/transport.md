@@ -161,7 +161,7 @@ build `G` at.
 
 **And then there is a third grid, which surprises people.** TBtrans averages
 `T(E)` over transverse k as well, and *it may use a different, denser grid*
-(`TBT.k`, § 3.3.2's transmission row). That is legal because `H` and `Σ` are stored in **real
+(`TBT.k`, § 3.4.2's transmission row). That is legal because `H` and `Σ` are stored in **real
 space** in the `.TSHS`/`.HSX` files, so tbtrans can evaluate them at any k⊥
 it likes. And it is usually *necessary*, because the two grids are converging
 different things:
@@ -188,7 +188,7 @@ rather than a crash — which is why they are guards in code and not advice.
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
 | 1 | device `kz = 1` | **error**, `TransiestaEngine.preflight` | ✅ reached from `stages.py` |
-| 2 | electrode `kz` dense | default **40** (`wizard.py`); a warn below 20 lives in `transport/preflight.py` | ⚠️ **no** — that warn's only caller is the standalone `molbuilder transport preflight` verb, so a composite run never sees it. And the default is unreachable from any description (§ 3.5 item 8) |
+| 2 | electrode `kz` dense | default **40** (`wizard.py`); a warn below 20 lives in `transport/preflight.py` | ⚠️ **no** — that warn's only caller is the standalone `molbuilder transport preflight` verb, so a composite run never sees it. And the default is unreachable from any description (§ 3.6 item 8) |
 | 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
 | 4 | basis, XC and mesh identical | **sealed** at both doors — they come from the citation's own `.fdf` | ✅ |
 
@@ -216,7 +216,7 @@ TranSIESTA expects a *metallic* electrode and that fixing the boundary is
 | device k | `2 2 1` — transverse 2×2, **transport 1** |
 | electrode k | `2 2 40` — the same 2×2, **transport dense** (the wizard's default) |
 | bias | `0.0` → equilibrium, so the non-equilibrium contour settings are inert |
-| what prep writes | `01_seed` … `05_transmission`, **a deck each — and no validation file**: the transport arm writes with `write_text` rather than going through `prepare_deck`, so the validate → render → read-back-check → report chain every other kind gets does not run here (§ 3.5 item 5) |
+| what prep writes | `01_seed` … `05_transmission`, **a deck each — and no validation file**: the transport arm writes with `write_text` rather than going through `prepare_deck`, so the validate → render → read-back-check → report chain every other kind gets does not run here (§ 3.6 item 5) |
 | the deliverable | `<label>.transport.json` — T(E) per bias, G(E_F), the I–V table |
 
 ## 1. The mental model — one citation → five derived stages
@@ -372,7 +372,76 @@ from a geometry that is still moving.
 
 ---
 
-### 3.2 Transport is a calculation KIND — measured, not asserted
+### 3.2 Where transport sits in the seven floors — and it does not
+
+**This section is first because everything below it is a consequence.** The
+earlier draft of § 3.2 opened with *where transport's parameters live*, which
+is a symptom; the cause is one floor of the architecture that transport never
+joined.
+
+[`execution/architecture.md`](?doc=execution/architecture.md) § 2 is the
+project's own top-down: seven floors, and one rule — **a floor may call down
+and return up; it may never reach across.** Floor 2 is the *description*
+(`task.py`, and the template beside it). Floor 3 is *plan & render* — *"asked-for
++ machine → a list of jobs, **and the text of every file**"* — and its files are
+named: `resolve` · `siesta/input` · `pyscf/input` · `runwrap`.
+
+**`molbuilder/transport/` is in none of them.** The word *transport* appears
+once in that whole document, in a table asserting the opposite of what the code
+does: *"the five stages run INSIDE the job system (each an ordinary prep/launch
+rung)"*.
+
+Four rules, and each one costs something measurable:
+
+| the rule | what transport does | what it cost |
+|---|---|---|
+| **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set is **fixed in code**: the seed deck `prep` renders carries **13 keywords and 4 blocks** against a template offering **45 deck-reaching items** |
+| **floor 2 holds what the person asked for** | transport had no template, so the parameters were *defined* in `TransportConfig` — which is no floor at all | 32 parameters of surface, none of them the ~40 a SIESTA run needs. `MaxSCFIterations` and `DM.Tolerance` cannot reach ANY transport deck: not from the citation, not from a form, not from `task.json` |
+| **`prep` is the conductor, not a floor: it may call, but it may never decide** | `_prep_transport` is a second conductor that decides — it composes, gates, extracts and renders | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op; no validation report; no read-back check |
+| **floor 2 must never name a machine** | `max_memory_mb` and `num_threads` are `TransportConfig` fields | two controls that reach the deck only as comment lines |
+
+#### Why it is this way, from the history rather than from a rationale
+
+| | |
+|---|---|
+| **2026-06-10** | `transiesta.py::render_script` written — *"transport B.3 step 1: transiesta engine + zero-bias device .fdf"* |
+| **2026-08-19** | the pipeline lands — *"refactor(prep): the seam carries the engine's FORM, and the layout is a table"* — creating `DeckSpec` **and** moving `siesta/input` onto `spec_for`, in one commit |
+
+The transport emitter predates the framework by ten weeks. That commit migrated
+siesta and pyscf and left transport where it was; the composite was then built
+*outward* from the unmigrated emitter (P4, 2026-08-28 wired `stages.py` to call
+`render_script`), so it inherited the old path and grew `_prep_transport` around
+it rather than joining the new one.
+
+**And the contract knew.** [`template.md`](?doc=engines/template.md) § 9.2
+records it: *"ONE ARM IS STILL MISSING: `prep`'s TRANSPORT branch reaches
+neither `prepare_deck` nor `write_script`, and `molbuilder/transport/` never
+emits the zone at all."* It was filed as one lost feature — the USER-CUSTOM
+block — rather than as *transport cannot render from a template*, which is what
+it is.
+
+#### Every known defect is downstream of this
+
+Not a list of bugs; one omission with faces. Each was found separately and each
+dissolves at the same place:
+
+| symptom | the floor-3 fact behind it |
+|---|---|
+| the seed ran 1000 SCF iterations and died `SCF_NOT_CONV` | `MaxSCFIterations` is not in the hardcoded list, so the citation's `30` cannot travel |
+| the device deck aborts: *"the continued fraction method requires at least 20 poles"* | `TS.Contours.Eq.Pole.N` is not in the list either — the pole *energy* is written, never the *count* |
+| `TBT.k` is emitted as a bare scalar the parser cannot read | the list hand-formats values, so no emitter owns "how a list-valued keyword is written" |
+| `tbt_k_grid`'s transport axis is unguarded | there is no declaration to carry a bound |
+| the electronic contract is two frozensets and a predicate spelled twice | floor 2's job done in code, because floor 2 held nothing |
+
+**The lesson for the order of work.** This document's first draft put "render
+through `prepare_deck`" at step 6 of 7, because it was written from the
+parameters down. Read from the floors down, it is step 1: until floor 3 renders
+transport from the description, a parameter surface has nowhere to arrive, and
+every fix above it is a patch on an emitter that should not exist.
+
+---
+
+### 3.3 Transport is a calculation KIND — measured, not asserted
 
 The question this section answers is the one that decides everything below it:
 **does transport share enough with the calculations that already work to be
@@ -438,13 +507,13 @@ calculation already gets is where transport's narrowed set lands.
 
 ---
 
-### 3.3 The template — its shape, and the reasoning for that shape
+### 3.4 The template — its shape, and the reasoning for that shape
 
 A template item answers *what is this parameter*. Transport needs two further
 questions answered that no existing kind has had to ask, and the shape follows
 from keeping each on the axis that already owns it.
 
-#### 3.3.1 The first axis: WHO ANSWERS the item
+#### 3.4.1 The first axis: WHO ANSWERS the item
 
 Every other kind has essentially one answerer — the person, with the scheduler
 answering the handful of allocation rows. Transport has **five**, and sorting
@@ -464,9 +533,9 @@ Two of those rows are corrections to what ships today:
   fields in a form section today, which G1 and § 7 forbid on floor 2 — and they
   reach the deck only as comment lines, so they are controls that move nothing.
   As `allocation` items they become what they are.
-* **The citation row** is the one that needs a name, and § 3.3.3 gives it.
+* **The citation row** is the one that needs a name, and § 3.4.3 gives it.
 
-#### 3.3.2 The second axis: WHICH STAGE'S DECK carries the item
+#### 3.4.2 The second axis: WHICH STAGE'S DECK carries the item
 
 This is **not** a new key on the item. `DeckSpec.layout` already exists for
 exactly this and is declared as *"deck layout is engine knowledge and stays with
@@ -488,7 +557,7 @@ deck. No control flow, no per-item stage key, and the whole mapping is readable
 as a table. Verified: nothing downstream of `spec_for` is stage-aware — the
 stage token only names the file — so four shapes need no framework change.
 
-#### 3.3.3 The citation is a source, the way the scheduler is a source
+#### 3.4.3 The citation is a source, the way the scheduler is a source
 
 § 6.4 already carries the *state* transport's electronic contract needs:
 
@@ -516,7 +585,7 @@ two files with disagreeing formulations, it puts *"who answers this"* on the
 axis § 6.4 already owns, and any later kind whose values arrive from a cited
 result inherits it. Both refusal doors then read one declaration.
 
-#### 3.3.4 What a transport template contains, end to end
+#### 3.4.4 What a transport template contains, end to end
 
 ```
   the one catalogue                        <label>.template.toml
@@ -537,7 +606,7 @@ applies.
 
 ---
 
-### 3.4 How it is implemented — the chain, named
+### 3.5 How it is implemented — the chain, named
 
 One direction, and every step is a function that already exists except where
 marked **[new]**.
@@ -573,35 +642,64 @@ The only genuinely transport-specific code in that chain is the **input model** 
 `compose_junction` and the citation fill — which is exactly what the design of
 record said would be new, and nothing else.
 
-### 3.5 What "done" looks like — the checkable outcome
+### 3.6 What "done" looks like — the checkable outcome, in floor order
 
 This section exists so the work has an end that can be tested rather than
-declared. Each line is falsifiable:
+declared, and it is ordered by § 3.2's floors rather than by convenience.
+**Items 1–3 are the architecture; everything after them is a consequence and
+cannot be done first.** Each line is falsifiable.
 
-1. `molbuilder/config/transport.py` **does not exist**; the shape is
-   `SiestaConfig` plus a forwarding view for the citation-supplied values,
-   the way `VibrationConfigView` supplies the vibration kind's lift boundary.
-2. `dataclass_to_form_schema` **has no callers** and is deleted; the transport
-   form is `GET /api/build/schema/siesta?calculation=transport`.
-3. Every transport parameter is a catalogue row, so
+**Floor 3 — render the text of every file.**
+
+1. **`transport/transiesta.py::render_script` does not exist.** Transport
+   renders through `spec_for(struct, cfg, stage_token=…, calculation=
+   "transport")` → `DeckSpec(layout=…)` → `prepare_deck`, the path
+   `siesta/input` has taken since 2026-08-19.
+2. **No keyword's value syntax is written by hand.** A `%block` is written by
+   the block emitter, a list by the list emitter. `TBT.k` in a form the parser
+   rejects becomes structurally unavailable rather than fixed — and so does
+   the next one nobody has found.
+3. **Every stage deck has a `.validation.txt` and a USER-CUSTOM zone**, and a
+   deck that fails its own read-back check refuses instead of running. This is
+   the check that would have caught the missing pole count before a person
+   waited for an `MPI_ABORT`.
+
+**`prep` is the conductor, not a decider.**
+
+4. **`_prep_transport` is gone as a parallel arm.** The citation compose stays
+   — it is the one genuinely new input model (`transport-design.md` § 2) — and
+   hands to `resolve`, so a transport run has a `ParameterSet` with provenance
+   and `--pipeline-log` stops being a no-op.
+
+**Floor 2 — hold what the person asked for.**
+
+5. **The deck carries what the description says**, which is now measurable:
+   the seed's 13 keywords become the template's 45 deck-reaching items, and
+   `MaxSCFIterations` / `DM.Tolerance` reach a transport stage from the
+   citation for the first time.
+6. `molbuilder/config/transport.py` **does not exist**; the shape is
+   `SiestaConfig` plus the `citation` marker.
+7. `dataclass_to_form_schema` **has no callers** and is deleted; the transport
+   form is `GET /api/build/schema/siesta?calculation=transport`, with the
+   citation-answered fields shown locked rather than editable.
+8. `varies` on a transport description is **empty** — the five stages share one
+   config by ruling Q5, so nothing differs across them and the knobs are
+   template values. The § 6.6 preflight then passes with no transport branch.
+9. Every transport parameter is a catalogue row, so
    `tests/test_catalogue_agreement.py` covers them like every other row.
-4. `varies` on a transport description is **empty** — the five stages share one
-   config by ruling Q5, so nothing differs across them, and the knobs are
-   template values rather than overrides. The § 6.6 preflight then passes
-   without a transport branch.
-5. `_prep_transport` is gone as a parallel arm: the transport path renders
-   through `prepare_deck`, so **every stage deck has a `.validation.txt` and a
-   USER-CUSTOM zone**, and a deck that fails its own read-back check refuses.
-6. **No keyword's value syntax is written by hand.** A `%block` is emitted by
-   the block emitter; a list is emitted by the list emitter. The failure that
-   put `TBT.k` in a form fdf cannot parse becomes structurally unavailable.
-7. Every parameter with a physical constraint has a guard in the same place as
-   its declaration — in particular the transport axis of any k-grid, which is
-   an error for the device and is unchecked for `TBT.k` today.
-8. `electrode_kz` is reachable from a description. It is invariant I9 and it is
-   currently a Python function default that nothing passes.
+   **✅ done — 4b/4c, 2026-09-15.**
+10. `electrode_kz` is reachable from a description — invariant I9, previously a
+    Python function default nothing passed. **✅ done — 4b/4c.**
+11. Every parameter with a physical constraint has its guard where it is
+    declared, in particular the transport axis of any k-grid: an error for the
+    device, unchecked for `TBT.k` today.
 
-### 3.6 What this replaces
+**Floor 2 names no machine.**
+
+12. `max_memory_mb` and `num_threads` are `allocation` items, answered at
+    `prep`, not fields of a description.
+
+### 3.7 What this replaces
 
 Rectification, not accretion — the following stop existing:
 
