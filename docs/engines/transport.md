@@ -721,8 +721,16 @@ device. The convention (the *vocabulary* is owned by
   replicates as semi-infinite leads (use only the BULK portion; surface caps go in
   `bridge`).
 - **`bridge`** — the scattering region: the molecule + any lead-side atoms that
-  break periodicity. **Not** a TranSIESTA block — it's implicit ("the atoms in no
-  electrode region").
+  break periodicity. **Not** a TranSIESTA block — no `%block` is emitted for it.
+  **But it must be assigned, not omitted** *(corrected 2026-09-15, F15 of
+  [`execution/walkthrough-2026-09-15-junction.md`](?doc=execution/walkthrough-2026-09-15-junction.md))*:
+  this bullet read *"it's implicit (the atoms in no electrode region)"*, so a
+  junction labelled with only the two electrodes looks complete — and the
+  composer refuses it, *after* the relaxation has run: *"5 atom(s) carry no
+  partition label … Every atom must be exactly one of L-electrode,
+  R-electrode, bridge, buffer … an unlabeled atom has no place in TranSIESTA's
+  atom order and would be misassigned silently."* Implicit in the DECK,
+  explicit in the LABELLING.
 - **`interface`** (optional) — a sub-label flagging the contact atoms (the two S
   anchors in Au-BDT-Au) for projected-DOS analysis; doesn't change the partition.
 - **`buffer`** (optional) — atoms excluded from the NEGF region entirely

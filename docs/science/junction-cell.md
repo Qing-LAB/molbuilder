@@ -203,6 +203,20 @@ boundary carry the **same in-plane registry** and are eclipsed. The deleted
 to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 `--electrode` now uses on that side.
 
+> **MEASURED FALSE, 2026-09-15** (F9/F10 of
+> [`execution/walkthrough-2026-09-15-junction.md`](?doc=execution/walkthrough-2026-09-15-junction.md)).
+> `sequence` alone does **not** change the registry at the seam. With the
+> documented `ABC`/`ACB` mapping and `c = z_span + d`, every layer count this
+> document's § 3.1 table calls *continues* measures as **eclipsed** on
+> (100)/(110) and as a **twin** on (111). The control that does change it is
+> `add_slab`'s **`start_registry`**, which `--electrode` leaves at `0` on both
+> slabs and has no spec field for; giving the two sides different registries
+> (`+z = 1`, `−z = 0`) continues the crystal on both surfaces, with the
+> across-seam distance at the bulk `a/√2`. The web slab card exposes both
+> controls and returns the seam verdict at build time; the CLI does neither.
+> **This paragraph asserting the CLI was already correct is why the defect went
+> unnoticed** — fix the sentence and the CLI together.
+
 **`sequence` is read along the growth direction**, so "the crystal carries on"
 is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
 is why `--electrode` maps the side to the walk rather than passing a constant
