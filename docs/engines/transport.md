@@ -36,7 +36,7 @@ function).
 > from the *pristine bulk* lead. **`T(E, V)`** is the transmission — the probability
 > an electron of energy `E` crosses, when the junction is held at bias `V`. A
 > calculation computes a **slice at one V**, so a single-bias run yields `T(E)`
-> and a bias scan yields the family (§ 2a.8). **`E_F`** is the **Fermi level** — the energy that
+> and a bias scan yields the family (§ 2a.10). **`E_F`** is the **Fermi level** — the energy that
 > separates filled from empty states, and the reference energy for conductance. A
 > lead's **chemical potential μ** is the energy its electron reservoir is filled up
 > to (applying a bias offsets μ_L vs μ_R). **G₀ = 2e²/h** is the conductance quantum,
@@ -199,7 +199,7 @@ rather than a crash — which is why they are guards in code and not advice.
 | 1 | device `kz = 1` | **error**, `TransiestaEngine.preflight` | ✅ reached from `stages.py` |
 | 2 | electrode `kz` dense | default **40** (`wizard.py`); a warn below 20 lives in `transport/preflight.py` | ⚠️ **no** — that warn's only caller is the standalone `molbuilder transport preflight` verb, so a composite run never sees it. And the default is unreachable from any description (§ 3.6 item 8) |
 | 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
-| 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.6: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
+| 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
 > **Corrected 2026-09-15.** This table said all four were guards in code. Row 2
 > is not, on the path that matters: the check exists and nothing on the
@@ -313,7 +313,7 @@ Three consequences drive **every** parameter choice:
 ## 2a. The parameter map
 
 > **Status: agreed 2026-09-16, not yet built.** Every ruling this section asks
-> for has been made (§ 2a.6); **none of it is implemented**. It is written here,
+> for has been made (§ 2a.7); **none of it is implemented**. It is written here,
 > beside the physics it follows from, because that is what it is derived from —
 > not from what the code happens to do today. One item is deliberately deferred
 > rather than decided: net charge and gating.
@@ -350,22 +350,41 @@ The questions are the model; the classes are the vocabulary.
 
 ### 2a.3 The classes
 
-**Class A — Method.** *Decided once, binds every stage.* The electronic
-description itself: the same basis, the same exchange-correlation, the same real
-space grid everywhere, because the lead self-energy must attach to a device
-Hamiltonian built the same way. The person owns these values; what they cannot
-do is give one stage a different answer from another.
+**Class A — Shared.** *Decided once for the calculation, binds every stage —
+and, later, every frame.* Two families sit here, and they are shared for the
+same reason:
 
-**Class B — Lead characterisation.** *Decided at the electrode stages, binds the
-device and the transmission.* Properties of the leads that the device inherits
-structurally, chiefly the transverse Brillouin-zone sampling: the self-energy is
-built per transverse k-point and folded into the device at that same point, so
-the two cannot sample different grids.
+* **the electronic method** — basis, energy shift, exchange-correlation, mesh
+  cutoff, electronic temperature, spin treatment, the pseudopotentials, and the
+  species ordering. The lead self-energy must attach to a device Hamiltonian
+  built the same way;
+* **the transverse Brillouin-zone sampling.** The leads and the device share one
+  transverse cell by construction — the lead *is* the junction's lead region
+  extended periodically — and the self-energy is built per transverse k-point
+  and folded into the device at that same point. Two different grids cannot be
+  combined.
 
-**Class C — Stage-local.** *Decided at one stage, binds nothing.* How that
-particular run is driven — its SCF schedule, its convergence criteria, its own
-integration contours, its outputs. Two stages may legitimately differ, because
-a bulk lead's SCF and an open-boundary NEGF SCF do not converge alike.
+The person owns every value here. What they cannot do is give one stage a
+different answer from another.
+
+> **There was a Class B, and dissolving it is a finding rather than tidying.**
+> It was *"decided at the electrodes, binds the device and the transmission"* —
+> and when the full map was written it had exactly **two** members, the
+> transverse grid and its offset, both of which are better described as decided
+> once for a cell the stages share. A class with two members that belong
+> elsewhere is evidence the class does not exist. What genuinely flows from the
+> leads to the device is not parameters at all — it is **results**: the lead's
+> Hamiltonian, overlap and Fermi level. Those are named below.
+
+**Class C — Stage-local.** *Decided at one stage.* How that particular run is
+driven — its SCF schedule, its convergence criteria, its own integration
+contours, its outputs. Two stages may legitimately differ, because a bulk lead's
+SCF and an open-boundary NEGF SCF do not converge alike.
+
+*Most Class C parameters bind nothing.* One does: **the bias point** is the
+device's, and it binds that point's transmission, which must read that point's
+own converged Hamiltonian and no other's. Binding scope is a property of a
+parameter, not of its class.
 
 **Class D — Role-fixed.** *Nobody decides.* The facts that constitute the
 stage: which solver it runs, that a lead samples its transport axis and a device
@@ -380,9 +399,9 @@ answer.
 
 **And a category that is not parameters at all: the results that propagate.**
 The lead's Fermi level and Hamiltonian, the seed's density, the device's
-converged Hamiltonian. The contract owes these an explicit statement (§ 6)
-because a reader asking "what does the next stage need from this one" is asking
-about these, not about settings.
+converged Hamiltonian. They are drawn in § 6.1 and gated in § 2a.11, because a
+reader asking *"what does the next stage need from this one"* is asking about
+these, not about settings.
 
 ### 2a.4 Three tiers of guarantee, because "best effort" should be specific
 
@@ -402,46 +421,73 @@ precisely why they must be prominent in the interface rather than tucked behind
 an "advanced" fold — a note there must say what is at stake and must not imply
 anything has been checked.
 
-### 2a.5 The worked subset
+### 2a.5 The map in one picture
 
-Enough parameters to exercise every class and every tier. The full map follows
-once the reasoning here is agreed.
+Where each class enters the ladder. **Class A enters everywhere** — that is what
+"shared" means, and why changing one value rebuilds all five stages. **Class C
+enters one stage** and stops there. **Class D is not entered at all**: it is
+what the stage *is*.
 
-| parameter | class | decided at | binds | tier | the decision it actually is |
-|---|---|---|---|---|---|
-| **XC functional / authors** | A | calculation | all stages | 3 | **Level alignment** — where the molecular resonances sit relative to the leads' Fermi level. The dominant factor in junction conductance, and the known weakness of plain GGA: underestimated gaps give overestimated conductance, often by an order of magnitude. No default can be right for everyone |
-| **Basis size** | A | calculation | all stages | 3 | Accuracy against cost, and for transport specifically **the coupling**: the orbital tails carry the tunnelling across the metal–molecule contact |
-| **PAO energy shift** | A | calculation | all stages | 3 | Orbital confinement radius — an aggressive value truncates exactly the tails that conduct. Transport is more sensitive to this than a total-energy calculation is |
-| **Mesh cutoff** | A | calculation | all stages | 3 | Real-space grid: accuracy against cost, with egg-box error if too coarse |
-| **Electronic temperature** | A | calculation | all stages | 3 | Fermi broadening — sets the leads' distribution functions, and affects both metallic SCF convergence and the transmission near the Fermi level |
-| **Spin treatment** | A | calculation | all stages | 3 | Whether the physics is spin-resolved at all |
-| **Transverse k-grid** | B | electrode | device, transmission | 2 + 3 | *Checkable* that leads and device agree; *advisory* whether the density is enough. Under-sample and the transmission is an average over too few transverse channels |
-| **Lead transport-axis k-density** | C | each electrode | nothing | 3 | **The Fermi level resolution.** The lead is genuinely periodic along this axis; its Fermi level is the reference energy the whole calculation is measured against, so an under-converged value puts every transmission feature at the wrong energy. Per lead, not shared: an asymmetric junction can have different materials and lattice constants on the two sides |
-| **Device transport-axis k** | D | — | — | 2 | Fixed: that axis is the open boundary and is not sampled. Checkable, and a violation is refused |
-| **Solver per stage** | D | — | — | 1 | The stage's identity — a periodic warm-up, a bulk lead, an NEGF device. Not a setting |
-| **Lead writes its Hamiltonian** | D | — | — | 1 | A lead run that omits it produces nothing the device can attach to |
-| **SCF mixing weight / history** | C | each stage | nothing | 3 | How aggressively that run mixes. A bulk lead and an open-boundary NEGF cycle do not converge alike, so one value for both is a compromise neither asked for |
-| **SCF iteration budget** | C | each stage | nothing | 3 | A **budget, not a target** — it says when to stop trying, and reading it as a convergence setting is a common misreading worth stating in the note |
-| **Density-matrix tolerance** | C | each stage | nothing | 3 | What counts as converged for that run |
-| **NEGF contour (poles, broadening)** | C | device | nothing | 3 | How the non-equilibrium density is integrated |
-| **Transmission window, point count** | C | transmission | nothing | 3 | What is computed and at what resolution. A resonance narrower than the spacing is invisible |
-| **Transmission broadening** | C | transmission | nothing | 3 | Too large smears real resonances into a featureless curve; too small turns them into numerical noise |
-| **Lead layer count inside the device** | — | **the cited junction** | all stages | 2 | Not a transport parameter at all: it is geometry, settled when the junction was built and relaxed. Screening must be complete before the lead boundary or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it |
-| **Cores / memory / wall time** | E | each stage | nothing | — | Does not change the answer, so stages may differ freely — and should |
+```mermaid
+flowchart TB
+    A["<b>Class A — decided once, binds every stage</b><br/>basis · energy shift · XC · mesh cutoff<br/>electronic temperature · spin · species order · pseudopotentials<br/><b>transverse k</b> (leads and device share one transverse cell)"]
 
-### 2a.6 What follows, if the above is agreed
+    A ==> SEED
+    A ==> EL
+    A ==> DEV
+    A ==> TBT
 
-**The blast radius of a change is its class.** This is what a person needs to
-know before touching anything, and the interface should say it at the point of
-edit:
+    SEED["<b>01 seed</b><br/><i>C:</i> SCF schedule<br/><i>D:</i> closed periodic solver"]
+    EL["<b>02 / 03 electrodes</b><br/><i>C:</i> SCF schedule · <b>lead transport-axis k</b><br/><i>D:</i> bulk solver · writes its Hamiltonian"]
+    DEV["<b>04 device</b><br/><i>C:</i> SCF schedule · NEGF contour · <b>bias V</b><br/><i>D:</i> NEGF solver · transport-axis k = 1"]
+    TBT["<b>05 transmission</b><br/><i>C:</i> energy window · points · broadening · outputs<br/><i>D:</i> the transmission binary"]
+
+    DEV -.->|"the ONE Class C parameter<br/>that binds downstream:<br/>each transmission point reads<br/>ITS OWN point's Hamiltonian"| TBT
+```
+
+**Class E is deliberately absent from the picture.** Cores, memory and wall time
+attach to every stage and change no answer, so drawing them would add lines that
+carry no physics.
+
+**What flows *between* the stages is results, not parameters** — the leads'
+Hamiltonians, the seed's density, the device's converged Hamiltonian. That is a
+different diagram, and it is § 6.1. Keeping the two apart is the point: a reader
+asking *"what do I set, and where"* and a reader asking *"what does this stage
+need from the last one"* are asking different questions.
+
+### 2a.6 What follows — blast radius, the interface, and the rulings
+
+**The blast radius of a change** is what a person needs to know before touching
+anything, and the interface should say it at the point of edit. It follows from
+one rule rather than from a table to memorise:
+
+> **Changing any parameter of a stage invalidates that stage's result — and
+> therefore everything that consumes it.**
 
 | changing a… | invalidates |
 |---|---|
-| Class A value | **every stage** — leads and device must be rebuilt together |
-| Class B value | the electrodes and everything downstream |
-| Class C value | **that stage only** — everything upstream still stands |
-| Class D | not a change; it is the stage's identity |
-| Class E value | re-runs, but the science is unchanged, so old and new results stay comparable |
+| **Class A** value | **every stage.** It is shared, so the leads and the device must be rebuilt together or the self-energy attaches to a Hamiltonian built differently |
+| **Class C** value on a stage whose result feeds another | that stage **and its consumers**. Changing a lead's transport-axis k moves the lead's Fermi level, so the device and the transmission must follow — even though the parameter itself binds nothing downstream |
+| **Class C** value on the **transmission** | **the transmission alone.** It is terminal — nothing consumes its output — which is precisely why tuning an energy window is seconds and never re-runs an NEGF cycle |
+| **Class D** | not a change; it is the stage's identity |
+| **Class E** value | re-runs, same answer. Old and new results stay comparable |
+
+**Two distinctions this rule needs, and both are already in § 2a.9.**
+
+*Parametric binding is not the same as result propagation.* The bias point is
+the one Class C parameter that must be **obeyed** downstream — a transmission
+point must read its own point's Hamiltonian. The lead's transport-axis k binds
+nothing in that sense; it simply changes a **result** the device consumes. Both
+force a re-run; only one is a rule about values.
+
+*Exact consumers must re-run; approximate ones need not.* The device reads the
+leads' Hamiltonians as **truth**, so a changed lead invalidates it. It reads the
+seed's density only as a **starting guess**, so a changed seed — or a seed
+converged on a different transverse grid — leaves the device valid, merely
+started from a slightly different place. That is why changing the transverse
+grid rebuilds the leads, device and transmission but does **not** require the
+seed to be re-run: a density matrix is expressed over orbital pairs in real
+space, not over k-points, so it stays readable and serviceable.
 
 That asymmetry is also the argument for the transmission being its own stage:
 its parameters bind nothing, so re-running it against an unchanged device is
@@ -455,42 +501,72 @@ read-only echoes**: a Class A value does not appear as an editable control
 inside a stage, because editing it there would imply the device could differ
 from the leads, which is the one thing that must be impossible.
 
-**Rulings made** *(2026-09-16)*:
+### 2a.7 The rulings
+
+*All made 2026-09-16. Together they are what turns § 2a from an argument into a
+contract; none of them is implemented.*
 
 | | |
 |---|---|
-| **The T(E) window belongs to the transmission** | Exposed and tunable **there only**. A consequence worth stating: if the `TBT.*` settings are the transmission's alone, the device deck has no reason to carry them — so the two decks legitimately differ, and each carries only what its own binary reads. What keeps them consistent was never byte-identity; it is the shared Class A values |
+| **The relaxation DEFAULTS the Class A values; it does not seal them** | A transport calculation arrives pre-filled with the basis, functional and mesh cutoff of the relaxation it starts from, and the person **may change them** — a change applying to every stage at once. The worked case: relax with DZP because it is cheap and adequate for geometry, then move to TZP for transport because the longer orbital tails carry the metal–molecule coupling |
+| **The T(E) window belongs to the transmission** | Exposed and tunable **there only**. Consequence: the device deck has no reason to carry the `TBT.*` settings at all, so the two decks legitimately differ and each carries what its own binary reads. What keeps them consistent was never byte-identity; it is the shared Class A values |
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission; then the device; then the transmission. Fusing device and transmission is available as an opt-in |
-| **The trigger is DEFERRED, and load-bearing on nothing** | *(2026-09-16.)* Automatic resubmission is **optional and changes no logic**: the stages, their decks, the parameter map and the directory structure are all identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing in this contract waits on it. When it is built, the monitor is its home — it already watches a run to its end, so *"and if it converged and produced the file, submit the next"* extends something that exists. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
-| **A frame group runs at one bias** | § 2a.7 |
-| **The bias treatment is an exposed choice** | Single-bias or finite-bias is named in the interface with its advisory attached, and the deliverable is labelled by how it was computed — § 2a.8 |
+| **A frame group runs at one bias** | § 2a.11 |
+| **The bias treatment is an exposed choice** | Single-bias or finite-bias, named in the interface with its advisory attached, and the deliverable labelled by how it was computed — § 2a.12 |
+| **Automatic resubmission is deferred, and load-bearing on nothing** | The stages, their decks, the parameter map and the directory structure are identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing here waits on it. When built, the monitor is its home — it already watches a run to its end. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
+| **Net charge and gating are deferred** | Not designed now. In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is separate work. How a gate is applied in SIESTA 5.x — a charge-distribution block, a scripted hook, or neither — **has not been verified against the manual** and should be before anything depends on it |
 
-**Deferred — net charge and gating.** Left open for future development rather
-than designed now. How a gate is applied in SIESTA 5.x — a charge-distribution
-block, a scripted hook, or neither — has not been verified against the manual,
-and should be before anything depends on it.
+> **⚠️ The first ruling reverses Q5**, which achieved consistency by removing the
+> choice. The invariant Q5 protected — *"electrode and device must stay unable to
+> disagree"* — is preserved exactly, because one value shared by every stage
+> cannot disagree with itself. What is withdrawn is only the claim that the value
+> must come from the cited run. **Restatements of Q5 elsewhere are superseded and
+> marked at each site**: § 0.4 row 4, and § 3.6 item 8. Any surface showing these
+> fields as locked-because-cited is showing a rule that no longer holds.
 
-**All rulings are now made.** The last one:
-
-| | |
-|---|---|
-| **The relaxation DEFAULTS the Class A values; it does not seal them** | A transport calculation arrives pre-filled with the basis, functional and mesh cutoff of the relaxation it starts from, and the person **may change them** — a change applying to every stage at once. The physics requires the leads and the device to agree *with each other*, not with an earlier relaxation, and that needs the value to be **single**, not **inherited**. The worked case: relax with DZP because it is cheap and adequate for geometry, then move to TZP for transport because the longer orbital tails carry the metal–molecule coupling |
-
-> **⚠️ This reverses ruling Q5**, which achieved consistency by removing the
-> choice. The invariant Q5 protected — *"electrode and device must stay unable
-> to disagree"* — is preserved exactly, because one value shared by every stage
-> cannot disagree with itself. What is withdrawn is only the claim that the
-> value must come from the cited run.
->
-> **Restatements of Q5 elsewhere in this document are superseded** and marked at
-> each site: § 0.4 row 4, and § 3.6 item 8. Any surface showing these fields as
-> locked-because-cited is showing a rule that no longer holds.
 
 ---
 
-### 2a.7 The structure input, and the frame axis — making room, not building
+### 2a.8 A worked setup — Au–BDT–Au
+
+The map as a person would meet it. A benzene-1,4-dithiol molecule bridging two
+gold electrodes, starting from a finished relaxation that ran at DZP.
+
+**The shared panel — set once, governs all five stages.**
+
+| | value | why this one |
+|---|---|---|
+| basis | **TZP** *(relaxation ran DZP)* | the relaxation only had to get the geometry right; transport needs the longer tails that carry the contact coupling. Permitted by the first ruling in § 2a.7 — this is exactly the case it exists for |
+| energy shift | 0.02 Ry | the confinement radius; tighter would truncate those same tails |
+| XC | GGA / PBE | and the caveat is real: GGA underestimates the gap, so the conductance will come out high. § 7 says by how much |
+| mesh cutoff | 300 Ry | converged for Au–S; egg-box error below ~250 |
+| electronic temperature | 300 K | metallic leads; also the leads' distribution function |
+| transverse k | 4 × 4 | the junction supercell's transverse sampling — **the leads and the device both use it** |
+
+**The stage panels — each stage's own.**
+
+| stage | what you set | why it differs |
+|---|---|---|
+| **seed** | mixing 0.05, budget 200 | a closed periodic warm-up; it only has to produce a serviceable density, so it can mix boldly and stop early |
+| **electrodes** | mixing 0.02, budget 300, **transport-axis k = 40** | a metallic bulk lead mixes cautiously — and 40 is the Fermi-level resolution, the reference energy everything downstream is measured against |
+| **device** | mixing 0.02, budget 400, bias **0 V** | an NEGF cycle on an open boundary is the hardest to converge here. Zero bias makes this a linear-response calculation (§ 2a.10) |
+| **transmission** | window −3…+3 eV, 601 points, broadening 1 meV, 4 eigenchannels | wide enough to contain the resonances that matter, fine enough that none falls between points |
+
+**And then what a change costs — the whole reason for the classification:**
+
+| you change | what re-runs |
+|---|---|
+| basis TZP → DZP | **all five stages.** It is Class A; the leads and the device must be rebuilt together or the self-energy attaches to a Hamiltonian built differently |
+| lead transport-axis k 40 → 80 | **the two lead stages**, then the device and transmission that consume them — because the lead's Fermi level moved |
+| device mixing 0.02 → 0.01 | **the device only.** The leads still stand; their Hamiltonians did not change |
+| transmission window ±3 → ±5 eV | **the transmission only**, and it takes seconds. The NEGF cycle is untouched — which is the entire argument for the transmission being its own stage |
+| cores 64 → 128 | re-runs, same answer. The old and new results remain comparable |
+
+---
+
+### 2a.9 The structure input, and the frame axis — making room, not building
 
 *Added 2026-09-16 at the user's direction. The frame axis is **not** being
 built; what is settled here is what today's contract must say so that adding it
@@ -591,7 +667,7 @@ of couplings). § 6's statement of what the Results surface reads will have to
 grow a frame dimension — which is another reason to fix the axis rule now.
 
 
-### 2a.8 The bias treatment — an explicit choice, and what the result may be called
+### 2a.10 The bias treatment — an explicit choice, and what the result may be called
 
 *Ruled 2026-09-16: the treatment is exposed as a named choice with its advisory
 attached, and the deliverable is labelled by how it was computed.*
@@ -646,7 +722,7 @@ decide whether a whole ladder is necessary is a good trade, and it is what the
 interface should recommend rather than quoting a threshold as though it were
 settled.
 
-*This is also why the frame-group restriction (§ 2a.7) costs nothing for the
+*This is also why the frame-group restriction (§ 2a.9) costs nothing for the
 physics it serves: molecular vibrations are ~10–400 meV, so IETS lives below
 ~0.4 V — inside the regime where one slice is a sound elastic baseline.*
 
@@ -675,7 +751,7 @@ The treatment is not really a third mechanism: **single bias is the degenerate
 case of the bias axis — one point, normally at zero.** It earns a name of its
 own because what changes is not the machinery but the standing of the result.
 
-### 2a.9 The directory structure — one place per run, and the axes visible in it
+### 2a.11 The directory structure — one place per run, and the axes visible in it
 
 *The structure a person opens after a calculation finishes. If the folder does
 not explain itself, nothing downstream can.*
@@ -716,10 +792,10 @@ itself shows which results are computed once and reused.
     └── v0.2/ run-0/
 ```
 
-A **single-bias** calculation (§ 2a.8) has no `v*` level at all — the degenerate
+A **single-bias** calculation (§ 2a.10) has no `v*` level at all — the degenerate
 case of the axis rule, not a special case of the layout.
 
-#### Later: the frame axis (§ 2a.7), and why sharing needs no explaining
+#### Later: the frame axis (§ 2a.9), and why sharing needs no explaining
 
 ```
 ├── 01_seed/         run-0/      ← NO frame level: one density warms every frame
@@ -766,14 +842,14 @@ Copying rather than referencing is what lets a run directory hold everything it
 needs: it survives being moved to a cluster, archived, or handed to someone
 else.
 
-### 2a.10 What the Results surface reads
+### 2a.12 What the Results surface reads
 
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the
 surface should present both.
 
 **The curve, and what it is.** T(E) for a single-bias calculation, or the family
-T(E, V) for a bias scan — shown **with its treatment named** (§ 2a.8). An I–V
+T(E, V) for a bias scan — shown **with its treatment named** (§ 2a.10). An I–V
 obtained by integrating a single zero-bias slice is labelled *linear response*,
 beside the curve and not in metadata: the two kinds of I–V are different claims
 and look identical on a plot.
@@ -789,16 +865,16 @@ outstanding.
 
 **Later, the frame dimension.** A frame group's deliverable is a **family** of
 curves plus whatever is derived across it — an average, a spread, a set of
-couplings. § 2a.7's axis rule is what keeps that additive rather than a rewrite.
+couplings. § 2a.9's axis rule is what keeps that additive rather than a rewrite.
 
 
-### 2a.11 The full map
+### 2a.13 The full map
 
 Every parameter a transport deck can carry, classified by § 2a.3 and tiered by
 § 2a.4. Grouped by class, because the class is what a reader needs first: it
 says where the value is edited, what it binds, and what changing it costs.
 
-#### Class A — Method · decided once · binds every stage (and every frame)
+#### Class A — Shared · decided once · binds every stage (and every frame)
 
 Edited in one panel. Changing any of these rebuilds all five stages.
 
@@ -812,24 +888,11 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `spin_treatment` · `spin_total` | `Spin` | Whether the physics is spin-resolved at all | 3 |
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA silently uses the pseudo's XC even when the deck disagrees | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
+| `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
+| `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling | 2 |
+| *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
-#### Class B — Lead characterisation · decided at the electrodes · binds device and transmission
-
-| parameter | keyword | the decision it is | tier |
-|---|---|---|---|
-| `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. The self-energy is built per transverse k-point and folded into the device at that same point, so leads and device cannot sample different grids | 2 + 3 |
-| `kgrid_displacement` | same block | The grid's offset — same argument as the grid itself; an offset that differs is a different sampling | 2 |
-
-> **A problem this map exposes.** `kgrid` is one row holding three numbers, and
-> for transport its three components fall in **three different classes**:
-> transverse (Class B, shared), the lead's transport axis (Class C, per lead —
-> and it already has its own row, `electrode_kz`), and the device's transport
-> axis (Class D, fixed at 1). A single 3-vector cannot carry that, and the
-> interface cannot explain it. The row needs to become *the transverse grid*
-> for transport, with the transport axis owned separately. **Flagged, not
-> resolved here.**
-
-#### Class C — Stage-local · binds nothing
+#### Class C — Stage-local · binds nothing, except the bias point
 
 **Every SCF stage carries its own** (seed, both leads, device — four independent
 answers). A bulk lead and an open-boundary NEGF cycle do not converge alike, so
@@ -855,7 +918,7 @@ one set for all of them is a compromise none of them asked for.
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
-| *the bias point(s)* | `TS.Voltage` | Which voltage this device is converged at — and, via § 2a.8, what the result may be called. Binds the transmission: each transmission point reads **its own** point's Hamiltonian | 3 |
+| *the bias point(s)* | `TS.Voltage` | Which voltage this device is converged at — and, via § 2a.10, what the result may be called. Binds the transmission: each transmission point reads **its own** point's Hamiltonian | 3 |
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening. **Inert at zero bias** — there is no non-equilibrium window to integrate | 3 |
 | `elecs_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device uses the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert | 3 |
@@ -913,7 +976,7 @@ nearly free — so these *should* differ across stages.
 
 | parameter | why |
 |---|---|
-| `net_charge` | Held over with gating (§ 2a.6). In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is a separate design |
+| `net_charge` | Held over with gating (§ 2a.7). In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is a separate design |
 
 #### What this map says is missing
 
@@ -925,7 +988,7 @@ failure it exists to prevent:
 |---|---|
 | **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
 | **the equilibrium pole COUNT** | `TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword, and too few makes the device abort |
-| **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.8 is built on |
+| **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.10 is built on |
 
 
 ---
@@ -1667,7 +1730,7 @@ Two things are easy to get wrong and both are visible here:
   bytes**, and only the binary pointed at them differs
   (`Resources.program`).  `TBT.*` keywords are inert to `siesta` and `TS.*`
   to `tbtrans`, so one text *can* serve both.
-  > **Superseded by § 2a.6** *(2026-09-16)*: the T(E) window and the other
+  > **Superseded by § 2a.7** *(2026-09-16)*: the T(E) window and the other
   > `TBT.*` settings belong to the **transmission**, so the device deck has
   > no reason to carry them.  The two decks will legitimately differ, each
   > carrying what its own binary reads.  Nothing is lost by that — what
