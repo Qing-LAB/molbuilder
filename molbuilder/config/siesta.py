@@ -1955,6 +1955,39 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "help":        """How far up the imaginary axis the equilibrium contour's poles are placed when the non-equilibrium density matrix is integrated.""",
     })
 
+    negf_eq_pole_n: int = field(default=20, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Equilibrium contour poles",
+        "engine_key":  "TS.Contours.Eq.Pole.N",
+        "range":       (10, 80),
+        "tier":        "advanced",
+        "help":        """How MANY poles the equilibrium contour uses -- distinct from the pole ENERGY beside it, which says how far up the imaginary axis they sit.  Only the energy was ever written, which is why a device run could abort with `the continued fraction method requires at least 20 poles` after the queue wait.""",
+    })
+
+    bias_voltage_v: float = field(default=0.0, metadata={
+        "category": ("system", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Bias voltage",
+        "engine_key":  "TS.Voltage",
+        "unit":        "V",
+        "range":       (-5.0, 5.0),
+        "tier":        "basic",
+        "help":        """The voltage held across the junction for THIS device run.  At zero bias the device converges once and tbtrans sweeps energy, giving T(E); a genuine finite-bias result re-converges at every voltage, giving T(E, V).  It binds the transmission: each point must read its own point's converged Hamiltonian.""",
+    })
+
+    ts_hs_save: bool = field(default=False, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Write the TranSIESTA .TSHS",
+        "engine_key":  "TS.HS.Save",
+        "tier":        "advanced",
+        "help":        """Write `<SystemLabel>.TSHS` -- the Hamiltonian and overlap a device run's `TS.Elec.<name>` reference reads.  The ELECTRODE rungs' essential output, and the stage's ROLE rather than a preference: a lead that omits it converges happily and produces nothing the device can attach to.  Not `SaveHS`, which writes the `.HSX` the ladder does not consume.""",
+    })
+
     negf_neq_eta_ev: float = field(default=0.0, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",

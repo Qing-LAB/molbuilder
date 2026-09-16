@@ -2147,6 +2147,81 @@ help = """
 How far up the imaginary axis the equilibrium contour's poles are placed when the non-equilibrium density matrix is integrated.
 """
 
+[item.negf_eq_pole_n]
+stages = ["device"]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Contours.Eq.Pole.N"
+engine_key = "TS.Contours.Eq.Pole.N"
+manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
+type = "int"
+value = 20
+default = 20
+range = [10, 80]
+group = "stage"
+label = "Equilibrium contour poles"
+tier = "advanced"
+help = """
+How MANY poles the equilibrium contour uses -- distinct from the pole ENERGY beside it, which says how far up the imaginary axis they sit.
+
+Both are needed and only the energy was ever written, which is why a device run could abort with `the continued fraction method requires at least 20 poles` after the queue wait: the count fell back to a default the deck never stated and could not raise.
+
+More poles cost SCF time and buy a better-integrated density matrix; the engine refuses fewer than its method needs, so this is a floor to respect rather than a knob to minimise.
+"""
+
+[item.bias_voltage_v]
+stages = ["device"]
+kind = "engine"
+category = ["system"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Voltage"
+engine_key = "TS.Voltage"
+manual = "SIESTA 5.4.2 TranSIESTA §'Bias'"
+type = "float"
+value = 0.0
+default = 0.0
+unit = "V"
+range = [-5.0, 5.0]
+group = "stage"
+label = "Bias voltage"
+tier = "basic"
+help = """
+The voltage held across the junction for THIS device run -- the difference between the two leads' chemical potentials.
+
+It is the experiment, and it decides what the result may be called. At zero bias the device is converged once and tbtrans sweeps energy, giving T(E); an I-V obtained by integrating that single curve against the leads' Fermi functions is the LINEAR-RESPONSE approximation and must say so. A genuine finite-bias result re-converges the device at every voltage, giving T(E, V), because the potential drop reshapes the molecular levels.
+
+There is no universal voltage above which the approximation fails: compare eV/2 with the gap from the Fermi level to the nearest transmission resonance. Below ~0.1 V linear response is sound; above ~0.5-1 V it is not. The dependable check is to converge at zero and at your maximum and compare the two curves inside the window.
+
+It binds the transmission: each transmission point must read its own point's converged Hamiltonian, never another's.
+"""
+
+[item.ts_hs_save]
+stages = ["electrode_L", "electrode_R"]
+role = ["transport"]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.HS.Save"
+engine_key = "TS.HS.Save"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write the TranSIESTA .TSHS"
+tier = "advanced"
+help = """
+Write `<SystemLabel>.TSHS` -- the Hamiltonian and overlap a device run's `TS.Elec.<name>` reference reads.
+
+This is the ELECTRODE rungs' essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to. So the ladder turns it on for the two electrode rungs and nobody is offered a switch.
+
+Not to be confused with `SaveHS`, which writes `.HSX` -- a post-processing file the transport ladder does not consume.
+"""
+
 [item.negf_neq_eta_ev]
 stages = ["device"]
 kind = "engine"

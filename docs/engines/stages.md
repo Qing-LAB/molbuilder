@@ -241,7 +241,7 @@ have undone that.
 § 1.3's mechanism — *the default selection is a group each engine declares* — is
 already live in the catalogue and already per-engine. Before this landed SIESTA
 declared 11 items in `group = "stage"` and PySCF declared 3, so PySCF's group
-described about a third of its own ladder. **It is 21 and 18 now**, and the
+described about a third of its own ladder. **It is 23 and 18 now**, and the
 same UI, the same `varies` machinery and the same resolver serve both engines.
 
 **No new mechanism is introduced by this decision.** The catalogue is the

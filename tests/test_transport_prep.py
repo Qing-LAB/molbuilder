@@ -244,6 +244,54 @@ UNREACHABLE_BEFORE_THE_SEAM = (
 )
 
 
+class TestTheTransportAxisIsNotSettable:
+    """TR3 — the k-grid's three components fall in three classes, and the
+    third is not the person's.
+
+    `engines/transport.md` § 2a.13. The transverse pair is shared by the
+    leads and the device; the LEAD's transport-axis density is each
+    electrode's own (`electrode_kz`); the DEVICE's transport axis is fixed
+    at 1, because that axis is the open boundary and is not
+    Brillouin-zone sampled at all.
+
+    Before this the third component could be set and the renderer wrote 1
+    anyway -- a control that appears to do something and does not.
+    """
+
+    def test_a_sampled_transport_axis_is_refused_by_name(self, calc):
+        from molbuilder.template import _emit, find_template, read_template
+        import dataclasses
+        tmpl = find_template(calc)
+        parsed = read_template(tmpl.read_text())
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value=(4, 4, 4)) if i.name == "kgrid"
+             else i for i in parsed.items], engines=("siesta",)))
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed")
+        msg = str(e.value)
+        assert "open" in msg.lower() and "electrode_kz" in msg, (
+            f"refused, but without saying WHY or naming the parameter that "
+            f"does own a transport-axis density: {msg}")
+
+    def test_the_transverse_pair_is_still_the_persons(self, calc):
+        """The half that keeps the refusal from being a ban on the row.
+
+        Without it, deleting the k-grid control entirely would pass the
+        test above.
+        """
+        from molbuilder.template import _emit, find_template, read_template
+        import dataclasses
+        tmpl = find_template(calc)
+        parsed = read_template(tmpl.read_text())
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value=(6, 6, 1)) if i.name == "kgrid"
+             else i for i in parsed.items], engines=("siesta",)))
+        prep_calculation(calc, "seed")          # must not raise
+        deck = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        assert "  6    0    0" in deck, (
+            "the person's transverse grid must reach the deck")
+
+
 class TestTheTemplateIsTheSharedBaseline:
     """TR1 — transport has a template, and it is what a deck renders from.
 

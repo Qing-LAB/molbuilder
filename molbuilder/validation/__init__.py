@@ -348,6 +348,48 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     return list(spectra_render_checks(struct, science_view(cfg, struct)))
 
 
+def _validate_transport_kind(struct: Structure, cfg, cell, *,
+                             prior=None, **_) -> List[Issue]:
+    """The transport KIND's science — keyed on ``task.calculation``, so it
+    fires whatever config class the deck renders from.
+
+    Distinct from :func:`_validate_transport` beside it, which is keyed on
+    ``TransportConfig`` and therefore stopped firing for any rung that moved
+    onto the framework's seam (the seed, 2026-09-15). A rule that only runs
+    for one of two config classes is not a gate; this one runs for the kind.
+
+    **The transport axis is not a choice, and until now it was not a check
+    either.** `engines/transport.md` § 2a.13 classifies the k-grid's three
+    components into three different classes: the transverse pair is shared by
+    the leads and the device, the lead's transport axis is each electrode's
+    own (``electrode_kz``), and the device's transport axis is **fixed at 1**
+    because that axis is the open boundary and is not Brillouin-zone sampled
+    at all.
+
+    A person could set the third component in the template and the renderer
+    would quietly write 1 anyway — a control that appears to do something and
+    does not, which is the defect this whole programme keeps finding. Refused
+    here, naming the reason, rather than silently corrected downstream.
+    """
+    out: List[Issue] = []
+    kgrid = getattr(cfg, "kgrid", None)
+    if kgrid is not None and len(tuple(kgrid)) == 3 and int(kgrid[2]) != 1:
+        out.append(Issue(
+            "error",
+            f"kgrid is {tuple(kgrid)}, but a transport calculation does not "
+            f"sample the transport axis at all: that axis is the OPEN "
+            f"BOUNDARY, handled by the Green's function rather than by a "
+            f"Brillouin-zone sum, so its k-point count must be 1.  The "
+            f"transverse pair ({int(kgrid[0])}, {int(kgrid[1])}) is yours "
+            f"and is shared by the leads and the device.  The LEAD's "
+            f"transport-axis sampling is a separate parameter, "
+            f"`electrode_kz` -- it is a genuinely periodic bulk calculation "
+            f"there, and that density is what resolves its Fermi level "
+            f"(engines/transport.md 2a.13).",
+            where="config.kgrid"))
+    return out
+
+
 def _validate_transport(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
     from ..transport import get_engine
     return list(get_engine(cfg.engine).preflight(struct, cfg, prior=prior))
@@ -383,6 +425,7 @@ def _register_default_engines() -> None:
     except ImportError:
         pass
     _KIND_VALIDATORS["vibration"] = _validate_vibration_kind
+    _KIND_VALIDATORS["transport"] = _validate_transport_kind
 
 
 _register_default_engines()
