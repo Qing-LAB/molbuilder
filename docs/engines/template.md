@@ -1380,6 +1380,50 @@ A valueless item still carries `choices`, `range`, `unit` and `help`, so a
 surface can offer the *right* options before any value exists — `diag_algorithm`
 has a handful of legal eigensolvers whether or not one has been picked.
 
+#### The third answerer — `role`, and its sibling `stages` *(2026-09-16)*
+
+`allocation` says the **scheduler** answers; `citation` says a **cited run**
+does. **`role` says the STAGE'S OWN ROLE does** — and the state is the same
+once more: declared, and valueless for the kinds it names.
+
+Some values are not a choice. A transport device solves with the NEGF method
+and a bulk lead does not; a lead writes the Hamiltonian the device will read;
+the device's transport axis is not Brillouin-zone sampled because that axis is
+the open boundary. Offering any of these presents a choice with exactly one
+correct answer, and a person who changed it would not be tuning the run — they
+would be stopping it being the run it is.
+
+**A list of kinds, for `citation`'s reason.** `solution_method` is the rung's
+business for *transport* and an ordinary person-answered choice for an
+*optimization*, where nothing else decides it. So the item says for which kinds,
+and absence means never. A `role` item is not offered as a form field, is not
+offered as a stage-table column, and carries no value in a template of that
+kind — so no description can claim to have set it.
+
+**`stages` is `calculations` one level down.** `calculations` says which KINDS
+have this parameter at all; `stages` says which RUNGS of such a kind may answer
+it differently from each other.
+
+| state | means |
+|---|---|
+| no `stages` | **any rung may own it** — the ordinary case, and the optimization ladder's behaviour, where any promoted field may vary per rung |
+| `stages = [...]` | only these rungs may; it is not that rung's business anywhere else |
+
+It exists because a composite kind's rungs are **different programs on different
+cells** rather than one calculation tuned N ways
+([`engines/transport.md` § 2a.3](?doc=engines/transport.md)). A transmission
+energy window is the transmission rung's and nothing else's; a lead's
+transport-axis k-density is an electrode's. **Without it a surface has to
+guess** which rung an override belongs to — and the guess made was *the device*,
+so a value the transmission owned was written into a deck `tbtrans` never reads
+and silently never took effect.
+
+Stage names are a kind's own vocabulary, so `stages` is only meaningful on an
+item that belongs to one kind — which `calculations` already says. Ask with
+`select(t, role=True)` and `select(t, stages="device")`; an item declaring no
+stages matches every rung asked about, which is what keeps the ordinary case
+ordinary.
+
 **Where a machine fact comes from — the whole chain, and it is four steps.**
 
 ```

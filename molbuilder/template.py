@@ -327,6 +327,56 @@ class Item:
     #: Ask it directly, or filter for it: ``select(t, citation=True)``.
     citation: Tuple[str, ...] = ()
 
+    #: **The STAGE'S ROLE answers this one** — the third answerer on
+    #: `allocation`'s axis (§ 6.4), added 2026-09-16 for the transport kind.
+    #:
+    #: Same three states again, and again a different answerer. Some values
+    #: are not a choice at all: they are what makes a stage *be* that stage.
+    #: A transport device solves with the NEGF method and a bulk lead does
+    #: not; a lead writes the Hamiltonian the device will read; the device's
+    #: transport axis is not Brillouin-zone sampled, because that axis is the
+    #: open boundary. Offering any of these as a control would present a
+    #: choice with exactly one correct answer, and a person who changed it
+    #: would not be tuning the run — they would be stopping it being the run
+    #: it is.
+    #:
+    #: **A list of CALCULATION KINDS**, like `citation` and for the same
+    #: reason: `solution_method` is role-fixed for *transport*, where the rung
+    #: decides it, and an ordinary person-answered choice for an
+    #: *optimization*, where nothing else does. So the item says *for which
+    #: kinds*, and absence means *never*.
+    #:
+    #: What it buys: a `role` item is not offered — not as a form field, not
+    #: as a stage-table column — and it carries no value in a template of
+    #: that kind, so no description can claim to have set it.
+    #:
+    #: Ask it directly, or filter for it: ``select(t, role=True)``.
+    role: Tuple[str, ...] = ()
+
+    #: **WHICH RUNGS may carry their own value for this item.**
+    #:
+    #: `calculations` one level down: that says which KINDS have this
+    #: parameter at all, and this says which STAGES of such a kind may answer
+    #: it differently from each other. Absent means *any rung may* — which is
+    #: the ordinary case and the optimization ladder's behaviour, where any
+    #: promoted field may vary per rung.
+    #:
+    #: It exists because a composite kind's rungs are different programs on
+    #: different cells rather than one calculation tuned N ways
+    #: (`engines/transport.md` § 2a.3). A transmission energy window is the
+    #: transmission rung's and nothing else's; a lead's transport-axis
+    #: k-density is an electrode's. Without this there is no basis on which to
+    #: route an override to the rung that owns it, and a surface has to guess
+    #: — which is how every transport override came to be written onto the
+    #: `device` rung, so that a value the transmission owned never reached the
+    #: transmission's deck.
+    #:
+    #: Stage names are a kind's own vocabulary, so this is only meaningful on
+    #: an item that belongs to one kind — which `calculations` already says.
+    #:
+    #: Ask it directly, or filter for it: ``select(t, stages="device")``.
+    stages: Tuple[str, ...] = ()
+
     #: Whether *unset* is a state this item has at all — and since 2026-08-14
     #: it IS written to the file.  A surface must offer *(auto)* / *(no cap)*,
     #: and it cannot be inferred from ``null_label``: 16 items are optional and
@@ -587,6 +637,8 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     # on the wrong machine is not.
     _alloc = bool(f.metadata.get("allocation"))
     _cited = tuple(f.metadata.get("citation") or ())
+    _role = tuple(f.metadata.get("role") or ())
+    _stages = tuple(f.metadata.get("stages") or ())
 
     ann, optional = _unwrap_optional(annotation)
 
@@ -652,6 +704,8 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         name=f.name,
         allocation=_alloc,
         citation=_cited,
+        role=_role,
+        stages=_stages,
         kind=kind,
         type=type_,
         help=str(f.metadata.get("help", "") or ""),
@@ -758,7 +812,7 @@ def _toml_value(v: Any) -> str:
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "default", "optional", "allocation",
-                   "citation",
+                   "citation", "role", "stages",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
@@ -806,6 +860,10 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["allocation"] = True
     if it.citation:
         out["citation"] = list(it.citation)
+    if it.role:
+        out["role"] = list(it.role)
+    if it.stages:
+        out["stages"] = list(it.stages)
     if it.label:
         out["label"] = it.label
     if it.null_label:
@@ -938,8 +996,15 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             calculations=(),
             # Valueless for BOTH answerers outside floor 2: the scheduler
             # (§ 7) and, since 2026-09-15, the citation (§ 6.4's sibling).
+            # Valueless for every answerer outside floor 2: the scheduler
+            # (§ 7), the citation (§ 6.4's sibling, 2026-09-15), and the
+            # stage's ROLE (2026-09-16) -- a role item has no value a
+            # description could legitimately claim to have set, because the
+            # rung decides it.
             value=(None
-                   if (it.allocation or calculation in it.citation)
+                   if (it.allocation
+                       or calculation in it.citation
+                       or calculation in it.role)
                    else getattr(config, it.name, it.value)),
         )
         for it in select(parsed, engine=eng)
@@ -1272,6 +1337,8 @@ def _item_from(name: str, body: Any) -> Item:
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),
+        role=tuple(body.get("role", ()) or ()),
+        stages=tuple(body.get("stages", ()) or ()),
         null_label=str(body.get("null_label", "") or ""),
     )
 
@@ -1320,7 +1387,7 @@ def _check_engine(t: "Template", engine) -> None:
 
 def select(t: "Template", *, category=None, engine=None,
            kind=None, read_by=None, allocation=None,
-           citation=None) -> List[Item]:
+           citation=None, role=None, stages=None) -> List[Item]:
     """The items matching every filter given, **in category order**.
 
     One function, one file, every reader (`engines/template.md` § 8.0).
@@ -1376,6 +1443,14 @@ def select(t: "Template", *, category=None, engine=None,
         # than carrying its own list of field names.
         if citation is not None and bool(it.citation) is not bool(citation):
             continue  # `True` = some kind's citation answers it
+        if role is not None and bool(it.role) is not bool(role):
+            continue  # `True` = some kind's stage role answers it
+        if stages is not None:
+            # A STAGE NAME, not a boolean: "may this rung own this item?".
+            # An item declaring no stages may be owned by any -- the ordinary
+            # case -- so it matches every name asked about.
+            if it.stages and stages not in it.stages:
+                continue
         out.append(it)
 
     def _rank(it: Item) -> int:

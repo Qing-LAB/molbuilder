@@ -124,6 +124,8 @@ XC parameterisation within the family.  GGA: PBE (default, all-purpose), PBEsol 
 DEVIATION: SIESTA's own default is PZ, which is the LDA parameterisation that goes with its LDA default family.  This catalogue starts at PBE because it ships GGA -- the two move together, and a family and a parameterisation that do not belong to each other is not a configuration SIESTA implements.  Change one and check the other."""
 
 [item.solution_method]
+# role: a transport rung's SOLVER is its identity -- a closed periodic warm-up, a bulk lead, an NEGF device.
+role = ["transport"]
 kind = "engine"
 category = ["method", "convergence"]
 engines = ["siesta"]
@@ -542,6 +544,8 @@ Which files that means is the engine's own: SIESTA reads .XV / .DM / .CG, PySCF 
 Continuing is the default because a run you start in a folder that already holds a result is a run you started after looking at that result.  To keep the old state, save it first with `molbuilder checkpoint save` -- the launcher warns before a clean run overwrites anything and stops unless you pass --force."""
 
 [item.wrap_into_cell]
+# role: wrapping can reorder atoms, and TranSIESTA identifies each electrode by a CONTIGUOUS atom range.
+role = ["transport"]
 kind = "produce"
 category = ["procedure"]
 engines = ["siesta"]
@@ -1855,6 +1859,7 @@ help = "only meaningful when on_nonconvergence='continue': how many additional m
 # ====================================================================
 
 [item.transmission_emin_ev]
+stages = ["transmission"]
 kind = "deck"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -1878,6 +1883,7 @@ The window is what you can plot afterwards: a feature outside it does not exist 
 """
 
 [item.transmission_emax_ev]
+stages = ["transmission"]
 kind = "deck"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -1899,6 +1905,7 @@ Upper edge of the energy window T(E) is computed on -- the `to` line of `%block 
 """
 
 [item.transmission_n_points]
+stages = ["transmission"]
 kind = "deck"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -1921,6 +1928,7 @@ A narrow resonance that falls between two points is invisible, so this is the kn
 """
 
 [item.tbt_k_grid]
+stages = ["transmission"]
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
@@ -1942,6 +1950,7 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
 """
 
 [item.tbt_spin]
+stages = ["transmission"]
 kind = "engine"
 category = ["system"]
 engines = ["siesta"]
@@ -1961,6 +1970,7 @@ Which spin channel tbtrans reports: 1 selects spin-up, 2 spin-down, and 0 -- the
 """
 
 [item.tbt_elecs_eta_ev]
+stages = ["transmission"]
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -1981,6 +1991,7 @@ The imaginary part added to the energy when the lead self-energies are built.  T
 """
 
 [item.tbt_contours_eta_ev]
+stages = ["transmission"]
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -2001,6 +2012,7 @@ The imaginary part used on the device Green function.  0 leaves the engine's own
 """
 
 [item.tbt_dos_gf]
+stages = ["transmission"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -2019,6 +2031,7 @@ Write the device's Green-function density of states.  Needed to read WHERE on th
 """
 
 [item.tbt_dos_a]
+stages = ["transmission"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -2037,6 +2050,7 @@ Write the spectral function density of states, resolved per electrode -- which l
 """
 
 [item.tbt_dos_elecs]
+stages = ["transmission"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -2055,6 +2069,7 @@ Write the density of states of the bulk leads themselves.
 """
 
 [item.tbt_t_eig]
+stages = ["transmission"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -2074,6 +2089,7 @@ How many transmission eigenchannels to decompose T(E) into.  0 writes none.  The
 """
 
 [item.tbt_t_bulk]
+stages = ["transmission"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -2092,6 +2108,7 @@ Write the transmission of the pristine bulk lead, which is the ideal T(E) the ju
 """
 
 [item.tbt_t_all]
+stages = ["transmission"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -2110,6 +2127,7 @@ Write the transmission between every pair of electrodes, not only the first pair
 """
 
 [item.negf_eq_pole_ev]
+stages = ["device"]
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -2130,6 +2148,7 @@ How far up the imaginary axis the equilibrium contour's poles are placed when th
 """
 
 [item.negf_neq_eta_ev]
+stages = ["device"]
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
@@ -2150,6 +2169,7 @@ The imaginary part on the non-equilibrium contour.  0 leaves the engine's own de
 """
 
 [item.elecs_bulk]
+stages = ["device"]
 kind = "engine"
 category = ["method"]
 engines = ["siesta"]
@@ -2168,6 +2188,7 @@ Use the lead's own converged bulk Hamiltonian inside the electrode region, rathe
 """
 
 [item.electrode_kz]
+stages = ["electrode_L", "electrode_R"]
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]

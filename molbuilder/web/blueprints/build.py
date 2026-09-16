@@ -1907,6 +1907,13 @@ def api_task_setup_columns():
         # sibling rule); the tab passes its description's kind (P2).
         if it.calculations and _calc_kind not in it.calculations:
             continue
+        # ...and a ROLE item is not a column at all for this kind: the rung
+        # decides it, so a cell offering it would present a choice with one
+        # correct answer, and a person who changed it would not be tuning
+        # the run but stopping it being the run it is (template.md § 6.4's
+        # third answerer, 2026-09-16).
+        if _calc_kind in it.role:
+            continue
         out.append({
             "name":    it.name,
             "label":   it.label or it.name,
@@ -1926,6 +1933,14 @@ def api_task_setup_columns():
             # leads with a VALUE published the value: `method` showed as
             # `RKS`, one of its four choices, where the keyword belongs.
             "engine_key": _engine_key_for(it),
+            # WHICH RUNGS may carry their own value (template.md § 6.4).
+            # Empty means any -- the ordinary case, and the optimization
+            # ladder's behaviour.  A composite kind's rungs are different
+            # programs on different cells, so a transmission window is the
+            # transmission's and an electrode's k-density an electrode's;
+            # without this the table has to guess which rung an override
+            # belongs to.
+            "stages": list(it.stages),
         })
     return jsonify({"ok": True, "engine": engine, "items": out})
 

@@ -1919,6 +1919,74 @@ scheduler answers this; `citation` — a cited run answers this):
 **Not yet approved.** Everything else in this section proceeds without them;
 the steps that need them say so.
 
+### 5p.3a FOUND WHILE IMPLEMENTING — `citation`'s semantics contradict the ruling
+
+*Recorded 2026-09-16 under R3a, before working around it.*
+
+`template.py::template_with_values` writes a `citation` item into the template
+**valueless**:
+
+```python
+value=(None if (it.allocation or calculation in it.citation)
+       else getattr(config, it.name, it.value))
+```
+
+and `config_from_template` refuses one that carries a value. That is the
+**sealed** reading — the item is declared but never answered in floor 2, and
+`prep` fills it from the cited deck, exactly as it fills an allocation item from
+what the scheduler granted.
+
+**§ 2a.7's first ruling reversed that.** The cited relaxation *defaults* these
+values; the person may change them, and a change applies to every stage at once.
+Under that ruling the citation is **a source of defaults at `init`**, not an
+answerer at `prep` — so the template must carry the value, and it must be
+editable.
+
+**What this changes, and where it belongs:** the marker survives and keeps its
+name, because *"which items are harvested from the cited run"* is still exactly
+the question it answers — but its behaviour moves from *valueless, filled at
+prep* to *defaulted at init, thereafter an ordinary template value*. That is
+**TR1's** substance (it is what makes the template carry a shared baseline at
+all), so it is scheduled there rather than done here.
+
+Not a defect in what shipped: the seed migration relies on the current
+behaviour and is consistent with it. It is a consequence of the ruling that had
+not yet been traced into the code, and tracing it is what R3a is for.
+
+### 5p.3b LANDED — `role` and `stages` *(2026-09-16)*
+
+*Approved by the user and built. Recorded here under R3a.*
+
+Both are siblings of `allocation` and neither is a new mechanism:
+
+| | means | what it buys |
+|---|---|---|
+| **`role`** — a list of kinds | *the stage's own role answers this* — the third answerer, after the scheduler (`allocation`) and a cited run (`citation`) | a `role` item is not a form field, not a stage-table column, and carries **no value** in a template of that kind, so no description can claim to have set it |
+| **`stages`** — a list of rung names | *which rungs may carry their own value*; `calculations` one level down. **Absent means any rung may**, which keeps the optimization ladder exactly as it was | the basis on which an override reaches the rung that owns it — TR8's proper fix |
+
+**Declared on the items § 2a.13 already classified**, transcribing the agreed
+map rather than re-deciding it: `solution_method` and `wrap_into_cell` as
+`role = ["transport"]`; the thirteen transmission/`TBT.*` items to the
+transmission; `electrode_kz` to the two electrodes; the three NEGF items to the
+device. The seed owns nothing of its own — it only obeys, which is the formal
+statement of why it is skippable.
+
+**They have a reader, deliberately.** `GET /api/task-setup/columns` now skips a
+`role` item for that kind and publishes each item's `stages`. A declaration
+with no reader is a control that does nothing — the defect `electrode_kz`
+shipped with, and not one to repeat while fixing it.
+
+**Verified:** six behavioural tests, the two load-bearing ones mutation-proven
+(remove the valueless rule and the template test fails; remove the endpoint
+filter and the column test fails). The column test asserts the other half too —
+that `solution_method` is *still* offered for an optimization — because without
+it the test would pass on an empty column list. Contract in
+[`engines/template.md` § 6.4](?doc=engines/template.md). Full sweep of the
+affected areas: 1348 passed.
+
+**What did NOT change:** nothing reads `stages` to route an override yet. That
+is TR8, and it is the point of the declaration rather than a follow-up to it.
+
 ### 5p.4 The steps
 
 Ordered so each one is verifiable on its own and nothing depends on a later
@@ -1933,7 +2001,7 @@ step. **Every step ends with a check that can fail**, not with a declaration.
 | **TR5** | **The remaining four rungs onto `spec_for`** (G7). ⚠️ **Blocked on a seam question**: the electrode and device decks need the `ComposedJunction`, which `spec_for(struct, cfg, stage_token=)` does not carry. *What a composite kind hands its renderer* must be settled before this step, not worked around inside it | `transport/deck.py` (the seed arm, landed 2026-09-15) · `siesta/layout.py` sections | all five decks have a `.validation.txt`; all five pass the engine check gate; none is written by an f-string |
 | **TR6** | **`TransportConfig` retires** (G2, G5). The shape is `SiestaConfig`; the projection introduced for the seed goes with it | — | `config/transport.py` does not exist; nothing maps one vocabulary to another |
 | **TR7** | **The transport tab reads the catalogue** (G3). Its bespoke form schema is deleted; the parameter surface is the kind-aware catalogue route, and per-stage values are the **stage table** rather than a second invention | `GET /api/build/schema/siesta?calculation=transport` · the task-setup stage table | `dataclass_to_form_schema` has no callers; the tab shows one shared panel and a per-stage table |
-| **TR8** | **Overrides route to the rung that owns them** (G4 — the live defect). Needs `stages = [...]` from § 5p.3 | the declaration, once approved | setting the T(E) window reaches the transmission deck and nothing else |
+| **TR8** | **Overrides route to the rung that owns them** (G4 — the live defect). The `stages` declaration landed 2026-09-16 (§ 5p.3b); the routing that reads it is what remains | the declaration, once approved | setting the T(E) window reaches the transmission deck and nothing else |
 | **TR9** | **Grouping** — the preparatory block as one submission (§ 2a.7). ⚠️ **Reconcile first** with `task-setup.md` § 1 (below) | `submit_transport_chain`'s shape — one submission walking a list | one command prepares and launches seed + both leads; the device and transmission stay separate |
 | **TR10** | **Results reads the transmission** (§ 2a.12), with the treatment label and the provenance chain | `transport/record.py` | a curve carries how it was computed; a linear-response I–V says so |
 
