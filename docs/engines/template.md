@@ -380,7 +380,7 @@ engines     = ["siesta"]                # REQUIRED — which engines this
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
 | `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything resolved at `prep` (memory, `block_size`, rank count, threads) |
 | `allocation` | when the **scheduler** answers this item, not a person — § 6.4. It is what makes a `value` on the item a refusal rather than a choice |
-| `citation` | when a **cited run** answers this item, not a person — § 6.4's sibling, ruled 2026-09-15. Same shape as `allocation`: the item is declared, never answered on floor 2, and `prep` fills it from the citation. A `value` on one is a refusal |
+| `citation` | **which calculation KINDS have this item answered by a cited run** rather than by a person — § 6.4's sibling, ruled 2026-09-15. A list, like `calculations`, and absence means *never* |
 | `expands` | `kind = "deck"` — it is how a reader learns what this item produces: the engine keywords when the product is keywords (`restart` → `DM.UseSaveDM`, …), or the deck MECHANISM by name when the product is control flow (`displacement_amplitude_ang` → `finite-difference polarizability loop` — the vibration kind's items generate loops, not lines, and inventing pseudo-keywords for them would send a reader grepping for spellings no engine has) |
 | `choices` | `type = "enum"` — an enum with no members cannot be validated or rendered as a control |
 
@@ -652,7 +652,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the fourteen vibration items stay out of an optimization template by declaration |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
-| `citation` | **a cited run answers this one** — the transport kind's basis, XC, mesh, energy shift, transverse k and electronic temperature, read from the relaxation it cites so the leads and the device cannot disagree. One boolean, and it replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
+| `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
@@ -1350,16 +1350,30 @@ generalised.
 **There are two answerers outside floor 2, not one** *(ruled 2026-09-15)*.
 `allocation` marks an item the **scheduler** answers; `citation` marks one a
 **cited run** answers. The state above is identical — declared, valueless,
-filled at `prep` — and only the source and the refusal's wording differ. Both
-are excluded from `template_fields`, so neither can be a stage override, a pin
-or a sweep axis, and `select(t, allocation=True)` / `select(t, citation=True)`
-are how a layer asks which is which instead of carrying its own list of names.
+filled at `prep` — and only the source and the refusal's wording differ.
+`select(t, allocation=True)` / `select(t, citation=True)` are how a layer asks
+which is which instead of carrying its own list of names.
 
 The second one exists because the transport kind's electronic contract — basis,
 XC, mesh, energy shift, transverse k, electronic temperature — is read from the
-relaxation it cites, so that the electrode and the device cannot disagree about
-it. Before the marker that rule lived in two frozensets and a predicate written
+relaxation it cites, so the electrode and the device cannot disagree about it.
+Before the marker, that rule lived in two frozensets and a predicate written
 twice, in two files, with formulations that did not match.
+
+**And it is a LIST of kinds, where `allocation` is a boolean** — the one place
+the two differ, and it is forced rather than chosen. A rank count is a machine
+fact for *every* calculation. But the seven items above are the **same
+catalogue rows** an optimization uses, where the person answers them: only for
+transport does the citation. So the item says *for which kinds*, and absence
+means *never*.
+
+That is also why the seal is enforced where the KIND is known — by
+`config_from_template`, which the caller hands `task.calculation` — and not by
+`read_template`. The master catalogue carries both the marker and a value (86
+of its 103 rows carry one), so a reader with no kind cannot tell a legitimate
+optimization default from a transport template answering what it must not.
+For the same reason `template_fields` does **not** strip these names: excluding
+`basis_size` by name would stop an optimization overriding its own basis.
 
 A valueless item still carries `choices`, `range`, `unit` and `help`, so a
 surface can offer the *right* options before any value exists — `diag_algorithm`

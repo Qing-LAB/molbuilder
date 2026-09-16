@@ -30,6 +30,11 @@ from molbuilder import template as T
 @dataclasses.dataclass
 class _Cited:
     """Three fields, one per answerer, so each assertion has a control."""
+
+    #: `_engine_name` reads this, else it strips a `Config` suffix off the
+    #: class name -- and `_Cited` would resolve to the engine `_cited`.
+    ENGINE = "siesta"
+
     #: the person answers this one
     mesh: int = dataclasses.field(default=300, metadata={
         "kind": "engine", "engine_key": "MeshCutoff",
@@ -37,7 +42,8 @@ class _Cited:
         "group": "stage"})
     #: the CITED RUN answers this one
     basis: str = dataclasses.field(default="DZP", metadata={
-        "citation": True, "kind": "engine", "engine_key": "PAO.BasisSize",
+        "citation": ("transport",), "kind": "engine",
+        "engine_key": "PAO.BasisSize",
         "category": ("method",), "help": "the basis the citation used",
         "group": "profile"})
     #: the SCHEDULER answers this one
@@ -58,16 +64,16 @@ def _decl(name):
 def test_the_marker_survives_the_round_trip():
     """Declared from the dataclass, emitted, and parsed back as itself."""
     item = _decl("basis")
-    assert item is not None and item.citation is True
+    assert item is not None and item.citation == ("transport",)
     back = T.read_template(T._emit([item], engines=("siesta",)))
-    assert back.items[0].citation is True, (
+    assert back.items[0].citation == ("transport",), (
         "the marker did not survive emit → read, so a template cannot carry "
         "which answerer owns the item")
 
 
 def test_an_ordinary_item_is_not_marked():
     """The control: without the metadata key nothing is claimed."""
-    assert _decl("mesh").citation is False
+    assert _decl("mesh").citation == ()
 
 
 def test_the_template_writer_leaves_it_VALUELESS():
@@ -92,14 +98,18 @@ def test_the_template_writer_leaves_it_VALUELESS():
 def test_a_typed_value_is_REFUSED_and_named_to_the_right_answerer():
     """THE ASSERTION THE TWO FROZENSETS WERE STANDING IN FOR.
 
-    A template is a file people edit (§ 4.1), so the rule is checked on
-    READ. And the message must name the CITATION: routed to the scheduler's
-    story it would send a reader to the queue configuration over a basis set.
+    Checked where the KIND is known, not in `read_template`: the master
+    catalogue carries both the marker and a value (86 rows of 103 carry
+    one), and `basis_size` is the person's answer for an optimization and
+    the citation's for transport.  A reader with no kind cannot tell.
+
+    And the message must name the CITATION: routed to the scheduler's story
+    it would send a reader to the queue configuration over a basis set.
     """
     text = T._emit([dataclasses.replace(_decl("basis"), value="TZP")],
                    engines=("siesta",))
-    with pytest.raises(Exception) as exc:
-        T.read_template(text)
+    with pytest.raises(ValueError) as exc:
+        T.config_from_template(text, _Cited, calculation="transport")
     msg = str(exc.value)
     assert "CITATION" in msg, f"refused, but not as the citation's: {msg}"
     assert "SCHEDULER" not in msg, (
@@ -107,13 +117,28 @@ def test_a_typed_value_is_REFUSED_and_named_to_the_right_answerer():
         f"the marker exists to remove: {msg}")
 
 
-def test_it_is_not_an_override_a_pin_or_a_sweep_axis():
-    """`template_fields` is the one membership rule. A value the citation
-    owns is no more a stage's to override than a rank count is."""
+def test_the_SAME_value_is_accepted_for_a_kind_the_citation_does_not_answer():
+    """The half that makes it a per-KIND marker rather than a seal.
+
+    `basis_size` is a shared row: an optimization's person answers it.  If
+    the refusal fired on the name alone, tagging the row for transport would
+    break every optimization that sets a basis.
+    """
+    text = T._emit([dataclasses.replace(_decl("basis"), value="TZP")],
+                   engines=("siesta",))
+    cfg = T.config_from_template(text, _Cited, calculation="optimization")
+    assert cfg.basis == "TZP"
+
+
+def test_the_allocation_exclusion_is_untouched():
+    """`template_fields` still strips machine facts — and NOT citation ones,
+    because that exclusion is kind-dependent and this function has no kind.
+    The transport seal is enforced by `config_from_template`, above."""
     fields = T.template_fields(_Cited)
     assert "mesh" in fields
-    assert "basis" not in fields, (
-        "a citation-answered field is offered as an override/pin/sweep name")
+    assert "basis" in fields, (
+        "excluded by name -- an optimization could then not override its "
+        "own basis, because the row is shared")
     assert "ranks" not in fields, "the allocation control still holds"
 
 
