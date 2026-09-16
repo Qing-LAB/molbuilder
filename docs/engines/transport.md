@@ -19,6 +19,11 @@ engine contract).
 > walk). The pre-framework `transport bundle` driver this banner once
 > guarded is deleted; § 8 records the closure.
 
+> **The design is [§ 2a](#2a-the-parameter-map)** *(agreed 2026-09-16, not yet
+> built)*: what each stage decides, what it binds downstream, how strongly each
+> consistency rule can be guaranteed, the directory structure, and the full
+> parameter map. Read it before changing a parameter's home or adding one.
+
 This is how molbuilder computes **electron transport** (conductance) through a
 molecular junction — e.g. a single benzene-1,4-dithiol molecule bridging two gold
 electrodes (Au–BDT–Au). It uses **TranSIESTA**, SIESTA's transport engine, which
@@ -28,15 +33,19 @@ function).
 > **Vocabulary.** A junction has a **scattering region** (the molecule + contact
 > atoms) between two **electrodes** / **leads** (semi-infinite bulk metal). **NEGF**
 > couples the leads into the device through energy-dependent **self-energies** Σ built
-> from the *pristine bulk* lead. **`T(E)`** is the transmission (probability an
-> electron of energy E crosses); **`E_F`** is the **Fermi level** — the energy that
+> from the *pristine bulk* lead. **`T(E, V)`** is the transmission — the probability
+> an electron of energy `E` crosses, when the junction is held at bias `V`. A
+> calculation computes a **slice at one V**, so a single-bias run yields `T(E)`
+> and a bias scan yields the family (§ 2a.8). **`E_F`** is the **Fermi level** — the energy that
 > separates filled from empty states, and the reference energy for conductance. A
 > lead's **chemical potential μ** is the energy its electron reservoir is filled up
 > to (applying a bias offsets μ_L vs μ_R). **G₀ = 2e²/h** is the conductance quantum,
 > and zero-bias conductance is `G = G₀·T(E_F)`. **`.TSHS`** is the file a lead run
 > writes (its Hamiltonian H + overlap S). **TBtrans** is the post-processor that
-> turns the device solution into `T(E)`. (DFT/SCF/k-points/pseudopotential are in
-> the [`science/overview.md` glossary](?doc=science/overview.md).)
+> turns the device solution into `T(E)`. A **citation** is molbuilder's word for
+> *the finished calculation a new one starts from* — here, the completed
+> relaxation that produced the optimised junction. (DFT/SCF/k-points/pseudopotential
+> are in the [`science/overview.md` glossary](?doc=science/overview.md).)
 
 ---
 
@@ -783,6 +792,142 @@ curves plus whatever is derived across it — an average, a spread, a set of
 couplings. § 2a.7's axis rule is what keeps that additive rather than a rewrite.
 
 
+### 2a.11 The full map
+
+Every parameter a transport deck can carry, classified by § 2a.3 and tiered by
+§ 2a.4. Grouped by class, because the class is what a reader needs first: it
+says where the value is edited, what it binds, and what changing it costs.
+
+#### Class A — Method · decided once · binds every stage (and every frame)
+
+Edited in one panel. Changing any of these rebuilds all five stages.
+
+| parameter | keyword | the decision it is | tier |
+|---|---|---|---|
+| `xc_functional` · `xc_authors` | `XC.functional` · `XC.authors` | **Level alignment** — where the molecular resonances sit relative to E_F. The dominant factor in junction conductance; plain GGA's underestimated gaps give overestimated conductance, often by an order of magnitude | 3 |
+| `basis_size` | `PAO.BasisSize` | Accuracy against cost, and **the coupling**: orbital tails carry the tunnelling across the contact | 3 |
+| `pao_energy_shift` | `PAO.EnergyShift` | Orbital confinement radius. Aggressive confinement truncates exactly the tails that conduct — transport is more sensitive to this than a total-energy run | 3 |
+| `mesh_cutoff` | `MeshCutoff` | Real-space grid: accuracy against cost, with egg-box error if too coarse | 3 |
+| `electronic_temperature` | `ElectronicTemperature` | Fermi broadening — sets the leads' distribution functions; affects metallic SCF convergence and T(E) near E_F | 3 |
+| `spin_treatment` · `spin_total` | `Spin` | Whether the physics is spin-resolved at all | 3 |
+| *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA silently uses the pseudo's XC even when the deck disagrees | 2 |
+| `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
+
+#### Class B — Lead characterisation · decided at the electrodes · binds device and transmission
+
+| parameter | keyword | the decision it is | tier |
+|---|---|---|---|
+| `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. The self-energy is built per transverse k-point and folded into the device at that same point, so leads and device cannot sample different grids | 2 + 3 |
+| `kgrid_displacement` | same block | The grid's offset — same argument as the grid itself; an offset that differs is a different sampling | 2 |
+
+> **A problem this map exposes.** `kgrid` is one row holding three numbers, and
+> for transport its three components fall in **three different classes**:
+> transverse (Class B, shared), the lead's transport axis (Class C, per lead —
+> and it already has its own row, `electrode_kz`), and the device's transport
+> axis (Class D, fixed at 1). A single 3-vector cannot carry that, and the
+> interface cannot explain it. The row needs to become *the transverse grid*
+> for transport, with the transport axis owned separately. **Flagged, not
+> resolved here.**
+
+#### Class C — Stage-local · binds nothing
+
+**Every SCF stage carries its own** (seed, both leads, device — four independent
+answers). A bulk lead and an open-boundary NEGF cycle do not converge alike, so
+one set for all of them is a compromise none of them asked for.
+
+| parameter | keyword | the decision it is | tier |
+|---|---|---|---|
+| `mixing_weight` | `SCF.Mixer.Weight` | How aggressively this run mixes | 3 |
+| `pulay_history` | `SCF.Mixer.History` | How many previous steps it mixes from | 3 |
+| `dm_tolerance` | `DM.Tolerance` | What counts as converged here | 3 |
+| `dm_energy_tolerance` | `DM.EnergyTolerance` | The free-energy criterion's value | 3 |
+| `scf_energy_converge` | `SCF.FreeE.Converge` | The switch that arms it — the value alone does nothing | 3 |
+| `scf_must_converge` | `SCF.MustConverge` | Whether failing to converge stops the run or lets it continue | 3 |
+| `max_scf_iter` | `MaxSCFIterations` | A **budget, not a target**: it says when to stop trying. Reading it as a convergence setting is a common and costly misreading | 3 |
+
+**The electrodes own:**
+
+| parameter | keyword | the decision it is | tier |
+|---|---|---|---|
+| `electrode_kz` | `%block kgrid_Monkhorst_Pack` | **The Fermi-level resolution.** The lead is genuinely periodic along transport; its E_F is the reference energy the whole calculation is measured against, so under-converging it puts every transmission feature at the wrong energy. **Per lead**, not shared: an asymmetric junction has different materials on the two sides | 3 |
+
+**The device owns:**
+
+| parameter | keyword | the decision it is | tier |
+|---|---|---|---|
+| *the bias point(s)* | `TS.Voltage` | Which voltage this device is converged at — and, via § 2a.8, what the result may be called. Binds the transmission: each transmission point reads **its own** point's Hamiltonian | 3 |
+| `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
+| `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening. **Inert at zero bias** — there is no non-equilibrium window to integrate | 3 |
+| `elecs_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device uses the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert | 3 |
+
+**The transmission owns** — and this is the cheap, iterative panel: none of it
+binds anything, so re-running against an unchanged device costs seconds.
+
+| parameter | keyword | the decision it is | tier |
+|---|---|---|---|
+| `transmission_emin_ev` · `transmission_emax_ev` | `%block TBT.Contour.window` | The energy window T(E) is evaluated on. A feature outside it does not exist in the output | 3 |
+| `transmission_n_points` | same block | Resolution. A resonance narrower than the spacing is invisible | 3 |
+| `tbt_k_grid` | `TBT.k` | Transverse sampling for T(E). A grid converged for a total energy is routinely far too coarse for a transmission | 3 |
+| `tbt_elecs_eta_ev` | `TBT.Elecs.Eta` | Lead self-energy broadening: too large smears real resonances flat, too small turns them into noise | 3 |
+| `tbt_contours_eta_ev` | `TBT.Contours.Eta` | The device Green function's broadening | 3 |
+| `tbt_spin` | `TBT.Spin` | Which spin channel is reported | 3 |
+| `tbt_t_eig` | `TBT.T.Eig` | Eigenchannel decomposition — what turns one number into a picture of which orbital pathway carries the current | 3 |
+| `tbt_t_bulk` · `tbt_t_all` | `TBT.T.Bulk` · `TBT.T.All` | The pristine-lead baseline; every electrode pair rather than the first | 3 |
+| `tbt_dos_gf` · `tbt_dos_a` · `tbt_dos_elecs` | `TBT.DOS.*` | Where on the molecule a transmitting state sits; which lead it is fed from; the bulk leads' own DOS | 3 |
+
+**Per-stage output preferences** — no effect on the answer, so each stage
+answers for itself:
+
+| parameter | keyword | note |
+|---|---|---|
+| `write_forces` | `WriteForces` | — |
+| `write_coor_step` · `write_coor_xmol` | `WriteCoorStep` · `WriteCoorXmol` | Single points, so one record each |
+| `write_hs` | `SaveHS` | Writes `.HSX`, a post-processing file. **Not** what the ladder consumes — the device reads the leads' `.TSHS`, written by a different keyword |
+| `write_molwatch_log` · `verbose_comments` · `copy_psml` | — | Monitoring, deck commentary, staging |
+
+#### Class D — Role-fixed · nobody decides
+
+Exposing these as controls would offer a choice with one correct answer.
+
+| parameter | keyword | what the role fixes | tier |
+|---|---|---|---|
+| `solution_method` | `SolutionMethod` | The stage's identity: a closed periodic warm-up, a bulk lead, an NEGF device | 1 |
+| *the device's transport-axis k* | `%block kgrid_Monkhorst_Pack` | Fixed at 1 — that axis is the open boundary and is not sampled. A violation is refused | 2 |
+| *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
+| `system_label` | `SystemLabel` | The stage's identity, and the stem the next stage's reference is built from | 1 |
+| `wrap_into_cell` | — | **Off.** TranSIESTA identifies each electrode by a contiguous atom *range*; wrapping can reorder atoms and make the lead ranges name the wrong ones | 2 |
+
+#### Class E — Machine · per stage · changes no answer
+
+The leads are small cells, the device is the expensive rung, the transmission is
+nearly free — so these *should* differ across stages.
+
+| parameter | note |
+|---|---|
+| `mpi_np` · `omp_threads` · `max_memory_mb` · `gpu_count` | the allocation |
+| `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
+| `continue_retries` | how many times the wrapper retries |
+| `psml_lib` | *where* the pseudopotentials are found on this machine. The pseudopotentials themselves are Class A; the path to them is not |
+
+#### Deferred
+
+| parameter | why |
+|---|---|
+| `net_charge` | Held over with gating (§ 2a.6). In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is a separate design |
+
+#### What this map says is missing
+
+Classifying every parameter shows up three the map needs and the catalogue does
+not have. Recorded here because a map that quietly omits them would be the same
+failure it exists to prevent:
+
+| needed | why |
+|---|---|
+| **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
+| **the equilibrium pole COUNT** | `TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword, and too few makes the device abort |
+| **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.8 is built on |
+
+
 ---
 
 
@@ -1517,12 +1662,18 @@ off.
 
 Two things are easy to get wrong and both are visible here:
 
-* **Five stages do not mean five deck texts.**  There are **three**.  The
-  device and the transmission deck are the **same bytes**; what differs is
-  only which binary is pointed at them (`Resources.program`).  That is
-  deliberate — `TBT.*` keywords are inert to `siesta` and `TS.*` keywords
-  are inert to `tbtrans`, so one text can serve both and the two runs
-  cannot drift apart in geometry, basis or electrode identity.
+* **Five stages do not mean five deck texts.**  There are **three** as
+  built: the device and the transmission deck are currently the **same
+  bytes**, and only the binary pointed at them differs
+  (`Resources.program`).  `TBT.*` keywords are inert to `siesta` and `TS.*`
+  to `tbtrans`, so one text *can* serve both.
+  > **Superseded by § 2a.6** *(2026-09-16)*: the T(E) window and the other
+  > `TBT.*` settings belong to the **transmission**, so the device deck has
+  > no reason to carry them.  The two decks will legitimately differ, each
+  > carrying what its own binary reads.  Nothing is lost by that — what
+  > keeps the two runs from drifting apart in geometry, basis and electrode
+  > identity was never byte-identity, it is the **shared Class A values**
+  > (§ 2a.3).
 * **Nothing is "integrated" at the end.**  Integration happens *between*
   stages, as files, at prep time — `prep` copies a concluded upstream
   stage's output into the next stage's attempt directory before that stage
@@ -1542,7 +1693,7 @@ flowchart TB
     T2 --> S2
     T2 --> S3
     T3 --> S4
-    T3 -.->|"same bytes,<br/>different binary"| S5
+    T3 -.->|"shares the TS.* half;<br/>tbtrans binary"| S5
 
     subgraph RUN["five executions, five directories"]
       direction TB
