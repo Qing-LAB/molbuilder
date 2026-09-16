@@ -120,7 +120,7 @@ the same day, with what it turned out to be.
 | **TR4–TR6** | engines / transport | **Transport renders through the one path.** T4: `_prep_transport` keeps the compose and hands to `resolve`, so a transport run has a `ParameterSet` with provenance and `--pipeline-log` stops being a no-op. T5: the remaining four rungs onto `spec_for` — ⚠️ **blocked on a seam question**, what a composite kind hands its renderer, since `spec_for(struct, cfg, stage_token=)` does not carry the `ComposedJunction`. T6: `TransportConfig` retires | § 5p · § 2a | **TR4 done 2026-09-16** (§ 5p.3e); TR6 half-done — `siesta_config_for` already deleted; **TR5 UNBLOCKED** — the seam question was mis-posed and is withdrawn (§ 5p.3f) |
 | **TR7–TR8** | front end / transport | **The tab reads the catalogue, and an override reaches the rung that owns it.** T7: the bespoke dataclass form is deleted for the kind-aware catalogue route plus the existing **stage table** — rows are stages, columns are `varies`, an empty cell inherits the template. T8 fixes the **live defect**: every override currently lands on the `device` bag, so a parameter the transmission owns never reaches the transmission deck. **T8 needs the `stages = [...]` declaration** (§ 5p.3), not yet approved | § 5p · § 2a.7 | not started |
 | **TR9–TR10** | execution / front end | **Grouping and the deliverable.** T9: the preparatory block (seed + both leads) as one submission — ⚠️ **must first reconcile with `task-setup.md` § 1's "no run-all-stages button"**; § 5p.5 has the argument, and if it does not hold T9 is withdrawn rather than the rule bent. T10: Results reads the transmission with its **treatment label** and provenance chain, so a linear-response I–V is never mistaken for a finite-bias one | § 5p · § 2a.12 | not started |
-| **W29** | engines / front end | **The first validation of a junction does not exist: nothing checks that the atoms labeled `L-electrode`/`R-electrode` are the FROZEN atoms.** *(user, 2026-09-16, describing the design: "it will look for the labeled left electrodes and make sure that they are the fixed atoms … this is the first validation or check".)*  What exists is a different, LATER gate — `compose.py` checks the electrode atoms did not MOVE, by comparing the cited deck's coordinates against the `.XV`, **after the relaxation has run**. Label the electrodes and forget to freeze them and nothing objects: the relaxation runs, the leads relax, and the junction is unusable at compose time — a wasted relaxation on a metal junction. The closest thing today is a hint inside an unrelated warning (`validation/sidecar.py`: *"If you meant those atoms to be held fixed, assign them to frozen_atoms in /modify"*), which suggests but does not check. Belongs in the settings gate on the OPTIMIZATION of a junction — the run being set up when the mistake is made. Tier 2: detectable before anything runs | § 5p.3g · found 2026-09-16 | not started |
+| **W29** | engines / front end | **The first validation of a junction does not exist: nothing checks that the atoms labeled `L-electrode`/`R-electrode` are the FROZEN atoms.** *(user, 2026-09-16, describing the design: "it will look for the labeled left electrodes and make sure that they are the fixed atoms … this is the first validation or check".)*  What exists is a different, LATER gate — `compose.py` checks the electrode atoms did not MOVE, by comparing the cited deck's coordinates against the `.XV`, **after the relaxation has run**. Label the electrodes and forget to freeze them and nothing objects: the relaxation runs, the leads relax, and the junction is unusable at compose time — a wasted relaxation on a metal junction. The closest thing today is a hint inside an unrelated warning (`validation/sidecar.py`: *"If you meant those atoms to be held fixed, assign them to frozen_atoms in /modify"*), which suggests but does not check. Belongs in the settings gate on the OPTIMIZATION of a junction — the run being set up when the mistake is made. Tier 2: detectable before anything runs | § 5p.3g · found 2026-09-16 | **DONE 2026-09-16** — warns rather than refuses; the severity is open to a ruling |
 | **W28** | tests / front end | **`test_build_e2e.py::test_commit_mounts_molview_card` is FLAKY, and it is a race in the test.** It waits for the MolView card and its canvas to mount, then *immediately* reads `.molviewer-selection-count` — which renders slightly later, so on a loaded machine the text has no `" of "` and the split raises `IndexError`. **Measured 2026-09-16, interleaved against a pristine-HEAD worktree under identical load: mine 3/4 pass, HEAD 2/4.** Both flaky, so it is not a regression — and the first, unfair comparison (one HEAD run against three of mine) read it as one. The fix is to wait for the count line as well as the canvas. Recorded rather than fixed: it is a false signal for everyone who runs the suite | found 2026-09-16 while doing TR1 | not started |
 
 ---
@@ -2140,35 +2140,42 @@ labels drive everything"*) and the extraction code earlier in this work, and
 still posed a question the design had answered. Consulting the contract is not
 the same as remembering that I did.*
 
-### 5p.3g FOUND — the first validation does not exist
+### 5p.3g LANDED — the first validation *(W29, 2026-09-16)*
 
-*Recorded under R3a. Measured 2026-09-16, not assumed.*
+*Found and built the same day, under R3a.*
 
-The design's **first** check is *"look for the labeled electrodes and make sure
-they are the fixed atoms."* It is not implemented. What exists is a different
-and **later** check:
+The design's **first** check — *"look for the labeled electrodes and make sure
+they are the fixed atoms"* — did not exist. What existed was a different and
+**later** one, and the distinction is the whole finding:
 
 | | when | asks |
 |---|---|---|
-| **exists** — the frozen-unmoved gate (`compose.py`) | at compose, **after the relaxation has run** | did the electrode atoms *move*? Compares the deck's coordinates against the `.XV` |
-| **missing** — the first validation | at setup, **before the relaxation runs** | are the electrode-labeled atoms *declared frozen*? |
+| already there — the frozen-unmoved gate (`compose.py`) | at compose, **after the relaxation has run** | did the electrode atoms *move*? Compares the cited deck's coordinates against the `.XV` |
+| **added** — `check_electrode_labels_are_frozen` | at setup, **before anything runs** | are the electrode-labeled atoms *declared frozen*? |
 
-They catch different failures, and neither substitutes for the other. Label the
-electrodes and forget to freeze them and nothing objects: the relaxation runs,
-the leads relax, and the junction is found unusable at compose time. **A wasted
-relaxation, on a metal junction where that is not cheap.**
+Neither substitutes for the other. Label the leads, forget to freeze them, and
+nothing objected: the relaxation ran, the leads relaxed, and the junction was
+found unusable at compose — **a wasted relaxation, on a metal junction where
+that is not cheap.** The closest thing was a hint inside an unrelated warning.
 
-The closest thing today is a HINT inside an unrelated warning —
-*"If you meant those atoms to be held fixed, assign them to `frozen_atoms` in
-/modify"* (`validation/sidecar.py::check_unconsumed_region_labels`). It
-suggests; it does not check.
+It runs in **both engines' settings gates**, beside
+`check_unconsumed_region_labels`, because it is the same question one step
+further: the labels say which atoms are leads, and a lead must survive the
+relaxation untouched.
 
-**Where it belongs:** the settings gate, on the *optimization* of a junction —
-which is the run being set up when the mistake is made. It is tier 2 in
-§ 2a.4's terms (an inconsistency detectable before anything runs), so a refusal
-or a loud warning naming the atoms, not a silent pass. Whether it refuses or
-warns is a judgement: a person may have a deliberate reason to relax a lead,
-though none is obvious.
+**A warning, not a refusal — and the line is deliberate.** A structure carrying
+electrode labels is *heading* for transport but has not committed: a person may
+relax the whole junction once before freezing the leads for the run that
+counts, and refusing here would block that. The refusal belongs at compose,
+where transport IS the intent, and it is already there. *Open for the user to
+overturn: making it an error is a one-word change.*
+
+**Verified:** six tests, and two earn their place specifically. *The bridge is
+not required to be frozen* is the discriminating case — a junction's purpose is
+that the bridge relaxes while the leads do not, so a check demanding every
+LABELED atom be frozen would refuse every correct junction. *It reaches a real
+preflight* is mutation-proven by unwiring it: a check nothing calls is a check
+that does not exist, which is the `electrode_kz` lesson. 1913 passed.
 
 ### 5p.4 The steps
 

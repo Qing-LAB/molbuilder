@@ -489,6 +489,13 @@ def _validate_siesta(struct: Structure, cfg,
     # Geometry.Constraints).
     from .sidecar import check_unconsumed_region_labels
     issues += check_unconsumed_region_labels(struct, engine="SIESTA")
+    # ...and the FIRST validation of a junction, beside it because it is
+    # the same question one step further: the labels say which atoms are
+    # leads, and a lead must come through the relaxation unmoved.  Asked
+    # HERE, where it is cheap -- the compose-time gate that refuses a
+    # MOVED lead is correct and runs after the relaxation is paid for.
+    from .sidecar import check_electrode_labels_are_frozen
+    issues += check_electrode_labels_are_frozen(struct)
 
     # A species label must name an element -- SIESTA needs the Z beside
     # it in ChemicalSpeciesLabel.  Blocks here with a readable message

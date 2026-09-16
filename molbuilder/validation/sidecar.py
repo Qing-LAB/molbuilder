@@ -61,6 +61,65 @@ def _check_frozen_atoms_consumed(struct: Structure, *,
     )]
 
 
+def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
+    """**The first validation of a junction** — are the labeled electrodes
+    the fixed atoms?
+
+    `engines/transport.md` § 4 and the one-structure design: a junction is
+    ONE file carrying the frozen leads at both ends and the relaxed bridge
+    between them, and transport takes the lead atoms **out of that file** by
+    their label. The leads must come through the relaxation untouched, or the
+    self-energies attach to a geometry that is not the bulk they claim to be.
+
+    **There is already a gate for that, and it is not this one.**
+    `transport/compose.py` refuses a citation whose electrode atoms MOVED,
+    comparing the cited deck's coordinates against the `.XV`. That check is
+    correct and it is also **too late**: it runs when transport composes, which
+    is after the relaxation has been paid for. Label the leads, forget to
+    freeze them, and nothing objects until a metal junction's relaxation has
+    already run and must be thrown away.
+
+    So this asks the question one step earlier, where it is cheap: *are these
+    atoms declared frozen*, rather than *did they end up unmoved*. The two
+    catch different failures and neither substitutes for the other.
+
+    **A warning, not a refusal**, and the line is worth stating. A structure
+    carrying electrode labels is heading for transport, but it has not
+    committed: a person may deliberately relax the whole junction once before
+    freezing the leads for the run that counts. Refusing here would block that.
+    The refusal belongs at compose, where transport IS the intent, and it is
+    already there.
+    """
+    from ..config.transport import is_electrode_label
+    from ..structure import FROZEN_LABEL
+
+    regions = getattr(struct, "regions", None) or {}
+    lead_idx = {i for name, idxs in regions.items()
+                if is_electrode_label(name) for i in (idxs or ())}
+    if not lead_idx:
+        return []
+    frozen = set(getattr(struct, "frozen_atoms", None) or ())
+    loose = sorted(lead_idx - frozen)
+    if not loose:
+        return []
+    els = getattr(struct, "elements", ())
+    shown = ", ".join(f"{i} ({els[i]})" if i < len(els) else str(i)
+                      for i in loose[:6])
+    more = f" and {len(loose) - 6} more" if len(loose) > 6 else ""
+    return [Issue(
+        "warn",
+        (f"{len(loose)} atom(s) carry an electrode label but are NOT frozen: "
+         f"{shown}{more}.  A transport calculation takes the lead atoms out "
+         f"of this structure by that label and treats them as pristine bulk, "
+         f"so they must come through the relaxation unmoved -- and nothing "
+         f"holds them.  Add them to \"frozen_atoms\" in /modify before "
+         f"running this, or the relaxation will move the leads and the "
+         f"junction cannot be composed afterwards (the composer refuses it, "
+         f"by which point this run has been paid for)."),
+        "structure.electrode_frozen",
+    )]
+
+
 def check_unconsumed_region_labels(struct: Structure, *,
                                    engine: str) -> List[Issue]:
     """Pattern B, re-homed (validation.md § 5; C-shared 2026-08-21): every

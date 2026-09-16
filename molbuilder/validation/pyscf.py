@@ -247,6 +247,13 @@ def _validate_pyscf(struct: Structure, cfg,
     if not vibration:
         from .sidecar import check_unconsumed_region_labels
         issues += check_unconsumed_region_labels(struct, engine="PySCF")
+        # ...and the FIRST validation of a junction, beside it because it is
+        # the same question one step further: the labels say which atoms are
+        # leads, and a lead must come through the relaxation unmoved.  Asked
+        # HERE, where it is cheap -- the compose-time gate that refuses a
+        # MOVED lead is correct and runs after the relaxation is paid for.
+        from .sidecar import check_electrode_labels_are_frozen
+        issues += check_electrode_labels_are_frozen(struct)
 
     # Solvation, engine-side (moved from the kind at the U6 close):
     # these are facts about the BUILD and the vocabulary, not about the
