@@ -327,11 +327,12 @@ def api_transport_describe() -> Any:
     from molbuilder.persist import json_text
     from molbuilder.projects import projects_root
     from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import Stage, Task, derive_run
+    from molbuilder.task import Task, derive_run
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                              SEALED_ALWAYS,
-                                             TRANSPORT_STAGES)
+                                             TRANSPORT_STAGES,
+                                             stages_for_transport)
 
     body = request.get_json(silent=True) or {}
     engine = str(body.get("engine") or "siesta").lower()
@@ -403,10 +404,14 @@ def api_transport_describe() -> Any:
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted(overrides)),
-            stages=tuple(Stage(name=n, enabled=True,
-                               overrides=(dict(overrides)
-                                          if n == "device" else {}))
-                         for n in TRANSPORT_STAGES))
+            # ROUTED TO THE RUNG THAT OWNS EACH ONE (`engines/template.md`
+            # § 6.4's `stages` declaration).  Every override went onto the
+            # `device` rung until 2026-09-16, whatever it was -- so a
+            # person's T(E) window was written into the deck `siesta` runs,
+            # where the keyword is inert, and not into the deck `tbtrans`
+            # runs, which is the one that computes T(E).  Silently: you
+            # asked for ±3 eV and got the default.
+            stages=tuple(stages_for_transport(overrides)))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 

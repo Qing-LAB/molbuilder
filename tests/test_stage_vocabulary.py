@@ -293,6 +293,18 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "parameter ladder, so the tuple is a design constant rather than "
         "a strategy output.  Skipping is the per-stage enabled flag "
         "(ruling Q4), never a different ladder"),
+    "stages_for_transport": (
+        11, "molbuilder/transport/stages.py",
+        "builds the composite's five rungs as task.Stage objects with each "
+        "rung's OWN overrides -- mechanism 11 like `default_siesta_stages`, "
+        "producing the design's own stages rather than being a way of "
+        "expressing one.  What it adds over a bare tuple is ROUTING: "
+        "`route_overrides` asks the catalogue which rungs may own each item "
+        "(`stages = [...]`, template.md 6.4) and puts a person's value "
+        "there.  Every override went onto the `device` rung until "
+        "2026-09-16, whatever it was, so a transmission energy window was "
+        "written into the deck siesta runs -- where the keyword is inert -- "
+        "and not into the deck tbtrans runs, silently"),
     "render_stage_deck": (
         None, "molbuilder/transport/stages.py",
         "renders ONE transport rung's deck from the composed junction + "

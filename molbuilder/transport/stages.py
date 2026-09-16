@@ -168,6 +168,57 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
             for r in rules_for("siesta", "transport", base_dir) if r.carry]
 
 
+def route_overrides(overrides) -> dict:
+    """``{name: value}`` → ``{rung: {name: value}}`` — **which rung owns each**.
+
+    `engines/template.md` § 6.4's `stages` declaration, read: an item that
+    names the rungs which may carry their own value for it is routed to
+    those rungs, and one that names none is left where a flat surface put it.
+
+    **This is the fix for the defect that started the programme.** Every
+    override went onto the ``device`` rung, whatever it was — so a person who
+    set the transmission's energy window had it written into the deck
+    ``siesta`` runs, where the keyword is inert, and *not* into the deck
+    ``tbtrans`` runs, which is the one that computes T(E). No error, no
+    warning: you asked for ±3 eV and got the default. Routing by the
+    declaration is what makes that structurally impossible rather than
+    remembered.
+
+    **An item declaring no rungs stays on the device**, and that is a
+    holding position rather than an answer. Those are the shared SCF
+    controls — any rung may legitimately own one — and a flat form cannot
+    say which was meant. The per-stage surface (TR7) is where the question
+    becomes askable; until then the device is the rung a person tuning a
+    transport calculation is overwhelmingly thinking about, and it is the
+    behaviour that was there before.
+    """
+    from ..template import catalogue, select
+
+    owner: dict = {}
+    for it in select(catalogue(), engine="siesta"):
+        if it.stages:
+            owner[it.name] = tuple(it.stages)
+    out: dict = {}
+    for name, value in dict(overrides or {}).items():
+        for rung in owner.get(name, ("device",)):
+            out.setdefault(rung, {})[name] = value
+    return out
+
+
+def stages_for_transport(overrides=None):
+    """The composite's five rungs as ``Stage`` objects, each carrying the
+    overrides that are ITS OWN.
+
+    One door, so the two construction sites -- `jobset init` and the web
+    hand-over -- cannot place a person's values differently.
+    """
+    from ..task import Stage
+
+    routed = route_overrides(overrides)
+    return [Stage(name=n, enabled=True, overrides=routed.get(n, {}))
+            for n in TRANSPORT_STAGES]
+
+
 def config_for(task, composed: ComposedJunction, *,
                stage: str = None) -> TransportConfig:
     """The config ONE stage renders from.
@@ -243,7 +294,26 @@ def config_for(task, composed: ComposedJunction, *,
     # merge in ladder order into the ONE config every deck renders
     # from; an unknown name refuses here, before anything renders.
     import dataclasses as _dc
-    known = {f.name for f in _dc.fields(TransportConfig)}
+
+    from ..config.siesta import SiestaConfig
+
+    # THE VOCABULARY IS THE ENGINE'S, and `TransportConfig`'s names are
+    # accepted beside it only while that class survives.
+    #
+    # An override names a CATALOGUE row now -- `electrode_kz`,
+    # `transmission_emin_ev`, `negf_eq_pole_n` -- because that is what the
+    # template declares and what `resolve` resolves.  Checking against
+    # `TransportConfig` alone refused a person's own lead k-density by
+    # telling them it "is not a transport parameter", which it plainly is
+    # (measured 2026-09-16, routing `electrode_kz` to the two lead rungs).
+    #
+    # What this function still uniquely guards is IDENTITY -- `job_name`,
+    # `engine`, the bias axis -- which `resolve` would let a stage override
+    # because they are ordinary schema fields to it.  That is why it is
+    # still called, and it is what has to survive when TransportConfig goes
+    # (TR6).
+    known = ({f.name for f in _dc.fields(TransportConfig)}
+             | {f.name for f in _dc.fields(SiestaConfig)})
     # What remains after SEALED_TRANSPORT_FIELDS IS the transport-only
     # vocabulary (window, grid, contour, runtime).
     for bag in (task.stages or ()):
@@ -276,6 +346,11 @@ def config_for(task, composed: ComposedJunction, *,
                     f"whose contract fields are open (4.1b).")
             # VALIDATED for every rung; APPLIED only for the one asked
             # about, so one rung's tuning cannot reach another's deck.
+            # A name this older config does not hold is legitimate and
+            # simply not its business: it reaches the deck through the
+            # template and `resolve`, which is the live path.
+            if name not in {f.name for f in _dc.fields(TransportConfig)}:
+                continue
             if bag.name == stage:
                 kw[name] = value
     return TransportConfig(

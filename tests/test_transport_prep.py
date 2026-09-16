@@ -252,6 +252,85 @@ UNREACHABLE_BEFORE_THE_SEAM = (
 )
 
 
+class TestAnOverrideReachesTheRungThatOwnsIt:
+    """TR8 — **the defect this whole programme started from.**
+
+    Every override went onto the `device` rung, whatever it was.  So a person
+    who set the transmission's energy window had it written into the deck
+    `siesta` runs -- where `TBT.*` keywords are inert -- and NOT into the deck
+    `tbtrans` runs, which is the one that computes T(E).  No error and no
+    warning: you asked for ±3 eV and got the default.
+
+    Routing by the `stages` declaration (`engines/template.md` § 6.4) is what
+    makes that structurally impossible rather than something to remember.
+    """
+
+    def _describe_with(self, root, overrides):
+        """A description built the way the web hand-over builds one."""
+        from molbuilder.task import Task, derive_run, write_task
+        from molbuilder.transport.stages import stages_for_transport
+        from molbuilder import template as _T
+        from molbuilder.transport.citation_defaults import (
+            siesta_config_from_citation)
+        dest = root / "J" / "transport" / "T"
+        dest.mkdir(parents=True, exist_ok=True)
+        write_task(dest / "task.json", Task(
+            engine="siesta", shape="hierarchical",
+            run=derive_run("T", _CITE, stage_names=_STAGES),
+            structure=None, calculation="transport",
+            slots={"junction": _CITE}, bias=(),
+            varies=tuple(sorted(overrides)),
+            stages=tuple(stages_for_transport(overrides))))
+        (dest / ".molbuilder.json").write_text(json.dumps(
+            {"script_generation": {"activation": "conda activate"}}))
+        (dest / "T.template.toml").write_text(_T.template_with_values(
+            siesta_config_from_citation(root / _CITE, label="T"),
+            engine="siesta", calculation="transport"))
+        return dest
+
+    def test_the_TE_window_reaches_the_deck_tbtrans_runs(self, tmp_path):
+        """THE ORIGINAL DEFECT, as something that can fail."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        dest = self._describe_with(root, {"transmission_emin_ev": -3.0})
+        prep_calculation(dest, "transmission")
+        deck = (dest / "05_transmission"
+                / "T_05_transmission.fdf").read_text()
+        assert "-3.00000 eV" in deck or "-3.0" in deck, (
+            "the person's energy window must reach the TRANSMISSION deck -- "
+            "it is the one tbtrans runs, and the only place the window has "
+            "any effect")
+
+    def test_a_lead_parameter_reaches_BOTH_leads(self, tmp_path):
+        """`electrode_kz` declares two owning rungs, and a junction has two
+        leads.  Routing to one would leave the other at the default, with
+        the two self-energies built on different Fermi-level resolutions."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        dest = self._describe_with(root, {"electrode_kz": 80})
+        for rung, tok in (("electrode_L", "02_electrode_L"),
+                          ("electrode_R", "03_electrode_R")):
+            prep_calculation(dest, rung)
+            deck = (dest / tok / f"T_{tok}.fdf").read_text()
+            assert "    0    0   80      0.0" in deck, (
+                f"{rung} must carry the person's lead k-density")
+
+    def test_the_device_does_not_get_what_it_does_not_own(self, tmp_path):
+        """THE OTHER HALF, and the one that makes this a routing test rather
+        than a delivery test: a transmission parameter must not ALSO land on
+        the device.  It was inert there, which is exactly why nobody noticed
+        it was the only place it landed."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        dest = self._describe_with(root, {"transmission_emin_ev": -3.0})
+        from molbuilder.task import read_task
+        stages = {s.name: dict(s.overrides)
+                  for s in read_task(dest / "task.json").stages}
+        assert stages["transmission"] == {"transmission_emin_ev": -3.0}
+        assert stages["device"] == {}, (
+            "the device rung must not carry a parameter it does not own")
+
+
 class TestTheBiasAxisIsTheParametersValues:
     """`engines/transport.md` § 2a.10: *single bias is the degenerate case of
     the bias axis — one point, normally at zero.*
