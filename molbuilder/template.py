@@ -298,6 +298,28 @@ class Item:
     #: Ask it directly, or filter for it: ``select(t, allocation=True)``.
     allocation: bool = False
 
+    #: **The CITATION answers this one** — `allocation`'s sibling on the same
+    #: axis (§ 6.4), added 2026-09-15 on the user's ruling for the transport
+    #: kind.
+    #:
+    #: Same three states, different answerer.  A transport calculation takes
+    #: its basis, functional, mesh, energy shift, transverse k and electronic
+    #: temperature from the **cited relaxation's own deck** — never typed,
+    #: because the leads and the device must not be able to disagree about
+    #: them.  So the item is DECLARED here (a surface can show it, and a
+    #: reader learns the calculation has such a parameter) and never
+    #: ANSWERED here; `prep` fills it from the citation on the machine that
+    #: runs the job, exactly as it fills an allocation item from what the
+    #: scheduler granted.
+    #:
+    #: It replaces two hand-maintained Python sets and a predicate that was
+    #: spelled twice in two files with disagreeing formulations
+    #: (`engines/transport.md` § 3.3.3).  Any later kind whose values arrive
+    #: from a cited result inherits the behaviour by declaring it.
+    #:
+    #: Ask it directly, or filter for it: ``select(t, citation=True)``.
+    citation: bool = False
+
     #: Whether *unset* is a state this item has at all — and since 2026-08-14
     #: it IS written to the file.  A surface must offer *(auto)* / *(no cap)*,
     #: and it cannot be inferred from ``null_label``: 16 items are optional and
@@ -557,6 +579,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     # on the rebuild path.  Declaring the question is portable; answering it
     # on the wrong machine is not.
     _alloc = bool(f.metadata.get("allocation"))
+    _cited = bool(f.metadata.get("citation"))
 
     ann, optional = _unwrap_optional(annotation)
 
@@ -621,6 +644,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     return Item(
         name=f.name,
         allocation=_alloc,
+        citation=_cited,
         kind=kind,
         type=type_,
         help=str(f.metadata.get("help", "") or ""),
@@ -727,6 +751,7 @@ def _toml_value(v: Any) -> str:
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "default", "optional", "allocation",
+                   "citation",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
@@ -772,6 +797,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["refs"] = list(it.refs)
     if it.allocation:
         out["allocation"] = True
+    if it.citation:
+        out["citation"] = True
     if it.label:
         out["label"] = it.label
     if it.null_label:
@@ -902,7 +929,9 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # happened, here.
             engines=(),
             calculations=(),
-            value=(None if it.allocation
+            # Valueless for BOTH answerers outside floor 2: the scheduler
+            # (§ 7) and, since 2026-09-15, the citation (§ 6.4's sibling).
+            value=(None if (it.allocation or it.citation)
                    else getattr(config, it.name, it.value)),
         )
         for it in select(parsed, engine=eng)
@@ -1045,6 +1074,19 @@ def read_template(text: str) -> Template:
     # against: a deck once rendered for a rank count the allocation never
     # granted.  The item itself is legitimate at @2; its VALUE is not.
     for _it in items:
+        # Same rule, the other answerer: a transport template DECLARES its
+        # basis / XC / mesh so a reader knows the calculation has them, and
+        # the cited relaxation's own deck answers them at `prep`.  A value
+        # typed here is the failure the seal exists to prevent -- a device
+        # whose electronic contract disagrees with the leads it is attached
+        # to (`engines/transport.md` § 3.3.3).
+        if _it.citation and _it.value is not None:
+            _refuse(
+                f"carries value {_it.value!r}, but the CITATION answers "
+                f"it -- it is read from the cited run's own deck, so the "
+                f"leads and the device cannot disagree about it. Remove "
+                f"the value; `prep` fills it from the citation",
+                where=_it.name)
         if _it.allocation and _it.value is not None:
             _refuse(
                 f"carries value {_it.value!r}, but the SCHEDULER answers "
@@ -1234,6 +1276,7 @@ def _item_from(name: str, body: Any) -> Item:
         calculations=tuple(body.get("calculations", ()) or ()),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
+        citation=bool(body.get("citation", False)),
         null_label=str(body.get("null_label", "") or ""),
     )
 
@@ -1243,6 +1286,12 @@ def template_fields(config_cls) -> set:
     facts.
 
     THE membership rule, spelled once (A-9, 2026-08-13).  A field tagged
+    Since 2026-09-15 the same exclusion covers ``citation: True`` — § 6.4's
+    sibling answerer.  A transport calculation's basis, XC and mesh come
+    from the cited run's deck, so they are no more a stage override or a
+    sweep axis than a rank count is; naming one is refused with its own
+    story by :func:`config_from_template`.
+
     ``allocation: True`` is § 7's forbidden machine fact: it arrives as
     the ALLOCATION at `prep`, on the machine that will run it, and never
     as a template item, a stage override, a pin, or a parameter sweep
@@ -1252,7 +1301,8 @@ def template_fields(config_cls) -> set:
     the deck rendered for a rank count the allocation never granted.
     """
     return {f.name for f in dataclasses.fields(config_cls)
-            if not f.metadata.get("allocation")}
+            if not f.metadata.get("allocation")
+            and not f.metadata.get("citation")}
 
 
 # --------------------------------------------------------------------- #
@@ -1281,7 +1331,8 @@ def _check_engine(t: "Template", engine) -> None:
 
 
 def select(t: "Template", *, category=None, engine=None,
-           kind=None, read_by=None, allocation=None) -> List[Item]:
+           kind=None, read_by=None, allocation=None,
+           citation=None) -> List[Item]:
     """The items matching every filter given, **in category order**.
 
     One function, one file, every reader (`engines/template.md` § 8.0).
@@ -1331,6 +1382,11 @@ def select(t: "Template", *, category=None, engine=None,
         # this, four places hand-listed the answer and a fifth derived it from
         # a second vocabulary of resolver names.
         if allocation is not None and bool(it.allocation) is not bool(allocation):
+            continue
+        # THE citation-answered filter -- the one API for *"which settings
+        # does the cited run answer?"*, so `prep` asks the template rather
+        # than carrying its own list of field names.
+        if citation is not None and bool(it.citation) is not bool(citation):
             continue
         out.append(it)
 
@@ -1416,6 +1472,20 @@ def config_from_template(text: str, config_cls):
             f"carry (engines/template.md § 7): they arrive as the "
             f"ALLOCATION at `prep`, on the machine that runs the job.  "
             f"Remove them from the template and state them at prep.")
+    cited = sorted(k for k in vals
+                   if k not in known
+                   and any(f.name == k and f.metadata.get("citation")
+                           for f in dataclasses.fields(config_cls)))
+    if cited:
+        # Emitted valueless by the write side, so a VALUE here is a hand
+        # edit -- and it is the one edit that can make a device disagree
+        # with its own leads.
+        raise ValueError(
+            f"template answers {', '.join(map(repr, cited))}, which the "
+            f"CITATION answers: they are read from the cited run's own "
+            f"deck so the electrode and the device cannot disagree "
+            f"(engines/transport.md § 3.3.3).  Remove the value(s); "
+            f"`prep` fills them from the citation.")
     unknown = sorted(k for k in vals if k not in known)
     if unknown:
         # Refused, never dropped (U16): this is a file people edit by
