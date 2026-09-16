@@ -454,7 +454,7 @@ from the leads, which is the one thing that must be impossible.
 | **Class C ships per-stage defaults** | Each stage carries an opinionated profile rather than inheriting one shared set: a bulk lead's SCF and an open-boundary NEGF cycle do not converge alike, and the electrode's dense transport-axis k is a default, not something a person should have to discover |
 | **Always two lead stages** | Even when the leads are provably identical. Lead runs are cheap, and two runs keep the record auditable |
 | **Default grouping** | The preparatory block — seed and both leads — as one submission; then the device; then the transmission. Fusing device and transmission is available as an opt-in |
-| **The trigger belongs to the monitor** | It already watches a run to its end, so *"and if it converged and produced the file, submit the next"* extends something that exists rather than adding a mechanism. Off by default, switched at config time. **To verify before it is designed:** whether compute nodes may submit jobs on the target cluster — if not, the trigger must live wherever the monitor runs rather than inside the job |
+| **The trigger is DEFERRED, and load-bearing on nothing** | *(2026-09-16.)* Automatic resubmission is **optional and changes no logic**: the stages, their decks, the parameter map and the directory structure are all identical whether a person launches each rung or something launches it for them. It is a convenience at the launch layer, so nothing in this contract waits on it. When it is built, the monitor is its home — it already watches a run to its end, so *"and if it converged and produced the file, submit the next"* extends something that exists. Off by default. **To verify first:** whether compute nodes may submit jobs on the target cluster; if not, the trigger lives wherever the monitor runs rather than inside the job |
 | **A frame group runs at one bias** | § 2a.7 |
 | **The bias treatment is an exposed choice** | Single-bias or finite-bias is named in the interface with its advisory attached, and the deliverable is labelled by how it was computed — § 2a.8 |
 
@@ -665,6 +665,123 @@ The Results surface shows that label beside the curve, not buried in metadata.
 The treatment is not really a third mechanism: **single bias is the degenerate
 case of the bias axis — one point, normally at zero.** It earns a name of its
 own because what changes is not the machinery but the standing of the result.
+
+### 2a.9 The directory structure — one place per run, and the axes visible in it
+
+*The structure a person opens after a calculation finishes. If the folder does
+not explain itself, nothing downstream can.*
+
+#### The rule it is built from
+
+> **One directory per run.** A stage owns a directory; each attempt at that
+> stage owns a subdirectory; and a stage carries a **sub-level for every axis it
+> varies over, and none for an axis it does not.**
+
+Two properties follow without anything further being said. **Nothing can
+overlap** — two runs never share a namespace, so no output file of one stage can
+be mistaken for, or overwritten by, another's. And **what is shared is visible**:
+a stage that does not vary over an axis simply has no level for it, so the tree
+itself shows which results are computed once and reused.
+
+#### Today: the bias axis
+
+```
+<project>/<topic>/<calculation>/
+├── task.json                    the description — every parameter, every stage
+├── junction.xyz                 the composed structure, + its sidecars
+├── junction.cited.fdf           the deck of the relaxation this started from
+├── pseudos/                     one copy, shared by every stage
+├── job-set.json                 the plan
+│
+├── 01_seed/
+│   └── run-0/                   the run: deck, wrapper, outputs, .DM
+├── 02_electrode_L/
+│   └── run-0/                   ... .TSHS
+├── 03_electrode_R/
+│   └── run-0/                   ... .TSHS
+├── 04_device/                   ← varies over bias
+│   ├── v0/   run-0/             ... .TS.HSX, .TSDE
+│   └── v0.2/ run-0/
+└── 05_transmission/             ← varies over bias
+    ├── v0/   run-0/             ... .TBT.nc
+    └── v0.2/ run-0/
+```
+
+A **single-bias** calculation (§ 2a.8) has no `v*` level at all — the degenerate
+case of the axis rule, not a special case of the layout.
+
+#### Later: the frame axis (§ 2a.7), and why sharing needs no explaining
+
+```
+├── 01_seed/         run-0/      ← NO frame level: one density warms every frame
+├── 02_electrode_L/  run-0/      ← NO frame level: the leads do not move
+├── 03_electrode_R/  run-0/
+├── 04_device/                   ← varies over frames
+│   ├── f000/ run-0/
+│   └── f001/ run-0/
+└── 05_transmission/
+    ├── f000/ run-0/
+    └── f001/ run-0/
+```
+
+The absence of a level *is* the statement that the result is shared. Nobody has
+to be told; the tree says it.
+
+#### Attempts, and what is never overwritten
+
+An attempt that has been **launched is never rewritten**. Re-preparing after a
+launch opens the next `run-<n>`; re-preparing before one refreshes the attempt
+in place, so changing your mind twice does not leave empty directories behind.
+Every `run-<n>` on disk was therefore actually started, which is what makes the
+numbering mean something.
+
+The consequence for the workflow: **change a parameter, re-prepare, and the
+previous result stays** — its deck, its outputs and its provenance intact,
+beside the new one. Comparing two settings is reading two directories.
+
+#### How results move between stages
+
+> **By copy, at preparation time, with provenance recorded — never by reading
+> across directories at run time.**
+
+Before a stage runs, what it consumes is copied into its attempt directory:
+the leads' Hamiltonians, the seed's density, the device's converged
+Hamiltonian. Three conditions gate every copy — the upstream stage must have
+been prepared, must hold a **concluded** attempt that ran the deck this
+composition renders, and that attempt must actually hold the file — and each
+refusal names what to do first. A record of what was taken from where lands
+beside the copies, so a transmission can always say which lead runs and which
+device run it rests on.
+
+Copying rather than referencing is what lets a run directory hold everything it
+needs: it survives being moved to a cluster, archived, or handed to someone
+else.
+
+### 2a.10 What the Results surface reads
+
+The deliverable of a transport calculation is the **transmission** stage's
+output. Everything else in the tree exists to make it trustworthy, and the
+surface should present both.
+
+**The curve, and what it is.** T(E) for a single-bias calculation, or the family
+T(E, V) for a bias scan — shown **with its treatment named** (§ 2a.8). An I–V
+obtained by integrating a single zero-bias slice is labelled *linear response*,
+beside the curve and not in metadata: the two kinds of I–V are different claims
+and look identical on a plot.
+
+**The provenance chain.** Which device run, which lead runs, which relaxation
+the junction came from. A transmission curve without its chain cannot be
+interpreted, reproduced, or compared with another.
+
+**The ladder's state.** Which stages are prepared, running, concluded or failed
+— because a transmission that has not run yet is *pending*, never a failure of
+the calculation, and a reader needs to see which of five runs is the one still
+outstanding.
+
+**Later, the frame dimension.** A frame group's deliverable is a **family** of
+curves plus whatever is derived across it — an average, a spread, a set of
+couplings. § 2a.7's axis rule is what keeps that additive rather than a rewrite.
+
 
 ---
 
