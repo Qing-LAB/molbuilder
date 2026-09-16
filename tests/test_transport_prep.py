@@ -133,9 +133,17 @@ def _junction_struct(*, order="canonical", buffers=False):
         regions.setdefault(r[2], []).append(i)
     frozen = [i for i, r in enumerate(rows)
               if r[2] in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)]
+    # THE CELL MUST CONTAIN THE ATOMS, and with buffers it did not: the
+    # buffer padding sits at z = -5 .. 39.5, a 44.5 A span in a 40 A box, so
+    # atoms overlapped their own periodic images along the transport axis.
+    # It went unnoticed because the device rung had NO settings gate until
+    # TR5b put it on the seam -- the first time anything looked.  Sized from
+    # the geometry so it cannot drift again.
+    zs = positions[:, 2]
+    c = float(zs.max() - zs.min()) + 5.5      # the fixture's own end gap
     return Structure(elements=elements, positions=positions,
                      regions=regions, frozen_atoms=frozen,
-                     cell=np.diag([8.0, 8.0, 40.0]))
+                     cell=np.diag([8.0, 8.0, max(40.0, c)]))
 
 
 def _write_junction(root, struct):

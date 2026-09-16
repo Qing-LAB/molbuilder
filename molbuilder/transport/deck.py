@@ -117,6 +117,131 @@ def rung_of(stage_token: Optional[str]) -> str:
 #  The layouts, as tables.                                              #
 # ===================================================================== #
 
+def _negf_layout(derived):
+    """The device and transmission rungs — an open-boundary NEGF deck.
+
+    One layout serves both, and **that is not the old "same bytes" claim
+    returning.**  Each rung resolves its OWN config, so where a person has
+    tuned a transmission parameter the two decks differ in exactly that value
+    — which is what § 2a.7's ruling asks for.  What they share is the shape:
+    the same junction, the same electrode declarations, the same electronic
+    description, so the two runs cannot drift apart about what the junction
+    IS.
+
+    The electrode declarations stay a ``Block``.  ``%block TS.Elecs`` and the
+    per-electrode blocks are derived from the structure's own ``regions`` —
+    which atoms are a lead, and therefore which contiguous range TranSIESTA
+    is told about — and no parameter models that.  It is lifted whole from
+    the emitter that has been getting it right, rather than rewritten: this
+    is the part where a mistake is silent and expensive.
+    """
+    return (
+        _sc.Block("identity and what this rung computes", _emit_negf_header),
+        _sc.Block("cell, coordinates and region metadata",
+                  _emit_geometry_block),
+        _sl.BASIS_SECTION,
+        _sl.XC_SECTION,
+        _sc.Block("the transverse k-mesh (the transport axis is not sampled)",
+                  _emit_kgrid_block),
+        _sl.SCF_SECTION,
+        _sl.FREE_ENERGY_SECTION,
+        _sl.SCF_TAIL_SECTION,
+        # NO RESTART BLOCK HERE.  The NEGF block below writes
+        # `DM.UseSaveDM` itself -- it is how the seed's density is picked
+        # up -- and writing it twice is what the check gate refuses.  The
+        # lift boundary is drawn at the keyword, not at the topic.
+        _sl.spin_section(polarized=derived["spin_polarized"],
+                         fixed=derived["spin_fixed"]),
+        _sl.mpi_section(block_size=derived.get("block_size"),
+                        algorithm=derived.get("algorithm")),
+        _sc.Block("the NEGF electrode declarations", _emit_negf_block),
+        _sl.OUTPUT_SECTION,
+    )
+
+
+def _emit_negf_header(struct, cfg) -> str:
+    label = cfg.system_label
+    return "\n".join([
+        "# ================================================================== #",
+        f"#  TranSIESTA DEVICE .fdf — {label}",
+        "#  The open-boundary NEGF calculation on the composed junction.",
+        "#  The leads are not solved here: each one's Hamiltonian was",
+        "#  computed by its own rung and is read from the .TSHS named in",
+        "#  the TS.Elec block below, which is what makes this an OPEN",
+        "#  boundary rather than a bigger periodic cell.",
+        "#",
+        "#  The same text serves the transmission rung, run under tbtrans:",
+        "#  TS.* keywords are inert to tbtrans and TBT.* to siesta, so each",
+        "#  binary reads its own half.",
+        "# ================================================================== #",
+        "",
+        f"SystemLabel            {label}",
+        f"SystemName             Transport device for {label}",
+    ])
+
+
+def _emit_negf_block(struct, cfg) -> str:
+    """The NEGF half, LIFTED from the emitter that has been getting it right.
+
+    ``%block TS.Elecs``, one ``%block TS.Elec.<name>`` per side with its
+    ``.TSHS`` filename, atom count, chemical potential, semi-infinite
+    direction and explicit position; the buffer atoms; the contour settings;
+    and the TBtrans window.
+
+    **Not rewritten, and deliberately so.** This is where a mistake is silent
+    and expensive: TranSIESTA identifies each electrode by a CONTIGUOUS ATOM
+    RANGE, so an off-by-one in a position line computes transmission through
+    a region that is not the molecule, and converges while doing it. The
+    emitter that produces it has been measured against a live 5.4.2 binary;
+    a second implementation would have to earn that again for no gain.
+    """
+    from ..config.transport import TransportConfig
+    from .transiesta import _emit_transiesta_block
+
+    # The lifted emitter reads a TransportConfig.  It is projected here, at
+    # the boundary, exactly as `vibration_deck` projects for its own lifted
+    # emitters -- and it dies when that emitter is tabled (TR5c).
+    view = _legacy_view(cfg)
+    return "\n".join(_emit_transiesta_block(struct, view))
+
+
+def _legacy_view(cfg):
+    """A ``TransportConfig`` carrying this rung's answers.
+
+    The NEGF emitter above predates the seam and reads the older config. One
+    projection, at the one place the two vocabularies still meet, rather than
+    a rename inside a proven emitter — which is the direction the rulings
+    forbid (*"repatching the old path"*).
+
+    It is the last of its kind: TR4 deleted the general projection when the
+    template made it unnecessary, and this one goes when the NEGF block is
+    tabled.
+    """
+    import dataclasses as _dc
+
+    from ..config.transport import TransportConfig
+
+    known = {f.name for f in _dc.fields(TransportConfig)}
+    kw = {}
+    for src, dst in (("system_label", "job_name"),
+                     ("mesh_cutoff", "siesta_mesh_cutoff_ry"),
+                     ("pao_energy_shift", "energy_shift_ry"),
+                     ("electronic_temperature", "electronic_temperature_k"),
+                     ("kgrid", "k_mesh_transverse")):
+        if hasattr(cfg, src) and dst in known:
+            kw[dst] = getattr(cfg, src)
+    for f in _dc.fields(type(cfg)):
+        if f.name in known and f.name not in kw:
+            kw[f.name] = getattr(cfg, f.name)
+    kw.pop("engine", None)
+    if "siesta_mesh_cutoff_ry" in kw and kw["siesta_mesh_cutoff_ry"] is not None:
+        kw["siesta_mesh_cutoff_ry"] = int(round(float(kw["siesta_mesh_cutoff_ry"])))
+    # THE BIAS this rung runs at.  `bias_voltage_v` is the template's single
+    # value; the emitter takes a list because it predates the axis rule.
+    kw["bias_voltages_v"] = [float(getattr(cfg, "bias_voltage_v", 0.0) or 0.0)]
+    return TransportConfig(engine="transiesta", **kw)
+
+
 def _electrode_layout(derived):
     """An electrode rung: a genuinely periodic BULK calculation.
 
@@ -221,6 +346,11 @@ def _emit_electrode_outputs(struct, cfg) -> str:
         "# (Not `SaveHS`, which writes the .HSX a post-processor reads and",
         "# this ladder does not consume.)",
         "TS.HS.Save             true",
+        "",
+        "# An ordinary diagonalisation: a lead is a periodic bulk crystal,",
+        "# not an open boundary.  `role`-declared like TS.HS.Save above, so",
+        "# the rung writes it and no section does.",
+        "SolutionMethod         diagon",
     ])
 
 
@@ -358,6 +488,14 @@ def _emit_solver_note(struct, cfg) -> str:
         "# geometry was relaxed upstream and moving it here would invalidate",
         "# the electrode partition the whole ladder is built on.",
         "#",
+        "# WRITTEN HERE, not by a section: `solution_method` is `role`-",
+        "# declared for transport, so the rung answers it and the template",
+        "# carries no value for it.  A section rendering it would resolve",
+        "# the config DEFAULT instead, which is how the device deck came to",
+        "# say `diagon` from a section and `transiesta` from its own block",
+        "# -- in that order, with libfdf taking the first.",
+        "SolutionMethod         diagon",
+        "#",
         "# PSEUDOPOTENTIALS: this rung does not name a `psml_lib`.  Its",
         "# .psml files travel with the CITED junction -- `prep` copies them",
         "# into the calculation's `pseudos/` directory beside this deck, and",
@@ -431,7 +569,7 @@ def transport_spec(struct: Structure, cfg, *,
             f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
             f"`prep` names the rung and hands it down as `stage_token`.")
 
-    if shape not in ("seed", "electrode"):
+    if shape not in ("seed", "electrode", "negf"):
         raise ValueError(
             f"the transport {shape!r} deck is not on the seam yet, so rung "
             f"{rung!r} still renders through `stages.render_stage_deck` "
@@ -442,8 +580,9 @@ def transport_spec(struct: Structure, cfg, *,
             f"something to work around here.")
 
     derived = _derived_for(struct, cfg)
-    layout = (_seed_layout(derived) if shape == "seed"
-              else _electrode_layout(derived))
+    layout = {"seed": _seed_layout,
+              "electrode": _electrode_layout,
+              "negf": _negf_layout}[shape](derived)
     return _sc.DeckSpec(
         engine="siesta",
         calculation="transport",

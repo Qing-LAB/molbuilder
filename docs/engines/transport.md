@@ -312,11 +312,15 @@ Three consequences drive **every** parameter choice:
 
 ## 2a. The parameter map
 
-> **Status: agreed 2026-09-16, not yet built.** Every ruling this section asks
-> for has been made (§ 2a.7); **none of it is implemented**. It is written here,
-> beside the physics it follows from, because that is what it is derived from —
-> not from what the code happens to do today. One item is deliberately deferred
-> rather than decided: net charge and gating.
+> **Status: agreed and largely BUILT** *(2026-09-16)*. Every ruling this section
+> asks for has been made (§ 2a.7), and the parameter model it describes is now
+> what the code does: transport has a template, every rung renders through the
+> framework's seam, and the classes are declarations the catalogue carries
+> rather than prose. § 2a.14 records what landed and what has not, measured.
+>
+> It is written here, beside the physics it follows from, because that is what
+> it is derived from — not from what the code happens to do. Two items are
+> deliberately deferred rather than decided: net charge and gating.
 
 ### 2a.1 Why the map is derived rather than assembled
 
@@ -533,6 +537,20 @@ contract; none of them is implemented.*
 
 The map as a person would meet it. A benzene-1,4-dithiol molecule bridging two
 gold electrodes, starting from a finished relaxation that ran at DZP.
+
+> **Checked against real decks, 2026-09-16** — this was written before any of
+> it was built, so it was re-run afterwards rather than left as an
+> illustration. Editing the shared panel's `basis_size`, `mesh_cutoff` and
+> `max_scf_iter` and re-preparing gives every rung the new values:
+>
+> | rung | `PAO.BasisSize` | `MeshCutoff` | `MaxSCFIterations` |
+> |---|---|---|---|
+> | `01_seed` | TZP | 300.0 | 200 |
+> | `02_electrode_L` | TZP | 300.0 | 200 |
+> | `04_device` | TZP | 300.0 | 200 |
+>
+> One edit, three rungs — which is the first ruling of § 2a.7 working, and the
+> DZP→TZP case is exactly the one it exists for.
 
 **The shared panel — set once, governs all five stages.**
 
@@ -991,6 +1009,100 @@ failure it exists to prevent:
 | **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.10 is built on |
 
 
+### 2a.14 What landed — the map, as built *(2026-09-16)*
+
+*Measured, not asserted. Each row is something a reader can check.*
+
+#### The declarations — the classes stopped being prose
+
+| | landed as |
+|---|---|
+| **Class A · Shared** | the **template**, `<label>.template.toml`, written by `jobset init` with its values **defaulted from the cited relaxation** and editable thereafter. A transport folder carried no template at all before this |
+| **Class C · Stage-local** | `Stage.overrides`, with **`stages = [...]`** on the catalogue row saying which rungs may own each item |
+| **Class D · Role-fixed** | **`role = [...]`** on the row — the third answerer after `allocation` (the scheduler) and `citation` (a cited run). A `role` item is not a form field, not a stage-table column, carries no value in a template of that kind, and **is not written by a section**: the rung's own block writes it |
+| **Class E · Machine** | `allocation` items, unchanged |
+| the results that propagate | unchanged — the DAG in `stage_inputs`, copied at prep by `gather_transport_inputs` |
+
+#### Every rung renders through the framework
+
+```mermaid
+flowchart LR
+    T["<b>the template</b><br/>Class A, defaulted from<br/>the cited relaxation"]
+    O["<b>this rung's overrides</b><br/>Class C"]
+    T --> R["<b>resolve</b><br/>→ ParameterSet<br/><i>with provenance</i>"]
+    O --> R
+    R --> S["<b>spec_for</b><br/>(struct, cfg, stage_token,<br/>calculation='transport')"]
+    ST["<b>the structure this<br/>rung describes</b>"] --> S
+    S --> D["<b>DeckSpec</b><br/>layout as a table"]
+    D --> P["<b>prepare_deck</b><br/>validate · render · write<br/>· read back · check gate"]
+    P --> F["the .fdf<br/>+ .validation.txt"]
+```
+
+**And the structures are two, out of one file** — which is why the seam never
+had to change:
+
+| rung | the structure it describes | where it comes from |
+|---|---|---|
+| seed · device · transmission | the **junction** | the cited relaxation, sorted |
+| electrode_L · electrode_R | the **lead** | *the same file*, `extract_electrode_model(dev, "L-electrode")` — a subset selected by region label, then `as_structure()` |
+
+#### Measured, on the repository's own fixture
+
+| rung | lines | validation report | solver | `%block TS.Elecs` | `MaxSCFIterations` |
+|---|---|---|---|---|---|
+| `01_seed` | 488 | ✅ | `diagon` | – | ✅ |
+| `02_electrode_L` | 419 | ✅ | `diagon` | – | ✅ |
+| `04_device` | 584 | ✅ | `transiesta` | ✅ | ✅ |
+| `05_transmission` | 584 | ✅ | `transiesta` | ✅ | ✅ |
+
+Against the 13 keywords and 4 blocks § 3.2 measured. `MaxSCFIterations` and
+`DM.Tolerance` — the two that killed a real seed at 1000 iterations — now reach
+every rung from the description, with provenance.
+
+#### The lead's k-mesh, which is the physics made visible
+
+```
+    4    0    0      0.0     ← transverse: SHARED with the device, because the
+    0    4    0      0.0        self-energy is folded in per transverse k-point
+    0    0   40      0.0     ← transport axis: DENSE, because a lead is a
+                                periodic bulk crystal and its Fermi level is
+                                the reference energy everything is measured
+                                against
+```
+
+The device writes `1` on that third axis. Not a disagreement — **the definition
+of an open boundary**, and the reason the two are computed separately at all.
+
+#### What did NOT land, stated plainly
+
+| | |
+|---|---|
+| **the bias has two homes** | `task.bias` (the description's axis, giving the `v*` directories) and `bias_voltage_v` (a template row with a range and help). The axis wins today: each point's deck is the resolved config with that voltage replaced. It works, and it is two representations of one concept — **open** |
+| **the NEGF electrode block is lifted, not tabled** | `%block TS.Elecs` and the per-electrode blocks are still the pre-seam emitter's, wrapped in one `Block`, with one small projection at the boundary. Deliberate: TranSIESTA identifies each electrode by a **contiguous atom range**, so an off-by-one computes transmission through a region that is not the molecule *and converges while doing it*. That emitter has been measured against a live 5.4.2 binary; a rewrite would have to earn that again for no gain |
+| **`TransportConfig` survives** | only to feed that lifted emitter. TR4 already deleted the general projection when the template made it unnecessary; this is the last one, and it goes when the block is tabled |
+| **net charge and gating** | deferred by ruling (§ 2a.7) |
+
+#### Two defects this work found in itself
+
+Recorded because both were caught by guards rather than by review, and both
+say something about where mistakes live:
+
+**The check gate caught a duplicate keyword the day it was written.** The device
+deck said `SolutionMethod diagon` from a section and `transiesta` from the NEGF
+block — in that order, with libfdf silently taking the first. The cause is
+general, not a slip: **a `role` item must not be written by a section**, because
+a section resolves a value from the config, and a role item rightly has none
+there. `_render_sections` now skips them and each rung's block writes its own.
+The same lift-boundary rule that kept `_emit_basis_and_xc` out of the seed
+layout, applied one level deeper.
+
+**A test fixture was geometrically invalid and nothing had ever looked.** Its
+buffer variant put 44.5 Å of atoms in a 40 Å cell, so atoms overlapped their own
+periodic images along the transport axis. It survived because **the device deck
+had no settings gate until it joined the seam** — the first time anything
+validated that geometry was the moment this work put a gate in front of it.
+
+
 ---
 
 
@@ -1088,7 +1200,7 @@ Four rules, and each one costs something measurable:
 
 | the rule | what transport does | what it cost |
 |---|---|---|
-| **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set was **fixed in code**: the seed deck `prep` rendered carried **13 keywords and 4 blocks** against a template offering **45 deck-reaching items**. **The seed rung is on the seam since 2026-09-15** — see § 3.6a; the other four still render this way |
+| **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set was **fixed in code**: the seed deck `prep` rendered carried **13 keywords and 4 blocks** against a template offering **45 deck-reaching items**. ✅ **CLOSED 2026-09-16 — all five rungs render through `spec_for` → `DeckSpec` → `prepare_deck`** (§ 2a.14). The seed deck is 488 lines, a lead 419, the device 584, each with a validation report and the engine's check gate |
 | **floor 2 holds what the person asked for** | transport had no template, so the parameters were *defined* in `TransportConfig` — which is no floor at all | 32 parameters of surface, none of them the ~40 a SIESTA run needs. `MaxSCFIterations` and `DM.Tolerance` cannot reach ANY transport deck: not from the citation, not from a form, not from `task.json` |
 | **`prep` is the conductor, not a floor: it may call, but it may never decide** | `_prep_transport` is a second conductor that decides — it composes, gates, extracts and renders | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op; no validation report; no read-back check |
 | **floor 2 must never name a machine** | `max_memory_mb` and `num_threads` are `TransportConfig` fields | two controls that reach the deck only as comment lines |
@@ -1344,34 +1456,47 @@ cannot be done first.** Each line is falsifiable.
 
 **Floor 3 — render the text of every file.**
 
-1. **`transport/transiesta.py::render_script` does not exist.** Transport
-   renders through `spec_for(struct, cfg, stage_token=…, calculation=
-   "transport")` → `DeckSpec(layout=…)` → `prepare_deck`, the path
-   `siesta/input` has taken since 2026-08-19.
+1. **Transport renders through `spec_for(struct, cfg, stage_token=…,
+   calculation="transport")` → `DeckSpec(layout=…)` → `prepare_deck`**, the
+   path `siesta/input` has taken since 2026-08-19.
+   **✅ DONE 2026-09-16 — all five rungs** (§ 2a.14). `render_script` survives
+   only as the lifted NEGF electrode block inside one `Block`, for the reason
+   § 2a.14 gives: an off-by-one in a contiguous atom range computes
+   transmission through the wrong region *and converges*.
 2. **No keyword's value syntax is written by hand.** A `%block` is written by
    the block emitter, a list by the list emitter. `TBT.k` in a form the parser
    rejects becomes structurally unavailable rather than fixed — and so does
    the next one nobody has found.
 3. **Every stage deck has a `.validation.txt` and a USER-CUSTOM zone**, and a
-   deck that fails its own read-back check refuses instead of running. This is
-   the check that would have caught the missing pole count before a person
-   waited for an `MPI_ABORT`.
+   deck that fails its own read-back check refuses instead of running.
+   **✅ DONE 2026-09-16 — all five** (§ 2a.14). It has already earned itself
+   twice: the check gate caught a duplicated `SolutionMethod` the day the
+   device layout was written, and the settings gate caught a fixture whose
+   atoms did not fit their own cell — invalid for as long as it existed,
+   because nothing had ever validated a device geometry before.
 
 **`prep` is the conductor, not a decider.**
 
 4. **`_prep_transport` is gone as a parallel arm.** The citation compose stays
-   — it is the one genuinely new input model (`transport-design.md` § 2) — and
-   hands to `resolve`, so a transport run has a `ParameterSet` with provenance
-   and `--pipeline-log` stops being a no-op.
+   — it is the one genuinely new input model — and hands to `resolve`, so a
+   transport run has a `ParameterSet` with provenance and `--pipeline-log`
+   stops being a no-op. **✅ DONE 2026-09-16** (§ 2a.14): it prints the resolve
+   step and every value's source. The arm still conducts the compose and the
+   gather, which are transport's own and belong to it.
 
 **Floor 2 — hold what the person asked for.**
 
-5. **The deck carries what the description says**, which is now measurable:
-   the seed's 13 keywords become the template's 45 deck-reaching items, and
-   `MaxSCFIterations` / `DM.Tolerance` reach a transport stage from the
-   citation for the first time.
+5. **The deck carries what the description says**, which is now measurable.
+   **✅ DONE 2026-09-16**: 13 keywords → 488/419/584 lines carrying the
+   engine's full section set, and `MaxSCFIterations` / `DM.Tolerance` reach
+   every rung *from the template*, with provenance. Note the correction to
+   this item's own wording: they arrive from the **description**, not from the
+   citation — the cited run only supplies the defaults (§ 2a.7, ruling 1).
 6. `molbuilder/config/transport.py` **does not exist**; the shape is
-   `SiestaConfig` plus the `citation` marker.
+   `SiestaConfig` plus the `citation` marker. **Half done 2026-09-16**: every
+   rung resolves a `SiestaConfig`, and TR4 deleted the general projection when
+   the template made it unnecessary. One projection survives, at the boundary
+   of the lifted NEGF block, and goes with it.
 7. `dataclass_to_form_schema` **has no callers** and is deleted; the transport
    form is `GET /api/build/schema/siesta?calculation=transport`, with the
    citation-answered fields shown locked rather than editable.
@@ -1386,7 +1511,12 @@ cannot be done first.** Each line is falsifiable.
     Python function default nothing passed. **✅ done — 4b/4c.**
 11. Every parameter with a physical constraint has its guard where it is
     declared, in particular the transport axis of any k-grid: an error for the
-    device, unchecked for `TBT.k` today.
+    device, unchecked for `TBT.k` today. **Partly done 2026-09-16**: a
+    transport KIND validator refuses a sampled transport axis by name and says
+    which parameter *does* own a lead's axis. Keyed on the kind rather than on
+    a config class — the older `_validate_transport` is keyed on
+    `TransportConfig` and stopped firing the moment a rung moved onto the
+    seam, and a rule that runs for one of two config classes is not a gate.
 
 **Floor 2 names no machine.**
 
@@ -1730,13 +1860,14 @@ Two things are easy to get wrong and both are visible here:
   bytes**, and only the binary pointed at them differs
   (`Resources.program`).  `TBT.*` keywords are inert to `siesta` and `TS.*`
   to `tbtrans`, so one text *can* serve both.
-  > **Superseded by § 2a.7** *(2026-09-16)*: the T(E) window and the other
-  > `TBT.*` settings belong to the **transmission**, so the device deck has
-  > no reason to carry them.  The two decks will legitimately differ, each
-  > carrying what its own binary reads.  Nothing is lost by that — what
-  > keeps the two runs from drifting apart in geometry, basis and electrode
-  > identity was never byte-identity, it is the **shared Class A values**
-  > (§ 2a.3).
+  > **Resolved 2026-09-16 (§ 2a.14).** Both rungs render from ONE layout but
+  > each resolves its OWN config, so the two decks share their *shape* — the
+  > same junction, the same electrode declarations, the same electronic
+  > description — and differ in exactly those values a person tuned for the
+  > transmission. That is what § 2a.7's ruling asked for, reached without
+  > anyone having to decide which keywords `tbtrans` requires. What keeps the
+  > two runs from drifting apart about what the junction IS was never
+  > byte-identity; it is the **shared Class A values** (§ 2a.3).
 * **Nothing is "integrated" at the end.**  Integration happens *between*
   stages, as files, at prep time — `prep` copies a concluded upstream
   stage's output into the next stage's attempt directory before that stage

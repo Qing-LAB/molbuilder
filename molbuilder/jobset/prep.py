@@ -1451,7 +1451,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # that seam question is the next increment's.  The split is HERE, at the
     # conductor, and named -- not hidden inside a renderer that pretends to
     # serve all five.
-    if stage in ("seed", "electrode_L", "electrode_R"):
+    if True:          # EVERY RUNG IS ON THE SEAM (TR5)
         # EACH RUNG RENDERS THE STRUCTURE IT DESCRIBES (TR5).  The seed
         # describes the junction; an ELECTRODE rung describes the lead taken
         # OUT of that same junction by its region label -- same atoms, same
@@ -1460,7 +1460,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # `spec_for(struct, cfg, ...)`: a deck describes a structure, and
         # these are two structures out of one file.
         from ..transport.transiesta import electrode_hs_stem
-        if stage == "seed":
+        if stage in ("seed", "device", "transmission"):
+            # The junction itself -- and for the device it carries the
+            # region partition the NEGF block is built from.
             _struct, _label = composed.sorted.structure, task.label
         else:
             _model = (composed.electrode_left if stage == "electrode_L"
@@ -1504,25 +1506,20 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                 raise PrepError(str(exc)) from exc
             _sc.prepare_deck(spec, _struct, scfg,
                              _jdir / script, log=_tlog)
-    else:
-        try:
-            if points:
-                cfg0 = dataclasses.replace(cfg, bias_voltages_v=[points[0]])
-                deck_text = render_stage_deck(stage, composed, cfg0)
-            else:
-                deck_text = render_stage_deck(stage, composed, cfg)
-        except StageError as exc:
-            raise PrepError(str(exc)) from exc
-        (_jdir / script).write_text(deck_text, encoding="utf-8")
-    for v in points:
-        vdir = _jdir / bias_token(v)
-        vdir.mkdir(parents=True, exist_ok=True)
-        cfg_v = dataclasses.replace(cfg, bias_voltages_v=[float(v)])
-        try:
-            point_text = render_stage_deck(stage, composed, cfg_v)
-        except StageError as exc:
-            raise PrepError(str(exc)) from exc
-        (vdir / script).write_text(point_text, encoding="utf-8")
+        # A BIAS SCAN'S POINTS each get their own deck, differing only in
+        # the voltage they run at.  The stage-directory deck above is the
+        # EQUILIBRIUM point's, so the job row's script exists where every
+        # generic reader looks.
+        for _v in points:
+            _vdir = _jdir / bias_token(_v)
+            _vdir.mkdir(parents=True, exist_ok=True)
+            _vcfg = dataclasses.replace(scfg, bias_voltage_v=float(_v))
+            with _user_error_as_prep():
+                _vspec = _siesta_spec_for(_struct, _vcfg,
+                                          stage_token=(token or None),
+                                          calculation="transport")
+                _sc.prepare_deck(_vspec, _struct, _vcfg,
+                                 _vdir / script, log=None)
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
     allocation = _with_notify(

@@ -117,7 +117,7 @@ the same day, with what it turned out to be.
 | **W26** | front end / engines | **The transport tab's ORDER, and the Task setup seam — browser walk 2026-09-15 on a real cited junction.** *(user: "i want the full framework of how to do transport calculation scientifically sound/complete, and UI design to be logical, in the right sequence … and works with the 'task setup' framework".)*  The assessment is `engines/transport.md` § 3.4, which also records what is SOUND: the electrode is derived from the citation's labels rather than built by hand, and the three rules that make a lead self-energy trustworthy are enforced — device `kz = 1` as an **error**, electrode `kz` dense as a warning, transverse k matched — plus the sealed electronic contract. **The Task setup seam works**: `prep-plan` answers for a transport description with the five stages, the hierarchical shape, each deck named by the producer, and the same machine/queue card every kind uses.  **What is wrong:** ① the **bias sits in the Describe card**, beside the save button, when it is the experiment — and it governs the whole non-equilibrium half of the density contour, which is inert at zero bias; it belongs at the top of the physics card. ② card 1's atom list **traps the page scroll** (a wheel scrolled rows 38→53 of 444 and left the page still; hit three ways including `Page_Up`) and puts **444 checkboxes ahead of every transport control** in the interactive order. **Diagnosed, and it is MolView's not transport's:** `.molviewer-selection-list-wrap` is `overflow-y: auto` and the list is UNVIRTUALISED, so 444 rows is ~10 screens the wheel is correctly consumed by. Three options in § 3.4.3 — the recommended one is transport-scoped (card 1 exists to CHECK labels, which are assigned on the Molbuilder tab, so a 444-row editor for something uneditable here is the wrong control); virtualising is the source fix and touches SIX templates. ③ Task setup's empty state names only the Structure-optimization tab as a source, when the Transport tab writes `task.json` by its own door. ④ ~~Task setup's "What gets written" promises `<label>.template.toml`~~ — **WITHDRAWN, my error**: `task-setup/viewer.js` already hides the template and structure rows when `calculation === "transport"`, with § 4.1's reason in a comment. I read the EMPTY state, where there is no description to read, and blamed the kind. A claim about a kind made without selecting a folder of that kind | § 3.4 · found 2026-09-15 | ① ③ **done 2026-09-15** · ② open · ④ withdrawn |
 | **W27** | engines / execution | **Transport is not on the seven-floor stack — put it there.** *(user: "fix your fucking plan by having first a correct top-down architecture"; "why the fuck is the emit not based on template based approach".)*  The architecture and the derivation are `engines/transport.md` §§ 3.2–3.7.  **THE ROOT, in the project's own vocabulary** (`execution/architecture.md` § 2): `molbuilder/transport/` appears in **none of the seven floors**, while that document's one mention of transport claims its stages "run INSIDE the job system (each an ordinary prep/launch rung)".  Four rules broken: floor 3 renders the text of every file from a `ParameterSet` through `prepare_deck` — transport's `render_script` concatenates literal f-strings; floor 2 holds what the person asked for — transport had no template, so `TransportConfig` became the definition; `prep` is the conductor and may never decide — `_prep_transport` is a second conductor that does; floor 2 must never name a machine — `max_memory_mb`/`num_threads` sit on it.  **WHY, from the history:** `transiesta.py::render_script` 2026-06-10; the pipeline landed 2026-08-19 (`refactor(prep): the seam carries the engine's FORM`) and migrated siesta + pyscf in one commit, leaving transport behind; the composite was then built outward from the unmigrated emitter.  `template.md` § 9.2 has recorded the missing arm all along, filed as one lost feature (USER-CUSTOM) rather than as *transport cannot render from a template*.  **MEASURED:** the seed deck `prep` renders carries **13 keywords / 4 blocks** against a template offering **45 deck-reaching items**.  **EVERY KNOWN DEFECT IS DOWNSTREAM:** the seed dying at 1000 SCF iterations (`MaxSCFIterations` cannot travel from the citation — no transport emitter writes it and no transport field held it); the device deck aborting on "the continued fraction method requires at least 20 poles" (the pole *energy* is written, never `TS.Contours.Eq.Pole.N`); `TBT.k` as a bare scalar the parser rejects; `tbt_k_grid`'s unguarded transport axis; the electronic contract as two frozensets and a twice-spelled predicate.  **ORDER OF WORK IS FLOOR ORDER**, § 3.6: (1) render through `spec_for`/`DeckSpec`/`prepare_deck`, (2) no value syntax by hand, (3) validation report + read-back check, (4) `_prep_transport` stops deciding, then the floor-2 items.  My first draft of this plan put the pipeline at step 6 of 7 because it was written from the parameters down; read from the floors down it is step 1.  **DONE:** 4a the `citation` marker (`template.md` § 6.4's sibling answerer, per-kind); 4b/4c transport's parameters as 17 catalogue rows + 7 shared rows tagged `citation = ["transport"]` + 9 relaxation rows tagged `optimization`, with matching `SiestaConfig` fields — which also made `electrode_kz` (invariant I9) reachable from a description for the first time. | `engines/transport.md` §§ 3.2–3.7 · 2026-09-15 | 4a/4b/4c **done** · floor-3 migration **open** |
 | **TR1–TR3** | engines / transport | **Transport's description gains a template, and the catalogue gains what the design needs.** T1: `jobset init --calculation transport` writes `<label>.template.toml` with its Class A values defaulted from the cited relaxation — today a transport folder has **no template at all**, so the shared baseline has no home and the stage table has nothing to read. T2: the three keywords with no catalogue row — `TS.HS.Save`, the equilibrium pole **count**, `TS.Voltage`. T3: `kgrid` split, because its three components fall in three classes. **Reuses `build_description` / `template_with_values`, which already narrows the catalogue by `calculation`** | § 5p · `transport.md` § 2a | **ALL DONE 2026-09-16** — TR1 § 5p.3c, TR2/TR3 § 5p.3d |
-| **TR4–TR6** | engines / transport | **Transport renders through the one path.** T4: `_prep_transport` keeps the compose and hands to `resolve`, so a transport run has a `ParameterSet` with provenance and `--pipeline-log` stops being a no-op. T5: the remaining four rungs onto `spec_for` — ⚠️ **blocked on a seam question**, what a composite kind hands its renderer, since `spec_for(struct, cfg, stage_token=)` does not carry the `ComposedJunction`. T6: `TransportConfig` retires | § 5p · § 2a | **TR4 done 2026-09-16** (§ 5p.3e); TR6 half-done — `siesta_config_for` already deleted; **TR5 UNBLOCKED** — the seam question was mis-posed and is withdrawn (§ 5p.3f) |
+| **TR4–TR6** | engines / transport | **Transport renders through the one path.** T4: `_prep_transport` keeps the compose and hands to `resolve`, so a transport run has a `ParameterSet` with provenance and `--pipeline-log` stops being a no-op. T5: the remaining four rungs onto `spec_for` — ⚠️ **blocked on a seam question**, what a composite kind hands its renderer, since `spec_for(struct, cfg, stage_token=)` does not carry the `ComposedJunction`. T6: `TransportConfig` retires | § 5p · § 2a | **TR4 done 2026-09-16** (§ 5p.3e); TR6 half-done — `siesta_config_for` already deleted; **TR4 and TR5 DONE**; TR6 all but done — one projection survives, feeding the lifted NEGF block, and goes with it |
 | **TR7–TR8** | front end / transport | **The tab reads the catalogue, and an override reaches the rung that owns it.** T7: the bespoke dataclass form is deleted for the kind-aware catalogue route plus the existing **stage table** — rows are stages, columns are `varies`, an empty cell inherits the template. T8 fixes the **live defect**: every override currently lands on the `device` bag, so a parameter the transmission owns never reaches the transmission deck. **T8 needs the `stages = [...]` declaration** (§ 5p.3), not yet approved | § 5p · § 2a.7 | not started |
 | **TR9–TR10** | execution / front end | **Grouping and the deliverable.** T9: the preparatory block (seed + both leads) as one submission — ⚠️ **must first reconcile with `task-setup.md` § 1's "no run-all-stages button"**; § 5p.5 has the argument, and if it does not hold T9 is withdrawn rather than the rule bent. T10: Results reads the transmission with its **treatment label** and provenance chain, so a linear-response I–V is never mistaken for a finite-bias one | § 5p · § 2a.12 | not started |
 | **W29** | engines / front end | **The first validation of a junction does not exist: nothing checks that the atoms labeled `L-electrode`/`R-electrode` are the FROZEN atoms.** *(user, 2026-09-16, describing the design: "it will look for the labeled left electrodes and make sure that they are the fixed atoms … this is the first validation or check".)*  What exists is a different, LATER gate — `compose.py` checks the electrode atoms did not MOVE, by comparing the cited deck's coordinates against the `.XV`, **after the relaxation has run**. Label the electrodes and forget to freeze them and nothing objects: the relaxation runs, the leads relax, and the junction is unusable at compose time — a wasted relaxation on a metal junction. The closest thing today is a hint inside an unrelated warning (`validation/sidecar.py`: *"If you meant those atoms to be held fixed, assign them to frozen_atoms in /modify"*), which suggests but does not check. Belongs in the settings gate on the OPTIMIZATION of a junction — the run being set up when the mistake is made. Tier 2: detectable before anything runs | § 5p.3g · found 2026-09-16 | **DONE 2026-09-16** — warns rather than refuses; the severity is open to a ruling |
@@ -2216,6 +2216,69 @@ would pass on a deck that quietly rendered the whole junction). 144 passed.
 describe the junction, which the seed already proves the seam can carry; what
 they additionally need is the region partition for `%block TS.Elecs`, and it
 travels on the structure's own `regions`.
+
+### 5p.3i LANDED — TR5b, every rung on the seam; and the contract consolidated
+
+**TR5 is complete.** All five rungs render through `spec_for` → `DeckSpec` →
+`prepare_deck`. Measured on the repository's own fixture: seed 488 lines, a
+lead 419, device and transmission 584, each with a `.validation.txt` and the
+engine's check gate, against the **13 keywords** § 3.2 measured.
+
+The device and transmission share ONE layout but resolve their OWN configs, so
+they share their shape and differ in exactly what a person tuned for the
+transmission — which is what § 2a.7's ruling asked for, reached **without
+anyone deciding which keywords `tbtrans` requires**. That question would have
+needed verification against the binary; the per-rung config made it moot.
+
+**Deliberately NOT tabled: the NEGF electrode block.** `%block TS.Elecs` and the
+per-electrode blocks stay the pre-seam emitter's, wrapped in one `Block` with a
+small projection at the boundary. TranSIESTA identifies each electrode by a
+**contiguous atom range**, so an off-by-one computes transmission through a
+region that is not the molecule *and converges while doing it*. That emitter has
+been measured against a live 5.4.2 binary; a rewrite would have to earn that
+again for no gain.
+
+#### Two defects this step found in itself
+
+**The check gate caught a duplicated keyword the day it was written.** The
+device deck said `SolutionMethod diagon` from a section and `transiesta` from
+the NEGF block — libfdf takes the first. The cause is general: **a `role` item
+must not be written by a section**, because a section resolves a value from the
+config and a role item rightly has none there. `_render_sections` skips them
+now and each rung's block writes its own. The same lift-boundary rule that kept
+`_emit_basis_and_xc` out of the seed layout, one level deeper — I had applied
+it once and still missed it.
+
+**A test fixture was geometrically invalid and nothing had ever looked.** Its
+buffer variant put 44.5 Å of atoms in a 40 Å cell. It survived for as long as it
+existed because **the device deck had no settings gate until it joined the
+seam**: the first time anything validated a device geometry was the moment this
+work put a gate in front of it. The gate is right; the fixture is sized from its
+own geometry now.
+
+#### The contract, consolidated *(user: "fully updated, consolidated, and checked")*
+
+`engines/transport.md` no longer describes a design and a different
+implementation:
+
+* the § 2a banner says **built**, not *"none of it is implemented"*;
+* § 3.2's floor-3 row is **closed**, with the measurement;
+* the *"same bytes"* note is **resolved**, with why the per-rung config settled
+  it rather than a keyword audit;
+* § 3.6's outcome list is reconciled item by item — and item 5's own wording
+  corrected: the values arrive from the **description**, not from the citation,
+  which supplies only the defaults;
+* **§ 2a.14** is new: what landed, a diagram of template ⊕ overrides → resolve
+  → spec_for → prepare_deck, the two-structures-one-file table, the measured
+  deck sizes, the lead's k-mesh as the physics made visible, and what did NOT
+  land;
+* § 2a.8's worked example was written before any of this existed, so it was
+  **re-run against real decks** and now carries the result: one shared edit,
+  three rungs follow.
+
+**Still open and named there:** the bias has two homes (`task.bias` the axis,
+`bias_voltage_v` the template row), `TransportConfig` survives only to feed the
+lifted block, and net charge / gating are deferred by ruling.
 
 ### 5p.4 The steps
 
