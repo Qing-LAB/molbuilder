@@ -2191,6 +2191,8 @@ tier = "basic"
 help = """
 The voltage held across the junction for THIS device run -- the difference between the two leads' chemical potentials.
 
+Declared in VOLTS because that is what a person means and measures. The deck spells it `TS.Voltage <v> eV`, which is not a mismatch: fdf treats this as an energy, and the energy an electron gains across V volts is exactly V electron-volts, so the number is the same and only the unit word differs. Do not "fix" either side to match the other.
+
 It is the experiment, and it decides what the result may be called. At zero bias the device is converged once and tbtrans sweeps energy, giving T(E); an I-V obtained by integrating that single curve against the leads' Fermi functions is the LINEAR-RESPONSE approximation and must say so. A genuine finite-bias result re-converges the device at every voltage, giving T(E, V), because the potential drop reshapes the molecular levels.
 
 There is no universal voltage above which the approximation fails: compare eV/2 with the gap from the Fermi level to the nearest transmission resonance. Below ~0.1 V linear response is sound; above ~0.5-1 V it is not. The dependable check is to converge at zero and at your maximum and compare the two curves inside the window.

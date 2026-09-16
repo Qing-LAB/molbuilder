@@ -2280,6 +2280,47 @@ implementation:
 `bias_voltage_v` the template row), `TransportConfig` survives only to feed the
 lifted block, and net charge / gating are deferred by ruling.
 
+### 5p.3j FIXED — the stage deck ignored the bias axis *(2026-09-16)*
+
+**I raised this as an open design question and it was not one.** Adding a
+`bias_voltage_v` catalogue row in TR2 looked like it had given the bias two
+homes — the row, and `task.bias`'s list — so I asked which should win.
+§ 2a.10 had already answered:
+
+> *"single bias is the degenerate case of the bias axis — one point, normally
+> at zero."*
+
+**One mechanism.** The template declares the parameter (its range, unit and
+help) and answers the one-point case; a scan is that same parameter taking
+several values, which is the framework's ordinary precedence — *the template's
+value ⊕ this point's*. Nothing to rule on. That is the **second** time in this
+programme that a question I posed as open had been settled in a section I had
+already read; the first was the seam (§ 5p.3f).
+
+**The defect underneath it was real.** Measured with the template set to 0.5 V
+and the axis at `[0.0, 0.2]`:
+
+| | before | after |
+|---|---|---|
+| `04_device/T_04_device.fdf` | **0.5 V** — the template's own value | 0.0 V |
+| `04_device/v0/…` | 0.0 V | 0.0 V |
+
+§ 2a.11 describes the stage-directory deck as *"the same deck `v0/` holds"* —
+it exists so the job row's script sits where every generic reader looks. It was
+not that deck, and whichever of the two a person opened they would have
+believed it.
+
+Three tests pin it, including the degenerate case: with no axis the template
+answers, and there is no `v*` level at all — § 2a.11's own rule, *a stage
+carries a sub-level for each axis it varies over and none for an axis it does
+not*.
+
+**Recorded while fixing it: the row says volts, the deck says eV.** Not a
+mismatch. fdf treats `TS.Voltage` as an energy, and the energy an electron
+gains across V volts is exactly V electron-volts — same number, different unit
+word. Written into the row's help, because the next person to notice will
+otherwise "fix" one side to match the other and break it.
+
 ### 5p.4 The steps
 
 Ordered so each one is verifiable on its own and nothing depends on a later

@@ -252,6 +252,72 @@ UNREACHABLE_BEFORE_THE_SEAM = (
 )
 
 
+class TestTheBiasAxisIsTheParametersValues:
+    """`engines/transport.md` § 2a.10: *single bias is the degenerate case of
+    the bias axis — one point, normally at zero.*
+
+    ONE mechanism, not two.  The template declares `bias_voltage_v` — its
+    range, its unit, its help — and answers the one-point case; a scan is that
+    same parameter taking several values, which is the framework's own
+    precedence (the template's value ⊕ this point's).
+    """
+
+    def _set_template_bias(self, calc, v):
+        import dataclasses
+        from molbuilder.template import _emit, find_template, read_template
+        tmpl = find_template(calc)
+        parsed = read_template(tmpl.read_text())
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value=v) if i.name == "bias_voltage_v"
+             else i for i in parsed.items], engines=("siesta",)))
+
+    def test_the_stage_deck_is_the_first_points_not_the_templates(self, calc):
+        """THE DEFECT, as a test.
+
+        The stage-directory deck exists so the job row's script sits where
+        every generic reader looks, and § 2a.11 describes it as *the same
+        deck `v0/` holds*.  Rendering it from the template's own value made
+        it disagree: measured 2026-09-16, the stage deck said 0.5 V while
+        `v0/` said 0.0, and whichever a reader opened they would believe.
+        """
+        self._set_template_bias(calc, 0.5)
+        prep_calculation(calc, "device")
+        stage = (calc / "04_device" / "T_04_device.fdf").read_text()
+        v0 = (calc / "04_device" / "v0" / "T_04_device.fdf").read_text()
+        assert _says(stage, "TS.Voltage", "0.0000 eV"), (
+            "the stage deck must be the first point's, which is what it is "
+            "documented to be")
+        assert _says(v0, "TS.Voltage", "0.0000 eV")
+        assert not _says(stage, "TS.Voltage", "0.5000 eV"), (
+            "the template's single value must not survive beside an axis -- "
+            "that is the two-homes state § 2a.10 rules out")
+
+    def test_each_point_gets_its_own_value(self, calc):
+        prep_calculation(calc, "device")
+        got = {}
+        for d in (calc / "04_device").rglob("T_04_device.fdf"):
+            import re as _re
+            m = _re.search(r"^TS\.Voltage\s+(\S+)", d.read_text(), _re.M)
+            got[d.parent.name] = float(m.group(1))
+        assert got["v0"] == 0.0 and got["v0.2"] == 0.2
+
+    def test_with_no_axis_the_template_answers(self, tmp_path):
+        """The degenerate case, and the half that keeps the test above from
+        being satisfied by ignoring the template entirely."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        dest = _describe_transport(root, bias=())
+        self._set_template_bias(dest, 0.3)
+        prep_calculation(dest, "device")
+        deck = (dest / "04_device" / "T_04_device.fdf").read_text()
+        assert _says(deck, "TS.Voltage", "0.3000 eV"), (
+            "with one point the template IS the answer -- otherwise the "
+            "parameter would be undeclarable and unsettable")
+        assert not (dest / "04_device" / "v0").exists(), (
+            "and a single-bias calculation has no v* level at all (§ 2a.11's "
+            "axis rule: no sub-level for an axis it does not vary over)")
+
+
 class TestTheElectrodeRungIsOnTheSeam:
     """TR5a — a lead rung renders through the framework, from the lead's own
     structure.

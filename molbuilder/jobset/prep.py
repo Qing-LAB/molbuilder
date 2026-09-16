@@ -1490,9 +1490,23 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # no-op.  Passing `log=None` keeps that true rather than inventing
         # half a logger here; wiring the real one is part of making
         # `--pipeline-log` mean something for this path.
+        # THE STAGE-DIRECTORY DECK IS THE FIRST POINT'S when there is an
+        # axis, and it must be: it exists so the job row's script sits where
+        # every generic reader looks, and it is documented as "the same deck
+        # v0/ holds".  Rendering it from the template's own `bias_voltage_v`
+        # instead made it disagree with v0/ -- measured 2026-09-16, the
+        # stage deck saying 0.5 V while v0/ said 0.0.
+        #
+        # `engines/transport.md` § 2a.10: *single bias is the degenerate case
+        # of the bias axis -- one point, normally at zero.*  One mechanism.
+        # The template declares the parameter and answers the one-point case;
+        # a scan is that same parameter taking several values, which is the
+        # framework's own precedence (the template's value ⊕ this point's).
+        _scfg0 = (dataclasses.replace(scfg, bias_voltage_v=float(points[0]))
+                  if points else scfg)
         with _user_error_as_prep():
             try:
-                spec = _siesta_spec_for(_struct, scfg,
+                spec = _siesta_spec_for(_struct, _scfg0,
                                         stage_token=(token or None),
                                         calculation="transport")
             except ValueError as exc:
@@ -1504,7 +1518,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                 # the user as a raw traceback the moment the next increment
                 # widens the call site above.
                 raise PrepError(str(exc)) from exc
-            _sc.prepare_deck(spec, _struct, scfg,
+            _sc.prepare_deck(spec, _struct, _scfg0,
                              _jdir / script, log=_tlog)
         # A BIAS SCAN'S POINTS each get their own deck, differing only in
         # the voltage they run at.  The stage-directory deck above is the
