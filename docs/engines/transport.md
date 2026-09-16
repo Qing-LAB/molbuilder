@@ -161,7 +161,7 @@ build `G` at.
 
 **And then there is a third grid, which surprises people.** TBtrans averages
 `T(E)` over transverse k as well, and *it may use a different, denser grid*
-(`TBT.k`, § 3.3.4). That is legal because `H` and `Σ` are stored in **real
+(`TBT.k`, § 3.3.2's transmission row). That is legal because `H` and `Σ` are stored in **real
 space** in the `.TSHS`/`.HSX` files, so tbtrans can evaluate them at any k⊥
 it likes. And it is usually *necessary*, because the two grids are converging
 different things:
@@ -185,12 +185,18 @@ not improve it. Converge the SCF first, then the transmission.)*
 Every one of these, if wrong, gives a **plausible-looking wrong answer**
 rather than a crash — which is why they are guards in code and not advice.
 
-| # | must be true | enforced | manual |
+| # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
-| 1 | device `kz = 1` | **error** — `preflight.py` check C2 | § 11.7 |
-| 2 | electrode `kz` dense | default **40**; warned below 20 — `wizard.py` | § 11.4 |
-| 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | § 11.8 |
-| 4 | basis, XC and mesh identical | **sealed** at both doors — they come from the citation's own `.fdf` | § 11.7 |
+| 1 | device `kz = 1` | **error**, `TransiestaEngine.preflight` | ✅ reached from `stages.py` |
+| 2 | electrode `kz` dense | default **40** (`wizard.py`); a warn below 20 lives in `transport/preflight.py` | ⚠️ **no** — that warn's only caller is the standalone `molbuilder transport preflight` verb, so a composite run never sees it. And the default is unreachable from any description (§ 3.5 item 8) |
+| 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
+| 4 | basis, XC and mesh identical | **sealed** at both doors — they come from the citation's own `.fdf` | ✅ |
+
+> **Corrected 2026-09-15.** This table said all four were guards in code. Row 2
+> is not, on the path that matters: the check exists and nothing on the
+> describe / prep / launch path calls it. Stated here rather than quietly fixed
+> because the difference between *"a guard exists"* and *"a guard fires on your
+> run"* is the whole value of the column.
 
 Number 4 is why the tab makes you **cite a finished relaxation** instead of
 typing a basis: the numbers arrive from that run's deck, so they cannot
@@ -210,7 +216,7 @@ TranSIESTA expects a *metallic* electrode and that fixing the boundary is
 | device k | `2 2 1` — transverse 2×2, **transport 1** |
 | electrode k | `2 2 40` — the same 2×2, **transport dense** (the wizard's default) |
 | bias | `0.0` → equilibrium, so the non-equilibrium contour settings are inert |
-| what prep writes | `01_seed` … `05_transmission`, a deck + a validation file each |
+| what prep writes | `01_seed` … `05_transmission`, **a deck each — and no validation file**: the transport arm writes with `write_text` rather than going through `prepare_deck`, so the validate → render → read-back-check → report chain every other kind gets does not run here (§ 3.5 item 5) |
 | the deliverable | `<label>.transport.json` — T(E) per bias, G(E_F), the I–V table |
 
 ## 1. The mental model — one citation → five derived stages
@@ -366,350 +372,249 @@ from a geometry that is still moving.
 
 ---
 
-### 3.2 The web tab's shape — ONE PANEL PER ENGINE, not one badge per field
+### 3.2 Transport is a calculation KIND — measured, not asserted
 
-*(User ruling 2026-09-15, after opening the tab: "i am confused to see mainly
-pyscf settings on that page while the main design should be focused on
-transiesta … let's separate transiesta and pySCF engine completely because the
-setting etc may be completely different. so why don't we use tab of different
-engine to separate them rather than marking each parameters".)*
+The question this section answers is the one that decides everything below it:
+**does transport share enough with the calculations that already work to be
+carried by the same template, or is it different enough to need its own?**
 
-**The rule: an engine is a PANEL, and a panel's fields are that engine's
-alone.** It is the pattern the Structure-optimization tab already uses — one
-card, a sub-tab strip, one panel per engine, one schema endpoint per engine
-(`/api/build/schema/<engine>`), and **one config dataclass per engine**.
-`SiestaConfig` (49 fields) and `PySCFConfig` (60) share not one field name.
-That last part is what actually separates them; the tab strip is how a person
-sees it.
+The framework's own protocol names transport by name
+([`template.md`](?doc=engines/template.md) § 6.3, user ruling 2026-08-21):
 
-**What was wrong.** `TransportConfig` held 22 fields, of which **20 are
-TranSIESTA's or shared and exactly 2 are PySCF's** — `pyscf_functional` and
-`pyscf_basis` — sitting in the **NEGF** section beside three
-`TS.ComplexContour.*` fields. Three consequences, each measured
-2026-09-15:
+> *"a new calculation kind — **transport is next** — means new rows in this one
+> catalogue, never a second template file. The kind declares its own rows with
+> `calculations = [...]` … A second catalogue per kind would be two-homes drift
+> all over again, one axis over."*
 
-1. They were **the only two fields in the whole form with an engine name in
-   the label**, in the section a reader takes as the scientific core. With
-   three Runtime badges also naming pyscf, 5 of the 12 rendered fields said
-   *PySCF* — so the page read as a PySCF page for a workflow that is
-   TranSIESTA's entire subject.
-2. **The engine cannot be selected.** `registered_engines()` is
-   `['transiesta']`, and `engine`'s own `choices` is `("transiesta",)` with a
-   comment saying a PySCF backend "adds its choice back here in the same
-   commit". § 8's follow-up states the rule outright — *the form offers only
-   registered engines* — and it had been applied to the engine **selector**
-   and not to that engine's **parameters**.
-3. **They travelled.** Neither is in `SEALED_ALWAYS` nor `CONTRACT_FIELDS`,
-   so the override gate accepted them, they were written into `task.json`'s
-   device-stage bag, and they merged into the config the deck renders from —
-   where `engine` is hardcoded `"transiesta"` and nothing reads them. That is
-   exactly the trap `/api/transport/schema`'s own docstring refuses: *"a form
-   field the door is guaranteed to refuse is a trap, not a control."*
+And the design of record agrees, in its own ruling body
+([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 2):
 
-#### What the shape is
+> *"What stays identical to every other task — deliberately: the portable-folder
+> rule, the verbs, attempts, **the template/catalogue machinery for transport's
+> own parameters**, and the sweep axis. **Only the input model is new: one slot,
+> filled by an explicit citation.**"*
 
-| | |
-|---|---|
-| **The card** | `3. Calculation parameters` gains a `.tabs` strip, one `.tab-btn` per KNOWN engine, one `.tab-panel` each — the `index.html` pattern, reused rather than reinvented |
-| **The panel IS the engine** | `engine` is already a sealed field nothing renders (`SEALED_ALWAYS`), hardcoded `"transiesta"` where the config is built. The active panel becomes that field's value, which is how the optimization tab has always worked: the panel decides which renderer runs |
-| **The schema** | `GET /api/transport/schema/<engine>`, mirroring `/api/build/schema/<engine>`. An unknown engine is a clean 404, not a defaulted response |
-| **One config per engine** | `TransportConfig` is **TranSIESTA's**, and loses both `pyscf_*` fields. A `PyscfNegfTransportConfig` is authored **with** that backend and not before — an engine's parameter set is not designable in the abstract, and a config nothing renders from is the residue this rule exists to prevent |
-| **The name stays** | `TransportConfig` is referenced by 14 product modules and 16 test files; a rename carries no behaviour. Its docstring says whose it is |
-| **The override gate follows** | its vocabulary becomes the SELECTED engine's field names, so a PySCF name is **refused** for a TranSIESTA run instead of accepted and ignored — closing consequence 3 at the door, not only in the form |
-| **Runtime badges** | name only engines you can run. `(transiesta) WriteVerbosity / (pyscf) mol.verbose` becomes TranSIESTA's alone until there is a second panel to carry the other half |
+§ 4.2 of that document even calls the transmission knobs *"transport-template
+fields"*. **There is no ruling anywhere that transport has no template.** The
+phrase *"floor 2 is task.json alone"* occurs twice in the whole archive, both
+times inside a build-note parenthetical about the **hand-over** seam — how many
+files cross the web describe boundary — and it was restated into code comments,
+`job-contracts.md`, the roadmap and two tests until it read as design.
 
-#### A known engine with no backend is a DISABLED tab
+#### What the measurement says
 
-*(the user's choice, 2026-09-15, against hiding it and against giving it live
-fields.)*
+The vibration kind is the worked precedent: *"its template IS the optimization
+template plus fourteen declared rows, because one of its steps **is** an
+optimization"* (§ 6.3). Measured against the live catalogue:
 
-The strip is drawn from the **known** engines; `registered_engines()` decides
-which are live. `PySCF-NEGF` is therefore drawn, **disabled**, with a title
-saying what would make it live — *no PySCF-NEGF backend is built yet;
-transport ships on TranSIESTA*.
-
-It is not the trap `engine`'s `choices` comment refuses: a disabled button
-cannot be chosen, so no describe can be built on it and no field of its can
-travel. What it buys is that the **separation is visible on the page** rather
-than only in this document, and that the roadmap in § 8 has a place in the UI
-that cannot drift from the registry — the button's state is read from
-`registered_engines()`, so the day a backend registers, the tab goes live and
-its panel appears with it.
-
-#### What does NOT change
-
-The citation, the region labels, the five derived stages, the bias chain and
-the sealed electronic contract are **the composite's**, not an engine's
-(§§ 3.1, 4, 5). They stay in cards 1, 2 and 4 exactly as they are. Only
-card 3 — the override lane — is per-engine, because that is the only part of
-the surface whose vocabulary an engine owns.
-
-### 3.3 The parameter inventory — what a person supplies, what is derived, what is a knob
-
-*(Built 2026-09-15 against the **SIESTA 5.4.0 manual** — the release note for
-the 5.4.2 this project installs — and cross-checked against the binaries'
-own compiled fdf labels. Defaults below are the manual's, verbatim.)*
-
-**Read this before adding a field to any engine panel.** § 3.2 says a panel's
-fields are its engine's alone; this says what the fields *are*, and the four
-tables are in the order a calculation needs them.
-
-#### 3.3.1 What the PERSON must supply — no default can exist
-
-| what | why it cannot be defaulted | where today |
+| | vibration | transport |
 |---|---|---|
-| the junction geometry | it is the science | cited directory (§ 3.1) |
-| **region labels** `L-electrode` / `R-electrode` / the bridge | which atoms are lead and which are device is a physical claim about the structure | the Molbuilder tab; § 4 |
-| the electrode's own bulk cell and relaxed geometry | a lead is a *separate periodic calculation*; its `.TSHS` is an input to the device | the electrode wizard |
-| a pseudopotential per species | external data | gathered at prep, three refusals |
-| the bias list | the experiment being modelled | card 4 |
-| **the transverse k-grid for T(E)** | see 3.3.4 — it is NOT the SCF's, and no default is right | **MISSING** |
-| electrode thickness / layer count | convergence property of the lead | the wizard; the sweep is **S13**, not built |
+| catalogue rows of its own | 15, all `PySCFConfig` fields | **0 today** |
+| base it inherits | the 41 pyscf items | **49 siesta items** |
+| of that base, what it must EXCLUDE | nothing | **9** — the relaxation driver (`md_*`, `relax_*`, `write_md_*`) |
+| deck shapes | 1 | **4** |
+| binaries | 1 | **2** (`siesta`, then `tbtrans` on stage 5) |
 
-Two of these are *derived* rather than asked, correctly: the **semi-infinite
-direction** comes from the geometry (the z-sorted electrode order), and
-`μ = ±V/2` comes from the electrode *name*. § 3.1 records why — and that a
-junction labelled the other way round still runs, with a one-click rename
-offered.
+**The overlap is large, and that is the finding.** Every transport stage *is* a
+SIESTA run — the seed is a plain SCF, each electrode is an SCF, the device is an
+SCF with open boundaries — so all four need `DM.Tolerance`, `MaxSCFIterations`,
+`MeshCutoff`, `PAO.BasisSize`, `XC.*`. Transport is **the siesta base minus the
+relaxation driver plus the NEGF/TBtrans surface**: structurally the same
+relationship vibration has to optimization, with a subtraction as well as an
+addition.
 
-#### 3.3.2 What the CITATION supplies — sealed at both doors
+> **A measurement that looked the other way, and why it was wrong.** Comparing
+> `TransportConfig`'s 32 fields against the catalogue shows 21 of 22 *settable*
+> fields disjoint, which reads as *"transport shares almost nothing"*. That
+> measures the wrong object: `TransportConfig` is the artefact this section
+> concludes should not exist, and its "settable" surface is small precisely
+> because the electronic half arrives from the citation instead of being typed.
+> **Transport's DECK is mostly shared; only its FORM is mostly new.**
 
-`basis_size`, `xc_functional`, `xc_authors`, `siesta_mesh_cutoff_ry`,
-`energy_shift_ry`, `electronic_temperature_k`, `k_mesh_transverse`.
+**Decision: rows in the one catalogue, tagged `calculations = ["transport"]`.**
+No second catalogue (§ 6.3 forbids it) and no second authored file (the
+measurement gives no cause). The per-calculation `<label>.template.toml` every
+calculation already gets is where transport's narrowed set lands.
 
-**This is the most important scientific rule in the workflow** (§ 5): the
-electrode and device runs must share the electronic contract or the lead
-self-energy cannot attach seamlessly. They arrive from the cited attempt's own
-`.fdf` and are refused as overrides. *(A form-B citation — a labelled
-`.xyz` + `.molstruct.json` pair with no deck — opens them, because there is
-no deck to be truth.)*
+---
 
-> **They WERE mis-sectioned** (fixed 2026-09-15). Five of them declared `section: "NEGF"`
-> (`basis_size`, `energy_shift_ry`, `xc_functional`, `xc_authors`,
-> `siesta_mesh_cutoff_ry`). They are the *electronic contract*, not NEGF
-> parameters — invisible today because they are hidden, but a form-B citation
-> rendered them under a heading that misdescribed them. They now have a
-> section of their own, *Electronic contract*.
+### 3.3 The template — its shape, and the reasoning for that shape
 
-#### 3.3.3 TranSIESTA — the NEGF SCF (device stage)
+A template item answers *what is this parameter*. Transport needs two further
+questions answered that no existing kind has had to ask, and the shape follows
+from keeping each on the axis that already owns it.
 
-The manual: a `%block TS.Elec.<name>` **must** carry `HS`,
-`semi-inf-dir`, `electrode-pos` and `chem-pot`; the rest is optional.
+#### 3.3.1 The first axis: WHO ANSWERS the item
 
-| keyword | manual default | molbuilder |
+Every other kind has essentially one answerer — the person, with the scheduler
+answering the handful of allocation rows. Transport has **five**, and sorting
+the parameters this way is what makes the rest of the design fall out.
+
+| answerer | what | how the template says it |
 |---|---|---|
-| `SolutionMethod transiesta` | — | ✅ emitted (**not** `TS.SolutionMethod`, which 5.4.2 rejects) |
-| `%block TS.Elecs` · `TS.Elec.<name>` | — | ✅ with `HS` · `chem-pot` · `used-atoms` · `bloch` · `semi-inf-direction` |
-| `electrode-pos` \| `elec-pos` | *(required, no default)* | ⚠️ **omitted unless buffer atoms are declared** — see 3.3.6 |
-| `%block TS.ChemPots` · `TS.ChemPot.<name>` | — | ✅ |
-| `TS.Voltage` | `0 eV` | ✅ from the bias |
-| `TS.Atoms.Buffer` | *(none)* | ✅ when declared |
-| `TS.HS.Save` | **`true`** | ✅ set explicitly in the electrode deck (belt-and-braces; `-electrode` on the command line is the manual's one-flag equivalent) |
-| `TS.Elecs.Bulk` | `true` | ✅ **since 2026-09-15**, and a knob (*Leads*) |
-| `TS.Elecs.Eta` | `1 meV` | ❌ — the TBtrans-side twin is exposed; this one is not |
-| `TS.Contours.Eq.Pole` | `1.5 eV` | ✅ **since 2026-09-15** (*NEGF density contour*) — what the three dead fields were reaching for |
-| `TS.Contours.nEq.Eta` | `min[η_e]/10` | ✅ — emitted only when set, because the default is a FORMULA |
-| `TS.Contours.nEq.Fermi.Cutoff` | `5 k_B T` | ✅ — emitted only when set (formula default) |
-| `TS.ElectronicTemperature` | `⟨ElectronicTemperature⟩` | ✅ via the contract |
-| `TS.Forces` | `true` | ❌ — relevant only for relaxation under bias |
-| `TS.Hartree.Fix` | `[-+][ABC]` | ❌ — **deliberately not a knob**: the manual calls the boundary *"an intricate and important"* matter, and the direction is DERIVABLE from the transport axis, like `semi-inf-direction`. It should be derived, never typed |
+| **the person** | the transmission window and grid, the TBtrans outputs, broadening, the NEGF contour, the leads | an ordinary item with a `value` |
+| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | a **declared, valueless** item (§ 6.4) carrying a source marker; `prep` fills it from the cited deck |
+| **the description** | job label, the bias list | the label is an ordinary item; the bias is `task.json`'s own `bias` block, because it is the sweep axis (§ 4.3) |
+| **the machine** | memory ceiling, thread count, ranks | `allocation` items — valueless on floor 2, filled at `prep` (G1) |
+| **the geometry** | which atoms are electrode / bridge / buffer, which are frozen | **not an item at all** — § 7's structure exclusion; it travels in the `.molstruct.json` sidecar and the deck's ATOM-METADATA block |
 
-#### 3.3.4 TBtrans — the transmission (transmission stage)
+Two of those rows are corrections to what ships today:
 
-| keyword | manual default | molbuilder |
+* **The machine row.** `max_memory_mb` and `num_threads` are `TransportConfig`
+  fields in a form section today, which G1 and § 7 forbid on floor 2 — and they
+  reach the deck only as comment lines, so they are controls that move nothing.
+  As `allocation` items they become what they are.
+* **The citation row** is the one that needs a name, and § 3.3.3 gives it.
+
+#### 3.3.2 The second axis: WHICH STAGE'S DECK carries the item
+
+This is **not** a new key on the item. `DeckSpec.layout` already exists for
+exactly this and is declared as *"deck layout is engine knowledge and stays with
+the engine — but as a table rather than as control flow"*, with `Section.items`
+naming which items go in which part of the deck.
+
+So transport supplies **four layout tables**, selected by the `stage_token` that
+`spec_for` already receives:
+
+| stage | deck shape | items in its layout |
 |---|---|---|
-| `TBT.Contours` + `%block TBT.Contour.<name>` | `from -2. eV to 2. eV`, `delta 0.01 eV`, `mid-rule` | ✅ **since 2026-09-15** — `part line`, `from…to`, `points`, `method` |
-| `TBT.HS` | `⟨SystemLabel⟩.TSHS` | ✅ pointed at the 5.x `.TS.HSX` |
-| **`TBT.k`** | **inherits `kgrid_Monkhorst_Pack`** | ✅ **since 2026-09-15** (*Transmission k-sampling*); `0 0 0` still means inherit — see below |
-| `TBT.Elecs.Eta` | `1 meV` | ✅ (*Broadening*) |
-| `TBT.Contours.Eta` | `min(η_e)/10` | ✅ — emitted only when set (formula default) |
-| `TBT.ChemPot.<>.ElectronicTemperature` | `⟨TS.ElectronicTemperature⟩` | ❌ — per-chempot, so it belongs with the bias scan rather than the override lane |
-| `TBT.DOS.Gf` · `TBT.DOS.A` · `TBT.DOS.Elecs` | all `false` | ✅ (*Outputs*) — **W10 now has data to read, when asked for** |
-| `TBT.T.Eig` | `0` | ✅ (*Outputs*) |
-| `TBT.T.All` · `TBT.T.Bulk` | `false` | ✅ (*Outputs*). `TBT.T.Out` ❌ — it needs a multi-terminal case to mean anything |
-| `TBT.Spin` | all spins | ✅ (*Spin channel*) — the SELECTOR; a spin-polarised device run is still not wired end to end.  Its own section since 2026-09-15: it was filed under *Transmission k-sampling*, which it is not, and being `profile` where the k-grid is `stage` split that legend across two cards |
+| `seed` | an ordinary SCF | the electronic contract; no TS/TBT rows |
+| `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` + semi-infinite direction |
+| `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; transport axis forced to `kz = 1` |
+| `transmission` | **the same text as `device`** | plus the `TBT.*` rows; the binary changes, not the deck (`Resources.program = tbtrans`, § 4.2) |
 
-**Why `TBT.k` is the one that matters.** It *inherits the SCF's* grid. A
-transverse grid converged for a total energy is routinely far too coarse for
-`T(E)`: transmission is an integral over the transverse Brillouin zone and its
-features sharpen with k-density, so the standard convergence study is
-*T(E_F) against transverse k with everything else fixed*. molbuilder cannot
-express it today, which means that study cannot be run from this tab at all.
+An item absent from a stage's layout is simply not written into that stage's
+deck. No control flow, no per-item stage key, and the whole mapping is readable
+as a table. Verified: nothing downstream of `spec_for` is stage-aware — the
+stage token only names the file — so four shapes need no framework change.
 
-**And the outputs default to `false`.** Today a run produces transmission and
-nothing else — so **W10**'s transmission inspector has no DOS or eigenchannel
-data to read even in principle, and the missing flags are why.
+#### 3.3.3 The citation is a source, the way the scheduler is a source
 
-#### 3.3.5 Why the dead keywords were invisible for so long
+§ 6.4 already carries the *state* transport's electronic contract needs:
 
-The four `TS.TBT.*` scalars retired on 2026-09-15 could not be read by this
-tbtrans (§ 5o). They nevertheless produced the **right answer by default**:
+| state | means | who acts |
+|---|---|---|
+| no `value` | declared, unresolved | a surface asks, or `prep` fills |
+| `value` set | chosen | honoured verbatim |
+| absent from the file | not a parameter of this calculation | the engine's own default |
 
-| | window | spacing | points |
-|---|---|---|---|
-| molbuilder's defaults | −2 → +2 eV | 0.01 eV | 401 |
-| **tbtrans's own default contour** | −2 → +2 eV | 0.01 eV | 401 |
+That three-state encoding fixes a defect the current design cannot express. A
+cited deck that omits `MeshCutoff` today silently yields the dataclass default
+of 300 Ry, with **nothing recording that it was a default rather than the
+citation's word** — every fill is a `if getattr(fdf, X, None)` guard over a
+Python default. Under § 6.4 the unfilled state is a state.
 
-**The same grid, to the point.** So a run that touched nothing got exactly
-what the form promised, and the defect bit only somebody who *changed* a
-value — which is why a live walk passed, why nothing ever looked wrong, and
-why three tests could pin the dead keywords without anyone noticing. Latent,
-not active; and the reason it stayed latent is coincidence, not design.
+What § 6.4 lacks is the *source marker*. `allocation` is the existing precedent
+— *a source outside floor 2 answers this item, and writing a value here is
+refused* — and the citation is structurally the same kind of source. **So the
+one framework extension this design asks for is a sibling of `allocation` on the
+same axis.**
 
-It also settles § 5o's open question: the manual states the contour's energy
-reference is **the equilibrium Fermi level by default**, which is what
-`transport/record.py` observed live and mis-attributed to a keyword. The
-retired `relative_to_ef` switch was **never needed**, not merely mis-spelled.
+It earns itself rather than being convenient: it replaces two Python frozensets
+(`SEALED_ALWAYS`, `CONTRACT_FIELDS`) and a predicate currently spelled twice in
+two files with disagreeing formulations, it puts *"who answers this"* on the
+axis § 6.4 already owns, and any later kind whose values arrive from a cited
+result inherits it. Both refusal doors then read one declaration.
 
-#### 3.3.6 The one conformance defect found by this pass
+#### 3.3.4 What a transport template contains, end to end
 
-**`elec-pos` is omitted unless buffer atoms are declared.** The manual lists
-it among the four lines a `TS.Elec.<name>` block must carry; the emitter
-writes it inside `if buffer_idx:`, so an ordinary junction — no buffer atoms —
-gets two electrode blocks without it. Measured 2026-09-15 by rendering both
-cases.
+```
+  the one catalogue                        <label>.template.toml
+  ─────────────────                        ─────────────────────
+  49 siesta items                          the 40 that survive the filter,
+   − 9 relaxation-driver rows                values from the form or, for the
+     (calculations = ["optimization"])       contract rows, VALUELESS
+   + ~20 transport rows                    + transport's own rows, with values
+     (calculations = ["transport"])        + the allocation rows, valueless
+```
 
-It has probably been harmless: molbuilder sorts the junction so the electrodes
-are the first and last atoms, which is where an omitted position would
-default to anyway. But that is **undocumented reliance on a default the manual
-does not state**, it breaks the moment a junction is not sorted that way or a
-third electrode appears, and the emitter already knows the indices. The fix is
-to emit it unconditionally.
+The narrowing is the framework's own: `template_with_values(cfg,
+engine="siesta", calculation="transport")` runs `select(parsed,
+engine="siesta")` and then keeps an item when `not it.calculations or
+"transport" in it.calculations`. Tagging the 9 relaxation rows is what makes the
+subtraction happen; every other shared item comes along because it genuinely
+applies.
 
-*(The `begin` spelling molbuilder uses is fine: the binary accepts
-`elec-pos` / `start` / `begin` / `end`, which is more permissive than the
-manual documents.)*
+---
 
-### 3.4 The workflow, end to end — and whether the UI follows it
+### 3.4 How it is implemented — the chain, named
 
-*(Browser walk 2026-09-15, on the live server with a real cited junction:
-Au-BDT-Au, CONCLUDED, 444 atoms. § 3.3 says what the parameters ARE; this
-says what ORDER they belong in, and where the surfaces disagree.)*
+One direction, and every step is a function that already exists except where
+marked **[new]**.
 
-#### 3.4.1 The scientific sequence, and who owns each step
+```
+  catalogue.template.toml            the master — transport's rows live here
+        │  select(engine="siesta") + calculations filter
+        ▼
+  template_with_values(...)          → <label>.template.toml        floor 2
+        │                              task.json beside it (slots, bias, stages)
+        ▼
+  jobset prep run <stage>            on the machine that will run it
+        │
+        ├─ compose_junction(...)     THE ONE NEW INPUT MODEL: copy the citation,
+        │                            sort, gate, derive both electrode cells
+        │
+        ├─ resolve(template_text, task, SiestaConfig, allocation=...)
+        │       config_from_template → the contract rows filled from the
+        │       composed citation [new arm], everything else from the template
+        │       → ParameterSet, with provenance
+        │
+        ├─ spec_for(struct, cfg, stage_token=…, calculation="transport")  [new arm]
+        │       → DeckSpec(layout=<one of the four tables>)
+        │
+        └─ prepare_deck(spec, struct, cfg, path)
+                validate → render → write → READ BACK AND CHECK
+                → the deck, its .validation.txt, the USER-CUSTOM zone
 
-| # | step | owned by | state |
-|---|---|---|---|
-| 0 | build the junction and **label the regions** | Molbuilder tab | ✅ labels are assigned where the junction is built, never here |
-| 1 | **relax it** to a CONCLUDED attempt | Structure-optimization tab | ✅ |
-| 2 | **cite** that directory — files, not names, decide what qualifies | Transport card 1 | ✅ and the viewer follows the citation |
-| 3 | **check** the chemistry and the labels | Transport card 2 | ✅ auto-fires on citation; informational only |
-| 4 | state the **bias** | Transport card 4 | ⚠️ in the wrong card — 3.4.3 |
-| 5 | state the **transport parameters** | Transport card 3 | ✅ since 2026-09-15 (§ 3.3) |
-| 6 | **describe** → `task.json` | Transport card 4 | ✅ |
-| 7 | pick the **machine**, prep and launch each stage | **Task setup** tab | ✅ verified live — 3.4.4 |
-| 8 | read `<label>.transport.json` | Results tab | ⚠️ **W10** — the reader does not exist |
+  jobset launch run <stage>          Resources.program = tbtrans on stage 5
+```
 
-**The electrode is DERIVED, not a step** — a person never builds a lead by
-hand, and the four things that must agree for a lead self-energy to be
-trustworthy are enforced in code rather than left as advice.
+The only genuinely transport-specific code in that chain is the **input model** —
+`compose_junction` and the citation fill — which is exactly what the design of
+record said would be new, and nothing else.
 
-**§ 0.2–0.4 is where that is explained**, including why "electrode `kz` dense"
-and "transverse k must match" are not in conflict: they are *different axes*.
-This section does not restate it — an earlier version did, in three bullets
-that read as self-contradictory and prompted the question that produced § 0.
+### 3.5 What "done" looks like — the checkable outcome
 
-#### 3.4.2 What is still scientifically incomplete
+This section exists so the work has an end that can be tested rather than
+declared. Each line is falsifiable:
 
-| gap | consequence |
+1. `molbuilder/config/transport.py` **does not exist**; the shape is
+   `SiestaConfig` plus a forwarding view for the citation-supplied values,
+   the way `VibrationConfigView` supplies the vibration kind's lift boundary.
+2. `dataclass_to_form_schema` **has no callers** and is deleted; the transport
+   form is `GET /api/build/schema/siesta?calculation=transport`.
+3. Every transport parameter is a catalogue row, so
+   `tests/test_catalogue_agreement.py` covers them like every other row.
+4. `varies` on a transport description is **empty** — the five stages share one
+   config by ruling Q5, so nothing differs across them, and the knobs are
+   template values rather than overrides. The § 6.6 preflight then passes
+   without a transport branch.
+5. `_prep_transport` is gone as a parallel arm: the transport path renders
+   through `prepare_deck`, so **every stage deck has a `.validation.txt` and a
+   USER-CUSTOM zone**, and a deck that fails its own read-back check refuses.
+6. **No keyword's value syntax is written by hand.** A `%block` is emitted by
+   the block emitter; a list is emitted by the list emitter. The failure that
+   put `TBT.k` in a form fdf cannot parse becomes structurally unavailable.
+7. Every parameter with a physical constraint has a guard in the same place as
+   its declaration — in particular the transport axis of any k-grid, which is
+   an error for the device and is unchecked for `TBT.k` today.
+8. `electrode_kz` is reachable from a description. It is invariant I9 and it is
+   currently a Python function default that nothing passes.
+
+### 3.6 What this replaces
+
+Rectification, not accretion — the following stop existing:
+
+| deleted | why |
 |---|---|
-| **no electrode-thickness convergence** (`plan.md` **S13**) | how many lead layers is a convergence property, and nothing sweeps it — a person picks a number and cannot see whether `T(E_F)` has stopped moving |
-| **no transverse-k convergence run** | the knob exists now (§ 3.3.4) but sweeping it is manual: describe, prep, launch, read, repeat |
-| **no reader for the deliverable** (**W10**) | `<label>.transport.json` is written and nothing displays `T(E)` or the I–V curve |
-| **spin is a selector, not a path** | `TBT.Spin` picks a channel; a spin-polarised *device SCF* producing two is not wired |
-| **`TS.Elecs.Eta` unexposed** | its TBtrans twin is a knob; the TranSIESTA-side one is not |
+| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired |
+| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them |
+| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose |
+| the private `_emit_header` and the hand-written keyword lines | the shared reserved-block writers and one emitter per value shape |
+| `dataclass_to_form_schema` | its last caller goes with the form route |
+| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row |
 
-#### 3.4.3 Where the UI order disagrees with the physics
-
-**The bias was in the wrong card.** ✅ **Fixed 2026-09-15.** It sat in card 4
-beside the *Describe* button, which made it look like a property of saving. It
-is the experiment — and it *governs* other fields: at zero bias the entire
-non-equilibrium half of the density contour (`TS.Contours.nEq.*`) is inert, and
-more than one value turns the run into a chain of attempt ladders. It is now at
-the TOP of the physics card, with what it governs under it.
-
-**Three measured UI defects, all in card 1's fused viewer:**
-
-| what | measured |
-|---|---|
-| **the atom list traps the page scroll** | a wheel over the card scrolled rows 38→53 of 444 and left the page where it was. Reaching card 3 needs a person to find a margin first — hit three times in one walk, including with `Page_Up` |
-| **444 checkboxes precede every transport control** | the page's interactive order is one checkbox per atom before a single parameter, so keyboard reach to the form is 444 tab stops |
-| **card 2's rationale is a wall of prose** | ✅ **fixed 2026-09-15** — not by cutting it but by giving it a measure: `--measure-prose` caps `.auto-detect-rationale` (and `.hint`) at 74 characters. It was ~150 characters a line, twice the readable maximum |
-
-**None is a transport bug, and the first two are not even bugs.** Diagnosed
-2026-09-15: `.molviewer-selection-list-wrap` carries `overflow-y: auto`
-(`molview.css`) and the list renders **one row per atom, unvirtualised**. With
-444 atoms that region holds roughly ten screens of scroll, so a wheel over it
-is *correctly* consumed by it and only chains to the page once it bottoms
-out — which it effectively never does. The 444 tab stops are the same cause:
-444 real checkboxes in the DOM.
-
-So the fix is **MolView's**, not transport's, and it is one of:
-
-| option | reach |
-|---|---|
-| virtualise the atom list (render a window, not 444 rows) | fixes both symptoms at the source — and touches **six** templates that mount the panel: Molbuilder, Modify, Spectrum, Transport, Results, molview-demo |
-| cap the list's height so the trap is visibly a small pane | cosmetic; the trap shrinks, it does not go |
-| **transport only:** do not mount the atom list in card 1 at all | card 1 exists to CHECK labels — it says so, and says labels are assigned on the Molbuilder tab. A 444-row editor for something you cannot edit here is the wrong control. Scoped to this tab, no shared module touched |
-
-The third is the one this document would recommend, and it is a UI decision
-rather than a defect fix, so it waits for a ruling.
-
-#### 3.4.4 The Task setup seam — it works, and it says two wrong things
-
-**Verified live** against `projects/Au-BDT-Au/transport/AuBDTAu-CT`:
-`POST /api/task-setup/prep-plan` answers for a transport description with the
-five stages in order, `hierarchical` shape, `01_seed` … `05_transmission`
-directories, each stage's deck and validation file named by the producer, and
-the bundle (`job-set.json`, `STAGE-PLAN.md`, `environment.json`,
-`jobset-decisions.log`). **The framework does carry transport**, and the
-machine/queue card is the same one every other kind uses.
-
-Two things the page says that are wrong for transport:
-
-1. **The empty state names only one source.** *"Send parameters here from the
-   Structure-optimization tab, or run `molbuilder jobset init`"*
-   (`task-setup/viewer.js`). The **Transport** tab writes `task.json` too, by
-   its own door — so somebody who has just described a transport calculation
-   and landed on an empty folder is told about a route they did not take and
-   not about the one they did.
-2. ~~**"What gets written" promises a template that never comes.**~~
-   **WITHDRAWN — this was my error, not the page's** *(2026-09-15, found by
-   reading `task-setup/viewer.js` after claiming it)*. The template and
-   structure rows ARE hidden for a transport description:
-   `li.hidden = (docKind === "transport")`, with a comment giving § 4.1's
-   reason. What I actually saw was the **empty** state — no `task.json` at
-   all — where the panel shows what *would* be written if parameters were
-   sent from the Optimization tab, which is correct for an empty folder. A
-   claim about a kind, made without selecting a folder of that kind.
-
-#### 3.4.5 How the tab SAYS all of this — the presentation rules
-
-*Added 2026-09-15, from a user report: "all text does not fit the boxes, and
-alignment and layout is visually ugly", and "clean up the text in the boxes …
-refer to the correct document with context explaining how each step".*
-
-Every item below was a **measured** defect on this tab, and every fix is owned
-by the shared module that was wrong — so the other form tabs got it too.
-
-| rule | what it replaced |
-|---|---|
-| **Prose obeys a measure.** `--measure-prose: 74ch` caps `.hint`, `.schema-section-desc`, `.workflow-group-subtitle` and the chemistry rationale. In `ch`, so it tracks the font and the reader's zoom | no cap at all: a card's help paragraph ran the full content column, ~150 characters a line |
-| **The engine-key badge is a CAPTION, not a control.** `align-items: flex-start` on the label; the badge shrink-wraps | the label stretched it to the column, so a 341px bordered box sat under a 349px input and read as a second field — all 21 of them. And `word-break: break-word` hyphenated keywords early: `TS.Elecs.Bul` / `k` |
-| **A checkbox row is a two-column GRID**: the box in column one, the caption and everything after it stacked in column two | one flex row shared by box + caption + badge + help, so "Use the electrode's own bulk Hamiltonian" took three lines beside a broken badge |
-| **The label's caption is an ELEMENT** (`.schema-field-text`), not a bare text node | a text node is an anonymous flex item no selector can place — the single cause of the two rows above *and* of the `is-advanced` bullet being drawn on a line of its own, seven times down this form |
-| **A section's description renders in the card that holds the WHOLE section** | it rendered on the renderer's *bare* path only. Every field here is `workflow_group`-tagged, so every section is in a card, so all twelve paragraphs were displayed nowhere — while a data-presence test passed. Guarded now by `tests/test_form_schema_section_description_js.py` |
-| **A section name belongs to ONE workflow group.** The two axes are orthogonal (`web/form-schema.md` § 1.3), so a section that straddles is drawn once per card | *Transmission k-sampling* and *Runtime* each appeared twice, over unrelated fields. Split into *Spin channel* and *Logging* |
-| **A group's subtitle holds for every engine that renders it** | *Run profile* named SIESTA's own fields — "charge, spin, metallic vs organic, smearing, and the functional" — above a card holding the spin channel and the log verbosity |
-| **Content links have a colour** (`main a`, `.sidebar-rail a` in `page-shell.css`) | nothing styled a bare `<a>`, so every inline link in every card used Chromium's default `rgb(0, 0, 238)` on a `#1d2128` card: a contrast ratio of **1.72:1** against WCAG's floor of 4.5 |
-| **A value carries evidence, not its own explanation** | the junction line read `CONCLUDED (0_NORMAL_EXIT (SIESTA's own clean-exit marker))` — a parenthetical inside a parenthetical, because `compose.py` put the gloss in the value |
-
-**And what each card's text now says**, in this order: *what the step does*,
-*how it works*, then a **Reference** line naming the section of this document
-that governs it. Card 1 → § 3.1 + § 4, card 3 → § 3.3 + § 0.2 + § 0.4,
-card 4 → § 1 + § 3.4. The document viewer has no heading anchors, so the link
-opens the document and the prose names the section — a `#fragment` would be a
-link that silently does nothing.
+---
 
 ## 4. Region labels drive everything
 
