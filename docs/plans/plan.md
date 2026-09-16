@@ -31,6 +31,18 @@ and R3 reads:
 That roadmap and the two audit reports are archived under
 `archive/2026-09-01-*`. They were 2044 lines between them.
 
+**R3a — a plan section is kept current while its work runs** *(user,
+2026-09-16)*:
+
+> **A programme with an implementation section updates that section when each
+> step lands, and records a problem found mid-step before working around it.**
+
+Not afterwards, and not in a commit message alone. A step that changed shape, a
+step that turned out to depend on something unlisted, a defect found while doing
+it: each goes in, with what was measured. **A plan written once describes an
+intention; a plan kept current describes the work.** The first section under
+this rule is § 5p (transport).
+
 **And R3 now means what it says: there is ONE table** *(2026-09-10)*. Until
 that day the open items sat in six tables across §§ 2, 3, 4, 4a, 5, 5b, 5f, 5l
 and 5m, which is how three different rows came to be numbered `P3`, how `W8`
@@ -104,6 +116,10 @@ the same day, with what it turned out to be.
 | **W25** | engines / science | **THE TRANSPORT TAB'S PARAMETER SURFACE IS INERT — measured against the installed binary, not a manual.** `molbuilder-siesta` ships **SIESTA 5.4.2**, whose fdf labels are compiled into `siesta`/`tbtrans` as literal strings, so this is countable. **Of the 12 fields the tab renders, 10 cannot affect the run:** the four transmission scalars write `TS.TBT.Emin` / `Emax` / `NumE` / `Erange.RelToEF` and `tbtrans` contains **zero** occurrences of `Emin`, `Emax`, `NumE`, `Erange` or `RelToEF` in any spelling; the three contour fields name `TS.ComplexContour.NumCircle` / `NumLine` / `Emin`, all **zero** in `siesta` (only the unused legacy `ComplexContour.NPoles` survives); `log_level` claims `WriteVerbosity`, **zero** in `siesta`. Four of those have no consumer in the tree at all, and **`contour_n_circle` reaches only the Methods paragraph**, which reports a contour the deck never carried — the one finding here with a publication consequence. fdf ignores a label nobody queries, so all of this is SILENT: the run completes and T(E) comes out on tbtrans's default grid. **What is sound:** the five-stage ladder is the standard recipe, the electrode→`.TSHS`→device→`TBT.HS` plumbing is correct and was measured live, every `%block TS.Elec.<name>` key is the right 5.x spelling, and the shared-electronic-contract invariant is the right physics. **Missing controls, each verified present in the binary:** `TBT.Contours` + `%block TBT.Contour.<name>`, `TBT.k` / `TBT.kgrid.MonkhorstPack` (T(E) needs a denser transverse grid than the SCF — the standard convergence study, inexpressible today), `TBT.Elecs.Eta`, `TBT.Contours.Eta`, `TBT.ElectronicTemperature`, `TS.Contours.nEq.Eta` / `Eq.Pole` / `nEq.Fermi.Cutoff`, the `TBT.DOS.*`/`TBT.T.*` outputs **W10** would read, `TS.Elecs.Bulk`, `bloch` (hardcoded `1 1 1`), `TBT.Spin` | § 5o · found 2026-09-15 | **contour fix landing; the rest sequenced in § 5o.5** |
 | **W26** | front end / engines | **The transport tab's ORDER, and the Task setup seam — browser walk 2026-09-15 on a real cited junction.** *(user: "i want the full framework of how to do transport calculation scientifically sound/complete, and UI design to be logical, in the right sequence … and works with the 'task setup' framework".)*  The assessment is `engines/transport.md` § 3.4, which also records what is SOUND: the electrode is derived from the citation's labels rather than built by hand, and the three rules that make a lead self-energy trustworthy are enforced — device `kz = 1` as an **error**, electrode `kz` dense as a warning, transverse k matched — plus the sealed electronic contract. **The Task setup seam works**: `prep-plan` answers for a transport description with the five stages, the hierarchical shape, each deck named by the producer, and the same machine/queue card every kind uses.  **What is wrong:** ① the **bias sits in the Describe card**, beside the save button, when it is the experiment — and it governs the whole non-equilibrium half of the density contour, which is inert at zero bias; it belongs at the top of the physics card. ② card 1's atom list **traps the page scroll** (a wheel scrolled rows 38→53 of 444 and left the page still; hit three ways including `Page_Up`) and puts **444 checkboxes ahead of every transport control** in the interactive order. **Diagnosed, and it is MolView's not transport's:** `.molviewer-selection-list-wrap` is `overflow-y: auto` and the list is UNVIRTUALISED, so 444 rows is ~10 screens the wheel is correctly consumed by. Three options in § 3.4.3 — the recommended one is transport-scoped (card 1 exists to CHECK labels, which are assigned on the Molbuilder tab, so a 444-row editor for something uneditable here is the wrong control); virtualising is the source fix and touches SIX templates. ③ Task setup's empty state names only the Structure-optimization tab as a source, when the Transport tab writes `task.json` by its own door. ④ ~~Task setup's "What gets written" promises `<label>.template.toml`~~ — **WITHDRAWN, my error**: `task-setup/viewer.js` already hides the template and structure rows when `calculation === "transport"`, with § 4.1's reason in a comment. I read the EMPTY state, where there is no description to read, and blamed the kind. A claim about a kind made without selecting a folder of that kind | § 3.4 · found 2026-09-15 | ① ③ **done 2026-09-15** · ② open · ④ withdrawn |
 | **W27** | engines / execution | **Transport is not on the seven-floor stack — put it there.** *(user: "fix your fucking plan by having first a correct top-down architecture"; "why the fuck is the emit not based on template based approach".)*  The architecture and the derivation are `engines/transport.md` §§ 3.2–3.7.  **THE ROOT, in the project's own vocabulary** (`execution/architecture.md` § 2): `molbuilder/transport/` appears in **none of the seven floors**, while that document's one mention of transport claims its stages "run INSIDE the job system (each an ordinary prep/launch rung)".  Four rules broken: floor 3 renders the text of every file from a `ParameterSet` through `prepare_deck` — transport's `render_script` concatenates literal f-strings; floor 2 holds what the person asked for — transport had no template, so `TransportConfig` became the definition; `prep` is the conductor and may never decide — `_prep_transport` is a second conductor that does; floor 2 must never name a machine — `max_memory_mb`/`num_threads` sit on it.  **WHY, from the history:** `transiesta.py::render_script` 2026-06-10; the pipeline landed 2026-08-19 (`refactor(prep): the seam carries the engine's FORM`) and migrated siesta + pyscf in one commit, leaving transport behind; the composite was then built outward from the unmigrated emitter.  `template.md` § 9.2 has recorded the missing arm all along, filed as one lost feature (USER-CUSTOM) rather than as *transport cannot render from a template*.  **MEASURED:** the seed deck `prep` renders carries **13 keywords / 4 blocks** against a template offering **45 deck-reaching items**.  **EVERY KNOWN DEFECT IS DOWNSTREAM:** the seed dying at 1000 SCF iterations (`MaxSCFIterations` cannot travel from the citation — no transport emitter writes it and no transport field held it); the device deck aborting on "the continued fraction method requires at least 20 poles" (the pole *energy* is written, never `TS.Contours.Eq.Pole.N`); `TBT.k` as a bare scalar the parser rejects; `tbt_k_grid`'s unguarded transport axis; the electronic contract as two frozensets and a twice-spelled predicate.  **ORDER OF WORK IS FLOOR ORDER**, § 3.6: (1) render through `spec_for`/`DeckSpec`/`prepare_deck`, (2) no value syntax by hand, (3) validation report + read-back check, (4) `_prep_transport` stops deciding, then the floor-2 items.  My first draft of this plan put the pipeline at step 6 of 7 because it was written from the parameters down; read from the floors down it is step 1.  **DONE:** 4a the `citation` marker (`template.md` § 6.4's sibling answerer, per-kind); 4b/4c transport's parameters as 17 catalogue rows + 7 shared rows tagged `citation = ["transport"]` + 9 relaxation rows tagged `optimization`, with matching `SiestaConfig` fields — which also made `electrode_kz` (invariant I9) reachable from a description for the first time. | `engines/transport.md` §§ 3.2–3.7 · 2026-09-15 | 4a/4b/4c **done** · floor-3 migration **open** |
+| **TR1–TR3** | engines / transport | **Transport's description gains a template, and the catalogue gains what the design needs.** T1: `jobset init --calculation transport` writes `<label>.template.toml` with its Class A values defaulted from the cited relaxation — today a transport folder has **no template at all**, so the shared baseline has no home and the stage table has nothing to read. T2: the three keywords with no catalogue row — `TS.HS.Save`, the equilibrium pole **count**, `TS.Voltage`. T3: `kgrid` split, because its three components fall in three classes. **Reuses `build_description` / `template_with_values`, which already narrows the catalogue by `calculation`** | § 5p · `transport.md` § 2a | not started |
+| **TR4–TR6** | engines / transport | **Transport renders through the one path.** T4: `_prep_transport` keeps the compose and hands to `resolve`, so a transport run has a `ParameterSet` with provenance and `--pipeline-log` stops being a no-op. T5: the remaining four rungs onto `spec_for` — ⚠️ **blocked on a seam question**, what a composite kind hands its renderer, since `spec_for(struct, cfg, stage_token=)` does not carry the `ComposedJunction`. T6: `TransportConfig` retires | § 5p · § 2a | T5 blocked |
+| **TR7–TR8** | front end / transport | **The tab reads the catalogue, and an override reaches the rung that owns it.** T7: the bespoke dataclass form is deleted for the kind-aware catalogue route plus the existing **stage table** — rows are stages, columns are `varies`, an empty cell inherits the template. T8 fixes the **live defect**: every override currently lands on the `device` bag, so a parameter the transmission owns never reaches the transmission deck. **T8 needs the `stages = [...]` declaration** (§ 5p.3), not yet approved | § 5p · § 2a.7 | not started |
+| **TR9–TR10** | execution / front end | **Grouping and the deliverable.** T9: the preparatory block (seed + both leads) as one submission — ⚠️ **must first reconcile with `task-setup.md` § 1's "no run-all-stages button"**; § 5p.5 has the argument, and if it does not hold T9 is withdrawn rather than the rule bent. T10: Results reads the transmission with its **treatment label** and provenance chain, so a linear-response I–V is never mistaken for a finite-bias one | § 5p · § 2a.12 | not started |
 
 ---
 
@@ -1827,6 +1843,130 @@ TranSIESTA's panel, and none of them belongs in a shared dataclass.
   non-default window.** No artifact survives in `projects/`. Given the
   default coincidence above, a default-valued walk would have looked correct
   either way.
+
+## 5p. Transport — the implementation, step by step *(2026-09-16)*
+
+**The design is [`engines/transport.md` § 2a](?doc=engines/transport.md)**, agreed
+2026-09-16. This section is the distance from here to there, in dependency
+order. It does not restate the design; read § 2a first.
+
+### 5p.0 THE RULE — this section is updated as the work happens
+
+> **Every step updates this section when it lands, and every problem found
+> while doing a step is recorded here before it is worked around.**
+>
+> Not afterwards, not in a commit message alone. A step that changed shape, a
+> step that turned out to depend on something not listed, a defect discovered
+> mid-step: each goes in, with what was measured. A plan that is only written
+> once describes an intention; a plan kept current describes the work.
+
+*(User instruction, 2026-09-16: "make it a rule that update of this plan is
+mandatory after each step of implementation and/or modification when new
+problems discovered in that process.")*
+
+This is R3 applied to one programme — the open rows still live in § 2, and this
+section keeps the *why* and the order (§ 0).
+
+### 5p.1 The wheels that already exist — reuse, do not rebuild
+
+**Measured 2026-09-16 by reading the framework, not from memory.** Nearly
+everything § 2a describes is already built for the optimization kind. The gap is
+not that the machinery is missing; it is that **transport does not use it.**
+
+| what § 2a needs | what already exists | where |
+|---|---|---|
+| a shared baseline of values (Class A) | **the template** — `<label>.template.toml`, written from the catalogue narrowed to engine **and calculation**, carrying the config's values | `describe.build_description` → `template_with_values(cfg, engine=, calculation=)` |
+| per-stage values (Class C) | **`varies` + `Stage.overrides`**, resolved as template ⊕ this stage's overrides | `resolve.effective_config`; `engines/stages.md` § 6.2 |
+| a per-stage editing surface | **the stage table** — rows are stages, columns are `varies`, cells are `overrides`, and *an empty cell means "the template's value" and shows it greyed* | `web/task-setup.md` § 5, § 5.1 |
+| a kind-aware parameter list | **already kind-aware**: the columns endpoint skips an item whose `calculations` excludes this folder's kind | `GET /api/task-setup/columns?calculation=` |
+| the shared baseline read back | `GET /api/task-setup/template-values?dir=` — parses with `read_template`, the same reader `prep` uses | — |
+| machine facts per stage (Class E) | `allocation` items + `Stage.execution` | `task-setup.md` § 6 |
+| rendering from a description | `spec_for(struct, cfg, stage_token=, calculation=)` → `DeckSpec` → `prepare_deck` | `script_emit` |
+| keeping another kind's rows out of a deck | **the kind gate** in the section walk | `script_emit._render_sections` (2026-09-15) |
+| the attempt ladder | a launched attempt is never rewritten; re-prep opens the next | `materialize.resolve_attempt` |
+| results moving between stages | the DAG copy with three gates + `.gathered-from` | `prep.gather_transport_inputs` |
+| one submission walking an axis | the bias chain — `cd` per point, stop-or-continue by whether points depend on each other | `submit.submit_transport_chain` |
+
+**The precedent to follow is the vibration kind**, which is a second calculation
+on one engine's seam: one dispatch arm in `spec_for`, the kind's own deck module,
+and its rows tagged in the one catalogue.
+
+### 5p.2 The gap, measured
+
+| # | what transport does instead | consequence |
+|---|---|---|
+| **G1** | **writes no template at all** — a transport folder holds `task.json`, the composed junction and pseudos, and no `<label>.template.toml` | Class A has **no home**. The stage table has nothing to read; `template-values` would find nothing; there is no shared baseline for a cell to inherit |
+| **G2** | `config/transport.py` — a second vocabulary, with four parameters renamed from the catalogue's spelling | two names for one quantity; a projection is needed wherever they meet |
+| **G3** | the tab builds its form from the dataclass, sectioned by **topic** | a section called "Electrodes" holds the device's bias; nothing says which run a control changes |
+| **G4** | the hand-over puts **every** override on the `device` bag | a parameter the transmission owns never reaches the transmission deck — the live defect |
+| **G5** | `config_for` fills from the cited `.fdf`, not from a template | the values are inherited rather than single; the first ruling in § 2a.7 cannot be honoured |
+| **G6** | `_prep_transport` is a parallel arm that returns before the shared path | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op |
+| **G7** | four of five rungs still render from hand-written emitters | no read-back check, no `.validation.txt`, no check gate on those four |
+| **G8** | three keywords the design needs have **no catalogue row**: `TS.HS.Save`, the equilibrium pole **count**, and the bias point `TS.Voltage` | they cannot be declared, defaulted, or reached from a description |
+| **G9** | `kgrid` is one row holding three numbers whose components fall in **three** classes | no interface can explain it; § 2a.13 flags it |
+
+### 5p.3 The one design addition, and it needs a ruling
+
+Everything above is reuse. **Two declarations do not exist yet**, and both are
+small siblings of markers the catalogue already has (`allocation` — the
+scheduler answers this; `citation` — a cited run answers this):
+
+| proposed | means | serves |
+|---|---|---|
+| **`role`** | *the stage's role answers this; nobody chooses it* | Class D. A `role` item is never a form field and never a stage-table column |
+| **`stages = [...]`** | *which rungs may carry their own value for this* | Class C. It is `calculations` one level down, and it is what routes an override to the rung that owns it — the proper fix for **G4** |
+
+**Not yet approved.** Everything else in this section proceeds without them;
+the steps that need them say so.
+
+### 5p.4 The steps
+
+Ordered so each one is verifiable on its own and nothing depends on a later
+step. **Every step ends with a check that can fail**, not with a declaration.
+
+| # | step | reuses | done when |
+|---|---|---|---|
+| **TR1** | **Transport writes a template.** `jobset init --calculation transport` produces `<label>.template.toml` alongside `task.json`, its Class A values **defaulted from the cited relaxation** (§ 2a.7, ruling 1). The one adaptation needed: the description builder assumes a `StructureRef`, and a transport description has `slots` instead | `build_description` · `template_with_values(…, calculation="transport")` — already narrows the catalogue by kind | the folder holds a template; `read_template` opens it; its values equal the citation's; changing one and re-prepping changes every stage's deck |
+| **TR2** | **The three missing rows** (G8) — `TS.HS.Save`, the equilibrium pole count, `TS.Voltage` — added to the catalogue with their `SiestaConfig` fields | the one catalogue; `test_catalogue_agreement` | the rows exist and agree with the fields; a device deck can state a bias from its description |
+| **TR3** | **`kgrid` resolved for transport** (G9). The transverse grid and the transport axis stop being one row | § 2a.13's statement of the three classes | a description can set the transverse grid and the lead's axis separately, and the device's axis is not settable at all |
+| **TR4** | **`prep` resolves transport through the one path** (G6). `_prep_transport` keeps the compose — genuinely new input — and hands to `resolve`, so a transport run has a `ParameterSet` with provenance | `resolve` · `effective_config` | `--pipeline-log` produces a log for a transport prep; every value in a deck has a recorded source |
+| **TR5** | **The remaining four rungs onto `spec_for`** (G7). ⚠️ **Blocked on a seam question**: the electrode and device decks need the `ComposedJunction`, which `spec_for(struct, cfg, stage_token=)` does not carry. *What a composite kind hands its renderer* must be settled before this step, not worked around inside it | `transport/deck.py` (the seed arm, landed 2026-09-15) · `siesta/layout.py` sections | all five decks have a `.validation.txt`; all five pass the engine check gate; none is written by an f-string |
+| **TR6** | **`TransportConfig` retires** (G2, G5). The shape is `SiestaConfig`; the projection introduced for the seed goes with it | — | `config/transport.py` does not exist; nothing maps one vocabulary to another |
+| **TR7** | **The transport tab reads the catalogue** (G3). Its bespoke form schema is deleted; the parameter surface is the kind-aware catalogue route, and per-stage values are the **stage table** rather than a second invention | `GET /api/build/schema/siesta?calculation=transport` · the task-setup stage table | `dataclass_to_form_schema` has no callers; the tab shows one shared panel and a per-stage table |
+| **TR8** | **Overrides route to the rung that owns them** (G4 — the live defect). Needs `stages = [...]` from § 5p.3 | the declaration, once approved | setting the T(E) window reaches the transmission deck and nothing else |
+| **TR9** | **Grouping** — the preparatory block as one submission (§ 2a.7). ⚠️ **Reconcile first** with `task-setup.md` § 1 (below) | `submit_transport_chain`'s shape — one submission walking a list | one command prepares and launches seed + both leads; the device and transmission stay separate |
+| **TR10** | **Results reads the transmission** (§ 2a.12), with the treatment label and the provenance chain | `transport/record.py` | a curve carries how it was computed; a linear-response I–V says so |
+
+### 5p.5 A contract tension TR9 must resolve, not ignore
+
+[`web/task-setup.md`](?doc=web/task-setup.md) § 1 states, as contract:
+
+> *"There is no 'run all stages' button, and that is deliberate. A stage is a
+> long job, and a chain that continues by itself can spend a week refining a
+> geometry you would have rejected in a minute."*
+
+§ 2a.7's grouping ruling proposes seed + both leads as **one submission**. The
+two are reconcilable and the argument must be written down rather than assumed:
+
+* that rule is about a **ladder**, where each rung refines the last, and its
+  harm is *continuing past a result you would have rejected*. Transport's three
+  preparatory rungs are **independent** — none refines another, and there is no
+  intermediate geometry to reject;
+* it is one submission of three runs, **not** an auto-continuing chain. The
+  precedent already exists and was accepted: the bias chain is one submission
+  walking several runs;
+* the thing the rule actually guards — *nothing starts the expensive stage for
+  you* — is preserved exactly. The device still waits for a person.
+
+**If that argument does not hold, TR9 is withdrawn rather than the rule bent.**
+
+### 5p.6 Where each step's rows live
+
+Per § 0, the open rows belong in § 2. This section holds the order and the
+reasoning; § 2 holds what is outstanding.
+
+
+---
 
 ## 6. Closed by consolidation — archived
 
