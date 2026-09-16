@@ -506,9 +506,7 @@ def _emit_transiesta_block(struct: Structure,
         "TranSiesta",
         "# solution method' in SIESTA 5.4.2.  Empirically verified "
         "2026-06-18.)",
-        # the RUNG's answer (TRANSPORT_STAGE_PRESETS["device"] and
-        # ["transmission"] -- the same text serves both).
-        f"SolutionMethod         {cfg.solution_method}",
+        "SolutionMethod         transiesta",
         "",
         "# Start the NEGF SCF from a saved density when one is present:",
         "# the transport ladder's seed stage leaves <SystemLabel>.DM",

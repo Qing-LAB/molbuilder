@@ -1033,57 +1033,65 @@ Two rows of that table are the same keyword — `SolutionMethod` — carrying
 "one config filled from one template row", and it is why the migration's unit
 of resolution has to be the **stage**, not the task.
 
-#### 6.1a The ladder's own answers
+#### 6.1a Why there is no per-stage parameter here
 
-*Landed 2026-09-15.*  These values were hardcoded literals in the three
-emitters, which is the reason nothing else in the template could reach a
-transport deck (§ 3.2): an emitter that writes `SolutionMethod` itself is an
-emitter that decides, and a decided value has no parameter behind it.
+*Investigated and rejected 2026-09-15.  Recorded because it looks like an
+obvious gap and is not one — the shape of the table above invites exactly this
+mistake, and it was made.*
 
-They are now ordinary **stage overrides**, on the mechanism `engines/stages.md`
-§ 1.1 already defines and `SIESTA_STAGE_PRESETS` already uses for the
-relaxation ladder — *"a stage is a named set of the parameters a mission tunes,
-laid over the shared description of the system it does not"*.  No new template
-marker was needed, because `solution_method` is exactly `relax_type`'s
-situation: the template value is **the calculation's own answer** and the
-stage's override is **what this rung runs at when it differs** (`Stage`'s own
-docstring).
+The table above shows `SolutionMethod` carrying **two different values within
+one calculation** — `diagon` on the seed and the leads, `transiesta` on the
+device — so it reads like a parameter whose unit of resolution should be the
+**stage**: a transport twin of
+[`SIESTA_STAGE_PRESETS`](?doc=engines/stages.md), stated once per rung and
+sealed against the person.  That was built, and it was wrong.
 
-| | |
-|---|---|
-| `TRANSPORT_STAGE_PRESETS` | the science stated ONCE — what each rung runs at where it differs.  Two keys wide (`solution_method`, `ts_hs_save`), because a rung appears there only where the LADDER, not the person, has the answer |
-| `default_transport_stages(overrides)` | the one door both construction sites use (`jobset init`, the web hand-over): it builds the five rungs and merges the person's device-rung tuning, refusing a name the ladder answers |
-| `SEALED_BY_STAGE` | the seal: an override naming a field the rung itself answers is refused **by name**, because changing it does not tune the rung, it stops the rung being that rung |
-| `config_for(task, composed, stage=…)` | **per rung.** It merged all five bags into one config until 2026-09-15 — the shape that made a per-stage value impossible, since a name set by two rungs took whichever bag came last |
+**These values are not parameters.  They are the identity of three emitters.**
+`render_stage_deck`'s dispatch is *total and exclusive* over the five rungs:
 
-**The presets are NOT written into `task.json`, and that is § 6.2's call
-rather than a convenience.**  `engines/stages.md` § 6.2 lets a stage override
-only a field the user **promoted**, and promotion is `varies` — which
-`describe.build_description` *derives* as
-`varies_for(s.overrides for s in ladder)`.  Putting the ladder's own answers in
-a rung's bag would therefore force every transport description to claim the
-person promoted `solution_method` and `ts_hs_save`.  They did not: the ladder
-answers them.  So `Stage.overrides` stays exactly what § 6.2 says it is — the
-person's tuning — and `config_for` applies the rung's answers from the table.
-One source, and nothing hidden: the template's `solution_method` is the
-calculation's own answer, and the rung that differs differs *because it is that
-rung*, not because a description quietly said so.
+| rung | the only emitter that renders it | and therefore |
+|---|---|---|
+| seed | `stages.py::_render_seed` | `SolutionMethod diagon` is what makes it *the seed deck* |
+| electrode_L / electrode_R | `wizard.py::render_electrode_fdf` | `diagon` + `TS.HS.Save true` is what makes it *an electrode deck* |
+| device / transmission | `transiesta.py::TransiestaEngine.render_script` | `SolutionMethod transiesta` is what makes it *an NEGF deck* |
 
-**What this does *not* fix.**  The other 21 SIESTA keywords still cannot reach
-a transport deck — `MaxSCFIterations` and `DM.Tolerance` among them, which is
-why the seed ran to 1000 iterations and died.  Those are person-answered and
-transport-wide; they need floor 3's `spec_for` arm (§ 3.6 items 1–4), not a
-per-stage value.  What landed here is the *prerequisite*: the two values that
-had to stop being literals before an emitter could render from a description at
-all.
+There is no valid output of `render_script` that says `diagon` — that would be
+an ordinary closed-boundary single-point which converges and means nothing
+(§ 2).  So the stage → value mapping is **already structurally guaranteed by
+the dispatch**.  Turning it into a config field converted a fact that *cannot
+be wrong* into a default that *is* wrong for every caller which does not set
+it — and two real callers do not: the Transport tab's render endpoint
+(`web/blueprints/transport.py`, which builds a config from the form) and
+`engine_base`'s own documented usage.  The measured symptom was a rendered
+device script that solved with `diagon`.
 
-**The transport k-axis is deliberately not in the table.**  The device is
-sampled 1 along transport and the lead densely (`electrode_kz`) — but those are
+**The test that catches it.**
+`test_transport_au_bdt_au_validation.py::test_render_script_emits_correct_atom_counts`
+asserts `SolutionMethod transiesta` against a bare `TransportConfig()`.  That
+assertion is not incidental: it pins that the emitter's *identity* does not
+depend on a caller.
+
+**The general rule this is an instance of.**  Before giving a keyword a
+parameter, ask which emitters can write it.  If exactly one emitter writes it
+and that emitter exists to produce this kind of deck, the value is the
+emitter's identity and belongs as a literal in it.  A parameter is for a
+question the *person* can answer differently without the deck stopping being
+the deck it is.  Under that test the three candidates fail and the genuinely
+per-stage-looking fourth — the k-axis — fails differently: the device is
+sampled 1 along transport and the lead densely (`electrode_kz`), but those are
 two different **cells**, so it is the renderers' composition of one
-person-answered transverse grid, not a per-stage value of one parameter.
-(`electrode_kz` is a separate defect: it is a function parameter with a module
-default that `render_stage_deck` never passes, so the row is a control that does
-nothing. Open.)
+person-answered transverse grid, not one parameter with two values.
+
+**What transport actually lacks is nothing to do with stages.**  The 21 SIESTA
+keywords in § 3.2 that cannot reach any transport deck — `MaxSCFIterations` and
+`DM.Tolerance` among them, the reason a seed ran 1000 iterations and died
+`SCF_NOT_CONV` — are person-answered and **transport-wide**, identical on every
+rung.  They need floor 3's `spec_for` arm (§ 3.6 items 1–4).  No per-stage
+mechanism would have delivered one of them.
+
+*(`electrode_kz` remains a separate open defect: it is a function parameter with
+a module default that `render_stage_deck` never passes, so the catalogue row is
+a control that does nothing.)*
 
 ---
 

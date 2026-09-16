@@ -43,100 +43,6 @@ from .compose import ComposedJunction
 TRANSPORT_STAGES = ("seed", "electrode_L", "electrode_R",
                     "device", "transmission")
 
-#: What each rung RUNS AT where it differs from the calculation's own
-#: answer -- the science stated ONCE, the way
-#: :data:`~molbuilder.config.siesta.SIESTA_STAGE_PRESETS` states the
-#: relaxation ladder's (`engines/stages.md` § 1.1, and its amendment: a
-#: DERIVED stage list is not an authored one).
-#:
-#: These are the values that make a rung BE that rung.  ``SolutionMethod
-#: transiesta`` is not a tuning choice -- it is what makes the device
-#: stage the NEGF stage; ``TS.HS.Save`` is not an output preference -- a
-#: lead run that omits it concludes having produced nothing the device
-#: can attach to.  So they are sealed (:data:`SEALED_BY_STAGE`) rather
-#: than offered, and an override naming one is refused by name.
-#:
-#: Everything ELSE a transport deck needs is the person's, answered once
-#: for the whole calculation and identical on every rung: the SCF
-#: convergence set, the spin and charge, the electronic contract the
-#: citation dictates.  A rung appears here only where the LADDER, not the
-#: person, has the answer -- which is why this table is two keys wide and
-#: not twenty (`engines/transport.md` § 6.1).
-#:
-#: The transport k-axis is deliberately ABSENT.  The device is sampled 1
-#: along transport (an open boundary) and the lead densely
-#: (``electrode_kz``); but those are two different CELLS, so this is the
-#: renderers' composition of one person-answered transverse grid, not a
-#: per-stage value of one parameter.
-TRANSPORT_STAGE_PRESETS = {
-    # A closed periodic warm-up whose converged .DM starts the NEGF SCF.
-    "seed":         {"solution_method": "diagon"},
-    # Genuinely periodic BULK runs, and the only rungs that write the
-    # .TSHS the device's TS.Elec.<name> reference reads.
-    "electrode_L":  {"solution_method": "diagon", "ts_hs_save": True},
-    "electrode_R":  {"solution_method": "diagon", "ts_hs_save": True},
-    # The open-boundary NEGF SCF.
-    "device":       {"solution_method": "transiesta"},
-    # The same deck text as the device -- only the binary differs
-    # (``Resources.program = tbtrans``), so the method stays put.
-    "transmission": {"solution_method": "transiesta"},
-}
-
-#: Every field the ladder answers, across all rungs -- the seal.  A
-#: person's override naming one of these is refused, because changing it
-#: does not tune the rung, it stops it being that rung.
-SEALED_BY_STAGE = frozenset(
-    k for over in TRANSPORT_STAGE_PRESETS.values() for k in over)
-
-
-def default_transport_stages(overrides=None):
-    """The composite's five rungs as ``Stage`` objects.
-
-    One per name in :data:`TRANSPORT_STAGES`, in dependency order.  The
-    ladder's OWN answers (:data:`TRANSPORT_STAGE_PRESETS`) are not in
-    the bags -- see the comment below for why § 6.2 forbids that -- so
-    what this adds over the bare tuple it replaced is the seal and the
-    one place the person's tuning is merged.
-
-    *overrides* is the person's per-device tuning (the web hand-over's
-    ``varies`` set), merged onto the ``device`` rung the way it was
-    before this function existed.  A name that collides with the
-    ladder's own answer is refused here, naming the field -- the seal,
-    stated once and enforced at both construction sites.
-
-    Mirrors :func:`~molbuilder.siesta.stages.default_siesta_stages`;
-    unlike it there is no strategy, because the ladder is fixed by
-    design (`engines/transport.md` § 1).
-    """
-    from ..task import Stage
-
-    extra = dict(overrides or {})
-    clash = sorted(set(extra) & SEALED_BY_STAGE)
-    if clash:
-        raise StageError(
-            f"{', '.join(clash)}: the transport ladder answers "
-            f"{'this' if len(clash) == 1 else 'these'}, so an override "
-            f"cannot set {'it' if len(clash) == 1 else 'them'} -- "
-            f"changing it does not tune a rung, it stops the rung being "
-            f"that rung (engines/transport.md 6.1).  The ladder's own "
-            f"answers are: "
-            + "; ".join(f"{s}: {TRANSPORT_STAGE_PRESETS[s]}"
-                        for s in TRANSPORT_STAGES
-                        if set(TRANSPORT_STAGE_PRESETS[s]) & set(clash)))
-    # THE PRESETS DO NOT GO IN HERE, and that is the contract's call, not
-    # a convenience.  `engines/stages.md` § 6.2: a stage may override
-    # only a field the user PROMOTED, and promotion is `varies`
-    # (`describe.build_description` derives it as
-    # `varies_for(s.overrides ...)`).  Writing the ladder's own answers
-    # into a rung's bag would therefore force every transport
-    # description to claim the person promoted `solution_method` and
-    # `ts_hs_save` -- which they did not; the ladder answers them.  They
-    # are applied from TRANSPORT_STAGE_PRESETS in `config_for` instead,
-    # so `overrides` stays what § 6.2 says it is: the person's tuning.
-    return [Stage(name=name, enabled=True,
-                  overrides=dict(extra) if name == "device" else {})
-            for name in TRANSPORT_STAGES]
-
 
 class StageError(Exception):
     """A stage whose deck cannot be rendered — the message names the
@@ -264,15 +170,12 @@ def config_for(task, composed: ComposedJunction, *,
     """The config ONE stage renders from.
 
     **Per rung, not per calculation.**  Until 2026-09-15 this merged all
-    five override bags into a single config, which made a per-stage value
-    impossible to express: a name set by two rungs took whichever bag
-    came last in ladder order, for every rung.  Nothing observable broke
-    while only the ``device`` bag was ever filled, but it is the shape
-    that blocked the ladder's own answers (``SolutionMethod``,
-    ``TS.HS.Save``) from living in ``task.json`` like every other
-    stage's (`engines/stages.md` § 1.1, `engines/transport.md` § 6.1).
-    *stage* names the rung whose bag applies; ``None`` applies none of
-    them -- the calculation's own answers alone.
+    five override bags into a single config, so a name carried by two
+    rungs took whichever bag came last in ladder order -- and it took it
+    for EVERY rung.  Nothing observable broke while the ``device`` bag
+    was the only one ever filled, which is exactly why it wanted pinning
+    before that stopped being true.  *stage* names the rung whose bag
+    applies; ``None`` applies none of them.
 
     EVERY bag is still validated whatever *stage* asks for, so an
     unknown or sealed name in any rung refuses at the first prep rather
@@ -336,16 +239,6 @@ def config_for(task, composed: ComposedJunction, *,
     # 2026-08-29; the Transport tab writes them there).  All five bags
     # merge in ladder order into the ONE config every deck renders
     # from; an unknown name refuses here, before anything renders.
-    # THE LADDER'S OWN ANSWERS COME FROM THE LADDER.  `default_transport_stages`
-    # also writes them into task.json, so a description reads honestly
-    # without anyone knowing this table -- but they are applied from
-    # here, not from that copy, so a hand-built or older task.json whose
-    # bags are empty still renders the rung it claims to be instead of
-    # silently falling back to the config default.  The two cannot
-    # disagree: SEALED_BY_STAGE refuses anyone else setting them.
-    if stage is not None:
-        kw.update(TRANSPORT_STAGE_PRESETS.get(stage, {}))
-
     import dataclasses as _dc
     known = {f.name for f in _dc.fields(TransportConfig)}
     # What remains after SEALED_TRANSPORT_FIELDS IS the transport-only
@@ -379,8 +272,7 @@ def config_for(task, composed: ComposedJunction, *,
                     f".xyz+.molstruct pair with no recorded contract, "
                     f"whose contract fields are open (4.1b).")
             # VALIDATED for every rung; APPLIED only for the one asked
-            # about, so `solution_method` can differ between the seed
-            # and the device without the last bag winning both.
+            # about, so one rung's tuning cannot reach another's deck.
             if bag.name == stage:
                 kw[name] = value
     return TransportConfig(
@@ -435,9 +327,7 @@ def _render_seed(struct: Structure, cfg: TransportConfig) -> str:
         "# Ordinary diagonalisation (NOT transiesta): the seed is a",
         "# periodic warm-up.  SIESTA writes <SystemLabel>.DM as the",
         "# SCF converges; no MD block = single point.",
-        # the RUNG's answer (TRANSPORT_STAGE_PRESETS["seed"]), not a
-        # literal -- so the ladder, not this emitter, decides.
-        f"SolutionMethod         {cfg.solution_method}",
+        "SolutionMethod         diagon",
         "",
     ])
     return "\n".join(lines) + "\n"

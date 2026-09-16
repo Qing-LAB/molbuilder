@@ -53,64 +53,16 @@ class TestDefaults:
         assert b.bias_voltages_v == [0.0]
 
 
-#: The fields deliberately OFF the web form, and why each one is.
-#:
-#: ``dataclass_to_form_schema`` exposes a field only if its metadata
-#: declares a ``section`` (``web/blueprints/_shared.py``: *"fields
-#: without a section live on the dataclass for the Python API / CLI but
-#: stay off the web form"*).  Omitting it is therefore the mechanism,
-#: not an oversight -- so the set is enumerated here BY NAME.  A field
-#: that loses its ``section`` by accident fails below; a field that
-#: should never be offered is added here with its reason.
-OFF_THE_FORM = {
-    "solution_method":
-        "the LADDER answers it (TRANSPORT_STAGE_PRESETS): diagon for the "
-        "seed and the leads, transiesta for the device.  Offering it "
-        "would show a control SEALED_BY_STAGE refuses.",
-    "ts_hs_save":
-        "the LADDER answers it: on for electrode_L/R, whose .TSHS the "
-        "device's TS.Elec reference reads; off elsewhere.",
-}
-
-
 class TestFieldMetadata:
-    def test_every_offered_field_has_label_and_section(self):
-        """Every field the form SHOWS carries what the renderer needs."""
+    def test_every_field_has_label_and_section(self):
         for f in fields(TransportConfig):
-            if f.name in OFF_THE_FORM:
-                continue
             assert "section" in f.metadata, f"{f.name}: missing section"
             assert "label"   in f.metadata, f"{f.name}: missing label"
 
-    def test_the_fields_off_the_form_are_the_named_ones(self):
-        """The exclusion is deliberate, never a forgotten ``section``.
-
-        Both directions: a field that quietly loses its ``section``
-        disappears from the Transport tab with no other symptom, and a
-        name left here after the field is offered again would excuse a
-        real gap.
-        """
-        actual = {f.name for f in fields(TransportConfig)
-                  if "section" not in f.metadata}
-        assert actual == set(OFF_THE_FORM), (
-            "fields off the web form drifted from the named set.\n"
-            f"  no section, not named here: {sorted(actual - set(OFF_THE_FORM))}\n"
-            f"  named here but offered:     {sorted(set(OFF_THE_FORM) - actual)}\n"
-            "A field is kept off the form by OMITTING `section` "
-            "(web/blueprints/_shared.py::dataclass_to_form_schema); if "
-            "that was deliberate, say why in OFF_THE_FORM.")
-
     def test_every_field_has_help(self):
         """Help text drives both the UI tooltip and the Methods-text
-        generator; a missing help means a knob ships undocumented.
-
-        The off-the-form fields are exempt: their explanation is the
-        comment at the declaration and OFF_THE_FORM's reason, because
-        no tooltip or Methods sentence ever renders them.
-        """
+        generator; a missing help means a knob ships undocumented."""
         for f in fields(TransportConfig):
-            if f.name in OFF_THE_FORM:
-                continue
             assert "help" in f.metadata, f"{f.name}: missing help"
             assert len(f.metadata["help"]) > 10, \
                 f"{f.name}: help is too short to be useful"
@@ -118,8 +70,6 @@ class TestFieldMetadata:
     def test_sections_match_declared_order(self):
         declared = set(TransportConfig._form_section_order)
         for f in fields(TransportConfig):
-            if f.name in OFF_THE_FORM:
-                continue
             sect = f.metadata["section"]
             assert sect in declared, \
                 f"{f.name}: section {sect!r} not in _form_section_order"

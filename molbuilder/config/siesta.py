@@ -1943,18 +1943,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "help":        """Write the transmission between every pair of electrodes, not only the first pair.  For a two-terminal junction the two are the same.""",
     })
 
-    ts_hs_save: bool = field(default=False, metadata={
-        "category": ("procedure", ),
-        "item_kind":  "engine",
-        "workflow_group": "output",
-        "label":       "Write the TranSIESTA .TSHS",
-        "engine_key":  "TS.HS.Save",
-        "tier":        "advanced",
-        "help":        """Write `<SystemLabel>.TSHS` -- the Hamiltonian container a device run's `TS.Elec.<name>` reference reads.
-
-This is the ELECTRODE stages' essential output: without it a lead run concludes having produced nothing the device can attach to.  The ladder therefore turns it on for `electrode_L` and `electrode_R` and leaves it off elsewhere, so the calculation's own answer here is `false` and the two lead rungs are the exception.""",
-    })
-
     negf_eq_pole_ev: float = field(default=1.5, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",

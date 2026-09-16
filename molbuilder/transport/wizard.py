@@ -283,11 +283,8 @@ def render_electrode_fdf(
         "# Single-point bulk SCF (no MD block = no relaxation; the lead is",
         "# the frozen bulk geometry).  TS.HS.Save writes <SystemLabel>.TSHS.",
         "# Confirm the keyword against your SIESTA version (manual § TranSIESTA).",
-        # both the RUNG's answers (TRANSPORT_STAGE_PRESETS
-        # ["electrode_L"/"electrode_R"]); TS.HS.Save is what makes a
-        # lead rung produce anything the device can attach to.
-        f"SolutionMethod         {cfg.solution_method}",
-        f"TS.HS.Save             {str(bool(cfg.ts_hs_save)).lower()}",
+        "SolutionMethod         diagon",
+        "TS.HS.Save             true",
         "SaveHS                 true",
         "",
     ]

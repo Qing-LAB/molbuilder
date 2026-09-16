@@ -961,31 +961,6 @@ class TestTheRecordedContract:
             "the device rung's override reached the seed's config: the bags "
             "are merging again instead of applying per rung")
 
-    def test_each_rung_carries_the_ladders_own_method(self, tmp_path):
-        """`TRANSPORT_STAGE_PRESETS` is applied FROM the table, so a
-        description with empty bags still renders the rung it claims to
-        be rather than the config default."""
-        from molbuilder.transport.stages import (TRANSPORT_STAGES, config_for,
-                                                 default_transport_stages)
-        from molbuilder.task import Task, derive_run
-        root, cite = self._recorded_pair(tmp_path)
-        out = compose_junction(cite, tree_root=root)
-        task = Task(engine="siesta", shape="hierarchical",
-                    run=derive_run("T", cite, stage_names=TRANSPORT_STAGES),
-                    structure=None, calculation="transport",
-                    slots={"junction": cite}, bias=(0.0,), varies=(),
-                    stages=tuple(default_transport_stages()))
-        got = {s: (config_for(task, out, stage=s).solution_method,
-                   config_for(task, out, stage=s).ts_hs_save)
-               for s in TRANSPORT_STAGES}
-        assert got == {
-            "seed":         ("diagon", False),
-            "electrode_L":  ("diagon", True),
-            "electrode_R":  ("diagon", True),
-            "device":       ("transiesta", False),
-            "transmission": ("transiesta", False),
-        }, "the ladder's own answers, per rung"
-
     def test_the_record_seals_the_contract_fields(self, tmp_path):
         from molbuilder.transport.stages import StageError, config_for
         from molbuilder.task import Stage, Task, derive_run

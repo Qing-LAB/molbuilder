@@ -368,12 +368,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     import re
     from pathlib import Path as _P
 
-    from ..task import Task, derive_run, write_task
+    from ..task import Stage, Task, derive_run, write_task
     from ..task import FILENAME as TASK_FILENAME
     # The ladder is the transport module's fact (one door): five stages
     # in dependency order, per-stage `enabled` for the seed's Q4 skip.
-    from ..transport.stages import (TRANSPORT_STAGES,
-                                    default_transport_stages)
+    from ..transport.stages import TRANSPORT_STAGES
 
     for given, flag, why in (
             (structure, "--structure", "its structure IS the junction "
@@ -436,10 +435,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                 f"--bias {bias_opt!r}: a comma-separated list of volts, "
                 f"e.g. --bias 0.0,0.2,0.4.")
 
-    # The ladder's own per-rung answers travel in task.json like any
-    # other stage's overrides (engines/transport.md 6.1) -- stated once
-    # in TRANSPORT_STAGE_PRESETS, never hardcoded in an emitter.
-    stages = tuple(default_transport_stages())
+    stages = tuple(Stage(name=n, enabled=True, overrides={})
+                   for n in TRANSPORT_STAGES)
     try:
         task = Task(
             engine=engine, shape=shape,

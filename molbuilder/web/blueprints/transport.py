@@ -327,13 +327,11 @@ def api_transport_describe() -> Any:
     from molbuilder.persist import json_text
     from molbuilder.projects import projects_root
     from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import Task, derive_run
+    from molbuilder.task import Stage, Task, derive_run
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                              SEALED_ALWAYS,
-                                             TRANSPORT_STAGES,
-                                             StageError,
-                                             default_transport_stages)
+                                             TRANSPORT_STAGES)
 
     body = request.get_json(silent=True) or {}
     engine = str(body.get("engine") or "siesta").lower()
@@ -405,14 +403,11 @@ def api_transport_describe() -> Any:
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
             varies=tuple(sorted(overrides)),
-            # ONE door for the ladder: the rungs' own answers come from
-            # TRANSPORT_STAGE_PRESETS and the person's tuning merges
-            # onto the device rung, exactly as it did when this was
-            # spelled out here (engines/transport.md 6.1).
-            stages=tuple(default_transport_stages(overrides)))
-    except (ValueError, StageError) as exc:
-        # StageError here is the ladder's seal: an override naming a
-        # field the rung itself answers, refused by name.
+            stages=tuple(Stage(name=n, enabled=True,
+                               overrides=(dict(overrides)
+                                          if n == "device" else {}))
+                         for n in TRANSPORT_STAGES))
+    except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     return jsonify({
