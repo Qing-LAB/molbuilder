@@ -26,6 +26,7 @@ engines = ["siesta"]
 anchor = "PAO.BasisSize"
 engine_key = "PAO.BasisSize"
 manual = "SIESTA 5.4.2 §6.3.3 'Size of the basis set'"
+citation = ["transport"]
 type = "enum"
 choices = ["SZ", "SZP", "DZ", "DZP", "DZDP", "TZ", "TZP", "TZDP", "TZTP"]
 value = "DZP"
@@ -44,6 +45,7 @@ engines = ["siesta"]
 anchor = "PAO.EnergyShift"
 engine_key = "PAO.EnergyShift"
 manual = "SIESTA 5.4.2 §6.3.4 'Range of the orbitals'"
+citation = ["transport"]
 type = "float"
 value = 0.01
 default = 0.01
@@ -66,6 +68,7 @@ engines = ["siesta"]
 anchor = "MeshCutoff"
 engine_key = "MeshCutoff"
 manual = "SIESTA 5.4.2 §6.10 'The real-space grid and the eggbox-effect'"
+citation = ["transport"]
 type = "float"
 value = 300.0
 default = 300.0
@@ -91,6 +94,7 @@ engines = ["siesta"]
 anchor = "XC.functional"
 engine_key = "XC.functional"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
+citation = ["transport"]
 type = "enum"
 choices = ["LDA", "GGA", "VDW"]
 value = "GGA"
@@ -108,6 +112,7 @@ engines = ["siesta"]
 anchor = "XC.authors"
 engine_key = "XC.authors"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
+citation = ["transport"]
 type = "enum"
 choices = ["PBE", "PBEsol", "revPBE", "RPBE", "BLYP", "CA", "PZ", "PW", "DRSLL", "LMKLL"]
 value = "PBE"
@@ -285,6 +290,7 @@ engines = ["siesta"]
 anchor = "ElectronicTemperature"
 engine_key = "ElectronicTemperature"
 manual = "SIESTA 5.4.2 §6.12.3 'Occupation of electronic states and Fermi level'"
+citation = ["transport"]
 type = "float"
 value = 300.0
 default = 300.0
@@ -307,6 +313,7 @@ engines = ["siesta"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack"
 manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
+citation = ["transport"]
 type = "int3"
 value = [1, 1, 1]
 default = [1, 1, 1]
@@ -354,6 +361,7 @@ engines = ["siesta"]
 anchor = "MD.TypeOfRun"
 engine_key = "MD.TypeOfRun"
 manual = "SIESTA 5.4.2 §7 'STRUCTURAL RELAXATION, PHONONS, AND MOLECULAR DYNAMICS'"
+calculations = ["optimization"]
 type = "enum"
 choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
 value = "CG"
@@ -376,6 +384,7 @@ engines = ["siesta"]
 expands = ["MD.Steps", "MD.FinalTimeStep"]
 engine_key = "MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation' + §7.4 'Molecular dynamics'"
+calculations = ["optimization"]
 type = "int"
 value = 200
 default = 200
@@ -396,6 +405,7 @@ engines = ["siesta"]
 anchor = "MD.MaxForceTol"
 engine_key = "MD.MaxForceTol"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
+calculations = ["optimization"]
 type = "float"
 value = 0.02
 default = 0.02
@@ -417,6 +427,7 @@ engines = ["siesta"]
 anchor = "MD.MaxDispl"
 engine_key = "MD.MaxDispl (CG / Broyden / FIRE)"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
+calculations = ["optimization"]
 type = "float"
 value = 0.05
 default = 0.05
@@ -454,6 +465,7 @@ engines = ["siesta"]
 anchor = "MD.InitialTemperature"
 engine_key = "MD.InitialTemperature"
 manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
+calculations = ["optimization"]
 type = "float"
 value = 300.0
 default = 300.0
@@ -474,6 +486,7 @@ engines = ["siesta"]
 anchor = "MD.TargetTemperature"
 engine_key = "MD.TargetTemperature"
 manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
+calculations = ["optimization"]
 type = "float"
 unit = "K"
 range = [0.0, 5000.0]
@@ -492,6 +505,7 @@ engines = ["siesta"]
 anchor = "MD.LengthTimeStep"
 engine_key = "MD.LengthTimeStep"
 manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
+calculations = ["optimization"]
 type = "float"
 value = 1.0
 default = 1.0
@@ -612,6 +626,7 @@ engines = ["siesta"]
 anchor = "WriteMDhistory"
 engine_key = "WriteMDhistory"
 manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
+calculations = ["optimization"]
 type = "bool"
 value = true
 default = true
@@ -630,6 +645,7 @@ engines = ["siesta"]
 anchor = "WriteMDXmol"
 engine_key = "WriteMDXmol"
 manual = "SIESTA 5.4.2 §6.4.3 'Output of structural information'"
+calculations = ["optimization"]
 type = "bool"
 value = true
 default = true
@@ -1826,3 +1842,348 @@ group = "stage"
 label = "Continue retries"
 tier = "advanced"
 help = "only meaningful when on_nonconvergence='continue': how many additional max_steps batches to spend before falling through to halt.  Total step budget = max_steps * (1 + continue_retries).  Named geom_* to stay distinct from Resources.continue_retries, which is the WRAPPER's warm-restart count and a different thing entirely."
+
+
+# ====================================================================
+#  The TRANSPORT kind's own rows.
+#
+#  `calculations = ["transport"]` keeps them out of an optimization or
+#  a vibration template; everything transport SHARES it inherits by
+#  those rows not declaring the key at all (engines/template.md 6.3).
+#  The seven the CITATION answers are the shared rows themselves,
+#  tagged `citation = ["transport"]` where they already live.
+# ====================================================================
+
+[item.transmission_emin_ev]
+kind = "deck"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "%block TBT.Contour.window"
+engine_key = "%block TBT.Contour.window"
+expands = ["%block TBT.Contour.window"]
+manual = "SIESTA 5.4.2 TBtrans §'Contour definition'"
+type = "float"
+value = -2.0
+default = -2.0
+unit = "eV"
+range = [-20.0, 0.0]
+group = "stage"
+label = "Transmission window, lower edge"
+tier = "basic"
+help = """
+Lower edge of the energy window T(E) is computed on.  This becomes the `from` line of `%block TBT.Contour.window`.
+
+The window is what you can plot afterwards: a feature outside it does not exist in the output.  Centre it on the Fermi level and open it wide enough to contain the resonances you care about.
+"""
+
+[item.transmission_emax_ev]
+kind = "deck"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "%block TBT.Contour.window"
+engine_key = "%block TBT.Contour.window"
+expands = ["%block TBT.Contour.window"]
+manual = "SIESTA 5.4.2 TBtrans §'Contour definition'"
+type = "float"
+value = 2.0
+default = 2.0
+unit = "eV"
+range = [0.0, 20.0]
+group = "stage"
+label = "Transmission window, upper edge"
+tier = "basic"
+help = """
+Upper edge of the energy window T(E) is computed on -- the `to` line of `%block TBT.Contour.window`.
+"""
+
+[item.transmission_n_points]
+kind = "deck"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "%block TBT.Contour.window"
+engine_key = "%block TBT.Contour.window"
+expands = ["%block TBT.Contour.window"]
+manual = "SIESTA 5.4.2 TBtrans §'Contour definition'"
+type = "int"
+value = 401
+default = 401
+range = [11, 20001]
+group = "stage"
+label = "Transmission energy points"
+tier = "basic"
+help = """
+How many energies T(E) is evaluated at across the window -- the `points` line of `%block TBT.Contour.window`.
+
+A narrow resonance that falls between two points is invisible, so this is the knob a transmission convergence study steps.
+"""
+
+[item.tbt_k_grid]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.k"
+engine_key = "TBT.k"
+manual = "SIESTA 5.4.2 TBtrans §'k-point sampling'"
+type = "int3"
+value = [0, 0, 0]
+default = [0, 0, 0]
+range = [0, 64]
+group = "stage"
+label = "Transverse k-grid for T(E)"
+tier = "basic"
+help = """
+Monkhorst-Pack grid tbtrans integrates T(E) over.  `0 0 0` inherits the SCF's own grid.
+
+A grid converged for a total ENERGY is routinely far too coarse for a transmission: T(E) is an integral over the transverse Brillouin zone and its features sharpen with k-density.  The transport direction stays 1 -- that axis is the open boundary and is never sampled.
+"""
+
+[item.tbt_spin]
+kind = "engine"
+category = ["system"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.Spin"
+engine_key = "TBT.Spin"
+manual = "SIESTA 5.4.2 TBtrans §'Spin'"
+type = "int"
+value = 0
+default = 0
+range = [0, 2]
+group = "profile"
+label = "Spin channel for T(E)"
+tier = "advanced"
+help = """
+Which spin channel tbtrans reports: 1 selects spin-up, 2 spin-down, and 0 -- the engine's default -- does both.  Only meaningful once the device itself is spin-polarised.
+"""
+
+[item.tbt_elecs_eta_ev]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.Elecs.Eta"
+engine_key = "TBT.Elecs.Eta"
+manual = "SIESTA 5.4.2 TBtrans §'Electrode options'"
+type = "float"
+value = 0.001
+default = 0.001
+unit = "eV"
+range = [0.0, 1.0]
+group = "stage"
+label = "Electrode self-energy broadening"
+tier = "advanced"
+help = """
+The imaginary part added to the energy when the lead self-energies are built.  Too large smears real resonances into a featureless curve; too small turns them into numerical noise.
+"""
+
+[item.tbt_contours_eta_ev]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.Contours.Eta"
+engine_key = "TBT.Contours.Eta"
+manual = "SIESTA 5.4.2 TBtrans §'Contour options'"
+type = "float"
+value = 0.0
+default = 0.0
+unit = "eV"
+range = [0.0, 1.0]
+group = "stage"
+label = "Device Green-function broadening"
+tier = "advanced"
+help = """
+The imaginary part used on the device Green function.  0 leaves the engine's own default, which is a FORMULA -- min(electrode eta)/10 -- so a number here replaces it rather than restating it.
+"""
+
+[item.tbt_dos_gf]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.DOS.Gf"
+engine_key = "TBT.DOS.Gf"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write the Green-function DOS"
+tier = "advanced"
+help = """
+Write the device's Green-function density of states.  Needed to read WHERE on the molecule a transmitting state sits.
+"""
+
+[item.tbt_dos_a]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.DOS.A"
+engine_key = "TBT.DOS.A"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write the spectral DOS per electrode"
+tier = "advanced"
+help = """
+Write the spectral function density of states, resolved per electrode -- which lead a state is fed from.
+"""
+
+[item.tbt_dos_elecs]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.DOS.Elecs"
+engine_key = "TBT.DOS.Elecs"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write the bulk electrode DOS"
+tier = "advanced"
+help = """
+Write the density of states of the bulk leads themselves.
+"""
+
+[item.tbt_t_eig]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.T.Eig"
+engine_key = "TBT.T.Eig"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "int"
+value = 0
+default = 0
+range = [0, 20]
+group = "output"
+label = "Transmission eigenchannels"
+tier = "advanced"
+help = """
+How many transmission eigenchannels to decompose T(E) into.  0 writes none.  The eigenchannels are what turn a single number into a picture of which orbital pathway carries the current.
+"""
+
+[item.tbt_t_bulk]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.T.Bulk"
+engine_key = "TBT.T.Bulk"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write the bulk transmission"
+tier = "advanced"
+help = """
+Write the transmission of the pristine bulk lead, which is the ideal T(E) the junction is measured against.
+"""
+
+[item.tbt_t_all]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.T.All"
+engine_key = "TBT.T.All"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "bool"
+value = false
+default = false
+group = "output"
+label = "Write all electrode pairs"
+tier = "advanced"
+help = """
+Write the transmission between every pair of electrodes, not only the first pair.  For a two-terminal junction the two are the same.
+"""
+
+[item.negf_eq_pole_ev]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Contours.Eq.Pole"
+engine_key = "TS.Contours.Eq.Pole"
+manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
+type = "float"
+value = 1.5
+default = 1.5
+unit = "eV"
+range = [0.5, 10.0]
+group = "stage"
+label = "Equilibrium pole energy"
+tier = "advanced"
+help = """
+How far up the imaginary axis the equilibrium contour's poles are placed when the non-equilibrium density matrix is integrated.
+"""
+
+[item.negf_neq_eta_ev]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Contours.nEq.Eta"
+engine_key = "TS.Contours.nEq.Eta"
+manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
+type = "float"
+value = 0.0
+default = 0.0
+unit = "eV"
+range = [0.0, 1.0]
+group = "stage"
+label = "Non-equilibrium broadening"
+tier = "advanced"
+help = """
+The imaginary part on the non-equilibrium contour.  0 leaves the engine's own default.  Inert at zero bias, where there is no non-equilibrium window to integrate.
+"""
+
+[item.elecs_bulk]
+kind = "engine"
+category = ["method"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TS.Elecs.Bulk"
+engine_key = "TS.Elecs.Bulk"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrode options'"
+type = "bool"
+value = true
+default = true
+group = "stage"
+label = "Use the electrode's own bulk Hamiltonian"
+tier = "advanced"
+help = """
+Use the lead's own converged bulk Hamiltonian inside the electrode region, rather than the device run's values there.  True is right whenever the electrode region really is bulk -- which is what the region labels assert.
+"""
+
+[item.electrode_kz]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "%block kgrid_Monkhorst_Pack"
+engine_key = "%block kgrid_Monkhorst_Pack"
+manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
+type = "int"
+value = 40
+default = 40
+range = [1, 200]
+group = "stage"
+label = "Electrode k-points along transport"
+tier = "basic"
+help = """
+How many k-points the ELECTRODE runs use along the transport direction.
+
+This is the one axis where the lead and the device deliberately DISAGREE.  The device is an open boundary and is never sampled along transport (kz = 1); the electrode is a genuinely periodic bulk calculation and needs a dense kz for its Fermi level to be well-defined.  Too coarse here and the lead self-energy is built on a badly converged bulk.
+"""

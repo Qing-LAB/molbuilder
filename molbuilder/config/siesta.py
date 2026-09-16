@@ -1773,6 +1773,224 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
 NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shell DFT (broken-symmetry capable).  Most users wanting a singlet are better served by the non-polarized treatment -- the spin-restricted formalism is cheaper and gives the same answer.  Set 0.0 here only when you specifically want an anti-ferromagnetic / broken-symmetry singlet.""",
     })
 
+    # ================================================================== #
+    #  The TRANSPORT kind's parameters                                    #
+    #                                                                     #
+    #  Added 2026-09-15 with their catalogue rows (`calculations =        #
+    #  ["transport"]`).  They live on SiestaConfig and not on a class of  #
+    #  their own for the reason `engines/transport.md` 3.2 measures:      #
+    #  every transport stage IS a SIESTA run -- the seed is a plain SCF,  #
+    #  each electrode is an SCF, the device is an SCF with open           #
+    #  boundaries -- so transport is the siesta base minus the relaxation #
+    #  driver plus these.  A second config class for them was exactly     #
+    #  what `SpectraConfig` was, and it was retired for it.               #
+    #                                                                     #
+    #  The seven ELECTRONIC-CONTRACT parameters are not here: they are    #
+    #  the shared rows (basis_size, mesh_cutoff, kgrid, pao_energy_shift, #
+    #  electronic_temperature, xc_functional, xc_authors) tagged          #
+    #  `citation = ["transport"]` where they already live, because for    #
+    #  this kind the cited run answers them (template.md 6.4).            #
+    # ================================================================== #
+
+    transmission_emin_ev: float = field(default=-2.0, metadata={
+        "category": ("accuracy", ),
+        "item_kind":  "deck",
+        "expands":    ['%block TBT.Contour.window'],
+        "workflow_group": "stage",
+        "label":       "Transmission window, lower edge",
+        "engine_key":  "%block TBT.Contour.window",
+        "unit":        "eV",
+        "range":       (-20.0, 0.0),
+        "tier":        "basic",
+        "help":        """Lower edge of the energy window T(E) is computed on.  This becomes the `from` line of `%block TBT.Contour.window`.
+
+The window is what you can plot afterwards: a feature outside it does not exist in the output.  Centre it on the Fermi level and open it wide enough to contain the resonances you care about.""",
+    })
+
+    transmission_emax_ev: float = field(default=2.0, metadata={
+        "category": ("accuracy", ),
+        "item_kind":  "deck",
+        "expands":    ['%block TBT.Contour.window'],
+        "workflow_group": "stage",
+        "label":       "Transmission window, upper edge",
+        "engine_key":  "%block TBT.Contour.window",
+        "unit":        "eV",
+        "range":       (0.0, 20.0),
+        "tier":        "basic",
+        "help":        """Upper edge of the energy window T(E) is computed on -- the `to` line of `%block TBT.Contour.window`.""",
+    })
+
+    transmission_n_points: int = field(default=401, metadata={
+        "category": ("accuracy", ),
+        "item_kind":  "deck",
+        "expands":    ['%block TBT.Contour.window'],
+        "workflow_group": "stage",
+        "label":       "Transmission energy points",
+        "engine_key":  "%block TBT.Contour.window",
+        "range":       (11, 20001),
+        "tier":        "basic",
+        "help":        """How many energies T(E) is evaluated at across the window -- the `points` line of `%block TBT.Contour.window`.
+
+A narrow resonance that falls between two points is invisible, so this is the knob a transmission convergence study steps.""",
+    })
+
+    tbt_k_grid: Tuple[int, int, int] = field(default=(0, 0, 0), metadata={
+        "category": ("accuracy", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Transverse k-grid for T(E)",
+        "engine_key":  "TBT.k",
+        "range":       (0, 64),
+        "tier":        "basic",
+        "help":        """Monkhorst-Pack grid tbtrans integrates T(E) over.  `0 0 0` inherits the SCF's own grid.
+
+A grid converged for a total ENERGY is routinely far too coarse for a transmission: T(E) is an integral over the transverse Brillouin zone and its features sharpen with k-density.  The transport direction stays 1 -- that axis is the open boundary and is never sampled.""",
+    })
+
+    tbt_spin: int = field(default=0, metadata={
+        "category": ("system", ),
+        "item_kind":  "engine",
+        "workflow_group": "profile",
+        "label":       "Spin channel for T(E)",
+        "engine_key":  "TBT.Spin",
+        "range":       (0, 2),
+        "tier":        "advanced",
+        "help":        """Which spin channel tbtrans reports: 1 selects spin-up, 2 spin-down, and 0 -- the engine's default -- does both.  Only meaningful once the device itself is spin-polarised.""",
+    })
+
+    tbt_elecs_eta_ev: float = field(default=0.001, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Electrode self-energy broadening",
+        "engine_key":  "TBT.Elecs.Eta",
+        "unit":        "eV",
+        "range":       (0.0, 1.0),
+        "tier":        "advanced",
+        "help":        """The imaginary part added to the energy when the lead self-energies are built.  Too large smears real resonances into a featureless curve; too small turns them into numerical noise.""",
+    })
+
+    tbt_contours_eta_ev: float = field(default=0.0, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Device Green-function broadening",
+        "engine_key":  "TBT.Contours.Eta",
+        "unit":        "eV",
+        "range":       (0.0, 1.0),
+        "tier":        "advanced",
+        "help":        """The imaginary part used on the device Green function.  0 leaves the engine's own default, which is a FORMULA -- min(electrode eta)/10 -- so a number here replaces it rather than restating it.""",
+    })
+
+    tbt_dos_gf: bool = field(default=False, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Write the Green-function DOS",
+        "engine_key":  "TBT.DOS.Gf",
+        "tier":        "advanced",
+        "help":        """Write the device's Green-function density of states.  Needed to read WHERE on the molecule a transmitting state sits.""",
+    })
+
+    tbt_dos_a: bool = field(default=False, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Write the spectral DOS per electrode",
+        "engine_key":  "TBT.DOS.A",
+        "tier":        "advanced",
+        "help":        """Write the spectral function density of states, resolved per electrode -- which lead a state is fed from.""",
+    })
+
+    tbt_dos_elecs: bool = field(default=False, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Write the bulk electrode DOS",
+        "engine_key":  "TBT.DOS.Elecs",
+        "tier":        "advanced",
+        "help":        """Write the density of states of the bulk leads themselves.""",
+    })
+
+    tbt_t_eig: int = field(default=0, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Transmission eigenchannels",
+        "engine_key":  "TBT.T.Eig",
+        "range":       (0, 20),
+        "tier":        "advanced",
+        "help":        """How many transmission eigenchannels to decompose T(E) into.  0 writes none.  The eigenchannels are what turn a single number into a picture of which orbital pathway carries the current.""",
+    })
+
+    tbt_t_bulk: bool = field(default=False, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Write the bulk transmission",
+        "engine_key":  "TBT.T.Bulk",
+        "tier":        "advanced",
+        "help":        """Write the transmission of the pristine bulk lead, which is the ideal T(E) the junction is measured against.""",
+    })
+
+    tbt_t_all: bool = field(default=False, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "Write all electrode pairs",
+        "engine_key":  "TBT.T.All",
+        "tier":        "advanced",
+        "help":        """Write the transmission between every pair of electrodes, not only the first pair.  For a two-terminal junction the two are the same.""",
+    })
+
+    negf_eq_pole_ev: float = field(default=1.5, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Equilibrium pole energy",
+        "engine_key":  "TS.Contours.Eq.Pole",
+        "unit":        "eV",
+        "range":       (0.5, 10.0),
+        "tier":        "advanced",
+        "help":        """How far up the imaginary axis the equilibrium contour's poles are placed when the non-equilibrium density matrix is integrated.""",
+    })
+
+    negf_neq_eta_ev: float = field(default=0.0, metadata={
+        "category": ("convergence", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Non-equilibrium broadening",
+        "engine_key":  "TS.Contours.nEq.Eta",
+        "unit":        "eV",
+        "range":       (0.0, 1.0),
+        "tier":        "advanced",
+        "help":        """The imaginary part on the non-equilibrium contour.  0 leaves the engine's own default.  Inert at zero bias, where there is no non-equilibrium window to integrate.""",
+    })
+
+    elecs_bulk: bool = field(default=True, metadata={
+        "category": ("method", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Use the electrode's own bulk Hamiltonian",
+        "engine_key":  "TS.Elecs.Bulk",
+        "tier":        "advanced",
+        "help":        """Use the lead's own converged bulk Hamiltonian inside the electrode region, rather than the device run's values there.  True is right whenever the electrode region really is bulk -- which is what the region labels assert.""",
+    })
+
+    electrode_kz: int = field(default=40, metadata={
+        "category": ("accuracy", ),
+        "item_kind":  "engine",
+        "workflow_group": "stage",
+        "label":       "Electrode k-points along transport",
+        "engine_key":  "%block kgrid_Monkhorst_Pack",
+        "range":       (1, 200),
+        "tier":        "basic",
+        "help":        """How many k-points the ELECTRODE runs use along the transport direction.
+
+This is the one axis where the lead and the device deliberately DISAGREE.  The device is an open boundary and is never sampled along transport (kz = 1); the electrode is a genuinely periodic bulk calculation and needs a dense kz for its Fermi level to be well-defined.  Too coarse here and the lead self-energy is built on a badly converged bulk.""",
+    })
+
+
 
 
 # --------------------------------------------------------------------- #
