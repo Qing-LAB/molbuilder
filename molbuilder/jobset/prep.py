@@ -1451,7 +1451,25 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # that seam question is the next increment's.  The split is HERE, at the
     # conductor, and named -- not hidden inside a renderer that pretends to
     # serve all five.
-    if stage == "seed":
+    if stage in ("seed", "electrode_L", "electrode_R"):
+        # EACH RUNG RENDERS THE STRUCTURE IT DESCRIBES (TR5).  The seed
+        # describes the junction; an ELECTRODE rung describes the lead taken
+        # OUT of that same junction by its region label -- same atoms, same
+        # relaxation, a subset rather than a geometry derived from anywhere
+        # else.  That is what lets the framework's seam stay
+        # `spec_for(struct, cfg, ...)`: a deck describes a structure, and
+        # these are two structures out of one file.
+        from ..transport.transiesta import electrode_hs_stem
+        if stage == "seed":
+            _struct, _label = composed.sorted.structure, task.label
+        else:
+            _model = (composed.electrode_left if stage == "electrode_L"
+                      else composed.electrode_right)
+            _struct = _model.as_structure()
+            # THE LEAD'S IDENTITY IS THE .TSHS STEM the device deck names --
+            # one spelling, `electrode_hs_stem`, read by both writers.
+            _label = electrode_hs_stem(task.label, _model.label)
+
         # RESOLVED, not assembled (TR4).  `resolve` is floor 3's own step 2 --
         # the template ⊕ this rung's overrides, with `provenance` recording
         # which source set each value, which is what makes
@@ -1463,6 +1481,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # projection to add.
         scfg = _resolve_transport(base, task, stage,
                                   allocation or Resources(), log=_tlog)
+        if _label != task.label:
+            scfg = dataclasses.replace(scfg, system_label=_label)
         # NO pipeline log: `_prep_transport` takes `pipeline_log` as a bool
         # and builds no log object, which § 3.2 records as a documented
         # no-op.  Passing `log=None` keeps that true rather than inventing
@@ -1470,7 +1490,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # `--pipeline-log` mean something for this path.
         with _user_error_as_prep():
             try:
-                spec = _siesta_spec_for(composed.sorted.structure, scfg,
+                spec = _siesta_spec_for(_struct, scfg,
                                         stage_token=(token or None),
                                         calculation="transport")
             except ValueError as exc:
@@ -1482,8 +1502,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                 # the user as a raw traceback the moment the next increment
                 # widens the call site above.
                 raise PrepError(str(exc)) from exc
-            _sc.prepare_deck(spec, composed.sorted.structure, scfg,
-                             _jdir / script, log=None)
+            _sc.prepare_deck(spec, _struct, scfg,
+                             _jdir / script, log=_tlog)
     else:
         try:
             if points:

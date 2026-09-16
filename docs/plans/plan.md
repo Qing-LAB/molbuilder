@@ -2177,6 +2177,46 @@ LABELED atom be frozen would refuse every correct junction. *It reaches a real
 preflight* is mutation-proven by unwiring it: a check nothing calls is a check
 that does not exist, which is the `electrode_kz` lesson. 1913 passed.
 
+### 5p.3h LANDED — TR5a, the electrode rungs on the seam *(2026-09-16)*
+
+**The seam did not have to change, and the reason is the one-file design.**
+`ElectrodeModel.as_structure()` restates the extracted lead as an ordinary
+`Structure` carrying its own cell — the device's lateral vectors verbatim and
+the bulk repeat along transport. It is a restatement, not a conversion: those
+atoms came out of the cited junction by their region label, same atoms, same
+relaxation. So a deck still describes a structure; there are simply **two
+structures in one file**, and each rung renders the one it describes.
+
+Measured: the lead deck went from a hand-written f-string to **423 lines** with
+the engine's full section set, a `.validation.txt`, the check gate, and:
+
+```
+    4    0    0      0.0      <- transverse, shared with the device
+    0    4    0      0.0
+    0    0   40      0.0      <- the transport axis, DENSE: a lead is
+                                 periodic there and its Fermi level is the
+                                 reference energy everything is measured against
+```
+
+**A test predicted its own obsolescence and was right.**
+`test_the_un_migrated_rungs_still_lack_them` asserted the electrode deck
+LACKED the template's items, and carried an instruction: *"delete this when the
+electrode rung is tabled — at which point it should fail, and that failure is
+the migration being done."* It failed, and was deleted. Its job — keeping
+*"this rung is on the seam"* from degrading into *"SIESTA decks tend to have
+SCF settings"* — passes to `TestTheElectrodeRungIsOnTheSeam`, which asserts the
+contrast the other way round: the one thing the lead must have that the seed
+must not, the dense transport axis.
+
+**Verified:** five tests, including *the lead deck is the LEAD not the
+junction* (it must describe the extracted subset's atom count, or the others
+would pass on a deck that quietly rendered the whole junction). 144 passed.
+
+**Remaining in TR5:** the `negf` shape — device and transmission. Those
+describe the junction, which the seed already proves the seam can carry; what
+they additionally need is the region partition for `%block TS.Elecs`, and it
+travels on the structure's own `regions`.
+
 ### 5p.4 The steps
 
 Ordered so each one is verifiable on its own and nothing depends on a later

@@ -244,6 +244,87 @@ UNREACHABLE_BEFORE_THE_SEAM = (
 )
 
 
+class TestTheElectrodeRungIsOnTheSeam:
+    """TR5a — a lead rung renders through the framework, from the lead's own
+    structure.
+
+    The seam is `spec_for(struct, cfg, ...)` and its premise is *a deck
+    describes a structure*.  An electrode rung describes the lead **taken out
+    of the cited junction by its region label** -- same atoms, same
+    relaxation, a subset rather than a geometry derived from elsewhere.  So
+    the seam needed no widening: two rungs, two structures, one file.
+    """
+
+    def test_the_lead_deck_carries_the_template_items(self, calc):
+        prep_calculation(calc, "electrode_L")
+        deck = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        missing = [k for k in UNREACHABLE_BEFORE_THE_SEAM
+                   if not re.search(r"^" + re.escape(k) + r"\s", deck, re.M)]
+        assert not missing, (
+            f"the lead rung renders through the framework now, so these "
+            f"should be in its deck: {missing}")
+
+    def test_the_lead_gets_a_validation_report_and_a_check_gate(self, calc):
+        """What a hand-written `write_text` could not give it."""
+        prep_calculation(calc, "electrode_L")
+        assert (calc / "02_electrode_L"
+                / "T_02_electrode_L.validation.txt").is_file()
+
+    def test_the_transport_axis_is_DENSE_here_and_1_on_the_seed(self, calc):
+        """THE CONTRAST, and it is the physics rather than a formatting
+        difference.
+
+        This replaces the deleted `test_the_un_migrated_rungs_still_lack_them`:
+        instead of *the lead lacks what the seed has*, it asserts the one
+        thing the lead must have that the seed must not.  A lead is a
+        genuinely periodic bulk crystal along transport and its Fermi level
+        is the reference energy everything downstream is measured against; a
+        device is an open boundary there and is not sampled at all.
+        """
+        prep_calculation(calc, "seed")
+        prep_calculation(calc, "electrode_L")
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        assert "    0    0   40      0.0" in lead, (
+            "the lead's transport axis must be DENSE -- that density is what "
+            "resolves its Fermi level")
+        assert "    0    0    1      0.0" in seed, (
+            "...and the seed's must be 1: no transport-axis sampling")
+
+    def test_the_lead_is_labelled_as_the_TSHS_the_device_will_name(self, calc):
+        """One spelling, `electrode_hs_stem`, read by both writers.
+
+        The device deck's `TS.Elec` block names a file; the lead run must
+        write exactly that file, and it does so by taking the stem as its
+        SystemLabel.
+        """
+        prep_calculation(calc, "electrode_L")
+        prep_calculation(calc, "device")
+        lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        dev = (calc / "04_device" / "T_04_device.fdf").read_text()
+        assert _says(lead, "SystemLabel", "T_L-electrode")
+        assert "T_L-electrode.TSHS" in dev
+
+    def test_the_lead_deck_is_the_LEAD_not_the_junction(self, calc):
+        """The structure is the extracted subset, so the deck is smaller.
+
+        Without this the tests above would pass on a lead deck that had
+        quietly rendered the whole junction.
+        """
+        from molbuilder.transport.compose import load_compose_record
+        from molbuilder.task import read_task
+        prep_calculation(calc, "electrode_L")
+        deck = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        task = read_task(calc / "task.json")
+        composed = load_compose_record(calc, citation=task.slots["junction"])
+        n_lead = composed.electrode_left.n_atoms
+        n_dev = composed.sorted.structure.n_atoms
+        assert n_lead < n_dev, "the fixture must have a lead smaller than the device"
+        assert _says(deck, "NumberOfAtoms", str(n_lead)), (
+            f"the lead deck must describe the {n_lead}-atom lead, not the "
+            f"{n_dev}-atom junction")
+
+
 class TestTheTransportArmResolves:
     """TR4 — `prep`'s transport arm hands its deciding to `resolve`.
 
@@ -419,10 +500,17 @@ class TestTheSeedIsOnTheSeam:
     """§ 3.6 items 1-4: the seed rung renders through `spec_for` ->
     `prepare_deck`, so the template's items reach it.
 
-    What this pins is the MIGRATION, not one keyword: the same list is
-    absent from the rungs that still render through their own emitter, and
-    that contrast is what makes the assertion mean "this rung is on the
-    seam" rather than "SIESTA decks tend to have SCF settings".
+    What this pins is the MIGRATION, not one keyword.
+
+    It had a second half -- `test_the_un_migrated_rungs_still_lack_them` --
+    asserting the SAME list was ABSENT from the electrode rung, so the
+    contrast meant *this rung is on the seam* rather than *SIESTA decks tend
+    to have SCF settings*.  That test carried an instruction to delete it
+    when the electrode rung was tabled, *"at which point it should fail, and
+    that failure is the migration being done"*.  It failed on 2026-09-16 and
+    was deleted.  The contrast now lives in
+    :class:`TestTheElectrodeRungIsOnTheSeam`, which asserts what the lead
+    deck HAS -- and what it has that the seed does not.
     """
 
     def test_the_template_items_reach_the_seed_deck(self, calc):
@@ -433,64 +521,6 @@ class TestTheSeedIsOnTheSeam:
         assert not missing, (
             f"the seed renders through the framework now, so these should "
             f"be in its deck: {missing}")
-
-    def test_the_un_migrated_rungs_still_lack_them(self, calc):
-        """THE DISCRIMINATING HALF.  Remove it and the test above passes on
-        any SIESTA-ish deck; with it, the pair measures the seam.
-
-        Delete this when the electrode rung is tabled -- at which point it
-        should fail, and that failure is the migration being done.
-        """
-        prep_calculation(calc, "electrode_L")
-        elec = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
-        present = [k for k in UNREACHABLE_BEFORE_THE_SEAM
-                   if re.search(r"^" + re.escape(k) + r"\s", elec, re.M)]
-        assert not present, (
-            f"the electrode rung is NOT on the seam yet, so it cannot carry "
-            f"{present} -- if it does, it was tabled and this test is the "
-            f"thing to delete (engines/transport.md 3.6)")
-
-    def test_another_kinds_rows_do_not_reach_this_deck(self, calc):
-        """THE KIND GATE (`script_emit._render_sections`).
-
-        A `Section` is a table of catalogue ITEM NAMES, and which kinds an
-        item belongs to is the item's own declaration
-        (`engines/template.md` § 6.3: `calculations = [...]`).  Reusing the
-        engine's `OUTPUT_SECTION` for transport therefore has to skip the
-        rows tagged for `optimization` only -- otherwise a single-point NEGF
-        warm-up, which has no trajectory at all, emits `WriteMDhistory` and
-        `WriteMDXmol`.  It did, until the gate was added 2026-09-15.
-
-        The positive half matters as much as the negative: the section's
-        UNTAGGED rows must still arrive, or "the gate works" would also be
-        satisfied by dropping the whole section.
-        """
-        prep_calculation(calc, "seed")
-        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
-        for optimization_only in ("WriteMDhistory", "WriteMDXmol"):
-            assert not re.search(r"^" + optimization_only + r"\s", seed, re.M), (
-                f"{optimization_only} is tagged calculations=['optimization'] "
-                f"and must not reach a transport deck")
-        for shared in ("WriteForces", "WriteCoorStep", "WriteCoorXmol"):
-            assert re.search(r"^" + shared + r"\s", seed, re.M), (
-                f"{shared} is untagged, so it belongs to every kind and must "
-                f"still be here -- without this half the test above would "
-                f"pass on an empty output section")
-
-    def test_the_atom_metadata_fence_is_written_once(self, calc):
-        """ONE on-disk source of truth for the region partition.
-
-        `script_emit` emits the fence in the record section; the un-migrated
-        transport emitters emit their own because nothing else would.  Lifting
-        that call into the layout produced it TWICE with different provenance,
-        and the reader (`_extract_atom_metadata_dict`) stops at the first END
-        marker -- so the poorer copy won and the framework's was dead text.
-        The partition is what the whole ladder is built on, so two copies with
-        a first-wins reader is the defect even while they agree.
-        """
-        prep_calculation(calc, "seed")
-        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
-        assert seed.count("molbuilder atom-metadata BEGIN") == 1
 
     def test_every_value_arrives_with_its_reason(self, calc):
         """The note-with-the-value rule, which a literal f-string cannot

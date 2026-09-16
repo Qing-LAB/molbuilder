@@ -117,6 +117,113 @@ def rung_of(stage_token: Optional[str]) -> str:
 #  The layouts, as tables.                                              #
 # ===================================================================== #
 
+def _electrode_layout(derived):
+    """An electrode rung: a genuinely periodic BULK calculation.
+
+    Read down it and the difference from the seed is three lines — and each
+    is the physics of what a lead is, not a preference:
+
+    * the k-mesh samples the **transport axis densely**, because a lead is
+      periodic along it.  This is the one axis where the lead and the device
+      deliberately disagree, and the density is what resolves the Fermi level
+      every downstream stage is measured against;
+    * ``TS.HS.Save`` is on, so the run writes the Hamiltonian the device's
+      ``TS.Elec`` reference reads.  It is `role`-declared: a lead that omits
+      it converges happily and produces nothing the device can attach to;
+    * the structure is the **extracted lead**, not the junction.
+
+    Everything else is the same engine's section set, because a lead run is
+    an ordinary SIESTA single point.
+    """
+    return (
+        _sc.Block("identity and what this lead is for", _emit_electrode_header),
+        _sc.Block("cell and coordinates", _emit_geometry_block),
+        _sl.BASIS_SECTION,
+        _sl.XC_SECTION,
+        _sc.Block("the k-mesh — transverse shared, transport axis DENSE",
+                  _emit_electrode_kgrid_block),
+        _sl.SCF_SECTION,
+        _sl.FREE_ENERGY_SECTION,
+        _sl.SCF_TAIL_SECTION,
+        _sl.spin_section(polarized=derived["spin_polarized"],
+                         fixed=derived["spin_fixed"]),
+        _sl.mpi_section(block_size=derived.get("block_size"),
+                        algorithm=derived.get("algorithm")),
+        _sc.Block("what this rung must write", _emit_electrode_outputs),
+        _sl.OUTPUT_SECTION,
+    )
+
+
+def _emit_electrode_header(struct, cfg) -> str:
+    label = cfg.system_label
+    return "\n".join([
+        "# ================================================================== #",
+        f"#  TranSIESTA ELECTRODE (bulk lead) .fdf — {label}",
+        "#  A single point on the lead region taken OUT of the cited",
+        "#  junction by its label -- same atoms, same relaxation, a subset",
+        "#  rather than a geometry derived from somewhere else.  That is what",
+        f"#  makes this lead and the device consistent by construction.",
+        "#",
+        f"#  Writes {label}.TSHS, which the device deck's TS.Elec reference",
+        "#  reads to build this lead's self-energy.",
+        "# ================================================================== #",
+        "",
+        f"SystemLabel            {label}",
+        f"SystemName             Bulk electrode for transport",
+    ])
+
+
+def _emit_electrode_kgrid_block(struct, cfg) -> str:
+    """``%block kgrid_Monkhorst_Pack`` — transverse shared, transport DENSE.
+
+    The one place a lead and the device deliberately differ. The device is an
+    open boundary and is not sampled along transport at all; the lead is a
+    genuinely periodic bulk crystal, and **its Fermi level is the reference
+    energy the whole calculation is measured against**, so that axis must be
+    converged. Under-sample it and every transmission feature sits at the
+    wrong energy.
+
+    The transverse pair is the same one the device uses, and must be: the
+    self-energy is built per transverse k-point and folded into the device at
+    that same point.
+    """
+    kx, ky, _ = tuple(cfg.kgrid or (1, 1, 1))
+    kz = int(getattr(cfg, "electrode_kz", 40) or 40)
+    p = _sc.parameter("electrode_kz", "siesta", config=cfg)
+    out = list(p.note())
+    out += [
+        "%block kgrid_Monkhorst_Pack",
+        f"  {int(kx):>3}    0    0      0.0",
+        f"    0  {int(ky):>3}    0      0.0",
+        f"    0    0  {kz:>3}      0.0",
+        "%endblock kgrid_Monkhorst_Pack",
+    ]
+    return "\n".join(out)
+
+
+def _emit_electrode_outputs(struct, cfg) -> str:
+    """``TS.HS.Save`` — the rung's reason for existing.
+
+    A `role` item (`engines/template.md` § 6.4): the stage decides it, nobody
+    is offered a switch, and the template of this kind carries no value for
+    it. Written here rather than as a section item for that reason — a
+    section resolves an item's value from the config, and this one has none
+    to resolve.
+    """
+    return "\n".join([
+        "# --- The Hamiltonian this lead exists to write ---",
+        "#",
+        "# A lead run that omits this converges happily and produces nothing",
+        "# the device can attach to, so it is the STAGE'S OWN answer rather",
+        "# than a setting: `TS.HS.Save` writes <SystemLabel>.TSHS, which the",
+        "# device deck names in its TS.Elec block.",
+        "#",
+        "# (Not `SaveHS`, which writes the .HSX a post-processor reads and",
+        "# this ladder does not consume.)",
+        "TS.HS.Save             true",
+    ])
+
+
 def _seed_layout(derived):
     """The seed rung: an ordinary periodic SIESTA pass (§ 4.2 stage 1).
 
@@ -324,7 +431,7 @@ def transport_spec(struct: Structure, cfg, *,
             f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
             f"`prep` names the rung and hands it down as `stage_token`.")
 
-    if shape != "seed":
+    if shape not in ("seed", "electrode"):
         raise ValueError(
             f"the transport {shape!r} deck is not on the seam yet, so rung "
             f"{rung!r} still renders through `stages.render_stage_deck` "
@@ -335,7 +442,8 @@ def transport_spec(struct: Structure, cfg, *,
             f"something to work around here.")
 
     derived = _derived_for(struct, cfg)
-    layout = _seed_layout(derived)
+    layout = (_seed_layout(derived) if shape == "seed"
+              else _electrode_layout(derived))
     return _sc.DeckSpec(
         engine="siesta",
         calculation="transport",

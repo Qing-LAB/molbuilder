@@ -97,6 +97,43 @@ class ElectrodeModel:
     n_atoms: int
     notes: List[str] = field(default_factory=list)
 
+    def as_structure(self) -> Structure:
+        """The lead as an ordinary :class:`~molbuilder.structure.Structure`,
+        carrying its own cell.
+
+        **Not a conversion into something new — a restatement.** These atoms
+        came out of the cited junction by their region label
+        (:func:`extract_electrode_model`): same atoms, same relaxation, a
+        subset selected rather than a geometry derived from elsewhere. That
+        is the point of the one-file design — *"all the structure and facts
+        involved in the calculation are consistently constructed"* (user,
+        2026-09-16).
+
+        What it buys is that the framework's seam can stay what it is. A deck
+        describes a structure, `spec_for(struct, cfg, …)` takes one, and an
+        electrode rung describes **this** structure while the device rung
+        describes the junction. Without it the seam would have to grow an
+        argument for a composite kind, and four other callers would carry a
+        parameter they never use.
+
+        The cell is the lead's own: the device's lateral vectors verbatim, so
+        the lead tiles the device's cross-section, and the bulk repeat along
+        transport. That third vector is the one number a person is asked to
+        verify (§ 7.1), and it is the same one this model already pins.
+        """
+        cell = np.array([self.lat_a, self.lat_b,
+                         [0.0, 0.0, float(self.z_period)]], dtype=float)
+        s = Structure(elements=list(self.elements),
+                      positions=np.asarray(self.positions, dtype=float).copy(),
+                      title=f"bulk lead ({self.label})")
+        s.cell = cell
+        # A LEAD IS PERIODIC IN ALL THREE, and says so.  The device is open
+        # along transport and the lead is not -- that difference is the
+        # whole reason the lead is computed separately, so a structure that
+        # claimed otherwise would misdescribe what makes it a lead.
+        s.axis_kind = ("periodic", "periodic", "periodic")
+        return s
+
 
 # --------------------------------------------------------------------- #
 #  Geometry derivation                                                  #
